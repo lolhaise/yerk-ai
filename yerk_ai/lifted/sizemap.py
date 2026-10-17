@@ -8,7 +8,7 @@ import re
 from typing import Callable
 
 LABEL_MAX = 60
-SEP_RE = re.compile(r" — | -- | - |; |: | \(| · | \| ")
+SEP_RE = re.compile(r" \u2014 | -- | - |; |: | \(| \u00b7 | \| ")
 HEAD_RE = re.compile(r"#{1,2} \S.*")
 
 
