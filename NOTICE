@@ -1,0 +1,24 @@
+Yerk AI
+Copyright (c) 2026 Eric McLaren
+Licensed under the MIT License (see LICENSE).
+
+This project includes code taken from the sources below. Each file keeps its origin and
+copyright line in its header. All sources are under the MIT License.
+
+Hermes Agent v0.22.2, https://github.com/NousResearch/hermes-agent
+Copyright (c) 2025 Nous Research. MIT License.
+- yerk_ai/lifted/trim.py: from agent/prompt_builder.py (_truncate_content, _omitted_headings)
+- yerk_ai/lifted/cooldowns.py: from agent/credential_pool_model_cooldowns.py
+  (model_cooldown_until, merge_model_cooldowns)
+
+claude-code-context-map (the author's own MIT tool)
+Copyright (c) 2026 Eric McLaren. MIT License.
+- yerk_ai/lifted/sizemap.py: from context_map/core.py (fmt, label_of, split_sections)
+- .github/workflows/tests.yml: from .github/workflows/tests.yml (layout and matrix)
+
+The author's private tools (not published), contributed here under the MIT License
+Copyright (c) 2026 Eric McLaren.
+- yerk_ai/lifted/classify.py and the patterns in failures.toml: from tools/reason_codes.py
+- yerk_ai/lifted/expiry.py: from tools/token-expiry-watch
+- yerk_ai/lifted/clock.py: from the author's hook dispatcher in tools/hooks/ (the clock line and
+  the room-voice part)

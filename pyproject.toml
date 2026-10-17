@@ -1,0 +1,37 @@
+[project]
+name = "yerk-ai"
+version = "0.1.0"
+description = "Chat rooms as long-lived Claude Code sessions, run on your own installed Claude Code."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE", "NOTICE"]
+requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+yerk = "yerk_ai.cli:main"
+yerkd = "yerk_ai.daemon:main"
+
+[dependency-groups]
+dev = ["pytest>=8", "mypy>=1.15"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["yerk_ai"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"budgets.toml" = "yerk_ai/budgets.toml"
+"failures.toml" = "yerk_ai/failures.toml"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+markers = ["live: needs a real Claude Code login; skipped unless YERK_LIVE=1"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["yerk_ai"]
+warn_unused_ignores = true

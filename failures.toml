@@ -1,0 +1,79 @@
+# How Yerk AI reads a failed turn. One table, a test per string.
+#
+# First match wins: Claude Code's own error type (the `error` field on an assistant
+# message, the same values as the StopFailure hook matcher), then the text patterns
+# below, in order, against the result and error text. Anything else is `unknown`.
+#
+# class      action               why
+# transient  rerun                the same session again; the world may have moved
+# overflow   compact_then_rerun   compact first, then the same session; a fresh one loses the work
+# auth       hop_account          the next account; this login presents the same rejection
+# quota      hop_account          the next account, and this one cools down
+# config     stop                 a rerun changes nothing; say so
+# unknown    stop                 a guess that says "retry" spends a real turn
+
+[actions]
+transient = "rerun"
+overflow = "compact_then_rerun"
+auth = "hop_account"
+quota = "hop_account"
+config = "stop"
+unknown = "stop"
+
+# Seconds an account rests after a failure of this kind, doubling on each repeat,
+# never longer than `max`. A success clears it.
+[cooldown]
+rate_limit = 30
+billing = 600
+auth = 600
+max = 86400
+
+[types]
+rate_limit = "quota"
+billing_error = "quota"
+authentication_failed = "auth"
+oauth_org_not_allowed = "auth"
+account_on_hold = "auth"
+cloud_credential_error = "auth"
+overloaded = "transient"
+server_error = "transient"
+invalid_request = "config"
+model_not_found = "config"
+max_output_tokens = "unknown"
+unknown = "unknown"
+
+# Cooldown kind per type; types not listed here take no cooldown.
+[type_kinds]
+rate_limit = "rate_limit"
+billing_error = "billing"
+authentication_failed = "auth"
+oauth_org_not_allowed = "auth"
+account_on_hold = "auth"
+cloud_credential_error = "auth"
+
+[[patterns]]
+class = "overflow"
+regex = '''context[-_ ](overflow|length|window)|too many tokens|maximum context|prompt is too long|exceeds? the (model'?s )?context|input length .* exceed'''
+
+[[patterns]]
+class = "quota"
+kind = "billing"
+regex = '''\bquota\b|insufficient[-_ ](credit|balance|funds)|billing|out of (usage )?credits|usage credits|credit balance'''
+
+[[patterns]]
+class = "quota"
+kind = "rate_limit"
+regex = '''rate[-_ ]?limit|\b429\b|too many requests|session limit|usage limit|weekly limit|limit reached|hit your limit|limit will reset|resets at'''
+
+[[patterns]]
+class = "auth"
+kind = "auth"
+regex = '''\b401\b|\b403\b|unauthori[sz]ed|forbidden|authentication[-_ ]?failed|invalid credentials|token (has )?expired|run /login|not logged in|subscription (is )?(disabled|cancel+ed|inactive)|account (is )?on hold'''
+
+[[patterns]]
+class = "transient"
+regex = '''\b5\d\d\b|overloaded|internal server error|bad gateway|service unavailable|upstream (error|timeout)|server error|connection (refused|reset|closed)|ECONNRESET|ETIMEDOUT|timed? ?out'''
+
+[[patterns]]
+class = "config"
+regex = '''model[-_ ](not[-_ ]found|unavailable)|unknown model|no such model|invalid model|no conversation found'''
