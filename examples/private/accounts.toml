@@ -1,0 +1,10 @@
+# The fake private layer's accounts (example). An account is a name and a Claude Code
+# config folder; the order here is the default order. One line adds or removes one.
+
+[[account]]
+name = "one"
+config_dir = "~/.claude"
+
+[[account]]
+name = "two"
+config_dir = "~/.claude-two"

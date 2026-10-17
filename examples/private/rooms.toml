@@ -1,0 +1,31 @@
+# The fake private folder's rooms (example). A real private folder holds its own rooms.toml.
+# Paths are relative to the private folder.
+
+[rooms.example-room]
+channel = "discord:CHANNEL_ID"
+accounts = ["one", "two"]
+model = "claude-fable-5-1"
+tools = ["Read", "Grep", "Glob"]
+privacy = "owner"
+timezone = "UTC"
+persona = "persona.md"
+rulebook = "rulebook.md"
+voice = "rooms/example-room.md"
+pinned_memory = "memory/pinned.md"
+daily_notes = "memory/daily"
+recall_days = 2
+open_loops = "memory/open-loops.md"
+
+[rooms.example-quiet]
+channel = "discord:CHANNEL_ID"
+accounts = ["two", "one"]
+model = "claude-fable-5-1"
+tools = ["Read"]
+privacy = "owner"
+timezone = "UTC"
+persona = "persona.md"
+rulebook = "rulebook.md"
+voice = "rooms/example-quiet.md"
+pinned_memory = "memory/pinned.md"
+daily_notes = "memory/daily"
+recall_days = 1
