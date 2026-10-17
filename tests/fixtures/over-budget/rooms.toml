@@ -1,0 +1,10 @@
+# Fixture: one room whose persona file is planted over its 12,000-character budget.
+[rooms.planted-room]
+channel = "discord:CHANNEL_ID"
+accounts = ["one"]
+model = "claude-fable-5-1"
+privacy = "owner"
+timezone = "UTC"
+persona = "persona.md"
+rulebook = "rulebook.md"
+pinned_memory = "memory/pinned.md"

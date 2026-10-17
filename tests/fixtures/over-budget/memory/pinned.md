@@ -1,0 +1,3 @@
+# Pinned (fixture)
+
+- Nothing pinned.
