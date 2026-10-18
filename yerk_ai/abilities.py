@@ -81,7 +81,7 @@ def explain(name: str, ab: dict[str, Any], tab: dict[str, dict[str, Any]], s: An
     out.append(f"Cost: {ab.get('price') or 'nothing, it runs on the box'}")
     if name == "embeddings" and getattr(s, "embeddings_model", None):
         out.append(f"Here: {s.embeddings_model} at {s.embeddings_dim} dimensions, {s.embeddings_width} kept in memory, "
-                   f"units {s.embeddings_units} ([memory] in yerkd.toml; yerk config get embeddings_model says what each "
+                   f"units {s.embeddings_units} ([memory] in yerkd.toml; yerk config get memory says what each "
                    "setting buys and costs)")
     if ab.get("key"):
         out.append(f"How to add the key: {ab['key']}")

@@ -37,6 +37,7 @@ from typing import Any, Callable, Protocol
 from . import words
 from .accounts import Account, Cooldowns, pick
 from .card import Card
+from .config import flag
 from .engine import RoomProcess, RoomSpec, Turn
 from .evidence import Evidence
 from .ledger import Ledger
@@ -228,7 +229,7 @@ class Room:
 
     def _new_card(self) -> None:
         privacy = str(self.conf.get("privacy", "owner"))
-        self.card = Card(thinking=bool(self.conf.get("thinking_panel", False)) and privacy == "owner")
+        self.card = Card(thinking=flag(self.conf.get("thinking_panel")) and privacy == "owner")
         self.turn_key, self.bounced = uuid.uuid4().hex[:12], False
         self.channel.open_card(self.name, self.card.render())   # state first from the first post
 

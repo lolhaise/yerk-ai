@@ -96,8 +96,10 @@ EMBEDDING_SETTINGS: dict[str, tuple[tuple[str, ...], str, str]] = {
                          "paraphrase golds closer but loses on the top six (110 against 117), so small is the default",
                          "text-embedding-3-small"),
     "embeddings_dim": (("256", "512", "1024", "1536", "3072"),
-                       "dimensions asked of the provider and stored in the index (2 bytes each a vector); a change "
-                       "re-embeds the tree once; more dimensions buy a finer vector, not a cheaper one", "256"),
+                       "dimensions asked of the provider and stored in the index (2 bytes each a vector): at most 1536 "
+                       "for text-embedding-3-small and 3072 for text-embedding-3-large (OpenAI's embeddings guide, read "
+                       "2026-10-18); a change re-embeds the tree once; more dimensions buy a finer vector, not a cheaper one",
+                       "256"),
     "embeddings_width": (("256", "384", "512", "the dim"),
                          "dimensions kept in memory: the first width of dim, renormalised (the provider's own shortening "
                          "rule), so a narrower store needs no re-embedding; the index process holds about vectors times "
