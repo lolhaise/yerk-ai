@@ -313,3 +313,37 @@ def test_unwrap_then_delete_targets(folders: tuple[str, str]) -> None:
     targets = delete_targets(commands[0], work)
     assert targets == [real(sibling, "delete-target")]
     assert not inside(targets, work)
+
+
+# From the cold read of the first version
+
+
+def test_git_rm_removes_the_files_too(folders: tuple[str, str]) -> None:
+    work, _ = folders
+    assert delete_targets(["git", "rm", "-r", "--", "delete-target"], work) == [real(work, "delete-target")]
+    assert delete_targets(["git", "-C", "sub", "rm", "delete-target"], work) == [real(work, "sub", "delete-target")]
+    assert delete_targets(["git", "rm", "--cached", "delete-target"], work) == []
+    assert delete_targets(["git", "rm", "-n", "delete-target"], work) == []
+    assert delete_targets(["git", "rm", "-r"], work) is None
+
+
+def test_arithmetic_is_a_number_not_a_command() -> None:
+    assert unwrap("echo $((1+1))") == [["echo", "$((1+1))"]]
+    assert unwrap("echo $(( (2+3)*4 ))") == [["echo", "$(( (2+3)*4 ))"]]
+    assert unwrap(f"(( n = n + 1 )); {TOOL} --flag") == RUN
+    assert unwrap("echo $((1+1") is None
+
+
+def test_an_empty_path_is_none(folders: tuple[str, str]) -> None:
+    work, _ = folders
+    assert delete_targets(["rm", "-r", ""], work) is None
+
+
+def test_rsync_delete_zip_m_and_tar_remove_files(folders: tuple[str, str]) -> None:
+    work, sibling = folders
+    assert delete_targets(["rsync", "-a", "--delete", "delete-target", "../sibling/"], work) == [real(sibling)]
+    assert delete_targets(["rsync", "-a", "--delete", "src/", "host:/x"], work) is None
+    assert delete_targets(["rsync", "-a", "src/", "dst/"], work) == []
+    assert delete_targets(["zip", "-rm", "a.zip", "delete-target"], work) == [real(work, "delete-target")]
+    assert delete_targets(["zip", "-r", "a.zip", "delete-target"], work) == []
+    assert delete_targets(["tar", "--remove-files", "-cf", "a.tar", "delete-target"], work) is None

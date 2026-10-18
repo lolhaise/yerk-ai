@@ -77,10 +77,15 @@ def delete_targets(argv: list[str], cwd: str) -> list[str] | None:
     """Every path a delete would remove, resolved against cwd and through symlinks.
 
     The deletes are rm, rmdir, unlink, shred and trash; find with -delete (its
-    start paths); and git clean that is not a dry run (cwd, since a repository
-    can drop the need for -f in its config). An empty list for a command that
-    deletes nothing. None when a target holds a variable, a glob or a `~`, or
-    when a delete names no path at all, as behind xargs.
+    start paths); git rm (its files, unless --cached) and git clean that is not
+    a dry run (cwd, since a repository can drop the need for -f in its config);
+    rsync with --delete (its destination) and zip -m (its files). An empty list
+    when none of these is the command: that is not a proof it deletes nothing
+    (an interpreter, a wrapper this module does not peel, or a program not
+    listed here can still delete), so the gate reads an empty list as unknown,
+    never as safe. None when a target holds a variable, a glob or a `~`, is
+    empty, or when a delete names no path at all, as behind xargs; and for tar
+    --remove-files, whose members depend on its mode.
     """
     name, args = (os.path.basename(argv[0]), argv[1:]) if argv else ("", [])
     if name == "find" and "-delete" in args:
@@ -96,12 +101,28 @@ def delete_targets(argv: list[str], cwd: str) -> list[str] | None:
             if args[k] == "-C":
                 places.append(args[k + 1])
             k += 2 if args[k] in ("-C", "-c") else 1
-        dry = any(a == "--dry-run" or (a[:1] == "-" and a[1:2] != "-" and "n" in a) for a in args[k + 1:])
-        if k >= len(args) or args[k] != "clean" or dry:
-            return []
+        sub, rest = (args[k], args[k + 1:]) if k < len(args) else ("", [])
+        dry = any(a == "--dry-run" or (a[:1] == "-" and a[1:2] != "-" and "n" in a) for a in rest)
+        if sub not in ("clean", "rm") or dry or (sub == "rm" and "--cached" in rest):
+            return []  # rm --cached drops the index entry and keeps the file
         if any(a.startswith(("--work-tree", "--git-dir")) for a in args[:k]):
             return None
-        targets = [os.path.join(*places)]
+        cut = rest.index("--") if "--" in rest else len(rest)
+        named = [a for a in rest[:cut] if a[:1] != "-"] + rest[cut + 1:]
+        if sub == "rm" and not named:
+            return None
+        targets = [os.path.join(*places, a) for a in named] if sub == "rm" else [os.path.join(*places)]
+    elif name == "rsync" and any(a.startswith("--delete") for a in args):
+        named = [a for a in args if a[:1] != "-"]
+        if len(named) < 2 or ":" in named[-1]:
+            return None  # no destination to resolve, or a remote one
+        targets = named[-1:]  # the destination loses what the source lacks
+    elif name == "zip" and any(a[:1] == "-" and a[1:2] != "-" and "m" in a for a in args):
+        targets = [a for a in args if a[:1] != "-"][1:]  # after the archive
+        if not targets:
+            return None
+    elif name == "tar" and "--remove-files" in args:
+        return None
     elif name in _DELETERS:
         cut = args.index("--") if "--" in args else len(args)
         targets = [a for a in args[:cut] if a[:1] != "-" or a == "-"] + args[cut + 1:]
@@ -109,7 +130,7 @@ def delete_targets(argv: list[str], cwd: str) -> list[str] | None:
             return None  # the paths arrive at run time
     else:
         return []
-    if any(_UNRESOLVED.search(t) for t in targets):
+    if any(not t or _UNRESOLVED.search(t) for t in targets):
         return None
     return [os.path.realpath(os.path.join(cwd, t)) for t in targets]
 
@@ -143,6 +164,9 @@ def _scan(text: str, i: int, depth: int, seen: set[str], out: list[list[str]], n
             continue
         if text.startswith("#", i):  # a comment runs to the end of its line
             i = text.find("\n", i) if "\n" in text[i:] else len(text)
+            continue
+        if text.startswith("((", i):  # an arithmetic command: nothing runs
+            i = _arithmetic(text, i + 2)
             continue
         if text.startswith(("<(", ">("), i):
             start, i = i, _substitution(text, i + 2, depth, seen, out)
@@ -208,6 +232,10 @@ def _word(text: str, i: int, depth: int, seen: set[str], out: list[list[str]]) -
             if escaped != "\n":  # a backslash before a newline joins the lines
                 chars.append(c + escaped if quoted and escaped not in '$`"\\' else escaped)
             i += 2
+        elif text.startswith("$((", i):  # arithmetic: a number once expanded, never a command
+            start, i = i, _arithmetic(text, i + 3)
+            chars.append(text[start:i])
+            expands = True
         elif text.startswith("$(", i):
             start, i = i, _substitution(text, i + 2, depth, seen, out)
             chars.append(text[start:i])
@@ -228,6 +256,17 @@ def _word(text: str, i: int, depth: int, seen: set[str], out: list[list[str]]) -
     if quoted:
         raise _Unreadable
     return ("".join(chars), expands), i
+
+
+def _arithmetic(text: str, i: int) -> int:
+    """The index after the )) that closes an arithmetic (( whose body starts at i."""
+    open_ = 2
+    while i < len(text) and open_:
+        open_ += {"(": 1, ")": -1}.get(text[i], 0)
+        i += 1
+    if open_:
+        raise _Unreadable
+    return i
 
 
 def _substitution(text: str, i: int, depth: int, seen: set[str], out: list[list[str]]) -> int:
