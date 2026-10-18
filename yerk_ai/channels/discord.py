@@ -186,14 +186,15 @@ class DiscordChannel:
                          if x)
         files = [(a.filename, file_type(a.filename, getattr(a, "content_type", None)), int(a.size or 0))
                  for a in getattr(m, "attachments", []) or []]
-        self._file(room, str(m.id), role, text, files, getattr(m, "created_at", None), edited)
+        who = str(getattr(getattr(m, "author", None), "name", "") or "")      # the handle, beside the role
+        self._file(room, str(m.id), role, text, files, getattr(m, "created_at", None), edited, who)
 
     def _file(self, room: str, mid: str, role: str, text: str, files: list[tuple[str, str, int]] | None = None,
-              when: Any = None, edited: bool = False) -> None:
+              when: Any = None, edited: bool = False, who: str = "") -> None:
         if self.capture is None:
             return
         try:
-            self.capture(room, mid, role, text, files or [], when=when, edited=edited)
+            self.capture(room, mid, role, text, files or [], when=when, edited=edited, who=who)
         except OSError as e:
             log.warning("room %s: message %s not filed in the day's log: %s", room, mid, e)
 
@@ -206,7 +207,9 @@ class DiscordChannel:
             return
         if not (m.content or getattr(m, "attachments", None)):
             return
-        if not self.ledger.inbound_add(str(m.id), room.name, str(m.channel.id), sender, len(m.content or "")):
+        made = getattr(m, "created_at", None)
+        if not self.ledger.inbound_add(str(m.id), room.name, str(m.channel.id), sender, len(m.content or ""),
+                                       created=made.timestamp() if made is not None and hasattr(made, "timestamp") else None):
             return
         await self._typing_begin(room.name, m.channel)
         await self._react(m.channel.id, m.id, ACK)

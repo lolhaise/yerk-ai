@@ -52,3 +52,51 @@ def state_dir(arg: str | None = None) -> Path:
 
 def rooms(private: Path) -> dict[str, dict[str, Any]]:
     return dict(load_toml(private / "rooms.toml").get("rooms", {}))
+
+
+def room_id(name: str, conf: dict[str, Any]) -> str:
+    """A room's stable id in the day log: `id` in rooms.toml, else its channel (a Discord channel id
+    survives a rename), else its name. The name stays on every line as a label."""
+    return str(conf.get("id") or conf.get("channel") or name)
+
+
+# Private files are created WITH their mode, never created then chmod-ed (after the owner's
+# tools/safe_write.py): between a create and a chmod the file sits at the umask's mode, and on a box
+# with umask 0002 that is a group-writable session table or token file for a moment that only has to
+# be short, not zero. O_NOFOLLOW refuses a symlink planted where the file should be. The temp file is
+# unique per writer (pid and a counter), so two writers never share one and os.replace is atomic.
+_COUNT = 0
+
+
+def write_private(path: Path, text: str, mode: int = 0o600) -> Path:
+    """Write `text` to `path` through a private temp file of this writer's own, then rename."""
+    global _COUNT
+    _COUNT += 1
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.{_COUNT}.tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), mode)
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(text)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+    return path
+
+
+def read_secret(path: Path, create: bool = False) -> str:
+    """The install's secret for /hook, /control and /mcp (one line, 0600, in the private layer's
+    secrets folder); minted once when `create` and the file is missing. Never logged."""
+    import secrets as _secrets
+    try:
+        return path.read_text().strip()
+    except OSError:
+        if not create:
+            return ""
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    value = _secrets.token_hex(24)
+    write_private(path, value + "\n")
+    return value

@@ -52,12 +52,12 @@ def test_capture_files_text_attachment_only_and_one_character_once_each(tmp_path
     text = (tmp_path / "daily" / "2026-01-05.md").read_text()
     assert text.splitlines() == [
         "# 2026-01-05", "",
-        "- 09:30:15 an-example-room owner: a plain line / with a second line [m:101]",
-        "- 09:30:15 an-example-room test-webhook: (attachment only) [m:102]",
+        "- 09:30:15+00:00 an-example-room owner: a plain line / with a second line [c:private] [m:101]",
+        "- 09:30:15+00:00 an-example-room test-webhook: (attachment only) [c:private] [m:102]",
         "  - attachment: photo.png, image/png, 1,234 bytes",
-        "- 09:30:15 an-example-room owner: k [m:103]",
+        "- 09:30:15+00:00 an-example-room owner: k [c:private] [m:103]",
         text.splitlines()[-1]]
-    assert text.splitlines()[-1].startswith("- 09:30:15 an-example-room owner: (edited) the new text [m:101.e")
+    assert text.splitlines()[-1].startswith("- 09:30:15+00:00 an-example-room owner: (edited) the new text [c:private] [m:101.e")
     assert oct((tmp_path / "daily" / "2026-01-05.md").stat().st_mode & 0o777) == "0o600"
 
 
@@ -66,7 +66,93 @@ def test_the_day_is_the_messages_own_in_the_install_time_zone(tmp_path):
     log.capture("an-example-room", "201", "owner", "late", when=datetime(2026, 1, 6, 4, 59, tzinfo=UTC))
     log.capture("an-example-room", "202", "owner", "replayed after midnight", when=datetime(2026, 1, 6, 4, 59, tzinfo=UTC))
     assert sorted(p.name for p in (tmp_path / "daily").iterdir()) == ["2026-01-05.md"]
-    assert "- 23:59:00 an-example-room owner: late [m:201]" in (tmp_path / "daily" / "2026-01-05.md").read_text()
+    assert "- 23:59:00-05:00 an-example-room owner: late [c:private] [m:201]" in (tmp_path / "daily" / "2026-01-05.md").read_text()
+
+
+# the line's shape (restart test R5): the offset per line from the zone, the room's id, the author, the class
+def test_the_offset_is_the_lines_own_and_the_room_and_author_carry_an_id_and_a_handle(tmp_path):
+    from zoneinfo import ZoneInfo
+    log = memory.DailyLog(tmp_path / "daily", ZoneInfo("America/Toronto"),
+                          rooms={"an-example-room": ("discord:1000", "room")})
+    log.capture("an-example-room", "301", "owner", "winter", who="example_handle", when=datetime(2026, 1, 10, 15, 0, tzinfo=UTC))
+    log.capture("an-example-room", "302", "owner", "summer", when=datetime(2026, 7, 10, 15, 0, tzinfo=UTC))
+    log.capture("unlisted-room", "303", "other", "no id on file", when=datetime(2026, 7, 10, 15, 0, tzinfo=UTC))
+    jan = (tmp_path / "daily" / "2026-01-10.md").read_text().splitlines()[-1]
+    jul = (tmp_path / "daily" / "2026-07-10.md").read_text().splitlines()
+    assert jan == "- 10:00:00-05:00 an-example-room#discord:1000 owner@example_handle: winter [c:room] [m:301]"
+    assert jul[-2] == "- 11:00:00-04:00 an-example-room#discord:1000 owner: summer [c:room] [m:302]"
+    assert jul[-1] == "- 11:00:00-04:00 unlisted-room other: no id on file [c:private] [m:303]"
+    ln = memory.parse_line(jan)
+    assert ln and (ln.offset, ln.label, ln.room_id, ln.role, ln.who, ln.cls, ln.mid) == (
+        "-05:00", "an-example-room", "discord:1000", "owner", "example_handle", "room", "301")
+    old = memory.parse_line("- 09:30:15 an-example-room owner: a plain line [m:7]")   # the shape before this change
+    assert old and (old.offset, old.room_id, old.who, old.cls, old.body, old.mid) == ("", "", "", "", "a plain line", "7")
+    assert old.of_room("an-example-room", "discord:1000") and ln.of_room("renamed-room", "discord:1000")
+    assert not ln.of_room("an-example-room", "discord:2000")      # another room with this name is another room
+    assert memory.system_zone()                                  # a zone name, never a fixed offset
+
+
+def test_the_migration_rewrites_old_lines_once_with_a_backup_and_leaves_new_ones(tmp_path):
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo("America/Toronto")
+    daily = tmp_path / "daily"
+    daily.mkdir()
+    (daily / "2026-03-08.md").write_text(                        # the clocks change at 02:00 that day
+        "# 2026-03-08\n\n- 01:30:00 an-example-room owner: before the change [m:1]\n"
+        "- 03:30:00 an-example-room yerk: after the change [m:2]\n  - attachment: a.png, image/png, 10 bytes\n"
+        "- 04:00:00 other-room owner: another room, no id on file [m:3]\n"
+        "- 05:00:00-04:00 an-example-room#discord:1000 owner@h: already new [c:room] [m:4]\n")
+    (daily / "2026-11-01.md").write_text("# 2026-11-01\n\n- 01:30:00 an-example-room owner: the repeated hour [m:5]\n")
+    rooms = {"an-example-room": ("discord:1000", "room")}
+    st = memory.migrate_daylogs(daily, tz, rooms, tmp_path / "backup")
+    assert (st["files"], st["rewritten"], st["kept"]) == (2, 4, 1)
+    lines = (daily / "2026-03-08.md").read_text().splitlines()
+    assert lines[2:] == [
+        "- 01:30:00-05:00 an-example-room#discord:1000 owner: before the change [c:room] [m:1]",
+        "- 03:30:00-04:00 an-example-room#discord:1000 yerk: after the change [c:room] [m:2]",
+        "  - attachment: a.png, image/png, 10 bytes",
+        "- 04:00:00-04:00 other-room owner: another room, no id on file [c:private] [m:3]",
+        "- 05:00:00-04:00 an-example-room#discord:1000 owner@h: already new [c:room] [m:4]"]
+    assert (daily / "2026-11-01.md").read_text().splitlines()[-1].startswith("- 01:30:00-04:00 ")   # the first offset
+    assert (tmp_path / "backup" / "2026-03-08.md").read_text().splitlines()[2].startswith("- 01:30:00 an-example-room owner")
+    again = memory.migrate_daylogs(daily, tz, rooms, tmp_path / "backup")
+    assert (again["rewritten"], again["kept"]) == (0, 5)
+    s = memory.settings(tmp_path, tmp_path / "state", {"timezone": "America/Toronto", "root": "."})
+    hits = memory.topic_hits(s, "an-example-room", "before the change?", set(), datetime(2026, 3, 9, tzinfo=UTC), rid="discord:1000")
+    by = {h["cite"]: h["text"] for h in hits}                                   # read back across the migration
+    assert by["daily/2026-03-08.md:3"] == "before the change" and "other room" not in str(hits)
+
+
+# privacy classes (restart test R2): a room reads shared files and its own lines, an owner room everything
+def test_a_room_cannot_read_another_rooms_private_lines_or_files(tmp_path):
+    s = tree(tmp_path)
+    (s.root / "facts" / "shared.md").write_text("---\nclass: shared\n---\n# Shared\n\nThe example kettle is shared knowledge.\n")
+    (s.root / "facts" / "side.md").write_text("# Side\n\nThe example kettle line for room b only.\n")
+    (s.root / "facts" / "side.md.class").write_text("room b-id\n")
+    (s.root / "daily" / "2026-01-05.md").write_text(
+        "# 2026-01-05\n\n- 09:00:00+00:00 room-a owner: kettle kettle kettle in room a [c:private] [m:1]\n"
+        "- 09:01:00+00:00 room-b#b-id other@h: kettle kettle kettle in room b [c:room] [m:2]\n"
+        "- 09:02:00 room-a owner: an old line, kettle [m:3]\n")
+    build(s)
+    owner, b, nobody = memory.Reader.owner_room("room-a"), memory.Reader("room-b", "b-id", False), memory.Reader()
+    paths = lambda r: sorted({h["path"].rsplit("/", 1)[-1] for h in r["hits"]})  # noqa: E731
+    assert paths(memory.recall(s, "kettle", 20, reader=owner)) == ["2026-01-05.md", "kettle.md", "shared.md", "side.md"]
+    got = memory.recall(s, "kettle", 20, reader=b)
+    assert paths(got) == ["2026-01-05.md", "shared.md", "side.md"]
+    day = next(h for h in got["hits"] if h["path"].endswith("2026-01-05.md"))
+    assert "in room b" in day["text"] and "in room a" not in day["text"] and "an old line" not in day["text"]
+    assert paths(memory.recall(s, "kettle", 20, reader=nobody)) == ["shared.md"]
+    assert not memory.read(s, "facts/kettle.md", reader=b)["ok"] and memory.read(s, "facts/kettle.md", reader=owner)["ok"]
+    assert memory.read(s, "facts/side.md", reader=b)["ok"] and not memory.read(s, "facts/side.md", reader=nobody)["ok"]
+    r = memory.read(s, "daily/2026-01-05.md", 3, 3, reader=b)
+    assert r["ok"] and r["text"].splitlines() == ["(a line of another room)",
+                                                  "- 09:01:00+00:00 room-b#b-id other@h: kettle kettle kettle in room b [c:room] [m:2]",
+                                                  "(a line of another room)"]
+    assert memory.file_class(s.root / "facts" / "shared.md") == ("shared", "")
+    assert memory.file_class(s.root / "facts" / "side.md") == ("room", "b-id")
+    assert memory.file_class(s.root / "facts" / "kettle.md") == ("private", "")
+    assert memory.room_class({"privacy": "owner"}) == "private" and memory.room_class({"privacy": "family"}) == "room"
+    assert memory.room_class({"privacy": "family", "class": "shared"}) == "shared"
 
 
 def test_the_example_layer_never_captures_into_the_repo(tmp_path):

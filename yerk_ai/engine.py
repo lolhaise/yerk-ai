@@ -14,8 +14,10 @@ from __future__ import annotations
 
 import fcntl
 import json
+import logging
 import os
 import queue
+import secrets
 import subprocess
 import threading
 import time
@@ -26,9 +28,11 @@ from types import TracebackType
 from typing import IO, Any, Callable
 
 from .accounts import Account, account_env
+from .config import write_private
 from .ledger import Ledger
 from .lifted.classify import Failure, FailureTable
 
+log = logging.getLogger("yerk.engine")
 STREAM_FLAGS = ["-p", "--input-format", "stream-json", "--output-format", "stream-json",
                 "--verbose", "--include-partial-messages", "--replay-user-messages"]
 
@@ -53,10 +57,16 @@ class RoomSpec:
     mcp_config: Path | None = None                           # --mcp-config
     add_dirs: list[Path] = field(default_factory=list)       # --add-dir: folders the room may read
     extra_args: list[str] = field(default_factory=list)
+    token: str = ""                                          # this process's credential for /hook and /mcp (bound with the session)
 
 
 class SessionTable:
-    """room -> {session_id, account, bound}: a JSON file only Yerk AI writes."""
+    """room -> {session_id, account, bound, token, transcript}: a JSON file only Yerk AI writes.
+    `token` is the credential the room's process sends on every hook and MCP call (the daemon knows
+    the room by it: identity from the binding, never from a header a caller picks); `transcript` is
+    the session's transcript path, learnt from the first hook call, so a hop resumes by path.
+    Every write holds the table's lock file (flock) and lands through a temp file of the writer's own,
+    so two rooms binding together both keep their rows (restart test R3)."""
 
     def __init__(self, path: Path):
         self.path = path
@@ -70,12 +80,40 @@ class SessionTable:
     def get(self, room: str) -> dict[str, Any] | None:
         return self.load().get(room)
 
-    def bind(self, room: str, session_id: str, account: str) -> None:
-        data = self.load()
-        data[room] = {"session_id": session_id, "account": account, "bound": round(time.time(), 3)}
-        tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(data, indent=1))
-        os.replace(tmp, self.path)
+    def by_token(self, token: str) -> str | None:
+        """The room whose live process holds `token`, or None (an unbound call)."""
+        if not token:
+            return None
+        return next((room for room, row in self.load().items() if row.get("token") == token), None)
+
+    def by_session(self, session_id: str) -> str | None:
+        if not session_id:
+            return None
+        return next((room for room, row in self.load().items() if row.get("session_id") == session_id), None)
+
+    def update(self, room: str, **fields: Any) -> dict[str, Any]:
+        """Set fields of a room's row under the lock; the row is created when missing."""
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(self.path.with_suffix(".lock"), os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            data = self.load()
+            row = dict(data.get(room) or {})
+            row.update(fields)
+            data[room] = row
+            write_private(self.path, json.dumps(data, indent=1))
+        finally:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+            os.close(fd)
+        return row
+
+    def bind(self, room: str, session_id: str, account: str, token: str = "", transcript: str = "") -> None:
+        """A process start: the session, the account, this process's token; the transcript path is kept
+        when the session is the same one (a hop) and cleared when it is new."""
+        prev = self.get(room) or {}
+        keep = transcript or (str(prev.get("transcript") or "") if prev.get("session_id") == session_id else "")
+        self.update(room, session_id=session_id, account=account, bound=round(time.time(), 3),
+                    token=token or secrets.token_hex(16), transcript=keep)
 
 
 class SessionLock:
@@ -216,15 +254,21 @@ class RoomProcess:
         if resume:
             self.resume_arg, self.session_id = resume, Path(resume).stem if resume.endswith(".jsonl") else resume
         elif row:
-            self.resume_arg = self.session_id = str(row["session_id"])
+            self.session_id = str(row["session_id"])
+            # Under another account Claude Code searches that account's own projects folder for the id,
+            # so a hop resumes by the transcript's absolute path, which the docs promise for --resume
+            # (restart test R1); the same account resumes by id, which also finds a moved transcript.
+            path = str(row.get("transcript") or "")
+            self.resume_arg = path if path and row.get("account") != self.account.name and os.path.isfile(path) \
+                else self.session_id
         else:
             self.resume_arg, self.session_id = None, str(uuid.uuid4())
         (self.state / "locks").mkdir(parents=True, exist_ok=True)
         self.room_dir.mkdir(parents=True, exist_ok=True)
         self.lock = SessionLock(self.state / "locks" / f"{self.session_id}.lock").acquire()
-        self.sessions.bind(self.spec.room, self.session_id, self.account.name)
+        self.sessions.bind(self.spec.room, self.session_id, self.account.name, self.spec.token)
         if self.spec.settings:
-            (self.room_dir / "settings.json").write_text(json.dumps(self.spec.settings, indent=1))
+            write_private(self.room_dir / "settings.json", json.dumps(self.spec.settings, indent=1))
         if self.log_path:
             self._log = open(self.log_path, "a")
             self._note({"argv": self.argv(), "account": self.account.name, "session_id": self.session_id})
