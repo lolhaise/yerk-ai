@@ -1362,8 +1362,8 @@ class Jobs:
         naming the end (a worker "timed out" at `cap` seconds, "died" of `result`, a turn "failed")."""
         self.waking.discard(eid)
         ev = self.ledger.watch_get(eid)
-        if ev is None:
-            return
+        if ev is None or ev["state"] in ("handled", "failed", "stopped"):   # already final: a restart pass
+            return                                                            # never ends an event twice
         if state == "answered":
             self.ledger.watch_set(eid, state="handled", ended=round(time.time(), 3), reply_ids=",".join(ids))
             log.info("watcher %s: event %d handled", ev["job"], eid)
