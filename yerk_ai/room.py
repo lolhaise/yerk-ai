@@ -110,6 +110,25 @@ class Room:
         threading.Thread(target=self._run, name=f"room-{self.name}", daemon=True).start()
         return "started"
 
+    def revise(self, message_id: str, text: str) -> bool:
+        """An edit of a message still waiting for its turn: it runs as edited. False once written."""
+        with self.lock:
+            for m in self.queue:
+                if m.id == message_id:
+                    m.text = text
+                    self.seen[text.strip()] = m
+                    return True
+        return False
+
+    def withdraw(self, message_id: str) -> bool:
+        """A message deleted while still waiting for its turn never runs. False once written."""
+        with self.lock:
+            for m in list(self.queue):
+                if m.id == message_id:
+                    self.queue.remove(m)
+                    return True
+        return False
+
     def inbox(self, message_id: str) -> Any:
         """The folder a message's files are staged in: inside the room's working folder, so the
         room's process can read them."""

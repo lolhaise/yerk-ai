@@ -59,6 +59,8 @@ The room runner:
 
 - A message for an idle room starts a turn. A message that arrives mid-turn goes straight to the process's stdin and is answered inside the same turn; the replayed copy (`--replay-user-messages`) is the proof it was accepted.
 - Only the final text after the last tool call is delivered. A turn owns one progress message, edited with its first visible line, then replaced by the reply, split under the channel's limit and never inside a code block.
+- Files go out on one path, up to what the bot can send (measured: 20,971,520 bytes, Discord's own answer, above discord.py's 10,485,760 for a tier 1 guild). A file a crash left unconfirmed is sent again from its outbox snapshot, labelled, unless the room already shows it; the message runs again told which files are in the room.
+- An edit of a message still waiting revises it before it runs; an edit of one already running or answered comes in again, marked; a message deleted while it waits never runs. A reply carries the message it answers.
 - A failed turn takes the action `failures.toml` gives its class: transient reruns the same session (twice at most), overflow compacts then reruns, auth and quota rest that account (doubling per account and kind, kept across restarts) and continue the same turn under the same card on the next account, resuming the same session; a session that cannot be resumed starts fresh with a one-line recap; anything else is a visible notice. An empty reply retries once fresh.
 - A turn Claude Code answered on a fallback model after a block stands, and its card and ledger row say so; the room's next turn starts a fresh session on the room's own model.
 - After 30 idle minutes the process closes; the next message resumes the session.
@@ -67,7 +69,7 @@ The daemon's one local HTTP server carries `/mcp` (the tools `send`: text, or a 
 
 ## Ledgers
 
-One SQLite file, `ledger.sqlite`: `turns` (account, models, time to first visible event and to the end, how it ended, which messages it answered), `inbound` (every channel message by its id, written before anything runs; a crash runs it again once, marked), `outbound` (every message posted, with the id the channel returned), `holds`, `health` (the daily call per account: pass or fail, login method, an identity fingerprint, never the email). A turn row also names the failure's source in the table and the hop that brought the turn to its account.
+One SQLite file, `ledger.sqlite`: `turns` (account, models, time to first visible event and to the end, how it ended, which messages it answered), `inbound` (every channel message by its id, written before anything runs; a crash runs it again once, marked), `outbound` (every message posted, with the id the channel returned, and a card's text at each post and edit, so a card the reply replaced can still be read back), `holds`, `health` (the daily call per account: pass or fail, login method, an identity fingerprint, never the email). A turn row also names the failure's source in the table and the hop that brought the turn to its account.
 
 ## Files
 

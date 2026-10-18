@@ -1,6 +1,7 @@
 """The ledger, one SQLite database that records each message in and out, each turn, worker and approval, so that
 why the turn moved there), inbound (every channel message by its id, before anything runs),
-outbound (every message Yerk AI posted, with the id the channel returned), deliveries (every
+executed it and why the turn moved there), inbound (every channel message by its id, before anything runs), outbound
+(every message Yerk AI posted, with the id the channel returned, and a card's text at each post and edit, so a card
 the reply replaced can still be read back), deliveries (every outbound part by its idempotency key, written before
 the post: a retry after a crash posts a part only if it is not already in the room), attachments (every inbound
 missing), cards (each turn's progress message, open until its turn ends), holds, and health
@@ -22,8 +23,9 @@ from typing import Any
 COLUMNS = ("room", "account", "config_dir", "session_id", "started", "first_visible", "ended",
            "outcome", "failure", "action", "output_chars", "models", "fallback_model", "accepted", "inbound",
            "source", "hop", "recap", "turn_key")
-ADDED = {"inbound": "TEXT", "source": "TEXT", "hop": "TEXT", "recap": "INTEGER",   # columns newer than run 1
-         "turn_key": "TEXT"}
+ADDED = {"turns": {"inbound": "TEXT", "source": "TEXT", "hop": "TEXT", "recap": "INTEGER",   # newer than run 1
+                   "turn_key": "TEXT"},
+         "outbound": {"body": "TEXT"}}                      # a card's text, each post and edit
 
 SCHEMA = """CREATE TABLE IF NOT EXISTS turns (
   id INTEGER PRIMARY KEY,
@@ -38,7 +40,7 @@ CREATE TABLE IF NOT EXISTS inbound (
   folded INTEGER DEFAULT 0, accepted REAL, answered REAL, turn_id INTEGER, reply_ids TEXT, note TEXT);
 CREATE TABLE IF NOT EXISTS outbound (
   id INTEGER PRIMARY KEY, room TEXT, channel TEXT, kind TEXT, message_id TEXT,
-  chars INTEGER, file TEXT, inbound TEXT, sent REAL, error TEXT);
+  chars INTEGER, file TEXT, inbound TEXT, sent REAL, error TEXT, body TEXT);
 CREATE TABLE IF NOT EXISTS deliveries (
   key TEXT PRIMARY KEY, room TEXT, kind TEXT, body TEXT, file TEXT, size INTEGER, type TEXT, inbound TEXT,
   state TEXT, message_id TEXT, attempts INTEGER DEFAULT 0, created REAL, sent REAL, error TEXT, note TEXT);
@@ -65,10 +67,11 @@ class Ledger:
         self.db = sqlite3.connect(path, check_same_thread=False, isolation_level=None)
         self.lock = threading.Lock()
         self.db.executescript(SCHEMA)
-        have = {r[1] for r in self.db.execute("PRAGMA table_info(turns)")}
-        for col, kind in ADDED.items():                # an older ledger gains the newer columns
-            if col not in have:
-                self.db.execute(f"ALTER TABLE turns ADD COLUMN {col} {kind}")
+        for table, cols in ADDED.items():              # an older ledger gains the newer columns
+            have = {r[1] for r in self.db.execute(f"PRAGMA table_info({table})")}
+            for col, kind in cols.items():
+                if col not in have:
+                    self.db.execute(f"ALTER TABLE {table} ADD COLUMN {col} {kind}")
 
     def _insert(self, table: str, row: dict[str, Any]) -> int:
         cols = ", ".join(row)
@@ -169,6 +172,13 @@ class Ledger:
         if state:
             sql, args = sql + " AND state = ?", (*args, state)
         return self._select(sql + " ORDER BY created, key", args)
+
+    def files_sent_for(self, message_ids: list[str]) -> list[dict[str, Any]]:
+        """Files already in the room for any of these inbound messages (a turn a crash cut short)."""
+        rows = self._select("SELECT * FROM deliveries WHERE kind = 'file' AND state = 'sent' AND inbound != '' "
+                            "ORDER BY created", ())
+        want = set(message_ids)
+        return [r for r in rows if want & set(str(r["inbound"] or "").split(","))]
 
     def turn_for_key(self, turn_key: str) -> int | None:
         r = self._select("SELECT id FROM turns WHERE turn_key = ? ORDER BY id DESC LIMIT 1", (turn_key,))
