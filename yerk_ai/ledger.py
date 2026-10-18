@@ -28,7 +28,9 @@ COLUMNS = ("room", "account", "config_dir", "session_id", "started", "first_visi
 ADDED = {"turns": {"inbound": "TEXT", "source": "TEXT", "hop": "TEXT", "recap": "INTEGER",   # newer than run 1
                    "turn_key": "TEXT"},
          "outbound": {"body": "TEXT"},                      # a card's text, each post and edit
-         "workers": {"job": "TEXT"}}                        # the scheduled job a worker runs for (jobs.py)
+         "workers": {"job": "TEXT",                         # the scheduled job a worker runs for (jobs.py)
+                     "queued": "REAL", "waiting": "INTEGER",    # in line for its account (one heavy worker each)
+                     "watch": "INTEGER"}}                       # the watcher event it was woken for
 
 SCHEMA = """CREATE TABLE IF NOT EXISTS turns (
   id INTEGER PRIMARY KEY,
@@ -61,6 +63,9 @@ CREATE TABLE IF NOT EXISTS workers (
 CREATE TABLE IF NOT EXISTS job_runs (
   id INTEGER PRIMARY KEY, job TEXT, kind TEXT, room TEXT, unit TEXT, planned REAL, fired REAL, ended REAL,
   exit TEXT, result TEXT, delivery TEXT, message_ids TEXT, worker TEXT, chars INTEGER, folder TEXT, note TEXT);
+CREATE TABLE IF NOT EXISTS watch_events (
+  id INTEGER PRIMARY KEY, job TEXT, room TEXT, wake TEXT, state TEXT, lines TEXT, keys TEXT, received REAL,
+  attempts INTEGER DEFAULT 0, woke REAL, ended REAL, worker TEXT, inbound TEXT, reply_ids TEXT, note TEXT);
 CREATE TABLE IF NOT EXISTS health (
   id INTEGER PRIMARY KEY, at REAL, account TEXT, config_dir TEXT, ok INTEGER, failure TEXT, source TEXT,
   login TEXT, identity TEXT, identity_ok INTEGER, model TEXT, ms INTEGER, note TEXT);
@@ -74,9 +79,11 @@ HEALTH = ("at", "account", "config_dir", "ok", "failure", "source", "login", "id
 
 WORKERS = ("room", "account", "unit", "model", "session_id", "brief", "staging", "report", "tasks", "cap", "card",
            "started", "finished", "exit", "exit_detail", "result", "stop_requested", "relay", "relay_note",
-           "relay_chars", "job")
+           "relay_chars", "job", "queued", "waiting", "watch")
 JOB_RUNS = ("job", "kind", "room", "unit", "planned", "fired", "ended", "exit", "result", "delivery", "message_ids",
             "worker", "chars", "folder", "note")
+WATCH_EVENTS = ("job", "room", "wake", "state", "lines", "keys", "received", "attempts", "woke", "ended", "worker",
+                "inbound", "reply_ids", "note")
 INBOUND = ("room", "channel", "sender", "received", "chars", "state", "attempts", "folded", "accepted",
            "answered", "turn_id", "reply_ids", "note")
 OPEN = ("received", "running")
@@ -218,6 +225,36 @@ class Ledger:
     def job_run_get(self, run_id: int) -> dict[str, Any] | None:
         r = self._select("SELECT * FROM job_runs WHERE id = ?", (run_id,))
         return r[0] if r else None
+
+    # watcher events (jobs.py): one row per event a watcher's command printed, and one "primed" row
+    # holding the lines its first start absorbed; state pending, waking, handled, failed or primed
+    def watch_add(self, **row: Any) -> int:
+        bad = set(row) - set(WATCH_EVENTS)
+        if bad:
+            raise ValueError(f"unknown watch_events columns: {sorted(bad)}")
+        return self._insert("watch_events", row)
+
+    def watch_set(self, event_id: int, **fields: Any) -> None:
+        bad = set(fields) - set(WATCH_EVENTS)
+        if bad:
+            raise ValueError(f"unknown watch_events columns: {sorted(bad)}")
+        sets = ", ".join(f"{k} = ?" for k in fields)
+        with self.lock:
+            self.db.execute(f"UPDATE watch_events SET {sets} WHERE id = ?", (*fields.values(), event_id))
+
+    def watch_get(self, event_id: int) -> dict[str, Any] | None:
+        r = self._select("SELECT * FROM watch_events WHERE id = ?", (event_id,))
+        return r[0] if r else None
+
+    def watch_events(self, job: str | None = None, states: tuple[str, ...] = (), limit: int = 2000) -> list[dict[str, Any]]:
+        """Oldest first: one watcher's events (all when `job` is None), only `states` when given."""
+        sql, args = "SELECT * FROM watch_events WHERE 1", tuple[Any, ...]()
+        if job:
+            sql, args = sql + " AND job = ?", (*args, job)
+        if states:
+            sql, args = sql + f" AND state IN ({', '.join('?' * len(states))})", (*args, *states)
+        rows = self._select(sql + " ORDER BY id DESC LIMIT ?", (*args, limit))
+        return rows[::-1]
 
     def job_run_for_worker(self, worker_id: str) -> dict[str, Any] | None:
         r = self._select("SELECT * FROM job_runs WHERE worker = ? ORDER BY id DESC LIMIT 1", (worker_id,))

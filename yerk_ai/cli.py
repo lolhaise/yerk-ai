@@ -375,8 +375,7 @@ def _setting_lines(r: dict[str, Any]) -> list[str]:
 
 def cmd_explain(a: argparse.Namespace) -> int:
     """One ability from the manifest (what it does, needs and costs, its free path; how a described
-    one would be built and why it is not), else one setting; state first, plain words, and its state
-    here again on the last line."""
+    one would be built and why it is not), else one setting; state first, plain words, one state line."""
     from . import abilities, memory
     from .config import state_dir
     from .words import NOT_DONE
@@ -390,10 +389,8 @@ def cmd_explain(a: argparse.Namespace) -> int:
         print(f"{NOT_DONE} no ability or setting {a.ability!r}; abilities: {', '.join(table_)}", file=sys.stderr)
         return 2
     s = memory.settings(private_dir(a.private), state_dir(a.state))
-    print("\n".join(abilities.explain(a.ability, ab, table_, s)))
-    dot, note = abilities.state(a.ability, ab, table_, s)
-    print(f"now: {dot} " + (note or "on"))
-    if a.ability == "jobs":                   # the jobs file's keys, from the code (decision 16)
+    print("\n".join(abilities.explain(a.ability, ab, table_, s)))     # one state line: the first (STYLE 1)
+    if a.ability in ("jobs", "watchers"):     # the jobs file's keys, from the code (decision 16)
         from . import jobs
         print("keys of a [jobs.NAME] table in the private jobs.toml:")
         for key, words in jobs.KEYS.items():

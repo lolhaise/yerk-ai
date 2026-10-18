@@ -19,9 +19,11 @@ adapter's event loop.
 - After `idle_seconds` without a turn the process closes; the next message resumes the session.
 - Each turn owns one card (card.py), fed from the stream; every outbound part carries the turn's
   key. A turn that was sent an image and never read it is bounced once at Stop, naming the file.
-- A message from the harness itself (sender `yerk`: a worker's relay) runs like any other but is
-  not a human message for the clock line or the idle rule; it may cap its reply and name a line the
-  reply must carry, and it hears how its turn ended.
+- A message from the harness itself (sender `yerk`: a worker's relay, a watcher's event) runs like
+  any other but is not a human message for the clock line or the idle rule; it may cap its reply and
+  name a line the reply must carry, and it hears how its turn ended. One marked `alone` is its own
+  turn: never folded into a running turn, never batched with another message, and in a room whose
+  process is closed it opens a fresh session with its recap instead of resuming.
 """
 from __future__ import annotations
 
@@ -57,6 +59,10 @@ class Inbound:
     cap: int = 0                          # a harness message: the most its reply may be (0: no cap)
     must: str = ""                        # ... a line the reply must carry (a relay's "report saved" line)
     then: Callable[[str, list[str], int], None] | None = None   # (answered or failed, message ids, chars)
+    alone: bool = False                   # a harness turn of its own: never folded into a running turn, never
+                                          # batched with another message (a relay, a watcher's event)
+    closed_recap: str = ""                # ... and when the room's process is closed: a fresh session with
+                                          # this recap ({last}: the last reply's first line), never a resume
 
 
 HARNESS = "yerk"                          # the sender of Yerk AI's own messages (a worker's relay)
@@ -67,13 +73,21 @@ def fit(text: str, cap: int, must: list[str]) -> str:
     room reads it (words.carried: a worker's report path is "report saved" and its command); one the
     reply already has, or whose `command` it already names, is not added twice."""
     lines = [words.carried(m) for m in dict.fromkeys(must) if m]
-    tail = "\n".join(m for m in lines if m not in text and not any(c in text for c in re.findall(r"`([^`]+)`", m)))
-    room = cap - (len(tail) + 1 if tail else 0)
-    if len(text) > room:
-        cut = text[:max(room - 3, 0)]
-        at = max(cut.rfind("\n"), cut.rfind(". ") + 1)
-        text = (cut[:at] if at > room // 2 else cut).rstrip() + "..."
-    return f"{text}\n{tail}" if tail else text
+
+    def missing(t: str) -> str:              # judged on the reply as cut, so a cut never drops a carried line
+        return "\n".join(m for m in lines if m not in t and not any(c in t for c in re.findall(r"`([^`]+)`", m)))
+
+    def cut(t: str, room: int) -> str:
+        if len(t) <= room:
+            return t
+        c = t[:max(room - 3, 0)]
+        at = max(c.rfind("\n"), c.rfind(". ") + 1)
+        return (c[:at] if at > room // 2 else c).rstrip() + "..."
+    body = cut(text, cap)
+    if tail := missing(body):
+        body = cut(text, cap - len(tail) - 1)
+        tail = missing(body)
+    return f"{body}\n{tail}" if tail else body
 
 
 RESUME_RECAP = ("(Yerk AI: the earlier session of this room could not be resumed, so this is a new one. "
@@ -172,7 +186,7 @@ class Room:
             self.seen[msg.text.strip()] = msg
             while len(self.seen) > 200:
                 self.seen.pop(next(iter(self.seen)))
-            if self.reading and self.rp and self.rp.alive() and not self.queue:
+            if self.reading and self.rp and self.rp.alive() and not self.queue and not msg.alone:
                 self._write(msg)
                 self.ledger.inbound_set(msg.id, state="running", folded=1, attempts=msg.attempt + 1)
                 return "folded"
@@ -281,8 +295,9 @@ class Room:
                         self.busy = False
                         self.last_active = time.time()
                         return
-                    batch = list(self.queue)
-                    self.queue.clear()
+                    batch = [self.queue.popleft()]
+                    while not batch[0].alone and self.queue and not self.queue[0].alone:
+                        batch.append(self.queue.popleft())
                 self._turn(batch)
         except Exception:
             log.exception("room %s: turn crashed", self.name)
@@ -312,6 +327,12 @@ class Room:
         self._new_card()
         account = self._account()
         recap, self.fresh_next = self.fresh_next, None          # set by a refusal fallback last turn
+        if not recap and len(batch) == 1 and batch[0].alone and batch[0].closed_recap:
+            with self.lock:
+                closed = self.rp is None or not self.rp.alive()
+            if closed:                                          # a harness turn never resumes a closed room
+                recap = batch[0].closed_recap.format(last=self.last_reply or "nothing yet")
+                log.info("room %s: closed; a fresh session with a recap for %s", self.name, batch[0].id)
         fresh, retried, compacted, reruns, hops, hop = bool(recap), False, False, 0, 0, None
         recap_sid = None                       # the session that already got the recap
         resend = batch

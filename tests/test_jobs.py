@@ -14,6 +14,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from yerk_ai import cli, jobs
+from yerk_ai import words as W
 from yerk_ai.jobs import Env, JobError, make_job
 from yerk_ai.ledger import Ledger
 
@@ -45,8 +46,11 @@ class FakeSystemd:
         self.calls.append(("remove", unit))
 
     def ours(self):
-        return [p.name.removeprefix(jobs.UNIT).removesuffix(".timer") for p in sorted(self.folder.glob(f"{jobs.UNIT}*.timer"))
-                if p.read_text().startswith(jobs.HEADER)]
+        return sorted({p.name.removeprefix(jobs.UNIT).removesuffix(".timer").removesuffix(".service")
+                       for p in self.folder.glob(f"{jobs.UNIT}*") if p.read_text().startswith(jobs.HEADER)})
+
+    def active(self, unit):
+        return "active" if self.enabled.get(unit) else "inactive"
 
     def reload(self):
         self.calls.append(("reload",))
@@ -69,7 +73,7 @@ class FakeSystemd:
         return f"systemd does not take {spec!r}" if "Mars/" in spec else ""
 
     def timers(self):
-        return {t: {"next": self.next.get(t, 2.0e9), "last": self.last.get(t)} for t in self.enabled}
+        return {t: {"next": self.next.get(t, 2.0e9), "last": self.last.get(t)} for t in self.enabled if t.endswith(".timer")}
 
 
 class Rec(Chan):
@@ -139,7 +143,7 @@ def test_cron_every_and_at_compute_the_right_next_fire():
 
 
 @pytest.mark.parametrize("raw, why", [
-    ({"kind": "cron", "schedule": "* * * * *", "tz": "UTC", "room": "r", "command": "x"}, '`kind` must be "script" or "agent"'),
+    ({"kind": "cron", "schedule": "* * * * *", "tz": "UTC", "room": "r", "command": "x"}, '`kind` must be "script", "agent" or "watcher"'),
     ({"kind": "script", "schedule": "* * * * *", "every": "1h", "tz": "UTC", "room": "r", "command": "x"}, "exactly one of"),
     ({"kind": "script", "schedule": "0 9 * * *", "room": "r", "command": "x"}, "needs `tz`"),
     ({"kind": "script", "schedule": "0 25 * * *", "tz": "UTC", "room": "r", "command": "x"}, "25 is outside 0-23"),
@@ -304,7 +308,12 @@ def test_a_script_jobs_three_exit_cases_deliver_stay_silent_and_alert(setup, tmp
     # a failure: one alert line in the ops room, with the stderr tail; a timeout alerts too
     assert (runs["bad"]["exit"], runs["bad"]["result"], runs["bad"]["delivery"]) == ("exited 3", "exit 3", "alert")
     assert (runs["slow"]["exit"], runs["slow"]["result"], runs["slow"]["delivery"]) == ("timed out", "timed out", "alert")
-    assert ops.notified == [("ops", "job bad failed (exit 3): oops"), ("ops", "job slow timed out after 0.02 min")]
+    # the room line in plain words through words.py; the exit code and the stderr tail stay in the run's note
+    assert ops.notified == [("ops", f"{W.NOT_DONE} job bad failed: it ended with an error"),
+                            ("ops", W.job_line("slow", "timed out", 0.02 * 60))]
+    assert ops.notified[1][1].startswith(f"{W.NOT_DONE} job slow stopped: timed out at ")
+    assert not [t for _, t in ops.notified if "exit" in t or "oops" in t]
+    assert (runs["bad"]["note"], runs["slow"]["note"]) == ("exit 3: oops", "timed out after 0.02 min")
     assert ops.sent == [] and rec.notified == []
     # deliver = silent: the output is kept, nothing posted; the environment is account-free, with the job's zone
     assert (runs["envy"]["result"], runs["envy"]["delivery"]) == ("output", "silent (deliver = silent)")
@@ -383,7 +392,8 @@ def test_an_agent_job_becomes_a_worker_with_the_right_account_and_cap_and_relays
     assert (s.ledger.job_run_get(run_hush)["result"], s.ledger.job_run_get(run_hush)["delivery"]) == ("no_reply", "silent (NO_REPLY)")
     assert (mute["relay"], s.ledger.job_run_get(run_mute)["delivery"]) == ("skipped", "silent (deliver = silent)")
     assert crash["exit"] == "died" and s.ledger.job_run_get(run_crash)["delivery"] == "alert"
-    assert rec.notified == [("r", f"job crash died (exit-code, exited 3); worker {crash['id']}")]
+    assert rec.notified == [("r", f"{W.NOT_DONE} job crash failed: it ended with an error")]
+    assert s.ledger.job_run_get(run_crash)["note"] == f"worker {crash['id']}: exit-code, exited 3"
     assert len(s.chan.replies) == 1                      # the one relay; the other three posted nothing
 
 
