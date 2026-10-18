@@ -32,6 +32,9 @@ from .room import Channel, Inbound, Room
 log = logging.getLogger("yerk.daemon")
 YERK_TOOLS = ["mcp__yerk__send", "mcp__yerk__hold", "mcp__yerk__recall", "mcp__yerk__read_memory"]
 STALL = 0.25            # seconds the event loop may lag before the log says so
+NO_KEY_LINE = ("Meaning search is off: recall runs on keywords alone until an OpenAI key is at secrets/openai.key "
+               "in the private folder (or where [memory] embeddings_key in yerkd.toml points); "
+               "yerk explain embeddings has the price and the free path.")
 
 
 def free_port() -> int:
@@ -170,10 +173,23 @@ class Yerkd:
         return {"ok": True, "message_ids": ids}
 
     async def tool_recall(self, room: str, query: str, k: int) -> dict[str, Any]:
-        """Off the loop: the index is yerk-index's file, read here, never built here (L47)."""
+        """Off the loop: the index is yerk-index's file, read here, never built here (L47). The first
+        recall in a room while yerk-index runs without a provider key tells the room so, once."""
         r = await asyncio.to_thread(memory.recall, self.memory, query, k)
         log.info("recall: %s, %d hit(s)%s", room or "?", len(r.get("hits", [])), "" if r["ok"] else f", {r['status']}")
+        if r["ok"] and room in self.rooms and memory.meaning_state(self.memory) == "no-key":
+            await self.tell_once(room, "embeddings", NO_KEY_LINE)
         return r
+
+    async def tell_once(self, room: str, what: str, text: str) -> bool:
+        """One plain line to the room about `what`, the first time only (a marker file remembers it)."""
+        mark = self.state / "rooms" / room / f"told-{what}"
+        if mark.exists():
+            return False
+        mark.parent.mkdir(parents=True, exist_ok=True)
+        mark.touch()
+        await self.channels[room].notify(room, text)
+        return True
 
     async def tool_read_memory(self, room: str, path: str, start: int, lines: int) -> dict[str, Any]:
         return await asyncio.to_thread(memory.read, self.memory, path, start, lines)

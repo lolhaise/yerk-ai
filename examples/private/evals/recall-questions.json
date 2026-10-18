@@ -1,0 +1,15 @@
+{
+  "format": "yerk recall-bench question set (example, invented). One entry per question: q is asked of recall; a hit counts when every answer_tokens string appears in a result's text inside the top k and the path is not a stale copy (the `stale` pattern). A control question must hit, or the run reports the instrument blind. kind is free text; the weekly set keeps fact, event, decision, person, preference, correction, feeling and the two room kinds of decision 20: room-recent (what was sent in a room recently) and room-day (what was said in a room on a day).",
+  "stale": "(^|/)overwrite-backups/",
+  "questions": [
+    {"id": "ctrl-units", "kind": "fact", "control": true, "q": "which units does the owner prefer", "answer_tokens": ["metric"]},
+    {"id": "q-review-day", "kind": "fact", "q": "when does the weekly review happen", "answer_tokens": ["Sunday"]},
+    {"id": "q-plant-water", "kind": "fact", "q": "how often does the plant need water", "answer_tokens": ["5 days"]},
+    {"id": "q-library", "kind": "event", "q": "what has to be renewed before the 20th", "answer_tokens": ["library card"]},
+    {"id": "q-book-done", "kind": "event", "q": "what did the owner finish and want more of", "answer_tokens": ["book"]},
+    {"id": "q-shopping", "kind": "decision", "q": "what went on the shopping list", "answer_tokens": ["rice", "lemons"]},
+    {"id": "q-review-moved", "kind": "decision", "q": "was the review moved this week", "answer_tokens": ["Monday"]},
+    {"id": "q-room-recent", "kind": "room-recent", "q": "what was sent in example-room recently", "answer_tokens": ["example-room", "attachment"]},
+    {"id": "q-room-day", "kind": "room-day", "q": "what did you say in example-room on 2026-01-07", "answer_tokens": ["example-room yerk"]}
+  ]
+}
