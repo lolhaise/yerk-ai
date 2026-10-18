@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
 from .lifted.clock import clock_line, room_voice
@@ -62,22 +62,33 @@ def _read(base: Path, rel: str | None) -> tuple[str, str]:
     return cited(p, p.read_text().strip()), str(p)
 
 
-def recall_pack(base: Path, room: dict[str, Any]) -> tuple[str, str]:
-    """The room's newest daily notes, newest first, then the open commitments."""
+Pack = Callable[[int], tuple[str, str]]       # characters left -> (the room's filed items, their source)
+
+
+def recall_pack(base: Path, room: dict[str, Any], limit: int = 6000, pack: Pack | None = None) -> tuple[str, str]:
+    """The room's own filed items of the last 14 days, newest first (from the daemon, which reads
+    the private day logs; decision 20), else the layer's newest daily notes; then the open
+    commitments, which keep their room inside the limit."""
     texts, srcs = [], []
-    notes = base / str(room.get("daily_notes", "memory/daily"))
-    if notes.is_dir():
-        for f in sorted(notes.glob("*.md"), reverse=True)[: int(room.get("recall_days", 2))]:
-            texts.append(cited(f.resolve(), f.read_text().strip()))
-            srcs.append(str(f.resolve()))
     loops, src = _read(base, room.get("open_loops"))
+    if pack is not None:
+        text, psrc = pack(max(0, limit - chars(loops) - chars(SEP)))
+        if text:
+            texts.append(text)
+            srcs.append(psrc)
+    else:
+        notes = base / str(room.get("daily_notes", "memory/daily"))
+        if notes.is_dir():
+            for f in sorted(notes.glob("*.md"), reverse=True)[: int(room.get("recall_days", 2))]:
+                texts.append(cited(f.resolve(), f.read_text().strip()))
+                srcs.append(str(f.resolve()))
     if loops:
         texts.append(loops)
         srcs.append(src)
     return SEP.join(texts), ", ".join(srcs)
 
 
-def session_start(private: Path, room: dict[str, Any], budgets: dict[str, Any]) -> list[Part]:
+def session_start(private: Path, room: dict[str, Any], budgets: dict[str, Any], pack: Pack | None = None) -> list[Part]:
     limits = budgets["session_start"]["appended"]
     base = layer_dir(private, room)
     voice = str(room.get("voice") or "")
@@ -88,7 +99,7 @@ def session_start(private: Path, room: dict[str, Any], budgets: dict[str, Any]) 
         "rulebook": _read(base, room.get("rulebook")),
         "room_voice": (cited(vpath, room_voice(vpath) or ""), str(vpath)) if vpath else ("", ""),
         "pinned_memory": _read(base, room.get("pinned_memory")),
-        "recall_pack": recall_pack(base, room),
+        "recall_pack": recall_pack(base, room, int(limits["recall_pack"]), pack),
     }
     parts = []
     for name in APPENDED:

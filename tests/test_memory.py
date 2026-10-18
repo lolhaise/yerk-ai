@@ -197,7 +197,8 @@ def test_the_bench_scores_top_six_and_top_one_and_flags_a_blind_control(tmp_path
 
 def test_the_manifest_declares_every_memory_ability_with_a_tier():
     abilities = tomllib.loads((REPO / "abilities.toml").read_text())["abilities"]
-    assert {"capture", "memory-index", "recall", "read-memory", "recall-bench"} <= set(abilities)
+    assert {"capture", "memory-index", "recall", "read-memory", "recall-bench", "mention-recall", "topic-recall",
+            "recall-pack", "evidence-ledger"} <= set(abilities)
     for name, a in abilities.items():
         assert a["tier"] in {"free", "key", "paid"} and a["what"] and a["needs"] and a["free_path"], name
 

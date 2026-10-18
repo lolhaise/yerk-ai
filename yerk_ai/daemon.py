@@ -19,7 +19,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from . import context, hooks, mcp_server, memory
+from . import context, evidence, hooks, mcp_server, memory, mentions
 from .accounts import Account, Cooldowns, from_dir, load_accounts
 from .config import budgets, load_toml, private_dir, rooms, state_dir, table
 from .engine import RoomSpec, SessionTable
@@ -97,6 +97,7 @@ class Yerkd:
         self.meters = Meters(state / "meters.json")
         self.memory = memory.settings(private, state, dict(self.conf.get("memory", {})))
         self.daily = memory.DailyLog(self.memory.daily, self.memory.tz)
+        self.names = mentions.Index(self.memory.mentions)      # yerk-index writes it; reloaded when it changes
         self.idle_seconds, self.log_dir = idle_minutes * 60, log_dir
         self.rooms: dict[str, Room] = {}
         self.channels: dict[str, Any] = {}       # room -> its channel adapter
@@ -111,7 +112,10 @@ class Yerkd:
         work.mkdir(parents=True, exist_ok=True)
         layer = context.layer_dir(self.private, conf)
         ctx = rdir / "context.md"
-        ctx.write_text(context.appended_file(context.session_start(self.private, conf, self.budgets)))
+        parts = context.session_start(self.private, conf, self.budgets, pack=lambda left: self.room_pack(name, left))
+        ctx.write_text(context.appended_file(parts))
+        hooks.record(self.state, name, "session_start", "", {p.name: p.size for p in parts},
+                     next((p.text for p in parts if p.name == "recall_pack"), ""), file=str(ctx))
         settings = {"permissions": {"allow": [f"Read(/{layer}/**)", *YERK_TOOLS]},
                     "hooks": hooks.settings_for(f"{self.url}/hook")}
         mcp = mcp_server.room_config(f"{self.url}/mcp", name, rdir / "mcp.json")
@@ -180,22 +184,85 @@ class Yerkd:
         hid = self.ledger.hold(room, wait_for, reason)
         return {"ok": True, "hold": hid, "next": "End your turn now with one short line; no more tool calls."}
 
+    # recall before the first word (DESIGN 5)
+    def room_pack(self, room: str, left: int = 6000) -> tuple[str, str]:
+        r = self.rooms.get(room)
+        text, _ = memory.room_pack(self.memory, room, left, exclude=r.current_ids() if r else set())
+        return text, str(self.memory.daily)
+
+    def compact_pack(self, room: str) -> str:
+        """The recall pack as session start builds it, for the re-add after a compaction."""
+        conf = self.room_confs[room]
+        limit = int(self.budgets["session_start"]["appended"]["recall_pack"])
+        text, _ = context.recall_pack(context.layer_dir(self.private, conf), conf, limit,
+                                      lambda left: self.room_pack(room, left))
+        return text
+
+    def recall_for(self, room: str, prompt: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Names on file (owner-privacy rooms only) and the room's own lines on the topic. Off the loop."""
+        conf = self.room_confs.get(room, {})
+        names: list[dict[str, Any]] = []
+        if conf.get("privacy", "owner") == "owner" and conf.get("mention_recall", True):
+            try:
+                names = self.names.load().match(prompt)
+            except (OSError, ValueError, KeyError) as e:
+                log.warning("mention recall skipped: %s", e)
+        r = self.rooms.get(room)
+        topics = memory.topic_hits(self.memory, room, prompt, r.current_ids() if r else set()) \
+            if conf.get("topic_recall", True) else []
+        return names, topics
+
+    def shadow_stop(self, name: str, room: Room, reply: str, sid: str) -> list[tuple[str, str]]:
+        """The evidence rules after a reply: ledgered and logged, never a block (shadow, DESIGN 8)."""
+        figure, known = memory.on_file(self.memory)
+        found = evidence.check(reply, room.prompts(), room.evidence, self.memory.scope.roots, figure, known)
+        new = [f for f in found if f not in room.evidence.logged]
+        for rule, detail in new:
+            room.evidence.logged.add((rule, detail))
+            self.ledger.shadow(t=round(time.time(), 3), room=name, session_id=sid, turn=room.turn_key, rule=rule,
+                               detail=detail, reply_chars=len(reply))
+            log.info("room %s: shadow %s: %s (not blocked)", name, rule, detail)
+        return new
+
     # the hooks
     async def hook(self, payload: dict[str, Any]) -> dict[str, Any]:
-        if payload.get("hook_event_name") == "Stop":
-            name = hooks.room_for_session(SessionTable(self.state / "sessions.json"), str(payload.get("session_id", "")))
+        event = payload.get("hook_event_name")
+        sid = str(payload.get("session_id", ""))
+        if event == "Stop":
+            name = hooks.room_for_session(SessionTable(self.state / "sessions.json"), sid)
             room = self.rooms.get(name or "")
             reason = room.stop_check(bool(payload.get("stop_hook_active"))) if room else None
             if reason:
                 log.info("room %s: Stop bounced once: an image was never read", name)
+            if room and name:
+                try:
+                    await asyncio.to_thread(self.shadow_stop, name, room, str(payload.get("last_assistant_message")
+                                                                              or ""), sid)
+                except Exception:
+                    log.exception("room %s: the shadow Stop check failed (nothing blocked)", name)
             return {"decision": "block", "reason": reason} if reason else {}
-        if payload.get("hook_event_name") != "UserPromptSubmit":
+        if event == "SessionStart":
+            return await asyncio.to_thread(hooks.session_start, payload, self.state, self.compact_pack)
+        if event != "UserPromptSubmit":
             return {}
-        return hooks.user_prompt_submit(payload, self.state, self.room_confs,
-                                        lambda r, p: self.rooms[r].meta_for(p), self.budgets)
+        out = await asyncio.to_thread(hooks.user_prompt_submit, payload, self.state, self.room_confs,
+                                      lambda r, p: self.rooms[r].meta_for(p), self.budgets, None, self.recall_for)
+        name = hooks.room_for_session(SessionTable(self.state / "sessions.json"), sid)
+        if out and name in self.rooms:
+            added = str(out["hookSpecificOutput"]["additionalContext"])
+            self.rooms[name].evidence.give(f"{payload.get('prompt', '')}\n{added}",
+                                           recall="[on file, no lookup needed" in added or "[this room, last" in added)
+        return out
 
     async def control(self, payload: dict[str, Any]) -> dict[str, Any]:
-        """`yerk room close ROOM`: close the room's process now unless a turn runs; the session stays."""
+        """`yerk room close ROOM`: close the room's process now unless a turn runs; the session stays.
+        `yerk room compact ROOM`: the overflow path's /compact, asked for, when no turn runs."""
+        if payload.get("compact"):
+            target = self.rooms.get(str(payload["compact"]))
+            if target is None:
+                return {"ok": False, "error": f"no room {payload['compact']!r}; rooms: {', '.join(self.rooms)}"}
+            outcome = await asyncio.to_thread(target.compact_now)
+            return {"ok": outcome == "ok", "room": target.name, "compact": outcome}
         room = self.rooms.get(str(payload.get("close", "")))
         if room is None:
             return {"ok": False, "error": f"no room {payload.get('close')!r}; rooms: {', '.join(self.rooms)}"}

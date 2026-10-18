@@ -33,6 +33,7 @@ from typing import Any, Callable, Protocol
 from .accounts import Account, Cooldowns, pick
 from .card import START, Card
 from .engine import RoomProcess, RoomSpec, Turn
+from .evidence import Evidence
 from .ledger import Ledger
 from .lifted.classify import FailureTable
 
@@ -91,6 +92,40 @@ class Room:
         self.turn_key = ""                        # the idempotency key of the result being produced
         self.images: dict[str, str] = {}          # path -> name: images sent in since the last result
         self.bounced = False                      # the unread-image check bounced this result already
+        self.evidence = Evidence(on_call=self._ledger_call)   # every tool call of the turn and what it read
+        self.answering: set[str] = set()                      # ids of the batch the turn answers
+
+    def _ledger_call(self, call: dict[str, Any]) -> None:
+        self.ledger.evidence(t=round(time.time(), 3), room=self.name, session_id=self.rp.session_id if self.rp else "",
+                             turn=self.turn_key, tool=call["tool"], target=call["target"], chars=call["chars"])
+
+    def current_ids(self) -> set[str]:
+        """The ids of the messages this turn is answering (the topic hit leaves them out)."""
+        with self.lock:
+            return {m.id for m in [*self.inflight, *self.queue]} | self.answering
+
+    def prompts(self) -> list[str]:
+        with self.lock:
+            return [m.text for m in self.inflight]
+
+    def compact_now(self) -> str:
+        """`yerk room compact ROOM`: the same /compact the overflow path sends, when no turn runs."""
+        with self.lock:
+            if self.busy:
+                return "busy"
+            self.busy = True
+        try:
+            with self.lock:
+                alive = self.rp is not None and self.rp.alive()
+            if not alive:
+                self._start(self._account())
+            assert self.rp
+            t = self.rp.ask("/compact", self.turn_timeout)
+            log.info("room %s: compact (asked) ended %s", self.name, t.outcome)
+            return "ok" if t.outcome in ("ok", "empty") else t.outcome     # /compact answers with no text
+        finally:
+            with self.lock:
+                self.busy, self.last_active = False, time.time()
 
     # called by the channel adapter
     def submit(self, msg: Inbound) -> str:
@@ -193,7 +228,7 @@ class Room:
     def _start(self, account: Account, fresh: bool = False) -> None:
         log_path = self.log_dir / f"{self.name}.jsonl" if self.log_dir else None
         rp = RoomProcess(self.spec(), account, self.state, ledger=self.ledger, failures=self.failures, log=log_path,
-                         meters=self.meters)
+                         meters=self.meters, evidence=self.evidence)
         rp.start(fresh=fresh)
         self.rp = rp
 
@@ -231,6 +266,11 @@ class Room:
         self.first_line = None
         with self.lock:
             self.images = {}
+            self.answering = {m.id for m in batch}
+        self.evidence.reset()
+        ctx = self.state / "rooms" / self.name / "context.md"
+        if ctx.is_file():
+            self.evidence.give(ctx.read_text(errors="replace"))     # the session-start file was read too
         self._new_card()
         account = self._account()
         recap, self.fresh_next = self.fresh_next, None          # set by a refusal fallback last turn

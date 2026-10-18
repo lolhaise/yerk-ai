@@ -37,3 +37,8 @@ metadata = 300
 [hook]
 # Claude Code moves a hook output longer than this into a file.
 output_cap = 10000
+
+[per_message.on_hit]
+# Paid only when a message hits: the people and things it names, then the room's own lines
+# of the last 14 days on its topic (L19, decision 20). The parts above plus these stay under `cap`.
+recall = 1500

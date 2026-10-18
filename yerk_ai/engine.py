@@ -172,8 +172,9 @@ class RoomProcess:
 
     def __init__(self, spec: RoomSpec, account: Account, state: Path, *, ledger: Ledger | None = None,
                  failures: FailureTable | None = None, log: Path | None = None,
-                 meters: Callable[[str, dict[str, Any]], None] | None = None):
+                 meters: Callable[[str, dict[str, Any]], None] | None = None, evidence: Any = None):
         self.spec, self.account, self.state = spec, account, state
+        self.evidence = evidence               # the room's evidence ledger: every tool call and what it read
         self.ledger, self.failures, self.log_path, self.meters = ledger, failures, log, meters
         self.sessions = SessionTable(state / "sessions.json")
         self.events: queue.Queue[tuple[float, dict[str, Any] | None]] = queue.Queue()
@@ -253,6 +254,11 @@ class RoomProcess:
                 for c in (ev.get("message") or {}).get("content") or []:
                     if c.get("type") == "tool_use" and c.get("name") == "Read":
                         self.read_paths.add(str((c.get("input") or {}).get("file_path") or ""))
+            if self.evidence is not None:
+                try:
+                    self.evidence.observe(ev)
+                except Exception:                  # the ledger never stops the stream
+                    pass
             self.events.put((t, ev))
         self.events.put((time.time(), None))
 

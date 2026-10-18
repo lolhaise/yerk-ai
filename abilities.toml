@@ -11,7 +11,7 @@ free_path = "this is the free path"
 layer = 4
 
 [abilities.memory-index]
-what = "yerk-index, its own process: an FTS5 keyword index over the private memory tree, updated per changed chunk, with a freshness check against the disk."
+what = "yerk-index, its own process: an FTS5 keyword index over the private memory tree, updated per changed chunk, with a freshness check against the disk. A rebuild builds a new generation and swaps a link, so recall never fails during one."
 tier = "free"
 needs = "Python's sqlite3 with FTS5 (part of standard CPython builds); a systemd user unit (units/yerk-index.service)"
 free_path = "this is the free path"
@@ -35,5 +35,33 @@ layer = 4
 what = "yerk recall-bench: a fixed question set against the index, top six and top one hit rates, one line per run kept as the weekly series."
 tier = "free"
 needs = "a question file in the private folder (evals/recall-questions.json), a running yerk-index; the weekly timer in units/"
+free_path = "this is the free path"
+layer = 4
+
+[abilities.mention-recall]
+what = "The people, places and things a message names, from the fact files and the curated file's headings, put in front of the model before it starts, with no tool call; at most 1,500 characters a message, owner-privacy rooms only."
+tier = "free"
+needs = "a running yerk-index (it builds the name index when a fact file changes)"
+free_path = "this is the free path"
+layer = 4
+
+[abilities.topic-recall]
+what = "The room's own lines of the last 14 days that share the message's key terms, put in front of the model under the same 1,500-character cap."
+tier = "free"
+needs = "the day's log (capture)"
+free_path = "this is the free path"
+layer = 4
+
+[abilities.recall-pack]
+what = "At session start, the room's own filed items of the last 14 days (what the owner sent, decisions, drafts), newest first, up to 6,000 characters with the open commitments; added again after every compaction."
+tier = "free"
+needs = "the day's log (capture); curl for the SessionStart command hook"
+free_path = "this is the free path"
+layer = 4
+
+[abilities.evidence-ledger]
+what = "Every tool call of a turn is ledgered with what it read; after each reply a rule check logs, without blocking, a quoted figure or file the turn never read and a 'what did we decide' answered with no memory read."
+tier = "free"
+needs = "nothing beyond the daemon"
 free_path = "this is the free path"
 layer = 4
