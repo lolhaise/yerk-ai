@@ -9,17 +9,20 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import difflib
+import hashlib
 import json
 import logging
 import os
 import socket
 import sys
+import threading
 import time
 import uuid
 from pathlib import Path
 from typing import Any
 
-from . import context, evidence, hooks, jobs, mcp_server, memory, mentions, workers
+from . import context, evidence, gates, hooks, jobs, mcp_server, memory, mentions, workers
 from .accounts import Account, Cooldowns, from_dir, load_accounts
 from .config import budgets, load_toml, private_dir, rooms, state_dir, table
 from .engine import RoomSpec, SessionTable
@@ -120,6 +123,13 @@ class Yerkd:
                                        self.accounts, self.cooldowns, self.rooms, self.channels, self.room_confs)
         self.jobs = jobs.Jobs(private, state, self.ledger, dict(self.conf.get("jobs", {})), self.rooms, self.channels,
                               self.room_confs, self.conf, self.workers)
+        self.gates = gates.settings(self.conf.get("gates"))      # the rule-based gates (DESIGN 8)
+        self.rebuild_running = gates.rebuild_running
+        self.rewrites: dict[str, tuple[str, str]] = {}           # tool_use id -> (room, the trash command)
+        self.later: set[asyncio.Task[Any]] = set()               # a gate's notice, posted beside the hook's answer
+        self.timing: list[tuple[str, dict[str, Any]]] = []       # hook and tool timings, written in batches
+        self.timing_lock = threading.Lock()
+        self.flushing = False
 
     # a room's Claude Code process, rebuilt at every process start
     def spec_for(self, name: str) -> RoomSpec:
@@ -133,7 +143,7 @@ class Yerkd:
         ctx.write_text(context.appended_file(parts))
         hooks.record(self.state, name, "session_start", "", {p.name: p.size for p in parts},
                      next((p.text for p in parts if p.name == "recall_pack"), ""), file=str(ctx))
-        settings = {"permissions": {"allow": [f"Read(/{layer}/**)", *YERK_TOOLS]},
+        settings = {"permissions": {"allow": [f"Read(/{layer}/**)", *YERK_TOOLS, *conf.get("allow", [])]},
                     "hooks": hooks.settings_for(f"{self.url}/hook")}
         mcp = mcp_server.room_config(f"{self.url}/mcp", name, rdir / "mcp.json")
         extra = ["--effort", str(conf["effort"])] if conf.get("effort") else []
@@ -255,6 +265,7 @@ class Yerkd:
         """The evidence rules after a reply: ledgered and logged, never a block (shadow, DESIGN 8)."""
         figure, known = memory.on_file(self.memory)
         found = evidence.check(reply, room.prompts(), room.evidence, self.memory.scope.roots, figure, known)
+        found += evidence.check_claims(reply, room.evidence, self.memory.scope.roots)     # decision 25
         new = [f for f in found if f not in room.evidence.logged]
         for rule, detail in new:
             room.evidence.logged.add((rule, detail))
@@ -264,15 +275,102 @@ class Yerkd:
         return new
 
     # the hooks
+    def room_of(self, payload: dict[str, Any]) -> str | None:
+        """The room a hook call belongs to: by its session id, else by its cwd (a room's work folder)."""
+        name = hooks.room_for_session(SessionTable(self.state / "sessions.json"), str(payload.get("session_id", "")))
+        if name in self.rooms:
+            return name
+        cwd = Path(str(payload.get("cwd") or "/nonexistent"))
+        for n in self.rooms:
+            work = self.state / "rooms" / n / "work"
+            if cwd == work or work in cwd.parents:
+                return n
+        return None
+
+    def notify_later(self, room: str, text: str) -> None:
+        """A gate's one line to the room, posted beside the hook's answer so the hook never waits on it."""
+        task = asyncio.get_running_loop().create_task(self.channels[room].notify(room, text))
+        self.later.add(task)
+        task.add_done_callback(self.later.discard)
+
+    def time_row(self, table: str, row: dict[str, Any]) -> None:
+        """Queue a timing row; one flush per batch runs on a thread, beside the hook's answer."""
+        with self.timing_lock:
+            self.timing.append((table, row))
+            if self.flushing:
+                return
+            self.flushing = True
+        task = asyncio.get_running_loop().create_task(asyncio.to_thread(self.flush_times))
+        self.later.add(task)
+        task.add_done_callback(self.later.discard)
+
+    def flush_times(self) -> None:
+        with self.timing_lock:
+            rows, self.timing, self.flushing = self.timing, [], False
+        try:
+            self.ledger.many(rows)
+        except Exception:
+            log.exception("hook: %d timing rows were not written", len(rows))
+
     async def hook(self, payload: dict[str, Any]) -> dict[str, Any]:
-        event = payload.get("hook_event_name")
-        sid = str(payload.get("session_id", ""))
-        if event == "Stop":
-            name = hooks.room_for_session(SessionTable(self.state / "sessions.json"), sid)
+        """Every hook event, timed: the daemon's own time per call goes to the hook_calls ledger, so
+        the overhead per turn is a query (Ledger.hook_overhead), never a guess."""
+        t0 = time.monotonic()
+        event = str(payload.get("hook_event_name") or "")
+        name = self.room_of(payload)
+        out: dict[str, Any] = {}
+        try:
+            out = await self._hook(event, name, payload)
+            return out
+        finally:
             room = self.rooms.get(name or "")
-            reason = room.stop_check(bool(payload.get("stop_hook_active"))) if room else None
+            hso = out.get("hookSpecificOutput") or {}
+            outcome = (out.get("decision") or hso.get("permissionDecision")
+                       or ("rewrite" if "updatedInput" in hso else "context" if hso else "pass"))
+            self.time_row("hook_calls", {"t": round(time.time(), 3), "room": name or "",
+                                         "session_id": str(payload.get("session_id", "")),
+                                         "turn": room.turn_key if room else "", "event": event,
+                                         "ms": round((time.monotonic() - t0) * 1000, 2), "outcome": str(outcome)})
+
+    async def _hook(self, event: str, name: str | None, payload: dict[str, Any]) -> dict[str, Any]:
+        sid = str(payload.get("session_id", ""))
+        room = self.rooms.get(name or "")
+        if event == "PreToolUse":
+            if not room or not name:
+                return {}
+            out, line = await asyncio.to_thread(self.pre_tool, name, room, sid, payload)
+            if line:
+                self.notify_later(name, line)
+            return out
+        if event in ("PostToolUse", "PostToolUseFailure"):
+            if room and name:
+                failed = event == "PostToolUseFailure"
+                err = str(payload.get("error") or "") if failed else ""
+                ms = payload.get("duration_ms")
+                self.time_row("tool_times", {"tool_use_id": str(payload.get("tool_use_id") or ""), "t": round(time.time(), 3),
+                                             "room": name, "session_id": sid, "turn": room.turn_key,
+                                             "tool": str(payload.get("tool_name") or ""),
+                                             "ms": int(ms) if isinstance(ms, (int, float)) else None,
+                                             "failed": int(failed), "error": err[:500] or None})
+                if failed and str(payload.get("tool_use_id") or "") in self.rewrites:
+                    line = await asyncio.to_thread(self.trash_failed, name, room, sid, payload)
+                    self.notify_later(name, line)
+                else:
+                    self.rewrites.pop(str(payload.get("tool_use_id") or ""), None)
+            return {}
+        if event == "Stop":
+            active = bool(payload.get("stop_hook_active"))
+            reason = room.stop_check(active) if room else None
             if reason:
                 log.info("room %s: Stop bounced once: an image was never read", name)
+            elif room and name:
+                said = payload["last_assistant_message"] if "last_assistant_message" in payload else None
+                reason = room.silent_check(active, None if said is None else str(said or ""),
+                                           self.ledger.landed(room.turn_key))
+                if reason:
+                    self.ledger.gate(room=name, session_id=sid, turn=room.turn_key, gate="silent", decision="bounce",
+                                     tool="", rule="silent-ending", detail=reason[:300])
+                    log.info("room %s: Stop bounced once: the turn ended with nothing visible", name)
             if room and name:
                 try:
                     await asyncio.to_thread(self.shadow_stop, name, room, str(payload.get("last_assistant_message")
@@ -281,17 +379,112 @@ class Yerkd:
                     log.exception("room %s: the shadow Stop check failed (nothing blocked)", name)
             return {"decision": "block", "reason": reason} if reason else {}
         if event == "SessionStart":
-            return await asyncio.to_thread(hooks.session_start, payload, self.state, self.compact_pack)
+            if payload.get("source") == "compact":
+                return await asyncio.to_thread(hooks.session_start, payload, self.state, self.compact_pack)
+            if name and payload.get("source") in ("startup", "clear") and self.was_reset(name, sid):
+                self.ledger.gate(room=name, session_id=sid, turn="", gate="session", decision="reset", tool="",
+                                 rule=str(payload.get("source")), detail=f"a new session {sid[:8]} replaced the last one")
+                self.notify_later(name, f"{words.NOTHING} {words.RESET}")
+            return {}
+        if event == "ConfigChange":
+            await asyncio.to_thread(self.tamper, name, sid, payload)
+            return {}                                     # ledgered, never blocked
         if event != "UserPromptSubmit":
             return {}
         out = await asyncio.to_thread(hooks.user_prompt_submit, payload, self.state, self.room_confs,
                                       lambda r, p: self.rooms[r].meta_for(p), self.budgets, None, self.recall_for)
-        name = hooks.room_for_session(SessionTable(self.state / "sessions.json"), sid)
         if out and name in self.rooms:
+            prompt = str(payload.get("prompt", ""))
+            sender, _ = self.rooms[name].meta_for(prompt)
+            if gates.is_word(prompt, sender, self.gates):
+                row = self.ledger.approve(name, sender, self.gates.window_s)
+                if row:
+                    self.ledger.gate(room=name, session_id=sid, turn=self.rooms[name].turn_key, gate="approval",
+                                     decision="approved", tool="", rule=row["rule"], detail=f"{row['what']}; by {sender}")
+                    out["hookSpecificOutput"]["additionalContext"] += (
+                        f"\n[approval] {sender} said {self.gates.word}: the held {row['what']} may run once now; "
+                        "run the same action again.")
             added = str(out["hookSpecificOutput"]["additionalContext"])
-            self.rooms[name].evidence.give(f"{payload.get('prompt', '')}\n{added}",
+            self.rooms[name].evidence.give(f"{prompt}\n{added}",
                                            recall="[on file, no lookup needed" in added or "[this room, last" in added)
         return out
+
+    def pre_tool(self, name: str, room: Room, sid: str, payload: dict[str, Any]) -> tuple[dict[str, Any], str]:
+        """The PreToolUse gates in order: hardline, trash, restart, approval. (answer, line for the room)."""
+        tool, ti = str(payload.get("tool_name") or ""), dict(payload.get("tool_input") or {})
+        v = None
+        if tool == "Bash":
+            v = gates.check_shell(str(ti.get("command") or ""), str(payload.get("cwd") or self.state / "rooms" / name / "work"), self.gates)
+            if v and v.new_input is not None:
+                v.new_input = {**ti, **v.new_input}
+        if v is None and (what := gates.restart_hit(tool, ti, self.private)):
+            why = (words.REBUILDING if self.rebuild_running()
+                   else words.IN_PROGRESS if any(r.human_turn() for r in self.rooms.values()) else "")
+            if why:
+                model, line = gates.refused(what, why)
+                v = gates.Verdict("restart", "deny", model, line, f"{what}; {why}")
+        if v is None and (hit := gates.external_hit(tool, ti, name, self.gates)):
+            rule, what, call = hit
+            rel = self.ledger.release(name, rule, self.gates.window_s)
+            if rel:
+                v = gates.Verdict("approval", "release", detail=f"{what}: {call}; approved by {rel['approved_by']}",
+                                  rule=rule)
+            else:
+                model, line = gates.held(what, call, self.gates.word)
+                v = gates.Verdict("approval", "hold", model, line, f"{what}: {call}", rule=rule)
+        if v is None:
+            return {}, ""
+        gid = self.ledger.gate(room=name, session_id=sid, turn=room.turn_key, gate=v.gate, decision=v.decision,
+                               tool=tool, rule=v.rule, detail=v.detail)
+        if v.decision == "hold":
+            self.ledger.hold_add(name, v.rule, v.detail.split(":")[0], gid)
+        if v.decision == "rewrite" and v.new_input:
+            self.rewrites[str(payload.get("tool_use_id") or "")] = (name, str(v.new_input.get("command")))
+        log.info("room %s: gate %s %s: %s", name, v.gate, v.decision, v.detail[:160])
+        return v.output(), v.line
+
+    def trash_failed(self, name: str, room: Room, sid: str, payload: dict[str, Any]) -> str:
+        """A rewritten delete whose trash command failed: ledgered, and one line for the room."""
+        _, cmd = self.rewrites.pop(str(payload.get("tool_use_id") or ""))
+        err = str(payload.get("error") or "")
+        first = next((x for x in err.splitlines()[1:] if x.strip()), err.splitlines()[0] if err else "it failed")
+        self.ledger.gate(room=name, session_id=sid, turn=room.turn_key, gate="trash", decision="failed", tool="Bash",
+                         rule="", detail=f"{cmd[:160]}: {err[:200]}")
+        target = cmd.split(" -- ", 1)[-1][:24]
+        return f"{words.NOT_DONE} {words.TRASH_FAILED.format(name=target, why=first.strip()[:22])}"
+
+    def was_reset(self, name: str, sid: str) -> bool:
+        """A new session in a room that had another one: a reset (a resume keeps its id and is not)."""
+        mark = self.state / "rooms" / name / "last-session"
+        prev = mark.read_text().strip() if mark.is_file() else ""
+        mark.parent.mkdir(parents=True, exist_ok=True)
+        mark.write_text(sid)
+        return bool(prev) and prev != sid
+
+    def tamper(self, name: str | None, sid: str, payload: dict[str, Any]) -> None:
+        """ConfigChange: who (room and account), what (source and file), when, the hashes before and after
+        and the diff's hash. Line hashes are kept between calls, never the file's text."""
+        f = Path(str(payload.get("file_path") or ""))
+        try:
+            data = f.read_bytes() if f.is_file() and f.stat().st_size < 4_000_000 else b""
+        except OSError:
+            data = b""
+        lines = [hashlib.sha1(x).hexdigest() for x in data.splitlines()]
+        keep = self.state / "tamper" / (hashlib.sha1(str(f).encode()).hexdigest()[:16] + ".lines")
+        before = keep.read_text().split() if keep.is_file() else []
+        diff = "\n".join(difflib.unified_diff(before, lines, lineterm="", n=0))
+        keep.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(keep, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as out:
+            out.write("\n".join(lines))
+        room = self.rooms.get(name or "")
+        acct = room.rp.account.name if room and room.rp else ""
+        self.ledger.tamper(t=round(time.time(), 3), who=f"{name or '?'}:{acct or '?'}", room=name or "", session_id=sid,
+                           source=str(payload.get("source") or ""), file=str(f),
+                           sha_before=hashlib.sha256("\n".join(before).encode()).hexdigest() if before else None,
+                           sha_after=hashlib.sha256(data).hexdigest() if data else None,
+                           diff_sha=hashlib.sha256(diff.encode()).hexdigest(),
+                           diff_lines=sum(1 for x in diff.splitlines() if x[:1] in "+-" and x[:3] not in ("+++", "---")))
 
     async def control(self, payload: dict[str, Any]) -> dict[str, Any]:
         """`yerk room close ROOM`: close the room's process now unless a turn runs; the session stays.

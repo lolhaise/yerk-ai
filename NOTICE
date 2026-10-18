@@ -19,6 +19,8 @@ Copyright (c) 2025 Nous Research. MIT License.
   (create_mcp_server, messages_send)
 - yerk_ai/ledger.py: the inbound states and the redeliver-once rule, from
   gateway/delivery_ledger.py (pending, attempting with a visible marker, capped attempts)
+- yerk_ai/lifted/hardline.py: the commands that never run, from tools/approval_detection.py
+  (HARDLINE_PATTERNS, _hardline_rm_path, _HARDLINE_SYSTEM_DIRS)
 
 claude-code-context-map (the author's own MIT tool)
 Copyright (c) 2026 Eric McLaren. MIT License.
@@ -31,3 +33,5 @@ Copyright (c) 2026 Eric McLaren.
 - yerk_ai/lifted/expiry.py: from tools/token-expiry-watch
 - yerk_ai/lifted/clock.py: from the author's hook dispatcher in tools/hooks/ (the clock line and
   the room-voice part)
+- yerk_ai/lifted/shellguard.py: from the author's hook dispatcher in tools/hooks/ (the heredoc
+  strip, the quote spans, the delete rewrite to the trash and its bounded lstat)

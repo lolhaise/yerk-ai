@@ -159,6 +159,13 @@ NOT_SENT_AGAIN = "not resent: {name}\n{why}; ask again"
 NOT_FETCHED = "could not fetch {name}\nsend it again"
 NOT_RUN_AGAIN = "not answered: sent before a restart\nask again"
 SENT_AGAIN = "sent again after a restart"
+# the gates (gates.py): the room hears one notice, state first, and only when it must act or know
+HELD = "held: {what}\nsay {word} here to let it run once"
+REFUSED = "not done: {what}\nit would restart Yerk AI\n{why}"
+REBUILDING = "the memory index is rebuilding"
+IN_PROGRESS = "a conversation is in progress"
+TRASH_FAILED = "not deleted: {name}\nthe trash said: {why}"
+RESET = "new session in this room\nthe last one could not go on\nearlier messages are not in it"
 FILE_WHY = {"missing": "there is no such file", "type": "this room does not take {ext} files",
             "size": "it is {size} and this room takes {limit}", "empty": "it is empty",
             "outside": "it is outside this room's folders", "too large": "Discord said too large (limit {limit})",

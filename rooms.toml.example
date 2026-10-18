@@ -16,6 +16,7 @@ daily_notes = "memory/daily"
 recall_days = 2
 open_loops = "memory/open-loops.md"
 # effort = "high"             # passed as --effort; unset: the model's own default
+# allow = ["Bash", "Write"]   # permission rules beyond Read; add the tool to `tools` too. The gates run first
 thinking_panel = false        # owner-only rooms: a "thinking" line on the card (costs about 5 s a reply)
 
 [rooms.example-quiet]

@@ -18,7 +18,9 @@ adapter's event loop.
   ledger row; the room's next turn starts a fresh session on the room's own model.
 - After `idle_seconds` without a turn the process closes; the next message resumes the session.
 - Each turn owns one card (card.py), fed from the stream; every outbound part carries the turn's
-  key. A turn that was sent an image and never read it is bounced once at Stop, naming the file.
+  key. A turn that was sent an image and never read it is bounced once at Stop, naming the file;
+  a working turn answering a person that ends with nothing visible in the room bounces once,
+  naming what is owed (nothing that already landed under the turn's key is sent again).
 - A message from the harness itself (sender `yerk`: a worker's relay) runs like any other but is
   not a human message for the clock line or the idle rule; it may cap its reply and name a line the
   reply must carry, and it hears how its turn ended.
@@ -117,12 +119,19 @@ class Room:
         self.turn_key = ""                        # the idempotency key of the result being produced
         self.images: dict[str, str] = {}          # path -> name: images sent in since the last result
         self.bounced = False                      # the unread-image check bounced this result already
+        self.silent_bounced = False               # the silent-ending check bounced this result already
         self.evidence = Evidence(on_call=self._ledger_call)   # every tool call of the turn and what it read
         self.answering: set[str] = set()                      # ids of the batch the turn answers
 
     def _ledger_call(self, call: dict[str, Any]) -> None:
         self.ledger.evidence(t=round(time.time(), 3), room=self.name, session_id=self.rp.session_id if self.rp else "",
-                             turn=self.turn_key, tool=call["tool"], target=call["target"], chars=call["chars"])
+                             turn=self.turn_key, tool=call["tool"], target=call["target"], chars=call["chars"],
+                             tool_use_id=call.get("id"))
+
+    def human_turn(self) -> bool:
+        """A turn is running that answers a person (not only the harness's own messages)."""
+        with self.lock:
+            return self.busy and any(m.sender != HARNESS for m in [*self.inflight, *self.pending])
 
     def current_ids(self) -> set[str]:
         """The ids of the messages this turn is answering (the topic hit leaves them out)."""
@@ -226,10 +235,27 @@ class Room:
         return (f"You were sent {names} and have not opened it. Read {paths} with the Read tool, "
                 "then answer with what it shows.")
 
+    def silent_check(self, active: bool, text: str | None, landed: int) -> str | None:
+        """The Stop hook's second rule, no judge: a turn that ran tools for a person and ends with
+        nothing visible (no final text, nothing landed under the turn's key) bounces once, naming the
+        message it owes. `text` None means the payload did not say, and that never bounces."""
+        if active or text is None or text.strip() or landed or self.silent_bounced:
+            return None
+        with self.lock:
+            asked = [m for m in self.inflight if m.sender != HARNESS]
+        with self.evidence.lock:
+            worked = bool(self.evidence.calls)
+        if not asked or not worked:
+            return None
+        self.silent_bounced = True
+        head = " ".join(asked[0].text.split())[:160]
+        return (f"Your turn is ending with nothing visible in the room, and the room is still waiting on: \"{head}\". "
+                "Reply now with the answer, or one plain line on where it stands.")
+
     def _new_card(self) -> None:
         privacy = str(self.conf.get("privacy", "owner"))
         self.card = Card(thinking=bool(self.conf.get("thinking_panel", False)) and privacy == "owner")
-        self.turn_key, self.bounced = uuid.uuid4().hex[:12], False
+        self.turn_key, self.bounced, self.silent_bounced = uuid.uuid4().hex[:12], False, False
         self.channel.open_card(self.name, self.card.render())   # state first from the first post
 
     def meta_for(self, prompt: str) -> tuple[str, float | None]:
