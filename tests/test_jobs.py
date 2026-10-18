@@ -217,11 +217,13 @@ def test_sync_is_idempotent_shows_the_diff_and_cleans_a_removed_job(tmp_path):
     assert jobs.diff_lines(p5)[-1] == "! mars: cannot be scheduled: systemd does not take it"
     sd.enabled["yerk-job-stray.timer"] = True
     lines = jobs.status_lines(path, sd)
-    assert lines[:2] == ["job brief: NOT SCHEDULED (no timer); `yerk jobs sync`",
-                         "job mars: NOT SCHEDULED (no timer); `yerk jobs sync`"]
-    assert "timer yerk-job-stray.timer: running, NOT IN THE JOBS FILE" in lines
+    assert lines[:2] == [f"{jobs.NOTHING} brief: not scheduled", f"{jobs.NOTHING} mars: not scheduled"]
+    assert f"{jobs.NOT_DONE} timer stray: not in the jobs file" in lines
     path.write_text(path.read_text().replace('schedule = "0 9 * * *"', 'schedule = "0 25 * * *"'))
-    assert jobs.status_lines(path, sd)[-1].startswith("job mars: CANNOT BE SCHEDULED: in the cron expression")
+    lines = jobs.status_lines(path, sd)
+    assert lines[-1] == f"{jobs.NOT_DONE} mars: cannot be scheduled"
+    assert all(x[0] in (jobs.DONE, jobs.NOT_DONE, jobs.NOTHING) and len(x) <= jobs.PHONE - 2 for x in lines)   # state first, phone width
+    assert jobs.phone("x" * 60) == "x" * 37 + "\N{HORIZONTAL ELLIPSIS}" and jobs.phone("short") == "short"
 
 
 def test_the_read_back_comes_from_systemd_in_the_jobs_zone(tmp_path):
@@ -236,15 +238,30 @@ def test_the_read_back_comes_from_systemd_in_the_jobs_zone(tmp_path):
     line, = jobs.read_lines(back, p.jobs, now)
     assert line.startswith("tokyo: next Mon 2026-10-19 09:00:00 JST (in 30m 00s), last Sun 2026-10-18 09:00:00 JST; "
                            "cron `0 9 * * *` Asia/Tokyo, room r, script")
-    assert jobs.status_lines(path, sd, now) == ["job tokyo: next Mon 2026-10-19 09:00:00 JST (in 30m 00s), unit yerk-job-tokyo.timer"]
+    assert jobs.status_lines(path, sd, now) == [f"{jobs.DONE} tokyo: in 30m 00s"]      # the detail is `yerk jobs list`
     sd.enabled.clear()
-    assert jobs.status_lines(path, sd, now) == ["job tokyo: NOT SCHEDULED (no timer); `yerk jobs sync`"]
+    assert jobs.status_lines(path, sd, now) == [f"{jobs.NOTHING} tokyo: not scheduled"]
 
     def broken():
         raise OSError("systemctl --user list-timers exited 1: no manager")
     sd.timers = broken
-    assert jobs.status_lines(path, sd, now) == ["jobs: the timer list could not be read (systemctl --user list-timers "
-                                                "exited 1: no manager)"]
+    assert jobs.status_lines(path, sd, now) == [f"{jobs.NOT_DONE} jobs: the timer list could not be read"]
+
+
+def test_the_real_adapter_writes_reads_and_removes_unit_files_and_a_removed_timers_stamp(tmp_path):
+    sd = jobs.Systemd(folder=tmp_path / "units", stamps=tmp_path / "stamps")
+    sd.write("yerk-job-x.timer", jobs.HEADER + "x.\n[Timer]\n")
+    sd.write("yerk-job-x.service", jobs.HEADER + "x.\n[Service]\n")
+    (tmp_path / "units" / "yerk-job-hand.timer").write_text("[Timer]\n")          # not ours: never listed, never removed
+    (tmp_path / "stamps").mkdir()
+    (tmp_path / "stamps" / "stamp-yerk-job-x.timer").touch()                         # systemd's last-trigger stamp
+    assert sd.read("yerk-job-x.timer") == jobs.HEADER + "x.\n[Timer]\n" and sd.read("nothing.timer") is None
+    assert sd.ours() == ["x"]
+    sd.remove("yerk-job-x.timer")
+    sd.remove("yerk-job-x.service")
+    sd.remove("yerk-job-x.service")                                                  # gone already: no error
+    assert sorted(p.name for p in (tmp_path / "units").iterdir()) == ["yerk-job-hand.timer"]
+    assert list((tmp_path / "stamps").iterdir()) == []                              # the stamp went with the timer
 
 
 # the runs

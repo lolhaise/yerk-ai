@@ -91,6 +91,7 @@ tier = "free"
 needs = "systemd user timers (systemctl --user, systemd-analyze); a running yerkd for the delivery and for agent jobs; the jobs file in the private folder (examples/private/jobs.toml is the template)"
 free_path = "this is the free path"
 layer = 5
+state = "built"
 
 [abilities.schedule]
 what = "The schedule tool in every room, and `yerk schedule`: add a one-shot or a recurring job (a name, when with a zone, what, how to deliver), remove one, list them; writes the jobs file, syncs the timers and answers with the next fire time read back from systemd. A missing zone is the room's configured one, never UTC by accident."
@@ -98,3 +99,4 @@ tier = "free"
 needs = "the jobs ability"
 free_path = "this is the free path"
 layer = 5
+state = "built"

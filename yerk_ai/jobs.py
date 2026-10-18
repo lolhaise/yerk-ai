@@ -606,9 +606,13 @@ class Units(Protocol):
 class Systemd:
     """The real one: unit files in the user's systemd folder, `systemctl --user`, `systemd-analyze`."""
 
-    def __init__(self, folder: Path | None = None):
+    def __init__(self, folder: Path | None = None, stamps: Path | None = None):
         base = Path(os.environ.get("XDG_CONFIG_HOME") or "~/.config").expanduser()
         self.folder = folder or base / "systemd" / "user"
+        # where systemd keeps a Persistent timer's last-trigger stamp (written when the timer starts
+        # and at each fire); a removed job's stamp goes with it, else a job added later under the same
+        # name catches up a boundary from the gap (seen live: every-two re-added 6 s after an even minute)
+        self.stamps = stamps or Path(os.environ.get("XDG_DATA_HOME") or "~/.local/share").expanduser() / "systemd" / "timers"
 
     def path(self, unit: str) -> Path:
         return self.folder / unit
@@ -626,10 +630,11 @@ class Systemd:
         os.replace(tmp, self.path(unit))
 
     def remove(self, unit: str) -> None:
-        try:
-            self.path(unit).unlink()
-        except FileNotFoundError:
-            pass
+        for p in ([self.path(unit), self.stamps / f"stamp-{unit}"] if unit.endswith(".timer") else [self.path(unit)]):
+            try:
+                p.unlink()
+            except FileNotFoundError:
+                pass
 
     def ours(self) -> list[str]:
         out = []
@@ -796,25 +801,37 @@ def read_lines(back: dict[str, dict[str, Any]], jobs: dict[str, Job], now: float
     return out or ["jobs: none"]
 
 
+DONE, NOT_DONE, NOTHING = "\N{LARGE GREEN CIRCLE}", "\N{LARGE RED CIRCLE}", "\N{MEDIUM WHITE CIRCLE}"
+PHONE = 40                        # a status line, in phone columns (a dot takes two), before it wraps
+
+
+def phone(text: str) -> str:
+    return text if len(text) <= PHONE - 2 else text[:PHONE - 3].rstrip() + "\N{HORIZONTAL ELLIPSIS}"
+
+
 def status_lines(path: Path, units: Units, now: float | None = None) -> list[str]:
-    """`yerk status`: every job with its next fire time from systemd; a job without a timer and a
-    timer without a job are both named. An unreadable timer list is said, never shown as empty."""
+    """`yerk status`: one line per job, state first and phone width: a green dot and how long until
+    its next fire (from systemd, never from memory), a white dot for a job with no timer, a red dot
+    for one that cannot be scheduled or a timer with no job. The detail (times, zones, why) is
+    `yerk jobs list`. An unreadable timer list is said, never shown as empty."""
     now = time.time() if now is None else now
     jobs, errors = load(path, now)
     try:
         back = readback(jobs, units, now)
     except (OSError, subprocess.SubprocessError, ValueError) as e:
-        return [f"jobs: the timer list could not be read ({e})"]
+        log.warning("jobs: the timer list could not be read: %s", e)
+        return [f"{NOT_DONE} jobs: the timer list could not be read"]
     out = []
     for name, r in back.items():
         if r.get("stray"):
-            out.append(f"timer {r['unit']}: running, NOT IN THE JOBS FILE")
+            out.append(phone(f"{NOT_DONE} timer {name}: not in the jobs file"))
         elif not r["scheduled"]:
-            out.append(f"job {name}: NOT SCHEDULED (no timer); `yerk jobs sync`")
+            out.append(phone(f"{NOTHING} {name}: not scheduled"))
+        elif r["next"]:
+            out.append(phone(f"{DONE} {name}: {in_text(r['next'], now)}"))
         else:
-            out.append(f"job {name}: next {when_text(r['next'], r['tz'])} ({in_text(r['next'], now)}), unit {r['unit']}"
-                       if r["next"] else f"job {name}: no next fire, unit {r['unit']}")
-    out += [f"job {n}: CANNOT BE SCHEDULED: {why}" for n, why in sorted(errors.items())]
+            out.append(phone(f"{NOTHING} {name}: no next fire"))
+    out += [phone(f"{NOT_DONE} {n}: cannot be scheduled") for n in sorted(errors)]
     return out
 
 

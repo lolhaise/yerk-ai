@@ -290,7 +290,7 @@ def cmd_status(a: argparse.Namespace) -> int:
     for line in lines or ["workers: none running"]:
         print(line)
     from . import jobs
-    for line in jobs.status_lines(priv / jobs.FILE, jobs.Systemd()) or ["jobs: none scheduled"]:
+    for line in jobs.status_lines(priv / jobs.FILE, jobs.Systemd()) or [f"{jobs.NOTHING} jobs: none scheduled"]:
         print(line)                           # every job's next fire, from systemd, never from memory
     return 0
 
