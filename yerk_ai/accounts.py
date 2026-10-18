@@ -82,27 +82,28 @@ def mint(account: Account, claude: str = "claude") -> tuple[int, bool]:
     status, stored)."""
     import pty
     found: list[bytes] = []
-    state = {"buf": b"", "eof": False}
+    held, eof = [b""], [False]
 
-    def masked(data: bytes) -> bytes:
-        return TOKEN_SHAPE.sub(lambda m: (found.append(m.group()), b"[token stored]")[1], data)
+    def swap(m: re.Match[bytes]) -> bytes:
+        found.append(m.group())
+        return b"[token stored]"
 
     def read(fd: int) -> bytes:
-        if state["eof"]:
+        if eof[0]:
             return b""
         try:
             data = os.read(fd, 1024)
         except OSError:
             data = b""
         if not data:
-            state["eof"], rest, state["buf"] = True, state["buf"], b""
-            return masked(rest) or b""
-        buf, hold = state["buf"] + data, b""
+            eof[0], rest, held[0] = True, held[0], b""
+            return TOKEN_SHAPE.sub(swap, rest)
+        buf, hold = held[0] + data, b""
         i = buf.rfind(b"sk-ant-")
         if i != -1 and re.fullmatch(rb"[A-Za-z0-9_-]*", buf[i + 7:]):   # the token may go on
             buf, hold = buf[:i], buf[i:]
-        state["buf"] = hold
-        return masked(buf)
+        held[0] = hold
+        return TOKEN_SHAPE.sub(swap, buf)
 
     env = {k: v for k, v in account_env(account).items() if k != TOKEN_ENV}
     old = dict(os.environ)
