@@ -42,14 +42,16 @@ def test_the_hook_endpoint_answers_over_http(tmp_path):
     assert other.json() == {}
 
 
-def test_four_preloaded_tools_with_slim_schemas(tmp_path):
+def test_five_preloaded_tools_with_slim_schemas(tmp_path):
     y = daemon(tmp_path)
     tools = {t.name: t for t in asyncio.run(mcp_server.build(y, y.port, y.hook).list_tools())}
-    assert set(tools) == {"send", "hold", "recall", "read_memory"}
+    assert set(tools) == {"send", "hold", "recall", "read_memory", "worker"}
     assert list(tools["send"].inputSchema["properties"]) == ["room", "text", "file"]
     assert list(tools["hold"].inputSchema["properties"]) == ["wait_for", "reason"]
     assert list(tools["recall"].inputSchema["properties"]) == ["query", "k"]
     assert list(tools["read_memory"].inputSchema["properties"]) == ["path", "from_line", "lines"]
+    assert list(tools["worker"].inputSchema["properties"]) == ["action", "brief", "id", "room", "tasks", "cap_minutes",
+                                                              "account", "model"]
     cfg = json.loads(mcp_server.room_config("http://127.0.0.1:1/mcp", "example-room", tmp_path / "m.json").read_text())
     assert cfg["mcpServers"]["yerk"]["alwaysLoad"] is True and list(cfg["mcpServers"]) == ["yerk"]
 

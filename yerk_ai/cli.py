@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -62,16 +63,59 @@ def cmd_setup_room(a: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_room(a: argparse.Namespace) -> int:
+def _control(state_arg: str | None, payload: dict[str, Any], timeout: float = 60) -> dict[str, Any]:
+    """One POST to the running yerkd's /control (its port is in <state>/yerkd.json)."""
     import urllib.request
     from .config import state_dir
-    st = json.loads((state_dir(a.state) / "yerkd.json").read_text())
-    req = urllib.request.Request(f"http://127.0.0.1:{st['port']}/control", data=json.dumps({a.action: a.room}).encode(),
+    st = json.loads((state_dir(state_arg) / "yerkd.json").read_text())
+    req = urllib.request.Request(f"http://127.0.0.1:{st['port']}/control", data=json.dumps(payload).encode(),
                                  headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=900 if a.action == "compact" else 60) as r:
-        out = json.loads(r.read())
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return dict(json.loads(r.read()))
+
+
+def cmd_room(a: argparse.Namespace) -> int:
+    out = _control(a.state, {a.action: a.room}, 900 if a.action == "compact" else 60)
     print(json.dumps(out))
     return 0 if out.get("ok") else 1
+
+
+def cmd_worker(a: argparse.Namespace) -> int:
+    """start and stop go through the running yerkd, which owns the cards; list and report read the
+    ledger, so they answer with the daemon down too."""
+    from pathlib import Path
+    from . import workers
+    from .config import state_dir
+    from .ledger import Ledger
+    if a.action in ("start", "stop"):
+        if a.action == "start" and not a.brief:
+            print("start needs --brief FILE", file=sys.stderr)
+            return 2
+        if a.action == "stop" and not a.id:
+            print("stop needs the worker's id", file=sys.stderr)
+            return 2
+        req = {"action": a.action, "id": a.id or "", "room": a.room or "", "tasks": a.task, "cap_minutes": a.cap,
+               "account": a.account or "", "model": a.model or "",
+               "brief_file": str(Path(a.brief).expanduser().resolve()) if a.brief else ""}
+        out = _control(a.state, {"worker": req}, 120)
+        print(json.dumps(out))
+        return 0 if out.get("ok") else 1
+    ledger = Ledger(state_dir(a.state) / "ledger.sqlite")
+    if a.action == "report":
+        r = workers.report(ledger, a.id or "")
+        if not r["ok"]:
+            print(r["error"], file=sys.stderr)
+            return 2
+        print(json.dumps(r) if a.json else f"worker {r['id']} {r['state']}: {r['report']}\n{r['text']}")
+        return 0
+    rows = workers.listing(ledger, a.limit)
+    if a.json:
+        print(json.dumps(rows))
+    for w in [] if a.json else rows:
+        print(f"{w['id']} {w['state']} in {w['room']} on {w['account']}, {w['elapsed']} of {w['cap_minutes']:g} min"
+              + (f": {w['result']}" if w["result"] else "") + (f"; relay {w['relay']}" if w["relay"] else "")
+              + (f" ({w['relay_note']})" if w["relay"] == "skipped" else ""))
+    return 0
 
 
 def _engine(a: argparse.Namespace) -> tuple[Any, ...]:
@@ -176,6 +220,15 @@ def cmd_status(a: argparse.Namespace) -> int:
         rest = cool.show(x.name)
         print(meter_line(x.name, meters.reading(x))
               + (f"; rests until {_clock(rest[0]['until'])}" if rest else ""))
+    from . import workers
+    from .ledger import Ledger
+    try:
+        units: set[str] | None = workers.Systemd().running()
+    except (OSError, subprocess.SubprocessError):
+        units = None                          # no systemd here: the ledger alone, unchecked
+    lines = workers.status_lines(Ledger(state / "ledger.sqlite"), units)
+    for line in lines or ["workers: none running"]:
+        print(line)
     return 0
 
 
@@ -251,7 +304,20 @@ def main(argv: list[str] | None = None) -> int:
     ac.add_argument("--model", default="haiku", help="health: the model for the one tiny turn")
     ac.add_argument("--names", nargs="*", default=[], help="health: only these accounts")
     ac.add_argument("--json", action="store_true")
-    st = sub.add_parser("status", help="the daemon, its rooms, and each account's 5-hour and weekly meters")
+    st = sub.add_parser("status", help="the daemon, its rooms, each account's 5-hour and weekly meters, and the "
+                        "running workers (from the ledger, checked against the unit list)")
+    wk = sub.add_parser("worker", help="workers: start (needs a running yerkd), list, stop, report")
+    wk.add_argument("action", choices=["start", "list", "stop", "report"])
+    wk.add_argument("id", nargs="?", help="stop, report: the worker's id")
+    wk.add_argument("--brief", help="start: the brief file")
+    wk.add_argument("--room", help="start: the room for its card and relay (default: the only room, else required)")
+    wk.add_argument("--task", action="append", default=[], help="start: a TASKS.md row (repeat for each)")
+    wk.add_argument("--cap", type=float, default=0.0, help="start: minutes before it is stopped (default [workers], 65)")
+    wk.add_argument("--account", help="start: the account to run on (default [workers], else the first not resting)")
+    wk.add_argument("--model", help="start: the model (default [workers], else the room's)")
+    wk.add_argument("--limit", type=int, default=20, help="list: how many")
+    wk.add_argument("--json", action="store_true")
+    wk.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
     rb = sub.add_parser("recall-bench", help="the fixed question set against the memory index: top six and top one "
                         "hit rates (exit 2 when a control misses, 1 failure, 3 timeout)")
     rb.add_argument("--questions", help="question file (default: [memory] bench, else <private>/evals/recall-questions.json)")
@@ -286,7 +352,8 @@ def main(argv: list[str] | None = None) -> int:
     pr.set_defaults(on_second=None, fold_settings=None)
     a = p.parse_args(argv)
     return int({"map": cmd_map, "probe": cmd_probe, "setup-room": cmd_setup_room, "room": cmd_room,
-                "accounts": cmd_accounts, "status": cmd_status, "recall-bench": cmd_recall_bench}[a.cmd](a))
+                "accounts": cmd_accounts, "status": cmd_status, "recall-bench": cmd_recall_bench,
+                "worker": cmd_worker}[a.cmd](a))
 
 
 if __name__ == "__main__":

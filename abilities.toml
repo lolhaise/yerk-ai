@@ -3,6 +3,13 @@
 # subscription, with the provider and the price named. `free_path` is what runs without the key or
 # the payment, or "none". Abilities still to come say so in `layer`.
 
+[abilities.workers]
+what = "Heavy work leaves the room: the worker tool and `yerk worker start|list|stop|report` run a headless claude -p with a brief, a staging folder, a TASKS.md and a report, as its own systemd unit that outlives the daemon, with its own card in the room (a row per TASKS.md line, ticked live), the card settled and one short relay turn when it ends; `yerk status` lists the running ones against the ledger."
+tier = "free"
+needs = "systemd user units (systemd-run --user) and Linux inotify; an account from accounts.toml, the same subscription the rooms run on"
+free_path = "this is the free path"
+layer = 5
+
 [abilities.capture]
 what = "Every message of every room filed in the day's log in the private memory tree as it lands: time, room, sender role, one line per attachment."
 tier = "free"
