@@ -44,21 +44,33 @@ class Part:
         return self.budget is not None and self.raw > self.budget
 
 
-def _read(private: Path, rel: str | None) -> tuple[str, str]:
-    if not rel or not (private / rel).is_file():
+def layer_dir(private: Path, room: dict[str, Any]) -> Path:
+    """The folder a room's context files come from: its `layer` (absolute, or relative to the
+    private folder), else the private folder itself. The room's process may read it."""
+    return (private / str(room.get("layer", "."))).resolve()
+
+
+def cited(path: Path, text: str) -> str:
+    """A file's text under the absolute path it came from, so the model can re-read it."""
+    return f"[from {path}]\n{text}" if text else ""
+
+
+def _read(base: Path, rel: str | None) -> tuple[str, str]:
+    if not rel or not (base / rel).is_file():
         return "", rel or ""
-    return (private / rel).read_text().strip(), rel
+    p = (base / rel).resolve()
+    return cited(p, p.read_text().strip()), str(p)
 
 
-def recall_pack(private: Path, room: dict[str, Any]) -> tuple[str, str]:
+def recall_pack(base: Path, room: dict[str, Any]) -> tuple[str, str]:
     """The room's newest daily notes, newest first, then the open commitments."""
     texts, srcs = [], []
-    notes = private / str(room.get("daily_notes", "memory/daily"))
+    notes = base / str(room.get("daily_notes", "memory/daily"))
     if notes.is_dir():
         for f in sorted(notes.glob("*.md"), reverse=True)[: int(room.get("recall_days", 2))]:
-            texts.append(f.read_text().strip())
-            srcs.append(str(f.relative_to(private)))
-    loops, src = _read(private, room.get("open_loops"))
+            texts.append(cited(f.resolve(), f.read_text().strip()))
+            srcs.append(str(f.resolve()))
+    loops, src = _read(base, room.get("open_loops"))
     if loops:
         texts.append(loops)
         srcs.append(src)
@@ -67,14 +79,16 @@ def recall_pack(private: Path, room: dict[str, Any]) -> tuple[str, str]:
 
 def session_start(private: Path, room: dict[str, Any], budgets: dict[str, Any]) -> list[Part]:
     limits = budgets["session_start"]["appended"]
+    base = layer_dir(private, room)
     voice = str(room.get("voice") or "")
+    vpath = (base / voice).resolve() if voice else None
     raw = {
         "mechanics": (MECHANICS.read_text().strip(), "yerk_ai/mechanics.md"),
-        "persona": _read(private, room.get("persona")),
-        "rulebook": _read(private, room.get("rulebook")),
-        "room_voice": ((room_voice(private / voice) or "") if voice else "", voice),
-        "pinned_memory": _read(private, room.get("pinned_memory")),
-        "recall_pack": recall_pack(private, room),
+        "persona": _read(base, room.get("persona")),
+        "rulebook": _read(base, room.get("rulebook")),
+        "room_voice": (cited(vpath, room_voice(vpath) or ""), str(vpath)) if vpath else ("", ""),
+        "pinned_memory": _read(base, room.get("pinned_memory")),
+        "recall_pack": recall_pack(base, room),
     }
     parts = []
     for name in APPENDED:

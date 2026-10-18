@@ -136,6 +136,59 @@ def ask_word(env: Env, spec: RoomSpec, account: Account, resume: str, variant: s
     return {"variant": variant, "ok": word in turn.text, **summary(turn), "stderr_tail": tail[-300:]}
 
 
+# blocks: which setup piece goes with the first-message blocks. One piece toggled at a time
+# against the test room's own setup; the same short message in a fresh session every run.
+SETUPS: dict[str, dict[str, Any]] = {
+    "room setup": {},
+    "no context file": {"context": False},
+    "default setting sources": {"drop": ["--setting-sources"], "settings": {"disableAllHooks": True}},
+    "no --tools allowlist": {"drop": ["--tools"]},
+    "model opus-5-5": {"model": "claude-opus-5-5"},
+    "no --replay-user-messages": {"drop": ["--replay-user-messages"]},
+}
+TAKES_VALUE = {"--setting-sources", "--tools"}
+
+
+class Variant(RoomProcess):
+    drop: list[str] = []
+
+    def argv(self) -> list[str]:
+        out, skip = [], False
+        for x in super().argv():
+            if skip:
+                skip = False
+            elif x in self.drop:
+                skip = x in TAKES_VALUE
+            else:
+                out.append(x)
+        return out
+
+
+def blocks(a: argparse.Namespace) -> dict[str, Any]:
+    from . import context
+    from .config import EXAMPLE_PRIVATE, budgets, rooms
+    env = Env(a)
+    room = rooms(EXAMPLE_PRIVATE)["example-room"]
+    ctx = env.state / "blocks-context.md"
+    ctx.write_text(context.appended_file(context.session_start(EXAMPLE_PRIVATE, room, budgets())))
+    runs: list[dict[str, Any]] = []
+    for rep in range(a.reps):
+        for name, s in SETUPS.items():
+            spec = RoomSpec(room="probe-blocks", model=s.get("model", env.model), cwd=scratch(env, "blocks"),
+                            tools=list(room["tools"]), settings=s.get("settings", {}),
+                            context_file=ctx if s.get("context", True) else None)
+            rp = Variant(spec, from_dir(a.config_dir), env.state, ledger=env.ledger, failures=env.failures,
+                         log=env.logs / f"blocks-{len(runs) + 1}.jsonl")
+            rp.drop = list(s.get("drop", []))
+            with rp:
+                rp.start(fresh=True)
+                turn = rp.ask(HELLO, timeout=180)
+            runs.append({"run": len(runs) + 1, "setup": name, "rep": rep + 1, "blocked": turn.fallback_model is not None,
+                         **summary(turn), "argv": [x for x in rp.argv() if not x.startswith("/")]})
+    table = {n: f"{sum(r['blocked'] for r in runs if r['setup'] == n)} of {a.reps}" for n in SETUPS}
+    return {"ok": True, "blocked_per_setup": table, "runs": runs}
+
+
 def resume(a: argparse.Namespace) -> dict[str, Any]:
     env = Env(a)
     word = f"{random.choice(WORDS)}-{random.randint(100, 999)}"

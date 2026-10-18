@@ -10,6 +10,13 @@ Copyright (c) 2025 Nous Research. MIT License.
 - yerk_ai/lifted/trim.py: from agent/prompt_builder.py (_truncate_content, _omitted_headings)
 - yerk_ai/lifted/cooldowns.py: from agent/credential_pool_model_cooldowns.py
   (model_cooldown_until, merge_model_cooldowns)
+- yerk_ai/lifted/split.py: from gateway/platforms/base.py (truncate_message, _custom_unit_to_cp)
+  and gateway/platforms/helpers.py (fence_state_after)
+- yerk_ai/lifted/loopguard.py: from gateway/bot_loop_guard.py (BotLoopGuard.admit)
+- yerk_ai/mcp_server.py: the server scaffold and the send tool's shape, from mcp_serve.py
+  (create_mcp_server, messages_send)
+- yerk_ai/ledger.py: the inbound states and the redeliver-once rule, from
+  gateway/delivery_ledger.py (pending, attempting with a visible marker, capped attempts)
 
 claude-code-context-map (the author's own MIT tool)
 Copyright (c) 2026 Eric McLaren. MIT License.

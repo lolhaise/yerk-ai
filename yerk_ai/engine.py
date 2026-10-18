@@ -23,7 +23,7 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import TracebackType
-from typing import IO, Any
+from typing import IO, Any, Callable
 
 from .accounts import Account, account_env
 from .ledger import Ledger
@@ -51,6 +51,7 @@ class RoomSpec:
     settings: dict[str, Any] = field(default_factory=dict)   # written to a file for --settings
     context_file: Path | None = None                         # --append-system-prompt-file
     mcp_config: Path | None = None                           # --mcp-config
+    add_dirs: list[Path] = field(default_factory=list)       # --add-dir: folders the room may read
     extra_args: list[str] = field(default_factory=list)
 
 
@@ -175,6 +176,10 @@ class RoomProcess:
         self.stderr_path = self.room_dir / "stderr.log"
         self._log: IO[str] | None = None
         self._log_lock = threading.Lock()
+        self._stdin_lock = threading.Lock()
+
+    def alive(self) -> bool:
+        return self.proc is not None and self.proc.poll() is None
 
     def argv(self) -> list[str]:
         s = self.spec
@@ -183,6 +188,8 @@ class RoomProcess:
         a += ["--resume", self.resume_arg] if self.resume_arg else ["--session-id", self.session_id]
         if s.mcp_config:
             a += ["--mcp-config", str(s.mcp_config)]
+        for d in s.add_dirs:
+            a += ["--add-dir", str(d)]
         if s.allow:
             a += ["--allowedTools", ",".join(s.allow)]
         if s.settings:
@@ -239,9 +246,10 @@ class RoomProcess:
         """Write one user message on stdin; returns the time it was written."""
         assert self.proc and self.proc.stdin
         line = json.dumps({"type": "user", "message": {"role": "user", "content": text}}) + "\n"
-        t = time.time()
-        self.proc.stdin.write(line.encode())
-        self.proc.stdin.flush()
+        with self._stdin_lock:
+            t = time.time()
+            self.proc.stdin.write(line.encode())
+            self.proc.stdin.flush()
         self._note({"sent": text})
         return t
 
@@ -251,8 +259,10 @@ class RoomProcess:
         except queue.Empty:
             return None
 
-    def read_turn(self, started: float, timeout: float = 600.0, record: bool = True) -> Turn:
-        """Consume events until the turn's result, the timeout, or the process exiting."""
+    def read_turn(self, started: float, timeout: float = 600.0, record: bool = True,
+                  on_event: Callable[[Turn, dict[str, Any]], None] | None = None) -> Turn:
+        """Consume events until the turn's result, the timeout, or the process exiting.
+        `on_event` sees every event after the turn has observed it (the progress card's feed)."""
         turn = Turn(started=started)
         deadline = time.monotonic() + timeout
         while turn.ended is None:
@@ -265,6 +275,8 @@ class RoomProcess:
                 turn.outcome = "exited"
                 break
             turn.observe(t, ev)
+            if on_event:
+                on_event(turn, ev)
         if turn.ended is None:
             turn.ended = time.time()
         if turn.outcome == "ok" and not turn.text.strip():
@@ -279,16 +291,17 @@ class RoomProcess:
     def ask(self, text: str, timeout: float = 600.0) -> Turn:
         return self.read_turn(self.send(text), timeout)
 
-    def record(self, turn: Turn) -> None:
+    def record(self, turn: Turn, inbound: list[str] | None = None) -> int:
         if not self.ledger:
-            return
+            return 0
         f = turn.failure
-        self.ledger.record(
+        return self.ledger.record(
             room=self.spec.room, account=self.account.name, config_dir=str(self.account.config_dir),
             session_id=self.session_id, started=turn.started, first_visible=turn.first_visible,
             ended=turn.ended, outcome=turn.outcome, failure=f.cls if f else None,
             action=f.action if f else None, output_chars=len(turn.text), models=",".join(turn.models),
-            fallback_model=turn.fallback_model, accepted=len(turn.accepted))
+            fallback_model=turn.fallback_model, accepted=len(turn.accepted),
+            inbound=",".join(inbound) if inbound else None)
 
     def stderr_tail(self, n: int = 2000) -> str:
         try:

@@ -6,7 +6,10 @@ readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE", "NOTICE"]
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "discord-py==2.6.*",
+    "mcp==1.*",
+]
 
 [project.scripts]
 yerk = "yerk_ai.cli:main"
