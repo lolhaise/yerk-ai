@@ -145,3 +145,12 @@ def test_cooldown_doubles_and_caps():
 
 def test_reruns_are_capped():
     assert [T.rerun_wait(n) for n in range(3)] == [2.0, 10.0, None]
+
+
+# Read live from Claude Code 2.1.301 in the test room (Layer 2 run 1): a garbage token, and an
+# empty config folder with no login, both under error type authentication_failed.
+@pytest.mark.parametrize("text", ["Failed to authenticate. API Error: 401 Invalid bearer token",
+                                  "Not logged in · Please run /login"])
+def test_live_auth_strings(text):
+    assert T.classify("authentication_failed", text).action == "hop_account"
+    assert T.classify("unknown", text).cls == "auth"
