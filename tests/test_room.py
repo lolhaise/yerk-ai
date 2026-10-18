@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from yerk_ai import words
 from yerk_ai.accounts import Account, Cooldowns
 from yerk_ai.config import table
 from yerk_ai.engine import RoomSpec
@@ -89,7 +90,7 @@ def test_mid_turn_message_folds_into_the_running_turn(env):
     assert chan.replies == [("echo: SLOW first + second", ["1", "2"])]
     a, b = ledger.inbound_get("1"), ledger.inbound_get("2")
     assert a["state"] == b["state"] == "answered" and a["turn_id"] == b["turn_id"] and b["folded"] == 1
-    assert chan.cards[0] == "working on it" and "echo" in chan.cards[-1]
+    assert chan.cards[0] == f"{words.WORKING} working on it" and "echo" in chan.cards[-1]
     room.rp.close()
 
 
@@ -117,11 +118,11 @@ def test_quota_failure_hops_to_the_next_account_in_the_same_turn(env, monkeypatc
     room = make(chan)
     send(room, ledger, "1", "hello")
     wait_idle(room)
-    assert chan.replies == [("echo: hello", ["1"])] and chan.cards.count("working on it") == 1
+    assert chan.replies == [("echo: hello", ["1"])] and chan.cards.count(f"{words.WORKING} working on it") == 1
     rows = sorted(ledger.rows(5), key=lambda r: r["id"])
     assert [(r["account"], r["outcome"], r["failure"]) for r in rows] == [("one", "error", "quota"), ("two", "ok", None)]
     assert [r["hop"] for r in rows] == [None, "quota:one"] and rows[0]["source"] == "type:rate_limit"
-    assert "still on it, moved to account two" in chan.cards
+    assert f"{words.WORKING} still on it, moved to account two" in chan.cards
     assert Cooldowns(tmp_path / "cooldowns.json").until("one") is not None
     second = argvs(tmp_path)[-1]
     assert second["config_dir"] == str(tmp_path / "cfg2") and "--session-id" in second["argv"]  # never answered: fresh
@@ -194,7 +195,7 @@ def test_an_overflow_compacts_then_runs_the_turn_again(env):
     wait_idle(room)
     rows = rows_of(ledger)
     assert [(r["outcome"], r["failure"]) for r in rows] == [("error", "overflow"), ("ok", None), ("ok", None)]
-    assert len({r["session_id"] for r in rows}) == 1 and "compacting the conversation, then answering" in chan.cards
+    assert len({r["session_id"] for r in rows}) == 1 and f"{words.WORKING} {words.COMPACTING}" in chan.cards
     assert chan.replies == [("echo: TOO_LONG_ONCE hello", ["1"])]
     room.rp.close()
 
@@ -218,7 +219,7 @@ def test_a_refusal_fallback_answer_stands_marked_and_the_next_turn_starts_fresh(
     send(room, ledger, "1", "FIXTURE:refusal_fallback hi")
     wait_idle(room)
     assert chan.replies[0] == ("answered on the fallback model", ["1"])
-    assert chan.cards[-1].startswith("answered by a fallback model (claude-opus-4-8)")
+    assert chan.cards[-1] == f"{words.WORKING} answered by a backup model\n-# the next message starts fresh"
     first = rows_of(ledger)[-1]
     assert (first["outcome"], first["failure"], first["action"], first["fallback_model"]) == (
         "ok", "refusal", "fresh_next_turn", "claude-opus-4-8")
@@ -283,5 +284,5 @@ def test_a_recap_survives_a_hop_that_has_to_start_fresh(env, monkeypatch):
     rows = rows_of(ledger)[1:]
     assert [(r["account"], r["failure"]) for r in rows] == [("one", "fatal"), ("one", "auth"), ("two", None)]
     assert rows[-1]["hop"] == "auth:one" and rows[-1]["recap"] == 1
-    assert chan.replies[-1][0].startswith("echo: (Yerk AI: the earlier session") and chan.cards.count("working on it") == 2
+    assert chan.replies[-1][0].startswith("echo: (Yerk AI: the earlier session") and chan.cards.count(f"{words.WORKING} working on it") == 2
     room.rp.close()

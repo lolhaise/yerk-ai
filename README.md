@@ -77,6 +77,10 @@ The room runner:
 
 The daemon's one local HTTP server carries `/mcp` (the tools `send`: text, or a file from the sending room's own folders, to a room; `hold`: end the turn while waiting on a named event or worker; `recall`: ranked chunks of the memory tree with path, line and a `file:line` to cite; `read_memory`: exact lines of a file inside the memory tree, nothing outside it), `/hook` (the clock and metadata lines and the recall part, keyed on the session id through the room-to-session table; the recall pack after a compaction; the Stop checks) and `/control` (`yerk room close`, `yerk room compact`).
 
+## What you see
+
+Every card, notice and status line follows one rule set, written down with an example of each in [STYLE.md](STYLE.md): the state first (🟢 done, 🟠 running or partly, 🔴 not done, ⚪ nothing to do), one short line per item at phone width, no file paths or exit codes in a room (a report is "report saved" with `yerk worker report <id>` behind it), times as a person says them, and the same words in every room from one vocabulary, `yerk_ai/words.py`. The developer detail lives behind `yerk worker report <id>` and `yerk status --full`. `yerk abilities` lists every ability one line each, built or known but not built (voice is described, not shipped, and `yerk explain voice` says how it would be built and why it is not); `yerk config get presentation` prints the presentation settings with their plain words. `tests/test_style.py` holds every renderer to it.
+
 ## Ledgers
 
 One SQLite file, `ledger.sqlite`: `turns` (account, models, time to first visible event and to the end, how it ended, which messages it answered), `inbound` (every channel message by its id, written before anything runs; a crash runs it again once, marked), `outbound` (every message posted, with the id the channel returned, and a card's text at each post and edit, so a card the reply replaced can still be read back), `holds`, `health` (the daily call per account: pass or fail, login method, an identity fingerprint, never the email). A turn row also names the failure's source in the table and the hop that brought the turn to its account.

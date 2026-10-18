@@ -9,6 +9,7 @@ import discord
 import pytest
 
 import yerk_ai.channels.discord as dmod
+from yerk_ai import words
 from yerk_ai.channels.discord import ACK, DONE, LIMIT, REDELIVERED, DiscordChannel
 from yerk_ai.ledger import Ledger
 from yerk_ai.lifted.split import fence_state_after, split_message
@@ -199,7 +200,7 @@ def test_a_crash_before_the_post_redelivers_once_labelled(dc):
     tid = d.ledger.record(room="test-room", outcome="ok", turn_key="t3")
     run(d.recover(ROOM_CH, room))
     assert d.ledger.inbound_get("5")["turn_id"] == tid
-    assert [m.content for m in ch.sent] == [f"{REDELIVERED} part one", f"{REDELIVERED} part two"]
+    assert [m.content for m in ch.sent] == [f"{REDELIVERED}\npart one", f"{REDELIVERED}\npart two"]
     assert d.ledger.inbound_get("5")["state"] == "answered" and room.got == []      # answered, not run again
     assert ch.deleted == [900] and d.ledger.cards_open("test-room") == []
     run(d.recover(ROOM_CH, room))                                      # a second restart posts nothing
@@ -253,11 +254,11 @@ def test_files_take_one_path_checked_with_the_id_recorded(dc, tmp_path, monkeypa
     row = d.ledger.deliveries("test-room", "sent")[0]
     assert (row["key"], row["kind"], row["file"], row["message_id"], row["size"]) == ("t5-s1:0", "file", "a.txt", ids[0], 10)
     assert len(list((tmp_path / "rooms" / "test-room" / "outbox").glob("*-t5-s1-a.txt"))) == 1   # sent from a snapshot
-    for path, why in ((big, "this room takes 100 bytes"), (exe, ".exe files are not sent"),
-                      (tmp_path / "gone.txt", "no such file")):
+    for path, why in ((big, "it is 500 bytes and this room takes 100 bytes"), (exe, "this room does not take .exe files"),
+                      (tmp_path / "gone.txt", "there is no such file")):
         with pytest.raises(ValueError, match=why):
             run(d.send_file("test-room", path))
-        assert ch.sent[-1].content.startswith(f"Could not send {path.name}: ") and why in ch.sent[-1].content
+        assert ch.sent[-1].content == f"{words.NOT_DONE} not sent: {path.name}\n{why}"
     failed = [r for r in d.ledger.deliveries("test-room", "failed") if r["kind"] == "file"]
     assert sorted(r["file"] for r in failed) == ["b.txt", "c.exe", "gone.txt"]
 
@@ -274,7 +275,7 @@ def test_attachments_are_staged_and_a_missing_one_is_said_out_loud(dc):
     assert [f["ok"] for f in got.files] == [True, False] and got.files[0]["type"] == "image/png"
     rows = d.ledger.attachments("5")
     assert [(r["name"], r["state"], r["size"]) for r in rows] == [("photo one.png", "staged", 24), ("bad.pdf", "missing", 1)]
-    assert ch.sent[0].content == "could not fetch bad.pdf"
+    assert ch.sent[0].content == f"{words.NOT_DONE} could not fetch bad.pdf\nsend it again"
 
 
 def test_a_failed_turn_keeps_its_card_saying_what_was_owed(dc):
@@ -304,7 +305,7 @@ def test_a_file_a_crash_left_unposted_is_sent_once_from_its_snapshot_labelled(dc
     plan_file(d, tmp_path, "t7-s1")
     run(d.recover(ROOM_CH, room))
     [m] = ch.sent
-    assert m.content == f"{REDELIVERED} the report" and m.attachments[0].filename == "report.pdf"
+    assert m.content == f"{REDELIVERED}\nthe report" and m.attachments[0].filename == "report.pdf"
     assert m.attachments[0].data == b"%PDF-1.4 drill" and m.nonce == "t7-s1:0"     # the snapshot, keyed
     row = d.ledger.deliveries("test-room")[0]
     assert (row["state"], row["message_id"], row["note"]) == ("sent", str(m.id), REDELIVERED)
@@ -327,7 +328,7 @@ def test_a_file_discord_took_before_the_crash_is_found_by_name_and_size_not_sent
     run(d.recover(ROOM_CH, room))
     rows = {r["key"]: r for r in d.ledger.deliveries("test-room")}
     assert (rows["t8-s1:0"]["message_id"], rows["t8-s1:0"]["note"]) == ("777", "found in the room after a restart")
-    assert [m.content for m in ch.sent] == [f"{REDELIVERED} the report"]          # only the second goes again
+    assert [m.content for m in ch.sent] == [f"{REDELIVERED}\nthe report"]         # only the second goes again
     assert rows["t8-s2:0"]["message_id"] == str(ch.sent[0].id)
 
 
@@ -337,8 +338,8 @@ def test_a_file_whose_snapshot_is_gone_is_said_out_loud(dc, tmp_path):
     plan_file(d, tmp_path, "t9-s1", snapshot=False)
     run(d.recover(ROOM_CH, room))
     [m] = ch.sent
-    assert m.attachments == [] and "A file (report.pdf) was not confirmed sent" in m.content
-    assert "its copy in the outbox is gone" in m.content
+    assert m.attachments == [] and m.content.startswith(f"{words.NOT_DONE} not resent: report.pdf\n")
+    assert "its saved copy is gone" in m.content
     assert d.ledger.deliveries("test-room", "failed")[0]["key"] == "t9-s1:0"
 
 
@@ -383,8 +384,8 @@ def test_the_upload_limit_is_what_the_bot_was_measured_to_send(dc, tmp_path):
     with pytest.raises(ValueError, match="too large"):
         run(d.send_file("test-room", small, key="t12-s1"))
     [notice] = ch.sent
-    assert notice.content.startswith("Could not send small.txt: Discord refused it as too large (413: ")
-    assert notice.content.endswith("this room takes 20,971,520 bytes.")
+    assert notice.content == f"{words.NOT_DONE} not sent: small.txt\nDiscord said too large (limit 20 MB)"
+    assert "413" not in notice.content and "40005" not in notice.content          # the status code is the log's
 
 
 def test_every_message_in_the_room_is_filed_in_the_days_log_once(tmp_path, monkeypatch):

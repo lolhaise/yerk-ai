@@ -1,12 +1,12 @@
 """A turn's progress card, built from Claude Code's stream events. One per turn of every kind.
 
-In order: the narration line (the model's newest text as it streams in), an optional thinking
-line (owner-only rooms that turn it on; the first 200 characters of the summary, then "..."),
-then one row per tool call as it starts, naming the tool and its target in plain words (a file
-name, a command's head, a URL's host), ticked or crossed when its result comes back. Rows stay
-under 80 characters; the newest rows win when there are many. The room swaps the card for the
-reply at the end, or edits it to say what was owed when a turn ends with nothing to show.
-(Ideas from OpenClaw's session cards; no code.)
+In order: the state and the narration line (the model's newest text as it streams in), an optional
+thinking line (owner-only rooms that turn it on; the start of the summary, then "..."), then one
+row per tool call as it starts, a plain verb and its target (a file name, a command's head, a URL's
+host), marked done or not done when its result comes back. Every line holds to phone width
+(words.PHONE); the newest rows win when there are many. The words come from words.py (STYLE.md).
+The room swaps the card for the reply at the end, or edits it to say what was owed when a turn ends
+with nothing to show. (Ideas from OpenClaw's session cards; no code.)
 """
 from __future__ import annotations
 
@@ -16,9 +16,10 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlparse
 
-ROW_MAX, NARRATION_MAX, THINKING_MAX, ROWS_SHOWN = 79, 160, 200, 12
-RUNNING, OK, FAILED = "\N{HOURGLASS WITH FLOWING SAND}", "\N{WHITE HEAVY CHECK MARK}", "\N{CROSS MARK}"
-START = "working on it"
+from . import words
+from .words import DONE as OK, NOT_DONE as FAILED, START, WORKING as RUNNING
+
+ROW_MAX, THINKING_MAX, ROWS_SHOWN = words.PHONE, 2 * words.PHONE, 12
 
 
 def short(text: str, n: int) -> str:
@@ -29,6 +30,12 @@ def short(text: str, n: int) -> str:
 def tool_name(name: str) -> str:
     """mcp__yerk__send -> send; Read -> read."""
     return (name.split("__")[-1] if name.startswith("mcp__") else name).lower()
+
+
+def verb(name: str) -> str:
+    """The row's verb in plain words: Bash -> run, WebFetch -> fetch, another server's tool by its own name."""
+    n = tool_name(name)
+    return words.VERBS.get(n, n.replace("_", " "))
 
 
 def target(name: str, args: dict[str, Any]) -> str:
@@ -50,6 +57,10 @@ def target(name: str, args: dict[str, Any]) -> str:
         return f"file {os.path.basename(str(path))}" if path else "a message"
     if n == "hold":
         return str(args.get("wait_for") or "")
+    if n == "worker":
+        return " ".join(str(args.get(k) or "") for k in ("action", "id")).strip() or "a worker"
+    if n in ("recall", "websearch") and args.get("query"):
+        return f'"{args["query"]}"'
     first = next((v for v in args.values() if isinstance(v, str) and v), "")
     return str(first)
 
@@ -62,7 +73,7 @@ class Row:
     state: str = RUNNING
 
     def line(self) -> str:
-        return short(f"{self.state} {tool_name(self.name)} {self.target}".rstrip(), ROW_MAX)
+        return words.line(words.no_paths(f"{self.state} {verb(self.name)} {self.target}".rstrip()), ROW_MAX)
 
 
 class Card:
@@ -119,7 +130,7 @@ class Card:
             self.text += str(delta.get("text") or "")
             line = next((x for x in self.text.splitlines() if x.strip()), "")
             if line:
-                self.narration = short(line, NARRATION_MAX)
+                self.narration = line
         elif t == "content_block_delta" and delta.get("type") == "thinking_delta":
             self.thinking += str(delta.get("thinking") or "")
             self.thinking_tokens += int(delta.get("estimated_tokens") or 0)
@@ -135,17 +146,26 @@ class Card:
                 row.target = short(target(row.name, args), ROW_MAX)
 
     def render(self, head: str | None = None) -> str:
-        lines = [head or self.narration or START]
+        lines = [head or words.line(f"{RUNNING} {self.narration or START}")]
         whole = self.thinking_at is None or len(self.thinking) >= THINKING_MAX   # never a fragment of a summary
         if self.thinking_on and self.thinking.strip() and whole:
-            lines.append("-# thinking: " + short(self.thinking, THINKING_MAX + 3).removesuffix("...")[:THINKING_MAX]
-                         + "...")
+            text = " ".join(self.thinking.split())[:THINKING_MAX]
+            room = words.PHONE - len(words.THINKING)
+            cut = -1 if len(text) <= room else text.rfind(" ", 0, room)
+            first, rest = (text[:cut], text[cut + 1:]) if cut > 0 else (text, "")
+            lines.append(words.SUB + words.line(words.THINKING + first))
+            if rest:
+                lines.append(words.SUB + words.line(rest + "..."))
         rows = self.rows[-ROWS_SHOWN:]
         if len(self.rows) > len(rows):
-            lines.append(f"-# {len(self.rows) - len(rows)} earlier steps")
+            lines.append(words.SUB + words.EARLIER.format(n=len(self.rows) - len(rows)))
         lines += [r.line() for r in rows]
         return "\n".join(lines)
 
     def owed(self, why: str, asked: str) -> str:
-        """The card of a turn that ends with nothing visible: what was owed, and why it is not here."""
-        return self.render(head=short(f"{FAILED} No reply to \"{short(asked, 60)}\": {why}", 400))
+        """The card of a turn that ends with nothing visible: not answered, why in plain words, what
+        was asked, then the rows of what it did."""
+        asked = words.line(words.no_paths(" ".join(asked.split())), words.PHONE - len(words.YOU_ASKED) + 7)
+        asked = asked.replace('"', "'")
+        return self.render(head="\n".join([f"{FAILED} {words.NOT_ANSWERED}", words.line(why),
+                                            words.SUB + words.YOU_ASKED.format(asked=asked)]))

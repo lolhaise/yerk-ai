@@ -5,7 +5,8 @@
   loop guard (lifted/loopguard.py) so a runaway script cannot run the room.
 - A message is ledgered by its Discord id before anything runs, then acked with a reaction. Its
   files are staged in the room's inbox under their own names, a ledger row each; a file that
-  cannot be fetched gets a visible "could not fetch NAME" and the turn still runs.
+  cannot be fetched gets a visible "could not fetch NAME" and the turn still runs. Every notice
+  takes its words from words.py (STYLE.md): state first, no path, no status code.
 - A turn owns one card: posted when the turn starts, edited from the stream (the first edit at
   once, then at most one a second, the latest text winning), replaced by the reply, or kept and
   edited to say what was owed when the turn ends with nothing to show. A worker owns one too
@@ -39,6 +40,7 @@ from typing import Any, Awaitable, Callable, Coroutine, TypeVar
 
 import discord
 
+from .. import words
 from ..ledger import Ledger
 from ..lifted.loopguard import LoopGuard
 from ..lifted.split import split_message
@@ -49,7 +51,7 @@ T = TypeVar("T")
 LIMIT = 1950          # Discord's 2,000 less room for the redelivery label
 MAX = 2000
 ACK, DONE, FAILED = "\N{EYES}", "\N{WHITE HEAVY CHECK MARK}", "\N{WARNING SIGN}"
-REDELIVERED = "(redelivered after a restart)"
+REDELIVERED = words.SUB + words.SENT_AGAIN    # the line above a part posted again after a restart
 MIN_EDIT = 1.0        # seconds between card edits after the first
 TYPING_EVERY = 8.0    # the typing signal is refreshed this often while nothing is visible (Discord shows it ~10 s)
 FORBIDDEN = {".exe", ".bat", ".cmd", ".com", ".scr", ".msi", ".dll", ".ps1", ".vbs", ".jar", ".apk", ".lnk",
@@ -74,9 +76,11 @@ def nonce_for(key: str) -> str:
 
 
 def refusal(e: Any, limit: int) -> str:
+    """Why Discord turned a file down, in plain words; its status and text go to the log."""
+    log.warning("discord refused a file: %s %s", e.status, str(e.text or e)[:200])
     if e.status == 413 or getattr(e, "code", None) == 40005:
-        return f"Discord refused it as too large ({e.status}: {str(e.text or e)[:80]}); this room takes {limit:,} bytes"
-    return f"Discord refused it ({e.status}: {str(e.text or e)[:120]})"
+        return words.file_why("too large", limit=words.size(limit))
+    return words.file_why("refused")
 
 
 def safe_name(name: str) -> str:
@@ -296,7 +300,8 @@ class DiscordChannel:
                 f.update(ok=False, error=f"{type(e).__name__}: {str(e)[:120]}")
                 self.ledger.attachment(message_id=str(m.id), room=room.name, name=a.filename, size=f["size"],
                                        type=f["type"], state="missing", error=f["error"])
-                await self._post(room.name, f"could not fetch {a.filename}", "notice", [str(m.id)])
+                await self._post(room.name, f"{words.NOT_DONE} {words.NOT_FETCHED.format(name=a.filename)}", "notice",
+                                 [str(m.id)])
             files.append(f)
         return files
 
@@ -330,8 +335,7 @@ class DiscordChannel:
             attempts = int(row["attempts"] or 0)
             if attempts >= 2:
                 self.ledger.inbound_set(row["message_id"], state="abandoned", note="redelivered once already")
-                await self._post(room.name, "A message from before a restart was not answered and was not run again.",
-                                 "notice", [row["message_id"]])
+                await self._post(room.name, f"{words.NOT_DONE} {words.NOT_RUN_AGAIN}", "notice", [row["message_id"]])
                 continue
             try:
                 m = await ch.fetch_message(int(row["message_id"]))
@@ -404,8 +408,8 @@ class DiscordChannel:
         base = key.rsplit(":", 1)[0]
         snaps = sorted((self.state / "rooms" / room / "outbox").glob(f"*-{base}-{name}")) if self.state else []
         snap = snaps[-1] if snaps else None
-        why = "its copy in the outbox is gone" if snap is None else self.file_problem(ch, snap)
-        caption = f"{REDELIVERED} {r['body'] or ''}".strip()
+        why = words.file_why("gone") if snap is None else self.file_problem(ch, snap)
+        caption = f"{REDELIVERED}\n{r['body'] or ''}".strip()
         m = None
         if why is None and snap is not None:
             try:
@@ -416,8 +420,8 @@ class DiscordChannel:
                 why = refusal(e, upload_limit(ch))
         if m is None:
             self.ledger.delivery_set(key, state="failed", error=f"not confirmed before a restart; {why}")
-            await self._post(room, f"A file ({name}) was not confirmed sent before a restart and could not be sent "
-                             f"again: {why}. Ask again if it is not above.", "notice", [], key=f"{base}-notice")
+            await self._post(room, f"{words.NOT_DONE} {words.NOT_SENT_AGAIN.format(name=name, why=why)}", "notice", [],
+                             key=f"{base}-notice")
             return
         self.ledger.delivery_set(key, state="sent", message_id=str(m.id), sent=time.time(),
                                  attempts=int(r["attempts"] or 0) + 1, note=REDELIVERED)
@@ -610,7 +614,7 @@ class DiscordChannel:
             if r["state"] == "sent":
                 ids.append(str(r["message_id"]))
                 continue
-            body = f"{REDELIVERED} {r['body']}" if label else str(r["body"])
+            body = f"{REDELIVERED}\n{r['body']}" if label else str(r["body"])
             await self._debug_pause("before-post")
             try:
                 m = await ch.send(body[:MAX], nonce=nonce_for(str(r["key"])))
@@ -647,14 +651,15 @@ class DiscordChannel:
         """Why a file cannot go to this room, or None."""
         limit = upload_limit(ch)
         if not path.is_file():
-            return "there is no such file"
+            return words.file_why("missing")
         if path.suffix.lower() in FORBIDDEN:
-            return f"{path.suffix.lower()} files are not sent (a type Yerk AI never posts)"
+            return words.file_why("type", ext=path.suffix.lower())
         size = path.stat().st_size
         if size > limit:
-            return f"it is {size:,} bytes and this room takes {limit:,} bytes"
+            said, cap = words.sizes(size, limit)
+            return words.file_why("size", size=said, limit=cap)
         if size == 0:
-            return "it is empty"
+            return words.file_why("empty")
         return None
 
     async def send_file(self, room: str, path: Path, caption: str = "", key: str | None = None,
@@ -697,8 +702,9 @@ class DiscordChannel:
             self.ledger.delivery_set(f"{key}:0", state="failed", error=why)
             self.ledger.outbound(room=room, channel=str(ch.id), kind="file", chars=len(caption), file=name,
                                  error=str(why)[:300])
-            await self._post(room, f"Could not send {name}: {why}.", "notice", [], key=f"{key}-notice")
-            raise ValueError(f"{name} was not sent: {why}; the room was told")
+            await self._post(room, f"{words.NOT_DONE} {words.NOT_SENT.format(name=name, why=why)}", "notice", [],
+                             key=f"{key}-notice")
+            raise ValueError(f"{name} did not go out: {why}; the room was told")
         self.ledger.delivery_set(f"{key}:0", state="sent", message_id=str(m.id), sent=time.time(), attempts=1)
         self.ledger.outbound(room=room, channel=str(ch.id), kind="file", message_id=str(m.id), chars=len(caption),
                              file=name, inbound=inbound)

@@ -28,14 +28,13 @@ from .lifted.classify import FailureTable
 from .lifted.loopguard import LoopGuard
 from .meters import Meters
 from .room import Channel, Inbound, Room
+from . import abilities, words   # STYLE.md: what a room reads
 
 log = logging.getLogger("yerk.daemon")
 YERK_TOOLS = ["mcp__yerk__send", "mcp__yerk__hold", "mcp__yerk__recall", "mcp__yerk__read_memory",
               "mcp__yerk__worker", "mcp__yerk__schedule"]
 STALL = 0.25            # seconds the event loop may lag before the log says so
-NO_KEY_LINE = ("Meaning search is off: recall runs on keywords alone until an OpenAI key is at secrets/openai.key "
-               "in the private folder (or where [memory] embeddings_key in yerkd.toml points); "
-               "yerk explain embeddings has the price and the free path.")
+NO_KEY_LINE = words.needs("meaning search", "an OpenAI key", "embeddings", "recall matches words only")
 
 
 def free_port() -> int:
@@ -52,7 +51,7 @@ class ConsoleChannel:
 
     def _out(self, obj: dict[str, Any]) -> list[str]:
         self.n += 1
-        print(json.dumps({"t": round(time.time(), 3), **obj}), flush=True)
+        print(json.dumps({"t": round(time.time(), 3), **obj}, ensure_ascii=False), flush=True)   # the room's own words
         return [f"console-{self.n}"]
 
     def open_card(self, room: str, text: str, kind: str = "turn") -> None:
@@ -99,6 +98,7 @@ class Yerkd:
                  only_account: Account | None = None, log_dir: Path | None = None):
         self.private, self.state = private, state
         self.conf = load_toml(private / "yerkd.toml") if (private / "yerkd.toml").is_file() else {}
+        words.configure(self.conf.get("presentation"))          # what every card and notice shows (STYLE.md)
         self.port = port or int(self.conf.get("http", {}).get("port", 0)) or free_port()
         self.url = f"http://127.0.0.1:{self.port}"
         self.budgets, self.room_confs = budgets(), rooms(private)
@@ -169,7 +169,8 @@ class Yerkd:
             return {"ok": False, "error": "nothing to send: give text, a file, or both"}
         ch = self.channels[room]
         if file and not self.may_send(caller if caller in self.rooms else room, Path(file)):
-            await ch.notify(room, f"Could not send {Path(file).name}: it is outside this room's folders.")
+            await ch.notify(room, f"{words.NOT_DONE} "
+                                  f"{words.NOT_SENT.format(name=Path(file).name, why=words.file_why('outside'))}")
             return {"ok": False, "error": f"{file} is outside this room's folders; only files from them can be sent; "
                                           "the room was told"}
         src = self.rooms.get(caller) or self.rooms[room]
@@ -248,7 +249,7 @@ class Yerkd:
         r = self.rooms.get(room)
         topics = memory.topic_hits(self.memory, room, prompt, r.current_ids() if r else set()) \
             if conf.get("topic_recall", True) else []
-        return names, topics
+        return abilities.asked(prompt, self.memory) + names, topics      # "can you do voice": the manifest's answer
 
     def shadow_stop(self, name: str, room: Room, reply: str, sid: str) -> list[tuple[str, str]]:
         """The evidence rules after a reply: ledgered and logged, never a block (shadow, DESIGN 8)."""

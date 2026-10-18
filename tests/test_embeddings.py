@@ -16,7 +16,7 @@ from pathlib import Path
 
 import numpy as np
 
-from yerk_ai import cli, embeddings, memindex, memory
+from yerk_ai import abilities, cli, embeddings, memindex, memory
 from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai.daemon import NO_KEY_LINE, ConsoleChannel, Yerkd
 
@@ -135,7 +135,7 @@ def test_a_missing_key_keeps_the_keyword_path_and_the_room_hears_it_once(tmp_pat
     a = asyncio.run(y.tool_recall("example-room", "example kettle", 6))
     b = asyncio.run(y.tool_recall("example-room", "example kettle", 6))
     out = capsys.readouterr().out
-    assert a["ok"] and b["ok"] and out.count(NO_KEY_LINE) == 1
+    assert a["ok"] and b["ok"] and out.count(json.dumps(NO_KEY_LINE, ensure_ascii=False)) == 1   # once, as one notice
     assert (tmp_path / "state" / "rooms" / "example-room" / "told-embeddings").exists()
     server.stop()
     idx.close()
@@ -248,21 +248,20 @@ def test_the_bench_shape_is_unchanged_and_the_example_set_has_the_room_kinds(tmp
 
 # 7. the manifest, and `yerk abilities` and `yerk explain` both ways
 def test_the_manifest_and_the_abilities_command_show_the_key_tier_both_ways(tmp_path, capsys):
-    ab = cli._abilities()
+    ab = abilities.manifest()
     e = ab["embeddings"]
     assert e["tier"] == "key" and e["provider"] == "OpenAI" and "$" in e["price"] and "read 2026" in e["price"]
     assert e["free_path"].startswith("keywords") and ab["recall"]["upgrade"] == "embeddings"
     s = tree(tmp_path)
     assert cli.main(["abilities", "--private", str(s.root.parent), "--state", str(tmp_path / "state")]) == 0
     lines = capsys.readouterr().out.splitlines()
-    assert any(ln.startswith("🟢 embeddings (key)") for ln in lines) and any(ln.startswith("🟢 recall (free)") for ln in lines)
+    assert "🟢 embeddings: on" in lines and "🟢 recall: on" in lines and "⚪ voice: known, not built" in lines
     s.embeddings_key.unlink()
     assert cli.main(["abilities", "--private", str(s.root.parent), "--state", str(tmp_path / "state")]) == 0
     lines = capsys.readouterr().out.splitlines()
-    orange = [ln for ln in lines if ln.startswith("🟠 embeddings (key)")]
-    assert orange and "needs a provider key (OpenAI)" in orange[0] and "free path: keywords" in orange[0]
-    assert any(ln.startswith("⚪ recall (free)") and "free path" in ln for ln in lines)
+    assert "🟠 embeddings: needs OpenAI" in lines and "⚪ recall: runs on the free path" in lines
     assert cli.main(["explain", "embeddings", "--private", str(s.root.parent), "--state", str(tmp_path / "state")]) == 0
     out = capsys.readouterr().out
-    assert out.startswith("embeddings (layer 4, tier key)") and "cost: $0.02 per 1M tokens" in out and "now: 🟠" in out
+    assert out.startswith("🟠 embeddings: needs OpenAI\n") and "Cost: $0.02 per 1M tokens" in out
+    assert "Free path: keywords" in out and "How to add the key: put the key in the file" in out and "/home/" not in out
     assert cli.main(["explain", "no-such-ability", "--private", str(s.root.parent)]) == 2

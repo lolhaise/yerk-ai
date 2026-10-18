@@ -106,7 +106,9 @@ def cmd_worker(a: argparse.Namespace) -> int:
         if not r["ok"]:
             print(r["error"], file=sys.stderr)
             return 2
-        print(json.dumps(r) if a.json else f"worker {r['id']} {r['state']}: {r['report']}\n{r['text']}")
+        print(json.dumps(r) if a.json else f"worker {r['id']} {r['state']}, account {r['account']}, model {r['model']}\n"
+              f"report: {r['report']}\nfolder: {r['staging']}\nunit: {r['unit']}, {r['exit_detail'] or 'still running'}"
+              f"\n\n{r['text']}")
         return 0
     rows = workers.listing(ledger, a.limit)
     if a.json:
@@ -265,28 +267,33 @@ def cmd_accounts(a: argparse.Namespace) -> int:
 
 
 def cmd_status(a: argparse.Namespace) -> int:
-    """What runs (the daemon and its rooms) and each account's 5-hour and weekly meters."""
+    """What runs (the daemon and its rooms), each account's 5-hour and weekly meters and the running
+    workers: one short line each, state first (STYLE.md). --full: the developer detail (pid, units,
+    how old each meter reading is)."""
     import os
-    from .meters import Meters, meter_line
+    from . import words
+    from .meters import Meters, meter_line, meter_short
     priv, state, accounts, cool = _engine(a)
+    full = bool(getattr(a, "full", False))
     try:
         st = json.loads((state / "yerkd.json").read_text())
         os.kill(int(st["pid"]), 0)
-        print(f"yerkd: running ({st['mode']}), pid {st['pid']}, rooms {', '.join(st['rooms'])}")
+        print(f"yerkd: running ({st['mode']}), pid {st['pid']}, rooms {', '.join(st['rooms'])}" if full
+              else words.line(f"{words.DONE} {words.RUNNING_ROOMS.format(rooms=', '.join(st['rooms']))}"))
     except (OSError, ValueError, KeyError):
-        print("yerkd: not running")
+        print(words.NOT_RUNNING if full else f"{words.NOT_DONE} {words.NOT_RUNNING}")
     meters = Meters(state / "meters.json")
     for x in accounts:
         rest = cool.show(x.name)
-        print(meter_line(x.name, meters.reading(x))
-              + (f"; rests until {_clock(rest[0]['until'])}" if rest else ""))
+        print(meter_line(x.name, meters.reading(x)) + (f"; rests until {_clock(rest[0]['until'])}" if rest else "")
+              if full else meter_short(x.name, meters.reading(x), rest[0]["until"] if rest else None))
     from . import workers
     from .ledger import Ledger
     try:
         units: set[str] | None = workers.Systemd().running()
     except (OSError, subprocess.SubprocessError):
         units = None                          # no systemd here: the ledger alone, unchecked
-    lines = workers.status_lines(Ledger(state / "ledger.sqlite"), units)
+    lines = workers.status_lines(Ledger(state / "ledger.sqlite"), units, full=full)
     for line in lines or ["workers: none running"]:
         print(line)
     from . import jobs
@@ -340,64 +347,70 @@ def cmd_recall_bench(a: argparse.Namespace) -> int:
     return 2 if r["blind"] else 0
 
 
-def _abilities() -> dict[str, dict[str, Any]]:
-    from .config import load_toml, table
-    return dict(load_toml(table("abilities.toml"))["abilities"])
-
-
-def _ability_state(name: str, ab: dict[str, Any], table_: dict[str, dict[str, Any]], s: Any) -> tuple[str, str]:
-    """(dot, note) for one ability (decision 23): 🟢 on; 🟠 available but needs the provider's key;
-    ⚪ running on its free path because the ability that would lift it is off."""
-    keys = {"embeddings": s.embeddings_key}
-    if ab["tier"] in ("key", "paid"):
-        key = keys.get(name)
-        if key is not None and key.is_file() and key.stat().st_size > 0:
-            return "🟢", f"on, key at {key}"
-        where = f"none at {key}" if key is not None else "no key configured"
-        return "🟠", f"needs a provider key ({ab.get('provider', 'a provider')}): {where}; free path: {ab['free_path']}"
-    up = str(ab.get("upgrade", ""))
-    if up and up in table_ and _ability_state(up, table_[up], table_, s)[0] != "🟢":
-        return "⚪", f"on its free path ({ab['free_path']}); the {up} ability lifts it"
-    return "🟢", ""
-
-
 def cmd_abilities(a: argparse.Namespace) -> int:
-    """Every ability in the manifest, its tier and its state on this install."""
-    from . import memory
+    """Every ability in the manifest, one line each, state first: on, needs <provider>, runs on the
+    free path, known but not built."""
+    from . import abilities, memory
     from .config import state_dir
     s = memory.settings(private_dir(a.private), state_dir(a.state))
-    table_ = _abilities()
-    for name, ab in table_.items():
-        dot, note = _ability_state(name, ab, table_, s)
-        print(f"{dot} {name} ({ab['tier']}): {ab['what']}" + (f" [{note}]" if note else ""))
+    tab = abilities.manifest()
+    for name, ab in sorted(tab.items(), key=lambda kv: kv[1].get("state", "built") == "described"):
+        print(abilities.line(name, ab, tab, s))
+    print("yerk explain <ability>: what it does, needs and costs")
     return 0
 
 
+def _settings(a: argparse.Namespace) -> list[dict[str, Any]]:
+    from . import words
+    from .config import load_toml
+    priv = private_dir(a.private)
+    conf = load_toml(priv / "yerkd.toml") if (priv / "yerkd.toml").is_file() else {}
+    return words.described(conf.get("presentation"))
+
+
+def _setting_lines(r: dict[str, Any]) -> list[str]:
+    return [f"{r['key']} = {r['value']} ({'set in yerkd.toml' if r['source'] != 'default' else 'the default'})",
+            f"  {r['what']}", f"  choices: {', '.join(r['choices'])}; {r['reloads']}"]
+
+
 def cmd_explain(a: argparse.Namespace) -> int:
-    """One ability from the manifest: what it does, needs, costs, its free path, and its state here."""
-    from . import memory
+    """One ability from the manifest (what it does, needs and costs, its free path; how a described
+    one would be built and why it is not), else one setting; state first, plain words, and its state
+    here again on the last line."""
+    from . import abilities, memory
     from .config import state_dir
-    table_ = _abilities()
+    from .words import NOT_DONE
+    table_ = abilities.manifest()
     ab = table_.get(a.ability)
     if ab is None:
-        print(f"no ability {a.ability!r}; abilities: {', '.join(table_)}", file=sys.stderr)
+        hit = [r for r in _settings(a) if r["key"] in (a.ability, f"presentation.{a.ability}")]
+        if hit:
+            print("\n".join(_setting_lines(hit[0])))
+            return 0
+        print(f"{NOT_DONE} no ability or setting {a.ability!r}; abilities: {', '.join(table_)}", file=sys.stderr)
         return 2
     s = memory.settings(private_dir(a.private), state_dir(a.state))
-    dot, note = _ability_state(a.ability, ab, table_, s)
-    print(f"{a.ability} (layer {ab.get('layer', '?')}, tier {ab['tier']}): {ab['what']}")
-    print(f"needs: {ab['needs']}")
-    for field, label in (("provider", "provider"), ("model", "model"), ("price", "cost"), ("key", "key")):
-        if ab.get(field):
-            print(f"{label}: {ab[field]}")
-    if ab["tier"] == "free":
-        print("cost: nothing, it runs on the box")
-    print(f"free path: {ab['free_path']}")
+    print("\n".join(abilities.explain(a.ability, ab, table_, s)))
+    dot, note = abilities.state(a.ability, ab, table_, s)
     print(f"now: {dot} " + (note or "on"))
     if a.ability == "jobs":                   # the jobs file's keys, from the code (decision 16)
         from . import jobs
         print("keys of a [jobs.NAME] table in the private jobs.toml:")
         for key, words in jobs.KEYS.items():
             print(f"  {key}: {words}")
+    return 0
+
+
+def cmd_config(a: argparse.Namespace) -> int:
+    """`yerk config get [KEY]`: the settings Yerk AI describes in code (decisions 16 and 27), each with
+    its value here, where it came from, its choices and its plain words. Only these are printed."""
+    rows = _settings(a)
+    want = a.key.removeprefix("presentation").lstrip(".")
+    pick = [r for r in rows if not want or r["key"] == f"presentation.{want}"]
+    if not pick:
+        print(f"no setting {a.key!r}; settings: {', '.join(r['key'] for r in rows)}", file=sys.stderr)
+        return 2
+    print(json.dumps(pick) if a.json else "\n".join(x for r in pick for x in _setting_lines(r)))
     return 0
 
 
@@ -430,6 +443,7 @@ def main(argv: list[str] | None = None) -> int:
     ac.add_argument("--json", action="store_true")
     st = sub.add_parser("status", help="the daemon, its rooms, each account's 5-hour and weekly meters, and the "
                         "running workers (from the ledger, checked against the unit list)")
+    st.add_argument("--full", action="store_true", help="the developer detail: pid, unit names, reading ages")
     wk = sub.add_parser("worker", help="workers: start (needs a running yerkd), list, stop, report")
     wk.add_argument("action", choices=["start", "list", "stop", "report"])
     wk.add_argument("id", nargs="?", help="stop, report: the worker's id")
@@ -465,13 +479,18 @@ def main(argv: list[str] | None = None) -> int:
     rb.add_argument("--questions", help="question file (default: [memory] bench, else <private>/evals/recall-questions.json)")
     rb.add_argument("-k", type=int, default=6, help="results per question (default 6, the recall tool's default)")
     rb.add_argument("--json", action="store_true", help="the run as JSON, per-question ranks included")
-    ab = sub.add_parser("abilities", help="every ability, its tier and its state here: 🟢 on, 🟠 needs a provider "
-                        "key, ⚪ on its free path")
-    ex = sub.add_parser("explain", help="one ability: what it does, needs and costs, its free path, its state here")
+    ab = sub.add_parser("abilities", help="every ability and its state on this install, one line each")
+    ex = sub.add_parser("explain", help="one ability (what it does, needs and costs, its free path, its state here) "
+                        "or one setting")
     ex.add_argument("ability")
     for x in (ac, st, rb, ab, ex, jb, sc):
         x.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else the fake example layer)")
         x.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
+    cf = sub.add_parser("config", help="the settings Yerk AI describes, with their values here and plain words")
+    cf.add_argument("action", choices=["get"])
+    cf.add_argument("key", nargs="?", default="presentation", help="a setting, or presentation for all of them")
+    cf.add_argument("--json", action="store_true")
+    cf.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else the fake example layer)")
     pr = sub.add_parser("probe", help="contract probes against a real Claude Code login")
     pr.add_argument("name", choices=["hello", "fold", "resume", "blocks", "smoke", "measure", "short", "think", "check",
                                      "idle"])
@@ -497,6 +516,8 @@ def main(argv: list[str] | None = None) -> int:
     pr.add_argument("--attach", action="store_true", help="smoke, measure: drive the yerkd already running on --state")
     pr.set_defaults(on_second=None, fold_settings=None)
     a = p.parse_args(argv)
+    if a.cmd == "config":
+        return cmd_config(a)
     if a.cmd == "worker":
         return cmd_worker(a)
     if a.cmd == "jobs":

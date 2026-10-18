@@ -2,8 +2,35 @@
 # tier: "free" runs on the box; "key" needs a provider key the user adds; "paid" is metered or a
 # subscription, with the provider and the price named. `free_path` is what runs without the key or
 # the payment, or "none". Abilities still to come say so in `layer`.
+# state: "built" ships in this repo; "described" is known and not built (decision 26): it says what
+# it is, `how` it would be built, what it would need and cost, and `why_not`. `yerk abilities` shows
+# it as known, not built; `yerk explain` and a room message naming one of its `asked_as` phrases
+# get the same answer from this file. A described ability becomes built only by a pull request
+# with its own acceptance measurement.
+
+[abilities.voice]
+state = "described"
+what = "Voice rooms: the owner talks to Yerk out loud, in a voice channel or on a call, and Yerk talks back in the room's own voice."
+how = [
+  "A voice room: one room entry per voice channel or call line, with the same account order, budgets and privacy class as a text room.",
+  "The realtime speech vendor as a tool: it turns speech into text and the reply into speech, and never decides what is said.",
+  "Claude Code supplies the words: each finished utterance goes into the room's session as a message, and the reply's text is what gets spoken.",
+  "Barge-in from the user's transcript: human speech stops playback, a transcript that stops mid-thought is held until the thought ends, and a reply that newer speech supersedes is dropped.",
+  "Audio streams as it is synthesized, and one reply is asked for at a time, so a slow answer is never asked for twice.",
+  "Call close and stop events go to the normal log, and a reconnect picks up from a short recap plus the call's key turns.",
+  "Control words (end the call, keypad digits) are read before any content filter.",
+]
+tier = "paid"
+provider = "a realtime speech vendor (speech to text and text to speech)"
+needs = "a voice channel or a phone line the harness can join, a realtime speech vendor's key in the private folder, and the room's Claude Code subscription for the words"
+price = "the speech vendor's per-minute price for listening and speaking, paid to the vendor; no vendor is chosen, so no price is named here; the words cost nothing beyond the Claude subscription"
+free_path = "none for live talk: text rooms are the free path"
+why_not = "The owner's call: not worth shipping in the public harness. Realtime voice is hard to make good, most users never need it, and it would pull a paid vendor into the core. It stays described here so Yerk knows how it would work and can say so when asked."
+asked_as = ["voice", "voice chat", "voice call", "speech", "talk out loud", "phone call"]
+layer = 10
 
 [abilities.workers]
+state = "built"
 what = "Heavy work leaves the room: the worker tool and `yerk worker start|list|stop|report` run a headless claude -p with a brief, a staging folder, a TASKS.md and a report, as its own systemd unit that outlives the daemon, with its own card in the room (a row per TASKS.md line, ticked live), the card settled and one short relay turn when it ends; `yerk status` lists the running ones against the ledger."
 tier = "free"
 needs = "systemd user units (systemd-run --user) and Linux inotify; an account from accounts.toml, the same subscription the rooms run on"
@@ -11,6 +38,7 @@ free_path = "this is the free path"
 layer = 5
 
 [abilities.capture]
+state = "built"
 what = "Every message of every room filed in the day's log in the private memory tree as it lands: time, room, sender role, one line per attachment."
 tier = "free"
 needs = "nothing; writes <private>/memory/daily/YYYY-MM-DD.md"
@@ -18,6 +46,7 @@ free_path = "this is the free path"
 layer = 4
 
 [abilities.memory-index]
+state = "built"
 what = "yerk-index, its own process: an FTS5 keyword index over the private memory tree, updated per changed chunk, with a freshness check against the disk. A rebuild builds a new generation and swaps a link, so recall never fails during one."
 tier = "free"
 needs = "Python's sqlite3 with FTS5 (part of standard CPython builds); a systemd user unit (units/yerk-index.service)"
@@ -25,6 +54,7 @@ free_path = "this is the free path"
 layer = 4
 
 [abilities.recall]
+state = "built"
 what = "The recall tool: ranked chunks of the owner's memory with file path and line, in every room; with the embeddings ability on, the keyword rank is fused with the meaning rank."
 tier = "free"
 needs = "a running yerk-index"
@@ -33,6 +63,7 @@ upgrade = "embeddings"
 layer = 4
 
 [abilities.embeddings]
+state = "built"
 what = "Meaning search behind the keywords: yerk-index embeds every chunk once (changed chunks only, the vector stored next to the chunk's hash, copied across a rebuild) and answers recall's query by cosine; recall fuses that rank with the keyword rank by reciprocal rank fusion, so a paraphrase finds the line its words never name."
 tier = "key"
 provider = "OpenAI"
@@ -44,6 +75,7 @@ free_path = "keywords (FTS5): recall runs on them alone, exactly as without this
 layer = 4
 
 [abilities.read-memory]
+state = "built"
 what = "The read_memory tool: an exact excerpt of a memory file; files outside the private memory tree are refused."
 tier = "free"
 needs = "nothing"
@@ -51,6 +83,7 @@ free_path = "this is the free path"
 layer = 4
 
 [abilities.recall-bench]
+state = "built"
 what = "yerk recall-bench: a fixed question set against the index, top six and top one hit rates, one line per run kept as the weekly series."
 tier = "free"
 needs = "a question file in the private folder (evals/recall-questions.json), a running yerk-index; the weekly timer in units/"
@@ -58,6 +91,7 @@ free_path = "this is the free path"
 layer = 4
 
 [abilities.mention-recall]
+state = "built"
 what = "The people, places and things a message names, from the fact files and the curated file's headings, put in front of the model before it starts, with no tool call; at most 1,500 characters a message, owner-privacy rooms only."
 tier = "free"
 needs = "a running yerk-index (it builds the name index when a fact file changes)"
@@ -65,6 +99,7 @@ free_path = "this is the free path"
 layer = 4
 
 [abilities.topic-recall]
+state = "built"
 what = "The room's own lines of the last 14 days that share the message's key terms, put in front of the model under the same 1,500-character cap."
 tier = "free"
 needs = "the day's log (capture)"
@@ -72,6 +107,7 @@ free_path = "this is the free path"
 layer = 4
 
 [abilities.recall-pack]
+state = "built"
 what = "At session start, the room's own filed items of the last 14 days (what the owner sent, decisions, drafts), newest first, up to 6,000 characters with the open commitments; added again after every compaction."
 tier = "free"
 needs = "the day's log (capture); curl for the SessionStart command hook"
@@ -79,6 +115,7 @@ free_path = "this is the free path"
 layer = 4
 
 [abilities.evidence-ledger]
+state = "built"
 what = "Every tool call of a turn is ledgered with what it read; after each reply a rule check logs, without blocking, a quoted figure or file the turn never read and a 'what did we decide' answered with no memory read."
 tier = "free"
 needs = "nothing beyond the daemon"

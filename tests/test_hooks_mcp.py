@@ -71,7 +71,8 @@ def test_send_and_hold(tmp_path, capsys):
     capsys.readouterr()
     refused = asyncio.run(y.tool_send("example-room", "", str(outside), "example-room"))
     assert not refused["ok"] and "outside this room's folders" in refused["error"]
-    assert "Could not send token.txt: it is outside this room's folders." in capsys.readouterr().out   # said in the room
+    said = capsys.readouterr().out                                                  # said in the room
+    assert "not sent: token.txt" in said and "it is outside this room's folders" in said
     held =asyncio.run(y.tool_hold("example-room", "worker-1", "waiting on the build"))
     assert held["ok"] and y.ledger.rows(1, "holds")[0]["wait_for"] == "worker-1"
 

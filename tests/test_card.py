@@ -2,6 +2,7 @@
 target in plain words, ticked or crossed, the thinking line only where a room turns it on."""
 from types import SimpleNamespace as NS
 
+from yerk_ai import words
 from yerk_ai.card import FAILED, OK, ROW_MAX, RUNNING, START, Card
 from yerk_ai.room import Room
 
@@ -23,11 +24,11 @@ def result(tid, error=False):
 
 def test_the_card_streams_narration_then_rows_ticked_and_crossed():
     c = Card()
-    assert c.render() == START
+    assert c.render() == f"{RUNNING} {START}"
     assert c.feed(se({"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}})) is False
     c.feed(se({"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "Checking the "}}))
     c.feed(se({"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "notes first"}}))
-    assert c.render() == "Checking the notes first"
+    assert c.render() == f"{RUNNING} Checking the notes first"
     for ev in tool(1, "a", "Read", {"file_path": "/x/memory/pinned.md"}) + tool(2, "b", "Bash",
                                                                                 {"command": "git status --short\nls"}):
         c.feed(ev)
@@ -38,9 +39,9 @@ def test_the_card_streams_narration_then_rows_ticked_and_crossed():
     c.feed(result("a"))
     c.feed(result("b", error=True))
     lines = c.render().splitlines()
-    assert lines == ["Checking the notes first", f"{OK} read pinned.md", f"{FAILED} bash git status --short",
-                     f"{RUNNING} webfetch docs.example.org", f"{RUNNING} send file report.pdf",
-                     f'{RUNNING} grep "owner" in rules.md']
+    assert lines == [f"{RUNNING} Checking the notes first", f"{OK} read pinned.md", f"{FAILED} run git status --short",
+                     f"{RUNNING} fetch docs.example.org", f"{RUNNING} send file report.pdf",
+                     f'{RUNNING} search "owner" in rules.md']
 
 
 def test_rows_stay_short_and_the_newest_win():
@@ -58,7 +59,7 @@ def test_a_row_gets_its_target_from_the_streamed_input_alone():
     c.feed(se({"type": "content_block_delta", "index": 0, "delta": {"type": "input_json_delta",
                                                                     "partial_json": '{"pattern": "**/*.md"}'}}))
     c.feed(se({"type": "content_block_stop", "index": 0}))
-    assert c.render().splitlines()[1] == f"{RUNNING} glob **/*.md"
+    assert c.render().splitlines()[1] == f"{RUNNING} list **/*.md"
 
 
 def test_the_thinking_line_shows_only_where_the_room_turns_it_on():
@@ -68,24 +69,26 @@ def test_the_thinking_line_shows_only_where_the_room_turns_it_on():
     for ev in events:
         on.feed(ev)
         off.feed(ev)
-    assert on.render().splitlines()[1] == "-# thinking: " + "y" * 200 + "..."
-    assert off.render() == START                                       # the default: no thinking line
+    first = on.render().splitlines()[1]                                # held to phone width, like every card line
+    assert first.startswith("-# thinking: yyy") and first.endswith("...") and words.width(first) <= words.PHONE
+    assert off.render() == f"{RUNNING} {START}"                        # the default: no thinking line
     short = Card(thinking=True)                                        # a summary arrives in a burst: no fragment
     short.feed(events[0])
     short.feed(se({"type": "content_block_delta", "index": 0, "delta": {"type": "thinking_delta", "thinking": "Doub"}}))
-    assert short.render() == START
+    assert short.render() == f"{RUNNING} {START}"
     short.feed(se({"type": "content_block_delta", "index": 0, "delta": {"type": "thinking_delta", "thinking": "le-check"}}))
     short.feed(se({"type": "content_block_stop", "index": 0}))
-    assert short.render().splitlines()[1] == "-# thinking: Double-check..."
+    assert short.render().splitlines()[1] == "-# thinking: Double-check"
 
 
 def test_a_card_with_nothing_to_show_says_what_was_owed():
     c = Card()
     for ev in tool(0, "a", "Read", {"file_path": "/x/a.md"}):
         c.feed(ev)
-    first = c.owed("the turn ended error (auth)", "what units does the owner prefer, check the file please")
-    assert first.splitlines()[0].startswith(f'{FAILED} No reply to "what units does the owner prefer, check the file ')
-    assert first.splitlines()[1] == f"{RUNNING} read a.md"
+    first = c.owed(words.why("auth", "error"), "what units does the owner prefer, check the file please")
+    assert first.splitlines()[:3] == [f"{FAILED} not answered", "the account's login was refused",
+                                      '-# you asked: "what units does the..."']
+    assert first.splitlines()[3] == f"{RUNNING} read a.md"
 
 
 def test_an_image_never_read_bounces_once_at_stop(tmp_path):
