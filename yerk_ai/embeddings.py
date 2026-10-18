@@ -361,12 +361,10 @@ class Backfill:
         self.real: Path | None = None
 
     def note(self, chunks: list[str], units: list[str] | None = None) -> None:
-        """The writer's new chunk and unit hashes: the ones this store serves are embedded next, before any
-        scan; and a scan follows (a refill of the units table hands over nothing and asks for one)."""
+        """The writer's new chunk and unit hashes: the ones this store serves are embedded next, before any scan."""
         want = (units or [] if self.units != "chunks" else []) + (chunks if self.units != "lines" else [])
         with self.lock:
             self.pending.extend(want)
-        self.dirty.set()
 
     def _conn(self) -> sqlite3.Connection:
         """This thread's own writer connection; after a rebuild swapped the link it moves to the new

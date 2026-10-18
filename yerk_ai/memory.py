@@ -43,7 +43,6 @@ class Settings:
     embeddings_dim: int = 256
     embeddings_units: str = "both"                  # what gets a vector in memory: both (lines and chunks, measured best), lines, or chunks
     embeddings_width: int = 256                     # dimensions kept in memory (the first `width` of `dim`, renormalised)
-    embeddings_context: bool = False                # a line embedded behind its heading path ("<title> > <heading>: <line>"); measured, off
     index_status: Path = Path("index.json")         # what yerk-index serves: its port and the embeddings' state
 
     @property
@@ -82,7 +81,6 @@ def settings(private: Path, state: Path, conf: dict[str, Any] | None = None) -> 
                     embeddings_dim=int(conf.get("embeddings_dim", 256)),
                     embeddings_units=str(conf.get("embeddings_units", "both")),
                     embeddings_width=int(conf.get("embeddings_width") or conf.get("embeddings_dim") or 256),
-                    embeddings_context=bool(conf.get("embeddings_context", False)),
                     index_status=state / "memory" / "index.json")
 
 
@@ -107,12 +105,6 @@ EMBEDDING_SETTINGS: dict[str, tuple[tuple[str, ...], str, str]] = {
     "embeddings_units": (("both", "lines", "chunks"),
                          "what gets a vector: every line and bullet and every chunk (both, measured best), the lines alone "
                          "(a smaller store), or the chunks alone (the fewest vectors, a paraphrase then rarely found)", "both"),
-    "embeddings_context": (("true", "false"),
-                           "true embeds a line behind its heading path, '<file title> > <section heading>: <line>', so a "
-                           "line that says only what it says carries what it is about; false embeds the bare line; a "
-                           "change re-embeds the lines once; measured, true raised the top one (59 to 66) and missed a "
-                           "control, and with both units it holds about 30% more vectors, past 300 MB, so it is off",
-                           "false"),
 }
 EMBEDDING_RELOADS = "takes effect when yerk-index restarts; the backfill then embeds what is missing, in the background"
 
@@ -124,7 +116,7 @@ def described(conf: dict[str, Any] | None) -> list[dict[str, Any]]:
     out = []
     for key, (choices, what, default) in EMBEDDING_SETTINGS.items():
         value = conf.get(key, default)
-        out.append({"key": f"memory.{key}", "value": str(value).lower() if isinstance(value, bool) else str(value),
+        out.append({"key": f"memory.{key}", "value": str(value),
                     "default": default, "source": "yerkd.toml" if key in conf else "default", "choices": list(choices),
                     "what": what, "reloads": EMBEDDING_RELOADS})
     return out
