@@ -545,7 +545,8 @@ class DiscordChannel:
                 log.warning("card in %s failed: %s", room, e)
         cid = self.names[room]
         for mid in inbound:
-            await self._react(cid, mid, mark, remove=ACK)
+            if mid.isdigit():                     # a Discord message; the harness's own (a relay) has no reaction
+                await self._react(cid, mid, mark, remove=ACK)
         return ids
 
     async def _debug_pause(self, point: str) -> None:

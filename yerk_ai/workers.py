@@ -491,10 +491,19 @@ class Workers:
     async def reattach(self) -> None:
         """Every worker the ledger has running: its watch and its card back when its unit still runs,
         completion when it ended while the daemon was away, settled as lost when it vanished."""
-        for r in self.ledger.inbound_open():           # a relay turn a restart cut: the card has the result
-            if r["channel"] == "worker":
-                self.ledger.inbound_set(r["message_id"], state="abandoned", note="cut by a daemon restart")
-                self.ledger.worker_set(str(r["message_id"]).removeprefix("relay-"), relay="failed",
+        for r in self.ledger.inbound_open():           # a relay turn the old process left open
+            if r["channel"] != "worker":
+                continue
+            mid, wid = str(r["message_id"]), str(r["message_id"]).removeprefix("relay-")
+            posted = self.ledger.delivered_for(mid)
+            if posted:                                   # its reply was in the room before the cut
+                self.ledger.inbound_set(mid, state="answered", reply_ids=",".join(posted),
+                                        note="its reply was found delivered after a restart")
+                self.ledger.worker_set(wid, relay="relayed", relay_note=f"inbound {mid}, found delivered after a "
+                                                                        f"restart, message(s) {','.join(posted)}")
+            else:
+                self.ledger.inbound_set(mid, state="abandoned", note="cut by a daemon restart")
+                self.ledger.worker_set(wid, relay="failed",
                                        relay_note="the relay turn was cut by a daemon restart; the card has the result")
         try:
             units: set[str] | None = await asyncio.to_thread(self.launcher.running)

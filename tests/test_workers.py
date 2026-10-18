@@ -252,6 +252,24 @@ def test_a_restart_reattaches_from_the_ledger_and_completion_still_relays(setup)
     assert (row["exit"], row["result"], row["relay"]) == ("done", "Survived the restart", "relayed")
     assert lost["exit"] == "lost" and lost["exit_detail"] == "the unit is gone and left no exit record"
     assert lost["relay"] == "skipped" and lost["relay_note"] == "no such room in this daemon"
+
+
+def test_a_relay_left_open_by_a_crash_is_ledgered_as_what_happened(setup):
+    s = setup
+    for wid, posted in (("aaa111", True), ("bbb222", False)):
+        s.ledger.worker_add(id=wid, room="r", unit=f"yerk-worker-{wid}", staging=str(s.tmp / wid), report="", cap=60.0,
+                            started=1.0, finished=2.0, exit="done", relay="sent")
+        s.ledger.inbound_add(f"relay-{wid}", "r", "worker", "yerk", 10)
+        s.ledger.inbound_set(f"relay-{wid}", state="running")
+        if posted:                                  # the turn ended and its reply went out, then the process died
+            s.ledger.record(room="r", outcome="ok", inbound=f"relay-{wid}", turn_key="k1")
+            s.ledger.delivery_plan("k1:0", "r", "reply", "the outcome")
+            s.ledger.delivery_set("k1:0", state="sent", message_id="77")
+    asyncio.run(s.make({"r": Busy()}).reattach())
+    a, b = s.ledger.worker_get("aaa111"), s.ledger.worker_get("bbb222")
+    assert a["relay"] == "relayed" and "found delivered after a restart, message(s) 77" in a["relay_note"]
+    assert s.ledger.inbound_get("relay-aaa111")["state"] == "answered"
+    assert b["relay"] == "failed" and s.ledger.inbound_get("relay-bbb222")["state"] == "abandoned"
     assert workers.status_lines(s.ledger, s.units.running()) == []
 
 
@@ -367,6 +385,8 @@ def test_ticks_become_card_rows_at_most_once_a_second_and_a_restart_keeps_the_wo
     asyncio.run(dc.recover(11, dc.rooms[11]))
     assert deleted == [502] and [c["message_id"] for c in s.ledger.cards_open("r")] == ["501"]
     assert s.ledger.inbound_get("relay-abc123")["state"] == "received"
+    # a relay's reply in the room: the answered message has no Discord id, so no reaction is tried
+    assert len(asyncio.run(dc._finish("r", "the outcome, in the room's words", ["relay-abc123"], dmod.DONE))) == 1
 
 
 def test_fit_holds_a_reply_to_its_cap_and_carries_the_report_path():

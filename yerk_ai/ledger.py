@@ -228,6 +228,14 @@ class Ledger:
         want = set(message_ids)
         return [r for r in rows if want & set(str(r["inbound"] or "").split(","))]
 
+    def delivered_for(self, message_id: str) -> list[str]:
+        """The message ids a turn answering `message_id` posted, from the delivery ledger ([] if none)."""
+        turns = self._select("SELECT turn_key FROM turns WHERE ',' || inbound || ',' LIKE ? AND outcome = 'ok'",
+                             (f"%,{message_id},%",))
+        keys = {str(t["turn_key"]) for t in turns if t["turn_key"]}
+        rows = self._select("SELECT key, message_id FROM deliveries WHERE state = 'sent' ORDER BY created, key", ())
+        return [str(r["message_id"]) for r in rows if r["key"].rsplit(":", 1)[0] in keys]
+
     def turn_for_key(self, turn_key: str) -> int | None:
         r = self._select("SELECT id FROM turns WHERE turn_key = ? ORDER BY id DESC LIMIT 1", (turn_key,))
         return int(r[0]["id"]) if r else None
