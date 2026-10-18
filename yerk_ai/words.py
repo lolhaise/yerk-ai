@@ -147,6 +147,7 @@ def job_line(name: str, state: str, cap_seconds: float = 0.0, result: str = "") 
 # one heavy worker per account
 WAITING_ACCOUNT = "waiting for an account"
 IN_LINE = "{nth} in line for account {name}"
+IN_LINE_SHORT = "waiting, {nth} in line"            # `yerk status`, phone width
 
 
 def nth(n: int) -> str:

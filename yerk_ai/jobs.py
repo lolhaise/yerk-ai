@@ -1457,12 +1457,12 @@ class Jobs:
         if timed_out:                      # the exit code and the stderr tail: the run's note and status --full
             result, delivery = "timed out", "alert"
             self.ledger.job_run_set(run_id, note=f"timed out after {job.cap:g} min" if job else "timed out")
-            await self.alert(job, words.job_line(name, "timed out", job.cap * 60 if job else 0.0), run_id, room)
+            ids = await self.alert(job, words.job_line(name, "timed out", job.cap * 60 if job else 0.0), run_id, room)
         elif code != 0:
             result, delivery = f"exit {code}", "alert"
             self.ledger.job_run_set(run_id, note=f"exit {code}" + (f": {tail}" if tail else ""))
-            await self.alert(job, words.job_line(name, "failed", result="signal" if isinstance(code, int) and
-                                                 (code < 0 or code > 128) else "exit-code"), run_id, room)
+            ids = await self.alert(job, words.job_line(name, "failed", result="signal" if isinstance(code, int) and
+                                                       (code < 0 or code > 128) else "exit-code"), run_id, room)
         elif output.strip():
             result = "output"
             if deliver == "silent":

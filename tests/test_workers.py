@@ -3,6 +3,7 @@ TASKS.md at most once a second, completion and the relay of its report or the sk
 against the ledger, and the environment a worker gets."""
 import asyncio
 import json
+import re
 import os
 import signal
 import subprocess
@@ -16,7 +17,7 @@ from types import SimpleNamespace as NS
 import pytest
 
 import yerk_ai.channels.discord as dmod
-from yerk_ai import workers
+from yerk_ai import mcp_server, workers
 from yerk_ai import words as W
 from yerk_ai.accounts import Account, Cooldowns, store_token
 from yerk_ai.config import table
@@ -444,3 +445,97 @@ def test_a_human_message_during_the_relay_turn_is_answered_inside_it(setup):
     assert inbound == ["relay-ccc333", "h2"] and text == "echo: SLOW [worker ccc333 finished] done + and?"
     assert seen == [("answered", ["m1"])] and s.ledger.inbound_get("h2")["state"] == "answered"
     assert room.last_human is not None and s.ledger.last_received("r") == s.ledger.inbound_get("h2")["received"]
+
+
+def test_one_heavy_worker_per_account_the_next_waits_in_line_then_starts(setup):
+    s = setup
+    room = s.room()
+
+    async def go():
+        w = s.make({"r": room}, per_account=1)
+        w.begin(asyncio.get_running_loop())
+        first = await w.start("r", 'FAKE sleep=0.6 report="First"', account="one")
+        second = await w.start("r", 'FAKE report="Second"', account="one")
+        other = await w.start("r", 'FAKE report="Other account"', account="two")      # its own account: no wait
+        assert "waiting" not in first and second["waiting"] == W.WAITING_ACCOUNT and second["line"] == 1
+        assert "waiting" not in other and len(s.units.calls) == 2                       # the second has no unit yet
+        key, text, _ = [c for c in s.chan.cards if c[0] == f"worker:{second['id']}"][0]
+        assert text.splitlines()[:2] == [f"{W.WORKING} worker waiting for an account",
+                                         f"{W.WAITING} 1st in line for account one"]
+        lines = workers.status_lines(s.ledger, s.units.running())
+        assert f"{W.WORKING} worker {second['id']}: waiting, 1st in line" in lines
+        assert all(W.width(x) <= W.PHONE for x in lines) and lines[-1].endswith("1st in line")
+        full = workers.status_lines(s.ledger, s.units.running(), full=True)
+        assert any(x.startswith(f"worker {second['id']}: room r, waiting for account one, 1st in line") for x in full)
+        a = await ended(s.ledger, first["id"], relay=False)
+        b = await ended(s.ledger, second["id"], relay=False)
+        return a, b
+    a, b = asyncio.run(go())
+    assert b["started"] >= a["finished"] - 0.05 and b["queued"] and b["waiting"] == 0 and b["exit"] == "done"
+    assert [c["unit"] for c in s.units.calls][-1] == f"yerk-worker-{b['id']}"
+
+
+def test_a_worker_gets_only_the_read_only_yerk_tools_from_config_never_send_worker_or_schedule(setup, caplog):
+    s = setup
+    conf = workers.yerk_tools({"yerk_tools": ["recall", "read_memory", "send", "mcp__yerk__worker", "schedule"]})
+    assert conf == ["recall", "read_memory"] and "send" in caplog.text and "schedule" in caplog.text
+    assert workers.Settings(root=s.tmp).yerk_tools == []                                   # default: none
+
+    async def go():
+        w = s.make({"r": Busy()}, yerk_tools=conf)
+        w.begin(asyncio.get_running_loop())
+        out = await w.start("r", 'FAKE report="tools checked"', account="one")
+        return out, await ended(s.ledger, out["id"])
+    out, row = asyncio.run(go())
+    argv = json.loads((Path(out["staging"]) / "fake-record.json").read_text())["argv"]
+    launched = " ".join(argv)
+    assert argv[argv.index("--allowedTools") + 1] == "mcp__yerk__recall,mcp__yerk__read_memory"
+    assert set(re.findall(r"mcp__yerk__\w+", launched)) == {"mcp__yerk__recall", "mcp__yerk__read_memory"}
+    cfg = json.loads(Path(argv[argv.index("--mcp-config") + 1]).read_text())["mcpServers"]["yerk"]
+    assert cfg["type"] == "stdio" and cfg["args"][-1] == "recall,read_memory" and "--strict-mcp-config" in argv
+    for name in ("send", "hold", "worker", "schedule"):
+        assert f"mcp__yerk__{name}" not in launched and name not in cfg["args"][-1].split(",")
+    srv = mcp_server.worker_server(s.tmp, "r", ["recall", "read_memory", "send", "worker", "schedule", "hold"])
+    assert sorted(t.name for t in asyncio.run(srv.list_tools())) == ["read_memory", "recall"]
+
+
+def test_two_completions_within_a_minute_are_two_relays_in_order_never_merged(setup):
+    s = setup
+    room = s.room()
+
+    async def go():
+        w = s.make({"r": room})
+        w.begin(asyncio.get_running_loop())
+        a = await w.start("r", 'FAKE report="First of two"', account="one")
+        b = await w.start("r", 'FAKE sleep=0.2 report="Second of two"', account="two")
+        return await ended(s.ledger, a["id"]), await ended(s.ledger, b["id"])
+    a, b = asyncio.run(go())
+    assert a["relay"] == b["relay"] == "relayed" and abs(b["finished"] - a["finished"]) < 60
+    relays = [inb for _, inb in s.chan.replies]
+    assert relays == [[f"relay-{a['id']}"], [f"relay-{b['id']}"]]                   # two replies, in order
+    assert s.ledger.inbound_get(f"relay-{b['id']}")["folded"] == 0                   # never folded into the first
+
+
+def test_a_relay_into_a_closed_room_opens_a_fresh_session_with_the_recap(setup):
+    s = setup
+    room = s.room()
+    s.ledger.inbound_add("h1", "r", "c", "owner", 2)
+    room.submit(Inbound("h1", "owner", "hi"))
+    while room.busy:
+        time.sleep(0.05)
+    old = room.rp.session_id
+    assert room.reap_idle(force=True)                      # the room's process is closed; its session is kept
+
+    async def go():
+        w = s.make({"r": room})
+        w.begin(asyncio.get_running_loop())
+        room.last_human = time.time() - 61
+        out = await w.start("r", 'FAKE report="Into a closed room"')
+        return await ended(s.ledger, out["id"])
+    row = asyncio.run(go())
+    assert row["relay"] == "relayed"
+    turn = s.ledger._select("SELECT * FROM turns WHERE inbound = ?", (f"relay-{row['id']}",))[0]
+    assert turn["recap"] == 1 and turn["session_id"] != old
+    reply, inbound = s.chan.replies[-1]
+    assert inbound == [f"relay-{row['id']}"] and "this room's process was closed" in reply      # the echo shows it
+    assert row["report"] not in reply and f"`yerk worker report {row['id']}`" in reply

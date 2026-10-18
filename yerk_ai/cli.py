@@ -299,6 +299,9 @@ def cmd_status(a: argparse.Namespace) -> int:
     from . import jobs
     for line in jobs.status_lines(priv / jobs.FILE, jobs.Systemd()) or [f"{jobs.NOTHING} jobs: none scheduled"]:
         print(line)                           # every job's next fire, from systemd, never from memory
+    if full:                                  # the detail a room line leaves out: exit codes, systemd's words
+        for r in [r for r in Ledger(state / "ledger.sqlite").job_runs(limit=50) if r["delivery"] == "alert"][:5]:
+            print(f"job {r['job']} run {r['id']}: {r['exit'] or 'no exit'}, {r['result']}; {r['note'] or 'no note'}")
     return 0
 
 

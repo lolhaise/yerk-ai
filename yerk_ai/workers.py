@@ -802,8 +802,8 @@ def status_lines(ledger: Ledger, units: set[str] | None, now: float | None = Non
         line[r["account"]] = line.get(r["account"], 0) + 1
         waiting.append(f"worker {r['id']}: room {r['room']}, waiting for account {r['account']}, "
                    f"{words.nth(line[r['account']])} in line, {took(now - float(r['queued'] or now))} so far" if full else
-                   words.line(f"{words.WORKING} {words.WORKER.format(id=r['id'])}: {words.WAITING_ACCOUNT}, "
-                              f"{words.nth(line[r['account']])}"))
+                   words.line(f"{words.WORKING} {words.WORKER.format(id=r['id'])}: "
+                              + words.IN_LINE_SHORT.format(nth=words.nth(line[r['account']]))))
     rows = [r for r in rows if not r.get("waiting")]
     for r in rows:
         gone = units is not None and r["unit"] not in units

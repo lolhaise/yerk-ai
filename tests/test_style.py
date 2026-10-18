@@ -322,3 +322,25 @@ def test_times_are_said_the_way_a_person_says_them():
 def test_the_console_channel_shows_the_rooms_own_words(capsys):
     asyncio.run(ConsoleChannel().notify("r", NO_KEY_LINE))
     assert NO_KEY_LINE.splitlines()[0] in json.loads(capsys.readouterr().out)["notice"]
+
+
+def test_job_lines_the_waiting_card_and_the_watcher_turn_are_plain_and_state_first():
+    """Run 2's two alert lines (a job's failure and a job worker's death) go through words.outcome and
+    words.died like every other room line: no exit code, no systemd word, state first, phone width."""
+    lines = [words.job_line("bad", "failed"), words.job_line("slow", "timed out", 600),
+             words.job_line("crash", "died", 0, "exit-code"), words.job_line("gone", "lost"),
+             words.job_line("never", "did not start"), words.job_line("held", "stopped", 60),
+             words.job_line("sig", "failed", result="signal")]
+    assert lines[:2] == [f"{words.NOT_DONE} job bad failed: it ended with an error",
+                         f"{words.NOT_DONE} job slow stopped: timed out at 10 min"]
+    assert lines[6].endswith("job sig failed: it was killed")
+    card = workers.card_text({"id": "abc123", "account": "one", "started": 0.0, "cap": 300.0, "waiting": 1, "line": 2},
+                             [(False, "write it up")])
+    status = workers.status_lines.__doc__ or ""
+    for x in [*lines, *card.splitlines()]:                # a notice may wrap on a long job name; a card row never
+        assert not room_safe(x) and "exit" not in x and words.width(x) <= (words.PHONE if x in card else 60), x
+    assert all(state_first(x) for x in lines) and state_first(card)
+    assert card.splitlines()[:2] == [f"{words.WORKING} worker waiting for an account",
+                                     f"{words.WAITING} 2nd in line for account one"]
+    ask = words.WATCH_ASK.format(name="w", n=1, s="", what="", cap=1500)
+    assert not room_safe(ask) and status
