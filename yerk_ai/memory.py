@@ -43,6 +43,7 @@ class Settings:
     embeddings_dim: int = 256
     embeddings_units: str = "both"                  # what gets a vector in memory: both (lines and chunks, measured best), lines, or chunks
     embeddings_width: int = 256                     # dimensions kept in memory (the first `width` of `dim`, renormalised)
+    embeddings_context: bool = True                 # a line is embedded behind its heading path ("<title> > <heading>: <line>"), measured best
     index_status: Path = Path("index.json")         # what yerk-index serves: its port and the embeddings' state
 
     @property
@@ -81,7 +82,47 @@ def settings(private: Path, state: Path, conf: dict[str, Any] | None = None) -> 
                     embeddings_dim=int(conf.get("embeddings_dim", 256)),
                     embeddings_units=str(conf.get("embeddings_units", "both")),
                     embeddings_width=int(conf.get("embeddings_width") or conf.get("embeddings_dim") or 256),
+                    embeddings_context=bool(conf.get("embeddings_context", True)),
                     index_status=state / "memory" / "index.json")
+
+
+# the embedding settings a user with another model or budget can pick, described from the code (run 5):
+# key: (choices, what, the default)
+EMBEDDING_SETTINGS: dict[str, tuple[tuple[str, ...], str, str]] = {
+    "embeddings_model": (("text-embedding-3-small", "text-embedding-3-large"),
+                         "the provider model every line, chunk and query is embedded with; a change re-embeds the tree once "
+                         "(each model's vectors are kept apart in the index, so switching back pays nothing) at the "
+                         "provider's price per token; measured on the 164-question set, large reaches paraphrases small "
+                         "does not (the numbers are in the README's run 5 paragraph)", "text-embedding-3-small"),
+    "embeddings_dim": (("256", "512", "1024", "1536", "3072"),
+                       "dimensions asked of the provider and stored in the index (2 bytes each a vector); a change "
+                       "re-embeds the tree once; more dimensions buy a finer vector, not a cheaper one", "256"),
+    "embeddings_width": (("256", "384", "512", "the dim"),
+                         "dimensions kept in memory: the first width of dim, renormalised (the provider's own shortening "
+                         "rule), so a narrower store needs no re-embedding; the index process holds about vectors times "
+                         "(2 times width plus 20) bytes", "the dim"),
+    "embeddings_units": (("both", "lines", "chunks"),
+                         "what gets a vector: every line and bullet and every chunk (both, measured best), the lines alone "
+                         "(a smaller store), or the chunks alone (the fewest vectors, a paraphrase then rarely found)", "both"),
+    "embeddings_context": (("true", "false"),
+                           "a line is embedded behind its heading path, '<file title> > <section heading>: <line>', so a "
+                           "line that says only what it says carries what it is about; off, the bare line; a change "
+                           "re-embeds the lines once", "true"),
+}
+EMBEDDING_RELOADS = "takes effect when yerk-index restarts; the backfill then embeds what is missing, in the background"
+
+
+def described(conf: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """The [memory] embedding settings with their value here, where it came from, choices and plain words
+    (the shape `yerk config` prints for every described setting)."""
+    conf = conf or {}
+    out = []
+    for key, (choices, what, default) in EMBEDDING_SETTINGS.items():
+        value = conf.get(key, default)
+        out.append({"key": f"memory.{key}", "value": str(value).lower() if isinstance(value, bool) else str(value),
+                    "default": default, "source": "yerkd.toml" if key in conf else "default", "choices": list(choices),
+                    "what": what, "reloads": EMBEDDING_RELOADS})
+    return out
 
 
 def one_line(text: str) -> str:

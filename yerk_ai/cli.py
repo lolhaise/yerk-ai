@@ -361,11 +361,17 @@ def cmd_abilities(a: argparse.Namespace) -> int:
 
 
 def _settings(a: argparse.Namespace) -> list[dict[str, Any]]:
-    from . import words
+    from . import memory, words
     from .config import load_toml
     priv = private_dir(a.private)
     conf = load_toml(priv / "yerkd.toml") if (priv / "yerkd.toml").is_file() else {}
-    return words.described(conf.get("presentation"))
+    return words.described(conf.get("presentation")) + memory.described(conf.get("memory"))
+
+
+def _pick(rows: list[dict[str, Any]], key: str) -> list[dict[str, Any]]:
+    """The described settings a key names: whole, or by its last part (`yerk config get embeddings_model`)."""
+    want = key.strip(".")
+    return [r for r in rows if not want or r["key"] in (want, f"presentation.{want}", f"memory.{want}")]
 
 
 def _setting_lines(r: dict[str, Any]) -> list[str]:
@@ -383,7 +389,7 @@ def cmd_explain(a: argparse.Namespace) -> int:
     table_ = abilities.manifest()
     ab = table_.get(a.ability)
     if ab is None:
-        hit = [r for r in _settings(a) if r["key"] in (a.ability, f"presentation.{a.ability}")]
+        hit = _pick(_settings(a), a.ability)
         if hit:
             print("\n".join(_setting_lines(hit[0])))
             return 0
@@ -405,8 +411,7 @@ def cmd_config(a: argparse.Namespace) -> int:
     """`yerk config get [KEY]`: the settings Yerk AI describes in code (decisions 16 and 27), each with
     its value here, where it came from, its choices and its plain words. Only these are printed."""
     rows = _settings(a)
-    want = a.key.removeprefix("presentation").lstrip(".")
-    pick = [r for r in rows if not want or r["key"] == f"presentation.{want}"]
+    pick = _pick(rows, a.key)
     if not pick:
         print(f"no setting {a.key!r}; settings: {', '.join(r['key'] for r in rows)}", file=sys.stderr)
         return 2

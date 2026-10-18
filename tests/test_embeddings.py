@@ -104,9 +104,10 @@ def test_a_line_or_bullet_gets_its_own_vector_and_a_touch_embeds_none(tmp_path):
     units = {r[0] for r in idx.conn.execute("SELECT DISTINCT sha FROM units")}
     chunks = {r[0] for r in idx.conn.execute("SELECT DISTINCT sha FROM chunks")}
     embedded = [t for call in stub.calls for t in call]
-    # the day log is one chunk of two lines: each line has a vector of its own, the chunk none
+    # the day log is one chunk of two lines: each line has a vector of its own, the chunk none; the text
+    # embedded is the line behind the file's title (run 5: the heading path), the line itself whole
     assert len(embedded) == len(units) == store.n == vectors_in(s) == len(chunks) + 1 > 3
-    assert all("\n" not in t for t in embedded) and any(t.startswith("- 09:01 ") for t in embedded)
+    assert all("\n" not in t for t in embedded) and any(t.startswith("2026-01-05: - 09:01 ") for t in embedded)
     day = s.root / "daily" / "2026-01-05.md"
     calls = len(stub.calls)
     os.utime(day, None)                                              # a touch: the chunker finds the same text
@@ -316,3 +317,110 @@ def test_the_manifest_records_the_fit_choice():
     ab = abilities.manifest()["embeddings"]
     assert "256 dimensions" in ab["model"] and "a vector per line" in ab["model"] and "embeddings_width" in ab["model"]
     assert "vectors" in ab["model"] and "every line" in ab["what"]
+
+
+# 11. the heading path is built from the file's structure and goes in front of the embedded line; the hit shown is the chunk
+def test_the_heading_path_comes_from_the_files_structure(tmp_path):
+    s = tree(tmp_path)
+    shed = s.root / "facts" / "shed.md"
+    shed.write_text("# Garden shed\n\nA line under the title, long enough to count.\n\n## Padlock\n\n"
+                    "- colour: teal, the sleeve under the pot\n- short\n")
+    chunks = memindex.chunks_of(shed.read_text(), "shed")
+    assert [(c[0], c[1], c[3]) for c in chunks] == [(1, 4, "Garden shed"), (5, 8, "Garden shed > Padlock")]
+    assert [t for _, t in memindex.units_of(chunks[0][2], chunks[0][3])] == ["Garden shed: A line under the title, long enough to count."]
+    assert [t for _, t in memindex.units_of(chunks[1][2], chunks[1][3])] == ["Garden shed > Padlock: - colour: teal, the sleeve under the pot"]
+    assert [t for _, t in memindex.units_of(chunks[1][2], chunks[1][3], context=False)] == ["- colour: teal, the sleeve under the pot"]
+    # a file without a level-one heading takes its name as the title; a heading long enough to be a unit sits under its parent
+    assert memindex.chunks_of("## Spare key\n- the spare key sits under the third flowerpot\n", "keys")[0][3] == "keys > Spare key"
+    assert [t for _, t in memindex.units_of("## A heading long enough to be a unit\n- a bullet long enough too",
+                                             "keys > A heading long enough to be a unit")] == [
+        "keys: ## A heading long enough to be a unit", "keys > A heading long enough to be a unit: - a bullet long enough too"]
+    # through the index: the units table holds the path, the stub embeds it, the search returns the chunk's own text
+    stub = StubEmbedder(s.embeddings_key)
+    idx, store, server, back, status = serve(s, stub)
+    while back.step():
+        pass
+    rows = {b for (b,) in idx.conn.execute("SELECT body FROM units WHERE chunk IN (SELECT sha FROM chunks WHERE path LIKE '%shed.md')")}
+    assert rows == {"Garden shed: A line under the title, long enough to count.",
+                    "Garden shed > Padlock: - colour: teal, the sleeve under the pot"}
+    assert all(t.startswith("Garden shed") for call in stub.calls for t in call if "sleeve" in t)
+    hit = next(h for h in server.search("what shade is it painted", 10)["hits"] if h["path"].endswith("shed.md"))
+    assert hit["text"].startswith("## Padlock") and "Garden shed > Padlock:" not in hit["text"]
+    server.stop()
+    idx.close()
+    # the rule turned off: the units table is filled again once, with bare lines, and the rule is recorded
+    idx2 = memindex.Index(s.index_db, s.scope, context=False)
+    assert idx2.refill and idx2.conn.execute("SELECT count(*) FROM units").fetchone()[0] == 0
+    idx2.sync()
+    assert not idx2.refill and idx2.conn.execute("SELECT value FROM meta WHERE key = 'units'").fetchone()[0] == "2:bare"
+    assert "- colour: teal, the sleeve under the pot" in {b for (b,) in idx2.conn.execute("SELECT body FROM units")}
+    assert memindex.Index(s.index_db, s.scope, context=False).refill is False      # the same rule again: nothing to refill
+    idx2.close()
+
+
+# 12. a model change re-embeds every served vector once and nothing twice; a narrower width keeps the bench shape
+def test_a_model_change_re_embeds_once_and_a_narrower_width_keeps_the_shape(tmp_path):
+    s = tree(tmp_path)
+    stub = StubEmbedder(s.embeddings_key)
+    idx, store, server, back, status = serve(s, stub, units="both")
+    while back.step():
+        pass
+    first = store.n
+    assert first == vectors_in(s) > 0
+    # a second model on the same index: its backfill embeds every unit and chunk once; the first model's vectors stay
+    stub2 = StubEmbedder(s.embeddings_key)
+    stub2.model = "stub-large"
+    store2 = embeddings.Vectors(stub2.dim, width=3)
+    back2 = embeddings.Backfill(s.index_db, memindex.live, store2, stub2, gap=0.0, units="both")
+    while back2.step():
+        pass
+    assert sum(len(c) for c in stub2.calls) == store2.n == first
+    assert back2.step() == 0 and sum(len(c) for c in stub2.calls) == first            # nothing twice
+    assert vectors_in(s) == 2 * first and store.n == first
+    conn = sqlite3.connect(f"file:{memindex.live(s.index_db)}?mode=ro", uri=True)
+    assert dict(conn.execute("SELECT model, count(*) FROM vectors GROUP BY model").fetchall()) == {"stub": first, "stub-large": first}
+    conn.close()
+    # the narrower width: the same stored vectors, the first 3 of 6 dimensions renormalised; search and bench keep their shape
+    assert store2.width == 3 and store2.load(idx.conn, "stub-large", "both") == first and store2.blocks[0].shape[1] == 3
+    server2 = embeddings.Server(store2, stub2, s.index_db, memindex.live)
+    embeddings.write_status(s.index_status, port=server2.start(), chunks=0,
+                            embeddings={"key": True, "model": "stub-large", "dim": 6, "vectors": store2.n})
+    r = memory.recall(s, "what colour is the example kettle")
+    assert r["ok"] and sorted(r["hits"][0]) == ["cite", "line", "lines", "path", "score", "text"]
+    qfile = tmp_path / "q.json"
+    qfile.write_text(json.dumps({"questions": [
+        {"id": "q1", "kind": "fact", "q": "what colour is the example kettle", "answer_tokens": ["teal"]},
+        {"id": "c1", "kind": "fact", "control": True, "q": "example kettle", "answer_tokens": ["kettle"]}]}))
+    b = memory.bench(s, qfile)
+    assert sorted(b) == ["blind", "controls", "file", "k", "ok", "questions", "rows", "top_1", "top_1_rate", "top_k", "top_k_rate"]
+    assert b["blind"] == [] and b["top_k"] == 1
+    server2.stop()
+    server.stop()
+    idx.close()
+
+
+# 13. the stall line stays silent while a backfill runs: the embedding thread never holds the loop that serves rooms
+def test_the_stall_line_stays_silent_during_a_backfill(tmp_path, caplog):
+    from yerk_ai.daemon import Yerkd
+    s = tree(tmp_path)
+    for n in range(60):
+        (s.root / "facts" / f"f{n}.md").write_text(f"# F{n}\n\n- example teapot number {n} is painted teal\n")
+    stub = StubEmbedder(s.embeddings_key, delay=0.02)
+    idx, store, server, back, status = serve(s, stub)
+    back.batch = 4
+
+    async def go():
+        watch = asyncio.create_task(Yerkd.watch_loop(None, every=0.05))  # type: ignore[arg-type]
+        back.start()
+        end = time.monotonic() + 5.0
+        while store.n < 60 and time.monotonic() < end:
+            await asyncio.sleep(0.05)
+        back.stop.set()
+        watch.cancel()
+    with caplog.at_level(logging.WARNING, logger="yerk.daemon"):
+        asyncio.run(go())
+    back.thread.join(5.0)
+    assert store.n >= 60 and len(stub.calls) >= 15
+    assert not any("stall" in r.getMessage() for r in caplog.records)
+    server.stop()
+    idx.close()

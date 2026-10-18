@@ -46,7 +46,7 @@ SCHEMA = f"""
 CREATE TABLE IF NOT EXISTS files (path TEXT PRIMARY KEY, size INTEGER, mtime_ns INTEGER,
                                   chunks INTEGER, indexed REAL);
 CREATE TABLE IF NOT EXISTS chunks (id INTEGER PRIMARY KEY, path TEXT NOT NULL, lo INTEGER, hi INTEGER,
-                                   sha TEXT, body TEXT);
+                                   sha TEXT, body TEXT, head TEXT NOT NULL DEFAULT '');
 CREATE INDEX IF NOT EXISTS chunks_path ON chunks(path);
 CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(body, content='chunks', content_rowid='id',
                                                         tokenize='{TOKENIZER}');
@@ -65,21 +65,42 @@ CREATE INDEX IF NOT EXISTS units_sha ON units(sha);
 """
 
 UNIT_MIN = 20                          # characters a line needs, past its bullet, to get a vector of its own
-UNITS_VERSION = "1"                    # the unit rule: a change here fills the units table again
-UNITS_FILL = 2000                      # chunks per transaction when the table is filled on first start
+UNITS_VERSION = "2"                    # the unit rule ("2": the heading path in front of a line): a change here fills the units table again
+HEAD_MAX = 160                         # characters of heading path kept in front of a line
+HEADING = re.compile(r"^(#{1,6})\s+(.*\S)")
 
 
-def units_of(body: str) -> list[tuple[str, str]]:
+def units_rule(context: bool) -> str:
+    """The unit rule the index was filled under: the version and whether lines carry their heading path."""
+    return f"{UNITS_VERSION}:{'context' if context else 'bare'}"
+
+
+def heading_of(line: str) -> tuple[int, str] | None:
+    """(level, text) for a Markdown heading line, else None."""
+    m = HEADING.match(line.strip())
+    return (len(m.group(1)), m.group(2).strip("# ").strip()[:80]) if m else None
+
+
+def units_of(body: str, head: str = "", context: bool = True) -> list[tuple[str, str]]:
     """(sha, text) per line of a chunk that gets a vector of its own (a day-log line, a bullet of a
     fact or topic file): every line whose text past its bullet or heading marks is UNIT_MIN
-    characters or more, once per distinct text. A chunk of one line yields that line, whose sha is
-    the chunk's own, so the two share one vector."""
+    characters or more, once per distinct text. With `context` the text embedded is the line behind
+    its heading path, "<file title> > <section heading>: <line>" (`head` is the chunk's path, the
+    heading that opens the chunk included; that heading's own line sits under its parent path), so
+    a line that says only "colour: teal" carries what it is about; the sha is the embedded text's,
+    and the hit shown stays the chunk. Without it the text is the bare line, whose sha for a chunk
+    of one line is the chunk's own, so the two share one vector."""
     out: dict[str, str] = {}
     for line in body.splitlines():
         text = line.strip()
         if len(text.lstrip("-*#> ").strip()) < UNIT_MIN:
             continue
-        out.setdefault(hashlib.sha1(text.encode()).hexdigest(), text)
+        own = head
+        h = heading_of(text)
+        if h and head.endswith(h[1]):
+            own = head[:-len(h[1])].rstrip(" >")
+        unit = f"{own}: {text}" if context and own else text
+        out.setdefault(hashlib.sha1(unit.encode()).hexdigest(), unit)
     return list(out.items())
 
 STOP = frozenset("""a about after again all also am an and any are as at be because been before being both
@@ -182,32 +203,42 @@ class Scope:
         return out
 
 
-def chunks_of(text: str) -> list[tuple[int, int, str]]:
-    """(first line, last line, text) per chunk. A heading starts a chunk, a blank line past half the
-    size ends one, lines gather up to CHUNK_MAX and a longer line is cut in pieces. A chunk depends
-    only on the lines up to the one after it, so appending to a file changes its last chunk only."""
-    out: list[tuple[int, int, str]] = []
+def chunks_of(text: str, title: str = "") -> list[tuple[int, int, str, str]]:
+    """(first line, last line, text, heading path) per chunk. A heading starts a chunk, a blank line
+    past half the size ends one, lines gather up to CHUNK_MAX and a longer line is cut in pieces. A
+    chunk depends only on the lines up to the one after it, so appending to a file changes its last
+    chunk only. The heading path is the file's title (its first level-one heading, else `title`,
+    the file's name) and the headings in force above the chunk's first line, joined by " > "."""
+    out: list[tuple[int, int, str, str]] = []
     buf: list[str] = []
+    stack: list[tuple[int, str]] = [(1, title)] if title else []
     start = size = n = 0
+    head = ""
+
+    def path() -> str:
+        return " > ".join(t for _, t in stack)[:HEAD_MAX]
 
     def flush(end: int) -> None:
         nonlocal buf, size
         body = "\n".join(buf).strip()
         if body:
-            out.append((start, end, body))
+            out.append((start, end, body, head))
         buf, size = [], 0
 
     for n, line in enumerate(text.splitlines(), 1):
         if buf and (line.startswith("#") or size + len(line) + 1 > CHUNK_MAX):
             flush(n - 1)
+        h = heading_of(line)
+        if h:                                   # a heading opens its chunk, so the chunk's path includes it
+            stack = [s for s in stack if s[0] < h[0]] + [h]
         if len(line) > CHUNK_MAX:
-            out.extend((n, n, line[i:i + CHUNK_MAX].strip()) for i in range(0, len(line), CHUNK_MAX)
+            out.extend((n, n, line[i:i + CHUNK_MAX].strip(), path()) for i in range(0, len(line), CHUNK_MAX)
                        if line[i:i + CHUNK_MAX].strip())
             continue
         if not buf:
             if not line.strip():
                 continue
-            start = n
+            start, head = n, path()
         buf.append(line)
         size += len(line) + 1
         if not line.strip() and size > CHUNK_MAX // 2:
@@ -246,16 +277,20 @@ def connect(db: Path, *, readonly: bool, deadline: float | None = None) -> sqlit
 class Index:
     """The writer. Only yerk-index holds one."""
 
-    def __init__(self, db: Path, scope: Scope, on_insert: Callable[[list[str], list[str]], None] | None = None):
+    def __init__(self, db: Path, scope: Scope, on_insert: Callable[[list[str], list[str]], None] | None = None,
+                 context: bool = True):
         self.db, self.scope = db, scope
         self.real = live(db)
         self.disk: dict[str, tuple[int, int]] = {}      # the last pass's view of the disk
         self.on_insert = on_insert                        # (chunk hashes, unit hashes) just written: the embedding thread
+        self.context = context                            # lines get vectors with their heading path in front
         self.conn = connect(db, readonly=False)
         cur = self.conn.cursor()
         repaired = drop_orphan_shadow_tables(cur, ["chunks_fts"])
         try:
             cur.executescript(SCHEMA)
+            if "head" not in {r[1] for r in cur.execute("PRAGMA table_info(chunks)")}:
+                cur.execute("ALTER TABLE chunks ADD COLUMN head TEXT NOT NULL DEFAULT ''")
         except sqlite3.OperationalError as e:
             if fts5_unavailable(e):
                 raise SystemExit("this Python's sqlite3 has no FTS5 module; yerk-index needs it") from e
@@ -265,34 +300,23 @@ class Index:
         old = self.meta("scope")
         if old and old != scope.key():
             log.warning("index scope changed (%s -> %s): files out of scope go, new ones come in", old, scope.key())
-        filled = self.fill_units()
-        if filled:
-            log.info("units filled for %d chunks (the per-line vectors' table)", filled)
+        self.refill = self.refill_units()
 
-    def fill_units(self) -> int:
-        """The units of every chunk already indexed, once (an index from before per-line vectors, or
-        a changed unit rule), in short transactions so a reader never waits. Chunks indexed from
-        now on write their units as they land."""
-        if self.meta("units") == UNITS_VERSION:
-            return 0
-        n = last = 0
-        while True:
-            rows = self.conn.execute("SELECT id, sha, body FROM chunks WHERE id > ? ORDER BY id LIMIT ?",
-                                     (last, UNITS_FILL)).fetchall()
-            if not rows:
-                break
-            self.conn.execute("BEGIN IMMEDIATE")
-            try:
-                self.conn.executemany("INSERT OR IGNORE INTO units(sha, chunk, body) VALUES (?, ?, ?)",
-                                      [(u, sha, t) for _, sha, body in rows for u, t in units_of(body)])
-                self.conn.execute("COMMIT")
-            except BaseException:
-                self.conn.execute("ROLLBACK")
-                raise
-            n += len(rows)
-            last = int(rows[-1][0])
-        self.set_meta(units=UNITS_VERSION)
-        return n
+    def refill_units(self) -> bool:
+        """True when the units table must be filled again (an index from before per-line vectors, or
+        a changed unit rule: the heading path turned on or off). The old units go now; the first
+        pass then chunks every file again and writes each chunk's units as they land, in one short
+        transaction per file, so a reader never waits. A vector already stored for a unit's text is
+        found again by its sha and never paid twice."""
+        rule = units_rule(self.context)
+        if self.meta("units") == rule:
+            return False
+        n = int(self.conn.execute("SELECT count(*) FROM units").fetchone()[0])
+        if n:
+            self.conn.execute("DELETE FROM units")
+            log.info("the unit rule changed (%s -> %s): %d units dropped; every file is chunked again on the first "
+                     "pass and its lines get vectors under the new rule", self.meta("units"), rule, n)
+        return True
 
     def meta(self, key: str) -> str | None:
         row = self.conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
@@ -308,27 +332,35 @@ class Index:
             text = Path(path).read_text(encoding="utf-8", errors="replace")
         except OSError:
             return 0, 0                                         # gone or unreadable: the next pass sees it
-        old: dict[str, list[tuple[int, int, int]]] = {}
-        for cid, lo, hi, sha in self.conn.execute("SELECT id, lo, hi, sha FROM chunks WHERE path = ?", (path,)):
-            old.setdefault(sha, []).append((cid, lo, hi))
-        new = chunks_of(text)
-        ins, moves = [], []
-        for lo, hi, body in new:
+        old: dict[str, list[tuple[int, int, int, str]]] = {}
+        for cid, lo, hi, sha, head in self.conn.execute("SELECT id, lo, hi, sha, head FROM chunks WHERE path = ?", (path,)):
+            old.setdefault(sha, []).append((cid, lo, hi, head))
+        new = chunks_of(text, Path(path).stem)
+        ins, moves, heads, kept = [], [], [], []
+        for lo, hi, body, head in new:
             sha = hashlib.sha1(body.encode()).hexdigest()
             if old.get(sha):
-                cid, olo, ohi = old[sha].pop(0)
+                cid, olo, ohi, ohead = old[sha].pop(0)
                 if (olo, ohi) != (lo, hi):
                     moves.append((lo, hi, cid))
+                if ohead != head or self.refill:
+                    # the heading above a kept chunk changed (or the table is being filled again): the chunk's
+                    # lines get units under the new path; the old path's units stay until the chunk text goes,
+                    # since a chunk text held by two files may be under two paths
+                    heads.append((head, cid))
+                    kept.append((sha, body, head))
             else:
-                ins.append((path, lo, hi, sha, body))
-        dels = [(cid,) for kept in old.values() for cid, _, _ in kept]
-        gone = [sha for sha, kept in old.items() if kept]
-        units = [(u, sha, t) for _, _, _, sha, body in ins for u, t in units_of(body)]
+                ins.append((path, lo, hi, sha, body, head))
+        dels = [(cid,) for kept_ in old.values() for cid, _, _, _ in kept_]
+        gone = [sha for sha, kept_ in old.items() if kept_]
+        units = [(u, sha, t) for _, _, _, sha, body, head in ins for u, t in units_of(body, head, self.context)]
+        units += [(u, sha, t) for sha, body, head in kept for u, t in units_of(body, head, self.context)]
         self.conn.execute("BEGIN IMMEDIATE")
         try:
             self.conn.executemany("DELETE FROM chunks WHERE id = ?", dels)
             self.conn.executemany("UPDATE chunks SET lo = ?, hi = ? WHERE id = ?", moves)
-            self.conn.executemany("INSERT INTO chunks(path, lo, hi, sha, body) VALUES (?, ?, ?, ?, ?)", ins)
+            self.conn.executemany("UPDATE chunks SET head = ? WHERE id = ?", heads)
+            self.conn.executemany("INSERT INTO chunks(path, lo, hi, sha, body, head) VALUES (?, ?, ?, ?, ?, ?)", ins)
             self.conn.executemany("INSERT OR IGNORE INTO units(sha, chunk, body) VALUES (?, ?, ?)", units)
             self._drop_units(gone)
             self.conn.execute("INSERT INTO files(path, size, mtime_ns, chunks, indexed) VALUES (?, ?, ?, ?, ?) "
@@ -339,8 +371,8 @@ class Index:
         except BaseException:
             self.conn.execute("ROLLBACK")
             raise
-        if ins and self.on_insert:
-            self.on_insert([sha for _, _, _, sha, _ in ins], [u for u, _, _ in units])
+        if (ins or units) and self.on_insert and not self.refill:   # a refill lets the embedding thread's own scan find them
+            self.on_insert([sha for _, _, _, sha, _, _ in ins], [u for u, _, _ in units])
         return len(ins), len(dels)
 
     def _drop_units(self, shas: list[str]) -> None:
@@ -372,7 +404,7 @@ class Index:
         indexed = {p: (s, m) for p, s, m in self.conn.execute("SELECT path, size, mtime_ns FROM files")}
         st = {"files": len(disk), "changed": 0, "gone": 0, "inserted": 0, "deleted": 0}
         for path, stat in disk.items():
-            if indexed.get(path) != stat:
+            if self.refill or indexed.get(path) != stat:
                 i, d = self.update(path, stat)
                 st["changed"] += 1
                 st["inserted"] += i
@@ -381,6 +413,11 @@ class Index:
             st["deleted"] += self.forget(path)
             st["gone"] += 1
         chunks = self.conn.execute("SELECT max(id), count(*) FROM chunks").fetchone()
+        if self.refill:
+            self.refill = False
+            self.set_meta(units=units_rule(self.context))
+            if self.on_insert:
+                self.on_insert([], [])                   # the embedding thread scans for the new units
         self.set_meta(scope=self.scope.key(), synced=round(time.time(), 3), chunks=chunks[1] or 0)
         st["chunks"] = int(chunks[1] or 0)
         return st
@@ -392,14 +429,14 @@ class Index:
 SWEEP_GRACE = 60.0       # seconds an old generation stays after a swap (a reader may hold it)
 
 
-def rebuild(db: Path, scope: Scope) -> Path:
+def rebuild(db: Path, scope: Scope, context: bool = True) -> Path:
     """The full reindex, on request only (L49). It builds a new generation beside the live one,
     folds its WAL in, then swaps the link in one rename: a recall during the build reads the old
     index, one after the swap the new, and none finds no file (run 1 deleted first: ~10 s of
     failures). The old generation is swept after SWEEP_GRACE."""
     gen = db.with_name(f"{db.stem}-{time.time_ns()}{db.suffix}")
     old = live(db)
-    idx = Index(gen, scope)
+    idx = Index(gen, scope, context=context)
     try:
         st = idx.sync()
         if old.is_file() and old != gen:
@@ -540,12 +577,12 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(r))
         return CHECK_EXIT[r["status"]]
     if a.rebuild:
-        rebuild(m.index_db, m.scope)
+        rebuild(m.index_db, m.scope, m.embeddings_context)
     from . import embeddings
     embedder = embeddings.Embedder(m.embeddings_key, m.embeddings_model, m.embeddings_dim)
     store = embeddings.Vectors(m.embeddings_dim, m.embeddings_width)
     back = embeddings.Backfill(m.index_db, live, store, embedder, units=m.embeddings_units)
-    idx = Index(m.index_db, m.scope, on_insert=back.note)
+    idx = Index(m.index_db, m.scope, on_insert=back.note, context=m.embeddings_context)
     names = mentions.Builder(m.mentions, m.roots_for_mentions, m.curated, m.mentions_exclude)
     server = embeddings.Server(store, embedder, m.index_db, live)
     if not a.once:
@@ -584,7 +621,7 @@ def main(argv: list[str] | None = None) -> int:
                 embeddings.write_status(m.index_status, port=server.port, chunks=chunks,
                                         embeddings={"key": embedder.available(), "model": m.embeddings_model,
                                                     "dim": m.embeddings_dim, "vectors": store.n, "units": m.embeddings_units,
-                                                    "width": store.width, **back.status(),
+                                                    "width": store.width, "context": m.embeddings_context, **back.status(),
                                                     "requests": embedder.requests, "tokens": embedder.tokens,
                                                     "rss_kb": embeddings.rss_kb(), "store_bytes": store.bytes()})
         except OSError as e:
