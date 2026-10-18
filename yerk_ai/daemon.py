@@ -480,7 +480,8 @@ class Yerkd:
         tool, ti = str(payload.get("tool_name") or ""), dict(payload.get("tool_input") or {})
         v = None
         if tool == "Bash":
-            v = gates.check_shell(str(ti.get("command") or ""), str(payload.get("cwd") or self.state / "rooms" / name / "work"), self.gates)
+            work = self.state / "rooms" / name / "work"
+            v = gates.check_shell(str(ti.get("command") or ""), str(payload.get("cwd") or work), self.gates, root=str(work))
             if v and v.new_input is not None:
                 v.new_input = {**ti, **v.new_input}
         if v is None and (what := gates.restart_hit(tool, ti, self.private)):
