@@ -1,10 +1,6 @@
-# The fake private layer's accounts (example). An account is a name and a Claude Code
-# config folder; the order here is the default order. One line adds or removes one.
+# The fake private folder's accounts (example). One line per account: name, Claude Code config
+# folder, order (lower first), optionally a token file (default secrets/claude-<name>.token).
 
-[[account]]
-name = "one"
-config_dir = "~/.claude"
-
-[[account]]
-name = "two"
-config_dir = "~/.claude-two"
+[accounts]
+one = { config_dir = "~/.claude", order = 1 }
+two = { config_dir = "~/.claude-two", order = 2 }

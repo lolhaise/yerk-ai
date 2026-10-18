@@ -1,11 +1,9 @@
 # An example accounts.toml, the file that names the Claude Code accounts Yerk AI may use: copy it to your private
-# An account is a name and a Claude Code config folder; the order here is the default order.
-# One entry adds or removes one account.
+# One line per account: its name, its Claude Code config folder, its order (lower is tried
+# first), and optionally its one-year token file (relative to this folder; the default is
+# secrets/claude-<name>.token, written by `yerk accounts token NAME`). Adding or removing an
+# account is one line here and nothing else.
 
-[[account]]
-name = "one"
-config_dir = "~/.claude"
-
-[[account]]
-name = "two"
-config_dir = "~/.claude-two"
+[accounts]
+one = { config_dir = "~/.claude", order = 1 }
+two = { config_dir = "~/.claude-two", order = 2 }
