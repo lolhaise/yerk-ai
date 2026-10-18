@@ -394,3 +394,22 @@ def test_fit_holds_a_reply_to_its_cap_and_carries_the_report_path():
     out = fit(long, 1500, ["/x/REPORT.md"])
     assert len(out) <= 1500 and out.endswith("\n/x/REPORT.md") and "..." in out
     assert fit("Done, see /x/REPORT.md", 1500, ["/x/REPORT.md"]) == "Done, see /x/REPORT.md"
+
+
+def test_a_human_message_during_the_relay_turn_is_answered_inside_it(setup):
+    s = setup
+    room = s.room()
+    seen = []
+    relay = Inbound("relay-ccc333", "yerk", "SLOW [worker ccc333 finished] done", cap=1500, must="/x/REPORT.md",
+                    then=lambda state, ids, n: seen.append((state, ids)))
+    s.ledger.inbound_add("relay-ccc333", "r", "worker", "yerk", 10)
+    assert room.submit(relay) == "started"
+    time.sleep(0.4)
+    s.ledger.inbound_add("h2", "r", "c", "owner", 5)
+    assert room.submit(Inbound("h2", "owner", "and?")) == "folded"
+    while room.busy:
+        time.sleep(0.05)
+    (text, inbound), = s.chan.replies
+    assert inbound == ["relay-ccc333", "h2"] and text == "echo: SLOW [worker ccc333 finished] done + and?"
+    assert seen == [("answered", ["m1"])] and s.ledger.inbound_get("h2")["state"] == "answered"
+    assert room.last_human is not None and s.ledger.last_received("r") == s.ledger.inbound_get("h2")["received"]
