@@ -8,7 +8,8 @@ missing), cards (each turn's progress message, open until its turn ends; a worke
 settles), holds, workers (one row per worker unit: where it runs, how it ended, whether its result
 skipped and why), health (the daily call per account: pass or fail and the login's identity), and the gates' own
 (gates.py): every gate decision, the approval holds, each hook call's time, each tool call's time and failure, and
-hook call's time, each tool call's time and failure, and the tamper rows of a changed setting.
+the tamper rows of a changed setting; stalls (beat.py: each time the event loop was held more than 2 s, with its
+stalls (beat.py: each time the event loop ran more than 2 s late, with its dump).
 
 Inbound states, after Hermes' delivery ledger (gateway/delivery_ledger.py, MIT): `received`
 (ledgered, nothing ran: run it plainly after a crash), `running` (sent to Claude Code: after a
@@ -89,7 +90,9 @@ CREATE TABLE IF NOT EXISTS tool_times (
   failed INTEGER, error TEXT);
 CREATE TABLE IF NOT EXISTS tamper (
   id INTEGER PRIMARY KEY, t REAL, who TEXT, room TEXT, session_id TEXT, source TEXT, file TEXT, sha_before TEXT,
-  sha_after TEXT, diff_sha TEXT, diff_lines INTEGER)"""
+  sha_after TEXT, diff_sha TEXT, diff_lines INTEGER);
+CREATE TABLE IF NOT EXISTS stalls (
+  id INTEGER PRIMARY KEY, began REAL, seconds REAL, doing TEXT, dump TEXT)"""
 HEALTH = ("at", "account", "config_dir", "ok", "failure", "source", "login", "identity", "identity_ok", "model",
           "ms", "note")
 
@@ -218,6 +221,26 @@ class Ledger:
             return round(per[max(0, math.ceil(q * len(per)) - 1)], 1) if per else None
         return {"turns": len(per), "calls": int(calls), "p50_ms": pct(0.5), "p95_ms": pct(0.95),
                 "max_ms": round(per[-1], 1) if per else None}
+
+    # observability (beat.py, status.py, morning.py)
+    def stall(self, **row: Any) -> int:
+        return self._insert("stalls", row)
+
+    def stalls(self, since: float, until: float = math.inf) -> list[dict[str, Any]]:
+        return self._select("SELECT * FROM stalls WHERE began >= ? AND began < ? ORDER BY began", (since, until))
+
+    def waits(self, since: float, until: float) -> list[dict[str, Any]]:
+        """Each person's message in the window joined to the turn that answered it: `wait`, the turn's
+        start after the message (0 when it folded into a running turn), and `first`, the turn's first
+        visible line after the message (None when there was none, or it came before the message)."""
+        return self._select("SELECT max(0, t.started - i.received) AS wait, CASE WHEN t.first_visible >= i.received "
+                            "THEN t.first_visible - i.received END AS first FROM inbound i JOIN turns t ON "
+                            "i.turn_id = t.id WHERE i.received >= ? AND i.received < ? AND i.sender != 'yerk'",
+                            (since, until))
+
+    def shadow_rules(self, since: float, until: float) -> dict[str, int]:
+        rows = self._select("SELECT rule, count(*) AS n FROM shadow WHERE t >= ? AND t < ? GROUP BY rule", (since, until))
+        return {str(r["rule"]): int(r["n"]) for r in rows}
 
     def record(self, **row: Any) -> int:
         bad = set(row) - set(COLUMNS)

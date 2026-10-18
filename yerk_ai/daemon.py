@@ -22,7 +22,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from . import context, evidence, gates, hooks, jobs, mcp_server, memory, mentions, workers
+from . import beat, context, evidence, gates, hooks, jobs, mcp_server, memory, mentions, status, workers
 from .accounts import Account, Cooldowns, from_dir, load_accounts
 from .config import budgets, flag, load_toml, private_dir, rooms, state_dir, table
 from .engine import RoomSpec, SessionTable
@@ -132,6 +132,8 @@ class Yerkd:
         self.timing: list[tuple[str, dict[str, Any]]] = []       # hook and tool timings, written in batches
         self.timing_lock = threading.Lock()
         self.flushing = False
+        self.beat = beat.Beat(self.ledger, beat.folder(state, self.memory.root), pids=self.room_pids)
+        self.started = time.time()
 
     # a room's Claude Code process, rebuilt at every process start
     def spec_for(self, name: str) -> RoomSpec:
@@ -524,6 +526,13 @@ class Yerkd:
             req = dict(payload["read_memory"])
             return await self.tool_read_memory(str(req.get("room", "")), str(req.get("path", "")),
                                                int(req.get("start") or 1), int(req.get("lines") or 40))
+        if isinstance(payload.get("morning"), dict):    # `yerk morning`: into the machine room, never another (L197)
+            req = dict(payload["morning"])
+            name = str(req.get("room", ""))
+            if self.room_confs.get(name, {}).get("role") != "machine" or name not in self.channels:
+                return {"ok": False, "error": f"no machine room {name!r} runs here"}
+            ids = await self.channels[name].send_text(name, str(req.get("text", "")), key=str(req.get("key") or "") or None)
+            return {"ok": bool(ids), "message_ids": ids}
         if payload.get("compact"):
             target = self.rooms.get(str(payload["compact"]))
             if target is None:
@@ -535,6 +544,16 @@ class Yerkd:
             return {"ok": False, "error": f"no room {payload.get('close')!r}; rooms: {', '.join(self.rooms)}"}
         closed = await asyncio.to_thread(room.reap_idle, None, True)
         return {"ok": True, "room": room.name, "closed": closed, "busy": room.busy}
+
+    def room_pids(self) -> dict[str, int]:
+        """Each open room's Claude Code pid (the stall dump's /proc lines)."""
+        return {n: r.rp.proc.pid for n, r in list(self.rooms.items()) if r.rp is not None and r.rp.proc is not None}
+
+    async def status_now(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """/status: what runs now, for `yerk status` and any program that asks (status.py)."""
+        out = await asyncio.to_thread(status.collect, self.private, self.state, self.accounts, self.cooldowns,
+                                      self.ledger, self.rooms)
+        return {**out, "started": self.started}
 
     def write_status(self, mode: str) -> None:
         """state/yerkd.json: what is running, for `yerk room close` and the probes."""
@@ -548,7 +567,7 @@ class Yerkd:
 
     async def serve_http(self) -> None:
         import uvicorn
-        app = mcp_server.build(self, self.port, self.hook, self.control).streamable_http_app()
+        app = mcp_server.build(self, self.port, self.hook, self.control, self.status_now).streamable_http_app()
         self.http = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=self.port, log_level="warning"))
         await self.http.serve()
 
@@ -590,7 +609,7 @@ class Yerkd:
         dc.after_recover.append(self.jobs.reattach)      # a script run that ended with no daemon up: delivered late
         self.write_status("discord")
         await asyncio.gather(self.serve_http(), self.reap(min(60.0, self.idle_seconds / 2)), self.watch_loop(),
-                             dc.start())
+                             self.beat.tick(), dc.start())
 
     async def run_console(self, name: str) -> None:
         room = self.add_room(name, ConsoleChannel())
@@ -600,6 +619,7 @@ class Yerkd:
         self.write_status("console")
         http = asyncio.create_task(self.serve_http())
         reaper = asyncio.create_task(self.reap(min(60.0, self.idle_seconds / 2)))
+        ticker = asyncio.create_task(self.beat.tick())
         await asyncio.sleep(0.5)
         n = 0
         while line := await asyncio.to_thread(sys.stdin.readline):
@@ -615,6 +635,7 @@ class Yerkd:
         if room.rp:
             await asyncio.to_thread(room.rp.close)
         reaper.cancel()
+        ticker.cancel()
         self.http.should_exit = True
         await http
 

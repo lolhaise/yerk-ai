@@ -46,7 +46,8 @@ def caller_room(ctx: Context) -> str:
 Handler = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
 
 
-def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = None) -> FastMCP:
+def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = None,
+          status: Handler | None = None) -> FastMCP:
     mcp = FastMCP("yerk", host="127.0.0.1", port=port, stateless_http=True, json_response=True, log_level="WARNING")
 
     @mcp.tool()
@@ -112,6 +113,8 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
     route("/hook", hook)
     if control:
         route("/control", control)      # `yerk room close`, `yerk worker`: local only, like everything here
+    if status:
+        route("/status", status)        # `yerk status`: what runs now (status.py), local only the same way
     return mcp
 
 

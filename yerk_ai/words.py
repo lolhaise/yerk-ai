@@ -238,11 +238,45 @@ def ability(state: str, **say: Any) -> tuple[str, str]:
     return mark, text.format(**say)
 
 
-# status
+# status (yerk status, the card): the colour only where it means something (an account at or near
+# its limit, a blocked room, a stall, a daemon down); every other line starts with a dash
+PLAIN = "-"
 RUNNING_ROOMS = "yerkd running: {rooms}"
+ROOMS_N = "{n} rooms"
 NOT_RUNNING = "yerkd: not running"
+NOT_ANSWERING = "yerkd: running, not answering"
 NO_READING = "{name}: no reading yet"
 RESTS = "{name}: resting until {until}"
+OLD_READING = "{name}: last reading {ago}"
+TURN_FOR = "{room}: busy {took}"
+QUEUED = ", {n} waiting"
+UNIT_USE = "{name}: {mb} MB, {cpu:.1f}% cpu"
+JOB_DUE = "job {name}: in {left}"
+NO_JOB_DUE = "jobs: none due within the hour"
+NO_TIMERS = "jobs: the timer list is unreadable"
+STALLS = "stalls {day}: {n}, longest {took}"
+NO_STALLS = "stalls {day}: none"
+TODAY, YESTERDAY = "today", "yesterday"
+# the morning diff (morning.py), for the machine room
+MORNING_NEW = "morning: {n} new since the last diff"
+MORNING_SAME = "morning: nothing new"
+KNOWN = ", {n} known"
+PAYLOAD = "{room}: {size:,} chars, {change}"
+PART = "{room} {part}: {change} chars"
+FIRST_MAP, SAME = "first map", "same"
+ANSWERED = "{day}: {n} messages answered"
+WAIT = "queue wait: {mid} typical, {worst} worst"
+FIRST_LINE = "first line: {mid} typical, {worst} worst"
+SINCE = " since {at}"
+SHADOW = "shadow flag {rule}: {n}"
+NO_SHADOW = "shadow flags: none"
+UNKNOWN = "{what}: unknown, {why}"
+NOT_ANSWERING_WHY = "yerkd not answering"
+
+
+def secs(seconds: float) -> str:
+    """'1.7 s' under ten seconds, else span's '18 s', '3 min'."""
+    return f"{seconds:.1f} s" if seconds < 10 else span(seconds)
 
 
 # the presentation settings (decision 27): the first choice is the default

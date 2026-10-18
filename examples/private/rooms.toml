@@ -31,3 +31,4 @@ voice = "rooms/example-quiet.md"
 pinned_memory = "memory/pinned.md"
 daily_notes = "memory/daily"
 recall_days = 1
+# role = "machine"           # this room gets `yerk morning`'s diff and its alerts, and no other room does

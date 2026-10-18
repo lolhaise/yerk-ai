@@ -1,0 +1,26 @@
+# The daemon: every room, its hooks and tools, under systemd. Installed by copying it to
+# ~/.config/systemd/user/ and `systemctl --user enable --now yerkd.service`. Set YERK_PRIVATE and
+# YERK_STATE below.
+#
+# Type=notify: yerkd says READY=1 once its event loop runs, so a start counts only when it can
+# answer. WatchdogSec=30: yerkd beats the watchdog only while its event loop makes progress (a mark
+# set every second, yerk_ai/beat.py); 30 s with no beat and systemd stops it with SIGABRT and
+# Restart=on-failure starts it again. Without them a frozen yerkd stays "active" while no room
+# answers (freezes of up to 61 s went unseen that way), and nothing but a person notices.
+[Unit]
+Description=Yerk AI daemon (yerkd)
+After=network-online.target
+
+[Service]
+Type=notify
+NotifyAccess=main
+WatchdogSec=30
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=120
+Environment=YERK_PRIVATE=%h/yerk-private
+Environment=YERK_STATE=%h/.local/state/yerk
+ExecStart=%h/yerk-ai/.venv/bin/yerkd
+
+[Install]
+WantedBy=default.target
