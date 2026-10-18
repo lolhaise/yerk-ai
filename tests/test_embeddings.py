@@ -94,27 +94,34 @@ def vectors_in(s: memory.Settings) -> int:
         conn.close()
 
 
-# 1. only changed chunks are embedded
-def test_only_changed_chunks_are_embedded_and_a_touch_embeds_none(tmp_path):
+# 1. a vector per line and per bullet; only changed lines are embedded
+def test_a_line_or_bullet_gets_its_own_vector_and_a_touch_embeds_none(tmp_path):
     s = tree(tmp_path)
     stub = StubEmbedder(s.embeddings_key)
     idx, store, server, back, status = serve(s, stub)
     while back.step():
         pass
+    units = {r[0] for r in idx.conn.execute("SELECT DISTINCT sha FROM units")}
     chunks = {r[0] for r in idx.conn.execute("SELECT DISTINCT sha FROM chunks")}
     embedded = [t for call in stub.calls for t in call]
-    assert len(embedded) == len(chunks) == store.n == vectors_in(s) > 2
+    # the day log is one chunk of two lines: each line has a vector of its own, the chunk none
+    assert len(embedded) == len(units) == store.n == vectors_in(s) == len(chunks) + 1 > 3
+    assert all("\n" not in t for t in embedded) and any(t.startswith("- 09:01 ") for t in embedded)
     day = s.root / "daily" / "2026-01-05.md"
     calls = len(stub.calls)
     os.utime(day, None)                                              # a touch: the chunker finds the same text
     idx.sync()
-    assert back.step() == 0 and len(stub.calls) == calls and store.n == len(chunks)
+    assert back.step() == 0 and len(stub.calls) == calls and store.n == len(units)
     with day.open("a") as f:
-        f.write("- 10:00 a person: the forecast says rain\n")       # one line: one chunk changes
+        f.write("- 10:00 a person: the forecast says rain\n")       # one line: one new unit, the chunk's old lines keep theirs
     idx.sync()
     assert back.step() == 1 and len(stub.calls) == calls + 1 and len(stub.calls[-1]) == 1
-    assert "forecast says rain" in stub.calls[-1][0] and store.n == len(chunks) + 1
+    assert "forecast says rain" in stub.calls[-1][0] and store.n == len(units) + 1
     assert back.step() == 0 and len(stub.calls) == calls + 1         # nothing else changed
+    # the meaning search maps a line's vector to its chunk and keeps the best line's cosine
+    r = server.search("will it rain", 10)
+    assert r["ok"] and r["hits"] and r["hits"][0]["path"].endswith("2026-01-05.md") and "forecast" in r["hits"][0]["text"]
+    assert len({h["id"] for h in r["hits"]}) == len(r["hits"])        # one row per chunk
     server.stop()
     idx.close()
 
@@ -265,3 +272,47 @@ def test_the_manifest_and_the_abilities_command_show_the_key_tier_both_ways(tmp_
     assert out.startswith("🟠 embeddings: needs OpenAI\n") and "Cost: $0.02 per 1M tokens" in out
     assert "Free path: keywords" in out and "How to add the key: put the key in the file" in out and "/home/" not in out
     assert cli.main(["explain", "no-such-ability", "--private", str(s.root.parent)]) == 2
+
+
+# 8. the source prior is a boost, never a rule
+def test_the_source_prior_is_a_boost_not_a_filter():
+    fact = {"id": 1, "path": "/t/memory/facts/kettle.md", "line": 3, "lines": "3-3", "text": "a fact line", "score": 2.0}
+    day = {"id": 2, "path": "/t/memory/daily/2026-01-05.md", "line": 4, "lines": "4-5", "text": "a day line", "score": 1.5}
+    other = {"id": 3, "path": "/t/memory/daily/2026-01-06.md", "line": 2, "lines": "2-2", "text": "another day", "score": 1.0}
+    both = [dict(day, score=0.5), dict(fact, score=0.5)]
+    # a fact file and a day log hold a match at the same ranks: plain fusion puts the day log first, the prior the fact file
+    assert memory.fuse([day, fact], both, 6, prior=0.0)[0]["id"] == 2
+    assert memory.fuse([day, fact], both, 6, prior=0.3)[0]["id"] == 1
+    # only the day logs hold the answer (the fact chunk is a deep keyword-only hit): the day log keeps rank one
+    out = memory.fuse([day, other, fact], [dict(day, score=0.6), dict(other, score=0.4)], 6, prior=0.3)
+    assert out[0]["id"] == 2 and {h["id"] for h in out} == {1, 2, 3}       # nothing is hidden, a day log is never dropped
+    assert memory.is_daylog("/t/memory/daily/2026-01-05.md") and not memory.is_daylog("/t/memory/facts/kettle.md")
+    assert not memory.is_daylog("/t/memory/MEMORY.md") and memory.is_daylog("/t/other/2026-09-01.md")
+
+
+# 9. the merge keeps each search's own first hits in the top k
+def test_the_merge_keeps_each_searchs_own_top_three():
+    def row(cid: int, score: float) -> dict:
+        return {"id": cid, "path": f"/t/memory/daily/2026-01-0{cid % 9}.md", "line": 1, "lines": "1-1", "text": f"t{cid}", "score": score}
+    shared = [50, 51, 52, 53, 54, 55, 56]                                   # chunks both searches place at ranks 4 to 10
+    keywords = [row(1, 3.0), row(2, 2.9), row(3, 2.8)] + [row(c, 2.0) for c in shared]
+    vectors = [row(101, 0.9), row(102, 0.89), row(103, 0.88)] + [row(c, 0.8) for c in shared]
+    plain = [h["id"] for h in memory.fuse(keywords, vectors, 6, keep=0)]
+    assert plain == [50, 51, 52, 53, 54, 55]                                # plain RRF: no search's own top hit survives
+    kept = [h["id"] for h in memory.fuse(keywords, vectors, 6, keep=3)]
+    assert set(kept) == {1, 2, 3, 101, 102, 103} and kept[0] in (1, 101)            # each search's first three, in fused order
+    one = [h["id"] for h in memory.fuse(keywords, vectors, 6, keep=1)]
+    assert one == [50, 51, 52, 53, 101, 1]                                  # one slot each; the rest by fused score
+    # overlap: a chunk in both top threes is held once and the free slots fill
+    vectors2 = [row(1, 0.9), row(102, 0.89), row(103, 0.88)] + [row(c, 0.8) for c in shared]
+    two = [h["id"] for h in memory.fuse(keywords, vectors2, 6, keep=3)]
+    assert two[0] == 1 and set(two) == {1, 2, 3, 102, 103, 50}
+    # without vectors, the keyword list as it is
+    assert [h["id"] for h in memory.fuse(keywords, [], 6, keep=3)] == [1, 2, 3, 50, 51, 52]
+
+
+# 10. the manifest's embeddings entry records the fit choice: the dimensions, the units, the width
+def test_the_manifest_records_the_fit_choice():
+    ab = abilities.manifest()["embeddings"]
+    assert "256 dimensions" in ab["model"] and "a vector per line" in ab["model"] and "embeddings_width" in ab["model"]
+    assert "vectors" in ab["model"] and "every line" in ab["what"]
