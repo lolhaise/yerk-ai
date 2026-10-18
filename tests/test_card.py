@@ -70,6 +70,13 @@ def test_the_thinking_line_shows_only_where_the_room_turns_it_on():
         off.feed(ev)
     assert on.render().splitlines()[1] == "-# thinking: " + "y" * 200 + "..."
     assert off.render() == START                                       # the default: no thinking line
+    short = Card(thinking=True)                                        # a summary arrives in a burst: no fragment
+    short.feed(events[0])
+    short.feed(se({"type": "content_block_delta", "index": 0, "delta": {"type": "thinking_delta", "thinking": "Doub"}}))
+    assert short.render() == START
+    short.feed(se({"type": "content_block_delta", "index": 0, "delta": {"type": "thinking_delta", "thinking": "le-check"}}))
+    short.feed(se({"type": "content_block_stop", "index": 0}))
+    assert short.render().splitlines()[1] == "-# thinking: Double-check..."
 
 
 def test_a_card_with_nothing_to_show_says_what_was_owed():

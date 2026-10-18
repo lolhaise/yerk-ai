@@ -72,6 +72,7 @@ class Card:
         self.text = ""                        # the text block streaming now
         self.thinking = ""
         self.thinking_tokens = 0
+        self.thinking_at: int | None = None   # the open thinking block's index: its line waits for the block
         self.rows: list[Row] = []
         self.by_id: dict[str, Row] = {}
         self.by_index: dict[int, Row] = {}
@@ -107,6 +108,10 @@ class Card:
         delta = e.get("delta") or {}
         if t == "content_block_start" and block.get("type") == "text":
             self.text = ""
+        elif t == "content_block_start" and block.get("type") == "thinking":
+            self.thinking_at = i
+        elif t == "content_block_stop" and i == self.thinking_at:
+            self.thinking_at = None
         elif t == "content_block_start" and block.get("type") == "tool_use":
             self.by_index[i] = self._row(str(block.get("id")), str(block.get("name")))
             self.partial[i] = ""
@@ -131,7 +136,8 @@ class Card:
 
     def render(self, head: str | None = None) -> str:
         lines = [head or self.narration or START]
-        if self.thinking_on and self.thinking.strip():
+        whole = self.thinking_at is None or len(self.thinking) >= THINKING_MAX   # never a fragment of a summary
+        if self.thinking_on and self.thinking.strip() and whole:
             lines.append("-# thinking: " + short(self.thinking, THINKING_MAX + 3).removesuffix("...")[:THINKING_MAX]
                          + "...")
         rows = self.rows[-ROWS_SHOWN:]
