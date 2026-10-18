@@ -68,3 +68,34 @@ def test_send_and_hold(tmp_path, capsys):
     assert "Could not send token.txt: it is outside this room's folders." in capsys.readouterr().out   # said in the room
     held =asyncio.run(y.tool_hold("example-room", "worker-1", "waiting on the build"))
     assert held["ok"] and y.ledger.rows(1, "holds")[0]["wait_for"] == "worker-1"
+
+
+class KeyedChannel(ConsoleChannel):
+    def __init__(self):
+        super().__init__()
+        self.keys = []
+
+    async def send_text(self, room, text, key=None):
+        self.keys.append((key, ""))
+        return await super().send_text(room, text, key)
+
+    async def send_file(self, room, path, caption="", key=None, inbound=""):
+        self.keys.append((key, inbound))
+        return await super().send_file(room, path, caption, key, inbound)
+
+
+def test_a_send_outside_a_turn_has_a_key_of_its_own_across_restarts(tmp_path):
+    keys = []
+    for _ in range(2):                                                # two daemon starts, one send each
+        y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+        ch = KeyedChannel()
+        y.add_room("example-room", ch)
+        assert asyncio.run(y.tool_send("example-room", "PING", "", "example-room"))["ok"]
+        keys += ch.keys
+    assert len({k for k, _ in keys}) == 2 and all(k.endswith("-s1") for k, _ in keys)   # never "send-s1" twice
+    room = y.rooms["example-room"]
+    room.busy, room.turn_key = True, "abc123def456"                   # inside a turn: its key and its messages
+    room.inflight = [type("M", (), {"id": "501"})()]
+    inside = context.layer_dir(y.private, y.room_confs["example-room"]) / "memory" / "pinned.md"
+    assert asyncio.run(y.tool_send("example-room", "pinned", str(inside), "example-room"))["ok"]
+    assert ch.keys[-1] == ("abc123def456-s2", "501")

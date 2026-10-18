@@ -10,17 +10,23 @@
   once, then at most one a second, the latest text winning), replaced by the reply, or kept and
   edited to say what was owed when the turn ends with nothing to show.
 - Every outbound part has an idempotency key (the turn's key and the part's index) and its row in
-  the delivery ledger before it is posted. On start, parts a crash left unconfirmed are posted
-  once, labelled, unless the room already shows them; then messages a crash left open run again
-  once, marked, and messages that arrived while the daemon was down are read from the room's own
-  history and run.
+  the delivery ledger before it is posted; the key is also the post's nonce, so Discord itself
+  returns the first message for a repeat within its window. On start, parts a crash left
+  unconfirmed are posted once, labelled, unless the room already shows them (a file: from its
+  outbox snapshot, found by name and size); then messages a crash left open run again once,
+  marked, told which files are already in the room, and messages that arrived while the daemon
+  was down are read from the room's own history and run.
+- The owner's edits and deletes: a message still waiting is revised or dropped before it runs;
+  an edit of one already run comes in again, marked; a reply says which message it answers.
 - Replies: the final text only, split under 2,000 characters, never inside a code block.
 - Files: one path (`send_file`): a snapshot under a new name in the room's outbox, size and type
-  checked against the room's limits, the message id recorded, a visible notice on any miss.
+  checked against what the bot can send (measured, BOT_UPLOAD), the message id recorded, a
+  visible notice on any miss that names the limit in bytes.
 """
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import mimetypes
 import re
@@ -47,6 +53,28 @@ MIN_EDIT = 1.0        # seconds between card edits after the first
 FORBIDDEN = {".exe", ".bat", ".cmd", ".com", ".scr", ".msi", ".dll", ".ps1", ".vbs", ".jar", ".apk", ".lnk",
              ".reg", ".hta", ".cpl", ".pif"}
 IMAGE = ("image/png", "image/jpeg", "image/gif", "image/webp")
+# What the bot can send, measured 2026-10-17 through discord.py's own send with the bot's token in
+# the test room's guild (boost tier 1, which discord.py's table puts at 10,485,760): 20,971,520
+# bytes sent, 20,971,521 refused with 413 / 40005 "Request entity too large". Discord's answer wins
+# over the library's table; a guild the table puts higher (tier 2 and 3) keeps the table's number.
+BOT_UPLOAD = 20 * 1024 * 1024
+REPLY_MAX = 300
+
+
+def upload_limit(ch: Any) -> int:
+    """The largest file this room takes, in bytes."""
+    return max(BOT_UPLOAD, int(getattr(getattr(ch, "guild", None), "filesize_limit", 0) or 0))
+
+
+def nonce_for(key: str) -> str:
+    """A delivery key as the post's nonce (Discord takes 25 characters)."""
+    return key if len(key) <= 25 else hashlib.sha256(key.encode()).hexdigest()[:25]
+
+
+def refusal(e: Any, limit: int) -> str:
+    if e.status == 413 or getattr(e, "code", None) == 40005:
+        return f"Discord refused it as too large ({e.status}: {str(e.text or e)[:80]}); this room takes {limit:,} bytes"
+    return f"Discord refused it ({e.status}: {str(e.text or e)[:120]})"
 
 
 def safe_name(name: str) -> str:
@@ -59,10 +87,25 @@ def file_type(name: str, given: str | None = None) -> str:
     return (given or mimetypes.guess_type(name)[0] or "application/octet-stream").split(";")[0]
 
 
-def message_text(m: Any, files: list[dict[str, Any]] | None = None) -> str:
-    """The message body, with its files listed (staged path, or why it is missing) so none is
-    dropped unseen. Without `files`, the attachments as Discord lists them."""
-    lines = [m.content or ""]
+def reply_line(m: Any, me: int | None = None) -> str:
+    """Which message a reply answers, so the model knows what "this" means."""
+    ref = getattr(m, "reference", None)
+    if ref is None or getattr(m, "type", None) != discord.MessageType.reply:
+        return ""
+    got = getattr(ref, "resolved", None)
+    if got is None or not hasattr(got, "content"):
+        return f"[a reply to an earlier message ({ref.message_id}) that is no longer there]"
+    who = "your message" if me is not None and got.author.id == me else f"{got.author.display_name}'s message"
+    said = " ".join(str(getattr(got, "clean_content", got.content) or "").split())
+    said = said or ", ".join(f"file {a.filename}" for a in getattr(got, "attachments", []) or []) or "(no text)"
+    return f'[a reply to {who}: "{said if len(said) <= REPLY_MAX else said[:REPLY_MAX - 3] + "..."}"]'
+
+
+def message_text(m: Any, files: list[dict[str, Any]] | None = None, me: int | None = None) -> str:
+    """The message body (mentions as names), with what it replies to and its files listed (staged
+    path, or why it is missing) so none is dropped unseen. Without `files`, the attachments as
+    Discord lists them."""
+    lines = [reply_line(m, me), str(getattr(m, "clean_content", None) or m.content or "")]
     if files is None:
         files = [{"name": a.filename, "size": a.size, "type": file_type(a.filename, getattr(a, "content_type", None)),
                   "ok": False, "error": "not staged"} for a in getattr(m, "attachments", []) or []]
@@ -89,6 +132,7 @@ class DiscordChannel:
         self.guard = guard or LoopGuard()
         self.loop: asyncio.AbstractEventLoop | None = None
         self.recovered = False
+        self.edits: dict[str, str] = {}           # message id -> the edit already taken (its edited_at)
         if client is None:
             intents = discord.Intents.none()
             intents.guilds = intents.guild_messages = intents.message_content = True
@@ -97,6 +141,8 @@ class DiscordChannel:
         self.client = client
         client.event(self.on_ready)
         client.event(self.on_message)
+        client.event(self.on_raw_message_edit)    # raw: with no message cache these are the only ones
+        client.event(self.on_raw_message_delete)
 
     def add_room(self, channel_id: int, room: Room) -> None:
         self.rooms[channel_id], self.names[room.name] = room, channel_id
@@ -132,7 +178,41 @@ class DiscordChannel:
             return
         await self._react(m.channel.id, m.id, ACK)
         files = await self.stage(room, m)
-        room.submit(Inbound(str(m.id), sender, message_text(m, files), files=files))
+        room.submit(Inbound(str(m.id), sender, message_text(m, files, self._me()), files=files))
+
+    def _me(self) -> int | None:
+        return self.client.user.id if self.client.user is not None else None
+
+    async def on_raw_message_edit(self, p: Any) -> None:
+        """An edit of a message the room took: still waiting, it runs as edited; already run (or
+        running), the new text comes in again, marked. Not an edit (an embed unfurl): nothing."""
+        m, room = getattr(p, "message", None), self.rooms.get(int(p.channel_id))
+        if room is None or m is None or getattr(m, "edited_at", None) is None:
+            return
+        sender, mid = self.sender_of(m), str(m.id)
+        row = self.ledger.inbound_get(mid)
+        if sender is None or row is None or self.edits.get(mid) == str(m.edited_at):
+            return
+        self.edits[mid] = str(m.edited_at)
+        files = await self.stage(room, m)
+        text = message_text(m, files, self._me())
+        if room.revise(mid, text):
+            self.ledger.inbound_set(mid, note="edited before it ran")
+            return
+        self.ledger.inbound_set(mid, state="received", attempts=0, note=f"edited after it ran ({row['state']})")
+        await self._react(m.channel.id, m.id, ACK)
+        room.submit(Inbound(mid, sender, f"[an earlier message was edited; it now reads:]\n{text}", files=files))
+
+    async def on_raw_message_delete(self, p: Any) -> None:
+        """A message deleted while it still waits never runs; one already run keeps its answer."""
+        room, mid = self.rooms.get(int(p.channel_id)), str(p.message_id)
+        row = self.ledger.inbound_get(mid) if room else None
+        if room is None or row is None:
+            return
+        if room.withdraw(mid):
+            self.ledger.inbound_set(mid, state="ignored", note="deleted by its sender before it ran")
+        else:
+            self.ledger.inbound_set(mid, note=f"deleted by its sender after it ran ({row['state']})")
 
     async def stage(self, room: Room, m: Any) -> list[dict[str, Any]]:
         """Each attachment saved under the room's inbox with its own name, a ledger row each; a
@@ -185,7 +265,11 @@ class DiscordChannel:
                 self.ledger.inbound_set(row["message_id"], state="abandoned", note="message deleted")
                 continue
             files = await self.stage(room, m)
-            text = message_text(m, files) + ("\n[redelivered after a restart]" if attempts else "")
+            text = message_text(m, files, self._me()) + ("\n[redelivered after a restart]" if attempts else "")
+            sent = self.ledger.files_sent_for([str(row["message_id"])])
+            if sent:                              # the cut-short turn's files: in the room already
+                text += ("\n[already in the room from before the restart, not to be sent again: "
+                         + "; ".join(f"file {r['file']} (message {r['message_id']})" for r in sent) + "]")
             room.submit(Inbound(str(m.id), str(row["sender"]), text, attempt=attempts, files=files))
         last = self.ledger.last_inbound(str(cid))
         if last:
@@ -200,19 +284,19 @@ class DiscordChannel:
         if not keys:
             return
         mine: dict[str, str] = {}
+        files: list[tuple[str, str, int]] = []    # (message id, file name, size) of the bot's own posts
         oldest = min(r["created"] for r in pending) - 5
         after = discord.Object(int((oldest * 1000 - 1420070400000)) << 22)
         async for m in ch.history(after=after, limit=100, oldest_first=True):
             if self.client.user is not None and m.author.id == self.client.user.id:
                 mine.setdefault((m.content or "").strip(), str(m.id))
+                files += [(str(m.id), a.filename, int(a.size or 0)) for a in getattr(m, "attachments", []) or []]
+        claimed = {str(r["message_id"]) for r in self.ledger.deliveries(room.name) if r["message_id"]}
         for key in keys:
             rows = sorted((r for r in self.ledger.deliveries(room.name) if r["key"].rsplit(":", 1)[0] == key),
                           key=lambda r: int(r["key"].rsplit(":", 1)[1]) if r["key"].rsplit(":", 1)[1].isdigit() else 0)
             if rows[0]["kind"] == "file":
-                for r in rows:
-                    self.ledger.delivery_set(r["key"], state="failed", error="not confirmed before a restart")
-                await self._post(room.name, f"A file ({rows[0]['file']}) was not confirmed sent before a restart; "
-                                 "ask again if it is not above.", "notice", [])
+                await self._redeliver_file(ch, room.name, rows[0], files, claimed)
                 continue
             for r in rows:
                 found = mine.get((r["body"] or "").strip())
@@ -228,6 +312,44 @@ class DiscordChannel:
                                         turn_id=turn_id, note="reply redelivered after a restart")
                 await self._react(ch.id, mid, DONE, remove=ACK)
             log.info("room %s: %s redelivered after a restart (%d part(s))", room.name, key, len(ids))
+
+    async def _redeliver_file(self, ch: Any, room: str, r: dict[str, Any], seen: list[tuple[str, str, int]],
+                              claimed: set[str]) -> None:
+        """A file a crash left unconfirmed: in the room already (a bot post since it was planned with
+        an attachment of its name and size that no other delivery holds), it is recorded; absent, it
+        is sent once from its outbox snapshot, labelled; with no snapshot, the room is told."""
+        key, name, size = str(r["key"]), str(r["file"] or ""), r["size"]
+        hit = next((mid for mid, n, s in seen if n == name and (size is None or s == int(size)) and mid not in claimed),
+                   None)
+        if hit:
+            claimed.add(hit)
+            self.ledger.delivery_set(key, state="sent", message_id=hit, sent=time.time(),
+                                     note="found in the room after a restart")
+            log.info("room %s: file %s (%s) found in the room after a restart", room, name, key)
+            return
+        base = key.rsplit(":", 1)[0]
+        snaps = sorted((self.state / "rooms" / room / "outbox").glob(f"*-{base}-{name}")) if self.state else []
+        snap = snaps[-1] if snaps else None
+        why = "its copy in the outbox is gone" if snap is None else self.file_problem(ch, snap)
+        caption = f"{REDELIVERED} {r['body'] or ''}".strip()
+        m = None
+        if why is None and snap is not None:
+            try:
+                async with self._lock(room):
+                    m = await ch.send(content=caption[:MAX], file=discord.File(str(snap), filename=name),
+                                      nonce=nonce_for(key))
+            except discord.HTTPException as e:
+                why = refusal(e, upload_limit(ch))
+        if m is None:
+            self.ledger.delivery_set(key, state="failed", error=f"not confirmed before a restart; {why}")
+            await self._post(room, f"A file ({name}) was not confirmed sent before a restart and could not be sent "
+                             f"again: {why}. Ask again if it is not above.", "notice", [], key=f"{base}-notice")
+            return
+        self.ledger.delivery_set(key, state="sent", message_id=str(m.id), sent=time.time(),
+                                 attempts=int(r["attempts"] or 0) + 1, note=REDELIVERED)
+        self.ledger.outbound(room=room, channel=str(ch.id), kind="file", message_id=str(m.id), chars=len(caption),
+                             file=name, inbound=r["inbound"])
+        log.info("room %s: file %s (%s) sent again from its snapshot after a restart", room, name, key)
 
     # outbound: called from room threads
     def _call(self, coro: Coroutine[Any, Any, T], wait: bool = True) -> T | None:
@@ -281,7 +403,7 @@ class DiscordChannel:
                 return
             self.cards[room], self.shown[room] = card, text
             self.ledger.outbound(room=room, channel=str(card.channel.id), kind="progress", message_id=str(card.id),
-                                 chars=len(text))
+                                 chars=len(text), body=text[:MAX])
             self.ledger.card_open(str(card.id), room, kind)
         if room in self.want:                     # it arrived before the card did: show it now
             await self._edit(room)
@@ -307,7 +429,7 @@ class DiscordChannel:
                     return
                 self.edited[room], self.shown[room] = time.monotonic(), text
                 self.ledger.outbound(room=room, channel=str(card.channel.id), kind="progress-edit",
-                                     message_id=str(card.id), chars=len(text))
+                                     message_id=str(card.id), chars=len(text), body=text[:MAX])
                 return
 
     async def _finish(self, room: str, text: str, inbound: list[str], mark: str, kind: str = "reply",
@@ -331,7 +453,8 @@ class DiscordChannel:
                     msg = msg or await (await self._channel(room)).send(card[:MAX])
                     await msg.edit(content=card[:MAX])
                     self.ledger.outbound(room=room, channel=str(msg.channel.id), kind="card-note",
-                                         message_id=str(msg.id), chars=len(card), inbound=",".join(inbound))
+                                         message_id=str(msg.id), chars=len(card), inbound=",".join(inbound),
+                                         body=card[:MAX])
                     self.ledger.card_close(str(msg.id), "kept: " + card.split("\n")[0][:80])
                     if instead:
                         self.ledger.delivery_plan(f"{key}:0", room, kind, card, ",".join(inbound))
@@ -372,7 +495,7 @@ class DiscordChannel:
             body = f"{REDELIVERED} {r['body']}" if label else str(r["body"])
             await self._debug_pause("before-post")
             try:
-                m = await ch.send(body[:MAX])
+                m = await ch.send(body[:MAX], nonce=nonce_for(str(r["key"])))
             except discord.HTTPException as e:
                 self.ledger.delivery_set(r["key"], state="failed", error=str(e)[:300],
                                          attempts=int(r["attempts"] or 0) + 1)
@@ -403,25 +526,37 @@ class DiscordChannel:
 
     def file_problem(self, ch: Any, path: Path) -> str | None:
         """Why a file cannot go to this room, or None."""
-        limit = int(getattr(getattr(ch, "guild", None), "filesize_limit", 10 * 1024 * 1024))
+        limit = upload_limit(ch)
         if not path.is_file():
             return "there is no such file"
         if path.suffix.lower() in FORBIDDEN:
             return f"{path.suffix.lower()} files are not sent (a type Yerk AI never posts)"
         size = path.stat().st_size
         if size > limit:
-            return f"it is {size:,} bytes and this room takes {limit:,}"
+            return f"it is {size:,} bytes and this room takes {limit:,} bytes"
         if size == 0:
             return "it is empty"
         return None
 
-    async def send_file(self, room: str, path: Path, caption: str = "", key: str | None = None) -> list[str]:
+    async def send_file(self, room: str, path: Path, caption: str = "", key: str | None = None,
+                        inbound: str = "") -> list[str]:
         """The one file path: checked, sent from a snapshot under a new name, its message id
-        recorded; any miss is a visible notice in the room and a ValueError for the caller."""
+        recorded; any miss is a visible notice in the room and a ValueError for the caller. A file
+        the same message already had in the room (a turn a crash cut short, run again) is not sent
+        twice: its message id comes back."""
         key = key or f"f{uuid.uuid4().hex[:12]}"
         ch, name = await self._channel(room), safe_name(path.name)
         size = path.stat().st_size if path.is_file() else None
-        self.ledger.delivery_plan(f"{key}:0", room, "file", caption, file=name, size=size, type=file_type(name))
+        if inbound and size is not None:
+            for r in self.ledger.files_sent_for(inbound.split(",")):
+                if r["file"] == name and r["size"] == size:
+                    log.info("room %s: %s is in the room already for this message (%s); not sent again", room, name,
+                             r["message_id"])
+                    return [str(r["message_id"])]
+        row = self.ledger.delivery_plan(f"{key}:0", room, "file", caption, inbound, file=name, size=size,
+                                        type=file_type(name))
+        if row["state"] == "sent":                # this key went out already
+            return [str(row["message_id"])]
         why = self.file_problem(ch, path)
         snap = None
         if why is None and self.state:
@@ -433,9 +568,12 @@ class DiscordChannel:
         if why is None:
             try:
                 async with self._lock(room):
-                    m = await ch.send(content=caption[:MAX] or None, file=discord.File(str(snap or path), filename=name))
+                    await self._debug_pause("before-post")
+                    m = await ch.send(content=caption[:MAX] or None, file=discord.File(str(snap or path), filename=name),
+                                      nonce=nonce_for(f"{key}:0"))
+                    await self._debug_pause("after-post")
             except discord.HTTPException as e:
-                why = f"Discord refused it ({e.status}: {str(e.text or e)[:120]})"
+                why = refusal(e, upload_limit(ch))
         if m is None:
             self.ledger.delivery_set(f"{key}:0", state="failed", error=why)
             self.ledger.outbound(room=room, channel=str(ch.id), kind="file", chars=len(caption), file=name,
@@ -444,7 +582,7 @@ class DiscordChannel:
             raise ValueError(f"{name} was not sent: {why}; the room was told")
         self.ledger.delivery_set(f"{key}:0", state="sent", message_id=str(m.id), sent=time.time(), attempts=1)
         self.ledger.outbound(room=room, channel=str(ch.id), kind="file", message_id=str(m.id), chars=len(caption),
-                             file=name)
+                             file=name, inbound=inbound)
         return [str(m.id)]
 
 

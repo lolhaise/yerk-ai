@@ -15,6 +15,7 @@ import os
 import socket
 import sys
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -73,7 +74,8 @@ class ConsoleChannel:
     async def notify(self, room: str, text: str) -> list[str]:
         return self._out({"room": room, "notice": text, "inbound": []})
 
-    async def send_file(self, room: str, path: Path, caption: str = "", key: str | None = None) -> list[str]:
+    async def send_file(self, room: str, path: Path, caption: str = "", key: str | None = None,
+                        inbound: str = "") -> list[str]:
         if not path.is_file():
             raise FileNotFoundError(str(path))
         return self._out({"room": room, "file": str(path), "caption": caption})
@@ -148,9 +150,13 @@ class Yerkd:
                                           "the room was told"}
         src = self.rooms.get(caller) or self.rooms[room]
         self.sends += 1
-        key = f"{src.turn_key or 'send'}-s{self.sends}"      # the turn's key and this send's number
+        with src.lock:                        # in a turn: its key and the messages it answers
+            turn = src.turn_key if src.busy and src.turn_key else f"x{uuid.uuid4().hex[:11]}"
+            inbound = ",".join(m.id for m in src.inflight) if src.busy else ""
+        key = f"{turn}-s{self.sends}"                         # and this send's number: unique across restarts
         try:
-            ids = await (ch.send_file(room, Path(file), text, key=key) if file else ch.send_text(room, text, key=key))
+            ids = await (ch.send_file(room, Path(file), text, key=key, inbound=inbound) if file
+                         else ch.send_text(room, text, key=key))
         except (OSError, ValueError) as e:
             return {"ok": False, "error": str(e)}
         log.info("send: %s -> %s, %d message(s)", caller or "?", room, len(ids))

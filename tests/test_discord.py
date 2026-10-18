@@ -2,8 +2,10 @@
 against a fake client. The cases: who is answered, the ledger before anything runs, the card and
 attachment staging."""
 import asyncio
+import os
 from types import SimpleNamespace as NS
 
+import discord
 import pytest
 
 import yerk_ai.channels.discord as dmod
@@ -43,12 +45,17 @@ class Partial:
 class Chan:
     def __init__(self, cid):
         self.id, self.sent, self.reactions, self.guild, self.n, self.old = cid, [], [], NS(filesize_limit=100), 1000, {}
-        self.deleted, self.past = [], []
+        self.deleted, self.past, self.refuse = [], [], None
 
-    async def send(self, content=None, file=None):
+    async def send(self, content=None, file=None, nonce=None):
+        if self.refuse and file is not None:                         # Discord refusing the file only
+            raise self.refuse
         self.n += 1
         m = Msg(self, self.n, content or "", author=BOT)
-        m.file = file
+        m.file, m.nonce = file, nonce
+        if file is not None:
+            m.attachments = [NS(filename=file.filename, size=os.fstat(file.fp.fileno()).st_size,
+                                data=file.fp.read())]
         self.sent.append(m)
         return m
 
@@ -233,9 +240,10 @@ def test_a_message_sent_during_the_outage_is_run(dc):
     assert [(m.id, m.text) for m in room.got] == [("2", "sent while down")]
 
 
-def test_files_take_one_path_checked_with_the_id_recorded(dc, tmp_path):
+def test_files_take_one_path_checked_with_the_id_recorded(dc, tmp_path, monkeypatch):
     d, client, _ = dc
     ch = client.chans[ROOM_CH]
+    monkeypatch.setattr(dmod, "BOT_UPLOAD", 100)                      # a room that takes 100 bytes
     small, big, exe = tmp_path / "a.txt", tmp_path / "b.txt", tmp_path / "c.exe"
     small.write_text("x" * 10)
     big.write_text("x" * 500)
@@ -245,7 +253,8 @@ def test_files_take_one_path_checked_with_the_id_recorded(dc, tmp_path):
     row = d.ledger.deliveries("test-room", "sent")[0]
     assert (row["key"], row["kind"], row["file"], row["message_id"], row["size"]) == ("t5-s1:0", "file", "a.txt", ids[0], 10)
     assert len(list((tmp_path / "rooms" / "test-room" / "outbox").glob("*-t5-s1-a.txt"))) == 1   # sent from a snapshot
-    for path, why in ((big, "this room takes 100"), (exe, ".exe files are not sent"), (tmp_path / "gone.txt", "no such file")):
+    for path, why in ((big, "this room takes 100 bytes"), (exe, ".exe files are not sent"),
+                      (tmp_path / "gone.txt", "no such file")):
         with pytest.raises(ValueError, match=why):
             run(d.send_file("test-room", path))
         assert ch.sent[-1].content.startswith(f"Could not send {path.name}: ") and why in ch.sent[-1].content
@@ -277,3 +286,102 @@ def test_a_failed_turn_keeps_its_card_saying_what_was_owed(dc):
     card = ch.sent[0]
     assert ids == [str(card.id)] and not card.deleted and card.edits == ["❌ No reply to \"hi\": auth"]
     assert len(ch.sent) == 1 and d.ledger.deliveries("test-room", "sent")[0]["key"] == "t6:0"
+
+
+def plan_file(d, tmp_path, key, name="report.pdf", data=b"%PDF-1.4 drill", inbound="5", snapshot=True):
+    """A file send a crash cut short: its row planned and, unless told not to, its outbox snapshot."""
+    d.ledger.delivery_plan(f"{key}:0", "test-room", "file", "the report", inbound, file=name, size=len(data),
+                           type="application/pdf")
+    if snapshot:
+        outbox = tmp_path / "rooms" / "test-room" / "outbox"
+        outbox.mkdir(parents=True, exist_ok=True)
+        (outbox / f"20261017-231500-{key}-{name}").write_bytes(data)
+
+
+def test_a_file_a_crash_left_unposted_is_sent_once_from_its_snapshot_labelled(dc, tmp_path):
+    d, client, room = dc
+    ch = client.chans[ROOM_CH]
+    plan_file(d, tmp_path, "t7-s1")
+    run(d.recover(ROOM_CH, room))
+    [m] = ch.sent
+    assert m.content == f"{REDELIVERED} the report" and m.attachments[0].filename == "report.pdf"
+    assert m.attachments[0].data == b"%PDF-1.4 drill" and m.nonce == "t7-s1:0"     # the snapshot, keyed
+    row = d.ledger.deliveries("test-room")[0]
+    assert (row["state"], row["message_id"], row["note"]) == ("sent", str(m.id), REDELIVERED)
+    run(d.recover(ROOM_CH, room))                                      # a second restart sends nothing
+    assert len(ch.sent) == 1
+
+
+def test_a_file_discord_took_before_the_crash_is_found_by_name_and_size_not_sent_again(dc, tmp_path):
+    d, client, room = dc
+    ch = client.chans[ROOM_CH]
+    plan_file(d, tmp_path, "t8-s1")
+    plan_file(d, tmp_path, "t8-s2")                                    # the same file sent twice in one turn
+    d.ledger.delivery_plan("t0:0", "test-room", "reply", "older", "4")
+    d.ledger.delivery_set("t0:0", state="sent", message_id="776")
+    posted = Msg(ch, 777, "the report", author=BOT)
+    posted.attachments = [NS(filename="report.pdf", size=len(b"%PDF-1.4 drill"))]
+    claimed = Msg(ch, 776, "the report", author=BOT)                   # another delivery's message: not this one
+    claimed.attachments = [NS(filename="report.pdf", size=len(b"%PDF-1.4 drill"))]
+    ch.past = [claimed, posted]
+    run(d.recover(ROOM_CH, room))
+    rows = {r["key"]: r for r in d.ledger.deliveries("test-room")}
+    assert (rows["t8-s1:0"]["message_id"], rows["t8-s1:0"]["note"]) == ("777", "found in the room after a restart")
+    assert [m.content for m in ch.sent] == [f"{REDELIVERED} the report"]          # only the second goes again
+    assert rows["t8-s2:0"]["message_id"] == str(ch.sent[0].id)
+
+
+def test_a_file_whose_snapshot_is_gone_is_said_out_loud(dc, tmp_path):
+    d, client, room = dc
+    ch = client.chans[ROOM_CH]
+    plan_file(d, tmp_path, "t9-s1", snapshot=False)
+    run(d.recover(ROOM_CH, room))
+    [m] = ch.sent
+    assert m.attachments == [] and "A file (report.pdf) was not confirmed sent" in m.content
+    assert "its copy in the outbox is gone" in m.content
+    assert d.ledger.deliveries("test-room", "failed")[0]["key"] == "t9-s1:0"
+
+
+def test_a_message_run_again_is_told_its_file_is_in_the_room_and_the_file_is_not_sent_twice(dc, tmp_path):
+    d, client, room = dc
+    ch = client.chans[ROOM_CH]
+    d.ledger.inbound_add("5", "test-room", str(ROOM_CH), "owner", 5)
+    d.ledger.inbound_set("5", state="running", attempts=1)
+    ch.old[5] = Msg(ch, 5, "send me the report")
+    plan_file(d, tmp_path, "t10-s1")
+    run(d.recover(ROOM_CH, room))
+    sent_id = str(ch.sent[0].id)
+    [again] = room.got
+    assert again.text.endswith(f"[already in the room from before the restart, not to be sent again: "
+                               f"file report.pdf (message {sent_id})]")
+    src = tmp_path / "report.pdf"
+    src.write_bytes(b"%PDF-1.4 drill")
+    ids = run(d.send_file("test-room", src, "the report", key="t11-s1", inbound="5"))   # the run again sends it
+    assert ids == [sent_id] and len(ch.sent) == 1
+
+
+def test_the_upload_limit_is_what_the_bot_was_measured_to_send(dc, tmp_path):
+    """The source of the number: the live probe of 2026-10-17 (20,971,520 bytes sent through the
+    bot, 20,971,521 refused 413 / 40005), not discord.py's boost table (10,485,760 at tier 1)."""
+    d, client, _ = dc
+    ch = client.chans[ROOM_CH]
+    assert dmod.BOT_UPLOAD == 20_971_520
+    ch.guild = NS(filesize_limit=discord.Guild._PREMIUM_GUILD_LIMITS[1].filesize)
+    assert ch.guild.filesize_limit == 10_485_760 and dmod.upload_limit(ch) == 20_971_520
+    assert dmod.upload_limit(NS(guild=NS(filesize_limit=52_428_800))) == 52_428_800     # a tier 2 guild: the table
+    over, edge = tmp_path / "over.bin", tmp_path / "edge.bin"
+    with open(over, "wb") as f:
+        f.truncate(20_971_521)
+    with open(edge, "wb") as f:
+        f.truncate(20_971_520)
+    assert d.file_problem(ch, edge) is None
+    assert d.file_problem(ch, over) == "it is 20,971,521 bytes and this room takes 20,971,520 bytes"
+    small = tmp_path / "small.txt"
+    small.write_text("x")
+    ch.refuse = discord.HTTPException(NS(status=413, reason="Payload Too Large"),
+                                      {"code": 40005, "message": "Request entity too large"})
+    with pytest.raises(ValueError, match="too large"):
+        run(d.send_file("test-room", small, key="t12-s1"))
+    [notice] = ch.sent
+    assert notice.content.startswith("Could not send small.txt: Discord refused it as too large (413: ")
+    assert notice.content.endswith("this room takes 20,971,520 bytes.")
