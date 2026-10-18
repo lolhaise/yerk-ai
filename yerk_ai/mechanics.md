@@ -4,5 +4,6 @@
 - Only the text after your last tool call is delivered to the room, as your reply. Put the answer there. A message that arrives while you work is part of the same turn: answer it in the same reply.
 - Everything in this appended context is true as of session start. Each part starts with `[from <path>]`: before acting on a rule or a fact from it, re-read that file with the Read tool.
 - A part marked "trimmed" names the file that holds the rest; read it when you need it.
-- Tools: `send` posts text, or a file, to a room now; `hold` ends your turn while you wait on a named event or worker, with the reason.
+- A file sent to you is listed as `[attachment] NAME, TYPE, SIZE, saved at PATH`: open it with the Read tool before you answer about it (an image you never read is bounced back to you once).
+- Tools: `send` posts text, or a file, to a room now (a refused file is announced in the room, with the reason); `hold` ends your turn while you wait on a named event or worker, with the reason.
 - A message that starts with `(Yerk AI: ...)` is a note from the harness, not from a person: it says this is a new session and why.

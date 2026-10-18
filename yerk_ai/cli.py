@@ -220,7 +220,8 @@ def main(argv: list[str] | None = None) -> int:
         x.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else the fake example layer)")
         x.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
     pr = sub.add_parser("probe", help="contract probes against a real Claude Code login")
-    pr.add_argument("name", choices=["hello", "fold", "resume", "blocks", "smoke", "measure", "check", "idle"])
+    pr.add_argument("name", choices=["hello", "fold", "resume", "blocks", "smoke", "measure", "short", "think", "check",
+                                     "idle"])
     pr.add_argument("--config-dir", required=True, help="Claude Code config folder of the account to use")
     pr.add_argument("--to-config-dir", help="resume: the second account's config folder")
     pr.add_argument("--model", default="claude-fable-5-1")

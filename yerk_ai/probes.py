@@ -304,6 +304,57 @@ def measure_script(layer: str, room: str) -> list[tuple[str, float | None]]:
     ]
 
 
+def short_script(layer: str, room: str) -> list[tuple[str, float | None]]:
+    """30 short asks, one turn each, for message to first visible line: 20 answered from context
+    or a line of thought, 10 that read one file."""
+    L = layer
+    asks = ["Hi. One short line back.", "What is 7 times 8? Just the number.", "One-line opinion: tabs or spaces?",
+            "Which units does the owner prefer? One line.", "Say the weekday today, per the clock line.",
+            "One word: is water wet?", "Name a colour that starts with B. One word.", "What is 144 divided by 12?",
+            "One line: best time of day for a walk?", "When is the weekly review? One line.",
+            f"Read {L}/memory/pinned.md and say how often the plant needs water. One line.",
+            "Spell cat backwards. One word.", "One-line opinion: is breakfast the most important meal?",
+            f"Read {L}/memory/open-loops.md and name the first open item. One line.", "What is 15 plus 27?",
+            "One word: summer or winter?", f"Read {L}/rulebook.md and say what it says about tables. One line.",
+            "How many days are in a leap year? Just the number.", "One line: what is a good name for a goldfish?",
+            f"Read {L}/persona.md and describe the persona in five words.", "What is 9 squared? Just the number.",
+            "One-line opinion: are standing desks worth it?", f"Read {L}/rooms/example-room.md and say what the room is "
+            "for. One line.", "Say the time now, per the clock line. One line.", "One word: tea or coffee?",
+            f"Read {L}/memory/daily/2026-01-05.md and name one thing in it. One line.", "What is 100 minus 37?",
+            f"Read {L}/memory/daily/2026-01-06.md and name one thing in it. One line.",
+            f"Read {L}/memory/daily/2026-01-07.md and name one thing in it. One line.", "Last one: say OK."]
+    return [(x, None) for x in asks]
+
+
+THINK_ASKS = [
+    "How many weekdays (Monday to Friday) are there from 3 March 2027 to 17 April 2027 inclusive? One line.",
+    "Three boxes are labelled apples, oranges and mixed, and every label is wrong. You may pick one fruit from one box. "
+    "Which box do you pick from, and why? Two lines.",
+    "What is the smallest positive integer that leaves remainder 1 when divided by 2, 3, 4, 5 and 6, and is divisible "
+    "by 7? One line.",
+    "A clock shows 3:40. What is the smaller angle between the hands, in degrees? One line.",
+    "If you fold a square sheet in half twice and cut off one corner of the folded square, how many holes can appear "
+    "when you unfold it, at most? One line."]
+
+
+def think_script(layer: str, room: str) -> list[tuple[str, float | None]]:
+    """5 asks that make the model think, for the thinking panel's comparison across settings."""
+    return [(x, None) for x in THINK_ASKS]
+
+
+def short(a: argparse.Namespace) -> dict[str, Any]:
+    """30 short turns at a human pace: message to first visible line, the card's first edit."""
+    out = drive(a, short_script, pace=[3.0, 4.0, 5.0])
+    out["table"] = turn_table(Env(a), out["t0"], a.room, out["sent"])
+    return out
+
+
+def think(a: argparse.Namespace) -> dict[str, Any]:
+    out = drive(a, think_script, pace=[3.0])
+    out["table"] = turn_table(Env(a), out["t0"], a.room, out["sent"])
+    return out
+
+
 def smoke(a: argparse.Namespace) -> dict[str, Any]:
     """10 scripted messages, 2 of them mid-turn (`smoke_script`)."""
     out = drive(a, smoke_script, pace=[1.0])

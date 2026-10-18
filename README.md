@@ -11,6 +11,8 @@ Yerk AI turns chat rooms into long-lived Claude Code sessions. It is a small Pyt
 
 ## Status
 
+Layer 3, run 1: delivery and the visible turn. Every turn has one card built from Claude Code's stream (its newest words, then one row per tool call naming the file, command or host, ticked or crossed), replaced by the reply or kept to say what was owed. Every outbound part has an idempotency key in the delivery ledger before it is posted, so a crash between producing and confirming a reply redelivers it once, labelled, and never twice. Files go out on one checked path with the message id recorded and a visible notice on any miss; files sent in are staged under their own names, and an image the model never opened is bounced back once.
+
 Layer 2, run 1: the accounts as one engine (the failure table with a test per Claude Code error type, cooldowns per account and kind, the hop that continues the same turn, one-year token plumbing, the daily health call, the meters). Layer 1, run 3: one Discord test room answers through Claude Code. Measured there over 50 scripted messages, 10 of them sent mid-turn: none dropped, every mid-turn message answered inside the turn it landed in, first visible line 1.7 s and final reply 3.7 s at the median. Built so far: the room runner (the mid-turn fold, idle close and resume, the empty retry, the account hop), the Discord adapter, Yerk AI's MCP server with `send` and `hold`, the HTTP hook with the clock line, read access to each room's private folder, and the ledgers.
 
 ## Use

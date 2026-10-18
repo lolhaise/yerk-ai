@@ -21,12 +21,12 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: install (the package with its two pinned dependencies, discord.py and mcp)
         run: python -m pip install -e . pytest mypy
-      - name: scrub test (personal data and secrets)
+      - name: scrub test (personal data, secrets, and no read of a config folder's credential files)
         run: python -m pytest -q tests/test_scrub.py
       - name: budget test
         run: python -m pytest -q tests/test_budget.py
-      - name: adapter, tools, hook and room tests (offline, fake Discord and fake claude)
-        run: python -m pytest -q tests/test_discord.py tests/test_hooks_mcp.py tests/test_room.py
+      - name: adapter, card, delivery ledger, tools, hook and room tests (offline, fake Discord and fake claude)
+        run: python -m pytest -q tests/test_discord.py tests/test_card.py tests/test_hooks_mcp.py tests/test_room.py
       - name: failure table, accounts, tokens, cooldowns and the health call (a test per error string)
         run: python -m pytest -q tests/test_failures.py tests/test_accounts.py tests/test_health.py
       - name: all tests
