@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from . import words
+from . import unwrap, words
 from .lifted import shellguard
 from .lifted.hardline import hardline
 
@@ -126,8 +126,18 @@ def is_delete(argv: list[str]) -> bool:
     return bool(argv) and os.path.basename(argv[0]) in ("rm", "unlink")
 
 
-def check_shell(command: str, cwd: str, s: Settings) -> Verdict | None:
-    """hardline, then the delete rewrite, for one Bash command."""
+# Programs that run their argument as a command where the gate cannot see it (unwrap peels the plain
+# wrappers; these are the rest that exist on a Linux box), the ones that move the working folder, and
+# the ordinary tools whose delete, inside the work folder, runs as written.
+_RUNNERS = {"taskset", "ionice", "stdbuf", "flock", "chrt", "systemd-run", "screen", "tmux", "script", "busybox",
+            "watch", "unbuffer", "strace", "ltrace", "gdb", "valgrind", "chronic", "parallel", "at", "batch"}
+_MOVERS = {"cd", "pushd", "popd"}
+_PASS_INSIDE = {"git", "rmdir", "rsync", "zip"}
+
+
+def check_shell(command: str, cwd: str, s: Settings, root: str = "") -> Verdict | None:
+    """hardline, then the delete rules on what would really run (unwrap), for one Bash command: `cwd`
+    is where it runs, `root` the room's work folder (default `cwd`) that a delete must stay under."""
     parts = shell(command)
     whole = mask(shellguard.strip_heredocs(command))           # a redirect or a fork bomb spans separators
     for seg, argv, norm in [("", [], ""), *parts]:
@@ -135,10 +145,39 @@ def check_shell(command: str, cwd: str, s: Settings) -> Verdict | None:
         if what:
             return Verdict("hardline", "deny", f"Refused: this is {what}, which never runs here, with or without "
                                                "approval. Do not try another way.", detail=f"{what}: {(seg or command)[:200]}")
-    dels = [argv for _, argv, _ in parts if is_delete(argv)]
-    if not dels:
+    cmds = unwrap.unwrap(command)
+    if cmds is None:
+        return Verdict("trash", "deny", "Refused: this command could not be read for certain (an open quote, a command "
+                                        "built at run time, or nesting too deep). Run it plainly.",
+                       detail=f"unreadable: {command[:200]}")
+    runner = next((argv[0] for argv in cmds if argv and os.path.basename(argv[0]) in _RUNNERS), "")
+    if runner:
+        return Verdict("trash", "deny", f"Refused: `{runner}` runs its command where this gate cannot see it. "
+                                        "Run the command without it.", detail=f"runner {runner}: {command[:200]}")
+    deletes: list[tuple[list[str], list[str]]] = []
+    for argv in cmds:
+        targets = unwrap.delete_targets(argv, cwd)
+        if targets is None:
+            return Verdict("trash", "deny", "Refused: a delete here names a path this gate cannot resolve (a variable, "
+                                            "a glob, a `~`, or no path at all). Run it on its own with named paths.",
+                           detail=f"unresolved delete: {command[:200]}")
+        if targets:
+            deletes.append((argv, targets))
+    if not deletes:
         return None
-    new = shellguard.delete_rewrite(command.strip(), cwd, list(s.trash)) if len(parts) == 1 else None
+    if any(argv and os.path.basename(argv[0]) in _MOVERS for argv in cmds):
+        return Verdict("trash", "deny", "Refused: a delete after a `cd` in the same command. Run the delete on its own, "
+                                        "from the work folder.", detail=f"delete after cd: {command[:200]}")
+    outside = [t for _, targets in deletes for t in targets if not unwrap.inside([t], root or cwd)]
+    if outside:
+        return Verdict("trash", "deny", f"Refused: it would delete outside the work folder ({', '.join(outside)[:200]}). "
+                                        "Deletes here stay under the work folder; anything else is the owner's to do.",
+                       detail=f"outside {root or cwd}: {', '.join(outside)[:200]}")
+    passing = _PASS_INSIDE | ({os.path.basename(s.trash[0])} if s.trash else set())
+    if all(os.path.basename(argv[0]) in passing for argv, _ in deletes):
+        return None
+    plain = len(parts) == 1 and len(cmds) == 1 and is_delete(parts[0][1])
+    new = shellguard.delete_rewrite(command.strip(), cwd, list(s.trash)) if plain else None
     if new is None:
         how = " ".join(map(shlex.quote, s.trash)) if s.trash else "the trash command"
         return Verdict("trash", "deny", f"Deletes go to the trash here and this one could not be rewritten safely. "
