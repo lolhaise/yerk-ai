@@ -53,7 +53,12 @@ CREATE TABLE IF NOT EXISTS holds (
   id INTEGER PRIMARY KEY, room TEXT, wait_for TEXT, reason TEXT, at REAL);
 CREATE TABLE IF NOT EXISTS health (
   id INTEGER PRIMARY KEY, at REAL, account TEXT, config_dir TEXT, ok INTEGER, failure TEXT, source TEXT,
-  login TEXT, identity TEXT, identity_ok INTEGER, model TEXT, ms INTEGER, note TEXT)"""
+  login TEXT, identity TEXT, identity_ok INTEGER, model TEXT, ms INTEGER, note TEXT);
+CREATE TABLE IF NOT EXISTS evidence (
+  id INTEGER PRIMARY KEY, t REAL, room TEXT, session_id TEXT, turn TEXT, tool TEXT, target TEXT, chars INTEGER);
+CREATE TABLE IF NOT EXISTS shadow (
+  id INTEGER PRIMARY KEY, t REAL, room TEXT, session_id TEXT, turn TEXT, rule TEXT, detail TEXT,
+  reply_chars INTEGER)"""
 HEALTH = ("at", "account", "config_dir", "ok", "failure", "source", "login", "identity", "identity_ok", "model",
           "ms", "note")
 
@@ -79,6 +84,14 @@ class Ledger:
             cur = self.db.execute(f"INSERT INTO {table} ({cols}) VALUES ({', '.join('?' * len(row))})",
                                   tuple(row.values()))
         return int(cur.lastrowid or 0)
+
+    def evidence(self, **row: Any) -> int:
+        """One tool call of a turn and what it read (L185)."""
+        return self._insert("evidence", row)
+
+    def shadow(self, **row: Any) -> int:
+        """One thing the shadow Stop check would have bounced; nothing was blocked."""
+        return self._insert("shadow", row)
 
     def record(self, **row: Any) -> int:
         bad = set(row) - set(COLUMNS)

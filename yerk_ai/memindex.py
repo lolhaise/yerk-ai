@@ -193,9 +193,18 @@ def chunks_of(text: str) -> list[tuple[int, int, str]]:
     return out
 
 
+def live(db: Path) -> Path:
+    """The file the index lives in now: `db` itself, or the generation its link points at (a
+    rebuild builds a new generation and swaps the link, so the path a reader opens is always
+    a whole index, old or new). SQLite names the -wal and -shm after the path it opens, so
+    every connection opens the generation's own path, never the link."""
+    return Path(os.path.realpath(db))
+
+
 def connect(db: Path, *, readonly: bool, deadline: float | None = None) -> sqlite3.Connection:
     """A connection; read-only ones (the daemon, the check, the bench) never write or lock the file.
     With a deadline, a statement still running past it is interrupted (a timeout, L54)."""
+    db = live(db)
     if readonly:
         if not db.is_file():
             raise FileNotFoundError(f"no memory index at {db}; is yerk-index running?")
@@ -216,6 +225,8 @@ class Index:
 
     def __init__(self, db: Path, scope: Scope):
         self.db, self.scope = db, scope
+        self.real = live(db)
+        self.disk: dict[str, tuple[int, int]] = {}      # the last pass's view of the disk
         self.conn = connect(db, readonly=False)
         cur = self.conn.cursor()
         repaired = drop_orphan_shadow_tables(cur, ["chunks_fts"])
@@ -282,8 +293,13 @@ class Index:
         return n
 
     def sync(self) -> dict[str, int]:
-        """One pass: every file whose size or mtime moved is updated, every file gone is forgotten."""
-        disk = self.scope.files()
+        """One pass: every file whose size or mtime moved is updated, every file gone is forgotten.
+        A rebuild elsewhere swapped the link: the writer moves to the new generation first."""
+        if live(self.db) != self.real:
+            self.conn.close()
+            self.real, self.conn = live(self.db), connect(self.db, readonly=False)
+            log.info("the index was rebuilt: writing to %s now", self.real.name)
+        disk = self.disk = self.scope.files()
         indexed = {p: (s, m) for p, s, m in self.conn.execute("SELECT path, size, mtime_ns FROM files")}
         st = {"files": len(disk), "changed": 0, "gone": 0, "inserted": 0, "deleted": 0}
         for path, stat in disk.items():
@@ -303,10 +319,41 @@ class Index:
         self.conn.close()
 
 
-def rebuild(db: Path) -> None:
-    """The full reindex, on request only (L49): the file goes and the next sync builds it again."""
-    for suffix in ("", "-wal", "-shm"):
-        Path(f"{db}{suffix}").unlink(missing_ok=True)
+SWEEP_GRACE = 60.0       # seconds an old generation stays after a swap (a reader may hold it)
+
+
+def rebuild(db: Path, scope: Scope) -> Path:
+    """The full reindex, on request only (L49). It builds a new generation beside the live one,
+    folds its WAL in, then swaps the link in one rename: a recall during the build reads the old
+    index, one after the swap the new, and none finds no file (run 1 deleted first: ~10 s of
+    failures). The old generation is swept after SWEEP_GRACE."""
+    gen = db.with_name(f"{db.stem}-{time.time_ns()}{db.suffix}")
+    idx = Index(gen, scope)
+    try:
+        st = idx.sync()
+        idx.conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    finally:
+        idx.close()
+    tmp = db.with_name(f".{db.name}.swap")
+    tmp.unlink(missing_ok=True)
+    os.symlink(gen.name, tmp)
+    os.replace(tmp, db)
+    log.info("rebuilt into %s: %d files; the link is swapped", gen.name, st["files"])
+    return gen
+
+
+def sweep(db: Path, grace: float = SWEEP_GRACE, now: float | None = None) -> list[str]:
+    """Delete generations the link no longer points at, once the swap is older than `grace`."""
+    if not db.is_symlink() or (now or time.time()) - os.lstat(db).st_mtime < grace:
+        return []
+    keep = live(db).name
+    gone = []
+    for p in [*db.parent.glob(f"{db.stem}-*{db.suffix}*"), *(Path(f"{db}{s}") for s in ("-wal", "-shm"))]:
+        base = p.name.removesuffix("-wal").removesuffix("-shm")
+        if base != keep and p.exists() and not p.is_symlink():
+            p.unlink(missing_ok=True)
+            gone.append(p.name)
+    return gone
 
 
 def terms(query: str) -> list[str]:
@@ -381,6 +428,7 @@ CHECK_EXIT = {"fresh": 0, "pending": 0, "stale": 1, "scope-changed": 1, "failure
 
 
 def main(argv: list[str] | None = None) -> int:
+    from . import mentions
     from .config import private_dir, state_dir
     from .memory import settings
     p = argparse.ArgumentParser(prog="yerk-index", description="The memory index: FTS5 over the private "
@@ -401,8 +449,9 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(r))
         return CHECK_EXIT[r["status"]]
     if a.rebuild:
-        rebuild(m.index_db)
+        rebuild(m.index_db, m.scope)
     idx = Index(m.index_db, m.scope)
+    names = mentions.Builder(m.mentions, m.roots_for_mentions, m.curated, m.mentions_exclude)
     stop = False
 
     def _stop(*_: Any) -> None:
@@ -419,6 +468,14 @@ def main(argv: list[str] | None = None) -> int:
         except sqlite3.OperationalError as e:
             log.warning("pass skipped (%s): %s", "timeout" if is_timeout(e) else "failure", e)
             st = {}
+        try:
+            built = names.refresh(idx.disk)
+            if built is not None:
+                log.info("mention index: %d keys, %d entries, %d dropped as ask-only", *built)
+            for gone in sweep(m.index_db):
+                log.info("swept the old generation file %s", gone)
+        except OSError as e:
+            log.warning("mention index or sweep skipped: %s", e)
         took = time.monotonic() - t0
         if first or st.get("changed") or st.get("gone"):
             log.info("pass: %d files, %d changed, %d gone, %d chunks in, %d out, %.2f s", st.get("files", 0),

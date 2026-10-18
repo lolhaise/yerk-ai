@@ -68,7 +68,7 @@ def cmd_room(a: argparse.Namespace) -> int:
     st = json.loads((state_dir(a.state) / "yerkd.json").read_text())
     req = urllib.request.Request(f"http://127.0.0.1:{st['port']}/control", data=json.dumps({a.action: a.room}).encode(),
                                  headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=60) as r:
+    with urllib.request.urlopen(req, timeout=900 if a.action == "compact" else 60) as r:
         out = json.loads(r.read())
     print(json.dumps(out))
     return 0 if out.get("ok") else 1
@@ -239,7 +239,7 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--channel", help="the channel id, when rooms.toml has none yet")
     s.add_argument("--webhook", default="yerk-test-sender")
     r = sub.add_parser("room", help="act on a running yerkd's room")
-    r.add_argument("action", choices=["close"])
+    r.add_argument("action", choices=["close", "compact"])
     r.add_argument("room")
     r.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
     ac = sub.add_parser("accounts", help="tokens, rests and health per account; cool, clear, token, mint, health")

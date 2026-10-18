@@ -48,6 +48,7 @@ def test_declared_parts_fit_the_declared_total():
     assert sum(s["claude_code"].values()) + sum(s["appended"].values()) <= s["total"]
     pm = budgets()["per_message"]
     assert sum(pm["parts"].values()) <= pm["typical"] <= pm["cap"]
+    assert sum(pm["parts"].values()) + sum(pm["on_hit"].values()) <= pm["cap"]     # a message with every hit
 
 
 def test_characters_are_counted_as_claude_code_counts_them():

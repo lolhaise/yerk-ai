@@ -15,7 +15,7 @@ import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone, tzinfo
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 from zoneinfo import ZoneInfo
 
 from . import memindex
@@ -34,10 +34,17 @@ class Settings:
     tz: tzinfo
     interval: float
     bench: Path
+    mentions: Path = Path("mentions.json")          # the mention index yerk-index writes
+    curated: tuple[str, ...] = ("MEMORY.md",)        # file names whose headings are mention keys
+    mentions_exclude: tuple[str, ...] = ()          # globs kept out of mention recall
 
     @property
     def daily(self) -> Path:
         return self.root / "daily"
+
+    @property
+    def roots_for_mentions(self) -> tuple[Path, ...]:
+        return self.scope.roots
 
 
 def settings(private: Path, state: Path, conf: dict[str, Any] | None = None) -> Settings:
@@ -58,7 +65,10 @@ def settings(private: Path, state: Path, conf: dict[str, Any] | None = None) -> 
                                                                               or timezone.utc)
     return Settings(root=root, scope=memindex.Scope(tuple([root, *also]), tuple(conf.get("exclude", []))),
                     index_db=state / "memory" / "index.sqlite", tz=tz, interval=float(conf.get("interval", 2.0)),
-                    bench=(private / Path(str(conf.get("bench", "evals/recall-questions.json")))).resolve())
+                    bench=(private / Path(str(conf.get("bench", "evals/recall-questions.json")))).resolve(),
+                    mentions=state / "memory" / "mentions.json",
+                    curated=tuple(str(x) for x in conf.get("curated", ["MEMORY.md"])),
+                    mentions_exclude=tuple(str(x) for x in conf.get("mentions_exclude", [])))
 
 
 def one_line(text: str) -> str:
@@ -165,6 +175,160 @@ def cite(s: Settings, path: Path) -> str:
         if path.is_relative_to(root):
             return (Path(root.name) / path.relative_to(root)).as_posix()
     return path.name
+
+
+# the room's own log: the topic hit per message and the recall pack at session start (decision 20)
+LINE = re.compile(r"^- (\d\d:\d\d:\d\d) (\S+) ([\w-]+): (.*?)(?: \[m:([^\]\s]+)\])?$")
+OWNER_ROLES = frozenset({"owner", "test-webhook"})   # the test webhook stands in for the owner in a test room
+DECIDED = re.compile(r"\b(?:decided|decision|agreed|settled on|going with|go with|draft(?:ed)?)\b", re.I)
+WINDOW_DAYS = 14
+ITEM_CHARS = 280
+
+
+def window(s: Settings, now: datetime | None = None, days: int = WINDOW_DAYS) -> list[str]:
+    """The last `days` day names in the install's time zone, newest first."""
+    from datetime import timedelta
+    today = (now or datetime.now(timezone.utc)).astimezone(s.tz).date()
+    return [(today - timedelta(days=n)).isoformat() for n in range(days)]
+
+
+def _short(text: str) -> str:
+    return text if len(text) <= ITEM_CHARS else text[:ITEM_CHARS - 1] + "…"
+
+
+def _stem(w: str) -> str:
+    return w[:5] if len(w) >= 5 else w
+
+
+def room_lines(s: Settings, room: str, now: datetime | None = None) -> Iterator[tuple[str, int, re.Match[str], list[str]]]:
+    """(day, line number, match, the lines of its file) for this room's lines of the last 14 days,
+    newest day first. The room's own day files are small, so they are read straight from disk:
+    fresher than the index (which trails by a pass) and a few milliseconds per message."""
+    for day in window(s, now):
+        f = s.daily / f"{day}.md"
+        if not f.is_file():
+            continue
+        lines = f.read_text(errors="replace").splitlines()
+        for n, line in enumerate(lines):
+            m = LINE.match(line)
+            if m and m.group(2) == room:
+                yield day, n, m, lines
+
+
+def topic_hits(s: Settings, room: str, text: str, exclude: set[str] | None = None,
+               now: datetime | None = None, limit: int = 6) -> list[dict[str, Any]]:
+    """The message's key terms against this room's own lines of the last 14 days, best first:
+    ranked by how many of the terms a line holds, newer first on a tie. The message itself
+    (filed before the turn) and lines sharing too few terms never come back."""
+    ts = memindex.terms(text)
+    if not ts:
+        return []
+    want = {_stem(t) for t in ts}
+    need = 1 if len(want) <= 2 else max(2, -(-len(want) * 3 // 10))     # a long message needs 30% of its terms
+    body = one_line(text)
+    hits = []
+    for day, n, m, _ in room_lines(s, room, now):
+        if (m.group(5) or "").split(".e")[0] in (exclude or set()) or m.group(4).strip() == body:
+            continue
+        cover = len(want & {_stem(w) for w in memindex.WORD.findall(memindex.norm(m.group(4)))})
+        if cover >= need:
+            hits.append({"day": day, "time": m.group(1)[:5], "role": m.group(3), "text": m.group(4),
+                         "cite": f"daily/{day}.md:{n + 1}", "cover": cover})
+    return sorted(hits, key=lambda h: (h["cover"], h["day"], h["time"]), reverse=True)[:limit]
+
+
+def room_items(s: Settings, room: str, now: datetime | None = None,
+               exclude: set[str] | None = None) -> list[dict[str, Any]]:
+    """The room's filed items of the last 14 days, newest first: every message the owner sent
+    (its attachments with it) and every line that reads as a decision or a draft. The messages
+    the turn is answering (`exclude`) are the prompt itself and stay out."""
+    items: list[dict[str, Any]] = []
+    for day in window(s, now):
+        f = s.daily / f"{day}.md"
+        if not f.is_file():
+            continue
+        lines = f.read_text(errors="replace").splitlines()
+        found: list[dict[str, Any]] = []
+        for n, line in enumerate(lines):
+            m = LINE.match(line)
+            if not m or m.group(2) != room or (m.group(5) or "").split(".e")[0] in (exclude or set()):
+                continue
+            owner = m.group(3) in OWNER_ROLES
+            if not owner and not DECIDED.search(m.group(4)):
+                continue
+            files = []
+            for nxt in lines[n + 1:]:
+                if not nxt.startswith("  - attachment: "):
+                    break
+                files.append(nxt.strip()[2:])
+            found.append({"day": day, "time": m.group(1)[:5], "role": m.group(3), "text": m.group(4),
+                          "files": files, "cite": f"daily/{day}.md:{n + 1}"})
+        items += reversed(found)
+    return items
+
+
+def room_pack(s: Settings, room: str, budget: int = 6000, now: datetime | None = None,
+              exclude: set[str] | None = None) -> tuple[str, int]:
+    """(text, items shown): the recall pack's room part, newest first, cut to `budget` characters."""
+    head = (f"[recall pack] Room {room}, last {WINDOW_DAYS} days of filed items, newest first: what the owner "
+            "sent, decisions and drafts. Each ends with its file and line; read_memory gives the whole line.")
+    out, used, shown = [head], len(head), 0
+    items = room_items(s, room, now, exclude)
+    for it in items:
+        extra = "".join(f" [{f}]" for f in it["files"])
+        line = f"- {it['day'][5:]} {it['time']} {it['role']}: {_short(it['text'])}{extra} ({it['cite']})"
+        if used + 1 + len(line) > budget - 60:
+            break
+        out.append(line)
+        used += 1 + len(line)
+        shown += 1
+    if shown < len(items):
+        out.append(f"({len(items) - shown} older items not shown; recall or read_memory reaches them)")
+    return ("\n".join(out), shown) if items else ("", 0)
+
+
+def on_file(s: Settings, deadline_s: float = 1.5) -> tuple[Any, Any]:
+    """(figure lookup, file lookup) for the shadow Stop check, each answering the cite or None."""
+    import sqlite3
+    import time
+
+    from .evidence import has_figure
+
+    def figure(fig: str) -> str | None:
+        digits = re.findall(r"\d+", fig)
+        try:
+            conn = memindex.connect(s.index_db, readonly=True, deadline=time.monotonic() + deadline_s)
+            try:
+                rows = conn.execute("SELECT c.path, c.lo, c.body FROM chunks_fts JOIN chunks c ON c.id = "
+                                    "chunks_fts.rowid WHERE chunks_fts MATCH ? LIMIT 60",
+                                    ('"' + " ".join(digits) + '"',)).fetchall()
+            finally:
+                conn.close()
+        except (OSError, sqlite3.Error):
+            return None
+        found = []                  # a fact file first, then the install's own tree, then a read-only root
+        for path, lo, body in rows:
+            for n, line in enumerate(body.splitlines()):
+                if has_figure(line, fig):
+                    p = Path(path)
+                    rank = 0 if p.parent.name == "facts" else 1 if p.is_relative_to(s.root) else 2
+                    found.append((rank, str(p.relative_to(s.root)) if p.is_relative_to(s.root) else path, lo + n))
+                    break
+        return f"{min(found)[1]}:{min(found)[2]}" if found else None
+
+    def known(name: str) -> str | None:
+        try:
+            conn = memindex.connect(s.index_db, readonly=True, deadline=time.monotonic() + deadline_s)
+            try:
+                row = conn.execute("SELECT path FROM files WHERE path = ? OR path LIKE ? LIMIT 1",
+                                   (name, "%/" + name.lstrip("./"))).fetchone()
+            finally:
+                conn.close()
+        except (OSError, sqlite3.Error):
+            return None
+        return cite(s, Path(row[0])) if row else None
+
+    return figure, known
 
 
 # the recall bench: a fixed question set, run against the index (L63)
