@@ -29,6 +29,927 @@ why_not = "The owner's call: not worth shipping in the public harness. Realtime 
 asked_as = ["voice", "voice chat", "voice call", "speech", "talk out loud", "phone call"]
 layer = 10
 
+# "What can you do": this entry's room answer carries every ability's name by state, from this file.
+[abilities.abilities]
+state = "built"
+what = "Says what Yerk AI can do: every ability it ships and every one it knows how to build, from this file."
+tier = "free"
+needs = "nothing; `yerk abilities` lists them, `yerk explain NAME` has any one, and a room asking gets the list"
+free_path = "this is the free path"
+asked_as = ["what can you do", "what can u do", "what else can you do", "what are you able to do", "what are you capable of", "what are your abilities", "what abilities do you have", "list your abilities"]
+
+# The described abilities below are known and not built (decision 26). On a described entry, `upgrade`
+# names the built ability that already ships part of it.
+[abilities.job-search]
+state = "described"
+
+how = [
+  
+  
+  
+  
+]
+tier = "free"
+
+price = "none"
+
+
+
+upgrade = "jobs"
+
+
+state = "described"
+
+how = [
+  
+  
+  
+  
+]
+tier = "free"
+
+price = "none"
+free_path = "this is the free path"
+
+
+
+[abilities.bank-balances]
+state = "described"
+what = "Reads the owner's bank and card balances, read-only, and keeps one net worth number a day with a private dashboard."
+how = [
+  "Sign-ins through the browser ability, in the owner's own browser profile, with the sign-in code from the login-codes ability.",
+  "A read-only pass: balances and recent transactions read off each site, never a payment, a transfer or a setting changed.",
+  "Net worth: true balances turned into one number a day, kept as a series in the private folder.",
+  "A dashboard served on the box only, never on the public internet.",
+]
+tier = "free"
+needs = "the browser ability, the owner's bank sign-ins in their own browser profile, and the login-codes ability for sign-in codes"
+price = "none"
+free_path = "this is the free path"
+why_not = "After the rooms move: it is the owner's own money and runs from the owner's browser, so it ships as a neutral ability only."
+asked_as = ["bank balance", "bank balances", "account balances", "net worth", "how much money do i have"]
+
+[abilities.spending]
+state = "described"
+what = "Reads card purchase alert emails into a spending ledger, sorts them into categories and finds the recurring charges."
+how = [
+  "Alert reading: the card issuer's purchase emails, matched by sender and template, one ledger row per purchase.",
+  "Categories from a rules file in the private folder; a rule change tags new rows and leaves history alone.",
+  "Recurring charges found from the ledger, with a note on a new purchase when the owner wants one.",
+]
+tier = "free"
+needs = "the email ability (read-only mailbox access) and card purchase alerts turned on at the card issuer"
+price = "none"
+free_path = "this is the free path"
+why_not = "After the rooms move: it is the owner's own money, so it ships as a neutral ability only."
+asked_as = ["my spending", "spending ledger", "card purchases", "recurring charges", "subscriptions i pay"]
+
+[abilities.money-run]
+state = "described"
+what = "A nightly money run: an agent job that signs in, reads balances and spending, updates the dashboard and says only what changed."
+how = [
+  "An agent job from the jobs file at a quiet hour, as a worker with a fixed brief.",
+  "The bank-balances and spending abilities as its steps, read-only.",
+  "One short line in the owner's room when something moved; silence when nothing did.",
+]
+tier = "free"
+needs = "the jobs ability and the bank-balances and spending abilities"
+price = "none"
+free_path = "this is the free path"
+why_not = "After the rooms move: its two steps are not built yet."
+asked_as = ["money run", "nightly money", "nightly finance"]
+upgrade = "jobs"
+
+[abilities.stocks]
+state = "described"
+what = "Stock quotes and fundamentals from a free quote source, and an alert only when a holding moves more than a set percent."
+how = [
+  "Quotes and fundamentals: a free quote source, no key.",
+  "Holdings in the private folder; an alert job that posts only past the threshold.",
+]
+tier = "free"
+needs = "a free quote source and the jobs ability for the alert"
+price = "none"
+free_path = "this is the free path"
+why_not = "After the rooms move."
+asked_as = ["stock price", "stock prices", "my stocks", "my portfolio", "stock alert"]
+upgrade = "jobs"
+
+[abilities.text-as-you]
+state = "described"
+what = "Texts people as the owner, in the owner's voice, with a preview and a veto: the owner sees each reply before it goes and can stop it."
+how = [
+  "The phone's messaging app through a small signed app on the owner's own computer, which carries the texts both ways.",
+  "A texting agent per thread that writes in the owner's voice and asks the owner's main room first when it does not know a fact.",
+  "Preview and veto: a reply waits in the owner's room for a send, an edit or a no; plans, money and feelings always go to the owner.",
+  "Texts queue while the computer is away and none is ever lost.",
+]
+tier = "free"
+needs = "a desktop computer signed into the owner's messaging account, the small signed app on it, and an ssh path from the box"
+price = "none"
+free_path = "this is the free path"
+why_not = "Layer 8: the messaging adapter waits on the signed app."
+asked_as = ["text as me", "text people as me", "send texts as me", "text people for me", "reply to my texts", "imessage", "text messages for me"]
+layer = 8
+
+[abilities.email]
+state = "described"
+what = "Reads, searches and sends email from the owner's mailbox; a send in the owner's name is shown to the owner first."
+how = [
+  "Mailbox access: the mail provider's standard mail protocol with an app password in the private folder.",
+  "Search that matches the provider's own rules, so a partial word never returns a false zero.",
+  "A send path that shows the final text to the owner first and sends only on the owner's word.",
+]
+tier = "free"
+needs = "an app password for the mailbox in the private folder"
+price = "none"
+free_path = "this is the free path"
+why_not = "After the rooms move."
+asked_as = ["my email", "my inbox", "send an email", "read my email", "search my email"]
+
+[abilities.mail-watch]
+state = "described"
+what = "Wakes Yerk when an email that matters lands, by rules in the private folder, and stays quiet otherwise."
+how = [
+  "A watch on the mailbox: new mail matched against sender and subject rules.",
+  "A match becomes a room message or an agent job; no match prints nothing, so nothing wakes.",
+]
+tier = "free"
+needs = "the email ability and the jobs ability"
+price = "none"
+free_path = "this is the free path"
+why_not = "After the rooms move."
+asked_as = ["watch my email", "tell me when an email", "email alert", "mail alert"]
+upgrade = "jobs"
+
+[abilities.outreach]
+state = "described"
+what = "Keeps outreach email threads labelled and says when someone replies, without touching drafts."
+how = [
+  "A label pass on the sent outreach threads, every half hour, drafts left alone.",
+  "A reply watch through the working day that posts a new reply to the owner's room.",
+]
+tier = "free"
+needs = "the email ability and the jobs ability"
+price = "none"
+free_path = "this is the free path"
+why_not = "After the rooms move."
+asked_as = ["outreach replies", "outreach emails", "cold email replies"]
+upgrade = "jobs"
+
+[abilities.sms-send]
+state = "described"
+what = "Sends text messages from a number rented from an SMS provider, for lists and notices to people who asked for them."
+how = [
+  "An SMS provider's send API with the account key in the private folder.",
+  "Sends only to numbers that opted in, from a job or a room request.",
+]
+tier = "paid"
+provider = "an SMS provider"
+needs = "an SMS provider account, a rented number and its key in the private folder"
+price = "the provider's per-message price plus a monthly number rental, paid to the provider"
+free_path = "none for SMS; the room itself is the free path"
+why_not = "After the rooms move; it is a paid provider, so it stays optional."
+asked_as = ["send an sms", "sms provider", "text this list"]
+
+[abilities.login-codes]
+state = "described"
+what = "Receives the owner's forwarded texts and hands the newest sign-in code to a sign-in that is waiting for one."
+how = [
+  "A phone automation forwards new texts to a small receiver on the box.",
+  "The receiver keeps them briefly and hands out the newest code to a sign-in in progress; codes never reach a room or a log.",
+]
+tier = "free"
+needs = "a phone that can run an automation to forward texts, and the receiver reachable from it"
+price = "none"
+free_path = "this is the free path"
+why_not = "After the rooms move: the bank-balances ability is its only user."
+asked_as = ["sign-in code", "login code", "verification code", "forwarded texts"]
+
+[abilities.phone-calls]
+state = "described"
+what = "Places a phone call for the owner, to book, ask or follow up, from a fact sheet written for that one call, and says nothing that is not on it."
+how = [
+  "A fact sheet per call, written from what is on file, and a brain that only speaks from it.",
+  "A voice agent vendor for the call itself: the phone line, the speech and the voice.",
+  "A public tunnel so the vendor reaches the brain on the box, and a test turn before each call.",
+  "Calls only to people who gave a number, from the owner's verified number.",
+]
+tier = "paid"
+provider = "a voice agent vendor (phone line, speech to text and text to speech)"
+needs = "a voice agent vendor account and key, a verified caller number, and a tunnel to the box"
+price = "the vendor's per-minute call price plus its plan, paid to the vendor"
+free_path = "none for calls"
+why_not = "Not planned for the public harness: it needs a paid voice vendor and a public tunnel, and most users never need it."
+asked_as = ["call someone for me", "make a call for me", "place a call", "call on my behalf"]
+
+[abilities.browser]
+state = "described"
+what = "Drives a real browser on a separate profile, so it never takes the owner's mouse and the owner's own windows stay untouched."
+how = [
+  "A separate browser profile on the owner's computer, signed in where the owner chose, driven over the browser's developer protocol.",
+  "A tool server attached to that profile, so a room or a worker can open, read, click and type.",
+  "A brake: the owner's stop word ends it at once, and a run lifts the brake for itself with a lease that runs out on its own.",
+]
+tier = "free"
+needs = "a desktop computer with a Chromium-based browser, a separate profile on it, and a path from the box to its developer port"
+price = "none"
+free_path = "this is the free path"
+why_not = "After the rooms move; the job-applications and bank-balances abilities wait on it."
+asked_as = ["use my browser", "control my browser", "drive my browser", "use a browser", "browser for me", "open a website for me"]
+
+[abilities.pc-control]
+state = "described"
+what = "Hands and eyes on a desktop computer: clicks, keys, windows and screenshots, for what a browser cannot reach."
+how = [
+  "A small hands service on the computer for clicks, keys and screenshots, reachable only from the box.",
+  "Text typed through the system's own input path, which stays reliable across a long session.",
+  "Scheduled tasks on the computer that keep the box's Linux side up and start it at login, where the box runs inside it.",
+]
+tier = "free"
+needs = "a desktop computer the owner allows it on and the hands service running there"
+price = "none"
+free_path = "this is the free path"
+why_not = "After the rooms move."
+asked_as = ["control my pc", "control my computer", "use my computer", "take a screenshot"]
+
+[abilities.mac-control]
+state = "described"
+what = "Runs things on a Mac: a health line per check, speech through its speakers, and apps driven by script."
+how = [
+  "A node app on the Mac that holds the system permissions; plain ssh has none.",
+  "One green or red line per check (the node, messaging, power), repaired on a timer where it can be.",
+]
+tier = "free"
+needs = "a Mac with the node app and its permissions granted once"
+price = "none"
+free_path = "this is the free path"
+why_not = "Layer 8: the Mac's command door comes after the messaging adapter."
+asked_as = ["control my mac", "use my mac", "mac health"]
+layer = 8
+
+[abilities.phone-location]
+state = "described"
+what = "Says where the owner's phone is, as a place name and for how long, in the owner's own rooms only."
+how = [
+  "The phone as a node: a location read only while it is awake, so a sleeping phone is never woken with an alert.",
+  "The phone maker's device finder for a sleeping phone.",
+  "Coordinates turned into a place name from open map data, with new places learned.",
+  "A pairing code shown on the owner's screen once, masked in every log.",
+]
+tier = "free"
+needs = "the owner's phone paired as a node and the owner's device-finder sign-in"
+price = "none"
+free_path = "this is the free path"
+why_not = "After the rooms move: owner-privacy rooms only."
+asked_as = ["where is my phone", "where am i", "my location", "find my phone"]
+
+[abilities.glasses]
+state = "described"
+what = "Keeps a pair of camera glasses connected, so they can take a photo or talk when asked, and says when the link has gone stale."
+how = [
+  "A keep-alive check over the glasses' debug link, and a revive when it drops.",
+  "A stale-frame check that names a frozen camera instead of passing an old photo as new.",
+]
+tier = "free"
+needs = "camera glasses with a debug link and a phone or computer bridging them"
+price = "none"
+free_path = "this is the free path"
+why_not = "Not planned for the public harness: few users have the hardware."
+asked_as = ["smart glasses", "camera glasses"]
+
+[abilities.hard-pages]
+state = "described"
+what = "Reads a web page that blocks plain fetches (a bot wall, a captcha, a page drawn by script) through a cloud browser ladder."
+how = [
+  "A ladder: a plain fetch first, then a proxied fetch, then a real cloud browser that can solve a captcha and use saved logins.",
+  "A failure names its wall (login required, captcha unsolved, region blocked) instead of a bare cannot.",
+]
+tier = "paid"
+provider = "a cloud browser service"
+needs = "a cloud browser service key in the private folder"
+price = "the service's monthly plan, paid to the service"
+free_path = "a worker's own fetch, the one Claude Code ships, for pages that do not block it"
+why_not = "After the rooms move; it is a paid provider, so it stays optional."
+asked_as = ["blocked page", "bot wall", "captcha page", "page will not load"]
+
+[abilities.web-search]
+state = "described"
+what = "Searches the web through a paid search API first, with free engines behind it, for more and fresher results than the built-in search."
+how = [
+  "A search API as the first engine, with its key in the private folder.",
+  "Free engines as the fallback, so search works with no key at all.",
+]
+tier = "key"
+provider = "a web search API"
+needs = "a web search API key in the private folder"
+price = "the search API's per-request price, paid to the provider"
+free_path = "a worker's own web search, the one Claude Code ships; free engines behind the API"
+why_not = "After the rooms move."
+asked_as = ["search api", "paid search", "search provider"]
+
+[abilities.page-watch]
+state = "described"
+what = "Watches a web page and tells the owner when it changes in a way that matters: a new date, a new listing, a price."
+how = [
+  "An agent job per page, with the page and what counts as a change in its brief.",
+  "Silence when nothing changed; one line in the room when something did.",
+]
+tier = "free"
+needs = "the jobs ability, and the hard-pages ability for pages that block plain fetches"
+price = "none"
+free_path = "an agent job with the page in its brief, through the schedule tool, works today"
+why_not = "After the rooms move: what is built is the agent job; the kept last copy and the change rules are not."
+asked_as = ["watch this page", "watch a web page", "tell me when this page changes", "page changes"]
+upgrade = "jobs"
+
+[abilities.marketplace-watch]
+state = "described"
+what = "Watches a classifieds site for listings under a set price, reads the replies to the owner's messages and keeps one pipeline sheet."
+how = [
+  "A listing poll every few minutes against the price rules in the private folder.",
+  "A reply reader in the owner's browser that posts new replies to the room.",
+  "One sheet that merges sends and replies.",
+]
+tier = "free"
+needs = "the browser ability and the jobs ability"
+price = "none"
+free_path = "this is the free path"
+why_not = "After the rooms move."
+asked_as = ["classifieds", "marketplace listings", "underpriced listings", "listing watch"]
+upgrade = "jobs"
+
+[abilities.site-chatbots]
+state = "described"
+what = "Runs a chat assistant on a business's website, says when a visitor opens it, and alerts when a hand-off to a person fails."
+how = [
+  "One assistant per site, each with its own facts and a nightly refresh.",
+  "A visit alert and a hand-off check, posted to the owner's room.",
+  "A probe that talks to a competitor's public chat widget the way a visitor would.",
+]
+tier = "free"
+needs = "a web page to embed the chat in, and the jobs ability for the refresh and the checks"
+price = "none"
+free_path = "this is the free path"
+why_not = "Not planned for the public harness: it is a business product, not a personal assistant."
+asked_as = ["website chatbot", "chat widget", "chatbot for my business"]
+
+[abilities.transcribe]
+state = "described"
+what = "Transcribes a voice note or recording in two passes: the words, then the tone, then a check for made-up words."
+how = [
+  "A speech-to-text vendor for the words, never slow local transcription by default.",
+  "A second pass that reads the tone and flags any word the first pass may have invented.",
+]
+tier = "key"
+provider = "a speech-to-text vendor"
+needs = "a speech-to-text vendor key in the private folder"
+price = "the vendor's per-minute price, paid to the vendor"
+free_path = "local transcription on the box, slower"
+why_not = "After the rooms move."
+asked_as = ["transcribe", "transcription", "transcribe this", "what does this recording say"]
+
+[abilities.voice-notes]
+state = "described"
+what = "Sends a spoken voice note in a chosen voice, one path for every voice note."
+how = [
+  "A text-to-speech vendor for the voice, with its key in the private folder.",
+  "One send path, so every voice note has the same voice and the same checks.",
+]
+tier = "key"
+provider = "a text-to-speech vendor"
+needs = "a text-to-speech vendor key in the private folder"
+price = "the vendor's per-character price, paid to the vendor"
+free_path = "a text reply"
+why_not = "After the rooms move."
+asked_as = ["voice note", "voice message", "send me audio"]
+
+[abilities.video-read]
+state = "described"
+what = "Says what is in a short video: the song, the words spoken, the on-screen caption cards, and frames to look at."
+how = [
+  "Frames and clips cut with a local video tool.",
+  "The audio matched to a song and transcribed for its words.",
+  "The caption cards read off the frames, in order.",
+]
+tier = "free"
+needs = "a local video tool, and the transcribe ability for the words"
+price = "none"
+free_path = "frames and caption cards on the box"
+why_not = "After the rooms move."
+asked_as = ["what song is this", "caption a video", "read this video", "captions from a video"]
+
+[abilities.youtube-transcript]
+state = "described"
+what = "Pulls a video's transcript from a video site, with timestamps, cached; a video link in a room fetches it on its own."
+how = [
+  "The site's own caption tracks through a download tool, one track chosen, never an auto-translated one.",
+  "A cache, so a second ask for the same video is free.",
+]
+tier = "free"
+needs = "a caption download tool on the box"
+price = "none"
+free_path = "this is the free path"
+why_not = "After the rooms move."
+asked_as = ["youtube transcript", "transcript of this video", "youtube captions"]
+
+[abilities.x-research]
+state = "described"
+what = "Reads a post on X with the author's own thread replies, or researches what people there are saying about something."
+how = [
+  "A post link is read as the whole thread: the author's own replies carry most of it.",
+  "Search over recent posts through the site's API on its pay-per-use plan.",
+]
+tier = "paid"
+provider = "the X API's pay-per-use plan"
+needs = "an X API key in the private folder"
+price = "the X API's per-request price, paid to X"
+free_path = "a worker's own fetch of a public mirror, for a single post"
+why_not = "After the rooms move."
+asked_as = ["on twitter", "x.com", "this tweet", "what are people saying"]
+
+[abilities.image-search]
+state = "described"
+what = "Finds real images on the web for a description, without an API key."
+how = [
+  "A search over public image results, with the image's source page kept with it.",
+]
+tier = "free"
+needs = "nothing beyond web access"
+price = "none"
+free_path = "this is the free path"
+why_not = "After the rooms move."
+asked_as = ["find an image", "find a picture", "image search"]
+
+[abilities.photo-edit]
+state = "described"
+what = "Edits one area of a photo with an image model and pastes it back onto the untouched original."
+how = [
+  "An image model edits the chosen area only.",
+  "The edited area is blended back onto the original, so the rest stays exactly as it was.",
+]
+tier = "key"
+provider = "an image generation vendor"
+needs = "an image vendor key in the private folder"
+price = "the vendor's per-image price, paid to the vendor"
+free_path = "none for model edits"
+why_not = "After the rooms move."
+asked_as = ["edit this photo", "photo edit", "fix this picture"]
+
+[abilities.read-documents]
+state = "described"
+what = "Reads a spreadsheet, a Word file or a slide deck and answers about it, with the numbers as written; a PDF or an image a room reads already."
+how = [
+  "Text and tables out of a PDF, with scanned pages marked as needing text recognition.",
+  "A spreadsheet's columns and first rows, with leading zeros kept.",
+  "Any office file turned into plain text for the model to read.",
+]
+tier = "free"
+needs = "Python document libraries on the box"
+price = "none"
+free_path = "a PDF or an image is read in the room as it is; other files through a worker"
+why_not = "After the rooms move."
+asked_as = ["read spreadsheets", "read excel", "this excel file", "this word document", "read office files"]
+
+[abilities.make-documents]
+state = "described"
+what = "Makes a Word file, a slide deck, a spreadsheet with working formulas, a chart or a PDF, checked as the reader will see it."
+how = [
+  "Office files written with Python libraries, then fixed so the office app opens them.",
+  "Spreadsheet formulas recalculated before the file is sent, so no cell is empty.",
+  "PDFs from markdown, and charts by a fixed set of design rules.",
+]
+tier = "free"
+needs = "Python document libraries on the box"
+price = "none"
+free_path = "a worker writes plain text, markdown or a CSV file today"
+why_not = "After the rooms move."
+asked_as = ["make a word document", "make a spreadsheet", "make a slide deck", "make a pdf", "make a chart"]
+
+[abilities.broadcast-listen]
+state = "described"
+what = "Records a live radio stream during set hours, transcribes it as each piece closes, and posts the words that matter."
+how = [
+  "A recording job for the window, cut into short pieces.",
+  "Each piece transcribed as it closes, and the wanted words posted one per message.",
+  "Yesterday's posts cleared at midnight.",
+]
+tier = "free"
+needs = "the jobs ability, the transcribe ability and the stream's address"
+price = "none"
+free_path = "this is the free path"
+why_not = "Not planned for the public harness: a one-family errand."
+asked_as = ["record the radio", "radio stream", "listen to the radio"]
+upgrade = "jobs"
+
+[abilities.cookbook-pages]
+state = "described"
+what = "Turns a recipe into a cookbook page as an image, and keeps a live cookbook site."
+how = [
+  "A page template filled from the recipe, sent as an image, since a chat preview can show a PDF blank.",
+  "A static site rebuilt from the pages, checked at its live address after each change.",
+]
+tier = "free"
+needs = "the make-documents ability and a static site host"
+price = "none"
+free_path = "this is the free path"
+why_not = "Not planned for the public harness: a one-family errand."
+asked_as = ["cookbook", "recipe page"]
+
+[abilities.voice-music]
+state = "described"
+what = "Plays music in a voice channel, as its own process beside the harness."
+how = [
+  "A separate player process on the same bot, so the harness never carries audio.",
+]
+tier = "free"
+needs = "a voice channel and an audio source"
+price = "none"
+free_path = "this is the free path"
+why_not = "Not planned for the public harness: voice rooms are not built."
+asked_as = ["play music", "play a song"]
+
+[abilities.flight-fares]
+state = "described"
+what = "Checks a flight fare with a search link that really loads results, and can check one route every month."
+how = [
+  "A link built in the flight search site's own query format, since its plain-words link loads an empty form.",
+  "A monthly agent job for a saved route, with the fare and the date read back.",
+]
+tier = "free"
+needs = "web access, and the jobs ability for a monthly check"
+price = "none"
+free_path = "a worker's own fetch of the built link, today"
+why_not = "After the rooms move."
+asked_as = ["flight price", "flight prices", "flight fare", "cheap flights"]
+upgrade = "jobs"
+
+[abilities.commute]
+state = "described"
+what = "Says how the owner's drive looks this morning: the time and the trouble, with which source answered."
+how = [
+  "A traffic source for the drive time, labelled when it is an estimate and not a measurement.",
+]
+tier = "key"
+provider = "a maps provider"
+needs = "a maps provider key in the private folder"
+price = "the maps provider's per-request price, paid to the provider"
+free_path = "a typical-time estimate, labelled as one"
+why_not = "After the rooms move."
+asked_as = ["my commute", "traffic to work", "how long is my drive"]
+
+[abilities.morning-brief]
+state = "described"
+what = "A morning brief posted each day: the day ahead, what is owed, the weather and the commute, in a few short lines."
+how = [
+  "An agent job from the jobs file at the owner's hour, as a worker with a fixed brief.",
+  "Its sources read fresh each morning: open commitments, the calendar, mail that matters, the weather, the commute.",
+  "Posted in the owner's main room, state first, nothing that is not on file.",
+]
+tier = "free"
+needs = "the jobs ability, and the open-loops, email and commute abilities for its sources"
+price = "none"
+free_path = "this is the free path: a brief from what is on file"
+why_not = "After the rooms move: the jobs ability can run it today, and its sources are not built yet."
+asked_as = ["morning brief", "morning briefing", "daily brief", "brief me every morning"]
+upgrade = "jobs"
+
+[abilities.day-beats]
+state = "described"
+what = "Fixed check-ins through the day: one at day open, one after the nightly restart, one for the inbox and one at midday, each moving real work."
+how = [
+  "A rules file for the beats: what each one checks and what it may post.",
+  "An agent job per beat; a beat with nothing to say posts nothing.",
+]
+tier = "free"
+needs = "the jobs ability"
+price = "none"
+free_path = "this is the free path"
+why_not = "After the rooms move."
+asked_as = ["check in with me", "daily check-ins", "heartbeat"]
+upgrade = "jobs"
+
+[abilities.memory-upkeep]
+state = "described"
+what = "Keeps the memory tidy: each night the day's log is folded into the memory files, and each week the curated file's stale lines leave."
+how = [
+  "A nightly fold of the day's log into the topic and fact files, every line traceable to its source.",
+  "A weekly pass that removes pinned lines whose every date is past and that call themselves history.",
+  "A nightly copy of every room's conversation into searchable files.",
+]
+tier = "free"
+needs = "the capture ability and the jobs ability"
+price = "none"
+free_path = "this is the free path"
+why_not = "After the rooms move: today it runs on the owner's install."
+asked_as = ["memory upkeep", "clean up your memory", "consolidate memory"]
+upgrade = "capture"
+
+[abilities.wiki]
+state = "described"
+what = "A compiled wiki of what Yerk knows: pages built from raw sources, two-way links, a health check for contradictions and stale claims, and a short primer."
+how = [
+  "Raw sources compiled into pages, with a fact sync from the memory files.",
+  "Backlinks kept both ways, an index page, and a lint pass for contradictions, stale claims and orphan pages.",
+  "Meaning search over the pages through an embeddings provider.",
+]
+tier = "key"
+provider = "an embeddings provider"
+needs = "an embeddings provider key for the meaning search"
+price = "the embeddings provider's per-token price, paid to the provider"
+free_path = "keyword search over the pages"
+why_not = "After the rooms move."
+asked_as = ["the wiki", "compiled notes"]
+
+[abilities.open-loops]
+state = "described"
+what = "Keeps track of what the owner owes and when: live commitments, each with when to bring it up, and a due-date view."
+how = [
+  "One commitments file in the private folder, a line per item with its surface rule.",
+  "A due view that sorts them by date for the brief and the beats.",
+]
+tier = "free"
+needs = "nothing beyond the private folder"
+price = "none"
+free_path = "this is the free path"
+why_not = "After the rooms move."
+asked_as = ["what do i owe", "open loops", "my commitments", "what is due"]
+
+[abilities.docs-mirror]
+state = "described"
+what = "Keeps a local mirror of the model vendor's docs and other agent projects' docs, refreshed weekly, and flags what changed."
+how = [
+  "A weekly fetch of the docs into a local folder, with a changed-page list.",
+  "Distilled notes per page, marked stale when their source changed.",
+]
+tier = "free"
+needs = "web access and the jobs ability"
+price = "none"
+free_path = "this is the free path"
+why_not = "After the rooms move."
+asked_as = ["docs mirror", "what changed in the docs"]
+upgrade = "jobs"
+
+[abilities.rules-review]
+state = "described"
+what = "A weekly review of Yerk's own rules, tool notes and lessons: what is stale, what is duplicated, and what nothing uses any more."
+how = [
+  "A lessons file with one lesson per entry and a duplicate-id check.",
+  "Tool notes checked against what really exists on the box.",
+  "A weekly stale review that archives what nothing uses, with the list shown first.",
+]
+tier = "free"
+needs = "the jobs ability"
+price = "none"
+free_path = "this is the free path"
+why_not = "After the rooms move."
+asked_as = ["review your rules", "review your own rules", "stale rules"]
+upgrade = "jobs"
+
+[abilities.reply-checks]
+state = "described"
+what = "Checks each reply before it counts: a claim of work with no tool result, a number changed from the file, a fact with no source, writing tics, a silent ending."
+how = [
+  "Judge gates in shadow first: each one ledgers its full reason and blocks nothing until its false-alarm rate is under one in ten.",
+  "Claim, number and source checks against what the turn really read.",
+  "A writing-tic check, a silent-ending check, and a fresh read forced on a continue or rescue turn.",
+]
+tier = "free"
+needs = "the evidence ledger"
+price = "none"
+free_path = "this is the free path"
+why_not = "Layer 6: hooks and gates."
+asked_as = ["check your replies", "reply gates", "fact check yourself"]
+layer = 6
+upgrade = "evidence-ledger"
+
+[abilities.shell-guards]
+state = "described"
+what = "Guards on what a turn may do on the box: deletes go to the trash, restarts wait for live work, settings edits are ledgered, and every file write is checked on disk."
+how = [
+  "Quote-aware shell parsing, so a guard reads a command the way the shell will.",
+  "A trash rewrite for deletes, and a restart and config gate that waits for a live turn or a rebuild.",
+  "A tamper ledger for settings edits, an append-only change ledger, and a write check that the file reached the disk.",
+]
+tier = "free"
+needs = "the hook endpoint (built)"
+price = "none"
+free_path = "this is the free path"
+why_not = "Layer 6: hooks and gates."
+asked_as = ["shell guards", "safe deletes", "trash instead of delete"]
+layer = 6
+
+[abilities.taste]
+state = "described"
+what = "Learns the owner's taste: a thumbs up or down on a reply goes to the room's taste ledger, and the best examples ride in that room's voice."
+how = [
+  "Reactions and verdict messages recorded per room.",
+  "The strongest examples added to the room's voice at session start.",
+  "A taste score per reply, in shadow, that blocks only when the owner arms it.",
+]
+tier = "free"
+needs = "nothing beyond the rooms"
+price = "none"
+free_path = "this is the free path"
+why_not = "After the rooms move: decision 27 lifts this install's ledger."
+asked_as = ["learn my taste", "taste ledger"]
+
+[abilities.watchdog]
+state = "described"
+what = "Pages the owner when the harness is down or frozen, names what it was stuck on, and cleans up processes left behind."
+how = [
+  "An outside watchdog beat that pages when the daemon stops answering.",
+  "A stall catcher that names what the process is stuck on, with a dump taken mid-freeze.",
+  "A reaper that ends only processes whose run is already over, paired by evidence and never by age.",
+  "An alert when a turn dies on an API error.",
+]
+tier = "free"
+needs = "the box's user service manager"
+price = "none"
+free_path = "this is the free path"
+why_not = "Layer 7: observability and operations."
+asked_as = ["is yerk down", "watchdog", "stuck process"]
+layer = 7
+
+[abilities.dead-turns]
+state = "described"
+what = "Finds the owner's messages that never got a reply, and the runs that said success but did nothing, and reports only what is new."
+how = [
+  "Detection that starts from the message: every human message is matched to a reply.",
+  "Checks for an empty success, a run that started and never finished, and a dropped connection.",
+  "One daily sweep that runs every detector and posts only new findings; a detector that cannot run is reported as unknown, never as clean.",
+]
+tier = "free"
+needs = "the run ledger and the delivery ledger"
+price = "none"
+free_path = "this is the free path"
+why_not = "Layer 7: observability and operations."
+asked_as = ["messages you never answered", "messages with no reply", "dead turns"]
+layer = 7
+
+[abilities.safe-restarts]
+state = "described"
+what = "Restarts the harness in a night window that waits for live turns, posts a plain proof card after, and picks up what a restart cut off."
+how = [
+  "A restart window that waits for a live human turn and never cuts a memory rebuild.",
+  "A proof card after each restart: what came back, what did not.",
+  "A rescue pass that finds the turns a restart cut off in human rooms and answers them.",
+]
+tier = "free"
+needs = "the box's user service manager and the run ledger"
+price = "none"
+free_path = "this is the free path"
+why_not = "Layer 7: `yerk deploy` with a proof card and rollback."
+asked_as = ["restart yourself", "safe restart", "restart proof"]
+layer = 7
+
+[abilities.status-card]
+state = "described"
+what = "A phone-width status card: rooms, account meters, timers, and account logins about to run out."
+how = [
+  "A status socket the card reads, two lines per account.",
+  "A warning before an account login expires, named in the owner's rooms.",
+]
+tier = "free"
+needs = "a running yerkd"
+price = "none"
+free_path = "this is the free path"
+why_not = "Layer 7: the phone-width card; `yerk status` already prints the rooms, workers and jobs."
+asked_as = ["status card", "account meters", "login expiry"]
+layer = 7
+
+[abilities.settings-map]
+state = "described"
+what = "Knows every setting on the box, rebuilt when one changes, and catches a hand edit that silently fell back to a default."
+how = [
+  "A map of every adjustable setting, with where it lives and whether it reloads.",
+  "A rebuild when a mapped file changes, and a local page to browse it.",
+  "A nightly facts file written from live reads, never from memory.",
+]
+tier = "free"
+needs = "nothing beyond the box"
+price = "none"
+free_path = "this is the free path"
+why_not = "Layer 7; `yerk config get` already answers one setting from the code (decision 27)."
+asked_as = ["every setting", "settings map", "all your settings"]
+layer = 7
+
+[abilities.prompt-diff]
+state = "described"
+what = "Measures what loads into each room's prompt and posts a morning diff, so a change in what the model is given is seen the next day."
+how = [
+  "Each room's prompt measured from its newest recorded session start.",
+  "A morning diff posted to the ops room, and a guard against a startup file cut off silently.",
+]
+tier = "free"
+needs = "the jobs ability"
+price = "none"
+free_path = "this is the free path"
+why_not = "Layer 7: the morning diff; `yerk map` already shows each part against its budget."
+asked_as = ["morning diff", "prompt size", "what loads into the prompt"]
+layer = 7
+
+[abilities.backup]
+state = "described"
+what = "Backs up the config, memory and private folder to another machine every night."
+how = [
+  "A nightly copy to a second disk or machine, private by construction, with the last good copy kept.",
+]
+tier = "free"
+needs = "a second disk or machine reachable from the box, and the jobs ability"
+price = "none"
+free_path = "this is the free path"
+why_not = "After the rooms move."
+asked_as = ["back up my files", "nightly backup", "off-box backup"]
+upgrade = "jobs"
+
+[abilities.git-sync]
+state = "described"
+what = "Keeps the owner's repositories pushed and opens a pull request for every branch ahead of main, never forcing a push."
+how = [
+  "A post-commit nudge and a timer that push every branch and tag, recording a non-fast-forward instead of overwriting it.",
+  "One pull request per branch ahead of main, opened unasked.",
+  "Sign-in prompts answered from the private folder.",
+]
+tier = "free"
+needs = "a code host account and a token in the private folder"
+price = "none"
+free_path = "this is the free path"
+why_not = "After the rooms move."
+asked_as = ["push my code", "open a pull request", "git sync"]
+
+[abilities.account-relogin]
+state = "described"
+what = "Signs a subscription account back in when its login runs out, hands-free, and checks each account lane is signed into its own account."
+how = [
+  "A sign-in through the browser ability when an account's login expires.",
+  "A check that each lane runs on the account it names, from what really executed and not from what was requested.",
+]
+tier = "free"
+needs = "the browser ability and the accounts file"
+price = "none"
+free_path = "this is the free path: the owner signs in by hand"
+why_not = "After the rooms move; the account ladder itself is built (Layer 2)."
+asked_as = ["sign back in", "login expired", "relogin"]
+
+[abilities.room-notes]
+state = "described"
+what = "Gives one room its own long reference file, a handbook for that part of life, loaded whole at session start and checked that it fits."
+how = [
+  "A notes file per room in the private folder, cut into parts under the hook output cap.",
+  "A check that every part loaded, and a line saying what was cut when it did not.",
+]
+tier = "free"
+needs = "the private folder"
+price = "none"
+free_path = "this is the free path"
+why_not = "Layer 9: rooms move over."
+asked_as = ["room notes", "room handbook"]
+layer = 9
+
+[abilities.regression-evals]
+state = "described"
+what = "Weekly regression tests over Yerk's own tools, gates and memory, so a change that breaks one is found within the week."
+how = [
+  "A case per tool and gate, replayed weekly, with the live case count printed.",
+  "The memory freshness check: the index's newest source against the disk.",
+]
+tier = "free"
+needs = "the jobs ability"
+price = "none"
+free_path = "this is the free path"
+why_not = "After the rooms move; the recall bench already runs weekly."
+asked_as = ["regression tests", "weekly evals"]
+upgrade = "recall-bench"
+
+[abilities.import]
+state = "described"
+what = "Brings an existing install's rooms, bots, memory and jobs over to Yerk, one room at a time, with a shadow run and a rollback."
+how = [
+  "An importer that reads the old install and writes the private folder: rooms, persona, memory and jobs.",
+  "Each room shadowed, compared on queue wait, first visible line and dropped turns, then cut over, with a rollback.",
+]
+tier = "free"
+needs = "read access to the old install"
+price = "none"
+free_path = "this is the free path"
+why_not = "Layer 9: rooms move over."
+asked_as = ["import my rooms", "move my rooms", "import from openclaw"]
+layer = 9
+
+[abilities.claude-code-mods]
+state = "described"
+what = "Builds a Claude Code mod for the owner: a hook, a status line, a slash command or a panel."
+how = [
+  "The mod written to Claude Code's own extension points, and tried in a session before it is kept.",
+]
+tier = "free"
+needs = "Claude Code"
+price = "none"
+free_path = "this is the free path"
+why_not = "After the rooms move."
+asked_as = ["claude code mod", "status line", "slash command"]
+
 [abilities.workers]
 state = "built"
 what = "Heavy work leaves the room: the worker tool and `yerk worker start|list|stop|report` run a headless claude -p with a brief, a staging folder, a TASKS.md and a report, as its own systemd unit that outlives the daemon, with its own card in the room (a row per TASKS.md line, ticked live), the card settled and one short relay turn when it ends; `yerk status` lists the running ones against the ledger."
