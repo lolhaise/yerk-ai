@@ -95,6 +95,7 @@ def test_idle_process_closes_and_the_next_message_resumes(env):
     last = argvs(tmp_path)[-1]["argv"]
     assert last[last.index("--resume") + 1] == sid and len(chan.replies) == 2
     room.rp.close()
+    assert make(Chan()).last_human == ledger.inbound_get("2")["received"]   # the clock's gap survives a restart
 
 
 def test_quota_failure_hops_to_the_next_account_in_the_same_turn(env, monkeypatch):

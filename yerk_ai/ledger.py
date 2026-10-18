@@ -106,6 +106,10 @@ class Ledger:
                          "LIMIT 1", (channel,))
         return str(r[0]["message_id"]) if r else None
 
+    def last_received(self, room: str) -> float | None:
+        r = self._select("SELECT max(received) AS t FROM inbound WHERE room = ?", (room,))
+        return float(r[0]["t"]) if r and r[0]["t"] is not None else None
+
     # outbound and holds
     def outbound(self, **row: Any) -> int:
         return self._insert("outbound", {"sent": time.time(), **row})

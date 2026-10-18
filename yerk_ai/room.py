@@ -61,7 +61,7 @@ class Room:
         self.pending: deque[Inbound] = deque()    # written to stdin, not yet accepted
         self.inflight: list[Inbound] = []         # written since the last delivered result
         self.last_active = time.time()
-        self.last_human: float | None = None
+        self.last_human: float | None = ledger.last_received(name)   # survives a daemon restart
         self.seen: dict[str, Inbound] = {}        # by text, for the hook's metadata line
         self.first_line: str | None = None
         self.answered: set[str] = set()           # sessions with at least one delivered reply
