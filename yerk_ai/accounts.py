@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -69,6 +70,52 @@ def store_token(account: Account, token: str, issued: date | None = None) -> Pat
         json.dump({"token": token.strip(), "issued": (issued or date.today()).isoformat()}, fh)
     os.replace(tmp, account.token_file)
     return account.token_file
+
+
+TOKEN_SHAPE = re.compile(rb"sk-ant-[A-Za-z0-9_-]{20,}")
+
+
+def mint(account: Account, claude: str = "claude") -> tuple[int, bool]:
+    """`claude setup-token` for this account in a pseudo-terminal: the browser flow's text is
+    shown as it comes, the token itself is swapped for "[token stored]" and written to the
+    account's token file, so it never reaches a screen, a log or a transcript. Returns (exit
+    status, stored)."""
+    import pty
+    found: list[bytes] = []
+    state = {"buf": b"", "eof": False}
+
+    def masked(data: bytes) -> bytes:
+        return TOKEN_SHAPE.sub(lambda m: (found.append(m.group()), b"[token stored]")[1], data)
+
+    def read(fd: int) -> bytes:
+        if state["eof"]:
+            return b""
+        try:
+            data = os.read(fd, 1024)
+        except OSError:
+            data = b""
+        if not data:
+            state["eof"], rest, state["buf"] = True, state["buf"], b""
+            return masked(rest) or b""
+        buf, hold = state["buf"] + data, b""
+        i = buf.rfind(b"sk-ant-")
+        if i != -1 and re.fullmatch(rb"[A-Za-z0-9_-]*", buf[i + 7:]):   # the token may go on
+            buf, hold = buf[:i], buf[i:]
+        state["buf"] = hold
+        return masked(buf)
+
+    env = {k: v for k, v in account_env(account).items() if k != TOKEN_ENV}
+    old = dict(os.environ)
+    os.environ.clear()
+    os.environ.update(env)
+    try:
+        status = pty.spawn([claude, "setup-token"], read)
+    finally:
+        os.environ.clear()
+        os.environ.update(old)
+    if found:
+        store_token(account, found[-1].decode())
+    return status, bool(found)
 
 
 def token_info(account: Account, now: float | None = None) -> dict[str, Any]:

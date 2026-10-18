@@ -25,7 +25,8 @@ uv run yerk setup-room ROOM                  # a Discord room's test webhook; it
 uv run yerk room close ROOM                  # the running yerkd closes ROOM's process now (never mid-turn); the session stays
 uv run yerk accounts                         # per account: order, token age and days left (warns inside 30), rests, last health call
 uv run yerk accounts cool NAME MINUTES       # rest an account by hand; `clear NAME` lifts it; a running yerkd sees both at its next pick
-uv run yerk accounts token NAME              # store a `claude setup-token` token from stdin (never echoed), 0600, issued today
+uv run yerk accounts mint NAME               # `claude setup-token` for NAME: the browser flow shown, the token stored 0600, never shown
+uv run yerk accounts token NAME              # or store a token from stdin (never echoed), 0600, issued today
 uv run yerk accounts health                  # one tiny model turn per account and its login identity, a ledger row each
 uv run yerk status                           # the daemon, its rooms, and each account's 5-hour and weekly meters with resets
 uv run yerk probe hello|fold|resume|blocks|smoke|measure|check|idle --config-dir ~/.claude

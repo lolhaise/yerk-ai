@@ -93,7 +93,7 @@ def cmd_accounts(a: argparse.Namespace) -> int:
     from .ledger import Ledger
     priv, state, accounts, cool = _engine(a)
     by = {x.name: x for x in accounts}
-    if a.action in ("cool", "clear", "token") and a.name not in by:
+    if a.action in ("cool", "clear", "token", "mint") and a.name not in by:
         print(f"no account {a.name!r} in {priv / 'accounts.toml'}; accounts: {', '.join(by)}", file=sys.stderr)
         return 2
     if a.action == "cool":
@@ -104,6 +104,13 @@ def cmd_accounts(a: argparse.Namespace) -> int:
         cool.clear(a.name)
         print(f"{a.name}: no rest")
         return 0
+    if a.action == "mint":
+        from .accounts import mint
+        from .engine import claude_bin
+        status, stored = mint(by[a.name], claude_bin())
+        print(f"{a.name}: " + (f"token stored in {by[a.name].token_file} (0600)" if stored else
+                               "no token in the output, nothing stored"))
+        return 0 if stored else 1
     if a.action == "token":
         import getpass
         tok = getpass.getpass("token (not shown): ") if sys.stdin.isatty() else sys.stdin.read()
@@ -199,8 +206,8 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("action", choices=["close"])
     r.add_argument("room")
     r.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
-    ac = sub.add_parser("accounts", help="tokens, rests and health per account; cool, clear, token, health")
-    ac.add_argument("action", nargs="?", default="list", choices=["list", "cool", "clear", "token", "health"])
+    ac = sub.add_parser("accounts", help="tokens, rests and health per account; cool, clear, token, mint, health")
+    ac.add_argument("action", nargs="?", default="list", choices=["list", "cool", "clear", "token", "mint", "health"])
     ac.add_argument("name", nargs="?", help="cool, clear, token: the account")
     ac.add_argument("minutes", nargs="?", type=float, default=30.0, help="cool: minutes to rest")
     ac.add_argument("--kind", default="manual", help="cool: the rest's kind (default manual)")

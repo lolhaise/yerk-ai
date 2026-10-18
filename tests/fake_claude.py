@@ -41,6 +41,13 @@ def listed(var):
 
 
 no_login = listed("FAKE_CLAUDE_AUTH_DIRS")
+if argv[:1] == ["setup-token"]:
+    tok = "sk-" + "ant-oat01-" + "Fake" * 12                    # token-shaped, built so the scrub never sees one
+    sys.stdout.write("Open this link to sign in: https://example.test/oauth?x=1\r\n")
+    sys.stdout.write("Your one-year token:\r\n" + tok[:20])
+    sys.stdout.flush()
+    sys.stdout.write(tok[20:] + "\r\nStore it safely.\r\n")
+    sys.exit(0)
 if argv[:2] == ["auth", "status"]:
     method = "oauth_token" if os.environ.get("CLAUDE_CODE_OAUTH_TOKEN") else ("none" if no_login else "claude.ai")
     user = Path(cfg).name.strip(".") or "default"

@@ -119,3 +119,14 @@ def test_a_token_from_another_account_fails_the_identity_check(box, monkeypatch)
     assert row["identity_ok"] == 0 and "another account" in row["note"]
     monkeypatch.setattr(health, "read_usage", lambda d, t=None: {"error": "http 401"})
     assert run_check(priv, state, [acct])[0]["identity_ok"] is None
+
+
+def test_mint_shows_the_flow_and_stores_the_token_without_showing_it(box, capfd):
+    from yerk_ai.accounts import mint, read_token
+    priv, state, tmp = box
+    acct = load_accounts(priv / "accounts.toml")[1]
+    status, stored = mint(acct, str(FAKE))
+    out = capfd.readouterr().out
+    assert stored and status == 0 and "https://example.test/oauth" in out and "[token stored]" in out
+    assert "Fake" not in out and read_token(acct)[0] == "sk-" + "ant-oat01-" + "Fake" * 12
+    assert oct(acct.token_file.stat().st_mode & 0o777) == "0o600"
