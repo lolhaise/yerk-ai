@@ -1,27 +1,41 @@
-# How Yerk AI reads a failed turn. One table, a test per string.
+# What Yerk AI does when a turn, the model's run from a new message to its reply, fails: run it again, shrink the
 #
-# First match wins: Claude Code's own error type (the `error` field on an assistant
-# message, the same values as the StopFailure hook matcher), then the text patterns
-# below, in order, against the result and error text. Anything else is `unknown`.
+# Order, first match wins:
+# 1. Claude Code's own error type: the `error` field on an assistant message, the same twelve
+#    values as the StopFailure hook matcher. A type marked `text_first` lets the text patterns
+#    speak first, because Claude Code reports "prompt is too long" as invalid_request.
+# 2. Events in the stream: a model_refusal_fallback, a rate_limit_event with status rejected.
+# 3. The text patterns below, in order, against the result, error and stderr text.
+# 4. Anything else is fatal: a guess that says "retry" spends a real turn.
 #
-# class      action               why
-# transient  rerun                the same session again; the world may have moved
-# overflow   compact_then_rerun   compact first, then the same session; a fresh one loses the work
-# auth       hop_account          the next account; this login presents the same rejection
-# quota      hop_account          the next account, and this one cools down
-# config     stop                 a rerun changes nothing; say so
-# unknown    stop                 a guess that says "retry" spends a real turn
+# class      default action      what the room does
+# transient  rerun               the same session on the same account again, at most [rerun] max
+# overflow   compact_then_rerun  /compact in the same session, then the turn again, once
+# auth       hop_account         the next account, same turn, same card; this account rests
+# quota      hop_account         the next account, same turn, same card; this account rests
+# refusal    fresh_next_turn     the answer stands and is marked; the room's next turn starts a
+#                                fresh session on the room's pinned model, never a quiet
+#                                continuation on the fallback model
+# fatal      stop                a rerun changes nothing: a visible notice on the card
+#
+# One entry overrides its class's action: session_missing (a resume that finds no transcript)
+# starts a fresh session with a one-line recap.
 
 [actions]
 transient = "rerun"
 overflow = "compact_then_rerun"
 auth = "hop_account"
 quota = "hop_account"
-config = "stop"
-unknown = "stop"
+refusal = "fresh_next_turn"
+fatal = "stop"
 
-# Seconds an account rests after a failure of this kind, doubling on each repeat,
-# never longer than `max`. A success clears it.
+# transient: reruns per turn, and the seconds waited before each
+[rerun]
+max = 2
+wait = [2, 10]
+
+# Seconds an account rests after a failure of this kind, doubling on each repeat of the same
+# kind on the same account, never longer than `max`. A delivered reply clears the account.
 [cooldown]
 rate_limit = 30
 billing = 600
@@ -29,51 +43,69 @@ auth = 600
 max = 86400
 
 [types]
-rate_limit = "quota"
-billing_error = "quota"
-authentication_failed = "auth"
-oauth_org_not_allowed = "auth"
-account_on_hold = "auth"
-cloud_credential_error = "auth"
-overloaded = "transient"
-server_error = "transient"
-invalid_request = "config"
-model_not_found = "config"
-max_output_tokens = "unknown"
-unknown = "unknown"
+rate_limit = { class = "quota", kind = "rate_limit" }
+billing_error = { class = "quota", kind = "billing" }
+authentication_failed = { class = "auth", kind = "auth" }
+oauth_org_not_allowed = { class = "auth", kind = "auth" }
+account_on_hold = { class = "auth", kind = "auth" }
+cloud_credential_error = { class = "auth", kind = "auth" }
+overloaded = { class = "transient" }
+server_error = { class = "transient" }
+invalid_request = { class = "fatal", text_first = true }
+model_not_found = { class = "fatal" }
+max_output_tokens = { class = "fatal" }
+unknown = { class = "fatal", text_first = true }
 
-# Cooldown kind per type; types not listed here take no cooldown.
-[type_kinds]
-rate_limit = "rate_limit"
-billing_error = "billing"
-authentication_failed = "auth"
-oauth_org_not_allowed = "auth"
-account_on_hold = "auth"
-cloud_credential_error = "auth"
+[events]
+model_refusal_fallback = { class = "refusal" }
+rate_limit_rejected = { class = "quota", kind = "rate_limit" }
+credits_required = { class = "quota", kind = "billing" }
 
 [[patterns]]
+name = "session_missing"
+class = "fatal"
+action = "fresh_with_recap"
+regex = '''no conversation found|no session found|session (id )?.{0,40}not found'''
+
+[[patterns]]
+name = "login_busy"
+class = "transient"
+regex = '''another claude code process is refreshing'''
+
+[[patterns]]
+name = "context"
 class = "overflow"
-regex = '''context[-_ ](overflow|length|window)|too many tokens|maximum context|prompt is too long|exceeds? the (model'?s )?context|input length .* exceed'''
+regex = '''context[-_ ](overflow|length|window)|too many tokens|maximum context|prompt is too long|exceeds? the (model'?s )?context|context exceeds the token limit|input length .* exceed|request too large|\b413\b'''
 
 [[patterns]]
+name = "billing"
 class = "quota"
 kind = "billing"
-regex = '''\bquota\b|insufficient[-_ ](credit|balance|funds)|billing|out of (usage )?credits|usage credits|credit balance'''
+regex = '''\bquota\b|insufficient[-_ ](credit|balance|funds)|billing|out of (usage )?credits|usage credits|credit balance|spend limit|credits required'''
 
 [[patterns]]
+name = "server_limiting"
+class = "transient"
+regex = '''server is temporarily limiting'''
+
+[[patterns]]
+name = "rate_limit"
 class = "quota"
 kind = "rate_limit"
 regex = '''rate[-_ ]?limit|\b429\b|too many requests|session limit|usage limit|weekly limit|limit reached|hit your limit|limit will reset|resets at'''
 
 [[patterns]]
+name = "login"
 class = "auth"
 kind = "auth"
-regex = '''\b401\b|\b403\b|unauthori[sz]ed|forbidden|authentication[-_ ]?failed|invalid credentials|token (has )?expired|run /login|not logged in|subscription (is )?(disabled|cancel+ed|inactive)|account (is )?on hold'''
+regex = '''\b401\b|\b403\b|unauthori[sz]ed|forbidden|authentication[-_ ]?(failed|credentials|method)|invalid (credentials|api key|auth token|bearer token)|token (has )?(expired|revoked)|revoked or expired|login (expired|not accepted)|run /login|not logged in|rejected the session token|subscription (access|is )?(disabled|cancel+ed|inactive)|organization has (been )?disabled|account (is )?on hold|does not have access to claude|scope requirement'''
 
 [[patterns]]
+name = "server"
 class = "transient"
-regex = '''\b5\d\d\b|overloaded|internal server error|bad gateway|service unavailable|upstream (error|timeout)|server error|connection (refused|reset|closed)|ECONNRESET|ETIMEDOUT|timed? ?out'''
+regex = '''\b5\d\d\b|overloaded|internal server error|bad gateway|service unavailable|upstream (error|timeout)|server error|no response from|unable to connect|socket is closed|connection (refused|reset|closed|error)|empty or malformed response|streaming response ended|may be incomplete|terminated early|ECONNRESET|ETIMEDOUT|timed? ?out'''
 
 [[patterns]]
-class = "config"
-regex = '''model[-_ ](not[-_ ]found|unavailable)|unknown model|no such model|invalid model|no conversation found'''
+name = "request"
+class = "fatal"
+regex = '''model[-_ ](not[-_ ]found|unavailable)|unknown model|no such model|invalid model|not a recognized model|issue with the selected model|image was too large|extra inputs are not permitted|input schema is invalid'''
