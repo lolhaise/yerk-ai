@@ -40,7 +40,8 @@ WRITE_TOOLS = ("Write", "Edit", "MultiEdit", "NotebookEdit")
 EXTERNAL: dict[str, dict[str, str]] = {
     "send-elsewhere": {"tool": r"^mcp__yerk__send$", "room": "other", "what": "a send to another room"},
     "public-post": {"tool": r"^Bash$", "what": "a public post",
-                    "command": r"^(?:git\s+push|gh\s+(?:issue|pr|release|gist|repo)\s+(?:create|comment|edit|delete"
+                    "command": r"^(?:git\s+(?:(?:-C|-c|--git-dir|--work-tree)\s+\S+\s+|--?[\w-]+(?:=\S+)?\s+)*push"
+                               r"|gh\s+(?:-R\s+\S+\s+)?(?:issue|pr|release|gist|repo)\s+(?:create|comment|edit|delete"
                                r"|merge|close|fork)|npm\s+publish|twine\s+upload|cargo\s+publish|docker\s+push)\b"},
     "login": {"tool": r"^Bash$", "what": "a login",
               "command": r"^(?:gh\s+auth\s+login|docker\s+login|npm\s+(?:login|adduser)|ssh-copy-id|gcloud\s+auth"

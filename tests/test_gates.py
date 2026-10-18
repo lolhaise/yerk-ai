@@ -176,6 +176,11 @@ def test_approvers_and_external_rules_come_from_yerkd_toml(tmp_path):
     assert gates.is_word("go!", "test-webhook", s) and not gates.is_word("go now", "owner", s)
     assert gates.external_hit("Bash", {"command": "git push"}, "r", s) is None
     assert gates.external_hit("Bash", {"command": "fly deploy --now"}, "r", s)[:2] == ("deploy", "a deploy")
+    d = gates.Settings()
+    for c in ("git -C repo push origin main", "cd repo && git --git-dir=.git push", "gh -R me/x pr create -t y"):
+        assert gates.external_hit("Bash", {"command": c}, "r", d)[0] == "public-post", c
+    for c in ("git -C repo status", "git log --format=push", "gh pr list"):
+        assert gates.external_hit("Bash", {"command": c}, "r", d) is None, c
 
 
 def test_config_change_writes_a_tamper_row_and_never_blocks(tmp_path):
