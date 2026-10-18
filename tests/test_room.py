@@ -286,3 +286,17 @@ def test_a_recap_survives_a_hop_that_has_to_start_fresh(env, monkeypatch):
     assert rows[-1]["hop"] == "auth:one" and rows[-1]["recap"] == 1
     assert chan.replies[-1][0].startswith("echo: (Yerk AI: the earlier session") and chan.cards.count(f"{words.WORKING} working on it") == 2
     room.rp.close()
+
+
+def test_a_quoted_false_turns_the_thinking_panel_off(env):
+    """A yes-or-no setting is read strictly (cold read of PR 10): true, false, or those two words."""
+    from yerk_ai.config import flag
+    make, ledger, tmp_path = env
+    room = make(Chan())
+    shown = {}
+    for value in (True, "true", " TRUE ", False, "false", "False", "no", "yes", 1, None):
+        room.conf = {"thinking_panel": value}
+        room._new_card()
+        shown[repr(value)] = room.card.thinking_on
+    assert [k for k, on in shown.items() if on] == ["True", "'true'", "' TRUE '"]
+    assert flag("off", default=True) and not flag("false", default=True)

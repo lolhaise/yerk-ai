@@ -364,11 +364,19 @@ def cmd_abilities(a: argparse.Namespace) -> int:
 
 
 def _settings(a: argparse.Namespace) -> list[dict[str, Any]]:
-    from . import words
+    from . import memory, words
     from .config import load_toml
     priv = private_dir(a.private)
     conf = load_toml(priv / "yerkd.toml") if (priv / "yerkd.toml").is_file() else {}
-    return words.described(conf.get("presentation"))
+    return words.described(conf.get("presentation")) + memory.described(conf.get("memory"))
+
+
+def _pick(rows: list[dict[str, Any]], key: str, sections: bool = False) -> list[dict[str, Any]]:
+    """The described settings a key names: whole, by its last part (`yerk config get embeddings_model`),
+    or with `sections` a whole section (`yerk config get memory`)."""
+    want = key.strip(".")
+    return [r for r in rows if not want or r["key"] in (want, f"presentation.{want}", f"memory.{want}")
+            or (sections and r["key"].startswith(f"{want}."))]
 
 
 def _setting_lines(r: dict[str, Any]) -> list[str]:
@@ -385,7 +393,7 @@ def cmd_explain(a: argparse.Namespace) -> int:
     table_ = abilities.manifest()
     ab = table_.get(a.ability)
     if ab is None:
-        hit = [r for r in _settings(a) if r["key"] in (a.ability, f"presentation.{a.ability}")]
+        hit = _pick(_settings(a), a.ability)
         if hit:
             print("\n".join(_setting_lines(hit[0])))
             return 0
@@ -405,8 +413,7 @@ def cmd_config(a: argparse.Namespace) -> int:
     """`yerk config get [KEY]`: the settings Yerk AI describes in code (decisions 16 and 27), each with
     its value here, where it came from, its choices and its plain words. Only these are printed."""
     rows = _settings(a)
-    want = a.key.removeprefix("presentation").lstrip(".")
-    pick = [r for r in rows if not want or r["key"] == f"presentation.{want}"]
+    pick = _pick(rows, a.key, sections=True)
     if not pick:
         print(f"no setting {a.key!r}; settings: {', '.join(r['key'] for r in rows)}", file=sys.stderr)
         return 2
@@ -488,7 +495,7 @@ def main(argv: list[str] | None = None) -> int:
         x.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
     cf = sub.add_parser("config", help="the settings Yerk AI describes, with their values here and plain words")
     cf.add_argument("action", choices=["get"])
-    cf.add_argument("key", nargs="?", default="presentation", help="a setting, or presentation for all of them")
+    cf.add_argument("key", nargs="?", default="", help="a setting or section (presentation, memory); all when left out")
     cf.add_argument("--json", action="store_true")
     cf.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else the fake example layer)")
     pr = sub.add_parser("probe", help="contract probes against a real Claude Code login")

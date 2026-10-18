@@ -84,6 +84,46 @@ def settings(private: Path, state: Path, conf: dict[str, Any] | None = None) -> 
                     index_status=state / "memory" / "index.json")
 
 
+# the embedding settings a user with another model or budget can pick, described from the code (run 5):
+# key: (choices, what, the default)
+EMBEDDING_SETTINGS: dict[str, tuple[tuple[str, ...], str, str]] = {
+    "embeddings_model": (("text-embedding-3-small", "text-embedding-3-large"),
+                         "the provider model every line, chunk and query is embedded with; a change re-embeds the tree once "
+                         "(each model's vectors are kept apart in the index, so switching back pays nothing); small costs "
+                         "$0.02 and large $0.13 per 1M tokens (OpenAI, read 2026-10-18): a 3,800-file tree's lines "
+                         "(10.4M tokens) $0.21 or $1.35, its chunks (16.7M) $0.33 or $2.17; measured on the 164-question "
+                         "set at 256 kept, large brings "
+                         "paraphrase golds closer but loses on the top six (110 against 117), so small is the default",
+                         "text-embedding-3-small"),
+    "embeddings_dim": (("256", "512", "1024", "1536", "3072"),
+                       "dimensions asked of the provider and stored in the index (2 bytes each a vector): at most 1536 "
+                       "for text-embedding-3-small and 3072 for text-embedding-3-large (OpenAI's embeddings guide, read "
+                       "2026-10-18); a change re-embeds the tree once; more dimensions buy a finer vector, not a cheaper one",
+                       "256"),
+    "embeddings_width": (("256", "384", "512", "the dim"),
+                         "dimensions kept in memory: the first width of dim, renormalised (the provider's own shortening "
+                         "rule), so a narrower store needs no re-embedding; the index process holds about vectors times "
+                         "(2 times width plus 20) bytes; 192 and 128 were measured and lost", "the dim"),
+    "embeddings_units": (("both", "lines", "chunks"),
+                         "what gets a vector: every line and bullet and every chunk (both, measured best), the lines alone "
+                         "(a smaller store), or the chunks alone (the fewest vectors, a paraphrase then rarely found)", "both"),
+}
+EMBEDDING_RELOADS = "takes effect when yerk-index restarts; the backfill then embeds what is missing, in the background"
+
+
+def described(conf: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """The [memory] embedding settings with their value here, where it came from, choices and plain words
+    (the shape `yerk config` prints for every described setting)."""
+    conf = conf or {}
+    out = []
+    for key, (choices, what, default) in EMBEDDING_SETTINGS.items():
+        value = conf.get(key, default)
+        out.append({"key": f"memory.{key}", "value": str(value),
+                    "default": default, "source": "yerkd.toml" if key in conf else "default", "choices": list(choices),
+                    "what": what, "reloads": EMBEDDING_RELOADS})
+    return out
+
+
 def one_line(text: str) -> str:
     return " / ".join(x.strip() for x in text.splitlines() if x.strip())
 

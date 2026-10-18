@@ -316,3 +316,71 @@ def test_the_manifest_records_the_fit_choice():
     ab = abilities.manifest()["embeddings"]
     assert "256 dimensions" in ab["model"] and "a vector per line" in ab["model"] and "embeddings_width" in ab["model"]
     assert "vectors" in ab["model"] and "every line" in ab["what"]
+
+
+# 11. a model change re-embeds every served vector once and nothing twice; a narrower width keeps the bench shape
+def test_a_model_change_re_embeds_once_and_a_narrower_width_keeps_the_shape(tmp_path):
+    s = tree(tmp_path)
+    stub = StubEmbedder(s.embeddings_key)
+    idx, store, server, back, status = serve(s, stub, units="both")
+    while back.step():
+        pass
+    first = store.n
+    assert first == vectors_in(s) > 0
+    # a second model on the same index: its backfill embeds every unit and chunk once; the first model's vectors stay
+    stub2 = StubEmbedder(s.embeddings_key)
+    stub2.model = "stub-large"
+    store2 = embeddings.Vectors(stub2.dim, width=3)
+    back2 = embeddings.Backfill(s.index_db, memindex.live, store2, stub2, gap=0.0, units="both")
+    while back2.step():
+        pass
+    assert sum(len(c) for c in stub2.calls) == store2.n == first
+    assert back2.step() == 0 and sum(len(c) for c in stub2.calls) == first            # nothing twice
+    assert vectors_in(s) == 2 * first and store.n == first
+    conn = sqlite3.connect(f"file:{memindex.live(s.index_db)}?mode=ro", uri=True)
+    assert dict(conn.execute("SELECT model, count(*) FROM vectors GROUP BY model").fetchall()) == {"stub": first, "stub-large": first}
+    conn.close()
+    # the narrower width: the same stored vectors, the first 3 of 6 dimensions renormalised; search and bench keep their shape
+    assert store2.width == 3 and store2.load(idx.conn, "stub-large", "both") == first and store2.blocks[0].shape[1] == 3
+    server2 = embeddings.Server(store2, stub2, s.index_db, memindex.live)
+    embeddings.write_status(s.index_status, port=server2.start(), chunks=0,
+                            embeddings={"key": True, "model": "stub-large", "dim": 6, "vectors": store2.n})
+    r = memory.recall(s, "what colour is the example kettle")
+    assert r["ok"] and sorted(r["hits"][0]) == ["cite", "line", "lines", "path", "score", "text"]
+    qfile = tmp_path / "q.json"
+    qfile.write_text(json.dumps({"questions": [
+        {"id": "q1", "kind": "fact", "q": "what colour is the example kettle", "answer_tokens": ["teal"]},
+        {"id": "c1", "kind": "fact", "control": True, "q": "example kettle", "answer_tokens": ["kettle"]}]}))
+    b = memory.bench(s, qfile)
+    assert sorted(b) == ["blind", "controls", "file", "k", "ok", "questions", "rows", "top_1", "top_1_rate", "top_k", "top_k_rate"]
+    assert b["blind"] == [] and b["top_k"] == 1
+    server2.stop()
+    server.stop()
+    idx.close()
+
+
+# 12. the stall line stays silent while a backfill runs: the embedding thread never holds the loop that serves rooms
+def test_the_stall_line_stays_silent_during_a_backfill(tmp_path, caplog):
+    from yerk_ai.daemon import Yerkd
+    s = tree(tmp_path)
+    for n in range(60):
+        (s.root / "facts" / f"f{n}.md").write_text(f"# F{n}\n\n- example teapot number {n} is painted teal\n")
+    stub = StubEmbedder(s.embeddings_key, delay=0.02)
+    idx, store, server, back, status = serve(s, stub)
+    back.batch = 4
+
+    async def go():
+        watch = asyncio.create_task(Yerkd.watch_loop(None, every=0.05))  # type: ignore[arg-type]
+        back.start()
+        end = time.monotonic() + 5.0
+        while store.n < 60 and time.monotonic() < end:
+            await asyncio.sleep(0.05)
+        back.stop.set()
+        watch.cancel()
+    with caplog.at_level(logging.WARNING, logger="yerk.daemon"):
+        asyncio.run(go())
+    back.thread.join(5.0)
+    assert store.n >= 60 and len(stub.calls) >= 15
+    assert not any("stall" in r.getMessage() for r in caplog.records)
+    server.stop()
+    idx.close()

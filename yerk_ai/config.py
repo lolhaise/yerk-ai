@@ -23,6 +23,15 @@ def load_toml(path: Path) -> dict[str, Any]:
     return tomllib.loads(path.read_text())
 
 
+def flag(value: Any, default: bool = False) -> bool:
+    """A yes-or-no setting, read strictly: a TOML true or false, or the word "true" or "false" in
+    quotes (any case); any other value is the default, so a quoted "false" turns nothing on."""
+    if isinstance(value, bool):
+        return value
+    word = value.strip().lower() if isinstance(value, str) else ""
+    return word == "true" if word in ("true", "false") else default
+
+
 def budgets() -> dict[str, Any]:
     return load_toml(table("budgets.toml"))
 

@@ -24,7 +24,7 @@ from typing import Any
 
 from . import context, evidence, gates, hooks, jobs, mcp_server, memory, mentions, workers
 from .accounts import Account, Cooldowns, from_dir, load_accounts
-from .config import budgets, load_toml, private_dir, rooms, state_dir, table
+from .config import budgets, flag, load_toml, private_dir, rooms, state_dir, table
 from .engine import RoomSpec, SessionTable
 from .ledger import Ledger
 from .lifted.classify import FailureTable
@@ -149,7 +149,7 @@ class Yerkd:
                     "hooks": hooks.settings_for(f"{self.url}/hook")}
         mcp = mcp_server.room_config(f"{self.url}/mcp", name, rdir / "mcp.json")
         extra = ["--effort", str(conf["effort"])] if conf.get("effort") else []
-        if conf.get("thinking_panel") and conf.get("privacy", "owner") == "owner":
+        if flag(conf.get("thinking_panel")) and conf.get("privacy", "owner") == "owner":
             extra += ["--thinking-display", "summarized"]      # the panel's text; off: the stream says nothing
         return RoomSpec(room=name, model=str(conf["model"]), cwd=work, tools=list(conf.get("tools", [])),
                         settings=settings, context_file=ctx, mcp_config=mcp, add_dirs=[layer], extra_args=extra)
