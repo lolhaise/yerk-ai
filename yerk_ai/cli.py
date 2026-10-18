@@ -351,9 +351,10 @@ def main(argv: list[str] | None = None) -> int:
     pr.add_argument("--attach", action="store_true", help="smoke, measure: drive the yerkd already running on --state")
     pr.set_defaults(on_second=None, fold_settings=None)
     a = p.parse_args(argv)
+    if a.cmd == "worker":
+        return cmd_worker(a)
     return int({"map": cmd_map, "probe": cmd_probe, "setup-room": cmd_setup_room, "room": cmd_room,
-                "accounts": cmd_accounts, "status": cmd_status, "recall-bench": cmd_recall_bench,
-                "worker": cmd_worker}[a.cmd](a))
+                "accounts": cmd_accounts, "status": cmd_status, "recall-bench": cmd_recall_bench}[a.cmd](a))
 
 
 if __name__ == "__main__":
