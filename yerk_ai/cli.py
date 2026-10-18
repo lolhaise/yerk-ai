@@ -224,6 +224,62 @@ def cmd_recall_bench(a: argparse.Namespace) -> int:
     return 2 if r["blind"] else 0
 
 
+def _abilities() -> dict[str, dict[str, Any]]:
+    from .config import load_toml, table
+    return dict(load_toml(table("abilities.toml"))["abilities"])
+
+
+def _ability_state(name: str, ab: dict[str, Any], table_: dict[str, dict[str, Any]], s: Any) -> tuple[str, str]:
+    """(dot, note) for one ability (decision 23): 🟢 on; 🟠 available but needs the provider's key;
+    ⚪ running on its free path because the ability that would lift it is off."""
+    keys = {"embeddings": s.embeddings_key}
+    if ab["tier"] in ("key", "paid"):
+        key = keys.get(name)
+        if key is not None and key.is_file() and key.stat().st_size > 0:
+            return "🟢", f"on, key at {key}"
+        where = f"none at {key}" if key is not None else "no key configured"
+        return "🟠", f"needs a provider key ({ab.get('provider', 'a provider')}): {where}; free path: {ab['free_path']}"
+    up = str(ab.get("upgrade", ""))
+    if up and up in table_ and _ability_state(up, table_[up], table_, s)[0] != "🟢":
+        return "⚪", f"on its free path ({ab['free_path']}); the {up} ability lifts it"
+    return "🟢", ""
+
+
+def cmd_abilities(a: argparse.Namespace) -> int:
+    """Every ability in the manifest, its tier and its state on this install."""
+    from . import memory
+    from .config import state_dir
+    s = memory.settings(private_dir(a.private), state_dir(a.state))
+    table_ = _abilities()
+    for name, ab in table_.items():
+        dot, note = _ability_state(name, ab, table_, s)
+        print(f"{dot} {name} ({ab['tier']}): {ab['what']}" + (f" [{note}]" if note else ""))
+    return 0
+
+
+def cmd_explain(a: argparse.Namespace) -> int:
+    """One ability from the manifest: what it does, needs, costs, its free path, and its state here."""
+    from . import memory
+    from .config import state_dir
+    table_ = _abilities()
+    ab = table_.get(a.ability)
+    if ab is None:
+        print(f"no ability {a.ability!r}; abilities: {', '.join(table_)}", file=sys.stderr)
+        return 2
+    s = memory.settings(private_dir(a.private), state_dir(a.state))
+    dot, note = _ability_state(a.ability, ab, table_, s)
+    print(f"{a.ability} (layer {ab.get('layer', '?')}, tier {ab['tier']}): {ab['what']}")
+    print(f"needs: {ab['needs']}")
+    for field, label in (("provider", "provider"), ("model", "model"), ("price", "cost"), ("key", "key")):
+        if ab.get(field):
+            print(f"{label}: {ab[field]}")
+    if ab["tier"] == "free":
+        print("cost: nothing, it runs on the box")
+    print(f"free path: {ab['free_path']}")
+    print(f"now: {dot} " + (note or "on"))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="yerk", description="Yerk AI: chat rooms as long-lived Claude Code sessions.")
     p.add_argument("--version", action="version", version=f"yerk {__version__}")
@@ -257,7 +313,11 @@ def main(argv: list[str] | None = None) -> int:
     rb.add_argument("--questions", help="question file (default: [memory] bench, else <private>/evals/recall-questions.json)")
     rb.add_argument("-k", type=int, default=6, help="results per question (default 6, the recall tool's default)")
     rb.add_argument("--json", action="store_true", help="the run as JSON, per-question ranks included")
-    for x in (ac, st, rb):
+    ab = sub.add_parser("abilities", help="every ability, its tier and its state here: 🟢 on, 🟠 needs a provider "
+                        "key, ⚪ on its free path")
+    ex = sub.add_parser("explain", help="one ability: what it does, needs and costs, its free path, its state here")
+    ex.add_argument("ability")
+    for x in (ac, st, rb, ab, ex):
         x.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else the fake example layer)")
         x.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
     pr = sub.add_parser("probe", help="contract probes against a real Claude Code login")
@@ -286,7 +346,8 @@ def main(argv: list[str] | None = None) -> int:
     pr.set_defaults(on_second=None, fold_settings=None)
     a = p.parse_args(argv)
     return int({"map": cmd_map, "probe": cmd_probe, "setup-room": cmd_setup_room, "room": cmd_room,
-                "accounts": cmd_accounts, "status": cmd_status, "recall-bench": cmd_recall_bench}[a.cmd](a))
+                "accounts": cmd_accounts, "status": cmd_status, "recall-bench": cmd_recall_bench,
+                "abilities": cmd_abilities, "explain": cmd_explain}[a.cmd](a))
 
 
 if __name__ == "__main__":

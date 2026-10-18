@@ -18,10 +18,22 @@ free_path = "this is the free path"
 layer = 4
 
 [abilities.recall]
-what = "The recall tool: ranked chunks of the owner's memory with file path and line, in every room."
+what = "The recall tool: ranked chunks of the owner's memory with file path and line, in every room; with the embeddings ability on, the keyword rank is fused with the meaning rank."
 tier = "free"
 needs = "a running yerk-index"
-free_path = "keywords (FTS5); meaning search with embeddings comes later as a key-tier option, keywords stay the fallback"
+free_path = "keywords (FTS5) alone; the embeddings ability (key tier) adds meaning search behind them and keywords stay the fallback"
+upgrade = "embeddings"
+layer = 4
+
+[abilities.embeddings]
+what = "Meaning search behind the keywords: yerk-index embeds every chunk once (changed chunks only, the vector stored next to the chunk's hash, copied across a rebuild) and answers recall's query by cosine; recall fuses that rank with the keyword rank by reciprocal rank fusion, so a paraphrase finds the line its words never name."
+tier = "key"
+provider = "OpenAI"
+model = "text-embedding-3-small at 256 dimensions (512 bytes a chunk in the index file)"
+needs = "a provider key at secrets/openai.key in the private folder ([memory] embeddings_key in yerkd.toml names another path), read by yerk-index alone and never logged; numpy (installed with the package); a running yerk-index, which makes every provider call and serves the search on a local port"
+price = "$0.02 per 1M tokens (OpenAI's pricing page, read 2026-10-18): the whole memory tree once, then only changed chunks and one short query per recall"
+key = "put the key in the file, 0600; yerk-index picks it up on its next pass and backfills the tree in the background, resumable; remove the file and recall is keywords only again"
+free_path = "keywords (FTS5): recall runs on them alone, exactly as without this ability; the room is told once, in one line"
 layer = 4
 
 [abilities.read-memory]

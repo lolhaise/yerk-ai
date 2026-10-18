@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import re
 import threading
@@ -37,6 +38,10 @@ class Settings:
     mentions: Path = Path("mentions.json")          # the mention index yerk-index writes
     curated: tuple[str, ...] = ("MEMORY.md",)        # file names whose headings are mention keys
     mentions_exclude: tuple[str, ...] = ()          # globs kept out of mention recall
+    embeddings_key: Path = Path("secrets/openai.key")   # the provider key, a path in the private layer, never read here
+    embeddings_model: str = "text-embedding-3-small"
+    embeddings_dim: int = 256
+    index_status: Path = Path("index.json")         # what yerk-index serves: its port and the embeddings' state
 
     @property
     def daily(self) -> Path:
@@ -68,7 +73,11 @@ def settings(private: Path, state: Path, conf: dict[str, Any] | None = None) -> 
                     bench=(private / Path(str(conf.get("bench", "evals/recall-questions.json")))).resolve(),
                     mentions=state / "memory" / "mentions.json",
                     curated=tuple(str(x) for x in conf.get("curated", ["MEMORY.md"])),
-                    mentions_exclude=tuple(str(x) for x in conf.get("mentions_exclude", [])))
+                    mentions_exclude=tuple(str(x) for x in conf.get("mentions_exclude", [])),
+                    embeddings_key=(private / Path(str(conf.get("embeddings_key", "secrets/openai.key"))).expanduser()),
+                    embeddings_model=str(conf.get("embeddings_model", "text-embedding-3-small")),
+                    embeddings_dim=int(conf.get("embeddings_dim", 256)),
+                    index_status=state / "memory" / "index.json")
 
 
 def one_line(text: str) -> str:
@@ -144,15 +153,102 @@ def read(s: Settings, path: str, start: int = 1, lines: int = 40) -> dict[str, A
             "text": text[:READ_CHARS] + ("\n[cut at 20,000 characters; read fewer lines]" if cut else "")}
 
 
+POOL = 80            # candidates from each search (keywords, meaning) before fusion
+RRF_K = 60           # reciprocal rank fusion's constant: 1 / (RRF_K + rank)
+MEANING_WAIT = 5.0   # seconds a recall waits for yerk-index's meaning search (its own provider wait is shorter)
+log = logging.getLogger("yerk.memory")
+
+
+def index_status(s: Settings) -> dict[str, Any]:
+    """What yerk-index wrote about itself (index.json), or {} when nothing is serving."""
+    try:
+        d = json.loads(s.index_status.read_text())
+    except (OSError, ValueError):
+        return {}
+    return d if isinstance(d, dict) else {}
+
+
+def meaning_state(s: Settings) -> str:
+    """ok: vectors are served; no-key: yerk-index runs without a provider key; empty: a key but no vector
+    yet; no-index: nothing is serving (no status file, or the process behind it is gone)."""
+    st = index_status(s)
+    emb = st.get("embeddings") or {}
+    if not st or not st.get("port"):
+        return "no-index"
+    try:
+        os.kill(int(st.get("pid", 0)), 0)
+    except (OSError, ValueError):
+        return "no-index"
+    if not emb.get("key"):
+        return "no-key"
+    return "ok" if emb.get("vectors") else "empty"
+
+
+def meaning(s: Settings, query: str, pool: int = POOL, deadline_s: float = MEANING_WAIT) -> tuple[str, list[dict[str, Any]]]:
+    """(status, rows) from yerk-index's meaning search. Every status short of ok means keywords only for
+    this query and says why: no-index, no-key, empty, provider-timeout, provider-error, index-timeout
+    (yerk-index itself answered late), failure (its answer was broken)."""
+    import urllib.request
+    state = meaning_state(s)
+    if state != "ok":
+        return state, []
+    port = int(index_status(s)["port"])
+    req = urllib.request.Request(f"http://127.0.0.1:{port}/search", data=json.dumps({"query": query, "pool": pool}).encode(),
+                                 headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=deadline_s) as r:
+            out = json.loads(r.read())
+    except TimeoutError:
+        return "index-timeout", []
+    except OSError as e:
+        return ("index-timeout" if "timed out" in str(e).lower() else "no-index"), []
+    except ValueError:
+        return "failure", []
+    if not isinstance(out, dict) or not out.get("ok"):
+        return str((out or {}).get("status", "failure")) if isinstance(out, dict) else "failure", []
+    return "ok", list(out.get("hits", []))
+
+
+def fuse(keywords: list[dict[str, Any]], vectors: list[dict[str, Any]], k: int,
+         rrf_k: int = RRF_K, w_keywords: float = 1.0, w_vectors: float = 1.0) -> list[dict[str, Any]]:
+    """Reciprocal rank fusion of the two ranked lists: each chunk scores the sum over the lists it is in
+    of w / (rrf_k + its rank there); a tie breaks on the cosine. No calibration between a bm25 cover
+    and a cosine is needed, and a chunk both searches put first outranks either search's lone top hit.
+    Vector hits under half the best cosine are noise and leave the fusion first."""
+    if not vectors:
+        return keywords[:k]
+    top = float(vectors[0]["score"])
+    vectors = [h for h in vectors if float(h["score"]) >= top / 2] if top > 0 else []
+    if not vectors:
+        return keywords[:k]
+    score: dict[int, float] = {}
+    rows: dict[int, dict[str, Any]] = {}
+    for w, ranked in ((w_keywords, keywords), (w_vectors, vectors)):
+        for rank, h in enumerate(ranked, 1):
+            score[h["id"]] = score.get(h["id"], 0.0) + w / (rrf_k + rank)
+            rows.setdefault(h["id"], h)
+    cos = {h["id"]: float(h["score"]) for h in vectors}
+    out = []
+    for cid in sorted(score, key=lambda i: (-score[i], -cos.get(i, 0.0)))[:k]:
+        h = dict(rows[cid])
+        h["score"] = round(score[cid], 4)
+        out.append(h)
+    return out
+
+
 def recall(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0) -> dict[str, Any]:
-    """The recall tool: ranked chunks with path and line. A timeout and a failure read differently (L54)."""
+    """The recall tool: ranked chunks with path and line, the keyword rank fused with the meaning rank
+    when yerk-index serves one. A timeout and a failure of the index read differently (L54); a
+    provider timeout or error reads differently from both: keywords only for this query, logged."""
     import sqlite3
     import time
     k = max(1, min(int(k), 20))
     try:
         conn = memindex.connect(s.index_db, readonly=True, deadline=time.monotonic() + deadline_s)
         try:
-            hits = memindex.search(conn, query, k)
+            # twice the pool by bm25, re-ranked by cover down to the pool: the cover re-rank needs
+            # the candidates bm25 alone ranks low (measured on the fixed question set: 2 more top-six hits)
+            keywords = memindex.search(conn, query, POOL, POOL * 2)
         finally:
             conn.close()
     except FileNotFoundError as e:
@@ -162,7 +258,12 @@ def recall(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0) -> dict
             return {"ok": False, "status": "timeout", "error": f"the index was busy for {deadline_s:.0f} s; "
                     "memory is not down, try once more"}
         return {"ok": False, "status": "failure", "error": f"the index could not be read: {e}"}
+    state, vectors = meaning(s, query)
+    if state in ("provider-timeout", "provider-error", "index-timeout", "failure"):
+        log.warning("recall: meaning search skipped (%s); keywords only for this query", state)
+    hits = fuse(keywords, vectors, k)
     for h in hits:
+        h.pop("id", None)
         h["cite"] = f"{cite(s, Path(h['path']))}:{h['line']}"
     return {"ok": True, "status": "ok", "hits": hits}
 

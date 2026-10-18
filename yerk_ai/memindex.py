@@ -31,7 +31,7 @@ import unicodedata
 from dataclasses import dataclass
 from fnmatch import fnmatch
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 log = logging.getLogger("yerk.index")
 
@@ -57,6 +57,9 @@ CREATE TRIGGER IF NOT EXISTS chunks_ad AFTER DELETE ON chunks BEGIN
   INSERT INTO chunks_fts(chunks_fts, rowid, body) VALUES ('delete', old.id, old.body);
 END;
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
+CREATE INDEX IF NOT EXISTS chunks_sha ON chunks(sha);
+CREATE TABLE IF NOT EXISTS vectors (sha TEXT NOT NULL, model TEXT NOT NULL, dim INTEGER NOT NULL, vec BLOB NOT NULL,
+                                    PRIMARY KEY (sha, model, dim));
 """
 
 STOP = frozenset("""a about after again all also am an and any are as at be because been before being both
@@ -223,10 +226,11 @@ def connect(db: Path, *, readonly: bool, deadline: float | None = None) -> sqlit
 class Index:
     """The writer. Only yerk-index holds one."""
 
-    def __init__(self, db: Path, scope: Scope):
+    def __init__(self, db: Path, scope: Scope, on_insert: Callable[[list[str]], None] | None = None):
         self.db, self.scope = db, scope
         self.real = live(db)
         self.disk: dict[str, tuple[int, int]] = {}      # the last pass's view of the disk
+        self.on_insert = on_insert                        # the hashes of chunks just written (the embedding thread)
         self.conn = connect(db, readonly=False)
         cur = self.conn.cursor()
         repaired = drop_orphan_shadow_tables(cur, ["chunks_fts"])
@@ -283,6 +287,8 @@ class Index:
         except BaseException:
             self.conn.execute("ROLLBACK")
             raise
+        if ins and self.on_insert:
+            self.on_insert([sha for _, _, _, sha, _ in ins])
         return len(ins), len(dels)
 
     def forget(self, path: str) -> int:
@@ -313,6 +319,7 @@ class Index:
             st["gone"] += 1
         chunks = self.conn.execute("SELECT max(id), count(*) FROM chunks").fetchone()
         self.set_meta(scope=self.scope.key(), synced=round(time.time(), 3), chunks=chunks[1] or 0)
+        st["chunks"] = int(chunks[1] or 0)
         return st
 
     def close(self) -> None:
@@ -328,9 +335,12 @@ def rebuild(db: Path, scope: Scope) -> Path:
     index, one after the swap the new, and none finds no file (run 1 deleted first: ~10 s of
     failures). The old generation is swept after SWEEP_GRACE."""
     gen = db.with_name(f"{db.stem}-{time.time_ns()}{db.suffix}")
+    old = live(db)
     idx = Index(gen, scope)
     try:
         st = idx.sync()
+        if old.is_file() and old != gen:
+            st["vectors"] = copy_vectors(idx.conn, old)
         idx.conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
     finally:
         idx.close()
@@ -340,6 +350,23 @@ def rebuild(db: Path, scope: Scope) -> Path:
     os.replace(tmp, db)
     log.info("rebuilt into %s: %d files; the link is swapped", gen.name, st["files"])
     return gen
+
+
+def copy_vectors(conn: sqlite3.Connection, old: Path) -> int:
+    """A rebuild never embeds twice: every vector of the old generation whose chunk hash is still in
+    the new one comes across (an old file without the table, from before meaning search, gives 0)."""
+    conn.execute("ATTACH DATABASE ? AS old", (str(old),))
+    try:
+        try:
+            n = conn.execute("INSERT OR IGNORE INTO vectors(sha, model, dim, vec) SELECT o.sha, o.model, o.dim, o.vec "
+                             "FROM old.vectors o WHERE o.sha IN (SELECT sha FROM chunks)").rowcount
+        except sqlite3.OperationalError as e:
+            if "no such table" not in str(e):
+                raise
+            n = 0
+    finally:
+        conn.execute("DETACH DATABASE old")
+    return int(n)
 
 
 def sweep(db: Path, grace: float = SWEEP_GRACE, now: float | None = None) -> list[str]:
@@ -386,7 +413,7 @@ def search(conn: sqlite3.Connection, query: str, k: int = 6, pool: int = 80) -> 
                                    (f'"{t}"', *ids)):
             cover[rid] = cover.get(rid, 0.0) + w
     ranked = sorted(rows, key=lambda r: (-round(cover.get(r[0], 0.0), 2), r[5]))
-    return [{"path": p, "line": lo, "lines": f"{lo}-{hi}", "text": body, "score": round(cover.get(cid, 0.0), 2)}
+    return [{"id": cid, "path": p, "line": lo, "lines": f"{lo}-{hi}", "text": body, "score": round(cover.get(cid, 0.0), 2)}
             for cid, p, lo, hi, body, _ in ranked[:k]]
 
 
@@ -450,8 +477,19 @@ def main(argv: list[str] | None = None) -> int:
         return CHECK_EXIT[r["status"]]
     if a.rebuild:
         rebuild(m.index_db, m.scope)
-    idx = Index(m.index_db, m.scope)
+    from . import embeddings
+    embedder = embeddings.Embedder(m.embeddings_key, m.embeddings_model, m.embeddings_dim)
+    store = embeddings.Vectors(m.embeddings_dim)
+    back = embeddings.Backfill(m.index_db, live, store, embedder)
+    idx = Index(m.index_db, m.scope, on_insert=back.note)
     names = mentions.Builder(m.mentions, m.roots_for_mentions, m.curated, m.mentions_exclude)
+    server = embeddings.Server(store, embedder, m.index_db, live)
+    if not a.once:
+        loaded = store.load(idx.conn, m.embeddings_model)
+        port = server.start()
+        back.start()
+        log.info("meaning search: %s; %d vectors loaded (%.1f MB); serving on 127.0.0.1:%d",
+                 "key present" if embedder.available() else "no key, keywords only", loaded, store.bytes() / 1e6, port)
     stop = False
 
     def _stop(*_: Any) -> None:
@@ -461,10 +499,13 @@ def main(argv: list[str] | None = None) -> int:
     signal.signal(signal.SIGINT, _stop)
     interval = a.interval or m.interval
     first = True
+    chunks = 0
+    told = (0, time.monotonic())                   # the backfill's count and time at its last log line
     while not stop:
         t0 = time.monotonic()
         try:
             st = idx.sync()
+            chunks = st["chunks"]
         except sqlite3.OperationalError as e:
             log.warning("pass skipped (%s): %s", "timeout" if is_timeout(e) else "failure", e)
             st = {}
@@ -474,18 +515,30 @@ def main(argv: list[str] | None = None) -> int:
                 log.info("mention index: %d keys, %d entries, %d dropped as ask-only", *built)
             for gone in sweep(m.index_db):
                 log.info("swept the old generation file %s", gone)
+            if not a.once:
+                embeddings.write_status(m.index_status, port=server.port, chunks=chunks,
+                                        embeddings={"key": embedder.available(), "model": m.embeddings_model,
+                                                    "dim": m.embeddings_dim, "vectors": store.n, **back.status(),
+                                                    "requests": embedder.requests, "tokens": embedder.tokens,
+                                                    "rss_kb": embeddings.rss_kb(), "store_bytes": store.bytes()})
         except OSError as e:
-            log.warning("mention index or sweep skipped: %s", e)
+            log.warning("mention index, sweep or status skipped: %s", e)
         took = time.monotonic() - t0
         if first or st.get("changed") or st.get("gone"):
             log.info("pass: %d files, %d changed, %d gone, %d chunks in, %d out, %.2f s", st.get("files", 0),
                      st.get("changed", 0), st.get("gone", 0), st.get("inserted", 0), st.get("deleted", 0), took)
             first = False
+        if back.done != told[0] and time.monotonic() - told[1] >= 30.0:
+            log.info("backfill: %d embedded since start (%d vectors of %d chunks), %d requests, %d tokens, "
+                     "%d kB resident", back.done, store.n, chunks, embedder.requests, embedder.tokens, embeddings.rss_kb())
+            told = (back.done, time.monotonic())
         if a.once:
             break
         end = time.monotonic() + max(0.2, interval - took)
         while not stop and time.monotonic() < end:
             time.sleep(0.1)
+    back.stop.set()
+    server.stop()
     idx.close()
     return 0
 

@@ -53,7 +53,8 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
 
     @mcp.tool()
     async def recall(query: str, k: int = 6, *, ctx: Context) -> str:
-        """Search the owner's memory (daily logs, fact files, the curated file, open loops) by keywords.
+        """Search the owner's memory (daily logs, fact files, the curated file, open loops) by keywords
+        and, where the install has a provider key, by meaning too, so a paraphrase finds the line.
         Returns ranked chunks, each with its file path, first line and `cite` (file:line). Cite every
         fact you use by its `cite`; read_memory gives the exact lines around a hit. A "timeout" status
         means busy, not down."""
