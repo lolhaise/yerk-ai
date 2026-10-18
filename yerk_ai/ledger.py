@@ -1,6 +1,7 @@
-"""The ledgers, one SQLite file: turns (one row per turn, with the account that executed it),
-inbound (every channel message by its id, before anything runs), outbound (every message Yerk AI
-posted, with the id the channel returned) and holds.
+"""The ledger, one SQLite database that records each message in and out, each turn, worker and approval, so that
+why the turn moved there), inbound (every channel message by its id, before anything runs),
+outbound (every message Yerk AI posted, with the id the channel returned), holds, and health
+(the daily call per account: pass or fail and the login's identity).
 
 Inbound states, after Hermes' delivery ledger (gateway/delivery_ledger.py, MIT): `received`
 (ledgered, nothing ran: run it plainly after a crash), `running` (sent to Claude Code: after a
@@ -16,14 +17,17 @@ from pathlib import Path
 from typing import Any
 
 COLUMNS = ("room", "account", "config_dir", "session_id", "started", "first_visible", "ended",
-           "outcome", "failure", "action", "output_chars", "models", "fallback_model", "accepted", "inbound")
+           "outcome", "failure", "action", "output_chars", "models", "fallback_model", "accepted", "inbound",
+           "source", "hop", "recap")
+ADDED = {"inbound": "TEXT", "source": "TEXT", "hop": "TEXT", "recap": "INTEGER"}   # columns newer than run 1
 
 SCHEMA = """CREATE TABLE IF NOT EXISTS turns (
   id INTEGER PRIMARY KEY,
   room TEXT, account TEXT, config_dir TEXT, session_id TEXT,
   started REAL, first_visible REAL, ended REAL,
   outcome TEXT, failure TEXT, action TEXT,
-  output_chars INTEGER, models TEXT, fallback_model TEXT, accepted INTEGER, inbound TEXT);
+  output_chars INTEGER, models TEXT, fallback_model TEXT, accepted INTEGER, inbound TEXT,
+  source TEXT, hop TEXT, recap INTEGER);
 CREATE TABLE IF NOT EXISTS inbound (
   message_id TEXT PRIMARY KEY, room TEXT, channel TEXT, sender TEXT,
   received REAL, chars INTEGER, state TEXT, attempts INTEGER DEFAULT 0,
@@ -32,7 +36,12 @@ CREATE TABLE IF NOT EXISTS outbound (
   id INTEGER PRIMARY KEY, room TEXT, channel TEXT, kind TEXT, message_id TEXT,
   chars INTEGER, file TEXT, inbound TEXT, sent REAL, error TEXT);
 CREATE TABLE IF NOT EXISTS holds (
-  id INTEGER PRIMARY KEY, room TEXT, wait_for TEXT, reason TEXT, at REAL)"""
+  id INTEGER PRIMARY KEY, room TEXT, wait_for TEXT, reason TEXT, at REAL);
+CREATE TABLE IF NOT EXISTS health (
+  id INTEGER PRIMARY KEY, at REAL, account TEXT, config_dir TEXT, ok INTEGER, failure TEXT, source TEXT,
+  login TEXT, identity TEXT, identity_ok INTEGER, model TEXT, ms INTEGER, note TEXT)"""
+HEALTH = ("at", "account", "config_dir", "ok", "failure", "source", "login", "identity", "identity_ok", "model",
+          "ms", "note")
 
 INBOUND = ("room", "channel", "sender", "received", "chars", "state", "attempts", "folded", "accepted",
            "answered", "turn_id", "reply_ids", "note")
@@ -45,8 +54,9 @@ class Ledger:
         self.lock = threading.Lock()
         self.db.executescript(SCHEMA)
         have = {r[1] for r in self.db.execute("PRAGMA table_info(turns)")}
-        if "inbound" not in have:                      # a run 1 ledger
-            self.db.execute("ALTER TABLE turns ADD COLUMN inbound TEXT")
+        for col, kind in ADDED.items():                # an older ledger gains the newer columns
+            if col not in have:
+                self.db.execute(f"ALTER TABLE turns ADD COLUMN {col} {kind}")
 
     def _insert(self, table: str, row: dict[str, Any]) -> int:
         cols = ", ".join(row)
@@ -109,6 +119,17 @@ class Ledger:
     def last_received(self, room: str) -> float | None:
         r = self._select("SELECT max(received) AS t FROM inbound WHERE room = ?", (room,))
         return float(r[0]["t"]) if r and r[0]["t"] is not None else None
+
+    # health
+    def health(self, **row: Any) -> int:
+        bad = set(row) - set(HEALTH)
+        if bad:
+            raise ValueError(f"unknown health columns: {sorted(bad)}")
+        return self._insert("health", {"at": time.time(), **row})
+
+    def health_last(self, account: str) -> dict[str, Any] | None:
+        r = self._select("SELECT * FROM health WHERE account = ? ORDER BY id DESC LIMIT 1", (account,))
+        return r[0] if r else None
 
     # outbound and holds
     def outbound(self, **row: Any) -> int:

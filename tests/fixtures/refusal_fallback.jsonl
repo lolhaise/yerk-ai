@@ -1,0 +1,4 @@
+{"type": "system", "subtype": "model_refusal_fallback", "trigger": "refusal", "direction": "fallback", "scope": "session", "original_model": "claude-fable-5-1", "fallback_model": "claude-opus-4-8", "request_id": "req_fixture", "api_refusal_category": "cyber", "api_refusal_explanation": "fixture", "retracted_message_uuids": [], "refused_user_message_uuid": "u-fixture", "content": "fixture", "session_id": "{sid}", "uuid": "e-fixture"}
+{"type": "stream_event", "event": {"type": "content_block_delta", "delta": {"type": "text_delta", "text": "answered on the fallback model"}}}
+{"type": "assistant", "session_id": "{sid}", "message": {"model": "claude-opus-4-8", "content": [{"type": "text", "text": "answered on the fallback model"}]}}
+{"type": "result", "subtype": "success", "is_error": false, "result": "answered on the fallback model", "session_id": "{sid}", "modelUsage": {"claude-fable-5-1": {}, "claude-opus-4-8": {}}}

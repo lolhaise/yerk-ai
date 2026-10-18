@@ -1,0 +1,72 @@
+"""Account meters: each account's 5-hour and weekly usage with reset times.
+
+Two sources, one answer: the live reading (lifted/usage.py) when a login can make it, else the
+last `rate_limit_event` Claude Code printed in a room's or a health call's stream for that
+account (its own usage windows), with its age. The stream reading works under any login,
+the one-year token included."""
+from __future__ import annotations
+
+import json
+import os
+import threading
+import time
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+from .accounts import Account, read_token
+from .lifted.usage import WINDOWS, read_usage
+
+
+class Meters:
+    """state/meters.json: {account: {at, five_hour: {pct, resets}, seven_day: {...}}} from streams."""
+
+    def __init__(self, path: Path):
+        self.path, self.lock = path, threading.Lock()
+
+    def load(self) -> dict[str, Any]:
+        try:
+            return dict(json.loads(self.path.read_text()))
+        except (OSError, ValueError):
+            return {}
+
+    def seen(self, account: str, windows: dict[str, Any]) -> None:
+        """A rate_limit_event's unifiedWindows (utilization 0 to 1, resetsAt epoch seconds)."""
+        row: dict[str, Any] = {"at": time.time(), "source": "stream"}
+        for w in WINDOWS:
+            d = windows.get(w) or {}
+            if d.get("utilization") is not None:
+                row[w] = {"pct": round(float(d["utilization"]) * 100, 1), "resets": d.get("resetsAt")}
+        with self.lock:
+            data = self.load()
+            data[account] = row
+            tmp = self.path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(data))
+            os.replace(tmp, self.path)
+
+    def reading(self, account: Account, live: bool = True) -> dict[str, Any]:
+        """The live reading when it answers, else the last stream reading, else why there is none."""
+        got = read_usage(account.config_dir, read_token(account)[0]) if live else {"error": "not read"}
+        if "error" not in got:
+            return got
+        last = self.load().get(account.name)
+        return {**last, "live_error": got["error"]} if last else {"error": got["error"]}
+
+
+def when(epoch: float | None, now: float | None = None) -> str:
+    """A reset as a clock time inside a day, else a weekday: phone-short."""
+    if not epoch:
+        return "?"
+    t = datetime.fromtimestamp(epoch)
+    return t.strftime("%H:%M") if epoch - (now or time.time()) < 86400 else t.strftime("%a %H:%M")
+
+
+def meter_line(name: str, m: dict[str, Any], now: float | None = None) -> str:
+    """'two: 5h 7% (23:40) · wk 3% (Fri 10:00)', plus the reading's age when it came from a stream."""
+    if "error" in m:
+        return f"{name}: no meter ({m['error']})"
+    now = time.time() if now is None else now
+    parts = [f"{label} {round(m[w]['pct'])}% ({when(m[w].get('resets'), now)})"
+             for w, label in (("five_hour", "5h"), ("seven_day", "wk")) if w in m]
+    age = "" if m.get("source") == "live" else f", seen {int((now - m['at']) // 60)} min ago"
+    return f"{name}: " + (" · ".join(parts) or "no windows") + age

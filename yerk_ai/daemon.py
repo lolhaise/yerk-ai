@@ -25,6 +25,7 @@ from .engine import RoomSpec
 from .ledger import Ledger
 from .lifted.classify import FailureTable
 from .lifted.loopguard import LoopGuard
+from .meters import Meters
 from .room import Channel, Inbound, Room
 
 log = logging.getLogger("yerk.daemon")
@@ -51,8 +52,10 @@ class ConsoleChannel:
     def progress(self, room: str, text: str) -> None:
         print(f"[card] {text}", file=sys.stderr, flush=True)
 
-    def reply(self, room: str, text: str, inbound: list[str]) -> list[str]:
-        return self._out({"room": room, "reply": text, "inbound": inbound})
+    def reply(self, room: str, text: str, inbound: list[str], card: str | None = None) -> list[str]:
+        if card:
+            self.progress(room, card)
+        return self._out({"room": room, "reply": text, "inbound": inbound, **({"card": card} if card else {})})
 
     def notice(self, room: str, text: str, inbound: list[str]) -> list[str]:
         return self._out({"room": room, "notice": text, "inbound": inbound})
@@ -78,6 +81,7 @@ class Yerkd:
         self.ledger = Ledger(state / "ledger.sqlite")
         self.failures = FailureTable.load(table("failures.toml"))
         self.cooldowns = Cooldowns(state / "cooldowns.json")
+        self.meters = Meters(state / "meters.json")
         self.idle_seconds, self.log_dir = idle_minutes * 60, log_dir
         self.rooms: dict[str, Room] = {}
         self.channels: dict[str, Any] = {}       # room -> its channel adapter
@@ -100,10 +104,13 @@ class Yerkd:
 
     def add_room(self, name: str, channel: Channel) -> Room:
         conf = self.room_confs[name]
-        order = conf.get("accounts")
-        accts = [a for n in order or [] for a in self.accounts if a.name == n] or self.accounts
+        # the room's list orders the accounts it names; every other account follows in
+        # accounts.toml order, so adding or removing an account is one line in accounts.toml
+        named = [a for n in conf.get("accounts") or [] for a in self.accounts if a.name == n]
+        accts = named + [a for a in self.accounts if a not in named]
         room = Room(name, conf, lambda: self.spec_for(name), accts, channel, self.state, self.ledger,
-                    self.failures, self.cooldowns, idle_seconds=self.idle_seconds, log_dir=self.log_dir)
+                    self.failures, self.cooldowns, idle_seconds=self.idle_seconds, log_dir=self.log_dir,
+                    meters=self.meters.seen)
         self.rooms[name], self.channels[name] = room, channel
         return room
 

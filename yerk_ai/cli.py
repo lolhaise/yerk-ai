@@ -74,6 +74,104 @@ def cmd_room(a: argparse.Namespace) -> int:
     return 0 if out.get("ok") else 1
 
 
+def _engine(a: argparse.Namespace) -> tuple[Any, ...]:
+    from .accounts import Cooldowns, load_accounts
+    from .config import state_dir
+    priv, state = private_dir(a.private), state_dir(a.state)
+    return priv, state, load_accounts(priv / "accounts.toml"), Cooldowns(state / "cooldowns.json")
+
+
+def _clock(t: float) -> str:
+    return datetime.fromtimestamp(t).strftime("%a %H:%M")
+
+
+def cmd_accounts(a: argparse.Namespace) -> int:
+    """Each account's order, token age and days to expiry (warning inside 30 days), rests and last
+    health call; and the hand controls: cool, clear, token, health."""
+    import time
+    from .accounts import WARN_DAYS, store_token, token_info
+    from .ledger import Ledger
+    priv, state, accounts, cool = _engine(a)
+    by = {x.name: x for x in accounts}
+    if a.action in ("cool", "clear", "token") and a.name not in by:
+        print(f"no account {a.name!r} in {priv / 'accounts.toml'}; accounts: {', '.join(by)}", file=sys.stderr)
+        return 2
+    if a.action == "cool":
+        cool.set(a.name, a.kind, time.time() + a.minutes * 60)
+        print(f"{a.name} rests ({a.kind}) until {_clock(time.time() + a.minutes * 60)}")
+        return 0
+    if a.action == "clear":
+        cool.clear(a.name)
+        print(f"{a.name}: no rest")
+        return 0
+    if a.action == "token":
+        import getpass
+        tok = getpass.getpass("token (not shown): ") if sys.stdin.isatty() else sys.stdin.read()
+        if not tok.strip():
+            print("no token read", file=sys.stderr)
+            return 2
+        issued = datetime.fromisoformat(a.issued).date() if a.issued else None
+        print(f"{a.name}: token stored in {store_token(by[a.name], tok, issued)} (0600)")
+        return 0
+    ledger = Ledger(state / "ledger.sqlite")
+    if a.action == "health":
+        from . import health
+        from .config import table
+        from .lifted.classify import FailureTable
+        from .meters import Meters
+        pick = [by[n] for n in a.names if n in by] if a.names else accounts
+        rows = health.check(pick, FailureTable.load(table("failures.toml")), ledger, cool, state, model=a.model,
+                            meters=Meters(state / "meters.json"))
+        for r in rows:
+            ident = {1: "identity ok", 0: "IDENTITY FAIL", None: "identity unverified"}[r["identity_ok"]]
+            print(f"{r['account']}: {'pass' if r['ok'] else 'FAIL ' + str(r['failure'])} in {r['ms']} ms, "
+                  f"{r['login']} login, {ident} [{r['identity'] or '-'}]" + (f"; {r['note']}" if r["note"] else ""))
+        return 0 if all(r["ok"] and r["identity_ok"] != 0 for r in rows) else 1
+    warn = 0
+    out = []
+    for x in accounts:
+        t = token_info(x)
+        if t["token"] == "none":
+            tok = "token: none, the config folder's own login"
+        else:
+            tok = f"token: {t['age_days']} days old, {t['days_left']} days left"
+            if t["token"] != "ok":
+                tok += f" (RENEW: {t['token']}, inside {WARN_DAYS} days)"
+                warn += 1
+        rests = cool.show(x.name)
+        rest = ", ".join(f"rests ({r['kind']}, x{r['repeats']}) until {_clock(r['until'])}" for r in rests) or "ready"
+        h = ledger.health_last(x.name)
+        hl = "no health call yet" if not h else (
+            f"health {'pass' if h['ok'] else 'FAIL'} {_clock(h['at'])}"
+            + {1: ", identity ok", 0: ", IDENTITY FAIL", None: ""}[h["identity_ok"]])
+        out.append({"name": x.name, "order": x.order, "config_dir": str(x.config_dir), **t, "rests": rests,
+                    "health": h})
+        if not a.json:
+            print(f"{x.name} (order {x.order}): {tok}; {rest}; {hl}")
+    if a.json:
+        print(json.dumps(out, default=str))
+    return 1 if warn else 0
+
+
+def cmd_status(a: argparse.Namespace) -> int:
+    """What runs (the daemon and its rooms) and each account's 5-hour and weekly meters."""
+    import os
+    from .meters import Meters, meter_line
+    priv, state, accounts, cool = _engine(a)
+    try:
+        st = json.loads((state / "yerkd.json").read_text())
+        os.kill(int(st["pid"]), 0)
+        print(f"yerkd: running ({st['mode']}), pid {st['pid']}, rooms {', '.join(st['rooms'])}")
+    except (OSError, ValueError, KeyError):
+        print("yerkd: not running")
+    meters = Meters(state / "meters.json")
+    for x in accounts:
+        rest = cool.show(x.name)
+        print(meter_line(x.name, meters.reading(x, live=not a.no_live))
+              + (f"; rests until {_clock(rest[0]['until'])}" if rest else ""))
+    return 0
+
+
 def cmd_probe(a: argparse.Namespace) -> int:
     if a.name == "resume" and not a.to_config_dir:
         print("resume needs --to-config-dir", file=sys.stderr)
@@ -101,6 +199,20 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("action", choices=["close"])
     r.add_argument("room")
     r.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
+    ac = sub.add_parser("accounts", help="tokens, rests and health per account; cool, clear, token, health")
+    ac.add_argument("action", nargs="?", default="list", choices=["list", "cool", "clear", "token", "health"])
+    ac.add_argument("name", nargs="?", help="cool, clear, token: the account")
+    ac.add_argument("minutes", nargs="?", type=float, default=30.0, help="cool: minutes to rest")
+    ac.add_argument("--kind", default="manual", help="cool: the rest's kind (default manual)")
+    ac.add_argument("--issued", help="token: the issue date, YYYY-MM-DD (default today)")
+    ac.add_argument("--model", default="haiku", help="health: the model for the one tiny turn")
+    ac.add_argument("--names", nargs="*", default=[], help="health: only these accounts")
+    ac.add_argument("--json", action="store_true")
+    st = sub.add_parser("status", help="the daemon, its rooms, and each account's 5-hour and weekly meters")
+    st.add_argument("--no-live", action="store_true", help="only the meters seen in streams, no live reading")
+    for x in (ac, st):
+        x.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else the fake example layer)")
+        x.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
     pr = sub.add_parser("probe", help="contract probes against a real Claude Code login")
     pr.add_argument("name", choices=["hello", "fold", "resume", "blocks", "smoke", "measure", "check", "idle"])
     pr.add_argument("--config-dir", required=True, help="Claude Code config folder of the account to use")
@@ -125,7 +237,8 @@ def main(argv: list[str] | None = None) -> int:
     pr.add_argument("--attach", action="store_true", help="smoke, measure: drive the yerkd already running on --state")
     pr.set_defaults(on_second=None, fold_settings=None)
     a = p.parse_args(argv)
-    return int({"map": cmd_map, "probe": cmd_probe, "setup-room": cmd_setup_room, "room": cmd_room}[a.cmd](a))
+    return int({"map": cmd_map, "probe": cmd_probe, "setup-room": cmd_setup_room, "room": cmd_room,
+                "accounts": cmd_accounts, "status": cmd_status}[a.cmd](a))
 
 
 if __name__ == "__main__":

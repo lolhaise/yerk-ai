@@ -1,0 +1,12 @@
+# The daily health call: one tiny model turn per account, the login's identity, a ledger row
+# each (yerk accounts health). Installed by copying both files to ~/.config/systemd/user/ and
+# `systemctl --user enable --now yerk-health.timer`. Set YERK_PRIVATE and YERK_STATE below.
+[Unit]
+Description=Yerk AI daily health call per account
+
+[Service]
+Type=oneshot
+Environment=YERK_PRIVATE=%h/yerk-private
+Environment=YERK_STATE=%h/.local/state/yerk
+ExecStart=%h/yerk-ai/.venv/bin/yerk accounts health
+TimeoutStartSec=900

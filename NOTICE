@@ -27,5 +27,7 @@ The author's private tools (not published), contributed here under the MIT Licen
 Copyright (c) 2026 Eric McLaren.
 - yerk_ai/lifted/classify.py and the patterns in failures.toml: from tools/reason_codes.py
 - yerk_ai/lifted/expiry.py: from tools/token-expiry-watch
+- yerk_ai/lifted/usage.py: from tools/status-card (fetch_usage and the five_hour and seven_day
+  reading of tank_lines; the token refresh is left out)
 - yerk_ai/lifted/clock.py: from the author's hook dispatcher in tools/hooks/ (the clock line and
   the room-voice part)

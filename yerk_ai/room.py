@@ -9,8 +9,13 @@ adapter's event loop.
 - Each `result` answers the messages Claude Code replayed (accepted) before it. A message that
   was written but not yet accepted when a result lands gets the next result, which Claude Code
   starts by itself.
-- An empty reply retries once in a fresh session. An auth or quota failure rests the account and
-  continues the same turn on the next one, resuming the same session; the card stays.
+- A failed turn takes the action failures.toml gives it: a transient failure reruns the same
+  session; an overflow compacts it and runs the turn again; an auth or quota failure rests the
+  account and continues the same turn on the next one, resuming the same session under the same
+  card (the ledger row names the hop); a session that cannot be resumed starts fresh with a
+  one-line recap; anything else ends in a visible notice. An empty reply retries once fresh.
+- A turn Claude Code answered on a fallback model after a block stands, marked on its card and
+  ledger row; the room's next turn starts a fresh session on the room's own model.
 - After `idle_seconds` without a turn the process closes; the next message resumes the session.
 """
 from __future__ import annotations
@@ -40,19 +45,27 @@ class Inbound:
     attempt: int = 0
 
 
+RESUME_RECAP = ("(Yerk AI: the earlier session of this room could not be resumed, so this is a new one. "
+                "The last reply here began: \"{last}\")")
+REFUSAL_RECAP = ("(Yerk AI: this is a new session. The previous one was moved to another model after a block, "
+                 "so its messages are not in this context.)")
+
+
 class Channel(Protocol):
     def progress(self, room: str, text: str) -> None: ...            # post or edit the room's card
-    def reply(self, room: str, text: str, inbound: list[str]) -> list[str]: ...   # card off, reply on
+    def reply(self, room: str, text: str, inbound: list[str],          # card off (or kept with `card`), reply on
+              card: str | None = None) -> list[str]: ...
     def notice(self, room: str, text: str, inbound: list[str]) -> list[str]: ...  # a visible failure
 
 
 class Room:
     def __init__(self, name: str, conf: dict[str, Any], spec: Callable[[], RoomSpec], accounts: list[Account],
                  channel: Channel, state: Any, ledger: Ledger, failures: FailureTable, cooldowns: Cooldowns,
-                 idle_seconds: float = 1800.0, turn_timeout: float = 900.0, log_dir: Any = None):
+                 idle_seconds: float = 1800.0, turn_timeout: float = 900.0, log_dir: Any = None,
+                 meters: Callable[[str, dict[str, Any]], None] | None = None):
         self.name, self.conf, self.spec, self.accounts, self.channel = name, conf, spec, accounts, channel
         self.state, self.ledger, self.failures, self.cooldowns = state, ledger, failures, cooldowns
-        self.idle_seconds, self.turn_timeout, self.log_dir = idle_seconds, turn_timeout, log_dir
+        self.idle_seconds, self.turn_timeout, self.log_dir, self.meters = idle_seconds, turn_timeout, log_dir, meters
         self.lock = threading.Lock()
         self.rp: RoomProcess | None = None
         self.busy = False
@@ -65,6 +78,8 @@ class Room:
         self.seen: dict[str, Inbound] = {}        # by text, for the hook's metadata line
         self.first_line: str | None = None
         self.answered: set[str] = set()           # sessions with at least one delivered reply
+        self.last_reply = ""                      # the first line of the last reply, for a recap
+        self.fresh_next: str | None = None        # a recap: the next turn starts a fresh session
 
     # called by the channel adapter
     def submit(self, msg: Inbound) -> str:
@@ -103,15 +118,19 @@ class Room:
         return True
 
     # the room's thread
-    def _write(self, msg: Inbound) -> None:
+    def _write(self, msg: Inbound, recap: str | None = None) -> None:
         assert self.rp
         self.pending.append(msg)
         self.inflight.append(msg)
-        self.rp.send(msg.text)
+        text = f"{recap}\n\n{msg.text}" if recap else msg.text
+        if recap:
+            self.seen[text.strip()] = msg
+        self.rp.send(text)
 
     def _start(self, account: Account, fresh: bool = False) -> None:
         log_path = self.log_dir / f"{self.name}.jsonl" if self.log_dir else None
-        rp = RoomProcess(self.spec(), account, self.state, ledger=self.ledger, failures=self.failures, log=log_path)
+        rp = RoomProcess(self.spec(), account, self.state, ledger=self.ledger, failures=self.failures, log=log_path,
+                         meters=self.meters)
         rp.start(fresh=fresh)
         self.rp = rp
 
@@ -149,7 +168,9 @@ class Room:
     def _turn(self, batch: list[Inbound]) -> None:
         self.first_line = None
         self.channel.progress(self.name, "working on it")
-        fresh, retried, hops, account = False, False, 0, self._account()
+        account = self._account()
+        recap, self.fresh_next = self.fresh_next, None          # set by a refusal fallback last turn
+        fresh, retried, compacted, reruns, hops, hop = bool(recap), False, False, 0, 0, None
         resend = batch
         while True:
             with self.lock:
@@ -165,56 +186,53 @@ class Room:
             with self.lock:
                 self.pending.clear()
                 self.inflight = []
-                for m in resend:
-                    self._write(m)
+                for i, m in enumerate(resend):
+                    self._write(m, recap if i == 0 else None)
                     self.ledger.inbound_set(m.id, state="running", attempts=m.attempt + 1)
                 self.reading = True
-            started = time.time()
-            while True:
-                assert self.rp
-                turn = self.rp.read_turn(started, self.turn_timeout, record=False, on_event=self._on_event)
-                with self.lock:
-                    n = len(turn.accepted) or (1 if turn.outcome == "ok" else 0)
-                    covered = [self.pending.popleft() for _ in range(min(n, len(self.pending)))]
-                ids = [m.id for m in covered]
-                turn_id = self.rp.record(turn, ids)
-                if turn.outcome != "ok":
-                    break
-                self.cooldowns.clear(account.name)
-                self.answered.add(self.rp.session_id)
-                reply_ids = self.channel.reply(self.name, turn.text, ids)
-                now = time.time()
-                for m in covered:
-                    self.ledger.inbound_set(m.id, state="answered", answered=now, turn_id=turn_id,
-                                            reply_ids=",".join(reply_ids))
-                with self.lock:
-                    self.inflight = list(self.pending)
-                    if not self.pending:
-                        self.reading = False      # from here a new message queues for the next turn
-                        return
-                started, self.first_line = time.time(), None
-                self.channel.progress(self.name, "working on it")
-            # the turn failed: every message written since the last delivered result goes again
+            step, turn = self._results(account, hop, bool(recap))
+            recap = None
             with self.lock:
                 self.reading = False
                 resend = list(self.inflight)
-            action = turn.failure.action if turn.failure else None
+            if step == "done":
+                return
+            if step == "fresh":                   # answered on a fallback model with messages still waiting
+                fresh, recap, self.fresh_next = True, self.fresh_next, None
+                continue
+            assert turn
+            f = turn.failure
+            action = f.action if f else None
             if turn.outcome == "empty" and not retried:
                 log.info("room %s: empty reply, retrying once in a fresh session", self.name)
                 fresh = retried = True
                 continue
-            if action == "hop_account" and hops < len(self.accounts) - 1:
-                f = turn.failure
-                assert f
-                self.cooldowns.fail(account.name, lambda r: self.failures.cooldown_seconds(f.kind or "auth", r))
+            if action == "rerun" and (wait := self.failures.rerun_wait(reruns)) is not None:
+                log.info("room %s: %s, rerun %d in %.0f s", self.name, f and f.source, reruns + 1, wait)
+                reruns += 1
+                time.sleep(wait)
+                continue
+            if action == "compact_then_rerun" and not compacted:
+                compacted = True
+                self._compact(account)
+                continue
+            if action == "fresh_with_recap" and not retried:
+                log.info("room %s: the session could not be resumed, starting fresh with a recap", self.name)
+                fresh, retried, recap = True, True, RESUME_RECAP.format(last=self.last_reply or "nothing yet")
+                continue
+            if action == "hop_account" and f and hops < len(self.accounts) - 1:
+                kind = f.kind or "auth"
+                self.cooldowns.fail(account.name, kind, lambda r: self.failures.cooldown_seconds(kind, r))
                 nxt = self._account()
                 if nxt != account:
                     log.info("room %s: %s on %s, continuing on %s", self.name, f.cls, account.name, nxt.name)
+                    hop = ",".join(filter(None, [hop, f"{f.cls}:{account.name}"]))
+                    hops, account, self.first_line = hops + 1, nxt, None
+                    self.channel.progress(self.name, f"still on it, moved to account {nxt.name}")
                     # a session that never answered may have no transcript to resume elsewhere
-                    hops, account = hops + 1, nxt
                     fresh = not (self.rp and (self.rp.resume_arg or self.rp.session_id in self.answered))
                     continue
-            why = turn.failure.cls if turn.failure else turn.outcome
+            why = f.cls if f else turn.outcome
             notice_ids = self.channel.notice(self.name, f"No reply: the turn ended {turn.outcome} ({why}).",
                                              [m.id for m in resend])
             for m in resend:
@@ -225,3 +243,49 @@ class Room:
             if old:
                 old.close()
             return
+
+    def _results(self, account: Account, hop: str | None, recapped: bool) -> tuple[str, Turn | None]:
+        """Deliver each result of the running process until nothing waits: "done"; a failed turn:
+        "failed"; a reply on a fallback model while messages still wait: "fresh"."""
+        started = time.time()
+        while True:
+            assert self.rp
+            turn = self.rp.read_turn(started, self.turn_timeout, record=False, on_event=self._on_event)
+            with self.lock:
+                n = len(turn.accepted) or (1 if turn.outcome == "ok" else 0)
+                covered = [self.pending.popleft() for _ in range(min(n, len(self.pending)))]
+            ids = [m.id for m in covered]
+            turn_id = self.rp.record(turn, ids, hop=hop, recap=1 if recapped else None)
+            if turn.outcome != "ok":
+                return "failed", turn
+            self.cooldowns.clear(account.name)
+            self.answered.add(self.rp.session_id)
+            card = None
+            if turn.fallback_model:
+                card = (f"answered by a fallback model ({turn.fallback_model}); the next message starts "
+                        f"a fresh session on {self.rp.spec.model}")
+                self.fresh_next = REFUSAL_RECAP
+            reply_ids = self.channel.reply(self.name, turn.text, ids, card)
+            self.last_reply = turn.text.strip().split("\n")[0][:160]
+            now = time.time()
+            for m in covered:
+                self.ledger.inbound_set(m.id, state="answered", answered=now, turn_id=turn_id,
+                                        reply_ids=",".join(reply_ids))
+            with self.lock:
+                self.inflight = list(self.pending)
+                if not self.pending or self.fresh_next:
+                    self.reading = False          # from here a new message queues for the next turn
+                    return ("fresh" if self.pending else "done"), turn
+            started, self.first_line, hop, recapped = time.time(), None, None, False
+            self.channel.progress(self.name, "working on it")
+
+    def _compact(self, account: Account) -> None:
+        """/compact in the room's session (resumed when its process is gone), before the rerun."""
+        with self.lock:
+            alive = self.rp is not None and self.rp.alive()
+        if not alive:
+            self._start(account)
+        assert self.rp
+        self.channel.progress(self.name, "compacting the conversation, then answering")
+        t = self.rp.ask("/compact", self.turn_timeout)
+        log.info("room %s: compact ended %s", self.name, t.outcome)

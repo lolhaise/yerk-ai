@@ -126,6 +126,8 @@ class Turn:
     outcome: str = "running"                                  # ok, error, empty, timeout, exited
     models: list[str] = field(default_factory=list)          # the models that executed
     fallback_model: str | None = None
+    flags: list[str] = field(default_factory=list)            # stream events the failure table reads
+    windows: dict[str, Any] | None = None                     # the last rate_limit_event's usage windows
     tools: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     result: dict[str, Any] | None = None
@@ -145,7 +147,13 @@ class Turn:
                 if c.get("type") == "tool_use":
                     self.tools.append(str(c.get("name")))
         elif kind == "system" and ev.get("subtype") == "model_refusal_fallback":
-            self.fallback_model = ev.get("fallback_model")
+            self.fallback_model = ev.get("fallback_model") or "another model"
+        elif kind == "rate_limit_event":
+            info = ev.get("rate_limit_info") or {}
+            self.windows = info.get("unifiedWindows") or self.windows
+            if info.get("status") == "rejected":
+                self.flags.append("credits_required" if info.get("errorCode") == "credits_required"
+                                  else "rate_limit_rejected")
         elif kind == "result":
             self.result, self.ended = ev, t
             self.text = str(ev.get("result") or "")
@@ -163,9 +171,10 @@ class RoomProcess:
     """One Claude Code process for one room's session."""
 
     def __init__(self, spec: RoomSpec, account: Account, state: Path, *, ledger: Ledger | None = None,
-                 failures: FailureTable | None = None, log: Path | None = None):
+                 failures: FailureTable | None = None, log: Path | None = None,
+                 meters: Callable[[str, dict[str, Any]], None] | None = None):
         self.spec, self.account, self.state = spec, account, state
-        self.ledger, self.failures, self.log_path = ledger, failures, log
+        self.ledger, self.failures, self.log_path, self.meters = ledger, failures, log, meters
         self.sessions = SessionTable(state / "sessions.json")
         self.events: queue.Queue[tuple[float, dict[str, Any] | None]] = queue.Queue()
         self.proc: subprocess.Popen[bytes] | None = None
@@ -275,6 +284,8 @@ class RoomProcess:
                 turn.outcome = "exited"
                 break
             turn.observe(t, ev)
+            if self.meters and ev.get("type") == "rate_limit_event" and turn.windows:
+                self.meters(self.account.name, turn.windows)
             if on_event:
                 on_event(turn, ev)
         if turn.ended is None:
@@ -283,7 +294,9 @@ class RoomProcess:
             turn.outcome = "empty"      # an empty reply is a failure to retry fresh, never a silence
         if turn.outcome not in ("ok", "empty") and self.failures:
             text = " ".join([turn.text, *turn.errors, self.stderr_tail()])
-            turn.failure = self.failures.classify(turn.error_type, text)
+            turn.failure = self.failures.classify(turn.error_type, text, turn.flags)
+        elif turn.outcome == "ok" and turn.fallback_model and self.failures:
+            turn.failure = self.failures.event("model_refusal_fallback")   # the answer stands, marked
         if record:
             self.record(turn)
         return turn
@@ -291,7 +304,8 @@ class RoomProcess:
     def ask(self, text: str, timeout: float = 600.0) -> Turn:
         return self.read_turn(self.send(text), timeout)
 
-    def record(self, turn: Turn, inbound: list[str] | None = None) -> int:
+    def record(self, turn: Turn, inbound: list[str] | None = None, **extra: Any) -> int:
+        """One ledger row for the turn; `extra` carries the room's hop and recap columns."""
         if not self.ledger:
             return 0
         f = turn.failure
@@ -301,7 +315,7 @@ class RoomProcess:
             ended=turn.ended, outcome=turn.outcome, failure=f.cls if f else None,
             action=f.action if f else None, output_chars=len(turn.text), models=",".join(turn.models),
             fallback_model=turn.fallback_model, accepted=len(turn.accepted),
-            inbound=",".join(inbound) if inbound else None)
+            inbound=",".join(inbound) if inbound else None, source=f.source if f else None, **extra)
 
     def stderr_tail(self, n: int = 2000) -> str:
         try:

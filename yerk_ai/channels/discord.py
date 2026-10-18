@@ -130,8 +130,9 @@ class DiscordChannel:
     def progress(self, room: str, text: str) -> None:
         self._call(self._progress(room, text), wait=False)
 
-    def reply(self, room: str, text: str, inbound: list[str]) -> list[str]:
-        return self._call(self._finish(room, text, inbound, DONE)) or []
+    def reply(self, room: str, text: str, inbound: list[str], card: str | None = None) -> list[str]:
+        """The reply; the card goes, unless `card` is given: then the card keeps that line."""
+        return self._call(self._finish(room, text, inbound, DONE, card=card)) or []
 
     def notice(self, room: str, text: str, inbound: list[str]) -> list[str]:
         return self._call(self._finish(room, text, inbound, FAILED, kind="notice")) or []
@@ -169,14 +170,20 @@ class DiscordChannel:
             except discord.HTTPException as e:
                 log.warning("progress in %s failed: %s", room, e)
 
-    async def _finish(self, room: str, text: str, inbound: list[str], mark: str, kind: str = "reply") -> list[str]:
+    async def _finish(self, room: str, text: str, inbound: list[str], mark: str, kind: str = "reply",
+                      card: str | None = None) -> list[str]:
         async with self._lock(room):
-            card = self.cards.pop(room, None)
-            if card is not None:
-                try:
-                    await card.delete()
-                except discord.HTTPException as e:
-                    log.warning("card delete in %s failed: %s", room, e)
+            msg = self.cards.pop(room, None)
+            try:
+                if card is not None:
+                    msg = msg or await (await self._channel(room)).send(card[:LIMIT])
+                    await msg.edit(content=card[:LIMIT])
+                    self.ledger.outbound(room=room, channel=str(msg.channel.id), kind="card-note",
+                                         message_id=str(msg.id), chars=len(card))
+                elif msg is not None:
+                    await msg.delete()
+            except discord.HTTPException as e:
+                log.warning("card in %s failed: %s", room, e)
             ids = await self._post_locked(room, text, kind, inbound)
         cid = self.names[room]
         for mid in inbound:

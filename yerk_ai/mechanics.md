@@ -5,3 +5,4 @@
 - Everything in this appended context is true as of session start. Each part starts with `[from <path>]`: before acting on a rule or a fact from it, re-read that file with the Read tool.
 - A part marked "trimmed" names the file that holds the rest; read it when you need it.
 - Tools: `send` posts text, or a file, to a room now; `hold` ends your turn while you wait on a named event or worker, with the reason.
+- A message that starts with `(Yerk AI: ...)` is a note from the harness, not from a person: it says this is a new session and why.

@@ -1,0 +1,2 @@
+{"type": "assistant", "error": "overloaded", "session_id": "{sid}", "message": {"model": "<synthetic>", "role": "assistant", "content": [{"type": "text", "text": "API Error: Repeated 529 Overloaded errors"}]}}
+{"type": "result", "subtype": "success", "is_error": true, "result": "API Error: Repeated 529 Overloaded errors", "session_id": "{sid}", "modelUsage": {}}

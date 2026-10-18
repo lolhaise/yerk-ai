@@ -1,0 +1,10 @@
+[Unit]
+Description=Yerk AI daily health call per account (07:10, and at boot when a day was missed)
+
+[Timer]
+OnCalendar=*-*-* 07:10:00
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target

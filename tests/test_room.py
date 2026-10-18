@@ -2,6 +2,7 @@
 import json
 import threading
 import time
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -24,8 +25,10 @@ class Chan:
     def progress(self, room, text):
         self.cards.append(text)
 
-    def reply(self, room, text, inbound):
+    def reply(self, room, text, inbound, card=None):
         self.replies.append((text, list(inbound)))
+        if card:
+            self.cards.append(card)
         self.done.set()
         return [f"m{len(self.replies)}"]
 
@@ -43,10 +46,13 @@ def env(tmp_path, monkeypatch):
     ledger = Ledger(tmp_path / "ledger.sqlite")
     accounts = [Account("one", tmp_path / "cfg1"), Account("two", tmp_path / "cfg2")]
 
-    def make(chan, idle=1800.0):
+    data = tomllib.loads(table("failures.toml").read_text())
+    data["rerun"]["wait"] = [0.0]                       # the reruns without the waits
+
+    def make(chan, idle=1800.0, meters=None):
         spec = lambda: RoomSpec(room="r", model="m", cwd=tmp_path, tools=["Read"])  # noqa: E731
-        return Room("r", {}, spec, accounts, chan, tmp_path, ledger, FailureTable.load(table("failures.toml")),
-                    Cooldowns(tmp_path / "cooldowns.json"), idle_seconds=idle)
+        return Room("r", {}, spec, accounts, chan, tmp_path, ledger, FailureTable(data),
+                    Cooldowns(tmp_path / "cooldowns.json"), idle_seconds=idle, meters=meters)
     return make, ledger, tmp_path
 
 
@@ -108,6 +114,8 @@ def test_quota_failure_hops_to_the_next_account_in_the_same_turn(env, monkeypatc
     assert chan.replies == [("echo: hello", ["1"])] and chan.cards.count("working on it") == 1
     rows = sorted(ledger.rows(5), key=lambda r: r["id"])
     assert [(r["account"], r["outcome"], r["failure"]) for r in rows] == [("one", "error", "quota"), ("two", "ok", None)]
+    assert [r["hop"] for r in rows] == [None, "quota:one"] and rows[0]["source"] == "type:rate_limit"
+    assert "still on it, moved to account two" in chan.cards
     assert Cooldowns(tmp_path / "cooldowns.json").until("one") is not None
     second = argvs(tmp_path)[-1]
     assert second["config_dir"] == str(tmp_path / "cfg2") and "--session-id" in second["argv"]  # never answered: fresh
@@ -152,3 +160,104 @@ def test_a_failure_with_no_way_forward_is_a_visible_notice(env, monkeypatch):
     wait_idle(room)
     assert not chan.replies and chan.notices and chan.notices[0][1] == ["1"]
     assert ledger.inbound_get("1")["state"] == "failed"
+
+
+def rows_of(ledger, n=10):
+    return sorted(ledger.rows(n), key=lambda r: r["id"])
+
+
+def test_an_overloaded_reply_replayed_from_a_fixture_reruns_the_same_session(env):
+    make, ledger, tmp_path = env
+    chan = Chan()
+    room = make(chan)
+    send(room, ledger, "1", "FIXTURE:overloaded hello")
+    wait_idle(room)
+    rows = rows_of(ledger)
+    assert [(r["account"], r["outcome"], r["failure"], r["action"]) for r in rows] == [
+        ("one", "error", "transient", "rerun"), ("one", "ok", None, None)]
+    assert rows[0]["session_id"] == rows[1]["session_id"] and len(argvs(tmp_path)) == 1   # same process
+    assert chan.replies == [("echo: FIXTURE:overloaded hello", ["1"])] and not chan.notices
+    room.rp.close()
+
+
+def test_an_overflow_compacts_then_runs_the_turn_again(env):
+    make, ledger, _ = env
+    chan = Chan()
+    room = make(chan)
+    send(room, ledger, "1", "TOO_LONG_ONCE hello")
+    wait_idle(room)
+    rows = rows_of(ledger)
+    assert [(r["outcome"], r["failure"]) for r in rows] == [("error", "overflow"), ("ok", None), ("ok", None)]
+    assert len({r["session_id"] for r in rows}) == 1 and "compacting the conversation, then answering" in chan.cards
+    assert chan.replies == [("echo: TOO_LONG_ONCE hello", ["1"])]
+    room.rp.close()
+
+
+def test_a_rejected_rate_limit_event_hops_like_a_quota_failure(env):
+    make, ledger, _ = env
+    chan = Chan()
+    room = make(chan)
+    send(room, ledger, "1", "FIXTURE:rate_limit_rejected hello")
+    wait_idle(room)
+    rows = rows_of(ledger)
+    assert [(r["account"], r["failure"], r["source"]) for r in rows] == [
+        ("one", "quota", "event:rate_limit_rejected"), ("two", None, None)]
+    room.rp.close()
+
+
+def test_a_refusal_fallback_answer_stands_marked_and_the_next_turn_starts_fresh(env):
+    make, ledger, tmp_path = env
+    chan = Chan()
+    room = make(chan)
+    send(room, ledger, "1", "FIXTURE:refusal_fallback hi")
+    wait_idle(room)
+    assert chan.replies[0] == ("answered on the fallback model", ["1"])
+    assert chan.cards[-1].startswith("answered by a fallback model (claude-opus-4-8)")
+    first = rows_of(ledger)[-1]
+    assert (first["outcome"], first["failure"], first["action"], first["fallback_model"]) == (
+        "ok", "refusal", "fresh_next_turn", "claude-opus-4-8")
+    send(room, ledger, "2", "again")
+    wait_idle(room)
+    second = rows_of(ledger)[-1]
+    last = argvs(tmp_path)[-1]["argv"]
+    assert "--session-id" in last and second["session_id"] != first["session_id"] and second["recap"] == 1
+    assert chan.replies[1][0].startswith("echo: (Yerk AI: this is a new session.") and chan.replies[1][1] == ["2"]
+    assert second["fallback_model"] is None
+    room.rp.close()
+
+
+def test_a_session_that_cannot_be_resumed_starts_fresh_with_a_one_line_recap(env, monkeypatch):
+    make, ledger, tmp_path = env
+    chan = Chan()
+    room = make(chan)
+    send(room, ledger, "1", "hello")
+    wait_idle(room)
+    sid = room.rp.session_id
+    room.rp.close()
+    monkeypatch.setenv("FAKE_CLAUDE_MISSING", "1")              # the transcript is gone
+    send(room, ledger, "2", "again")
+    wait_idle(room)
+    rows = rows_of(ledger)
+    assert [(r["outcome"], r["failure"], r["action"]) for r in rows[1:]] == [
+        ("exited", "fatal", "fresh_with_recap"), ("ok", None, None)]
+    assert rows[-1]["session_id"] != sid and rows[-1]["recap"] == 1
+    text, ids = chan.replies[-1]
+    assert ids == ["2"] and 'The last reply here began: "echo: hello")' in text
+    assert text.startswith("echo: (Yerk AI: the earlier session") and text.endswith("\n\nagain")
+    room.rp.close()
+
+
+def test_meters_come_from_the_stream_per_account(env, monkeypatch):
+    from yerk_ai.meters import Meters, meter_line
+    make, ledger, tmp_path = env
+    monkeypatch.setenv("FAKE_CLAUDE_WINDOWS", "0.07,0.03")
+    meters = Meters(tmp_path / "meters.json")
+    chan = Chan()
+    room = make(chan, meters=meters.seen)
+    send(room, ledger, "1", "hello")
+    wait_idle(room)
+    m = meters.load()["one"]
+    assert (m["five_hour"]["pct"], m["seven_day"]["pct"], m["source"]) == (7.0, 3.0, "stream")
+    assert meter_line("one", m, now=m["at"] + 120).startswith("one: 5h 7% (") and "seen 2 min ago" in meter_line(
+        "one", m, now=m["at"] + 120)
+    room.rp.close()
