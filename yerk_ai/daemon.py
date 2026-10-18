@@ -381,10 +381,14 @@ class Yerkd:
         if event == "SessionStart":
             if payload.get("source") == "compact":
                 return await asyncio.to_thread(hooks.session_start, payload, self.state, self.compact_pack)
-            if name and payload.get("source") in ("startup", "clear") and self.was_reset(name, sid):
-                self.ledger.gate(room=name, session_id=sid, turn="", gate="session", decision="reset", tool="",
-                                 rule=str(payload.get("source")), detail=f"a new session {sid[:8]} replaced the last one")
-                self.notify_later(name, f"{words.NOTHING} {words.RESET}")
+            prev = self.was_reset(name, sid) if name and payload.get("source") in ("startup", "clear") else ""
+            if name and prev:                 # told only when the replaced session had answered something
+                lost = self.ledger.answered_in(prev)
+                self.ledger.gate(room=name, session_id=sid, turn="", gate="session", decision="reset" if lost else
+                                 "reset-quiet", tool="", rule=str(payload.get("source")),
+                                 detail=f"a new session {sid[:8]} replaced {prev[:8]} ({lost} answered turn(s) in it)")
+                if lost:
+                    self.notify_later(name, f"{words.NOTHING} {words.RESET}")
             return {}
         if event == "ConfigChange":
             await asyncio.to_thread(self.tamper, name, sid, payload)
@@ -453,13 +457,13 @@ class Yerkd:
         target = cmd.split(" -- ", 1)[-1][:24]
         return f"{words.NOT_DONE} {words.TRASH_FAILED.format(name=target, why=first.strip()[:22])}"
 
-    def was_reset(self, name: str, sid: str) -> bool:
-        """A new session in a room that had another one: a reset (a resume keeps its id and is not)."""
+    def was_reset(self, name: str, sid: str) -> str:
+        """The session a new one replaced in this room ("" if none: a resume keeps its id and is not one)."""
         mark = self.state / "rooms" / name / "last-session"
         prev = mark.read_text().strip() if mark.is_file() else ""
         mark.parent.mkdir(parents=True, exist_ok=True)
         mark.write_text(sid)
-        return bool(prev) and prev != sid
+        return prev if prev and prev != sid else ""
 
     def tamper(self, name: str | None, sid: str, payload: dict[str, Any]) -> None:
         """ConfigChange: who (room and account), what (source and file), when, the hashes before and after

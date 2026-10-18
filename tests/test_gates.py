@@ -231,8 +231,12 @@ def test_session_start_posts_a_reset_line_only_when_a_new_session_replaced_one(t
     call(y, {"hook_event_name": "SessionStart", "source": "resume", "session_id": "s1", "cwd": work})
     assert ch.notes == []
     call(y, {"hook_event_name": "SessionStart", "source": "startup", "session_id": "s2", "cwd": work})
+    assert ch.notes == []                                                     # s1 never answered: nothing lost
+    y.ledger.record(room="example-room", session_id="s2", outcome="ok")
+    call(y, {"hook_event_name": "SessionStart", "source": "clear", "session_id": "s3", "cwd": work})
     assert ch.notes == [f"{words.NOTHING} {words.RESET}"]
-    assert [(r["gate"], r["decision"]) for r in y.ledger.rows(5, "gates")] == [("session", "reset")]
+    assert [(r["gate"], r["decision"]) for r in reversed(y.ledger.rows(5, "gates"))] == [
+        ("session", "reset-quiet"), ("session", "reset")]
     hk = hooks.settings_for("http://127.0.0.1:9/hook")
     assert {k for k, v in hk.items() if v[0]["hooks"][0]["type"] == "http"} == {
         "UserPromptSubmit", "Stop", "PreToolUse", "PostToolUse", "PostToolUseFailure", "ConfigChange"}
@@ -303,7 +307,8 @@ CONTROL_REPLIES = [   # known-good replies with the turn that made them: none ma
     ("Nothing to do here; the room is quiet.", []),
     ("Not implemented yet, from memory, not checked.", []),
     ("Probably still running; I have not looked.", []),
-]
+    ("Answer questions, write, plan, and do code work in the working folder.", []),   # the live control's one
+]                                                                                     # false alarm, now fixed
 
 
 def test_the_claim_rule_raises_no_false_alarm_on_the_control_replies():

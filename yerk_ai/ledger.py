@@ -191,6 +191,11 @@ class Ledger:
         """A setting file changed under a running session: who, what, when and the diff's hash."""
         return self._insert("tamper", row)
 
+    def answered_in(self, session_id: str) -> int:
+        """Turns a session answered (a session that never answered loses nothing when it is replaced)."""
+        r = self._select("SELECT count(*) AS n FROM turns WHERE session_id = ? AND outcome = 'ok'", (session_id,))
+        return int(r[0]["n"])
+
     def landed(self, turn_key: str) -> int:
         """Parts already in the room under a turn's key (its reply parts, its sends)."""
         if not turn_key:

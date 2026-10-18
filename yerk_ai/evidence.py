@@ -160,8 +160,8 @@ CLAIMS = {
         r"|\b(?:is|are|isn't|aren't|was|wasn't|is\s+not|are\s+not)\s+(?:yet\s+|already\s+|fully\s+)?"
         r"(?:implemented|wired(?:\s+up)?|hooked\s+up|unimplemented|broken|covered\s+by\s+(?:a\s+)?tests?)\b"
         r"|\b(?:the\s+)?(?:code|function|module|hook|gate|daemon|harness|test|parser|script)\s+"
-        r"(?:already\s+|still\s+|never\s+)?(?:does(?:n't|\s+not)?|handles?|implements?|checks?|calls?|works?|"
-        r"fails?|passes|breaks?|catch(?:es)?|blocks?|lacks?)\b", re.I),
+        r"(?:already\s+|still\s+|never\s+)?(?:does(?:n't|\s+not)?|handles|implements|checks|calls|works|"
+        r"fails|passes|breaks|catches|blocks|lacks)\b", re.I),        # third person: "do code work" is no claim
     "state": re.compile(
         r"\b(?:is|are|isn't|aren't|is\s+not|are\s+not)\s+(?:now\s+|still\s+|currently\s+)?"
         r"(?:running|up|down|live|stopped|active|inactive|dead|connected|online|offline|crashed)\b", re.I),
