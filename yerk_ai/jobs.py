@@ -71,8 +71,9 @@ KEYS: dict[str, str] = {        # every key of a [jobs.NAME] table, in plain wor
             'a headless Claude Code run with the message as its brief, its last message told by the room)',
     "schedule": 'a cron expression, five fields (minute hour day-of-month month day-of-week; "*", lists, ranges and '
                 'steps, Sun=0), read in `tz`; one of schedule, every, at',
-    "every": 'a duration between runs ("30m", "2h", "1h30m", "90s"; at least 30s); the first run comes one '
-             'interval after the sync',
+    "every": 'a duration between runs ("30m", "2h", "1h30m", "90s"; at least 30s). One that divides an hour or a day '
+             "runs on the clock's boundaries in `tz` (every 2h fires at even hours), so a missed run fires on return; "
+             "any other interval runs one interval after the sync and after each run",
     "at": 'one date and time ("2026-03-09 09:00", or with an offset), read in `tz` when it has none: a one-shot, '
           'removed from this file after it fires; a time missed while the box was down fires once on return',
     "tz": "the IANA time zone the schedule or the time is read in (such as Europe/Paris); required with schedule, "
@@ -245,6 +246,23 @@ def parse_every(text: str) -> int:
     return secs
 
 
+def every_cron(seconds: int) -> str | None:
+    """An interval that divides an hour or a day, as the cron expression of its clock boundaries;
+    None for the rest (those run on systemd's monotonic clock from the sync)."""
+    if seconds % 60:
+        return None
+    m = seconds // 60
+    if m < 60 and 60 % m == 0:
+        return f"*/{m} * * * *" if m > 1 else "* * * * *"
+    if m % 60 == 0:
+        h = m // 60
+        if h < 24 and 24 % h == 0:
+            return f"0 */{h} * * *" if h > 1 else "0 * * * *"
+        if h == 24:
+            return "0 0 * * *"
+    return None
+
+
 def parse_at(value: Any, tz: ZoneInfo | None) -> float:
     """One time as an epoch: a TOML datetime or an ISO string; naive ones are read in `tz`."""
     if isinstance(value, datetime):
@@ -301,27 +319,38 @@ class Job:
             return f"every {self.spec}"
         return f"one-shot {when_text(self.at_epoch, self.tz)}"
 
+    @property
+    def cron(self) -> Cron | None:
+        """The clock expression behind a cron schedule, or behind an interval that divides an hour
+        or a day; None for a one-shot or an interval that runs on the monotonic clock."""
+        if self.when == "cron":
+            return Cron.parse(self.spec)
+        if self.when == "every" and (expr := every_cron(self.every_seconds)):
+            return Cron.parse(expr)
+        return None
+
     def next_fire(self, now: float, last: float | None = None) -> float | None:
         """What the schedule says comes next (systemd's own answer is the one shown; this is for
         the plan, the planned time and the tests)."""
-        if self.when == "cron":
-            return Cron.parse(self.spec).next(now, self.zone)
+        if self.cron is not None:
+            return self.cron.next(now, self.zone)
         if self.when == "every":
             return (last if last else now) + self.every_seconds
         return self.at_epoch if self.at_epoch > now else None
 
     def planned(self, fired: float, last_trigger: float | None = None) -> float:
-        """The time this run was meant for: the cron instant at or before the fire, the one-shot's
-        time, or for an interval the timer's own trigger time."""
-        if self.when == "cron":
-            return Cron.parse(self.spec).prev(fired, self.zone) or fired
+        """The time this run was meant for: the clock instant at or before the fire, the one-shot's
+        time, or for a monotonic interval the timer's own trigger time."""
+        if self.cron is not None:
+            return self.cron.prev(fired, self.zone) or fired
         if self.when == "at":
             return self.at_epoch
         return last_trigger if last_trigger and abs(fired - last_trigger) < 3600 else fired
 
     def calendar(self) -> list[str]:
-        if self.when == "cron":
-            return Cron.parse(self.spec).calendar(self.tz)
+        """OnCalendar= lines; [] for an interval on the monotonic clock."""
+        if self.cron is not None:
+            return self.cron.calendar(self.tz or "UTC")
         if self.when == "at":
             return [datetime.fromtimestamp(self.at_epoch, self.zone).strftime("%Y-%m-%d %H:%M:%S") + f" {self.tz}"]
         return []
@@ -546,7 +575,7 @@ def unit_texts(job: Job, env: Env) -> tuple[str, str]:
     """(timer, service) for the job, byte for byte what sync writes."""
     head = f"{HEADER}{job.name}.\n"
     timer = [head, "[Unit]", f"Description=Yerk AI job {job.name} (timer)", "", "[Timer]"]
-    if job.when == "every":
+    if not job.calendar():                 # an interval off the clock's boundaries: systemd's monotonic clock
         timer += [f"OnActiveSec={job.every_seconds}s", f"OnUnitActiveSec={job.every_seconds}s"]
     else:
         timer += [f"OnCalendar={c}" for c in job.calendar()] + ["Persistent=true"]
@@ -853,7 +882,7 @@ def run(name: str, private: Path, state: Path, units: Units | None = None,
         return 2
     folder = state / "jobs" / name / time.strftime("%Y%m%d-%H%M%S", time.localtime(fired))
     folder.mkdir(parents=True, exist_ok=True)
-    planned = job.planned(fired, last_trigger(units, job) if job.when == "every" else None)
+    planned = job.planned(fired, last_trigger(units, job) if job.when == "every" and job.cron is None else None)
     run_id = ledger.job_run_add(job=name, kind=job.kind, room=job.room, unit=job.unit, planned=planned, fired=fired,
                                 folder=str(folder))
     log.info("job %s: run %d fired %.1f s after its time", name, run_id, fired - planned)

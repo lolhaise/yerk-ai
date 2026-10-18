@@ -22,7 +22,7 @@ cap = 20
 deliver = "announce"
 message = "Write the morning brief from the open loops and yesterday's daily log: three lines at most. Nothing worth saying: answer exactly NO_REPLY."
 
-[jobs.example-heartbeat]             # an interval; `tz` is only for the times shown
+[jobs.example-heartbeat]             # an interval: one that divides a day runs on the clock (even hours in `tz`)
 kind = "script"
 every = "2h"
 tz = "UTC"

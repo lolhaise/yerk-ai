@@ -114,10 +114,19 @@ def test_cron_every_and_at_compute_the_right_next_fire():
     either = make_job("x", {"kind": "script", "schedule": "0 0 1 * 1", "tz": "UTC", "room": "r", "command": "true"})
     assert either.calendar() == ["Mon *-*-* 0:0:00 UTC", "*-*-1 0:0:00 UTC"]
     assert either.next_fire(epoch(2026, 10, 18, 12, 0, tz=UTC)) == epoch(2026, 10, 19, 0, 0, tz=UTC)    # the Monday, not Nov 1
-    # every: one interval after the last fire, else after now
-    hourly = make_job("h", {"kind": "script", "every": "1h30m", "room": "r", "command": "true"})
-    assert hourly.every_seconds == 5400 and hourly.next_fire(1000.0) == 6400.0 and hourly.next_fire(1000.0, last=500.0) == 5900.0
-    assert hourly.planned(7000.0, last_trigger=6400.0) == 6400.0 and hourly.describe() == "every 1h30m"
+    # every: an interval off the clock's boundaries runs one interval after the last fire, else after now
+    odd = make_job("h", {"kind": "script", "every": "1h30m", "room": "r", "command": "true"})
+    assert odd.every_seconds == 5400 and odd.next_fire(1000.0) == 6400.0 and odd.next_fire(1000.0, last=500.0) == 5900.0
+    assert odd.planned(7000.0, last_trigger=6400.0) == 6400.0 and odd.describe() == "every 1h30m" and odd.calendar() == []
+    # an interval that divides an hour or a day runs on the clock's boundaries, in its zone, like a cron line
+    two = make_job("t", {"kind": "script", "every": "2m", "room": "r", "command": "true"})
+    assert two.calendar() == ["*-*-* *:0/2:00 UTC"] and two.next_fire(epoch(2026, 10, 18, 12, 1, 30, tz=UTC)) == epoch(2026, 10, 18, 12, 2, tz=UTC)
+    assert two.planned(epoch(2026, 10, 18, 12, 2, 0, 190000, tz=UTC)) == epoch(2026, 10, 18, 12, 2, tz=UTC)
+    six = make_job("s", {"kind": "script", "every": "6h", "tz": "Asia/Tokyo", "room": "r", "command": "true"})
+    assert six.calendar() == ["*-*-* 0/6:0:00 Asia/Tokyo"] and six.next_fire(epoch(2026, 10, 18, 7, 0, tz=TOK)) == epoch(2026, 10, 18, 12, 0, tz=TOK)
+    assert make_job("d", {"kind": "script", "every": "1d", "room": "r", "command": "true"}).calendar() == ["*-*-* 0:0:00 UTC"]
+    assert make_job("m", {"kind": "script", "every": "1h", "room": "r", "command": "true"}).calendar() == ["*-*-* *:0:00 UTC"]
+    assert jobs.every_cron(7 * 60) is None and jobs.every_cron(90) is None and jobs.every_cron(5 * 3600) is None
     # at: a naive time is read in tz, one with an offset keeps its instant, a past one is refused
     at = make_job("a", {"kind": "script", "at": "2099-01-02 09:00", "tz": "Asia/Tokyo", "room": "r", "command": "true"})
     assert at.at_epoch == epoch(2099, 1, 2, 9, 0, tz=TOK) and at.calendar() == ["2099-01-02 09:00:00 Asia/Tokyo"]
@@ -171,7 +180,7 @@ def test_sync_is_idempotent_shows_the_diff_and_cleans_a_removed_job(tmp_path):
     assert "ExecStart=/opt/yerk/bin/python -P -m yerk_ai.jobs run brief" in service and "TimeoutStartSec=120" in service
     assert 'Environment="YERK_PRIVATE=/opt/private"' in service and "WorkingDirectory=/opt/yerk" in service
     beat = sd.read("yerk-job-beat.timer")
-    assert "OnActiveSec=120s" in beat and "OnUnitActiveSec=120s" in beat and "Persistent" not in beat
+    assert "OnCalendar=*-*-* *:0/2:00 UTC" in beat and "Persistent=true" in beat     # on the clock: even minutes
     assert "TimeoutStartSec=720" in sd.read("yerk-job-beat.service")          # the 10-minute default cap plus 120 s
     assert set(back) == {"brief", "beat"} and all(r["scheduled"] for r in back.values())
     assert jobs.diff_lines(p)[0] == "+ brief (new): cron `0 9 * * 1-5` America/Toronto"
@@ -181,9 +190,11 @@ def test_sync_is_idempotent_shows_the_diff_and_cleans_a_removed_job(tmp_path):
     assert (p2.added, p2.changed, p2.unchanged, p2.removed) == ([], [], ["brief", "beat"], []) and len(sd.calls) == n
     assert jobs.diff_lines(p2) == ["= 2 unchanged: brief, beat"]
     # one job changed: its units rewritten and its timer restarted; the other untouched
-    path.write_text(path.read_text().replace('every = "2m"', 'every = "5m"'))
+    path.write_text(path.read_text().replace('every = "2m"', 'every = "7m"'))       # off the clock: monotonic
     p3, _ = jobs.sync(path, sd, ENV)
-    assert (p3.changed, p3.unchanged) == (["beat"], ["brief"]) and "OnActiveSec=300s" in sd.read("yerk-job-beat.timer")
+    assert (p3.changed, p3.unchanged) == (["beat"], ["brief"])
+    beat = sd.read("yerk-job-beat.timer")
+    assert "OnActiveSec=420s" in beat and "OnUnitActiveSec=420s" in beat and "Persistent" not in beat
     assert sd.calls[n:] == [("write", "yerk-job-beat.service"), ("write", "yerk-job-beat.timer"), ("reload",),
                             ("enable", "yerk-job-beat.timer"), ("restart", "yerk-job-beat.timer")]
     # a job removed from the file: disabled, both files gone; a broken one named with why, its unit never written
