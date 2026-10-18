@@ -42,7 +42,8 @@ QUERY_TIMEOUT = 4.0      # seconds for a query's one vector: a recall waits at m
 RETRIES = 3              # the retry budget per backfill request, 1, 2 and 4 s apart
 PAUSE = 60.0             # seconds the backfill rests after a request spends its budget
 GAP = 0.25               # seconds between backfill requests: the provider and the CPU are shared
-BLOCK = 16384            # rows scored per step of the scan (float16 rows widened to float32 a block at a time)
+BLOCK = 16384            # rows per block of the store, and per step of the scan (float16 rows widened to float32 a block at a time)
+LOAD_ROWS = 4096         # rows fetched per step of the load: the temporary copies stay small, so the load peak stays near the steady size
 KEY_SHAPE = re.compile(r"sk-[A-Za-z0-9_-]{6,}")
 
 
@@ -189,13 +190,13 @@ class Vectors:
             self.n += take
             i += take
 
-    def load(self, conn: sqlite3.Connection, model: str, units: str = "lines") -> int:
+    def load(self, conn: sqlite3.Connection, model: str, units: str = "both") -> int:
         """Every stored vector of the chosen units, a block at a time (never the whole table at once)."""
         cur = conn.execute(f"SELECT v.sha, v.vec FROM vectors v WHERE v.model = ? AND v.dim = ? AND {unit_where(units)}",
                            (model, self.dim))
         fresh = Vectors(self.dim, self.width)
         while True:
-            rows = cur.fetchmany(BLOCK)
+            rows = cur.fetchmany(LOAD_ROWS)
             if not rows:
                 break
             fresh._put([s for s, _ in rows], np.stack([np.frombuffer(v, dtype=np.float16) for _, v in rows]))
@@ -342,7 +343,7 @@ class Backfill:
     the writer through `pending` (hashes of chunks just inserted) and `dirty` (scan again)."""
 
     def __init__(self, db: Path, live: Any, store: Vectors, embedder: Embedder, batch: int = BATCH, gap: float = GAP,
-                 units: str = "lines"):
+                 units: str = "both"):
         self.db, self.live, self.store, self.embedder, self.batch, self.gap = db, live, store, embedder, batch, gap
         self.units = units
         unit_where(units)

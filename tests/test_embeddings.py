@@ -69,11 +69,11 @@ def tree(tmp_path: Path, key: bool = True) -> memory.Settings:
     return memory.settings(private, tmp_path / "state", {"timezone": "UTC"})
 
 
-def serve(s: memory.Settings, stub: StubEmbedder):
+def serve(s: memory.Settings, stub: StubEmbedder, units: str = "lines"):
     """yerk-index's pieces in-process: the writer, the vector store, the search server on a free port,
     the backfill (stepped by hand) and a `status` that writes index.json as the process would."""
     store = embeddings.Vectors(stub.dim)
-    back = embeddings.Backfill(s.index_db, memindex.live, store, stub, gap=0.0)
+    back = embeddings.Backfill(s.index_db, memindex.live, store, stub, gap=0.0, units=units)
     idx = memindex.Index(s.index_db, s.scope, on_insert=back.note)
     idx.sync()
     server = embeddings.Server(store, stub, s.index_db, memindex.live)
