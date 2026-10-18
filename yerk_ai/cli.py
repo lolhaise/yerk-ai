@@ -58,6 +58,7 @@ def main(argv: list[str] | None = None) -> int:
     pr.add_argument("--room", default="yerk-test", help="smoke: the room to drive")
     pr.add_argument("--private", help="smoke: private folder (default: $YERK_PRIVATE)")
     pr.add_argument("--only-account", action="store_true", help="smoke: run on --config-dir only, no hop")
+    pr.add_argument("--via", choices=["console", "discord"], default="console", help="smoke: the channel to drive")
     pr.set_defaults(on_second=None, fold_settings=None)
     a = p.parse_args(argv)
     return int({"map": cmd_map, "probe": cmd_probe}[a.cmd](a))

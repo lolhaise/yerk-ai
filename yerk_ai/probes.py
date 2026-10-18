@@ -12,7 +12,7 @@ import random
 import tempfile
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from .accounts import Account, from_dir
 from .config import state_dir, table
@@ -208,73 +208,96 @@ def smoke_script(layer: str, room: str) -> list[tuple[str, float | None]]:
     ]
 
 
+DONE_STATES = ("answered", "failed", "abandoned")
+
+
+def webhook_sender(url: str) -> Callable[[str], str]:
+    """Post as the room's test webhook; returns the Discord message id (the inbound ledger key)."""
+    import urllib.request
+
+    def post(text: str) -> str:
+        req = urllib.request.Request(url + "?wait=true", data=json.dumps({"content": text}).encode(),
+                                     headers={"Content-Type": "application/json", "User-Agent": "yerk-smoke"})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return str(json.loads(r.read())["id"])
+    return post
+
+
 def smoke(a: argparse.Namespace) -> dict[str, Any]:
+    """The same script through either channel; replies are judged from the ledgers, never from
+    what the channel printed. --via console: yerkd --console and stdin. --via discord: yerkd and
+    the room's test webhook (secrets/discord-test-webhook.url in the private folder)."""
     import os
-    import queue as q
     import subprocess
     import sys
-    import threading
     from . import context
     from .config import private_dir, rooms
     env = Env(a)
     priv = private_dir(a.private)
     layer = str(context.layer_dir(priv, rooms(priv)[a.room]))
-    argv = [sys.executable, "-m", "yerk_ai.daemon", "--console", a.room, "--private", str(priv),
-            "--state", str(env.state)] + (["--config-dir", a.config_dir] if a.only_account else [])
-    err = open(env.logs / "smoke-yerkd.stderr", "w")
-    proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=err, text=True,
-                            env={**os.environ, "PYTHONUNBUFFERED": "1"})
-    replies: q.Queue[dict[str, Any]] = q.Queue()
-    got: list[dict[str, Any]] = []
+    console = a.via == "console"
+    argv = [sys.executable, "-m", "yerk_ai.daemon", "--private", str(priv), "--state", str(env.state)]
+    argv += (["--console", a.room] if console else []) + (["--config-dir", a.config_dir] if a.only_account else [])
+    errpath = env.logs / f"smoke-{a.via}-yerkd.stderr"
+    err = open(errpath, "w")
+    proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=open(env.logs / f"smoke-{a.via}-yerkd.stdout", "w"),
+                            stderr=err, text=True, env={**os.environ, "PYTHONUNBUFFERED": "1"})
+    t0 = time.time()
+    post: Callable[[str], str]
+    if console:
+        assert proc.stdin
+        stdin = proc.stdin
 
-    def read() -> None:
-        assert proc.stdout
-        for line in proc.stdout:
-            if line.strip().startswith("{"):
-                replies.put(json.loads(line))
+        def to_stdin(text: str) -> str:
+            stdin.write(text + "\n")
+            stdin.flush()
+            return ""
+        post = to_stdin
+        time.sleep(1.0)
+    else:
+        post = webhook_sender((priv / "secrets" / "discord-test-webhook.url").read_text().strip())
+        while "discord: connected as" not in errpath.read_text() and time.time() - t0 < 60:
+            time.sleep(0.5)
 
-    threading.Thread(target=read, daemon=True).start()
+    def mine() -> list[dict[str, Any]]:
+        rows = [r for r in env.ledger.rows(200, "inbound") if r["room"] == a.room and r["received"] >= t0]
+        return sorted(rows, key=lambda r: r["received"])
+
     sent: list[dict[str, Any]] = []
-
-    def covered() -> int:
-        return sum(len(r.get("inbound", [])) for r in got if "reply" in r or "notice" in r)
 
     def wait_all(timeout: float = 240) -> None:
         end = time.time() + timeout
-        while covered() < len(sent) and time.time() < end:
-            try:
-                got.append(replies.get(timeout=max(end - time.time(), 0.1)))
-            except q.Empty:
-                break
+        while sum(r["state"] in DONE_STATES for r in mine()) < len(sent) and time.time() < end:
+            time.sleep(0.3)
 
-    time.sleep(1.0)
-    assert proc.stdin
     for text, delay in smoke_script(layer, a.room):
         if delay is None:
             wait_all()
         else:
             time.sleep(delay)
-        proc.stdin.write(text + "\n")
-        proc.stdin.flush()
-        sent.append({"t": round(time.time(), 3), "text": text[:80], "mid_turn": delay is not None})
+        sent.append({"t": round(time.time(), 3), "id": post(text), "text": text[:80], "mid_turn": delay is not None})
     wait_all()
-    proc.stdin.close()
+    if console and proc.stdin:
+        proc.stdin.close()
+    else:
+        proc.terminate()
     rc = proc.wait(120)
     err.close()
-    while not replies.empty():
-        got.append(replies.get())
-    inbound = sorted(env.ledger.rows(50, "inbound"), key=lambda r: r["received"])[-len(sent):]
-    turns = {r["id"]: r for r in env.ledger.rows(30)}
+    inbound = mine()
+    turns = {r["id"]: r for r in env.ledger.rows(60)}
+    outbound = [r for r in env.ledger.rows(200, "outbound") if r["room"] == a.room and r["sent"] >= t0]
     rows = [{k: r[k] for k in ("message_id", "state", "folded", "turn_id", "reply_ids")} for r in inbound]
     answered = sum(r["state"] == "answered" for r in inbound)
     folds = [r for r, s in zip(inbound, sent) if s["mid_turn"]]
     folded_ok = [bool(r["folded"]) and r["state"] == "answered" and any(
         x["turn_id"] == r["turn_id"] and not x["folded"] for x in inbound) for r in folds]
-    return {"ok": rc == 0 and answered == len(sent) and all(folded_ok), "rc": rc, "sent": sent, "replies": got,
-            "inbound": rows, "answered": answered, "mid_turn_folded_into_running_turn": folded_ok,
+    ids_match = console or [s["id"] for s in sent] == [r["message_id"] for r in inbound]
+    return {"ok": answered == len(sent) == len(inbound) and all(folded_ok) and ids_match, "rc": rc, "via": a.via,
+            "sent": sent, "inbound": rows, "answered": answered, "mid_turn_folded_into_running_turn": folded_ok,
+            "outbound": [{k: r[k] for k in ("kind", "message_id", "chars", "inbound", "error")} for r in outbound],
             "turns": [{k: turns[i][k] for k in ("id", "account", "outcome", "accepted", "models", "fallback_model",
                                                 "started", "first_visible", "ended", "inbound")}
-                      for i in sorted({r["turn_id"] for r in inbound if r["turn_id"]})]}
+                      for i in sorted({r["turn_id"] for r in inbound if r["turn_id"]}) if i in turns]}
 
 
 def resume(a: argparse.Namespace) -> dict[str, Any]:
