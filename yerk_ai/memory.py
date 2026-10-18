@@ -41,6 +41,8 @@ class Settings:
     embeddings_key: Path = Path("secrets/openai.key")   # the provider key, a path in the private layer, never read here
     embeddings_model: str = "text-embedding-3-small"
     embeddings_dim: int = 256
+    embeddings_units: str = "lines"                 # what gets a vector: lines (and bullets), chunks, or both
+    embeddings_width: int = 256                     # dimensions kept in memory (the first `width` of `dim`, renormalised)
     index_status: Path = Path("index.json")         # what yerk-index serves: its port and the embeddings' state
 
     @property
@@ -77,6 +79,8 @@ def settings(private: Path, state: Path, conf: dict[str, Any] | None = None) -> 
                     embeddings_key=(private / Path(str(conf.get("embeddings_key", "secrets/openai.key"))).expanduser()),
                     embeddings_model=str(conf.get("embeddings_model", "text-embedding-3-small")),
                     embeddings_dim=int(conf.get("embeddings_dim", 256)),
+                    embeddings_units=str(conf.get("embeddings_units", "lines")),
+                    embeddings_width=int(conf.get("embeddings_width", conf.get("embeddings_dim", 256))),
                     index_status=state / "memory" / "index.json")
 
 
@@ -155,8 +159,15 @@ def read(s: Settings, path: str, start: int = 1, lines: int = 40) -> dict[str, A
 
 POOL = 80            # candidates from each search (keywords, meaning) before fusion
 RRF_K = 60           # reciprocal rank fusion's constant: 1 / (RRF_K + rank)
+PRIOR = 0.0          # the source prior: a fact or topic file's fused score times (1 + PRIOR); a day log's as is
+KEEP = 0             # each search's own first KEEP hits stay in the fused top k
 MEANING_WAIT = 5.0   # seconds a recall waits for yerk-index's meaning search (its own provider wait is shorter)
+DAYLOG = re.compile(r"(^|/)\d{4}-\d{2}-\d{2}\.md$")    # a day log is named by its day
 log = logging.getLogger("yerk.memory")
+
+
+def is_daylog(path: str) -> bool:
+    return bool(DAYLOG.search(str(path)))
 
 
 def index_status(s: Settings) -> dict[str, Any]:
@@ -210,11 +221,18 @@ def meaning(s: Settings, query: str, pool: int = POOL, deadline_s: float = MEANI
 
 
 def fuse(keywords: list[dict[str, Any]], vectors: list[dict[str, Any]], k: int,
-         rrf_k: int = RRF_K, w_keywords: float = 1.0, w_vectors: float = 1.0) -> list[dict[str, Any]]:
+         rrf_k: int = RRF_K, w_keywords: float = 1.0, w_vectors: float = 1.0,
+         prior: float | None = None, keep: int | None = None) -> list[dict[str, Any]]:
     """Reciprocal rank fusion of the two ranked lists: each chunk scores the sum over the lists it is in
     of w / (rrf_k + its rank there); a tie breaks on the cosine. No calibration between a bm25 cover
     and a cosine is needed, and a chunk both searches put first outranks either search's lone top hit.
-    Vector hits under half the best cosine are noise and leave the fusion first."""
+    Vector hits under half the best cosine are noise and leave the fusion first. Two measured levers:
+    `prior` multiplies a fact or topic file's score by (1 + prior), a boost, never a rule, so a day log
+    that ranks well ahead still comes first; `keep` holds each search's own first `keep` hits in the
+    top k (in fused order), so a lone keyword hit at rank two is not pushed out by chunks both searches
+    place low."""
+    prior = PRIOR if prior is None else prior
+    keep = KEEP if keep is None else keep
     if not vectors:
         return keywords[:k]
     top = float(vectors[0]["score"])
@@ -227,9 +245,16 @@ def fuse(keywords: list[dict[str, Any]], vectors: list[dict[str, Any]], k: int,
         for rank, h in enumerate(ranked, 1):
             score[h["id"]] = score.get(h["id"], 0.0) + w / (rrf_k + rank)
             rows.setdefault(h["id"], h)
+    if prior:
+        for cid in score:
+            if not is_daylog(rows[cid]["path"]):
+                score[cid] *= 1 + prior
     cos = {h["id"]: float(h["score"]) for h in vectors}
+    order = sorted(score, key=lambda i: (-score[i], -cos.get(i, 0.0)))
+    held = list(dict.fromkeys([h["id"] for h in keywords[:keep]] + [h["id"] for h in vectors[:keep]]))[:k]
+    chosen = set(held) | set([cid for cid in order if cid not in held][:k - len(held)])
     out = []
-    for cid in sorted(score, key=lambda i: (-score[i], -cos.get(i, 0.0)))[:k]:
+    for cid in [cid for cid in order if cid in chosen]:
         h = dict(rows[cid])
         h["score"] = round(score[cid], 4)
         out.append(h)
