@@ -119,6 +119,8 @@ def main(argv: list[str] | None = None) -> int:
     pr.add_argument("--alone-minutes", type=float, default=5.0, help="idle: minutes of the daemon alone after the close")
     pr.add_argument("--unit", help="idle: the systemd user unit running yerkd, for its cgroup totals")
     pr.add_argument("--compare-unit", help="idle: another user unit sampled over the same window")
+    pr.add_argument("--only", help="blocks: setups to run, joined with |")
+    pr.add_argument("--message", help="blocks: the first message (default: the hello line)")
     pr.add_argument("--since", type=float, default=0.0, help="check: messages ledgered since this epoch time")
     pr.add_argument("--attach", action="store_true", help="smoke, measure: drive the yerkd already running on --state")
     pr.set_defaults(on_second=None, fold_settings=None)

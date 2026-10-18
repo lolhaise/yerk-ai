@@ -145,6 +145,7 @@ SETUPS: dict[str, dict[str, Any]] = {
     "no --tools allowlist": {"drop": ["--tools"]},
     "model opus-5-5": {"model": "claude-opus-5-5"},
     "no --replay-user-messages": {"drop": ["--replay-user-messages"]},
+    "bare: no tools, no context": {"context": False, "tools": []},
 }
 TAKES_VALUE = {"--setting-sources", "--tools"}
 
@@ -172,20 +173,21 @@ def blocks(a: argparse.Namespace) -> dict[str, Any]:
     ctx = env.state / "blocks-context.md"
     ctx.write_text(context.appended_file(context.session_start(EXAMPLE_PRIVATE, room, budgets())))
     runs: list[dict[str, Any]] = []
+    setups = {n: s for n, s in SETUPS.items() if not a.only or n in a.only.split("|")}
     for rep in range(a.reps):
-        for name, s in SETUPS.items():
+        for name, s in setups.items():
             spec = RoomSpec(room="probe-blocks", model=s.get("model", env.model), cwd=scratch(env, "blocks"),
-                            tools=list(room["tools"]), settings=s.get("settings", {}),
+                            tools=list(s.get("tools", room["tools"])), settings=s.get("settings", {}),
                             context_file=ctx if s.get("context", True) else None)
             rp = Variant(spec, from_dir(a.config_dir), env.state, ledger=env.ledger, failures=env.failures,
                          log=env.logs / f"blocks-{len(runs) + 1}.jsonl")
             rp.drop = list(s.get("drop", []))
             with rp:
                 rp.start(fresh=True)
-                turn = rp.ask(HELLO, timeout=180)
+                turn = rp.ask(a.message or HELLO, timeout=180)
             runs.append({"run": len(runs) + 1, "setup": name, "rep": rep + 1, "blocked": turn.fallback_model is not None,
                          **summary(turn), "argv": [x for x in rp.argv() if not x.startswith("/")]})
-    table = {n: f"{sum(r['blocked'] for r in runs if r['setup'] == n)} of {a.reps}" for n in SETUPS}
+    table = {n: f"{sum(r['blocked'] for r in runs if r['setup'] == n)} of {a.reps}" for n in setups}
     return {"ok": True, "blocked_per_setup": table, "runs": runs}
 
 
