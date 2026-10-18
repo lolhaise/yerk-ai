@@ -143,7 +143,7 @@ def wire(transcript: Path) -> dict[str, Any]:
     Claude Code and the hook put around it."""
     import json
     rows = [json.loads(line) for line in transcript.open()]
-    shape = next((r["shape"] for r in rows if r.get("type") == "api-request-shape"), {})
+    shape: dict[str, Any] = next((r["shape"] for r in rows if r.get("type") == "api-request-shape"), {})
     out: dict[str, Any] = {"system": sum(chars(b.get("text", "")) for b in shape.get("system", [])),
                            "tools": {str(t.get("name")): chars(json.dumps(t)) for t in shape.get("tools", [])},
                            "messages": []}
