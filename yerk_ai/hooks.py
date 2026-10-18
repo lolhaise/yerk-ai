@@ -11,11 +11,14 @@ PreToolUse runs the gates (gates.py), PostToolUse and PostToolUseFailure time ea
 writes the tamper row. Stop runs the rule-based checks: an image sent in and never read bounces
 once, a working turn ending with nothing visible bounces once; the evidence rules log what they
 would bounce and never block (shadow).
-The room comes from the payload's session id through the engine's room-to-session table.
+The room comes from the call's token (the binding the daemon minted for the room's process), else
+from the payload's session id through the room-to-session table; a call that matches no binding is
+answered with an explicit unbound marker and one loud log line, never with a silent {}.
 """
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 from datetime import datetime, timezone
@@ -28,13 +31,14 @@ from .engine import SessionTable
 Meta = Callable[[str, str], tuple[str, float | None]]     # (room, prompt) -> (sender, previous human time)
 Recall = Callable[[str, str], tuple[list[dict[str, Any]], list[dict[str, Any]]]]   # -> (name entries, topic hits)
 RECORD_MAX = 5_000_000                                    # assembled.jsonl rolls to .1 past this
+log = logging.getLogger("yerk.hooks")
+
+
+UNBOUND = {"yerk": "unbound"}          # the answer to a hook call no room binding explains (R3)
 
 
 def room_for_session(sessions: SessionTable, session_id: str) -> str | None:
-    for room, row in sessions.load().items():
-        if row.get("session_id") == session_id:
-            return room
-    return None
+    return sessions.by_session(session_id)
 
 
 def render_recall(names: list[dict[str, Any]], topics: list[dict[str, Any]], budget: int) -> str:
@@ -75,11 +79,12 @@ def record(state: Path, room: str, event: str, session_id: str, parts: dict[str,
 
 def user_prompt_submit(payload: dict[str, Any], state: Path, rooms: dict[str, dict[str, Any]], meta: Meta,
                        budgets: dict[str, Any], now: datetime | None = None,
-                       recall: Recall | None = None) -> dict[str, Any]:
+                       recall: Recall | None = None, room: str | None = None) -> dict[str, Any]:
     sid = str(payload.get("session_id", ""))
-    room = room_for_session(SessionTable(state / "sessions.json"), sid)
+    room = room or room_for_session(SessionTable(state / "sessions.json"), sid)
     if room is None or room not in rooms:
-        return {}
+        log.warning("hook: UserPromptSubmit for session %s matches no room binding; answered unbound", sid[:8] or "?")
+        return dict(UNBOUND)
     prompt = str(payload.get("prompt", ""))
     sender, prev = meta(room, prompt)
     now = now or datetime.now(timezone.utc)
@@ -101,25 +106,30 @@ def user_prompt_submit(payload: dict[str, Any], state: Path, rooms: dict[str, di
     return {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": text}}
 
 
-def session_start(payload: dict[str, Any], state: Path, pack: Callable[[str], str]) -> dict[str, Any]:
+def session_start(payload: dict[str, Any], state: Path, pack: Callable[[str], str],
+                  room: str | None = None) -> dict[str, Any]:
     """After a compaction the recall pack comes back, fresh from the day logs (DESIGN 3)."""
     if payload.get("source") != "compact":
         return {}
     sid = str(payload.get("session_id", ""))
-    room = room_for_session(SessionTable(state / "sessions.json"), sid)
+    room = room or room_for_session(SessionTable(state / "sessions.json"), sid)
     if room is None:
-        return {}
+        log.warning("hook: SessionStart (compact) for session %s matches no room binding; answered unbound", sid[:8] or "?")
+        return dict(UNBOUND)
     text = pack(room)
     record(state, room, "compact", sid, {"recall_pack": context.chars(text)}, text)
     return {"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": text}} if text else {}
 
 
-def settings_for(url: str) -> dict[str, Any]:
-    """The hooks block of a room's --settings file: every event an http post to the daemon, but
-    SessionStart, which Claude Code runs only as a command (curl posts the same payload). Resume is
-    left out of its matcher: a resumed session is not a reset."""
-    one = [{"hooks": [{"type": "http", "url": url, "timeout": 10}]}]
-    post = f"curl -sS --max-time 10 -H 'content-type: application/json' --data-binary @- {url}"
+def settings_for(url: str, token: str = "") -> dict[str, Any]:
+    """The hooks block of a room's --settings file: every event an http post to the daemon carrying
+    the process's token as its secret header (the file is written 0600), but SessionStart, which Claude
+    Code runs only as a command (curl posts the same payload and header). Resume is left out of its
+    matcher: a resumed session is not a reset."""
+    from .mcp_server import HEADER
+    one = [{"hooks": [{"type": "http", "url": url, "timeout": 10, "headers": {HEADER: token}}]}]
+    post = (f"curl -sS --max-time 10 -H 'content-type: application/json' -H '{HEADER}: {token}' "
+            f"--data-binary @- {url}")
     return {"UserPromptSubmit": one, "Stop": one, "PreToolUse": one, "PostToolUse": one, "PostToolUseFailure": one,
             "ConfigChange": one,
             "SessionStart": [{"matcher": "startup|clear|compact",

@@ -14,6 +14,12 @@ Inbound states, after Hermes' delivery ledger (gateway/delivery_ledger.py, MIT):
 (ledgered, nothing ran: run it plainly after a crash), `running` (sent to Claude Code: after a
 crash run it once more, marked as a redelivery), `answered`, `failed`, `abandoned` (redelivered
 once already), `ignored`.
+
+The schema is versioned (PRAGMA user_version) and moves by the ordered MIGRATIONS list, each step a
+function that may add, rename or backfill and is run once, inside one transaction, with the version
+written at its end (restart test R4). Lists of message ids live as rows in `message_links` (one row
+per id, with its place in the list), written beside the comma text the older readers still split;
+the hot lookups read the rows.
 """
 from __future__ import annotations
 
@@ -22,7 +28,7 @@ import sqlite3
 import threading
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 COLUMNS = ("room", "account", "config_dir", "session_id", "started", "first_visible", "ended",
            "outcome", "failure", "action", "output_chars", "models", "fallback_model", "accepted", "inbound",
@@ -32,7 +38,8 @@ ADDED = {"turns": {"inbound": "TEXT", "source": "TEXT", "hop": "TEXT", "recap": 
          "outbound": {"body": "TEXT"},                      # a card's text, each post and edit
          "workers": {"job": "TEXT"},                        # the scheduled job a worker runs for (jobs.py)
          "evidence": {"tool_use_id": "TEXT"},               # joins a call to its time (tool_times)
-         "approvals": {"call": "TEXT", "cwd": "TEXT"}}      # the held call an approval releases, exactly
+         "approvals": {"call": "TEXT", "cwd": "TEXT"},      # the held call an approval releases, exactly
+         "inbound": {"created": "REAL"}}                   # the message's own time on its channel (ordering)
 
 SCHEMA = """CREATE TABLE IF NOT EXISTS turns (
   id INTEGER PRIMARY KEY,
@@ -89,7 +96,31 @@ CREATE TABLE IF NOT EXISTS tool_times (
   failed INTEGER, error TEXT);
 CREATE TABLE IF NOT EXISTS tamper (
   id INTEGER PRIMARY KEY, t REAL, who TEXT, room TEXT, session_id TEXT, source TEXT, file TEXT, sha_before TEXT,
-  sha_after TEXT, diff_sha TEXT, diff_lines INTEGER)"""
+  sha_after TEXT, diff_sha TEXT, diff_lines INTEGER);
+CREATE TABLE IF NOT EXISTS message_links (
+  tbl TEXT, row_key TEXT, col TEXT, message_id TEXT, pos INTEGER,
+  PRIMARY KEY (tbl, row_key, col, message_id))"""
+# the comma-joined id columns and the key column of their table: every write of one also writes its rows
+LINKED = {("turns", "inbound"): "id", ("inbound", "reply_ids"): "message_id", ("outbound", "inbound"): "id",
+          ("deliveries", "inbound"): "key", ("job_runs", "message_ids"): "id", ("watch_events", "reply_ids"): "id",
+          ("watch_events", "inbound"): "id"}
+INDEXES = """CREATE INDEX IF NOT EXISTS inbound_room_received ON inbound (room, received);
+CREATE INDEX IF NOT EXISTS inbound_channel_created ON inbound (channel, created, received);
+CREATE INDEX IF NOT EXISTS inbound_state ON inbound (state);
+CREATE INDEX IF NOT EXISTS turns_session_outcome ON turns (session_id, outcome);
+CREATE INDEX IF NOT EXISTS turns_turn_key ON turns (turn_key);
+CREATE INDEX IF NOT EXISTS deliveries_state_key ON deliveries (state, key);
+CREATE INDEX IF NOT EXISTS deliveries_room_created ON deliveries (room, created);
+CREATE INDEX IF NOT EXISTS approvals_room_held ON approvals (room, held, approved, released);
+CREATE INDEX IF NOT EXISTS hook_calls_t_turn ON hook_calls (t, turn);
+CREATE INDEX IF NOT EXISTS evidence_turn ON evidence (turn);
+CREATE INDEX IF NOT EXISTS workers_finished_started ON workers (finished, started);
+CREATE INDEX IF NOT EXISTS job_runs_job_id ON job_runs (job, id);
+CREATE INDEX IF NOT EXISTS job_runs_worker ON job_runs (worker);
+CREATE INDEX IF NOT EXISTS watch_events_job_state ON watch_events (job, state, id);
+CREATE INDEX IF NOT EXISTS cards_room_closed ON cards (room, closed);
+CREATE INDEX IF NOT EXISTS health_account_id ON health (account, id);
+CREATE INDEX IF NOT EXISTS message_links_message ON message_links (message_id, tbl)"""
 HEALTH = ("at", "account", "config_dir", "ok", "failure", "source", "login", "identity", "identity_ok", "model",
           "ms", "note")
 
@@ -103,8 +134,54 @@ ADDED["workers"] = {**ADDED["workers"], "queued": "REAL", "waiting": "INTEGER", 
 WATCH_EVENTS = ("job", "room", "wake", "state", "lines", "keys", "received", "attempts", "woke", "ended", "worker",
                 "inbound", "reply_ids", "note")
 INBOUND = ("room", "channel", "sender", "received", "chars", "state", "attempts", "folded", "accepted",
-           "answered", "turn_id", "reply_ids", "note")
+           "answered", "turn_id", "reply_ids", "note", "created")
 OPEN = ("received", "running")
+
+
+def ids_of(text: Any) -> list[str]:
+    """The ids in a comma-joined column, in order, empties dropped."""
+    return [x for x in str(text or "").split(",") if x]
+
+
+# the migrations, in order: (version, what it does). Each runs once, inside one transaction, on a
+# ledger whose user_version is below it; the version is written as the step's last statement.
+def add_columns(db: sqlite3.Connection) -> None:
+    """Every column newer than a table's first shape (add-only, idempotent: the first migration, and
+    the one run on every open so a column added in the code is there before anything reads it)."""
+    for table, cols in ADDED.items():
+        have = {r[1] for r in db.execute(f"PRAGMA table_info({table})")}
+        for col, kind in cols.items():
+            if col not in have:
+                db.execute(f"ALTER TABLE {table} ADD COLUMN {col} {kind}")
+
+
+def rename_column(db: sqlite3.Connection, table: str, old: str, new: str) -> bool:
+    """A rename, idempotent: done when `old` is still there and `new` is not."""
+    have = {r[1] for r in db.execute(f"PRAGMA table_info({table})")}
+    if old in have and new not in have:
+        db.execute(f"ALTER TABLE {table} RENAME COLUMN {old} TO {new}")
+        return True
+    return False
+
+
+def backfill_links(db: sqlite3.Connection) -> int:
+    """Every id in every comma-joined column becomes a row in message_links (the ids were text only)."""
+    n = 0
+    for (table, col), key in LINKED.items():
+        for row_key, text in db.execute(f"SELECT {key}, {col} FROM {table} WHERE {col} IS NOT NULL AND {col} != ''"):
+            for pos, mid in enumerate(ids_of(text)):
+                db.execute("INSERT OR IGNORE INTO message_links (tbl, row_key, col, message_id, pos) VALUES (?, ?, ?, ?, ?)",
+                           (table, str(row_key), col, mid, pos))
+                n += 1
+    return n
+
+
+MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], Any]]] = [
+    (1, "the run-1 tables and every column added since", add_columns),
+    (2, "ids as rows: message_links backfilled from the comma-joined columns", backfill_links),
+    (3, "the indexes the hot queries need", lambda db: [db.execute(x) for x in INDEXES.split(";") if x.strip()]),
+]
+VERSION = MIGRATIONS[-1][0]
 
 
 class Ledger:
@@ -115,19 +192,58 @@ class Ledger:
         # under load, paid by every hook call); a crash still leaves the file consistent
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA synchronous=NORMAL")
+        self.db.execute("PRAGMA busy_timeout=5000")    # the CLI, the units and the daemon all write it
         self.db.executescript(SCHEMA)
-        for table, cols in ADDED.items():              # an older ledger gains the newer columns
-            have = {r[1] for r in self.db.execute(f"PRAGMA table_info({table})")}
-            for col, kind in cols.items():
-                if col not in have:
-                    self.db.execute(f"ALTER TABLE {table} ADD COLUMN {col} {kind}")
+        add_columns(self.db)                           # a column the code gained is there before any read
+        self.migrated = self.migrate()
+
+    def version(self) -> int:
+        return int(self.db.execute("PRAGMA user_version").fetchone()[0])
+
+    def migrate(self) -> list[int]:
+        """Run every migration above the ledger's version, each in its own transaction; returns the
+        versions applied. A ledger from before versions (user_version 0) starts at the first."""
+        done = []
+        for n, what, step in MIGRATIONS:
+            if self.version() >= n:
+                continue
+            with self.lock:
+                self.db.execute("BEGIN IMMEDIATE")
+                try:
+                    step(self.db)
+                    self.db.execute(f"PRAGMA user_version = {int(n)}")
+                    self.db.execute("COMMIT")
+                except Exception:
+                    self.db.execute("ROLLBACK")
+                    raise
+            done.append(n)
+        return done
 
     def _insert(self, table: str, row: dict[str, Any]) -> int:
         cols = ", ".join(row)
         with self.lock:
             cur = self.db.execute(f"INSERT INTO {table} ({cols}) VALUES ({', '.join('?' * len(row))})",
                                   tuple(row.values()))
-        return int(cur.lastrowid or 0)
+            rid = int(cur.lastrowid or 0)
+            self._link(table, row, rid)
+        return rid
+
+    def _link(self, table: str, row: dict[str, Any], rid: int | None = None, key: Any = None) -> None:
+        """The rows of every comma-joined id column in `row` (under the lock already)."""
+        for (tbl, col), keycol in LINKED.items():
+            if tbl != table or col not in row:
+                continue
+            row_key = key if key is not None else (row.get(keycol) if keycol != "id" else rid)
+            self.db.execute("DELETE FROM message_links WHERE tbl = ? AND row_key = ? AND col = ?", (table, str(row_key), col))
+            for pos, mid in enumerate(ids_of(row[col])):
+                self.db.execute("INSERT OR IGNORE INTO message_links (tbl, row_key, col, message_id, pos) VALUES (?, ?, ?, ?, ?)",
+                                (table, str(row_key), col, mid, pos))
+
+    def links(self, table: str, row_key: Any, col: str) -> list[str]:
+        """The ids of one row's list column, as rows, in order."""
+        return [str(r["message_id"]) for r in self._select(
+            "SELECT message_id FROM message_links WHERE tbl = ? AND row_key = ? AND col = ? ORDER BY pos",
+            (table, str(row_key), col))]
 
     def evidence(self, **row: Any) -> int:
         """One tool call of a turn and what it read (L185)."""
@@ -236,11 +352,14 @@ class Ledger:
             return [dict(zip(names, r)) for r in cur.fetchall()]
 
     # inbound
-    def inbound_add(self, message_id: str, room: str, channel: str, sender: str, chars: int) -> bool:
-        """Ledger a channel message before anything runs. False when it is already ledgered."""
+    def inbound_add(self, message_id: str, room: str, channel: str, sender: str, chars: int,
+                    created: float | None = None) -> bool:
+        """Ledger a channel message before anything runs (`created`: its own time on the channel, the
+        order messages are read back in). False when it is already ledgered."""
         try:
             self._insert("inbound", {"message_id": message_id, "room": room, "channel": channel, "sender": sender,
-                                     "received": time.time(), "chars": chars, "state": "received"})
+                                     "received": time.time(), "chars": chars, "state": "received",
+                                     "created": created})
         except sqlite3.IntegrityError:
             return False
         return True
@@ -252,6 +371,7 @@ class Ledger:
         sets = ", ".join(f"{k} = ?" for k in fields)
         with self.lock:
             self.db.execute(f"UPDATE inbound SET {sets} WHERE message_id = ?", (*fields.values(), message_id))
+            self._link("inbound", fields, key=message_id)
 
     def inbound_get(self, message_id: str) -> dict[str, Any] | None:
         r = self._select("SELECT * FROM inbound WHERE message_id = ?", (message_id,))
@@ -266,8 +386,10 @@ class Ledger:
         return self._select(sql + " ORDER BY received", args)
 
     def last_inbound(self, channel: str) -> str | None:
-        r = self._select("SELECT message_id FROM inbound WHERE channel = ? ORDER BY CAST(message_id AS INTEGER) DESC "
-                         "LIMIT 1", (channel,))
+        """The channel's newest message by its stored time (its own, else when it was received): an id
+        is a name, never a number to cast (an iMessage id is not a snowflake)."""
+        r = self._select("SELECT message_id FROM inbound WHERE channel = ? ORDER BY COALESCE(created, received) DESC, "
+                         "received DESC LIMIT 1", (channel,))
         return str(r[0]["message_id"]) if r else None
 
     def last_received(self, room: str) -> float | None:
@@ -325,6 +447,7 @@ class Ledger:
         sets = ", ".join(f"{k} = ?" for k in fields)
         with self.lock:
             self.db.execute(f"UPDATE job_runs SET {sets} WHERE id = ?", (*fields.values(), run_id))
+            self._link("job_runs", fields, key=run_id)
 
     def job_run_get(self, run_id: int) -> dict[str, Any] | None:
         r = self._select("SELECT * FROM job_runs WHERE id = ?", (run_id,))
@@ -346,6 +469,7 @@ class Ledger:
         sets = ", ".join(f"{k} = ?" for k in fields)
         with self.lock:
             self.db.execute(f"UPDATE watch_events SET {sets} WHERE id = ?", (*fields.values(), event_id))
+            self._link("watch_events", fields, key=event_id)
 
     def watch_get(self, event_id: int) -> dict[str, Any] | None:
         r = self._select("SELECT * FROM watch_events WHERE id = ?", (event_id,))
@@ -383,15 +507,18 @@ class Ledger:
                       **extra: Any) -> dict[str, Any]:
         """The part's row, written once: a second plan for the same key returns the first row."""
         with self.lock:
-            self.db.execute("INSERT OR IGNORE INTO deliveries (key, room, kind, body, inbound, state, created"
-                            f"{''.join(', ' + k for k in extra)}) VALUES (?, ?, ?, ?, ?, 'pending', ?"
-                            f"{', ?' * len(extra)})", (key, room, kind, body, inbound, time.time(), *extra.values()))
+            cur = self.db.execute("INSERT OR IGNORE INTO deliveries (key, room, kind, body, inbound, state, created"
+                                  f"{''.join(', ' + k for k in extra)}) VALUES (?, ?, ?, ?, ?, 'pending', ?"
+                                  f"{', ?' * len(extra)})", (key, room, kind, body, inbound, time.time(), *extra.values()))
+            if cur.rowcount:
+                self._link("deliveries", {"inbound": inbound}, key=key)
         return self._select("SELECT * FROM deliveries WHERE key = ?", (key,))[0]
 
     def delivery_set(self, key: str, **fields: Any) -> None:
         sets = ", ".join(f"{k} = ?" for k in fields)
         with self.lock:
             self.db.execute(f"UPDATE deliveries SET {sets} WHERE key = ?", (*fields.values(), key))
+            self._link("deliveries", fields, key=key)
 
     def deliveries(self, room: str | None = None, state: str | None = None) -> list[dict[str, Any]]:
         sql, args = "SELECT * FROM deliveries WHERE 1", tuple[Any, ...]()
@@ -402,19 +529,26 @@ class Ledger:
         return self._select(sql + " ORDER BY created, key", args)
 
     def files_sent_for(self, message_ids: list[str]) -> list[dict[str, Any]]:
-        """Files already in the room for any of these inbound messages (a turn a crash cut short)."""
-        rows = self._select("SELECT * FROM deliveries WHERE kind = 'file' AND state = 'sent' AND inbound != '' "
-                            "ORDER BY created", ())
-        want = set(message_ids)
-        return [r for r in rows if want & set(str(r["inbound"] or "").split(","))]
+        """Files already in the room for any of these inbound messages (a turn a crash cut short): by
+        the id rows, never by loading every sent delivery."""
+        want = [m for m in message_ids if m]
+        if not want:
+            return []
+        return self._select("SELECT DISTINCT d.* FROM deliveries d JOIN message_links l ON l.tbl = 'deliveries' AND "
+                            "l.col = 'inbound' AND l.row_key = d.key WHERE d.kind = 'file' AND d.state = 'sent' AND "
+                            f"l.message_id IN ({', '.join('?' * len(want))}) ORDER BY d.created", tuple(want))
 
     def delivered_for(self, message_id: str) -> list[str]:
         """The message ids a turn answering `message_id` posted, from the delivery ledger ([] if none)."""
-        turns = self._select("SELECT turn_key FROM turns WHERE ',' || inbound || ',' LIKE ? AND outcome = 'ok'",
-                             (f"%,{message_id},%",))
-        keys = {str(t["turn_key"]) for t in turns if t["turn_key"]}
-        rows = self._select("SELECT key, message_id FROM deliveries WHERE state = 'sent' ORDER BY created, key", ())
-        return [str(r["message_id"]) for r in rows if r["key"].rsplit(":", 1)[0] in keys]
+        turns = self._select("SELECT t.turn_key FROM turns t JOIN message_links l ON l.tbl = 'turns' AND l.col = 'inbound' "
+                             "AND l.row_key = CAST(t.id AS TEXT) WHERE l.message_id = ? AND t.outcome = 'ok'", (message_id,))
+        keys = [str(t["turn_key"]) for t in turns if t["turn_key"]]
+        out: list[str] = []
+        for k in dict.fromkeys(keys):
+            out += [str(r["message_id"]) for r in self._select(
+                "SELECT message_id FROM deliveries WHERE state = 'sent' AND key LIKE ? AND key NOT LIKE ? "
+                "ORDER BY created, key", (f"{k}:%", f"{k}:%:%"))]
+        return out
 
     def turn_for_key(self, turn_key: str) -> int | None:
         r = self._select("SELECT id FROM turns WHERE turn_key = ? ORDER BY id DESC LIMIT 1", (turn_key,))
