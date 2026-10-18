@@ -1,0 +1,22 @@
+# yerk-index: the memory index in its own process (DESIGN 5). Installed by copying this file to
+# ~/.config/systemd/user/ and `systemctl --user enable --now yerk-index.service`. It reads
+# [memory] in the private yerkd.toml for its roots; the index file is <state>/memory/index.sqlite.
+# Low CPU and idle IO priority so index work never competes with the daemon serving rooms.
+[Unit]
+Description=Yerk AI memory index (FTS5 over the private memory tree)
+
+[Service]
+Type=simple
+Environment=YERK_PRIVATE=%h/yerk-private
+Environment=YERK_STATE=%h/.local/state/yerk
+Environment=PYTHONUNBUFFERED=1
+WorkingDirectory=%h/yerk-ai
+ExecStart=%h/yerk-ai/.venv/bin/python -m yerk_ai.memindex
+Restart=on-failure
+RestartSec=10s
+Nice=10
+IOSchedulingClass=idle
+MemoryHigh=300M
+
+[Install]
+WantedBy=default.target

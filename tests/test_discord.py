@@ -385,3 +385,31 @@ def test_the_upload_limit_is_what_the_bot_was_measured_to_send(dc, tmp_path):
     [notice] = ch.sent
     assert notice.content.startswith("Could not send small.txt: Discord refused it as too large (413: ")
     assert notice.content.endswith("this room takes 20,971,520 bytes.")
+
+
+def test_every_message_in_the_room_is_filed_in_the_days_log_once(tmp_path, monkeypatch):
+    from datetime import timezone
+
+    from yerk_ai.memory import DailyLog
+    monkeypatch.setattr(dmod, "MIN_EDIT", 0.05)
+    log = DailyLog(tmp_path / "memory" / "daily", timezone.utc)
+    client = Client()
+    d = DiscordChannel("token", OWNER, [HOOK], Ledger(tmp_path / "l.sqlite"), client=client, state=tmp_path,
+                       capture=log.capture)
+    room = Room(tmp_path)
+    d.add_room(ROOM_CH, room)
+    ch = client.chans[ROOM_CH]
+    run(d.on_message(Msg(ch, 31, "a longer line from the owner")))
+    run(d.on_message(Msg(ch, 32, "", webhook_id=HOOK, attachments=[Attachment("photo.png", b"x" * 1234, "image/png")])))
+    run(d.on_message(Msg(ch, 33, "k")))
+    run(d.on_message(Msg(ch, 34, "a person who is not the owner", author=12345)))
+    run(d.on_message(Msg(ch, 35, "the bot's own post, filed where it is sent", author=BOT)))
+    run(d.on_message(Msg(ch, 31, "a longer line from the owner")))                 # delivered twice
+    run(d.send_text("test-room", "a reply from Yerk"))
+    text = "".join(p.read_text() for p in (tmp_path / "memory" / "daily").glob("*.md"))
+    lines = [x for x in text.splitlines() if x.startswith("- ")]
+    assert [x.split(": ", 1)[0].split(" ", 2)[2] for x in lines] == [
+        "test-room owner", "test-room test-webhook", "test-room owner", "test-room other", "test-room yerk"]
+    assert text.count("[m:31]") == 1 and "[m:35]" not in text
+    assert "(attachment only) [m:32]\n  - attachment: photo.png, image/png, 1,234 bytes" in text
+    assert " owner: k [m:33]" in text and " yerk: a reply from Yerk [m:" in text
