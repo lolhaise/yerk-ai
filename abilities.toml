@@ -149,7 +149,7 @@ needs = "a desktop computer signed into the owner's messaging account, the small
 price = "none"
 free_path = "this is the free path"
 why_not = "Layer 8: the messaging adapter waits on the signed app."
-asked_as = ["text as me", "text people for me", "reply to my texts", "imessage", "text messages for me"]
+asked_as = ["text as me", "text people as me", "send texts as me", "text people for me", "reply to my texts", "imessage", "text messages for me"]
 layer = 8
 
 [abilities.email]
@@ -256,7 +256,7 @@ needs = "a desktop computer with a Chromium-based browser, a separate profile on
 price = "none"
 free_path = "this is the free path"
 why_not = "After the rooms move; the job-applications and bank-balances abilities wait on it."
-asked_as = ["use my browser", "drive my browser", "browser for me", "open a website for me"]
+asked_as = ["use my browser", "control my browser", "drive my browser", "use a browser", "browser for me", "open a website for me"]
 
 [abilities.pc-control]
 state = "described"
