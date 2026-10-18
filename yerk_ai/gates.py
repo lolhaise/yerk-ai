@@ -14,11 +14,13 @@ quotes, in a heredoc body or as a word in a string is not a delete; lifted/shell
   plain line to the room;
 - approval: an action named external (a send to another room, a public post, a login, money, a
   message out through another tool, or a rule in yerkd.toml [gates.external]) is held, one plain
-  line to the room, until an approver says the word in the room; then the next try runs once.
+  line to the room, until an approver says the word in the room's running turn; then that same call
+  (its normalised text and working folder) runs once, and any other call is held again.
 Every hold, release, refusal and rewrite is a row in the ledger's `gates` table.
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import shlex
@@ -192,6 +194,14 @@ def external_hit(tool: str, ti: dict[str, Any], room: str, s: Settings) -> tuple
             what = f"{what} ({ti['room']})"
         return name, what, f"{tool} {str(ti)[:140]}"
     return None
+
+
+def call_key(tool: str, ti: dict[str, Any]) -> str:
+    """A call as an approval matches it: a shell command as parsed (spacing and quoting normalised, its
+    description left out), else the tool and its whole input."""
+    if tool == "Bash":
+        return " ; ".join(norm or seg for seg, _, norm in shell(str(ti.get("command") or "")))
+    return f"{tool} {json.dumps(ti, sort_keys=True, ensure_ascii=False)}"
 
 
 def held(what: str, call: str, word: str) -> tuple[str, str]:

@@ -31,7 +31,8 @@ ADDED = {"turns": {"inbound": "TEXT", "source": "TEXT", "hop": "TEXT", "recap": 
                    "turn_key": "TEXT"},
          "outbound": {"body": "TEXT"},                      # a card's text, each post and edit
          "workers": {"job": "TEXT"},                        # the scheduled job a worker runs for (jobs.py)
-         "evidence": {"tool_use_id": "TEXT"}}               # joins a call to its time (tool_times)
+         "evidence": {"tool_use_id": "TEXT"},               # joins a call to its time (tool_times)
+         "approvals": {"call": "TEXT", "cwd": "TEXT"}}      # the held call an approval releases, exactly
 
 SCHEMA = """CREATE TABLE IF NOT EXISTS turns (
   id INTEGER PRIMARY KEY,
@@ -77,7 +78,7 @@ CREATE TABLE IF NOT EXISTS gates (
   rule TEXT, detail TEXT);
 CREATE TABLE IF NOT EXISTS approvals (
   id INTEGER PRIMARY KEY, room TEXT, rule TEXT, what TEXT, held REAL, approved REAL, approved_by TEXT,
-  released REAL, gate_id INTEGER);
+  released REAL, gate_id INTEGER, call TEXT, cwd TEXT);
 CREATE TABLE IF NOT EXISTS hook_calls (
   id INTEGER PRIMARY KEY, t REAL, room TEXT, session_id TEXT, turn TEXT, event TEXT, ms REAL, outcome TEXT);
 CREATE TABLE IF NOT EXISTS tool_times (
@@ -134,9 +135,9 @@ class Ledger:
         """One gate decision: a rewrite, a refusal, a hold or a release."""
         return self._insert("gates", {"t": time.time(), **row})
 
-    def hold_add(self, room: str, rule: str, what: str, gate_id: int) -> int:
+    def hold_add(self, room: str, rule: str, what: str, gate_id: int, call: str = "", cwd: str = "") -> int:
         return self._insert("approvals", {"room": room, "rule": rule, "what": what, "held": time.time(),
-                                          "gate_id": gate_id})
+                                          "gate_id": gate_id, "call": call, "cwd": cwd})
 
     def approve(self, room: str, by: str, window_s: float) -> dict[str, Any] | None:
         """The owner's word: the room's newest hold not yet approved (inside the window) is approved."""
@@ -149,19 +150,16 @@ class Ledger:
                             (time.time(), by, r[0]["id"]))
         return r[0]
 
-    def release(self, room: str, rule: str, window_s: float) -> dict[str, Any] | None:
-        """An approved hold of this rule, not yet used, takes the call through once."""
-        r = self._select("SELECT * FROM approvals WHERE room = ? AND rule = ? AND approved > ? AND released IS NULL "
-                         "ORDER BY id DESC LIMIT 1", (room, rule, time.time() - window_s))
+    def release(self, room: str, rule: str, call: str, cwd: str, window_s: float) -> dict[str, Any] | None:
+        """The approved hold of exactly this call (its normalised text and working folder), not yet used,
+        takes it through once; another call under the same rule is not released by it."""
+        r = self._select("SELECT * FROM approvals WHERE room = ? AND rule = ? AND call = ? AND cwd = ? AND approved > ? "
+                         "AND released IS NULL ORDER BY id DESC LIMIT 1", (room, rule, call, cwd, time.time() - window_s))
         if not r:
             return None
         with self.lock:
             self.db.execute("UPDATE approvals SET released = ? WHERE id = ?", (time.time(), r[0]["id"]))
         return r[0]
-
-    def hook_call(self, **row: Any) -> int:
-        """One hook event's time in the daemon, in ms."""
-        return self._insert("hook_calls", row)
 
     def many(self, rows: list[tuple[str, dict[str, Any]]]) -> None:
         """Timing rows for hook_calls and tool_times in one transaction: one disk sync per batch, never
@@ -179,13 +177,6 @@ class Ledger:
             except Exception:
                 self.db.execute("ROLLBACK")
                 raise
-
-    def tool_time(self, **row: Any) -> None:
-        """A tool call's time and failure from PostToolUse or PostToolUseFailure, by its tool_use id."""
-        cols = ", ".join(row)
-        with self.lock:
-            self.db.execute(f"INSERT OR REPLACE INTO tool_times ({cols}) VALUES ({', '.join('?' * len(row))})",
-                            tuple(row.values()))
 
     def tamper(self, **row: Any) -> int:
         """A setting file changed under a running session: who, what, when and the diff's hash."""

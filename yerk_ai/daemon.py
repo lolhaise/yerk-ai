@@ -126,6 +126,7 @@ class Yerkd:
         self.gates = gates.settings(self.conf.get("gates"))      # the rule-based gates (DESIGN 8)
         self.rebuild_running = gates.rebuild_running
         self.rewrites: dict[str, tuple[str, str]] = {}           # tool_use id -> (room, the trash command)
+        self.worded: set[str] = set()                            # inbound ids whose approval word was used
         self.later: set[asyncio.Task[Any]] = set()               # a gate's notice, posted beside the hook's answer
         self.timing: list[tuple[str, dict[str, Any]]] = []       # hook and tool timings, written in batches
         self.timing_lock = threading.Lock()
@@ -399,8 +400,10 @@ class Yerkd:
                                       lambda r, p: self.rooms[r].meta_for(p), self.budgets, None, self.recall_for)
         if out and name in self.rooms:
             prompt = str(payload.get("prompt", ""))
-            sender, _ = self.rooms[name].meta_for(prompt)
-            if gates.is_word(prompt, sender, self.gates):
+            said = self.said_in_turn(name, sid, prompt)
+            if said and said.id not in self.worded and gates.is_word(prompt, said.sender, self.gates):
+                self.worded.add(said.id)                  # one message, one approval
+                sender = said.sender
                 row = self.ledger.approve(name, sender, self.gates.window_s)
                 if row:
                     self.ledger.gate(room=name, session_id=sid, turn=self.rooms[name].turn_key, gate="approval",
@@ -427,9 +430,11 @@ class Yerkd:
             if why:
                 model, line = gates.refused(what, why)
                 v = gates.Verdict("restart", "deny", model, line, f"{what}; {why}")
+        key, cwd = "", str(payload.get("cwd") or self.state / "rooms" / name / "work")
         if v is None and (hit := gates.external_hit(tool, ti, name, self.gates)):
             rule, what, call = hit
-            rel = self.ledger.release(name, rule, self.gates.window_s)
+            key = gates.call_key(tool, ti)
+            rel = self.ledger.release(name, rule, key, cwd, self.gates.window_s)
             if rel:
                 v = gates.Verdict("approval", "release", detail=f"{what}: {call}; approved by {rel['approved_by']}",
                                   rule=rule)
@@ -441,11 +446,22 @@ class Yerkd:
         gid = self.ledger.gate(room=name, session_id=sid, turn=room.turn_key, gate=v.gate, decision=v.decision,
                                tool=tool, rule=v.rule, detail=v.detail)
         if v.decision == "hold":
-            self.ledger.hold_add(name, v.rule, v.detail.split(":")[0], gid)
+            self.ledger.hold_add(name, v.rule, v.detail.split(":")[0], gid, key, cwd)
         if v.decision == "rewrite" and v.new_input:
             self.rewrites[str(payload.get("tool_use_id") or "")] = (name, str(v.new_input.get("command")))
         log.info("room %s: gate %s %s: %s", name, v.gate, v.decision, v.detail[:160])
         return v.output(), v.line
+
+    def said_in_turn(self, name: str, sid: str, prompt: str) -> Inbound | None:
+        """The message behind a prompt, for the approval word: the hook call must carry the room's bound
+        session id (the cwd fallback is not enough), and the prompt must be a message the room itself
+        wrote into its running turn. /hook has no secret yet (restart test R3), so this binding is what
+        keeps a posted "approve" from counting."""
+        if hooks.room_for_session(SessionTable(self.state / "sessions.json"), sid) != name:
+            return None
+        room = self.rooms[name]
+        with room.lock:
+            return next((m for m in room.inflight if m.text.strip() == prompt.strip()), None)
 
     def trash_failed(self, name: str, room: Room, sid: str, payload: dict[str, Any]) -> str:
         """A rewritten delete whose trash command failed: ledgered, and one line for the room."""

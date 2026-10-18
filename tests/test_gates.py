@@ -151,11 +151,11 @@ def test_the_approval_gate_holds_then_the_owners_word_releases_it_once_ledgered_
     out = call(y, push)["hookSpecificOutput"]
     assert out["permissionDecision"] == "deny" and out["permissionDecisionReason"].startswith("Held: a public post")
     assert ch.notes == [f"{words.WORKING} held: a public post\nsay approve here to let it run once"]
-    room.seen["approve"] = Inbound("m2", "test-webhook", "approve")       # not an approver by default
+    room.busy, room.inflight = True, [Inbound("m2", "test-webhook", "approve")]    # not an approver by default
     call(y, {"hook_event_name": "UserPromptSubmit", "prompt": "approve"})
     assert call(y, push)["hookSpecificOutput"]["permissionDecision"] == "deny"     # still held
-    room.seen["approve"] = Inbound("m3", "owner", "Approve.")
-    ctx = call(y, {"hook_event_name": "UserPromptSubmit", "prompt": "approve"})["hookSpecificOutput"]
+    room.inflight = [Inbound("m3", "owner", "Approve.")]                    # the owner's word, in the running turn
+    ctx = call(y, {"hook_event_name": "UserPromptSubmit", "prompt": "Approve."})["hookSpecificOutput"]
     assert "[approval] owner said approve" in ctx["additionalContext"]
     assert call(y, push) == {}                                            # released, once
     assert call(y, push)["hookSpecificOutput"]["permissionDecision"] == "deny"     # the next one is held again
@@ -168,6 +168,42 @@ def test_the_approval_gate_holds_then_the_owners_word_releases_it_once_ledgered_
                     "tool_input": {"room": "example-room", "text": "hi"}}) == {}       # its own room: not external
     assert call(y, {"hook_event_name": "PreToolUse", "tool_name": "mcp__yerk__send",
                     "tool_input": {"room": "family", "text": "hi"}})["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
+def test_an_approval_releases_exactly_the_held_call_once_and_a_word_without_the_rooms_binding_counts_for_nothing(
+        tmp_path):
+    y, room, ch = setup(tmp_path)
+    work = tmp_path / "rooms" / "example-room" / "work"
+    work.mkdir(parents=True)
+
+    def pre(command, cwd=None):
+        p = {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": command, "description": "x"}}
+        return call(y, {**p, "cwd": cwd} if cwd else p)
+
+    def held(out):
+        return out.get("hookSpecificOutput", {}).get("permissionDecision") == "deny"
+
+    def word(sid="sid-g", **extra):
+        call(y, {"hook_event_name": "UserPromptSubmit", "prompt": "approve", "session_id": sid, **extra})
+    assert held(pre("git push origin main"))
+    room.busy, room.inflight = True, [Inbound("m9", "owner", "approve")]     # the owner said it in this turn
+    word("sid-posted", cwd=str(work))      # a posted word: the room found by its folder, not by its bound session
+    assert held(pre("git push origin main"))                              # nothing was approved
+    word()                                 # the room's own session: approved
+    word()                                 # the same message again: no second approval
+    assert held(pre("git push origin feature"))                           # another call, same rule: held
+    assert held(pre("git push origin main", cwd="/tmp"))                  # the same text from another folder: held
+    assert pre("git  push 'origin' main") == {}                           # the held call, normalised: released once
+    assert held(pre("git push origin main"))                              # and not again
+    room.busy, room.inflight = False, []                                  # the turn is over
+    word()
+    assert held(pre("git push origin feature"))
+    rows = y.ledger._select("SELECT * FROM approvals ORDER BY id", ())
+    main, feature = "git push origin main", "git push origin feature"
+    assert [(r["call"], r["cwd"] == str(work), bool(r["approved"]), bool(r["released"])) for r in rows] == [
+        (main, True, False, False), (main, True, True, True), (feature, True, False, False),
+        (main, False, False, False), (main, True, False, False), (feature, True, False, False)]
+    assert [r["decision"] for r in y.ledger.rows(30, "gates")].count("approved") == 1
 
 
 def test_approvers_and_external_rules_come_from_yerkd_toml(tmp_path):
