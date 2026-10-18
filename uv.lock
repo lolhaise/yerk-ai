@@ -1694,8 +1694,8 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "discord-py", specifier = "==2.6.*" },
-    { name = "mcp", specifier = "==1.*" },
+    { name = "discord-py", specifier = "==2.6.4" },
+    { name = "mcp", specifier = "==1.30.0" },
 ]
 
 [package.metadata.requires-dev]

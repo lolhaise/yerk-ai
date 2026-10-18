@@ -155,11 +155,12 @@ class Yerkd:
                 dc.add_room(int(cid), self.add_room(name, dc))
         if not dc.rooms:
             raise SystemExit("no room has a discord:<channel id> in rooms.toml")
-        await asyncio.gather(self.serve_http(), self.reap(), dc.start())
+        await asyncio.gather(self.serve_http(), self.reap(min(60.0, self.idle_seconds / 2)), dc.start())
 
     async def run_console(self, name: str) -> None:
         room = self.add_room(name, ConsoleChannel())
         http = asyncio.create_task(self.serve_http())
+        reaper = asyncio.create_task(self.reap(min(60.0, self.idle_seconds / 2)))
         await asyncio.sleep(0.5)
         n = 0
         while line := await asyncio.to_thread(sys.stdin.readline):
@@ -173,6 +174,7 @@ class Yerkd:
             await asyncio.sleep(0.2)
         if room.rp:
             await asyncio.to_thread(room.rp.close)
+        reaper.cancel()
         self.http.should_exit = True
         await http
 
