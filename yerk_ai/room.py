@@ -58,9 +58,8 @@ class Inbound:
     must: str = ""                        # ... a line the reply must carry (a relay's "report saved" line)
     then: Callable[[str, list[str], int], None] | None = None   # (answered or failed, message ids, chars)
     alone: bool = False                   # a harness turn of its own: never folded into a running turn, never
-                                          # batched with another message (a relay, a watcher's event)
-    closed_recap: str = ""                # ... and when the room's process is closed: a fresh session with
-                                          # this recap ({last}: the last reply's first line), never a resume
+                                          # batched with another message (a relay, a watcher's event); in a
+                                          # closed room it resumes the room's session, as any message does
 
 
 HARNESS = "yerk"                          # the sender of Yerk AI's own messages (a worker's relay)
@@ -325,12 +324,6 @@ class Room:
         self._new_card()
         account = self._account()
         recap, self.fresh_next = self.fresh_next, None          # set by a refusal fallback last turn
-        if not recap and len(batch) == 1 and batch[0].alone and batch[0].closed_recap:
-            with self.lock:
-                closed = self.rp is None or not self.rp.alive()
-            if closed:                                          # a harness turn never resumes a closed room
-                recap = batch[0].closed_recap.format(last=self.last_reply or "nothing yet")
-                log.info("room %s: closed; a fresh session with a recap for %s", self.name, batch[0].id)
         fresh, retried, compacted, reruns, hops, hop = bool(recap), False, False, 0, 0, None
         recap_sid = None                       # the session that already got the recap
         resend = batch

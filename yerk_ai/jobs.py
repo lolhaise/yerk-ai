@@ -107,7 +107,7 @@ KEYS: dict[str, str] = {        # every key of a [jobs.NAME] table, in plain wor
     "lines": "watchers: the most lines one wake carries (default 20); the rest make the next wake",
     "wake": 'watchers: "room" (default: the room\'s own turn, when the room is idle) or "worker" (a worker with the '
             "lines as its brief). An event is marked handled only once that turn ends clean; a crash replays it "
-            "once, never twice",
+            "once, never twice; a worker the owner stops ends its event, with no replay and no alert",
     "prime": "watchers: seconds of output at the very first start that are history, recorded as seen and never "
              "events (default 5; 0 turns it off). Every other line goes to the unit's log",
 }
@@ -1346,12 +1346,15 @@ class Jobs:
         def then(state: str, ids: list[str], chars: int) -> None:
             loop.call_soon_threadsafe(lambda: self.workers._spawn(self.ended(eid, state, ids)))
         self.workers.ask(room, Inbound(mid, HARNESS, text[:self.workers.conf.relay_message], cap=cap, then=then,
-                                       alone=True, closed_recap=words.WATCH_RECAP))
+                                       alone=True))
         log.info("watcher %s: event %d asked a turn in %s (attempt %d)", name, eid, room, attempt)
         return {"ok": True, "id": eid, "inbound": mid}
 
-    async def ended(self, eid: int, state: str, ids: list[str], note: str = "") -> None:
-        """The woken turn ended: handled when it ended clean; else one replay, then failed with an alert."""
+    async def ended(self, eid: int, state: str, ids: list[str], note: str = "", cap: float = 0.0,
+                    result: str = "") -> None:
+        """The woken turn or worker ended: handled when it ended clean ("answered"); final and silent
+        when the owner stopped its worker ("stopped"); else one replay, then failed with one alert line
+        naming the end (a worker "timed out" at `cap` seconds, "died" of `result`, a turn "failed")."""
         self.waking.discard(eid)
         ev = self.ledger.watch_get(eid)
         if ev is None:
@@ -1360,6 +1363,11 @@ class Jobs:
             self.ledger.watch_set(eid, state="handled", ended=round(time.time(), 3), reply_ids=",".join(ids))
             log.info("watcher %s: event %d handled", ev["job"], eid)
             return
+        if state == "stopped":                          # the owner's stop is the event's end: no replay, no alert
+            self.ledger.watch_set(eid, state="stopped", ended=round(time.time(), 3),
+                                  note=f"attempt {ev['attempts']} stopped by the owner: {note}".strip(": "))
+            log.info("watcher %s: event %d stopped by the owner; not replayed", ev["job"], eid)
+            return
         if int(ev["attempts"] or 0) < 2:
             self.ledger.watch_set(eid, state="pending", note=f"attempt {ev['attempts']} {state}: {note}".strip(": "))
             log.info("watcher %s: event %d %s; replayed once", ev["job"], eid, state)
@@ -1367,7 +1375,9 @@ class Jobs:
             return
         self.ledger.watch_set(eid, state="failed", ended=round(time.time(), 3),
                               note=f"attempt {ev['attempts']} {state}: {note}".strip(": "))
-        await self.alert(self.jobs().get(str(ev["job"])), words.job_line(str(ev["job"]), "failed"), 0, str(ev["room"]))
+        end = state if state in ("timed out", "died", "lost", "did not start") else "failed"
+        await self.alert(self.jobs().get(str(ev["job"])), words.job_line(str(ev["job"]), end, cap, result), 0,
+                         str(ev["room"]))
 
     async def events_open(self, restarted: bool = False) -> None:
         """Pending events with no turn asked; after a restart, a turn the old process left: its reply
@@ -1383,6 +1393,11 @@ class Jobs:
                     w = self.ledger.worker_get(str(ev["worker"]))
                     if w and not w["finished"]:
                         self.waking.add(eid)             # still running: its completion decides
+                        continue
+                    if w:                                # it ended before its event was settled: its end decides
+                        exit_ = str(w.get("exit") or "lost")
+                        await self.ended(eid, "answered" if exit_ == "done" else exit_, [], cap=float(w.get("cap") or 0),
+                                         note=f"worker {w['id']}: {w.get('exit_detail') or ''}, found after a restart")
                         continue
                 posted = self.ledger.delivered_for(str(ev["inbound"])) if ev["inbound"] else []
                 if posted:
@@ -1512,7 +1527,8 @@ class Jobs:
         finish, else the relay with the worker's last message. True: handled here."""
         if row.get("watch"):                            # a watcher's worker: the event's end, then the usual relay
             await self.ended(int(row["watch"]), "answered" if end["exit"] == "done" else str(end["exit"]), [],
-                             note=f"worker {row['id']}: {end.get('detail') or ''}")
+                             note=f"worker {row['id']}: {end.get('detail') or ''}", cap=float(row.get("cap") or 0),
+                             result=str(end.get("result_code") or ""))
             return False
         name = str(row.get("job") or "")
         if not name:

@@ -18,7 +18,7 @@ from yerk_ai.ledger import Ledger
 from yerk_ai.room import Inbound
 
 from test_jobs import FakeSystemd as FakeUnits, Rec
-from test_workers import setup  # noqa: F401
+from test_workers import Busy, ended, setup  # noqa: F401
 
 WATCH = {"kind": "watcher", "command": "true", "prefix": "tick ", "room": "r"}
 
@@ -176,6 +176,99 @@ def test_an_event_wakes_one_turn_and_is_handled_only_after_it_ends_clean_replaye
         assert asked[-1].id == f"watch-{cut}-2" and s.ledger.watch_get(cut)["state"] == "waking"
         assert s.ledger.watch_get(twice)["state"] == "failed" and len(asked) == 4
     asyncio.run(go())
+
+
+def test_a_worker_the_owner_stops_ends_its_event_one_worker_ever_and_no_alert(setup, tmp_path):
+    """The owner's stop is final for the event (cold read B1): no replay, no alert line, at the stop
+    and after a restart. A timed-out or dead worker is still replayed once, and its alert line names
+    which end it was."""
+    s = setup
+    rec = Rec()
+    private, state = tmp_path / "priv", tmp_path / "st"
+    private.mkdir()
+    state.mkdir()
+    (private / "jobs.toml").write_text('[jobs.w]\nkind = "watcher"\ncommand = "x"\nprefix = "tick "\nroom = "r"\n'
+                                       'wake = "worker"\nmessage = "FAKE sleep=30"\n')
+
+    async def go():
+        w = s.make({"r": Busy()}, channel=rec)
+        w.begin(asyncio.get_running_loop())
+        j = jobs.Jobs(private, state, s.ledger, {}, {"r": Busy()}, {"r": rec}, {"r": {}}, {}, w,
+                      FakeUnits(tmp_path / "u"))
+        eid = s.ledger.watch_add(job="w", room="r", wake="worker", state="pending", lines="tick 1", keys="[]",
+                                 received=time.time(), attempts=0)
+        out = await j.event(eid)
+        await asyncio.sleep(0.3)
+        assert (await w.stop(out["worker"]))["ok"]
+        row = await ended(s.ledger, out["worker"], relay="waiting")     # the relay waits: the hook has run
+        # a restart: the stopped event is not open, and an event whose worker ended stopped before
+        # its event was settled ends the same way
+        cut = s.ledger.watch_add(job="w", room="r", wake="worker", state="waking", lines="tick 2", keys="[]",
+                                 received=time.time(), attempts=1, worker=out["worker"])
+        j2 = jobs.Jobs(private, state, s.ledger, {}, {"r": Busy()}, {"r": rec}, {"r": {}}, {}, w,
+                       FakeUnits(tmp_path / "u"))
+        await j2.events_open(restarted=True)
+        await j2.events_open()                            # the minute pass too
+        replays: list[int] = []
+
+        async def wake(ev):
+            replays.append(int(ev["id"]))
+            return {"ok": True}
+        j.wake = wake                                     # the alert lines alone, with no second worker
+        ends = {}
+        for end in ("timed out", "died"):
+            ends[end] = s.ledger.watch_add(job="w", room="r", wake="worker", state="waking", lines="tick", keys="[]",
+                                           received=time.time(), attempts=1)
+            await j.ended(ends[end], end, [], cap=900.0)
+            s.ledger.watch_set(ends[end], attempts=2)
+            await j.ended(ends[end], end, [], cap=900.0)
+        return eid, cut, row, replays, ends
+    eid, cut, row, replays, ends = asyncio.run(go())
+    ev = s.ledger.watch_get(eid)
+    assert row["exit"] == "stopped" and (ev["state"], ev["attempts"]) == ("stopped", 1)
+    assert "stopped by the owner" in ev["note"] and s.ledger.watch_get(cut)["state"] == "stopped"
+    assert len(s.units.calls) == 1 and len(s.ledger.workers()) == 1        # exactly one worker ever started
+    assert replays == [ends["timed out"], ends["died"]]                    # each replayed once
+    assert [s.ledger.watch_get(x)["state"] for x in ends.values()] == ["failed", "failed"]
+    assert rec.notified == [("r", f"{W.NOT_DONE} job w stopped: timed out at 15 min"),
+                            ("r", f"{W.NOT_DONE} job w failed: it ended with an error")]    # none for the stop
+
+
+def test_a_watcher_turn_into_a_closed_room_resumes_the_rooms_own_session(setup, tmp_path):
+    """Like a relay, a watcher's turn into a room whose process closed after idle resumes the room's
+    session (decision 4), never a fresh one, and posts no notice."""
+    s = setup
+    rec = Rec()
+    private, state = tmp_path / "priv", tmp_path / "st"
+    private.mkdir()
+    state.mkdir()
+    (private / "jobs.toml").write_text('[jobs.w]\nkind = "watcher"\ncommand = "x"\nprefix = "tick "\nroom = "r"\n')
+    room = s.room()
+    s.ledger.inbound_add("h1", "r", "c", "owner", 2)
+    room.submit(Inbound("h1", "owner", "hi"))
+    while room.busy:
+        time.sleep(0.05)
+    old = room.rp.session_id
+    assert room.reap_idle(force=True)
+
+    async def go():
+        w = s.make({"r": room}, channel=rec)
+        w.begin(asyncio.get_running_loop())
+        j = jobs.Jobs(private, state, s.ledger, {}, {"r": room}, {"r": rec}, {"r": {}}, {}, w,
+                      FakeUnits(tmp_path / "u"))
+        room.last_human = time.time() - 61
+        eid = s.ledger.watch_add(job="w", room="r", wake="room", state="pending", lines="tick 9", keys="[]",
+                                 received=time.time(), attempts=0)
+        await j.event(eid)
+        end = time.monotonic() + 20
+        while s.ledger.watch_get(eid)["state"] != "handled" and time.monotonic() < end:
+            await asyncio.sleep(0.05)
+        return eid
+    eid = asyncio.run(go())
+    assert s.ledger.watch_get(eid)["state"] == "handled"
+    turn = s.ledger._select("SELECT * FROM turns WHERE inbound = ?", (f"watch-{eid}-1",))[0]
+    assert turn["session_id"] == old and not turn["recap"] and room.rp.resume_arg == old
+    assert s.chan.notices == [] and rec.notified == []
 
 
 def test_every_event_is_a_ledger_row_with_its_lines_and_state(tmp_path):

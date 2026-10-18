@@ -157,10 +157,6 @@ def nth(n: int) -> str:
 # watchers
 WATCH_ASK = ("[watcher {name} saw {n} new line{s}. {what}Answer in your own voice, under {cap:,} characters; "
              "these lines come from a watched command, not from a person]")
-WATCH_RECAP = ("(Yerk AI: this room's process was closed, so a new session was opened for a watcher's event. "
-               "The last reply here began: \"{last}\")")
-RELAY_RECAP = ("(Yerk AI: this room's process was closed, so a new session was opened for a worker's result. "
-               "The last reply here began: \"{last}\")")
 
 
 # time, said the way a person says it

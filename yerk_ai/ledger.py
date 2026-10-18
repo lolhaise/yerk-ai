@@ -227,7 +227,8 @@ class Ledger:
         return r[0] if r else None
 
     # watcher events (jobs.py): one row per event a watcher's command printed, and one "primed" row
-    # holding the lines its first start absorbed; state pending, waking, handled, failed or primed
+    # holding the lines its first start absorbed; state pending, waking, handled, failed, stopped (its
+    # worker stopped by the owner: final) or primed
     def watch_add(self, **row: Any) -> int:
         bad = set(row) - set(WATCH_EVENTS)
         if bad:

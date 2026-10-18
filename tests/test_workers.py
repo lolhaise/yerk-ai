@@ -21,7 +21,7 @@ from yerk_ai import mcp_server, workers
 from yerk_ai import words as W
 from yerk_ai.accounts import Account, Cooldowns, store_token
 from yerk_ai.config import table
-from yerk_ai.engine import RoomSpec
+from yerk_ai.engine import RoomSpec, SessionTable
 from yerk_ai.ledger import Ledger
 from yerk_ai.lifted.classify import FailureTable
 from yerk_ai.room import Inbound, Room, fit
@@ -516,7 +516,10 @@ def test_two_completions_within_a_minute_are_two_relays_in_order_never_merged(se
     assert s.ledger.inbound_get(f"relay-{b['id']}")["folded"] == 0                   # never folded into the first
 
 
-def test_a_relay_into_a_closed_room_opens_a_fresh_session_with_the_recap(setup):
+def test_a_relay_into_a_closed_room_resumes_the_rooms_own_session(setup):
+    """Decision 4 holds for harness turns too: closed after idle, the room's next turn resumes its
+    session, a relay included, so the owner's next message continues the conversation. No new
+    session, no recap, no notice."""
     s = setup
     room = s.room()
     s.ledger.inbound_add("h1", "r", "c", "owner", 2)
@@ -535,7 +538,9 @@ def test_a_relay_into_a_closed_room_opens_a_fresh_session_with_the_recap(setup):
     row = asyncio.run(go())
     assert row["relay"] == "relayed"
     turn = s.ledger._select("SELECT * FROM turns WHERE inbound = ?", (f"relay-{row['id']}",))[0]
-    assert turn["recap"] == 1 and turn["session_id"] != old
+    assert turn["session_id"] == old and not turn["recap"] and room.rp.resume_arg == old
+    assert SessionTable(s.tmp / "sessions.json").get("r")["session_id"] == old       # still the room's session
     reply, inbound = s.chan.replies[-1]
-    assert inbound == [f"relay-{row['id']}"] and "this room's process was closed" in reply      # the echo shows it
+    assert inbound == [f"relay-{row['id']}"] and not reply.startswith("echo: (Yerk AI:")  # no new-session note
+    assert s.chan.notices == []
     assert row["report"] not in reply and f"`yerk worker report {row['id']}`" in reply

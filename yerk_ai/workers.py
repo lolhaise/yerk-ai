@@ -23,7 +23,8 @@ daemon restarts.
   that line. The relay waits until the room is idle (no human message for 60 s and no turn running;
   the settled card carries the result meanwhile), runs alone (never folded into another turn, never
   merged with another relay; two completions are two relays, in order), and in a room whose process
-  is closed it opens a fresh session with a recap. The raw report never goes to the room.
+  is closed it resumes the room's own session, as any message does. The raw report never goes to
+  the room.
 - One heavy worker per account ([workers] per_account, default 1): a worker whose account is busy
   waits in line, its card saying "waiting for an account" and its place; the daemon starts it when
   the account frees. A worker that moves account mid-run is not built.
@@ -651,7 +652,7 @@ class Workers:
         self.ledger.worker_set(row["id"], relay="waiting" if busy or self.waiting.get(row["room"]) else "sent",
                                relay_note=f"inbound {mid}" + (f", waiting: {busy}" if busy else ""))
         self.ask(row["room"], Inbound(mid, "yerk", text, cap=self.conf.relay_reply, must=str(row["report"]), then=then,
-                                      alone=True, closed_recap=words.RELAY_RECAP))
+                                      alone=True))
         return ""
 
     # harness turns: one at a time per room, in order, each alone, when the room is idle
