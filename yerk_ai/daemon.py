@@ -11,6 +11,7 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import socket
 import sys
 import time
@@ -107,11 +108,20 @@ class Yerkd:
         return room
 
     # the MCP tools
+    def may_send(self, room: str, path: Path) -> bool:
+        """A file goes out only from the sending room's own folders (its layer, its work folder),
+        never from the private folder's secrets/, whatever the daemon itself can read."""
+        p = path.expanduser().resolve()
+        roots = [context.layer_dir(self.private, self.room_confs[room]), (self.state / "rooms" / room / "work").resolve()]
+        return any(p.is_relative_to(r) for r in roots) and not p.is_relative_to((self.private / "secrets").resolve())
+
     async def tool_send(self, room: str, text: str, file: str, caller: str) -> dict[str, Any]:
         if room not in self.rooms:
             return {"ok": False, "error": f"no room {room!r}; rooms: {', '.join(self.rooms)}"}
         if not text and not file:
             return {"ok": False, "error": "nothing to send: give text, a file, or both"}
+        if file and not self.may_send(caller if caller in self.rooms else room, Path(file)):
+            return {"ok": False, "error": f"{file} is outside this room's folders; only files from them can be sent"}
         ch = self.channels[room]
         try:
             ids = await (ch.send_file(room, Path(file), text) if file else ch.send_text(room, text))
@@ -133,9 +143,27 @@ class Yerkd:
         return hooks.user_prompt_submit(payload, self.state, self.room_confs,
                                         lambda r, p: self.rooms[r].meta_for(p), self.budgets)
 
+    async def control(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """`yerk room close ROOM`: close the room's process now unless a turn runs; the session stays."""
+        room = self.rooms.get(str(payload.get("close", "")))
+        if room is None:
+            return {"ok": False, "error": f"no room {payload.get('close')!r}; rooms: {', '.join(self.rooms)}"}
+        closed = await asyncio.to_thread(room.reap_idle, None, True)
+        return {"ok": True, "room": room.name, "closed": closed, "busy": room.busy}
+
+    def write_status(self, mode: str) -> None:
+        """state/yerkd.json: what is running, for `yerk room close` and the probes."""
+        path = self.state / "yerkd.json"
+        tmp = path.with_suffix(".tmp")
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
+            json.dump({"pid": os.getpid(), "port": self.port, "mode": mode, "started": round(time.time(), 3),
+                       "rooms": sorted(self.rooms)}, f)
+        os.replace(tmp, path)
+
     async def serve_http(self) -> None:
         import uvicorn
-        app = mcp_server.build(self, self.port, self.hook).streamable_http_app()
+        app = mcp_server.build(self, self.port, self.hook, self.control).streamable_http_app()
         self.http = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=self.port, log_level="warning"))
         await self.http.serve()
 
@@ -158,10 +186,12 @@ class Yerkd:
                 dc.add_room(int(cid), self.add_room(name, dc))
         if not dc.rooms:
             raise SystemExit("no room has a discord:<channel id> in rooms.toml")
+        self.write_status("discord")
         await asyncio.gather(self.serve_http(), self.reap(min(60.0, self.idle_seconds / 2)), dc.start())
 
     async def run_console(self, name: str) -> None:
         room = self.add_room(name, ConsoleChannel())
+        self.write_status("console")
         http = asyncio.create_task(self.serve_http())
         reaper = asyncio.create_task(self.reap(min(60.0, self.idle_seconds / 2)))
         await asyncio.sleep(0.5)

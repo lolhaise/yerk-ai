@@ -30,7 +30,10 @@ def caller_room(ctx: Context) -> str:
     return str(req.headers.get(ROOM_HEADER, "")) if req is not None else ""
 
 
-def build(daemon: Daemon, port: int, hook: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]) -> FastMCP:
+Handler = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
+
+
+def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = None) -> FastMCP:
     mcp = FastMCP("yerk", host="127.0.0.1", port=port, stateless_http=True, json_response=True, log_level="WARNING")
 
     @mcp.tool()
@@ -45,14 +48,18 @@ def build(daemon: Daemon, port: int, hook: Callable[[dict[str, Any]], Awaitable[
         line saying what you are waiting for, and make no more tool calls; the room hears when it happens."""
         return json.dumps(await daemon.tool_hold(caller_room(ctx), wait_for, reason))
 
-    @mcp.custom_route("/hook", methods=["POST"])
-    async def hook_route(request: Request) -> Response:
-        try:
-            payload = await request.json()
-        except ValueError:
-            return JSONResponse({}, status_code=400)
-        return JSONResponse(await hook(payload))
+    def route(path: str, handler: Handler) -> None:
+        @mcp.custom_route(path, methods=["POST"])
+        async def _route(request: Request) -> Response:
+            try:
+                payload = await request.json()
+            except ValueError:
+                return JSONResponse({}, status_code=400)
+            return JSONResponse(await handler(payload))
 
+    route("/hook", hook)
+    if control:
+        route("/control", control)      # `yerk room close`: local only, like everything here
     return mcp
 
 

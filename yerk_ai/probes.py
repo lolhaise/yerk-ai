@@ -223,10 +223,106 @@ def webhook_sender(url: str) -> Callable[[str], str]:
     return post
 
 
+def measure_script(layer: str, room: str) -> list[tuple[str, float | None]]:
+    """50 short varied asks: 40 start a turn, 10 are sent at second 3 of a running turn. Each
+    mid-turn message follows a turn of four separate tool calls, so that turn is still running."""
+    L, also = layer, 3.0
+    four = "as four separate calls, one at a time"
+    return [
+        ("Which units does the owner prefer? One line.", None),
+        ("One-line opinion: paper books or e-readers?", None),
+        (f"Read {L}/persona.md, {L}/rulebook.md, {L}/rooms/example-room.md and {L}/memory/open-loops.md {four}. "
+         "Then say in one line which one is shortest.", None),
+        ("Also, what is 7 times 6? Put it in the same reply.", also),
+        (f"Use Glob to list the .md files under {L}/memory/daily, then Read the oldest one. What was packed? One line.", None),
+        ("When is the weekly review? One line.", None),
+        (f"Use the send tool to post the file {L}/memory/pinned.md to room {room} with the caption pinned memory, "
+         "then reply SENT.", None),
+        (f"Read {L}/memory/daily/2026-01-05.md, {L}/memory/daily/2026-01-06.md, {L}/memory/daily/2026-01-07.md and "
+         f"{L}/memory/pinned.md {four}. Then name the daily note with the most entries, in one line.", None),
+        ("Also, which day of the week is it today, per the clock line?", also),
+        ("One line: coffee or tea for the morning?", None),
+        ("Call the hold tool with wait_for backup-finished and reason waiting on the nightly backup, then reply in one line.",
+         None),
+        ("How often does the plant need water? One line.", None),
+        (f"Grep for the word owner in {L}/persona.md, {L}/rulebook.md, {L}/rooms/example-room.md and {L}/memory/pinned.md "
+         f"{four}. Then say in one line how many files matched.", None),
+        ("And what is 12 plus 30? Same reply.", also),
+        (f"Read {L}/memory/open-loops.md, then Read {L}/memory/daily/2026-01-05.md. When is the library card due? One line.",
+         None),
+        ("One-line opinion: is a standing desk worth it?", None),
+        ("What time is it right now, per the clock line? One line.", None),
+        (f"Read {L}/rooms/example-room.md, {L}/rooms/example-quiet.md, {L}/persona.md and {L}/rulebook.md {four}. "
+         "Then tell me in one line which room is quieter.", None),
+        ("Also: when was the plant last watered? Same reply.", also),
+        ("What day of the week is the weekly review? One word.", None),
+        (f"Use the send tool to post the file {L}/memory/open-loops.md to room {room} with the caption open loops, "
+         "then reply SENT.", None),
+        (f"Use Glob for {L}/rooms/*.md, then Read the first file it lists. One line on what that room is for.", None),
+        (f"Read {L}/memory/daily/2026-01-07.md, {L}/memory/daily/2026-01-06.md, {L}/memory/daily/2026-01-05.md and "
+         f"{L}/memory/open-loops.md {four}. Then say in one line what is on the shopping list.", None),
+        ("Also, what is 9 times 9? Same reply.", also),
+        ("One line: run in the morning or the evening?", None),
+        ("Call the hold tool with wait_for report-ready and reason waiting on the weekly report, then reply in one line.",
+         None),
+        ("Is the owner on 12-hour or 24-hour time? One line.", None),
+        (f"Grep for the word list in {L}/memory/daily/2026-01-05.md, {L}/memory/daily/2026-01-06.md, "
+         f"{L}/memory/daily/2026-01-07.md and {L}/memory/open-loops.md {four}. Then one line: how many files matched?", None),
+        ("And in one word: is today a weekday or the weekend?", also),
+        (f"Read {L}/persona.md, then Grep {L}/rulebook.md for the word tables. One line: what does the rulebook say "
+         "about tables?", None),
+        ("One-line opinion: dishwasher or washing by hand?", None),
+        ("How long since my previous message, per the clock line? One line.", None),
+        (f"Read {L}/memory/pinned.md, {L}/memory/open-loops.md, {L}/rooms/example-room.md and "
+         f"{L}/rooms/example-quiet.md {four}. Then one line: which file mentions the 20th?", None),
+        ("Also, what is 100 minus 58? Same reply.", also),
+        ("What did the owner ask to move this week? Check the daily notes. One line.", None),
+        (f"Use the send tool to post the file {L}/rooms/example-room.md to room {room} with the caption room voice, "
+         "then reply SENT.", None),
+        (f"Use Glob to find the .md files under {L}/memory, then Read {L}/memory/pinned.md. One line: how many pinned "
+         "facts are there?", None),
+        (f"Read {L}/rulebook.md, {L}/persona.md, {L}/memory/pinned.md and {L}/memory/daily/2026-01-07.md {four}. "
+         "Then one line: which file says to name the source of any number?", None),
+        ("Also: which units does the owner prefer? Same reply.", also),
+        ("One line: cats or dogs?", None),
+        ("Call the hold tool with wait_for owner-reply and reason waiting on the owner's answer, then reply in one line.",
+         None),
+        ("When was the plant last watered, and when is it due next? One line.", None),
+        (f"Grep for the word Sunday in {L}/memory/pinned.md, {L}/memory/daily/2026-01-07.md, {L}/rulebook.md and "
+         f"{L}/persona.md {four}. Then one line: which files mention Sunday?", None),
+        ("And what is 6 times 8? Same reply.", also),
+        (f"Read {L}/memory/daily/2026-01-06.md, then Read {L}/memory/open-loops.md. One line: what should the owner "
+         "read next, per the notes?", None),
+        ("One-line opinion: is touch typing worth learning?", None),
+        ("Say today's date in ISO form, per the clock line.", None),
+        (f"Read {L}/rooms/example-quiet.md, {L}/rooms/example-room.md, {L}/memory/open-loops.md and {L}/memory/pinned.md "
+         f"{four}. Then one line: which file is shortest?", None),
+        ("Also, which day is the weekly review on? Same reply.", also),
+        ("Last one: say OK.", None),
+    ]
+
+
 def smoke(a: argparse.Namespace) -> dict[str, Any]:
-    """The same script through either channel; replies are judged from the ledgers, never from
-    what the channel printed. --via console: yerkd --console and stdin. --via discord: yerkd and
-    the room's test webhook (secrets/discord-test-webhook.url in the private folder)."""
+    """10 scripted messages, 2 of them mid-turn (`smoke_script`)."""
+    out = drive(a, smoke_script, pace=[1.0])
+    out["table"] = turn_table(Env(a), out["t0"], a.room, out["sent"])
+    return out
+
+
+def measure(a: argparse.Namespace) -> dict[str, Any]:
+    """50 scripted messages, 10 of them at second 3 of a running turn, at a human pace; the
+    per-turn table comes from the ledgers and the room's own event log."""
+    out = drive(a, measure_script, pace=[3.0, 4.0, 5.0])
+    out["table"] = turn_table(Env(a), out["t0"], a.room, out["sent"])
+    return out
+
+
+def drive(a: argparse.Namespace, script: Callable[[str, str], list[tuple[str, float | None]]],
+          pace: list[float]) -> dict[str, Any]:
+    """A script through either channel; replies are judged from the ledgers, never from what the
+    channel printed. --via console: yerkd --console and stdin. --via discord: the room's test
+    webhook (secrets/discord-test-webhook.url in the private folder), into a yerkd this starts,
+    or with --attach into the one already running on the same state folder."""
     import os
     import subprocess
     import sys
@@ -236,16 +332,22 @@ def smoke(a: argparse.Namespace) -> dict[str, Any]:
     priv = private_dir(a.private)
     layer = str(context.layer_dir(priv, rooms(priv)[a.room]))
     console = a.via == "console"
-    argv = [sys.executable, "-m", "yerk_ai.daemon", "--private", str(priv), "--state", str(env.state)]
-    argv += (["--console", a.room] if console else []) + (["--config-dir", a.config_dir] if a.only_account else [])
+    attach = bool(getattr(a, "attach", False)) and not console
+    proc: subprocess.Popen[str] | None = None
     errpath = env.logs / f"smoke-{a.via}-yerkd.stderr"
-    err = open(errpath, "w")
-    proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=open(env.logs / f"smoke-{a.via}-yerkd.stdout", "w"),
-                            stderr=err, text=True, env={**os.environ, "PYTHONUNBUFFERED": "1"})
+    if attach:
+        st = json.loads((env.state / "yerkd.json").read_text())
+        os.kill(int(st["pid"]), 0)                 # raises when no yerkd runs on this state folder
+    else:
+        argv = [sys.executable, "-m", "yerk_ai.daemon", "--private", str(priv), "--state", str(env.state)]
+        argv += (["--console", a.room] if console else []) + (["--config-dir", a.config_dir] if a.only_account else [])
+        err = open(errpath, "w")
+        proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=open(env.logs / f"smoke-{a.via}-yerkd.stdout", "w"),
+                                stderr=err, text=True, env={**os.environ, "PYTHONUNBUFFERED": "1"})
     t0 = time.time()
     post: Callable[[str], str]
     if console:
-        assert proc.stdin
+        assert proc and proc.stdin
         stdin = proc.stdin
 
         def to_stdin(text: str) -> str:
@@ -256,11 +358,13 @@ def smoke(a: argparse.Namespace) -> dict[str, Any]:
         time.sleep(1.0)
     else:
         post = webhook_sender((priv / "secrets" / "discord-test-webhook.url").read_text().strip())
-        while "discord: connected as" not in errpath.read_text() and time.time() - t0 < 60:
+        while not attach and "discord: connected as" not in errpath.read_text() and time.time() - t0 < 60:
             time.sleep(0.5)
+    scripted = "owner" if console else "test-webhook"
 
-    def mine() -> list[dict[str, Any]]:
-        rows = [r for r in env.ledger.rows(200, "inbound") if r["room"] == a.room and r["received"] >= t0]
+    def mine(sender: str | None = scripted) -> list[dict[str, Any]]:
+        rows = [r for r in env.ledger.rows(2000, "inbound") if r["room"] == a.room and r["received"] >= t0
+                and (sender is None or r["sender"] == sender)]
         return sorted(rows, key=lambda r: r["received"])
 
     sent: list[dict[str, Any]] = []
@@ -270,34 +374,105 @@ def smoke(a: argparse.Namespace) -> dict[str, Any]:
         while sum(r["state"] in DONE_STATES for r in mine()) < len(sent) and time.time() < end:
             time.sleep(0.3)
 
-    for text, delay in smoke_script(layer, a.room):
+    for i, (text, delay) in enumerate(script(layer, a.room)):
         if delay is None:
             wait_all()
+            if sent:
+                time.sleep(pace[i % len(pace)])
         else:
-            time.sleep(delay)
-        sent.append({"t": round(time.time(), 3), "id": post(text), "text": text[:80], "mid_turn": delay is not None})
+            time.sleep(max(0.0, sent[-1]["t"] + delay - time.time()))
+        prev = env.ledger.inbound_get(sent[-1]["id"]) if sent and sent[-1]["id"] else None
+        t = round(time.time(), 3)
+        sent.append({"t": t, "id": post(text), "text": text[:80], "mid_turn": delay is not None,
+                     "prev_state_at_send": prev["state"] if prev else None})
     wait_all()
-    if console and proc.stdin:
-        proc.stdin.close()
-    else:
-        proc.terminate()
-    rc = proc.wait(120)
-    err.close()
+    rc = None
+    if proc:
+        if console and proc.stdin:
+            proc.stdin.close()
+        else:
+            proc.terminate()
+        rc = proc.wait(120)
     inbound = mine()
-    turns = {r["id"]: r for r in env.ledger.rows(60)}
-    outbound = [r for r in env.ledger.rows(200, "outbound") if r["room"] == a.room and r["sent"] >= t0]
+    turns = {r["id"]: r for r in env.ledger.rows(2000)}
+    outbound = [r for r in env.ledger.rows(5000, "outbound") if r["room"] == a.room and r["sent"] >= t0]
     rows = [{k: r[k] for k in ("message_id", "state", "folded", "turn_id", "reply_ids")} for r in inbound]
     answered = sum(r["state"] == "answered" for r in inbound)
-    folds = [r for r, s in zip(inbound, sent) if s["mid_turn"]]
+    folds = [(r, s) for r, s in zip(inbound, sent) if s["mid_turn"]]
     folded_ok = [bool(r["folded"]) and r["state"] == "answered" and any(
-        x["turn_id"] == r["turn_id"] and not x["folded"] for x in inbound) for r in folds]
+        x["turn_id"] == r["turn_id"] and not x["folded"] for x in inbound) for r, _ in folds]
+    landed_mid_turn = [s["prev_state_at_send"] == "running" for _, s in folds]
     ids_match = console or [s["id"] for s in sent] == [r["message_id"] for r in inbound]
+    owner = [] if console else mine("owner")
     return {"ok": answered == len(sent) == len(inbound) and all(folded_ok) and ids_match, "rc": rc, "via": a.via,
-            "sent": sent, "inbound": rows, "answered": answered, "mid_turn_folded_into_running_turn": folded_ok,
+            "attach": attach, "t0": t0, "sent": sent, "inbound": rows, "answered": answered,
+            "mid_turn_landed_while_running": landed_mid_turn, "mid_turn_folded_into_running_turn": folded_ok,
+            "owner_messages": [{k: r[k] for k in ("message_id", "state", "folded", "turn_id")} for r in owner],
             "outbound": [{k: r[k] for k in ("kind", "message_id", "chars", "inbound", "error")} for r in outbound],
             "turns": [{k: turns[i][k] for k in ("id", "account", "outcome", "accepted", "models", "fallback_model",
                                                 "started", "first_visible", "ended", "inbound")}
-                      for i in sorted({r["turn_id"] for r in inbound if r["turn_id"]}) if i in turns]}
+                      for i in sorted({r["turn_id"] for r in inbound + owner if r["turn_id"]}) if i in turns]}
+
+
+def snowflake_time(mid: str) -> float | None:
+    """When Discord made a message, from its id (milliseconds since 2015)."""
+    return ((int(mid) >> 22) + 1420070400000) / 1000 if mid.isdigit() else None
+
+
+def stream_marks(log: Path) -> list[tuple[float, str]]:
+    """(time, kind) for every content block the model started, from a room's event log."""
+    out = []
+    if log.is_file():
+        for line in log.open():
+            r = json.loads(line)
+            e = (r.get("e") or {}).get("event") or {}
+            if e.get("type") == "content_block_start":
+                out.append((float(r["t"]), str((e.get("content_block") or {}).get("type"))))
+    return out
+
+
+def turn_table(env: Env, t0: float, room: str, sent: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
+    """One row per message since t0: when it was sent (the probe's clock; an owner message by its
+    Discord id), the turn that answered it, and from the message to: the card, its first visible
+    line (the progress edit), the first content block the model started, and the reply."""
+    sent_at = {s["id"]: s for s in sent or []}
+    inbound = sorted([r for r in env.ledger.rows(5000, "inbound") if r["room"] == room and r["received"] >= t0],
+                     key=lambda r: r["received"])
+    turns = {r["id"]: r for r in env.ledger.rows(5000) if r["room"] == room}
+    out_rows = sorted([r for r in env.ledger.rows(20000, "outbound") if r["room"] == room and r["sent"] >= t0],
+                      key=lambda r: r["sent"])
+    marks = stream_marks(env.state / "logs" / f"{room}.jsonl")
+    table = []
+    for n, m in enumerate(inbound, 1):
+        mid, s = str(m["message_id"]), sent_at.get(str(m["message_id"]))
+        t_msg = s["t"] if s else (snowflake_time(mid) or m["received"])
+        tr = turns.get(m["turn_id"]) or {}
+        reply = next((o for o in out_rows if o["kind"] in ("reply", "notice") and mid in str(o["inbound"] or "").split(",")),
+                     None)
+        end = reply["sent"] if reply else None
+
+        def first(kind: str, rows: list[dict[str, Any]] = out_rows) -> float | None:
+            o = next((o for o in rows if o["kind"] == kind and o["sent"] >= t_msg and (end is None or o["sent"] <= end)),
+                     None)
+            return o["sent"] if o else None
+        block = next((t for t, _ in marks if t >= t_msg and (end is None or t <= end)), None)
+        thinking = next((t for t, k in marks if k == "thinking" and t >= t_msg and (end is None or t <= end)), None)
+
+        def since(t: float | None) -> float | None:
+            return None if t is None else round(t - t_msg, 2)
+        table.append({
+            "n": n, "message_id": mid, "sender": m["sender"], "mid_turn": bool(s and s["mid_turn"]),
+            "text": s["text"] if s else "(owner message)", "folded": bool(m["folded"]), "state": m["state"],
+            "turn_id": m["turn_id"], "account": tr.get("account"), "models": tr.get("models"),
+            "fallback_model": tr.get("fallback_model"), "output_chars": tr.get("output_chars"),
+            "failure": tr.get("failure"), "accepted": tr.get("accepted"),
+            "to_ledger_s": since(m["received"]), "to_card_s": since(first("progress")),
+            "to_first_line_s": since(first("progress-edit")),
+            "to_first_stream_visible_s": since(tr.get("first_visible")) if (tr.get("first_visible") or 0) >= t_msg else None,
+            "to_first_block_s": since(block), "to_first_thinking_s": since(thinking), "to_reply_s": since(end),
+            "discord_minus_local_s": round(snowflake_time(mid) - s["t"], 3) if s and snowflake_time(mid) else None,
+        })
+    return table
 
 
 def resume(a: argparse.Namespace) -> dict[str, Any]:

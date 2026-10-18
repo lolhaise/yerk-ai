@@ -128,7 +128,8 @@ def test_card_is_edited_then_replaced_by_the_split_reply(dc):
     assert len(ids) == 3 and all(len(m.content) <= LIMIT for m in ch.sent[1:])
     assert ch.reactions == [(5, "-", ACK), (5, "+", DONE)]
     kinds = [(r["kind"], r["message_id"]) for r in sorted(d.ledger.rows(10, "outbound"), key=lambda r: r["id"])]
-    assert kinds[0] == ("progress", str(card.id)) and [k for k, _ in kinds[1:]] == ["reply"] * 3
+    assert kinds[:2] == [("progress", str(card.id)), ("progress-edit", str(card.id))]
+    assert [k for k, _ in kinds[2:]] == ["reply"] * 3
 
 
 def test_a_crash_redelivers_once_then_gives_up_visibly(dc):

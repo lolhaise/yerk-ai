@@ -164,6 +164,8 @@ class DiscordChannel:
                                          message_id=str(card.id), chars=len(text))
                 else:
                     await card.edit(content=text[:LIMIT])
+                    self.ledger.outbound(room=room, channel=str(card.channel.id), kind="progress-edit",
+                                         message_id=str(card.id), chars=len(text))
             except discord.HTTPException as e:
                 log.warning("progress in %s failed: %s", room, e)
 
@@ -218,14 +220,23 @@ class DiscordChannel:
         return [str(m.id)]
 
 
-async def setup_room(token: str, guild_id: int, name: str, webhook_name: str) -> dict[str, Any]:
-    """Find the text channel `name` in the guild (create it when absent) and its webhook
-    `webhook_name` (create it when absent). REST only, no gateway connection."""
+async def setup_room(token: str, guild_id: int, name: str, webhook_name: str,
+                     channel_id: int | None = None) -> dict[str, Any]:
+    """Find the text channel (by `channel_id` when given, which never creates one; else by `name`,
+    created when absent) and its webhook `webhook_name` (created when absent). REST only."""
     client = discord.Client(intents=discord.Intents.none())
     await client.login(token)
     try:
         guild = await client.fetch_guild(guild_id)
-        ch = next((c for c in await guild.fetch_channels() if c.name == name and isinstance(c, discord.TextChannel)), None)
+        ch: discord.TextChannel | None
+        if channel_id:
+            got = await client.fetch_channel(channel_id)
+            if not isinstance(got, discord.TextChannel) or got.guild.id != guild_id or got.name != name:
+                raise ValueError(f"channel {channel_id} is not the text channel {name!r} in guild {guild_id}")
+            ch = got
+        else:
+            ch = next((c for c in await guild.fetch_channels() if c.name == name and isinstance(c, discord.TextChannel)),
+                      None)
         created = ch is None
         if ch is None:
             ch = await guild.create_text_channel(name, reason="Yerk AI test room")

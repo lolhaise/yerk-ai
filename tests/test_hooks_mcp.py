@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 from starlette.testclient import TestClient
 
-from yerk_ai import hooks, mcp_server
+from yerk_ai import context, hooks, mcp_server
 from yerk_ai.config import EXAMPLE_PRIVATE, budgets, rooms
 from yerk_ai.daemon import ConsoleChannel, Yerkd
 from yerk_ai.engine import SessionTable
@@ -58,5 +58,11 @@ def test_send_and_hold(tmp_path, capsys):
     assert ok["ok"] and ok["message_ids"] and '"send": "PING"' in capsys.readouterr().out
     assert not asyncio.run(y.tool_send("not-a-room", "x", "", ""))["ok"]
     assert not asyncio.run(y.tool_send("example-room", "", str(tmp_path / "missing.png"), ""))["ok"]
-    held = asyncio.run(y.tool_hold("example-room", "worker-1", "waiting on the build"))
+    inside = context.layer_dir(y.private, y.room_confs["example-room"]) / "memory" / "pinned.md"
+    assert asyncio.run(y.tool_send("example-room", "pinned", str(inside), "example-room"))["ok"]
+    outside = tmp_path / "token.txt"
+    outside.write_text("not for the room")
+    refused = asyncio.run(y.tool_send("example-room", "", str(outside), "example-room"))
+    assert not refused["ok"] and "outside this room's folders" in refused["error"]
+    held =asyncio.run(y.tool_hold("example-room", "worker-1", "waiting on the build"))
     assert held["ok"] and y.ledger.rows(1, "holds")[0]["wait_for"] == "worker-1"

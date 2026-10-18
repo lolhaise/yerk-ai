@@ -90,11 +90,12 @@ class Room:
             m = self.seen.get(prompt.strip())
             return (m.sender, m.prev_human) if m else ("unknown", self.last_human)
 
-    def reap_idle(self, now: float | None = None) -> bool:
-        """Close the process after idle_seconds without a turn; the session stays bound."""
+    def reap_idle(self, now: float | None = None, force: bool = False) -> bool:
+        """Close the process after idle_seconds without a turn (at once with `force`, still never
+        mid-turn); the session stays bound."""
         now = time.time() if now is None else now
         with self.lock:
-            if self.busy or not self.rp or now - self.last_active < self.idle_seconds:
+            if self.busy or not self.rp or (not force and now - self.last_active < self.idle_seconds):
                 return False
             rp, self.rp = self.rp, None
         rp.close()
