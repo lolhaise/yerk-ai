@@ -269,9 +269,13 @@ def card_text(row: dict[str, Any], items: list[tuple[bool, str]], end: dict[str,
     extra = [f"account {row['account']}"] if accounts > 1 or look.footer == "full" else []
     if end is not None and end["exit"] == "did not start":
         when = ""                                        # it never ran: no time to tell
-    foot = ", ".join(x for x in [*([who] if end is None else []), when, *extra] if x)
-    if foot:
-        lines.append(words.SUB + foot)
+    foot: list[str] = []                                 # phone width: a part that does not fit starts a line
+    for x in (x for x in [*([who] if end is None else []), when, *extra] if x):
+        if foot and words.width(f"{foot[-1]}, {x}") <= words.PHONE:
+            foot[-1] += f", {x}"
+        else:
+            foot.append(x)
+    lines += [words.SUB + x for x in foot]
     if look.footer == "full" and row.get("model"):
         lines.append(words.SUB + f"model {row['model']}")
     if end is not None:

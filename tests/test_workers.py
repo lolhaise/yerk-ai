@@ -161,7 +161,8 @@ def test_start_writes_the_unit_and_the_ledger_row_and_posts_the_card_then_comple
         key, text, mid = s.chan.cards[0]
         assert key == f"worker:{wid}" and mid is None and text.splitlines()[0] == f"{W.WORKING} worker running, 0 of 3 done"
         assert text.splitlines()[1:4] == [f"{W.WORKING} plan", f"{W.WAITING} build", f"{W.WAITING} write up"]
-        assert text.splitlines()[-1] == f"-# worker {wid}, under 1 min of 65, account one" and "<t:" not in text   # 2 accounts
+        assert text.splitlines()[-2:] == [f"-# worker {wid}, under 1 min of 65", "-# account one"]   # 2 accounts, phone width
+    assert "<t:" not in text and all(W.width(x) <= W.PHONE for x in text.splitlines())
         assert workers.status_lines(s.ledger, s.units.running())[0] == f"{W.WORKING} worker {wid}: under 1 min of 65"
         assert workers.status_lines(s.ledger, s.units.running(), full=True)[0].startswith(f"worker {wid}: room r, account one")
         return wid, await ended(s.ledger, wid)

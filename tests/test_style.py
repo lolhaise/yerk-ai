@@ -301,6 +301,9 @@ def test_the_worker_card_honors_footer_paths_and_times():
     clock = workers.card_text(row, items, look=words.Look(times="clock"))
     assert re.search(r"-# worker abc123, started \d\d:\d\d, cap 15 min$", clock)
     assert workers.card_text(row, items, accounts=2).splitlines()[-1] == "-# worker abc123, 3 min of 15, account one"
+    fresh = workers.card_text(worker_row(cap=300, started=time.time() - 10), items, accounts=4)   # as it ran live
+    assert fresh.splitlines()[-2:] == ["-# worker abc123, under 1 min of 5", "-# account one"]
+    assert all(words.width(x) <= words.PHONE for x in fresh.splitlines())
     assert words.configure({"footer": "full"}) == words.Look(footer="full") == words.LOOK
     words.configure(None)
     assert words.LOOK == words.Look()
