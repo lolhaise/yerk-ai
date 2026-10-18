@@ -60,7 +60,27 @@ CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 CREATE INDEX IF NOT EXISTS chunks_sha ON chunks(sha);
 CREATE TABLE IF NOT EXISTS vectors (sha TEXT NOT NULL, model TEXT NOT NULL, dim INTEGER NOT NULL, vec BLOB NOT NULL,
                                     PRIMARY KEY (sha, model, dim));
+CREATE TABLE IF NOT EXISTS units (sha TEXT NOT NULL, chunk TEXT NOT NULL, body TEXT NOT NULL, PRIMARY KEY (chunk, sha));
+CREATE INDEX IF NOT EXISTS units_sha ON units(sha);
 """
+
+UNIT_MIN = 20                          # characters a line needs, past its bullet, to get a vector of its own
+UNITS_VERSION = "1"                    # the unit rule: a change here fills the units table again
+UNITS_FILL = 2000                      # chunks per transaction when the table is filled on first start
+
+
+def units_of(body: str) -> list[tuple[str, str]]:
+    """(sha, text) per line of a chunk that gets a vector of its own (a day-log line, a bullet of a
+    fact or topic file): every line whose text past its bullet or heading marks is UNIT_MIN
+    characters or more, once per distinct text. A chunk of one line yields that line, whose sha is
+    the chunk's own, so the two share one vector."""
+    out: dict[str, str] = {}
+    for line in body.splitlines():
+        text = line.strip()
+        if len(text.lstrip("-*#> ").strip()) < UNIT_MIN:
+            continue
+        out.setdefault(hashlib.sha1(text.encode()).hexdigest(), text)
+    return list(out.items())
 
 STOP = frozenset("""a about after again all also am an and any are as at be because been before being both
 but by can could did do does doing done for from get got had has have he her here him his how i if in into
@@ -226,11 +246,11 @@ def connect(db: Path, *, readonly: bool, deadline: float | None = None) -> sqlit
 class Index:
     """The writer. Only yerk-index holds one."""
 
-    def __init__(self, db: Path, scope: Scope, on_insert: Callable[[list[str]], None] | None = None):
+    def __init__(self, db: Path, scope: Scope, on_insert: Callable[[list[str], list[str]], None] | None = None):
         self.db, self.scope = db, scope
         self.real = live(db)
         self.disk: dict[str, tuple[int, int]] = {}      # the last pass's view of the disk
-        self.on_insert = on_insert                        # the hashes of chunks just written (the embedding thread)
+        self.on_insert = on_insert                        # (chunk hashes, unit hashes) just written: the embedding thread
         self.conn = connect(db, readonly=False)
         cur = self.conn.cursor()
         repaired = drop_orphan_shadow_tables(cur, ["chunks_fts"])
@@ -245,6 +265,34 @@ class Index:
         old = self.meta("scope")
         if old and old != scope.key():
             log.warning("index scope changed (%s -> %s): files out of scope go, new ones come in", old, scope.key())
+        filled = self.fill_units()
+        if filled:
+            log.info("units filled for %d chunks (the per-line vectors' table)", filled)
+
+    def fill_units(self) -> int:
+        """The units of every chunk already indexed, once (an index from before per-line vectors, or
+        a changed unit rule), in short transactions so a reader never waits. Chunks indexed from
+        now on write their units as they land."""
+        if self.meta("units") == UNITS_VERSION:
+            return 0
+        n = last = 0
+        while True:
+            rows = self.conn.execute("SELECT id, sha, body FROM chunks WHERE id > ? ORDER BY id LIMIT ?",
+                                     (last, UNITS_FILL)).fetchall()
+            if not rows:
+                break
+            self.conn.execute("BEGIN IMMEDIATE")
+            try:
+                self.conn.executemany("INSERT OR IGNORE INTO units(sha, chunk, body) VALUES (?, ?, ?)",
+                                      [(u, sha, t) for _, sha, body in rows for u, t in units_of(body)])
+                self.conn.execute("COMMIT")
+            except BaseException:
+                self.conn.execute("ROLLBACK")
+                raise
+            n += len(rows)
+            last = int(rows[-1][0])
+        self.set_meta(units=UNITS_VERSION)
+        return n
 
     def meta(self, key: str) -> str | None:
         row = self.conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
@@ -274,11 +322,15 @@ class Index:
             else:
                 ins.append((path, lo, hi, sha, body))
         dels = [(cid,) for kept in old.values() for cid, _, _ in kept]
+        gone = [sha for sha, kept in old.items() if kept]
+        units = [(u, sha, t) for _, _, _, sha, body in ins for u, t in units_of(body)]
         self.conn.execute("BEGIN IMMEDIATE")
         try:
             self.conn.executemany("DELETE FROM chunks WHERE id = ?", dels)
             self.conn.executemany("UPDATE chunks SET lo = ?, hi = ? WHERE id = ?", moves)
             self.conn.executemany("INSERT INTO chunks(path, lo, hi, sha, body) VALUES (?, ?, ?, ?, ?)", ins)
+            self.conn.executemany("INSERT OR IGNORE INTO units(sha, chunk, body) VALUES (?, ?, ?)", units)
+            self._drop_units(gone)
             self.conn.execute("INSERT INTO files(path, size, mtime_ns, chunks, indexed) VALUES (?, ?, ?, ?, ?) "
                               "ON CONFLICT(path) DO UPDATE SET size = excluded.size, mtime_ns = excluded.mtime_ns, "
                               "chunks = excluded.chunks, indexed = excluded.indexed",
@@ -288,14 +340,25 @@ class Index:
             self.conn.execute("ROLLBACK")
             raise
         if ins and self.on_insert:
-            self.on_insert([sha for _, _, _, sha, _ in ins])
+            self.on_insert([sha for _, _, _, sha, _ in ins], [u for u, _, _ in units])
         return len(ins), len(dels)
 
+    def _drop_units(self, shas: list[str]) -> None:
+        """The units of chunk texts no file holds any more (inside the caller's transaction)."""
+        self.conn.executemany("DELETE FROM units WHERE chunk = ? AND NOT EXISTS (SELECT 1 FROM chunks WHERE sha = ?)",
+                              [(sha, sha) for sha in shas])
+
     def forget(self, path: str) -> int:
+        shas = [str(r[0]) for r in self.conn.execute("SELECT DISTINCT sha FROM chunks WHERE path = ?", (path,))]
         self.conn.execute("BEGIN IMMEDIATE")
-        n = self.conn.execute("DELETE FROM chunks WHERE path = ?", (path,)).rowcount
-        self.conn.execute("DELETE FROM files WHERE path = ?", (path,))
-        self.conn.execute("COMMIT")
+        try:
+            n = self.conn.execute("DELETE FROM chunks WHERE path = ?", (path,)).rowcount
+            self.conn.execute("DELETE FROM files WHERE path = ?", (path,))
+            self._drop_units(shas)
+            self.conn.execute("COMMIT")
+        except BaseException:
+            self.conn.execute("ROLLBACK")
+            raise
         return n
 
     def sync(self) -> dict[str, int]:
@@ -359,7 +422,8 @@ def copy_vectors(conn: sqlite3.Connection, old: Path) -> int:
     try:
         try:
             n = conn.execute("INSERT OR IGNORE INTO vectors(sha, model, dim, vec) SELECT o.sha, o.model, o.dim, o.vec "
-                             "FROM old.vectors o WHERE o.sha IN (SELECT sha FROM chunks)").rowcount
+                             "FROM old.vectors o WHERE o.sha IN (SELECT sha FROM chunks) "
+                             "OR o.sha IN (SELECT sha FROM units)").rowcount
         except sqlite3.OperationalError as e:
             if "no such table" not in str(e):
                 raise
@@ -479,17 +543,18 @@ def main(argv: list[str] | None = None) -> int:
         rebuild(m.index_db, m.scope)
     from . import embeddings
     embedder = embeddings.Embedder(m.embeddings_key, m.embeddings_model, m.embeddings_dim)
-    store = embeddings.Vectors(m.embeddings_dim)
-    back = embeddings.Backfill(m.index_db, live, store, embedder)
+    store = embeddings.Vectors(m.embeddings_dim, m.embeddings_width)
+    back = embeddings.Backfill(m.index_db, live, store, embedder, units=m.embeddings_units)
     idx = Index(m.index_db, m.scope, on_insert=back.note)
     names = mentions.Builder(m.mentions, m.roots_for_mentions, m.curated, m.mentions_exclude)
     server = embeddings.Server(store, embedder, m.index_db, live)
     if not a.once:
-        loaded = store.load(idx.conn, m.embeddings_model)
+        loaded = store.load(idx.conn, m.embeddings_model, m.embeddings_units)
         port = server.start()
         back.start()
-        log.info("meaning search: %s; %d vectors loaded (%.1f MB); serving on 127.0.0.1:%d",
-                 "key present" if embedder.available() else "no key, keywords only", loaded, store.bytes() / 1e6, port)
+        log.info("meaning search: %s; %d vectors loaded (%s, %d of %d dimensions kept, %.1f MB); serving on 127.0.0.1:%d",
+                 "key present" if embedder.available() else "no key, keywords only", loaded, m.embeddings_units,
+                 store.width, m.embeddings_dim, store.bytes() / 1e6, port)
     stop = False
 
     def _stop(*_: Any) -> None:
@@ -518,7 +583,8 @@ def main(argv: list[str] | None = None) -> int:
             if not a.once:
                 embeddings.write_status(m.index_status, port=server.port, chunks=chunks,
                                         embeddings={"key": embedder.available(), "model": m.embeddings_model,
-                                                    "dim": m.embeddings_dim, "vectors": store.n, **back.status(),
+                                                    "dim": m.embeddings_dim, "vectors": store.n, "units": m.embeddings_units,
+                                                    "width": store.width, **back.status(),
                                                     "requests": embedder.requests, "tokens": embedder.tokens,
                                                     "rss_kb": embeddings.rss_kb(), "store_bytes": store.bytes()})
         except OSError as e:

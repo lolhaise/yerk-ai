@@ -985,10 +985,10 @@ layer = 4
 
 [abilities.embeddings]
 state = "built"
-what = "Meaning search behind the keywords: yerk-index embeds every chunk once (changed chunks only, the vector stored next to the chunk's hash, copied across a rebuild) and answers recall's query by cosine; recall fuses that rank with the keyword rank by reciprocal rank fusion, so a paraphrase finds the line its words never name."
+what = "Meaning search behind the keywords: yerk-index embeds every line of a day log and every bullet of a fact or topic file once (changed lines only, the vector stored next to the line's hash, copied across a rebuild) and answers recall's query by cosine, each hit mapped to its chunk; recall fuses that rank with the keyword rank by reciprocal rank fusion, holds each search's own first hits in the top six and gives a fact or topic file a small edge over a day log, so a paraphrase finds the line its words never name."
 tier = "key"
 provider = "OpenAI"
-model = "text-embedding-3-small at 256 dimensions (512 bytes a chunk in the index file)"
+model = "text-embedding-3-small at 256 dimensions, a vector per line and per bullet ([memory] embeddings_units = both, the line vectors and the chunk vectors together, measured best; lines or chunks alone are the alternatives), kept whole in memory as float16 (256 of 256 dimensions, 512 bytes a vector; [memory] embeddings_width narrows it): about 284,000 vectors for a 3,800-file tree, the index process under 300 MB resident"
 needs = "a provider key at secrets/openai.key in the private folder ([memory] embeddings_key in yerkd.toml names another path), read by yerk-index alone and never logged; numpy (installed with the package); a running yerk-index, which makes every provider call and serves the search on a local port"
 price = "$0.02 per 1M tokens (OpenAI's pricing page, read 2026-10-18): the whole memory tree once, then only changed chunks and one short query per recall"
 key = "put the key in the file, 0600; yerk-index picks it up on its next pass and backfills the tree in the background, resumable; remove the file and recall is keywords only again"

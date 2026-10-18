@@ -36,13 +36,14 @@ log = logging.getLogger("yerk.embeddings")
 MODEL = "text-embedding-3-small"
 DIM = 256
 URL = "https://api.openai.com/v1/embeddings"
-BATCH = 256              # chunks per request (the provider takes up to 2,048)
-TIMEOUT = 20.0           # seconds per backfill request
+BATCH = 1024             # texts per request (the provider takes up to 2,048; a line is short, so a batch is one request of ~70k tokens)
+TIMEOUT = 30.0           # seconds per backfill request
 QUERY_TIMEOUT = 4.0      # seconds for a query's one vector: a recall waits at most this, no retry
 RETRIES = 3              # the retry budget per backfill request, 1, 2 and 4 s apart
 PAUSE = 60.0             # seconds the backfill rests after a request spends its budget
 GAP = 0.25               # seconds between backfill requests: the provider and the CPU are shared
-BLOCK = 16384            # rows scored per step of the scan (float16 rows widened to float32 a block at a time)
+BLOCK = 16384            # rows per block of the store, and per step of the scan (float16 rows widened to float32 a block at a time)
+LOAD_ROWS = 4096         # rows fetched per step of the load: the temporary copies stay small, so the load peak stays near the steady size
 KEY_SHAPE = re.compile(r"sk-[A-Za-z0-9_-]{6,}")
 
 
@@ -139,62 +140,97 @@ def to_blob(vec: np.ndarray) -> bytes:
     return np.asarray(vec, dtype=np.float16).tobytes()
 
 
-class Vectors:
-    """Every stored vector in memory as one float16 matrix with its chunk hashes beside it. Readers
-    take the row count under the lock and scan up to it; a writer only appends past it (into spare
-    capacity, or into a fresh, larger array), so a scan never sees a half-written row."""
+UNITS = ("lines", "chunks", "both")     # what gets a vector in memory: the lines (and bullets), the chunks, or both
+UNIT_WHERE = {"lines": "EXISTS (SELECT 1 FROM units u WHERE u.sha = v.sha)",
+              "chunks": "EXISTS (SELECT 1 FROM chunks c WHERE c.sha = v.sha)"}
 
-    def __init__(self, dim: int = DIM):
+
+def unit_where(units: str) -> str:
+    if units not in UNITS:
+        raise ValueError(f"embeddings_units must be one of {', '.join(UNITS)}, not {units!r}")
+    return UNIT_WHERE.get(units) or f"({UNIT_WHERE['lines']} OR {UNIT_WHERE['chunks']})"
+
+
+class Vectors:
+    """Every served vector in memory, float16, in blocks of BLOCK rows with the hashes beside them.
+    Blocks are never reallocated: growth adds a block, so the store's resident size never doubles
+    while it grows (one matrix copied on growth did). Readers take the row count under the lock and
+    scan up to it; a writer only fills rows past it, so a scan never sees a half-written row.
+    `width` keeps the first `width` of each vector's `dim` dimensions, renormalised, which is the
+    provider's own rule for a shorter vector: a narrower store from the same vectors, no re-embedding."""
+
+    def __init__(self, dim: int = DIM, width: int | None = None):
         self.dim = dim
+        self.width = min(dim, width or dim)
         self.lock = threading.Lock()
-        self.mat = np.zeros((0, dim), dtype=np.float16)
-        self.shas = np.zeros(0, dtype="S40")
+        self.blocks: list[np.ndarray] = []
+        self.shas: list[np.ndarray] = []
         self.n = 0
 
-    def load(self, conn: sqlite3.Connection, model: str) -> int:
-        rows = conn.execute("SELECT sha, vec FROM vectors WHERE model = ? AND dim = ?", (model, self.dim)).fetchall()
-        if rows:
-            mat = np.stack([np.frombuffer(v, dtype=np.float16) for _, v in rows])
-            shas = np.array([s for s, _ in rows], dtype="S40")
-        else:
-            mat, shas = np.zeros((0, self.dim), dtype=np.float16), np.zeros(0, dtype="S40")
+    def narrow(self, vecs: np.ndarray) -> np.ndarray:
+        """(rows, width) float32 unit vectors from (rows, dim) ones."""
+        v = np.asarray(vecs, dtype=np.float32)[:, :self.width]
+        if self.width < self.dim:
+            norms = np.linalg.norm(v, axis=1, keepdims=True)
+            v = v / np.where(norms == 0, 1.0, norms)
+        return v
+
+    def _put(self, shas: list[str], vecs: np.ndarray) -> None:
+        v16 = self.narrow(vecs).astype(np.float16)
+        sh = np.frombuffer(b"".join(bytes.fromhex(s) for s in shas), dtype=np.uint8).reshape(len(shas), 20)
+        i = 0
+        while i < len(shas):
+            b, off = divmod(self.n, BLOCK)
+            if b == len(self.blocks):
+                self.blocks.append(np.zeros((BLOCK, self.width), dtype=np.float16))
+                self.shas.append(np.zeros((BLOCK, 20), dtype=np.uint8))
+            take = min(BLOCK - off, len(shas) - i)
+            self.blocks[b][off:off + take] = v16[i:i + take]
+            self.shas[b][off:off + take] = sh[i:i + take]
+            self.n += take
+            i += take
+
+    def load(self, conn: sqlite3.Connection, model: str, units: str = "both") -> int:
+        """Every stored vector of the chosen units, a block at a time (never the whole table at once)."""
+        cur = conn.execute(f"SELECT v.sha, v.vec FROM vectors v WHERE v.model = ? AND v.dim = ? AND {unit_where(units)}",
+                           (model, self.dim))
+        fresh = Vectors(self.dim, self.width)
+        while True:
+            rows = cur.fetchmany(LOAD_ROWS)
+            if not rows:
+                break
+            fresh._put([s for s, _ in rows], np.stack([np.frombuffer(v, dtype=np.float16) for _, v in rows]))
         with self.lock:
-            self.mat, self.shas, self.n = mat, shas, len(rows)
-        return len(rows)
+            self.blocks, self.shas, self.n = fresh.blocks, fresh.shas, fresh.n
+        return self.n
 
     def add(self, shas: list[str], vecs: np.ndarray) -> None:
         if not shas:
             return
         with self.lock:
-            need = self.n + len(shas)
-            if need > len(self.mat):
-                cap = max(need, len(self.mat) + len(self.mat) // 4 + 4096)
-                mat = np.zeros((cap, self.dim), dtype=np.float16)
-                mat[:self.n] = self.mat[:self.n]
-                sh = np.zeros(cap, dtype="S40")
-                sh[:self.n] = self.shas[:self.n]
-                self.mat, self.shas = mat, sh
-            self.mat[self.n:need] = vecs.astype(np.float16)
-            self.shas[self.n:need] = np.array(shas, dtype="S40")
-            self.n = need
+            self._put(shas, vecs)
 
     def search(self, q: np.ndarray, k: int) -> list[tuple[str, float]]:
-        """The k nearest stored vectors to the unit vector q: (chunk hash, cosine), best first."""
+        """The k nearest stored vectors to the unit vector q: (hash, cosine), best first."""
         with self.lock:
-            n, mat, shas = self.n, self.mat, self.shas
+            n, blocks, shas = self.n, self.blocks, self.shas
         if n == 0 or k <= 0:
             return []
-        qf = np.asarray(q, dtype=np.float32)
+        qf = self.narrow(np.asarray(q, dtype=np.float32)[None, :])[0]
         scores = np.empty(n, dtype=np.float32)
-        for i in range(0, n, BLOCK):
-            scores[i:i + BLOCK] = mat[i:min(i + BLOCK, n)].astype(np.float32) @ qf
+        for b, block in enumerate(blocks):
+            lo = b * BLOCK
+            if lo >= n:
+                break
+            hi = min(lo + BLOCK, n)
+            scores[lo:hi] = block[:hi - lo].astype(np.float32) @ qf
         k = min(k, n)
         top = np.argpartition(-scores, k - 1)[:k]
         top = top[np.argsort(-scores[top], kind="stable")]
-        return [(shas[i].decode(), float(scores[i])) for i in top]
+        return [(shas[i // BLOCK][i % BLOCK].tobytes().hex(), float(scores[i])) for i in top]
 
     def bytes(self) -> int:
-        return int(self.mat.nbytes + self.shas.nbytes)
+        return sum(int(b.nbytes) for b in self.blocks) + sum(int(s.nbytes) for s in self.shas)
 
 
 def rss_kb() -> int:
@@ -240,17 +276,21 @@ class Server:
         marks = ",".join("?" * len(score))
         conn = sqlite3.connect(f"file:{self.live(self.db)}?mode=ro", uri=True, timeout=2.0)
         try:
-            rows = conn.execute(f"SELECT id, path, lo, hi, body, sha FROM chunks WHERE sha IN ({marks})",
-                                list(score)).fetchall()
+            # a hash is a line's (through units) or a chunk's own; a chunk keeps its best line's cosine
+            rows = conn.execute(f"SELECT c.id, c.path, c.lo, c.hi, c.body, u.sha FROM units u JOIN chunks c ON c.sha = u.chunk "
+                                f"WHERE u.sha IN ({marks}) UNION ALL SELECT id, path, lo, hi, body, sha FROM chunks "
+                                f"WHERE sha IN ({marks})", list(score) * 2).fetchall()
         finally:
             conn.close()
-        hits = [{"id": cid, "path": p, "line": lo, "lines": f"{lo}-{hi}", "text": body, "score": round(score[sha], 4)}
-                for cid, p, lo, hi, body, sha in rows]
-        hits.sort(key=lambda h: -h["score"])
+        best: dict[int, dict[str, Any]] = {}
+        for cid, p, lo, hi, body, sha in rows:
+            if cid not in best or score[sha] > best[cid]["score"]:
+                best[cid] = {"id": cid, "path": p, "line": lo, "lines": f"{lo}-{hi}", "text": body, "score": round(score[sha], 4)}
+        hits = sorted(best.values(), key=lambda h: -h["score"])[:max(1, min(int(pool), 400))]
         return {"ok": True, "status": "ok", "hits": hits, "vectors": self.store.n}
 
     def status(self) -> dict[str, Any]:
-        return {"vectors": self.store.n, "model": self.embedder.model, "dim": self.embedder.dim,
+        return {"vectors": self.store.n, "model": self.embedder.model, "dim": self.embedder.dim, "width": self.store.width,
                 "key": self.embedder.available(), "queries": self.queries, "requests": self.embedder.requests,
                 "tokens": self.embedder.tokens, "rss_kb": rss_kb(), "store_bytes": self.store.bytes()}
 
@@ -302,8 +342,11 @@ class Backfill:
     batch is committed as it lands and a restart asks the index what is still missing. Shared with
     the writer through `pending` (hashes of chunks just inserted) and `dirty` (scan again)."""
 
-    def __init__(self, db: Path, live: Any, store: Vectors, embedder: Embedder, batch: int = BATCH, gap: float = GAP):
+    def __init__(self, db: Path, live: Any, store: Vectors, embedder: Embedder, batch: int = BATCH, gap: float = GAP,
+                 units: str = "both"):
         self.db, self.live, self.store, self.embedder, self.batch, self.gap = db, live, store, embedder, batch, gap
+        self.units = units
+        unit_where(units)
         self.pending: list[str] = []
         self.lock = threading.Lock()
         self.dirty = threading.Event()
@@ -317,10 +360,11 @@ class Backfill:
         self.conn: sqlite3.Connection | None = None
         self.real: Path | None = None
 
-    def note(self, shas: list[str]) -> None:
-        """The writer's new chunk hashes: embedded next, before any scan."""
+    def note(self, chunks: list[str], units: list[str] | None = None) -> None:
+        """The writer's new chunk and unit hashes: the ones this store serves are embedded next, before any scan."""
+        want = (units or [] if self.units != "chunks" else []) + (chunks if self.units != "lines" else [])
         with self.lock:
-            self.pending.extend(shas)
+            self.pending.extend(want)
 
     def _conn(self) -> sqlite3.Connection:
         """This thread's own writer connection; after a rebuild swapped the link it moves to the new
@@ -338,15 +382,24 @@ class Backfill:
         return self.conn
 
     def missing(self, conn: sqlite3.Connection, limit: int) -> list[str]:
-        return [r[0] for r in conn.execute(
-            "SELECT c.sha FROM chunks c WHERE NOT EXISTS (SELECT 1 FROM vectors v WHERE v.sha = c.sha AND v.model = ? "
-            "AND v.dim = ?) GROUP BY c.sha ORDER BY max(c.id) DESC LIMIT ?", (self.embedder.model, self.embedder.dim, limit)).fetchall()]
+        """Hashes the store serves that have no vector yet, newest chunk first."""
+        none = "NOT EXISTS (SELECT 1 FROM vectors v WHERE v.sha = {sha} AND v.model = ? AND v.dim = ?)"
+        lines = ("SELECT u.sha AS sha, max(c.id) AS o FROM units u JOIN chunks c ON c.sha = u.chunk WHERE "
+                 + none.format(sha="u.sha") + " GROUP BY u.sha")
+        chunks = "SELECT c.sha AS sha, max(c.id) AS o FROM chunks c WHERE " + none.format(sha="c.sha") + " GROUP BY c.sha"
+        parts = {"lines": [lines], "chunks": [chunks], "both": [lines, chunks]}[self.units]
+        args = (self.embedder.model, self.embedder.dim) * len(parts)
+        return [r[0] for r in conn.execute("SELECT sha FROM (" + " UNION ALL ".join(parts) + ") ORDER BY o DESC LIMIT ?",
+                                           (*args, limit)).fetchall()]
 
     def take(self, conn: sqlite3.Connection) -> list[str]:
         with self.lock:
             batch, self.pending = self.pending[:self.batch], self.pending[self.batch:]
         if not batch and self.dirty.is_set():
-            batch = self.missing(conn, self.batch)
+            found = self.missing(conn, self.batch * 8)        # one scan feeds several batches
+            batch = found[:self.batch]
+            with self.lock:
+                self.pending.extend(found[self.batch:])
             if not batch:
                 self.dirty.clear()
         return list(dict.fromkeys(batch))
@@ -361,8 +414,11 @@ class Backfill:
         marks = ",".join("?" * len(shas))
         have = {r[0] for r in conn.execute(f"SELECT sha FROM vectors WHERE sha IN ({marks}) AND model = ? AND dim = ?",
                                            (*shas, self.embedder.model, self.embedder.dim))}
-        rows = conn.execute(f"SELECT sha, min(body) FROM chunks WHERE sha IN ({marks}) GROUP BY sha", shas).fetchall()
-        rows = [(s, b) for s, b in rows if s not in have]
+        texts: dict[str, str] = {}
+        for s, b in conn.execute(f"SELECT sha, min(body) FROM units WHERE sha IN ({marks}) GROUP BY sha UNION ALL "
+                                 f"SELECT sha, min(body) FROM chunks WHERE sha IN ({marks}) GROUP BY sha", shas * 2):
+            texts.setdefault(s, b)
+        rows = [(s, b) for s, b in texts.items() if s not in have]
         if not rows:
             return 0
         vecs = self.embedder.embed([b for _, b in rows])
