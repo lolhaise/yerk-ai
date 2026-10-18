@@ -19,9 +19,18 @@ daemon restarts.
   EXIT_STATUS) and the same watch sees it. The card settles with the outcome in plain words
   (finished clean, stopped: timed out, stopped by the owner, died: why, lost), the report's first
   line and "report saved" with `yerk worker report <id>`, where the path and the unit's exit live;
-  then, when the room is idle (no human message for 60 s and no turn running), ONE relay turn in the
-  room's own session tells the outcome under 1,500 characters ending with that line; otherwise the
-  relay is skipped and ledgered with why. The raw report never goes to the room.
+  then ONE relay turn in the room's own session tells the outcome under 1,500 characters ending with
+  that line. The relay waits until the room is idle (no human message for 60 s and no turn running;
+  the settled card carries the result meanwhile), runs alone (never folded into another turn, never
+  merged with another relay; two completions are two relays, in order), and in a room whose process
+  is closed it resumes the room's own session, as any message does. The raw report never goes to
+  the room.
+- One heavy worker per account ([workers] per_account, default 1): a worker whose account is busy
+  waits in line, its card saying "waiting for an account" and its place; the daemon starts it when
+  the account frees. A worker that moves account mid-run is not built.
+- Tools: none from Yerk AI by default. [workers] yerk_tools may give it the read-only ones (recall,
+  read_memory, nothing else) through its own stdio MCP server, which has no send, hold, worker or
+  schedule tool to give.
 - A daemon start re-attaches from the ledger and the unit list: a running unit gets its watch and its
   card back, one that ended while the daemon was away completes, one that vanished settles as lost.
 """
@@ -58,6 +67,8 @@ TOOLS = ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "WebFetch", "WebSearch
 ENV_KEEP = ("PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "TZ", "TMPDIR",
             "XDG_RUNTIME_DIR")                 # what claude gets from the unit's environment; the rest stays out
 TICK = re.compile(r"^\s*[-*+]\s*\[([ xX])\]\s*(.+?)\s*$")
+WORKER_TOOLS = ("recall", "read_memory")       # the only Yerk AI tools a worker may get: read-only
+PUMP_EVERY = 5.0                               # seconds between looks for an idle room with a relay waiting
 
 
 @dataclass
@@ -72,6 +83,8 @@ class Settings:
     idle_seconds: float = 60.0          # the relay runs only after this long without a human message
     relay_message: int = 1500           # budgets.toml [relay]
     relay_reply: int = 1500
+    per_account: int = 1                # heavy workers at once on one account; the next waits in line
+    yerk_tools: list[str] = field(default_factory=list)   # read-only Yerk AI tools (WORKER_TOOLS); none by default
 
 
 def settings(state: Path, conf: dict[str, Any], budgets: dict[str, Any] | None = None) -> Settings:
@@ -81,7 +94,27 @@ def settings(state: Path, conf: dict[str, Any], budgets: dict[str, Any] | None =
                     account=str(conf.get("account", "")), tools=list(conf.get("tools", TOOLS)),
                     permission_mode=str(conf.get("permission_mode", "bypassPermissions")),
                     idle_seconds=float(conf.get("idle_seconds", 60.0)),
-                    relay_message=int(relay.get("message", 1500)), relay_reply=int(relay.get("reply", 1500)))
+                    relay_message=int(relay.get("message", 1500)), relay_reply=int(relay.get("reply", 1500)),
+                    per_account=max(1, int(conf.get("per_account", 1))), yerk_tools=yerk_tools(conf))
+
+
+def yerk_tools(conf: dict[str, Any]) -> list[str]:
+    """[workers] yerk_tools, kept to WORKER_TOOLS: any other name (send, hold, worker, schedule) is
+    dropped with a warning, never given."""
+    want = [str(t).removeprefix("mcp__yerk__") for t in conf.get("yerk_tools", [])]
+    for t in want:
+        if t not in WORKER_TOOLS:
+            log.warning("workers: yerk_tools %r is not given to a worker; only %s are", t, ", ".join(WORKER_TOOLS))
+    return [t for t in WORKER_TOOLS if t in want]
+
+
+def mcp_config(state: Path, room: str, tools: list[str], path: Path) -> Path:
+    """A worker's --mcp-config: its own stdio server (mcp_server.py `worker`) with only `tools`."""
+    args = ["-P", "-m", "yerk_ai.mcp_server", "worker", str(state), room, ",".join(tools)]
+    cfg = {"mcpServers": {"yerk": {"type": "stdio", "command": sys.executable, "args": args,
+                                   "env": {"PYTHONPATH": str(PACKAGE.parent)}}}}
+    path.write_text(json.dumps(cfg, indent=1))
+    return path
 
 
 # the unit
@@ -136,6 +169,9 @@ def run(spec_path: Path) -> int:
             "--session-id", str(spec["session_id"]), "--setting-sources", "", "--strict-mcp-config",
             "--tools", ",".join(spec["tools"]), "--disallowedTools", "Agent", "--permission-mode",
             str(spec["permission_mode"])]
+    if spec.get("mcp_config") and spec.get("yerk_tools"):     # only the read-only tools, from its own server
+        argv += ["--mcp-config", str(spec["mcp_config"]),
+                 "--allowedTools", ",".join(f"mcp__yerk__{t}" for t in spec["yerk_tools"] if t in WORKER_TOOLS)]
     fd = os.open(spec["prompt"], os.O_RDONLY)
     os.dup2(fd, 0)
     os.close(fd)
@@ -246,6 +282,12 @@ def card_text(row: dict[str, Any], items: list[tuple[bool, str]], end: dict[str,
     ticked = sum(1 for t, _ in items if t)
     started, cap = float(row["started"]), float(row["cap"])
     who = words.WORKER.format(id=row["id"])
+    if end is None and row.get("waiting"):               # in line for its account: no time against the cap yet
+        lines = [words.line(f"{words.WORKING} {words.WORKER_HEAD.format(state=words.WAITING_ACCOUNT)}"),
+                 words.line(f"{words.WAITING} " + words.IN_LINE.format(nth=words.nth(int(row.get("line") or 1)),
+                                                                        name=row["account"]))]
+        lines += [words.line(f"{words.WAITING} {text}") for _, text in items[-ROWS_SHOWN:]]
+        return "\n".join([*lines, words.SUB + who])
     if end is None:
         mark, state = words.outcome("ticking" if items else "running", ticked=ticked, rows=len(items))
         when = (words.of_cap(now - started, cap) if look.times == "relative"
@@ -323,8 +365,9 @@ class Workers:
 
     def __init__(self, ledger: Ledger, conf: Settings, accounts: list[Account], cooldowns: Cooldowns,
                  rooms: dict[str, Any], channels: dict[str, Any], room_confs: dict[str, dict[str, Any]],
-                 launcher: Launcher | None = None):
+                 launcher: Launcher | None = None, state: Path | None = None):
         self.ledger, self.conf, self.accounts, self.cooldowns = ledger, conf, accounts, cooldowns
+        self.state = state or conf.root.parent             # the daemon's state folder (a worker's tools reach it)
         self.rooms, self.channels, self.room_confs = rooms, channels, room_confs
         self.launcher: Launcher = launcher or Systemd()
         self.watch: Watch | None = None
@@ -333,8 +376,14 @@ class Workers:
         # completion hooks (jobs.py): each gets (row, end) after the card settles; True means it
         # delivered the result itself, so the default relay does not run
         self.hooks: list[Callable[[dict[str, Any], dict[str, Any]], Awaitable[bool]]] = []
+        # harness turns waiting for an idle room (relays, a watcher's events): in order, one at a time
+        self.waiting: dict[str, list[Inbound]] = {}
+        self.asked: dict[str, str] = {}                 # room -> the harness turn it is running now
+        self.loop: asyncio.AbstractEventLoop | None = None
 
     def begin(self, loop: asyncio.AbstractEventLoop) -> None:
+        self.loop = loop
+        self._spawn(self._pumper())
         try:
             self.watch = Watch(loop, self._changed)
         except OSError as e:                             # no inotify: the minute backstop still completes them
@@ -397,7 +446,8 @@ class Workers:
         return pick(self.accounts, self.cooldowns) if self.accounts else None
 
     async def start(self, room: str, brief: str = "", brief_file: str = "", account: str = "", model: str = "",
-                    cap_minutes: float = 0.0, tasks: list[str] | None = None, job: str = "") -> dict[str, Any]:
+                    cap_minutes: float = 0.0, tasks: list[str] | None = None, job: str = "",
+                    watch: int = 0) -> dict[str, Any]:
         if room not in self.rooms:
             return {"ok": False, "error": f"no room {room!r}; rooms: {', '.join(self.rooms)}"}
         if brief_file and not brief:
@@ -438,17 +488,55 @@ class Workers:
                 "claude": shutil.which(claude_bin()) or claude_bin(), "tools": self.conf.tools,
                 "permission_mode": self.conf.permission_mode, "prompt": str(prompt), "report": str(report),
                 "tasks": str(tasks_md), "cap": cap}
+        if self.conf.yerk_tools:
+            spec["yerk_tools"] = list(self.conf.yerk_tools)
+            spec["mcp_config"] = str(mcp_config(self.state, room, self.conf.yerk_tools, d / "mcp.json"))
         (d / "worker.json").write_text(json.dumps(spec, indent=1))
+        now = round(time.time(), 3)
+        busy = self.busy(acct.name)
         row: dict[str, Any] = {"id": wid, "room": room, "account": acct.name, "unit": f"{UNIT}{wid}", "model": model,
                "session_id": sid, "brief": brief_file or str(d / "BRIEF.md"), "staging": str(d),
-               "report": str(report), "tasks": str(tasks_md), "cap": cap, "started": round(time.time(), 3),
-               "job": job or None}
+               "report": str(report), "tasks": str(tasks_md), "cap": cap, "started": now,
+               "job": job or None, "watch": watch or None}
+        if busy >= self.conf.per_account:                   # one heavy worker per account: this one waits
+            row.update(queued=now, waiting=1)
         self.ledger.worker_add(**row)
         row["card"] = None
         self.live[wid] = row
         if self.watch:
             self.watch.add(d)
+        out = {"ok": True, "id": wid, "unit": row["unit"], "room": room, "account": acct.name, "model": model,
+               "staging": str(d), "report": str(report), "tasks": str(tasks_md), "cap_minutes": cap / 60}
+        if row.get("waiting"):
+            row["line"] = len(self.in_line(acct.name))
+            await self._show(row)
+            log.info("worker %s: waiting for account %s (%s in line)", wid, acct.name, words.nth(row["line"]))
+            return {**out, "waiting": words.WAITING_ACCOUNT, "line": row["line"], "card": row["card"]}
         await self._show(row)
+        why = await self._launch(row)
+        if why:
+            return {"ok": False, "id": wid, "error": f"the unit did not start: {why}"}
+        return {**out, "card": row["card"]}
+
+    def busy(self, account: str) -> int:
+        """Workers running now on `account` (not the ones in line)."""
+        return sum(1 for r in self.live.values() if r["account"] == account and not r.get("waiting"))
+
+    def in_line(self, account: str) -> list[dict[str, Any]]:
+        return sorted((r for r in self.live.values() if r["account"] == account and r.get("waiting")),
+                      key=lambda r: (float(r.get("queued") or 0), r["id"]))
+
+    async def _launch(self, row: dict[str, Any]) -> str:
+        """The unit, now; "" or why it did not start (then the worker is settled as such)."""
+        acct = next((a for a in self.accounts if a.name == row["account"]), None)
+        d, wid, cap = Path(row["staging"]), str(row["id"]), float(row["cap"])
+        if row.get("waiting"):
+            row.update(waiting=0, started=round(time.time(), 3))
+            self.ledger.worker_set(wid, waiting=0, started=row["started"])
+            await self._show(row)
+        if acct is None:
+            await self.complete(wid, failed=f"no account {row['account']!r}")
+            return f"no account {row['account']!r}"
         env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "PYTHONPATH": str(PACKAGE.parent),
                "CLAUDE_CONFIG_DIR": str(acct.config_dir)}
         if acct.token_file and acct.token_file.is_file():
@@ -459,11 +547,20 @@ class Workers:
                                     d / "stdout.jsonl", d / "stderr.log", cap, [*me, "post", str(d)])
         except (OSError, subprocess.SubprocessError) as e:
             await self.complete(wid, failed=str(e))
-            return {"ok": False, "id": wid, "error": f"the unit did not start: {e}"}
-        log.info("worker %s: started in %s on %s (%s), cap %g min", wid, room, acct.name, model, cap / 60)
-        return {"ok": True, "id": wid, "unit": row["unit"], "room": room, "account": acct.name, "model": model,
-                "staging": str(d), "report": str(report), "tasks": str(tasks_md), "cap_minutes": cap / 60,
-                "card": row["card"]}
+            return str(e)
+        log.info("worker %s: started in %s on %s (%s), cap %g min", wid, row["room"], acct.name, row["model"], cap / 60)
+        return ""
+
+    async def next_in_line(self) -> None:
+        """Start the first worker in line on every account that has room, then tell the rest their place."""
+        for acct in {str(r["account"]) for r in self.live.values() if r.get("waiting")}:
+            line = self.in_line(acct)
+            while line and self.busy(acct) < self.conf.per_account:
+                await self._launch(line.pop(0))
+            for i, r in enumerate(line, 1):
+                if r.get("line") != i:
+                    r["line"] = i
+                    await self._show(r)
 
     async def stop(self, wid: str) -> dict[str, Any]:
         row = self.ledger.worker_get(wid)
@@ -472,6 +569,9 @@ class Workers:
         if row["finished"]:
             return {"ok": False, "error": f"worker {wid} already ended: {row['exit']}"}
         self.ledger.worker_set(wid, stop_requested=round(time.time(), 3))
+        if (self.live.get(wid) or row).get("waiting"):      # still in line: no unit to stop
+            await self.complete(wid)
+            return {"ok": True, "id": wid, "stopped": "it was still waiting for an account"}
         await asyncio.to_thread(self.launcher.stop, row["unit"])
         log.info("worker %s: stop asked", wid)
         return {"ok": True, "id": wid, "stopping": row["unit"]}
@@ -514,41 +614,82 @@ class Workers:
         row["job"] = row.get("job") or fresh.get("job")
         await self._show(row, end)
         log.info("worker %s: %s (%s)", wid, state, detail)
-        for hook in self.hooks:
-            try:
-                if await hook(row, end):
-                    return
-            except Exception:                                # a hook that fails never loses the relay
-                log.exception("worker %s: a completion hook failed", wid)
-        await self.relay(row, end)
+        try:
+            for hook in self.hooks:
+                try:
+                    if await hook(row, end):
+                        return
+                except Exception:                            # a hook that fails never loses the relay
+                    log.exception("worker %s: a completion hook failed", wid)
+            await self.relay(row, end)
+        finally:
+            await self.next_in_line()                        # the account is free: the next in line starts
 
     async def relay(self, row: dict[str, Any], end: dict[str, Any], text: str | None = None,
                     after: Callable[[str, list[str], int], None] | None = None) -> str:
-        """ONE short turn in the room's own session when the room is idle; else skipped, with why
-        (returned; "" when the turn was asked). `text` replaces the harness line (a job's result);
+        """ONE short turn in the room's own session, alone, once the room is idle (the settled card
+        carries the result meanwhile); skipped, with why, only when it cannot run at all (returned;
+        "" when the turn is asked or waiting). `text` replaces the harness line (a job's result);
         `after` hears how the turn ended, after the ledger does."""
         room = self.rooms.get(row["room"])
-        why = "no such room in this daemon" if room is None else room.idle_reason(self.conf.idle_seconds)
+        why = "no such room in this daemon" if room is None else ""
         if end["exit"] == "did not start":
             why = "the unit never started; the card says so"
         if why:
             self.ledger.worker_set(row["id"], relay="skipped", relay_note=why)
             log.info("worker %s: relay skipped: %s", row["id"], why)
             return why
-        assert room is not None
         text = text or relay_text(row, end, self.conf.relay_message)
         mid = f"relay-{row['id']}"
         self.ledger.inbound_add(mid, row["room"], "worker", "yerk", len(text))
-        self.ledger.worker_set(row["id"], relay="sent", relay_note=f"inbound {mid}")
 
         def then(state: str, ids: list[str], chars: int) -> None:
             self.ledger.worker_set(row["id"], relay="relayed" if state == "answered" else "failed", relay_chars=chars,
                                    relay_note=f"inbound {mid}, {state}, message(s) {','.join(ids)}")
             if after:
                 after(state, ids, chars)
-        room.submit(Inbound(mid, "yerk", text, cap=self.conf.relay_reply, must=str(row["report"]), then=then))
-        log.info("worker %s: relay turn asked in %s", row["id"], row["room"])
+        busy = room.idle_reason(self.conf.idle_seconds) if room is not None else ""
+        self.ledger.worker_set(row["id"], relay="waiting" if busy or self.waiting.get(row["room"]) else "sent",
+                               relay_note=f"inbound {mid}" + (f", waiting: {busy}" if busy else ""))
+        self.ask(row["room"], Inbound(mid, "yerk", text, cap=self.conf.relay_reply, must=str(row["report"]), then=then,
+                                      alone=True))
         return ""
+
+    # harness turns: one at a time per room, in order, each alone, when the room is idle
+    def ask(self, room: str, msg: Inbound) -> None:
+        """Queue a harness turn for `room`; it runs when the room is idle and no other harness turn
+        of this daemon is running there."""
+        self.waiting.setdefault(room, []).append(msg)
+        self.pump(room)
+
+    def pump(self, name: str) -> None:
+        q, room = self.waiting.get(name), self.rooms.get(name)
+        if not q or room is None or self.asked.get(name):
+            return
+        why = room.idle_reason(self.conf.idle_seconds)
+        if why:
+            return
+        msg = q.pop(0)
+        done = msg.then
+
+        def then(state: str, ids: list[str], chars: int) -> None:
+            if done:
+                done(state, ids, chars)
+            self.asked.pop(name, None)
+            if self.loop is not None:                    # the room's thread: the next one from the loop
+                self.loop.call_soon_threadsafe(self.pump, name)
+        msg.then = then
+        self.asked[name] = msg.id
+        if msg.id.startswith("relay-"):
+            self.ledger.worker_set(msg.id.removeprefix("relay-"), relay="sent", relay_note=f"inbound {msg.id}")
+        room.submit(msg)
+        log.info("harness turn %s asked in %s", msg.id, name)
+
+    async def _pumper(self) -> None:
+        while True:
+            await asyncio.sleep(PUMP_EVERY)
+            for name in list(self.waiting):
+                self.pump(name)
 
     # after a daemon start, and the minute backstop
     async def reattach(self) -> None:
@@ -576,6 +717,12 @@ class Workers:
         rows = self.ledger.workers(running=True)
         for row in rows:
             d = Path(row["staging"])
+            if row.get("waiting"):                       # still in line: no unit yet, back in line
+                self.live[row["id"]] = row
+                if self.watch:
+                    self.watch.add(d)
+                log.info("worker %s: back in line for account %s", row["id"], row["account"])
+                continue
             if (units is None or row["unit"] in units) and not (d / EXIT).is_file():
                 self.live[row["id"]] = row
                 if self.watch:
@@ -588,11 +735,18 @@ class Workers:
                 await self.complete(row["id"], lost=not (d / EXIT).is_file())
         for u in sorted((units or set()) - {r["unit"] for r in rows}):
             log.warning("workers: unit %s is not in the ledger; left alone", u)
+        for i, r in enumerate(sorted((r for r in self.live.values() if r.get("waiting")),
+                                     key=lambda r: float(r.get("queued") or 0)), 1):
+            r["line"] = i
+            await self._show(r)
+        await self.next_in_line()
 
     async def reconcile(self) -> None:
         """A missed watch event never strands a worker: an exit file that is there completes it, a unit
         that is gone with none settles it as lost. Units are listed first, so an exit written in
         between is seen."""
+        for name in list(self.waiting):
+            self.pump(name)
         if not self.live:
             return
         for row in list(self.live.values()):            # "3 min of 15" moves on; an unchanged card is not edited
@@ -604,17 +758,20 @@ class Workers:
             return
         for wid, row in list(self.live.items()):
             d = Path(row["staging"])
+            if row.get("waiting"):
+                continue
             if (d / EXIT).is_file():
                 await self.complete(wid)
             elif row["unit"] not in units:
                 await self.complete(wid, lost=True)
+        await self.next_in_line()
 
 
 def listing(ledger: Ledger, limit: int = 20) -> list[dict[str, Any]]:
     """The newest workers, running or ended: what `worker list` and `yerk worker list` show."""
     now = time.time()
     return [{"id": r["id"], "room": r["room"], "account": r["account"], "unit": r["unit"],
-             "state": r["exit"] or "running", "elapsed": took((r["finished"] or now) - r["started"]),
+             "state": r["exit"] or ("waiting for an account" if r.get("waiting") else "running"), "elapsed": took((r["finished"] or now) - r["started"]),
              "cap_minutes": r["cap"] / 60, "result": r["result"], "report": r["report"],
              "relay": r["relay"], "relay_note": r["relay_note"]} for r in ledger.workers(limit=limit)]
 
@@ -640,7 +797,15 @@ def status_lines(ledger: Ledger, units: set[str] | None, now: float | None = Non
     developer detail (room, account, unit names)."""
     now = time.time() if now is None else now
     rows = ledger.workers(running=True)
-    out = []
+    out, waiting = [], []
+    line: dict[str, int] = {}
+    for r in sorted((r for r in rows if r.get("waiting")), key=lambda r: float(r.get("queued") or 0)):
+        line[r["account"]] = line.get(r["account"], 0) + 1
+        waiting.append(f"worker {r['id']}: room {r['room']}, waiting for account {r['account']}, "
+                   f"{words.nth(line[r['account']])} in line, {took(now - float(r['queued'] or now))} so far" if full else
+                   words.line(f"{words.WORKING} {words.WORKER.format(id=r['id'])}: "
+                              + words.IN_LINE_SHORT.format(nth=words.nth(line[r['account']]))))
+    rows = [r for r in rows if not r.get("waiting")]
     for r in rows:
         gone = units is not None and r["unit"] not in units
         if full:
@@ -652,6 +817,7 @@ def status_lines(ledger: Ledger, units: set[str] | None, now: float | None = Non
     for u in sorted((units or set()) - {r["unit"] for r in rows}):
         out.append(f"unit {u}: running, NOT IN THE LEDGER" if full else
                    words.line(f"{words.NOT_DONE} {words.STRAY.format(id=u.removeprefix(UNIT))}"))
+    out += waiting                                   # the line for each account, after the running ones
     return out or [words.NONE_RUNNING if full else f"{words.NOTHING} {words.NONE_RUNNING}"]
 
 

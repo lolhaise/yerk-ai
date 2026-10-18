@@ -1051,6 +1051,14 @@ free_path = "this is the free path"
 layer = 5
 state = "built"
 
+[abilities.watchers]
+what = "A watcher is a job (kind = \"watcher\" in the private jobs.toml) that runs a command all the time under its own systemd service: the command is restarted with a backoff when it ends, its output lines that match a prefix or a regex are events and every other line goes to the unit's log. The very first start primes (the lines already there are history, never events), a line seen before is never an event again (a regex group named key names its identity), and lines are gathered for `batch` seconds, at most `lines` a wake. Each event is a ledger row and wakes ONE turn: the room's own turn when the room is idle, or a worker with the lines as its brief; it is marked handled only after that turn ends clean, so a crash replays it once, never twice, and a worker the owner stops ends its event with no replay. `yerk status` shows each watcher's state."
+tier = "free"
+needs = "the jobs ability (systemd user services); a running yerkd for the wake"
+free_path = "this is the free path"
+layer = 5
+state = "built"
+
 [abilities.schedule]
 what = "The schedule tool in every room, and `yerk schedule`: add a one-shot or a recurring job (a name, when with a zone, what, how to deliver), remove one, list them; writes the jobs file, syncs the timers and answers with the next fire time read back from systemd. A missing zone is the room's configured one, never UTC by accident."
 tier = "free"

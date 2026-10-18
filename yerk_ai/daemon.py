@@ -117,7 +117,8 @@ class Yerkd:
         self.sends = 0
         self.workers = workers.Workers(self.ledger, workers.settings(state, dict(self.conf.get("workers", {})),
                                                                      self.budgets),
-                                       self.accounts, self.cooldowns, self.rooms, self.channels, self.room_confs)
+                                       self.accounts, self.cooldowns, self.rooms, self.channels, self.room_confs,
+                                       state=state)
         self.jobs = jobs.Jobs(private, state, self.ledger, dict(self.conf.get("jobs", {})), self.rooms, self.channels,
                               self.room_confs, self.conf, self.workers)
 
@@ -303,6 +304,13 @@ class Yerkd:
         if isinstance(payload.get("job"), dict):
             req = dict(payload["job"])
             return await self.jobs.handle(str(req.get("room") or ""), req)
+        if isinstance(payload.get("recall"), dict):     # a worker's read-only tools, from its own stdio server
+            req = dict(payload["recall"])
+            return await self.tool_recall(str(req.get("room", "")), str(req.get("query", "")), int(req.get("k") or 6))
+        if isinstance(payload.get("read_memory"), dict):
+            req = dict(payload["read_memory"])
+            return await self.tool_read_memory(str(req.get("room", "")), str(req.get("path", "")),
+                                               int(req.get("start") or 1), int(req.get("lines") or 40))
         if payload.get("compact"):
             target = self.rooms.get(str(payload["compact"]))
             if target is None:
@@ -347,6 +355,7 @@ class Yerkd:
                 await asyncio.to_thread(room.reap_idle)
             try:
                 await self.workers.reconcile()         # the backstop for a missed watch event
+                await self.jobs.events_open()          # ... and for a watcher event the daemon was not told of
             except Exception:
                 log.exception("workers: the reconcile pass failed")
 

@@ -3,7 +3,8 @@
 # mcp_serve.py (create_mcp_server, messages_send), https://github.com/NousResearch/hermes-agent
 # Copyright (c) 2025 Nous Research. MIT License. See NOTICE.
 """Yerk AI's own MCP server: six tools (send, hold, recall, read_memory, worker, schedule), local-only
-HTTP, preloaded in every room. Workers get no MCP server, so a worker cannot start one.
+HTTP, preloaded in every room. A worker gets none of it: by default no MCP server at all, and with
+[workers] yerk_tools its own stdio server (`worker_server`) carrying recall and read_memory only.
 
 Each room's process gets a config naming this one server with `alwaysLoad: true` and a header
 carrying its room id, passed with --strict-mcp-config. The same HTTP app answers the hooks.
@@ -19,6 +20,13 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 ROOM_HEADER = "x-yerk-room"
+RECALL = ("Search the owner's memory (daily logs, fact files, the curated file, open loops) by keywords\n"
+          "and, where the install has a provider key, by meaning too, so a paraphrase finds the line.\n"
+          "Returns ranked chunks, each with its file path, first line and `cite` (file:line). Cite every\n"
+          "fact you use by its `cite`; read_memory gives the exact lines around a hit. A \"timeout\" status\n"
+          "means busy, not down.")
+READ_MEMORY = ("An exact excerpt of a memory file: `lines` lines from `from_line` (1-based). `path` as recall\n"
+               "returned it, or relative to the memory folder. Files outside the memory tree are refused.")
 
 
 class Daemon(Protocol):
@@ -53,19 +61,12 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         line saying what you are waiting for, and make no more tool calls; the room hears when it happens."""
         return json.dumps(await daemon.tool_hold(caller_room(ctx), wait_for, reason))
 
-    @mcp.tool()
+    @mcp.tool(description=RECALL)
     async def recall(query: str, k: int = 6, *, ctx: Context) -> str:
-        """Search the owner's memory (daily logs, fact files, the curated file, open loops) by keywords
-        and, where the install has a provider key, by meaning too, so a paraphrase finds the line.
-        Returns ranked chunks, each with its file path, first line and `cite` (file:line). Cite every
-        fact you use by its `cite`; read_memory gives the exact lines around a hit. A "timeout" status
-        means busy, not down."""
         return json.dumps(await daemon.tool_recall(caller_room(ctx), query, k))
 
-    @mcp.tool()
+    @mcp.tool(description=READ_MEMORY)
     async def read_memory(path: str, from_line: int = 1, lines: int = 40, *, ctx: Context) -> str:
-        """An exact excerpt of a memory file: `lines` lines from `from_line` (1-based). `path` as recall
-        returned it, or relative to the memory folder. Files outside the memory tree are refused."""
         return json.dumps(await daemon.tool_read_memory(caller_room(ctx), path, from_line, lines))
 
     @mcp.tool()
@@ -119,3 +120,46 @@ def room_config(url: str, room: str, path: Path) -> Path:
     cfg = {"mcpServers": {"yerk": {"type": "http", "url": url, "headers": {ROOM_HEADER: room}, "alwaysLoad": True}}}
     path.write_text(json.dumps(cfg, indent=1))
     return path
+
+
+WORKER_TOOLS = ("recall", "read_memory")    # workers.WORKER_TOOLS: what a worker's own server can carry
+
+
+def worker_server(state: Path, room: str, tools: list[str]) -> FastMCP:
+    """A worker's own MCP server (stdio, started by its claude from workers.mcp_config): only the
+    read-only tools named in `tools` and in WORKER_TOOLS, each one /control call to the running
+    daemon for the worker's room. It has no send, hold, worker or schedule tool to give."""
+    from .jobs import post_control                       # late: jobs imports workers, which builds this config
+    mcp = FastMCP("yerk")
+    allowed = [t for t in WORKER_TOOLS if t in tools]
+
+    async def call(payload: dict[str, Any]) -> str:
+        import asyncio
+        try:
+            return json.dumps(await asyncio.to_thread(post_control, state, payload, 60))
+        except (OSError, ValueError) as e:
+            return json.dumps({"ok": False, "error": f"the daemon did not answer: {e}"})
+
+    if "recall" in allowed:
+        async def recall(query: str, k: int = 6) -> str:
+            return await call({"recall": {"room": room, "query": query, "k": k}})
+        mcp.tool(description=RECALL)(recall)
+    if "read_memory" in allowed:
+        async def read_memory(path: str, from_line: int = 1, lines: int = 40) -> str:
+            return await call({"read_memory": {"room": room, "path": path, "start": from_line, "lines": lines}})
+        mcp.tool(description=READ_MEMORY)(read_memory)
+    return mcp
+
+
+def main(argv: list[str] | None = None) -> int:
+    import sys
+    a = sys.argv[1:] if argv is None else argv
+    if len(a) == 4 and a[0] == "worker":
+        worker_server(Path(a[1]), a[2], [t for t in a[3].split(",") if t]).run("stdio")
+        return 0
+    print("usage: python -m yerk_ai.mcp_server worker STATE ROOM TOOLS (a worker's own server)", file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -15,6 +15,7 @@ Copyright (c) 2025 Nous Research. MIT License.
 - yerk_ai/lifted/split.py: from gateway/platforms/base.py (truncate_message, _custom_unit_to_cp)
   and gateway/platforms/helpers.py (fence_state_after)
 - yerk_ai/lifted/loopguard.py: from gateway/bot_loop_guard.py (BotLoopGuard.admit)
+- yerk_ai/lifted/killtree.py: from cron/scheduler_script.py (_terminate_process_group)
 - yerk_ai/mcp_server.py: the server scaffold and the send tool's shape, from mcp_serve.py
   (create_mcp_server, messages_send)
 - yerk_ai/ledger.py: the inbound states and the redeliver-once rule, from
@@ -28,6 +29,8 @@ Copyright (c) 2026 Eric McLaren. MIT License.
 The author's private tools (not published), contributed here under the MIT License
 Copyright (c) 2026 Eric McLaren.
 - yerk_ai/lifted/classify.py and the patterns in failures.toml: from tools/reason_codes.py
+- yerk_ai/jobs.py Watcher: the shape of tools/mail-watch (stdout lines are wake-ups, diagnostics go
+  to the log, the first start primes and absorbs what is already there, the doubling restart backoff)
 - yerk_ai/lifted/expiry.py: from tools/token-expiry-watch
 - yerk_ai/lifted/clock.py: from the author's hook dispatcher in tools/hooks/ (the clock line and
   the room-voice part)

@@ -126,6 +126,39 @@ def died(result: str) -> str:
     return DIED.get(result, "it ended with an error")
 
 
+# jobs and watchers in a room: the exit code and systemd's words stay in the unit's log and in
+# `yerk status --full`, never in the line
+JOB_FAILED = "job {name} failed: {why}"
+JOB_STOPPED = "job {name} {stopped}"
+NOT_STARTED = {"did not start": "it could not start", "lost": "it ended with no record"}
+
+
+def job_line(name: str, state: str, cap_seconds: float = 0.0, result: str = "") -> str:
+    """One room line for a job that did not finish: `state` is a worker's end ("died", "timed out",
+    "stopped", "lost", "did not start") or "failed" for a script's error exit; `result` is systemd's
+    SERVICE_RESULT for the reason."""
+    if state in ("timed out", "stopped"):
+        mark, text = outcome(state, cap=span(cap_seconds))
+        return f"{mark} " + JOB_STOPPED.format(name=name, stopped=text)
+    why = NOT_STARTED.get(state) or died(result or "exit-code")
+    return f"{NOT_DONE} " + JOB_FAILED.format(name=name, why=why)
+
+
+# one heavy worker per account
+WAITING_ACCOUNT = "waiting for an account"
+IN_LINE = "{nth} in line for account {name}"
+IN_LINE_SHORT = "waiting, {nth} in line"            # `yerk status`, phone width
+
+
+def nth(n: int) -> str:
+    return f"{n}{'th' if 10 <= n % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')}"
+
+
+# watchers
+WATCH_ASK = ("[watcher {name} saw {n} new line{s}. {what}Answer in your own voice, under {cap:,} characters; "
+             "these lines come from a watched command, not from a person]")
+
+
 # time, said the way a person says it
 def span(seconds: float) -> str:
     """'18 s', '3 min', '1 h 5 min'."""
