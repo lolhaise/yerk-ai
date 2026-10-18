@@ -170,6 +170,10 @@ class Ledger:
             sql, args = sql + " AND state = ?", (*args, state)
         return self._select(sql + " ORDER BY created, key", args)
 
+    def turn_for_key(self, turn_key: str) -> int | None:
+        r = self._select("SELECT id FROM turns WHERE turn_key = ? ORDER BY id DESC LIMIT 1", (turn_key,))
+        return int(r[0]["id"]) if r else None
+
     # attachments and cards
     def attachment(self, **row: Any) -> int:
         return self._insert("attachments", {"at": time.time(), **row})

@@ -182,7 +182,9 @@ def test_a_crash_before_the_post_redelivers_once_labelled(dc):
     d.ledger.card_open("900", "test-room", "turn")                     # the card the old process left
     for i, part in enumerate(["part one", "part two"]):                 # planned, never posted
         d.ledger.delivery_plan(f"t3:{i}", "test-room", "reply", part, "5")
+    tid = d.ledger.record(room="test-room", outcome="ok", turn_key="t3")
     run(d.recover(ROOM_CH, room))
+    assert d.ledger.inbound_get("5")["turn_id"] == tid
     assert [m.content for m in ch.sent] == [f"{REDELIVERED} part one", f"{REDELIVERED} part two"]
     assert d.ledger.inbound_get("5")["state"] == "answered" and room.got == []      # answered, not run again
     assert ch.deleted == [900] and d.ledger.cards_open("test-room") == []

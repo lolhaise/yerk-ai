@@ -222,9 +222,10 @@ class DiscordChannel:
             async with self._lock(room.name):
                 ids = await self._deliver(room.name, key, label=True)
             inbound = [x for x in str(rows[0]["inbound"] or "").split(",") if x]
+            turn_id = self.ledger.turn_for_key(key.split("-")[0])
             for mid in inbound:
                 self.ledger.inbound_set(mid, state="answered", answered=time.time(), reply_ids=",".join(ids),
-                                        note="reply redelivered after a restart")
+                                        turn_id=turn_id, note="reply redelivered after a restart")
                 await self._react(ch.id, mid, DONE, remove=ACK)
             log.info("room %s: %s redelivered after a restart (%d part(s))", room.name, key, len(ids))
 
