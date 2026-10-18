@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from yerk_ai import cli, health
+from yerk_ai import cli, health, words
 from yerk_ai.accounts import Account, Cooldowns, load_accounts, store_token
 from yerk_ai.config import table
 from yerk_ai.ledger import Ledger
@@ -102,8 +102,11 @@ def test_yerk_status_prints_a_meter_per_account(box, capsys):
                                                 "seven_day": {"utilization": 0.03, "resetsAt": 2000300000}})
     assert cli.main(["status", "--private", str(priv), "--state", str(state)]) == 0
     out = capsys.readouterr().out.splitlines()
-    assert out[0] == "yerkd: not running" and out[1].startswith("one: 5h 7% (") and "wk 3% (" in out[1]
-    assert out[2] == "two: no meter (no stream has reported it yet)"
+    assert out[0] == "🔴 yerkd: not running" and out[1].startswith("🟢 one: 5h 7% (") and "wk 3% (" in out[1]
+    assert out[2] == "⚪ two: no reading yet" and all(words.width(x) <= words.PHONE for x in out)   # phone width
+    assert cli.main(["status", "--full", "--private", str(priv), "--state", str(state)]) == 0     # the detail
+    full = capsys.readouterr().out.splitlines()
+    assert full[0] == "yerkd: not running" and "seen " in full[1] and full[2] == "two: no meter (no stream has reported it yet)"
 
 
 def test_a_token_from_another_account_fails_the_identity_check(box, monkeypatch):

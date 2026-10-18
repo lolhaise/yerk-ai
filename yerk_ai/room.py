@@ -26,6 +26,7 @@ adapter's event loop.
 from __future__ import annotations
 
 import logging
+import re
 import threading
 import time
 import uuid
@@ -33,8 +34,9 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
 
+from . import words
 from .accounts import Account, Cooldowns, pick
-from .card import START, Card
+from .card import Card
 from .engine import RoomProcess, RoomSpec, Turn
 from .evidence import Evidence
 from .ledger import Ledger
@@ -53,7 +55,7 @@ class Inbound:
     attempt: int = 0
     files: list[dict[str, Any]] = field(default_factory=list)   # staged attachments (name, type, path, ok)
     cap: int = 0                          # a harness message: the most its reply may be (0: no cap)
-    must: str = ""                        # ... a line the reply must carry (a relay's report path)
+    must: str = ""                        # ... a line the reply must carry (a relay's "report saved" line)
     then: Callable[[str, list[str], int], None] | None = None   # (answered or failed, message ids, chars)
 
 
@@ -61,8 +63,10 @@ HARNESS = "yerk"                          # the sender of Yerk AI's own messages
 
 
 def fit(text: str, cap: int, must: list[str]) -> str:
-    """A reply held to `cap` characters, cut at a line or a sentence, carrying every `must` line."""
-    tail = "\n".join(m for m in dict.fromkeys(must) if m and m not in text)
+    """A reply held to `cap` characters, cut at a line or a sentence, carrying every `must` line
+    (one the reply already has, or whose `command` it already names, is not added twice)."""
+    tail = "\n".join(m for m in dict.fromkeys(must) if m and m not in text
+                     and not any(c in text for c in re.findall(r"`([^`]+)`", m)))
     room = cap - (len(tail) + 1 if tail else 0)
     if len(text) > room:
         cut = text[:max(room - 3, 0)]
@@ -225,7 +229,7 @@ class Room:
         privacy = str(self.conf.get("privacy", "owner"))
         self.card = Card(thinking=bool(self.conf.get("thinking_panel", False)) and privacy == "owner")
         self.turn_key, self.bounced = uuid.uuid4().hex[:12], False
-        self.channel.open_card(self.name, START)
+        self.channel.open_card(self.name, self.card.render())   # state first from the first post
 
     def meta_for(self, prompt: str) -> tuple[str, float | None]:
         """Sender and previous human message time for a prompt the hook saw."""
@@ -368,15 +372,15 @@ class Room:
                     log.info("room %s: %s on %s, continuing on %s", self.name, f.cls, account.name, nxt.name)
                     hop = ",".join(filter(None, [hop, f"{f.cls}:{account.name}"]))
                     hops, account, self.first_line = hops + 1, nxt, None
-                    self._note(f"still on it, moved to account {nxt.name}")
+                    self._note(words.MOVED.format(name=nxt.name))
                     # a session that never answered may have no transcript to resume elsewhere
                     fresh = not (self.rp and (self.rp.resume_arg or self.rp.session_id in self.answered))
                     continue
             why = f.cls if f else turn.outcome
+            plain = words.why(f.cls if f else None, turn.outcome)
             asked = resend[0].text if resend else ""
-            notice_ids = self.channel.notice(self.name, f"No reply: the turn ended {turn.outcome} ({why}).",
-                                             [m.id for m in resend], card=self.card.owed(f"the turn ended {turn.outcome} "
-                                                                                         f"({why})", asked),
+            notice_ids = self.channel.notice(self.name, f"{words.NOT_DONE} {words.NOT_ANSWERED}\n{plain}",
+                                             [m.id for m in resend], card=self.card.owed(plain, asked),
                                              key=self.turn_key)
             for m in resend:
                 self.ledger.inbound_set(m.id, state="failed", note=why, reply_ids=",".join(notice_ids))
@@ -405,9 +409,8 @@ class Room:
             self.cooldowns.clear(account.name)
             self.answered.add(self.rp.session_id)
             card = None
-            if turn.fallback_model:
-                card = (f"answered by a fallback model ({turn.fallback_model}); the next message starts "
-                        f"a fresh session on {self.rp.spec.model}")
+            if turn.fallback_model:                # which model: the turn's ledger row
+                card = f"{words.WORKING} {words.BACKUP[0]}\n{words.SUB}{words.BACKUP[1]}"
                 self.fresh_next = REFUSAL_RECAP
             text = turn.text
             if covered and all(m.cap for m in covered):         # harness messages only: held to their cap
@@ -442,6 +445,6 @@ class Room:
         if not alive:
             self._start(account)
         assert self.rp
-        self._note("compacting the conversation, then answering")
+        self._note(words.COMPACTING)
         t = self.rp.ask("/compact", self.turn_timeout)
         log.info("room %s: compact ended %s", self.name, t.outcome)

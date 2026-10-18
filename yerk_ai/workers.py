@@ -10,16 +10,18 @@ daemon restarts.
   other; its first step (`python -m yerk_ai.workers run`) reads it the way a room does
   (accounts.account_env) and starts claude with an allowlisted environment. A worker gets no room
   session, no MCP server (so no `worker` tool: no workers spawning workers) and no subagent tool.
-- The card: one per worker, in the room that started it or the room named in the call: the start
-  time and the cap, then one row per TASKS.md line, ticked as the worker ticks them. An inotify watch
-  on the folder wakes the daemon when a file there is written; the adapter edits at most once a
-  second, the latest text winning, as it does for turn cards.
+- The card: one per worker, in the room that started it or the room named in the call: its state,
+  the time so far against the cap ("3 min of 15", refreshed each minute), then one row per TASKS.md
+  line, ticked as the worker ticks them. An inotify watch on the folder wakes the daemon when a file
+  there is written; the adapter edits at most once a second, the latest text winning, as it does
+  for turn cards. Its words come from words.py (STYLE.md): no path and no exit code in a room.
 - Completion: the unit's ExecStopPost writes exit.json (systemd's SERVICE_RESULT, EXIT_CODE and
-  EXIT_STATUS) and the same watch sees it. The card settles with the report's first line, the report
-  path and the exit state (done, died, timed out, stopped, lost); then, when the room is idle (no
-  human message for 60 s and no turn running), ONE relay turn in the room's own session tells the
-  outcome under 1,500 characters with the report path; otherwise the relay is skipped and ledgered
-  with why. The raw report never goes to the room.
+  EXIT_STATUS) and the same watch sees it. The card settles with the outcome in plain words
+  (finished clean, stopped: timed out, stopped by the owner, died: why, lost), the report's first
+  line and "report saved" with `yerk worker report <id>`, where the path and the unit's exit live;
+  then, when the room is idle (no human message for 60 s and no turn running), ONE relay turn in the
+  room's own session tells the outcome under 1,500 characters ending with that line; otherwise the
+  relay is skipped and ledgered with why. The raw report never goes to the room.
 - A daemon start re-attaches from the ledger and the unit list: a running unit gets its watch and its
   card back, one that ended while the daemon was away completes, one that vanished settles as lost.
 """
@@ -41,8 +43,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Protocol
 
+from . import words
 from .accounts import Account, Cooldowns, account_env, pick
-from .card import FAILED, OK, ROW_MAX, ROWS_SHOWN, RUNNING, short
+from .card import ROWS_SHOWN, short
 from .config import PACKAGE
 from .engine import claude_bin
 from .ledger import Ledger
@@ -55,10 +58,6 @@ TOOLS = ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "WebFetch", "WebSearch
 ENV_KEEP = ("PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "TZ", "TMPDIR",
             "XDG_RUNTIME_DIR")                 # what claude gets from the unit's environment; the rest stays out
 TICK = re.compile(r"^\s*[-*+]\s*\[([ xX])\]\s*(.+?)\s*$")
-WAITING, TIMED_OUT, STOPPED, NO_REPORT = ("\N{WHITE SMALL SQUARE}", "\N{STOPWATCH}", "\N{BLACK SQUARE FOR STOP}",
-                                          "\N{WARNING SIGN}")
-MARK = {"done": OK, "died": FAILED, "timed out": TIMED_OUT, "stopped": STOPPED, "lost": FAILED,
-        "did not start": FAILED}
 
 
 @dataclass
@@ -223,55 +222,95 @@ def took(seconds: float) -> str:
     return f"{s // 3600}h {s % 3600 // 60:02d}m" if s >= 3600 else f"{s // 60}m {s % 60:02d}s"
 
 
-def card_text(row: dict[str, Any], items: list[tuple[bool, str]], end: dict[str, Any] | None = None) -> str:
-    """Running: the start time (Discord shows it as a live "N minutes ago") and the cap, then the rows.
-    Settled: the exit state, how long, the result line; the rows as they were; the report path and
-    the unit's exit."""
-    cap = f"cap {row['cap'] / 60:g} min"
+def settled_state(row: dict[str, Any], items: list[tuple[bool, str]], end: dict[str, Any]) -> tuple[str, str]:
+    """(mark, words) of a worker that ended, from its exit and its rows."""
+    state, ticked = str(end["exit"]), sum(1 for t, _ in items if t)
+    if state == "done" and not end.get("has_report"):
+        state = "no report"
+    elif state == "done" and items and ticked < len(items):
+        state = "partly"
+    why = words.died(str(end.get("result_code") or "")) if state == "died" else ""
+    return words.outcome(state, cap=words.span(float(row["cap"])), why=why, ticked=ticked, rows=len(items))
+
+
+def card_text(row: dict[str, Any], items: list[tuple[bool, str]], end: dict[str, Any] | None = None,
+              accounts: int = 1, privacy: str = "owner", look: words.Look | None = None,
+              now: float | None = None) -> str:
+    """The worker's card, state first (STYLE.md). Running: its state and its rows, then the time so
+    far against the cap. Settled: the outcome in plain words, the report's first line, the rows as
+    they were, then how long it ran and "report saved" with the command that opens it. The account
+    shows only when the install has more than one; the path only under presentation.paths = owner,
+    in an owner room."""
+    look = look or words.LOOK
+    now = time.time() if now is None else now
+    ticked = sum(1 for t, _ in items if t)
+    started, cap = float(row["started"]), float(row["cap"])
+    who = words.WORKER.format(id=row["id"])
     if end is None:
-        head = f"{RUNNING} worker {row['id']} running, started <t:{int(row['started'])}:R>, {cap}"
+        mark, state = words.outcome("ticking" if items else "running", ticked=ticked, rows=len(items))
+        when = (words.of_cap(now - started, cap) if look.times == "relative"
+                else f"started {words.clock(started, now)}, cap {words.span(cap)}")
     else:
-        state, result = str(end["exit"]), str(end.get("result") or "")
-        mark = NO_REPORT if state == "done" and not end.get("has_report") else MARK.get(state, FAILED)
-        head = short(f"{mark} worker {row['id']} {state} after {took(float(end['finished']) - float(row['started']))} "
-                     f"({cap})" + (f": {result}" if result else ""), 400)
-    current = next((i for i, (ticked, _) in enumerate(items) if not ticked), None) if end is None else None
-    rows = [short(f"{OK if ticked else RUNNING if i == current else WAITING} {text}", ROW_MAX)
-            for i, (ticked, text) in enumerate(items)]
-    lines = [head]
+        mark, state = settled_state(row, items, end)
+        ran = float(end["finished"]) - started
+        when = ((f"done in {words.span(ran)}" if end["exit"] == "done" else f"ran {words.of_cap(ran, cap)}")
+                if look.times == "relative" else f"ended {words.clock(float(end['finished']), now)}, "
+                                                  f"after {words.span(ran)}")
+    lines = [words.line(f"{mark} {words.WORKER_HEAD.format(state=state)}")]
+    if end is not None and end.get("result") and end.get("has_report"):
+        lines.append(words.line(str(end["result"])))
+    current = next((i for i, (t, _) in enumerate(items) if not t), None)
+    stuck = words.WORKING if end is None else words.NOT_DONE if mark == words.NOT_DONE else words.WAITING
+    rows = [words.line(f"{words.DONE if t else stuck if i == current else words.WAITING} {text}")
+            for i, (t, text) in enumerate(items)]
     if len(rows) > ROWS_SHOWN:
-        lines.append(f"-# {len(rows) - ROWS_SHOWN} earlier rows")
+        lines.append(words.SUB + words.EARLIER_ROWS.format(n=len(rows) - ROWS_SHOWN))
     lines += rows[-ROWS_SHOWN:]
-    done = sum(1 for t, _ in items if t)
-    if end is None:
-        lines.append(f"-# {done} of {len(items)} ticked, account {row['account']}" if items
-                     else f"-# no TASKS.md rows yet, account {row['account']}")
-    else:
-        lines.append(f"-# report: {row['report']}")
-        lines.append(f"-# unit: {end.get('detail') or 'no exit record'}")
+    extra = [f"account {row['account']}"] if accounts > 1 or look.footer == "full" else []
+    lines.append(words.SUB + ", ".join([*([who] if end is None else []), when, *extra]))
+    if look.footer == "full" and row.get("model"):
+        lines.append(words.SUB + f"model {row['model']}")
+    if end is not None:
+        lines.append(words.SUB + (words.REPORT_SAVED if end.get("has_report") else words.NO_REPORT).format(id=row["id"]))
+        if end.get("has_report") and look.paths == "owner" and privacy == "owner":
+            lines.append(words.SUB + str(row["report"]))
     return "\n".join(lines)
 
 
 # the relay
-def relay_text(row: dict[str, Any], end: dict[str, Any], cap: int) -> str:
-    """The one harness line the room's session gets: the outcome, the report path, the report's
-    start; the room says it in its own voice. At most `cap` characters."""
-    head = (f"[worker {row['id']} finished] {end['exit']} after {took(float(end['finished']) - float(row['started']))} "
-            f"(cap {row['cap'] / 60:g} min), unit exit: {end.get('detail') or 'no exit record'}\n"
-            f"report: {row['report']}\n" + (f"first line: \"{end['result']}\"\n" if end.get("result") else ""))
+def relay_text(row: dict[str, Any], end: dict[str, Any], cap: int, look: words.Look | None = None,
+               privacy: str = "owner") -> str:
+    """The one harness line the room's session gets: the outcome in plain words, the report's
+    first line and start, and the line the reply ends with ("report saved" and the command); the
+    room says it in its own voice. No path and no exit code unless presentation.paths = owner in an
+    owner room. At most `cap` characters."""
+    look = look or words.LOOK
+    items = tasks_of(Path(row["tasks"]))
+    mark, state = settled_state(row, items, end)
+    ran = float(end["finished"]) - float(row["started"])
+    path = f"report path: {row['report']}\n" if look.paths == "owner" and privacy == "owner" else ""
+    head = (f"[worker {row['id']} finished] {state}, {words.of_cap(ran, float(row['cap']))}\n{path}"
+            + (f"first line: \"{end['result']}\"\n" if end.get("result") else ""))
     try:
         body = Path(row["report"]).read_text(errors="replace").strip()
     except OSError:
         body = "(no report file)"
-    tell = f"[tell the room the outcome in your own voice, under {cap:,} characters, with the report path; "
-    whole = (f"the report, all of it:\n", tell + "it is all here, so there is no file to open; do not paste it]")
-    part = (f"the report begins:\n", tell + "the rest is in the file, which this room does not open; do not paste it]")
+    saved = relay_line(row)
+    whole = ("the report, all of it:\n", words.RELAY_ASK.format(cap=cap, saved=saved, where="it is all here, so "
+                                                                "there is no file to open"))
+    part = ("the report begins:\n", words.RELAY_ASK.format(cap=cap, saved=saved, where="the rest is in the report, "
+                                                           "which this room does not open"))
     label, ask = whole if len(head) + len(whole[0]) + len(body) + 1 + len(whole[1]) <= cap else part
     room = cap - len(head) - len(label) - 1 - len(ask)
     if len(body) > room:
         body = body[:max(room - 4, 0)]
         body = (body[:body.rfind("\n")] if "\n" in body else body).rstrip() + "\n..."
     return f"{head}{label}{body}\n{ask}"[:cap]
+
+
+def relay_line(row: dict[str, Any]) -> str:
+    """The line a relay reply always carries: the report is saved, and the command that opens it."""
+    return words.SUB + words.REPORT_SAVED.format(id=row["id"])
 
 
 class Workers:
@@ -312,7 +351,8 @@ class Workers:
         ch = self.channels.get(row["room"])
         if ch is None:
             return
-        text = card_text(row, tasks_of(Path(row["tasks"])), end)
+        text = card_text(row, tasks_of(Path(row["tasks"])), end, accounts=len(self.accounts),
+                         privacy=str(self.room_confs.get(row["room"], {}).get("privacy", "owner")))
         key = f"worker:{row['id']}"
         try:
             if end is None:
@@ -459,7 +499,7 @@ class Workers:
         report = Path(row["report"])
         end: dict[str, Any] = {"exit": state, "detail": detail, "finished": float(x.get("ended") or time.time()),
                "result": first_line(report) or ("no report file" if state == "done" else ""),
-               "has_report": report.is_file()}
+               "has_report": report.is_file(), "result_code": x.get("result") or ""}
         self.ledger.worker_set(wid, finished=round(end["finished"], 3), exit=state, exit_detail=detail,
                                result=end["result"])
         row["card"] = row.get("card") or fresh.get("card")
@@ -478,7 +518,8 @@ class Workers:
             log.info("worker %s: relay skipped: %s", row["id"], why)
             return
         assert room is not None
-        text = relay_text(row, end, self.conf.relay_message)
+        text = relay_text(row, end, self.conf.relay_message,
+                          privacy=str(self.room_confs.get(row["room"], {}).get("privacy", "owner")))
         mid = f"relay-{row['id']}"
         self.ledger.inbound_add(mid, row["room"], "worker", "yerk", len(text))
         self.ledger.worker_set(row["id"], relay="sent", relay_note=f"inbound {mid}")
@@ -486,7 +527,7 @@ class Workers:
         def then(state: str, ids: list[str], chars: int) -> None:
             self.ledger.worker_set(row["id"], relay="relayed" if state == "answered" else "failed", relay_chars=chars,
                                    relay_note=f"inbound {mid}, {state}, message(s) {','.join(ids)}")
-        room.submit(Inbound(mid, "yerk", text, cap=self.conf.relay_reply, must=str(row["report"]), then=then))
+        room.submit(Inbound(mid, "yerk", text, cap=self.conf.relay_reply, must=relay_line(row), then=then))
         log.info("worker %s: relay turn asked in %s", row["id"], row["room"])
 
     # after a daemon start, and the minute backstop
@@ -534,6 +575,8 @@ class Workers:
         between is seen."""
         if not self.live:
             return
+        for row in list(self.live.values()):            # "3 min of 15" moves on; an unchanged card is not edited
+            await self._show(row)
         try:
             units = await asyncio.to_thread(self.launcher.running)
         except (OSError, subprocess.SubprocessError) as e:
@@ -566,22 +609,30 @@ def report(ledger: Ledger, wid: str, limit: int = 6000) -> dict[str, Any]:
     except OSError:
         text = ""
     return {"ok": True, "id": wid, "state": row["exit"] or "running", "report": row["report"],
-            "first_line": first_line(Path(row["report"])), "text": text[:limit], "trimmed": len(text) > limit}
+            "first_line": first_line(Path(row["report"])), "text": text[:limit], "trimmed": len(text) > limit,
+            "unit": row["unit"], "exit_detail": row["exit_detail"], "staging": row["staging"], "account": row["account"],
+            "model": row["model"]}
 
 
-def status_lines(ledger: Ledger, units: set[str] | None, now: float | None = None) -> list[str]:
-    """`yerk status`: every worker the ledger has running, with its elapsed time and cap, and any
-    disagreement with the unit list (None: the unit list could not be read)."""
+def status_lines(ledger: Ledger, units: set[str] | None, now: float | None = None, full: bool = False) -> list[str]:
+    """`yerk status`: every worker the ledger has running, state first with its time against the cap,
+    and any disagreement with the unit list (None: the unit list could not be read). `full`: the
+    developer detail (room, account, unit names)."""
     now = time.time() if now is None else now
     rows = ledger.workers(running=True)
     out = []
     for r in rows:
-        unit = "" if units is None else ("" if r["unit"] in units else ", NO UNIT RUNNING")
-        out.append(f"worker {r['id']}: room {r['room']}, account {r['account']}, {took(now - r['started'])} of "
-                   f"{r['cap'] / 60:g} min, unit {r['unit']}{unit}")
+        gone = units is not None and r["unit"] not in units
+        if full:
+            out.append(f"worker {r['id']}: room {r['room']}, account {r['account']}, {took(now - r['started'])} of "
+                       f"{r['cap'] / 60:g} min, unit {r['unit']}" + (", NO UNIT RUNNING" if gone else ""))
+        else:
+            out.append(words.line(f"{words.NOT_DONE if gone else words.WORKING} {words.WORKER.format(id=r['id'])}: "
+                                  + (words.GONE if gone else words.of_cap(now - r["started"], r["cap"]))))
     for u in sorted((units or set()) - {r["unit"] for r in rows}):
-        out.append(f"unit {u}: running, NOT IN THE LEDGER")
-    return out
+        out.append(f"unit {u}: running, NOT IN THE LEDGER" if full else
+                   words.line(f"{words.NOT_DONE} {words.STRAY.format(id=u.removeprefix(UNIT))}"))
+    return out or [words.NONE_RUNNING if full else f"{words.NOTHING} {words.NONE_RUNNING}"]
 
 
 def main(argv: list[str] | None = None) -> int:

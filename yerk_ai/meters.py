@@ -14,6 +14,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from . import words
 from .accounts import Account
 
 WINDOWS = ("five_hour", "seven_day")
@@ -68,3 +69,21 @@ def meter_line(name: str, m: dict[str, Any], now: float | None = None) -> str:
              for w, label in (("five_hour", "5h"), ("seven_day", "wk")) if w in m]
     age = f", seen {int((now - m['at']) // 60)} min ago"
     return f"{name}: " + (" · ".join(parts) or "no windows") + age
+
+
+def meter_short(name: str, m: dict[str, Any], rests_until: float | None = None, now: float | None = None) -> str:
+    """`yerk status`: one phone-width line, state first. Resting: red, with when it comes back; a
+    window at 90% or more: orange; else green; no reading yet: white. The reading's age is --full's."""
+    if rests_until:
+        return words.line(f"{words.NOT_DONE} {words.RESTS.format(name=name, until=words.clock(rests_until, now))}")
+    if "error" in m:
+        return words.line(f"{words.NOTHING} {words.NO_READING.format(name=name)}")
+    now = time.time() if now is None else now
+    parts = []
+    for w, label in (("five_hour", "5h"), ("seven_day", "wk")):
+        if w in m:
+            r = m[w].get("resets")
+            at = "" if not r else f" ({datetime.fromtimestamp(r).strftime('%H:%M' if r - now < 86400 else '%a')})"
+            parts.append(f"{label} {round(m[w]['pct'])}%{at}")
+    high = max((m[w]["pct"] for w in WINDOWS if w in m), default=0) >= 90
+    return words.line(f"{words.WORKING if high else words.DONE} {name}: " + (" · ".join(parts) or "no windows"))
