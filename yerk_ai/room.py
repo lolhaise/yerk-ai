@@ -171,6 +171,7 @@ class Room:
         account = self._account()
         recap, self.fresh_next = self.fresh_next, None          # set by a refusal fallback last turn
         fresh, retried, compacted, reruns, hops, hop = bool(recap), False, False, 0, 0, None
+        recap_sid = None                       # the session that already got the recap
         resend = batch
         while True:
             with self.lock:
@@ -183,15 +184,17 @@ class Room:
                     old.close()
                 self._start(account, fresh=fresh)
                 fresh = False
+            assert self.rp
+            note = recap if self.rp.session_id != recap_sid else None   # a recap rides until a session has it
             with self.lock:
                 self.pending.clear()
                 self.inflight = []
                 for i, m in enumerate(resend):
-                    self._write(m, recap if i == 0 else None)
+                    self._write(m, note if i == 0 else None)
                     self.ledger.inbound_set(m.id, state="running", attempts=m.attempt + 1)
                 self.reading = True
-            step, turn = self._results(account, hop, bool(recap))
-            recap = None
+            recap_sid = self.rp.session_id if note else recap_sid
+            step, turn = self._results(account, hop, bool(note))
             with self.lock:
                 self.reading = False
                 resend = list(self.inflight)

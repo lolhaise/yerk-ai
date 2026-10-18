@@ -261,3 +261,21 @@ def test_meters_come_from_the_stream_per_account(env, monkeypatch):
     assert meter_line("one", m, now=m["at"] + 120).startswith("one: 5h 7% (") and "seen 2 min ago" in meter_line(
         "one", m, now=m["at"] + 120)
     room.rp.close()
+
+
+def test_a_recap_survives_a_hop_that_has_to_start_fresh(env, monkeypatch):
+    make, ledger, tmp_path = env
+    chan = Chan()
+    room = make(chan)
+    send(room, ledger, "1", "hello")
+    wait_idle(room)
+    room.rp.close()
+    monkeypatch.setenv("FAKE_CLAUDE_MISSING", "1")
+    monkeypatch.setenv("FAKE_CLAUDE_AUTH_DIRS", str(tmp_path / "cfg1"))   # and account one's login is refused
+    send(room, ledger, "2", "again")
+    wait_idle(room)
+    rows = rows_of(ledger)[1:]
+    assert [(r["account"], r["failure"]) for r in rows] == [("one", "fatal"), ("one", "auth"), ("two", None)]
+    assert rows[-1]["hop"] == "auth:one" and rows[-1]["recap"] == 1
+    assert chan.replies[-1][0].startswith("echo: (Yerk AI: the earlier session") and chan.cards.count("working on it") == 2
+    room.rp.close()
