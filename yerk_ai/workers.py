@@ -267,7 +267,11 @@ def card_text(row: dict[str, Any], items: list[tuple[bool, str]], end: dict[str,
         lines.append(words.SUB + words.EARLIER_ROWS.format(n=len(rows) - ROWS_SHOWN))
     lines += rows[-ROWS_SHOWN:]
     extra = [f"account {row['account']}"] if accounts > 1 or look.footer == "full" else []
-    lines.append(words.SUB + ", ".join([*([who] if end is None else []), when, *extra]))
+    if end is not None and end["exit"] == "did not start":
+        when = ""                                        # it never ran: no time to tell
+    foot = ", ".join(x for x in [*([who] if end is None else []), when, *extra] if x)
+    if foot:
+        lines.append(words.SUB + foot)
     if look.footer == "full" and row.get("model"):
         lines.append(words.SUB + f"model {row['model']}")
     if end is not None:

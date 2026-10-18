@@ -118,6 +118,8 @@ def test_every_worker_card_running_and_settled_is_state_first_with_no_path_and_n
     assert cards[0].splitlines()[-1] == "-# worker abc123, 3 min of 15"
     assert cards[-2].splitlines()[-2:] == ["-# done in 3 min", "-# report saved: `yerk worker report abc123`"]
     assert "-# no report: `yerk worker report abc123`" in cards[-1]
+    assert cards[7].splitlines()[-1] == "-# no report: `yerk worker report abc123`" or "ran" not in cards[7]
+    assert " ran " not in cards[7] and "of 15" not in cards[7] and "-# \n" not in cards[7] + "\n"   # never ran
 
 
 def test_the_relay_line_and_reply_carry_the_command_never_the_path(tmp_path):
