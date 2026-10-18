@@ -2,8 +2,8 @@
 # official Python SDK) and the send tool's shape are adapted from Hermes Agent v0.22.2,
 # mcp_serve.py (create_mcp_server, messages_send), https://github.com/NousResearch/hermes-agent
 # Copyright (c) 2025 Nous Research. MIT License. See NOTICE.
-"""Yerk AI's own MCP server: five tools (send, hold, recall, read_memory, worker), local-only HTTP,
-preloaded in every room. Workers get no MCP server, so a worker cannot start one.
+"""Yerk AI's own MCP server: six tools (send, hold, recall, read_memory, worker, schedule), local-only
+HTTP, preloaded in every room. Workers get no MCP server, so a worker cannot start one.
 
 Each room's process gets a config naming this one server with `alwaysLoad: true` and a header
 carrying its room id, passed with --strict-mcp-config. The same HTTP app answers the hooks.
@@ -27,6 +27,7 @@ class Daemon(Protocol):
     async def tool_recall(self, room: str, query: str, k: int) -> dict[str, Any]: ...
     async def tool_read_memory(self, room: str, path: str, start: int, lines: int) -> dict[str, Any]: ...
     async def tool_worker(self, room: str, req: dict[str, Any]) -> dict[str, Any]: ...
+    async def tool_schedule(self, room: str, req: dict[str, Any]) -> dict[str, Any]: ...
 
 
 def caller_room(ctx: Context) -> str:
@@ -79,6 +80,24 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         req = {"action": action, "brief": brief, "id": id, "room": room, "tasks": tasks or [],
                "cap_minutes": cap_minutes, "account": account, "model": model}
         return json.dumps(await daemon.tool_worker(caller_room(ctx), req))
+
+    @mcp.tool()
+    async def schedule(action: str, name: str = "", when: str = "", what: str = "", kind: str = "agent",
+                       tz: str = "", deliver: str = "announce", room: str = "", cap_minutes: float = 0,
+                       account: str = "", *, ctx: Context) -> str:
+        """Timed work that lands in a room, kept on systemd timers that outlive the daemon. action
+        "add": `name` (lowercase letters, digits, hyphens); `when` is a date and time ("2026-03-09 09:00":
+        a one-shot, removed after it fires), "every 2h" (an interval), or a cron expression
+        ("0 9 * * 1-5"); `tz` an IANA zone (default: this room's); `what` is the brief a worker gets
+        (kind "agent": a headless run with a card here, its last message told by this room, exactly
+        NO_REPLY for silence) or the shell line to run (kind "script": no model call, its output posted
+        as is, exit 0 with no output posts nothing, a failure alerts the ops room; a plain reminder is
+        a script that echoes the text, on the second and at no cost); `deliver` "announce" (default) or
+        "silent" (run and ledger, never post). Returns the next fire time read back from systemd.
+        "remove": by `name`. "list": every job with its next fire time."""
+        req = {"action": action, "name": name, "when": when, "what": what, "kind": kind, "tz": tz,
+               "deliver": deliver, "room": room, "cap_minutes": cap_minutes, "account": account}
+        return json.dumps(await daemon.tool_schedule(caller_room(ctx), req))
 
     def route(path: str, handler: Handler) -> None:
         @mcp.custom_route(path, methods=["POST"])

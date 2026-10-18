@@ -118,6 +118,66 @@ def cmd_worker(a: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_jobs(a: argparse.Namespace) -> int:
+    """sync: the jobs file to one timer and service per job (idempotent), the diff, then every next
+    fire read back from systemd; list: the read-back alone. Both work with the daemon down."""
+    from . import jobs
+    from .config import state_dir
+    priv, state = private_dir(a.private), state_dir(a.state)
+    units, path = jobs.Systemd(), private_dir(a.private) / jobs.FILE
+    try:
+        if a.action == "sync":
+            p, back = jobs.sync(path, units, jobs.env_for(priv, state))
+            lines = jobs.diff_lines(p) + ["next fire, read back from systemd:"] + jobs.read_lines(back, p.jobs)
+            bad = bool(p.errors or p.failed)
+        else:
+            out = jobs.schedule_list(path, units)
+            if not out["ok"]:
+                raise OSError(out["error"])
+            lines, back, bad = out["lines"], {r["name"]: r for r in out["jobs"]}, bool(out["errors"])
+    except (OSError, subprocess.SubprocessError) as e:
+        print(f"systemd could not be read or written: {e}", file=sys.stderr)
+        return 2
+    print(json.dumps({"lines": lines, "jobs": back}, default=str) if a.json else "\n".join(lines))
+    return 1 if bad else 0
+
+
+def cmd_schedule(a: argparse.Namespace) -> int:
+    """add, remove, list: the same three actions as the room's `schedule` tool, on the jobs file and
+    the timers, with or without a running daemon. The zone defaults to the room's."""
+    from . import jobs
+    from .config import load_toml, state_dir
+    priv, state = private_dir(a.private), state_dir(a.state)
+    conf = load_toml(priv / "yerkd.toml") if (priv / "yerkd.toml").is_file() else {}
+    rs, units, env, path = rooms(priv), jobs.Systemd(), jobs.env_for(priv, state), priv / jobs.FILE
+    if a.action == "list":
+        out = jobs.schedule_list(path, units)
+    elif a.action == "remove":
+        out = jobs.schedule_remove(path, units, env, a.name or "")
+    else:
+        if not a.name or not a.when or not a.what:
+            print("add needs NAME, --when and --what", file=sys.stderr)
+            return 2
+        room = a.room or (next(iter(rs)) if len(rs) == 1 else "")
+        if room not in rs:
+            print(f"--room: no room {room!r}; rooms: {', '.join(rs) or 'none'}", file=sys.stderr)
+            return 2
+        out = jobs.schedule_add(path, units, env, a.name, a.kind, a.when, a.what, room,
+                                a.tz or jobs.default_tz(rs, room, conf), a.deliver, a.cap, a.account or "")
+    if a.json:
+        print(json.dumps(out, default=str))
+    elif not out["ok"]:
+        print(out["error"], file=sys.stderr)
+    elif a.action == "list":
+        print("\n".join(out["lines"]))
+    elif a.action == "remove":
+        print("\n".join([f"{a.name}: removed"] + out["diff"]))
+    else:
+        print(f"{out['name']}: {out['schedule']}, {out['kind']} job, room {out['room']}, deliver {out['deliver']}; "
+              f"next {out['next_text']}; unit {out['unit']}")
+    return 0 if out["ok"] else 1
+
+
 def _engine(a: argparse.Namespace) -> tuple[Any, ...]:
     from .accounts import Cooldowns, load_accounts
     from .config import state_dir
@@ -229,6 +289,9 @@ def cmd_status(a: argparse.Namespace) -> int:
     lines = workers.status_lines(Ledger(state / "ledger.sqlite"), units)
     for line in lines or ["workers: none running"]:
         print(line)
+    from . import jobs
+    for line in jobs.status_lines(priv / jobs.FILE, jobs.Systemd()) or ["jobs: none scheduled"]:
+        print(line)                           # every job's next fire, from systemd, never from memory
     return 0
 
 
@@ -330,6 +393,11 @@ def cmd_explain(a: argparse.Namespace) -> int:
         print("cost: nothing, it runs on the box")
     print(f"free path: {ab['free_path']}")
     print(f"now: {dot} " + (note or "on"))
+    if a.ability == "jobs":                   # the jobs file's keys, from the code (decision 16)
+        from . import jobs
+        print("keys of a [jobs.NAME] table in the private jobs.toml:")
+        for key, words in jobs.KEYS.items():
+            print(f"  {key}: {words}")
     return 0
 
 
@@ -374,6 +442,24 @@ def main(argv: list[str] | None = None) -> int:
     wk.add_argument("--limit", type=int, default=20, help="list: how many")
     wk.add_argument("--json", action="store_true")
     wk.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
+    jb = sub.add_parser("jobs", help="scheduled jobs from the private jobs.toml: sync (one systemd user timer and "
+                        "service per job, the diff, then every next fire time read back) or list (the read-back)")
+    jb.add_argument("action", choices=["sync", "list"])
+    jb.add_argument("--json", action="store_true")
+    sc = sub.add_parser("schedule", help="add a one-shot or a recurring job, remove one, or list them (the room's "
+                        "`schedule` tool, from the command line)")
+    sc.add_argument("action", choices=["add", "remove", "list"])
+    sc.add_argument("name", nargs="?", help="the job's name: lowercase letters, digits, hyphens")
+    sc.add_argument("--when", help='add: a date and time ("2026-03-09 09:00", a one-shot), "every 2h", or a cron '
+                    'expression ("0 9 * * 1-5")')
+    sc.add_argument("--what", help="add: the worker's brief (kind agent) or the shell line (kind script)")
+    sc.add_argument("--kind", choices=["agent", "script"], default="agent")
+    sc.add_argument("--tz", help="add: an IANA zone (default: the room's timezone, else [memory] timezone)")
+    sc.add_argument("--room", help="add: the room it lands in (default: the only room)")
+    sc.add_argument("--deliver", choices=["announce", "silent"], default="announce")
+    sc.add_argument("--cap", type=float, default=0.0, help="add: minutes before the run is stopped")
+    sc.add_argument("--account", help="add: agent jobs, the account to run on")
+    sc.add_argument("--json", action="store_true")
     rb = sub.add_parser("recall-bench", help="the fixed question set against the memory index: top six and top one "
                         "hit rates (exit 2 when a control misses, 1 failure, 3 timeout)")
     rb.add_argument("--questions", help="question file (default: [memory] bench, else <private>/evals/recall-questions.json)")
@@ -383,7 +469,7 @@ def main(argv: list[str] | None = None) -> int:
                         "key, ⚪ on its free path")
     ex = sub.add_parser("explain", help="one ability: what it does, needs and costs, its free path, its state here")
     ex.add_argument("ability")
-    for x in (ac, st, rb, ab, ex):
+    for x in (ac, st, rb, ab, ex, jb, sc):
         x.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else the fake example layer)")
         x.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
     pr = sub.add_parser("probe", help="contract probes against a real Claude Code login")
@@ -413,6 +499,10 @@ def main(argv: list[str] | None = None) -> int:
     a = p.parse_args(argv)
     if a.cmd == "worker":
         return cmd_worker(a)
+    if a.cmd == "jobs":
+        return cmd_jobs(a)
+    if a.cmd == "schedule":
+        return cmd_schedule(a)
     return int({"map": cmd_map, "probe": cmd_probe, "setup-room": cmd_setup_room, "room": cmd_room,
                 "accounts": cmd_accounts, "status": cmd_status, "recall-bench": cmd_recall_bench,
                 "abilities": cmd_abilities, "explain": cmd_explain}[a.cmd](a))

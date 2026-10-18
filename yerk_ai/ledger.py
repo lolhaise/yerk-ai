@@ -27,7 +27,8 @@ COLUMNS = ("room", "account", "config_dir", "session_id", "started", "first_visi
            "source", "hop", "recap", "turn_key")
 ADDED = {"turns": {"inbound": "TEXT", "source": "TEXT", "hop": "TEXT", "recap": "INTEGER",   # newer than run 1
                    "turn_key": "TEXT"},
-         "outbound": {"body": "TEXT"}}                      # a card's text, each post and edit
+         "outbound": {"body": "TEXT"},                      # a card's text, each post and edit
+         "workers": {"job": "TEXT"}}                        # the scheduled job a worker runs for (jobs.py)
 
 SCHEMA = """CREATE TABLE IF NOT EXISTS turns (
   id INTEGER PRIMARY KEY,
@@ -56,7 +57,10 @@ CREATE TABLE IF NOT EXISTS holds (
 CREATE TABLE IF NOT EXISTS workers (
   id TEXT PRIMARY KEY, room TEXT, account TEXT, unit TEXT, model TEXT, session_id TEXT, brief TEXT,
   staging TEXT, report TEXT, tasks TEXT, cap REAL, card TEXT, started REAL, finished REAL, exit TEXT,
-  exit_detail TEXT, result TEXT, stop_requested REAL, relay TEXT, relay_note TEXT, relay_chars INTEGER);
+  exit_detail TEXT, result TEXT, stop_requested REAL, relay TEXT, relay_note TEXT, relay_chars INTEGER, job TEXT);
+CREATE TABLE IF NOT EXISTS job_runs (
+  id INTEGER PRIMARY KEY, job TEXT, kind TEXT, room TEXT, unit TEXT, planned REAL, fired REAL, ended REAL,
+  exit TEXT, result TEXT, delivery TEXT, message_ids TEXT, worker TEXT, chars INTEGER, folder TEXT, note TEXT);
 CREATE TABLE IF NOT EXISTS health (
   id INTEGER PRIMARY KEY, at REAL, account TEXT, config_dir TEXT, ok INTEGER, failure TEXT, source TEXT,
   login TEXT, identity TEXT, identity_ok INTEGER, model TEXT, ms INTEGER, note TEXT);
@@ -70,7 +74,9 @@ HEALTH = ("at", "account", "config_dir", "ok", "failure", "source", "login", "id
 
 WORKERS = ("room", "account", "unit", "model", "session_id", "brief", "staging", "report", "tasks", "cap", "card",
            "started", "finished", "exit", "exit_detail", "result", "stop_requested", "relay", "relay_note",
-           "relay_chars")
+           "relay_chars", "job")
+JOB_RUNS = ("job", "kind", "room", "unit", "planned", "fired", "ended", "exit", "result", "delivery", "message_ids",
+            "worker", "chars", "folder", "note")
 INBOUND = ("room", "channel", "sender", "received", "chars", "state", "attempts", "folded", "accepted",
            "answered", "turn_id", "reply_ids", "note")
 OPEN = ("received", "running")
@@ -193,6 +199,38 @@ class Ledger:
         if running:
             return self._select("SELECT * FROM workers WHERE finished IS NULL ORDER BY started", ())
         return self._select("SELECT * FROM workers ORDER BY started DESC LIMIT ?", (limit,))
+
+    # job runs (jobs.py): one row per fire of a scheduled job
+    def job_run_add(self, **row: Any) -> int:
+        bad = set(row) - set(JOB_RUNS)
+        if bad:
+            raise ValueError(f"unknown job_runs columns: {sorted(bad)}")
+        return self._insert("job_runs", row)
+
+    def job_run_set(self, run_id: int, **fields: Any) -> None:
+        bad = set(fields) - set(JOB_RUNS)
+        if bad:
+            raise ValueError(f"unknown job_runs columns: {sorted(bad)}")
+        sets = ", ".join(f"{k} = ?" for k in fields)
+        with self.lock:
+            self.db.execute(f"UPDATE job_runs SET {sets} WHERE id = ?", (*fields.values(), run_id))
+
+    def job_run_get(self, run_id: int) -> dict[str, Any] | None:
+        r = self._select("SELECT * FROM job_runs WHERE id = ?", (run_id,))
+        return r[0] if r else None
+
+    def job_run_for_worker(self, worker_id: str) -> dict[str, Any] | None:
+        r = self._select("SELECT * FROM job_runs WHERE worker = ? ORDER BY id DESC LIMIT 1", (worker_id,))
+        return r[0] if r else None
+
+    def job_runs(self, job: str | None = None, limit: int = 50, undelivered: bool = False) -> list[dict[str, Any]]:
+        """The newest runs (of one job when named); `undelivered`: runs whose delivery waits on a daemon."""
+        sql, args = "SELECT * FROM job_runs WHERE 1", tuple[Any, ...]()
+        if job:
+            sql, args = sql + " AND job = ?", (*args, job)
+        if undelivered:
+            sql = sql + " AND delivery LIKE 'undelivered:%'"
+        return self._select(sql + " ORDER BY id DESC LIMIT ?", (*args, limit))
 
     # outbound and holds
     def outbound(self, **row: Any) -> int:
