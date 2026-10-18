@@ -414,6 +414,139 @@ def drive(a: argparse.Namespace, script: Callable[[str, str], list[tuple[str, fl
                       for i in sorted({r["turn_id"] for r in inbound + owner if r["turn_id"]}) if i in turns]}
 
 
+def check(a: argparse.Namespace) -> dict[str, Any]:
+    """Read the room back through the bot's REST, the room only: every message ledgered since
+    --since carries the done mark and no eyes, every card is gone, every reply and file is there."""
+    import urllib.error
+    import urllib.request
+    from .config import load_toml, private_dir, rooms
+    env, priv = Env(a), private_dir(a.private)
+    cid = str(rooms(priv)[a.room]["channel"]).partition(":")[2]
+    d = load_toml(priv / "yerkd.toml")["discord"]
+    token = (priv / d["token_file"]).read_text().strip()
+
+    def get(path: str) -> Any:
+        req = urllib.request.Request("https://discord.com/api/v10" + path,
+                                     headers={"Authorization": f"Bot {token}", "User-Agent": "DiscordBot (yerk-ai, 0.1)"})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return json.loads(r.read())
+    inbound = sorted([r for r in env.ledger.rows(5000, "inbound") if r["room"] == a.room and r["received"] >= a.since],
+                     key=lambda r: int(r["message_id"]))
+    outbound = [r for r in env.ledger.rows(20000, "outbound") if r["room"] == a.room and r["sent"] >= a.since]
+    if not inbound:
+        return {"ok": False, "error": "no inbound rows since --since"}
+    seen: dict[str, Any] = {}
+    after = str(int(inbound[0]["message_id"]) - 1)
+    while True:
+        try:
+            page = get(f"/channels/{cid}/messages?limit=100&after={after}")
+        except urllib.error.HTTPError as e:
+            return {"ok": False, "error": f"history read answered {e.code}"}
+        if not page:
+            break
+        seen.update({m["id"]: m for m in page})
+        after = max(page, key=lambda m: int(m["id"]))["id"]
+        time.sleep(0.5)
+    marks = {m["id"]: {r["emoji"]["name"] for r in m.get("reactions", []) if r.get("me")} for m in seen.values()}
+    done, eyes = "\N{WHITE HEAVY CHECK MARK}", "\N{EYES}"
+    msgs = [str(r["message_id"]) for r in inbound]
+    cards = {str(o["message_id"]) for o in outbound if o["kind"] == "progress"}
+    posts = [str(o["message_id"]) for o in outbound if o["kind"] in ("reply", "notice", "send", "file") and o["message_id"]]
+    edited = {str(o["message_id"]) for o in outbound if o["kind"] == "progress-edit"}
+    out = {"messages": len(msgs), "with_done_mark": sum(done in marks.get(m, set()) for m in msgs),
+           "with_eyes_left": sum(eyes in marks.get(m, set()) for m in msgs),
+           "missing_in_room": [m for m in msgs if m not in seen], "cards": len(cards),
+           "cards_edited": len(cards & edited), "cards_still_in_room": sorted(cards & set(seen)),
+           "posts": len(posts), "posts_missing": [p for p in posts if p not in seen],
+           "reply_ids_in_room": all(all(x in seen for x in str(r["reply_ids"] or "").split(",") if x) for r in inbound)}
+    out["ok"] = (out["with_done_mark"] == len(msgs) and not out["with_eyes_left"] and not out["missing_in_room"]
+                 and out["cards_edited"] == len(cards) and not out["cards_still_in_room"] and not out["posts_missing"]
+                 and bool(out["reply_ids_in_room"]))
+    return out
+
+
+def proc_sample(pid: int) -> dict[str, Any] | None:
+    """Resident memory (kB), threads and CPU seconds of one process, from /proc."""
+    import os
+    try:
+        status = Path(f"/proc/{pid}/status").read_text()
+        stat = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()
+    except OSError:
+        return None
+    f = {k: v.split()[0] for k, _, v in (line.partition(":") for line in status.splitlines()) if v.strip()}
+    tick = os.sysconf("SC_CLK_TCK")
+    return {"pid": pid, "rss_kb": int(f.get("VmRSS", 0)), "threads": int(f.get("Threads", 0)),
+            "cpu_s": (int(stat[11]) + int(stat[12])) / tick}
+
+
+def descendants(pid: int) -> list[int]:
+    kids: dict[int, list[int]] = {}
+    for d in Path("/proc").iterdir():
+        if d.name.isdigit():
+            try:
+                kids.setdefault(int((d / "stat").read_text().rsplit(")", 1)[1].split()[1]), []).append(int(d.name))
+            except (OSError, IndexError, ValueError):
+                pass
+    out, todo = [], list(kids.get(pid, []))
+    while todo:
+        p = todo.pop()
+        out.append(p)
+        todo += kids.get(p, [])
+    return out
+
+
+def idle(a: argparse.Namespace) -> dict[str, Any]:
+    """The idle baseline: the running yerkd and its room processes sampled every 30 s for
+    --minutes, then `yerk room close`, then the daemon alone for --alone-minutes."""
+    import subprocess
+    import urllib.request
+    env = Env(a)
+    st = json.loads((env.state / "yerkd.json").read_text())
+    pid = int(st["pid"])
+
+    def unit() -> dict[str, dict[str, str]]:
+        out = {}
+        for u in [x for x in (a.unit, getattr(a, "compare_unit", None)) if x]:
+            r = subprocess.run(["systemctl", "--user", "show", u, "-p", "MemoryCurrent", "-p", "CPUUsageNSec",
+                                "-p", "TasksCurrent"], capture_output=True, text=True)
+            out[u] = dict(x.split("=", 1) for x in r.stdout.split())
+        return out
+
+    def phase(name: str, minutes: float) -> dict[str, Any]:
+        samples: list[dict[str, Any]] = []
+        end = time.time() + minutes * 60
+        while True:
+            kids = [s for s in (proc_sample(p) for p in descendants(pid)) if s]
+            samples.append({"t": round(time.time(), 1), "yerkd": proc_sample(pid), "children": kids, "unit": unit()})
+            if time.time() >= end:
+                break
+            time.sleep(min(30.0, max(0.0, end - time.time())))
+        first, last, wall = samples[0], samples[-1], samples[-1]["t"] - samples[0]["t"]
+
+        def cpu(s: dict[str, Any] | None) -> float:
+            return float(s["cpu_s"]) if s else 0.0
+        kid_cpu = {k["pid"]: k for k in first["children"]}
+        return {"phase": name, "wall_s": round(wall, 1), "samples": len(samples),
+                "yerkd_rss_kb": [s["yerkd"]["rss_kb"] for s in (first, last)],
+                "yerkd_threads": last["yerkd"]["threads"],
+                "yerkd_cpu_s": round(cpu(last["yerkd"]) - cpu(first["yerkd"]), 3),
+                "children": [{"pid": k["pid"], "rss_kb": k["rss_kb"], "threads": k["threads"],
+                              "cpu_s": round(k["cpu_s"] - cpu(kid_cpu.get(k["pid"], {})), 3) if k["pid"] in kid_cpu
+                              else None} for k in last["children"]],
+                "unit_first": first["unit"], "unit_last": last["unit"], "raw": samples}
+    out: dict[str, Any] = {"pid": pid, "room": a.room, "phases": [phase("room open, idle", a.minutes)]}
+    req = urllib.request.Request(f"http://127.0.0.1:{st['port']}/control", data=json.dumps({"close": a.room}).encode(),
+                                 headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        out["close"] = json.loads(r.read())
+    time.sleep(5)
+    out["phases"].append(phase("daemon alone", a.alone_minutes))
+    turns = [r for r in env.ledger.rows(50) if r["room"] == a.room and (r["started"] or 0) >= out["phases"][0]["raw"][0]["t"]]
+    out["turns_during"] = len(turns)
+    out["ok"] = bool(out["close"].get("closed")) and not turns
+    return out
+
+
 def snowflake_time(mid: str) -> float | None:
     """When Discord made a message, from its id (milliseconds since 2015)."""
     return ((int(mid) >> 22) + 1420070400000) / 1000 if mid.isdigit() else None

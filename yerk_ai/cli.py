@@ -26,6 +26,17 @@ def cmd_map(a: argparse.Namespace) -> int:
     bad = context.violations(start, msg, b)
     for v in bad:
         print("OVER BUDGET: " + v)
+    if a.wire:
+        from .accounts import load_accounts
+        from .config import state_dir
+        sid = json.loads((state_dir(a.state) / "sessions.json").read_text())[a.room]["session_id"]
+        dirs = [x.config_dir for x in load_accounts(priv / "accounts.toml")] if (priv / "accounts.toml").is_file() else []
+        found = [f for d in dirs for f in sorted(d.glob(f"projects/*/{sid}.jsonl"))]
+        if not found:
+            print(f"no transcript for session {sid} in {', '.join(map(str, dirs))}", file=sys.stderr)
+            return 2
+        print()
+        print(context.render_wire(a.room, context.wire(found[0]), context.chars(context.appended_file(start)), b))
     return 1 if bad else 0
 
 
@@ -79,6 +90,8 @@ def main(argv: list[str] | None = None) -> int:
     m = sub.add_parser("map", help="print a room's context part by part against budgets.toml")
     m.add_argument("room")
     m.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else the fake example layer)")
+    m.add_argument("--wire", action="store_true", help="also the sizes as sent, from the room's session transcript")
+    m.add_argument("--state", help="--wire: state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
     s = sub.add_parser("setup-room", help="find or make a Discord room's test webhook (URL to a 0600 file)")
     s.add_argument("room")
     s.add_argument("--private", help="private folder (default: $YERK_PRIVATE)")
@@ -89,7 +102,7 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("room")
     r.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
     pr = sub.add_parser("probe", help="contract probes against a real Claude Code login")
-    pr.add_argument("name", choices=["hello", "fold", "resume", "blocks", "smoke", "measure"])
+    pr.add_argument("name", choices=["hello", "fold", "resume", "blocks", "smoke", "measure", "check", "idle"])
     pr.add_argument("--config-dir", required=True, help="Claude Code config folder of the account to use")
     pr.add_argument("--to-config-dir", help="resume: the second account's config folder")
     pr.add_argument("--model", default="claude-fable-5-1")
@@ -102,6 +115,11 @@ def main(argv: list[str] | None = None) -> int:
     pr.add_argument("--private", help="smoke: private folder (default: $YERK_PRIVATE)")
     pr.add_argument("--only-account", action="store_true", help="smoke: run on --config-dir only, no hop")
     pr.add_argument("--via", choices=["console", "discord"], default="console", help="smoke, measure: the channel")
+    pr.add_argument("--minutes", type=float, default=10.0, help="idle: minutes with the room's process open")
+    pr.add_argument("--alone-minutes", type=float, default=5.0, help="idle: minutes of the daemon alone after the close")
+    pr.add_argument("--unit", help="idle: the systemd user unit running yerkd, for its cgroup totals")
+    pr.add_argument("--compare-unit", help="idle: another user unit sampled over the same window")
+    pr.add_argument("--since", type=float, default=0.0, help="check: messages ledgered since this epoch time")
     pr.add_argument("--attach", action="store_true", help="smoke, measure: drive the yerkd already running on --state")
     pr.set_defaults(on_second=None, fold_settings=None)
     a = p.parse_args(argv)

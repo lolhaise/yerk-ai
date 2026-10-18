@@ -136,6 +136,87 @@ def violations(start: list[Part], msg: list[Part], budgets: dict[str, Any]) -> l
     return out
 
 
+def wire(transcript: Path) -> dict[str, Any]:
+    """Sizes as sent, from a room's Claude Code transcript (rows of 2.1.301): `api-request-shape`
+    holds the system blocks and tool definitions as sent; `api-request-blob` rows hold each
+    request's new content blocks. A request carrying a new message is that message plus what
+    Claude Code and the hook put around it."""
+    import json
+    rows = [json.loads(line) for line in transcript.open()]
+    shape = next((r["shape"] for r in rows if r.get("type") == "api-request-shape"), {})
+    out: dict[str, Any] = {"system": sum(chars(b.get("text", "")) for b in shape.get("system", [])),
+                           "tools": {str(t.get("name")): chars(json.dumps(t)) for t in shape.get("tools", [])},
+                           "messages": []}
+    group: list[tuple[str, str]] = []
+    prompt: tuple[str, bool] | None = None          # the newest message not yet sent: (text, folded)
+    added: list[str] = []                           # its attachments, rendered as Claude Code sends them
+    for r in rows:
+        kind, att = r.get("type"), r.get("attachment") or {}
+        if kind == "user" and isinstance((r.get("message") or {}).get("content"), str):
+            prompt, added = (str(r["message"]["content"]), False), []
+        elif kind == "attachment" and att.get("type") == "queued_command":
+            prompt, added = (str(att.get("prompt", "")), True), []
+        elif kind == "attachment" and att.get("type") == "total_tokens_reminder":
+            added.append(str(att.get("text", "")))
+        elif kind == "attachment" and att.get("type") == "hook_additional_context":
+            added.append(f"{att.get('hookEvent', 'UserPromptSubmit')} hook additional context: "
+                         + "\n".join(map(str, att.get("content") or [])))
+        elif kind == "api-request-blob":
+            m = r.get("message") or {}
+            content = m.get("content")
+            blocks = [{"type": "text", "text": content}] if isinstance(content, str) else content or []
+            group += [(str(m.get("role")), str(b.get("text", ""))) for b in blocks if b.get("type") == "text"]
+        elif kind == "api-request":
+            if prompt is not None:
+                text, folded = prompt
+                around = [t for role, t in group if role == "system" or t.startswith("<system-reminder>")]
+                # a folded message is sent inside Claude Code's own system block: count only the wrapper
+                sizes = [chars(t) - (chars(text) if text and text in t else 0) for t in around]
+                if not folded and added:     # a block identical to an earlier one is not stored again
+                    sizes = [s for s, t in zip(sizes, around) if not t.startswith("<total_tokens>")]
+                    sizes.append(chars(SEP.join(added)))
+                out["messages"].append({"text": chars(text), "around": sizes, "folded": folded})
+            group, prompt, added = [], None, []
+    return out
+
+
+def render_wire(room_name: str, w: dict[str, Any], appended: int, budgets: dict[str, Any]) -> str:
+    """The measured counterpart of `render`: the first message carries the session-start parts."""
+    tools, cc, yerk = w["tools"], budgets["session_start"]["claude_code"], ("mcp__yerk__",)
+    builtin = sum(n for k, n in tools.items() if not k.startswith(yerk) and k[:1].isupper() and k != "DeferredToolPlaceholder")
+    mine = sum(n for k, n in tools.items() if k.startswith(yerk))
+    extra = sum(tools.values()) - builtin - mine
+    msgs = w["messages"]
+    first = sum(msgs[0]["around"]) if msgs else 0
+    later = sorted(sum(m["around"]) for m in msgs[1:] if not m["folded"])
+    folds = sorted(sum(m["around"]) for m in msgs if m["folded"])
+    total = w["system"] + sum(tools.values()) + first
+    row = "  {:<34}{:>9}{:>9}  {}"
+    L = [f"yerk map {room_name} --wire  (from the room's transcript: what Claude Code sent)", "",
+         f"{'Session start, as sent':<36}{'chars':>9}{'budget':>9}",
+         row.format("system prompt: Claude Code's own", fmt(w["system"] - appended), fmt(cc["claude_code_prompt"]), ""),
+         row.format("system prompt: Yerk AI's file", fmt(appended), "", ""),
+         row.format("built-in tools (" + ", ".join(k for k in tools if k[:1].isupper() and k != "DeferredToolPlaceholder") + ")",
+                    fmt(builtin), fmt(cc["builtin_tools"]), ""),
+         row.format("Yerk AI's tools", fmt(mine), fmt(cc["yerk_tools"]), ""),
+         row.format("other tool entries (" + ", ".join(k for k in tools if not k.startswith(yerk) and not
+                    (k[:1].isupper() and k != "DeferredToolPlaceholder")) + ")", fmt(extra), fmt(cc["deferred_tool_names"]), ""),
+         row.format("skills", "0", fmt(cc["skills"]), "none sent"),
+         row.format("first message's added blocks", fmt(first), "", "environment, account reminder, hook"),
+         row.format("total", fmt(total), fmt(budgets["session_start"]["total"]),
+                    "ok" if total <= budgets["session_start"]["total"] else "OVER"), "",
+         f"{'Every later message, around its text':<36}{'chars':>9}{'budget':>9}"]
+    if later:
+        med, top = later[len(later) // 2], later[-1]
+        typ = budgets["per_message"]["typical"]
+        L.append(row.format(f"median of {len(later)}", fmt(med), fmt(typ), "ok" if med <= typ else "OVER"))
+        L.append(row.format("largest", fmt(top), fmt(budgets["per_message"]["cap"]), ""))
+    if folds:
+        L.append(row.format(f"mid-turn messages: median of {len(folds)}", fmt(folds[len(folds) // 2]), "",
+                            "Claude Code's wrapper for a message that joins a turn"))
+    return "\n".join(L)
+
+
 def render(room_name: str, private_label: str, start: list[Part], msg: list[Part], budgets: dict[str, Any]) -> str:
     row = "  {:<30}{:>9}{:>9}  {}"
     L = [f"yerk map {room_name}  (private folder: {private_label})",
