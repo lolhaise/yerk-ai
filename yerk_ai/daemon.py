@@ -70,6 +70,9 @@ class ConsoleChannel:
     async def send_text(self, room: str, text: str, key: str | None = None) -> list[str]:
         return self._out({"room": room, "send": text})
 
+    async def notify(self, room: str, text: str) -> list[str]:
+        return self._out({"room": room, "notice": text, "inbound": []})
+
     async def send_file(self, room: str, path: Path, caption: str = "", key: str | None = None) -> list[str]:
         if not path.is_file():
             raise FileNotFoundError(str(path))
@@ -138,9 +141,11 @@ class Yerkd:
             return {"ok": False, "error": f"no room {room!r}; rooms: {', '.join(self.rooms)}"}
         if not text and not file:
             return {"ok": False, "error": "nothing to send: give text, a file, or both"}
-        if file and not self.may_send(caller if caller in self.rooms else room, Path(file)):
-            return {"ok": False, "error": f"{file} is outside this room's folders; only files from them can be sent"}
         ch = self.channels[room]
+        if file and not self.may_send(caller if caller in self.rooms else room, Path(file)):
+            await ch.notify(room, f"Could not send {Path(file).name}: it is outside this room's folders.")
+            return {"ok": False, "error": f"{file} is outside this room's folders; only files from them can be sent; "
+                                          "the room was told"}
         src = self.rooms.get(caller) or self.rooms[room]
         self.sends += 1
         key = f"{src.turn_key or 'send'}-s{self.sends}"      # the turn's key and this send's number

@@ -388,6 +388,10 @@ class DiscordChannel:
     async def send_text(self, room: str, text: str, key: str | None = None) -> list[str]:
         return await self._post(room, text, "send", [], key)
 
+    async def notify(self, room: str, text: str) -> list[str]:
+        """A visible notice that answers no message (a refused send)."""
+        return await self._post(room, text, "notice", [])
+
     def file_problem(self, ch: Any, path: Path) -> str | None:
         """Why a file cannot go to this room, or None."""
         limit = int(getattr(getattr(ch, "guild", None), "filesize_limit", 10 * 1024 * 1024))
