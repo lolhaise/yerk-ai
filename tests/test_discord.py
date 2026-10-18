@@ -158,6 +158,8 @@ def test_card_is_edited_then_replaced_by_the_split_reply(dc):
     assert card.edits == ["Checking the file", "Checking the file\n✅ read a.md"] and card.deleted
     assert len(ids) == 3 and all(len(m.content) <= LIMIT for m in ch.sent[1:])
     assert ch.reactions == [(5, "-", ACK), (5, "+", DONE)]
+    edits = [r["sent"] for r in sorted(d.ledger.rows(10, "outbound"), key=lambda r: r["id"]) if r["kind"] == "progress-edit"]
+    assert edits[1] - edits[0] >= dmod.MIN_EDIT * 0.9                 # spaced, however many were waiting
     kinds = [(r["kind"], r["message_id"]) for r in sorted(d.ledger.rows(10, "outbound"), key=lambda r: r["id"])]
     assert kinds[:3] == [("progress", str(card.id)), ("progress-edit", str(card.id)), ("progress-edit", str(card.id))]
     assert [k for k, _ in kinds[3:]] == ["reply"] * 3

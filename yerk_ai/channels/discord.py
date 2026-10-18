@@ -284,22 +284,29 @@ class DiscordChannel:
                                  chars=len(text))
             self.ledger.card_open(str(card.id), room, kind)
 
-    async def _edit(self, room: str) -> None:
+    def _wait(self, room: str) -> float:
         last = self.edited.get(room)
-        if last is not None and (wait := MIN_EDIT - (time.monotonic() - last)) > 0:
-            await asyncio.sleep(wait)
-        async with self._lock(room):
-            text, card = self.want.pop(room, None), self.cards.get(room)
-            if text is None or card is None or text == self.shown.get(room):
+        return 0.0 if last is None else MIN_EDIT - (time.monotonic() - last)
+
+    async def _edit(self, room: str) -> None:
+        while True:
+            while (wait := self._wait(room)) > 0:
+                await asyncio.sleep(wait)
+            async with self._lock(room):
+                if self._wait(room) > 0:          # another edit went out while this one waited for the lock
+                    continue
+                text, card = self.want.pop(room, None), self.cards.get(room)
+                if text is None or card is None or text == self.shown.get(room):
+                    return
+                try:
+                    await card.edit(content=text[:MAX])
+                except discord.HTTPException as e:
+                    log.warning("progress in %s failed: %s", room, e)
+                    return
+                self.edited[room], self.shown[room] = time.monotonic(), text
+                self.ledger.outbound(room=room, channel=str(card.channel.id), kind="progress-edit",
+                                     message_id=str(card.id), chars=len(text))
                 return
-            try:
-                await card.edit(content=text[:MAX])
-            except discord.HTTPException as e:
-                log.warning("progress in %s failed: %s", room, e)
-                return
-            self.edited[room], self.shown[room] = time.monotonic(), text
-            self.ledger.outbound(room=room, channel=str(card.channel.id), kind="progress-edit",
-                                 message_id=str(card.id), chars=len(text))
 
     async def _finish(self, room: str, text: str, inbound: list[str], mark: str, kind: str = "reply",
                       card: str | None = None, key: str | None = None, instead: bool = False) -> list[str]:
