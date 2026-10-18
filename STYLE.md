@@ -70,7 +70,7 @@ Plain punctuation: commas, colons, semicolons, full stops.
 The presentation choices are named settings under `[presentation]` in the private `yerkd.toml`, each described in plain words in `yerk_ai/words.py`, so `yerk config get presentation` prints them from the code and they cannot drift:
 
 - `footer`: `minimal` (how long it ran and the command that opens the report) or `full` (also the account and the model)
-- `paths`: `never` or `owner` (rooms whose privacy is owner also show the report's path)
+- `paths`: `never` or `owner` (a worker card in a room whose privacy is owner also shows the report's path; the relay never does)
 - `times`: `relative` or `clock` (the time of day)
 
 Asking for one in plain words in a room, and the one-line before and after, comes with the config gate (Layer 6).

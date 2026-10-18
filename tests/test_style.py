@@ -121,7 +121,8 @@ def test_every_worker_card_running_and_settled_is_state_first_with_no_path_and_n
 
 
 def test_the_relay_line_and_reply_carry_the_command_never_the_path(tmp_path):
-    report = tmp_path / "REPORT.md"
+    (tmp_path / "abc123").mkdir()
+    report = tmp_path / "abc123" / "REPORT.md"                        # a worker's folder is its id
     report.write_text("Three ticks done\n\nall of it went fine\n")
     row = {**worker_row(), "report": str(report), "tasks": str(tmp_path / "TASKS.md")}
     text = workers.relay_text(row, settled("done", row), 1500)

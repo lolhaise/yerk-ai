@@ -312,20 +312,24 @@ def _setting_lines(r: dict[str, Any]) -> list[str]:
 
 def cmd_explain(a: argparse.Namespace) -> int:
     """One ability from the manifest (what it does, needs and costs, its free path; how a described
-    one would be built and why it is not), else one setting; state first, plain words."""
-    from . import abilities, memory, words
+    one would be built and why it is not), else one setting; state first, plain words, and its state
+    here again on the last line."""
+    from . import abilities, memory
     from .config import state_dir
-    tab = abilities.manifest()
-    ab = tab.get(a.ability)
+    from .words import NOT_DONE
+    table_ = abilities.manifest()
+    ab = table_.get(a.ability)
     if ab is None:
         hit = [r for r in _settings(a) if r["key"] in (a.ability, f"presentation.{a.ability}")]
         if hit:
             print("\n".join(_setting_lines(hit[0])))
             return 0
-        print(f"{words.NOT_DONE} no ability or setting {a.ability!r}; abilities: {', '.join(tab)}", file=sys.stderr)
+        print(f"{NOT_DONE} no ability or setting {a.ability!r}; abilities: {', '.join(table_)}", file=sys.stderr)
         return 2
     s = memory.settings(private_dir(a.private), state_dir(a.state))
-    print("\n".join(abilities.explain(a.ability, ab, tab, s)))
+    print("\n".join(abilities.explain(a.ability, ab, table_, s)))
+    dot, note = abilities.state(a.ability, ab, table_, s)
+    print(f"now: {dot} " + (note or "on"))
     return 0
 
 
@@ -393,14 +397,14 @@ def main(argv: list[str] | None = None) -> int:
     ex = sub.add_parser("explain", help="one ability (what it does, needs and costs, its free path, its state here) "
                         "or one setting")
     ex.add_argument("ability")
+    for x in (ac, st, rb, ab, ex):
+        x.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else the fake example layer)")
+        x.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
     cf = sub.add_parser("config", help="the settings Yerk AI describes, with their values here and plain words")
     cf.add_argument("action", choices=["get"])
     cf.add_argument("key", nargs="?", default="presentation", help="a setting, or presentation for all of them")
     cf.add_argument("--json", action="store_true")
     cf.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else the fake example layer)")
-    for x in (ac, st, rb, ab, ex):
-        x.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else the fake example layer)")
-        x.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
     pr = sub.add_parser("probe", help="contract probes against a real Claude Code login")
     pr.add_argument("name", choices=["hello", "fold", "resume", "blocks", "smoke", "measure", "short", "think", "check",
                                      "idle"])

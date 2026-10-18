@@ -406,12 +406,12 @@ def test_ticks_become_card_rows_at_most_once_a_second_and_a_restart_keeps_the_wo
     assert len(asyncio.run(dc._finish("r", "the outcome, in the room's words", ["relay-abc123"], dmod.DONE))) == 1
 
 
-def test_fit_holds_a_reply_to_its_cap_and_carries_the_report_path():
+def test_fit_holds_a_reply_to_its_cap_and_carries_the_report_line():
     long = "First sentence here. " * 200
-    out = fit(long, 1500, ["/x/REPORT.md"])
-    assert len(out) <= 1500 and out.endswith("\n/x/REPORT.md") and "..." in out
-    assert fit("Done, see /x/REPORT.md", 1500, ["/x/REPORT.md"]) == "Done, see /x/REPORT.md"
-    saved = workers.relay_line({"id": "ab12cd"})                  # the relay's line: added once, never twice
+    out = fit(long, 1500, ["/w/ab12cd/REPORT.md"])                # a worker's report path, as the room reads it
+    assert len(out) <= 1500 and out.endswith("\n-# report saved: `yerk worker report ab12cd`") and "..." in out
+    assert fit("Done.", 1500, ["/x/notes/plan.md"]) == "Done.\nplan.md"   # any other path: its name
+    saved = workers.relay_line({"id": "ab12cd", "report": "/w/ab12cd/REPORT.md"})   # added once, never twice
     assert fit("All done.", 1500, [saved]) == f"All done.\n{saved}"
     assert fit("All done; `yerk worker report ab12cd` has it.", 1500, [saved]) == "All done; `yerk worker report ab12cd` has it."
 

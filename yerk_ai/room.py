@@ -63,10 +63,11 @@ HARNESS = "yerk"                          # the sender of Yerk AI's own messages
 
 
 def fit(text: str, cap: int, must: list[str]) -> str:
-    """A reply held to `cap` characters, cut at a line or a sentence, carrying every `must` line
-    (one the reply already has, or whose `command` it already names, is not added twice)."""
-    tail = "\n".join(m for m in dict.fromkeys(must) if m and m not in text
-                     and not any(c in text for c in re.findall(r"`([^`]+)`", m)))
+    """A reply held to `cap` characters, cut at a line or a sentence, carrying every `must` line as a
+    room reads it (words.carried: a worker's report path is "report saved" and its command); one the
+    reply already has, or whose `command` it already names, is not added twice."""
+    lines = [words.carried(m) for m in dict.fromkeys(must) if m]
+    tail = "\n".join(m for m in lines if m not in text and not any(c in text for c in re.findall(r"`([^`]+)`", m)))
     room = cap - (len(tail) + 1 if tail else 0)
     if len(text) > room:
         cut = text[:max(room - 3, 0)]

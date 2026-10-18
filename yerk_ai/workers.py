@@ -278,18 +278,13 @@ def card_text(row: dict[str, Any], items: list[tuple[bool, str]], end: dict[str,
 
 
 # the relay
-def relay_text(row: dict[str, Any], end: dict[str, Any], cap: int, look: words.Look | None = None,
-               privacy: str = "owner") -> str:
+def relay_text(row: dict[str, Any], end: dict[str, Any], cap: int) -> str:
     """The one harness line the room's session gets: the outcome in plain words, the report's
     first line and start, and the line the reply ends with ("report saved" and the command); the
-    room says it in its own voice. No path and no exit code unless presentation.paths = owner in an
-    owner room. At most `cap` characters."""
-    look = look or words.LOOK
-    items = tasks_of(Path(row["tasks"]))
-    mark, state = settled_state(row, items, end)
+    room says it in its own voice. Never the path, never the exit (STYLE.md). At most `cap` characters."""
+    _, state = settled_state(row, tasks_of(Path(row["tasks"])), end)
     ran = float(end["finished"]) - float(row["started"])
-    path = f"report path: {row['report']}\n" if look.paths == "owner" and privacy == "owner" else ""
-    head = (f"[worker {row['id']} finished] {state}, {words.of_cap(ran, float(row['cap']))}\n{path}"
+    head = (f"[worker {row['id']} finished] {state}, {words.of_cap(ran, float(row['cap']))}\n"
             + (f"first line: \"{end['result']}\"\n" if end.get("result") else ""))
     try:
         body = Path(row["report"]).read_text(errors="replace").strip()
@@ -309,8 +304,9 @@ def relay_text(row: dict[str, Any], end: dict[str, Any], cap: int, look: words.L
 
 
 def relay_line(row: dict[str, Any]) -> str:
-    """The line a relay reply always carries: the report is saved, and the command that opens it."""
-    return words.SUB + words.REPORT_SAVED.format(id=row["id"])
+    """The line a relay reply always carries: the report is saved, and the command that opens it.
+    The relay names the report's path as the line its reply must carry, and room.fit says it this way."""
+    return words.carried(str(row["report"]))
 
 
 class Workers:
@@ -518,8 +514,7 @@ class Workers:
             log.info("worker %s: relay skipped: %s", row["id"], why)
             return
         assert room is not None
-        text = relay_text(row, end, self.conf.relay_message,
-                          privacy=str(self.room_confs.get(row["room"], {}).get("privacy", "owner")))
+        text = relay_text(row, end, self.conf.relay_message)
         mid = f"relay-{row['id']}"
         self.ledger.inbound_add(mid, row["room"], "worker", "yerk", len(text))
         self.ledger.worker_set(row["id"], relay="sent", relay_note=f"inbound {mid}")
@@ -527,7 +522,7 @@ class Workers:
         def then(state: str, ids: list[str], chars: int) -> None:
             self.ledger.worker_set(row["id"], relay="relayed" if state == "answered" else "failed", relay_chars=chars,
                                    relay_note=f"inbound {mid}, {state}, message(s) {','.join(ids)}")
-        room.submit(Inbound(mid, "yerk", text, cap=self.conf.relay_reply, must=relay_line(row), then=then))
+        room.submit(Inbound(mid, "yerk", text, cap=self.conf.relay_reply, must=str(row["report"]), then=then))
         log.info("worker %s: relay turn asked in %s", row["id"], row["room"])
 
     # after a daemon start, and the minute backstop

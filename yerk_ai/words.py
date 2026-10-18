@@ -48,6 +48,16 @@ def no_paths(text: str) -> str:
     return PATH.sub(lambda m: m.group().rstrip("/").rsplit("/", 1)[-1], text)
 
 
+def carried(line: str) -> str:
+    """A line a harness reply must carry, as the room reads it: a worker's report path (its folder is
+    the worker's id) becomes "report saved" with the command that opens it; any other path its name."""
+    p = line.strip()
+    parts = p.rsplit("/", 2)
+    if p.startswith("/") and len(parts) == 3 and parts[2] == "REPORT.md" and re.fullmatch(r"[0-9a-f]{6}", parts[1]):
+        return SUB + REPORT_SAVED.format(id=parts[1])
+    return no_paths(p)
+
+
 def line(text: str, n: int = PHONE) -> str:
     """One line held to `n` phone columns, cut at a word with "..." when it is longer."""
     text = " ".join(str(text).split())
@@ -202,7 +212,7 @@ SETTINGS: dict[str, tuple[tuple[str, ...], str]] = {
                "the report. full: also the account and the model it ran on."),
     "paths": (("never", "owner"),
               "Whether a file path may appear in a room. never: a report shows as 'report saved' with the command "
-              "that opens it. owner: rooms whose privacy is owner also show the report's path."),
+              "that opens it. owner: a worker card in a room whose privacy is owner also shows the report's path."),
     "times": (("relative", "clock"),
               "How a card says when. relative: '3 min of 15', 'done in 3 min'. clock: the time of day, "
               "'started 13:05, cap 15 min'."),
