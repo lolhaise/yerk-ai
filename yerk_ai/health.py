@@ -3,7 +3,10 @@
 Health is proved by a real model call, never by the login status command alone (a login can
 read as signed in while every model call is refused). Identity is the login's email as Claude
 Code reports it (`claude auth status`), kept only as a short fingerprint: pinned the first time
-it is seen, a change or two accounts on one login fail the check. Each call is a ledger row
+it is seen, a change or two accounts on one login fail the check. An account on a one-year token
+is also checked for which account the token belongs to, without any email: the token's own call
+reports its 5-hour and weekly reset times, and they must be the config folder's login's reset
+times (each account's windows reset at its own times). Each call is a ledger row
 (table health); a refused login rests the account the way a room's failure would, and a pass
 clears it. The call runs without session persistence, so it leaves no transcript."""
 from __future__ import annotations
@@ -17,10 +20,11 @@ import time
 from pathlib import Path
 from typing import Any
 
-from .accounts import Account, Cooldowns, account_env
+from .accounts import TOKEN_ENV, Account, Cooldowns, account_env
 from .engine import Turn, claude_bin
 from .ledger import Ledger
 from .lifted.classify import FailureTable
+from .lifted.usage import read_usage
 from .meters import Meters
 
 PROMPT = "Reply with the single word OK."
@@ -40,6 +44,13 @@ def login_identity(env: dict[str, str], timeout: float = 30) -> tuple[str, str |
     email = d.get("email") or (d.get("account") or {}).get("email") or d.get("emailAddress")
     method = str(d.get("authMethod") or ("none" if p.returncode else "unknown"))
     return method, (fingerprint(str(email)) if email else None)
+
+
+def same_account(windows: dict[str, Any] | None, live: dict[str, Any], slack: float = 120) -> bool | None:
+    """Do a stream's usage windows and a live reading have the same reset times? None: nothing to compare."""
+    pairs = [(float(windows[w]["resetsAt"]), float(live[w]["resets"])) for w in ("five_hour", "seven_day")
+             if windows and (windows.get(w) or {}).get("resetsAt") and (live.get(w) or {}).get("resets")]
+    return None if not pairs else all(abs(x - y) <= slack for x, y in pairs)
 
 
 def model_call(account: Account, model: str, failures: FailureTable, meters: Meters | None,
@@ -83,7 +94,10 @@ def check(accounts: list[Account], failures: FailureTable, ledger: Ledger, coold
         pins = {}
     rows = []
     for a in accounts:
-        login, ident = login_identity(account_env(a))
+        env = account_env(a)
+        tokened = TOKEN_ENV in env
+        method, ident = login_identity({k: v for k, v in env.items() if k != TOKEN_ENV})   # the folder's login
+        login = login_identity(env)[0] if tokened else method
         turn, _err = model_call(a, model, failures, meters, timeout)
         ok = turn.outcome == "ok"
         note, ident_ok = [], None
@@ -96,7 +110,15 @@ def check(accounts: list[Account], failures: FailureTable, ledger: Ledger, coold
             if twins:
                 note.append("same login as " + ",".join(twins))
         else:
-            note.append(f"no identity in the login status ({login})")
+            note.append(f"no identity in the login status ({method})")
+        if tokened and ok:
+            same = same_account(turn.windows, read_usage(a.config_dir))
+            if same is False:
+                ident_ok = 0
+                note.append("the token answers as another account (its reset times differ from the folder login's)")
+            elif same is None:
+                ident_ok = None if ident_ok else ident_ok
+                note.append("token identity unverified (no reset times to compare)")
         f = turn.failure
         if ok:
             cooldowns.clear(a.name)

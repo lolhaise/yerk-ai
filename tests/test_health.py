@@ -72,7 +72,8 @@ def test_a_token_account_reports_its_login_method(box):
     store_token(acct, "fake-token-for-tests")
     row = run_check(priv, state, [acct])[0]
     calls = [json.loads(x) for x in (tmp / "argv.jsonl").read_text().splitlines()]
-    assert row["login"] == "oauth_token" and all("CLAUDE_CODE_OAUTH_TOKEN" in c["env_keys"] for c in calls)
+    has = [("CLAUDE_CODE_OAUTH_TOKEN" in c["env_keys"], c["argv"][0]) for c in calls]
+    assert row["login"] == "oauth_token" and has == [(False, "auth"), (True, "auth"), (True, "-p")]  # folder, token, turn
 
 
 def test_yerk_accounts_lists_tokens_rests_and_health(box, capsys, monkeypatch):
@@ -102,3 +103,19 @@ def test_yerk_status_prints_a_meter_per_account(box, capsys):
     out = capsys.readouterr().out.splitlines()
     assert out[0] == "yerkd: not running" and out[1].startswith("one: 5h 7% (") and "wk 3% (" in out[1]
     assert out[2] == "two: no meter (not read)"
+
+
+def test_a_token_from_another_account_fails_the_identity_check(box, monkeypatch):
+    priv, state, tmp = box
+    monkeypatch.setenv("FAKE_CLAUDE_WINDOWS", "0.2,0.1")          # the token's call: resets 2000000000 / 2000300000
+    acct = load_accounts(priv / "accounts.toml")[0]
+    store_token(acct, "fake-token-for-tests")
+    mine = {"five_hour": {"pct": 20.0, "resets": 2000000000}, "seven_day": {"pct": 10.0, "resets": 2000300000}}
+    monkeypatch.setattr(health, "read_usage", lambda d, t=None: mine)
+    assert run_check(priv, state, [acct])[0]["identity_ok"] == 1
+    other = {"five_hour": {"pct": 20.0, "resets": 2000007200}, "seven_day": {"pct": 10.0, "resets": 2000300000}}
+    monkeypatch.setattr(health, "read_usage", lambda d, t=None: other)
+    row = run_check(priv, state, [acct])[0]
+    assert row["identity_ok"] == 0 and "another account" in row["note"]
+    monkeypatch.setattr(health, "read_usage", lambda d, t=None: {"error": "http 401"})
+    assert run_check(priv, state, [acct])[0]["identity_ok"] is None
