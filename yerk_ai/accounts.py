@@ -73,6 +73,36 @@ def store_token(account: Account, token: str, issued: date | None = None) -> Pat
 
 
 TOKEN_SHAPE = re.compile(rb"sk-ant-[A-Za-z0-9_-]{20,}")
+MINT_COLUMNS = 400   # wider than any token line: the setup screen wraps at the terminal width
+
+
+def spawn_wide(argv: list[str], read: Callable[[int], bytes], cols: int = MINT_COLUMNS) -> int:
+    """pty.spawn with the child's terminal declared `cols` wide before it starts, so a line it prints
+    is never wrapped mid-string. Claude Code's setup screen wraps the token at the terminal width,
+    80 by default, and the wrapped tail escaped the swap below (account one, 2026-10-17: 79 of the
+    token's characters stored, the rest shown). Returns the child's wait status, as pty.spawn does."""
+    import fcntl
+    import pty
+    import struct
+    import termios
+    import tty
+    pid, fd = pty.fork()
+    if pid == 0:
+        os.execvp(argv[0], argv)
+    fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 50, cols, 0, 0))
+    try:
+        mode = termios.tcgetattr(pty.STDIN_FILENO)
+        tty.setraw(pty.STDIN_FILENO)
+        restore = True
+    except termios.error:
+        restore = False
+    try:
+        pty._copy(fd, read, pty._read)   # the loop pty.spawn runs; the child's size is the one difference
+    finally:
+        if restore:
+            termios.tcsetattr(pty.STDIN_FILENO, termios.TCSAFLUSH, mode)
+    os.close(fd)
+    return os.waitpid(pid, 0)[1]
 
 
 def mint(account: Account, claude: str = "claude") -> tuple[int, bool]:
@@ -80,7 +110,6 @@ def mint(account: Account, claude: str = "claude") -> tuple[int, bool]:
     shown as it comes, the token itself is swapped for "[token stored]" and written to the
     account's token file, so it never reaches a screen, a log or a transcript. Returns (exit
     status, stored)."""
-    import pty
     found: list[bytes] = []
     held, eof = [b""], [False]
 
@@ -110,7 +139,7 @@ def mint(account: Account, claude: str = "claude") -> tuple[int, bool]:
     os.environ.clear()
     os.environ.update(env)
     try:
-        status = pty.spawn([claude, "setup-token"], read)
+        status = spawn_wide([claude, "setup-token"], read)
     finally:
         os.environ.clear()
         os.environ.update(old)

@@ -126,5 +126,5 @@ def test_mint_shows_the_flow_and_stores_the_token_without_showing_it(box, capfd)
     status, stored = mint(acct, str(FAKE))
     out = capfd.readouterr().out
     assert stored and status == 0 and "https://example.test/oauth" in out and "[token stored]" in out
-    assert "Fake" not in out and read_token(acct)[0] == "sk-" + "ant-oat01-" + "Fake" * 12
+    assert "Fake" not in out and read_token(acct)[0] == "sk-" + "ant-oat01-" + "Fake" * 25   # whole, unwrapped
     assert oct(acct.token_file.stat().st_mode & 0o777) == "0o600"

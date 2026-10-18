@@ -44,11 +44,14 @@ def listed(var):
 
 no_login = listed("FAKE_CLAUDE_AUTH_DIRS")
 if argv[:1] == ["setup-token"]:
-    tok = "sk-" + "ant-oat01-" + "Fake" * 12                    # token-shaped, built so the scrub never sees one
+    tok = "sk-" + "ant-oat01-" + "Fake" * 25                    # token-shaped (a real one is ~108 characters),
+    cols = (os.get_terminal_size(sys.stdout.fileno()).columns if sys.stdout.isatty() else 0) or 80   # built so the
+    line = " " + tok                                            # scrub never sees one; one space of indent
+    wrapped = "\r\n".join(line[i:i + cols] for i in range(0, len(line), cols))   # as the real screen wraps
     sys.stdout.write("Open this link to sign in: https://example.test/oauth?x=1\r\n")
-    sys.stdout.write("Your one-year token:\r\n" + tok[:20])
+    sys.stdout.write("Your one-year token:\r\n" + wrapped[:20])
     sys.stdout.flush()
-    sys.stdout.write(tok[20:] + "\r\nStore it safely.\r\n")
+    sys.stdout.write(wrapped[20:] + "\r\nStore it safely.\r\n")
     sys.exit(0)
 if argv[:2] == ["auth", "status"]:
     method = "oauth_token" if os.environ.get("CLAUDE_CODE_OAUTH_TOKEN") else ("none" if no_login else "claude.ai")
