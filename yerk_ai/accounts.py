@@ -97,7 +97,7 @@ def spawn_wide(argv: list[str], read: Callable[[int], bytes], cols: int = MINT_C
     except termios.error:
         restore = False
     try:
-        pty._copy(fd, read, pty._read)   # the loop pty.spawn runs; the child's size is the one difference
+        pty._copy(fd, read, pty._read)   # type: ignore[attr-defined]  # pty.spawn's own loop; the size is the one difference
     finally:
         if restore:
             termios.tcsetattr(pty.STDIN_FILENO, termios.TCSAFLUSH, mode)
