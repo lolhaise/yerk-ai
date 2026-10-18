@@ -1,6 +1,7 @@
 """Claude Code hooks, answered over local HTTP (`type: http`, one POST per event).
 
 UserPromptSubmit adds the per-message parts as context: the clock line and the metadata line.
+Stop runs the rule-based checks (today one: an image sent in and never read bounces once).
 The room comes from the payload's session id through the engine's room-to-session table.
 """
 from __future__ import annotations
@@ -37,4 +38,5 @@ def user_prompt_submit(payload: dict[str, Any], state: Path, rooms: dict[str, di
 
 def settings_for(url: str) -> dict[str, Any]:
     """The hooks block of a room's --settings file."""
-    return {"UserPromptSubmit": [{"hooks": [{"type": "http", "url": url, "timeout": 10}]}]}
+    one = [{"hooks": [{"type": "http", "url": url, "timeout": 10}]}]
+    return {"UserPromptSubmit": one, "Stop": one}

@@ -22,18 +22,24 @@ class Chan:
         self.cards, self.replies, self.notices = [], [], []
         self.done = threading.Event()
 
+    def open_card(self, room, text, kind="turn"):
+        self.cards.append(text)
+
     def progress(self, room, text):
         self.cards.append(text)
 
-    def reply(self, room, text, inbound, card=None):
+    def reply(self, room, text, inbound, card=None, key=None):
         self.replies.append((text, list(inbound)))
+        self.keys = getattr(self, "keys", []) + [key]
         if card:
             self.cards.append(card)
         self.done.set()
         return [f"m{len(self.replies)}"]
 
-    def notice(self, room, text, inbound):
+    def notice(self, room, text, inbound, card=None, key=None):
         self.notices.append((text, list(inbound)))
+        if card:
+            self.cards.append(card)
         self.done.set()
         return ["n1"]
 

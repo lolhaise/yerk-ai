@@ -186,6 +186,7 @@ class RoomProcess:
         self._log: IO[str] | None = None
         self._log_lock = threading.Lock()
         self._stdin_lock = threading.Lock()
+        self.read_paths: set[str] = set()      # every file the process asked to Read (the Stop check reads it)
 
     def alive(self) -> bool:
         return self.proc is not None and self.proc.poll() is None
@@ -248,6 +249,10 @@ class RoomProcess:
             except ValueError:
                 ev = {"type": "_raw", "text": raw.decode(errors="replace")[:2000]}
             self._note({"e": ev})
+            if ev.get("type") == "assistant":
+                for c in (ev.get("message") or {}).get("content") or []:
+                    if c.get("type") == "tool_use" and c.get("name") == "Read":
+                        self.read_paths.add(str((c.get("input") or {}).get("file_path") or ""))
             self.events.put((t, ev))
         self.events.put((time.time(), None))
 

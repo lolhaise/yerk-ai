@@ -1,6 +1,9 @@
 """The ledger, one SQLite database that records each message in and out, each turn, worker and approval, so that
 why the turn moved there), inbound (every channel message by its id, before anything runs),
-outbound (every message Yerk AI posted, with the id the channel returned), holds, and health
+outbound (every message Yerk AI posted, with the id the channel returned), deliveries (every
+the reply replaced can still be read back), deliveries (every outbound part by its idempotency key, written before
+the post: a retry after a crash posts a part only if it is not already in the room), attachments (every inbound
+missing), cards (each turn's progress message, open until its turn ends), holds, and health
 (the daily call per account: pass or fail and the login's identity).
 
 Inbound states, after Hermes' delivery ledger (gateway/delivery_ledger.py, MIT): `received`
@@ -18,8 +21,9 @@ from typing import Any
 
 COLUMNS = ("room", "account", "config_dir", "session_id", "started", "first_visible", "ended",
            "outcome", "failure", "action", "output_chars", "models", "fallback_model", "accepted", "inbound",
-           "source", "hop", "recap")
-ADDED = {"inbound": "TEXT", "source": "TEXT", "hop": "TEXT", "recap": "INTEGER"}   # columns newer than run 1
+           "source", "hop", "recap", "turn_key")
+ADDED = {"inbound": "TEXT", "source": "TEXT", "hop": "TEXT", "recap": "INTEGER",   # columns newer than run 1
+         "turn_key": "TEXT"}
 
 SCHEMA = """CREATE TABLE IF NOT EXISTS turns (
   id INTEGER PRIMARY KEY,
@@ -27,7 +31,7 @@ SCHEMA = """CREATE TABLE IF NOT EXISTS turns (
   started REAL, first_visible REAL, ended REAL,
   outcome TEXT, failure TEXT, action TEXT,
   output_chars INTEGER, models TEXT, fallback_model TEXT, accepted INTEGER, inbound TEXT,
-  source TEXT, hop TEXT, recap INTEGER);
+  source TEXT, hop TEXT, recap INTEGER, turn_key TEXT);
 CREATE TABLE IF NOT EXISTS inbound (
   message_id TEXT PRIMARY KEY, room TEXT, channel TEXT, sender TEXT,
   received REAL, chars INTEGER, state TEXT, attempts INTEGER DEFAULT 0,
@@ -35,6 +39,14 @@ CREATE TABLE IF NOT EXISTS inbound (
 CREATE TABLE IF NOT EXISTS outbound (
   id INTEGER PRIMARY KEY, room TEXT, channel TEXT, kind TEXT, message_id TEXT,
   chars INTEGER, file TEXT, inbound TEXT, sent REAL, error TEXT);
+CREATE TABLE IF NOT EXISTS deliveries (
+  key TEXT PRIMARY KEY, room TEXT, kind TEXT, body TEXT, file TEXT, size INTEGER, type TEXT, inbound TEXT,
+  state TEXT, message_id TEXT, attempts INTEGER DEFAULT 0, created REAL, sent REAL, error TEXT, note TEXT);
+CREATE TABLE IF NOT EXISTS attachments (
+  id INTEGER PRIMARY KEY, message_id TEXT, room TEXT, name TEXT, size INTEGER, type TEXT, path TEXT,
+  state TEXT, error TEXT, at REAL);
+CREATE TABLE IF NOT EXISTS cards (
+  message_id TEXT PRIMARY KEY, room TEXT, kind TEXT, opened REAL, closed REAL, how TEXT);
 CREATE TABLE IF NOT EXISTS holds (
   id INTEGER PRIMARY KEY, room TEXT, wait_for TEXT, reason TEXT, at REAL);
 CREATE TABLE IF NOT EXISTS health (
@@ -134,6 +146,46 @@ class Ledger:
     # outbound and holds
     def outbound(self, **row: Any) -> int:
         return self._insert("outbound", {"sent": time.time(), **row})
+
+    # deliveries: one row per outbound part, keyed by its turn and part index, before the post
+    def delivery_plan(self, key: str, room: str, kind: str, body: str = "", inbound: str = "",
+                      **extra: Any) -> dict[str, Any]:
+        """The part's row, written once: a second plan for the same key returns the first row."""
+        with self.lock:
+            self.db.execute("INSERT OR IGNORE INTO deliveries (key, room, kind, body, inbound, state, created"
+                            f"{''.join(', ' + k for k in extra)}) VALUES (?, ?, ?, ?, ?, 'pending', ?"
+                            f"{', ?' * len(extra)})", (key, room, kind, body, inbound, time.time(), *extra.values()))
+        return self._select("SELECT * FROM deliveries WHERE key = ?", (key,))[0]
+
+    def delivery_set(self, key: str, **fields: Any) -> None:
+        sets = ", ".join(f"{k} = ?" for k in fields)
+        with self.lock:
+            self.db.execute(f"UPDATE deliveries SET {sets} WHERE key = ?", (*fields.values(), key))
+
+    def deliveries(self, room: str | None = None, state: str | None = None) -> list[dict[str, Any]]:
+        sql, args = "SELECT * FROM deliveries WHERE 1", tuple[Any, ...]()
+        if room:
+            sql, args = sql + " AND room = ?", (*args, room)
+        if state:
+            sql, args = sql + " AND state = ?", (*args, state)
+        return self._select(sql + " ORDER BY created, key", args)
+
+    # attachments and cards
+    def attachment(self, **row: Any) -> int:
+        return self._insert("attachments", {"at": time.time(), **row})
+
+    def attachments(self, message_id: str) -> list[dict[str, Any]]:
+        return self._select("SELECT * FROM attachments WHERE message_id = ? ORDER BY id", (message_id,))
+
+    def card_open(self, message_id: str, room: str, kind: str) -> None:
+        self._insert("cards", {"message_id": message_id, "room": room, "kind": kind, "opened": time.time()})
+
+    def card_close(self, message_id: str, how: str) -> None:
+        with self.lock:
+            self.db.execute("UPDATE cards SET closed = ?, how = ? WHERE message_id = ?", (time.time(), how, message_id))
+
+    def cards_open(self, room: str) -> list[dict[str, Any]]:
+        return self._select("SELECT * FROM cards WHERE room = ? AND closed IS NULL ORDER BY opened", (room,))
 
     def hold(self, room: str, wait_for: str, reason: str) -> int:
         return self._insert("holds", {"room": room, "wait_for": wait_for, "reason": reason, "at": time.time()})

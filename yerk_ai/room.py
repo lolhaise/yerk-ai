@@ -17,17 +17,21 @@ adapter's event loop.
 - A turn Claude Code answered on a fallback model after a block stands, marked on its card and
   ledger row; the room's next turn starts a fresh session on the room's own model.
 - After `idle_seconds` without a turn the process closes; the next message resumes the session.
+- Each turn owns one card (card.py), fed from the stream; every outbound part carries the turn's
+  key. A turn that was sent an image and never read it is bounced once at Stop, naming the file.
 """
 from __future__ import annotations
 
 import logging
 import threading
 import time
+import uuid
 from collections import deque
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
 
 from .accounts import Account, Cooldowns, pick
+from .card import START, Card
 from .engine import RoomProcess, RoomSpec, Turn
 from .ledger import Ledger
 from .lifted.classify import FailureTable
@@ -43,6 +47,7 @@ class Inbound:
     received: float = field(default_factory=time.time)
     prev_human: float | None = None       # when the previous human message reached this room
     attempt: int = 0
+    files: list[dict[str, Any]] = field(default_factory=list)   # staged attachments (name, type, path, ok)
 
 
 RESUME_RECAP = ("(Yerk AI: the earlier session of this room could not be resumed, so this is a new one. "
@@ -52,10 +57,12 @@ REFUSAL_RECAP = ("(Yerk AI: this is a new session. The previous one was moved to
 
 
 class Channel(Protocol):
-    def progress(self, room: str, text: str) -> None: ...            # post or edit the room's card
+    def open_card(self, room: str, text: str, kind: str = "turn") -> None: ...   # post the turn's card
+    def progress(self, room: str, text: str) -> None: ...            # edit the room's card
     def reply(self, room: str, text: str, inbound: list[str],          # card off (or kept with `card`), reply on
-              card: str | None = None) -> list[str]: ...
-    def notice(self, room: str, text: str, inbound: list[str]) -> list[str]: ...  # a visible failure
+              card: str | None = None, key: str | None = None) -> list[str]: ...
+    def notice(self, room: str, text: str, inbound: list[str],        # a visible failure: the card kept with
+               card: str | None = None, key: str | None = None) -> list[str]: ...  # `card`, else `text` posted
 
 
 class Room:
@@ -80,6 +87,10 @@ class Room:
         self.answered: set[str] = set()           # sessions with at least one delivered reply
         self.last_reply = ""                      # the first line of the last reply, for a recap
         self.fresh_next: str | None = None        # a recap: the next turn starts a fresh session
+        self.card = Card()
+        self.turn_key = ""                        # the idempotency key of the result being produced
+        self.images: dict[str, str] = {}          # path -> name: images sent in since the last result
+        self.bounced = False                      # the unread-image check bounced this result already
 
     # called by the channel adapter
     def submit(self, msg: Inbound) -> str:
@@ -98,6 +109,36 @@ class Room:
             self.busy = True
         threading.Thread(target=self._run, name=f"room-{self.name}", daemon=True).start()
         return "started"
+
+    def inbox(self, message_id: str) -> Any:
+        """The folder a message's files are staged in: inside the room's working folder, so the
+        room's process can read them."""
+        d = self.state / "rooms" / self.name / "work" / "inbox" / message_id
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def unread_images(self) -> list[tuple[str, str]]:
+        """(name, path) of the images sent in this result that the process never Read."""
+        with self.lock:
+            read = self.rp.read_paths if self.rp else set()
+            return [(n, p) for p, n in self.images.items() if p not in read]
+
+    def stop_check(self, active: bool) -> str | None:
+        """The Stop hook's rule, no judge: an image sent in and never read bounces once, naming it."""
+        unread = self.unread_images()
+        if not unread or active or self.bounced:
+            return None
+        self.bounced = True
+        names = ", ".join(n for n, _ in unread)
+        paths = " ".join(p for _, p in unread)
+        return (f"You were sent {names} and have not opened it. Read {paths} with the Read tool, "
+                "then answer with what it shows.")
+
+    def _new_card(self) -> None:
+        privacy = str(self.conf.get("privacy", "owner"))
+        self.card = Card(thinking=bool(self.conf.get("thinking_panel", False)) and privacy == "owner")
+        self.turn_key, self.bounced = uuid.uuid4().hex[:12], False
+        self.channel.open_card(self.name, START)
 
     def meta_for(self, prompt: str) -> tuple[str, float | None]:
         """Sender and previous human message time for a prompt the hook saw."""
@@ -122,6 +163,9 @@ class Room:
         assert self.rp
         self.pending.append(msg)
         self.inflight.append(msg)
+        for f in msg.files:
+            if f.get("ok") and str(f.get("type", "")).startswith("image/"):
+                self.images[str(f["path"])] = str(f["name"])
         text = f"{recap}\n\n{msg.text}" if recap else msg.text
         if recap:
             self.seen[text.strip()] = msg
@@ -154,20 +198,21 @@ class Room:
                 self.busy = self.reading = False
 
     def _on_event(self, turn: Turn, ev: dict[str, Any]) -> None:
-        """The card's first visible line: the first line of text, or the tool that started."""
-        if self.first_line is not None or turn.first_visible is None:
-            return
-        e = ev.get("event") or {}
-        if e.get("type") == "content_block_start":
-            self.first_line = "using " + str((e.get("content_block") or {}).get("name", "a tool"))
-        elif e.get("type") == "content_block_delta":
-            self.first_line = str((e.get("delta") or {}).get("text", "")).strip().split("\n")[0][:180] or None
-        if self.first_line:
-            self.channel.progress(self.name, self.first_line)
+        """The card from the stream: narration, thinking line, tool rows."""
+        if self.card.feed(ev):
+            self.first_line = self.first_line or self.card.narration or "a tool started"
+            self.channel.progress(self.name, self.card.render())
+
+    def _note(self, line: str) -> None:
+        """A harness line on the card (a hop, a compaction) until the model's next words."""
+        self.card.narration = line
+        self.channel.progress(self.name, self.card.render())
 
     def _turn(self, batch: list[Inbound]) -> None:
         self.first_line = None
-        self.channel.progress(self.name, "working on it")
+        with self.lock:
+            self.images = {}
+        self._new_card()
         account = self._account()
         recap, self.fresh_next = self.fresh_next, None          # set by a refusal fallback last turn
         fresh, retried, compacted, reruns, hops, hop = bool(recap), False, False, 0, 0, None
@@ -231,13 +276,16 @@ class Room:
                     log.info("room %s: %s on %s, continuing on %s", self.name, f.cls, account.name, nxt.name)
                     hop = ",".join(filter(None, [hop, f"{f.cls}:{account.name}"]))
                     hops, account, self.first_line = hops + 1, nxt, None
-                    self.channel.progress(self.name, f"still on it, moved to account {nxt.name}")
+                    self._note(f"still on it, moved to account {nxt.name}")
                     # a session that never answered may have no transcript to resume elsewhere
                     fresh = not (self.rp and (self.rp.resume_arg or self.rp.session_id in self.answered))
                     continue
             why = f.cls if f else turn.outcome
+            asked = resend[0].text if resend else ""
             notice_ids = self.channel.notice(self.name, f"No reply: the turn ended {turn.outcome} ({why}).",
-                                             [m.id for m in resend])
+                                             [m.id for m in resend], card=self.card.owed(f"the turn ended {turn.outcome} "
+                                                                                         f"({why})", asked),
+                                             key=self.turn_key)
             for m in resend:
                 self.ledger.inbound_set(m.id, state="failed", note=why, reply_ids=",".join(notice_ids))
             with self.lock:
@@ -258,7 +306,7 @@ class Room:
                 n = len(turn.accepted) or (1 if turn.outcome == "ok" else 0)
                 covered = [self.pending.popleft() for _ in range(min(n, len(self.pending)))]
             ids = [m.id for m in covered]
-            turn_id = self.rp.record(turn, ids, hop=hop, recap=1 if recapped else None)
+            turn_id = self.rp.record(turn, ids, hop=hop, recap=1 if recapped else None, turn_key=self.turn_key)
             if turn.outcome != "ok":
                 return "failed", turn
             self.cooldowns.clear(account.name)
@@ -268,7 +316,7 @@ class Room:
                 card = (f"answered by a fallback model ({turn.fallback_model}); the next message starts "
                         f"a fresh session on {self.rp.spec.model}")
                 self.fresh_next = REFUSAL_RECAP
-            reply_ids = self.channel.reply(self.name, turn.text, ids, card)
+            reply_ids = self.channel.reply(self.name, turn.text, ids, card, key=self.turn_key)
             self.last_reply = turn.text.strip().split("\n")[0][:160]
             now = time.time()
             for m in covered:
@@ -276,11 +324,12 @@ class Room:
                                         reply_ids=",".join(reply_ids))
             with self.lock:
                 self.inflight = list(self.pending)
+                self.images = {}
                 if not self.pending or self.fresh_next:
                     self.reading = False          # from here a new message queues for the next turn
                     return ("fresh" if self.pending else "done"), turn
             started, self.first_line, hop, recapped = time.time(), None, None, False
-            self.channel.progress(self.name, "working on it")
+            self._new_card()
 
     def _compact(self, account: Account) -> None:
         """/compact in the room's session (resumed when its process is gone), before the rerun."""
@@ -289,6 +338,6 @@ class Room:
         if not alive:
             self._start(account)
         assert self.rp
-        self.channel.progress(self.name, "compacting the conversation, then answering")
+        self._note("compacting the conversation, then answering")
         t = self.rp.ask("/compact", self.turn_timeout)
         log.info("room %s: compact ended %s", self.name, t.outcome)

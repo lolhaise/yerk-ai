@@ -21,7 +21,7 @@ from typing import Any
 from . import context, hooks, mcp_server
 from .accounts import Account, Cooldowns, from_dir, load_accounts
 from .config import budgets, load_toml, private_dir, rooms, state_dir, table
-from .engine import RoomSpec
+from .engine import RoomSpec, SessionTable
 from .ledger import Ledger
 from .lifted.classify import FailureTable
 from .lifted.loopguard import LoopGuard
@@ -49,21 +49,28 @@ class ConsoleChannel:
         print(json.dumps({"t": round(time.time(), 3), **obj}), flush=True)
         return [f"console-{self.n}"]
 
+    def open_card(self, room: str, text: str, kind: str = "turn") -> None:
+        self.progress(room, text)
+
     def progress(self, room: str, text: str) -> None:
         print(f"[card] {text}", file=sys.stderr, flush=True)
 
-    def reply(self, room: str, text: str, inbound: list[str], card: str | None = None) -> list[str]:
+    def reply(self, room: str, text: str, inbound: list[str], card: str | None = None,
+              key: str | None = None) -> list[str]:
         if card:
             self.progress(room, card)
         return self._out({"room": room, "reply": text, "inbound": inbound, **({"card": card} if card else {})})
 
-    def notice(self, room: str, text: str, inbound: list[str]) -> list[str]:
+    def notice(self, room: str, text: str, inbound: list[str], card: str | None = None,
+               key: str | None = None) -> list[str]:
+        if card:
+            self.progress(room, card)
         return self._out({"room": room, "notice": text, "inbound": inbound})
 
-    async def send_text(self, room: str, text: str) -> list[str]:
+    async def send_text(self, room: str, text: str, key: str | None = None) -> list[str]:
         return self._out({"room": room, "send": text})
 
-    async def send_file(self, room: str, path: Path, caption: str = "") -> list[str]:
+    async def send_file(self, room: str, path: Path, caption: str = "", key: str | None = None) -> list[str]:
         if not path.is_file():
             raise FileNotFoundError(str(path))
         return self._out({"room": room, "file": str(path), "caption": caption})
@@ -86,6 +93,7 @@ class Yerkd:
         self.rooms: dict[str, Room] = {}
         self.channels: dict[str, Any] = {}       # room -> its channel adapter
         self.http: Any = None
+        self.sends = 0
 
     # a room's Claude Code process, rebuilt at every process start
     def spec_for(self, name: str) -> RoomSpec:
@@ -99,8 +107,11 @@ class Yerkd:
         settings = {"permissions": {"allow": [f"Read(/{layer}/**)", *YERK_TOOLS]},
                     "hooks": hooks.settings_for(f"{self.url}/hook")}
         mcp = mcp_server.room_config(f"{self.url}/mcp", name, rdir / "mcp.json")
+        extra = ["--effort", str(conf["effort"])] if conf.get("effort") else []
+        if conf.get("thinking_panel") and conf.get("privacy", "owner") == "owner":
+            extra += ["--thinking-display", "summarized"]      # the panel's text; off: the stream says nothing
         return RoomSpec(room=name, model=str(conf["model"]), cwd=work, tools=list(conf.get("tools", [])),
-                        settings=settings, context_file=ctx, mcp_config=mcp, add_dirs=[layer])
+                        settings=settings, context_file=ctx, mcp_config=mcp, add_dirs=[layer], extra_args=extra)
 
     def add_room(self, name: str, channel: Channel) -> Room:
         conf = self.room_confs[name]
@@ -130,8 +141,11 @@ class Yerkd:
         if file and not self.may_send(caller if caller in self.rooms else room, Path(file)):
             return {"ok": False, "error": f"{file} is outside this room's folders; only files from them can be sent"}
         ch = self.channels[room]
+        src = self.rooms.get(caller) or self.rooms[room]
+        self.sends += 1
+        key = f"{src.turn_key or 'send'}-s{self.sends}"      # the turn's key and this send's number
         try:
-            ids = await (ch.send_file(room, Path(file), text) if file else ch.send_text(room, text))
+            ids = await (ch.send_file(room, Path(file), text, key=key) if file else ch.send_text(room, text, key=key))
         except (OSError, ValueError) as e:
             return {"ok": False, "error": str(e)}
         log.info("send: %s -> %s, %d message(s)", caller or "?", room, len(ids))
@@ -145,6 +159,13 @@ class Yerkd:
 
     # the hooks
     async def hook(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if payload.get("hook_event_name") == "Stop":
+            name = hooks.room_for_session(SessionTable(self.state / "sessions.json"), str(payload.get("session_id", "")))
+            room = self.rooms.get(name or "")
+            reason = room.stop_check(bool(payload.get("stop_hook_active"))) if room else None
+            if reason:
+                log.info("room %s: Stop bounced once: an image was never read", name)
+            return {"decision": "block", "reason": reason} if reason else {}
         if payload.get("hook_event_name") != "UserPromptSubmit":
             return {}
         return hooks.user_prompt_submit(payload, self.state, self.room_confs,
@@ -186,7 +207,7 @@ class Yerkd:
         token = (self.private / d["token_file"]).read_text().strip()
         guard = LoopGuard(max_events=int(d.get("webhook_burst", 100)))   # per 5 minutes, then 10 off
         dc = DiscordChannel(token, int(d["owner"]), [int(x) for x in d.get("test_senders", [])], self.ledger,
-                            guard=guard)
+                            guard=guard, state=self.state)
         for name, conf in self.room_confs.items():
             kind, _, cid = str(conf.get("channel", "")).partition(":")
             if kind == "discord" and cid.isdigit():
