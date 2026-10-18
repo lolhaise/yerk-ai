@@ -81,7 +81,7 @@ def heading_of(line: str) -> tuple[int, str] | None:
     return (len(m.group(1)), m.group(2).strip("# ").strip()[:80]) if m else None
 
 
-def units_of(body: str, head: str = "", context: bool = True) -> list[tuple[str, str]]:
+def units_of(body: str, head: str = "", context: bool = False) -> list[tuple[str, str]]:
     """(sha, text) per line of a chunk that gets a vector of its own (a day-log line, a bullet of a
     fact or topic file): every line whose text past its bullet or heading marks is UNIT_MIN
     characters or more, once per distinct text. With `context` the text embedded is the line behind
@@ -278,7 +278,7 @@ class Index:
     """The writer. Only yerk-index holds one."""
 
     def __init__(self, db: Path, scope: Scope, on_insert: Callable[[list[str], list[str]], None] | None = None,
-                 context: bool = True):
+                 context: bool = False):
         self.db, self.scope = db, scope
         self.real = live(db)
         self.disk: dict[str, tuple[int, int]] = {}      # the last pass's view of the disk
@@ -429,7 +429,16 @@ class Index:
 SWEEP_GRACE = 60.0       # seconds an old generation stays after a swap (a reader may hold it)
 
 
-def rebuild(db: Path, scope: Scope, context: bool = True) -> Path:
+def open_store(idx: Index, store: Any, model: str, units: str) -> int:
+    """The vectors served from the start. After a unit rule change the units are filled again first
+    (one pass), so the load finds every vector already paid for: a rule switched back embeds nothing
+    and serves its lines at once, instead of only the chunks until the next restart."""
+    if idx.refill:
+        idx.sync()
+    return int(store.load(idx.conn, model, units))
+
+
+def rebuild(db: Path, scope: Scope, context: bool = False) -> Path:
     """The full reindex, on request only (L49). It builds a new generation beside the live one,
     folds its WAL in, then swaps the link in one rename: a recall during the build reads the old
     index, one after the swap the new, and none finds no file (run 1 deleted first: ~10 s of
@@ -586,7 +595,7 @@ def main(argv: list[str] | None = None) -> int:
     names = mentions.Builder(m.mentions, m.roots_for_mentions, m.curated, m.mentions_exclude)
     server = embeddings.Server(store, embedder, m.index_db, live)
     if not a.once:
-        loaded = store.load(idx.conn, m.embeddings_model, m.embeddings_units)
+        loaded = open_store(idx, store, m.embeddings_model, m.embeddings_units)
         port = server.start()
         back.start()
         log.info("meaning search: %s; %d vectors loaded (%s, %d of %d dimensions kept, %.1f MB); serving on 127.0.0.1:%d",

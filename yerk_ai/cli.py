@@ -368,10 +368,12 @@ def _settings(a: argparse.Namespace) -> list[dict[str, Any]]:
     return words.described(conf.get("presentation")) + memory.described(conf.get("memory"))
 
 
-def _pick(rows: list[dict[str, Any]], key: str) -> list[dict[str, Any]]:
-    """The described settings a key names: whole, or by its last part (`yerk config get embeddings_model`)."""
+def _pick(rows: list[dict[str, Any]], key: str, sections: bool = False) -> list[dict[str, Any]]:
+    """The described settings a key names: whole, by its last part (`yerk config get embeddings_model`),
+    or with `sections` a whole section (`yerk config get memory`)."""
     want = key.strip(".")
-    return [r for r in rows if not want or r["key"] in (want, f"presentation.{want}", f"memory.{want}")]
+    return [r for r in rows if not want or r["key"] in (want, f"presentation.{want}", f"memory.{want}")
+            or (sections and r["key"].startswith(f"{want}."))]
 
 
 def _setting_lines(r: dict[str, Any]) -> list[str]:
@@ -411,7 +413,7 @@ def cmd_config(a: argparse.Namespace) -> int:
     """`yerk config get [KEY]`: the settings Yerk AI describes in code (decisions 16 and 27), each with
     its value here, where it came from, its choices and its plain words. Only these are printed."""
     rows = _settings(a)
-    pick = _pick(rows, a.key)
+    pick = _pick(rows, a.key, sections=True)
     if not pick:
         print(f"no setting {a.key!r}; settings: {', '.join(r['key'] for r in rows)}", file=sys.stderr)
         return 2
@@ -493,7 +495,7 @@ def main(argv: list[str] | None = None) -> int:
         x.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
     cf = sub.add_parser("config", help="the settings Yerk AI describes, with their values here and plain words")
     cf.add_argument("action", choices=["get"])
-    cf.add_argument("key", nargs="?", default="presentation", help="a setting, or presentation for all of them")
+    cf.add_argument("key", nargs="?", default="", help="a setting or section (presentation, memory); all when left out")
     cf.add_argument("--json", action="store_true")
     cf.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else the fake example layer)")
     pr = sub.add_parser("probe", help="contract probes against a real Claude Code login")

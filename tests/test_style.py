@@ -285,8 +285,14 @@ def test_yerk_config_get_presentation_prints_each_setting_with_its_plain_words(t
     (priv / "yerkd.toml").write_text('[presentation]\nfooter = "full"\ntimes = "sometimes"\n')
     assert cli.main(["config", "get", "--json", "--private", str(priv)]) == 0
     got = {r["key"]: (r["value"], r["source"]) for r in json.loads(capsys.readouterr().out)}
-    assert got == {"presentation.footer": ("full", "yerkd.toml"), "presentation.paths": ("never", "default"),
-                   "presentation.times": ("relative", "yerkd.toml")}          # an unknown value: the default
+    assert {k: v for k, v in got.items() if k.startswith("presentation.")} == {
+        "presentation.footer": ("full", "yerkd.toml"), "presentation.paths": ("never", "default"),
+        "presentation.times": ("relative", "yerkd.toml")}                     # an unknown value: the default
+    from yerk_ai import memory
+    assert {k for k in got if k.startswith("memory.")} == {f"memory.{k}" for k in memory.EMBEDDING_SETTINGS}
+    assert cli.main(["config", "get", "memory", "--private", str(priv)]) == 0
+    assert [x.split(" = ")[0] for x in capsys.readouterr().out.splitlines() if " = " in x] == [
+        f"memory.{k}" for k in memory.EMBEDDING_SETTINGS]                    # a section by its name
 
 
 def test_the_worker_card_honors_footer_paths_and_times():

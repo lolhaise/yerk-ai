@@ -43,7 +43,7 @@ class Settings:
     embeddings_dim: int = 256
     embeddings_units: str = "both"                  # what gets a vector in memory: both (lines and chunks, measured best), lines, or chunks
     embeddings_width: int = 256                     # dimensions kept in memory (the first `width` of `dim`, renormalised)
-    embeddings_context: bool = True                 # a line is embedded behind its heading path ("<title> > <heading>: <line>"), measured best
+    embeddings_context: bool = False                # a line embedded behind its heading path ("<title> > <heading>: <line>"); measured, off
     index_status: Path = Path("index.json")         # what yerk-index serves: its port and the embeddings' state
 
     @property
@@ -82,7 +82,7 @@ def settings(private: Path, state: Path, conf: dict[str, Any] | None = None) -> 
                     embeddings_dim=int(conf.get("embeddings_dim", 256)),
                     embeddings_units=str(conf.get("embeddings_units", "both")),
                     embeddings_width=int(conf.get("embeddings_width") or conf.get("embeddings_dim") or 256),
-                    embeddings_context=bool(conf.get("embeddings_context", True)),
+                    embeddings_context=bool(conf.get("embeddings_context", False)),
                     index_status=state / "memory" / "index.json")
 
 
@@ -91,23 +91,28 @@ def settings(private: Path, state: Path, conf: dict[str, Any] | None = None) -> 
 EMBEDDING_SETTINGS: dict[str, tuple[tuple[str, ...], str, str]] = {
     "embeddings_model": (("text-embedding-3-small", "text-embedding-3-large"),
                          "the provider model every line, chunk and query is embedded with; a change re-embeds the tree once "
-                         "(each model's vectors are kept apart in the index, so switching back pays nothing) at the "
-                         "provider's price per token; measured on the 164-question set, large reaches paraphrases small "
-                         "does not (the numbers are in the README's run 5 paragraph)", "text-embedding-3-small"),
+                         "(each model's vectors are kept apart in the index, so switching back pays nothing); small costs "
+                         "$0.02 and large $0.13 per 1M tokens (OpenAI, read 2026-10-18): a 3,800-file tree's lines "
+                         "(10.4M tokens) $0.21 or $1.35, its chunks (16.7M) $0.33 or $2.17; measured on the 164-question "
+                         "set at 256 kept, large brings "
+                         "paraphrase golds closer but loses on the top six (110 against 117), so small is the default",
+                         "text-embedding-3-small"),
     "embeddings_dim": (("256", "512", "1024", "1536", "3072"),
                        "dimensions asked of the provider and stored in the index (2 bytes each a vector); a change "
                        "re-embeds the tree once; more dimensions buy a finer vector, not a cheaper one", "256"),
     "embeddings_width": (("256", "384", "512", "the dim"),
                          "dimensions kept in memory: the first width of dim, renormalised (the provider's own shortening "
                          "rule), so a narrower store needs no re-embedding; the index process holds about vectors times "
-                         "(2 times width plus 20) bytes", "the dim"),
+                         "(2 times width plus 20) bytes; 192 and 128 were measured and lost", "the dim"),
     "embeddings_units": (("both", "lines", "chunks"),
                          "what gets a vector: every line and bullet and every chunk (both, measured best), the lines alone "
                          "(a smaller store), or the chunks alone (the fewest vectors, a paraphrase then rarely found)", "both"),
     "embeddings_context": (("true", "false"),
-                           "a line is embedded behind its heading path, '<file title> > <section heading>: <line>', so a "
-                           "line that says only what it says carries what it is about; off, the bare line; a change "
-                           "re-embeds the lines once", "true"),
+                           "true embeds a line behind its heading path, '<file title> > <section heading>: <line>', so a "
+                           "line that says only what it says carries what it is about; false embeds the bare line; a "
+                           "change re-embeds the lines once; measured, true raised the top one (59 to 66) and missed a "
+                           "control, and with both units it holds about 30% more vectors, past 300 MB, so it is off",
+                           "false"),
 }
 EMBEDDING_RELOADS = "takes effect when yerk-index restarts; the backfill then embeds what is missing, in the background"
 

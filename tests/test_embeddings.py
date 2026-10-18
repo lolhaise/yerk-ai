@@ -69,12 +69,12 @@ def tree(tmp_path: Path, key: bool = True) -> memory.Settings:
     return memory.settings(private, tmp_path / "state", {"timezone": "UTC"})
 
 
-def serve(s: memory.Settings, stub: StubEmbedder, units: str = "lines"):
+def serve(s: memory.Settings, stub: StubEmbedder, units: str = "lines", context: bool = False):
     """yerk-index's pieces in-process: the writer, the vector store, the search server on a free port,
     the backfill (stepped by hand) and a `status` that writes index.json as the process would."""
     store = embeddings.Vectors(stub.dim)
     back = embeddings.Backfill(s.index_db, memindex.live, store, stub, gap=0.0, units=units)
-    idx = memindex.Index(s.index_db, s.scope, on_insert=back.note)
+    idx = memindex.Index(s.index_db, s.scope, on_insert=back.note, context=context)
     idx.sync()
     server = embeddings.Server(store, stub, s.index_db, memindex.live)
     port = server.start()
@@ -104,10 +104,9 @@ def test_a_line_or_bullet_gets_its_own_vector_and_a_touch_embeds_none(tmp_path):
     units = {r[0] for r in idx.conn.execute("SELECT DISTINCT sha FROM units")}
     chunks = {r[0] for r in idx.conn.execute("SELECT DISTINCT sha FROM chunks")}
     embedded = [t for call in stub.calls for t in call]
-    # the day log is one chunk of two lines: each line has a vector of its own, the chunk none; the text
-    # embedded is the line behind the file's title (run 5: the heading path), the line itself whole
+    # the day log is one chunk of two lines: each line has a vector of its own, the chunk none
     assert len(embedded) == len(units) == store.n == vectors_in(s) == len(chunks) + 1 > 3
-    assert all("\n" not in t for t in embedded) and any(t.startswith("2026-01-05: - 09:01 ") for t in embedded)
+    assert all("\n" not in t for t in embedded) and any(t.startswith("- 09:01 ") for t in embedded)
     day = s.root / "daily" / "2026-01-05.md"
     calls = len(stub.calls)
     os.utime(day, None)                                              # a touch: the chunker finds the same text
@@ -327,17 +326,17 @@ def test_the_heading_path_comes_from_the_files_structure(tmp_path):
                     "- colour: teal, the sleeve under the pot\n- short\n")
     chunks = memindex.chunks_of(shed.read_text(), "shed")
     assert [(c[0], c[1], c[3]) for c in chunks] == [(1, 4, "Garden shed"), (5, 8, "Garden shed > Padlock")]
-    assert [t for _, t in memindex.units_of(chunks[0][2], chunks[0][3])] == ["Garden shed: A line under the title, long enough to count."]
-    assert [t for _, t in memindex.units_of(chunks[1][2], chunks[1][3])] == ["Garden shed > Padlock: - colour: teal, the sleeve under the pot"]
-    assert [t for _, t in memindex.units_of(chunks[1][2], chunks[1][3], context=False)] == ["- colour: teal, the sleeve under the pot"]
+    assert [t for _, t in memindex.units_of(chunks[0][2], chunks[0][3], context=True)] == ["Garden shed: A line under the title, long enough to count."]
+    assert [t for _, t in memindex.units_of(chunks[1][2], chunks[1][3], context=True)] == ["Garden shed > Padlock: - colour: teal, the sleeve under the pot"]
+    assert [t for _, t in memindex.units_of(chunks[1][2], chunks[1][3])] == ["- colour: teal, the sleeve under the pot"]   # the default: bare
     # a file without a level-one heading takes its name as the title; a heading long enough to be a unit sits under its parent
     assert memindex.chunks_of("## Spare key\n- the spare key sits under the third flowerpot\n", "keys")[0][3] == "keys > Spare key"
     assert [t for _, t in memindex.units_of("## A heading long enough to be a unit\n- a bullet long enough too",
-                                             "keys > A heading long enough to be a unit")] == [
+                                             "keys > A heading long enough to be a unit", context=True)] == [
         "keys: ## A heading long enough to be a unit", "keys > A heading long enough to be a unit: - a bullet long enough too"]
     # through the index: the units table holds the path, the stub embeds it, the search returns the chunk's own text
     stub = StubEmbedder(s.embeddings_key)
-    idx, store, server, back, status = serve(s, stub)
+    idx, store, server, back, status = serve(s, stub, context=True)
     while back.step():
         pass
     rows = {b for (b,) in idx.conn.execute("SELECT body FROM units WHERE chunk IN (SELECT sha FROM chunks WHERE path LIKE '%shed.md')")}
@@ -424,3 +423,29 @@ def test_the_stall_line_stays_silent_during_a_backfill(tmp_path, caplog):
     assert not any("stall" in r.getMessage() for r in caplog.records)
     server.stop()
     idx.close()
+
+
+# 14. a unit rule switched back pays nothing and serves its lines at once: the refill runs before the load
+def test_a_rule_switched_back_loads_the_vectors_already_paid_for(tmp_path):
+    s = tree(tmp_path)
+    stub = StubEmbedder(s.embeddings_key)
+    idx, store, server, back, status = serve(s, stub)                    # bare lines (the default)
+    while back.step():
+        pass
+    bare, calls = store.n, len(stub.calls)
+    server.stop()
+    idx.close()
+    idx2, store2, server2, back2, _ = serve(s, stub, context=True)       # the heading path: every line again, once
+    while back2.step():
+        pass
+    assert len(stub.calls) > calls and store2.n == bare
+    server2.stop()
+    idx2.close()
+    calls = len(stub.calls)
+    idx3 = memindex.Index(s.index_db, s.scope, context=False)              # and back: the units are filled first
+    assert idx3.refill
+    store3 = embeddings.Vectors(stub.dim)
+    assert memindex.open_store(idx3, store3, stub.model, "lines") == bare and not idx3.refill
+    back3 = embeddings.Backfill(s.index_db, memindex.live, store3, stub, gap=0.0, units="lines")
+    assert back3.step() == 0 and len(stub.calls) == calls                  # nothing embedded twice
+    idx3.close()
