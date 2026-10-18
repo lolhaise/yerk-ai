@@ -503,7 +503,8 @@ def check(a: argparse.Namespace) -> dict[str, Any]:
     marks = {m["id"]: {r["emoji"]["name"] for r in m.get("reactions", []) if r.get("me")} for m in seen.values()}
     done, eyes = "\N{WHITE HEAVY CHECK MARK}", "\N{EYES}"
     msgs = [str(r["message_id"]) for r in inbound]
-    cards = {str(o["message_id"]) for o in outbound if o["kind"] == "progress"}
+    kept = {str(o["message_id"]) for o in outbound if o["kind"] == "card-note"}    # a card kept as the notice
+    cards = {str(o["message_id"]) for o in outbound if o["kind"] == "progress"} - kept
     posts = [str(o["message_id"]) for o in outbound if o["kind"] in ("reply", "notice", "send", "file") and o["message_id"]]
     edited = {str(o["message_id"]) for o in outbound if o["kind"] == "progress-edit"}
     out = {"messages": len(msgs), "with_done_mark": sum(done in marks.get(m, set()) for m in msgs),
