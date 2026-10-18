@@ -1,0 +1,38 @@
+# Scheduled jobs (example). A real private folder holds its own jobs.toml; `yerk jobs sync` turns it
+# into one systemd user timer and service per job, `yerk jobs list` reads the next fire times back,
+# and `yerk explain jobs` describes every key below in plain words. Rooms are names from rooms.toml;
+# a schedule is read in `tz`, an IANA zone name.
+
+[jobs.example-inbox-check]           # a script: no model call; its output is posted as it is
+kind = "script"
+schedule = "0 * * * *"               # the top of every hour
+tz = "UTC"
+room = "example-room"
+cap = 5                              # minutes; a run past it is stopped and alerts
+deliver = "announce"
+command = "echo 'nothing new in the example inbox'"   # exit 0 with output posts it; with none, nothing; a failure alerts
+
+[jobs.example-morning-brief]         # an agent job: a worker with this message as its whole brief
+kind = "agent"
+schedule = "30 7 * * 1-5"            # 07:30 on weekdays
+tz = "UTC"
+room = "example-room"                # its card is here; its last message is told here by the room
+account = "one"
+cap = 20
+deliver = "announce"
+message = "Write the morning brief from the open loops and yesterday's daily log: three lines at most. Nothing worth saying: answer exactly NO_REPLY."
+
+[jobs.example-heartbeat]             # an interval: one that divides a day runs on the clock (even hours in `tz`)
+kind = "script"
+every = "2h"
+tz = "UTC"
+room = "example-quiet"
+deliver = "silent"                   # runs and is ledgered, posts nothing; a failure still alerts the ops room
+command = "true"
+
+[jobs.example-reminder]              # a one-shot: removed from this file after it fires
+kind = "script"
+at = "2099-01-02 09:00"              # read in `tz`; a time with its own offset needs no tz
+tz = "UTC"
+room = "example-room"
+command = "echo 'Reminder: the example appointment is at 10:00'"

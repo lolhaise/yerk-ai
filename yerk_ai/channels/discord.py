@@ -51,6 +51,7 @@ MAX = 2000
 ACK, DONE, FAILED = "\N{EYES}", "\N{WHITE HEAVY CHECK MARK}", "\N{WARNING SIGN}"
 REDELIVERED = "(redelivered after a restart)"
 MIN_EDIT = 1.0        # seconds between card edits after the first
+TYPING_EVERY = 8.0    # the typing signal is refreshed this often while nothing is visible (Discord shows it ~10 s)
 FORBIDDEN = {".exe", ".bat", ".cmd", ".com", ".scr", ".msi", ".dll", ".ps1", ".vbs", ".jar", ".apk", ".lnk",
              ".reg", ".hta", ".cpl", ".pif"}
 IMAGE = ("image/png", "image/jpeg", "image/gif", "image/webp")
@@ -137,6 +138,7 @@ class DiscordChannel:
         self.recovered = False
         self.edits: dict[str, str] = {}           # message id -> the edit already taken (its edited_at)
         self.after_recover: list[Callable[[], Awaitable[None]]] = []   # once, after the rooms recovered
+        self.typing: dict[str, asyncio.Task[None]] = {}   # room name -> its typing refresh, while nothing is visible
         if client is None:
             intents = discord.Intents.none()
             intents.guilds = intents.guild_messages = intents.message_content = True
@@ -202,9 +204,45 @@ class DiscordChannel:
             return
         if not self.ledger.inbound_add(str(m.id), room.name, str(m.channel.id), sender, len(m.content or "")):
             return
+        await self._typing_begin(room.name, m.channel)
         await self._react(m.channel.id, m.id, ACK)
         files = await self.stage(room, m)
         room.submit(Inbound(str(m.id), sender, message_text(m, files, self._me()), files=files))
+
+    # the typing signal: "heard you", from the moment a message is taken until something is visible
+    async def _typing_begin(self, room: str, ch: Any) -> None:
+        """The first typing event at once, then a refresh every TYPING_EVERY seconds, unless a card is
+        up (the card is what says what is happening) or one already runs. Ledgered as nothing: it is
+        not a delivery."""
+        if room in self.cards or room in self.typing or not hasattr(ch, "typing"):
+            return
+        try:
+            await ch.typing()
+        except Exception as e:                    # cosmetic: a failed typing event never holds the message
+            log.debug("typing in %s failed: %s", room, e)
+            return
+        self.typing[room] = asyncio.ensure_future(self._typing(room, ch))
+
+    async def _typing(self, room: str, ch: Any) -> None:
+        try:
+            while True:
+                await asyncio.sleep(TYPING_EVERY)
+                if room in self.cards:
+                    return
+                await ch.typing()
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            log.debug("typing in %s failed: %s", room, e)
+        finally:
+            if self.typing.get(room) is asyncio.current_task():
+                self.typing.pop(room, None)
+
+    def _typing_end(self, room: str) -> None:
+        """The card is posted, or the reply is: nothing more to signal."""
+        t = self.typing.pop(room, None)
+        if t is not None:
+            t.cancel()
 
     def _me(self) -> int | None:
         return self.client.user.id if self.client.user is not None else None
@@ -438,6 +476,7 @@ class DiscordChannel:
                 log.warning("card in %s failed: %s", room, e)
                 return
             self.cards[room], self.shown[room] = card, text
+            self._typing_end(room)                # the card exists: the typing signal stops here
             self.ledger.outbound(room=room, channel=str(card.channel.id), kind="progress", message_id=str(card.id),
                                  chars=len(text), body=text[:MAX])
             self.ledger.card_open(str(card.id), room, kind)
@@ -512,6 +551,7 @@ class DiscordChannel:
     async def _finish(self, room: str, text: str, inbound: list[str], mark: str, kind: str = "reply",
                       card: str | None = None, key: str | None = None, instead: bool = False) -> list[str]:
         key = key or f"x{uuid.uuid4().hex[:12]}"
+        self._typing_end(room)                    # the reply (or the notice) is what becomes visible now
         if not instead:                           # every part on the ledger before the first post
             for i, part in enumerate(split_message(text.strip() or "(empty reply)", LIMIT)):
                 self.ledger.delivery_plan(f"{key}:{i}", room, kind, part, ",".join(inbound))

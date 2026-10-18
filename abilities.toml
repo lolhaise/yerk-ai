@@ -84,3 +84,19 @@ tier = "free"
 needs = "nothing beyond the daemon"
 free_path = "this is the free path"
 layer = 4
+
+[abilities.jobs]
+what = "Scheduled jobs from one private jobs.toml: `yerk jobs sync` makes one systemd user timer and service per job (idempotent: unchanged left alone, changed rewritten, removed disabled and cleaned), shows the diff and reads every next fire time back from systemd; `yerk jobs list` is the read-back. Three schedules (a cron expression with a tz, an interval, a one-shot that is removed after it fires), two kinds: a script (its command run in the unit with no account, its output posted to the room; exit 0 with nothing posts nothing; a failure alerts the ops room) and an agent job (a worker with the message as its brief, its last message told by the room, exactly NO_REPLY for silence). Every run is a job_runs ledger row; `yerk status` lists the jobs with their next fire time. `yerk explain jobs` describes every key of the file."
+tier = "free"
+needs = "systemd user timers (systemctl --user, systemd-analyze); a running yerkd for the delivery and for agent jobs; the jobs file in the private folder (examples/private/jobs.toml is the template)"
+free_path = "this is the free path"
+layer = 5
+state = "built"
+
+[abilities.schedule]
+what = "The schedule tool in every room, and `yerk schedule`: add a one-shot or a recurring job (a name, when with a zone, what, how to deliver), remove one, list them; writes the jobs file, syncs the timers and answers with the next fire time read back from systemd. A missing zone is the room's configured one, never UTC by accident."
+tier = "free"
+needs = "the jobs ability"
+free_path = "this is the free path"
+layer = 5
+state = "built"

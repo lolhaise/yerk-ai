@@ -39,7 +39,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Protocol
+from typing import Any, Awaitable, Callable, Protocol
 
 from .accounts import Account, Cooldowns, account_env, pick
 from .card import FAILED, OK, ROW_MAX, ROWS_SHOWN, RUNNING, short
@@ -287,6 +287,9 @@ class Workers:
         self.watch: Watch | None = None
         self.live: dict[str, dict[str, Any]] = {}      # id -> its ledger row, while its unit runs
         self.tasks: set[asyncio.Future[Any]] = set()
+        # completion hooks (jobs.py): each gets (row, end) after the card settles; True means it
+        # delivered the result itself, so the default relay does not run
+        self.hooks: list[Callable[[dict[str, Any], dict[str, Any]], Awaitable[bool]]] = []
 
     def begin(self, loop: asyncio.AbstractEventLoop) -> None:
         try:
@@ -350,7 +353,7 @@ class Workers:
         return pick(self.accounts, self.cooldowns) if self.accounts else None
 
     async def start(self, room: str, brief: str = "", brief_file: str = "", account: str = "", model: str = "",
-                    cap_minutes: float = 0.0, tasks: list[str] | None = None) -> dict[str, Any]:
+                    cap_minutes: float = 0.0, tasks: list[str] | None = None, job: str = "") -> dict[str, Any]:
         if room not in self.rooms:
             return {"ok": False, "error": f"no room {room!r}; rooms: {', '.join(self.rooms)}"}
         if brief_file and not brief:
@@ -394,7 +397,8 @@ class Workers:
         (d / "worker.json").write_text(json.dumps(spec, indent=1))
         row: dict[str, Any] = {"id": wid, "room": room, "account": acct.name, "unit": f"{UNIT}{wid}", "model": model,
                "session_id": sid, "brief": brief_file or str(d / "BRIEF.md"), "staging": str(d),
-               "report": str(report), "tasks": str(tasks_md), "cap": cap, "started": round(time.time(), 3)}
+               "report": str(report), "tasks": str(tasks_md), "cap": cap, "started": round(time.time(), 3),
+               "job": job or None}
         self.ledger.worker_add(**row)
         row["card"] = None
         self.live[wid] = row
@@ -463,12 +467,22 @@ class Workers:
         self.ledger.worker_set(wid, finished=round(end["finished"], 3), exit=state, exit_detail=detail,
                                result=end["result"])
         row["card"] = row.get("card") or fresh.get("card")
+        row["job"] = row.get("job") or fresh.get("job")
         await self._show(row, end)
         log.info("worker %s: %s (%s)", wid, state, detail)
+        for hook in self.hooks:
+            try:
+                if await hook(row, end):
+                    return
+            except Exception:                                # a hook that fails never loses the relay
+                log.exception("worker %s: a completion hook failed", wid)
         await self.relay(row, end)
 
-    async def relay(self, row: dict[str, Any], end: dict[str, Any]) -> None:
-        """ONE short turn in the room's own session when the room is idle; else skipped, with why."""
+    async def relay(self, row: dict[str, Any], end: dict[str, Any], text: str | None = None,
+                    after: Callable[[str, list[str], int], None] | None = None) -> str:
+        """ONE short turn in the room's own session when the room is idle; else skipped, with why
+        (returned; "" when the turn was asked). `text` replaces the harness line (a job's result);
+        `after` hears how the turn ended, after the ledger does."""
         room = self.rooms.get(row["room"])
         why = "no such room in this daemon" if room is None else room.idle_reason(self.conf.idle_seconds)
         if end["exit"] == "did not start":
@@ -476,9 +490,9 @@ class Workers:
         if why:
             self.ledger.worker_set(row["id"], relay="skipped", relay_note=why)
             log.info("worker %s: relay skipped: %s", row["id"], why)
-            return
+            return why
         assert room is not None
-        text = relay_text(row, end, self.conf.relay_message)
+        text = text or relay_text(row, end, self.conf.relay_message)
         mid = f"relay-{row['id']}"
         self.ledger.inbound_add(mid, row["room"], "worker", "yerk", len(text))
         self.ledger.worker_set(row["id"], relay="sent", relay_note=f"inbound {mid}")
@@ -486,8 +500,11 @@ class Workers:
         def then(state: str, ids: list[str], chars: int) -> None:
             self.ledger.worker_set(row["id"], relay="relayed" if state == "answered" else "failed", relay_chars=chars,
                                    relay_note=f"inbound {mid}, {state}, message(s) {','.join(ids)}")
+            if after:
+                after(state, ids, chars)
         room.submit(Inbound(mid, "yerk", text, cap=self.conf.relay_reply, must=str(row["report"]), then=then))
         log.info("worker %s: relay turn asked in %s", row["id"], row["room"])
+        return ""
 
     # after a daemon start, and the minute backstop
     async def reattach(self) -> None:

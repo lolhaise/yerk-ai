@@ -38,5 +38,6 @@ for _ in range(int(opts.get("ticks", 0))):
 if "report" in opts:
     report.write_text(f"# {opts['report']}\n\n" + "filler line of the report body\n" * (int(opts.get("pad", 0)) // 31)
                       + "LAST LINE OF THE REPORT\n")
-print(json.dumps({"type": "result", "subtype": "success", "is_error": False, "result": "finished"}), flush=True)
+print(json.dumps({"type": "result", "subtype": "success", "is_error": False,
+                  "result": opts.get("result", "finished")}), flush=True)      # `result`: the last message
 sys.exit(int(opts.get("exit", 0)))
