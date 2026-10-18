@@ -1,9 +1,9 @@
 """Account meters: each account's 5-hour and weekly usage with reset times.
 
-Two sources, one answer: the live reading (lifted/usage.py) when a login can make it, else the
-last `rate_limit_event` Claude Code printed in a room's or a health call's stream for that
-account (its own usage windows), with its age. The stream reading works under any login,
-the one-year token included."""
+One source: the last `rate_limit_event` Claude Code printed in a room's or a health call's
+stream for that account (its own usage windows), with its age. It works under any login, the
+one-year token included, and needs no credential: Yerk AI never reads the credential files in a
+config folder (tests/test_scrub.py greps the package for any read under one)."""
 from __future__ import annotations
 
 import json
@@ -14,8 +14,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from .accounts import Account, read_token
-from .lifted.usage import WINDOWS, read_usage
+from .accounts import Account
+
+WINDOWS = ("five_hour", "seven_day")
 
 
 class Meters:
@@ -44,13 +45,10 @@ class Meters:
             tmp.write_text(json.dumps(data))
             os.replace(tmp, self.path)
 
-    def reading(self, account: Account, live: bool = True) -> dict[str, Any]:
-        """The live reading when it answers, else the last stream reading, else why there is none."""
-        got = read_usage(account.config_dir, read_token(account)[0]) if live else {"error": "not read"}
-        if "error" not in got:
-            return got
+    def reading(self, account: Account) -> dict[str, Any]:
+        """The last stream reading for the account, else why there is none."""
         last = self.load().get(account.name)
-        return {**last, "live_error": got["error"]} if last else {"error": got["error"]}
+        return dict(last) if last else {"error": "no stream has reported it yet"}
 
 
 def when(epoch: float | None, now: float | None = None) -> str:
@@ -68,5 +66,5 @@ def meter_line(name: str, m: dict[str, Any], now: float | None = None) -> str:
     now = time.time() if now is None else now
     parts = [f"{label} {round(m[w]['pct'])}% ({when(m[w].get('resets'), now)})"
              for w, label in (("five_hour", "5h"), ("seven_day", "wk")) if w in m]
-    age = "" if m.get("source") == "live" else f", seen {int((now - m['at']) // 60)} min ago"
+    age = f", seen {int((now - m['at']) // 60)} min ago"
     return f"{name}: " + (" · ".join(parts) or "no windows") + age

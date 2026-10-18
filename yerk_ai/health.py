@@ -4,9 +4,10 @@ Health is proved by a real model call, never by the login status command alone (
 read as signed in while every model call is refused). Identity is the login's email as Claude
 Code reports it (`claude auth status`), kept only as a short fingerprint: pinned the first time
 it is seen, a change or two accounts on one login fail the check. An account on a one-year token
-is also checked for which account the token belongs to, without any email: the token's own call
-reports its 5-hour and weekly reset times, and they must be the config folder's login's reset
-times (each account's windows reset at its own times). Each call is a ledger row
+is also checked for which account the token belongs to, without any email and without reading
+any credential file: the token's call and a second call on the config folder's own login each
+report their 5-hour and weekly reset times in the stream, and they must match (each account's
+windows reset at its own times). Each call is a ledger row
 (table health); a refused login rests the account the way a room's failure would, and a pass
 clears it. The call runs without session persistence, so it leaves no transcript."""
 from __future__ import annotations
@@ -24,7 +25,6 @@ from .accounts import TOKEN_ENV, Account, Cooldowns, account_env
 from .engine import Turn, claude_bin
 from .ledger import Ledger
 from .lifted.classify import FailureTable
-from .lifted.usage import read_usage
 from .meters import Meters
 
 PROMPT = "Reply with the single word OK."
@@ -46,22 +46,22 @@ def login_identity(env: dict[str, str], timeout: float = 30) -> tuple[str, str |
     return method, (fingerprint(str(email)) if email else None)
 
 
-def same_account(windows: dict[str, Any] | None, live: dict[str, Any], slack: float = 120) -> bool | None:
-    """Do a stream's usage windows and a live reading have the same reset times? None: nothing to compare."""
-    pairs = [(float(windows[w]["resetsAt"]), float(live[w]["resets"])) for w in ("five_hour", "seven_day")
-             if windows and (windows.get(w) or {}).get("resetsAt") and (live.get(w) or {}).get("resets")]
+def same_account(a: dict[str, Any] | None, b: dict[str, Any] | None, slack: float = 120) -> bool | None:
+    """Do two streams' usage windows have the same reset times? None: nothing to compare."""
+    pairs = [(float(a[w]["resetsAt"]), float(b[w]["resetsAt"])) for w in ("five_hour", "seven_day")
+             if a and b and (a.get(w) or {}).get("resetsAt") and (b.get(w) or {}).get("resetsAt")]
     return None if not pairs else all(abs(x - y) <= slack for x, y in pairs)
 
 
 def model_call(account: Account, model: str, failures: FailureTable, meters: Meters | None,
-               timeout: float) -> tuple[Turn, str]:
+               timeout: float, env: dict[str, str] | None = None) -> tuple[Turn, str]:
     """One -p turn in stream-json, read with the room's own Turn; returns (turn, stderr tail)."""
     argv = [claude_bin(), "-p", PROMPT, "--model", model, "--output-format", "stream-json", "--verbose",
             "--no-session-persistence", "--setting-sources", "", "--strict-mcp-config", "--tools", ""]
     turn = Turn(started=time.time())
     with tempfile.TemporaryDirectory(prefix="yerk-health-") as cwd:
         try:
-            p = subprocess.run(argv, env=account_env(account), cwd=cwd, capture_output=True, text=True,
+            p = subprocess.run(argv, env=env or account_env(account), cwd=cwd, capture_output=True, text=True,
                                timeout=timeout)
             out, err = p.stdout, p.stderr
         except subprocess.TimeoutExpired as e:
@@ -112,7 +112,9 @@ def check(accounts: list[Account], failures: FailureTable, ledger: Ledger, coold
         else:
             note.append(f"no identity in the login status ({method})")
         if tokened and ok:
-            same = same_account(turn.windows, read_usage(a.config_dir))
+            folder, _ = model_call(a, model, failures, None, timeout,
+                                   env={k: v for k, v in env.items() if k != TOKEN_ENV})   # the folder's own login
+            same = same_account(turn.windows, folder.windows)
             if same is False:
                 ident_ok = 0
                 note.append("the token answers as another account (its reset times differ from the folder login's)")

@@ -15,7 +15,9 @@ message and a success result echoing the text. Variations:
 - a line containing SLOW: waits up to 1.5 s for another line; if one comes, it is replayed and
   answered in the same result (a fold)
 - --resume with FAKE_CLAUDE_MISSING=1: "No conversation found" on stderr, exit 1
-- FAKE_CLAUDE_WINDOWS="0.07,0.03": a rate_limit_event with those 5-hour and weekly utilizations
+- FAKE_CLAUDE_WINDOWS="0.07,0.03": a rate_limit_event with those 5-hour and weekly utilizations;
+  FAKE_CLAUDE_TOKEN_SHIFT=N moves the 5-hour reset N seconds when CLAUDE_CODE_OAUTH_TOKEN is set
+  (a token that belongs to another account)
 - `claude auth status`: JSON with authMethod (oauth_token when CLAUDE_CODE_OAUTH_TOKEN is set)
   and an email made from the config folder's name; exit 1 for an FAKE_CLAUDE_AUTH_DIRS folder
 - `claude -p PROMPT` without --input-format: one answer, then exit (the health call)
@@ -117,9 +119,10 @@ def answer(text):
         return result("")
     if windows := os.environ.get("FAKE_CLAUDE_WINDOWS"):
         five, week = (float(x) for x in windows.split(","))
+        shift = int(os.environ.get("FAKE_CLAUDE_TOKEN_SHIFT", "0")) if os.environ.get("CLAUDE_CODE_OAUTH_TOKEN") else 0
         out({"type": "rate_limit_event", "session_id": sid, "uuid": str(uuid.uuid4()), "rate_limit_info": {
             "status": "allowed", "rateLimitType": "five_hour", "unifiedWindows": {
-                "five_hour": {"utilization": five, "resetsAt": 2000000000},
+                "five_hour": {"utilization": five, "resetsAt": 2000000000 + shift},
                 "seven_day": {"utilization": week, "resetsAt": 2000300000}}}})
     reply = "echo: " + text
     out({"type": "stream_event", "event": {"type": "content_block_delta", "delta": {"type": "text_delta", "text": reply}}})

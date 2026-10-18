@@ -73,7 +73,8 @@ def test_a_token_account_reports_its_login_method(box):
     row = run_check(priv, state, [acct])[0]
     calls = [json.loads(x) for x in (tmp / "argv.jsonl").read_text().splitlines()]
     has = [("CLAUDE_CODE_OAUTH_TOKEN" in c["env_keys"], c["argv"][0]) for c in calls]
-    assert row["login"] == "oauth_token" and has == [(False, "auth"), (True, "auth"), (True, "-p")]  # folder, token, turn
+    # the folder's login, the token's, the token's turn, then the folder login's turn for the identity check
+    assert row["login"] == "oauth_token" and has == [(False, "auth"), (True, "auth"), (True, "-p"), (False, "-p")]
 
 
 def test_yerk_accounts_lists_tokens_rests_and_health(box, capsys, monkeypatch):
@@ -99,10 +100,10 @@ def test_yerk_status_prints_a_meter_per_account(box, capsys):
     priv, state, _ = box
     Meters(state / "meters.json").seen("one", {"five_hour": {"utilization": 0.07, "resetsAt": 2000000000},
                                                 "seven_day": {"utilization": 0.03, "resetsAt": 2000300000}})
-    assert cli.main(["status", "--no-live", "--private", str(priv), "--state", str(state)]) == 0
+    assert cli.main(["status", "--private", str(priv), "--state", str(state)]) == 0
     out = capsys.readouterr().out.splitlines()
     assert out[0] == "yerkd: not running" and out[1].startswith("one: 5h 7% (") and "wk 3% (" in out[1]
-    assert out[2] == "two: no meter (not read)"
+    assert out[2] == "two: no meter (no stream has reported it yet)"
 
 
 def test_a_token_from_another_account_fails_the_identity_check(box, monkeypatch):
@@ -110,14 +111,11 @@ def test_a_token_from_another_account_fails_the_identity_check(box, monkeypatch)
     monkeypatch.setenv("FAKE_CLAUDE_WINDOWS", "0.2,0.1")          # the token's call: resets 2000000000 / 2000300000
     acct = load_accounts(priv / "accounts.toml")[0]
     store_token(acct, "fake-token-for-tests")
-    mine = {"five_hour": {"pct": 20.0, "resets": 2000000000}, "seven_day": {"pct": 10.0, "resets": 2000300000}}
-    monkeypatch.setattr(health, "read_usage", lambda d, t=None: mine)
-    assert run_check(priv, state, [acct])[0]["identity_ok"] == 1
-    other = {"five_hour": {"pct": 20.0, "resets": 2000007200}, "seven_day": {"pct": 10.0, "resets": 2000300000}}
-    monkeypatch.setattr(health, "read_usage", lambda d, t=None: other)
+    assert run_check(priv, state, [acct])[0]["identity_ok"] == 1            # both calls report the same resets
+    monkeypatch.setenv("FAKE_CLAUDE_TOKEN_SHIFT", "7200")                    # the token's 5-hour reset differs
     row = run_check(priv, state, [acct])[0]
     assert row["identity_ok"] == 0 and "another account" in row["note"]
-    monkeypatch.setattr(health, "read_usage", lambda d, t=None: {"error": "http 401"})
+    monkeypatch.delenv("FAKE_CLAUDE_WINDOWS")                                # no resets to compare
     assert run_check(priv, state, [acct])[0]["identity_ok"] is None
 
 

@@ -174,7 +174,7 @@ def cmd_status(a: argparse.Namespace) -> int:
     meters = Meters(state / "meters.json")
     for x in accounts:
         rest = cool.show(x.name)
-        print(meter_line(x.name, meters.reading(x, live=not a.no_live))
+        print(meter_line(x.name, meters.reading(x))
               + (f"; rests until {_clock(rest[0]['until'])}" if rest else ""))
     return 0
 
@@ -216,7 +216,6 @@ def main(argv: list[str] | None = None) -> int:
     ac.add_argument("--names", nargs="*", default=[], help="health: only these accounts")
     ac.add_argument("--json", action="store_true")
     st = sub.add_parser("status", help="the daemon, its rooms, and each account's 5-hour and weekly meters")
-    st.add_argument("--no-live", action="store_true", help="only the meters seen in streams, no live reading")
     for x in (ac, st):
         x.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else the fake example layer)")
         x.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")

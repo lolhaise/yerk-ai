@@ -6,7 +6,7 @@ Yerk AI turns chat rooms into long-lived Claude Code sessions. It is a small Pyt
 
 - A personal tool. You run it on your own machine, for yourself.
 - Bring your own installed Claude Code. Yerk AI starts the `claude` command you already have, under the login you already made with it. Each account is just a Claude Code config folder named in your own `accounts.toml`.
-- No login handling for anyone else. Yerk AI never offers, brokers or copies a login. Two things touch your own credentials, and neither ever prints or logs one: a one-year token you minted yourself with `claude setup-token` can be kept in your private folder (`secrets/claude-<account>.token`, 0600) and is handed to Claude Code in `CLAUDE_CODE_OAUTH_TOKEN`; and `yerk status` reads a config folder's own sign-in (or that token) only to ask for that account's usage meters, the way Claude Code's `/usage` does. It never writes a config folder.
+- No login handling for anyone else. Yerk AI never offers, brokers or copies a login, and it never reads the credential files in a config folder (a test greps the package for any read under one). One thing touches your own credentials, and it never prints or logs one: a one-year token you minted yourself with `claude setup-token` can be kept in your private folder (`secrets/claude-<account>.token`, 0600) and is handed to Claude Code in `CLAUDE_CODE_OAUTH_TOKEN`. The usage meters in `yerk status` come from the usage events Claude Code itself prints in each room's stream. It never writes a config folder.
 - Nothing stored for anyone else. Persona, memory and room settings live in a private folder you keep outside this repository; the repository ships only a fake example of it.
 
 ## Status

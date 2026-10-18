@@ -46,3 +46,29 @@ def test_the_scrub_catches_what_it_should(tmp_path):
                    "key sk-ant-" + "a" * 24 + ", path /home/someone/x")
     kinds = {h.split(": ")[1] for h in scan(bad, "docs/leak.md")}
     assert kinds == {"email", "discord-id-shaped number", "phone number", "secret", "home path"}
+
+
+# The README's promise: Yerk AI never reads the credential files in a Claude Code config folder.
+# Claude Code reads its own login; the package never names a credential file or its fields.
+CREDENTIAL_READS = re.compile("|".join(re.escape(x) for x in (
+    ".credentials" + ".json", "claudeAi" + "Oauth", "oauth" + "Account", "access" + "Token", "refresh" + "Token",
+    "/api/" + "oauth/", ".claude" + ".json")))
+
+
+def credential_reads(root: Path) -> list[str]:
+    return [f"{p.relative_to(root.parent).as_posix()}:{n}: {m.group()}"
+            for p in sorted(root.rglob("*.py")) if "__pycache__" not in p.parts
+            for n, line in enumerate(p.read_text(errors="ignore").splitlines(), 1)
+            for m in CREDENTIAL_READS.finditer(line)]
+
+
+def test_the_package_never_reads_a_config_folders_credentials():
+    hits = credential_reads(ROOT / "yerk_ai")
+    assert not hits, "\n".join(hits)
+
+
+def test_the_credential_grep_catches_a_planted_read(tmp_path):
+    pkg = tmp_path / "pkg"
+    pkg.mkdir()
+    (pkg / "m.py").write_text('tok = json.loads((d / ".credentials' + '.json").read_text())["claudeAi' + 'Oauth"]\n')
+    assert len(credential_reads(pkg)) == 2
