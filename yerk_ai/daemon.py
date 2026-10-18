@@ -23,6 +23,7 @@ from .config import budgets, load_toml, private_dir, rooms, state_dir, table
 from .engine import RoomSpec
 from .ledger import Ledger
 from .lifted.classify import FailureTable
+from .lifted.loopguard import LoopGuard
 from .room import Channel, Inbound, Room
 
 log = logging.getLogger("yerk.daemon")
@@ -148,7 +149,9 @@ class Yerkd:
         from .channels.discord import DiscordChannel
         d = self.conf.get("discord", {})
         token = (self.private / d["token_file"]).read_text().strip()
-        dc = DiscordChannel(token, int(d["owner"]), [int(x) for x in d.get("test_senders", [])], self.ledger)
+        guard = LoopGuard(max_events=int(d.get("webhook_burst", 100)))   # per 5 minutes, then 10 off
+        dc = DiscordChannel(token, int(d["owner"]), [int(x) for x in d.get("test_senders", [])], self.ledger,
+                            guard=guard)
         for name, conf in self.room_confs.items():
             kind, _, cid = str(conf.get("channel", "")).partition(":")
             if kind == "discord" and cid.isdigit():
