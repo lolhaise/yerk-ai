@@ -115,7 +115,7 @@ def test_the_pack_is_the_rooms_filed_items_newest_first_and_comes_back_after_com
     assert rec["event"] == "compact" and rec["parts"] == {"recall_pack": len(text)}
     assert hooks.session_start({"session_id": "sid-9", "source": "startup"}, tmp_path, lambda room: text) == {}
     ss = hooks.settings_for("http://127.0.0.1:9/hook")["SessionStart"][0]
-    assert ss["matcher"] == "compact" and ss["hooks"][0]["type"] == "command"
+    assert ss["matcher"] == "startup|clear|compact" and ss["hooks"][0]["type"] == "command"
     assert ss["hooks"][0]["command"].endswith("--data-binary @- http://127.0.0.1:9/hook")
 
 

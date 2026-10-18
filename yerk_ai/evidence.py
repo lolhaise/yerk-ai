@@ -15,6 +15,11 @@ After each reply the Stop check runs three rules and LOGS what it would bounce, 
 - file: the reply names a file of the memory tree the turn never read;
 - decide: the prompt asks what was decided and the turn made no memory read (a recall or
   read_memory call, a read inside a memory root, or recall the prompt hook put in).
+A fourth, decision 25 ("the check is the read"), reads the reply sentence by sentence: a claim
+about what code does or lacks needs a test or probe run in the turn, a claim about what is running
+needs a status read, a claim about what was decided needs a memory read, a claim about a file's
+contents needs a read of a file. A claim with none is ledgered with the sentence and the tools the
+turn ran. A question, a hedge or a proposal ("would", "could", "might", "I think") is not a claim.
 """
 from __future__ import annotations
 
@@ -84,7 +89,7 @@ class Evidence:
                     continue
                 if kind == "assistant" and c.get("type") == "tool_use":
                     ti = c.get("input") or {}
-                    self.calls[str(c.get("id"))] = {"tool": str(c.get("name")), "input": ti,
+                    self.calls[str(c.get("id"))] = {"tool": str(c.get("name")), "input": ti, "id": str(c.get("id")),
                                                     "target": target(str(c.get("name")), ti), "result": ""}
                 elif kind == "user" and c.get("type") == "tool_result":
                     call = self.calls.get(str(c.get("tool_use_id")))
@@ -144,4 +149,102 @@ def check(reply: str, prompts: list[str], ev: Evidence, roots: tuple[Path, ...],
             out.append(("file", f"named {name} ({where}); the turn never read it"))
     if any(DECIDE.search(p) for p in prompts) and not ev.memory_read(roots):
         out.append(("decide", "answered what was decided with no memory read this turn"))
+    return out
+
+
+# decision 25: the claim classes and what backs each (a run, a status read, a memory read, a file read)
+CLAIMS = {
+    "behaviour": re.compile(
+        r"\b(?:nothing|no\s+code|no\s+(?:function|module|test|hook|gate|rule)|none\s+of\s+(?:it|them|the\s+code))\s+"
+        r"(?:in\s+\S+\s+)?(?:implements?|handles?|does|calls?|checks?|wires?|covers?|catch(?:es)?|blocks?|tests?)\b"
+        r"|\b(?:is|are|isn't|aren't|was|wasn't|is\s+not|are\s+not)\s+(?:yet\s+|already\s+|fully\s+)?"
+        r"(?:implemented|wired(?:\s+up)?|hooked\s+up|unimplemented|broken|covered\s+by\s+(?:a\s+)?tests?)\b"
+        r"|\b(?:the\s+)?(?:code|function|module|hook|gate|daemon|harness|test|parser|script)\s+"
+        r"(?:already\s+|still\s+|never\s+)?(?:does(?:n't|\s+not)?|handles|implements|checks|calls|works|"
+        r"fails|passes|breaks|catches|blocks|lacks)\b", re.I),        # third person: "do code work" is no claim
+    "state": re.compile(
+        r"\b(?:is|are|isn't|aren't|is\s+not|are\s+not)\s+(?:now\s+|still\s+|currently\s+)?"
+        r"(?:running|up|down|live|stopped|active|inactive|dead|connected|online|offline|crashed)\b", re.I),
+    "decision": re.compile(
+        r"\bwe\s+(?:decided|agreed|settled|chose|picked|went\s+with)\b|\bthe\s+(?:decision|call)\s+(?:was|is)\b"
+        r"|\b(?:it\s+)?was\s+decided\b", re.I),
+    "file": re.compile(
+        r"\b(?:the\s+file|[\w./-]+\.(?:py|md|toml|json|txt|ya?ml|sh|ts|js|cfg|ini))\s+"
+        r"(?:says|contains|has|holds|lists|reads|defines|sets|shows)\b", re.I),
+}
+HEDGE = re.compile(r"\b(?:would|could|might|may|maybe|perhaps|probably|likely|i\s+think|i\s+guess|i\s+believe|"
+                   r"if|unless|not\s+checked|unverified|from\s+memory|guess)\b", re.I)
+RUNS = re.compile(r"^(?:pytest|py\.test|mypy|ruff|tox|nox|unittest|uv|uvx|python[\d.]*|node|npm|pnpm|yarn|npx|cargo|"
+                  r"go|make|bash|sh|zsh|yerk|yerkd|curl|wget|\./\S+|\S+\.sh|\S+\.py)$")
+READS = re.compile(r"^(?:grep|rg|ag|cat|sed|awk|head|tail|less|more|ls|find|wc|git|diff|file|stat|jq|tree)$")
+STATUS = re.compile(r"^(?:yerk|systemctl|journalctl|ps|pgrep|pidof|ss|netstat|lsof|curl|sqlite3|docker|kubectl|"
+                    r"uptime|free|df|top|htop)$")
+SENTENCE = re.compile(r"(?<=[.!?])\s+|\n+")
+
+
+def sentences(reply: str) -> list[str]:
+    text = re.sub(r"```.*?```", " ", reply, flags=re.S)
+    return [s.strip(" -*>`") for s in SENTENCE.split(text) if s.strip(" -*>`")]
+
+
+def claims(reply: str) -> list[tuple[str, str]]:
+    """(class, sentence) for each sentence that claims something code must back."""
+    out = []
+    for s in sentences(reply):
+        if s.endswith("?") or HEDGE.search(s):
+            continue
+        for cls, rx in CLAIMS.items():
+            if rx.search(s):
+                out.append((cls, s[:300]))
+                break
+    return out
+
+
+def words_run(calls: list[dict[str, Any]]) -> list[str]:
+    """The command word of every shell command the turn ran, in order."""
+    from .lifted.shellguard import command_words
+    out: list[str] = []
+    for c in calls:
+        if c["tool"] == "Bash":
+            out += command_words(str(c["input"].get("command") or ""))
+    return out
+
+
+def backed(cls: str, calls: list[dict[str, Any]], memory_read: bool) -> bool:
+    words = words_run(calls)
+    names = [c["tool"].rsplit("__", 1)[-1] for c in calls]
+    if cls == "behaviour":
+        return any(RUNS.match(w) for w in words)
+    if cls == "state":
+        return any(STATUS.match(w) or RUNS.match(w) for w in words)
+    if cls == "decision":
+        return memory_read
+    if cls == "file":
+        return any(n in ("Read", "Grep", "Glob", "read_memory", "NotebookRead") for n in names) or any(
+            READS.match(w) for w in words)
+    return True
+
+
+def tools_line(calls: list[dict[str, Any]]) -> str:
+    """The tools the turn ran, shell commands by their command word: "Grep x2, Bash(grep) x1"."""
+    seen: dict[str, int] = {}
+    for c in calls:
+        if c["tool"] == "Bash":
+            from .lifted.shellguard import command_words
+            key = f"Bash({','.join(command_words(str(c['input'].get('command') or ''))) or '?'})"
+        else:
+            key = c["tool"]
+        seen[key] = seen.get(key, 0) + 1
+    return ", ".join(f"{k} x{n}" for k, n in seen.items()) or "none"
+
+
+def check_claims(reply: str, ev: Evidence, roots: tuple[Path, ...]) -> list[tuple[str, str]]:
+    """Decision 25 in shadow: ("claim", detail) for each claim no run of the turn backs. Logs only."""
+    with ev.lock:
+        calls = list(ev.calls.values())
+    mem = ev.memory_read(roots)
+    out = []
+    for cls, s in claims(reply):
+        if not backed(cls, calls, mem):
+            out.append(("claim", f"{cls}: \"{s}\"; tools this turn: {tools_line(calls)}"))
     return out

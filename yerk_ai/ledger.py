@@ -6,8 +6,9 @@ the reply replaced can still be read back), deliveries (every outbound part by i
 the post: a retry after a crash posts a part only if it is not already in the room), attachments (every inbound
 missing), cards (each turn's progress message, open until its turn ends; a worker's until it
 settles), holds, workers (one row per worker unit: where it runs, how it ended, whether its result
-was relayed or skipped and why), and health (the daily call per account: pass or fail and the
-login's identity).
+skipped and why), health (the daily call per account: pass or fail and the login's identity), and the gates' own
+(gates.py): every gate decision, the approval holds, each hook call's time, each tool call's time and failure, and
+hook call's time, each tool call's time and failure, and the tamper rows of a changed setting.
 
 Inbound states, after Hermes' delivery ledger (gateway/delivery_ledger.py, MIT): `received`
 (ledgered, nothing ran: run it plainly after a crash), `running` (sent to Claude Code: after a
@@ -16,6 +17,7 @@ once already), `ignored`.
 """
 from __future__ import annotations
 
+import math
 import sqlite3
 import threading
 import time
@@ -28,7 +30,9 @@ COLUMNS = ("room", "account", "config_dir", "session_id", "started", "first_visi
 ADDED = {"turns": {"inbound": "TEXT", "source": "TEXT", "hop": "TEXT", "recap": "INTEGER",   # newer than run 1
                    "turn_key": "TEXT"},
          "outbound": {"body": "TEXT"},                      # a card's text, each post and edit
-         "workers": {"job": "TEXT"}}                        # the scheduled job a worker runs for (jobs.py)
+         "workers": {"job": "TEXT"},                        # the scheduled job a worker runs for (jobs.py)
+         "evidence": {"tool_use_id": "TEXT"},               # joins a call to its time (tool_times)
+         "approvals": {"call": "TEXT", "cwd": "TEXT"}}      # the held call an approval releases, exactly
 
 SCHEMA = """CREATE TABLE IF NOT EXISTS turns (
   id INTEGER PRIMARY KEY,
@@ -71,7 +75,21 @@ CREATE TABLE IF NOT EXISTS evidence (
   id INTEGER PRIMARY KEY, t REAL, room TEXT, session_id TEXT, turn TEXT, tool TEXT, target TEXT, chars INTEGER);
 CREATE TABLE IF NOT EXISTS shadow (
   id INTEGER PRIMARY KEY, t REAL, room TEXT, session_id TEXT, turn TEXT, rule TEXT, detail TEXT,
-  reply_chars INTEGER)"""
+  reply_chars INTEGER);
+CREATE TABLE IF NOT EXISTS gates (
+  id INTEGER PRIMARY KEY, t REAL, room TEXT, session_id TEXT, turn TEXT, gate TEXT, decision TEXT, tool TEXT,
+  rule TEXT, detail TEXT);
+CREATE TABLE IF NOT EXISTS approvals (
+  id INTEGER PRIMARY KEY, room TEXT, rule TEXT, what TEXT, held REAL, approved REAL, approved_by TEXT,
+  released REAL, gate_id INTEGER, call TEXT, cwd TEXT);
+CREATE TABLE IF NOT EXISTS hook_calls (
+  id INTEGER PRIMARY KEY, t REAL, room TEXT, session_id TEXT, turn TEXT, event TEXT, ms REAL, outcome TEXT);
+CREATE TABLE IF NOT EXISTS tool_times (
+  tool_use_id TEXT PRIMARY KEY, t REAL, room TEXT, session_id TEXT, turn TEXT, tool TEXT, ms INTEGER,
+  failed INTEGER, error TEXT);
+CREATE TABLE IF NOT EXISTS tamper (
+  id INTEGER PRIMARY KEY, t REAL, who TEXT, room TEXT, session_id TEXT, source TEXT, file TEXT, sha_before TEXT,
+  sha_after TEXT, diff_sha TEXT, diff_lines INTEGER)"""
 HEALTH = ("at", "account", "config_dir", "ok", "failure", "source", "login", "identity", "identity_ok", "model",
           "ms", "note")
 
@@ -93,6 +111,10 @@ class Ledger:
     def __init__(self, path: Path):
         self.db = sqlite3.connect(path, check_same_thread=False, isolation_level=None)
         self.lock = threading.Lock()
+        # WAL with NORMAL sync: a commit no longer waits on a disk sync (10 to 400 ms each on this box
+        # under load, paid by every hook call); a crash still leaves the file consistent
+        self.db.execute("PRAGMA journal_mode=WAL")
+        self.db.execute("PRAGMA synchronous=NORMAL")
         self.db.executescript(SCHEMA)
         for table, cols in ADDED.items():              # an older ledger gains the newer columns
             have = {r[1] for r in self.db.execute(f"PRAGMA table_info({table})")}
@@ -114,6 +136,88 @@ class Ledger:
     def shadow(self, **row: Any) -> int:
         """One thing the shadow Stop check would have bounced; nothing was blocked."""
         return self._insert("shadow", row)
+
+    # the gates (gates.py)
+    def gate(self, **row: Any) -> int:
+        """One gate decision: a rewrite, a refusal, a hold or a release."""
+        return self._insert("gates", {"t": time.time(), **row})
+
+    def hold_add(self, room: str, rule: str, what: str, gate_id: int, call: str = "", cwd: str = "") -> int:
+        return self._insert("approvals", {"room": room, "rule": rule, "what": what, "held": time.time(),
+                                          "gate_id": gate_id, "call": call, "cwd": cwd})
+
+    def approve(self, room: str, by: str, window_s: float) -> dict[str, Any] | None:
+        """The owner's word: the room's newest hold not yet approved (inside the window) is approved."""
+        r = self._select("SELECT * FROM approvals WHERE room = ? AND approved IS NULL AND held > ? ORDER BY id DESC "
+                         "LIMIT 1", (room, time.time() - window_s))
+        if not r:
+            return None
+        with self.lock:
+            self.db.execute("UPDATE approvals SET approved = ?, approved_by = ? WHERE id = ?",
+                            (time.time(), by, r[0]["id"]))
+        return r[0]
+
+    def release(self, room: str, rule: str, call: str, cwd: str, window_s: float) -> dict[str, Any] | None:
+        """The approved hold of exactly this call (its normalised text and working folder), not yet used,
+        takes it through once; another call under the same rule is not released by it."""
+        r = self._select("SELECT * FROM approvals WHERE room = ? AND rule = ? AND call = ? AND cwd = ? AND approved > ? "
+                         "AND released IS NULL ORDER BY id DESC LIMIT 1", (room, rule, call, cwd, time.time() - window_s))
+        if not r:
+            return None
+        with self.lock:
+            self.db.execute("UPDATE approvals SET released = ? WHERE id = ?", (time.time(), r[0]["id"]))
+        return r[0]
+
+    def many(self, rows: list[tuple[str, dict[str, Any]]]) -> None:
+        """Timing rows for hook_calls and tool_times in one transaction: one disk sync per batch, never
+        one per hook call (a commit each cost 10 to 80 ms here under load)."""
+        if not rows:
+            return
+        with self.lock:
+            self.db.execute("BEGIN")
+            try:
+                for table, row in rows:
+                    verb = "INSERT OR REPLACE" if table == "tool_times" else "INSERT"
+                    self.db.execute(f"{verb} INTO {table} ({', '.join(row)}) VALUES ({', '.join('?' * len(row))})",
+                                    tuple(row.values()))
+                self.db.execute("COMMIT")
+            except Exception:
+                self.db.execute("ROLLBACK")
+                raise
+
+    def tamper(self, **row: Any) -> int:
+        """A setting file changed under a running session: who, what, when and the diff's hash."""
+        return self._insert("tamper", row)
+
+    def answered_in(self, session_id: str) -> int:
+        """Turns a session answered (a session that never answered loses nothing when it is replaced)."""
+        r = self._select("SELECT count(*) AS n FROM turns WHERE session_id = ? AND outcome = 'ok'", (session_id,))
+        return int(r[0]["n"])
+
+    def landed(self, turn_key: str) -> int:
+        """Parts already in the room under a turn's key (its reply parts, its sends)."""
+        if not turn_key:
+            return 0
+        r = self._select("SELECT count(*) AS n FROM deliveries WHERE state = 'sent' AND (key LIKE ? OR key LIKE ?)",
+                         (f"{turn_key}:%", f"{turn_key}-s%"))
+        return int(r[0]["n"])
+
+    def evidence_timed(self, turn: str) -> list[dict[str, Any]]:
+        """The turn's evidence rows with each call's time and failure (None until its PostToolUse)."""
+        return self._select("SELECT e.*, t.ms, t.failed, t.error FROM evidence e LEFT JOIN tool_times t "
+                            "ON e.tool_use_id = t.tool_use_id WHERE e.turn = ? ORDER BY e.id", (turn,))
+
+    def hook_overhead(self, since: float = 0.0) -> dict[str, Any]:
+        """The hooks' own time per turn (every event of the turn summed): turns, calls, p50, p95, max."""
+        per = [float(r["ms"]) for r in self._select(
+            "SELECT turn, sum(ms) AS ms FROM hook_calls WHERE t >= ? AND turn != '' GROUP BY turn ORDER BY ms",
+            (since,))]
+        calls = self._select("SELECT count(*) AS n FROM hook_calls WHERE t >= ?", (since,))[0]["n"]
+
+        def pct(q: float) -> float | None:                  # nearest rank
+            return round(per[max(0, math.ceil(q * len(per)) - 1)], 1) if per else None
+        return {"turns": len(per), "calls": int(calls), "p50_ms": pct(0.5), "p95_ms": pct(0.95),
+                "max_ms": round(per[-1], 1) if per else None}
 
     def record(self, **row: Any) -> int:
         bad = set(row) - set(COLUMNS)

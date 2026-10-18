@@ -6,8 +6,11 @@ last 14 days on the message's topic), the recall part capped at budgets.toml's `
 assembly is written to the room's assembled.jsonl, the daemon's own record of what the model got.
 SessionStart with source `compact` re-adds the recall pack. Claude Code takes only command and
 mcp_tool hooks on SessionStart, so that one entry is a command that posts the same payload to the
-same endpoint with curl. Stop runs the rule-based checks: an image sent in and never read bounces
-once; the evidence rules log what they would bounce and never block (shadow).
+same endpoint with curl; on `startup` or `clear` after another session it posts the reset line.
+PreToolUse runs the gates (gates.py), PostToolUse and PostToolUseFailure time each call, ConfigChange
+writes the tamper row. Stop runs the rule-based checks: an image sent in and never read bounces
+once, a working turn ending with nothing visible bounces once; the evidence rules log what they
+would bounce and never block (shadow).
 The room comes from the payload's session id through the engine's room-to-session table.
 """
 from __future__ import annotations
@@ -112,8 +115,12 @@ def session_start(payload: dict[str, Any], state: Path, pack: Callable[[str], st
 
 
 def settings_for(url: str) -> dict[str, Any]:
-    """The hooks block of a room's --settings file."""
+    """The hooks block of a room's --settings file: every event an http post to the daemon, but
+    SessionStart, which Claude Code runs only as a command (curl posts the same payload). Resume is
+    left out of its matcher: a resumed session is not a reset."""
     one = [{"hooks": [{"type": "http", "url": url, "timeout": 10}]}]
     post = f"curl -sS --max-time 10 -H 'content-type: application/json' --data-binary @- {url}"
-    return {"UserPromptSubmit": one, "Stop": one,
-            "SessionStart": [{"matcher": "compact", "hooks": [{"type": "command", "command": post, "timeout": 15}]}]}
+    return {"UserPromptSubmit": one, "Stop": one, "PreToolUse": one, "PostToolUse": one, "PostToolUseFailure": one,
+            "ConfigChange": one,
+            "SessionStart": [{"matcher": "startup|clear|compact",
+                              "hooks": [{"type": "command", "command": post, "timeout": 15}]}]}
