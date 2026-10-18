@@ -114,9 +114,17 @@ class Yerkd:
         self.memory = memory.settings(private, state, dict(self.conf.get("memory", {})))
         self.daily = memory.DailyLog(self.memory.daily, self.memory.tz,
                                      {n: (room_id(n, c), memory.room_class(c)) for n, c in self.room_confs.items()})
-        # the install's secrets for /hook, /control and /mcp (R3): in the private layer's secrets folder, or
-        # in the state folder when the private layer is the example one shipped in the repo (never written)
-        sdir = state / "secrets" if private.resolve().is_relative_to(REPO) else private / "secrets"
+        # day-log lines written before offsets, ids, authors and classes are rewritten once, here, before any
+        # channel opens and under the lock capture holds, so no second writer ever races the rewrite (cold
+        # read F3); the originals go beside the private layer, or under the state folder for the example one
+        backup = (state if private.resolve().is_relative_to(REPO) else private) / "backups" / f"daily-before-{time.strftime('%Y-%m-%d')}"
+        moved = memory.migrate_daylogs(self.memory.daily, self.memory.tz, self.daily.rooms, backup)
+        if moved["rewritten"]:
+            log.info("memory: %d day-log line(s) in %d file(s) rewritten in today's shape; the originals are under %s",
+                     moved["rewritten"], moved["files"], backup)
+        # the install's secrets for /hook, /control and /mcp (R3): under the state folder for every layer, so
+        # no room's Read(/<layer>/**) rule or --add-dir reaches them (cold read F4); yerkd.json names the paths
+        sdir = state / "secrets"
         self.secret_file, self.worker_secret_file = sdir / "yerk-http.secret", sdir / "yerk-worker.secret"
         self.secret = read_secret(self.secret_file, create=True)
         self.worker_secret = read_secret(self.worker_secret_file, create=True)
@@ -261,7 +269,7 @@ class Yerkd:
     def room_pack(self, room: str, left: int = 6000) -> tuple[str, str]:
         r = self.rooms.get(room)
         text, _ = memory.room_pack(self.memory, room, left, exclude=r.current_ids() if r else set(),
-                                   rid=room_id(room, self.room_confs.get(room, {})))
+                                   rid=room_id(room, self.room_confs.get(room, {})), owner=self.reader(room).owner)
         return text, str(self.memory.daily)
 
     def compact_pack(self, room: str) -> str:
@@ -282,8 +290,8 @@ class Yerkd:
             except (OSError, ValueError, KeyError) as e:
                 log.warning("mention recall skipped: %s", e)
         r = self.rooms.get(room)
-        topics = memory.topic_hits(self.memory, room, prompt, r.current_ids() if r else set(),
-                                   rid=room_id(room, conf)) if conf.get("topic_recall", True) else []
+        topics = memory.topic_hits(self.memory, room, prompt, r.current_ids() if r else set(), rid=room_id(room, conf),
+                                   owner=self.reader(room).owner) if conf.get("topic_recall", True) else []
         return abilities.asked(prompt, self.memory) + names, topics      # "can you do voice": the manifest's answer
 
     def shadow_stop(self, name: str, room: Room, reply: str, sid: str) -> list[tuple[str, str]]:
@@ -369,12 +377,19 @@ class Yerkd:
 
     def learn_transcript(self, name: str, payload: dict[str, Any]) -> None:
         """The session's transcript path, from the first hook call that carries it, into the room's
-        binding: an account hop then resumes by that path (R1), which Claude Code's docs promise."""
+        binding: an account hop then resumes by that path (R1), which Claude Code's docs promise.
+        Only a path Claude Code would name is taken, an absolute `<session id>.jsonl`, so a room's own
+        hook call cannot point its binding at another file (cold read F5); anything else is logged
+        and ignored."""
         path = str(payload.get("transcript_path") or "")
+        sid = str(payload.get("session_id", ""))
         if not path:
             return
+        if not (sid and Path(path).is_absolute() and Path(path).name == f"{sid}.jsonl"):
+            log.warning("hook: room %s named a transcript that is not its session's own file; ignored", name)
+            return
         row = self.sessions.get(name) or {}
-        if row.get("session_id") == str(payload.get("session_id", "")) and row.get("transcript") != path:
+        if row.get("session_id") == sid and row.get("transcript") != path:
             self.sessions.update(name, transcript=path)
 
     async def _hook(self, event: str, name: str | None, payload: dict[str, Any]) -> dict[str, Any]:

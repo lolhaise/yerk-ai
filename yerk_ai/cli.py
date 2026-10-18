@@ -419,9 +419,10 @@ def cmd_config(a: argparse.Namespace) -> int:
 
 
 def cmd_memory(a: argparse.Namespace) -> int:
-    """`yerk memory migrate-daylogs`: the one-time rewrite of day-log lines written before offsets, room
-    ids, authors and classes (restart test R5, R2), every file copied to the private layer's backups
-    folder first; run it while no daemon writes the tree, or accept that the daemon's lines land after."""
+    """`yerk memory migrate-daylogs`: the rewrite of day-log lines written before offsets, room ids,
+    authors and classes (restart test R5, R2), every file that changes copied to the private layer's
+    backups folder first. The daemon runs the same rewrite at its start; by hand it is safe beside a
+    running daemon, since the rewrite and the daemon's capture hold one lock (cold read F3)."""
     import time
     from pathlib import Path
     from . import memory

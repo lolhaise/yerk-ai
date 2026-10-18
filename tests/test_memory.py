@@ -155,6 +155,83 @@ def test_a_room_cannot_read_another_rooms_private_lines_or_files(tmp_path):
     assert memory.room_class({"privacy": "family", "class": "shared"}) == "shared"
 
 
+def test_a_free_form_line_and_a_date_named_note_stay_with_the_owner(tmp_path):
+    """Cold read F1: a line in a day log that is not a day-log line (a hand edit, an import) is blanked for
+    a room that is not an owner room, and a date-named file outside daily/ is a plain file, class-checked."""
+    s = tree(tmp_path)
+    (s.root / "daily" / "2026-01-06.md").write_text(
+        "# 2026-01-06\n\nA FREE-FORM NOTE beside the lines\n"
+        "- 10:00:00+00:00 room-a owner: the owner's line [c:private] [m:1]\n  - attachment: owner-file.pdf, pdf, 1 bytes\n"
+        "- 10:01:00+00:00 room-b#b-id other: the room's own line [c:room] [m:2]\n  - attachment: own-file.png, image/png, 2 bytes\n")
+    (s.root / "2026-01-06.md").write_text("# 2026-01-06\n\nA DATE-NAMED NOTE at the root, no class\n")
+    (s.root / "2026-01-09.md").write_text("---\nclass: shared\n---\n# 2026-01-09\n\nA DATE-NAMED NOTE marked shared\n")
+    owner, b = memory.Reader.owner_room("room-a"), memory.Reader("room-b", "b-id", False)
+    r = memory.read(s, "daily/2026-01-06.md", 1, 40, reader=b)
+    assert r["ok"] and r["text"].splitlines() == [
+        "# 2026-01-06", "", "(a line of another room)", "(a line of another room)", "(a line of another room)",
+        "- 10:01:00+00:00 room-b#b-id other: the room's own line [c:room] [m:2]",
+        "  - attachment: own-file.png, image/png, 2 bytes"]
+    assert "FREE-FORM" in memory.read(s, "daily/2026-01-06.md", 1, 40, reader=owner)["text"]
+    root_note = memory.read(s, "2026-01-06.md", 1, 40, reader=b)
+    assert not root_note["ok"] and "keeps it to the owner's rooms" in root_note["error"]
+    assert "DATE-NAMED NOTE at the root" in memory.read(s, "2026-01-06.md", 1, 40, reader=owner)["text"]
+    assert "marked shared" in memory.read(s, "2026-01-09.md", 1, 40, reader=b)["text"]   # shared by its front matter: whole
+    build(s)
+    for room in (b, memory.Reader()):                                    # recall: the same lines, the same files
+        texts = " ".join(h["text"] for h in memory.recall(s, "FREE-FORM DATE-NAMED NOTE", 20, reader=room)["hits"])
+        assert "FREE-FORM" not in texts and "at the root" not in texts and "marked shared" in texts
+    assert "FREE-FORM" in " ".join(h["text"] for h in memory.recall(s, "FREE-FORM NOTE", 20, reader=owner)["hits"])
+
+
+def test_a_former_rooms_name_is_not_a_non_owner_rooms_history(tmp_path):
+    """Cold read F2: an old line (no id) matches a room by name for an owner room only; a room that is
+    not an owner room and carries that name with another id gets no item and no topic hit from it."""
+    s = tree(tmp_path)
+    (s.root / "daily" / "2026-01-05.md").write_text(
+        "# 2026-01-05\n\n- 09:00:00 family owner: the former family room decided on the teal kettle [m:1]\n"
+        "- 09:01:00+00:00 family#f-new owner: the new family room decided on a red kettle [c:room] [m:2]\n")
+    now = datetime(2026, 1, 5, 20, tzinfo=UTC)
+    older = memory.room_items(s, "family", now, rid="f-new", owner=False)
+    assert [i["text"] for i in older] == ["the new family room decided on a red kettle"]
+    hits = memory.topic_hits(s, "family", "decided on the kettle?", set(), now, rid="f-new", owner=False)
+    assert [h["cite"] for h in hits] == ["daily/2026-01-05.md:4"]
+    assert memory.room_pack(s, "family", 6000, now, rid="f-new", owner=False)[1] == 1
+    assert len(memory.room_items(s, "family", now, rid="f-new")) == 2                  # the owner view, by name too
+    assert len(memory.topic_hits(s, "family", "decided on the kettle?", set(), now, rid="f-new")) == 2
+    assert len(memory.room_items(s, "family", now, rid="family", owner=False)) == 0   # an old line never reaches a non-owner room
+
+
+def test_a_line_the_daemon_files_during_the_migrations_rewrite_lands_in_the_new_file(tmp_path, monkeypatch):
+    """Cold read F3: the daemon's capture and the migration's rewrite hold one lock, so an append that
+    arrives between the read and the rename waits, then lands in the rewritten file."""
+    import threading
+    from zoneinfo import ZoneInfo
+    tz, rooms = ZoneInfo("America/Toronto"), {"an-example-room": ("discord:1000", "room")}
+    daily = tmp_path / "daily"
+    daily.mkdir()
+    (daily / "2026-10-18.md").write_text("# 2026-10-18\n\n- 10:00:00 an-example-room owner: an old line [m:1]\n")
+    log = memory.DailyLog(daily, tz, rooms)
+    filed = threading.Thread(target=log.capture, args=("an-example-room", "2", "owner", "filed during the rewrite"),
+                             kwargs={"when": datetime(2026, 10, 18, 14, 0, 5, tzinfo=UTC)})
+    real = os.replace
+
+    def replace_while_a_message_lands(a, b):
+        if Path(b) == daily / "2026-10-18.md":                  # the day file's rename, not the backup copy's
+            filed.start()
+            filed.join(0.5)                  # without the lock the line is in the old file by now, and lost
+        return real(a, b)
+    monkeypatch.setattr(os, "replace", replace_while_a_message_lands)
+    st = memory.migrate_daylogs(daily, tz, rooms, tmp_path / "backup")
+    filed.join(5)
+    assert (st["rewritten"], st["kept"]) == (1, 0) and not filed.is_alive()
+    assert (daily / "2026-10-18.md").read_text().splitlines()[2:] == [
+        "- 10:00:00-04:00 an-example-room#discord:1000 owner: an old line [c:room] [m:1]",
+        "- 10:00:05-04:00 an-example-room#discord:1000 owner: filed during the rewrite [c:room] [m:2]"]
+    assert (tmp_path / "backup" / "2026-10-18.md").read_text().endswith("an old line [m:1]\n")
+    assert memory.migrate_daylogs(daily, tz, rooms, tmp_path / "backup-2")["rewritten"] == 0
+    assert not (tmp_path / "backup-2").exists()                          # nothing to rewrite: nothing copied
+
+
 def test_the_example_layer_never_captures_into_the_repo(tmp_path):
     s = memory.settings(EXAMPLE_PRIVATE, tmp_path, {})
     assert s.root.is_relative_to(tmp_path) and not s.root.is_relative_to(REPO)

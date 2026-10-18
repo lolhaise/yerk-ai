@@ -13,6 +13,7 @@ tools only from the `--tools` allowlist, and the assembled context from
 from __future__ import annotations
 
 import fcntl
+import hmac
 import json
 import logging
 import os
@@ -81,10 +82,12 @@ class SessionTable:
         return self.load().get(room)
 
     def by_token(self, token: str) -> str | None:
-        """The room whose live process holds `token`, or None (an unbound call)."""
+        """The room whose live process holds `token`, or None (an unbound call); each row's token is
+        compared in constant time, like the install's secret (cold read F7)."""
         if not token:
             return None
-        return next((room for room, row in self.load().items() if row.get("token") == token), None)
+        return next((room for room, row in self.load().items()
+                     if hmac.compare_digest(str(row.get("token") or "").encode(), token.encode())), None)
 
     def by_session(self, session_id: str) -> str | None:
         if not session_id:

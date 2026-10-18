@@ -106,6 +106,9 @@ def test_two_rooms_binding_together_both_keep_their_rows(tmp_path):
     rows = t.load()
     assert sorted(rows) == sorted(f"room-{i}" for i in range(12)) and rows["room-3"]["token"] == "tok-3"
     assert t.by_token("tok-7") == "room-7" and t.by_token("") is None and t.by_token("nope") is None
+    assert t.by_token("tok-8 ") is None and t.by_token("tok-") is None and t.by_token("tok-70") is None   # one byte off
+    import inspect
+    assert "hmac.compare_digest" in inspect.getsource(SessionTable.by_token)     # constant time (cold read F7)
     assert t.by_session("sid-2") == "room-2" and not list(tmp_path.glob(".sessions.json.*.tmp"))
     assert oct((tmp_path / "sessions.json").stat().st_mode & 0o777) == "0o600"
     t.update("room-1", transcript="/x/one.jsonl")
@@ -124,7 +127,11 @@ def test_a_hop_resumes_by_the_transcripts_path_when_the_folders_are_not_shared(m
     transcript = tmp_path / "cfg" / "projects" / "-work" / f"{sid}.jsonl"
     transcript.parent.mkdir(parents=True)
     transcript.write_text("{}\n")
-    SessionTable(tmp_path / "sessions.json").update("r1", transcript=str(transcript))
+    from yerk_ai.config import EXAMPLE_PRIVATE
+    from yerk_ai.daemon import Yerkd
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)                              # the daemon learns the path from the hook payload
+    y.learn_transcript("r1", {"hook_event_name": "Stop", "session_id": sid, "transcript_path": str(transcript)})
+    assert SessionTable(tmp_path / "sessions.json").get("r1")["transcript"] == str(transcript)
     spec = RoomSpec(room="r1", model="m", cwd=tmp_path, tools=["Read"])
     other = RoomProcess(spec, Account("two", tmp_path / "cfg2"), tmp_path, ledger=make().ledger)
     with other:

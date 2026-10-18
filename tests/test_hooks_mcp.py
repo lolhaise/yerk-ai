@@ -2,6 +2,7 @@
 import asyncio
 import json
 from datetime import datetime, timezone
+from pathlib import Path
 
 from starlette.testclient import TestClient
 
@@ -137,7 +138,7 @@ def test_every_endpoint_refuses_a_caller_without_the_secret_and_knows_a_room_by_
         # the worker secret: reads only, on /control only
         rd = c.post("/control", json={"recall": {"room": "example-room", "query": "kettle", "k": 2}},
                     headers={"x-yerk-secret": y.worker_secret})
-        assert rd.status_code == 200 and "hits" in rd.json() or rd.json().get("status") in ("failure", "timeout")
+        assert rd.status_code == 200 and ("hits" in rd.json() or rd.json().get("status") in ("failure", "timeout"))
         start = c.post("/control", json={"worker": {"action": "list", "room": "example-room"}},
                        headers={"x-yerk-secret": y.worker_secret})
         assert start.status_code == 200 and not start.json()["ok"] and "reads memory only" in start.json()["error"]
@@ -159,3 +160,66 @@ def test_a_rooms_settings_and_mcp_config_carry_its_token_and_are_private(tmp_pat
     assert cfg["mcpServers"]["yerk"]["headers"] == {"x-yerk-secret": spec.token} and "x-yerk-room" not in str(cfg)
     assert oct(spec.mcp_config.stat().st_mode & 0o777) == "0o600"
     assert y.spec_for("example-room").token != spec.token           # a token per process start
+
+
+def test_the_secrets_sit_outside_every_rooms_layer(tmp_path):
+    """Cold read F4: a room with no `layer` key has the whole private folder in its Read rule and its
+    --add-dir, so the secrets are minted under the state folder for every layer, never inside one."""
+    import shutil
+    private = tmp_path / "private"
+    shutil.copytree(EXAMPLE_PRIVATE, private)                        # a real private layer: not the one in the repo
+    (tmp_path / "state").mkdir()
+    y = Yerkd(private, tmp_path / "state")
+    assert "layer" not in y.room_confs["example-room"]
+    spec = y.spec_for("example-room")
+    layer = context.layer_dir(private, y.room_confs["example-room"])
+    rules = [r for r in spec.settings["permissions"]["allow"] if r.startswith("Read(") and r.endswith("/**)")]
+    folders = [layer, *spec.add_dirs] + [Path("/" + r[len("Read("):-len("/**)")].lstrip("/")) for r in rules]
+    assert layer == private.resolve() and rules and all(f.resolve() == layer for f in folders)
+    for secret in (y.secret_file, y.worker_secret_file):
+        assert secret.is_relative_to(tmp_path / "state") and oct(secret.stat().st_mode & 0o777) == "0o600"
+        assert not any(secret.resolve().is_relative_to(f.resolve()) for f in folders), secret.name
+    assert not (private / "secrets").exists()
+
+
+def test_the_daemon_reads_a_rooms_lines_in_that_rooms_view(tmp_path):
+    """Cold read F2, the daemon's side: the topic hits and the recall pack of a room that is not an
+    owner room carry the room's own view, so a former room's old lines (no id) never reach it."""
+    y = daemon(tmp_path)
+    y.room_confs["family-room"] = {**y.room_confs["example-room"], "privacy": "family", "id": "f-new"}
+    y.memory.daily.mkdir(parents=True)
+    day = datetime.now(timezone.utc).astimezone(y.memory.tz).strftime("%Y-%m-%d")
+    (y.memory.daily / f"{day}.md").write_text(
+        f"# {day}\n\n- 09:00:00 family-room owner: the former room decided on a teal kettle [m:1]\n"
+        f"- 09:01:00+00:00 family-room#f-new owner: this room decided on a red kettle [c:room] [m:2]\n")
+    assert [t["text"] for t in y.recall_for("family-room", "what did we decide on the kettle?")[1]] == [
+        "this room decided on a red kettle"]
+    pack = y.room_pack("family-room")[0]
+    assert "red kettle" in pack and "teal" not in pack
+    y.room_confs["family-room"]["privacy"] = "owner"                   # the owner view: by name too
+    assert len(y.recall_for("family-room", "what did we decide on the kettle?")[1]) == 2
+
+
+def test_a_room_cannot_point_its_binding_at_another_transcript(tmp_path, caplog):
+    """Cold read F5: a hook call under the room's own token sets the binding's transcript only to an
+    absolute `<session id>.jsonl`; any other path is logged and ignored."""
+    import logging
+    y = daemon(tmp_path)
+    y.sessions.bind("example-room", "sid-t", "one", token="room-token-1")
+    own = tmp_path / "projects" / "-work" / "sid-t.jsonl"
+    own.parent.mkdir(parents=True)
+    own.write_text("{}\n")
+    planted = tmp_path / "not-my-transcript.jsonl"
+    planted.write_text("{}\n")
+    with TestClient(guarded(y)) as c, caplog.at_level(logging.WARNING, logger="yerk.daemon"):
+        for path in (str(planted), "projects/-work/sid-t.jsonl", str(tmp_path / "sid-t.json"), str(tmp_path / "x" / "sid-u.jsonl")):
+            r = c.post("/hook", json={"hook_event_name": "Stop", "session_id": "sid-t", "transcript_path": path},
+                       headers={"x-yerk-secret": "room-token-1"})
+            assert r.status_code == 200 and y.sessions.get("example-room").get("transcript", "") == "", path
+        assert sum("not its session's own file" in rec.getMessage() for rec in caplog.records) == 4
+        c.post("/hook", json={"hook_event_name": "Stop", "session_id": "other-sid", "transcript_path": str(own)},
+               headers={"x-yerk-secret": "room-token-1"})
+        assert y.sessions.get("example-room").get("transcript", "") == ""   # another session's id: ignored, as before
+        c.post("/hook", json={"hook_event_name": "Stop", "session_id": "sid-t", "transcript_path": str(own)},
+               headers={"x-yerk-secret": "room-token-1"})
+    assert y.sessions.get("example-room")["transcript"] == str(own)

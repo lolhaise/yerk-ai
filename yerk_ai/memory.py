@@ -7,12 +7,14 @@ roots the index reads but nothing here writes. The index itself is yerk-index (m
 """
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 import logging
 import os
 import re
 import threading
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone, tzinfo
 from pathlib import Path
@@ -20,7 +22,7 @@ from typing import Any, Iterator
 from zoneinfo import ZoneInfo
 
 from . import memindex
-from .config import REPO, load_toml
+from .config import REPO, load_toml, write_private
 
 MARK = re.compile(r"\[m:([^\]\s]+)\]$", re.M)        # the message id that ends each captured line
 READ_MAX = 400                                       # read_memory: lines per call
@@ -204,19 +206,24 @@ def may_read(reader: Reader | None, cls: str, room: str) -> bool:
     return cls == "shared" or (cls == "room" and bool(room) and room == reader.rid)
 
 
-def allowed_text(reader: Reader | None, path: Path, text: str, blank: str = "", whole: bool = False) -> str | None:
-    """`text` of a memory file as `reader` may see it: a day log keeps only the lines it may read (the
-    others become `blank`, so line numbers hold; None when nothing is left unless `whole`, an exact
-    read that must keep its line count); any other file is whole or None."""
+def allowed_text(reader: Reader | None, path: Path, text: str, blank: str = "", whole: bool = False,
+                 daily: Path | None = None) -> str | None:
+    """`text` of a memory file as `reader` may see it: a day log keeps only the lines it may read; the
+    others, and every line that is not a day-log line (a free-form note, a hand edit, an import),
+    become `blank`, so line numbers hold; the day header, a blank line and an attachment line under a
+    kept line stay. None when nothing is left unless `whole`, an exact read that must keep its line
+    count. A day log is a date-named file, under `daily` when given: a date-named file anywhere else
+    is a plain file, whole or None by its class, like the rest."""
     if reader is None or reader.owner:
         return text
-    if is_daylog(str(path)):
+    if is_daylog(str(path)) and (daily is None or Path(path).resolve().parent == daily.resolve()):
         out = []
         kept = False
         for raw in text.splitlines():
             ln = parse_line(raw)
             if ln is None:
-                out.append(blank if raw.startswith("  - attachment: ") and not kept else raw)
+                shown = (kept and raw.startswith("  - attachment: ")) or not raw.strip() or bool(DAY_HEAD.match(raw))
+                out.append(raw if shown else blank)
                 kept = kept and raw.startswith("  - attachment: ")
                 continue
             kept = may_read(reader, ln.cls, ln.rid)
@@ -230,6 +237,7 @@ def allowed_text(reader: Reader | None, path: Path, text: str, blank: str = "", 
 # time optional, so the line written before the offset, the id, the author and the class still reads
 LINE = re.compile(r"^- (\d\d:\d\d:\d\d)([+-]\d\d:\d\d)? (\S+?)(?:#(\S+))? ([\w-]+)(?:@(\S+))?: (.*?)"
                   r"(?: \[c:(\w+)\])?(?: \[m:([^\]\s]+)\])?$")
+DAY_HEAD = re.compile(r"^# \d{4}-\d{2}-\d{2}\b")      # the day log's first line
 
 
 @dataclass(frozen=True)
@@ -272,6 +280,22 @@ def format_line(at: datetime, label: str, rid: str, role: str, who: str, body: s
     return f"- {at:%H:%M:%S}{off[:3]}:{off[3:]} {room} {author}: {body} [c:{cls}] [m:{mid}]"
 
 
+@contextmanager
+def daily_lock(daily: Path) -> Iterator[None]:
+    """The one lock every writer of the day logs holds, a flock on `.daily.lock` beside the folder
+    (the daemon's capture and the migration's rewrite, in their own processes): an append that arrives
+    while a file is being rewritten waits for the rename and lands in the new file, never in the file
+    the rename drops. The lock file sits outside `daily/`, so a listing of the day files stays clean."""
+    daily.mkdir(parents=True, exist_ok=True, mode=0o700)
+    fd = os.open(daily.parent / f".{daily.name}.lock", os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+
+
 class DailyLog:
     """The day's log: one line per message, written as it lands, short and attachment-only ones
     included, each attachment on a line of its own under it. The line ends with the message id, so
@@ -305,11 +329,10 @@ class DailyLog:
         rid, cls = self.rooms.get(room, (room, "private"))
         lines = [format_line(at, room, rid, role, who, f"{'(edited) ' if edited else ''}{body}", cls, key)]
         lines += [f"  - attachment: {name}, {kind}, {size:,} bytes" for name, kind, size in files]
-        with self.lock:
+        with self.lock, daily_lock(self.daily):
             ids = self._ids(day)
             if key in ids:
                 return False
-            self.daily.mkdir(parents=True, exist_ok=True, mode=0o700)
             path = self.daily / f"{day}.md"
             head = "" if path.exists() else f"# {day}\n\n"
             fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
@@ -335,7 +358,8 @@ def read(s: Settings, path: str, start: int = 1, lines: int = 40, reader: Reader
     if not real.is_file():
         return {"ok": False, "error": f"{path} is a folder, not a file"}
     start, lines = max(1, int(start)), max(1, min(int(lines), READ_MAX))
-    if reader and not reader.owner and not is_daylog(str(real)) and not may_read(reader, *file_class(real)):
+    daylog = is_daylog(str(real)) and real.parent == s.daily.resolve()   # date-named elsewhere: a plain file
+    if reader and not reader.owner and not daylog and not may_read(reader, *file_class(real)):
         return {"ok": False, "error": f"{path} is not readable from room {reader.name or '?'}: its class keeps it to "
                                       "the owner's rooms"}
     out: list[str] = []
@@ -345,8 +369,8 @@ def read(s: Settings, path: str, start: int = 1, lines: int = 40, reader: Reader
             if start <= total < start + lines:
                 out.append(line.rstrip("\n"))
     text = "\n".join(out)
-    if reader and not reader.owner and is_daylog(str(real)):
-        text = allowed_text(reader, real, text, blank="(a line of another room)", whole=True) or ""
+    if reader and not reader.owner and daylog:
+        text = allowed_text(reader, real, text, blank="(a line of another room)", whole=True, daily=s.daily) or ""
     cut = len(text) > READ_CHARS
     return {"ok": True, "path": str(real), "from": start, "to": start + len(out) - 1, "total_lines": total,
             "text": text[:READ_CHARS] + ("\n[cut at 20,000 characters; read fewer lines]" if cut else "")}
@@ -485,7 +509,7 @@ def recall(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader:
     if reader and not reader.owner:                 # another room's private lines never leave the tree (R2)
         kept = []
         for h in hits:
-            text = allowed_text(reader, Path(h["path"]), str(h.get("text", "")))
+            text = allowed_text(reader, Path(h["path"]), str(h.get("text", "")), daily=s.daily)
             if text is not None:
                 kept.append({**h, "text": text})
         hits = kept
@@ -528,11 +552,14 @@ def _stem(w: str) -> str:
 
 
 def room_lines(s: Settings, room: str, now: datetime | None = None,
-               rid: str | None = None) -> Iterator[tuple[str, int, Line, list[str]]]:
+               rid: str | None = None, owner: bool = True) -> Iterator[tuple[str, int, Line, list[str]]]:
     """(day, line number, the parsed line, the lines of its file) for this room's lines of the last
-    14 days, newest day first: by the room's stable id (`rid`, default its name), and by name on a
-    line written before ids. The room's own day files are small, so they are read straight from
-    disk: fresher than the index (which trails by a pass) and a few milliseconds per message."""
+    14 days, newest day first: by the room's stable id (`rid`, default its name), and, for an owner
+    room (`owner`, the view every caller but the daemon's non-owner rooms has), by name on a line
+    written before ids. A room that is not an owner room gets only lines that carry a class and its
+    id, as read_memory shows it: a former room's name is not its history (R2). The room's own day
+    files are small, so they are read straight from disk: fresher than the index (which trails by a
+    pass) and a few milliseconds per message."""
     rid = rid or room
     for day in window(s, now):
         f = s.daily / f"{day}.md"
@@ -541,12 +568,13 @@ def room_lines(s: Settings, room: str, now: datetime | None = None,
         lines = f.read_text(errors="replace").splitlines()
         for n, raw in enumerate(lines):
             ln = parse_line(raw)
-            if ln and ln.of_room(room, rid):
+            if ln and (ln.of_room(room, rid) if owner else bool(ln.cls) and ln.rid == rid):
                 yield day, n, ln, lines
 
 
 def topic_hits(s: Settings, room: str, text: str, exclude: set[str] | None = None,
-               now: datetime | None = None, limit: int = 6, rid: str | None = None) -> list[dict[str, Any]]:
+               now: datetime | None = None, limit: int = 6, rid: str | None = None,
+               owner: bool = True) -> list[dict[str, Any]]:
     """The message's key terms against this room's own lines of the last 14 days, best first:
     ranked by how many of the terms a line holds, newer first on a tie. The message itself
     (filed before the turn) and lines sharing too few terms never come back."""
@@ -557,7 +585,7 @@ def topic_hits(s: Settings, room: str, text: str, exclude: set[str] | None = Non
     need = 1 if len(want) <= 2 else max(2, -(-len(want) * 3 // 10))     # a long message needs 30% of its terms
     body = one_line(text)
     hits = []
-    for day, n, ln, _ in room_lines(s, room, now, rid):
+    for day, n, ln, _ in room_lines(s, room, now, rid, owner):
         if ln.mid.split(".e")[0] in (exclude or set()) or ln.body.strip() == body:
             continue
         cover = len(want & {_stem(w) for w in memindex.WORD.findall(memindex.norm(ln.body))})
@@ -568,14 +596,14 @@ def topic_hits(s: Settings, room: str, text: str, exclude: set[str] | None = Non
 
 
 def room_items(s: Settings, room: str, now: datetime | None = None,
-               exclude: set[str] | None = None, rid: str | None = None) -> list[dict[str, Any]]:
+               exclude: set[str] | None = None, rid: str | None = None, owner: bool = True) -> list[dict[str, Any]]:
     """The room's filed items of the last 14 days, newest first: every message the owner sent
     (its attachments with it) and every line that reads as a decision or a draft. The messages
     the turn is answering (`exclude`) are the prompt itself and stay out."""
     items: list[dict[str, Any]] = []
     found: list[dict[str, Any]] = []
     last_day = None
-    for day, n, ln, lines in room_lines(s, room, now, rid):
+    for day, n, ln, lines in room_lines(s, room, now, rid, owner):
         if day != last_day:
             items += reversed(found)
             found, last_day = [], day
@@ -595,12 +623,12 @@ def room_items(s: Settings, room: str, now: datetime | None = None,
 
 
 def room_pack(s: Settings, room: str, budget: int = 6000, now: datetime | None = None,
-              exclude: set[str] | None = None, rid: str | None = None) -> tuple[str, int]:
+              exclude: set[str] | None = None, rid: str | None = None, owner: bool = True) -> tuple[str, int]:
     """(text, items shown): the recall pack's room part, newest first, cut to `budget` characters."""
     head = (f"[recall pack] Room {room}, last {WINDOW_DAYS} days of filed items, newest first: what the owner "
             "sent, decisions and drafts. Each ends with its file and line; read_memory gives the whole line.")
     out, used, shown = [head], len(head), 0
-    items = room_items(s, room, now, exclude, rid)
+    items = room_items(s, room, now, exclude, rid, owner)
     for it in items:
         extra = "".join(f" [{f}]" for f in it["files"])
         line = f"- {it['day'][5:]} {it['time']} {it['role']}: {_short(it['text'])}{extra} ({it['cite']})"
@@ -618,39 +646,44 @@ def migrate_daylogs(daily: Path, tz: tzinfo, rooms: dict[str, tuple[str, str]], 
     """One-time: every day-log line written before offsets, ids, authors and classes is rewritten in
     today's shape, its offset resolved for its own day and time in `tz` (the repeated hour of a clock
     change takes the first offset, the only ambiguity the old shape left), its room's id and class from
-    `rooms` (name -> (id, class); an unknown name keeps the name, class private). Each file is copied
-    to `backup` first; a line already in the new shape is left as it is."""
+    `rooms` (name -> (id, class); an unknown name keeps the name, class private). A file that changes
+    is copied to `backup` first (a copy already there is kept); a line already in the new shape is
+    left as it is, and a file with nothing to rewrite is left untouched. Each file is read and
+    replaced under the lock capture holds, so a line the daemon files meanwhile waits for the rename
+    and lands in the new file (cold read F3): the daemon runs this at its start, and `yerk memory
+    migrate-daylogs` runs it by hand, beside a running daemon or not."""
     from datetime import date as _date
-    backup.mkdir(parents=True, exist_ok=True, mode=0o700)
     stats: dict[str, Any] = {"files": 0, "rewritten": 0, "kept": 0, "other": 0, "backup": str(backup)}
     for f in sorted(daily.glob("????-??-??.md")):
-        text = f.read_text(errors="replace")
-        (backup / f.name).write_bytes(text.encode()) if not (backup / f.name).exists() else None
-        os.chmod(backup / f.name, 0o600)
-        day = _date.fromisoformat(f.stem)
-        out = []
-        for raw in text.splitlines():
-            ln = parse_line(raw)
-            if ln is None:
-                stats["other"] += 1
-                out.append(raw)
-                continue
-            if ln.offset and ln.cls:
-                stats["kept"] += 1
-                out.append(raw)
-                continue
-            h, m_, sec = (int(x) for x in ln.time.split(":"))
-            at = datetime(day.year, day.month, day.day, h, m_, sec, tzinfo=tz)
-            rid, cls = rooms.get(ln.label, (ln.rid, "private")) if not ln.room_id else (ln.rid, ln.cls or "private")
-            out.append(format_line(at, ln.label, rid, ln.role, ln.who, ln.body, ln.cls or cls, ln.mid))
-            stats["rewritten"] += 1
-        new = "\n".join(out) + ("\n" if text.endswith("\n") else "")
-        if new != text:
-            tmp = f.with_name(f".{f.name}.{os.getpid()}.tmp")
-            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-            with os.fdopen(fd, "w") as w:
-                w.write(new)
-            os.replace(tmp, f)
+        with daily_lock(daily):
+            text = f.read_text(errors="replace")
+            day = _date.fromisoformat(f.stem)
+            out = []
+            for raw in text.splitlines():
+                ln = parse_line(raw)
+                if ln is None:
+                    stats["other"] += 1
+                    out.append(raw)
+                    continue
+                if ln.offset and ln.cls:
+                    stats["kept"] += 1
+                    out.append(raw)
+                    continue
+                h, m_, sec = (int(x) for x in ln.time.split(":"))
+                at = datetime(day.year, day.month, day.day, h, m_, sec, tzinfo=tz)
+                rid, cls = rooms.get(ln.label, (ln.rid, "private")) if not ln.room_id else (ln.rid, ln.cls or "private")
+                out.append(format_line(at, ln.label, rid, ln.role, ln.who, ln.body, ln.cls or cls, ln.mid))
+                stats["rewritten"] += 1
+            new = "\n".join(out) + ("\n" if text.endswith("\n") else "")
+            if new != text:
+                backup.mkdir(parents=True, exist_ok=True, mode=0o700)
+                if not (backup / f.name).exists():
+                    write_private(backup / f.name, text)
+                tmp = f.with_name(f".{f.name}.{os.getpid()}.tmp")
+                fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                with os.fdopen(fd, "w") as w:
+                    w.write(new)
+                os.replace(tmp, f)
         stats["files"] += 1
     return stats
 
