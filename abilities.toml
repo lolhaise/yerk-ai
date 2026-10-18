@@ -1,0 +1,39 @@
+# Every ability Yerk AI has or knows how to build, what it needs and what it costs, one entry per ability. The program
+# tier: "free" runs on the box; "key" needs a provider key the user adds; "paid" is metered or a
+# subscription, with the provider and the price named. `free_path` is what runs without the key or
+# the payment, or "none". Abilities still to come say so in `layer`.
+
+[abilities.capture]
+what = "Every message of every room filed in the day's log in the private memory tree as it lands: time, room, sender role, one line per attachment."
+tier = "free"
+needs = "nothing; writes <private>/memory/daily/YYYY-MM-DD.md"
+free_path = "this is the free path"
+layer = 4
+
+[abilities.memory-index]
+what = "yerk-index, its own process: an FTS5 keyword index over the private memory tree, updated per changed chunk, with a freshness check against the disk."
+tier = "free"
+needs = "Python's sqlite3 with FTS5 (part of standard CPython builds); a systemd user unit (units/yerk-index.service)"
+free_path = "this is the free path"
+layer = 4
+
+[abilities.recall]
+what = "The recall tool: ranked chunks of the owner's memory with file path and line, in every room."
+tier = "free"
+needs = "a running yerk-index"
+free_path = "keywords (FTS5); meaning search with embeddings comes later as a key-tier option, keywords stay the fallback"
+layer = 4
+
+[abilities.read-memory]
+what = "The read_memory tool: an exact excerpt of a memory file; files outside the private memory tree are refused."
+tier = "free"
+needs = "nothing"
+free_path = "this is the free path"
+layer = 4
+
+[abilities.recall-bench]
+what = "yerk recall-bench: a fixed question set against the index, top six and top one hit rates, one line per run kept as the weekly series."
+tier = "free"
+needs = "a question file in the private folder (evals/recall-questions.json), a running yerk-index; the weekly timer in units/"
+free_path = "this is the free path"
+layer = 4

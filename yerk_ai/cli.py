@@ -188,6 +188,42 @@ def cmd_probe(a: argparse.Namespace) -> int:
     return 0 if out.get("ok") else 1
 
 
+def cmd_recall_bench(a: argparse.Namespace) -> int:
+    """The fixed question set against the memory index (L63). Prints ids, ranks and rates, never a
+    question's text or a snippet (the questions are about the owner's life); one JSON line per run
+    goes to <state>/memory/recall-bench.jsonl, the weekly series."""
+    from pathlib import Path
+
+    from . import memory
+    from .config import state_dir
+    state = state_dir(a.state)
+    s = memory.settings(private_dir(a.private), state)
+    qfile = Path(a.questions).expanduser() if a.questions else s.bench
+    if not qfile.is_file():
+        print(f"no question set at {qfile} ([memory] bench in yerkd.toml names it)", file=sys.stderr)
+        return 2
+    r = memory.bench(s, qfile, a.k)
+    if not r["ok"]:
+        print(f"recall-bench: the index {'timed out (busy, not down)' if r['status'] == 'timeout' else 'failed'}: "
+              f"{r['error']}", file=sys.stderr)
+        return 3 if r["status"] == "timeout" else 1
+    keep = ("questions", "controls", "k", "top_k", "top_1", "top_k_rate", "top_1_rate", "blind")
+    row = {"at": datetime.now(timezone.utc).isoformat(timespec="seconds"), **{x: r[x] for x in keep},
+           "misses": [x["id"] for x in r["rows"] if not x["rank"]]}
+    (state / "memory").mkdir(parents=True, exist_ok=True)
+    with open(state / "memory" / "recall-bench.jsonl", "a") as f:
+        f.write(json.dumps(row) + "\n")
+    if a.json:
+        print(json.dumps({**row, "rows": r["rows"]}, indent=1))
+    else:
+        print(f"top {r['k']}: {r['top_k']}/{r['questions']} ({r['top_k_rate']:.1%})   "
+              f"top one: {r['top_1']}/{r['questions']} ({r['top_1_rate']:.1%})   controls: {r['controls']}")
+        print("misses: " + (" ".join(row["misses"]) or "none"))
+        if r["blind"]:
+            print(f"BLIND: control question(s) missed: {', '.join(r['blind'])}", file=sys.stderr)
+    return 2 if r["blind"] else 0
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="yerk", description="Yerk AI: chat rooms as long-lived Claude Code sessions.")
     p.add_argument("--version", action="version", version=f"yerk {__version__}")
@@ -216,7 +252,12 @@ def main(argv: list[str] | None = None) -> int:
     ac.add_argument("--names", nargs="*", default=[], help="health: only these accounts")
     ac.add_argument("--json", action="store_true")
     st = sub.add_parser("status", help="the daemon, its rooms, and each account's 5-hour and weekly meters")
-    for x in (ac, st):
+    rb = sub.add_parser("recall-bench", help="the fixed question set against the memory index: top six and top one "
+                        "hit rates (exit 2 when a control misses, 1 failure, 3 timeout)")
+    rb.add_argument("--questions", help="question file (default: [memory] bench, else <private>/evals/recall-questions.json)")
+    rb.add_argument("-k", type=int, default=6, help="results per question (default 6, the recall tool's default)")
+    rb.add_argument("--json", action="store_true", help="the run as JSON, per-question ranks included")
+    for x in (ac, st, rb):
         x.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else the fake example layer)")
         x.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
     pr = sub.add_parser("probe", help="contract probes against a real Claude Code login")
@@ -245,7 +286,7 @@ def main(argv: list[str] | None = None) -> int:
     pr.set_defaults(on_second=None, fold_settings=None)
     a = p.parse_args(argv)
     return int({"map": cmd_map, "probe": cmd_probe, "setup-room": cmd_setup_room, "room": cmd_room,
-                "accounts": cmd_accounts, "status": cmd_status}[a.cmd](a))
+                "accounts": cmd_accounts, "status": cmd_status, "recall-bench": cmd_recall_bench}[a.cmd](a))
 
 
 if __name__ == "__main__":

@@ -1,0 +1,13 @@
+# The weekly retrieval measurement (L63): the fixed question set against the memory index; one
+# JSON line per run in <state>/memory/recall-bench.jsonl. Installed with yerk-recall-bench.timer:
+# copy both to ~/.config/systemd/user/ and `systemctl --user enable --now yerk-recall-bench.timer`.
+[Unit]
+Description=Yerk AI weekly recall bench
+
+[Service]
+Type=oneshot
+Environment=YERK_PRIVATE=%h/yerk-private
+Environment=YERK_STATE=%h/.local/state/yerk
+ExecStart=%h/yerk-ai/.venv/bin/yerk recall-bench
+SuccessExitStatus=2
+TimeoutStartSec=600

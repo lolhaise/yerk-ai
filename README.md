@@ -11,6 +11,8 @@ Yerk AI turns chat rooms into long-lived Claude Code sessions. It is a small Pyt
 
 ## Status
 
+Layer 4, run 1: memory, the foundation. Every message of every room is filed in the day's log in the private memory tree as it lands (attachment-only and one-character ones included, one line per attachment, never twice for one message id). `yerk-index` keeps an FTS5 index over that tree in its own process (`units/yerk-index.service`), writing only the chunks that changed, with `yerk-index --check` comparing it against the disk and telling a timeout from a failure. Rooms get `recall` and `read_memory`; `yerk recall-bench` runs a fixed question set from the private layer against the index (weekly, `units/yerk-recall-bench.timer`). Each ability and its cost tier is in `abilities.toml`.
+
 Layer 3, run 1: delivery and the visible turn. Every turn has one card built from Claude Code's stream (its newest words, then one row per tool call naming the file, command or host, ticked or crossed), replaced by the reply or kept to say what was owed. Every outbound part has an idempotency key in the delivery ledger before it is posted, so a crash between producing and confirming a reply redelivers it once, labelled, and never twice. Files go out on one checked path with the message id recorded and a visible notice on any miss; files sent in are staged under their own names, and an image the model never opened is bounced back once.
 
 Layer 2, run 1: the accounts as one engine (the failure table with a test per Claude Code error type, cooldowns per account and kind, the hop that continues the same turn, one-year token plumbing, the daily health call, the meters). Layer 1, run 3: one Discord test room answers through Claude Code. Measured there over 50 scripted messages, 10 of them sent mid-turn: none dropped, every mid-turn message answered inside the turn it landed in, first visible line 1.7 s and final reply 3.7 s at the median. Built so far: the room runner (the mid-turn fold, idle close and resume, the empty retry, the account hop), the Discord adapter, Yerk AI's MCP server with `send` and `hold`, the HTTP hook with the clock line, read access to each room's private folder, and the ledgers.
@@ -65,7 +67,7 @@ The room runner:
 - A turn Claude Code answered on a fallback model after a block stands, and its card and ledger row say so; the room's next turn starts a fresh session on the room's own model.
 - After 30 idle minutes the process closes; the next message resumes the session.
 
-The daemon's one local HTTP server carries `/mcp` (the tools `send`: text, or a file from the sending room's own folders, to a room; `hold`: end the turn while waiting on a named event or worker), `/hook` (the clock and metadata lines, keyed on the session id through the room-to-session table) and `/control` (`yerk room close`).
+The daemon's one local HTTP server carries `/mcp` (the tools `send`: text, or a file from the sending room's own folders, to a room; `hold`: end the turn while waiting on a named event or worker; `recall`: ranked chunks of the memory tree with path, line and a `file:line` to cite; `read_memory`: exact lines of a file inside the memory tree, nothing outside it), `/hook` (the clock and metadata lines, keyed on the session id through the room-to-session table) and `/control` (`yerk room close`).
 
 ## Ledgers
 
@@ -75,7 +77,8 @@ One SQLite file, `ledger.sqlite`: `turns` (account, models, time to first visibl
 
 - `budgets.toml`: every size limit, in characters as Claude Code counts them
 - `failures.toml`: failure classes and what each one does next
-- `units/`: the daily health call's systemd user timer (copy and enable it yourself)
+- `units/`: the daily health call's systemd user timer, the memory index service and the weekly recall bench timer (copy and enable them yourself)
+- `abilities.toml`: every ability, what it needs and its cost tier (free, key or paid), with the free path
 - `rooms.toml.example`, `accounts.toml.example`: templates for your private folder
 - `yerk_ai/lifted/`: code taken from other MIT projects and from the author's own tools, each file with its origin; see `NOTICE`
 - `yerk_ai/channels/`: channel adapters (Discord)

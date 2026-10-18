@@ -19,7 +19,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from . import context, hooks, mcp_server
+from . import context, hooks, mcp_server, memory
 from .accounts import Account, Cooldowns, from_dir, load_accounts
 from .config import budgets, load_toml, private_dir, rooms, state_dir, table
 from .engine import RoomSpec, SessionTable
@@ -30,7 +30,8 @@ from .meters import Meters
 from .room import Channel, Inbound, Room
 
 log = logging.getLogger("yerk.daemon")
-YERK_TOOLS = ["mcp__yerk__send", "mcp__yerk__hold"]
+YERK_TOOLS = ["mcp__yerk__send", "mcp__yerk__hold", "mcp__yerk__recall", "mcp__yerk__read_memory"]
+STALL = 0.25            # seconds the event loop may lag before the log says so
 
 
 def free_port() -> int:
@@ -94,6 +95,8 @@ class Yerkd:
         self.failures = FailureTable.load(table("failures.toml"))
         self.cooldowns = Cooldowns(state / "cooldowns.json")
         self.meters = Meters(state / "meters.json")
+        self.memory = memory.settings(private, state, dict(self.conf.get("memory", {})))
+        self.daily = memory.DailyLog(self.memory.daily, self.memory.tz)
         self.idle_seconds, self.log_dir = idle_minutes * 60, log_dir
         self.rooms: dict[str, Room] = {}
         self.channels: dict[str, Any] = {}       # room -> its channel adapter
@@ -162,6 +165,15 @@ class Yerkd:
         log.info("send: %s -> %s, %d message(s)", caller or "?", room, len(ids))
         return {"ok": True, "message_ids": ids}
 
+    async def tool_recall(self, room: str, query: str, k: int) -> dict[str, Any]:
+        """Off the loop: the index is yerk-index's file, read here, never built here (L47)."""
+        r = await asyncio.to_thread(memory.recall, self.memory, query, k)
+        log.info("recall: %s, %d hit(s)%s", room or "?", len(r.get("hits", [])), "" if r["ok"] else f", {r['status']}")
+        return r
+
+    async def tool_read_memory(self, room: str, path: str, start: int, lines: int) -> dict[str, Any]:
+        return await asyncio.to_thread(memory.read, self.memory, path, start, lines)
+
     async def tool_hold(self, room: str, wait_for: str, reason: str) -> dict[str, Any]:
         if room not in self.rooms:
             return {"ok": False, "error": "hold is for a room's own session"}
@@ -206,6 +218,15 @@ class Yerkd:
         self.http = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=self.port, log_level="warning"))
         await self.http.serve()
 
+    async def watch_loop(self, every: float = 0.5) -> None:
+        """The stall line: the event loop that serves every room woke late by more than STALL."""
+        while True:
+            t = time.monotonic()
+            await asyncio.sleep(every)
+            lag = time.monotonic() - t - every
+            if lag > STALL:
+                log.warning("stall: the event loop was blocked for %.0f ms", lag * 1000)
+
     async def reap(self, every: float = 60.0) -> None:
         while True:
             await asyncio.sleep(every)
@@ -218,7 +239,7 @@ class Yerkd:
         token = (self.private / d["token_file"]).read_text().strip()
         guard = LoopGuard(max_events=int(d.get("webhook_burst", 100)))   # per 5 minutes, then 10 off
         dc = DiscordChannel(token, int(d["owner"]), [int(x) for x in d.get("test_senders", [])], self.ledger,
-                            guard=guard, state=self.state)
+                            guard=guard, state=self.state, capture=self.daily.capture)
         for name, conf in self.room_confs.items():
             kind, _, cid = str(conf.get("channel", "")).partition(":")
             if kind == "discord" and cid.isdigit():
@@ -226,7 +247,8 @@ class Yerkd:
         if not dc.rooms:
             raise SystemExit("no room has a discord:<channel id> in rooms.toml")
         self.write_status("discord")
-        await asyncio.gather(self.serve_http(), self.reap(min(60.0, self.idle_seconds / 2)), dc.start())
+        await asyncio.gather(self.serve_http(), self.reap(min(60.0, self.idle_seconds / 2)), self.watch_loop(),
+                             dc.start())
 
     async def run_console(self, name: str) -> None:
         room = self.add_room(name, ConsoleChannel())
@@ -241,6 +263,7 @@ class Yerkd:
             n += 1
             mid = f"console-in-{int(time.time())}-{n}"
             self.ledger.inbound_add(mid, name, "console", "owner", len(line.strip()))
+            self.daily.capture(name, mid, "owner", line.strip())
             room.submit(Inbound(mid, "owner", line.strip()))
         while room.busy:
             await asyncio.sleep(0.2)

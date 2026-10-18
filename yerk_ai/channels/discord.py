@@ -34,7 +34,7 @@ import shutil
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Coroutine, TypeVar
+from typing import Any, Callable, Coroutine, TypeVar
 
 import discord
 
@@ -119,9 +119,11 @@ def message_text(m: Any, files: list[dict[str, Any]] | None = None, me: int | No
 
 class DiscordChannel:
     def __init__(self, token: str, owner: int, test_senders: list[int], ledger: Ledger,
-                 client: Any = None, guard: LoopGuard | None = None, state: Path | None = None):
+                 client: Any = None, guard: LoopGuard | None = None, state: Path | None = None,
+                 capture: Callable[..., bool] | None = None):
         self.token, self.owner, self.test_senders, self.ledger = token, owner, set(test_senders), ledger
         self.state = state
+        self.capture = capture                    # the day's log (memory.DailyLog.capture), or None
         self.rooms: dict[int, Room] = {}          # channel id -> room
         self.names: dict[str, int] = {}           # room name -> channel id
         self.cards: dict[str, Any] = {}           # room name -> its open card
@@ -163,7 +165,29 @@ class DiscordChannel:
         room = self.rooms.get(m.channel.id)
         if room is None:
             return
+        self.file(room.name, m)
         await self.take(room, m)
+
+    def file(self, room: str, m: Any, edited: bool = False) -> None:
+        """Every message in a served room into the day's log as it lands (L55), whoever sent it and
+        whether or not a turn takes it. Yerk AI's own posts are filed where they are sent; cards never."""
+        if self.capture is None or (self.client.user is not None and m.author.id == self.client.user.id):
+            return
+        role = self.sender_of(m) or ("webhook" if getattr(m, "webhook_id", None) else "other")
+        text = "\n".join(x for x in (reply_line(m, self._me()), str(getattr(m, "clean_content", None) or m.content or ""))
+                         if x)
+        files = [(a.filename, file_type(a.filename, getattr(a, "content_type", None)), int(a.size or 0))
+                 for a in getattr(m, "attachments", []) or []]
+        self._file(room, str(m.id), role, text, files, getattr(m, "created_at", None), edited)
+
+    def _file(self, room: str, mid: str, role: str, text: str, files: list[tuple[str, str, int]] | None = None,
+              when: Any = None, edited: bool = False) -> None:
+        if self.capture is None:
+            return
+        try:
+            self.capture(room, mid, role, text, files or [], when=when, edited=edited)
+        except OSError as e:
+            log.warning("room %s: message %s not filed in the day's log: %s", room, mid, e)
 
     async def take(self, room: Room, m: Any) -> None:
         sender = self.sender_of(m)
@@ -189,6 +213,7 @@ class DiscordChannel:
         m, room = getattr(p, "message", None), self.rooms.get(int(p.channel_id))
         if room is None or m is None or getattr(m, "edited_at", None) is None:
             return
+        self.file(room.name, m, edited=True)
         sender, mid = self.sender_of(m), str(m.id)
         row = self.ledger.inbound_get(mid)
         if sender is None or row is None or self.edits.get(mid) == str(m.edited_at):
@@ -507,6 +532,7 @@ class DiscordChannel:
                                      attempts=int(r["attempts"] or 0) + 1, note=REDELIVERED if label else None)
             self.ledger.outbound(room=room, channel=str(ch.id), kind=r["kind"], message_id=str(m.id), chars=len(body),
                                  inbound=r["inbound"])
+            self._file(room, str(m.id), "yerk", body)
             ids.append(str(m.id))
         return ids
 
@@ -583,6 +609,7 @@ class DiscordChannel:
         self.ledger.delivery_set(f"{key}:0", state="sent", message_id=str(m.id), sent=time.time(), attempts=1)
         self.ledger.outbound(room=room, channel=str(ch.id), kind="file", message_id=str(m.id), chars=len(caption),
                              file=name, inbound=inbound)
+        self._file(room, str(m.id), "yerk", caption, [(name, file_type(name, None), path.stat().st_size)])
         return [str(m.id)]
 
 

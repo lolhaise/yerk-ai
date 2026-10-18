@@ -14,6 +14,7 @@ dependencies = [
 [project.scripts]
 yerk = "yerk_ai.cli:main"
 yerkd = "yerk_ai.daemon:main"
+yerk-index = "yerk_ai.memindex:main"
 
 [dependency-groups]
 dev = ["pytest>=8", "mypy>=1.15"]
@@ -28,6 +29,7 @@ packages = ["yerk_ai"]
 [tool.hatch.build.targets.wheel.force-include]
 "budgets.toml" = "yerk_ai/budgets.toml"
 "failures.toml" = "yerk_ai/failures.toml"
+"abilities.toml" = "yerk_ai/abilities.toml"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
