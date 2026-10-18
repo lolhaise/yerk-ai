@@ -259,17 +259,19 @@ def relay_text(row: dict[str, Any], end: dict[str, Any], cap: int) -> str:
     head = (f"[worker {row['id']} finished] {end['exit']} after {took(float(end['finished']) - float(row['started']))} "
             f"(cap {row['cap'] / 60:g} min), unit exit: {end.get('detail') or 'no exit record'}\n"
             f"report: {row['report']}\n" + (f"first line: \"{end['result']}\"\n" if end.get("result") else ""))
-    ask = (f"[tell the room the outcome in your own voice, under {cap:,} characters, with the report path; "
-           "do not paste the report]")
     try:
         body = Path(row["report"]).read_text(errors="replace").strip()
     except OSError:
         body = "(no report file)"
-    room = cap - len(head) - len(ask) - len("the report begins:\n\n")
+    tell = f"[tell the room the outcome in your own voice, under {cap:,} characters, with the report path; "
+    whole = (f"the report, all of it:\n", tell + "it is all here, so there is no file to open; do not paste it]")
+    part = (f"the report begins:\n", tell + "the rest is in the file, which this room does not open; do not paste it]")
+    label, ask = whole if len(head) + len(whole[0]) + len(body) + 1 + len(whole[1]) <= cap else part
+    room = cap - len(head) - len(label) - 1 - len(ask)
     if len(body) > room:
         body = body[:max(room - 4, 0)]
         body = (body[:body.rfind("\n")] if "\n" in body else body).rstrip() + "\n..."
-    return f"{head}the report begins:\n{body}\n{ask}"[:cap]
+    return f"{head}{label}{body}\n{ask}"[:cap]
 
 
 class Workers:
