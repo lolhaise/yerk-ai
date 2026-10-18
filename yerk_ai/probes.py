@@ -189,6 +189,94 @@ def blocks(a: argparse.Namespace) -> dict[str, Any]:
     return {"ok": True, "blocked_per_setup": table, "runs": runs}
 
 
+# smoke: scripted messages into a room through `yerkd --console`, two of them written mid-turn.
+# Each entry is (text, seconds after the previous message, or None to wait for its reply first).
+def smoke_script(layer: str, room: str) -> list[tuple[str, float | None]]:
+    return [
+        ("Hi. One short line back.", None),
+        ("What units does the owner prefer? Check the source file, then answer in one line.", None),
+        (f"Read these three files one at a time, as separate calls: {layer}/persona.md, {layer}/rulebook.md, "
+         f"{layer}/rooms/example-room.md. Then say in one line how many files you read.", None),
+        ("Also, what is 7 times 6? Put the number in the same reply.", 1.5),
+        (f"Use the send tool to post the word PING to room {room}, then reply with DONE.", None),
+        ("Call the hold tool with wait_for test-event and reason scripted hold test, then reply in one line.", None),
+        (f"Use Glob to list the .md files under {layer}/memory/daily, then Read each one as a separate call, "
+         "then tell me the newest date in one line.", None),
+        ("And what weekday is it now, per your clock line?", 1.5),
+        ("What time is it right now, per the clock line? One line.", None),
+        ("Last one: say OK.", None),
+    ]
+
+
+def smoke(a: argparse.Namespace) -> dict[str, Any]:
+    import os
+    import queue as q
+    import subprocess
+    import sys
+    import threading
+    from . import context
+    from .config import private_dir, rooms
+    env = Env(a)
+    priv = private_dir(a.private)
+    layer = str(context.layer_dir(priv, rooms(priv)[a.room]))
+    argv = [sys.executable, "-m", "yerk_ai.daemon", "--console", a.room, "--private", str(priv),
+            "--state", str(env.state)] + (["--config-dir", a.config_dir] if a.only_account else [])
+    err = open(env.logs / "smoke-yerkd.stderr", "w")
+    proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=err, text=True,
+                            env={**os.environ, "PYTHONUNBUFFERED": "1"})
+    replies: q.Queue[dict[str, Any]] = q.Queue()
+    got: list[dict[str, Any]] = []
+
+    def read() -> None:
+        assert proc.stdout
+        for line in proc.stdout:
+            if line.strip().startswith("{"):
+                replies.put(json.loads(line))
+
+    threading.Thread(target=read, daemon=True).start()
+    sent: list[dict[str, Any]] = []
+
+    def covered() -> int:
+        return sum(len(r.get("inbound", [])) for r in got if "reply" in r or "notice" in r)
+
+    def wait_all(timeout: float = 240) -> None:
+        end = time.time() + timeout
+        while covered() < len(sent) and time.time() < end:
+            try:
+                got.append(replies.get(timeout=max(end - time.time(), 0.1)))
+            except q.Empty:
+                break
+
+    time.sleep(1.0)
+    assert proc.stdin
+    for text, delay in smoke_script(layer, a.room):
+        if delay is None:
+            wait_all()
+        else:
+            time.sleep(delay)
+        proc.stdin.write(text + "\n")
+        proc.stdin.flush()
+        sent.append({"t": round(time.time(), 3), "text": text[:80], "mid_turn": delay is not None})
+    wait_all()
+    proc.stdin.close()
+    rc = proc.wait(120)
+    err.close()
+    while not replies.empty():
+        got.append(replies.get())
+    inbound = sorted(env.ledger.rows(50, "inbound"), key=lambda r: r["received"])[-len(sent):]
+    turns = {r["id"]: r for r in env.ledger.rows(30)}
+    rows = [{k: r[k] for k in ("message_id", "state", "folded", "turn_id", "reply_ids")} for r in inbound]
+    answered = sum(r["state"] == "answered" for r in inbound)
+    folds = [r for r, s in zip(inbound, sent) if s["mid_turn"]]
+    folded_ok = [bool(r["folded"]) and r["state"] == "answered" and any(
+        x["turn_id"] == r["turn_id"] and not x["folded"] for x in inbound) for r in folds]
+    return {"ok": rc == 0 and answered == len(sent) and all(folded_ok), "rc": rc, "sent": sent, "replies": got,
+            "inbound": rows, "answered": answered, "mid_turn_folded_into_running_turn": folded_ok,
+            "turns": [{k: turns[i][k] for k in ("id", "account", "outcome", "accepted", "models", "fallback_model",
+                                                "started", "first_visible", "ended", "inbound")}
+                      for i in sorted({r["turn_id"] for r in inbound if r["turn_id"]})]}
+
+
 def resume(a: argparse.Namespace) -> dict[str, Any]:
     env = Env(a)
     word = f"{random.choice(WORDS)}-{random.randint(100, 999)}"

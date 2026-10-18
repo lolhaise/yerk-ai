@@ -25,7 +25,7 @@ class Daemon(Protocol):
     async def tool_hold(self, room: str, wait_for: str, reason: str) -> dict[str, Any]: ...
 
 
-def caller_room(ctx: Context) -> str:  # type: ignore[type-arg]
+def caller_room(ctx: Context) -> str:
     req = ctx.request_context.request
     return str(req.headers.get(ROOM_HEADER, "")) if req is not None else ""
 
@@ -34,13 +34,13 @@ def build(daemon: Daemon, port: int, hook: Callable[[dict[str, Any]], Awaitable[
     mcp = FastMCP("yerk", host="127.0.0.1", port=port, stateless_http=True, json_response=True, log_level="WARNING")
 
     @mcp.tool()
-    async def send(room: str, text: str = "", file: str = "", *, ctx: Context) -> str:  # type: ignore[type-arg]
+    async def send(room: str, text: str = "", file: str = "", *, ctx: Context) -> str:
         """Post to a room now, before your reply: text, or a file (absolute path) with the text as its
         caption. `room` is a room id from the [message] line. Returns the posted message ids."""
         return json.dumps(await daemon.tool_send(room, text, file, caller_room(ctx)))
 
     @mcp.tool()
-    async def hold(wait_for: str, reason: str, *, ctx: Context) -> str:  # type: ignore[type-arg]
+    async def hold(wait_for: str, reason: str, *, ctx: Context) -> str:
         """End your turn while you wait on a named event or worker. After this call write one short
         line saying what you are waiting for, and make no more tool calls; the room hears when it happens."""
         return json.dumps(await daemon.tool_hold(caller_room(ctx), wait_for, reason))

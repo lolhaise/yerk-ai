@@ -56,6 +56,7 @@ class Room:
         self.lock = threading.Lock()
         self.rp: RoomProcess | None = None
         self.busy = False
+        self.reading = False                      # a turn's stream is being read: a new message folds
         self.queue: deque[Inbound] = deque()      # waiting for a process
         self.pending: deque[Inbound] = deque()    # written to stdin, not yet accepted
         self.inflight: list[Inbound] = []         # written since the last delivered result
@@ -63,6 +64,7 @@ class Room:
         self.last_human: float | None = None
         self.seen: dict[str, Inbound] = {}        # by text, for the hook's metadata line
         self.first_line: str | None = None
+        self.answered: set[str] = set()           # sessions with at least one delivered reply
 
     # called by the channel adapter
     def submit(self, msg: Inbound) -> str:
@@ -71,7 +73,7 @@ class Room:
             self.seen[msg.text.strip()] = msg
             while len(self.seen) > 200:
                 self.seen.pop(next(iter(self.seen)))
-            if self.busy and self.rp and self.rp.alive() and not self.queue:
+            if self.reading and self.rp and self.rp.alive() and not self.queue:
                 self._write(msg)
                 self.ledger.inbound_set(msg.id, state="running", folded=1, attempts=msg.attempt + 1)
                 return "folded"
@@ -129,7 +131,7 @@ class Room:
         except Exception:
             log.exception("room %s: turn crashed", self.name)
             with self.lock:
-                self.busy = False
+                self.busy = self.reading = False
 
     def _on_event(self, turn: Turn, ev: dict[str, Any]) -> None:
         """The card's first visible line: the first line of text, or the tool that started."""
@@ -165,6 +167,7 @@ class Room:
                 for m in resend:
                     self._write(m)
                     self.ledger.inbound_set(m.id, state="running", attempts=m.attempt + 1)
+                self.reading = True
             started = time.time()
             while True:
                 assert self.rp
@@ -177,6 +180,7 @@ class Room:
                 if turn.outcome != "ok":
                     break
                 self.cooldowns.clear(account.name)
+                self.answered.add(self.rp.session_id)
                 reply_ids = self.channel.reply(self.name, turn.text, ids)
                 now = time.time()
                 for m in covered:
@@ -185,11 +189,13 @@ class Room:
                 with self.lock:
                     self.inflight = list(self.pending)
                     if not self.pending:
+                        self.reading = False      # from here a new message queues for the next turn
                         return
                 started, self.first_line = time.time(), None
                 self.channel.progress(self.name, "working on it")
             # the turn failed: every message written since the last delivered result goes again
             with self.lock:
+                self.reading = False
                 resend = list(self.inflight)
             action = turn.failure.action if turn.failure else None
             if turn.outcome == "empty" and not retried:
@@ -203,7 +209,9 @@ class Room:
                 nxt = self._account()
                 if nxt != account:
                     log.info("room %s: %s on %s, continuing on %s", self.name, f.cls, account.name, nxt.name)
-                    hops, account, fresh = hops + 1, nxt, False
+                    # a session that never answered may have no transcript to resume elsewhere
+                    hops, account = hops + 1, nxt
+                    fresh = not (self.rp and (self.rp.resume_arg or self.rp.session_id in self.answered))
                     continue
             why = turn.failure.cls if turn.failure else turn.outcome
             notice_ids = self.channel.notice(self.name, f"No reply: the turn ended {turn.outcome} ({why}).",
