@@ -19,7 +19,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from . import context, evidence, hooks, mcp_server, memory, mentions
+from . import context, evidence, hooks, mcp_server, memory, mentions, workers
 from .accounts import Account, Cooldowns, from_dir, load_accounts
 from .config import budgets, load_toml, private_dir, rooms, state_dir, table
 from .engine import RoomSpec, SessionTable
@@ -30,7 +30,8 @@ from .meters import Meters
 from .room import Channel, Inbound, Room
 
 log = logging.getLogger("yerk.daemon")
-YERK_TOOLS = ["mcp__yerk__send", "mcp__yerk__hold", "mcp__yerk__recall", "mcp__yerk__read_memory"]
+YERK_TOOLS = ["mcp__yerk__send", "mcp__yerk__hold", "mcp__yerk__recall", "mcp__yerk__read_memory",
+              "mcp__yerk__worker"]
 STALL = 0.25            # seconds the event loop may lag before the log says so
 NO_KEY_LINE = ("Meaning search is off: recall runs on keywords alone until an OpenAI key is at secrets/openai.key "
                "in the private folder (or where [memory] embeddings_key in yerkd.toml points); "
@@ -84,6 +85,14 @@ class ConsoleChannel:
             raise FileNotFoundError(str(path))
         return self._out({"room": room, "file": str(path), "caption": caption})
 
+    async def worker_card(self, room: str, key: str, text: str, message_id: str | None = None) -> str | None:
+        print(f"[{key}] {text}", file=sys.stderr, flush=True)
+        return message_id or f"console-{key}"
+
+    async def worker_settle(self, room: str, key: str, text: str, how: str,
+                            message_id: str | None = None) -> str | None:
+        return await self.worker_card(room, key, f"{text}\n({how})", message_id)
+
 
 class Yerkd:
     def __init__(self, private: Path, state: Path, *, port: int = 0, idle_minutes: float = 30.0,
@@ -106,6 +115,9 @@ class Yerkd:
         self.channels: dict[str, Any] = {}       # room -> its channel adapter
         self.http: Any = None
         self.sends = 0
+        self.workers = workers.Workers(self.ledger, workers.settings(state, dict(self.conf.get("workers", {})),
+                                                                     self.budgets),
+                                       self.accounts, self.cooldowns, self.rooms, self.channels, self.room_confs)
 
     # a room's Claude Code process, rebuilt at every process start
     def spec_for(self, name: str) -> RoomSpec:
@@ -194,6 +206,10 @@ class Yerkd:
     async def tool_read_memory(self, room: str, path: str, start: int, lines: int) -> dict[str, Any]:
         return await asyncio.to_thread(memory.read, self.memory, path, start, lines)
 
+    async def tool_worker(self, room: str, req: dict[str, Any]) -> dict[str, Any]:
+        """The `worker` tool (rooms only; a worker has no MCP server) and `yerk worker` (via /control)."""
+        return await self.workers.handle(room, req)
+
     async def tool_hold(self, room: str, wait_for: str, reason: str) -> dict[str, Any]:
         if room not in self.rooms:
             return {"ok": False, "error": "hold is for a room's own session"}
@@ -272,7 +288,11 @@ class Yerkd:
 
     async def control(self, payload: dict[str, Any]) -> dict[str, Any]:
         """`yerk room close ROOM`: close the room's process now unless a turn runs; the session stays.
-        `yerk room compact ROOM`: the overflow path's /compact, asked for, when no turn runs."""
+        `yerk room compact ROOM`: the overflow path's /compact, asked for, when no turn runs.
+        `yerk worker ...`: start, list, stop, report."""
+        if isinstance(payload.get("worker"), dict):
+            req = dict(payload["worker"])
+            return await self.workers.handle(str(req.get("room") or ""), req)
         if payload.get("compact"):
             target = self.rooms.get(str(payload["compact"]))
             if target is None:
@@ -315,6 +335,10 @@ class Yerkd:
             await asyncio.sleep(every)
             for room in self.rooms.values():
                 await asyncio.to_thread(room.reap_idle)
+            try:
+                await self.workers.reconcile()         # the backstop for a missed watch event
+            except Exception:
+                log.exception("workers: the reconcile pass failed")
 
     async def run_discord(self) -> None:
         from .channels.discord import DiscordChannel
@@ -329,12 +353,16 @@ class Yerkd:
                 dc.add_room(int(cid), self.add_room(name, dc))
         if not dc.rooms:
             raise SystemExit("no room has a discord:<channel id> in rooms.toml")
+        self.workers.begin(asyncio.get_running_loop())
+        dc.after_recover.append(self.workers.reattach)   # their cards are edited, so after the connect
         self.write_status("discord")
         await asyncio.gather(self.serve_http(), self.reap(min(60.0, self.idle_seconds / 2)), self.watch_loop(),
                              dc.start())
 
     async def run_console(self, name: str) -> None:
         room = self.add_room(name, ConsoleChannel())
+        self.workers.begin(asyncio.get_running_loop())
+        await self.workers.reattach()
         self.write_status("console")
         http = asyncio.create_task(self.serve_http())
         reaper = asyncio.create_task(self.reap(min(60.0, self.idle_seconds / 2)))

@@ -19,6 +19,9 @@ adapter's event loop.
 - After `idle_seconds` without a turn the process closes; the next message resumes the session.
 - Each turn owns one card (card.py), fed from the stream; every outbound part carries the turn's
   key. A turn that was sent an image and never read it is bounced once at Stop, naming the file.
+- A message from the harness itself (sender `yerk`: a worker's relay) runs like any other but is
+  not a human message for the clock line or the idle rule; it may cap its reply and name a line the
+  reply must carry, and it hears how its turn ended.
 """
 from __future__ import annotations
 
@@ -49,6 +52,23 @@ class Inbound:
     prev_human: float | None = None       # when the previous human message reached this room
     attempt: int = 0
     files: list[dict[str, Any]] = field(default_factory=list)   # staged attachments (name, type, path, ok)
+    cap: int = 0                          # a harness message: the most its reply may be (0: no cap)
+    must: str = ""                        # ... a line the reply must carry (a relay's report path)
+    then: Callable[[str, list[str], int], None] | None = None   # (answered or failed, message ids, chars)
+
+
+HARNESS = "yerk"                          # the sender of Yerk AI's own messages (a worker's relay)
+
+
+def fit(text: str, cap: int, must: list[str]) -> str:
+    """A reply held to `cap` characters, cut at a line or a sentence, carrying every `must` line."""
+    tail = "\n".join(m for m in dict.fromkeys(must) if m and m not in text)
+    room = cap - (len(tail) + 1 if tail else 0)
+    if len(text) > room:
+        cut = text[:max(room - 3, 0)]
+        at = max(cut.rfind("\n"), cut.rfind(". ") + 1)
+        text = (cut[:at] if at > room // 2 else cut).rstrip() + "..."
+    return f"{text}\n{tail}" if tail else text
 
 
 RESUME_RECAP = ("(Yerk AI: the earlier session of this room could not be resumed, so this is a new one. "
@@ -128,9 +148,22 @@ class Room:
                 self.busy, self.last_active = False, time.time()
 
     # called by the channel adapter
+    def idle_reason(self, seconds: float, now: float | None = None) -> str:
+        """Why the room is not idle for a relay ("" when it is): a turn running, or a human message
+        in the last `seconds`."""
+        now = time.time() if now is None else now
+        with self.lock:
+            if self.busy or self.queue:
+                return "a turn was running"
+            if self.last_human is not None and now - self.last_human < seconds:
+                return f"a human message {now - self.last_human:.0f} s ago (under {seconds:g} s)"
+        return ""
+
     def submit(self, msg: Inbound) -> str:
         with self.lock:
-            msg.prev_human, self.last_human = self.last_human, msg.received
+            msg.prev_human = self.last_human
+            if msg.sender != HARNESS:
+                self.last_human = msg.received
             self.seen[msg.text.strip()] = msg
             while len(self.seen) > 200:
                 self.seen.pop(next(iter(self.seen)))
@@ -347,6 +380,7 @@ class Room:
                                              key=self.turn_key)
             for m in resend:
                 self.ledger.inbound_set(m.id, state="failed", note=why, reply_ids=",".join(notice_ids))
+                self._then(m, "failed", notice_ids, 0)
             with self.lock:
                 old, self.rp, self.inflight = self.rp, None, []
                 self.pending.clear()
@@ -375,12 +409,16 @@ class Room:
                 card = (f"answered by a fallback model ({turn.fallback_model}); the next message starts "
                         f"a fresh session on {self.rp.spec.model}")
                 self.fresh_next = REFUSAL_RECAP
-            reply_ids = self.channel.reply(self.name, turn.text, ids, card, key=self.turn_key)
-            self.last_reply = turn.text.strip().split("\n")[0][:160]
+            text = turn.text
+            if covered and all(m.cap for m in covered):         # harness messages only: held to their cap
+                text = fit(text, min(m.cap for m in covered), [m.must for m in covered])
+            reply_ids = self.channel.reply(self.name, text, ids, card, key=self.turn_key)
+            self.last_reply = text.strip().split("\n")[0][:160]
             now = time.time()
             for m in covered:
                 self.ledger.inbound_set(m.id, state="answered", answered=now, turn_id=turn_id,
                                         reply_ids=",".join(reply_ids))
+                self._then(m, "answered", reply_ids, len(text))
             with self.lock:
                 self.inflight = list(self.pending)
                 self.images = {}
@@ -389,6 +427,13 @@ class Room:
                     return ("fresh" if self.pending else "done"), turn
             started, self.first_line, hop, recapped = time.time(), None, None, False
             self._new_card()
+
+    def _then(self, m: Inbound, state: str, ids: list[str], chars: int) -> None:
+        if m.then:
+            try:
+                m.then(state, ids, chars)
+            except Exception:                    # a harness callback never stops the room
+                log.exception("room %s: the callback of %s failed", self.name, m.id)
 
     def _compact(self, account: Account) -> None:
         """/compact in the room's session (resumed when its process is gone), before the rerun."""

@@ -4,8 +4,10 @@ executed it and why the turn moved there), inbound (every channel message by its
 (every message Yerk AI posted, with the id the channel returned, and a card's text at each post and edit, so a card
 the reply replaced can still be read back), deliveries (every outbound part by its idempotency key, written before
 the post: a retry after a crash posts a part only if it is not already in the room), attachments (every inbound
-missing), cards (each turn's progress message, open until its turn ends), holds, and health
-(the daily call per account: pass or fail and the login's identity).
+missing), cards (each turn's progress message, open until its turn ends; a worker's until it
+settles), holds, workers (one row per worker unit: where it runs, how it ended, whether its result
+was relayed or skipped and why), and health (the daily call per account: pass or fail and the
+login's identity).
 
 Inbound states, after Hermes' delivery ledger (gateway/delivery_ledger.py, MIT): `received`
 (ledgered, nothing ran: run it plainly after a crash), `running` (sent to Claude Code: after a
@@ -51,6 +53,10 @@ CREATE TABLE IF NOT EXISTS cards (
   message_id TEXT PRIMARY KEY, room TEXT, kind TEXT, opened REAL, closed REAL, how TEXT);
 CREATE TABLE IF NOT EXISTS holds (
   id INTEGER PRIMARY KEY, room TEXT, wait_for TEXT, reason TEXT, at REAL);
+CREATE TABLE IF NOT EXISTS workers (
+  id TEXT PRIMARY KEY, room TEXT, account TEXT, unit TEXT, model TEXT, session_id TEXT, brief TEXT,
+  staging TEXT, report TEXT, tasks TEXT, cap REAL, card TEXT, started REAL, finished REAL, exit TEXT,
+  exit_detail TEXT, result TEXT, stop_requested REAL, relay TEXT, relay_note TEXT, relay_chars INTEGER);
 CREATE TABLE IF NOT EXISTS health (
   id INTEGER PRIMARY KEY, at REAL, account TEXT, config_dir TEXT, ok INTEGER, failure TEXT, source TEXT,
   login TEXT, identity TEXT, identity_ok INTEGER, model TEXT, ms INTEGER, note TEXT);
@@ -62,6 +68,9 @@ CREATE TABLE IF NOT EXISTS shadow (
 HEALTH = ("at", "account", "config_dir", "ok", "failure", "source", "login", "identity", "identity_ok", "model",
           "ms", "note")
 
+WORKERS = ("room", "account", "unit", "model", "session_id", "brief", "staging", "report", "tasks", "cap", "card",
+           "started", "finished", "exit", "exit_detail", "result", "stop_requested", "relay", "relay_note",
+           "relay_chars")
 INBOUND = ("room", "channel", "sender", "received", "chars", "state", "attempts", "folded", "accepted",
            "answered", "turn_id", "reply_ids", "note")
 OPEN = ("received", "running")
@@ -145,7 +154,8 @@ class Ledger:
         return str(r[0]["message_id"]) if r else None
 
     def last_received(self, room: str) -> float | None:
-        r = self._select("SELECT max(received) AS t FROM inbound WHERE room = ?", (room,))
+        """The last message a person (or the test webhook) sent this room; the harness's own are not."""
+        r = self._select("SELECT max(received) AS t FROM inbound WHERE room = ? AND sender != 'yerk'", (room,))
         return float(r[0]["t"]) if r and r[0]["t"] is not None else None
 
     # health
@@ -158,6 +168,31 @@ class Ledger:
     def health_last(self, account: str) -> dict[str, Any] | None:
         r = self._select("SELECT * FROM health WHERE account = ? ORDER BY id DESC LIMIT 1", (account,))
         return r[0] if r else None
+
+    # workers (workers.py)
+    def worker_add(self, **row: Any) -> None:
+        bad = set(row) - {"id", *WORKERS}
+        if bad:
+            raise ValueError(f"unknown worker columns: {sorted(bad)}")
+        self._insert("workers", row)
+
+    def worker_set(self, worker_id: str, **fields: Any) -> None:
+        bad = set(fields) - set(WORKERS)
+        if bad:
+            raise ValueError(f"unknown worker columns: {sorted(bad)}")
+        sets = ", ".join(f"{k} = ?" for k in fields)
+        with self.lock:
+            self.db.execute(f"UPDATE workers SET {sets} WHERE id = ?", (*fields.values(), worker_id))
+
+    def worker_get(self, worker_id: str) -> dict[str, Any] | None:
+        r = self._select("SELECT * FROM workers WHERE id = ?", (worker_id,))
+        return r[0] if r else None
+
+    def workers(self, running: bool = False, limit: int = 1000) -> list[dict[str, Any]]:
+        """Running ones (no `finished`) oldest first; else the newest `limit`."""
+        if running:
+            return self._select("SELECT * FROM workers WHERE finished IS NULL ORDER BY started", ())
+        return self._select("SELECT * FROM workers ORDER BY started DESC LIMIT ?", (limit,))
 
     # outbound and holds
     def outbound(self, **row: Any) -> int:
@@ -192,6 +227,14 @@ class Ledger:
                             "ORDER BY created", ())
         want = set(message_ids)
         return [r for r in rows if want & set(str(r["inbound"] or "").split(","))]
+
+    def delivered_for(self, message_id: str) -> list[str]:
+        """The message ids a turn answering `message_id` posted, from the delivery ledger ([] if none)."""
+        turns = self._select("SELECT turn_key FROM turns WHERE ',' || inbound || ',' LIKE ? AND outcome = 'ok'",
+                             (f"%,{message_id},%",))
+        keys = {str(t["turn_key"]) for t in turns if t["turn_key"]}
+        rows = self._select("SELECT key, message_id FROM deliveries WHERE state = 'sent' ORDER BY created, key", ())
+        return [str(r["message_id"]) for r in rows if r["key"].rsplit(":", 1)[0] in keys]
 
     def turn_for_key(self, turn_key: str) -> int | None:
         r = self._select("SELECT id FROM turns WHERE turn_key = ? ORDER BY id DESC LIMIT 1", (turn_key,))

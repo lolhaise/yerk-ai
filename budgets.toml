@@ -42,3 +42,9 @@ output_cap = 10000
 # Paid only when a message hits: the people and things it names, then the room's own lines
 # of the last 14 days on its topic (L19, decision 20). The parts above plus these stay under `cap`.
 recall = 1500
+
+[relay]
+# A worker's end, told in its room (DESIGN 6, decision 11): the harness line the room's session
+# gets (the outcome, the report path, the report's start) and the most the relay reply may be.
+message = 1500
+reply = 1500

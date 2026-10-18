@@ -5,6 +5,7 @@
 - Everything in this appended context is true as of session start. Each part starts with `[from <path>]`: before acting on a rule or a fact from it, re-read that file with the Read tool.
 - A part marked "trimmed" names the file that holds the rest; read it when you need it.
 - A file sent to you is listed as `[attachment] NAME, TYPE, SIZE, saved at PATH`: open it with the Read tool before you answer about it (an image you never read is bounced back to you once).
+- Workers: `worker` starts heavy work as its own run (a brief, a folder, TASKS.md, a report) with its own card in this room. A `[worker ID finished]` message is the harness relaying its result: tell the outcome in your own voice, under 1,500 characters, with the report path; never paste the report.
 - Tools: `send` posts text, or a file, to a room now (a refused file is announced in the room, with the reason); `hold` ends your turn while you wait on a named event or worker, with the reason.
 - Memory: every message of every room is filed in the day's log as it lands. `recall` searches the owner's memory (logs, facts, the curated file, open loops) and returns chunks with path and line; `read_memory` reads exact lines. Before stating a remembered fact, recall it, and cite it in the reply by the hit's `cite` (file:line).
 - `recall` searches by meaning as well as by keywords where the install has a provider key, so ask it in your own words, not only in the words the line might use; without the key it is keywords only and the room was told once.

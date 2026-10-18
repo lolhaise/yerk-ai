@@ -8,7 +8,8 @@
   cannot be fetched gets a visible "could not fetch NAME" and the turn still runs.
 - A turn owns one card: posted when the turn starts, edited from the stream (the first edit at
   once, then at most one a second, the latest text winning), replaced by the reply, or kept and
-  edited to say what was owed when the turn ends with nothing to show.
+  edited to say what was owed when the turn ends with nothing to show. A worker owns one too
+  (workers.py), on the same cadence, kept through a restart and settled when the worker ends.
 - Every outbound part has an idempotency key (the turn's key and the part's index) and its row in
   the delivery ledger before it is posted; the key is also the post's nonce, so Discord itself
   returns the first message for a repeat within its window. On start, parts a crash left
@@ -34,7 +35,7 @@ import shutil
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Callable, Coroutine, TypeVar
+from typing import Any, Awaitable, Callable, Coroutine, TypeVar
 
 import discord
 
@@ -135,6 +136,7 @@ class DiscordChannel:
         self.loop: asyncio.AbstractEventLoop | None = None
         self.recovered = False
         self.edits: dict[str, str] = {}           # message id -> the edit already taken (its edited_at)
+        self.after_recover: list[Callable[[], Awaitable[None]]] = []   # once, after the rooms recovered
         if client is None:
             intents = discord.Intents.none()
             intents.guilds = intents.guild_messages = intents.message_content = True
@@ -267,10 +269,17 @@ class DiscordChannel:
             self.recovered = True
             for cid, room in self.rooms.items():
                 await self.recover(cid, room)
+            for hook in self.after_recover:
+                try:
+                    await hook()
+                except Exception:
+                    log.exception("discord: a start-up step after recovery failed")
 
     async def recover(self, cid: int, room: Room) -> None:
         ch = self.client.get_channel(cid) or await self.client.fetch_channel(cid)
         for c in self.ledger.cards_open(room.name):        # their turns ended with the old process
+            if c["kind"] == "worker":                      # a worker outlives the daemon: its card stays
+                continue
             try:
                 await ch.get_partial_message(int(c["message_id"])).delete()
             except discord.HTTPException:
@@ -278,6 +287,8 @@ class DiscordChannel:
             self.ledger.card_close(c["message_id"], "removed after a restart")
         await self.redeliver(ch, room)
         for row in self.ledger.inbound_open(room.name):
+            if row["channel"] != str(cid):                 # the harness's own (a relay): workers.py's to redo
+                continue
             attempts = int(row["attempts"] or 0)
             if attempts >= 2:
                 self.ledger.inbound_set(row["message_id"], state="abandoned", note="redelivered once already")
@@ -433,29 +444,70 @@ class DiscordChannel:
         if room in self.want:                     # it arrived before the card did: show it now
             await self._edit(room)
 
-    def _wait(self, room: str) -> float:
-        last = self.edited.get(room)
+    def _wait(self, key: str) -> float:
+        last = self.edited.get(key)
         return 0.0 if last is None else MIN_EDIT - (time.monotonic() - last)
 
-    async def _edit(self, room: str) -> None:
+    async def _edit(self, room: str, key: str | None = None) -> None:
+        """Show the card's newest wanted text: at most one edit a second per card. `key` is the
+        card's own (a worker's); a turn's card is keyed by its room."""
+        key = key or room
         while True:
-            while (wait := self._wait(room)) > 0:
+            while (wait := self._wait(key)) > 0:
                 await asyncio.sleep(wait)
-            async with self._lock(room):
-                if self._wait(room) > 0:          # another edit went out while this one waited for the lock
+            async with self._lock(key):
+                if self._wait(key) > 0:           # another edit went out while this one waited for the lock
                     continue
-                text, card = self.want.pop(room, None), self.cards.get(room)
-                if text is None or card is None or text == self.shown.get(room):
+                text, card = self.want.pop(key, None), self.cards.get(key)
+                if text is None or card is None or text == self.shown.get(key):
                     return
                 try:
                     await card.edit(content=text[:MAX])
                 except discord.HTTPException as e:
                     log.warning("progress in %s failed: %s", room, e)
                     return
-                self.edited[room], self.shown[room] = time.monotonic(), text
-                self.ledger.outbound(room=room, channel=str(card.channel.id), kind="progress-edit",
+                self.edited[key], self.shown[key] = time.monotonic(), text
+                self.ledger.outbound(room=room, channel=str(self.names[room]), kind="progress-edit",
                                      message_id=str(card.id), chars=len(text), body=text[:MAX])
                 return
+
+    # worker cards (workers.py), on the event loop
+    async def worker_card(self, room: str, key: str, text: str, message_id: str | None = None) -> str | None:
+        """A worker's card: posted the first time, or taken back by its message id after a restart,
+        then edited on the turn cards' cadence, the latest text winning. Returns its message id."""
+        async with self._lock(key):
+            if key not in self.cards:
+                ch = await self._channel(room)
+                if message_id:
+                    self.cards[key] = ch.get_partial_message(int(message_id))
+                else:
+                    try:
+                        card = await ch.send(text[:MAX])
+                    except discord.HTTPException as e:
+                        log.warning("worker card in %s failed: %s", room, e)
+                        return None
+                    self.cards[key], self.shown[key] = card, text
+                    self.ledger.outbound(room=room, channel=str(ch.id), kind="worker-card", message_id=str(card.id),
+                                         chars=len(text), body=text[:MAX])
+                    self.ledger.card_open(str(card.id), room, "worker")
+                    return str(card.id)
+            self.want[key] = text
+        await self._edit(room, key)
+        card = self.cards.get(key)
+        return str(card.id) if card is not None else message_id
+
+    async def worker_settle(self, room: str, key: str, text: str, how: str,
+                            message_id: str | None = None) -> str | None:
+        """The worker's last card text, shown on the same cadence; the card then closes in the
+        ledger and is never edited again."""
+        mid = await self.worker_card(room, key, text, message_id)
+        async with self._lock(key):
+            card = self.cards.pop(key, None)
+            for d in (self.want, self.shown, self.edited):
+                d.pop(key, None)
+        if card is not None:
+            self.ledger.card_close(str(card.id), how)
+        return mid
 
     async def _finish(self, room: str, text: str, inbound: list[str], mark: str, kind: str = "reply",
                       card: str | None = None, key: str | None = None, instead: bool = False) -> list[str]:
@@ -493,7 +545,8 @@ class DiscordChannel:
                 log.warning("card in %s failed: %s", room, e)
         cid = self.names[room]
         for mid in inbound:
-            await self._react(cid, mid, mark, remove=ACK)
+            if mid.isdigit():                     # a Discord message; the harness's own (a relay) has no reaction
+                await self._react(cid, mid, mark, remove=ACK)
         return ids
 
     async def _debug_pause(self, point: str) -> None:
