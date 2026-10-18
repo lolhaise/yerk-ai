@@ -272,8 +272,7 @@ class DiscordChannel:
             log.warning("reaction on %s failed: %s", mid, e)
 
     async def _open(self, room: str, text: str, kind: str) -> None:
-        async with self._lock(room):
-            self.want.pop(room, None)
+        async with self._lock(room):              # a stream edit already waiting stays: it is this turn's
             self.edited.pop(room, None)
             try:
                 card = await (await self._channel(room)).send(text[:MAX])
@@ -284,6 +283,8 @@ class DiscordChannel:
             self.ledger.outbound(room=room, channel=str(card.channel.id), kind="progress", message_id=str(card.id),
                                  chars=len(text))
             self.ledger.card_open(str(card.id), room, kind)
+        if room in self.want:                     # it arrived before the card did: show it now
+            await self._edit(room)
 
     def _wait(self, room: str) -> float:
         last = self.edited.get(room)

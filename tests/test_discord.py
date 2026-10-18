@@ -167,6 +167,13 @@ def test_card_is_edited_then_replaced_by_the_split_reply(dc):
     assert d.ledger.cards_open("test-room") == []
 
 
+def test_an_edit_that_arrives_before_the_card_is_not_lost(dc):
+    d, client, _ = dc
+    d.want["test-room"] = "Reading the notes"                         # the stream beat the card's post
+    run(d._open("test-room", "working on it", "turn"))
+    assert client.chans[ROOM_CH].sent[0].edits == ["Reading the notes"]
+
+
 def test_a_key_is_posted_once_however_often_it_is_delivered(dc):
     d, client, _ = dc
     first = run(d._finish("test-room", "hello", ["5"], DONE, key="t2"))
