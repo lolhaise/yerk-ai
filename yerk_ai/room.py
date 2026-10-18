@@ -19,11 +19,9 @@ adapter's event loop.
 - After `idle_seconds` without a turn the process closes; the next message resumes the session.
 - Each turn owns one card (card.py), fed from the stream; every outbound part carries the turn's
   key. A turn that was sent an image and never read it is bounced once at Stop, naming the file.
-- A message from the harness itself (sender `yerk`: a worker's relay, a watcher's event) runs like
-  any other but is not a human message for the clock line or the idle rule; it may cap its reply and
-  name a line the reply must carry, and it hears how its turn ended. One marked `alone` is its own
-  turn: never folded into a running turn, never batched with another message, and in a room whose
-  process is closed it opens a fresh session with its recap instead of resuming.
+- A message from the harness itself (sender `yerk`: a worker's relay) runs like any other but is
+  not a human message for the clock line or the idle rule; it may cap its reply and name a line the
+  reply must carry, and it hears how its turn ended.
 """
 from __future__ import annotations
 

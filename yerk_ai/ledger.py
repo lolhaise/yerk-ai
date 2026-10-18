@@ -28,9 +28,7 @@ COLUMNS = ("room", "account", "config_dir", "session_id", "started", "first_visi
 ADDED = {"turns": {"inbound": "TEXT", "source": "TEXT", "hop": "TEXT", "recap": "INTEGER",   # newer than run 1
                    "turn_key": "TEXT"},
          "outbound": {"body": "TEXT"},                      # a card's text, each post and edit
-         "workers": {"job": "TEXT",                         # the scheduled job a worker runs for (jobs.py)
-                     "queued": "REAL", "waiting": "INTEGER",    # in line for its account (one heavy worker each)
-                     "watch": "INTEGER"}}                       # the watcher event it was woken for
+         "workers": {"job": "TEXT"}}                        # the scheduled job a worker runs for (jobs.py)
 
 SCHEMA = """CREATE TABLE IF NOT EXISTS turns (
   id INTEGER PRIMARY KEY,
@@ -82,6 +80,8 @@ WORKERS = ("room", "account", "unit", "model", "session_id", "brief", "staging",
            "relay_chars", "job", "queued", "waiting", "watch")
 JOB_RUNS = ("job", "kind", "room", "unit", "planned", "fired", "ended", "exit", "result", "delivery", "message_ids",
             "worker", "chars", "folder", "note")
+ADDED["workers"] = {**ADDED["workers"], "queued": "REAL", "waiting": "INTEGER",   # in line for its account
+                    "watch": "INTEGER"}                                          # the watcher event it woke for
 WATCH_EVENTS = ("job", "room", "wake", "state", "lines", "keys", "received", "attempts", "woke", "ended", "worker",
                 "inbound", "reply_ids", "note")
 INBOUND = ("room", "channel", "sender", "received", "chars", "state", "attempts", "folded", "accepted",
