@@ -1,0 +1,15 @@
+{"type": "api-request-shape", "shape": {"system": [{"type": "text", "text": "SSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSS"}, {"type": "text", "text": "YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY"}], "tools": [{"name": "Read", "description": "r"}, {"name": "mcp__yerk__send", "description": "s"}, {"name": "DeferredToolPlaceholder", "description": "d"}]}}
+{"type": "user", "message": {"role": "user", "content": "Hi."}}
+{"type": "attachment", "attachment": {"type": "total_tokens_reminder", "text": "<total_tokens>10 tokens left</total_tokens>"}}
+{"type": "attachment", "attachment": {"type": "hook_additional_context", "hookEvent": "UserPromptSubmit", "content": ["[clock] x"]}}
+{"type": "api-request-blob", "message": {"role": "user", "content": [{"type": "text", "text": "<system-reminder>\nwho</system-reminder>"}, {"type": "text", "text": "Hi."}]}}
+{"type": "api-request-blob", "message": {"role": "system", "content": [{"type": "text", "text": "# Environment\nhere"}]}}
+{"type": "api-request"}
+{"type": "user", "message": {"role": "user", "content": "Again."}}
+{"type": "attachment", "attachment": {"type": "total_tokens_reminder", "text": "<total_tokens>9 tokens left</total_tokens>"}}
+{"type": "attachment", "attachment": {"type": "hook_additional_context", "hookEvent": "UserPromptSubmit", "content": ["[clock] y"]}}
+{"type": "api-request"}
+{"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "content": "ok"}]}}
+{"type": "attachment", "attachment": {"type": "queued_command", "prompt": "Also this."}}
+{"type": "api-request-blob", "message": {"role": "system", "content": [{"type": "text", "text": "New message: Also this. Answer it."}]}}
+{"type": "api-request"}

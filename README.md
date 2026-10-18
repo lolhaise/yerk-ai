@@ -11,7 +11,7 @@ Yerk AI turns chat rooms into long-lived Claude Code sessions. It is a small Pyt
 
 ## Status
 
-Layer 1, run 2: the room runner (the mid-turn fold, idle close and resume, the empty retry, the account hop), the Discord adapter, Yerk AI's MCP server with `send` and `hold`, the HTTP hook with the clock line, and read access to each room's private folder. Run 3 measures 50 messages in a Discord test room and the daemon's idle cost.
+Layer 1, run 3: one Discord test room answers through Claude Code. Measured there over 50 scripted messages, 10 of them sent mid-turn: none dropped, every mid-turn message answered inside the turn it landed in, first visible line 1.7 s and final reply 3.7 s at the median. Built so far: the room runner (the mid-turn fold, idle close and resume, the empty retry, the account hop), the Discord adapter, Yerk AI's MCP server with `send` and `hold`, the HTTP hook with the clock line, read access to each room's private folder, and the ledgers.
 
 ## Use
 
@@ -20,7 +20,10 @@ uv sync
 uv run yerk map example-room                 # the example room's context, part by part, against budgets.toml
 uv run yerkd                                 # every room with a discord:<channel id>, through the Discord adapter
 uv run yerkd --console example-room --config-dir ~/.claude   # one room on the terminal: a line in, a JSON reply out
-uv run yerk probe hello|fold|resume|blocks|smoke --config-dir ~/.claude
+uv run yerk map example-room --wire          # also the sizes as sent, read from the room's Claude Code transcript
+uv run yerk setup-room ROOM                  # a Discord room's test webhook; its URL goes to secrets/ (0600), never printed
+uv run yerk room close ROOM                  # the running yerkd closes ROOM's process now (never mid-turn); the session stays
+uv run yerk probe hello|fold|resume|blocks|smoke|measure|check|idle --config-dir ~/.claude
 uv run pytest
 ```
 
@@ -31,7 +34,7 @@ uv run pytest
 
 - `rooms.toml`: one entry per room: channel (`discord:<channel id>`), account order, model, tool allowlist, privacy class, time zone, and the context files. `layer` names the folder those files come from (default: the private folder itself).
 - `accounts.toml`: one entry per account, a name and a Claude Code config folder.
-- `yerkd.toml`: the daemon's settings: the Discord token file, the owner's user id, webhook ids accepted as senders in test mode, the local port.
+- `yerkd.toml`: the daemon's settings: the Discord token file, the owner's user id, webhook ids accepted as senders in test mode, the local port. A running `yerkd` writes its pid and port to `yerkd.json` in the state folder.
 - `secrets/`: files only you can read (mode 0600), for example the bot token. Nothing in the repository reads them except the daemon at start.
 
 ## How a room runs
@@ -51,7 +54,7 @@ The room runner:
 - An empty reply retries once in a fresh session. An auth or quota failure rests that account (`failures.toml`, doubling cooldowns) and continues the same turn on the next account.
 - After 30 idle minutes the process closes; the next message resumes the session.
 
-The daemon's one local HTTP server carries `/mcp` (the tools `send`: text or a file to a room; `hold`: end the turn while waiting on a named event or worker) and `/hook` (the clock and metadata lines, keyed on the session id through the room-to-session table).
+The daemon's one local HTTP server carries `/mcp` (the tools `send`: text, or a file from the sending room's own folders, to a room; `hold`: end the turn while waiting on a named event or worker), `/hook` (the clock and metadata lines, keyed on the session id through the room-to-session table) and `/control` (`yerk room close`).
 
 ## Ledgers
 
