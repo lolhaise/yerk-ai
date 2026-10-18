@@ -1,7 +1,7 @@
 """Checks that every card and notice follows STYLE.md, the rules for how they read. Every surface a room reads is
 rendered here and held to the rules (state first, no path, no exit code, no raw timestamp, no em dash, phone width),
 words.py is the only place a state mark or a state phrase is spelled, the manifest says built or described on every
-the one described, and a room that asks "can you do voice" gets the manifest's answer."""
+among the described, and a room that asks "can you do voice" gets the manifest's answer."""
 import ast
 import asyncio
 import json
@@ -172,7 +172,7 @@ def test_status_abilities_and_explain_print_state_first_at_phone_width(tmp_path,
     lines = capsys.readouterr().out.splitlines()
     shown = [x for x in lines if not x.startswith("yerk explain")]
     assert shown and all(state_first(x) and not room_safe(x) and words.width(x) <= words.PHONE for x in shown), shown
-    assert lines[-2] == f"{words.NOTHING} voice: known, not built"           # described ones after the built ones
+    assert f"{words.NOTHING} voice: known, not built" in lines and lines[-2].endswith(": known, not built")  # described last
     assert f"{words.WORKING} embeddings: needs OpenAI" in lines and f"{words.NOTHING} recall: runs on the free path" in lines
 
 
@@ -226,11 +226,11 @@ def test_the_vocabulary_grep_catches_a_renderer_that_spells_its_own():
     assert spelled('def f():\n    """finished clean, in a docstring"""\n    log.info("finished clean")\n') == []
 
 
-# 3. the manifest: built or described on every entry, voice the one described
-def test_every_ability_says_built_or_described_and_voice_is_the_one_described():
+# 3. the manifest: built or described on every entry, voice among the described (tests/test_abilities.py has the rest)
+def test_every_ability_says_built_or_described_and_voice_is_described():
     tab = abilities.manifest()
     assert all(ab.get("state") in abilities.STATES for ab in tab.values()), {k: v.get("state") for k, v in tab.items()}
-    assert [k for k, ab in tab.items() if ab["state"] == "described"] == ["voice"]
+    assert "voice" in [k for k, ab in tab.items() if ab["state"] == "described"]
     v = tab["voice"]
     assert v["tier"] == "paid" and len(v["how"]) >= 5 and v["why_not"].startswith("The owner's call")
     assert v["needs"] and v["price"] and v["free_path"].startswith("none") and "voice" in v["asked_as"]

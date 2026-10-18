@@ -16,6 +16,7 @@ from .config import load_toml, table
 
 log = logging.getLogger("yerk.abilities")
 STATES = ("built", "described")
+SELF = "abilities"                  # "what can you do": its answer is every ability's name by state
 
 
 def manifest() -> dict[str, dict[str, Any]]:
@@ -49,11 +50,28 @@ def line(name: str, ab: dict[str, Any], tab: dict[str, dict[str, Any]], s: Any) 
     return words.line(f"{mark} {name}: {said}")
 
 
+def census(tab: dict[str, dict[str, Any]], s: Any) -> list[str]:
+    """Every ability's name grouped by its state here, built ones first, a line per state: the
+    answer to "what can you do", short enough to ride whole under the per-message recall cap."""
+    groups: dict[str, list[str]] = {}
+    for name, ab in sorted(tab.items(), key=lambda kv: kv[1].get("state", "built") == "described"):
+        groups.setdefault(state(name, ab, tab, s)[1], []).append(name)
+    return [f"{said} ({len(names)}): {', '.join(names)}." for said, names in groups.items()]
+
+
+def built_part(ab: dict[str, Any], tab: dict[str, dict[str, Any]]) -> str:
+    """A described ability's `upgrade`: the built ability that already ships part of it."""
+    up = str(ab.get("upgrade", ""))
+    return up if ab.get("state") == "described" and up in tab and tab[up].get("state", "built") == "built" else ""
+
+
 def explain(name: str, ab: dict[str, Any], tab: dict[str, dict[str, Any]], s: Any) -> list[str]:
     """`yerk explain NAME`: the state, what it is, how it would be built (a described one), what it
     needs and costs, how to add its key, its free path, and why it is not built."""
     mark, said = state(name, ab, tab, s)
     out = [f"{mark} {name}: {said}", str(ab["what"])]
+    if name == SELF:
+        out += ["", *census(tab, s)]
     if ab.get("how"):
         out += ["", "How it would be built:", *[f"- {x}" for x in ab["how"]]]
     out += ["", f"Needs: {ab['needs']}"]
@@ -64,6 +82,8 @@ def explain(name: str, ab: dict[str, Any], tab: dict[str, dict[str, Any]], s: An
     if ab.get("key"):
         out.append(f"How to add the key: {ab['key']}")
     out.append(f"Free path: {ab['free_path']}")
+    if built_part(ab, tab):
+        out.append(f"Built part: {built_part(ab, tab)} (yerk explain {built_part(ab, tab)})")
     if ab.get("why_not"):
         out.append(f"Why it is not built: {ab['why_not']}")
     return out
@@ -73,10 +93,15 @@ def brief(name: str, ab: dict[str, Any], tab: dict[str, dict[str, Any]], s: Any)
     """The explain lines as one paragraph for a room, under the per-message recall cap: each `how`
     step by its lead words (what comes before its colon); `yerk explain NAME` has the rest."""
     _, said = state(name, ab, tab, s)
+    if name == SELF:
+        return " ".join([f"{name}, a Yerk AI ability ({said}): {ab['what']}", *census(tab, s),
+                         "`yerk explain NAME` says what any one does, needs and costs."])
     how = "; ".join(str(x).split(":", 1)[0] for x in ab.get("how", []))
+    up = built_part(ab, tab)
     parts = [f"{name}, a Yerk AI ability ({said}): {ab['what']}", f"How it would be built: {how}." if how else "",
              f"Needs: {ab['needs']}.", f"Cost: {ab.get('price') or 'nothing, it runs on the box'}.",
-             f"Free path: {ab['free_path']}.", f"Why it is not built: {ab['why_not']}" if ab.get("why_not") else ""]
+             f"Free path: {ab['free_path']}.", f"Built part: {up}." if up else "",
+             f"Why it is not built: {ab['why_not']}" if ab.get("why_not") else ""]
     return " ".join(x for x in parts if x)
 
 
