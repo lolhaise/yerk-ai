@@ -209,6 +209,14 @@ def test_the_index_answers_throughout_a_backfill(tmp_path):
         results.append(memory.recall(s, "what colour is the example kettle", 3))
         seen.add(store.n)
         status()
+    # the second is the proof that recall answers while the store grows; the backfill itself finishes in
+    # its own time (a shared runner embedded 84 of 120 in that second, 2026-10-18), so wait for it, still asking
+    deadline = time.monotonic() + 30.0
+    while store.n < 120 and time.monotonic() < deadline:
+        results.append(memory.recall(s, "what colour is the example kettle", 3))
+        seen.add(store.n)
+        status()
+        time.sleep(0.05)
     back.stop.set()
     back.thread.join(5.0)
     assert results and all(r["ok"] for r in results), [r for r in results if not r["ok"]][:1]
