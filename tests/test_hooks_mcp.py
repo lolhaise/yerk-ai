@@ -184,6 +184,28 @@ def test_the_secrets_sit_outside_every_rooms_layer(tmp_path):
     assert not (private / "secrets").exists()
 
 
+def test_a_rooms_read_folders_are_added_and_never_reach_yerks_own(tmp_path):
+    """`read` in rooms.toml: each folder is one more --add-dir for that room. A folder that is, holds or sits
+    inside the private or the state folder stops the daemon at start, so no room can read the secrets (F4)."""
+    import shutil
+    import pytest
+    private, state, notes = tmp_path / "private", tmp_path / "state", tmp_path / "notes"
+    shutil.copytree(EXAMPLE_PRIVATE, private)
+    state.mkdir()
+    notes.mkdir()
+    base = (private / "rooms.toml").read_text()
+
+    def read(p: Path) -> None:
+        (private / "rooms.toml").write_text(base.replace("[rooms.example-room]\n", f'[rooms.example-room]\nread = ["{p}"]\n', 1))
+    read(notes)
+    assert Yerkd(private, state).spec_for("example-room").add_dirs[1:] == [notes]
+    assert Yerkd(private, state).spec_for("example-quiet").add_dirs[1:] == []
+    for bad in (private, private / "rooms", state, state / "secrets", tmp_path):
+        read(bad)
+        with pytest.raises(SystemExit, match="reaches Yerk's own folders"):
+            Yerkd(private, state)
+
+
 def test_the_daemon_reads_a_rooms_lines_in_that_rooms_view(tmp_path):
     """Cold read F2, the daemon's side: the topic hits and the recall pack of a room that is not an
     owner room carry the room's own view, so a former room's old lines (no id) never reach it."""

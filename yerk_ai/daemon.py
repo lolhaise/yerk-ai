@@ -107,9 +107,11 @@ class Yerkd:
         self.port = port or int(self.conf.get("http", {}).get("port", 0)) or free_port()
         self.url = f"http://127.0.0.1:{self.port}"
         self.budgets, self.room_confs, self.models = budgets(), rooms(private), models(self.conf)
+        for n, p in ((n, Path(x).expanduser().resolve()) for n, c in self.room_confs.items() for x in c.get("read", [])):
+            if any(q.is_relative_to(p) or p.is_relative_to(q) for q in (private.resolve(), state.resolve())):   # F4
+                raise SystemExit(f"room {n}: read {p} reaches Yerk's own folders; name one outside {private} and {state}")
         self.accounts = [only_account] if only_account else load_accounts(private / "accounts.toml")
-        self.ledger = Ledger(state / "ledger.sqlite")
-        self.failures = FailureTable.load(table("failures.toml"))
+        self.ledger, self.failures = Ledger(state / "ledger.sqlite"), FailureTable.load(table("failures.toml"))
         self.cooldowns = Cooldowns(state / "cooldowns.json")
         self.meters = Meters(state / "meters.json")
         self.memory = memory.settings(private, state, dict(self.conf.get("memory", {})))
@@ -164,12 +166,10 @@ class Yerkd:
     def spec_for(self, name: str) -> RoomSpec:
         conf = self.room_confs[name]
         rdir = self.state / "rooms" / name
-        work = rdir / "work"
-        work.mkdir(parents=True, exist_ok=True)
+        (work := rdir / "work").mkdir(parents=True, exist_ok=True)
         layer = context.layer_dir(self.private, conf)
-        ctx = rdir / "context.md"
         parts = context.session_start(self.private, conf, self.budgets, pack=lambda left: self.room_pack(name, left))
-        ctx.write_text(context.appended_file(parts))
+        (ctx := rdir / "context.md").write_text(context.appended_file(parts))
         hooks.record(self.state, name, "session_start", "", {p.name: p.size for p in parts},
                      next((p.text for p in parts if p.name == "recall_pack"), ""), file=str(ctx))
         token = secrets.token_hex(16)                      # this process's credential, bound with its session
@@ -181,8 +181,8 @@ class Yerkd:
         if flag(conf.get("thinking_panel")) and self.owner(name):
             extra += ["--thinking-display", "summarized"]      # the panel's text; off: the stream says nothing
         return RoomSpec(room=name, model=now["model"][0], cwd=work, tools=list(conf.get("tools", [])),
-                        settings=settings, context_file=ctx, mcp_config=mcp, add_dirs=[layer], extra_args=extra,
-                        token=token)
+                        settings=settings, context_file=ctx, mcp_config=mcp, extra_args=extra, token=token,
+                        add_dirs=[layer, *(Path(x).expanduser() for x in conf.get("read", []))])   # `read`: more it may read
 
     def owner(self, room: str) -> bool:
         """An owner room (rooms.toml privacy, "owner" when unset); a name that is no room is not one."""
