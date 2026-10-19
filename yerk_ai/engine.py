@@ -12,6 +12,7 @@ tools only from the `--tools` allowlist, and the assembled context from
 """
 from __future__ import annotations
 
+import contextlib
 import fcntl
 import hashlib
 import hmac
@@ -337,10 +338,8 @@ class RoomProcess:
                     if c.get("type") == "tool_use" and c.get("name") == "Read":
                         self.read_paths.add(str((c.get("input") or {}).get("file_path") or ""))
             if self.evidence is not None:
-                try:
+                with contextlib.suppress(Exception):   # the ledger never stops the stream
                     self.evidence.observe(ev)
-                except Exception:                  # the ledger never stops the stream
-                    pass
             self.events.put((t, ev))
         self.events.put((time.time(), None))
 
@@ -440,10 +439,8 @@ class RoomProcess:
         rc = None
         if self.proc:
             if self.proc.stdin:
-                try:
+                with contextlib.suppress(OSError):
                     self.proc.stdin.close()
-                except OSError:
-                    pass
             try:
                 rc = self.proc.wait(grace)
             except subprocess.TimeoutExpired:

@@ -413,11 +413,7 @@ def sweep(db: Path, grace: float = SWEEP_GRACE, now: float | None = None) -> lis
 
 
 def terms(query: str) -> list[str]:
-    out: list[str] = []
-    for w in WORD.findall(norm(query)):
-        if len(w) > 1 and w not in STOP and w not in out:
-            out.append(w)
-    return out[:24]
+    return list(dict.fromkeys(w for w in WORD.findall(norm(query)) if len(w) > 1 and w not in STOP))[:24]
 
 
 def search(conn: sqlite3.Connection, query: str, k: int = 6, pool: int = 80,

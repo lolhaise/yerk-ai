@@ -1,6 +1,8 @@
 """Yerk AI in Discord, through the discord.py library: one connection that reads only the channels rooms.toml names and posts their cards and replies.
 
 - Every other channel is ignored before anything is read: no reply, no reaction, no history.
+- A room's `watch` channel is read as its own and never written to: what it sends, its card, its typing
+  signal and its reactions go to its own channel only; a slash command there gets one ephemeral line.
 - Only the owner, and in test mode the listed webhooks, are answered. Webhook senders pass a
   loop guard (lifted/loopguard.py) so a runaway script cannot run the room.
 - A message is ledgered by its Discord id before anything runs, then acked with a reaction. Its
@@ -32,6 +34,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import logging
 import mimetypes
@@ -146,8 +149,8 @@ class DiscordChannel:
         self.state = state
         self.daemon = daemon                      # the slash commands' methods (daemon.Yerkd), or None: off
         self.capture = capture                    # the day's log (memory.DailyLog.capture), or None
-        self.rooms: dict[int, Room] = {}          # channel id -> room
-        self.names: dict[str, int] = {}           # room name -> channel id
+        self.rooms: dict[int, Room] = {}          # channel id -> room: its own, and the one it watches
+        self.names: dict[str, int] = {}           # room name -> its own channel id, where everything goes
         self.cards: dict[str, Any] = {}           # room name -> its open card
         self.want: dict[str, str] = {}            # room name -> the card text waiting to be shown
         self.shown: dict[str, str] = {}
@@ -172,8 +175,10 @@ class DiscordChannel:
         client.event(self.on_raw_message_delete)
         client.event(self.on_interaction)
 
-    def add_room(self, channel_id: int, room: Room) -> None:
+    def add_room(self, channel_id: int, room: Room, watch: int | None = None) -> None:
         self.rooms[channel_id], self.names[room.name] = room, channel_id
+        if watch:
+            self.rooms[watch] = room
 
     async def start(self) -> None:
         self.loop = asyncio.get_running_loop()
@@ -229,7 +234,7 @@ class DiscordChannel:
         if not self.ledger.inbound_add(str(m.id), room.name, str(m.channel.id), sender, len(m.content or ""),
                                        created=made.timestamp() if made is not None and hasattr(made, "timestamp") else None):
             return
-        await self._typing_begin(room.name, m.channel)
+        await self._typing_begin(room.name, await self._channel(room.name))   # its own channel, never the watched one
         await self._react(m.channel.id, m.id, ACK)
         files = await self.stage(room, m)
         room.submit(Inbound(str(m.id), sender, message_text(m, files, self._me()), files=files))
@@ -265,8 +270,7 @@ class DiscordChannel:
 
     def _typing_end(self, room: str) -> None:
         """The card is posted, or the reply is: nothing more to signal."""
-        t = self.typing.pop(room, None)
-        if t is not None:
+        if (t := self.typing.pop(room, None)) is not None:
             t.cancel()
 
     def _me(self) -> int | None:
@@ -328,7 +332,7 @@ class DiscordChannel:
 
     async def on_ready(self) -> None:
         self.loop = asyncio.get_running_loop()
-        log.info("discord: connected as %s, serving %d room(s)", self.client.user, len(self.rooms))
+        log.info("discord: connected as %s, serving %d room(s)", self.client.user, len(self.names))
         self.connected = True
         if not self.recovered:              # once per process: a reconnect must not re-run live turns
             self.recovered = True
@@ -348,7 +352,7 @@ class DiscordChannel:
         if self.daemon is None:
             return
         guilds = set()
-        for cid in self.rooms:
+        for cid in self.names.values():
             try:
                 guilds.add(int((self.client.get_channel(cid) or await self.client.fetch_channel(cid)).guild.id))
             except (discord.HTTPException, AttributeError) as e:
@@ -375,6 +379,8 @@ class DiscordChannel:
             await it.response.send_message(f"{words.NOT_DONE} {words.NOT_OWNER}", ephemeral=True)
         elif room is None:
             await it.response.send_message(f"{words.NOT_DONE} {words.NOT_A_ROOM}", ephemeral=True)
+        elif (own := self.names[room.name]) != int(it.channel_id):     # a watched channel: the room answers elsewhere
+            await it.response.send_message(f"{words.NOT_DONE} {words.WATCHED.format(room=room.name, own=own)}", ephemeral=True)
         else:
             await self._answer(it, self._command(str(data.get("name", "")), room.name, args))
 
@@ -407,17 +413,16 @@ class DiscordChannel:
 
     async def recover(self, cid: int, room: Room) -> None:
         ch = self.client.get_channel(cid) or await self.client.fetch_channel(cid)
-        for c in self.ledger.cards_open(room.name):        # their turns ended with the old process
-            if c["kind"] == "worker":                      # a worker outlives the daemon: its card stays
-                continue
-            try:
-                await ch.get_partial_message(int(c["message_id"])).delete()
-            except discord.HTTPException:
-                pass
-            self.ledger.card_close(c["message_id"], "removed after a restart")
-        await self.redeliver(ch, room)
+        if cid == self.names[room.name]:                   # its own: what a restart left there; a watched one is only read
+            for c in self.ledger.cards_open(room.name):        # their turns ended with the old process
+                if c["kind"] == "worker":                      # a worker outlives the daemon: its card stays
+                    continue
+                with contextlib.suppress(discord.HTTPException):
+                    await ch.get_partial_message(int(c["message_id"])).delete()
+                self.ledger.card_close(c["message_id"], "removed after a restart")
+            await self.redeliver(ch, room)
         for row in self.ledger.inbound_open(room.name):
-            if row["channel"] != str(cid):                 # the harness's own (a relay): workers.py's to redo
+            if row["channel"] != str(cid):                 # the other channel's, or a relay (workers.py's to redo)
                 continue
             attempts = int(row["attempts"] or 0)
             if attempts >= 2:
@@ -549,6 +554,10 @@ class DiscordChannel:
         return self.client.get_channel(cid) or await self.client.fetch_channel(cid)
 
     async def _react(self, cid: int, mid: int | str, emoji: str, remove: str | None = None) -> None:
+        """Only in a room's own channel, on a message the ledger does not place elsewhere (watched, a relay)."""
+        row = self.ledger.inbound_get(str(mid))
+        if cid not in self.names.values() or (row is not None and row["channel"] != str(cid)):
+            return
         ch = self.client.get_channel(cid) or await self.client.fetch_channel(cid)
         pm = ch.get_partial_message(int(mid))
         try:

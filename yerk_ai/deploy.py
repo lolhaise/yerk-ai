@@ -155,11 +155,9 @@ def interruptible() -> Iterator[None]:
     """SIGTERM and SIGHUP raise KeyboardInterrupt inside (a stopped unit, a closed terminal), and the
     handlers before come back after; off the main thread they stay as they are."""
     before: dict[int, Any] = {}
-    try:
+    with contextlib.suppress(ValueError):               # signal.signal works on the main thread only
         for s in (signal.SIGTERM, signal.SIGHUP):
             before[s] = signal.signal(s, interrupt)
-    except ValueError:                                  # signal.signal works on the main thread only
-        pass
     try:
         yield
     finally:

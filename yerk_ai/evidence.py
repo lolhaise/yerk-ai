@@ -269,8 +269,5 @@ def check_claims(reply: str, ev: Evidence, roots: tuple[Path, ...]) -> list[tupl
     with ev.lock:
         calls = list(ev.calls.values())
     mem = ev.memory_read(roots)
-    out = []
-    for cls, s in claims(reply):
-        if not backed(cls, calls, mem):
-            out.append(("claim", f"{cls}: \"{s}\"; tools this turn: {tools_line(calls)}"))
-    return out
+    return [("claim", f"{cls}: \"{s}\"; tools this turn: {tools_line(calls)}") for cls, s in claims(reply)
+            if not backed(cls, calls, mem)]

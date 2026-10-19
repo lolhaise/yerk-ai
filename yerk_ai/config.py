@@ -64,7 +64,14 @@ def state_dir(arg: str | None = None) -> Path:
 
 
 def rooms(private: Path) -> dict[str, dict[str, Any]]:
-    return dict(load_toml(private / "rooms.toml").get("rooms", {}))
+    """rooms.toml's rooms; a `watch` (read, never written to) that a room owns or watches is refused, naming both."""
+    rs = dict(load_toml(private / "rooms.toml").get("rooms", {}))
+    taken = {str(c.get("channel")): f"which is {n}'s own channel" for n, c in rs.items()}
+    for n, w in ((n, str(c["watch"])) for n, c in rs.items() if c.get("watch")):
+        if w in taken:
+            raise SystemExit(f"rooms.toml: {n} watches {w}, {taken[w]}")
+        taken[w] = f"which {n} watches too"
+    return rs
 
 
 def room_id(name: str, conf: dict[str, Any]) -> str:

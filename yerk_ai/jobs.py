@@ -45,7 +45,7 @@ import threading
 import time
 import tomllib
 import urllib.request
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from itertools import product
@@ -679,19 +679,14 @@ class Systemd:
 
     def remove(self, unit: str) -> None:
         for p in ([self.path(unit), self.stamps / f"stamp-{unit}"] if unit.endswith(".timer") else [self.path(unit)]):
-            try:
-                p.unlink()
-            except FileNotFoundError:
-                pass
+            p.unlink(missing_ok=True)
 
     def ours(self) -> list[str]:                              # job names with a generated unit on disk
         out = []
         for p in sorted([*self.folder.glob(f"{UNIT}*.timer"), *self.folder.glob(f"{UNIT}*.service")]):
-            try:
+            with suppress(OSError):
                 if p.read_text().startswith(HEADER):
                     out.append(p.name.removeprefix(UNIT).removesuffix(".timer").removesuffix(".service"))
-            except OSError:
-                pass
         return sorted(set(out))
 
     def active(self, unit: str) -> str:                       # a service's ActiveState ("active", ...)
@@ -728,11 +723,8 @@ class Systemd:
 
     def timers(self) -> dict[str, dict[str, float | None]]:   # timer unit -> {"next", "last"} (epoch)
         p = systemctl("list-timers", "--all", "--output=json", f"{UNIT}*", check="list-timers")
-        out: dict[str, dict[str, float | None]] = {}
-        for r in json.loads(p.stdout or "[]"):
-            out[str(r["unit"])] = {"next": (r["next"] / 1e6) if r.get("next") else None,
-                                   "last": (r["last"] / 1e6) if r.get("last") else None}
-        return out
+        return {str(r["unit"]): {"next": (r["next"] / 1e6) if r.get("next") else None,
+                                 "last": (r["last"] / 1e6) if r.get("last") else None} for r in json.loads(p.stdout or "[]")}
 
 
 # the sync

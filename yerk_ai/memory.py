@@ -16,7 +16,7 @@ import re
 import sqlite3
 import threading
 import time
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone, tzinfo
 from pathlib import Path
@@ -198,7 +198,7 @@ def file_class(path: Path) -> tuple[str, str]:
     sidecar `<file>.class` (one line: the class, then optionally the room id), else private. The
     `also` roots are indexed read-only, so a sidecar is how a file nobody edits gets a class."""
     cls, room = "private", ""
-    try:
+    with suppress(OSError):
         head = path.open(encoding="utf-8", errors="replace").read(400)
         m = FRONT.match(head)
         if m:
@@ -215,8 +215,6 @@ def file_class(path: Path) -> tuple[str, str]:
             if words and words[0] in CLASSES:
                 cls = words[0]
             room = words[1] if len(words) > 1 else ""
-    except OSError:
-        pass
     return cls, room
 
 
