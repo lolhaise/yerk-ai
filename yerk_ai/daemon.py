@@ -152,6 +152,7 @@ class Yerkd:
         self.rewrites: dict[str, tuple[str, str]] = {}           # tool_use id -> (room, the trash command)
         self.worded: set[str] = set()                            # inbound ids whose approval word was used
         self.later: set[asyncio.Task[Any]] = set()               # a gate's notice, posted beside the hook's answer
+        self.held_files: dict[str, Path] = {}                    # room -> a held call's exact text too long to show
         self.timing: list[tuple[str, dict[str, Any]]] = []       # hook and tool timings, written in batches
         self.timing_lock = threading.Lock()
         self.flushing = False
@@ -400,11 +401,20 @@ class Yerkd:
                 return n
         return None
 
-    def notify_later(self, room: str, text: str) -> None:
-        """A gate's one line to the room, posted beside the hook's answer so the hook never waits on it."""
-        task = asyncio.get_running_loop().create_task(self.channels[room].notify(room, text))
+    def notify_later(self, room: str, text: str, file: Path | None = None) -> None:
+        """A gate's one line to the room, posted beside the hook's answer so the hook never waits on it;
+        a held call's exact text too long to show goes right after it as a file."""
+        task = asyncio.get_running_loop().create_task(self._notice(room, text, file))
         self.later.add(task)
         task.add_done_callback(self.later.discard)
+
+    async def _notice(self, room: str, text: str, file: Path | None) -> None:
+        await self.channels[room].notify(room, text)
+        if file is not None:
+            try:
+                await self.channels[room].send_file(room, file, caption=words.HELD_FILE)
+            except (OSError, ValueError) as e:            # send_file has already posted a visible notice
+                log.warning("room %s: the held call's text file did not go out: %s", room, e)
 
     def time_row(self, table: str, row: dict[str, Any]) -> None:
         """Queue a timing row; one flush per batch runs on a thread, beside the hook's answer."""
@@ -477,7 +487,7 @@ class Yerkd:
                 return {}
             out, line = await asyncio.to_thread(self.pre_tool, name, room, sid, payload)
             if line:
-                self.notify_later(name, line)
+                self.notify_later(name, line, self.held_files.pop(name, None))
             return out
         if event in ("PostToolUse", "PostToolUseFailure"):
             if room and name:
@@ -576,7 +586,7 @@ class Yerkd:
                 v = gates.Verdict("approval", "release", detail=f"{what}: {call}; approved by {rel['approved_by']}",
                                   rule=rule)
             else:
-                model, line = gates.held(what, call, self.gates.word)
+                model, line = gates.held(what, call, self.gates.word, exact=key)
                 v = gates.Verdict("approval", "hold", model, line, f"{what}: {call}", rule=rule)
         if v is None:
             return {}, ""
@@ -584,6 +594,11 @@ class Yerkd:
                                tool=tool, rule=v.rule, detail=v.detail)
         if v.decision == "hold":
             self.ledger.hold_add(name, v.rule, v.detail.split(":")[0], gid, key, cwd)
+            if len(key) > gates.SHOW:                     # too long for one message: the exact text as a file
+                path = self.state / "rooms" / name / "held" / f"{gid}.txt"
+                path.parent.mkdir(parents=True, exist_ok=True)
+                write_private(path, key + "\n")
+                self.held_files[name] = path
         if v.decision == "rewrite" and v.new_input:
             self.rewrites[str(payload.get("tool_use_id") or "")] = (name, str(v.new_input.get("command")))
         log.info("room %s: gate %s %s: %s", name, v.gate, v.decision, v.detail[:160])
