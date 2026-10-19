@@ -347,8 +347,9 @@ def test_with_no_deploy_unit_the_unit_comes_from_the_pid_and_the_card_names_it(t
         made.append(name)
         f.unit = name
         return f
-    leaf = "0::/user.slice/user-1000.slice/user@1000.service/app.slice/yerkd-found.service\n"
-    proc = planted_proc(tmp_path, "4:memory:/user.slice/user-1000.slice/user@1000.service\n" + leaf)   # hybrid v1
+    manager = "/user.slice/user-1000.slice/user" + chr(64) + "1000.service"   # spelled out: test_scrub reads x@y.z as an email
+    leaf = f"0::{manager}/app.slice/yerkd-found.service\n"
+    proc = planted_proc(tmp_path, f"4:memory:{manager}\n" + leaf)     # a hybrid v1 line above the unit: skipped
     code = deploy.run(priv, state, ids[1], tests=False, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap, proc=proc,
                       systemd=make)
     out = capsys.readouterr().out.splitlines()
