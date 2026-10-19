@@ -206,6 +206,21 @@ def test_a_rooms_read_folders_are_added_and_never_reach_yerks_own(tmp_path):
             Yerkd(private, state)
 
 
+def test_a_rooms_sandbox_table_reaches_its_claude_code_settings_and_no_other_room(tmp_path):
+    """`[rooms.NAME.sandbox]` is passed as Claude Code's own `sandbox` setting for that room's process, so a room
+    can run a shell that writes only where the table lets it; a room without the table gets no sandbox key."""
+    import shutil
+    private, state = tmp_path / "private", tmp_path / "state"
+    shutil.copytree(EXAMPLE_PRIVATE, private)
+    state.mkdir()
+    rooms_toml = private / "rooms.toml"
+    rooms_toml.write_text(rooms_toml.read_text() + '\n[rooms.example-room.sandbox]\nenabled = true\n'
+                          '[rooms.example-room.sandbox.filesystem]\ndenyWrite = ["/home/someone/notes"]\n')
+    y = Yerkd(private, state)
+    assert y.spec_for("example-room").settings["sandbox"] == {"enabled": True, "filesystem": {"denyWrite": ["/home/someone/notes"]}}
+    assert "sandbox" not in y.spec_for("example-quiet").settings
+
+
 def test_the_daemon_reads_a_rooms_lines_in_that_rooms_view(tmp_path):
     """Cold read F2, the daemon's side: the topic hits and the recall pack of a room that is not an
     owner room carry the room's own view, so a former room's old lines (no id) never reach it."""

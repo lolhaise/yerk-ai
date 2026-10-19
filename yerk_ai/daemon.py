@@ -175,14 +175,14 @@ class Yerkd:
         token = secrets.token_hex(16)                      # this process's credential, bound with its session
         settings = {"permissions": {"allow": [f"Read(/{layer}/**)", *YERK_TOOLS, *conf.get("allow", [])]},
                     "hooks": hooks.settings_for(f"{self.url}/hook", token)}
-        mcp = mcp_server.room_config(f"{self.url}/mcp", name, rdir / "mcp.json", token)
+        settings.update({"sandbox": conf["sandbox"]} if "sandbox" in conf else {})   # Claude Code's own shell sandbox
         now = room_settings(conf, self.state, name, self.models)    # the room's override over rooms.toml
         extra = ["--effort", now["effort"][0]] if now["effort"][0] else []
         if flag(conf.get("thinking_panel")) and self.owner(name):
             extra += ["--thinking-display", "summarized"]      # the panel's text; off: the stream says nothing
-        return RoomSpec(room=name, model=now["model"][0], cwd=work, tools=list(conf.get("tools", [])),
-                        settings=settings, context_file=ctx, mcp_config=mcp, extra_args=extra, token=token,
-                        add_dirs=[layer, *(Path(x).expanduser() for x in conf.get("read", []))])   # `read`: more it may read
+        return RoomSpec(room=name, model=now["model"][0], cwd=work, tools=list(conf.get("tools", [])), settings=settings,
+                        context_file=ctx, mcp_config=mcp_server.room_config(f"{self.url}/mcp", name, rdir / "mcp.json", token),
+                        extra_args=extra, token=token, add_dirs=[layer, *(Path(x).expanduser() for x in conf.get("read", []))])
 
     def owner(self, room: str) -> bool:
         """An owner room (rooms.toml privacy, "owner" when unset); a name that is no room is not one."""
