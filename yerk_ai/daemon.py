@@ -178,19 +178,21 @@ class Yerkd:
         mcp = mcp_server.room_config(f"{self.url}/mcp", name, rdir / "mcp.json", token)
         now = room_settings(conf, self.state, name, self.models)    # the room's override over rooms.toml
         extra = ["--effort", now["effort"][0]] if now["effort"][0] else []
-        if flag(conf.get("thinking_panel")) and conf.get("privacy", "owner") == "owner":
+        if flag(conf.get("thinking_panel")) and self.owner(name):
             extra += ["--thinking-display", "summarized"]      # the panel's text; off: the stream says nothing
         return RoomSpec(room=name, model=now["model"][0], cwd=work, tools=list(conf.get("tools", [])),
                         settings=settings, context_file=ctx, mcp_config=mcp, add_dirs=[layer], extra_args=extra,
                         token=token)
 
+    def owner(self, room: str) -> bool:
+        """An owner room (rooms.toml privacy, "owner" when unset); a name that is no room is not one."""
+        return room in self.room_confs and str(self.room_confs[room].get("privacy", "owner")) == "owner"
+
     def reader(self, room: str) -> memory.Reader:
         """Who a memory read is for: an owner room reads everything, any other room its own lines and
         shared files, and a caller that is no room at all reads shared files only (R2)."""
-        conf = self.room_confs.get(room)
-        if conf is None:
-            return memory.Reader(room, "", False)
-        return memory.Reader(room, room_id(room, conf), str(conf.get("privacy", "owner")) == "owner")
+        return memory.Reader(room, room_id(room, self.room_confs[room]) if room in self.room_confs else "",
+                             self.owner(room))
 
     def check(self) -> mcp_server.Check:
         return mcp_server.checker(self.secret, self.worker_secret, self.sessions.by_token)
@@ -262,14 +264,14 @@ class Yerkd:
     async def tool_read_memory(self, room: str, path: str, start: int, lines: int) -> dict[str, Any]:
         return await asyncio.to_thread(memory.read, self.memory, path, start, lines, self.reader(room))
 
-    def owner_only(self, room: str, named: str) -> dict[str, Any] | None:
+    def owner_only(self, room: str, named: str, line: str = words.WORKERS_OWNER_ONLY) -> dict[str, Any] | None:
         """A room's own call that would start or read a worker: the owner's rooms only (a worker runs as
         the owner's user), and for the calling room only. None means go on; else the one line."""
         if not room:                                   # the install's own callers keep every form
             return None
-        if room not in self.room_confs or str(self.room_confs[room].get("privacy", "owner")) != "owner":
+        if not self.owner(room):
             log.warning("workers: room %s is not an owner room; its worker call was refused", room)
-            return {"ok": False, "line": words.WORKERS_OWNER_ONLY}
+            return {"ok": False, "line": line}
         if named and named != room:
             return {"ok": False, "line": words.WORKER_OWN_ROOM.format(room=named)}
         return None
@@ -285,10 +287,9 @@ class Yerkd:
         Any job runs as the owner's user (an agent job starts a worker; a script job runs its shell
         command with no sandbox at all), so a room adds one by the worker rule, whatever its kind."""
         if req.get("action") == "add":
-            refused = self.owner_only(room, str(req.get("room") or ""))
+            refused = self.owner_only(room, str(req.get("room") or ""), words.JOBS_OWNER_ONLY)
             if refused:
-                return {**refused, "line": words.JOBS_OWNER_ONLY} if refused["line"] == words.WORKERS_OWNER_ONLY \
-                    else refused
+                return refused
         return await self.jobs.handle(room, req)
 
     async def tool_hold(self, room: str, wait_for: str, reason: str) -> dict[str, Any]:
@@ -301,9 +302,9 @@ class Yerkd:
         """The `settings` tool: an owner room's model and thinking level, the daemon's override over
         rooms.toml (which is never written). The running turn ends as it began; then the room's process
         closes and the next message resumes the same session on the new ones (Room.respec)."""
-        conf = self.room_confs.get(room)
-        if conf is None or str(conf.get("privacy", "owner")) != "owner":
+        if not self.owner(room):
             return {"ok": False, "line": words.OWNER_ONLY}
+        conf = self.room_confs[room]
         want, level = model.strip(), effort.strip().lower()
         full = self.models.get(want.lower()) or (want if want in self.models.values() else want.lower())
         if want and full != "default" and full not in self.models.values():
@@ -347,7 +348,7 @@ class Yerkd:
     def room_pack(self, room: str, left: int = 6000) -> tuple[str, str]:
         r = self.rooms.get(room)
         text, _ = memory.room_pack(self.memory, room, left, exclude=r.current_ids() if r else set(),
-                                   rid=room_id(room, self.room_confs.get(room, {})), owner=self.reader(room).owner)
+                                   rid=room_id(room, self.room_confs.get(room, {})), owner=self.owner(room))
         return text, str(self.memory.daily)
 
     def compact_pack(self, room: str) -> str:
@@ -362,14 +363,14 @@ class Yerkd:
         """Names on file (owner-privacy rooms only) and the room's own lines on the topic. Off the loop."""
         conf = self.room_confs.get(room, {})
         names: list[dict[str, Any]] = []
-        if conf.get("privacy", "owner") == "owner" and conf.get("mention_recall", True):
+        if self.owner(room) and conf.get("mention_recall", True):
             try:
                 names = self.names.load().match(prompt)
             except (OSError, ValueError, KeyError) as e:
                 log.warning("mention recall skipped: %s", e)
         r = self.rooms.get(room)
         topics = memory.topic_hits(self.memory, room, prompt, r.current_ids() if r else set(), rid=room_id(room, conf),
-                                   owner=self.reader(room).owner) if conf.get("topic_recall", True) else []
+                                   owner=self.owner(room)) if conf.get("topic_recall", True) else []
         return abilities.asked(prompt, self.memory) + names, topics      # "can you do voice": the manifest's answer
 
     def shadow_stop(self, name: str, room: Room, reply: str, sid: str) -> list[tuple[str, str]]:
@@ -646,9 +647,7 @@ class Yerkd:
         before = keep.read_text().split() if keep.is_file() else []
         diff = "\n".join(difflib.unified_diff(before, lines, lineterm="", n=0))
         keep.parent.mkdir(parents=True, exist_ok=True)
-        fd = os.open(keep, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "w") as out:
-            out.write("\n".join(lines))
+        write_private(keep, "\n".join(lines))
         room = self.rooms.get(name or "")
         acct = room.rp.account.name if room and room.rp else ""
         self.ledger.tamper(t=round(time.time(), 3), who=f"{name or '?'}:{acct or '?'}", room=name or "", session_id=sid,
@@ -713,14 +712,10 @@ class Yerkd:
 
     def write_status(self, mode: str) -> None:
         """state/yerkd.json: what is running, for `yerk room close` and the probes."""
-        path = self.state / "yerkd.json"
-        tmp = path.with_suffix(".tmp")
-        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "w") as f:
-            json.dump({"pid": os.getpid(), "port": self.port, "mode": mode, "started": round(time.time(), 3),
-                       "rooms": sorted(self.rooms), "secret_file": str(self.secret_file),      # paths, never values
-                       "worker_secret_file": str(self.worker_secret_file)}, f)
-        os.replace(tmp, path)
+        write_private(self.state / "yerkd.json", json.dumps({
+            "pid": os.getpid(), "port": self.port, "mode": mode, "started": round(time.time(), 3),
+            "rooms": sorted(self.rooms), "secret_file": str(self.secret_file),      # paths, never values
+            "worker_secret_file": str(self.worker_secret_file)}))
 
     async def serve_http(self) -> None:
         import uvicorn

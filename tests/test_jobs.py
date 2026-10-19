@@ -5,6 +5,7 @@ account and cap and relays, NO_REPLY is silent, the schedule tool round-trips th
 import asyncio
 import hashlib
 import io
+import subprocess
 import time
 from contextlib import redirect_stdout
 from datetime import datetime, timezone
@@ -266,6 +267,33 @@ def test_the_real_adapter_writes_reads_and_removes_unit_files_and_a_removed_time
     sd.remove("yerk-job-x.service")                                                  # gone already: no error
     assert sorted(p.name for p in (tmp_path / "units").iterdir()) == ["yerk-job-hand.timer"]
     assert list((tmp_path / "stamps").iterdir()) == []                              # the stamp went with the timer
+
+
+def test_a_systemctl_that_cannot_start_raises_so_the_tool_keeps_the_job_and_a_removal_keeps_its_units(tmp_path, monkeypatch):
+    fail = {"enable": OSError(12, "Cannot allocate memory")}               # verb -> raised (a failed fork) or its exit
+
+    def run(cmd, **k):
+        why = fail.get(cmd[2]) if cmd[0] == "systemctl" else None
+        if isinstance(why, OSError):
+            raise why
+        return subprocess.CompletedProcess(cmd, why or 0, "[]", "boom\n")
+    monkeypatch.setattr(jobs.subprocess, "run", run)
+    sd = jobs.Systemd(folder=tmp_path / "units", stamps=tmp_path / "stamps")
+    with pytest.raises(OSError, match="Cannot allocate memory"):
+        sd.enable_now("yerk-job-x.timer")
+    fail["restart"] = 1                                                             # only a nonzero exit is a refusal
+    assert sd.restart("yerk-job-x.timer") == "systemctl --user restart yerk-job-x.timer exited 1: boom"
+    path = write_jobs(tmp_path / "jobs.toml", "")
+    assert jobs.schedule_add(path, sd, ENV, "x", "script", "every 1h", "true", "r", "UTC") == \
+        {"ok": False, "error": "the sync failed: [Errno 12] Cannot allocate memory"}
+    assert "[jobs.x]" in path.read_text()                                          # kept for the next sync
+    fail.clear()
+    jobs.sync(path, sd, ENV)
+    jobs.remove(path, "x")
+    fail["disable"] = OSError(12, "Cannot allocate memory")
+    with pytest.raises(OSError, match="Cannot allocate memory"):
+        jobs.sync(path, sd, ENV)
+    assert sd.ours() == ["x"]                                                       # the error comes before the files go
 
 
 # the runs

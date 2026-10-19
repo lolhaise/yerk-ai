@@ -38,7 +38,6 @@ import logging
 import os
 import queue
 import re
-import shlex
 import signal
 import subprocess
 import sys
@@ -49,8 +48,9 @@ import urllib.request
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
+from itertools import product
 from pathlib import Path
-from typing import Any, Callable, Iterator, Protocol
+from typing import Any, Callable, Iterator
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from . import words
@@ -58,7 +58,8 @@ from .config import REPO
 from .ledger import Ledger
 from .lifted.killtree import stop_group
 from .room import HARNESS, Inbound
-from .workers import ENV_KEEP, Workers, took
+from .words import DONE, NOT_DONE, NOTHING, PHONE
+from .workers import ENV_KEEP, Workers, systemctl, took, unit_line
 
 log = logging.getLogger("yerk.jobs")
 FILE = "jobs.toml"
@@ -121,19 +122,16 @@ class JobError(ValueError):
 # the schedule: cron, every, at
 MONTHS = {m: i + 1 for i, m in enumerate(("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov",
                                           "dec"))}
-DAYS = {d: i for i, d in enumerate(("sun", "mon", "tue", "wed", "thu", "fri", "sat"))}
 DAY_NAMES = ("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
+DAYS = {d.lower(): i for i, d in enumerate(DAY_NAMES)}
 
 
 def _num(text: str, names: dict[str, int], lo: int, hi: int) -> int:
     key = text.strip().lower()[:3]
-    if names and key in names and not text.strip().isdigit():
-        n = names[key]
-    else:
-        try:
-            n = int(text)
-        except ValueError:
-            raise JobError(f"{text!r} is not a number") from None
+    try:
+        n = names[key] if key in names else int(text)
+    except ValueError:
+        raise JobError(f"{text!r} is not a number") from None
     if not lo <= n <= hi:
         raise JobError(f"{n} is outside {lo}-{hi}")
     return n
@@ -197,42 +195,22 @@ class Cron:
                    parts[2] == "*", parts[4] == "*")
 
     def day_ok(self, d: date) -> bool:
-        if d.month not in self.month:
-            return False
         dom, dow = d.day in self.dom, (d.isoweekday() % 7) in self.dow
-        if self.dom_any and self.dow_any:
-            return True
-        if self.dom_any:
-            return dow
-        if self.dow_any:
-            return dom
-        return dom or dow                  # vixie cron: when both are restricted, either one matches
+        either = not (self.dom_any or self.dow_any)      # vixie cron: when both are restricted, either one matches
+        return d.month in self.month and ((dom or dow) if either else (dom and dow))
 
-    def _times(self, d: date, tz: ZoneInfo, reverse: bool = False) -> Iterator[datetime]:
-        for h in sorted(self.hour, reverse=reverse):
-            for m in sorted(self.minute, reverse=reverse):
+    def fire(self, at: float, tz: ZoneInfo, back: bool = False) -> float | None:
+        """The first fire after `at`, or with `back` the last one at or before it; None if none in five years."""
+        start = datetime.fromtimestamp(at, tz).date()
+        for i in range(366 * 5):
+            d = start + timedelta(days=-i if back else i)
+            if not self.day_ok(d):
+                continue
+            for h, m in sorted(product(self.hour, self.minute), reverse=back):
                 t = datetime(d.year, d.month, d.day, h, m, tzinfo=tz)
-                if t.astimezone(timezone.utc).astimezone(tz).replace(tzinfo=None) == t.replace(tzinfo=None):
-                    yield t                # a wall time the zone skips (a spring-forward gap) is not a fire
-
-    def next(self, after: float, tz: ZoneInfo) -> float:
-        start = datetime.fromtimestamp(after, tz).date()
-        for i in range(366 * 5):
-            d = start + timedelta(days=i)
-            if self.day_ok(d):
-                for t in self._times(d, tz):
-                    if t.timestamp() > after:
-                        return t.timestamp()
-        raise JobError("no fire time in the next five years")
-
-    def prev(self, before: float, tz: ZoneInfo) -> float | None:
-        start = datetime.fromtimestamp(before, tz).date()
-        for i in range(366 * 5):
-            d = start - timedelta(days=i)
-            if self.day_ok(d):
-                for t in self._times(d, tz, reverse=True):
-                    if t.timestamp() <= before:
-                        return t.timestamp()
+                real = t.astimezone(timezone.utc).astimezone(tz).replace(tzinfo=None) == t.replace(tzinfo=None)
+                if real and (t.timestamp() <= at if back else t.timestamp() > at):   # real: not a spring-forward gap
+                    return t.timestamp()
         return None
 
     def calendar(self, tz: str) -> list[str]:
@@ -364,7 +342,7 @@ class Job:
         """What the schedule says comes next (systemd's own answer is the one shown; this is for
         the plan, the planned time and the tests)."""
         if self.cron is not None:
-            return self.cron.next(now, self.zone)
+            return self.cron.fire(now, self.zone)
         if self.when == "every":
             return (last if last else now) + self.every_seconds
         return self.at_epoch if self.at_epoch > now else None
@@ -373,7 +351,7 @@ class Job:
         """The time this run was meant for: the clock instant at or before the fire, the one-shot's
         time, or for a monotonic interval the timer's own trigger time."""
         if self.cron is not None:
-            return self.cron.prev(fired, self.zone) or fired
+            return self.cron.fire(fired, self.zone, back=True) or fired
         if self.when == "at":
             return self.at_epoch
         return last_trigger if last_trigger and abs(fired - last_trigger) < 3600 else fired
@@ -648,20 +626,17 @@ def env_for(private: Path, state: Path) -> Env:
     return Env(sys.executable, REPO, private.resolve(), state.resolve())
 
 
-def _q(text: str) -> str:
-    return shlex.quote(text).replace("%", "%%").replace("$", "$$")
-
-
 def unit_texts(job: Job, env: Env) -> tuple[str, str]:
     """(timer, service) for the job, byte for byte what sync writes; a watcher has no timer ("")."""
     head = f"{HEADER}{job.name}.\n"
+    step = "watch" if job.kind == "watcher" else "run"
+    run = [f"WorkingDirectory={unit_line(str(env.repo))}", f'Environment="PYTHONPATH={unit_line(str(env.repo))}"',
+           f'Environment="YERK_PRIVATE={unit_line(str(env.private))}"',
+           f'Environment="YERK_STATE={unit_line(str(env.state))}"',
+           f"ExecStart={unit_line(env.python, '-P', '-m', 'yerk_ai.jobs', step, job.name)}"]
     if job.kind == "watcher":                # always on: the supervisor restarts the command, systemd it
         return "", "\n".join([head, "[Unit]", f"Description=Yerk AI watcher {job.name}", "", "[Service]", "Type=simple",
-                              f"WorkingDirectory={_q(str(env.repo))}", f'Environment="PYTHONPATH={_q(str(env.repo))}"',
-                              f'Environment="YERK_PRIVATE={_q(str(env.private))}"',
-                              f'Environment="YERK_STATE={_q(str(env.state))}"',
-                              f"ExecStart={' '.join(_q(x) for x in (env.python, '-P', '-m', 'yerk_ai.jobs', 'watch', job.name))}",
-                              "Restart=always", "RestartSec=10", "KillMode=control-group", "TimeoutStopSec=20", "",
+                              *run, "Restart=always", "RestartSec=10", "KillMode=control-group", "TimeoutStopSec=20", "",
                               "[Install]", "WantedBy=default.target", ""])
     timer = [head, "[Unit]", f"Description=Yerk AI job {job.name} (timer)", "", "[Timer]"]
     if not job.calendar():                 # an interval off the clock's boundaries: systemd's monotonic clock
@@ -670,31 +645,14 @@ def unit_texts(job: Job, env: Env) -> tuple[str, str]:
         timer += [f"OnCalendar={c}" for c in job.calendar()] + ["Persistent=true"]
     timer += ["AccuracySec=1s", f"Unit={job.unit}.service", "", "[Install]", "WantedBy=timers.target", ""]
     start = 120 if job.kind == "agent" else int(job.cap * 60) + 120      # the runner's own cap comes first (L163)
-    service = [head, "[Unit]", f"Description=Yerk AI job {job.name}", "", "[Service]", "Type=oneshot",
-               f"WorkingDirectory={_q(str(env.repo))}", f'Environment="PYTHONPATH={_q(str(env.repo))}"',
-               f'Environment="YERK_PRIVATE={_q(str(env.private))}"', f'Environment="YERK_STATE={_q(str(env.state))}"',
-               f"ExecStart={' '.join(_q(x) for x in (env.python, '-P', '-m', 'yerk_ai.jobs', 'run', job.name))}",
+    service = [head, "[Unit]", f"Description=Yerk AI job {job.name}", "", "[Service]", "Type=oneshot", *run,
                f"TimeoutStartSec={start}", ""]
     return "\n".join(timer), "\n".join(service)
 
 
-class Units(Protocol):
-    """systemd's part, as the code relies on it; tests give a fake with files in a folder."""
-    def read(self, unit: str) -> str | None: ...
-    def write(self, unit: str, text: str) -> None: ...
-    def remove(self, unit: str) -> None: ...
-    def ours(self) -> list[str]: ...                                 # job names with a generated timer on disk
-    def reload(self) -> None: ...
-    def enable_now(self, timer: str) -> str: ...                     # "" or why not
-    def restart(self, timer: str) -> str: ...
-    def disable_now(self, timer: str) -> str: ...
-    def check(self, spec: str) -> str: ...                           # systemd-analyze calendar: "" or why not
-    def timers(self) -> dict[str, dict[str, float | None]]: ...     # timer unit -> {"next", "last"} (epoch)
-    def active(self, unit: str) -> str: ...                          # a service's ActiveState ("active", ...)
-
-
 class Systemd:
-    """The real one: unit files in the user's systemd folder, `systemctl --user`, `systemd-analyze`."""
+    """systemd's part, as the code relies on it (tests give a fake with files in a folder): unit files in
+    the user's systemd folder, `systemctl --user`, `systemd-analyze`. The verbs answer "" or why not."""
 
     def __init__(self, folder: Path | None = None, stamps: Path | None = None):
         base = Path(os.environ.get("XDG_CONFIG_HOME") or "~/.config").expanduser()
@@ -726,7 +684,7 @@ class Systemd:
             except FileNotFoundError:
                 pass
 
-    def ours(self) -> list[str]:
+    def ours(self) -> list[str]:                              # job names with a generated unit on disk
         out = []
         for p in sorted([*self.folder.glob(f"{UNIT}*.timer"), *self.folder.glob(f"{UNIT}*.service")]):
             try:
@@ -736,22 +694,14 @@ class Systemd:
                 pass
         return sorted(set(out))
 
-    def active(self, unit: str) -> str:
-        p = self._ctl("show", "-p", "ActiveState", "--value", unit)
-        if p.returncode:
-            raise OSError(f"systemctl --user show {unit} exited {p.returncode}: {p.stderr.strip()[:200]}")
-        return p.stdout.strip()
-
-    def _ctl(self, *args: str, timeout: float = 60) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(["systemctl", "--user", *args], capture_output=True, text=True, timeout=timeout)
+    def active(self, unit: str) -> str:                       # a service's ActiveState ("active", ...)
+        return systemctl("show", "-p", "ActiveState", "--value", unit, check=f"show {unit}").stdout.strip()
 
     def reload(self) -> None:
-        p = self._ctl("daemon-reload")
-        if p.returncode:
-            raise OSError(f"systemctl --user daemon-reload exited {p.returncode}: {p.stderr.strip()[:200]}")
+        systemctl("daemon-reload", check="daemon-reload")
 
     def _unit_cmd(self, *args: str) -> str:
-        p = self._ctl(*args)
+        p = systemctl(*args)
         return "" if p.returncode == 0 else f"systemctl --user {' '.join(args)} exited {p.returncode}: " \
                                              f"{p.stderr.strip()[:200]}"
 
@@ -776,10 +726,8 @@ class Systemd:
             return f"{spec!r} never fires again (it is in the past)"
         return ""
 
-    def timers(self) -> dict[str, dict[str, float | None]]:
-        p = self._ctl("list-timers", "--all", "--output=json", f"{UNIT}*")
-        if p.returncode:
-            raise OSError(f"systemctl --user list-timers exited {p.returncode}: {p.stderr.strip()[:200]}")
+    def timers(self) -> dict[str, dict[str, float | None]]:   # timer unit -> {"next", "last"} (epoch)
+        p = systemctl("list-timers", "--all", "--output=json", f"{UNIT}*", check="list-timers")
         out: dict[str, dict[str, float | None]] = {}
         for r in json.loads(p.stdout or "[]"):
             out[str(r["unit"])] = {"next": (r["next"] / 1e6) if r.get("next") else None,
@@ -799,7 +747,7 @@ class Plan:
     failed: dict[str, str] = field(default_factory=dict)       # systemd refused: job -> why
 
 
-def plan(path: Path, units: Units, env: Env, now: float | None = None) -> Plan:
+def plan(path: Path, units: Systemd, env: Env, now: float | None = None) -> Plan:
     jobs, errors = load(path, now)
     p = Plan(jobs=jobs, errors=errors)
     for name, job in jobs.items():
@@ -823,7 +771,7 @@ def plan(path: Path, units: Units, env: Env, now: float | None = None) -> Plan:
     return p
 
 
-def apply(p: Plan, units: Units, env: Env) -> None:
+def apply(p: Plan, units: Systemd, env: Env) -> None:
     """Write the changed units, reload once, start the new timers and restart the changed ones,
     disable and remove the dropped ones."""
     def lead(name: str) -> str:                          # what is enabled: the timer, or a watcher's service
@@ -854,7 +802,7 @@ def apply(p: Plan, units: Units, env: Env) -> None:
             p.failed[name] = why
 
 
-def readback(jobs: dict[str, Job], units: Units, now: float | None = None) -> dict[str, dict[str, Any]]:
+def readback(jobs: dict[str, Job], units: Systemd, now: float | None = None) -> dict[str, dict[str, Any]]:
     """Every job's next and last fire as systemd has them (never from memory)."""
     now = time.time() if now is None else now
     timers = units.timers()
@@ -874,7 +822,7 @@ def readback(jobs: dict[str, Job], units: Units, now: float | None = None) -> di
     return out
 
 
-def sync(path: Path, units: Units, env: Env, now: float | None = None) -> tuple[Plan, dict[str, dict[str, Any]]]:
+def sync(path: Path, units: Systemd, env: Env, now: float | None = None) -> tuple[Plan, dict[str, dict[str, Any]]]:
     p = plan(path, units, env, now)
     apply(p, units, env)
     return p, readback(p.jobs, units, now)
@@ -910,15 +858,11 @@ def read_lines(back: dict[str, dict[str, Any]], jobs: dict[str, Job], now: float
     return out or ["jobs: none"]
 
 
-DONE, NOT_DONE, NOTHING = "\N{LARGE GREEN CIRCLE}", "\N{LARGE RED CIRCLE}", "\N{MEDIUM WHITE CIRCLE}"
-PHONE = 40                        # a status line, in phone columns (a dot takes two), before it wraps
-
-
 def phone(text: str) -> str:
     return text if len(text) <= PHONE - 2 else text[:PHONE - 3].rstrip() + "\N{HORIZONTAL ELLIPSIS}"
 
 
-def status_lines(path: Path, units: Units, now: float | None = None) -> list[str]:
+def status_lines(path: Path, units: Systemd, now: float | None = None) -> list[str]:
     """`yerk status`: one line per job, state first and phone width: a green dot and how long until
     its next fire (from systemd, never from memory), a white dot for a job with no timer, a red dot
     for one that cannot be scheduled or a timer with no job. The detail (times, zones, why) is
@@ -947,7 +891,7 @@ def status_lines(path: Path, units: Units, now: float | None = None) -> list[str
 
 
 # the run: inside the unit
-def last_trigger(units: Units, job: Job) -> float | None:
+def last_trigger(units: Systemd, job: Job) -> float | None:
     try:
         t = units.timers().get(f"{job.unit}.timer")
     except (OSError, subprocess.SubprocessError, ValueError):
@@ -955,26 +899,20 @@ def last_trigger(units: Units, job: Job) -> float | None:
     return t["last"] if t else None
 
 
-def run_script(job: Job, folder: Path, base: dict[str, str] | None = None) -> dict[str, Any]:
+def run_script(job: Job, folder: Path) -> dict[str, Any]:
     """The command under /bin/sh with an account-free environment, the job's cap, stdout and stderr
     to files in the run folder. Returns exit, timed_out, output and the stderr tail."""
-    env = {k: v for k, v in (os.environ if base is None else base).items() if k in ENV_KEEP}
+    env = {k: v for k, v in os.environ.items() if k in ENV_KEEP}
     env.update(TZ=job.tz or "UTC", YERK_JOB=job.name, YERK_JOB_DIR=str(folder), YERK_ROOM=job.room)
     t0 = time.time()
     with open(folder / "stdout", "wb") as out, open(folder / "stderr", "wb") as err:
         p = subprocess.Popen(["/bin/sh", "-c", job.payload], cwd=folder, env=env, stdout=out, stderr=err,
                              stdin=subprocess.DEVNULL, start_new_session=True)
-        timed_out = False
         try:
-            rc = p.wait(timeout=job.cap * 60)
+            rc, timed_out = p.wait(timeout=job.cap * 60), False
         except subprocess.TimeoutExpired:
-            timed_out = True
-            os.killpg(p.pid, signal.SIGTERM)
-            try:
-                rc = p.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                os.killpg(p.pid, signal.SIGKILL)
-                rc = p.wait()
+            stop_group(p, grace=10)                    # SIGTERM to its process group, SIGKILL 10 s on
+            rc, timed_out = p.wait(), True
     text = (folder / "stdout").read_text(errors="replace")
     tail = (folder / "stderr").read_text(errors="replace").strip().splitlines()
     return {"exit": rc, "timed_out": timed_out, "output": text, "chars": len(text),
@@ -1007,12 +945,11 @@ class Watcher:
 
     def __init__(self, name: str, private: Path, state: Path,
                  handoff: Callable[[dict[str, Any]], dict[str, Any]] | None = None, popen: Any = subprocess.Popen,
-                 clock: Callable[[], float] = time.time, sleep: Callable[[float], None] = time.sleep,
                  diag: Callable[[str], None] | None = None):
         self.name, self.private, self.state = name, private, state
         self.ledger = Ledger(state / "ledger.sqlite")
         self.handoff = handoff or (lambda payload: post_control(state, payload, 30))
-        self.popen, self.clock, self.sleep = popen, clock, sleep
+        self.popen = popen
         self.diag = diag or (lambda m: print(f"[watch {name}] {m}", file=sys.stderr, flush=True))
         self.stopping = False
         self.proc: Any = None
@@ -1024,7 +961,7 @@ class Watcher:
     def _row(self, job: Job, state: str, got: list[tuple[str, str]]) -> int:
         return self.ledger.watch_add(job=self.name, room=job.room, wake=job.wake, state=state,
                                      lines="\n".join(t for t, _ in got), keys=json.dumps([k for _, k in got]),
-                                     received=round(self.clock(), 3), attempts=0)
+                                     received=round(time.time(), 3), attempts=0)
 
     def flush(self, job: Job, got: list[tuple[str, str]]) -> int:
         eid = self._row(job, "pending", got)                # persisted before the daemon hears of it
@@ -1046,7 +983,7 @@ class Watcher:
         primed = any(r["state"] == "primed" for r in rows)
         env = {k: v for k, v in os.environ.items() if k in ENV_KEEP}
         env.update(TZ=job.tz or "UTC", YERK_JOB=job.name, YERK_ROOM=job.room)
-        start = self.clock()
+        start = time.time()
         p = self.popen(["/bin/sh", "-c", job.payload], stdout=subprocess.PIPE, stdin=subprocess.DEVNULL, env=env,
                        start_new_session=True, text=True, bufsize=1)
         self.proc = p
@@ -1064,10 +1001,10 @@ class Watcher:
         while True:
             waits = [t for t in (prime_until, deadline) if t is not None]
             try:
-                x = lines.get(timeout=max(0.05, min(waits) - self.clock()) if waits else 1.0)
+                x = lines.get(timeout=max(0.05, min(waits) - time.time()) if waits else 1.0)
             except queue.Empty:
                 x = ""
-            now = self.clock()
+            now = time.time()
             if prime_until is not None and (now >= prime_until or x is None):
                 self._row(job, "primed", absorbed)
                 self.diag(f"primed: {len(absorbed)} line(s) at the first start are history, not events")
@@ -1105,35 +1042,36 @@ class Watcher:
         signal.signal(signal.SIGINT, stop)
         backoff = BACKOFF[0]
         while not self.stopping:
-            t0 = self.clock()
+            t0 = time.time()
             rc = self.once()
             if self.stopping:
                 break
-            ran = self.clock() - t0
+            ran = time.time() - t0
             if ran >= STABLE:
                 backoff = BACKOFF[0]
             self.diag(f"the command ended (exit {rc}) after {ran:.0f} s; restarting in {backoff:g} s")
-            self.sleep(backoff)
+            time.sleep(backoff)
             backoff = min(backoff * 2, BACKOFF[1])
         return 0
 
 
-def post_control(state: Path, payload: dict[str, Any], timeout: float = 120, worker: bool = False) -> dict[str, Any]:
-    """One POST to the running daemon's /control under the install's secret (a worker's own server:
-    the worker secret, reads only); OSError when no daemon runs on this state folder. yerkd.json names
-    the secret files by path, never by value."""
+def post_control(state: Path, payload: dict[str, Any], timeout: float = 120, worker: bool = False,
+                 path: str = "control") -> dict[str, Any]:
+    """One POST to the running daemon's /control (or /status) under the install's secret (a worker's own
+    server: the worker secret, reads only); OSError when no daemon runs on this state folder. yerkd.json
+    names the secret files by path, never by value."""
     from .config import read_secret
     from .mcp_server import HEADER
     st = json.loads((state / "yerkd.json").read_text())
     os.kill(int(st["pid"]), 0)
     secret = read_secret(Path(str(st.get("worker_secret_file" if worker else "secret_file") or "/nonexistent")))
-    req = urllib.request.Request(f"http://127.0.0.1:{st['port']}/control", data=json.dumps(payload).encode(),
+    req = urllib.request.Request(f"http://127.0.0.1:{st['port']}/{path}", data=json.dumps(payload).encode(),
                                  headers={"Content-Type": "application/json", HEADER: secret})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return dict(json.loads(r.read()))
 
 
-def run(name: str, private: Path, state: Path, units: Units | None = None,
+def run(name: str, private: Path, state: Path, units: Systemd | None = None,
         handoff: Callable[[dict[str, Any]], dict[str, Any]] | None = None, now: float | None = None) -> int:
     """The unit's one step. A script job: ledger the run, run the command, hand the result to the
     daemon for delivery (the ledger says "undelivered" when none runs). An agent job: ask the daemon
@@ -1218,7 +1156,7 @@ def brief_for(job: Job, run_id: int, fired: float) -> str:
 
 
 # the schedule tool's three actions: one code path for the tool and for `yerk schedule`
-def schedule_add(path: Path, units: Units, env: Env, name: str, kind: str, when: str, what: str, room: str, tz: str,
+def schedule_add(path: Path, units: Systemd, env: Env, name: str, kind: str, when: str, what: str, room: str, tz: str,
                  deliver: str = "announce", cap: float = 0.0, account: str = "") -> dict[str, Any]:
     """Write the job to the file, sync, and answer with the next fire time read back from systemd;
     a job systemd will not schedule is taken out of the file again."""
@@ -1245,7 +1183,7 @@ def schedule_add(path: Path, units: Units, env: Env, name: str, kind: str, when:
             "next_text": f"{when_text(r['next'], job.tz)} ({in_text(r['next'], now)})", "diff": diff_lines(p)}
 
 
-def schedule_remove(path: Path, units: Units, env: Env, name: str) -> dict[str, Any]:
+def schedule_remove(path: Path, units: Systemd, env: Env, name: str) -> dict[str, Any]:
     try:
         had = remove(path, name)
         p, _ = sync(path, units, env)
@@ -1256,7 +1194,7 @@ def schedule_remove(path: Path, units: Units, env: Env, name: str) -> dict[str, 
     return {"ok": True, "name": name, "removed": True, "diff": diff_lines(p)}
 
 
-def schedule_list(path: Path, units: Units) -> dict[str, Any]:
+def schedule_list(path: Path, units: Systemd) -> dict[str, Any]:
     jobs, errors = load(path)
     try:
         back = readback(jobs, units)
@@ -1277,7 +1215,7 @@ class Jobs:
 
     def __init__(self, private: Path, state: Path, ledger: Ledger, conf: dict[str, Any], rooms: dict[str, Any],
                  channels: dict[str, Any], room_confs: dict[str, dict[str, Any]], daemon_conf: dict[str, Any],
-                 workers: Workers, units: Units | None = None):
+                 workers: Workers, units: Systemd | None = None):
         self.private, self.state, self.ledger, self.conf = private, state, ledger, conf
         self.rooms, self.channels, self.room_confs, self.daemon_conf = rooms, channels, room_confs, daemon_conf
         self.workers, self.units = workers, units or Systemd()
@@ -1301,7 +1239,7 @@ class Jobs:
         if action == "remove":
             return await asyncio.to_thread(self.remove, str(req.get("name", "")))
         if action == "list":
-            return await asyncio.to_thread(self.listing)
+            return await asyncio.to_thread(schedule_list, self.path, self.units)
         if action == "sync":
             return await asyncio.to_thread(self.sync_now)
         if action == "fire":
@@ -1435,9 +1373,6 @@ class Jobs:
         if out["ok"]:
             log.info("job %s: removed", name)
         return out
-
-    def listing(self) -> dict[str, Any]:
-        return schedule_list(self.path, self.units)
 
     def sync_now(self) -> dict[str, Any]:
         try:

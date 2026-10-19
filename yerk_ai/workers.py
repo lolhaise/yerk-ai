@@ -50,7 +50,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Protocol, Sequence
+from typing import Any, Awaitable, Callable, Sequence
 
 from . import words
 from .accounts import Account, Cooldowns, account_env, pick
@@ -128,15 +128,16 @@ def mcp_config(state: Path, room: str, tools: list[str], path: Path) -> Path:
     return path
 
 
-# the unit
-class Launcher(Protocol):
-    def start(self, unit: str, argv: list[str], env: dict[str, str], cwd: Path, out: Path, err: Path,
-              cap: float, post: list[str]) -> None: ...
-    def stop(self, unit: str) -> None: ...
-    def running(self) -> set[str]: ...
+# the unit; systemctl and unit_line are the jobs' and the deploy's too
+def systemctl(*args: str, check: str = "", timeout: float = 60) -> subprocess.CompletedProcess[str]:
+    """`systemctl --user ARGS`; with `check`, an OSError naming it and the stderr when it fails."""
+    p = subprocess.run(["systemctl", "--user", *args], capture_output=True, text=True, timeout=timeout)
+    if check and p.returncode:
+        raise OSError(f"systemctl --user {check} exited {p.returncode}: {p.stderr.strip()[:200]}")
+    return p
 
 
-def _exec_line(argv: list[str]) -> str:
+def unit_line(*argv: str) -> str:
     """argv as one unit-file command line: quoted, with systemd's % and $ escaped."""
     return " ".join(shlex.quote(a).replace("%", "%%").replace("$", "$$") for a in argv)
 
@@ -187,7 +188,7 @@ class Systemd:
         cmd = ["systemd-run", "--user", "--unit", unit, "--collect", "--quiet", "--working-directory", str(cwd),
                "--description", f"Yerk AI worker {unit.removeprefix(UNIT)}",
                "-p", f"RuntimeMaxSec={max(1, int(cap))}", "-p", f"StandardOutput=append:{out}",
-               "-p", f"StandardError=append:{err}", "-p", f"ExecStopPost={_exec_line(post)}",
+               "-p", f"StandardError=append:{err}", "-p", f"ExecStopPost={unit_line(*post)}",
                "-p", "KillMode=control-group", "-p", "TimeoutStopSec=20", *self.sandbox(cwd, env),
                *[f"--setenv={k}={v}" for k, v in env.items()], "--", *argv]
         p = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
@@ -195,14 +196,10 @@ class Systemd:
             raise OSError(f"systemd-run exited {p.returncode}: {p.stderr.strip()[:300]}")
 
     def stop(self, unit: str) -> None:
-        subprocess.run(["systemctl", "--user", "stop", "--no-block", f"{unit}.service"], capture_output=True,
-                       timeout=60)
+        systemctl("stop", "--no-block", f"{unit}.service")
 
-    def running(self) -> set[str]:
-        p = subprocess.run(["systemctl", "--user", "list-units", f"{UNIT}*", "--all", "--plain", "--no-legend",
-                            "--no-pager"], capture_output=True, text=True, timeout=60)
-        if p.returncode:                    # unreadable is not empty: nobody is declared lost on it
-            raise OSError(f"systemctl --user list-units exited {p.returncode}: {p.stderr.strip()[:200]}")
+    def running(self) -> set[str]:          # unreadable is not empty (OSError): nobody is declared lost on it
+        p = systemctl("list-units", f"{UNIT}*", "--all", "--plain", "--no-legend", "--no-pager", check="list-units")
         rows = [x.split() for x in p.stdout.splitlines() if x.strip()]
         return {r[0].removesuffix(".service") for r in rows if len(r) > 2 and r[2] not in ("inactive", "failed")}
 
@@ -407,9 +404,8 @@ def relay_line(row: dict[str, Any]) -> str:
     """The line a relay reply always carries: the report is saved, and the command that opens it, or,
     when the worker left no report file, that there is none. The relay asks for it and names it as the
     line its reply must carry (room.fit adds it when the reply lacks it)."""
-    if not Path(str(row["report"])).is_file():
-        return words.SUB + words.NO_REPORT.format(id=row["id"])
-    return words.carried(str(row["report"]))
+    saved = words.REPORT_SAVED if Path(str(row["report"])).is_file() else words.NO_REPORT
+    return words.SUB + saved.format(id=row["id"])
 
 
 class Workers:
@@ -418,13 +414,13 @@ class Workers:
 
     def __init__(self, ledger: Ledger, conf: Settings, accounts: list[Account], cooldowns: Cooldowns,
                  rooms: dict[str, Any], channels: dict[str, Any], room_confs: dict[str, dict[str, Any]],
-                 launcher: Launcher | None = None, state: Path | None = None, hidden: Sequence[Path] = ()):
+                 launcher: Systemd | None = None, state: Path | None = None, hidden: Sequence[Path] = ()):
         self.ledger, self.conf, self.accounts, self.cooldowns = ledger, conf, accounts, cooldowns
         self.state = state or conf.root.parent             # the daemon's state folder (a worker's tools reach it)
         self.rooms, self.channels, self.room_confs = rooms, channels, room_confs
         # a unit sees the state folder read-only, its own folder writable and `hidden` not at all
         # (the daemon's: the install's secret, every room's folder); Systemd.sandbox
-        self.launcher: Launcher = launcher or Systemd(self.state, hidden)
+        self.launcher: Systemd = launcher or Systemd(self.state, hidden)
         self.gate: dict[str, Any] = {}       # the daemon's [gates] for a worker's hook: trash, private, external
         self.watch: Watch | None = None
         self.live: dict[str, dict[str, Any]] = {}      # id -> its ledger row, while its unit runs
@@ -578,7 +574,6 @@ class Workers:
         return {**out, "card": row["card"]}
 
     def busy(self, account: str) -> int:
-        """Workers running now on `account` (not the ones in line)."""
         return sum(1 for r in self.live.values() if r["account"] == account and not r.get("waiting"))
 
     def in_line(self, account: str) -> list[dict[str, Any]]:
@@ -830,7 +825,7 @@ def listing(ledger: Ledger, limit: int = 20) -> list[dict[str, Any]]:
     """The newest workers, running or ended: what `worker list` and `yerk worker list` show."""
     now = time.time()
     return [{"id": r["id"], "room": r["room"], "account": r["account"], "unit": r["unit"],
-             "state": r["exit"] or ("waiting for an account" if r.get("waiting") else "running"), "elapsed": took((r["finished"] or now) - r["started"]),
+             "state": r["exit"] or (words.WAITING_ACCOUNT if r.get("waiting") else "running"), "elapsed": took((r["finished"] or now) - r["started"]),
              "cap_minutes": r["cap"] / 60, "result": r["result"], "report": r["report"],
              "relay": r["relay"], "relay_note": r["relay_note"]} for r in ledger.workers(limit=limit)]
 
