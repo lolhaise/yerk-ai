@@ -206,6 +206,34 @@ def test_a_rooms_read_folders_are_added_and_never_reach_yerks_own(tmp_path):
             Yerkd(private, state)
 
 
+def test_a_relative_read_folder_is_judged_where_claude_code_lands_it_and_handed_over_resolved(tmp_path, monkeypatch):
+    """Cold read 33 R1: Claude Code lands a relative --add-dir from the room's work folder, so the start-up check resolves
+    `read` from there too, whatever folder the daemon started in, and the room is handed the very folder judged:
+    `../../../secrets` is the state folder's secrets and stops the daemon; a symlink goes over as the folder it was."""
+    import shutil
+    import pytest
+    private, state, notes = tmp_path / "private", tmp_path / "state", tmp_path / "notes"
+    shutil.copytree(EXAMPLE_PRIVATE, private)
+    state.mkdir()
+    notes.mkdir()
+    (tmp_path / "link").symlink_to(notes)
+    (cwd := tmp_path / "a" / "b" / "c").mkdir(parents=True)
+    monkeypatch.chdir(cwd)                          # three deep, like the live unit's, so ../../.. from here is tmp_path
+    base = (private / "rooms.toml").read_text()
+
+    def read(*ps: str) -> None:
+        (private / "rooms.toml").write_text(base.replace("[rooms.example-room]\n", f"[rooms.example-room]\nread = {json.dumps(ps)}\n", 1))
+    for bad, lands in (("../../../secrets", state / "secrets"), ("../..", state / "rooms"),
+                       ("../../../../private/memory", private / "memory")):
+        read(bad)
+        with pytest.raises(SystemExit) as e:
+            Yerkd(private, state)
+        assert f"read {lands} reaches Yerk's own folders" in str(e.value)
+    read("../../../../notes", str(tmp_path / "link"))
+    y = Yerkd(private, state)
+    assert y.spec_for("example-room").add_dirs[1:] == y.read_dirs["example-room"] == [notes, notes]
+
+
 def test_a_rooms_sandbox_table_reaches_its_claude_code_settings_and_no_other_room(tmp_path):
     """`[rooms.NAME.sandbox]` is passed as Claude Code's own `sandbox` setting for that room's process, so a room
     can run a shell that writes only where the table lets it; a room without the table gets no sandbox key."""

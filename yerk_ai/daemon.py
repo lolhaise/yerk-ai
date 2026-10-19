@@ -107,7 +107,9 @@ class Yerkd:
         self.port = port or int(self.conf.get("http", {}).get("port", 0)) or free_port()
         self.url = f"http://127.0.0.1:{self.port}"
         self.budgets, self.room_confs, self.models = budgets(), rooms(private), models(self.conf)
-        for n, p in ((n, Path(x).expanduser().resolve()) for n, c in self.room_confs.items() for x in c.get("read", [])):
+        self.read_dirs = {n: [(state / "rooms" / n / "work" / Path(x).expanduser()).resolve() for x in c.get("read", [])]
+                          for n, c in self.room_confs.items()}   # from the work folder, as Claude Code lands one
+        for n, p in ((n, p) for n, ps in self.read_dirs.items() for p in ps):
             if any(q.is_relative_to(p) or p.is_relative_to(q) for q in (private.resolve(), state.resolve())):   # F4
                 raise SystemExit(f"room {n}: read {p} reaches Yerk's own folders; name one outside {private} and {state}")
         self.accounts = [only_account] if only_account else load_accounts(private / "accounts.toml")
@@ -182,7 +184,7 @@ class Yerkd:
             extra += ["--thinking-display", "summarized"]      # the panel's text; off: the stream says nothing
         return RoomSpec(room=name, model=now["model"][0], cwd=work, tools=list(conf.get("tools", [])), settings=settings,
                         context_file=ctx, mcp_config=mcp_server.room_config(f"{self.url}/mcp", name, rdir / "mcp.json", token),
-                        extra_args=extra, token=token, add_dirs=[layer, *(Path(x).expanduser() for x in conf.get("read", []))])
+                        extra_args=extra, token=token, add_dirs=[layer, *self.read_dirs.get(name, [])])   # `read`, as F4 judged it
 
     def owner(self, room: str) -> bool:
         """An owner room (rooms.toml privacy, "owner" when unset); a name that is no room is not one."""
@@ -355,9 +357,7 @@ class Yerkd:
         """The recall pack as session start builds it, for the re-add after a compaction."""
         conf = self.room_confs[room]
         limit = int(self.budgets["session_start"]["appended"]["recall_pack"])
-        text, _ = context.recall_pack(context.layer_dir(self.private, conf), conf, limit,
-                                      lambda left: self.room_pack(room, left))
-        return text
+        return context.recall_pack(context.layer_dir(self.private, conf), conf, limit, lambda left: self.room_pack(room, left))[0]
 
     def recall_for(self, room: str, prompt: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         """Names on file (owner-privacy rooms only) and the room's own lines on the topic. Off the loop."""
