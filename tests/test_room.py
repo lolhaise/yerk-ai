@@ -328,3 +328,48 @@ def test_a_quoted_false_turns_the_thinking_panel_off(env):
         shown[repr(value)] = room.card.thinking_on
     assert [k for k, on in shown.items() if on] == ["True", "'true'", "' TRUE '"]
     assert flag("off", default=True) and not flag("false", default=True)
+
+
+def test_a_process_whose_hooks_never_call_back_says_so_once(env):
+    """Claude Code treats a failed hook as non-blocking, so a room whose hooks never reach the daemon
+    (2026-10-19: a sandboxed room's proxy refused every http hook with 403) ran with no clock, no recall
+    and no gates, silently. An answered turn with no hook call at the daemon is said once per process."""
+    make, ledger, tmp_path = env
+    chan = Chan()
+    room = make(chan)
+    send(room, ledger, "m1", "HOOK_ERROR hello")            # the fake says what Claude Code says: a Stop hook error
+    wait_idle(room)
+    send(room, ledger, "m2", "HOOK_ERROR again")
+    wait_idle(room)
+    assert [t for t, _ in chan.notices] == [f"{words.NOT_DONE} {words.HOOKS_DEAD}"] and len(chan.replies) == 2
+    rows = ledger._select("SELECT room, gate, decision, rule FROM gates", ())
+    assert [(r["room"], r["gate"], r["decision"], r["rule"]) for r in rows] == [("r", "hooks", "dead", "no-hook-call")]
+
+
+def test_a_dead_hook_notice_comes_back_on_a_new_process(env):
+    make, ledger, tmp_path = env
+    chan = Chan()
+    room = make(chan)
+    send(room, ledger, "m1", "HOOK_ERROR hello")
+    wait_idle(room)
+    assert room.reap_idle(force=True) and room.rp is None       # the idle close; the next message resumes
+    send(room, ledger, "m2", "HOOK_ERROR again")
+    wait_idle(room)
+    assert [t for t, _ in chan.notices] == [f"{words.NOT_DONE} {words.HOOKS_DEAD}"] * 2 and len(chan.replies) == 2
+
+
+def test_a_hook_error_with_a_hook_call_at_the_daemon_is_quiet(env):
+    make, ledger, tmp_path = env
+    chan = Chan()
+    room = make(chan)
+    start = room._start
+
+    def started(account, fresh=False):
+        start(account, fresh=fresh)
+        room.hooked = True                      # what daemon.hook does on the process's first bound call
+
+    room._start = started
+    send(room, ledger, "m1", "HOOK_ERROR hello")
+    wait_idle(room)
+    assert chan.notices == [] and len(chan.replies) == 1
+    assert ledger._select("SELECT count(*) AS n FROM gates", ())[0]["n"] == 0
