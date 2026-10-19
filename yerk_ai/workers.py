@@ -404,9 +404,8 @@ def relay_line(row: dict[str, Any]) -> str:
     """The line a relay reply always carries: the report is saved, and the command that opens it, or,
     when the worker left no report file, that there is none. The relay asks for it and names it as the
     line its reply must carry (room.fit adds it when the reply lacks it)."""
-    if not Path(str(row["report"])).is_file():
-        return words.SUB + words.NO_REPORT.format(id=row["id"])
-    return words.carried(str(row["report"]))
+    saved = words.REPORT_SAVED if Path(str(row["report"])).is_file() else words.NO_REPORT
+    return words.SUB + saved.format(id=row["id"])
 
 
 class Workers:
@@ -575,7 +574,6 @@ class Workers:
         return {**out, "card": row["card"]}
 
     def busy(self, account: str) -> int:
-        """Workers running now on `account` (not the ones in line)."""
         return sum(1 for r in self.live.values() if r["account"] == account and not r.get("waiting"))
 
     def in_line(self, account: str) -> list[dict[str, Any]]:
