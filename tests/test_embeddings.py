@@ -12,6 +12,7 @@ import re
 import sqlite3
 import threading
 import time
+import urllib.request
 from pathlib import Path
 
 import numpy as np
@@ -372,5 +373,34 @@ def test_the_stall_line_stays_silent_during_a_backfill(tmp_path, caplog):
     back.thread.join(5.0)
     assert store.n >= 60 and len(stub.calls) >= 15
     assert not any("stall" in r.getMessage() for r in caplog.records)
+    server.stop()
+    idx.close()
+
+
+# 13. the matched line (`near`) only when the request asks: a daemon from before the diet never asks, and its room
+# filter would hand a non-owner room another room's line unfiltered
+def test_a_search_carries_the_matched_line_only_when_the_request_asks(tmp_path):
+    s = tree(tmp_path)
+    stub = StubEmbedder(s.embeddings_key)
+    idx, store, server, back, status = serve(s, stub)
+    while back.step():
+        pass
+    status()
+
+    def post(payload: dict) -> dict:
+        req = urllib.request.Request(f"http://127.0.0.1:{server.port}/search", data=json.dumps(payload).encode(),
+                                     headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return json.loads(r.read())
+    line = "- 09:01 a person: lunch at example.com with a person"
+    old = post({"query": "the meal", "pool": 10})                             # what a daemon before the diet sends
+    assert old["ok"] and old["hits"] and all("near" not in h for h in old["hits"])
+    new = post({"query": "the meal", "pool": 10, "near": True})
+    assert new["hits"][0]["path"].endswith("2026-01-05.md") and new["hits"][0]["near"] == line
+    assert [{k: v for k, v in h.items() if k != "near"} for h in new["hits"]] == old["hits"]     # nothing else moves
+    assert all("near" not in h for h in post({"query": "the meal", "pool": 10, "near": "yes"})["hits"])   # true only
+    assert all("near" not in h for h in server.search("the meal", 10)["hits"])
+    state, rows = memory.meaning(s, "the meal")                               # this daemon asks
+    assert state == "ok" and rows[0]["near"] == line
     server.stop()
     idx.close()

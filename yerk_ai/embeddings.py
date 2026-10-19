@@ -243,8 +243,9 @@ def rss_kb() -> int:
 
 
 class Server:
-    """The meaning-search endpoint of yerk-index, local only. POST /search {"query", "pool"} answers
-    the nearest chunks (rows as the keyword search returns them, plus the cosine as `score`), or
+    """The meaning-search endpoint of yerk-index, local only. POST /search {"query", "pool", "near"} answers
+    the nearest chunks (rows as the keyword search returns them, plus the cosine as `score`, and with
+    `near: true` the matched line as `near`, which a daemon that does not ask never receives), or
     `ok: false` with a status told apart by kind: no-key, provider-timeout, provider-error, empty.
     GET /status answers the counts. Each request runs on its own thread with its own read-only
     connection, so a scan never waits on the writer."""
@@ -255,7 +256,7 @@ class Server:
         self.httpd: ThreadingHTTPServer | None = None
         self.queries = 0
 
-    def search(self, query: str, pool: int) -> dict[str, Any]:
+    def search(self, query: str, pool: int, near: bool = False) -> dict[str, Any]:
         self.queries += 1
         if not self.embedder.available():
             return {"ok": False, "status": "no-key", "error": "no provider key: keywords only"}
@@ -272,8 +273,9 @@ class Server:
         marks = ",".join("?" * len(score))
         conn = sqlite3.connect(f"file:{self.live(self.db)}?mode=ro", uri=True, timeout=2.0)
         try:
-            # a hash is a line's (through units) or a chunk's own; a chunk keeps its best line's cosine, and
-            # that line's text as `near` (recall's snippet keeps the line the meaning matched)
+            # a hash is a line's (through units) or a chunk's own; a chunk keeps its best line's cosine, and,
+            # when the request asks, that line's text as `near` (recall's snippet keeps the line the meaning
+            # matched; an older daemon never asks, and its room filter would pass the line on unfiltered)
             rows = conn.execute(f"SELECT c.id, c.path, c.lo, c.hi, c.body, u.sha, u.body FROM units u JOIN chunks c ON "
                                 f"c.sha = u.chunk WHERE u.sha IN ({marks}) UNION ALL SELECT id, path, lo, hi, body, sha, NULL "
                                 f"FROM chunks WHERE sha IN ({marks})", list(score) * 2).fetchall()
@@ -283,7 +285,7 @@ class Server:
         for cid, p, lo, hi, body, sha, line in rows:
             if cid not in best or score[sha] > best[cid]["score"]:
                 best[cid] = {"id": cid, "path": p, "line": lo, "lines": f"{lo}-{hi}", "text": body, "score": round(score[sha], 4),
-                             **({"near": line} if line else {})}
+                             **({"near": line} if near and line else {})}
         hits = sorted(best.values(), key=lambda h: -h["score"])[:pool]
         return {"ok": True, "status": "ok", "hits": hits, "vectors": self.store.n}
 
@@ -317,7 +319,7 @@ class Server:
                 try:
                     n = int(self.headers.get("Content-Length", "0"))
                     payload = json.loads(self.rfile.read(n) or b"{}")
-                    out = srv.search(str(payload.get("query", "")), int(payload.get("pool", 80)))
+                    out = srv.search(str(payload.get("query", "")), int(payload.get("pool", 80)), payload.get("near") is True)
                 except (ValueError, sqlite3.Error, OSError) as e:
                     out = {"ok": False, "status": "failure", "error": scrub(e)}
                 self._send(out)

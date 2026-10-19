@@ -30,8 +30,12 @@ MARK = re.compile(r"\[m:([^\]\s]+)\]$", re.M)        # the message id that ends 
 READ_MAX = 400                                       # read_memory: lines per call
 READ_CHARS = 20_000
 READ_LINES = 12          # read_memory's default window: a whole hit chunk from its first line for 98 in 100 hits (measured)
-SNIPPET = 700            # recall: characters per hit at most, the fewest that kept 98 in 100 answers on the question set
-RECALL_CHARS = 4200      # recall: one call's snippets together ([memory] recall_chars), six hits of SNIPPET
+# recall: characters per hit at most. 750 with RECALL_CHARS 4500 kept 84 of 84 answers keywords only and 116 of 116 with
+# the key, the PR 30 cold read's measurement (700 kept 83 of 84 and held four answers on a 0 to 40 character margin)
+SNIPPET = 750
+RECALL_CHARS = 4500      # recall: the first six hits' snippets together ([memory] recall_chars), six hits of SNIPPET
+RECALL_HITS = 6          # recall_chars is six hits' worth: a call of more cuts its first six as a call of six does
+EXTRA = 160              # recall: each hit past the sixth, its best line cut around the match, on top of recall_chars
 
 
 @dataclass(frozen=True)
@@ -51,7 +55,7 @@ class Settings:
     embeddings_units: str           # what gets a vector in memory: both (lines and chunks, measured best), lines, or chunks
     embeddings_width: int           # dimensions kept in memory (the first `width` of `dim`, renormalised)
     index_status: Path              # what yerk-index serves: its port and the embeddings' state
-    recall_chars: int               # one recall's snippets together, at most
+    recall_chars: int               # one recall's first six snippets together, at most
 
     @property
     def daily(self) -> Path:
@@ -119,10 +123,12 @@ EMBEDDING_SETTINGS: dict[str, tuple[tuple[str, ...], str, str]] = {
 EMBEDDING_RELOADS = "takes effect when yerk-index restarts; the backfill then embeds what is missing, in the background"
 RECALL_SETTINGS: dict[str, tuple[tuple[str, ...], str, str]] = {
     "recall_chars": ((str(RECALL_CHARS), "any number from 100"),
-                     f"characters one recall call hands the room at most, its hits' snippets together (each hit at most "
-                     f"{SNIPPET}: the lines that carry the match, the cite reads on); measured on the 164-question set, "
-                     f"{RECALL_CHARS} kept 116 of 116 answers found with the key and 83 of 84 keywords only; less shrinks "
-                     "every hit of a call", str(RECALL_CHARS)),
+                     f"characters one recall call hands the room for its first six hits, six hits' worth, their snippets "
+                     f"together (each hit at most {SNIPPET}: the lines that carry the match, the cite reads on); each hit "
+                     f"past the sixth adds its best line, at most {EXTRA}; measured on the 164-question set by the recall "
+                     f"diet's cold read, {RECALL_CHARS} kept 116 of 116 answers found with the key and 84 of 84 keywords "
+                     "only, for about 155 characters a call more than 700 and 4200, still about 21% under whole chunks; "
+                     "less shrinks each of the first six", str(RECALL_CHARS)),
 }
 
 
@@ -364,16 +370,16 @@ def read(s: Settings, path: str, start: int = 1, lines: int = READ_LINES, reader
     elsewhere, a link out) is refused.
     `reader` (the asking room) sees only what its class allows: a private file is refused outright, a
     day log keeps its own room's lines and blanks the others, so the line numbers still cite."""
-    m = re.fullmatch(r"(.+?):(\d+)", path)
+    m = re.fullmatch(r"(.+?):(\d{1,9})", path)     # nine digits at most: int() refuses a line of 4,300 or more
     if m:
         path, start = m.group(1), start if int(start) > 1 else int(m.group(2))
-    p = Path(path).expanduser()
-    if not p.is_absolute():
-        p = next((c for c in (s.root / p, *(r.parent / p for r in s.scope.roots if p.parts[:1] == (r.name,)))
-                  if c.exists()), s.root / p)
-    try:
+    try:            # a NUL, or a name too long (3.12 and 3.13 raise that from exists()), is no such file
+        p = Path(path).expanduser()
+        if not p.is_absolute():
+            p = next((c for c in (s.root / p, *(r.parent / p for r in s.scope.roots if p.parts[:1] == (r.name,)))
+                      if c.exists()), s.root / p)
         real = p.resolve(strict=True)
-    except (OSError, RuntimeError):
+    except (OSError, RuntimeError, ValueError):
         return {"ok": False, "error": f"no such file in the memory tree: {path}"}
     if not s.scope.contains(real):
         return {"ok": False, "error": f"{path} is outside the memory tree; read_memory reads only the private memory tree"}
@@ -444,7 +450,10 @@ def meaning(s: Settings, query: str, pool: int = POOL, deadline_s: float = MEANI
     if state != "ok":
         return state, []
     port = int(index_status(s)["port"])
-    req = urllib.request.Request(f"http://127.0.0.1:{port}/search", data=json.dumps({"query": query, "pool": pool}).encode(),
+    # `near` asks for the line each hit's vector matched; yerk-index adds it only when asked, so an older daemon,
+    # whose room filter knows nothing of it, never receives it
+    req = urllib.request.Request(f"http://127.0.0.1:{port}/search",
+                                 data=json.dumps({"query": query, "pool": pool, "near": True}).encode(),
                                  headers={"Content-Type": "application/json"})
     try:
         with urllib.request.urlopen(req, timeout=deadline_s) as r:
@@ -533,21 +542,28 @@ def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader:
 
 def recall(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader: Reader | None = None) -> dict[str, Any]:
     """The recall tool: the hits `ranked` gives, in its order, each cut to the lines that carry the match
-    with a cite (file:line of its first line) that read_memory reads on from; one call's snippets
-    together hold at most `recall_chars` characters, each at most SNIPPET."""
+    with a cite (file:line of its first line) that read_memory reads on from; the first six snippets
+    together hold at most `recall_chars` characters, each at most SNIPPET, and each hit past the sixth
+    adds its best line, at most EXTRA."""
     weights: dict[str, float] = {}
     r = ranked(s, query, k, deadline_s, reader, weights)
     return {**r, "hits": snippets(r["hits"], weights, s.recall_chars)} if r["ok"] else r
 
 
 def snippets(hits: list[dict[str, Any]], weights: dict[str, float], budget: int) -> list[dict[str, Any]]:
-    """Each ranked hit as {cite, text}: a share of what is left of `budget` (at most SNIPPET), so a
-    short snippet leaves more for the hits after it and a call of many hits cuts each one shorter."""
+    """Each ranked hit as {cite, text}. The first RECALL_HITS share `budget`, each a share of what is left
+    (at most SNIPPET), so a short snippet leaves more for the hits after it; each hit past them gets its
+    best line on top, cut around the match to at most EXTRA, so a call of twenty hits shows its first six
+    exactly as a call of six does."""
     out = []
+    shared = min(len(hits), RECALL_HITS)
     for n, h in enumerate(hits):
-        first, text = snippet(str(h.get("text", "")), int(h["line"]), weights, h.get("near"),
-                              min(SNIPPET, budget // (len(hits) - n)))
-        budget -= len(text)
+        if n < shared:
+            first, text = snippet(str(h.get("text", "")), int(h["line"]), weights, h.get("near"),
+                                  min(SNIPPET, budget // (shared - n)))
+            budget -= len(text)
+        else:
+            first, text = snippet(str(h.get("text", "")), int(h["line"]), weights, h.get("near"), EXTRA, one=True)
         out.append({"cite": f"{h['cite'].rpartition(':')[0]}:{first}", "text": text})
     return out
 
@@ -557,12 +573,14 @@ def _root(word: str) -> str:
     return word[:5] if len(word) > 5 else word[:-1] if len(word) > 3 and word.endswith("s") else word
 
 
-def snippet(text: str, lo: int, weights: dict[str, float], near: str | None = None, cap: int = SNIPPET) -> tuple[int, str]:
+def snippet(text: str, lo: int, weights: dict[str, float], near: str | None = None, cap: int = SNIPPET,
+            one: bool = False) -> tuple[int, str]:
     """(first line, text): the lines of a hit that carry the match, at most about `cap` characters, kept in
     file order. Taken in this order while they fit: the best line (the most query weight; `near`, the line
     the meaning search matched, counts as a match), every other line holding a query word, heaviest first,
     then the lines nearest the best one. A line too long for what is left is cut around its matches (the
-    best line always, another matching line when 80 or more are left); a gap between kept lines reads …."""
+    best line always, another matching line when 80 or more are left); a gap between kept lines reads ….
+    `one`: the best line alone (a blank one gives way to the next in that order), at most `cap` with its marks."""
     lines = text.splitlines() or [""]
     want = {_root(t): w for t, w in weights.items()}
     top = max(want.values(), default=1.0)
@@ -571,6 +589,10 @@ def snippet(text: str, lo: int, weights: dict[str, float], near: str | None = No
     best = max(range(len(lines)), key=lambda i: (score[i], -i))
     order = [best, *sorted((i for i in range(len(lines)) if score[i] > 0 and i != best), key=lambda i: (-score[i], i)),
              *(j for d in range(1, len(lines)) for j in (best + d, best - d) if 0 <= j < len(lines) and score[j] <= 0)]
+    if one:
+        i = next((j for j in order if lines[j].strip()), best)
+        ln = lines[i].strip()
+        return lo + i, ln if len(ln) <= cap else _cut(ln, want, cap - 2)      # _cut adds at most two …
     took: dict[int, str] = {}
     left = cap
     for i in order:

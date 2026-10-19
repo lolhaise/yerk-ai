@@ -340,6 +340,23 @@ def test_read_memory_reads_exact_lines_and_only_inside_the_tree(tmp_path):
     assert not memory.read(s, "facts")["ok"] and not memory.read(s, "facts/missing.md")["ok"]
 
 
+def test_a_cite_line_past_nine_digits_reads_as_no_such_file(tmp_path):
+    s = tree(tmp_path)
+    for path in ("pinned.md:" + "9" * 5000, "pinned.md:" + "1" * 10, "x" * 300 + ".md:1"):   # int() refuses 4,300 digits
+        r = memory.read(s, path)
+        assert not r["ok"] and "no such file" in r["error"], len(path)
+    r = memory.read(s, "pinned.md:" + "9" * 9)                                # nine digits still cite: past the end
+    assert r["ok"] and r["text"] == "" and r["total_lines"] == 3
+
+
+def test_a_nul_in_the_path_reads_as_no_such_file(tmp_path):
+    s = tree(tmp_path)
+    for path in ("pin\x00ned.md:1", "pinned.md\x00", "facts/\x00", str(s.root / "pinned.md") + "\x00:2"):
+        r = memory.read(s, path)
+        assert not r["ok"] and "no such file" in r["error"], repr(path)
+    assert memory.read(s, "pinned.md:1")["ok"]
+
+
 # the recall diet: a hit is the lines that carry the match and a cite, one call has a cap
 LINES = ["# Example notes", "", "- the lamp sits on the example shelf", "- an unrelated line about the weather",
          "- the kettle is painted teal and lives in the example kitchen", "- another unrelated line", "- a last line"]
@@ -384,8 +401,9 @@ def test_recall_hands_snippets_in_rank_order_under_the_call_cap(tmp_path):
     whole = memory.ranked(s, "kettle note", 20)["hits"]
     r = memory.recall(s, "kettle note", 20)
     assert [h["cite"].rpartition(":")[0] for h in r["hits"]] == [h["cite"].rpartition(":")[0] for h in whole]
-    assert len(r["hits"]) == len(whole) > 6 and sum(len(h["text"]) for h in r["hits"]) <= s.recall_chars
+    assert len(r["hits"]) == len(whole) > 6 and sum(len(h["text"]) for h in r["hits"][:6]) <= s.recall_chars
     assert all(len(h["text"]) <= memory.SNIPPET + 2 for h in r["hits"])
+    assert all(len(h["text"]) <= memory.EXTRA for h in r["hits"][6:])         # past the sixth: a short line on top
     assert sum(len(h["text"]) for h in whole) > s.recall_chars                # the cap did the cutting
     small = memory.settings(tmp_path / "private", tmp_path / "state", {"timezone": "UTC", "recall_chars": 600})
     r = memory.recall(small, "kettle note", 6)
@@ -405,6 +423,54 @@ def test_recall_chars_is_a_described_setting_with_a_floor(tmp_path):
     row = next(r for r in memory.described({"recall_chars": 2000}) if r["key"] == "memory.recall_chars")
     assert row["value"] == "2000" and row["source"] == "yerkd.toml" and row["default"] == str(memory.RECALL_CHARS)
     assert next(r for r in memory.described({}) if r["key"] == "memory.recall_chars")["source"] == "default"
+
+
+def many(s: memory.Settings, n: int = 24) -> None:
+    """n kettle notes, each with a short match, a long best line (the match mid-line) and a match further down."""
+    for i in range(n):
+        (s.root / "facts" / f"t{i}.md").write_text(
+            f"# T{i}\n\n- a short kettle line {i}\n- " + " ".join(f"w{i}x{j}" for j in range(40)) + f" the kettle note {i} "
+            + " ".join(f"v{j}" for j in range(40)) + "\n- an unrelated line\n- the kettle again, a note " + "y" * (7 * i) + "\n")
+
+
+def shipped(hits: list[dict], weights: dict[str, float], budget: int) -> list[dict]:
+    """snippets() as pull request 30 first shipped it (ad41b75): every hit a share of the whole budget."""
+    out = []
+    for n, h in enumerate(hits):
+        first, text = memory.snippet(str(h.get("text", "")), int(h["line"]), weights, h.get("near"),
+                                     min(memory.SNIPPET, budget // (len(hits) - n)))
+        budget -= len(text)
+        out.append({"cite": f"{h['cite'].rpartition(':')[0]}:{first}", "text": text})
+    return out
+
+
+def test_a_call_of_twenty_shows_its_first_six_as_a_call_of_six_and_a_short_line_past_them(tmp_path):
+    s = tree(tmp_path)
+    many(s)
+    build(s)
+    w: dict[str, float] = {}
+    hits = memory.ranked(s, "kettle note", 20, weights=w)["hits"]
+    assert len(hits) == 20
+    twenty = memory.snippets(hits, w, s.recall_chars)
+    assert twenty[:6] == memory.snippets(hits[:6], w, s.recall_chars) and memory.recall(s, "kettle note", 20)["hits"] == twenty
+    assert all(len(h["text"]) <= memory.EXTRA and "\n" not in h["text"] for h in twenty[6:])     # the best line alone
+    assert all("kettle" in h["text"] and "note" in h["text"] for h in twenty[6:])            # cut around the match
+    assert any(h["text"].startswith("…") and h["text"].endswith("…") for h in twenty[6:])
+    for h, cut in zip(hits[6:], twenty[6:]):                                  # the cite is the best line's own
+        line = int(cut["cite"].rpartition(":")[2])
+        assert cut["text"].strip("…") in str(h["text"]).splitlines()[line - int(h["line"])]
+
+
+def test_a_call_of_six_or_fewer_is_cut_byte_for_byte_as_shipped(tmp_path):
+    s = tree(tmp_path)
+    many(s, 10)
+    build(s)
+    for q in ("kettle note", "the kettle", "an unrelated line", "lunch with a person", "what colour is the example kettle"):
+        w: dict[str, float] = {}
+        hits = memory.ranked(s, q, 6, weights=w)["hits"]
+        for k in range(1, len(hits) + 1):
+            for budget in (100, 600, 4200, s.recall_chars):
+                assert json.dumps(memory.snippets(hits[:k], w, budget)) == json.dumps(shipped(hits[:k], w, budget)), (q, k)
 
 
 # the bench and the manifest
