@@ -196,6 +196,7 @@ def test_stop_ends_the_running_turn_now_and_for_good(y, tmp_path):
     dc, room, chan = wire(y)
     say(y, room, "1", "HANG build the thing")
     wait(lambda: room.reading and room.rp is not None)
+    wait(lambda: (tmp_path / "argv.jsonl").exists() and bool(starts(tmp_path)))   # the fake is up: a stop before its first line leaves no row
     proc, t = room.rp.proc, time.time()
     assert slash(dc, "stop") == [("message", f"{words.DONE} {words.STOP_DONE}", True)]
     wait(lambda: not room.busy)

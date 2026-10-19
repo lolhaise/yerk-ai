@@ -348,6 +348,9 @@ def cmd_drill(a: argparse.Namespace) -> int:
 
 
 def cmd_probe(a: argparse.Namespace) -> int:
+    if a.name != "imessage" and not a.config_dir:
+        print(f"{a.name} needs --config-dir", file=sys.stderr)
+        return 2
     if a.name == "resume" and not a.to_config_dir:
         print("resume needs --to-config-dir", file=sys.stderr)
         return 2
@@ -599,10 +602,13 @@ def main(argv: list[str] | None = None) -> int:
     dr.add_argument("--logs", help="folder for raw event logs (default: <state>/probes)")
     dr.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
     dr.set_defaults(on_second=None, fold_settings=None)
-    pr = sub.add_parser("probe", help="contract probes against a real Claude Code login")
+    pr = sub.add_parser("probe", help="contract probes against a real Claude Code login; imessage: the inbound "
+                        "check against the Mac's bridge, read only")
     pr.add_argument("name", choices=["hello", "fold", "resume", "blocks", "smoke", "measure", "short", "think", "check",
-                                     "idle"])
-    pr.add_argument("--config-dir", required=True, help="Claude Code config folder of the account to use")
+                                     "idle", "imessage"])
+    pr.add_argument("--config-dir", help="Claude Code config folder of the account to use (every probe but imessage)")
+    pr.add_argument("--rows", type=int, default=20, help="imessage: the newest rows read per room's chat")
+    pr.add_argument("--grace", type=float, default=120.0, help="imessage: seconds a new row may still be in flight")
     pr.add_argument("--to-config-dir", help="resume: the second account's config folder")
     pr.add_argument("--model", default="claude-fable-5-1")
     pr.add_argument("--reps", type=int, default=3, help="fold: repeats")

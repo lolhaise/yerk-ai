@@ -90,6 +90,16 @@ def build(private: Path, state: Path, accounts: list[Account], cooldowns: Cooldo
             said += W.UNPROVEN_CUT.format(n=d["cut"]) if d["cut"] else ""
             at = W.UNPROVEN_AT.format(at=W.clock(float(d["at"]), now))
             add(f"deploy {d['id']}", W.NOT_DONE, said + at if W.width(f"{W.NOT_DONE} {said}{at}") <= W.PHONE else said)
+    checks = ledger.health_between("imessage", "probe", since, until)     # the iMessage inbound check (Layer 8)
+    if checks:                                           # a run that never reached the Mac saw nothing
+        notes = [json.loads(str(r["note"] or "{}")) for r in checks]
+        reached = sum(1 for x in notes if x.get("reached"))
+        lost = len({m for x in notes for m in x.get("marks", [])})     # a text, not every run that saw it
+        add("imessage blind" if not reached else "", W.WORKING if not reached else W.PLAIN,
+            W.IMSG_PROBE.format(day=W.YESTERDAY, reached=reached, runs=len(checks)))
+        if reached:
+            add(f"imessage lost {lost}" if lost else "", W.NOT_DONE if lost else W.PLAIN,
+                W.IMSG_LOST.format(day=W.YESTERDAY, n=lost, s="" if lost == 1 else "s"))
     if live is None:
         add("unknown units", W.NOT_DONE, W.UNKNOWN.format(what="memory", why=W.NOT_ANSWERING_WHY))
     for u in (live or {}).get("units", []):
