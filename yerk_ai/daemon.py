@@ -26,7 +26,8 @@ from typing import Any
 
 from . import beat, context, deploy, evidence, gates, hooks, jobs, mcp_server, memory, mentions, status, workers
 from .accounts import Account, Cooldowns, from_dir, load_accounts
-from .config import REPO, budgets, flag, load_toml, private_dir, read_secret, room_id, rooms, state_dir, table
+from .config import (EFFORTS, REPO, budgets, flag, load_toml, models, override, private_dir, read_secret,
+                     room_id, room_settings, rooms, state_dir, table, write_private)
 from .engine import RoomSpec, SessionTable
 from .ledger import Ledger
 from .lifted.classify import FailureTable
@@ -37,7 +38,7 @@ from . import abilities, words   # STYLE.md: what a room reads
 
 log = logging.getLogger("yerk.daemon")
 YERK_TOOLS = ["mcp__yerk__send", "mcp__yerk__hold", "mcp__yerk__recall", "mcp__yerk__read_memory",
-              "mcp__yerk__worker", "mcp__yerk__schedule"]
+              "mcp__yerk__worker", "mcp__yerk__schedule", "mcp__yerk__settings"]
 NO_KEY_LINE = words.needs("meaning search", "an OpenAI key", "embeddings", "recall matches words only")
 
 
@@ -105,7 +106,7 @@ class Yerkd:
         words.configure(self.conf.get("presentation"))          # what every card and notice shows (STYLE.md)
         self.port = port or int(self.conf.get("http", {}).get("port", 0)) or free_port()
         self.url = f"http://127.0.0.1:{self.port}"
-        self.budgets, self.room_confs = budgets(), rooms(private)
+        self.budgets, self.room_confs, self.models = budgets(), rooms(private), models(self.conf)
         self.accounts = [only_account] if only_account else load_accounts(private / "accounts.toml")
         self.ledger = Ledger(state / "ledger.sqlite")
         self.failures = FailureTable.load(table("failures.toml"))
@@ -171,10 +172,11 @@ class Yerkd:
         settings = {"permissions": {"allow": [f"Read(/{layer}/**)", *YERK_TOOLS, *conf.get("allow", [])]},
                     "hooks": hooks.settings_for(f"{self.url}/hook", token)}
         mcp = mcp_server.room_config(f"{self.url}/mcp", name, rdir / "mcp.json", token)
-        extra = ["--effort", str(conf["effort"])] if conf.get("effort") else []
+        now = room_settings(conf, self.state, name, self.models)    # the room's override over rooms.toml
+        extra = ["--effort", now["effort"][0]] if now["effort"][0] else []
         if flag(conf.get("thinking_panel")) and conf.get("privacy", "owner") == "owner":
             extra += ["--thinking-display", "summarized"]      # the panel's text; off: the stream says nothing
-        return RoomSpec(room=name, model=str(conf["model"]), cwd=work, tools=list(conf.get("tools", [])),
+        return RoomSpec(room=name, model=now["model"][0], cwd=work, tools=list(conf.get("tools", [])),
                         settings=settings, context_file=ctx, mcp_config=mcp, add_dirs=[layer], extra_args=extra,
                         token=token)
 
@@ -269,6 +271,36 @@ class Yerkd:
             return {"ok": False, "error": "hold is for a room's own session"}
         hid = self.ledger.hold(room, wait_for, reason)
         return {"ok": True, "hold": hid, "next": "End your turn now with one short line; no more tool calls."}
+
+    async def tool_settings(self, room: str, model: str, effort: str) -> dict[str, Any]:
+        """The `settings` tool: an owner room's model and thinking level, the daemon's override over
+        rooms.toml (which is never written). The running turn ends as it began; then the room's process
+        closes and the next message resumes the same session on the new ones (Room.respec)."""
+        conf = self.room_confs.get(room)
+        if conf is None or str(conf.get("privacy", "owner")) != "owner":
+            return {"ok": False, "line": words.OWNER_ONLY}
+        want, level = model.strip(), effort.strip().lower()
+        full = self.models.get(want.lower()) or (want if want in self.models.values() else want.lower())
+        if want and full != "default" and full not in self.models.values():
+            listed = ", ".join(f"{a} ({words.model_name(m)})" for a, m in self.models.items())
+            return {"ok": False, "line": words.NOT_LISTED.format(model=want, models=listed)}
+        if level and level != "default" and level not in EFFORTS:
+            return {"ok": False, "line": words.NOT_A_LEVEL.format(effort=level, levels=", ".join([*EFFORTS, "default"]))}
+        before, over = room_settings(conf, self.state, room, self.models), override(self.state, room)
+        for key, value in (("model", full if want else ""), ("effort", level)):
+            if value == "default":
+                over.pop(key, None)
+            elif value:
+                over[key] = value
+        if want or level:
+            (self.state / "rooms" / room).mkdir(parents=True, exist_ok=True)
+            write_private(self.state / "rooms" / room / "override.json", json.dumps(over))
+        now = room_settings(conf, self.state, room, self.models)
+        if [v for v, _ in now.values()] != [v for v, _ in before.values()] and room in self.rooms:
+            self.rooms[room].respec()
+        log.info("settings: room %s on %s, effort %s", room, now["model"][0], now["effort"][0] or "default")
+        return {"ok": True, "line": (words.NEXT_REPLY if want or level else words.THIS_ROOM).format(
+            model=words.model_name(now["model"][0]), effort=now["effort"][0] or "default")}
 
     # recall before the first word (DESIGN 5)
     def room_pack(self, room: str, left: int = 6000) -> tuple[str, str]:

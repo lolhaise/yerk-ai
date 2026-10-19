@@ -1,14 +1,19 @@
 """Where Yerk AI keeps things and how it reads them: its own tables such as budgets.toml, the private folder, the state folder."""
 from __future__ import annotations
 
+import json
+import logging
 import os
 import tomllib
 from pathlib import Path
 from typing import Any
 
+log = logging.getLogger("yerk.config")
 PACKAGE = Path(__file__).resolve().parent
 REPO = PACKAGE.parent
 EXAMPLE_PRIVATE = REPO / "examples" / "private"
+EFFORTS = ("low", "medium", "high", "xhigh", "max")      # Claude Code 2.1.301's --effort levels (its --help)
+_IGNORED: set[tuple[str, str, str]] = set()             # (room, key, value) of an override already logged
 
 
 def table(name: str) -> Path:
@@ -58,6 +63,38 @@ def room_id(name: str, conf: dict[str, Any]) -> str:
     """A room's stable id in the day log: `id` in rooms.toml, else its channel (a Discord channel id
     survives a rename), else its name. The name stays on every line as a label."""
     return str(conf.get("id") or conf.get("channel") or name)
+
+
+def models(conf: dict[str, Any]) -> dict[str, str]:
+    """The models a room may be switched to (alias = full id): [models] in yerkd.toml, which replaces
+    the list shipped in the package (models.toml) whole."""
+    listed = conf.get("models") or load_toml(table("models.toml")).get("models", {})
+    return {str(k).lower(): str(v) for k, v in listed.items()}
+
+
+def override(state: Path, name: str) -> dict[str, Any]:
+    """A room's override: the settings tool's file under the state folder (the daemon's own, never the
+    room's; `settings.json` beside it is Claude Code's), {} when there is none."""
+    try:
+        return dict(json.loads((state / "rooms" / name / "override.json").read_text()))
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
+def room_settings(conf: dict[str, Any], state: Path, name: str, listed: dict[str, str]) -> dict[str, tuple[str, str]]:
+    """A room's model and effort, each with where it comes from: the room's override over rooms.toml. A value
+    off the models list (`listed`) or the levels is ignored, logged once: a stale or planted file never runs."""
+    over, out = override(state, name), dict[str, tuple[str, str]]()
+    for k, ok, why in (("model", set(listed.values()), "not on the list"), ("effort", set(EFFORTS), "not a level")):
+        v = str(over.get(k) or "")
+        base = (str(conf[k]), "rooms.toml") if conf.get(k) else ("", "the model's own default")
+        if v and v not in ok:
+            if (name, k, v) not in _IGNORED:
+                _IGNORED.add((name, k, v))
+                log.warning("room %s: the override's %s %r is %s; rooms.toml's is used", name, k, v[:80], why)
+            base = (base[0], f"{base[1]}; the room's override {v[:80]!r}, {why}: ignored")
+        out[k] = (v, "the room's override") if v and v in ok else base
+    return out
 
 
 # Private files are created WITH their mode, never created then chmod-ed (after the owner's
