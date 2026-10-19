@@ -71,6 +71,16 @@ def line(text: str, n: int = PHONE) -> str:
     return text.rstrip(" ,;:") + "..."
 
 
+def named(template: str, name: str, cols: int = PHONE, **facts: Any) -> str:
+    """`template` with its {name} at `cols` columns: a line too wide loses the end of the name, never
+    the fact after it (a long room name keeps "busy 15 min, 12 waiting")."""
+    text, cut = template.format(name=name, **facts), name
+    while width(" ".join(text.split())) > cols and len(cut) > 1:
+        cut = cut[:-1]
+        text = template.format(name=cut.rstrip(" -_.") + "...", **facts)
+    return line(text, cols)
+
+
 # the turn card
 START = "working on it"
 VERBS = {"read": "read", "write": "write", "edit": "edit", "multiedit": "edit", "notebookedit": "edit",
@@ -243,13 +253,13 @@ def ability(state: str, **say: Any) -> tuple[str, str]:
 # its limit, a blocked room, a stall, a daemon down); every other line starts with a dash
 PLAIN = "-"
 RUNNING_ROOMS = "yerkd running: {rooms}"
-ROOMS_N = "{n} rooms"
+ROOMS_N, ROOM_1 = "{n} rooms", "1 room"
 NOT_RUNNING = "yerkd: not running"
 NOT_ANSWERING = "yerkd: running, not answering"
 NO_READING = "{name}: no reading yet"
 RESTS = "{name}: resting until {until}"
 OLD_READING = "{name}: last reading {ago}"
-TURN_FOR = "{room}: busy {took}"
+TURN_FOR = "{name}: busy {took}"
 QUEUED = ", {n} waiting"
 UNIT_USE = "{name}: {mb} MB, {cpu:.1f}% cpu"
 JOB_DUE = "job {name}: in {left}"
@@ -273,6 +283,25 @@ SHADOW = "shadow flag {rule}: {n}"
 NO_SHADOW = "shadow flags: none"
 UNKNOWN = "{what}: unknown, {why}"
 NOT_ANSWERING_WHY = "yerkd not answering"
+DEAD = "dead turns: {n}, {name}, last {at}"
+NO_YERKD = "no yerkd answers"
+NO_DEAD = "dead turns: none in 24h"
+
+# yerk deploy's card (deploy.py), for the machine room: the state line, then each reason on its own
+DEPLOYED, FAILED_PROOF = "deployed {commit}", "{commit} failed its proof"
+ROLLED_BACK, ROLLBACK_FAILED = "rolled back to {commit}", "rollback to {commit} failed its proof"
+NOT_DEPLOYED, NO_REF, DIRTY = "not deployed", "no commit {ref}", "the daemon's tree has changes"
+NO_FF, NOT_AHEAD = "{ref} is not ahead of {commit}", "{ref} is not ahead of {name}"
+ROLLBACK_NEVER, DETACHED = "rollback to {commit} never ran", "detached at {commit}"
+MOVED_BACK, AHEAD = "{name} moved back to {commit}", "{name} is {n} ahead"
+PULL_BRINGS = "a pull brings {commit} back to the tree"
+TESTS_PASSED, TESTS_SKIPPED, TESTS_FAILED = "fast tests passed", "fast tests skipped", "the fast tests failed"
+NOT_QUIET = "never quiet in {span}"
+TURN_RUNS, RECENT = "{name} has a turn", "{name} had a message {ago} ago"
+PROOF_UP, PROOF_CONNECTED, PROOF_STATUS = "yerkd up", "channel connected", "status answers"
+PROOF_COMMIT, PROOF_ROOMS = "running {commit}", "rooms served: {n} of {of}"
+PROOF_FILE = "unit runs from its file"
+NO_CUT, CUT = "no turn cut", "turns cut: {n}"
 
 
 def secs(seconds: float) -> str:

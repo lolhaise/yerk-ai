@@ -21,9 +21,10 @@ import threading
 import time
 import uuid
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
-from . import beat, context, evidence, gates, hooks, jobs, mcp_server, memory, mentions, status, workers
+from . import beat, context, deploy, evidence, gates, hooks, jobs, mcp_server, memory, mentions, status, workers
 from .accounts import Account, Cooldowns, from_dir, load_accounts
 from .config import (EFFORTS, REPO, budgets, flag, load_toml, models, override, private_dir, read_secret,
                      room_id, room_settings, rooms, state_dir, table, write_private)
@@ -38,7 +39,6 @@ from . import abilities, words   # STYLE.md: what a room reads
 log = logging.getLogger("yerk.daemon")
 YERK_TOOLS = ["mcp__yerk__send", "mcp__yerk__hold", "mcp__yerk__recall", "mcp__yerk__read_memory",
               "mcp__yerk__worker", "mcp__yerk__schedule", "mcp__yerk__settings"]
-STALL = 0.25            # seconds the event loop may lag before the log says so
 NO_KEY_LINE = words.needs("meaning search", "an OpenAI key", "embeddings", "recall matches words only")
 
 
@@ -153,7 +153,8 @@ class Yerkd:
         self.timing_lock = threading.Lock()
         self.flushing = False
         self.beat = beat.Beat(self.ledger, beat.folder(state, self.memory.root), pids=self.room_pids)
-        self.started = time.time()
+        self.started, self.commit = time.time(), deploy.head(REPO)   # what runs, for yerk deploy's proof
+        self.link: Any = None                                         # the channel adapter: is it connected
 
     # a room's Claude Code process, rebuilt at every process start
     def spec_for(self, name: str) -> RoomSpec:
@@ -640,8 +641,8 @@ class Yerkd:
             req = dict(payload["read_memory"])
             return await self.tool_read_memory(str(req.get("room", "")), str(req.get("path", "")),
                                                int(req.get("start") or 1), int(req.get("lines") or 40))
-        if isinstance(payload.get("morning"), dict):    # `yerk morning`: into the machine room, never another (L197)
-            req = dict(payload["morning"])
+        if isinstance(payload.get("morning") or payload.get("machine"), dict):   # the morning diff, a deploy card:
+            req = dict(payload.get("morning") or payload["machine"])                # the machine room only (L197)
             name = str(req.get("room", ""))
             if self.room_confs.get(name, {}).get("role") != "machine" or name not in self.channels:
                 return {"ok": False, "error": f"no machine room {name!r} runs here"}
@@ -667,7 +668,9 @@ class Yerkd:
         """/status: what runs now, for `yerk status` and any program that asks (status.py)."""
         out = await asyncio.to_thread(status.collect, self.private, self.state, self.accounts, self.cooldowns,
                                       self.ledger, self.rooms)
-        return {**out, "started": self.started}
+        return {**out, "started": self.started, "commit": self.commit,
+                "connected": bool(getattr(self.link, "connected", False)),
+                "rebuilding": await asyncio.to_thread(self.rebuild_running)}   # deploy waits it out, as the gate does
 
     def write_status(self, mode: str) -> None:
         """state/yerkd.json: what is running, for `yerk room close` and the probes."""
@@ -686,14 +689,9 @@ class Yerkd:
         self.http = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=self.port, log_level="warning"))
         await self.http.serve()
 
-    async def watch_loop(self, every: float = 0.5) -> None:
-        """The stall line: the event loop that serves every room woke late by more than STALL."""
-        while True:
-            t = time.monotonic()
-            await asyncio.sleep(every)
-            lag = time.monotonic() - t - every
-            if lag > STALL:
-                log.warning("stall: the event loop was blocked for %.0f ms", lag * 1000)
+    def listening(self) -> bool:
+        """The HTTP port is bound: READY=1 may go out (a start counts only when it can answer)."""
+        return self.http is not None and bool(self.http.started)
 
     async def reap(self, every: float = 60.0) -> None:
         while True:
@@ -724,8 +722,9 @@ class Yerkd:
         dc.after_recover.append(self.workers.reattach)   # their cards are edited, so after the connect
         dc.after_recover.append(self.jobs.reattach)      # a script run that ended with no daemon up: delivered late
         self.write_status("discord")
-        await asyncio.gather(self.serve_http(), self.reap(min(60.0, self.idle_seconds / 2)), self.watch_loop(),
-                             self.beat.tick(), dc.start())
+        self.link = dc
+        await asyncio.gather(self.serve_http(), self.reap(min(60.0, self.idle_seconds / 2)),
+                             self.beat.tick(self.listening), dc.start())
 
     async def run_console(self, name: str) -> None:
         room = self.add_room(name, ConsoleChannel())
@@ -735,8 +734,9 @@ class Yerkd:
         self.write_status("console")
         http = asyncio.create_task(self.serve_http())
         reaper = asyncio.create_task(self.reap(min(60.0, self.idle_seconds / 2)))
-        ticker = asyncio.create_task(self.beat.tick())
+        ticker = asyncio.create_task(self.beat.tick(self.listening))
         await asyncio.sleep(0.5)
+        self.link = SimpleNamespace(connected=True)    # the terminal is the channel: it is there once read
         n = 0
         while line := await asyncio.to_thread(sys.stdin.readline):
             if not line.strip():

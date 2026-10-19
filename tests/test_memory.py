@@ -366,19 +366,20 @@ def test_the_manifest_declares_every_memory_ability_with_a_tier():
         assert a["tier"] in {"free", "key", "paid"} and a["what"] and a["needs"] and a["free_path"], name
 
 
-def test_the_stall_line_fires_when_the_loop_is_blocked(caplog):
+def test_the_stall_line_fires_when_the_loop_is_blocked(caplog, tmp_path):
     """The control for the daemon's stall detector: a blocked loop is said, so a quiet log means quiet."""
     import asyncio
     import logging
 
-    from yerk_ai.daemon import Yerkd
+    from yerk_ai.beat import Beat
+    from yerk_ai.ledger import Ledger
 
     async def go():
-        watch = asyncio.create_task(Yerkd.watch_loop(None, every=0.05))  # type: ignore[arg-type]
+        watch = asyncio.create_task(Beat(Ledger(tmp_path / "l.sqlite"), tmp_path / "stalls", every=0.05).tick())
         await asyncio.sleep(0.06)
         time.sleep(0.4)                                                  # the loop held, as index work on it would
         await asyncio.sleep(0.1)
         watch.cancel()
-    with caplog.at_level(logging.WARNING, logger="yerk.daemon"):
+    with caplog.at_level(logging.WARNING, logger="yerk.beat"):
         asyncio.run(go())
     assert any("stall: the event loop was blocked" in r.getMessage() for r in caplog.records)

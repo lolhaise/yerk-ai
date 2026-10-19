@@ -1,12 +1,11 @@
-"""The watchdog beat and the stall watch (DESIGN 9, L201, L238). A loop task sets a mark every
-second; a thread beside the loop sends systemd WATCHDOG=1 only when the mark moved since its last
-beat, so a frozen loop stops the beat and systemd restarts the unit (units/yerkd.service; with no
-WatchdogSec there is nothing to beat and nothing is sent). The same thread sees a stall while it
-lasts: once the mark is more than LIMIT seconds late it writes a dump (the loop thread's stack, the
-asyncio tasks, /proc for the daemon's threads and each open room's processes) under the state
-folder, never under the memory tree, and when the loop runs again it writes the stall row: when it
-began, how late the loop ran, what it was running. A stall inside C code that holds the GIL keeps
-this thread out too: it is ledgered when it ends, with no dump."""
+"""Tells systemd the daemon is alive only while its event loop answers, so a frozen daemon is restarted, and records each time
+probe on the loop every tenth of the beat's cadence; the time a probe waits is how long the loop was
+puts a probe on the loop every tenth of the beat's cadence; the time a probe waits is how long the loop was held. Only an
+answered probe beats systemd's watchdog (WATCHDOG=1, at most once a cadence, and only under WatchdogSec), so a frozen loop
+stops the beat and systemd restarts the unit. A probe waiting past LIMIT gets the dump while the stall lasts (the loop thread's
+stack, the asyncio tasks, /proc for the daemon's threads and each room's processes, never under the memory tree); once answered,
+past STALL is a log line and one past LIMIT a stall row: when it began, how long it held, what ran.
+READY=1 goes out once the daemon says it can answer (its HTTP port listens)."""
 from __future__ import annotations
 
 import asyncio
@@ -25,8 +24,9 @@ from .lifted.systemd_notify import notify, watchdog_interval_seconds
 from .status import PROC, stat, tree
 
 log = logging.getLogger("yerk.beat")
-LIMIT = 2.0             # seconds late before the loop counts as stalled (Layer 7: "a stall over 2 s")
-EVERY = 1.0             # the mark's cadence
+LIMIT = 2.0             # seconds held before the loop counts as stalled (Layer 7: "a stall over 2 s")
+STALL = 0.25            # seconds held before the log says so
+EVERY = 1.0             # the watchdog's cadence; a probe goes out every tenth of it
 
 
 def folder(state: Path, memory_root: Path) -> Path:
@@ -43,43 +43,56 @@ class Beat:
         self.ledger, self.dumps, self.pids, self.send, self.proc = ledger, dumps, pids, send, proc
         self.limit, self.every = limit, every
         self.watchdog = watchdog_interval_seconds() is not None      # WatchdogSec is set on the unit
-        self.mark, self.loop_thread = time.monotonic(), 0
+        self.asked, self.held, self.loop_thread = 0.0, 0.0, 0        # the probe out (when asked), the longest wait
         self.loop: asyncio.AbstractEventLoop | None = None
         self.stop = threading.Event()
 
-    async def tick(self) -> None:
-        """The loop's side: READY=1 once the loop runs, then a mark every `every` seconds."""
-        self.loop, self.loop_thread, self.mark = asyncio.get_running_loop(), threading.get_ident(), time.monotonic()
+    async def tick(self, ready: Callable[[], bool] = lambda: True) -> None:
+        """The loop's side: start the watch, then READY=1 once `ready()` holds, then wait to be cancelled."""
+        self.loop, self.loop_thread = asyncio.get_running_loop(), threading.get_ident()
         self.stop.clear()
+        self.asked = time.monotonic()
+        self.loop.call_soon(self.answer)
         threading.Thread(target=self.watch, name="yerk-beat", daemon=True).start()
-        self.send("READY=1")
         try:
-            while True:
-                await asyncio.sleep(self.every)
-                self.mark = time.monotonic()
+            while not ready():
+                await asyncio.sleep(0.05)
+            self.send("READY=1")
+            await asyncio.Event().wait()
         finally:
             self.stop.set()
 
+    def answer(self) -> None:
+        """On the loop: the probe ran, and the time it waited is how long the loop was held."""
+        self.held, self.asked = max(self.held, time.monotonic() - self.asked), 0.0
+
     def watch(self) -> None:
-        """The thread's side, four times a mark: beat when the mark moved; mid-stall, dump; after, the row."""
-        prev, began, doing, dump = self.mark, 0.0, "", ""
-        while not self.stop.wait(self.every / 4):
+        """The thread's side: while a probe waits, nothing beats and past `limit` the dump is taken; once
+        it is answered, the hold is said and ledgered, the watchdog beats, and the next probe goes out."""
+        began, doing, dump, beat = 0.0, "", "", 0.0
+        while not self.stop.wait(self.every / 10):
             try:
-                mark, late = self.mark, time.monotonic() - self.mark - self.every
-                if mark == prev:
-                    if not began and late > self.limit:          # still stalled: the dump, while it lasts
-                        began = time.time() - late
+                now = time.monotonic()
+                if self.asked:                                   # a probe waits: the loop is held
+                    if not began and now - self.asked > self.limit:
+                        began = time.time() - (now - self.asked)
                         doing, dump = self.dump(began)
                     continue
-                late = mark - prev - self.every
-                if not began and late > self.limit:              # ended before this thread could run
-                    began, doing = time.time() - (time.monotonic() - prev - self.every), "not seen while it ran"
-                if began:
-                    self.ledger.stall(began=round(began, 3), seconds=round(late, 2), doing=doing, dump=dump)
-                    log.warning("stall: the event loop ran %.1f s late, in %s", late, doing)
-                prev, began, doing, dump = mark, 0.0, "", ""
-                if self.watchdog:
+                held, self.held = self.held, 0.0
+                if held > self.limit and not began:              # ended before this thread could run
+                    began, doing = time.time() - held, "not seen while it ran"
+                if held > STALL:
+                    log.warning("stall: the event loop was blocked for %.0f ms%s", held * 1000, doing and f", in {doing}")
+                if held > self.limit:
+                    self.ledger.stall(began=round(began, 3), seconds=round(held, 2), doing=doing, dump=dump)
+                began, doing, dump = 0.0, "", ""
+                if self.watchdog and now - beat >= self.every:
+                    beat = now
                     self.send("WATCHDOG=1")
+                if self.loop is None or self.loop.is_closed():
+                    return
+                self.asked = time.monotonic()
+                self.loop.call_soon_threadsafe(self.answer)
             except Exception:
                 log.exception("beat: a round of the watch failed")
 
