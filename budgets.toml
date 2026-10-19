@@ -1,7 +1,7 @@
 # Every size limit Yerk AI enforces, in one place.
 # Unit: characters as Claude Code counts them (UTF-16 code units, so one emoji outside
-# the basic plane counts 2). The budget test fails the build when a part or a total
-# passes its number here.
+# the basic plane counts 2), except [code] at the end, which counts lines. The budget test
+# fails the build when a part or a total passes its number here.
 
 [session_start]
 total = 80000
@@ -48,3 +48,11 @@ recall = 1500
 # gets (the outcome, the report path, the report's start) and the most the relay reply may be.
 message = 1500
 reply = 1500
+
+[code]
+# The code itself. Unit: lines as `wc -l` counts them, in every .py file under yerk_ai/,
+# lifted ones included, because a reader has to get through all of them. A ceiling that
+# only goes down: the budget test fails when the package grows past it and also when it
+# shrinks under it, so a change that cuts lowers this number in the same commit, and a
+# change that adds cuts as much somewhere else. A change that raises it is not merged.
+lines = 14632
