@@ -234,6 +234,23 @@ def test_a_relative_read_folder_is_judged_where_claude_code_lands_it_and_handed_
     assert y.spec_for("example-room").add_dirs[1:] == y.read_dirs["example-room"] == [notes, notes]
 
 
+def test_a_read_written_as_one_string_stops_the_daemon_with_one_plain_line(tmp_path):
+    """Cold read 33: `read = "<folder>"`, a string where a list belongs, was read one character at a time (a relative one
+    became an --add-dir per letter, an absolute one a refusal of `/`); now the daemon stops at start with one line naming
+    the room and the shape it wants, and so does any other value that is not a list."""
+    import shutil
+    import pytest
+    private, state = tmp_path / "private", tmp_path / "state"
+    shutil.copytree(EXAMPLE_PRIVATE, private)
+    state.mkdir()
+    base = (private / "rooms.toml").read_text()
+    for toml, shown in (('"notes"', "'notes'"), (f'"{tmp_path}/notes"', repr(f"{tmp_path}/notes")), ("5", "5")):
+        (private / "rooms.toml").write_text(base.replace("[rooms.example-room]\n", f"[rooms.example-room]\nread = {toml}\n", 1))
+        with pytest.raises(SystemExit) as e:
+            Yerkd(private, state)
+        assert str(e.value) == f'room example-room: read must be a list of folders, like read = ["~/notes"], not {shown}'
+
+
 def test_a_rooms_sandbox_table_reaches_its_claude_code_settings_and_no_other_room(tmp_path):
     """`[rooms.NAME.sandbox]` is passed as Claude Code's own `sandbox` setting for that room's process, so a room
     can run a shell that writes only where the table lets it; a room without the table gets no sandbox key."""

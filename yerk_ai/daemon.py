@@ -107,6 +107,9 @@ class Yerkd:
         self.port = port or int(self.conf.get("http", {}).get("port", 0)) or free_port()
         self.url = f"http://127.0.0.1:{self.port}"
         self.budgets, self.room_confs, self.models = budgets(), rooms(private), models(self.conf)
+        for n, c in self.room_confs.items():               # one string would be read as one folder per letter
+            if not isinstance(c.get("read", []), list):
+                raise SystemExit(f'room {n}: read must be a list of folders, like read = ["~/notes"], not {c["read"]!r}')
         self.read_dirs = {n: [(state / "rooms" / n / "work" / Path(x).expanduser()).resolve() for x in c.get("read", [])]
                           for n, c in self.room_confs.items()}   # from the work folder, as Claude Code lands one
         for n, p in ((n, p) for n, ps in self.read_dirs.items() for p in ps):
@@ -288,11 +291,8 @@ class Yerkd:
         """The `schedule` tool (add, remove, list); the job runner's hand-offs come through /control.
         Any job runs as the owner's user (an agent job starts a worker; a script job runs its shell
         command with no sandbox at all), so a room adds one by the worker rule, whatever its kind."""
-        if req.get("action") == "add":
-            refused = self.owner_only(room, str(req.get("room") or ""), words.JOBS_OWNER_ONLY)
-            if refused:
-                return refused
-        return await self.jobs.handle(room, req)
+        refused = self.owner_only(room, str(req.get("room") or ""), words.JOBS_OWNER_ONLY) if req.get("action") == "add" else None
+        return refused or await self.jobs.handle(room, req)
 
     async def tool_hold(self, room: str, wait_for: str, reason: str) -> dict[str, Any]:
         if room not in self.rooms:
