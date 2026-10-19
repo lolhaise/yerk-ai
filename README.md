@@ -55,6 +55,8 @@ Layer 2, run 1: the accounts as one engine (the failure table with a test per Cl
 
 The core, the shrink pass: jobs.py, workers.py and daemon.py are 3,274 lines (2,655 outside docstrings and comments), from 3,349 (2,723) on e35ac5b, and the package 14,496 from 14,579: a 2% cut, not a fifth, since no function there is dead and the cron parser stays (OnCalendar has no weekday step, no weekday range through Sunday and no day-or-weekday rule, and systemd gives no previous fire for a run's planned time). Folded: one `systemctl --user` call and one unit-file quoting for jobs.py, workers.py and deploy.py, status.ask onto jobs.post_control, one owner-room lookup in daemon.py, the parser's two walks into one. Every test passes unchanged, and `yerk map`, `yerk jobs list`, `yerk explain jobs`, every generated unit file and every schedule's fire times are the same.
 
+The ceiling: the package is 14,632 lines with the recall diet and the shrink pass both in, and that number is now `[code] lines` in budgets.toml. The budget test counts every .py file under yerk_ai/ the way `wc -l` does and fails when the count passes the ceiling, and also when it falls under it, so a change that cuts lowers the ceiling in the same commit. New work pays for itself by cutting as much somewhere else. The number only goes down.
+
 ## Use
 
 ```

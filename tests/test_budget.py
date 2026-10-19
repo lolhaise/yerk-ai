@@ -36,6 +36,13 @@ def test_planted_over_budget_file_fails_and_is_sent_trimmed():
     assert "[...trimmed persona: kept" in persona.text and "Omitted sections:" in persona.text
 
 
+def test_the_code_stays_at_its_ceiling_which_only_goes_down():
+    ceiling = budgets()["code"]["lines"]
+    lines = sum(f.read_bytes().count(b"\n") for f in Path(context.__file__).parent.rglob("*.py"))
+    assert lines <= ceiling, f"yerk_ai/ is {lines} lines, over the ceiling of {ceiling} in budgets.toml: cut as much as you add"
+    assert lines == ceiling, f"yerk_ai/ shrank to {lines} lines: set [code] lines in budgets.toml to {lines} in this change"
+
+
 @pytest.mark.skipif(not os.environ.get("YERK_PRIVATE"), reason="the real private layer exists only on the box")
 def test_real_private_layer_fits():
     private = Path(os.environ["YERK_PRIVATE"]).expanduser()
