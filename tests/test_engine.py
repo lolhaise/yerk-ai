@@ -96,7 +96,7 @@ def test_turn_records_fallback_and_first_visible():
 # the session table (restart test R3) and the hop by transcript path (R1)
 def test_two_rooms_binding_together_both_keep_their_rows(tmp_path):
     import threading
-    from yerk_ai.engine import SessionTable
+    from yerk_ai.engine import SessionTable, token_hash
     t = SessionTable(tmp_path / "sessions.json")
     threads = [threading.Thread(target=t.bind, args=(f"room-{i}", f"sid-{i}", "one", f"tok-{i}")) for i in range(12)]
     for th in threads:
@@ -104,7 +104,8 @@ def test_two_rooms_binding_together_both_keep_their_rows(tmp_path):
     for th in threads:
         th.join()
     rows = t.load()
-    assert sorted(rows) == sorted(f"room-{i}" for i in range(12)) and rows["room-3"]["token"] == "tok-3"
+    assert sorted(rows) == sorted(f"room-{i}" for i in range(12)) and "token" not in rows["room-3"]
+    assert rows["room-3"]["token_sha256"] == token_hash("tok-3") and "tok-" not in (tmp_path / "sessions.json").read_text()
     assert t.by_token("tok-7") == "room-7" and t.by_token("") is None and t.by_token("nope") is None
     assert t.by_token("tok-8 ") is None and t.by_token("tok-") is None and t.by_token("tok-70") is None   # one byte off
     import inspect
@@ -116,6 +117,30 @@ def test_two_rooms_binding_together_both_keep_their_rows(tmp_path):
     assert t.get("room-1")["transcript"] == "/x/one.jsonl" and t.get("room-1")["account"] == "two"
     t.bind("room-1", "sid-new", "two", "tok-1c")                      # a new session starts with none
     assert t.get("room-1")["transcript"] == ""
+
+
+def test_the_table_keeps_token_hashes_and_converts_a_table_with_plain_tokens(tmp_path):
+    """sessions.json from before the hashes: the rooms are found by their tokens, the file is rewritten
+    with hashes on load, and no plain token is written again, even one handed to update."""
+    from yerk_ai.engine import SessionTable, token_hash
+    path = tmp_path / "sessions.json"
+    old = {"room-a": {"session_id": "s-a", "account": "one", "token": "tok-a"}, "room-b": {"session_id": "s-b", "token": "tok-b"}}
+    path.write_text(json.dumps(old))
+    path.parent.chmod(0o500)                                          # a reader that cannot write still finds them
+    try:
+        assert SessionTable(path).by_token("tok-a") == "room-a" and json.loads(path.read_text()) == old
+    finally:
+        path.parent.chmod(0o700)
+    t = SessionTable(path)
+    assert t.by_token("tok-b") == "room-b" and t.by_token("tok-c") is None and t.by_token("tok-a ") is None
+    text = path.read_text()
+    assert "tok-a" not in text and "tok-b" not in text and '"token"' not in text
+    assert t.get("room-a") == {"session_id": "s-a", "account": "one", "token_sha256": token_hash("tok-a")}
+    assert oct(path.stat().st_mode & 0o777) == "0o600"
+    t.bind("room-c", "s-c", "one", "tok-c")
+    t.update("room-c", token="tok-planted")
+    assert "tok-c" not in path.read_text() and "tok-planted" not in path.read_text()
+    assert t.by_token("tok-planted") == "room-c" and t.by_token("tok-c") is None
 
 
 def test_a_hop_resumes_by_the_transcripts_path_when_the_folders_are_not_shared(make, tmp_path, monkeypatch):

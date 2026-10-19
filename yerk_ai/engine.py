@@ -13,6 +13,7 @@ tools only from the `--tools` allowlist, and the assembled context from
 from __future__ import annotations
 
 import fcntl
+import hashlib
 import hmac
 import json
 import logging
@@ -61,33 +62,62 @@ class RoomSpec:
     token: str = ""                                          # this process's credential for /hook and /mcp (bound with the session)
 
 
+def token_hash(token: str) -> str:
+    """A room token as the session table keeps it: its SHA-256, so the file holds no live token."""
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def hashed(rows: dict[str, Any]) -> dict[str, Any]:
+    """The rows with each plain `token` (a table from before the hashes) moved to `token_sha256`."""
+    out: dict[str, Any] = {}
+    for room, row in rows.items():
+        if isinstance(row, dict) and "token" in row:
+            row = dict(row)
+            tok = str(row.pop("token") or "")
+            row["token_sha256"] = token_hash(tok) if tok else ""
+        out[room] = row
+    return out
+
+
 class SessionTable:
-    """room -> {session_id, account, bound, token, transcript}: a JSON file only Yerk AI writes.
-    `token` is the credential the room's process sends on every hook and MCP call (the daemon knows
-    the room by it: identity from the binding, never from a header a caller picks); `transcript` is
-    the session's transcript path, learnt from the first hook call, so a hop resumes by path.
+    """room -> {session_id, account, bound, token_sha256, transcript}: a JSON file only Yerk AI writes.
+    `token_sha256` is the hash of the credential the room's process sends on every hook and MCP call
+    (the daemon knows the room by it: identity from the binding, never from a header a caller picks);
+    the token itself is never written, so a copy of the file opens nothing. `transcript` is the
+    session's transcript path, learnt from the first hook call, so a hop resumes by path.
     Every write holds the table's lock file (flock) and lands through a temp file of the writer's own,
     so two rooms binding together both keep their rows (restart test R3)."""
 
     def __init__(self, path: Path):
         self.path = path
 
-    def load(self) -> dict[str, dict[str, Any]]:
+    def _read(self) -> dict[str, dict[str, Any]]:
         try:
             return dict(json.loads(self.path.read_text()))
         except (OSError, ValueError):
             return {}
 
+    def load(self) -> dict[str, dict[str, Any]]:
+        """The rows; a table that still holds plain tokens is rewritten with their hashes, once."""
+        data = self._read()
+        if not any(isinstance(r, dict) and "token" in r for r in data.values()):
+            return data
+        try:
+            return self._write(None, {})
+        except OSError:                          # a reader that cannot write still finds rooms by the hash
+            return hashed(data)
+
     def get(self, room: str) -> dict[str, Any] | None:
         return self.load().get(room)
 
     def by_token(self, token: str) -> str | None:
-        """The room whose live process holds `token`, or None (an unbound call); each row's token is
-        compared in constant time, like the install's secret (cold read F7)."""
+        """The room whose live process holds `token`, or None (an unbound call): the caller's value is
+        hashed and each row's hash compared in constant time, like the install's secret (cold read F7)."""
         if not token:
             return None
+        want = token_hash(token).encode()
         return next((room for room, row in self.load().items()
-                     if hmac.compare_digest(str(row.get("token") or "").encode(), token.encode())), None)
+                     if hmac.compare_digest(str(row.get("token_sha256") or "").encode(), want)), None)
 
     def by_session(self, session_id: str) -> str | None:
         if not session_id:
@@ -96,27 +126,32 @@ class SessionTable:
 
     def update(self, room: str, **fields: Any) -> dict[str, Any]:
         """Set fields of a room's row under the lock; the row is created when missing."""
+        return dict(self._write(room, fields)[room])
+
+    def _write(self, room: str | None, fields: dict[str, Any]) -> dict[str, dict[str, Any]]:
+        """Under the lock: the table read again, `fields` set on `room`'s row (None: no change), every
+        plain token hashed, the whole table written."""
         self.path.parent.mkdir(parents=True, exist_ok=True)
         fd = os.open(self.path.with_suffix(".lock"), os.O_RDWR | os.O_CREAT, 0o600)
         try:
             fcntl.flock(fd, fcntl.LOCK_EX)
-            data = self.load()
-            row = dict(data.get(room) or {})
-            row.update(fields)
-            data[room] = row
+            data = self._read()
+            if room is not None:
+                data[room] = {**dict(data.get(room) or {}), **fields}
+            data = hashed(data)
             write_private(self.path, json.dumps(data, indent=1))
         finally:
             fcntl.flock(fd, fcntl.LOCK_UN)
             os.close(fd)
-        return row
+        return data
 
     def bind(self, room: str, session_id: str, account: str, token: str = "", transcript: str = "") -> None:
-        """A process start: the session, the account, this process's token; the transcript path is kept
-        when the session is the same one (a hop) and cleared when it is new."""
+        """A process start: the session, the account, the hash of this process's token; the transcript
+        path is kept when the session is the same one (a hop) and cleared when it is new."""
         prev = self.get(room) or {}
         keep = transcript or (str(prev.get("transcript") or "") if prev.get("session_id") == session_id else "")
         self.update(room, session_id=session_id, account=account, bound=round(time.time(), 3),
-                    token=token or secrets.token_hex(16), transcript=keep)
+                    token_sha256=token_hash(token or secrets.token_hex(16)), transcript=keep)
 
 
 class SessionLock:
