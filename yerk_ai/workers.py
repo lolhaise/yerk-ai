@@ -50,7 +50,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Protocol
+from typing import Any, Awaitable, Callable, Protocol, Sequence
 
 from . import words
 from .accounts import Account, Cooldowns, account_env, pick
@@ -143,7 +143,44 @@ def _exec_line(argv: list[str]) -> str:
 
 class Systemd:
     """systemd-run --user: the unit outlives the daemon; --collect unloads it once it has ended
-    (exit.json is the record)."""
+    (exit.json is the record). With the daemon's state folder, the unit sees it through systemd's own
+    namespacing (`sandbox`), so no tool or shell shape gets around it."""
+
+    def __init__(self, state: Path | None = None, hidden: Sequence[Path] = ()):
+        self.state, self.hidden = state, tuple(hidden)
+
+    def sandbox(self, folder: Path, env: dict[str, str]) -> list[str]:
+        """The state folder read-only; the worker's own folder writable, and its account's config
+        folder when that lives under the state folder (Claude Code writes its transcript there); the
+        install's secret and every room's folder (its token, settings and override) not there at all.
+        The worker secret stays readable: a worker's read-only memory tools reach the daemon with it.
+        PrivateUsers is what lets a user manager set up the mounts."""
+        if self.state is None:
+            return []
+        config = Path(env.get("CLAUDE_CONFIG_DIR") or folder)
+        rw = [folder, *([config] if config != folder and config.is_relative_to(self.state) else [])]
+        props = ["PrivateUsers=yes", f"ReadOnlyPaths={self.state}", *(f"ReadWritePaths={p}" for p in rw)]
+        rooms = self.state / "rooms"
+        for p in self.hidden:
+            if p != rooms:
+                props.append(f"InaccessiblePaths={p}")
+                continue
+            # every room's folder (its token, settings, conversation) under an empty read-only filesystem,
+            # with the worker's own room's work folder bound back at its own path, read and write: the
+            # one room folder a brief may name (systemd.exec's TemporaryFileSystem plus BindPaths pattern)
+            props.append(f"TemporaryFileSystem={rooms}:ro")
+            room = str(self._room(folder))
+            if room and "/" not in room and room not in (".", ".."):
+                props.append(f"BindPaths=-{rooms / room / 'work'}")
+        return [x for p in props for x in ("-p", p)]
+
+    @staticmethod
+    def _room(folder: Path) -> str:
+        """The room the worker belongs to, from the spec Workers.start wrote before the launch."""
+        try:
+            return str(json.loads((folder / "worker.json").read_text()).get("room") or "")
+        except (OSError, ValueError):
+            return ""
 
     def start(self, unit: str, argv: list[str], env: dict[str, str], cwd: Path, out: Path, err: Path,
               cap: float, post: list[str]) -> None:
@@ -151,7 +188,7 @@ class Systemd:
                "--description", f"Yerk AI worker {unit.removeprefix(UNIT)}",
                "-p", f"RuntimeMaxSec={max(1, int(cap))}", "-p", f"StandardOutput=append:{out}",
                "-p", f"StandardError=append:{err}", "-p", f"ExecStopPost={_exec_line(post)}",
-               "-p", "KillMode=control-group", "-p", "TimeoutStopSec=20",
+               "-p", "KillMode=control-group", "-p", "TimeoutStopSec=20", *self.sandbox(cwd, env),
                *[f"--setenv={k}={v}" for k, v in env.items()], "--", *argv]
         p = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
         if p.returncode:
@@ -381,11 +418,13 @@ class Workers:
 
     def __init__(self, ledger: Ledger, conf: Settings, accounts: list[Account], cooldowns: Cooldowns,
                  rooms: dict[str, Any], channels: dict[str, Any], room_confs: dict[str, dict[str, Any]],
-                 launcher: Launcher | None = None, state: Path | None = None):
+                 launcher: Launcher | None = None, state: Path | None = None, hidden: Sequence[Path] = ()):
         self.ledger, self.conf, self.accounts, self.cooldowns = ledger, conf, accounts, cooldowns
         self.state = state or conf.root.parent             # the daemon's state folder (a worker's tools reach it)
         self.rooms, self.channels, self.room_confs = rooms, channels, room_confs
-        self.launcher: Launcher = launcher or Systemd()
+        # a unit sees the state folder read-only, its own folder writable and `hidden` not at all
+        # (the daemon's: the install's secret, every room's folder); Systemd.sandbox
+        self.launcher: Launcher = launcher or Systemd(self.state, hidden)
         self.gate: dict[str, Any] = {}       # the daemon's [gates] for a worker's hook: trash, private, external
         self.watch: Watch | None = None
         self.live: dict[str, dict[str, Any]] = {}      # id -> its ledger row, while its unit runs
