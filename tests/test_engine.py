@@ -239,3 +239,10 @@ def test_a_hop_resumes_by_the_transcripts_path_when_the_folders_are_not_shared(m
     with make() as gone:                                              # a hop with no file: the id, and the resume rule decides
         gone.start()
     assert records(tmp_path)[-1]["argv"][records(tmp_path)[-1]["argv"].index("--resume") + 1] == sid
+
+
+def test_the_hook_error_flag_drops_claude_codes_key_hint():
+    t = Turn(started=100.0)
+    t.observe(101.0, {"type": "system", "subtype": "notification", "key": "stop-hook-error",
+                      "text": "Stop hook error occurred · ctrl+o to see"})
+    assert t.flags == ["hook_error:Stop hook error occurred"]

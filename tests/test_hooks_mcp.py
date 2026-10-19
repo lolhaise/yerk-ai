@@ -339,3 +339,15 @@ def test_a_room_cannot_point_its_binding_at_another_transcript(tmp_path, caplog)
         c.post("/hook", json={"hook_event_name": "Stop", "session_id": "sid-t", "transcript_path": str(own)},
                headers={"x-yerk-secret": "room-token-1"})
     assert y.sessions.get("example-room")["transcript"] == str(own)
+
+
+def test_a_bound_hook_call_marks_the_room_alive_but_session_start_does_not(tmp_path):
+    y = daemon(tmp_path)
+    SessionTable(tmp_path / "sessions.json").bind("example-room", "sid-7", "one")
+    room = y.rooms["example-room"]
+    app = mcp_server.build(y, y.port, y.hook).streamable_http_app()
+    with TestClient(app) as c:
+        c.post("/hook", json={"hook_event_name": "SessionStart", "session_id": "sid-7", "source": "startup"})
+        after_start = getattr(room, "hooked", False)
+        c.post("/hook", json={"hook_event_name": "Stop", "session_id": "sid-7"})
+    assert (after_start, room.hooked) == (False, True)

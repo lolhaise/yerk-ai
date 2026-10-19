@@ -238,7 +238,7 @@ class Turn:
         elif kind == "system" and ev.get("subtype") == "model_refusal_fallback":
             self.fallback_model = ev.get("fallback_model") or "another model"
         elif kind == "system" and ev.get("subtype") == "notification" and str(ev.get("key") or "").endswith("-hook-error"):
-            self.flags.append(f"hook_error:{str(ev.get('text') or '')[:120]}")    # Claude Code's own words for a dead hook
+            self.flags.append(f"hook_error:{str(ev.get('text') or '').split(' · ')[0][:120]}")   # its words, minus the key hint
         elif kind == "rate_limit_event":
             info = ev.get("rate_limit_info") or {}
             self.windows = info.get("unifiedWindows") or self.windows

@@ -116,8 +116,8 @@ def settings_for(url: str, token: str = "") -> dict[str, Any]:
     Code 2.1.301 sends those through a sandboxed room's network proxy, which refuses the daemon's loopback port
     with 403 (2026-10-19, 389 silent refusals in two rooms). Resume is out of SessionStart's matcher: no reset."""
     from .mcp_server import HEADER
-    post = (f"curl -sS --max-time 10 -H 'content-type: application/json' -H '{HEADER}: {token}' "
-            f"--data-binary @- {url}")
+    post = (f"curl -sS -f --max-time 10 -H 'content-type: application/json' -H '{HEADER}: {token}' "
+            f"--data-binary @- {url}")          # -f: a non-2xx answer is a hook error in the transcript, as over http
     one = [{"hooks": [{"type": "command", "command": post, "timeout": 10}]}]
     return {"UserPromptSubmit": one, "Stop": one, "PreToolUse": one, "PostToolUse": one, "PostToolUseFailure": one,
             "ConfigChange": one, "SessionStart": [{"matcher": "startup|clear|compact",

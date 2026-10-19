@@ -344,3 +344,32 @@ def test_a_process_whose_hooks_never_call_back_says_so_once(env):
     assert [t for t, _ in chan.notices] == [f"{words.NOT_DONE} {words.HOOKS_DEAD}"] and len(chan.replies) == 2
     rows = ledger._select("SELECT room, gate, decision, rule FROM gates", ())
     assert [(r["room"], r["gate"], r["decision"], r["rule"]) for r in rows] == [("r", "hooks", "dead", "no-hook-call")]
+
+
+def test_a_dead_hook_notice_comes_back_on_a_new_process(env):
+    make, ledger, tmp_path = env
+    chan = Chan()
+    room = make(chan)
+    send(room, ledger, "m1", "HOOK_ERROR hello")
+    wait_idle(room)
+    assert room.reap_idle(force=True) and room.rp is None       # the idle close; the next message resumes
+    send(room, ledger, "m2", "HOOK_ERROR again")
+    wait_idle(room)
+    assert [t for t, _ in chan.notices] == [f"{words.NOT_DONE} {words.HOOKS_DEAD}"] * 2 and len(chan.replies) == 2
+
+
+def test_a_hook_error_with_a_hook_call_at_the_daemon_is_quiet(env):
+    make, ledger, tmp_path = env
+    chan = Chan()
+    room = make(chan)
+    start = room._start
+
+    def started(account, fresh=False):
+        start(account, fresh=fresh)
+        room.hooked = True                      # what daemon.hook does on the process's first bound call
+
+    room._start = started
+    send(room, ledger, "m1", "HOOK_ERROR hello")
+    wait_idle(room)
+    assert chan.notices == [] and len(chan.replies) == 1
+    assert ledger._select("SELECT count(*) AS n FROM gates", ())[0]["n"] == 0
