@@ -243,7 +243,7 @@ def test_a_planted_payload_change_shows_up_the_next_morning_in_the_machine_room_
     assert set(text[1:3]) == {f"{words.WORKING} example-room rulebook: +500 chars",
                               f"{words.WORKING} example-quiet rulebook: +500 chars"}
     assert morning.run(priv, state, accounts, cool, post=post, now=NOW + 2 * 86400) == 0
-    assert posts[2]["text"].splitlines()[0] == "- morning: nothing new, 2 known"     # the two blind detectors
+    assert posts[2]["text"].splitlines()[0] == "- morning: nothing new, 3 known"     # the three blind detectors
     assert {p["room"] for p in posts} == {"example-quiet"}                            # the machine room, no other
     assert all(words.width(x) <= words.PHONE for p in posts for x in p["text"].splitlines())
     assert (state / "morning" / time.strftime("%Y-%m-%d.txt", time.localtime(NOW))).is_file()

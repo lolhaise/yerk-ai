@@ -1,7 +1,8 @@
 """`yerk morning`: the morning diff, a daily report on how the install ran and what changed since the last
 report, for the 06:30 timer (units/yerk-morning.timer). In plain words, a line each (DESIGN 9, L196, L197,
 L204): every room's payload against the last delivered diff (`yerk map`'s numbers, so a planted change shows
-wait and time to the first visible line, stalls and shadow-gate flags from the run ledger, memory
+up), yesterday's messages, queue wait and time to the first visible line, stalls, dead turns (a person's
+with no reply or notice for it) and shadow-gate flags from the run ledger, memory
 night's sweep, memory and CPU per unit from the running yerkd's /status, and the account meters. It is
 posted through the running yerkd to the room whose rooms.toml entry says role = "machine", and to no other
 room; with no such room it is only written under the state folder, and one line says where. A finding the
@@ -22,6 +23,7 @@ from .config import budgets, rooms
 from .ledger import Ledger
 from .meters import Meters, meter_short
 
+DAY = 86400.0
 STATIC = ("mechanics", "persona", "rulebook", "room_voice", "pinned_memory")   # the parts whose change is a
                                                                                # finding: the recall pack moves daily
 
@@ -67,6 +69,16 @@ def build(private: Path, state: Path, accounts: list[Account], cooldowns: Cooldo
     else:
         partly = W.SINCE.format(at=W.clock(started, now)) if since < started < until else ""
         rows.append(("stalls" if stalls else "", status.stall_line(stalls, W.YESTERDAY, partly)))
+    dead = ledger.dead_turns(now - DAY, now - status.BLOCKED)    # a turn still inside its 10 minutes is not dead
+    if dead:
+        names = sorted({str(d["room"]) for d in dead})
+        rows.append(("dead " + " ".join(sorted(str(d["message_id"]) for d in dead)), W.named(
+            f"{W.NOT_DONE} {W.DEAD}", names[0] if len(names) == 1 else W.ROOMS_N.format(n=len(names)), n=len(dead),
+            at=W.clock(float(dead[-1]["received"]), now))))
+    elif live is None:                                    # messages sent while no yerkd ran were never ledgered
+        add("unknown dead", W.NOT_DONE, W.UNKNOWN.format(what="dead turns", why=W.NO_YERKD))
+    else:
+        add("", W.PLAIN, W.NO_DEAD)
     flags = ledger.shadow_rules(since, until)
     for rule, n in sorted(flags.items()):
         add(f"shadow {rule}", W.WORKING, W.SHADOW.format(rule=rule, n=n))
@@ -76,7 +88,7 @@ def build(private: Path, state: Path, accounts: list[Account], cooldowns: Cooldo
         add("unknown units", W.NOT_DONE, W.UNKNOWN.format(what="memory", why=W.NOT_ANSWERING_WHY))
     for u in (live or {}).get("units", []):
         if not u.get("gone"):
-            add("", W.PLAIN, W.UNIT_USE.format(name=u["name"], mb=round(u["rss_mb"]), cpu=u["cpu_pct"]))
+            rows.append(("", W.named(f"{W.PLAIN} {W.UNIT_USE}", u["name"], mb=round(u["rss_mb"]), cpu=u["cpu_pct"])))
     meters = Meters(state / "meters.json")
     for a in accounts:
         rest = cooldowns.show(a.name)

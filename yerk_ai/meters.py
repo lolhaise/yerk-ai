@@ -76,9 +76,9 @@ def meter_short(name: str, m: dict[str, Any], rests_until: float | None = None, 
     comes back; a window at 90% or more: orange; else a dash (no colour: nothing to see), as with no
     reading yet. The reading's age is --full's, and the card's own line once it is an hour old."""
     if rests_until:
-        return words.line(f"{words.NOT_DONE} {words.RESTS.format(name=name, until=words.clock(rests_until, now))}")
+        return words.named(f"{words.NOT_DONE} {words.RESTS}", name, until=words.clock(rests_until, now))
     if "error" in m:
-        return words.line(f"{words.PLAIN} {words.NO_READING.format(name=name)}")
+        return words.named(f"{words.PLAIN} {words.NO_READING}", name)
     now = time.time() if now is None else now
     parts = []
     for w, label in (("five_hour", "5h"), ("seven_day", "wk")):
@@ -88,4 +88,4 @@ def meter_short(name: str, m: dict[str, Any], rests_until: float | None = None, 
             parts.append(f"{label} {round(m[w]['pct'])}%{at}")
     top = max((m[w]["pct"] for w in WINDOWS if w in m), default=0)
     mark = words.NOT_DONE if top >= 100 else words.WORKING if top >= 90 else words.PLAIN
-    return words.line(f"{mark} {name}: " + (" · ".join(parts) or "no windows"))
+    return words.named(f"{mark} {{name}}: " + (" · ".join(parts) or "no windows"), name)

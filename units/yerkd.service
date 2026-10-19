@@ -7,6 +7,17 @@
 # set every second, yerk_ai/beat.py); 30 s with no beat and systemd stops it with SIGABRT and
 # Restart=on-failure starts it again. Without them a frozen yerkd stays "active" while no room
 # answers (freezes of up to 61 s went unseen that way), and nothing but a person notices.
+#
+# Memory covers yerkd and the room processes it starts (workers are units of their own). yerkd idles
+# at 89 MB (/status, 2026-10-18); each open room's Claude Code read 201 to 307 MB here (2026-10-18, before
+# its MCP child), so a room is sized at 350M and yerkd at 100M. MemoryHigh=2G is five rooms open at once:
+# past it the kernel reclaims and slows the unit, and kills nothing. MemoryMax=4G is the hard ceiling for a
+# leak only: there the OOM killer takes the largest process, a room's Claude Code, mid-turn, so it sits
+# far above what the rooms need. For each room kept open past five, raise MemoryHigh by 350M and keep
+# MemoryMax at twice it.
+#
+# `yerk deploy --unit` moves a daemon started by systemd-run onto this file under its own name, with
+# its command, folder and environment; `yerk deploy` restarts it after that (README, Install).
 [Unit]
 Description=Yerk AI daemon (yerkd)
 After=network-online.target
@@ -18,6 +29,8 @@ WatchdogSec=30
 Restart=on-failure
 RestartSec=5
 TimeoutStartSec=120
+MemoryHigh=2G
+MemoryMax=4G
 Environment=YERK_PRIVATE=%h/yerk-private
 Environment=YERK_STATE=%h/.local/state/yerk
 ExecStart=%h/yerk-ai/.venv/bin/yerkd

@@ -139,6 +139,7 @@ class DiscordChannel:
         self.locks: dict[str, asyncio.Lock] = {}
         self.guard = guard or LoopGuard()
         self.loop: asyncio.AbstractEventLoop | None = None
+        self.connected = False                   # /status: the gateway said ready (yerk deploy's proof)
         self.recovered = False
         self.edits: dict[str, str] = {}           # message id -> the edit already taken (its edited_at)
         self.after_recover: list[Callable[[], Awaitable[None]]] = []   # once, after the rooms recovered
@@ -311,6 +312,7 @@ class DiscordChannel:
     async def on_ready(self) -> None:
         self.loop = asyncio.get_running_loop()
         log.info("discord: connected as %s, serving %d room(s)", self.client.user, len(self.rooms))
+        self.connected = True
         if not self.recovered:              # once per process: a reconnect must not re-run live turns
             self.recovered = True
             for cid, room in self.rooms.items():
