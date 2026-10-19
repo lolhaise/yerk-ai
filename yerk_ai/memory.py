@@ -13,10 +13,12 @@ import json
 import logging
 import os
 import re
+import sqlite3
 import threading
+import time
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime, timezone, tzinfo
+from datetime import date, datetime, timedelta, timezone, tzinfo
 from pathlib import Path
 from typing import Any, Iterator
 from zoneinfo import ZoneInfo
@@ -37,15 +39,15 @@ class Settings:
     tz: tzinfo
     interval: float
     bench: Path
-    mentions: Path = Path("mentions.json")          # the mention index yerk-index writes
-    curated: tuple[str, ...] = ("MEMORY.md",)        # file names whose headings are mention keys
-    mentions_exclude: tuple[str, ...] = ()          # globs kept out of mention recall
-    embeddings_key: Path = Path("secrets/openai.key")   # the provider key, a path in the private layer, never read here
-    embeddings_model: str = "text-embedding-3-small"
-    embeddings_dim: int = 256
-    embeddings_units: str = "both"                  # what gets a vector in memory: both (lines and chunks, measured best), lines, or chunks
-    embeddings_width: int = 256                     # dimensions kept in memory (the first `width` of `dim`, renormalised)
-    index_status: Path = Path("index.json")         # what yerk-index serves: its port and the embeddings' state
+    mentions: Path                  # the mention index yerk-index writes
+    curated: tuple[str, ...]        # file names whose headings are mention keys
+    mentions_exclude: tuple[str, ...]   # globs kept out of mention recall
+    embeddings_key: Path            # the provider key, a path in the private layer, never read here
+    embeddings_model: str
+    embeddings_dim: int
+    embeddings_units: str           # what gets a vector in memory: both (lines and chunks, measured best), lines, or chunks
+    embeddings_width: int           # dimensions kept in memory (the first `width` of `dim`, renormalised)
+    index_status: Path              # what yerk-index serves: its port and the embeddings' state
 
     @property
     def daily(self) -> Path:
@@ -378,7 +380,6 @@ def read(s: Settings, path: str, start: int = 1, lines: int = 40, reader: Reader
 
 POOL = 80            # candidates from each search (keywords, meaning) before fusion
 RRF_K = 20           # reciprocal rank fusion's constant: 1 / (RRF_K + rank); 60 before run 4, 20 measured on the 164-question set
-PRIOR = 0.0          # the source prior: a fact or topic file's fused score times (1 + PRIOR); measured 0.15 to 0.5 on the 164-question set and every value lost, so it stays off
 KEEP = 1             # each search's own first KEEP hits stay in the fused top k (measured: 1; 0 was plain fusion)
 MEANING_WAIT = 5.0   # seconds a recall waits for yerk-index's meaning search (its own provider wait is shorter)
 DAYLOG = re.compile(r"(^|/)\d{4}-\d{2}-\d{2}\.md$")    # a day log is named by its day
@@ -428,10 +429,8 @@ def meaning(s: Settings, query: str, pool: int = POOL, deadline_s: float = MEANI
     try:
         with urllib.request.urlopen(req, timeout=deadline_s) as r:
             out = json.loads(r.read())
-    except TimeoutError:
-        return "index-timeout", []
-    except OSError as e:
-        return ("index-timeout" if "timed out" in str(e).lower() else "no-index"), []
+    except OSError as e:                            # TimeoutError is one
+        return ("index-timeout" if isinstance(e, TimeoutError) or "timed out" in str(e).lower() else "no-index"), []
     except ValueError:
         return "failure", []
     if not isinstance(out, dict) or not out.get("ok"):
@@ -439,19 +438,13 @@ def meaning(s: Settings, query: str, pool: int = POOL, deadline_s: float = MEANI
     return "ok", list(out.get("hits", []))
 
 
-def fuse(keywords: list[dict[str, Any]], vectors: list[dict[str, Any]], k: int,
-         rrf_k: int = RRF_K, w_keywords: float = 1.0, w_vectors: float = 1.0,
-         prior: float | None = None, keep: int | None = None) -> list[dict[str, Any]]:
+def fuse(keywords: list[dict[str, Any]], vectors: list[dict[str, Any]], k: int, keep: int = KEEP) -> list[dict[str, Any]]:
     """Reciprocal rank fusion of the two ranked lists: each chunk scores the sum over the lists it is in
-    of w / (rrf_k + its rank there); a tie breaks on the cosine. No calibration between a bm25 cover
+    of 1 / (RRF_K + its rank there); a tie breaks on the cosine. No calibration between a bm25 cover
     and a cosine is needed, and a chunk both searches put first outranks either search's lone top hit.
-    Vector hits under half the best cosine are noise and leave the fusion first. Two measured levers:
-    `prior` multiplies a fact or topic file's score by (1 + prior), a boost, never a rule, so a day log
-    that ranks well ahead still comes first; `keep` holds each search's own first `keep` hits in the
-    top k (in fused order), so a lone keyword hit at rank two is not pushed out by chunks both searches
-    place low."""
-    prior = PRIOR if prior is None else prior
-    keep = KEEP if keep is None else keep
+    Vector hits under half the best cosine are noise and leave the fusion first. `keep` holds each
+    search's own first `keep` hits in the top k (in fused order), so a lone keyword hit at rank two is
+    not pushed out by chunks both searches place low."""
     if not vectors:
         return keywords[:k]
     top = float(vectors[0]["score"])
@@ -460,14 +453,10 @@ def fuse(keywords: list[dict[str, Any]], vectors: list[dict[str, Any]], k: int,
         return keywords[:k]
     score: dict[int, float] = {}
     rows: dict[int, dict[str, Any]] = {}
-    for w, ranked in ((w_keywords, keywords), (w_vectors, vectors)):
+    for ranked in (keywords, vectors):
         for rank, h in enumerate(ranked, 1):
-            score[h["id"]] = score.get(h["id"], 0.0) + w / (rrf_k + rank)
+            score[h["id"]] = score.get(h["id"], 0.0) + 1.0 / (RRF_K + rank)
             rows.setdefault(h["id"], h)
-    if prior:
-        for cid in score:
-            if not is_daylog(rows[cid]["path"]):
-                score[cid] *= 1 + prior
     cos = {h["id"]: float(h["score"]) for h in vectors}
     order = sorted(score, key=lambda i: (-score[i], -cos.get(i, 0.0)))
     held = list(dict.fromkeys([h["id"] for h in keywords[:keep]] + [h["id"] for h in vectors[:keep]]))[:k]
@@ -484,8 +473,6 @@ def recall(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader:
     """The recall tool: ranked chunks with path and line, the keyword rank fused with the meaning rank
     when yerk-index serves one. A timeout and a failure of the index read differently (L54); a
     provider timeout or error reads differently from both: keywords only for this query, logged."""
-    import sqlite3
-    import time
     k = max(1, min(int(k), 20))
     try:
         conn = memindex.connect(s.index_db, readonly=True, deadline=time.monotonic() + deadline_s)
@@ -538,7 +525,6 @@ ITEM_CHARS = 280
 
 def window(s: Settings, now: datetime | None = None, days: int = WINDOW_DAYS) -> list[str]:
     """The last `days` day names in the install's time zone, newest first."""
-    from datetime import timedelta
     today = (now or datetime.now(timezone.utc)).astimezone(s.tz).date()
     return [(today - timedelta(days=n)).isoformat() for n in range(days)]
 
@@ -652,12 +638,11 @@ def migrate_daylogs(daily: Path, tz: tzinfo, rooms: dict[str, tuple[str, str]], 
     replaced under the lock capture holds, so a line the daemon files meanwhile waits for the rename
     and lands in the new file (cold read F3): the daemon runs this at its start, and `yerk memory
     migrate-daylogs` runs it by hand, beside a running daemon or not."""
-    from datetime import date as _date
     stats: dict[str, Any] = {"files": 0, "rewritten": 0, "kept": 0, "other": 0, "backup": str(backup)}
     for f in sorted(daily.glob("????-??-??.md")):
         with daily_lock(daily):
             text = f.read_text(errors="replace")
-            day = _date.fromisoformat(f.stem)
+            day = date.fromisoformat(f.stem)
             out = []
             for raw in text.splitlines():
                 ln = parse_line(raw)
@@ -690,25 +675,23 @@ def migrate_daylogs(daily: Path, tz: tzinfo, rooms: dict[str, tuple[str, str]], 
 
 def on_file(s: Settings, deadline_s: float = 1.5) -> tuple[Any, Any]:
     """(figure lookup, file lookup) for the shadow Stop check, each answering the cite or None."""
-    import sqlite3
-    import time
-
     from .evidence import has_figure
 
-    def figure(fig: str) -> str | None:
-        digits = re.findall(r"\d+", fig)
+    def rows(sql: str, args: tuple[str, ...]) -> list[Any]:
         try:
             conn = memindex.connect(s.index_db, readonly=True, deadline=time.monotonic() + deadline_s)
             try:
-                rows = conn.execute("SELECT c.path, c.lo, c.body FROM chunks_fts JOIN chunks c ON c.id = "
-                                    "chunks_fts.rowid WHERE chunks_fts MATCH ? LIMIT 60",
-                                    ('"' + " ".join(digits) + '"',)).fetchall()
+                return conn.execute(sql, args).fetchall()
             finally:
                 conn.close()
         except (OSError, sqlite3.Error):
-            return None
+            return []
+
+    def figure(fig: str) -> str | None:
         found = []                  # a fact file first, then the install's own tree, then a read-only root
-        for path, lo, body in rows:
+        for path, lo, body in rows("SELECT c.path, c.lo, c.body FROM chunks_fts JOIN chunks c ON c.id = "
+                                   "chunks_fts.rowid WHERE chunks_fts MATCH ? LIMIT 60",
+                                   ('"' + " ".join(re.findall(r"\d+", fig)) + '"',)):
             for n, line in enumerate(body.splitlines()):
                 if has_figure(line, fig):
                     p = Path(path)
@@ -718,16 +701,8 @@ def on_file(s: Settings, deadline_s: float = 1.5) -> tuple[Any, Any]:
         return f"{min(found)[1]}:{min(found)[2]}" if found else None
 
     def known(name: str) -> str | None:
-        try:
-            conn = memindex.connect(s.index_db, readonly=True, deadline=time.monotonic() + deadline_s)
-            try:
-                row = conn.execute("SELECT path FROM files WHERE path = ? OR path LIKE ? LIMIT 1",
-                                   (name, "%/" + name.lstrip("./"))).fetchone()
-            finally:
-                conn.close()
-        except (OSError, sqlite3.Error):
-            return None
-        return cite(s, Path(row[0])) if row else None
+        hit = rows("SELECT path FROM files WHERE path = ? OR path LIKE ? LIMIT 1", (name, "%/" + name.lstrip("./")))
+        return cite(s, Path(hit[0][0])) if hit else None
 
     return figure, known
 
