@@ -168,15 +168,6 @@ def add_columns(db: sqlite3.Connection) -> None:
                 db.execute(f"ALTER TABLE {table} ADD COLUMN {col} {kind}")
 
 
-def rename_column(db: sqlite3.Connection, table: str, old: str, new: str) -> bool:
-    """A rename, idempotent: done when `old` is still there and `new` is not."""
-    have = {r[1] for r in db.execute(f"PRAGMA table_info({table})")}
-    if old in have and new not in have:
-        db.execute(f"ALTER TABLE {table} RENAME COLUMN {old} TO {new}")
-        return True
-    return False
-
-
 def backfill_links(db: sqlite3.Connection) -> int:
     """Every id in every comma-joined column becomes a row in message_links (the ids were text only)."""
     n = 0

@@ -20,8 +20,8 @@ Copyright (c) 2025 Nous Research. MIT License.
   gateway/delivery_ledger.py (pending, attempting with a visible marker, capped attempts)
 - yerk_ai/lifted/hardline.py: the commands that never run, from tools/approval_detection.py
   (HARDLINE_PATTERNS, _hardline_rm_path, _HARDLINE_SYSTEM_DIRS)
-- yerk_ai/lifted/systemd_notify.py: gateway/systemd_notify.py, whole (notify,
-  watchdog_interval_seconds, SystemdWatchdog), with one type: ignore added
+- yerk_ai/lifted/systemd_notify.py: gateway/systemd_notify.py (notify,
+  watchdog_interval_seconds); the SystemdWatchdog class is left out, unused here
 - yerk_ai/memindex.py: the FTS5 capability checks and the orphan shadow-table repair, from
   hermes_state_fts.py (_is_fts5_unavailable_error, _drop_orphan_fts_shadow_tables)
 

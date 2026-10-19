@@ -2,7 +2,7 @@
 # official Python SDK) and the send tool's shape are adapted from Hermes Agent v0.22.2,
 # mcp_serve.py (create_mcp_server, messages_send), https://github.com/NousResearch/hermes-agent
 # Copyright (c) 2025 Nous Research. MIT License. See NOTICE.
-"""Yerk AI's own MCP server: seven tools (send, hold, recall, read_memory, worker, schedule, settings), local-only
+"""Yerk AI's own MCP server: eight tools (send, hold, recall, read_memory, remember, worker, schedule, settings), local-only
 HTTP, preloaded in every room. A worker gets none of it: by default no MCP server at all, and with
 [workers] yerk_tools its own stdio server (`worker_server`) carrying recall and read_memory only.
 
@@ -44,6 +44,7 @@ class Daemon(Protocol):
     async def tool_hold(self, room: str, wait_for: str, reason: str) -> dict[str, Any]: ...
     async def tool_recall(self, room: str, query: str, k: int) -> dict[str, Any]: ...
     async def tool_read_memory(self, room: str, path: str, start: int, lines: int) -> dict[str, Any]: ...
+    async def tool_remember(self, room: str, text: str, about: str, replaces: list[str]) -> dict[str, Any]: ...
     async def tool_worker(self, room: str, req: dict[str, Any]) -> dict[str, Any]: ...
     async def tool_schedule(self, room: str, req: dict[str, Any]) -> dict[str, Any]: ...
     async def tool_settings(self, room: str, model: str, effort: str) -> dict[str, Any]: ...
@@ -122,6 +123,14 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
     @mcp.tool(description=READ_MEMORY)
     async def read_memory(path: str, from_line: int = 1, lines: int = READ_LINES, *, ctx: Context) -> str:
         return json.dumps(await daemon.tool_read_memory(caller_room(ctx), path, from_line, lines))
+
+    @mcp.tool()
+    async def remember(text: str, about: str = "", replaces: list[str] | None = None, *, ctx: Context) -> str:
+        """File in memory now, before your reply, what you were just told: a new fact, a decision or a
+        correction, one line in plain words. `about`: for a fact, the person, place or thing it is about,
+        by the name the owner uses (it names the fact file). `replaces`: for a correction, the cite
+        (file:line) of every line it corrects; each is marked superseded. Returns the new line's cite."""
+        return json.dumps(await daemon.tool_remember(caller_room(ctx), text, about, replaces or []))
 
     @mcp.tool()
     async def worker(action: str, brief: str = "", id: str = "", room: str = "", tasks: list[str] | None = None,

@@ -68,12 +68,3 @@ def test_every_write_of_an_id_list_writes_its_rows(tmp_path):
     eid = led.watch_add(job="w", room="r", state="pending")
     led.watch_set(eid, reply_ids="c", inbound="m9")
     assert led.links("watch_events", eid, "reply_ids") == ["c"] and led.links("watch_events", eid, "inbound") == ["m9"]
-
-
-def test_a_rename_is_one_idempotent_step(tmp_path):
-    db = sqlite3.connect(tmp_path / "x.sqlite", isolation_level=None)
-    db.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, old TEXT)")
-    db.execute("INSERT INTO t (old) VALUES ('kept')")
-    assert L.rename_column(db, "t", "old", "new") is True
-    assert L.rename_column(db, "t", "old", "new") is False
-    assert db.execute("SELECT new FROM t").fetchone() == ("kept",)

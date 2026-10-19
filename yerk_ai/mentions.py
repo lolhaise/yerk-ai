@@ -26,6 +26,7 @@ ENTRY_CHARS = 300
 KEY_MIN, KEY_MAX, KEY_WORDS = 3, 44, 6
 MATCH_MAX = 6
 DROP = re.compile(r"⛔|ask[- ]only", re.I)
+OLD = "[superseded by "             # a corrected line (memory.remember): never an entry, its line read as blank
 TOKEN = re.compile(r"[a-z0-9][a-z0-9'.\-]*")
 BOLD = re.compile(r"\*\*(.+?)\*\*")
 SPLIT = re.compile(r"\s+[—–-]\s+|\s*[(,:=;]|\s+→\s+")
@@ -64,7 +65,7 @@ def key_of(text: str) -> str | None:
 
 def entries_of(path: Path, cite: str, curated: bool) -> tuple[list[dict[str, Any]], int]:
     """(entries, dropped) for one file: headings always; for a fact file also its name and bullets."""
-    lines = path.read_text(errors="replace").splitlines()
+    lines = ["" if OLD in x else x for x in path.read_text(errors="replace").splitlines()]
     out: list[dict[str, Any]] = []
     dropped = 0
 
