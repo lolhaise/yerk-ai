@@ -1,9 +1,9 @@
 """Claude Code hooks: every event a command hook (curl posting its JSON to the daemon, see settings_for).
 
-UserPromptSubmit adds the per-message parts: the clock line, the metadata line and the recall part (the
-owner's people and things the message names, then this room's lines of the last 14 days on its topic),
-capped at budgets.toml's `recall`; every assembly goes to the room's assembled.jsonl. SessionStart
-`compact` re-adds the recall pack; `startup` or `clear` after another session posts the reset line.
+UserPromptSubmit adds the per-message parts: the clock line, the metadata line, the rules changed since the session
+last looked (context.news, capped at `rules`) and the recall part (the owner's people and things the message names,
+then this room's lines of the last 14 days on its topic, capped at `recall`); every assembly goes to the room's
+assembled.jsonl. SessionStart `compact` re-adds the recall pack; `startup` or `clear` after another session posts the reset line.
 PreToolUse runs the gates (gates.py), PostToolUse and PostToolUseFailure time each call, ConfigChange
 writes the tamper row, Stop runs the rule-based checks (an unread image or a turn ending with nothing
 visible bounces once; the evidence rules only log). The room comes from the call's token, else from the
@@ -68,7 +68,7 @@ def record(state: Path, room: str, event: str, session_id: str, parts: dict[str,
 
 def user_prompt_submit(payload: dict[str, Any], state: Path, rooms: dict[str, dict[str, Any]], meta: Meta,
                        budgets: dict[str, Any], now: datetime | None = None,
-                       recall: Recall | None = None, room: str | None = None) -> dict[str, Any]:
+                       recall: Recall | None = None, room: str | None = None, news: Callable[[str, str], str] | None = None) -> dict[str, Any]:
     sid = str(payload.get("session_id", ""))
     room = room or room_for_session(SessionTable(state / "sessions.json"), sid)
     if room is None or room not in rooms:
@@ -79,6 +79,8 @@ def user_prompt_submit(payload: dict[str, Any], state: Path, rooms: dict[str, di
     now = now or datetime.now(timezone.utc)
     last = datetime.fromtimestamp(prev, timezone.utc) if prev else None
     parts = context.per_message(room, rooms[room], sender, now, last, budgets)
+    if news and (told := news(room, sid)):                     # (room, session) -> the rules block, or ""
+        parts.append(context.Part("rules", told, int(budgets["per_message"]["on_hit"]["rules"]), context.chars(told)))
     names: list[dict[str, Any]] = []
     topics: list[dict[str, Any]] = []
     took = None
@@ -101,8 +103,7 @@ def session_start(payload: dict[str, Any], state: Path, pack: Callable[[str], st
     if payload.get("source") != "compact":
         return {}
     sid = str(payload.get("session_id", ""))
-    room = room or room_for_session(SessionTable(state / "sessions.json"), sid)
-    if room is None:
+    if (room := room or room_for_session(SessionTable(state / "sessions.json"), sid)) is None:
         log.warning("hook: SessionStart (compact) for session %s matches no room binding; answered unbound", sid[:8] or "?")
         return dict(UNBOUND)
     text = pack(room)

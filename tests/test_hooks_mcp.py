@@ -47,7 +47,7 @@ def test_eight_preloaded_tools_with_slim_schemas(tmp_path):
     y = daemon(tmp_path)
     tools = {t.name: t for t in asyncio.run(mcp_server.build(y, y.port, y.hook).list_tools())}
     assert set(tools) == {"send", "hold", "recall", "read_memory", "remember", "worker", "schedule", "settings"}
-    assert list(tools["remember"].inputSchema["properties"]) == ["text", "about", "replaces"]
+    assert list(tools["remember"].inputSchema["properties"]) == ["text", "about", "replaces", "job"]
     assert {f"mcp__yerk__{t}" for t in tools} == set(YERK_TOOLS) and "`remember`" in context.MECHANICS.read_text()
     assert list(tools["settings"].inputSchema["properties"]) == ["model", "effort"]
     assert "the owner asks to change this room's model or thinking level" in str(tools["settings"].description).lower()

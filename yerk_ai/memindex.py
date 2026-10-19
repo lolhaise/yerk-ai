@@ -187,8 +187,7 @@ def chunks_of(text: str) -> list[tuple[int, int, str]]:
 
     def flush(end: int) -> None:
         nonlocal buf, size
-        body = "\n".join(buf).strip()
-        if body:
+        if (body := "\n".join(buf).strip()):
             out.append((start, end, body))
         buf, size = [], 0
 
@@ -406,8 +405,7 @@ def search(conn: sqlite3.Connection, query: str, k: int = 6, pool: int = 80,
     """Ranked chunks for a query: any of its words (FTS5, stemmed), ordered by how much of the
     query's weight a chunk covers (each distinct word weighted by its rarity), then by bm25.
     `weights`, when given, gets each word's weight (recall's snippet cut reads them)."""
-    ts = terms(query)
-    if not ts:
+    if not (ts := terms(query)):
         return []
     rows = conn.execute("SELECT c.id, c.path, c.lo, c.hi, c.body, bm25(chunks_fts) FROM chunks_fts "
                         "JOIN chunks c ON c.id = chunks_fts.rowid WHERE chunks_fts MATCH ? "

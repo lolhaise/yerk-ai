@@ -98,8 +98,7 @@ def entries_of(path: Path, cite: str, curated: bool) -> tuple[list[dict[str, Any
         if body:
             add(key_of(path.stem.replace("-", " ").replace("_", " ")), " ".join(t for _, t in body), body[0][0] + 1)
     for i, ln in enumerate(lines):
-        h = HEADING.match(ln)
-        if h and (curated or len(h.group(1)) >= 2):
+        if (h := HEADING.match(ln)) and (curated or len(h.group(1)) >= 2):
             add(key_of(h.group(2)), section(i), i + 1)
         b = None if curated else BULLET.match(ln)
         if b:

@@ -8,8 +8,8 @@ import sys
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from . import __version__, context, probes
-from .config import EXAMPLE_PRIVATE, budgets, private_dir, rooms
+from . import __version__, context, memory, probes
+from .config import EXAMPLE_PRIVATE, budgets, private_dir, rooms, state_dir
 
 
 def cmd_map(a: argparse.Namespace) -> int:
@@ -19,7 +19,7 @@ def cmd_map(a: argparse.Namespace) -> int:
         print(f"no room {a.room!r} in {priv / 'rooms.toml'}; rooms: {', '.join(rs) or 'none'}", file=sys.stderr)
         return 2
     b = budgets()
-    start = context.session_start(priv, rs[a.room], b)
+    start = context.session_start(priv, rs[a.room], b, rules=memory.settings(priv, state_dir(a.state)).root / memory.RULES)
     now = datetime.now(timezone.utc)
     msg = context.per_message(a.room, rs[a.room], "owner", now, now - timedelta(minutes=27), b)
     label = "the fake example layer" if priv == EXAMPLE_PRIVATE else str(priv)
@@ -31,11 +31,9 @@ def cmd_map(a: argparse.Namespace) -> int:
         print("OVER BUDGET: " + v)
     if a.wire:
         from .accounts import load_accounts
-        from .config import state_dir
         sid = json.loads((state_dir(a.state) / "sessions.json").read_text())[a.room]["session_id"]
         dirs = [x.config_dir for x in load_accounts(priv / "accounts.toml")] if (priv / "accounts.toml").is_file() else []
-        found = [f for d in dirs for f in sorted(d.glob(f"projects/*/{sid}.jsonl"))]
-        if not found:
+        if not (found := [f for d in dirs for f in sorted(d.glob(f"projects/*/{sid}.jsonl"))]):
             print(f"no transcript for session {sid} in {', '.join(map(str, dirs))}", file=sys.stderr)
             return 2
         print()
@@ -68,7 +66,6 @@ def cmd_setup_room(a: argparse.Namespace) -> int:
 def _control(state_arg: str | None, payload: dict[str, Any], timeout: float = 60) -> dict[str, Any]:
     """One POST to the running yerkd's /control (its port and the secret file's path are in
     <state>/yerkd.json), under the install's secret."""
-    from .config import state_dir
     from .jobs import post_control
     return post_control(state_dir(state_arg), payload, timeout)
 
@@ -84,7 +81,6 @@ def cmd_worker(a: argparse.Namespace) -> int:
     ledger, so they answer with the daemon down too."""
     from pathlib import Path
     from . import workers
-    from .config import state_dir
     from .ledger import Ledger
     if a.action in ("start", "stop"):
         if a.action == "start" and not a.brief:
@@ -123,7 +119,6 @@ def cmd_jobs(a: argparse.Namespace) -> int:
     """sync: the jobs file to one timer and service per job (idempotent), the diff, then every next
     fire read back from systemd; list: the read-back alone. Both work with the daemon down."""
     from . import jobs
-    from .config import state_dir
     priv, state = private_dir(a.private), state_dir(a.state)
     units, path = jobs.Systemd(), private_dir(a.private) / jobs.FILE
     try:
@@ -147,7 +142,7 @@ def cmd_schedule(a: argparse.Namespace) -> int:
     """add, remove, list: the same three actions as the room's `schedule` tool, on the jobs file and
     the timers, with or without a running daemon. The zone defaults to the room's."""
     from . import jobs
-    from .config import load_toml, state_dir
+    from .config import load_toml
     priv, state = private_dir(a.private), state_dir(a.state)
     conf = load_toml(priv / "yerkd.toml") if (priv / "yerkd.toml").is_file() else {}
     rs, units, env, path = rooms(priv), jobs.Systemd(), jobs.env_for(priv, state), priv / jobs.FILE
@@ -439,10 +434,8 @@ def cmd_explain(a: argparse.Namespace) -> int:
     from .config import state_dir
     from .words import NOT_DONE
     table_ = abilities.manifest()
-    ab = table_.get(a.ability)
-    if ab is None:
-        hit = _pick(_settings(a), a.ability)
-        if hit:
+    if (ab := table_.get(a.ability)) is None:
+        if (hit := _pick(_settings(a), a.ability)):
             print("\n".join(_setting_lines(hit[0])))
             return 0
         print(f"{NOT_DONE} no ability or setting {a.ability!r}; abilities: {', '.join(table_)}", file=sys.stderr)
@@ -474,8 +467,7 @@ def cmd_config(a: argparse.Namespace) -> int:
                                                        for r in got))
         return 0
     rows = _settings(a)
-    pick = _pick(rows, a.key, sections=True)
-    if not pick:
+    if not (pick := _pick(rows, a.key, sections=True)):
         print(f"no setting {a.key!r}; settings: {', '.join(r['key'] for r in rows)}", file=sys.stderr)
         return 2
     print(json.dumps(pick) if a.json else "\n".join(x for r in pick for x in _setting_lines(r)))
@@ -509,7 +501,7 @@ def main(argv: list[str] | None = None) -> int:
     m.add_argument("room")
     m.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else the fake example layer)")
     m.add_argument("--wire", action="store_true", help="also the sizes as sent, from the room's session transcript")
-    m.add_argument("--state", help="--wire: state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
+    m.add_argument("--state", help="state folder for --wire and the example layer's rules (default: $YERK_STATE, else ~/.local/state/yerk)")
     s = sub.add_parser("setup-room", help="find or make a Discord room's test webhook (URL to a 0600 file)")
     s.add_argument("room")
     s.add_argument("--private", help="private folder (default: $YERK_PRIVATE)")

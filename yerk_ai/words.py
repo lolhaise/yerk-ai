@@ -65,8 +65,7 @@ def line(text: str, n: int = PHONE) -> str:
         return text
     while text and width(text) > n - 3:
         text = text[:-1]
-    at = text.rfind(" ")
-    if at >= len(text) // 2:                  # a word boundary that keeps most of the line
+    if (at := text.rfind(" ")) >= len(text) // 2:                  # a word boundary that keeps most of the line
         text = text[:at]
     return text.rstrip(" ,;:") + "..."
 
@@ -124,6 +123,8 @@ RELAY_ASK = ("[tell the room the outcome in your own voice, under {cap:,} charac
 GONE = "gone, no result"
 WORKERS_OWNER_ONLY = "only the owner's rooms can use workers"       # start, report, list, stop
 JOBS_OWNER_ONLY = "only the owner's rooms can schedule jobs"         # any kind: every job runs as the owner
+RULES_OWNER_ONLY = "only the owner's rooms can file rules"           # remember with a job: a rule reaches every room
+RULE_FILED = "from now on every room does {job} this way"            # the line a filed rule's reply says
 WORKER_OWN_ROOM = "a room starts workers for itself only, not for {room}"
 STRAY = "unknown worker {id} running"
 NONE_RUNNING = "workers: none running"
@@ -176,8 +177,7 @@ WATCH_ASK = ("[watcher {name} saw {n} new line{s}. {what}Answer in your own voic
 # time, said the way a person says it
 def span(seconds: float) -> str:
     """'18 s', '3 min', '1 h 5 min'."""
-    s = max(0, int(round(seconds)))
-    if s < 60:
+    if (s := max(0, int(round(seconds)))) < 60:
         return f"{s} s"
     m = round(s / 60)
     return f"{m} min" if m < 90 else f"{m // 60} h {m % 60} min"
@@ -390,8 +390,7 @@ def look(conf: dict[str, Any] | None) -> Look:
     """[presentation] from yerkd.toml; a value that is not one of its choices falls back to the default."""
     out = {}
     for key, (choices, _) in SETTINGS.items():
-        v = str((conf or {}).get(key, choices[0]))
-        if v not in choices:
+        if (v := str((conf or {}).get(key, choices[0]))) not in choices:
             log.warning("presentation.%s = %r is not one of %s; using %s", key, v, ", ".join(choices), choices[0])
             v = choices[0]
         out[key] = v

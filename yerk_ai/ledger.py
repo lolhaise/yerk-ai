@@ -582,8 +582,7 @@ class Ledger:
     def files_sent_for(self, message_ids: list[str]) -> list[dict[str, Any]]:
         """Files already in the room for any of these inbound messages (a turn a crash cut short): by
         the id rows, never by loading every sent delivery."""
-        want = [m for m in message_ids if m]
-        if not want:
+        if not (want := [m for m in message_ids if m]):
             return []
         return self._select("SELECT DISTINCT d.* FROM deliveries d JOIN message_links l ON l.tbl = 'deliveries' AND "
                             "l.col = 'inbound' AND l.row_key = d.key WHERE d.kind = 'file' AND d.state = 'sent' AND "

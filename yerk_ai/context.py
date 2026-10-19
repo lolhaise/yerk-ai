@@ -1,25 +1,30 @@
 """A room's context: the session-start file built to its budget, and the small per-message parts.
 
 Session start, most stable first so the cached start of the prompt survives: Claude Code's own
-prompt, tools and skills, then one appended file holding the mechanics, persona, rulebook, room
-voice, pinned memory and the recall pack. Per message: only parts with news, starting with the
-clock line and the message metadata.
+prompt, tools and skills, then one appended file holding the mechanics, persona, rulebook (and the
+install's rules file), room voice, pinned memory and the recall pack. Per message: only parts with
+news: the clock line, the message metadata, and what changed in the rules since the session looked.
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
+from .config import flag, write_private
 from .lifted.clock import clock_line, room_voice
 from .lifted.sizemap import fmt, split_sections
 from .lifted.trim import truncate
+from .memory import FRONT
+from .mentions import OLD
 
 MECHANICS = Path(__file__).with_name("mechanics.md")
 APPENDED = ("mechanics", "persona", "rulebook", "room_voice", "pinned_memory", "recall_pack")
 SEP = "\n\n"
+NEWS = "Rules changed since you last looked:"
 
 
 def chars(s: str) -> int:
@@ -88,7 +93,17 @@ def recall_pack(base: Path, room: dict[str, Any], limit: int = 6000, pack: Pack 
     return SEP.join(texts), ", ".join(srcs)
 
 
-def session_start(private: Path, room: dict[str, Any], budgets: dict[str, Any], pack: Pack | None = None) -> list[Part]:
+def rulebook(base: Path, room: dict[str, Any], rules: Path | None) -> tuple[str, str]:
+    """The room's rulebook, then the install's rules file's live lines (memory.rule): no front matter or superseded line."""
+    text, src = _read(base, room.get("rulebook"))
+    if not rules or not rules.is_file() or flag(room.get("sealed")):      # sealed: its own rulebook, no other room's rule
+        return text, src
+    live = "\n".join(x for x in FRONT.sub("", rules.read_text()).strip().splitlines() if OLD not in x)
+    return SEP.join(x for x in (text, cited(rules.resolve(), live)) if x), ", ".join(x for x in (src, str(rules.resolve())) if x)
+
+
+def session_start(private: Path, room: dict[str, Any], budgets: dict[str, Any], pack: Pack | None = None,
+                  rules: Path | None = None) -> list[Part]:
     limits = budgets["session_start"]["appended"]
     base = layer_dir(private, room)
     voice = str(room.get("voice") or "")
@@ -96,7 +111,7 @@ def session_start(private: Path, room: dict[str, Any], budgets: dict[str, Any], 
     raw = {
         "mechanics": (MECHANICS.read_text().strip(), "yerk_ai/mechanics.md"),
         "persona": _read(base, room.get("persona")),
-        "rulebook": _read(base, room.get("rulebook")),
+        "rulebook": rulebook(base, room, rules),
         "room_voice": (cited(vpath, room_voice(vpath) or ""), str(vpath)) if vpath else ("", ""),
         "pinned_memory": _read(base, room.get("pinned_memory")),
         "recall_pack": recall_pack(base, room, int(limits["recall_pack"]), pack),
@@ -123,6 +138,36 @@ def per_message(room_name: str, room: dict[str, Any], sender: str, now: datetime
     limits = budgets["per_message"]["parts"]
     return [Part("clock", clock, limits.get("clock"), chars(clock)),
             Part("metadata", meta, limits.get("metadata"), chars(meta))]
+
+
+def news(path: Path, sid: str, private: Path, room: dict[str, Any], rules: Path, budget: int) -> str:
+    """What changed in the mechanics, the room's rulebook or the rules file since session `sid` last looked (decision 15),
+    once per version: each new line and each line replaced or gone, or past `budget` their count and where to read them.
+    `path` keeps the room's looks; `sid` "" records a process start, a new session's first look (its start file's)."""
+    rb = layer_dir(private, room) / str(room["rulebook"]) if room.get("rulebook") else None
+    now = {k: (p.read_text().strip() if p.is_file() else "", p.resolve()) for k, p in
+           (("mechanics", MECHANICS), ("rulebook", rb), ("rules", rules)) if p}
+    texts = {k: t for k, (t, _) in now.items()}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    look = json.loads(path.read_text()) if path.is_file() else {}
+    if not sid:
+        write_private(path, json.dumps({**look, "start": texts}))
+        return ""
+    seen = look.get("seen", texts) if look.get("session") == sid else look.get("start", texts)
+    if look.get("session") == sid and seen == texts:
+        return ""
+    write_private(path, json.dumps({**look, "session": sid, "seen": texts}))
+    rows: dict[str, list[str]] = {}
+    for k, (text, p) in now.items():      # the lines that say something: no front matter, heading or blank
+        old, new = ([x for x in FRONT.sub("", t).splitlines() if x.strip() and not x.startswith("#")] for t in (seen.get(k, ""), text))
+        rows[k] = [f"new in {p.name}: {x.removeprefix('- ')}" for x in new if x not in old and OLD not in x] + \
+                  [f"replaced in {p.name}: {x.removeprefix('- ')}" for x in old if x not in new]
+    lines = [x for r in rows.values() for x in r]
+    out = "\n".join([NEWS, *lines]) if lines else ""
+    if chars(out) <= budget:
+        return out
+    where = ", ".join(f'read_memory("{now[k][1].name}")' if k == "rules" else f"Read {now[k][1]}" for k, r in rows.items() if r)
+    return f"{NEWS} {len(lines)} lines new or replaced, past the {budget:,} characters this note holds; read them: {where}."
 
 
 def message_text(parts: list[Part], body: str) -> str:

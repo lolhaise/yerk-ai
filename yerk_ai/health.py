@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import subprocess
 import tempfile
 import time
@@ -22,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from .accounts import TOKEN_ENV, Account, Cooldowns, account_env
+from .config import write_private
 from .engine import Turn, claude_bin
 from .ledger import Ledger
 from .lifted.classify import FailureTable
@@ -114,8 +114,7 @@ def check(accounts: list[Account], failures: FailureTable, ledger: Ledger, coold
         if tokened and ok:
             folder, _ = model_call(a, model, failures, None, timeout,
                                    env={k: v for k, v in env.items() if k != TOKEN_ENV})   # the folder's own login
-            same = same_account(turn.windows, folder.windows)
-            if same is False:
+            if (same := same_account(turn.windows, folder.windows)) is False:
                 ident_ok = 0
                 note.append("the token answers as another account (its reset times differ from the folder login's)")
             elif same is None:
@@ -132,9 +131,5 @@ def check(accounts: list[Account], failures: FailureTable, ledger: Ledger, coold
                "model": ",".join(turn.models) or model, "ms": turn.ms(turn.ended), "note": "; ".join(note) or None}
         ledger.health(**row)
         rows.append(row)
-    tmp = pins_path.with_suffix(".tmp")
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as fh:
-        json.dump(pins, fh)
-    os.replace(tmp, pins_path)
+    write_private(pins_path, json.dumps(pins))
     return rows

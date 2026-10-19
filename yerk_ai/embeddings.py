@@ -32,6 +32,8 @@ from typing import Any
 
 import numpy as np
 
+from .config import write_private
+
 log = logging.getLogger("yerk.embeddings")
 
 MODEL = "text-embedding-3-small"
@@ -85,8 +87,7 @@ class Embedder:
 
     def embed(self, texts: list[str], timeout: float | None = None, retries: int | None = None) -> np.ndarray:
         """(len(texts), dim) float32 unit vectors, in order. ProviderTimeout or ProviderError past the budget."""
-        key = self._key()
-        if key is None:
+        if (key := self._key()) is None:
             raise ProviderError("no provider key")
         body = json.dumps({"model": self.model, "input": texts, "dimensions": self.dim,
                            "encoding_format": "base64"}).encode()
@@ -188,8 +189,7 @@ class Vectors:
                            (model, self.dim))
         fresh = Vectors(self.dim, self.width)
         while True:
-            rows = cur.fetchmany(LOAD_ROWS)
-            if not rows:
+            if not (rows := cur.fetchmany(LOAD_ROWS)):
                 break
             fresh._put([s for s, _ in rows], np.stack([np.frombuffer(v, dtype=np.float16) for _, v in rows]))
         with self.lock:
@@ -209,8 +209,7 @@ class Vectors:
         qf = self.narrow(np.asarray(q, dtype=np.float32)[None, :])[0]
         scores = np.empty(n, dtype=np.float32)
         for b, block in enumerate(blocks):
-            lo = b * BLOCK
-            if lo >= n:
+            if (lo := b * BLOCK) >= n:
                 break
             hi = min(lo + BLOCK, n)
             scores[lo:hi] = block[:hi - lo].astype(np.float32) @ qf
@@ -397,8 +396,7 @@ class Backfill:
         """One batch: its texts from the index, one request, one transaction. Chunks already embedded
         (a hash queued twice) are skipped. Returns the number embedded."""
         conn = self._conn()
-        shas = self.take(conn)
-        if not shas:
+        if not (shas := self.take(conn)):
             return 0
         marks = ",".join("?" * len(shas))
         have = {r[0] for r in conn.execute(f"SELECT sha FROM vectors WHERE sha IN ({marks}) AND model = ? AND dim = ?",
@@ -407,8 +405,7 @@ class Backfill:
         for s, b in conn.execute(f"SELECT sha, min(body) FROM units WHERE sha IN ({marks}) GROUP BY sha UNION ALL "
                                  f"SELECT sha, min(body) FROM chunks WHERE sha IN ({marks}) GROUP BY sha", shas * 2):
             texts.setdefault(s, b)
-        rows = [(s, b) for s, b in texts.items() if s not in have]
-        if not rows:
+        if not (rows := [(s, b) for s, b in texts.items() if s not in have]):
             return 0
         vecs = self.embedder.embed([b for _, b in rows])
         conn.execute("BEGIN IMMEDIATE")
@@ -466,8 +463,4 @@ class Backfill:
 
 def write_status(path: Path, **fields: Any) -> None:
     """<state>/memory/index.json, 0600: what yerk-index is serving (pid, port, the embeddings' state)."""
-    tmp = path.with_suffix(".tmp")
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as f:
-        json.dump({"pid": os.getpid(), "at": round(time.time(), 3), **fields}, f)
-    os.replace(tmp, path)
+    write_private(path, json.dumps({"pid": os.getpid(), "at": round(time.time(), 3), **fields}))

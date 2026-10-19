@@ -47,8 +47,7 @@ class FailureTable:
 
     def classify(self, error_type: str | None = None, text: str = "", events: list[str] | None = None) -> Failure:
         """Claude Code's error type, then the stream's events, then the text, then fatal."""
-        t = self.types.get(error_type or "")
-        if t and not t.get("text_first"):
+        if (t := self.types.get(error_type or "")) and not t.get("text_first"):
             return self._entry(t, f"type:{error_type}")
         for name in events or []:
             if f := self.event(name):
@@ -56,9 +55,7 @@ class FailureTable:
         for name, c, kind, action, rx in self.patterns:
             if text and rx.search(text):
                 return Failure(c, action or self.actions[c], kind, f"pattern:{name}")
-        if t:
-            return self._entry(t, f"type:{error_type}")
-        return Failure("fatal", self.actions["fatal"], None, "none")
+        return self._entry(t, f"type:{error_type}") if t else Failure("fatal", self.actions["fatal"], None, "none")
 
     def cooldown_seconds(self, kind: str, repeats: int) -> float:
         """Base seconds for the kind, doubled per earlier repeat, capped at `max`."""

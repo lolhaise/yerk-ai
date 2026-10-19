@@ -159,8 +159,7 @@ def system_zone() -> str:
     """The box's IANA zone name: $TZ, else where /etc/localtime points, else UTC. A name resolves
     each line's offset for its own instant; a fixed offset read at start is an hour off after every
     clock change until a restart (restart test R5)."""
-    name = os.environ.get("TZ", "").lstrip(":")
-    if not name:
+    if not (name := os.environ.get("TZ", "").lstrip(":")):
         try:
             target = os.readlink("/etc/localtime")
             name = target.split("zoneinfo/", 1)[1] if "zoneinfo/" in target else ""
@@ -184,8 +183,7 @@ FRONT = re.compile(r"\A---\n(.*?)\n---\n", re.S)   # a memory file's front matte
 def room_class(conf: dict[str, Any]) -> str:
     """The class a room's lines carry: `class` in rooms.toml, else private for an owner room (the
     owner's rooms read everything) and room for any other (its own lines and shared files only)."""
-    c = str(conf.get("class") or "")
-    if c in CLASSES:
+    if (c := str(conf.get("class") or "")) in CLASSES:
         return c
     return "private" if str(conf.get("privacy", "owner")) == "owner" else "room"
 
@@ -207,8 +205,7 @@ def file_class(path: Path) -> tuple[str, str]:
     cls, room = "private", ""
     with suppress(OSError):
         head = path.open(encoding="utf-8", errors="replace").read(400)
-        m = FRONT.match(head)
-        if m:
+        if (m := FRONT.match(head)):
             for line in m.group(1).splitlines():
                 k, _, v = line.partition(":")
                 if k.strip() == "class" and v.strip() in CLASSES:
@@ -245,8 +242,7 @@ def allowed_text(reader: Reader | None, path: Path, text: str, blank: str = "", 
         out = []
         kept = False
         for raw in text.splitlines():
-            ln = parse_line(raw)
-            if ln is None:
+            if (ln := parse_line(raw)) is None:
                 shown = (kept and raw.startswith("  - attachment: ")) or not raw.strip() or bool(DAY_HEAD.match(raw))
                 out.append(raw if shown else blank)
                 kept = kept and raw.startswith("  - attachment: ")
@@ -287,8 +283,7 @@ class Line:
 
 
 def parse_line(raw: str) -> Line | None:
-    m = LINE.match(raw)
-    if not m:
+    if not (m := LINE.match(raw)):
         return None
     return Line(m.group(1), m.group(2) or "", m.group(3), m.group(4) or "", m.group(5), m.group(6) or "",
                 m.group(7), m.group(8) or "", m.group(9) or "")
@@ -370,6 +365,7 @@ class DailyLog:
 NOTE = "note"                # the role of a day-log line a room files with `remember` (DESIGN 5; L58)
 BY = re.compile(re.escape(mentions.OLD) + r" by (\S+?:\d+)\]")     # a mark naming its replacement; `[superseded]` names none
 LATER = "superseded.tsv"     # in the tree, `old cite<TAB>new cite`: a line a correction named but could not mark with its cite
+RULES = "rules.md"           # in the tree: the install's one rules file, how each job is done in every room (decision 15)
 
 
 def later(s: Settings) -> dict[str, str]:
@@ -436,8 +432,7 @@ def remember(s: Settings, log: DailyLog, room: str, mid: str, text: str, about: 
                 ln = parse_line(lines[k - 1])
                 oc, orid = (ln.cls, ln.rid) if ln and p.parent == s.daily.resolve() else file_class(p)
                 shown = oc not in ("room", "shared") or nc[0] == "shared" or nc == (oc, orid)    # no private cite on it (F1)
-                lines[k - 1] = re.sub(r"^(.*?)((?: \[c:\w+\])?(?: \[m:[^\]\s]+\])?)$",
-                                      lambda m: f"{m[1]} {mentions.OLD}{' by ' + new if shown else ''}]{m[2]}", lines[k - 1], count=1)
+                lines[k - 1] = mark(lines[k - 1], new if shown else "")
                 write_private(p, "\n".join(lines))
                 pairs += [] if shown else [(c, new)]
     if pairs:
@@ -445,6 +440,32 @@ def remember(s: Settings, log: DailyLog, room: str, mid: str, text: str, about: 
             f.write("".join(f"{a}\t{b}\n" for a, b in pairs))
     return {"ok": True, "cite": new, "superseded": [c for c in edit if c not in taken], "refused": refused, "not_edited":
             [*taken.values(), *(f"{c}: a read-only root or not this room's own line; the new line names it" for c in named)]}
+
+
+def mark(line: str, by: str = "") -> str:
+    """`line` marked superseded, by `by` (its replacement's cite) when given; the mark goes before a line's class and id."""
+    return re.sub(r"^(.*?)((?: \[c:\w+\])?(?: \[m:[^\]\s]+\])?)$", lambda m: f"{m[1]} {mentions.OLD}{' by ' + by if by else ''}]{m[2]}",
+                  line, count=1)
+
+
+def rule(s: Settings, room: str, mid: str, job: str, text: str) -> dict[str, Any]:
+    """How a job is done from now on, from an owner's room, into RULES: the one file every room starts with and hears
+    from on its next message when it changes (context.news), shared so read_memory reads it anywhere. One line with its
+    room, message and time; the job's live line before it is marked superseded by the new one, never deleted."""
+    job, body = one_line(job).strip(" :").lower(), one_line(text)
+    if not job or not body:
+        return {"ok": False, "error": "a rule needs the job's short name and how it is done, both as text"}
+    path, head, at = s.root / RULES, f"- {job}: ", datetime.now(timezone.utc).astimezone(s.tz)
+    with daily_lock(s.daily):                  # the one writers' lock
+        lines = path.read_text().splitlines() if path.is_file() else ["---", "class: shared", "---", "# Rules: one live line per job, in every room", ""]
+        live = [i for i, x in enumerate(lines) if x.startswith(head) and mentions.OLD not in x]
+        n = next((i + 1 for i in live if lines[i].startswith(f"{head}{body} (")), 0)       # a retried call
+        gone = [] if n else live
+        if not n:
+            n = len(lines) + 1
+            lines = [mark(x, f"{cite(s, path)}:{n}") if i in gone else x for i, x in enumerate(lines)]
+            write_private(path, "\n".join([*lines, f"{head}{body} ({room}, {at:%Y-%m-%d %H:%M:%S%:z}) [m:{mid}]"]) + "\n")
+    return {"ok": True, "job": job, "cite": f"{cite(s, path)}:{n}", "replaced": [f"{cite(s, path)}:{i + 1}" for i in gone]}
 
 
 def live_first(s: Settings, r: dict[str, Any], reader: Reader | None = None) -> dict[str, Any]:
@@ -557,8 +578,7 @@ def meaning(s: Settings, query: str, pool: int = POOL, deadline_s: float = MEANI
     this query and says why: no-index, no-key, empty, provider-timeout, provider-error, index-timeout
     (yerk-index itself answered late), failure (its answer was broken)."""
     import urllib.request
-    state = meaning_state(s)
-    if state != "ok":
+    if (state := meaning_state(s)) != "ok":
         return state, []
     port = int(index_status(s)["port"])
     # `near` asks for the line each hit's vector matched; yerk-index adds it only when asked, so an older daemon,
@@ -709,8 +729,7 @@ def snippet(text: str, lo: int, weights: dict[str, float], near: str | None = No
     took: dict[int, str] = {}
     left = cap
     for i in order:
-        ln = lines[i].strip()
-        if not ln:
+        if not (ln := lines[i].strip()):
             continue
         if len(ln) <= left:
             took[i], left = ln, left - len(ln) - 1
@@ -790,8 +809,7 @@ def topic_hits(s: Settings, room: str, text: str, exclude: set[str] | None = Non
     """The message's key terms against this room's own lines of the last 14 days, best first:
     ranked by how many of the terms a line holds, newer first on a tie. The message itself
     (filed before the turn) and lines sharing too few terms never come back."""
-    ts = memindex.terms(text)
-    if not ts:
+    if not (ts := memindex.terms(text)):
         return []
     want = {t[:5] for t in ts}                                            # a term's stem: its first five letters
     need = 1 if len(want) <= 2 else max(2, -(-len(want) * 3 // 10))     # a long message needs 30% of its terms
@@ -872,8 +890,7 @@ def migrate_daylogs(daily: Path, tz: tzinfo, rooms: dict[str, tuple[str, str]], 
             day = date.fromisoformat(f.stem)
             out = []
             for raw in text.splitlines():
-                ln = parse_line(raw)
-                if ln is None:
+                if (ln := parse_line(raw)) is None:
                     stats["other"] += 1
                     out.append(raw)
                     continue

@@ -10,15 +10,12 @@ from pathlib import Path
 
 
 def gap(delta: timedelta) -> str:
-    s = int(delta.total_seconds())
-    if s < 60:
+    if (s := int(delta.total_seconds())) < 60:
         return "under a minute"
     m, h, d = s // 60, s // 3600, s // 86400
     if d:
         return f"{d}d {h % 24}h"
-    if h:
-        return f"{h}h {m % 60}m"
-    return f"{m}m"
+    return f"{h}h {m % 60}m" if h else f"{m}m"
 
 
 def clock_line(now: datetime, last_human: datetime | None = None) -> str:
