@@ -993,7 +993,7 @@ layer = 4
 
 [abilities.recall]
 state = "built"
-what = "The recall tool: ranked chunks of the owner's memory with file path and line, in every room; with the embeddings ability on, the keyword rank is fused with the meaning rank."
+what = "The recall tool: ranked hits of the owner's memory, each the lines that carry the match (at most [memory] recall_chars a call) with a cite (file:line) read_memory reads on from, in every room; with the embeddings ability on, the keyword rank is fused with the meaning rank."
 tier = "free"
 needs = "a running yerk-index"
 free_path = "keywords (FTS5) alone; the embeddings ability (key tier) adds meaning search behind them and keywords stay the fallback"
