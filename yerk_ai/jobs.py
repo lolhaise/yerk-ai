@@ -38,7 +38,6 @@ import logging
 import os
 import queue
 import re
-import shlex
 import signal
 import subprocess
 import sys
@@ -51,7 +50,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from itertools import product
 from pathlib import Path
-from typing import Any, Callable, Iterator, Protocol
+from typing import Any, Callable, Iterator
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from . import words
@@ -59,7 +58,7 @@ from .config import REPO
 from .ledger import Ledger
 from .lifted.killtree import stop_group
 from .room import HARNESS, Inbound
-from .workers import ENV_KEEP, Workers, took
+from .workers import ENV_KEEP, Workers, systemctl, took, unit_line
 
 log = logging.getLogger("yerk.jobs")
 FILE = "jobs.toml"
@@ -626,20 +625,17 @@ def env_for(private: Path, state: Path) -> Env:
     return Env(sys.executable, REPO, private.resolve(), state.resolve())
 
 
-def _q(text: str) -> str:
-    return shlex.quote(text).replace("%", "%%").replace("$", "$$")
-
-
 def unit_texts(job: Job, env: Env) -> tuple[str, str]:
     """(timer, service) for the job, byte for byte what sync writes; a watcher has no timer ("")."""
     head = f"{HEADER}{job.name}.\n"
+    step = "watch" if job.kind == "watcher" else "run"
+    run = [f"WorkingDirectory={unit_line(str(env.repo))}", f'Environment="PYTHONPATH={unit_line(str(env.repo))}"',
+           f'Environment="YERK_PRIVATE={unit_line(str(env.private))}"',
+           f'Environment="YERK_STATE={unit_line(str(env.state))}"',
+           f"ExecStart={unit_line(env.python, '-P', '-m', 'yerk_ai.jobs', step, job.name)}"]
     if job.kind == "watcher":                # always on: the supervisor restarts the command, systemd it
         return "", "\n".join([head, "[Unit]", f"Description=Yerk AI watcher {job.name}", "", "[Service]", "Type=simple",
-                              f"WorkingDirectory={_q(str(env.repo))}", f'Environment="PYTHONPATH={_q(str(env.repo))}"',
-                              f'Environment="YERK_PRIVATE={_q(str(env.private))}"',
-                              f'Environment="YERK_STATE={_q(str(env.state))}"',
-                              f"ExecStart={' '.join(_q(x) for x in (env.python, '-P', '-m', 'yerk_ai.jobs', 'watch', job.name))}",
-                              "Restart=always", "RestartSec=10", "KillMode=control-group", "TimeoutStopSec=20", "",
+                              *run, "Restart=always", "RestartSec=10", "KillMode=control-group", "TimeoutStopSec=20", "",
                               "[Install]", "WantedBy=default.target", ""])
     timer = [head, "[Unit]", f"Description=Yerk AI job {job.name} (timer)", "", "[Timer]"]
     if not job.calendar():                 # an interval off the clock's boundaries: systemd's monotonic clock
@@ -648,31 +644,14 @@ def unit_texts(job: Job, env: Env) -> tuple[str, str]:
         timer += [f"OnCalendar={c}" for c in job.calendar()] + ["Persistent=true"]
     timer += ["AccuracySec=1s", f"Unit={job.unit}.service", "", "[Install]", "WantedBy=timers.target", ""]
     start = 120 if job.kind == "agent" else int(job.cap * 60) + 120      # the runner's own cap comes first (L163)
-    service = [head, "[Unit]", f"Description=Yerk AI job {job.name}", "", "[Service]", "Type=oneshot",
-               f"WorkingDirectory={_q(str(env.repo))}", f'Environment="PYTHONPATH={_q(str(env.repo))}"',
-               f'Environment="YERK_PRIVATE={_q(str(env.private))}"', f'Environment="YERK_STATE={_q(str(env.state))}"',
-               f"ExecStart={' '.join(_q(x) for x in (env.python, '-P', '-m', 'yerk_ai.jobs', 'run', job.name))}",
+    service = [head, "[Unit]", f"Description=Yerk AI job {job.name}", "", "[Service]", "Type=oneshot", *run,
                f"TimeoutStartSec={start}", ""]
     return "\n".join(timer), "\n".join(service)
 
 
-class Units(Protocol):
-    """systemd's part, as the code relies on it; tests give a fake with files in a folder."""
-    def read(self, unit: str) -> str | None: ...
-    def write(self, unit: str, text: str) -> None: ...
-    def remove(self, unit: str) -> None: ...
-    def ours(self) -> list[str]: ...                                 # job names with a generated timer on disk
-    def reload(self) -> None: ...
-    def enable_now(self, timer: str) -> str: ...                     # "" or why not
-    def restart(self, timer: str) -> str: ...
-    def disable_now(self, timer: str) -> str: ...
-    def check(self, spec: str) -> str: ...                           # systemd-analyze calendar: "" or why not
-    def timers(self) -> dict[str, dict[str, float | None]]: ...     # timer unit -> {"next", "last"} (epoch)
-    def active(self, unit: str) -> str: ...                          # a service's ActiveState ("active", ...)
-
-
 class Systemd:
-    """The real one: unit files in the user's systemd folder, `systemctl --user`, `systemd-analyze`."""
+    """systemd's part, as the code relies on it (tests give a fake with files in a folder): unit files in
+    the user's systemd folder, `systemctl --user`, `systemd-analyze`. The verbs answer "" or why not."""
 
     def __init__(self, folder: Path | None = None, stamps: Path | None = None):
         base = Path(os.environ.get("XDG_CONFIG_HOME") or "~/.config").expanduser()
@@ -704,7 +683,7 @@ class Systemd:
             except FileNotFoundError:
                 pass
 
-    def ours(self) -> list[str]:
+    def ours(self) -> list[str]:                              # job names with a generated unit on disk
         out = []
         for p in sorted([*self.folder.glob(f"{UNIT}*.timer"), *self.folder.glob(f"{UNIT}*.service")]):
             try:
@@ -714,24 +693,18 @@ class Systemd:
                 pass
         return sorted(set(out))
 
-    def active(self, unit: str) -> str:
-        p = self._ctl("show", "-p", "ActiveState", "--value", unit)
-        if p.returncode:
-            raise OSError(f"systemctl --user show {unit} exited {p.returncode}: {p.stderr.strip()[:200]}")
-        return p.stdout.strip()
-
-    def _ctl(self, *args: str, timeout: float = 60) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(["systemctl", "--user", *args], capture_output=True, text=True, timeout=timeout)
+    def active(self, unit: str) -> str:                       # a service's ActiveState ("active", ...)
+        return systemctl("show", "-p", "ActiveState", "--value", unit, check=f"show {unit}").stdout.strip()
 
     def reload(self) -> None:
-        p = self._ctl("daemon-reload")
-        if p.returncode:
-            raise OSError(f"systemctl --user daemon-reload exited {p.returncode}: {p.stderr.strip()[:200]}")
+        systemctl("daemon-reload", check="daemon-reload")
 
     def _unit_cmd(self, *args: str) -> str:
-        p = self._ctl(*args)
-        return "" if p.returncode == 0 else f"systemctl --user {' '.join(args)} exited {p.returncode}: " \
-                                             f"{p.stderr.strip()[:200]}"
+        try:
+            systemctl(*args, check=" ".join(args))
+        except OSError as e:
+            return str(e)
+        return ""
 
     def enable_now(self, timer: str) -> str:
         return self._unit_cmd("enable", "--now", timer)
@@ -754,10 +727,8 @@ class Systemd:
             return f"{spec!r} never fires again (it is in the past)"
         return ""
 
-    def timers(self) -> dict[str, dict[str, float | None]]:
-        p = self._ctl("list-timers", "--all", "--output=json", f"{UNIT}*")
-        if p.returncode:
-            raise OSError(f"systemctl --user list-timers exited {p.returncode}: {p.stderr.strip()[:200]}")
+    def timers(self) -> dict[str, dict[str, float | None]]:   # timer unit -> {"next", "last"} (epoch)
+        p = systemctl("list-timers", "--all", "--output=json", f"{UNIT}*", check="list-timers")
         out: dict[str, dict[str, float | None]] = {}
         for r in json.loads(p.stdout or "[]"):
             out[str(r["unit"])] = {"next": (r["next"] / 1e6) if r.get("next") else None,
@@ -777,7 +748,7 @@ class Plan:
     failed: dict[str, str] = field(default_factory=dict)       # systemd refused: job -> why
 
 
-def plan(path: Path, units: Units, env: Env, now: float | None = None) -> Plan:
+def plan(path: Path, units: Systemd, env: Env, now: float | None = None) -> Plan:
     jobs, errors = load(path, now)
     p = Plan(jobs=jobs, errors=errors)
     for name, job in jobs.items():
@@ -801,7 +772,7 @@ def plan(path: Path, units: Units, env: Env, now: float | None = None) -> Plan:
     return p
 
 
-def apply(p: Plan, units: Units, env: Env) -> None:
+def apply(p: Plan, units: Systemd, env: Env) -> None:
     """Write the changed units, reload once, start the new timers and restart the changed ones,
     disable and remove the dropped ones."""
     def lead(name: str) -> str:                          # what is enabled: the timer, or a watcher's service
@@ -832,7 +803,7 @@ def apply(p: Plan, units: Units, env: Env) -> None:
             p.failed[name] = why
 
 
-def readback(jobs: dict[str, Job], units: Units, now: float | None = None) -> dict[str, dict[str, Any]]:
+def readback(jobs: dict[str, Job], units: Systemd, now: float | None = None) -> dict[str, dict[str, Any]]:
     """Every job's next and last fire as systemd has them (never from memory)."""
     now = time.time() if now is None else now
     timers = units.timers()
@@ -852,7 +823,7 @@ def readback(jobs: dict[str, Job], units: Units, now: float | None = None) -> di
     return out
 
 
-def sync(path: Path, units: Units, env: Env, now: float | None = None) -> tuple[Plan, dict[str, dict[str, Any]]]:
+def sync(path: Path, units: Systemd, env: Env, now: float | None = None) -> tuple[Plan, dict[str, dict[str, Any]]]:
     p = plan(path, units, env, now)
     apply(p, units, env)
     return p, readback(p.jobs, units, now)
@@ -896,7 +867,7 @@ def phone(text: str) -> str:
     return text if len(text) <= PHONE - 2 else text[:PHONE - 3].rstrip() + "\N{HORIZONTAL ELLIPSIS}"
 
 
-def status_lines(path: Path, units: Units, now: float | None = None) -> list[str]:
+def status_lines(path: Path, units: Systemd, now: float | None = None) -> list[str]:
     """`yerk status`: one line per job, state first and phone width: a green dot and how long until
     its next fire (from systemd, never from memory), a white dot for a job with no timer, a red dot
     for one that cannot be scheduled or a timer with no job. The detail (times, zones, why) is
@@ -925,7 +896,7 @@ def status_lines(path: Path, units: Units, now: float | None = None) -> list[str
 
 
 # the run: inside the unit
-def last_trigger(units: Units, job: Job) -> float | None:
+def last_trigger(units: Systemd, job: Job) -> float | None:
     try:
         t = units.timers().get(f"{job.unit}.timer")
     except (OSError, subprocess.SubprocessError, ValueError):
@@ -1111,7 +1082,7 @@ def post_control(state: Path, payload: dict[str, Any], timeout: float = 120, wor
         return dict(json.loads(r.read()))
 
 
-def run(name: str, private: Path, state: Path, units: Units | None = None,
+def run(name: str, private: Path, state: Path, units: Systemd | None = None,
         handoff: Callable[[dict[str, Any]], dict[str, Any]] | None = None, now: float | None = None) -> int:
     """The unit's one step. A script job: ledger the run, run the command, hand the result to the
     daemon for delivery (the ledger says "undelivered" when none runs). An agent job: ask the daemon
@@ -1196,7 +1167,7 @@ def brief_for(job: Job, run_id: int, fired: float) -> str:
 
 
 # the schedule tool's three actions: one code path for the tool and for `yerk schedule`
-def schedule_add(path: Path, units: Units, env: Env, name: str, kind: str, when: str, what: str, room: str, tz: str,
+def schedule_add(path: Path, units: Systemd, env: Env, name: str, kind: str, when: str, what: str, room: str, tz: str,
                  deliver: str = "announce", cap: float = 0.0, account: str = "") -> dict[str, Any]:
     """Write the job to the file, sync, and answer with the next fire time read back from systemd;
     a job systemd will not schedule is taken out of the file again."""
@@ -1223,7 +1194,7 @@ def schedule_add(path: Path, units: Units, env: Env, name: str, kind: str, when:
             "next_text": f"{when_text(r['next'], job.tz)} ({in_text(r['next'], now)})", "diff": diff_lines(p)}
 
 
-def schedule_remove(path: Path, units: Units, env: Env, name: str) -> dict[str, Any]:
+def schedule_remove(path: Path, units: Systemd, env: Env, name: str) -> dict[str, Any]:
     try:
         had = remove(path, name)
         p, _ = sync(path, units, env)
@@ -1234,7 +1205,7 @@ def schedule_remove(path: Path, units: Units, env: Env, name: str) -> dict[str, 
     return {"ok": True, "name": name, "removed": True, "diff": diff_lines(p)}
 
 
-def schedule_list(path: Path, units: Units) -> dict[str, Any]:
+def schedule_list(path: Path, units: Systemd) -> dict[str, Any]:
     jobs, errors = load(path)
     try:
         back = readback(jobs, units)
@@ -1255,7 +1226,7 @@ class Jobs:
 
     def __init__(self, private: Path, state: Path, ledger: Ledger, conf: dict[str, Any], rooms: dict[str, Any],
                  channels: dict[str, Any], room_confs: dict[str, dict[str, Any]], daemon_conf: dict[str, Any],
-                 workers: Workers, units: Units | None = None):
+                 workers: Workers, units: Systemd | None = None):
         self.private, self.state, self.ledger, self.conf = private, state, ledger, conf
         self.rooms, self.channels, self.room_confs, self.daemon_conf = rooms, channels, room_confs, daemon_conf
         self.workers, self.units = workers, units or Systemd()

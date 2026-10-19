@@ -31,6 +31,7 @@ from typing import Any, Callable, Iterator
 from . import jobs, status, words
 from .config import REPO, load_toml, rooms
 from .ledger import Ledger
+from .workers import systemctl, unit_line
 
 FAST = ["tests/test_scrub.py", "tests/test_budget.py", "tests/test_card.py", "tests/test_style.py"]
 Ask = Callable[[Path], "dict[str, Any] | None"]
@@ -91,7 +92,7 @@ def unit_text(template: str, argv: list[str], cwd: str, env: list[str]) -> str:
     text = re.sub(r"(?m)^Environment=.*\n", "", template)
     quoted = ["Environment=\"" + e.replace("\\", "\\\\").replace("\"", "\\\"").replace("%", "%%") + "\"\n" for e in env]
     return re.sub(r"(?m)^ExecStart=.*$", lambda _: "".join(quoted) + f"WorkingDirectory={cwd.replace('%', '%%')}\n"
-                  + "ExecStart=" + shlex.join(argv).replace("%", "%%").replace("$", "$$"), text)
+                  + "ExecStart=" + unit_line(*argv), text)
 
 
 def unit_of(state: Path, proc: Path = Path("/proc"), main_pid: Callable[[str], str] | None = None) -> str:
@@ -177,7 +178,7 @@ class Systemd:
         self.unit = unit
 
     def ctl(self, *args: str) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(["systemctl", "--user", *args], capture_output=True, text=True, timeout=180)
+        return systemctl(*args, timeout=180)
 
     def restart(self) -> bool:
         return self.ctl("restart", self.unit).returncode == 0
