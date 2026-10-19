@@ -37,6 +37,7 @@ daemon restarts.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
@@ -290,13 +291,10 @@ def tasks_of(path: Path) -> list[tuple[bool, str]]:
 
 def first_line(path: Path) -> str:
     """The report's first non-empty line, heading marks dropped; "" when there is no report."""
-    try:
-        with open(path, errors="replace") as f:
-            for x in f:
-                if x.strip():
-                    return short(x.strip().lstrip("#").strip(), 200)
-    except OSError:
-        pass
+    with contextlib.suppress(OSError), open(path, errors="replace") as f:
+        for x in f:
+            if x.strip():
+                return short(x.strip().lstrip("#").strip(), 200)
     return ""
 
 

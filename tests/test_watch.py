@@ -1,10 +1,11 @@
 """A room that watches a channel (rooms.toml `watch`): it reads that channel as its own and never writes to
 it. The proof runs the daemon's own wiring and a real room on the fake Claude against fake channels that
-record every call that writes; the watched one must end with none. Then the config refusal, and the
-`yerk map` and `yerk status` lines."""
+record every call that writes; the watched one must end with none. Then the blind day log (only the owner's
+lines from the watched channel), the config refusal, and the `yerk map` and `yerk status` lines."""
 import asyncio
 import shutil
 import threading
+from datetime import timezone
 from pathlib import Path
 from types import SimpleNamespace as NS
 
@@ -17,9 +18,10 @@ from yerk_ai.channels.discord import DiscordChannel
 from yerk_ai.config import EXAMPLE_PRIVATE, rooms
 from yerk_ai.daemon import Yerkd
 from yerk_ai.ledger import Ledger
+from yerk_ai.memory import DailyLog
 from yerk_ai.room import Inbound
 
-from test_discord import Attachment, Chan, Msg
+from test_discord import HOOK, Attachment, Chan, Msg, Room
 from test_observe import Timers, busy_room
 from test_slash import It, wait
 
@@ -156,6 +158,41 @@ def test_a_watched_channel_is_read_as_the_rooms_own_and_never_written_to(tmp_pat
         m: (str(WATCHED), "answered") for m in ("501", "502", "503")}
     days = "".join(p.read_text() for p in Path(d.memory.daily).rglob("*.md"))
     assert all(f"[m:{m}]" in days for m in (501, 502))           # filed in the room's day log as they landed
+
+
+def test_a_watched_channel_files_only_the_owners_lines_so_the_room_never_reads_the_other_side(tmp_path):
+    """The blind shadow: in the watched channel (#example-chat, where another assistant answers too) only the owner's lines, new
+    or edited, and a test sender's go in the day's log, so the room's recall pack and `recall` never read the other
+    side's answers; the room's own channel still files everyone's."""
+    class Shadow(Room):
+        name = ROOM
+
+        def revise(self, mid, text):                  # the owner's edit, taken while the message still waits
+            return True
+    other = 4321                                      # OpenClaw's bot, or anyone else who is not the owner
+    log = DailyLog(tmp_path / "daily", timezone.utc)
+    own, watched = Spy(OWN), Spy(WATCHED)
+    dc = DiscordChannel("token", OWNER, [HOOK], Ledger(tmp_path / "l.sqlite"), client=Bot(own, watched),
+                        state=tmp_path, capture=log.capture)
+    dc.add_room(OWN, Shadow(tmp_path), watch=WATCHED)
+
+    def edit(ch, mid, text, author=OWNER):
+        m = Msg(ch, mid, text, author=author)
+        m.edited_at = "2026-10-19T08:00:00"
+        asyncio.run(dc.on_raw_message_edit(NS(channel_id=ch.id, message=m)))
+    for m in (Msg(watched, 601, "squats felt heavy"), Msg(watched, 602, "OpenClaw: drop to 4 sets", author=other),
+              Msg(watched, 603, "a bot's take", webhook_id=777), Msg(watched, 604, "a test sender", webhook_id=HOOK),
+              Msg(own, 701, "the owner here"), Msg(own, 702, "someone else here", author=other)):
+        asyncio.run(dc.on_message(m))
+    edit(watched, 601, "squats felt heavier")
+    edit(watched, 602, "OpenClaw: drop to 4 sets, then a back-off set", author=other)    # it streams by editing
+    edit(own, 702, "someone else here, edited", author=other)
+    text = "".join(p.read_text() for p in (tmp_path / "daily").glob("*.md"))
+    assert "OpenClaw" not in text and "a bot's take" not in text           # the other side, new or edited: never filed
+    said = [x.split(" ", 3)[3].rsplit(" [c:", 1)[0] for x in text.splitlines() if x.startswith("- ")]
+    assert said == ["owner: squats felt heavy", "test-webhook: a test sender", "owner: the owner here",
+                    "other: someone else here", "owner: (edited) squats felt heavier",
+                    "other: (edited) someone else here, edited"]
 
 
 def test_a_watch_on_a_rooms_own_channel_or_another_rooms_watch_is_refused(tmp_path):

@@ -245,8 +245,7 @@ def render(room_name: str, private_label: str, start: list[Part], msg: list[Part
     L.append(row.format("total", fmt(total), fmt(limit), "ok" if total <= limit else "OVER"))
     L.append(row.format("  of which Yerk AI's file", fmt(chars(appended_file(start))), "", "as sent"))
     L += ["", f"{'Every message':<32}{'chars':>9}{'budget':>9}  status"]
-    for p in msg:
-        L.append(row.format(p.name, fmt(p.raw), fmt(p.budget or 0), "OVER" if p.over else "ok"))
+    L += [row.format(p.name, fmt(p.raw), fmt(p.budget or 0), "OVER" if p.over else "ok") for p in msg]
     every, pm = sum(p.raw for p in msg), budgets["per_message"]
     L.append(row.format("total", fmt(every), fmt(pm["typical"]),
                         f"{'ok' if every <= pm['typical'] else 'OVER'} (cap {fmt(pm['cap'])})"))

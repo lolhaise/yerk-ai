@@ -220,9 +220,7 @@ def file_class(path: Path) -> tuple[str, str]:
 
 def may_read(reader: Reader | None, cls: str, room: str) -> bool:
     """An owner room reads everything; any other room reads shared files and its own room's lines."""
-    if reader is None or reader.owner:
-        return True
-    return cls == "shared" or (cls == "room" and bool(room) and room == reader.rid)
+    return reader is None or reader.owner or cls == "shared" or (cls == "room" and bool(room) and room == reader.rid)
 
 
 def allowed_text(reader: Reader | None, path: Path, text: str, blank: str = "", whole: bool = False,

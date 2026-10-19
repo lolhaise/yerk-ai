@@ -19,7 +19,7 @@
   unconfirmed are posted once, labelled, unless the room already shows them (a file: from its
   outbox snapshot, found by name and size); then messages a crash left open run again once,
   marked, told which files are already in the room, and messages that arrived while the daemon
-  was down are read from the room's own history and run.
+  was down are read from the room's own history, filed and run.
 - The owner's edits and deletes: a message still waiting is revised or dropped before it runs;
   an edit of one already run comes in again, marked; a reply says which message it answers.
 - Replies: the final text only, split under 2,000 characters, never inside a code block.
@@ -200,11 +200,12 @@ class DiscordChannel:
         await self.take(room, m)
 
     def file(self, room: str, m: Any, edited: bool = False) -> None:
-        """Every message in a served room into the day's log as it lands (L55), whoever sent it and
-        whether or not a turn takes it. Yerk AI's own posts are filed where they are sent; cards never."""
-        if self.capture is None or (self.client.user is not None and m.author.id == self.client.user.id):
+        """Every message in a room's own channel into the day's log as it lands (L55), whoever sent it, taken or not;
+        in a watched one, the owner's only. Yerk AI's own posts are filed where they are sent; cards never."""
+        role = self.sender_of(m)              # watched: blind to the other side, so recall never shows its answers
+        if self.capture is None or m.author.id == self._me() or (role is None and m.channel.id != self.names[room]):
             return
-        role = self.sender_of(m) or ("webhook" if getattr(m, "webhook_id", None) else "other")
+        role = role or ("webhook" if getattr(m, "webhook_id", None) else "other")
         text = "\n".join(x for x in (reply_line(m, self._me()), str(getattr(m, "clean_content", None) or m.content or ""))
                          if x)
         files = [(a.filename, file_type(a.filename, getattr(a, "content_type", None)), int(a.size or 0))
@@ -337,7 +338,10 @@ class DiscordChannel:
         if not self.recovered:              # once per process: a reconnect must not re-run live turns
             self.recovered = True
             for cid, room in self.rooms.items():
-                await self.recover(cid, room)
+                try:
+                    await self.recover(cid, room)
+                except discord.HTTPException as e:    # one channel it cannot read (a 403, a 404) never stops the rest
+                    log.warning("room %s: channel %s not recovered after the restart: %s", room.name, cid, e)
             for hook in self.after_recover:
                 try:
                     await hook()
@@ -444,6 +448,7 @@ class DiscordChannel:
         last = self.ledger.last_inbound(str(cid))
         if last:
             async for m in ch.history(after=discord.Object(int(last)), limit=50, oldest_first=True):
+                self.file(room.name, m)                    # as on_message: into the day's log, then taken
                 await self.take(room, m)
 
     async def redeliver(self, ch: Any, room: Room) -> None:
