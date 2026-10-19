@@ -698,7 +698,9 @@ def imessage(a: argparse.Namespace) -> dict[str, Any]:
     """The inbound check (Layer 8): never sends anything. The newest rows of each iMessage room's chat,
     read from the bridge on a read-only connection, each looked up in the inbound and delivery
     ledgers; the result is a ledger row (health, account "imessage", source "probe") for the morning
-    diff, and a lost text the machine room has not heard of yet is one line there."""
+    diff, and a lost text the machine room has not heard of yet is one line there. A row is lost only
+    when two runs that read the chat in a row miss it: a Mac just awake, or a daemon just restarted,
+    may not have replayed it yet. The first miss is noted by its guid's hash, the second is said."""
     import asyncio
     import hashlib
     from . import jobs, words
@@ -713,17 +715,28 @@ def imessage(a: argparse.Namespace) -> dict[str, Any]:
     conf = dict((load_toml(priv / "yerkd.toml") if (priv / "yerkd.toml").is_file() else {}).get("imessage", {}))
     ledger = Ledger(state / "ledger.sqlite")
     out = asyncio.run(probe(named, conf, ledger, limit=int(a.rows), grace=float(a.grace)))
-    lost = list(out.get("gaps", []))
-    ledger.health(account="imessage", source="probe", ok=1 if out.get("ok") else 0,
-                  failure=out.get("error") or ("lost" if lost else None),
-                  note=json.dumps({"rooms": out.get("rooms", {}), "lost": len(lost)}))
+
+    def mark(g: dict[str, Any]) -> str:
+        return hashlib.sha1(g["guid"].encode()).hexdigest()[:16]
+    reached, misses, prev = "error" not in out, list(out.get("gaps", [])), ledger.health_last("imessage", "probe")
+    try:
+        before = set(json.loads(str(prev["note"] or "{}")).get("missed", [])) if prev else set()
+    except (ValueError, AttributeError):
+        before = set()
+    lost = [g for g in misses if mark(g) in before]          # the run before missed it too
+    ok = reached and not lost and not out.get("failure")
+    ledger.health(account="imessage", source="probe", ok=1 if ok else 0,
+                  failure=out.get("error") or ("lost" if lost else None) or out.get("failure"),
+                  note=json.dumps({"rooms": out.get("rooms", {}), "reached": reached, "lost": len(lost),
+                                   "marks": sorted({mark(g) for g in lost}),
+                                   "missed": sorted({mark(g) for g in misses}) if reached else sorted(before)}))
     told = ledger.health_notes("imessage", "probe-gap")
-    new = [g for g in lost if hashlib.sha1(g["guid"].encode()).hexdigest()[:16] not in told]
+    new = [g for g in lost if mark(g) not in told]
     machine = next((n for n, c in confs.items() if c.get("role") == "machine"), None)
     out["alerted"] = 0
     for room in sorted({g["room"] for g in new}):
         mine = [g for g in new if g["room"] == room]
-        marks = sorted(hashlib.sha1(g["guid"].encode()).hexdigest()[:16] for g in mine)
+        marks = sorted(mark(g) for g in mine)
         text = words.line(words.IMSG_GAP.format(n=len(mine), s="" if len(mine) == 1 else "s", room=room))
         if machine is None:
             print(f"probe imessage: no machine room for: {text}")
@@ -738,5 +751,5 @@ def imessage(a: argparse.Namespace) -> dict[str, Any]:
             for m in marks:
                 ledger.health(account="imessage", source="probe-gap", ok=0, note=m)
             out["alerted"] += len(mine)
-    out["gaps"] = len(lost)                       # counts only on stdout: a guid stays in the ledger
+    out["ok"], out["gaps"], out["first_misses"] = ok, len(lost), len(misses) - len(lost)   # counts only on stdout
     return out

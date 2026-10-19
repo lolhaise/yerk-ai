@@ -225,7 +225,13 @@ MAC_AWAY = WORKING + " iMessage: the Mac is away, texts wait"
 MAC_BACK = DONE + " iMessage: the Mac is back, {n} waiting text{s} sent"
 NOT_FETCHED_MAC = "not fetched from the Mac yet"
 IMSG_GAP = NOT_DONE + " iMessage: {n} text{s} never reached Yerk AI in {room}"
-IMSG_PROBE = "iMessage probe {day}: {runs} runs, {gaps} lost"
+IMSG_PROBE = "iMessage {day}: Mac seen {reached}/{runs}"           # probe runs that read the Mac's chats, of all
+IMSG_LOST = "iMessage {day}: {n} lost text{s}"                    # distinct texts, however many runs saw them
+# an iMessage turn room is only ever the owner's own thread, so Yerk AI never texts anyone in his name
+IMSG_GROUP, IMSG_OTHERS = "a group", "others in it"
+IMSG_REFUSED = NOT_DONE + " {room} not served: {why}"
+IMSG_NOT_SERVED = "the room's chat is not served"
+IMSG_LOOP = NOT_DONE + " {room}: loop guard, paused {mins} min"
 
 
 def file_why(kind: str, **say: Any) -> str:
