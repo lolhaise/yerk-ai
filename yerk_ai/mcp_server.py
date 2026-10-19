@@ -59,13 +59,14 @@ Check = Callable[[str, str], Auth | None]   # (path, header value) -> who this i
 
 
 def checker(install: str, worker: str, room_of_token: Callable[[str], str | None]) -> Check:
-    """The one rule for every endpoint, compared in constant time; an empty secret never matches."""
+    """The one rule for every endpoint, compared in constant time; an empty secret never matches. A
+    room's own token opens /hook and /mcp only: /control and /status show every room, not a room's to read."""
     def check(path: str, value: str) -> Auth | None:
         if value and install and hmac.compare_digest(value, install):
             return {"kind": "install", "room": ""}
         if value and worker and path.startswith("/control") and hmac.compare_digest(value, worker):
             return {"kind": "worker", "room": ""}
-        room = room_of_token(value) if value and not path.startswith("/control") else None
+        room = room_of_token(value) if value and not path.startswith(("/control", "/status")) else None
         return {"kind": "room", "room": room} if room else None
     return check
 
@@ -96,7 +97,8 @@ def app(mcp: FastMCP, check: Check) -> Any:
     return Guard(mcp.streamable_http_app(), check)
 
 
-def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = None) -> FastMCP:
+def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = None,
+          status: Handler | None = None) -> FastMCP:
     mcp = FastMCP("yerk", host="127.0.0.1", port=port, stateless_http=True, json_response=True, log_level="WARNING")
 
     @mcp.tool()
@@ -163,6 +165,8 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
     route("/hook", hook)
     if control:
         route("/control", control)      # `yerk room close`, `yerk worker`, the job units, a worker's reads
+    if status:
+        route("/status", status)        # `yerk status`: what runs now (status.py), local only the same way
     return mcp
 
 

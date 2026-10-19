@@ -1,0 +1,10 @@
+# Every day at 06:30 local time; a morning the box was off runs once when it is back.
+[Unit]
+Description=Yerk AI morning diff at 06:30
+
+[Timer]
+OnCalendar=*-*-* 06:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

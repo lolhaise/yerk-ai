@@ -171,14 +171,15 @@ def test_status_abilities_and_explain_print_state_first_at_phone_width(tmp_path,
     assert cli.main(["abilities", "--private", str(EXAMPLE_PRIVATE), "--state", str(tmp_path)]) == 0
     lines = capsys.readouterr().out.splitlines()
     shown = [x for x in lines if not x.startswith("yerk explain")]
-    assert shown and all(state_first(x) and not room_safe(x) and words.width(x) <= words.PHONE for x in shown), shown
+    dashed = lambda x: state_first(x) or x.startswith(f"{words.PLAIN} ")      # noqa: E731  the card: a dash, no colour
+    assert shown and all(dashed(x) and not room_safe(x) and words.width(x) <= words.PHONE for x in shown), shown
     assert f"{words.NOTHING} voice: known, not built" in lines and lines[-2].endswith(": known, not built")  # described last
     assert f"{words.WORKING} embeddings: needs OpenAI" in lines and f"{words.NOTHING} recall: runs on the free path" in lines
 
 
 # 2. one vocabulary
 RENDERERS = ["card.py", "workers.py", "room.py", "channels/discord.py", "daemon.py", "cli.py", "meters.py",
-             "abilities.py"]
+             "abilities.py", "status.py", "morning.py"]
 MARKS = ("\U0001F7E2", "\U0001F7E0", "\U0001F534", "\u26AA", "LARGE GREEN CIRCLE", "LARGE ORANGE CIRCLE",
          "LARGE RED CIRCLE", "MEDIUM WHITE CIRCLE", "HOURGLASS WITH FLOWING SAND", "CROSS MARK", "WHITE SMALL SQUARE",
          "STOPWATCH", "BLACK SQUARE FOR STOP", "\u23F3", "\u274C", "\u25AB", "\u23F1", "\u23F9")
