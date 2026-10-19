@@ -18,7 +18,7 @@ open_loops = "memory/open-loops.md"
 # effort = "high"             # passed as --effort; unset: the model's own default
 # allow = ["Bash", "Write"]   # permission rules beyond Read; add the tool to `tools` too. The gates run first
 # also = ["~/notes"]          # only these of yerkd.toml's [memory] also roots reach its recall, read_memory and names; unset: all
-# sealed = true               # in Yerk's own tree, its own room's lines only: no other room's lines, notes or facts
+# sealed = true               # in Yerk's own tree, its own room's lines only: no other room's lines, notes, facts or rules
 thinking_panel = false        # owner-only rooms: a "thinking" line on the card (costs about 5 s a reply)
 
 [rooms.example-quiet]

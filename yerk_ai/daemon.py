@@ -304,6 +304,8 @@ class Yerkd:
         """`remember` with a `job`: an owner's room files how it is done from now on (memory.rule) for every room."""
         if room not in self.rooms or not self.owner(room):
             return {"ok": False, "line": words.RULES_OWNER_ONLY}
+        if self.reader(room).sealed:        # its teaching stays its own day-log note, the job its label, never the shared rules
+            return await self.tool_remember(room, text, job.strip(" :"), [])
         with self.rooms[room].lock:
             mid = ",".join(m.id for m in self.rooms[room].inflight) or f"x{self.rooms[room].turn_key}"
         r = await asyncio.to_thread(memory.rule, self.memory, room, mid, job, text)
@@ -404,6 +406,8 @@ class Yerkd:
 
     def rules_news(self, room: str, sid: str = "") -> str:
         """The rules block for session `sid` (context.news), under budgets.toml's `rules`; "" records a process start."""
+        if self.reader(room).sealed:        # none, and no rules-seen.json with the rules' text in its folder: no other room's rule
+            return ""
         return context.news(self.state / "rooms" / room / "rules-seen.json", sid, self.private, self.room_confs[room],
                             self.memory.root / memory.RULES, int(self.budgets["per_message"]["on_hit"]["rules"]))
 

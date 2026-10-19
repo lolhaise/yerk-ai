@@ -111,3 +111,49 @@ def test_a_rulebook_change_reaches_a_running_room_the_same_way(tmp_path):
     (book := priv / "rulebook.md").write_text(book.read_text() + "\n- Example: answer in one line.\n")
     assert told(y, "sid-b").count(f"{context.NEWS}\nnew in rulebook.md: Example: answer in one line.") == 1
     assert context.NEWS not in told(y, "sid-b")
+
+
+SEALED = "sealed-room"
+
+
+def sealed(tmp_path) -> Yerkd:
+    """The install with SEALED added: example-room's table again under its own channel id, with `sealed = true`, the way
+    the room kept blind for a side-by-side test is set."""
+    shutil.copytree(EXAMPLE_PRIVATE, priv := tmp_path / "private")
+    block = (priv / "rooms.toml").read_text().split("[rooms.example-room]\n", 1)[1].split("\n[rooms.", 1)[0]
+    with (priv / "rooms.toml").open("a") as f:
+        f.write(f"\n[rooms.{SEALED}]\n{block.replace('CHANNEL_ID', 'SEALED_ID')}sealed = true\n")
+    y = daemon(tmp_path, priv)
+    y.add_room(SEALED, ConsoleChannel()).inflight = [Inbound("m-2", "owner", "a placeholder message")]
+    return y
+
+
+def test_a_sealed_room_never_gets_another_rooms_rule_at_start_on_a_message_or_on_file(tmp_path):
+    """A rule filed in an owner's room reaches an unsealed room's next message, and never a sealed one: no block on its
+    next message, no rules text in a start file written after the rule, no look on file holding it in the room's folder,
+    and read_memory refuses the rules file there."""
+    y = sealed(tmp_path)
+    start(y, SEALED, "sid-s")
+    start(y, B, "sid-b")
+    rule(y, A, "Open web pages with the example browser.")
+    assert "example browser" in told(y, "sid-b")                        # the control: an unsealed room hears it
+    got = told(y, "sid-s")
+    assert context.NEWS not in got and "example browser" not in got
+    start(y, SEALED, "sid-s2")                                        # a session started after the rule
+    room = tmp_path / "state" / "rooms" / SEALED
+    assert "example browser" not in (room / "context.md").read_text() and "example browser" not in told(y, "sid-s2")
+    assert "Open web pages with the example browser." in (tmp_path / "state" / "rooms" / B / "rules-seen.json").read_text()
+    assert not (room / "rules-seen.json").exists()
+    assert not asyncio.run(y.tool_read_memory(SEALED, memory.RULES, 1, 50))["ok"]
+
+
+def test_a_sealed_rooms_own_rule_stays_its_own_note_and_never_reaches_the_rules_file(tmp_path):
+    """A sealed room's `remember` with a `job` files the line in its own day log, the job as its label, where the room
+    reads it back; the shared rules file never gets it, so no other room hears it."""
+    y = sealed(tmp_path)
+    start(y, B, "sid-b")
+    r = rule(y, SEALED, "Use the example browser, never the example fetcher.", "Open web pages:")
+    assert r["ok"] and "/daily/" in r["cite"] and not (y.memory.root / memory.RULES).exists()
+    assert context.NEWS not in told(y, "sid-b")
+    day = asyncio.run(y.tool_read_memory(SEALED, r["cite"].rpartition(":")[0], 1, 50))
+    assert day["ok"] and "Open web pages: Use the example browser, never the example fetcher." in day["text"]

@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
-from .config import write_private
+from .config import flag, write_private
 from .lifted.clock import clock_line, room_voice
 from .lifted.sizemap import fmt, split_sections
 from .lifted.trim import truncate
@@ -96,7 +96,7 @@ def recall_pack(base: Path, room: dict[str, Any], limit: int = 6000, pack: Pack 
 def rulebook(base: Path, room: dict[str, Any], rules: Path | None) -> tuple[str, str]:
     """The room's rulebook, then the install's rules file's live lines (memory.rule): no front matter or superseded line."""
     text, src = _read(base, room.get("rulebook"))
-    if not rules or not rules.is_file():
+    if not rules or not rules.is_file() or flag(room.get("sealed")):      # sealed: its own rulebook, no other room's rule
         return text, src
     live = "\n".join(x for x in FRONT.sub("", rules.read_text()).strip().splitlines() if OLD not in x)
     return SEP.join(x for x in (text, cited(rules.resolve(), live)) if x), ", ".join(x for x in (src, str(rules.resolve())) if x)

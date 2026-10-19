@@ -159,8 +159,7 @@ def system_zone() -> str:
     """The box's IANA zone name: $TZ, else where /etc/localtime points, else UTC. A name resolves
     each line's offset for its own instant; a fixed offset read at start is an hour off after every
     clock change until a restart (restart test R5)."""
-    name = os.environ.get("TZ", "").lstrip(":")
-    if not name:
+    if not (name := os.environ.get("TZ", "").lstrip(":")):
         try:
             target = os.readlink("/etc/localtime")
             name = target.split("zoneinfo/", 1)[1] if "zoneinfo/" in target else ""
@@ -184,8 +183,7 @@ FRONT = re.compile(r"\A---\n(.*?)\n---\n", re.S)   # a memory file's front matte
 def room_class(conf: dict[str, Any]) -> str:
     """The class a room's lines carry: `class` in rooms.toml, else private for an owner room (the
     owner's rooms read everything) and room for any other (its own lines and shared files only)."""
-    c = str(conf.get("class") or "")
-    if c in CLASSES:
+    if (c := str(conf.get("class") or "")) in CLASSES:
         return c
     return "private" if str(conf.get("privacy", "owner")) == "owner" else "room"
 
@@ -207,8 +205,7 @@ def file_class(path: Path) -> tuple[str, str]:
     cls, room = "private", ""
     with suppress(OSError):
         head = path.open(encoding="utf-8", errors="replace").read(400)
-        m = FRONT.match(head)
-        if m:
+        if (m := FRONT.match(head)):
             for line in m.group(1).splitlines():
                 k, _, v = line.partition(":")
                 if k.strip() == "class" and v.strip() in CLASSES:
@@ -245,8 +242,7 @@ def allowed_text(reader: Reader | None, path: Path, text: str, blank: str = "", 
         out = []
         kept = False
         for raw in text.splitlines():
-            ln = parse_line(raw)
-            if ln is None:
+            if (ln := parse_line(raw)) is None:
                 shown = (kept and raw.startswith("  - attachment: ")) or not raw.strip() or bool(DAY_HEAD.match(raw))
                 out.append(raw if shown else blank)
                 kept = kept and raw.startswith("  - attachment: ")
@@ -287,8 +283,7 @@ class Line:
 
 
 def parse_line(raw: str) -> Line | None:
-    m = LINE.match(raw)
-    if not m:
+    if not (m := LINE.match(raw)):
         return None
     return Line(m.group(1), m.group(2) or "", m.group(3), m.group(4) or "", m.group(5), m.group(6) or "",
                 m.group(7), m.group(8) or "", m.group(9) or "")
@@ -583,8 +578,7 @@ def meaning(s: Settings, query: str, pool: int = POOL, deadline_s: float = MEANI
     this query and says why: no-index, no-key, empty, provider-timeout, provider-error, index-timeout
     (yerk-index itself answered late), failure (its answer was broken)."""
     import urllib.request
-    state = meaning_state(s)
-    if state != "ok":
+    if (state := meaning_state(s)) != "ok":
         return state, []
     port = int(index_status(s)["port"])
     # `near` asks for the line each hit's vector matched; yerk-index adds it only when asked, so an older daemon,
@@ -735,8 +729,7 @@ def snippet(text: str, lo: int, weights: dict[str, float], near: str | None = No
     took: dict[int, str] = {}
     left = cap
     for i in order:
-        ln = lines[i].strip()
-        if not ln:
+        if not (ln := lines[i].strip()):
             continue
         if len(ln) <= left:
             took[i], left = ln, left - len(ln) - 1
@@ -816,8 +809,7 @@ def topic_hits(s: Settings, room: str, text: str, exclude: set[str] | None = Non
     """The message's key terms against this room's own lines of the last 14 days, best first:
     ranked by how many of the terms a line holds, newer first on a tie. The message itself
     (filed before the turn) and lines sharing too few terms never come back."""
-    ts = memindex.terms(text)
-    if not ts:
+    if not (ts := memindex.terms(text)):
         return []
     want = {t[:5] for t in ts}                                            # a term's stem: its first five letters
     need = 1 if len(want) <= 2 else max(2, -(-len(want) * 3 // 10))     # a long message needs 30% of its terms
@@ -898,8 +890,7 @@ def migrate_daylogs(daily: Path, tz: tzinfo, rooms: dict[str, tuple[str, str]], 
             day = date.fromisoformat(f.stem)
             out = []
             for raw in text.splitlines():
-                ln = parse_line(raw)
-                if ln is None:
+                if (ln := parse_line(raw)) is None:
                     stats["other"] += 1
                     out.append(raw)
                     continue
