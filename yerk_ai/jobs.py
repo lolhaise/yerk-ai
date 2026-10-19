@@ -701,11 +701,9 @@ class Systemd:
         systemctl("daemon-reload", check="daemon-reload")
 
     def _unit_cmd(self, *args: str) -> str:
-        try:
-            systemctl(*args, check=" ".join(args))
-        except OSError as e:
-            return str(e)
-        return ""
+        p = systemctl(*args)
+        return "" if p.returncode == 0 else f"systemctl --user {' '.join(args)} exited {p.returncode}: " \
+                                             f"{p.stderr.strip()[:200]}"
 
     def enable_now(self, timer: str) -> str:
         return self._unit_cmd("enable", "--now", timer)
