@@ -423,12 +423,13 @@ def cmd_config(a: argparse.Namespace) -> int:
     its value here, where it came from, its choices and its plain words. Only these are printed.
     `yerk config get room NAME`: the room's model and effort, each from rooms.toml or the room's override."""
     if a.key == "room":
-        from .config import room_settings, state_dir
-        confs = rooms(private_dir(a.private))
+        from .config import load_toml, models, room_settings, state_dir
+        confs = rooms(priv := private_dir(a.private))
         if a.name not in confs:
             print(f"no room {a.name!r}; rooms: {', '.join(confs)}", file=sys.stderr)
             return 2
-        now = room_settings(confs[a.name], state_dir(a.state), a.name)
+        listed = models(load_toml(priv / "yerkd.toml") if (priv / "yerkd.toml").is_file() else {})
+        now = room_settings(confs[a.name], state_dir(a.state), a.name, listed)
         got = [{"key": f"rooms.{a.name}.{k}", "value": v, "source": src} for k, (v, src) in now.items()]
         print(json.dumps(got) if a.json else "\n".join(f"{r['key']} = {r['value'] or 'unset'} ({r['source']})"
                                                        for r in got))

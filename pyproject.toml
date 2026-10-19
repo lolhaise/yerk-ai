@@ -31,6 +31,7 @@ packages = ["yerk_ai"]
 "budgets.toml" = "yerk_ai/budgets.toml"
 "failures.toml" = "yerk_ai/failures.toml"
 "abilities.toml" = "yerk_ai/abilities.toml"
+"models.toml" = "yerk_ai/models.toml"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

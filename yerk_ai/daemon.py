@@ -25,8 +25,8 @@ from typing import Any
 
 from . import beat, context, evidence, gates, hooks, jobs, mcp_server, memory, mentions, status, workers
 from .accounts import Account, Cooldowns, from_dir, load_accounts
-from .config import (REPO, budgets, flag, load_toml, models, override, private_dir, read_secret, room_id,
-                     room_settings, rooms, state_dir, table, write_private)
+from .config import (EFFORTS, REPO, budgets, flag, load_toml, models, override, private_dir, read_secret,
+                     room_id, room_settings, rooms, state_dir, table, write_private)
 from .engine import RoomSpec, SessionTable
 from .ledger import Ledger
 from .lifted.classify import FailureTable
@@ -38,7 +38,6 @@ from . import abilities, words   # STYLE.md: what a room reads
 log = logging.getLogger("yerk.daemon")
 YERK_TOOLS = ["mcp__yerk__send", "mcp__yerk__hold", "mcp__yerk__recall", "mcp__yerk__read_memory",
               "mcp__yerk__worker", "mcp__yerk__schedule", "mcp__yerk__settings"]
-EFFORTS = ("low", "medium", "high", "xhigh", "max")      # Claude Code 2.1.301's --effort levels (its --help)
 STALL = 0.25            # seconds the event loop may lag before the log says so
 NO_KEY_LINE = words.needs("meaning search", "an OpenAI key", "embeddings", "recall matches words only")
 
@@ -172,7 +171,7 @@ class Yerkd:
         settings = {"permissions": {"allow": [f"Read(/{layer}/**)", *YERK_TOOLS, *conf.get("allow", [])]},
                     "hooks": hooks.settings_for(f"{self.url}/hook", token)}
         mcp = mcp_server.room_config(f"{self.url}/mcp", name, rdir / "mcp.json", token)
-        now = room_settings(conf, self.state, name)            # the room's override over rooms.toml
+        now = room_settings(conf, self.state, name, self.models)    # the room's override over rooms.toml
         extra = ["--effort", now["effort"][0]] if now["effort"][0] else []
         if flag(conf.get("thinking_panel")) and conf.get("privacy", "owner") == "owner":
             extra += ["--thinking-display", "summarized"]      # the panel's text; off: the stream says nothing
@@ -286,7 +285,7 @@ class Yerkd:
             return {"ok": False, "line": words.NOT_LISTED.format(model=want, models=listed)}
         if level and level != "default" and level not in EFFORTS:
             return {"ok": False, "line": words.NOT_A_LEVEL.format(effort=level, levels=", ".join([*EFFORTS, "default"]))}
-        before, over = room_settings(conf, self.state, room), override(self.state, room)
+        before, over = room_settings(conf, self.state, room, self.models), override(self.state, room)
         for key, value in (("model", full if want else ""), ("effort", level)):
             if value == "default":
                 over.pop(key, None)
@@ -295,7 +294,7 @@ class Yerkd:
         if want or level:
             (self.state / "rooms" / room).mkdir(parents=True, exist_ok=True)
             write_private(self.state / "rooms" / room / "override.json", json.dumps(over))
-        now = room_settings(conf, self.state, room)
+        now = room_settings(conf, self.state, room, self.models)
         if [v for v, _ in now.values()] != [v for v, _ in before.values()] and room in self.rooms:
             self.rooms[room].respec()
         log.info("settings: room %s on %s, effort %s", room, now["model"][0], now["effort"][0] or "default")

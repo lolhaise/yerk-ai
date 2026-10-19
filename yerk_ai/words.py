@@ -286,6 +286,8 @@ THIS_ROOM = "this room: {model}, {effort} thinking"
 OWNER_ONLY = "only the owner's rooms can change this"
 NOT_LISTED = "not on the list: {model}\nthe list: {models}"
 NOT_A_LEVEL = "not a thinking level: {effort}\nthe levels: {levels}"
+BACK_ON = "{model} not found; back on {usual}"       # a switched-to model no account could run
+USUAL = "the default"                                # a room whose rooms.toml names no model
 
 
 def model_name(mid: str) -> str:

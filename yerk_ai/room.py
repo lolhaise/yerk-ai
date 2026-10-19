@@ -28,6 +28,7 @@ adapter's event loop.
 """
 from __future__ import annotations
 
+import json
 import logging
 import re
 import threading
@@ -40,11 +41,11 @@ from typing import Any, Callable, Protocol
 from . import words
 from .accounts import Account, Cooldowns, pick
 from .card import Card
-from .config import flag
+from .config import flag, override, write_private
 from .engine import RoomProcess, RoomSpec, Turn
 from .evidence import Evidence
 from .ledger import Ledger
-from .lifted.classify import FailureTable
+from .lifted.classify import Failure, FailureTable
 
 log = logging.getLogger("yerk.room")
 
@@ -338,12 +339,14 @@ class Room:
                     batch = [self.queue.popleft()]
                     while not batch[0].alone and self.queue and not self.queue[0].alone:
                         batch.append(self.queue.popleft())
-                self._turn(batch)
-                with self.lock:                  # the settings changed in that turn: it has ended, so its
-                    rp, self.rp, self.stale = (self.rp, None, False) if self.stale else (None, self.rp, False)
-                if rp:                           # process goes and the next message resumes on the new spec
-                    rp.close()
-                    log.info("room %s: settings changed, process closed, session %s kept", self.name, rp.session_id)
+                try:
+                    self._turn(batch)
+                finally:                         # a turn that raised has ended too
+                    with self.lock:              # the settings changed in that turn: it has ended, so its
+                        rp, self.rp, self.stale = (self.rp, None, False) if self.stale else (None, self.rp, False)
+                    if rp:                       # process goes and the next message resumes on the new spec
+                        rp.close()
+                        log.info("room %s: settings changed, process closed, session %s kept", self.name, rp.session_id)
         except Exception:
             log.exception("room %s: turn crashed", self.name)
             with self.lock:
@@ -438,7 +441,7 @@ class Room:
                     fresh = not (self.rp and (self.rp.resume_arg or self.rp.session_id in self.answered))
                     continue
             why = f.cls if f else turn.outcome
-            plain = words.why(f.cls if f else None, turn.outcome)
+            plain = self._off_model(f) or words.why(f.cls if f else None, turn.outcome)
             asked = resend[0].text if resend else ""
             notice_ids = self.channel.notice(self.name, f"{words.NOT_DONE} {words.NOT_ANSWERED}\n{plain}",
                                              [m.id for m in resend], card=self.card.owed(plain, asked),
@@ -452,6 +455,18 @@ class Room:
             if old:
                 old.close()
             return
+
+    def _off_model(self, f: Failure | None) -> str:
+        """A turn that failed because its model was not found, on the model of the room's override: the
+        override loses the model, so the next start is on rooms.toml's, and the room's line says so."""
+        bad, usual = str((over := override(self.state, self.name)).get("model") or ""), str(self.conf.get("model") or "")
+        if not (f and f.source in ("type:model_not_found", "pattern:model") and bad and bad != usual
+                and self.rp and self.rp.spec.model == bad):
+            return ""
+        over.pop("model")
+        write_private(self.state / "rooms" / self.name / "override.json", json.dumps(over))
+        log.info("room %s: %s was not found, the override's model dropped", self.name, bad)
+        return words.BACK_ON.format(model=words.model_name(bad), usual=words.model_name(usual) if usual else words.USUAL)
 
     def _results(self, account: Account, hop: str | None, recapped: bool) -> tuple[str, Turn | None]:
         """Deliver each result of the running process until nothing waits: "done"; a failed turn:

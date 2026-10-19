@@ -3,14 +3,18 @@ and levels, the daemon's override over rooms.toml, applied once the running turn
 session resumed; and the relay of a worker that left no report."""
 import asyncio
 import json
+import logging
+import shutil
+import subprocess
+import sys
 import time
 from pathlib import Path
 
 import pytest
 
-from yerk_ai import cli, words, workers
+from yerk_ai import cli, config, words, workers
 from yerk_ai.accounts import Account, Cooldowns
-from yerk_ai.config import EXAMPLE_PRIVATE, table
+from yerk_ai.config import EXAMPLE_PRIVATE, load_toml, table
 from yerk_ai.daemon import Yerkd
 from yerk_ai.engine import RoomSpec
 from yerk_ai.ledger import Ledger
@@ -157,3 +161,92 @@ def test_a_relay_from_a_worker_that_left_no_report_says_so_never_report_saved(y,
     (tmp_path / "abc123").mkdir()
     (tmp_path / "abc123" / "REPORT.md").write_text("All three done\n")
     assert workers.relay_line(row) == "-# report saved: `yerk worker report abc123`"     # a file: saved
+
+
+def argvs(tmp_path):
+    return [a for a in (json.loads(x)["argv"] for x in (tmp_path / "argv.jsonl").read_text().splitlines()) if "--model" in a]
+
+
+def test_a_planted_override_off_the_lists_never_reaches_the_command_line(y, tmp_path, capsys, caplog, monkeypatch):
+    monkeypatch.setattr(config, "_IGNORED", set(), raising=False)
+    f = tmp_path / "rooms" / ROOM / "override.json"
+    f.parent.mkdir(parents=True)
+    f.write_text(json.dumps({"model": "not-on-any-list", "effort": "not-a-level"}))      # by hand, not by the tool
+    with caplog.at_level(logging.WARNING, logger="yerk.config"):
+        spec, again = y.spec_for(ROOM), y.spec_for(ROOM)                                  # two process starts
+    assert spec.model == again.model == "claude-fable-5-1" and "--effort" not in spec.extra_args   # rooms.toml's
+    assert [r.getMessage() for r in caplog.records if r.name == "yerk.config"] == [         # logged once
+        f"room {ROOM}: the override's model 'not-on-any-list' is not on the list; rooms.toml's is used",
+        f"room {ROOM}: the override's effort 'not-a-level' is not a level; rooms.toml's is used"]
+    assert config_get(tmp_path, capsys) == [
+        f"rooms.{ROOM}.model = claude-fable-5-1 (rooms.toml; the room's override 'not-on-any-list', not on the list: ignored)",
+        f"rooms.{ROOM}.effort = unset (the model's own default; the room's override 'not-a-level', not a level: ignored)"]
+    assert ask(y) == {"ok": True, "line": "this room: Fable 5.1, default thinking"}
+    del y.models["haiku"]                                    # a model taken off the list after the switch
+    f.write_text(json.dumps({"model": "claude-haiku-5-5", "effort": "max"}))
+    spec = y.spec_for(ROOM)
+    assert spec.model == "claude-fable-5-1" and spec.extra_args[:2] == ["--effort", "max"]
+
+
+def test_the_models_list_ships_in_the_package_and_a_yerkd_toml_list_replaces_it(tmp_path, monkeypatch):
+    four = {"opus": "claude-opus-5-5", "sonnet": "claude-sonnet-5-5", "haiku": "claude-haiku-5-5",
+            "fable": "claude-fable-5-1"}
+    monkeypatch.setattr(config, "EXAMPLE_PRIVATE", tmp_path / "hidden")                    # no examples folder
+    assert config.models({}) == four and config.models({"models": {"X": "claude-x-1"}}) == {"x": "claude-x-1"}
+    site = (tmp_path / "site").resolve()          # an install: the package and pyproject's wheel tables, no repo
+    shutil.copytree(config.PACKAGE, site / "yerk_ai", ignore=shutil.ignore_patterns("__pycache__"))
+    wheel = load_toml(config.REPO / "pyproject.toml")["tool"]["hatch"]["build"]["targets"]["wheel"]["force-include"]
+    for src, dst in wheel.items():
+        shutil.copy(config.REPO / src, site / dst)
+    probe = ("import json, sys; sys.path.insert(0, sys.argv[1]); from yerk_ai import config; "
+             "print(json.dumps([str(config.PACKAGE), str(config.table('models.toml')), config.models({})]))")
+    out = subprocess.run([sys.executable, "-I", "-c", probe, str(site)], capture_output=True, text=True, check=True,
+                         cwd=tmp_path).stdout
+    assert json.loads(out) == [str(site / "yerk_ai"), str(site / "yerk_ai" / "models.toml"), four]
+    assert not (site / "examples").exists()
+
+
+def test_a_model_that_is_not_found_drops_the_override_and_the_next_turn_is_on_rooms_toml_s(y, tmp_path, monkeypatch):
+    monkeypatch.setenv("FAKE_CLAUDE_BAD_MODEL", "claude-gone-1")
+    y.models["gone"] = "claude-gone-1"                       # on the list, but no account can run it
+    chan = Chan()
+    room = y.add_room(ROOM, chan)
+    say(y, room, "1", "hello")
+    wait_idle(room)
+    sid = room.rp.session_id
+    assert ask(y, "gone")["line"] == "next reply: Gone 1, default thinking"
+    say(y, room, "2", "and now?")
+    wait_idle(room)
+    assert chan.replies[-1] == f"{words.NOT_DONE} {words.NOT_ANSWERED}\nGone 1 not found; back on Fable 5.1"
+    assert json.loads((tmp_path / "rooms" / ROOM / "override.json").read_text()) == {} and room.rp is None
+    say(y, room, "3", "still there?")
+    wait_idle(room)
+    runs = argvs(tmp_path)
+    assert [a[a.index("--model") + 1] for a in runs] == ["claude-fable-5-1", "claude-gone-1", "claude-fable-5-1"]
+    assert runs[-1][runs[-1].index("--resume") + 1] == sid and chan.replies[-1] == "echo: still there?"
+    room.rp.close()
+    said = "There's an issue with the selected model (claude-gone-1)"                   # the text route names it too
+    assert FailureTable.load(table("failures.toml")).classify("invalid_request", said).source == "pattern:model"
+
+
+def test_a_turn_that_raises_after_the_switch_still_lands_it_at_its_end(tmp_path, monkeypatch):
+    monkeypatch.setenv("YERK_CLAUDE", str(FAKE))
+    monkeypatch.setenv("FAKE_CLAUDE_RECORD", str(tmp_path / "argv.jsonl"))
+    now = {"model": "m-old"}
+    room = Room("r", {}, lambda: RoomSpec(room="r", model=now["model"], cwd=tmp_path), [Account("one", tmp_path / "c")],
+                Chan(), tmp_path, Ledger(tmp_path / "l.sqlite"), FailureTable.load(table("failures.toml")), Cooldowns(None))
+    results = room._results
+
+    def crash(*args):
+        now["model"] = "m-new"                                 # the tool ran mid-turn,
+        room.respec()
+        raise RuntimeError("the channel broke")                # then the turn raised
+    monkeypatch.setattr(room, "_results", crash)
+    room.submit(Inbound("1", "owner", "hello"))
+    wait_idle(room)
+    assert room.rp is None and not room.stale                  # the switch landed at the crashed turn's end
+    monkeypatch.setattr(room, "_results", results)
+    room.submit(Inbound("2", "owner", "and now?"))
+    wait_idle(room)
+    assert [a[a.index("--model") + 1] for a in argvs(tmp_path)] == ["m-old", "m-new"] and room.rp.spec.model == "m-new"
+    room.rp.close()
