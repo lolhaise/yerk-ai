@@ -328,3 +328,19 @@ def test_a_quoted_false_turns_the_thinking_panel_off(env):
         shown[repr(value)] = room.card.thinking_on
     assert [k for k, on in shown.items() if on] == ["True", "'true'", "' TRUE '"]
     assert flag("off", default=True) and not flag("false", default=True)
+
+
+def test_a_process_whose_hooks_never_call_back_says_so_once(env):
+    """Claude Code treats a failed hook as non-blocking, so a room whose hooks never reach the daemon
+    (2026-10-19: a sandboxed room's proxy refused every http hook with 403) ran with no clock, no recall
+    and no gates, silently. An answered turn with no hook call at the daemon is said once per process."""
+    make, ledger, tmp_path = env
+    chan = Chan()
+    room = make(chan)
+    send(room, ledger, "m1", "HOOK_ERROR hello")            # the fake says what Claude Code says: a Stop hook error
+    wait_idle(room)
+    send(room, ledger, "m2", "HOOK_ERROR again")
+    wait_idle(room)
+    assert [t for t, _ in chan.notices] == [f"{words.NOT_DONE} {words.HOOKS_DEAD}"] and len(chan.replies) == 2
+    rows = ledger._select("SELECT room, gate, decision, rule FROM gates", ())
+    assert [(r["room"], r["gate"], r["decision"], r["rule"]) for r in rows] == [("r", "hooks", "dead", "no-hook-call")]

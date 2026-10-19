@@ -153,6 +153,13 @@ def test_turn_records_fallback_and_first_visible():
     assert (t.fallback_model, t.ms(t.first_visible), t.outcome, t.models) == ("other", 3000, "ok", ["a", "other"])
 
 
+def test_turn_keeps_claude_codes_hook_error_notification_as_a_flag():
+    t = Turn(started=100.0)
+    t.observe(101.0, {"type": "system", "subtype": "notification", "key": "stop-hook-error", "text": "Stop hook error occurred"})
+    t.observe(102.0, {"type": "system", "subtype": "notification", "key": "other", "text": "x"})
+    assert t.flags == ["hook_error:Stop hook error occurred"]
+
+
 # the session table (restart test R3) and the hop by transcript path (R1)
 def test_two_rooms_binding_together_both_keep_their_rows(tmp_path):
     import threading

@@ -161,9 +161,10 @@ def test_a_rooms_settings_and_mcp_config_carry_its_token_and_are_private(tmp_pat
     y = daemon(tmp_path)
     spec = y.spec_for("example-room")
     assert spec.token and len(spec.token) == 32
-    hook = spec.settings["hooks"]["Stop"][0]["hooks"][0]
-    assert hook["type"] == "http" and hook["headers"] == {"x-yerk-secret": spec.token}
-    assert f"-H 'x-yerk-secret: {spec.token}'" in spec.settings["hooks"]["SessionStart"][0]["hooks"][0]["command"]
+    for event, entries in spec.settings["hooks"].items():        # every event a command hook: a sandboxed
+        hook = entries[0]["hooks"][0]                              # room's proxy refuses http hooks with 403
+        assert hook["type"] == "command" and "http" not in hook, event
+        assert f"-H 'x-yerk-secret: {spec.token}'" in hook["command"] and hook["command"].endswith("/hook"), event
     cfg = json.loads(spec.mcp_config.read_text())
     assert cfg["mcpServers"]["yerk"]["headers"] == {"x-yerk-secret": spec.token} and "x-yerk-room" not in str(cfg)
     assert oct(spec.mcp_config.stat().st_mode & 0o777) == "0o600"

@@ -363,6 +363,7 @@ class Room:
                          meters=self.meters, evidence=self.evidence)
         rp.start(fresh=fresh)
         self.rp = rp
+        self.hooked = self.hooks_warned = False   # per process start: its first hook call proves the hooks alive; the notice went out
 
     def _account(self) -> Account:
         return pick(self.accounts, self.cooldowns)
@@ -541,6 +542,13 @@ class Room:
                 return "failed", turn
             self.cooldowns.clear(account.name)
             self.answered.add(self.rp.session_id)
+            why = next((f[11:] for f in turn.flags if f.startswith("hook_error:")), "")   # Claude Code said a hook failed
+            if why and not self.hooked and not self.hooks_warned:    # and none reached the daemon: the gates and the
+                self.hooks_warned = True          # per-message context are off; said once per process, never per turn
+                log.error("room %s: no hook call reached the daemon, turn %s: %s", self.name, self.turn_key, why)
+                self.ledger.gate(room=self.name, session_id=self.rp.session_id, turn=self.turn_key, gate="hooks",
+                                 decision="dead", tool="", rule="no-hook-call", detail=why[:300])
+                self.channel.notice(self.name, f"{words.NOT_DONE} {words.HOOKS_DEAD}", [], key=f"{self.turn_key}:hooks")
             card = None
             if turn.fallback_model:                # which model: the turn's ledger row
                 card = f"{words.WORKING} {words.BACKUP[0]}\n{words.SUB}{words.BACKUP[1]}"
