@@ -161,9 +161,10 @@ def test_a_rooms_settings_and_mcp_config_carry_its_token_and_are_private(tmp_pat
     y = daemon(tmp_path)
     spec = y.spec_for("example-room")
     assert spec.token and len(spec.token) == 32
-    hook = spec.settings["hooks"]["Stop"][0]["hooks"][0]
-    assert hook["type"] == "http" and hook["headers"] == {"x-yerk-secret": spec.token}
-    assert f"-H 'x-yerk-secret: {spec.token}'" in spec.settings["hooks"]["SessionStart"][0]["hooks"][0]["command"]
+    for event, entries in spec.settings["hooks"].items():        # every event a command hook: a sandboxed
+        hook = entries[0]["hooks"][0]                              # room's proxy refuses http hooks with 403
+        assert hook["type"] == "command" and "http" not in hook, event
+        assert f"-H 'x-yerk-secret: {spec.token}'" in hook["command"] and hook["command"].endswith("/hook"), event
     cfg = json.loads(spec.mcp_config.read_text())
     assert cfg["mcpServers"]["yerk"]["headers"] == {"x-yerk-secret": spec.token} and "x-yerk-room" not in str(cfg)
     assert oct(spec.mcp_config.stat().st_mode & 0o777) == "0o600"
@@ -338,3 +339,15 @@ def test_a_room_cannot_point_its_binding_at_another_transcript(tmp_path, caplog)
         c.post("/hook", json={"hook_event_name": "Stop", "session_id": "sid-t", "transcript_path": str(own)},
                headers={"x-yerk-secret": "room-token-1"})
     assert y.sessions.get("example-room")["transcript"] == str(own)
+
+
+def test_a_bound_hook_call_marks_the_room_alive_but_session_start_does_not(tmp_path):
+    y = daemon(tmp_path)
+    SessionTable(tmp_path / "sessions.json").bind("example-room", "sid-7", "one")
+    room = y.rooms["example-room"]
+    app = mcp_server.build(y, y.port, y.hook).streamable_http_app()
+    with TestClient(app) as c:
+        c.post("/hook", json={"hook_event_name": "SessionStart", "session_id": "sid-7", "source": "startup"})
+        after_start = getattr(room, "hooked", False)
+        c.post("/hook", json={"hook_event_name": "Stop", "session_id": "sid-7"})
+    assert (after_start, room.hooked) == (False, True)

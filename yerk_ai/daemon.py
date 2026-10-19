@@ -490,7 +490,8 @@ class Yerkd:
             self.learn_transcript(name, payload)
             return (out := await self._hook(event, name, payload))
         finally:
-            room = self.rooms.get(name or "")
+            if (room := self.rooms.get(name or "")) and event != "SessionStart":   # SessionStart alone proved nothing
+                room.hooked = True        # the process's hooks are alive (room._results says so when none came)
             hso = out.get("hookSpecificOutput") or {}
             outcome = (out.get("decision") or hso.get("permissionDecision")
                        or ("rewrite" if "updatedInput" in hso else "context" if hso else "pass"))

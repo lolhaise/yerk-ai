@@ -150,7 +150,7 @@ def test_every_notice_is_state_first_plain_and_phone_width():
                 f"{words.NOT_DONE} {words.NOT_SENT_AGAIN.format(name='report.pdf', why=words.file_why('gone'))}",
                 f"{words.NOT_DONE} {words.NOT_ANSWERED}\n{words.why('quota', 'error')}", NO_KEY_LINE,
                 f"{words.NOT_DONE} {words.NOT_ANSWERED}\n{words.BACK_ON.format(model='Sonnet 5.5', usual='Fable 5.1')}",
-                f"{dmod.REDELIVERED}\nthe reply"]
+                f"{dmod.REDELIVERED}\nthe reply", f"{words.NOT_DONE} {words.HOOKS_DEAD}"]
     for text in notices:
         assert (state_first(text) or text.startswith(words.SUB)) and not room_safe(text), text
         assert all(words.width(x) <= words.PHONE for x in text.splitlines()), text

@@ -275,8 +275,8 @@ def test_session_start_posts_a_reset_line_only_when_a_new_session_replaced_one(t
     assert [(r["gate"], r["decision"]) for r in reversed(y.ledger.rows(5, "gates"))] == [
         ("session", "reset-quiet"), ("session", "reset")]
     hk = hooks.settings_for("http://127.0.0.1:9/hook")
-    assert {k for k, v in hk.items() if v[0]["hooks"][0]["type"] == "http"} == {
-        "UserPromptSubmit", "Stop", "PreToolUse", "PostToolUse", "PostToolUseFailure", "ConfigChange"}
+    assert {k for k, v in hk.items() if v[0]["hooks"][0]["type"] == "command"} == {     # never http: a sandboxed
+        "UserPromptSubmit", "Stop", "PreToolUse", "PostToolUse", "PostToolUseFailure", "ConfigChange", "SessionStart"}
 
 
 def test_post_tool_use_adds_each_calls_time_and_failure_to_the_evidence_ledger(tmp_path):

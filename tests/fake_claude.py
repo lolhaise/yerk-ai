@@ -137,6 +137,9 @@ def answer(text):
             "status": "allowed", "rateLimitType": "five_hour", "unifiedWindows": {
                 "five_hour": {"utilization": five, "resetsAt": 2000000000 + shift},
                 "seven_day": {"utilization": week, "resetsAt": 2000300000}}}})
+    if "HOOK_ERROR" in text:                   # what Claude Code 2.1.301 streams when a hook fails, non-blocking
+        out({"type": "system", "subtype": "notification", "session_id": sid, "uuid": str(uuid.uuid4()),
+             "key": "stop-hook-error", "text": "Stop hook error occurred \u00b7 ctrl+o to see"})
     reply = "echo: " + text
     out({"type": "stream_event", "event": {"type": "content_block_delta", "delta": {"type": "text_delta", "text": reply}}})
     out({"type": "assistant", "message": {"content": [{"type": "text", "text": reply}]}})
