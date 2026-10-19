@@ -9,7 +9,8 @@ settles), holds, workers (one row per worker unit: where it runs, how it ended, 
 skipped and why), health (the daily call per account: pass or fail and the login's identity), and the gates' own
 (gates.py): every gate decision, the approval holds, each hook call's time, each tool call's time and failure, and
 the tamper rows of a changed setting; stalls (beat.py: each time the event loop was held more than 2 s, with its
-stalls (beat.py: each time the event loop ran more than 2 s late, with its dump).
+dump); deploys (deploy.py: each deploy and rollback, the commit before and after, and whether a person's turn was
+each deploy and rollback, the commit before and after, and whether a person's turn was cut).
 
 Inbound states, after Hermes' delivery ledger (gateway/delivery_ledger.py, MIT): `received`
 (ledgered, nothing ran: run it plainly after a crash), `running` (sent to Claude Code: after a
@@ -100,6 +101,9 @@ CREATE TABLE IF NOT EXISTS tamper (
   sha_after TEXT, diff_sha TEXT, diff_lines INTEGER);
 CREATE TABLE IF NOT EXISTS stalls (
   id INTEGER PRIMARY KEY, began REAL, seconds REAL, doing TEXT, dump TEXT);
+CREATE TABLE IF NOT EXISTS deploys (
+  id INTEGER PRIMARY KEY, at REAL, kind TEXT, unit TEXT, before TEXT, after TEXT, outcome TEXT, cut INTEGER,
+  proof TEXT, note TEXT);
 CREATE TABLE IF NOT EXISTS message_links (
   tbl TEXT, row_key TEXT, col TEXT, message_id TEXT, pos INTEGER,
   PRIMARY KEY (tbl, row_key, col, message_id))"""
@@ -344,6 +348,22 @@ class Ledger:
 
     def stalls(self, since: float, until: float = math.inf) -> list[dict[str, Any]]:
         return self._select("SELECT * FROM stalls WHERE began >= ? AND began < ? ORDER BY began", (since, until))
+
+    def deploy(self, **row: Any) -> int:
+        return self._insert("deploys", {"at": time.time(), **row})
+
+    def dead_turns(self, since: float, until: float) -> list[dict[str, Any]]:
+        """A person's messages in the window with no reply, notice or file in the room for them: no part
+        sent under the key of a turn that took them, and no visible post linked to them (L192)."""
+        return self._select(
+            "SELECT i.message_id, i.room, i.received FROM inbound i WHERE i.received >= ? AND i.received < ? AND "
+            "i.sender != 'yerk' AND i.state != 'ignored' AND NOT EXISTS (SELECT 1 FROM turns t JOIN deliveries d ON "
+            "d.state = 'sent' AND (d.key LIKE t.turn_key || ':%' OR d.key LIKE t.turn_key || '-s%') WHERE "
+            "t.turn_key != '' AND (t.id = i.turn_id OR CAST(t.id AS TEXT) IN (SELECT row_key FROM message_links WHERE "
+            "tbl = 'turns' AND col = 'inbound' AND message_id = i.message_id))) AND NOT EXISTS (SELECT 1 FROM "
+            "message_links l JOIN outbound o ON l.row_key = CAST(o.id AS TEXT) WHERE l.tbl = 'outbound' AND "
+            "l.col = 'inbound' AND l.message_id = i.message_id AND o.message_id IS NOT NULL AND o.kind NOT IN "
+            "('progress', 'progress-edit', 'worker-card')) ORDER BY i.received", (since, until))
 
     def waits(self, since: float, until: float) -> list[dict[str, Any]]:
         """Each person's message in the window joined to the turn that answered it: `wait`, the turn's

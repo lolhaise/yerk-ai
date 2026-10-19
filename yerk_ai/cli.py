@@ -314,6 +314,39 @@ def cmd_morning(a: argparse.Namespace) -> int:
     return morning.run(priv, state, accounts, cool)
 
 
+def cmd_deploy(a: argparse.Namespace) -> int:
+    """`yerk deploy [REF]` (deploy.py): fast-forward, fast tests, a quiet room, the restart, the proof,
+    else the rollback; the card to the machine room. --unit: onto units/yerkd.service as well."""
+    from . import deploy
+    from .config import state_dir
+    return deploy.run(private_dir(a.private), state_dir(a.state), a.ref or "", tests=not a.no_tests, unit_file=a.unit)
+
+
+def cmd_drill(a: argparse.Namespace) -> int:
+    """The Claude Code upgrade drill (DESIGN 11, L225): the installed version, the contract probes on
+    one account (resume onto itself), a verdict, a line in <state>/drills.jsonl. It upgrades nothing."""
+    import time
+    from .config import state_dir
+    from . import words
+    try:
+        version = subprocess.run(["claude", "--version"], capture_output=True, text=True, timeout=60).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        version = ""
+    print(f"{words.PLAIN} claude {version or 'not found'}")
+    a.to_config_dir, passed = a.config_dir, {}
+    for name in ("hello", "fold", "resume"):
+        out = getattr(probes, name)(a) if version else {"ok": False}
+        passed[name] = bool(out.get("ok"))
+        print(f"{words.DONE if passed[name] else words.NOT_DONE} probe {name}: {'passed' if passed[name] else 'failed'}")
+    failed = [n for n, ok in passed.items() if not ok]
+    print(f"{words.NOT_DONE} verdict: stay, {', '.join(failed)} failed" if failed else
+          f"{words.DONE} verdict: {version} keeps the contract")
+    state = state_dir(a.state)
+    with open(state / "drills.jsonl", "a") as f:
+        f.write(json.dumps({"at": round(time.time()), "version": version, "probes": passed, "ok": not failed}) + "\n")
+    return 1 if failed else 0
+
+
 def cmd_probe(a: argparse.Namespace) -> int:
     if a.name == "resume" and not a.to_config_dir:
         print("resume needs --to-config-dir", file=sys.stderr)
@@ -537,6 +570,23 @@ def main(argv: list[str] | None = None) -> int:
     cf.add_argument("key", nargs="?", default="", help="a setting or section (presentation, memory); all when left out")
     cf.add_argument("--json", action="store_true")
     cf.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else the fake example layer)")
+    dp = sub.add_parser("deploy", help="a commit onto the running yerkd: fast-forward only, fast tests, a quiet "
+                        "room, the restart, the proof card to the machine room, else the rollback")
+    dp.add_argument("ref", nargs="?", help="the commit (default: the daemon's tree's HEAD)")
+    dp.add_argument("--no-tests", action="store_true", help="skip the fast tests (the card says so)")
+    dp.add_argument("--unit", action="store_true", help="also move a systemd-run daemon onto units/yerkd.service")
+    dp.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else the fake example layer)")
+    dp.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
+    dr = sub.add_parser("drill", help="the Claude Code upgrade drill: the version, the hello, fold and resume "
+                        "probes on one account, a verdict; upgrades nothing")
+    dr.add_argument("--config-dir", required=True, help="Claude Code config folder of the account to use")
+    dr.add_argument("--model", default="claude-fable-5-1")
+    dr.add_argument("--reps", type=int, default=1, help="fold: repeats")
+    dr.add_argument("--delay", type=float, default=3.0, help="fold: seconds before the second message")
+    dr.add_argument("--trailing-wait", type=float, default=30.0, help="fold: seconds to wait for a trailing turn")
+    dr.add_argument("--logs", help="folder for raw event logs (default: <state>/probes)")
+    dr.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
+    dr.set_defaults(on_second=None, fold_settings=None)
     pr = sub.add_parser("probe", help="contract probes against a real Claude Code login")
     pr.add_argument("name", choices=["hello", "fold", "resume", "blocks", "smoke", "measure", "short", "think", "check",
                                      "idle"])
@@ -572,7 +622,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_schedule(a)
     return int({"map": cmd_map, "probe": cmd_probe, "setup-room": cmd_setup_room, "room": cmd_room,
                 "accounts": cmd_accounts, "status": cmd_status, "morning": cmd_morning, "recall-bench": cmd_recall_bench,
-                "abilities": cmd_abilities, "explain": cmd_explain, "memory": cmd_memory}[a.cmd](a))
+                "abilities": cmd_abilities, "explain": cmd_explain, "memory": cmd_memory, "deploy": cmd_deploy,
+                "drill": cmd_drill}[a.cmd](a))
 
 
 if __name__ == "__main__":

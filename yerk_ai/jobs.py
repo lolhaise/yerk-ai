@@ -15,8 +15,9 @@ duration); `at` (one time with tz, removed from the file after it fires).
 Two job kinds. A script job runs its `command` inside the unit under an account-free environment
 (no account token, no Claude Code variables) with the job's cap, then hands the result to the
 running daemon, which delivers by the cron-wrap rule: exit 0 with output posts the output to the
-room, exit 0 with nothing posts nothing, a failure or a timeout posts one alert line to the ops
-room (yerkd.toml [jobs] ops_room, else the job's room). An agent job is a worker (workers.py): the
+room, exit 0 with nothing posts nothing, a failure or a timeout posts one alert line to the machine
+room (rooms.toml role = "machine"), else the ops room (yerkd.toml [jobs] ops_room), else the job's
+room. An agent job is a worker (workers.py): the
 `message` is its brief, the job's account and cap apply, its card is in the job's room, and when
 it ends its last message is told by the room's own session; a last message of exactly NO_REPLY is
 silence. `deliver = "silent"` keeps a job's output and relay out of the room (the ledger has them);
@@ -1512,8 +1513,9 @@ class Jobs:
             return []
 
     async def alert(self, job: Job | None, line: str, run_id: int, room: str = "") -> list[str]:
-        """One line to the ops room (yerkd.toml [jobs] ops_room), else the job's room."""
-        target = self.ops_room if self.ops_room in self.channels else (job.room if job else room)
+        """One line to the machine room (rooms.toml role = "machine"), else [jobs] ops_room, else the job's room."""
+        machine = [n for n, c in self.room_confs.items() if c.get("role") == "machine" and n in self.channels]
+        target = (machine or [self.ops_room if self.ops_room in self.channels else (job.room if job else room)])[0]
         ch = self.channels.get(target)
         if ch is None:
             log.warning("jobs: no room to alert (%r); %s", target, line)

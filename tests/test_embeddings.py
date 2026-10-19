@@ -361,7 +361,8 @@ def test_a_model_change_re_embeds_once_and_a_narrower_width_keeps_the_shape(tmp_
 
 # 12. the stall line stays silent while a backfill runs: the embedding thread never holds the loop that serves rooms
 def test_the_stall_line_stays_silent_during_a_backfill(tmp_path, caplog):
-    from yerk_ai.daemon import Yerkd
+    from yerk_ai.beat import Beat
+    from yerk_ai.ledger import Ledger
     s = tree(tmp_path)
     for n in range(60):
         (s.root / "facts" / f"f{n}.md").write_text(f"# F{n}\n\n- example teapot number {n} is painted teal\n")
@@ -370,14 +371,14 @@ def test_the_stall_line_stays_silent_during_a_backfill(tmp_path, caplog):
     back.batch = 4
 
     async def go():
-        watch = asyncio.create_task(Yerkd.watch_loop(None, every=0.05))  # type: ignore[arg-type]
+        watch = asyncio.create_task(Beat(Ledger(tmp_path / "beat.sqlite"), tmp_path / "stalls", every=0.05).tick())
         back.start()
         end = time.monotonic() + 5.0
         while store.n < 60 and time.monotonic() < end:
             await asyncio.sleep(0.05)
         back.stop.set()
         watch.cancel()
-    with caplog.at_level(logging.WARNING, logger="yerk.daemon"):
+    with caplog.at_level(logging.WARNING, logger="yerk.beat"):
         asyncio.run(go())
     back.thread.join(5.0)
     assert store.n >= 60 and len(stub.calls) >= 15

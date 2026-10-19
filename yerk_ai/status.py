@@ -150,17 +150,17 @@ def card(s: dict[str, Any], now: float | None = None) -> list[str]:
         return W.line(f"{mark} {text}")
     head = W.RUNNING_ROOMS.format(rooms=", ".join(r["room"] for r in s["rooms"]) or W.ROOMS_N.format(n=0))
     if W.width(f"{W.PLAIN} {head}") > W.PHONE:              # names that do not fit: how many
-        head = W.RUNNING_ROOMS.format(rooms=W.ROOMS_N.format(n=len(s["rooms"])))
+        head = W.RUNNING_ROOMS.format(rooms=W.ROOM_1 if len(s["rooms"]) == 1 else W.ROOMS_N.format(n=len(s["rooms"])))
     out = [row(W.PLAIN, head) if s["running"] else row(W.NOT_DONE, W.NOT_ANSWERING if s.get("alive") else W.NOT_RUNNING)]
     for a in s["accounts"]:
         out.append(meter_short(a["name"], a["meter"], a["rests_until"], now))
         if now - a["meter"].get("at", now) >= OLD:
-            out.append(row(W.PLAIN, W.OLD_READING.format(name=a["name"], ago=W.ago(now - a["meter"]["at"]))))
+            out.append(W.named(f"{W.PLAIN} {W.OLD_READING}", a["name"], ago=W.ago(now - a["meter"]["at"])))
     for r in s["rooms"]:
         if r["since"] is not None:
             took = now - r["since"]
-            out.append(row(W.NOT_DONE if took > BLOCKED else W.PLAIN, W.TURN_FOR.format(room=r["room"], took=W.span(took))
-                           + (W.QUEUED.format(n=r["waiting"]) if r["waiting"] else "")))
+            out.append(W.named(f"{W.NOT_DONE if took > BLOCKED else W.PLAIN} {W.TURN_FOR}"
+                               + (W.QUEUED.format(n=r["waiting"]) if r["waiting"] else ""), r["room"], took=W.span(took)))
     nth: dict[str, int] = {}
     for w in sorted(s["workers"], key=lambda w: (bool(w["waiting"]), float(w["queued"] or 0))):
         if w["waiting"]:
@@ -173,9 +173,9 @@ def card(s: dict[str, Any], now: float | None = None) -> list[str]:
         out.append(row(W.PLAIN, W.NONE_RUNNING))
     if s["jobs"] is None:
         out.append(row(W.NOT_DONE, W.NO_TIMERS))
-    out += [row(W.PLAIN, W.JOB_DUE.format(name=j["name"], left=W.span(j["next"] - now))) for j in s["jobs"] or []]
+    out += [W.named(f"{W.PLAIN} {W.JOB_DUE}", j["name"], left=W.span(j["next"] - now)) for j in s["jobs"] or []]
     if s["jobs"] == []:
         out.append(row(W.PLAIN, W.NO_JOB_DUE))
-    out += [row(W.PLAIN, W.UNIT_USE.format(name=u["name"], mb=round(u["rss_mb"]), cpu=u["cpu_pct"]))
+    out += [W.named(f"{W.PLAIN} {W.UNIT_USE}", u["name"], mb=round(u["rss_mb"]), cpu=u["cpu_pct"])
             for u in s["units"] if not u.get("gone")]
     return out + [stall_line(s["stalls"], W.TODAY)]
