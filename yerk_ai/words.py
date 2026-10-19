@@ -122,7 +122,8 @@ NO_REPORT = "no report: `yerk worker report {id}`"
 RELAY_ASK = ("[tell the room the outcome in your own voice, under {cap:,} characters, ending with the line "
              "\"{saved}\"; no file path and no exit code; {where}; do not paste it]")
 GONE = "gone, no result"
-WORKERS_OWNER_ONLY = "only the owner's rooms can use workers"       # start, report, list, stop, an agent job
+WORKERS_OWNER_ONLY = "only the owner's rooms can use workers"       # start, report, list, stop
+JOBS_OWNER_ONLY = "only the owner's rooms can schedule jobs"         # any kind: every job runs as the owner
 WORKER_OWN_ROOM = "a room starts workers for itself only, not for {room}"
 STRAY = "unknown worker {id} running"
 NONE_RUNNING = "workers: none running"

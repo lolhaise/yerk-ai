@@ -573,11 +573,17 @@ def test_the_unit_sees_the_state_folder_read_only_its_own_folder_writable_and_no
                folder / "e", 60, ["true"])
     unit.start("yerk-worker-abc124", ["true"], {"CLAUDE_CONFIG_DIR": str(state / "accounts" / "one")}, folder,
                folder / "o", folder / "e", 60, ["true"])
+    folder.mkdir(parents=True)                                        # a worker of room r: its work folder comes back
+    (folder / "worker.json").write_text(json.dumps({"room": "r"}))
+    unit.start("yerk-worker-abc125", ["true"], {}, folder, folder / "o", folder / "e", 60, ["true"])
     props = [[c[i + 1] for i, a in enumerate(c[:c.index("--")]) if a == "-p"] for c in lines]
     for p in props:
         assert "PrivateUsers=yes" in p and f"ReadOnlyPaths={state}" in p
-        assert f"InaccessiblePaths={secret}" in p and f"InaccessiblePaths={rooms}" in p
+        assert f"InaccessiblePaths={secret}" in p and f"TemporaryFileSystem={rooms}:ro" in p
+        assert f"InaccessiblePaths={rooms}" not in p
         assert not any("yerk-worker.secret" in x for x in p)          # the worker secret stays readable
+    assert not any(x.startswith("BindPaths=") for x in props[0] + props[1])     # no spec: no room folder at all
+    assert [x for x in props[2] if x.startswith("BindPaths=")] == [f"BindPaths=-{rooms / 'r' / 'work'}"]
     assert [x for x in props[0] if x.startswith("ReadWritePaths=")] == [f"ReadWritePaths={folder}"]
     assert [x for x in props[1] if x.startswith("ReadWritePaths=")] == [f"ReadWritePaths={folder}",
                                                                         f"ReadWritePaths={state / 'accounts' / 'one'}"]
@@ -622,10 +628,12 @@ def test_only_the_owners_rooms_use_workers_each_for_itself_and_the_install_keeps
                                          {"kind": "install", "room": ""})
         return out
     out = asyncio.run(go())
-    for key in ("start", "report", "list", "agent job", "default kind"):
+    for key in ("start", "report", "list"):
         assert out[key] == {"ok": False, "line": W.WORKERS_OWNER_ONLY}, key
+    for key in ("agent job", "default kind", "script"):                # a script job runs as the owner too
+        assert out[key] == {"ok": False, "line": W.JOBS_OWNER_ONLY}, key
     assert out["other room"] == out["other job"] == {"ok": False, "line": W.WORKER_OWN_ROOM.format(room="family")}
-    assert out["no unit yet"] == [] and jobs == [("family", {**agent, "kind": "script", "what": "echo hi"})]
+    assert out["no unit yet"] == [] and jobs == []
     assert out["own"]["ok"] and out["own"]["room"] == "example-room"
     assert out["control"]["ok"] and out["control"]["room"] == "family"          # `yerk worker`: any room
     assert [c["unit"] for c in units.calls] == [out["own"]["unit"], out["control"]["unit"]]

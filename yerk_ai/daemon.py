@@ -281,11 +281,13 @@ class Yerkd:
 
     async def tool_schedule(self, room: str, req: dict[str, Any]) -> dict[str, Any]:
         """The `schedule` tool (add, remove, list); the job runner's hand-offs come through /control.
-        A job that is not a script starts a worker, so a room adds one by the worker rule."""
-        if req.get("action") == "add" and str(req.get("kind") or "agent") != "script":
+        Any job runs as the owner's user (an agent job starts a worker; a script job runs its shell
+        command with no sandbox at all), so a room adds one by the worker rule, whatever its kind."""
+        if req.get("action") == "add":
             refused = self.owner_only(room, str(req.get("room") or ""))
             if refused:
-                return refused
+                return {**refused, "line": words.JOBS_OWNER_ONLY} if refused["line"] == words.WORKERS_OWNER_ONLY \
+                    else refused
         return await self.jobs.handle(room, req)
 
     async def tool_hold(self, room: str, wait_for: str, reason: str) -> dict[str, Any]:

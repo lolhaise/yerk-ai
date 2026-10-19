@@ -159,9 +159,28 @@ class Systemd:
             return []
         config = Path(env.get("CLAUDE_CONFIG_DIR") or folder)
         rw = [folder, *([config] if config != folder and config.is_relative_to(self.state) else [])]
-        props = ["PrivateUsers=yes", f"ReadOnlyPaths={self.state}", *(f"ReadWritePaths={p}" for p in rw),
-                 *(f"InaccessiblePaths={p}" for p in self.hidden)]
+        props = ["PrivateUsers=yes", f"ReadOnlyPaths={self.state}", *(f"ReadWritePaths={p}" for p in rw)]
+        rooms = self.state / "rooms"
+        for p in self.hidden:
+            if p != rooms:
+                props.append(f"InaccessiblePaths={p}")
+                continue
+            # every room's folder (its token, settings, conversation) under an empty read-only filesystem,
+            # with the worker's own room's work folder bound back at its own path, read and write: the
+            # one room folder a brief may name (systemd.exec's TemporaryFileSystem plus BindPaths pattern)
+            props.append(f"TemporaryFileSystem={rooms}:ro")
+            room = str(self._room(folder))
+            if room and "/" not in room and room not in (".", ".."):
+                props.append(f"BindPaths=-{rooms / room / 'work'}")
         return [x for p in props for x in ("-p", p)]
+
+    @staticmethod
+    def _room(folder: Path) -> str:
+        """The room the worker belongs to, from the spec Workers.start wrote before the launch."""
+        try:
+            return str(json.loads((folder / "worker.json").read_text()).get("room") or "")
+        except (OSError, ValueError):
+            return ""
 
     def start(self, unit: str, argv: list[str], env: dict[str, str], cwd: Path, out: Path, err: Path,
               cap: float, post: list[str]) -> None:
