@@ -261,10 +261,10 @@ def run(private: Path, state: Path, ref: str = "", tests: bool = True, unit_file
     found = "" if named or sd else unit_of(state, proc)
     was = ask(state) if status.alive(state) else None
     if not (sd or named or found):                    # neither: refused before anything is touched
-        why = W.line(f"{W.PLAIN} {W.NO_UNIT}")
+        reason = W.line(f"{W.PLAIN} {W.NO_UNIT}")
         ledger.deploy(kind="deploy", unit="", before=str((was or {}).get("commit") or ""), after="",
-                      outcome="refused", cut=0, note=why)
-        return say(private, state, [W.line(f"{W.NOT_DONE} {W.NOT_DEPLOYED}"), why], post)
+                      outcome="refused", cut=0, note=reason)
+        return say(private, state, [W.line(f"{W.NOT_DONE} {W.NOT_DEPLOYED}"), reason], post)
     sd = sd or systemd(named or found)
     tree = Path(conf.get("tree") or sd.show("WorkingDirectory") or REPO)
     window, cap = float(conf.get("quiet_seconds", 240)), float(conf.get("cap_minutes", 60)) * 60
@@ -294,7 +294,8 @@ def run(private: Path, state: Path, ref: str = "", tests: bool = True, unit_file
                 return False, [W.line(f"{W.PLAIN} {W.NOT_QUIET.format(span=W.span(cap))}"), q[1]], "gave up"
             sleep(5.0)
         opened = {str(r["message_id"]) for r in ledger.inbound_open()}   # left open before: not this restart's
-        n, ok, lines, outcome = 0, False, [], ""
+        n, ok, outcome = 0, False, ""
+        lines: list[str] = []
         try:
             restart()
             n = cut(ledger, opened, time.time())
