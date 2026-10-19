@@ -342,18 +342,20 @@ def test_with_no_deploy_unit_the_unit_comes_from_the_pid_and_the_card_names_it(t
     tree, ids = repo(tmp_path)
     priv, state = layer(tmp_path, tree, unit="")                       # no [deploy] unit, as tonight
     f, made = Fake(tree), []
+    f.show = lambda prop: str(os.getpid()) if prop == "MainPID" else ""   # yerkd is the unit's main process
 
     def make(name):
         made.append(name)
         f.unit = name
         return f
-    manager = "/user.slice/user-1000.slice/user" + chr(64) + "1000.service"   # spelled out: test_scrub reads x@y.z as an email
+    uid = os.getuid()
+    manager = f"/user.slice/user-{uid}.slice/user" + chr(64) + f"{uid}.service"   # spelled out: test_scrub reads x@y.z as an email
     leaf = f"0::{manager}/app.slice/yerkd-found.service\n"
     proc = planted_proc(tmp_path, f"4:memory:{manager}\n" + leaf)     # a hybrid v1 line above the unit: skipped
     code = deploy.run(priv, state, ids[1], tests=False, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap, proc=proc,
                       systemd=make)
     out = capsys.readouterr().out.splitlines()
-    assert code == 0 and made == ["yerkd-found"] and out[1] == f"{words.PLAIN} unit yerkd-found, from its pid"
+    assert code == 0 and made == ["yerkd-found"] * 2 and out[1] == f"{words.PLAIN} unit yerkd-found, from its pid"   # its MainPID, then the deploy
     assert f.restarts == [ids[1]] and Ledger(state / "ledger.sqlite").rows(1, "deploys")[0]["unit"] == "yerkd-found"
     for cgroup, cmdline in (("0::/user.slice/user-1000.slice/session-2.scope\n", None),          # a terminal's
                             (leaf, b"/usr/bin/sleep\x00infinity\x00")):                          # a reused pid
@@ -362,7 +364,7 @@ def test_with_no_deploy_unit_the_unit_comes_from_the_pid_and_the_card_names_it(t
                           proc=proc, systemd=make) == 1
         assert capsys.readouterr().out.splitlines() == [f"{words.NOT_DONE} not deployed",
                                                         f"{words.PLAIN} no unit found: set [deploy] unit"]
-    assert made == ["yerkd-found"] and f.restarts == [ids[1]] and where(tree) == ("main", ids[1])   # nothing touched
+    assert made == ["yerkd-found"] * 2 and f.restarts == [ids[1]] and where(tree) == ("main", ids[1])   # nothing touched
     assert [(r[3], r[0]) for r in rows(state)][1:] == [("refused", "deploy")] * 2
 
 
@@ -477,6 +479,37 @@ def test_a_failed_rollback_exits_2_and_the_morning_diff_names_every_deploy_not_p
     assert again[0] == f"{words.PLAIN} morning: nothing new, 2 known" and sum(x in want for x in again) == 2   # said once
     later, _ = morning.build(priv, state, accounts, cool, led, live, now + 86400)
     assert not [x for x in later if " rollback " in x]                                    # the last 24 hours only
+
+
+def test_a_unit_whose_main_process_is_not_yerkd_is_refused_and_a_named_unit_wins_over_the_pid(tmp_path, capsys):
+    tree, ids = repo(tmp_path)
+    priv, state = layer(tmp_path, tree, unit="")
+    f, made, main = Fake(tree), [], {"pid": "1"}                       # the host unit's own program: a tmux, a gateway
+    f.show = lambda prop: main["pid"] if prop == "MainPID" else ""
+
+    def make(name):
+        made.append(name)
+        f.unit = name
+        return f
+    uid, ok = os.getuid(), (lambda p: {"ok": True})
+    manager = f"/user.slice/user-{uid}.slice/user" + chr(64) + f"{uid}.service"
+    proc = planted_proc(tmp_path, f"0::{manager}/app.slice/host.service\n")      # yerkd started inside it
+    assert deploy.run(priv, state, ids[1], tests=False, ask=f.ask, post=ok, sleep=nap, proc=proc, systemd=make) == 1
+    assert capsys.readouterr().out.splitlines() == [f"{words.NOT_DONE} not deployed",
+                                                    f"{words.PLAIN} no unit found: set [deploy] unit"]
+    assert made == ["host"] and f.restarts == [] and where(tree) == ("main", ids[0])   # its MainPID asked, nothing restarted
+    main["pid"] = str(os.getpid())                                     # yerkd the main process, of the system manager's unit
+    proc = planted_proc(tmp_path, "0::/system.slice/host.service\n")
+    assert deploy.run(priv, state, ids[1], tests=False, ask=f.ask, post=ok, sleep=nap, proc=proc, systemd=make) == 1
+    assert capsys.readouterr().out.splitlines()[1] == f"{words.PLAIN} no unit found: set [deploy] unit"
+    assert made == ["host"] and f.restarts == []
+    conf = priv / "yerkd.toml"                                         # a named unit, the pid in another findable one
+    conf.write_text(conf.read_text().replace('unit = ""', 'unit = "yerkd-named"'))
+    proc = planted_proc(tmp_path, f"0::{manager}/app.slice/yerkd-other.service\n")
+    assert deploy.run(priv, state, ids[1], tests=False, ask=f.ask, post=ok, sleep=nap, proc=proc, systemd=make) == 0
+    out = capsys.readouterr().out.splitlines()
+    assert made == ["host", "yerkd-named"] and f.restarts == [ids[1]] and not [x for x in out if "from its pid" in x]
+    assert Ledger(state / "ledger.sqlite").rows(1, "deploys")[0]["unit"] == "yerkd-named"
 
 
 def test_with_no_status_before_the_deploy_the_proof_wants_every_room_in_rooms_toml(tmp_path, capsys):

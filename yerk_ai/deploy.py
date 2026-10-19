@@ -92,10 +92,13 @@ def unit_text(template: str, argv: list[str], cwd: str, env: list[str]) -> str:
                   + "ExecStart=" + shlex.join(argv).replace("%", "%%").replace("$", "$$"), text)
 
 
-def unit_of(state: Path, proc: Path = Path("/proc")) -> str:
-    """The unit the running yerkd is in, from its pid (yerkd.json): the `.service` leaf of its cgroup
-    (/proc/<pid>/cgroup, the unified or name=systemd line), without the suffix. "" when no yerkd runs on
-    this state folder, the pid is another program's by now, or yerkd runs outside a service."""
+def unit_of(state: Path, proc: Path = Path("/proc"), main_pid: Callable[[str], str] | None = None) -> str:
+    """The unit the running yerkd is, from its pid (yerkd.json): the `.service` leaf of its cgroup
+    (/proc/<pid>/cgroup, the unified or name=systemd line) under this user's manager (user@<uid>.service,
+    the one `systemctl --user` talks to), without the suffix, and only when that unit's MainPID is the
+    pid: a yerkd started inside another program's service (a tmux, a gateway) is in its cgroup, and a
+    restart of that unit restarts the other program. "" when no yerkd runs on this state folder, the
+    pid is another program's by now, or yerkd is not the main process of a user service."""
     try:
         pid = int(json.loads((state / "yerkd.json").read_text())["pid"])
         argv = (proc / str(pid) / "cmdline").read_bytes().split(b"\0")
@@ -106,9 +109,13 @@ def unit_of(state: Path, proc: Path = Path("/proc")) -> str:
         return ""                                       # a pid handed to another program since
     for g in groups:
         ctrl, _, path = g.partition(":")[2].partition(":")
-        leaf = path.rpartition("/")[2]
+        *above, leaf = path.split("/")
         if ctrl in ("", "name=systemd") and leaf.endswith(".service") and leaf != ".service":
-            return leaf.removesuffix(".service")
+            unit = leaf.removesuffix(".service")
+            if f"user@{os.getuid()}.service" not in above:
+                return ""                               # the system manager's, or another user's
+            shown = (main_pid or (lambda u: Systemd(u).show("MainPID")))(unit)
+            return unit if shown == str(pid) else ""    # yerkd is a child of the unit's own program
     return ""
 
 
@@ -258,7 +265,7 @@ def run(private: Path, state: Path, ref: str = "", tests: bool = True, unit_file
     conf = dict(load_toml(private / "yerkd.toml").get("deploy", {})) if (private / "yerkd.toml").is_file() else {}
     W, ledger = words, Ledger(state / "ledger.sqlite")
     named = str(conf.get("unit") or "")
-    found = "" if named or sd else unit_of(state, proc)
+    found = "" if named or sd else unit_of(state, proc, lambda u: systemd(u).show("MainPID"))
     was = ask(state) if status.alive(state) else None
     if not (sd or named or found):                    # neither: refused before anything is touched
         reason = W.line(f"{W.PLAIN} {W.NO_UNIT}")
