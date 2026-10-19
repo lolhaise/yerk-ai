@@ -68,7 +68,7 @@ IMAGE = ("image/png", "image/jpeg", "image/gif", "image/webp")
 # over the library's table; a guild the table puts higher (tier 2 and 3) keeps the table's number.
 BOT_UPLOAD = 20 * 1024 * 1024
 REPLY_MAX = 300
-QUICK = 2.0           # seconds a slash command may take before its answer is deferred (Discord gives three)
+QUICK = 1.0           # seconds a slash command may take before its answer is deferred (Discord gives three)
 
 
 def commands(models: dict[str, str]) -> list[dict[str, Any]]:
@@ -139,7 +139,7 @@ def message_text(m: Any, files: list[dict[str, Any]] | None = None, me: int | No
 
 
 class DiscordChannel:
-    def __init__(self, token: str, owner: int, test_senders: list[int], ledger: Ledger,
+    def __init__(self, token: str, owner: int | None, test_senders: list[int], ledger: Ledger,
                  client: Any = None, guard: LoopGuard | None = None, state: Path | None = None,
                  capture: Callable[..., bool] | None = None, daemon: Any = None):
         self.token, self.owner, self.test_senders, self.ledger = token, owner, set(test_senders), ledger
@@ -185,7 +185,7 @@ class DiscordChannel:
             return "test-webhook" if m.webhook_id in self.test_senders else None
         if self.client.user is not None and m.author.id == self.client.user.id:
             return None
-        return "owner" if m.author.id == self.owner else None
+        return "owner" if self.owner is not None and m.author.id == self.owner else None
 
     async def on_message(self, m: Any) -> None:
         room = self.rooms.get(m.channel.id)
@@ -369,7 +369,9 @@ class DiscordChannel:
         data = it.data or {}
         args = {str(o["name"]): str(o.get("value", "")) for o in data.get("options") or []}
         room = self.rooms.get(int(it.channel_id or 0))
-        if getattr(it.user, "id", None) != self.owner:
+        if self.owner is None:                    # yerkd.toml names no owner: no one is, and the line says so
+            await it.response.send_message(f"{words.NOT_DONE} {words.NO_OWNER}", ephemeral=True)
+        elif getattr(it.user, "id", None) != self.owner:
             await it.response.send_message(f"{words.NOT_DONE} {words.NOT_OWNER}", ephemeral=True)
         elif room is None:
             await it.response.send_message(f"{words.NOT_DONE} {words.NOT_A_ROOM}", ephemeral=True)

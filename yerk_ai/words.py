@@ -323,6 +323,7 @@ COMMANDS = {"model": "this room's model, from the next reply", "effort": "this r
             "status": "what runs now"}
 CHOICE = {"model": "a model on the list, or default", "effort": "a thinking level, or default"}
 NOT_OWNER = "only the owner can use this"
+NO_OWNER = "set [discord] owner in yerkd.toml"       # every command, while yerkd.toml names no owner
 NOT_A_ROOM = "this channel is not a Yerk room"
 NEW_NEXT = "new session from the next message\nmemory stays"
 STOPPED = "stopped with /stop"                       # the stopped turn's card

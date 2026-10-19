@@ -141,6 +141,7 @@ class Room:
         self.stale = False                        # the settings changed mid-turn: the process closes at its end
         self.ran: RoomSpec | None = None          # the spec of the last process started
         self.stopped = False                      # /stop: the running turn ends now and is never run again
+        self.halt = threading.Event()             # ... and a rerun's wait ends at once
 
     def _ledger_call(self, call: dict[str, Any]) -> None:
         self.ledger.evidence(t=round(time.time(), 3), room=self.name, session_id=self.rp.session_id if self.rp else "",
@@ -305,19 +306,36 @@ class Room:
             rp.close()
 
     def renew(self) -> None:
-        """/new: the next turn starts a fresh session (memory stays: its start is built as every start is)
-        with the room's recap line; a running turn ends as it began."""
+        """/new: the room's next run (the next message, or a running turn's messages still waiting) starts a
+        fresh session (memory stays: its start is built as every start is) with the room's recap line. The
+        line is also the daemon's own file, `fresh-next` beside the room's override, so a restart before the
+        next message keeps it."""
         with self.lock:
             self.fresh_next = NEW_RECAP.format(last=self.last_reply or "nothing yet")
+            (self.state / "rooms" / self.name).mkdir(parents=True, exist_ok=True)
+            write_private(self.state / "rooms" / self.name / "fresh-next", self.fresh_next)
+
+    def _take_fresh(self) -> str | None:
+        """The recap the next run starts a fresh session with (a refusal fallback's, or /new's, from its file
+        after a restart), taken once: the file goes with it."""
+        path = self.state / "rooms" / self.name / "fresh-next"
+        with self.lock:
+            recap, self.fresh_next = self.fresh_next, None
+            if recap is None and path.is_file():
+                recap = path.read_text(errors="replace") or None
+            path.unlink(missing_ok=True)
+        return recap
 
     def stop(self) -> bool:
         """/stop: the running turn ends now and for good (L82): never rerun, hopped or retried fresh, its
         messages ledgered stopped, so a restart does not run them again. Only the live process is touched
-        (L136); between two runs of the turn the next run ends as it starts. False when no turn runs."""
+        (L136); between two runs of the turn (a hop, a rerun's wait, a retry) no next run starts and nothing
+        is written again. False when no turn runs."""
         with self.lock:
             if not self.busy:
                 return False
             self.stopped, rp = True, self.rp if self.reading else None
+            self.halt.set()
         if rp:
             rp.end_now()
         return True
@@ -388,6 +406,7 @@ class Room:
         self.first_line = None
         with self.lock:
             self.images, self.stopped = {}, False
+            self.halt.clear()
             self.answering = {m.id for m in batch}
         self.evidence.reset()
         ctx = self.state / "rooms" / self.name / "context.md"
@@ -395,11 +414,14 @@ class Room:
             self.evidence.give(ctx.read_text(errors="replace"))     # the session-start file was read too
         self._new_card()
         account = self._account()
-        recap, self.fresh_next = self.fresh_next, None          # set by a refusal fallback last turn
+        recap = self._take_fresh()                              # a refusal fallback last turn, or /new
         fresh, retried, compacted, reruns, hops, hop = bool(recap), False, False, 0, 0, None
         recap_sid = None                       # the session that already got the recap
         resend = batch
         while True:
+            if self.stopped:                      # /stop between two runs: no next run is started or fed
+                self._end(resend, words.STOPPED, "/stop", "stopped")
+                return
             with self.lock:
                 old = self.rp
                 restart = old is None or not old.alive() or old.account != account or fresh
@@ -412,13 +434,18 @@ class Room:
                 fresh = False
             assert self.rp
             note = recap if self.rp.session_id != recap_sid else None   # a recap rides until a session has it
-            with self.lock:
-                self.pending.clear()
-                self.inflight = []
-                for i, m in enumerate(resend):
-                    self._write(m, note if i == 0 else None)
-                    self.ledger.inbound_set(m.id, state="running", attempts=m.attempt + 1)
-                self.reading = True
+            with self.lock:                       # Room.stop sets `stopped` under this lock: it sees `reading`
+                halted = self.stopped             # and TERMs the process, or nothing is written here
+                if not halted:
+                    self.pending.clear()
+                    self.inflight = []
+                    for i, m in enumerate(resend):
+                        self._write(m, note if i == 0 else None)
+                        self.ledger.inbound_set(m.id, state="running", attempts=m.attempt + 1)
+                    self.reading = True
+            if halted:                            # it landed while the process started
+                self._end(resend, words.STOPPED, "/stop", "stopped")
+                return
             recap_sid = self.rp.session_id if note else recap_sid
             step, turn = self._results(account, hop, bool(note))
             with self.lock:
@@ -429,8 +456,8 @@ class Room:
             if self.stopped:                      # /stop: no rerun, hop or fresh retry, here or after a restart
                 self._end(resend, words.STOPPED, "/stop", "stopped")
                 return
-            if step == "fresh":                   # answered on a fallback model with messages still waiting
-                fresh, recap, self.fresh_next = True, self.fresh_next, None
+            if step == "fresh":                   # answered on a fallback model (or /new) with messages still waiting
+                fresh, recap = True, self._take_fresh()
                 continue
             assert turn
             f = turn.failure
@@ -442,7 +469,7 @@ class Room:
             if action == "rerun" and (wait := self.failures.rerun_wait(reruns)) is not None:
                 log.info("room %s: %s, rerun %d in %.0f s", self.name, f and f.source, reruns + 1, wait)
                 reruns += 1
-                time.sleep(wait)
+                self.halt.wait(wait)              # /stop ends the wait at once
                 continue
             if action == "compact_then_rerun" and not compacted:
                 compacted = True

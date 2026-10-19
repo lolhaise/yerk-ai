@@ -37,6 +37,14 @@ def flag(value: Any, default: bool = False) -> bool:
     return word == "true" if word in ("true", "false") else default
 
 
+def discord_id(value: Any) -> int | None:
+    """A Discord id setting, read strictly: a TOML integer or digits in quotes; None for anything else
+    (missing, a bool, a float, which cannot hold an id exactly, other text, zero)."""
+    if isinstance(value, str) and value.strip().isascii() and value.strip().isdigit():
+        value = int(value.strip())
+    return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else None
+
+
 def budgets() -> dict[str, Any]:
     return load_toml(table("budgets.toml"))
 
