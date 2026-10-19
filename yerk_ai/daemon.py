@@ -196,9 +196,9 @@ class Yerkd:
 
     def reader(self, room: str) -> memory.Reader:
         """Who a memory read is for: an owner room reads everything, any other room its own lines and
-        shared files, and a caller that is no room at all reads shared files only (R2)."""
+        shared files, a caller that is no room at all shared files only (R2), and a sealed room its own lines in Yerk's tree."""
         return memory.Reader(room, room_id(room, self.room_confs[room]) if room in self.room_confs else "",
-                             self.owner(room))
+                             self.owner(room), flag(self.room_confs.get(room, {}).get("sealed")))
 
     def check(self) -> mcp_server.Check:
         return mcp_server.checker(self.secret, self.worker_secret, self.sessions.by_token)
@@ -374,11 +374,12 @@ class Yerkd:
 
     def recall_for(self, room: str, prompt: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         """Names on file (owner-privacy rooms only) and the room's own lines on the topic. Off the loop."""
-        conf, s = self.room_confs.get(room, {}), self.scoped.get(room, self.memory)
+        conf, s, rd = self.room_confs.get(room, {}), self.scoped.get(room, self.memory), self.reader(room)
         names: list[dict[str, Any]] = []
         if self.owner(room) and conf.get("mention_recall", True):
-            try:            # a room's own `also`: the entries from its roots only (a cite is relative in Yerk's own tree)
-                names = self.names.load().match(prompt, keep=(lambda f: s.scope.contains(s.root / f)) if s.scoped else None)
+            try:            # a room's own `also`: the entries from its roots only (a cite is relative in Yerk's own tree, which sealed skips)
+                names = self.names.load().match(prompt, keep=(lambda f: s.scope.contains(s.root / f) and (Path(f).is_absolute() or not rd.sealed))
+                                                if s.scoped or rd.sealed else None)
             except (OSError, ValueError, KeyError) as e:
                 log.warning("mention recall skipped: %s", e)
         r = self.rooms.get(room)

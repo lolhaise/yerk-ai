@@ -230,7 +230,8 @@ def test_a_corrected_read_only_line_comes_back_with_its_replacement(tmp_path):
     assert any("twice a week now" in h["text"] for h in hits), [h["text"][:60] for h in hits]    # 709c6b5: the pinned line alone
     at = lambda words: next(i for i, h in enumerate(hits) if words in h["text"])  # noqa: E731
     assert at("twice a week now") < at("last watered on the 4th") and hits[at("twice a week now")]["cite"] == r["cite"]
-    assert memory.later(y.memory) == {"memory/pinned.md:5": r["cite"]}
+    real = memory.read(y.memory, "memory/pinned.md:5", lines=1)["path"]      # by its real file: two copies share a cite (A1)
+    assert memory.later(y.memory) == {f"{real}:5": r["cite"]}
 
 
 def test_a_correction_marks_the_line_the_room_meant_never_the_snippets_first_line(tmp_path):
