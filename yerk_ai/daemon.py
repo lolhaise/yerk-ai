@@ -26,8 +26,8 @@ from typing import Any
 
 from . import beat, context, deploy, evidence, gates, hooks, jobs, mcp_server, memory, mentions, status, workers
 from .accounts import Account, Cooldowns, from_dir, load_accounts
-from .config import (EFFORTS, REPO, budgets, flag, load_toml, models, override, private_dir, read_secret,
-                     room_id, room_settings, rooms, state_dir, table, write_private)
+from .config import (EFFORTS, REPO, budgets, discord_id, flag, load_toml, models, override, private_dir,
+                     read_secret, room_id, room_settings, rooms, state_dir, table, write_private)
 from .engine import RoomSpec, SessionTable
 from .ledger import Ledger
 from .lifted.classify import FailureTable
@@ -152,6 +152,7 @@ class Yerkd:
         self.rewrites: dict[str, tuple[str, str]] = {}           # tool_use id -> (room, the trash command)
         self.worded: set[str] = set()                            # inbound ids whose approval word was used
         self.later: set[asyncio.Task[Any]] = set()               # a gate's notice, posted beside the hook's answer
+        self.held_files: dict[str, Path] = {}                    # room -> a held call's exact text too long to show
         self.timing: list[tuple[str, dict[str, Any]]] = []       # hook and tool timings, written in batches
         self.timing_lock = threading.Lock()
         self.flushing = False
@@ -321,10 +322,26 @@ class Yerkd:
             write_private(self.state / "rooms" / room / "override.json", json.dumps(over))
         now = room_settings(conf, self.state, room, self.models)
         if [v for v, _ in now.values()] != [v for v, _ in before.values()] and room in self.rooms:
-            self.rooms[room].respec()
+            await asyncio.to_thread(self.rooms[room].respec)        # an idle process's close, off the loop
         log.info("settings: room %s on %s, effort %s", room, now["model"][0], now["effort"][0] or "default")
         return {"ok": True, "line": (words.NEXT_REPLY if want or level else words.THIS_ROOM).format(
             model=words.model_name(now["model"][0]), effort=now["effort"][0] or "default")}
+
+    async def room_new(self, room: str) -> dict[str, Any]:
+        """/new: the room's next message starts a fresh session with its recap line (Room.renew). The
+        "could not go on" notice is for a session lost, not one asked for, so its mark goes too."""
+        if room not in self.rooms:
+            return {"ok": False, "line": words.NOT_A_ROOM}
+        self.rooms[room].renew()
+        (self.state / "rooms" / room / "last-session").unlink(missing_ok=True)
+        return {"ok": True, "line": words.NEW_NEXT}
+
+    async def room_stop(self, room: str) -> dict[str, Any]:
+        """/stop: the running turn ends now and for good (Room.stop, L82); ok is False when none runs."""
+        if room not in self.rooms:
+            return {"ok": False, "line": words.NOT_A_ROOM}
+        stopped = await asyncio.to_thread(self.rooms[room].stop)
+        return {"ok": stopped, "line": words.STOP_DONE if stopped else words.NOTHING_TO_STOP}
 
     # recall before the first word (DESIGN 5)
     def room_pack(self, room: str, left: int = 6000) -> tuple[str, str]:
@@ -384,11 +401,20 @@ class Yerkd:
                 return n
         return None
 
-    def notify_later(self, room: str, text: str) -> None:
-        """A gate's one line to the room, posted beside the hook's answer so the hook never waits on it."""
-        task = asyncio.get_running_loop().create_task(self.channels[room].notify(room, text))
+    def notify_later(self, room: str, text: str, file: Path | None = None) -> None:
+        """A gate's one line to the room, posted beside the hook's answer so the hook never waits on it;
+        a held call's exact text too long to show goes right after it as a file."""
+        task = asyncio.get_running_loop().create_task(self._notice(room, text, file))
         self.later.add(task)
         task.add_done_callback(self.later.discard)
+
+    async def _notice(self, room: str, text: str, file: Path | None) -> None:
+        await self.channels[room].notify(room, text)
+        if file is not None:
+            try:
+                await self.channels[room].send_file(room, file, caption=words.HELD_FILE)
+            except (OSError, ValueError) as e:            # send_file has already posted a visible notice
+                log.warning("room %s: the held call's text file did not go out: %s", room, e)
 
     def time_row(self, table: str, row: dict[str, Any]) -> None:
         """Queue a timing row; one flush per batch runs on a thread, beside the hook's answer."""
@@ -461,7 +487,7 @@ class Yerkd:
                 return {}
             out, line = await asyncio.to_thread(self.pre_tool, name, room, sid, payload)
             if line:
-                self.notify_later(name, line)
+                self.notify_later(name, line, self.held_files.pop(name, None))
             return out
         if event in ("PostToolUse", "PostToolUseFailure"):
             if room and name:
@@ -560,7 +586,7 @@ class Yerkd:
                 v = gates.Verdict("approval", "release", detail=f"{what}: {call}; approved by {rel['approved_by']}",
                                   rule=rule)
             else:
-                model, line = gates.held(what, call, self.gates.word)
+                model, line = gates.held(what, call, self.gates.word, exact=key)
                 v = gates.Verdict("approval", "hold", model, line, f"{what}: {call}", rule=rule)
         if v is None:
             return {}, ""
@@ -568,6 +594,11 @@ class Yerkd:
                                tool=tool, rule=v.rule, detail=v.detail)
         if v.decision == "hold":
             self.ledger.hold_add(name, v.rule, v.detail.split(":")[0], gid, key, cwd)
+            if len(key) > gates.SHOW:                     # too long for one message: the exact text as a file
+                path = self.state / "rooms" / name / "held" / f"{gid}.txt"
+                path.parent.mkdir(parents=True, exist_ok=True)
+                write_private(path, key + "\n")
+                self.held_files[name] = path
         if v.decision == "rewrite" and v.new_input:
             self.rewrites[str(payload.get("tool_use_id") or "")] = (name, str(v.new_input.get("command")))
         log.info("room %s: gate %s %s: %s", name, v.gate, v.decision, v.detail[:160])
@@ -717,8 +748,14 @@ class Yerkd:
         d = self.conf.get("discord", {})
         token = (self.private / d["token_file"]).read_text().strip()
         guard = LoopGuard(max_events=int(d.get("webhook_burst", 100)))   # per 5 minutes, then 10 off
-        dc = DiscordChannel(token, int(d["owner"]), [int(x) for x in d.get("test_senders", [])], self.ledger,
-                            guard=guard, state=self.state, capture=self.daily.capture)
+        owner = discord_id(d.get("owner"))
+        if owner is None:                        # the rooms still start; every command names the setting
+            log.warning("discord: [discord] owner in yerkd.toml is %s, so no person's message is answered and every "
+                        "slash command says to set it", "missing" if "owner" not in d
+                        else f"a {type(d['owner']).__name__}, not a Discord user id")
+        dc = DiscordChannel(token, owner, [int(x) for x in d.get("test_senders", [])], self.ledger,
+                            guard=guard, state=self.state, capture=self.daily.capture,
+                            daemon=self if flag(d.get("commands"), True) else None)   # the slash commands
         for name, conf in self.room_confs.items():
             kind, _, cid = str(conf.get("channel", "")).partition(":")
             if kind == "discord" and cid.isdigit():

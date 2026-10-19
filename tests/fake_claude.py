@@ -14,6 +14,7 @@ message and a success result echoing the text. Variations:
 - the line /compact: a compaction result
 - a line containing SLOW: waits up to 1.5 s for another line; if one comes, it is replayed and
   answered in the same result (a fold)
+- a line containing HANG: no answer for 60 s (a turn only /stop ends)
 - --resume with FAKE_CLAUDE_MISSING=1: "No conversation found" on stderr, exit 1
 - --model equal to FAKE_CLAUDE_BAD_MODEL: every line fails as model_not_found, "There's an issue
   with the selected model" (a model on the list that no account can run)
@@ -29,6 +30,7 @@ import json
 import os
 import select
 import sys
+import time
 import uuid
 from pathlib import Path
 
@@ -158,4 +160,6 @@ while True:
         extra = json.loads(sys.stdin.readline())
         replay(extra)
         text = text + " + " + extra["message"]["content"]
+    if "HANG" in text:
+        time.sleep(60)
     answer(text)

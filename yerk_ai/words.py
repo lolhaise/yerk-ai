@@ -208,6 +208,8 @@ NOT_RUN_AGAIN = "not answered: sent before a restart\nask again"
 SENT_AGAIN = "sent again after a restart"
 # the gates (gates.py): the room hears one notice, state first, and only when it must act or know
 HELD = "held: {what}\nsay {word} here to let it run once"
+HELD_ATTACHED = "the exact text is in the file below"
+HELD_FILE = "the exact text held for approval"
 REFUSED = "not done: {what}\nit would restart Yerk AI\n{why}"
 REBUILDING = "the memory index is rebuilding"
 IN_PROGRESS = "a conversation is in progress"
@@ -327,6 +329,19 @@ NOT_LISTED = "not on the list: {model}\nthe list: {models}"
 NOT_A_LEVEL = "not a thinking level: {effort}\nthe levels: {levels}"
 BACK_ON = "{model} not found; back on {usual}"       # a switched-to model no account could run
 USUAL = "the default"                                # a room whose rooms.toml names no model
+# slash commands on the rooms' own bot (Discord): the owner's only, every answer seen by the owner alone
+COMMANDS = {"model": "this room's model, from the next reply", "effort": "this room's thinking level, from the next reply",
+            "new": "a new session in this room; memory stays", "stop": "end the running turn now",
+            "status": "what runs now"}
+CHOICE = {"model": "a model on the list, or default", "effort": "a thinking level, or default"}
+NOT_OWNER = "only the owner can use this"
+NO_OWNER = "set [discord] owner in yerkd.toml"       # every command, while yerkd.toml names no owner
+NOT_A_ROOM = "this channel is not a Yerk room"
+NEW_NEXT = "new session from the next message\nmemory stays"
+STOPPED = "stopped with /stop"                       # the stopped turn's card
+STOP_DONE = "stopped the running turn"
+NOTHING_TO_STOP = "nothing is running here"
+NOT_RUN = "that did not run\nthe daemon's log says why"
 
 
 def model_name(mid: str) -> str:

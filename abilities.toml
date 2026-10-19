@@ -1086,7 +1086,7 @@ state = "built"
 
 [abilities.room-settings]
 state = "built"
-what = "The owner changes a room's model and thinking level from the room in plain words (\"put this room on Opus at max thinking\"): the settings tool takes a model from the install's list (an alias or its full id) and a level (low, medium, high, xhigh, max, or default), answers with one line, and the next reply runs on them in the same conversation, never mid-turn. Owner rooms only; any other room is told only the owner's rooms can change this. The choice is the daemon's own file under the state folder, over rooms.toml, which is never written, and it survives a restart; `yerk config get room NAME` shows each value and where it comes from."
+what = "The owner changes a room's model and thinking level from the room in plain words (\"put this room on Opus at max thinking\"): the settings tool takes a model from the install's list (an alias or its full id) and a level (low, medium, high, xhigh, max, or default), answers with one line, and the next reply runs on them in the same conversation, never mid-turn. Owner rooms only; any other room is told only the owner's rooms can change this. The choice is the daemon's own file under the state folder, over rooms.toml, which is never written, and it survives a restart; `yerk config get room NAME` shows each value and where it comes from. On Discord the same is /model and /effort, beside /new (a fresh session, memory kept), /stop (the running turn ends now, for good) and /status (the card): the owner's only, seen by the owner alone."
 tier = "free"
 needs = "nothing; the model list is models.toml in the package (alias = full id), replaced whole by [models] in yerkd.toml"
 free_path = "this is the free path"
