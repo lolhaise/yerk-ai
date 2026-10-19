@@ -901,10 +901,10 @@ def last_trigger(units: Systemd, job: Job) -> float | None:
     return t["last"] if t else None
 
 
-def run_script(job: Job, folder: Path, base: dict[str, str] | None = None) -> dict[str, Any]:
+def run_script(job: Job, folder: Path) -> dict[str, Any]:
     """The command under /bin/sh with an account-free environment, the job's cap, stdout and stderr
     to files in the run folder. Returns exit, timed_out, output and the stderr tail."""
-    env = {k: v for k, v in (os.environ if base is None else base).items() if k in ENV_KEEP}
+    env = {k: v for k, v in os.environ.items() if k in ENV_KEEP}
     env.update(TZ=job.tz or "UTC", YERK_JOB=job.name, YERK_JOB_DIR=str(folder), YERK_ROOM=job.room)
     t0 = time.time()
     with open(folder / "stdout", "wb") as out, open(folder / "stderr", "wb") as err:
@@ -947,12 +947,11 @@ class Watcher:
 
     def __init__(self, name: str, private: Path, state: Path,
                  handoff: Callable[[dict[str, Any]], dict[str, Any]] | None = None, popen: Any = subprocess.Popen,
-                 clock: Callable[[], float] = time.time, sleep: Callable[[float], None] = time.sleep,
                  diag: Callable[[str], None] | None = None):
         self.name, self.private, self.state = name, private, state
         self.ledger = Ledger(state / "ledger.sqlite")
         self.handoff = handoff or (lambda payload: post_control(state, payload, 30))
-        self.popen, self.clock, self.sleep = popen, clock, sleep
+        self.popen = popen
         self.diag = diag or (lambda m: print(f"[watch {name}] {m}", file=sys.stderr, flush=True))
         self.stopping = False
         self.proc: Any = None
@@ -964,7 +963,7 @@ class Watcher:
     def _row(self, job: Job, state: str, got: list[tuple[str, str]]) -> int:
         return self.ledger.watch_add(job=self.name, room=job.room, wake=job.wake, state=state,
                                      lines="\n".join(t for t, _ in got), keys=json.dumps([k for _, k in got]),
-                                     received=round(self.clock(), 3), attempts=0)
+                                     received=round(time.time(), 3), attempts=0)
 
     def flush(self, job: Job, got: list[tuple[str, str]]) -> int:
         eid = self._row(job, "pending", got)                # persisted before the daemon hears of it
@@ -986,7 +985,7 @@ class Watcher:
         primed = any(r["state"] == "primed" for r in rows)
         env = {k: v for k, v in os.environ.items() if k in ENV_KEEP}
         env.update(TZ=job.tz or "UTC", YERK_JOB=job.name, YERK_ROOM=job.room)
-        start = self.clock()
+        start = time.time()
         p = self.popen(["/bin/sh", "-c", job.payload], stdout=subprocess.PIPE, stdin=subprocess.DEVNULL, env=env,
                        start_new_session=True, text=True, bufsize=1)
         self.proc = p
@@ -1004,10 +1003,10 @@ class Watcher:
         while True:
             waits = [t for t in (prime_until, deadline) if t is not None]
             try:
-                x = lines.get(timeout=max(0.05, min(waits) - self.clock()) if waits else 1.0)
+                x = lines.get(timeout=max(0.05, min(waits) - time.time()) if waits else 1.0)
             except queue.Empty:
                 x = ""
-            now = self.clock()
+            now = time.time()
             if prime_until is not None and (now >= prime_until or x is None):
                 self._row(job, "primed", absorbed)
                 self.diag(f"primed: {len(absorbed)} line(s) at the first start are history, not events")
@@ -1045,15 +1044,15 @@ class Watcher:
         signal.signal(signal.SIGINT, stop)
         backoff = BACKOFF[0]
         while not self.stopping:
-            t0 = self.clock()
+            t0 = time.time()
             rc = self.once()
             if self.stopping:
                 break
-            ran = self.clock() - t0
+            ran = time.time() - t0
             if ran >= STABLE:
                 backoff = BACKOFF[0]
             self.diag(f"the command ended (exit {rc}) after {ran:.0f} s; restarting in {backoff:g} s")
-            self.sleep(backoff)
+            time.sleep(backoff)
             backoff = min(backoff * 2, BACKOFF[1])
         return 0
 
@@ -1242,7 +1241,7 @@ class Jobs:
         if action == "remove":
             return await asyncio.to_thread(self.remove, str(req.get("name", "")))
         if action == "list":
-            return await asyncio.to_thread(self.listing)
+            return await asyncio.to_thread(schedule_list, self.path, self.units)
         if action == "sync":
             return await asyncio.to_thread(self.sync_now)
         if action == "fire":
@@ -1376,9 +1375,6 @@ class Jobs:
         if out["ok"]:
             log.info("job %s: removed", name)
         return out
-
-    def listing(self) -> dict[str, Any]:
-        return schedule_list(self.path, self.units)
 
     def sync_now(self) -> dict[str, Any]:
         try:

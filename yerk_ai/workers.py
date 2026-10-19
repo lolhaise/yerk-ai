@@ -825,7 +825,7 @@ def listing(ledger: Ledger, limit: int = 20) -> list[dict[str, Any]]:
     """The newest workers, running or ended: what `worker list` and `yerk worker list` show."""
     now = time.time()
     return [{"id": r["id"], "room": r["room"], "account": r["account"], "unit": r["unit"],
-             "state": r["exit"] or ("waiting for an account" if r.get("waiting") else "running"), "elapsed": took((r["finished"] or now) - r["started"]),
+             "state": r["exit"] or (words.WAITING_ACCOUNT if r.get("waiting") else "running"), "elapsed": took((r["finished"] or now) - r["started"]),
              "cap_minutes": r["cap"] / 60, "result": r["result"], "report": r["report"],
              "relay": r["relay"], "relay_note": r["relay_note"]} for r in ledger.workers(limit=limit)]
 
