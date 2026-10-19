@@ -32,6 +32,7 @@ class FakeBridge:
 
     def __init__(self, path: str, guid_in_answer: bool = True):
         self.path, self.guid_in_answer = path, guid_in_answer
+        self.answer_sends = True
         self.chats = {1: CHAT, 2: OTHER_CHAT}
         self.rows: list[dict[str, Any]] = []
         self.next = 100
@@ -91,6 +92,8 @@ class FakeBridge:
                 row = self.add(chat, p["text"], True)
                 self.sent.append(p["text"])
                 self.push(row)                    # the watch sees the row before the send is answered
+                if not self.answer_sends:         # the Mac sleeps between the send and its answer
+                    continue
                 res = {"ok": True, **({"guid": row["guid"]} if self.guid_in_answer else {})}
             else:
                 w.write((json.dumps({"jsonrpc": "2.0", "id": req["id"], "error": {"code": -32601, "message": "no"}})
@@ -287,3 +290,19 @@ def test_the_transport_is_ssh_and_socat_to_the_socket():
     assert argv[0] == "ssh" and "user@mac" in argv and argv[-1] == "UNIX-CONNECT:/Users/x/.imsg/rpc.sock"
     assert imod.guid_of({"ok": True}) is None and imod.guid_of({"messageGuid": "AB-1"}) == "AB-1"
     assert imod.guid_of({"message_id": "42"}) == 42 and imod.guid_of({"id": 7}) == 7
+
+
+def test_a_send_that_went_out_with_no_answer_is_never_sent_twice_or_taken_as_the_owner(where):
+    async def go() -> None:
+        fake, ch, got, _, led = setup(where, send_timeout=0.3)
+        task = await running(fake, ch)
+        fake.answer_sends = False
+        await asyncio.to_thread(ch.reply, "imsg-room", "went out, never answered", ["G-in"])
+        fake.answer_sends = True
+        await until(lambda: ch.connected and all(r["state"] == "sent" for r in led.deliveries("imsg-room")))
+        await asyncio.sleep(0.5)
+        guid = fake.rows[-1]["guid"]
+        assert fake.sent == ["went out, never answered"] and got == []
+        assert led.delivery_by_message(guid)["state"] == "sent" and led.inbound_get(guid) is None
+        await done(task, fake)
+    asyncio.run(go())

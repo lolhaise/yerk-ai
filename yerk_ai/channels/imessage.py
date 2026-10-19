@@ -422,7 +422,8 @@ class IMessageChannel:
         if not q or rowid <= q[0][1]:
             return False
         key, _, _ = q.popleft()
-        self.ledger.delivery_set(key, message_id=guid, note="guid from the chat's next from-me row")
+        self.ledger.delivery_set(key, state="sent", message_id=guid, sent=time.time(),
+                                 note="guid from the chat's next from-me row")
         log.info("imessage: %s claimed its guid from the watch", key)
         return True
 
@@ -527,15 +528,16 @@ class IMessageChannel:
                     self._file(room, prior, "yerk", body_text)
                     return
             try:
-                answer = await self.bridge.request("send", params, timeout=SEND_TIMEOUT)
+                answer = await self.bridge.request("send", params, timeout=float(self.conf.get("send_timeout", SEND_TIMEOUT)))
             except BridgeError as e:
                 self.ledger.delivery_set(key, state="failed", error=str(e)[:300], attempts=attempts)
                 self.ledger.outbound(room=room, channel=f"imessage:{ident}", kind=r["kind"], chars=len(body_text),
                                      error=str(e)[:300], inbound=r["inbound"])
                 log.warning("imessage: room %s: the bridge refused %s: %s", room, key, e)
                 return
-            except BridgeDown:
+            except BridgeDown:                    # it may have gone out: its row, if it comes, is this part's
                 self.ledger.delivery_set(key, attempts=attempts, note=f"no answer after row {before}; held")
+                self.unclaimed.setdefault(ident, deque()).append((key, before, time.time() + CLAIM_WINDOW))
                 raise
             got = guid_of(answer)
             if isinstance(got, int):              # a row id: its guid from the chat's history
