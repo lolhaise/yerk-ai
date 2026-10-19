@@ -305,6 +305,9 @@ PROOF_UP, PROOF_CONNECTED, PROOF_STATUS = "yerkd up", "channel connected", "stat
 PROOF_COMMIT, PROOF_ROOMS = "running {commit}", "rooms served: {n} of {of}"
 PROOF_FILE = "unit runs from its file"
 NO_CUT, CUT = "no turn cut", "turns cut: {n}"
+NO_UNIT, UNIT_FOUND = "no unit found: set [deploy] unit", "unit {name}, from its pid"
+FAULT, NOTHING_STOPPED, BROKE_OFF = "{what} in {at}", "nothing was stopped", "{commit} broke off, not proven"
+UNPROVEN, UNPROVEN_AT = "{kind} {commit}: {outcome}", ", {at}"   # the morning diff: a deploys row not proven
 
 
 def secs(seconds: float) -> str:

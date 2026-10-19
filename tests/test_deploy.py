@@ -296,14 +296,15 @@ def test_a_rollback_that_never_gets_quiet_says_why_writes_gave_up_and_leaves_the
         Ledger(state / "ledger.sqlite").inbound_add("m3", "example-room", "discord", "owner", 2)
         return real()
     f.restart = restart
-    assert deploy.run(priv, state, ids[1], tests=False, sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap) == 1
-    out = capsys.readouterr().out.splitlines()
+    assert deploy.run(priv, state, ids[1], tests=False, sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap) == 2
+    out = capsys.readouterr().out.splitlines()                       # 2: what runs is a commit no proof passed
     assert f.restarts == [ids[1]] and where(tree) == ("main", ids[1])               # the tree on what runs
     never = out.index(f"{words.NOT_DONE} rollback to {ids[0][:7]} never ran")
     assert out[never + 1] == f"{words.PLAIN} never quiet in {words.span(0.3)}"
     assert out[never + 2].startswith(f"{words.PLAIN} example-room had a message ") and len(out) == never + 3
     assert not [x for x in out if "rollback" in x and "failed its proof" in x]
-    assert rows(state) == [("deploy", ids[0], ids[1], "proof failed", 0), ("rollback", ids[1], ids[0], "gave up", 0)]
+    # m3 landed during the restart's own call and is still open after it: a turn the restart left open (fix 6)
+    assert rows(state) == [("deploy", ids[0], ids[1], "proof failed", 1), ("rollback", ids[1], ids[0], "gave up", 0)]
 
 
 def test_no_restart_while_the_memory_index_rebuilds_and_status_says_so(tmp_path, capsys):
@@ -326,6 +327,177 @@ def test_no_restart_while_the_memory_index_rebuilds_and_status_says_so(tmp_path,
     assert out[:3] == [f"{words.NOT_DONE} not deployed", f"{words.PLAIN} never quiet in {words.span(0.3)}",
                        f"{words.PLAIN} {words.REBUILDING}"]
     assert f.restarts == [] and where(tree) == ("main", ids[0]) and [r[3] for r in rows(state)] == ["gave up"]
+
+
+def planted_proc(tmp_path, cgroup, cmdline=b"/v/bin/python\x00-m\x00yerk_ai.daemon\x00--console\x00r\x00"):
+    """A /proc with this process's pid (the one yerkd.json names in `layer`) in `cgroup`."""
+    p = tmp_path / "proc" / str(os.getpid())
+    p.mkdir(parents=True, exist_ok=True)
+    (p / "cgroup").write_text(cgroup)
+    (p / "cmdline").write_bytes(cmdline)
+    return tmp_path / "proc"
+
+
+def test_with_no_deploy_unit_the_unit_comes_from_the_pid_and_the_card_names_it(tmp_path, capsys):
+    tree, ids = repo(tmp_path)
+    priv, state = layer(tmp_path, tree, unit="")                       # no [deploy] unit, as tonight
+    f, made = Fake(tree), []
+
+    def make(name):
+        made.append(name)
+        f.unit = name
+        return f
+    leaf = "0::/user.slice/user-1000.slice/user@1000.service/app.slice/yerkd-found.service\n"
+    proc = planted_proc(tmp_path, "4:memory:/user.slice/user-1000.slice/user@1000.service\n" + leaf)   # hybrid v1
+    code = deploy.run(priv, state, ids[1], tests=False, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap, proc=proc,
+                      systemd=make)
+    out = capsys.readouterr().out.splitlines()
+    assert code == 0 and made == ["yerkd-found"] and out[1] == f"{words.PLAIN} unit yerkd-found, from its pid"
+    assert f.restarts == [ids[1]] and Ledger(state / "ledger.sqlite").rows(1, "deploys")[0]["unit"] == "yerkd-found"
+    for cgroup, cmdline in (("0::/user.slice/user-1000.slice/session-2.scope\n", None),          # a terminal's
+                            (leaf, b"/usr/bin/sleep\x00infinity\x00")):                          # a reused pid
+        proc = planted_proc(tmp_path, cgroup, *([cmdline] if cmdline else []))
+        assert deploy.run(priv, state, ids[2], tests=False, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap,
+                          proc=proc, systemd=make) == 1
+        assert capsys.readouterr().out.splitlines() == [f"{words.NOT_DONE} not deployed",
+                                                        f"{words.PLAIN} no unit found: set [deploy] unit"]
+    assert made == ["yerkd-found"] and f.restarts == [ids[1]] and where(tree) == ("main", ids[1])   # nothing touched
+    assert [(r[3], r[0]) for r in rows(state)][1:] == [("refused", "deploy")] * 2
+
+
+class Unit(deploy.Systemd):
+    """systemd for `--unit`: the bus as busctl prints it, a stop that stops, a start that loads the
+    tree's commit from the file, back() that puts the transient unit back; `fault` is the step that
+    fails once ("argv": the bus has no such unit, as tonight; else a systemctl verb that times out)."""
+    def __init__(self, tree, home, fault=""):
+        super().__init__("yerkd-fake")
+        self.tree, self.home, self.fault, self.up, self.file, self.log = tree, home, fault, True, "", []
+        self.commit = deploy.head(tree)
+
+    def busctl(self, prop):
+        return "" if self.fault == "argv" else {
+            "ExecStart": 'a(sasbttttuii) 1 "/v/bin/python" 3 "/v/bin/python" "-m" "yerk_ai.daemon" false 0 0 0 0 0 0 0\n',
+            "Environment": 'as 1 "YERK_STATE=/s"\n'}[prop]
+
+    def ctl(self, *args):
+        self.log.append(args[0])
+        if self.fault == args[0]:
+            self.fault = ""
+            raise subprocess.TimeoutExpired(["systemctl", *args], 180)
+        if args[0] == "stop":
+            self.up = False
+        if args[0] in ("start", "restart"):
+            self.up, self.commit = True, deploy.head(self.tree)
+            self.file = str(self.home / "yerkd-fake.service") if args[0] == "start" else self.file
+        shown = {"FragmentPath": self.file, "Type": "notify" if self.file else "simple", "WorkingDirectory": "/code"}
+        out = shown.get(args[2], "") if args[0] == "show" else ("active" if self.up else "inactive")
+        return subprocess.CompletedProcess(args, 0, out, "")
+
+    def back(self, was):
+        self.log.append("back")
+        os.rename(was["file"], was["file"] + ".failed")
+        self.up, self.commit, self.file = True, deploy.head(self.tree), ""
+        return True
+
+    def ask(self, state):
+        return {"rooms": [{"room": "example-room", "busy": False, "waiting": 0, "since": None}], "commit": self.commit,
+                "connected": True} if self.up else None
+
+
+def test_a_fault_before_the_stop_refuses_and_one_after_it_or_in_the_proof_rolls_back(tmp_path, capsys):
+    tree, ids = repo(tmp_path)
+    priv, state = layer(tmp_path, tree)
+    (tree / "units").mkdir()                                           # untracked: the tree stays clean
+    shutil.copy(deploy.REPO / "units" / "yerkd.service", tree / "units")
+    home, ok = tmp_path / "units", (lambda p: {"ok": True})
+    u = Unit(tree, home, "argv")                                       # tonight's IndexError, before any stop
+    assert deploy.run(priv, state, ids[1], tests=False, unit_file=True, sd=u, ask=u.ask, post=ok, sleep=nap, home=home) == 1
+    assert capsys.readouterr().out.splitlines() == [f"{words.NOT_DONE} not deployed", f"{words.PLAIN} IndexError in argv",
+                                                    f"{words.PLAIN} nothing was stopped", f"{words.PLAIN} fast tests skipped"]
+    assert "stop" not in u.log and (u.up, u.commit) == (True, ids[0]) and where(tree) == ("main", ids[0])
+    assert rows(state)[-1] == ("deploy", ids[0], ids[1], "fault", 0) and not list(home.glob("*.service"))
+    u = Unit(tree, home, "daemon-reload")                              # the move, after its stop
+    assert deploy.run(priv, state, ids[1], tests=False, unit_file=True, sd=u, ask=u.ask, post=ok, sleep=nap, home=home) == 1
+    out = capsys.readouterr().out.splitlines()
+    assert out[:3] == [f"{words.NOT_DONE} {ids[1][:7]} broke off, not proven", f"{words.PLAIN} fast tests skipped",
+                       f"{words.NOT_DONE} TimeoutExpired in ctl"] and f"{words.DONE} rolled back to {ids[0][:7]}" in out
+    assert u.log.count("back") == 1 and (u.up, u.commit, u.file) == (True, ids[0], "") and where(tree) == ("main", ids[0])
+    assert rows(state)[-2:] == [("deploy", ids[0], ids[1], "fault", 0), ("rollback", ids[1], ids[0], "proven", 0)]
+    u = Unit(tree, home, "is-active")                                  # the proof, after the move
+    assert deploy.run(priv, state, ids[1], tests=False, unit_file=True, sd=u, ask=u.ask, post=ok, sleep=nap, home=home) == 1
+    out = capsys.readouterr().out.splitlines()
+    assert out[2] == f"{words.NOT_DONE} TimeoutExpired in ctl" and f"{words.DONE} running {ids[0][:7]}" in out
+    assert u.log.count("back") == 1 and (u.up, u.commit) == (True, ids[0]) and where(tree) == ("main", ids[0])
+    assert rows(state)[-2:] == [("deploy", ids[0], ids[1], "fault", 0), ("rollback", ids[1], ids[0], "proven", 0)]
+    f = Fake(tree)                                                     # a plain restart that raises: maybe stopped
+    real, calls = f.restart, []
+
+    def restart():
+        calls.append(1)
+        if len(calls) == 1:
+            raise OSError("the bus did not answer")
+        return real()
+    f.restart = restart
+    assert deploy.run(priv, state, ids[1], tests=False, sd=f, ask=f.ask, post=ok, sleep=nap) == 1
+    assert f"{words.NOT_DONE} OSError in restart" in capsys.readouterr().out.splitlines()
+    assert f.commit == ids[0] and rows(state)[-2:] == [("deploy", ids[0], ids[1], "fault", 0),
+                                                       ("rollback", ids[1], ids[0], "proven", 0)]
+
+
+def test_a_row_left_open_long_before_the_deploy_is_not_a_turn_it_cut(tmp_path, capsys):
+    tree, ids = repo(tmp_path)
+    priv, state = layer(tmp_path, tree)
+    led, f = Ledger(state / "ledger.sqlite"), Fake(tree)
+    led.inbound_add("left", "example-quiet", "discord", "owner", 2)      # a crash's leftover, 30 min old
+    led.inbound_set("left", state="running", received=time.time() - 1800)
+    assert deploy.run(priv, state, ids[1], tests=False, sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap) == 0
+    assert f"{words.PLAIN} no turn cut" in capsys.readouterr().out.splitlines()
+    assert rows(state) == [("deploy", ids[0], ids[1], "proven", 0)]
+
+
+def test_a_failed_rollback_exits_2_and_the_morning_diff_names_every_deploy_not_proven(tmp_path, capsys):
+    tree, ids = repo(tmp_path)
+    priv, state = layer(tmp_path, tree)
+    f = Fake(tree, connected=lambda commit: False)                     # neither commit ever connects
+    assert deploy.run(priv, state, ids[1], tests=False, sd=f, ask=f.ask, post=lambda p: {"ok": False}, sleep=nap) == 2
+    assert f"{words.NOT_DONE} rollback to {ids[0][:7]} failed its proof" in capsys.readouterr().out.splitlines()
+    led, accounts, cool = Ledger(state / "ledger.sqlite"), load_accounts(priv / "accounts.toml"), Cooldowns(state / "c.json")
+    led.deploy(kind="deploy", unit="u", before=ids[0], after=ids[2], outcome="proven", cut=0)
+    live, now = {"units": [], "started": time.time() - 86400}, time.time() + 60
+    lines, stamp = morning.build(priv, state, accounts, cool, led, live, now)
+    at = [words.clock(float(d["at"]), now) for d in led.deploys(0)]
+    want = [f"{words.NOT_DONE} deploy {ids[1][:7]}: proof failed, {at[0]}",
+            f"{words.NOT_DONE} rollback {ids[0][:7]}: proof failed, {at[1]}"]
+    assert [x for x in lines if " deploy " in x or " rollback " in x] == want and lines[1:3] == want   # new: on top
+    assert lines[0] == f"{words.NOT_DONE} morning: 2 new since the last diff" and all(words.width(x) <= words.PHONE for x in want)
+    (state / "morning").mkdir()
+    (state / "morning" / "last.json").write_text(json.dumps(stamp))
+    again, _ = morning.build(priv, state, accounts, cool, led, live, now + 60)
+    assert again[0] == f"{words.PLAIN} morning: nothing new, 2 known" and sum(x in want for x in again) == 2   # said once
+    later, _ = morning.build(priv, state, accounts, cool, led, live, now + 86400)
+    assert not [x for x in later if " rollback " in x]                                    # the last 24 hours only
+
+
+def test_with_no_status_before_the_deploy_the_proof_wants_every_room_in_rooms_toml(tmp_path, capsys):
+    tree, ids = repo(tmp_path)
+    priv, state = layer(tmp_path, tree)
+    rt = priv / "rooms.toml"
+    rt.write_text(rt.read_text().replace("discord:CHANNEL_ID", "discord:1001", 1).replace("discord:CHANNEL_ID", "discord:1002"))
+    (state / "yerkd.json").write_text(json.dumps({"pid": 2 ** 30, "port": 1}))     # stopped: nothing answers
+    f = Fake(tree)
+    real = f.restart
+
+    def restart():                                                    # a start writes its pid, as yerkd does
+        (state / "yerkd.json").write_text(json.dumps({"pid": os.getpid(), "port": 1}))
+        return real()
+    f.restart = restart
+    serves = lambda commit: ["example-room"] + ([] if commit == ids[1] else ["example-quiet"])   # noqa: E731
+    f.ask = lambda st: {"rooms": [{"room": r, "busy": False, "waiting": 0, "since": None} for r in serves(f.commit)],
+                        "commit": f.commit, "connected": True}
+    assert deploy.run(priv, state, ids[1], tests=False, sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap) == 1
+    out = capsys.readouterr().out.splitlines()                        # ids[1] serves one room fewer
+    assert out[0] == f"{words.NOT_DONE} {ids[1][:7]} failed its proof" and f"{words.NOT_DONE} rooms served: 1 of 2" in out
+    assert f"{words.DONE} rooms served: 2 of 2" in out and f.commit == ids[0]
 
 
 def test_the_unit_file_slows_the_rooms_before_any_ceiling_kills_one():

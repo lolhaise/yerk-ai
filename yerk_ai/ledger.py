@@ -352,6 +352,9 @@ class Ledger:
     def deploy(self, **row: Any) -> int:
         return self._insert("deploys", {"at": time.time(), **row})
 
+    def deploys(self, since: float) -> list[dict[str, Any]]:
+        return self._select("SELECT * FROM deploys WHERE at >= ? ORDER BY at, id", (since,))
+
     def dead_turns(self, since: float, until: float) -> list[dict[str, Any]]:
         """A person's messages in the window with no reply, notice or file in the room for them: no part
         sent under the key of a turn that took them, and no visible post linked to them (L192)."""
