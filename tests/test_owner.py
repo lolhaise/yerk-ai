@@ -11,7 +11,7 @@ from yerk_ai.channels.discord import ACK, DiscordChannel
 from yerk_ai.ledger import Ledger
 from yerk_ai.room import Inbound, Room
 
-from test_discord import BOT, OWNER, ROOM_CH, Client
+from test_discord import BOT, HOOK, OTHER_CH, OWNER, ROOM_CH, Client
 
 GUILD = 33
 PILOT = 10 ** 15 + BOT          # the bot: an id long enough for discord.py's mention pattern (15 to 20 digits)
@@ -43,9 +43,9 @@ class Parsed:
         self.state.user = discord.ClientUser(state=self.state, data=BOT_USER)
         self.state._add_guild_from_data({"id": str(GUILD), "name": "home", "features": [], "roles": [],
                                          "emojis": [], "stickers": [], "premium_tier": 1, "member_count": 2,
-                                         "channels": [{"id": str(ROOM_CH), "type": 0, "name": "yerk-test",
-                                                       "guild_id": str(GUILD), "position": 0,
-                                                       "permission_overwrites": []}]})
+                                         "channels": [{"id": str(ch), "type": 0, "name": name, "guild_id": str(GUILD),
+                                                       "position": 0, "permission_overwrites": []}
+                                                      for ch, name in ((ROOM_CH, "yerk-test"), (OTHER_CH, "watched"))]})
 
     def _last(self, name):
         got = [args[0] for n, args in self.events if n == name]
@@ -153,6 +153,51 @@ def test_a_reply_says_which_message_it_answers(env):
                    referenced_message=None)
     run(d.on_message(p.create(gone)))
     assert room.got[1].text.startswith("[a reply to an earlier message (401) that is no longer there]")
+
+
+def test_a_reply_in_a_watched_channel_keeps_that_it_is_one_and_drops_the_other_sides_words(tmp_path):
+    """In the queue, for its: turn and the last (#part-closes, the Case Before the next) run starts
+    reply to the other side's message says it is a reply and never quotes it, in the turn, in its edit and in the
+    day's log; a reply there to the owner's own message or a test sender's still quotes it, and the room's own
+    channel quotes whoever it answers, as before."""
+    from datetime import timezone
+
+    from yerk_ai.memory import DailyLog
+    client = Client()
+    client.user = NS(id=PILOT)
+    d = DiscordChannel("token", OWNER, [HOOK], Ledger(tmp_path / "l.sqlite"), client=client, state=tmp_path,
+                       capture=DailyLog(tmp_path / "daily", timezone.utc).capture)
+    room, p = FakeRoom(tmp_path), Parsed()
+    d.add_room(ROOM_CH, room, watch=OTHER_CH)
+    ben = {"id": "4321", "username": "Ben", "global_name": "Ben", "discriminator": "0", "avatar": None, "bot": True}
+    hook = {"id": str(HOOK), "username": "test sender", "discriminator": "0000", "avatar": None, "bot": True}
+
+    def reply(mid, text, to, ch=OTHER_CH, **extra):
+        ref = {"type": 0, "message_id": to["id"], "channel_id": str(ch), "guild_id": str(GUILD)}
+        return payload(mid, text, type=19, channel_id=str(ch), message_reference=ref, referenced_message=to, **extra)
+    theirs = payload(600, "Drop to 4 sets and add a back-off set", author=ben, channel_id=str(OTHER_CH))
+    mine = payload(602, "squats felt heavy", channel_id=str(OTHER_CH))
+    tester = payload(604, "a test sender's line", author=hook, webhook_id=str(HOOK), channel_id=str(OTHER_CH))
+    run(d.on_message(p.create(reply(601, "ok but why", theirs))))
+    run(d.on_message(p.create(reply(603, "and the bench?", mine))))
+    run(d.on_message(p.create(reply(605, "noted", tester))))
+    run(d.on_message(p.create(reply(607, "why that one", payload(606, "the deck is ready", author=ben), ch=ROOM_CH))))
+    run(d.on_raw_message_edit(p.update(reply(601, "ok but why that many", theirs,
+                                             edited_timestamp="2026-10-17T23:21:00.000000+00:00"))))
+    blind = "[a reply to an earlier message]"
+    assert [(m.id, m.text) for m in room.got] == [
+        ("601", f"{blind}\nok but why"),
+        ("603", '[a reply to Owner\'s message: "squats felt heavy"]\nand the bench?'),
+        ("605", '[a reply to test sender\'s message: "a test sender\'s line"]\nnoted'),
+        ("607", '[a reply to Ben\'s message: "the deck is ready"]\nwhy that one'),
+        ("601", f"[an earlier message was edited; it now reads:]\n{blind}\nok but why that many")]
+    days = "".join(f.read_text() for f in (tmp_path / "daily").glob("*.md"))
+    assert [x.split(" ", 3)[3].rsplit(" [c:", 1)[0] for x in days.splitlines() if x.startswith("- ")] == [
+        f"owner@owner: {blind} / ok but why",
+        'owner@owner: [a reply to Owner\'s message: "squats felt heavy"] / and the bench?',
+        'owner@owner: [a reply to test sender\'s message: "a test sender\'s line"] / noted',
+        'owner@owner: [a reply to Ben\'s message: "the deck is ready"] / why that one',
+        f"owner@owner: (edited) {blind} / ok but why that many"]
 
 
 def test_an_edit_runs_the_new_text_once_and_an_unfurl_is_not_an_edit(env):

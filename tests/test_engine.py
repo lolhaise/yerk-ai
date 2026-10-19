@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -47,6 +48,30 @@ def test_one_turn_round_trip(make, tmp_path):
     assert "--strict-mcp-config" in argv
     assert rec["config_dir"] == str(tmp_path / "cfg")
     assert not any(k.startswith("ANTHROPIC") for k in rec["env_keys"])
+
+
+def test_the_room_reads_its_own_sessions_folder_where_a_big_tool_output_is_saved(make, tmp_path):
+    """Claude Code saves a tool output too big to return under <config dir>/projects/<the cwd as it names it>/<session>/
+    tool-results/ and refuses a Read there, outside the working folders (the #Example note says, the0). Sample item moved
+    gets that one folder as one more --add-dir, never the whole projects folder, and it exists 0700 before the start:
+    Claude Code drops an --add-dir that is missing when it starts."""
+    with make() as rp:
+        rp.start()
+    argv = records(tmp_path)[0]["argv"]
+    own = tmp_path / "cfg" / "projects" / re.sub(r"[^a-zA-Z0-9]", "-", str(tmp_path.resolve()))   # the docs' rule
+    assert [argv[i + 1] for i, x in enumerate(argv) if x == "--add-dir"] == [str(own)]
+    assert own.is_dir() and own.stat().st_mode & 0o777 == 0o700
+
+
+def test_the_sessions_folder_is_named_as_claude_code_names_it():
+    """engine.project_dir against what Claude Code 2.1.301 did: every "/" a "-" (the eval's refused path), and the
+    folder it made, run live, for a working directory past 200 characters with an accent and an emoji: each UTF-16 unit
+    outside [a-zA-Z0-9] a "-" (the emoji is two), the first 200, then "-" and a hash of the whole path."""
+    from yerk_ai.engine import project_dir
+    assert project_dir(Path("/home/u/state-q5/rooms/example-on-yerk/work")) == "-home-u-state-q5-rooms-example-on-yerk-work"
+    assert project_dir(Path("/tmp/" + "x" * 195)) == "-tmp-" + "x" * 195                       # 200: no hash yet
+    long = Path("/tmp/yerk-long-cwd/café-\U0001F600/" + "z" * 230)
+    assert project_dir(long) == "-tmp-yerk-long-cwd-caf-----" + "z" * 173 + "-gkig5r"
 
 
 def test_second_start_resumes_the_bound_session(make, tmp_path):

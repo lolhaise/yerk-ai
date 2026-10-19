@@ -1,6 +1,7 @@
 """Where Yerk AI keeps things and how it reads them: its own tables such as budgets.toml, the private folder, the state folder."""
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -131,10 +132,8 @@ def write_private(path: Path, text: str, mode: int = 0o600) -> Path:
             f.write(text)
         os.replace(tmp, path)
     except BaseException:
-        try:
+        with contextlib.suppress(OSError):
             os.unlink(tmp)
-        except OSError:
-            pass
         raise
     return path
 

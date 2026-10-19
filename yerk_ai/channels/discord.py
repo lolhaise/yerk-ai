@@ -111,25 +111,11 @@ def file_type(name: str, given: str | None = None) -> str:
     return (given or mimetypes.guess_type(name)[0] or "application/octet-stream").split(";")[0]
 
 
-def reply_line(m: Any, me: int | None = None) -> str:
-    """Which message a reply answers, so the model knows what "this" means."""
-    ref = getattr(m, "reference", None)
-    if ref is None or getattr(m, "type", None) != discord.MessageType.reply:
-        return ""
-    got = getattr(ref, "resolved", None)
-    if got is None or not hasattr(got, "content"):
-        return f"[a reply to an earlier message ({ref.message_id}) that is no longer there]"
-    who = "your message" if me is not None and got.author.id == me else f"{got.author.display_name}'s message"
-    said = " ".join(str(getattr(got, "clean_content", got.content) or "").split())
-    said = said or ", ".join(f"file {a.filename}" for a in getattr(got, "attachments", []) or []) or "(no text)"
-    return f'[a reply to {who}: "{said if len(said) <= REPLY_MAX else said[:REPLY_MAX - 3] + "..."}"]'
-
-
-def message_text(m: Any, files: list[dict[str, Any]] | None = None, me: int | None = None) -> str:
+def message_text(m: Any, files: list[dict[str, Any]] | None = None, reply: str = "") -> str:
     """The message body (mentions as names), with what it replies to and its files listed (staged
     path, or why it is missing) so none is dropped unseen. Without `files`, the attachments as
     Discord lists them."""
-    lines = [reply_line(m, me), str(getattr(m, "clean_content", None) or m.content or "")]
+    lines = [reply, str(getattr(m, "clean_content", None) or m.content or "")]
     if files is None:
         files = [{"name": a.filename, "size": a.size, "type": file_type(a.filename, getattr(a, "content_type", None)),
                   "ok": False, "error": "not staged"} for a in getattr(m, "attachments", []) or []]
@@ -192,6 +178,22 @@ class DiscordChannel:
             return None
         return "owner" if self.owner is not None and m.author.id == self.owner else None
 
+    def reply_line(self, room: str, m: Any) -> str:
+        """Which message a reply answers, so the model knows what "this" means. In a watched channel a reply to anyone
+        but the owner or a test sender only says it is one, so the room never reads the other side's words there."""
+        ref = getattr(m, "reference", None)
+        if ref is None or getattr(m, "type", None) != discord.MessageType.reply:
+            return ""
+        got = getattr(ref, "resolved", None)
+        if got is None or not hasattr(got, "content"):
+            return f"[a reply to an earlier message ({ref.message_id}) that is no longer there]"
+        if m.channel.id != self.names[room] and self.sender_of(got) is None:
+            return "[a reply to an earlier message]"
+        who = "your message" if got.author.id == self._me() else f"{got.author.display_name}'s message"
+        said = " ".join(str(getattr(got, "clean_content", got.content) or "").split())
+        said = said or ", ".join(f"file {a.filename}" for a in getattr(got, "attachments", []) or []) or "(no text)"
+        return f'[a reply to {who}: "{said if len(said) <= REPLY_MAX else said[:REPLY_MAX - 3] + "..."}"]'
+
     async def on_message(self, m: Any) -> None:
         room = self.rooms.get(m.channel.id)
         if room is None:
@@ -206,7 +208,7 @@ class DiscordChannel:
         if self.capture is None or m.author.id == self._me() or (role is None and m.channel.id != self.names[room]):
             return
         role = role or ("webhook" if getattr(m, "webhook_id", None) else "other")
-        text = "\n".join(x for x in (reply_line(m, self._me()), str(getattr(m, "clean_content", None) or m.content or ""))
+        text = "\n".join(x for x in (self.reply_line(room, m), str(getattr(m, "clean_content", None) or m.content or ""))
                          if x)
         files = [(a.filename, file_type(a.filename, getattr(a, "content_type", None)), int(a.size or 0))
                  for a in getattr(m, "attachments", []) or []]
@@ -238,7 +240,7 @@ class DiscordChannel:
         await self._typing_begin(room.name, await self._channel(room.name))   # its own channel, never the watched one
         await self._react(m.channel.id, m.id, ACK)
         files = await self.stage(room, m)
-        room.submit(Inbound(str(m.id), sender, message_text(m, files, self._me()), files=files))
+        room.submit(Inbound(str(m.id), sender, message_text(m, files, self.reply_line(room.name, m)), files=files))
 
     # the typing signal: "heard you", from the moment a message is taken until something is visible
     async def _typing_begin(self, room: str, ch: Any) -> None:
@@ -290,7 +292,7 @@ class DiscordChannel:
             return
         self.edits[mid] = str(m.edited_at)
         files = await self.stage(room, m)
-        text = message_text(m, files, self._me())
+        text = message_text(m, files, self.reply_line(room.name, m))
         if room.revise(mid, text):
             self.ledger.inbound_set(mid, note="edited before it ran")
             return
@@ -439,15 +441,17 @@ class DiscordChannel:
                 self.ledger.inbound_set(row["message_id"], state="abandoned", note="message deleted")
                 continue
             files = await self.stage(room, m)
-            text = message_text(m, files, self._me()) + ("\n[redelivered after a restart]" if attempts else "")
+            text = message_text(m, files, self.reply_line(room.name, m)) + ("\n[redelivered after a restart]" if attempts else "")
             sent = self.ledger.files_sent_for([str(row["message_id"])])
             if sent:                              # the cut-short turn's files: in the room already
                 text += ("\n[already in the room from before the restart, not to be sent again: "
                          + "; ".join(f"file {r['file']} (message {r['message_id']})" for r in sent) + "]")
             room.submit(Inbound(str(m.id), str(row["sender"]), text, attempt=attempts, files=files))
-        last = self.ledger.last_inbound(str(cid))
-        if last:
-            async for m in ch.history(after=discord.Object(int(last)), limit=50, oldest_first=True):
+        last, left = self.ledger.last_inbound(str(cid)), 50      # the owner's missed messages: 50 at most, however
+        if last:                                                  # many others wrote between them, which never count
+            async for m in ch.history(after=discord.Object(int(last)), limit=None, oldest_first=True):
+                if (left := left - (self.sender_of(m) is not None)) < 0:
+                    break
                 self.file(room.name, m)                    # as on_message: into the day's log, then taken
                 await self.take(room, m)
 

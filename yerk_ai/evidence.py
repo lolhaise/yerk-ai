@@ -163,15 +163,13 @@ def check(reply: str, prompts: list[str], ev: Evidence, roots: tuple[Path, ...],
             continue
         if VERSION.search(before) or APPROX.search(before) or rounded_near(bare, seen):
             continue
-        where = filed(bare)
-        if where:
+        if where := filed(bare):
             out.append(("figure", f"quoted {fig}, on file at {where}; no read this turn carries it "
                                   "(missing read: recall or read_memory of that file)"))
     for name in dict.fromkeys(m.group(1) for m in FILE.finditer(reply)):
         if Path(name).name in seen:
             continue
-        where = known(name)
-        if where:
+        if where := known(name):
             out.append(("file", f"named {name} ({where}); the turn never read it"))
     if any(DECIDE.search(p) for p in prompts) and not ev.memory_read(roots):
         out.append(("decide", "answered what was decided with no memory read this turn"))

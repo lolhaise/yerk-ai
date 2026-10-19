@@ -461,10 +461,8 @@ class Workers:
                          privacy=str(self.room_confs.get(row["room"], {}).get("privacy", "owner")))
         key = f"worker:{row['id']}"
         try:
-            if end is None:
-                mid = await ch.worker_card(row["room"], key, text, row.get("card"))
-            else:
-                mid = await ch.worker_settle(row["room"], key, text, f"settled: {end['exit']}", row.get("card"))
+            mid = await (ch.worker_card(row["room"], key, text, row.get("card")) if end is None
+                         else ch.worker_settle(row["room"], key, text, f"settled: {end['exit']}", row.get("card")))
         except Exception:                                # a card that fails never stops the worker
             log.exception("worker %s: card update failed", row["id"])
             return

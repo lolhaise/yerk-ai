@@ -66,8 +66,8 @@ class Chan:
     async def fetch_message(self, mid):
         return self.old[mid]
 
-    async def history(self, **kw):
-        for m in self.past:
+    async def history(self, limit=100, **kw):            # as discord.py's: at most `limit` messages, None for all
+        for m in self.past[:limit]:
             yield m
 
 
@@ -272,6 +272,32 @@ def test_a_message_sent_during_the_outage_is_filed_once_before_it_runs(tmp_path)
     assert MARK.findall(text) == ["10", "11", "20"] and "the other side's answer" not in text
     assert [(m.id, m.text) for m in room.got] == [("10", "the owner, while it was down"),
                                                   ("20", "the owner, in the watched channel")]
+
+
+def test_a_busy_watched_channel_never_pushes_the_owners_missed_messages_past_the_cap(tmp_path):
+    """After a restart the history read is capped on the owner's missed messages, 50, not on every message: in a
+    watched channel where the other side answered 60 times after the last message the room ledgered, the owner's 50
+    that follow are still filed and run, in order, and a 51st is not (the cap still holds)."""
+    from datetime import datetime, timezone
+
+    from yerk_ai.memory import MARK, DailyLog
+    log = DailyLog(tmp_path / "daily", timezone.utc)
+    client = Client()
+    d = DiscordChannel("token", OWNER, [HOOK], Ledger(tmp_path / "l.sqlite"), client=client, state=tmp_path,
+                       capture=log.capture)
+    room = Room(tmp_path)
+    d.add_room(ROOM_CH, room, watch=OTHER_CH)
+    watched = client.chans[OTHER_CH]
+    d.ledger.inbound_add("1", "test-room", str(OTHER_CH), "owner", 5)   # the last message it ledgered there
+    d.ledger.inbound_set("1", state="answered")
+    watched.past = ([Msg(watched, 100 + i, f"the other side's answer {i}", author=12345) for i in range(60)]
+                    + [Msg(watched, 200 + i, f"the owner's message {i}") for i in range(51)])
+    for m in watched.past:
+        m.created_at = datetime(2026, 10, 19, 12, 0, tzinfo=timezone.utc)
+    run(d.recover(OTHER_CH, room))
+    assert [m.id for m in room.got] == [str(200 + i) for i in range(50)]
+    text = "".join(p.read_text() for p in (tmp_path / "daily").glob("*.md"))
+    assert MARK.findall(text) == [str(200 + i) for i in range(50)]
 
 
 def test_a_channel_it_cannot_read_never_stops_the_other_rooms_recovery(tmp_path, caplog):
