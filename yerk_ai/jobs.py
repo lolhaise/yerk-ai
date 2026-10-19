@@ -58,6 +58,7 @@ from .config import REPO
 from .ledger import Ledger
 from .lifted.killtree import stop_group
 from .room import HARNESS, Inbound
+from .words import DONE, NOT_DONE, NOTHING, PHONE
 from .workers import ENV_KEEP, Workers, systemctl, took, unit_line
 
 log = logging.getLogger("yerk.jobs")
@@ -859,10 +860,6 @@ def read_lines(back: dict[str, dict[str, Any]], jobs: dict[str, Job], now: float
     return out or ["jobs: none"]
 
 
-DONE, NOT_DONE, NOTHING = "\N{LARGE GREEN CIRCLE}", "\N{LARGE RED CIRCLE}", "\N{MEDIUM WHITE CIRCLE}"
-PHONE = 40                        # a status line, in phone columns (a dot takes two), before it wraps
-
-
 def phone(text: str) -> str:
     return text if len(text) <= PHONE - 2 else text[:PHONE - 3].rstrip() + "\N{HORIZONTAL ELLIPSIS}"
 
@@ -913,17 +910,11 @@ def run_script(job: Job, folder: Path, base: dict[str, str] | None = None) -> di
     with open(folder / "stdout", "wb") as out, open(folder / "stderr", "wb") as err:
         p = subprocess.Popen(["/bin/sh", "-c", job.payload], cwd=folder, env=env, stdout=out, stderr=err,
                              stdin=subprocess.DEVNULL, start_new_session=True)
-        timed_out = False
         try:
-            rc = p.wait(timeout=job.cap * 60)
+            rc, timed_out = p.wait(timeout=job.cap * 60), False
         except subprocess.TimeoutExpired:
-            timed_out = True
-            os.killpg(p.pid, signal.SIGTERM)
-            try:
-                rc = p.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                os.killpg(p.pid, signal.SIGKILL)
-                rc = p.wait()
+            stop_group(p, grace=10)                    # SIGTERM to its process group, SIGKILL 10 s on
+            rc, timed_out = p.wait(), True
     text = (folder / "stdout").read_text(errors="replace")
     tail = (folder / "stderr").read_text(errors="replace").strip().splitlines()
     return {"exit": rc, "timed_out": timed_out, "output": text, "chars": len(text),
@@ -1067,16 +1058,17 @@ class Watcher:
         return 0
 
 
-def post_control(state: Path, payload: dict[str, Any], timeout: float = 120, worker: bool = False) -> dict[str, Any]:
-    """One POST to the running daemon's /control under the install's secret (a worker's own server:
-    the worker secret, reads only); OSError when no daemon runs on this state folder. yerkd.json names
-    the secret files by path, never by value."""
+def post_control(state: Path, payload: dict[str, Any], timeout: float = 120, worker: bool = False,
+                 path: str = "control") -> dict[str, Any]:
+    """One POST to the running daemon's /control (or /status) under the install's secret (a worker's own
+    server: the worker secret, reads only); OSError when no daemon runs on this state folder. yerkd.json
+    names the secret files by path, never by value."""
     from .config import read_secret
     from .mcp_server import HEADER
     st = json.loads((state / "yerkd.json").read_text())
     os.kill(int(st["pid"]), 0)
     secret = read_secret(Path(str(st.get("worker_secret_file" if worker else "secret_file") or "/nonexistent")))
-    req = urllib.request.Request(f"http://127.0.0.1:{st['port']}/control", data=json.dumps(payload).encode(),
+    req = urllib.request.Request(f"http://127.0.0.1:{st['port']}/{path}", data=json.dumps(payload).encode(),
                                  headers={"Content-Type": "application/json", HEADER: secret})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return dict(json.loads(r.read()))

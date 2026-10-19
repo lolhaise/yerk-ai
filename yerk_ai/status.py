@@ -13,7 +13,6 @@ import json
 import os
 import subprocess
 import time
-import urllib.request
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
@@ -119,18 +118,10 @@ def alive(state: Path) -> bool:
 
 
 def ask(state: Path, timeout: float = 10.0) -> dict[str, Any] | None:
-    """The running yerkd's /status under the install's secret, as jobs.post_control asks /control
-    (<state>/yerkd.json names the port and the secret's file, never its value); None when none answers."""
-    from .config import read_secret
-    from .mcp_server import HEADER
+    """The running yerkd's /status under the install's secret (jobs.post_control); None when none answers."""
     try:
-        st = json.loads((state / "yerkd.json").read_text())
-        secret = read_secret(Path(str(st.get("secret_file") or "/nonexistent")))
-        req = urllib.request.Request(f"http://127.0.0.1:{st['port']}/status", data=b"{}",
-                                     headers={"Content-Type": "application/json", HEADER: secret})
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            return dict(json.loads(r.read()))
-    except (OSError, ValueError, KeyError):
+        return jobs.post_control(state, {}, timeout, path="status")
+    except (OSError, ValueError, KeyError, TypeError):
         return None
 
 
