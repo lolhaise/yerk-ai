@@ -96,6 +96,8 @@ RESUME_RECAP = ("(Yerk AI: the earlier session of this room could not be resumed
                 "The last reply here began: \"{last}\")")
 REFUSAL_RECAP = ("(Yerk AI: this is a new session. The previous one was moved to another model after a block, "
                  "so its messages are not in this context.)")
+NEW_RECAP = ("(Yerk AI: the owner asked for a new session with /new, so this is a new one. "
+             "The last reply here began: \"{last}\")")
 
 
 class Channel(Protocol):
@@ -138,6 +140,7 @@ class Room:
         self.answering: set[str] = set()                      # ids of the batch the turn answers
         self.stale = False                        # the settings changed mid-turn: the process closes at its end
         self.ran: RoomSpec | None = None          # the spec of the last process started
+        self.stopped = False                      # /stop: the running turn ends now and is never run again
 
     def _ledger_call(self, call: dict[str, Any]) -> None:
         self.ledger.evidence(t=round(time.time(), 3), room=self.name, session_id=self.rp.session_id if self.rp else "",
@@ -301,6 +304,24 @@ class Room:
         if rp:
             rp.close()
 
+    def renew(self) -> None:
+        """/new: the next turn starts a fresh session (memory stays: its start is built as every start is)
+        with the room's recap line; a running turn ends as it began."""
+        with self.lock:
+            self.fresh_next = NEW_RECAP.format(last=self.last_reply or "nothing yet")
+
+    def stop(self) -> bool:
+        """/stop: the running turn ends now and for good (L82): never rerun, hopped or retried fresh, its
+        messages ledgered stopped, so a restart does not run them again. Only the live process is touched
+        (L136); between two runs of the turn the next run ends as it starts. False when no turn runs."""
+        with self.lock:
+            if not self.busy:
+                return False
+            self.stopped, rp = True, self.rp if self.reading else None
+        if rp:
+            rp.end_now()
+        return True
+
     # the room's thread
     def _write(self, msg: Inbound, recap: str | None = None) -> None:
         assert self.rp
@@ -366,7 +387,7 @@ class Room:
     def _turn(self, batch: list[Inbound]) -> None:
         self.first_line = None
         with self.lock:
-            self.images = {}
+            self.images, self.stopped = {}, False
             self.answering = {m.id for m in batch}
         self.evidence.reset()
         ctx = self.state / "rooms" / self.name / "context.md"
@@ -405,6 +426,9 @@ class Room:
                 resend = list(self.inflight)
             if step == "done":
                 return
+            if self.stopped:                      # /stop: no rerun, hop or fresh retry, here or after a restart
+                self._end(resend, words.STOPPED, "/stop", "stopped")
+                return
             if step == "fresh":                   # answered on a fallback model with messages still waiting
                 fresh, recap, self.fresh_next = True, self.fresh_next, None
                 continue
@@ -440,21 +464,23 @@ class Room:
                     # a session that never answered may have no transcript to resume elsewhere
                     fresh = not (self.rp and (self.rp.resume_arg or self.rp.session_id in self.answered))
                     continue
-            why = f.cls if f else turn.outcome
             plain = self._off_model(f) or words.why(f.cls if f else None, turn.outcome)
-            asked = resend[0].text if resend else ""
-            notice_ids = self.channel.notice(self.name, f"{words.NOT_DONE} {words.NOT_ANSWERED}\n{plain}",
-                                             [m.id for m in resend], card=self.card.owed(plain, asked),
-                                             key=self.turn_key)
-            for m in resend:
-                self.ledger.inbound_set(m.id, state="failed", note=why, reply_ids=",".join(notice_ids))
-                self._then(m, "failed", notice_ids, 0)
-            with self.lock:
-                old, self.rp, self.inflight = self.rp, None, []
-                self.pending.clear()
-            if old:
-                old.close()
+            self._end(resend, plain, f.cls if f else turn.outcome)
             return
+
+    def _end(self, resend: list[Inbound], plain: str, why: str, state: str = "failed") -> None:
+        """A turn that ends unanswered: its card kept saying what was owed, its messages ledgered `state`."""
+        asked = resend[0].text if resend else ""
+        notice_ids = self.channel.notice(self.name, f"{words.NOT_DONE} {words.NOT_ANSWERED}\n{plain}",
+                                         [m.id for m in resend], card=self.card.owed(plain, asked), key=self.turn_key)
+        for m in resend:
+            self.ledger.inbound_set(m.id, state=state, note=why, reply_ids=",".join(notice_ids))
+            self._then(m, "failed", notice_ids, 0)
+        with self.lock:
+            old, self.rp, self.inflight = self.rp, None, []
+            self.pending.clear()
+        if old:
+            old.close()
 
     def _off_model(self, f: Failure | None) -> str:
         """A turn that failed because its model was not found, on the model of the room's override: the
@@ -474,7 +500,11 @@ class Room:
         started = time.time()
         while True:
             assert self.rp
+            if self.stopped:                      # /stop came between two runs: this one ends as it starts
+                self.rp.end_now()
             turn = self.rp.read_turn(started, self.turn_timeout, record=False, on_event=self._on_event)
+            if self.stopped and turn.outcome != "ok":
+                turn.outcome, turn.failure = "stopped", None
             with self.lock:
                 n = len(turn.accepted) or (1 if turn.outcome == "ok" else 0)
                 covered = [self.pending.popleft() for _ in range(min(n, len(self.pending)))]

@@ -383,6 +383,17 @@ class RoomProcess:
         except OSError:
             return ""
 
+    def end_now(self, grace: float = 5.0) -> None:
+        """/stop: TERM the process mid-turn, KILL it if it lingers; its reader then sees the end, and
+        close() still frees the session."""
+        if self.proc is None or self.proc.poll() is not None:
+            return
+        self.proc.terminate()
+        try:
+            self.proc.wait(grace)
+        except subprocess.TimeoutExpired:
+            self.proc.kill()
+
     def close(self, grace: float = 15.0) -> int | None:
         """End the process (EOF on stdin, then terminate, then kill) and free the session."""
         rc = None

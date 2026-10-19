@@ -24,6 +24,10 @@
 - Files: one path (`send_file`): a snapshot under a new name in the room's outbox, size and type
   checked against what the bot can send (measured, BOT_UPLOAD), the message id recorded, a
   visible notice on any miss that names the limit in bytes.
+- Slash commands (/model, /effort, /new, /stop, /status): on connect exactly this install's, on the
+  guilds its rooms live in, never global; the owner's only, in a room only, each the daemon method
+  the room's tool or `yerk` command calls; every answer ephemeral, inside Discord's three seconds.
+  `[discord] commands = false` in yerkd.toml: none registered, none answered.
 """
 from __future__ import annotations
 
@@ -40,7 +44,8 @@ from typing import Any, Awaitable, Callable, Coroutine, TypeVar
 
 import discord
 
-from .. import words
+from .. import status, words
+from ..config import EFFORTS
 from ..ledger import Ledger
 from ..lifted.loopguard import LoopGuard
 from ..lifted.split import split_message
@@ -63,6 +68,16 @@ IMAGE = ("image/png", "image/jpeg", "image/gif", "image/webp")
 # over the library's table; a guild the table puts higher (tier 2 and 3) keeps the table's number.
 BOT_UPLOAD = 20 * 1024 * 1024
 REPLY_MAX = 300
+QUICK = 2.0           # seconds a slash command may take before its answer is deferred (Discord gives three)
+
+
+def commands(models: dict[str, str]) -> list[dict[str, Any]]:
+    """Exactly this install's slash commands, in the shape Discord's bulk overwrite takes."""
+    def pick(name: str, values: list[str]) -> list[dict[str, Any]]:
+        return [{"type": 3, "name": name, "description": words.CHOICE[name], "required": False,
+                 "choices": [{"name": v, "value": v} for v in values][:25]}]
+    opts = {"model": pick("model", [*models, "default"]), "effort": pick("effort", [*EFFORTS, "default"])}
+    return [{"type": 1, "name": n, "description": what, "options": opts.get(n, [])} for n, what in words.COMMANDS.items()]
 
 
 def upload_limit(ch: Any) -> int:
@@ -126,9 +141,10 @@ def message_text(m: Any, files: list[dict[str, Any]] | None = None, me: int | No
 class DiscordChannel:
     def __init__(self, token: str, owner: int, test_senders: list[int], ledger: Ledger,
                  client: Any = None, guard: LoopGuard | None = None, state: Path | None = None,
-                 capture: Callable[..., bool] | None = None):
+                 capture: Callable[..., bool] | None = None, daemon: Any = None):
         self.token, self.owner, self.test_senders, self.ledger = token, owner, set(test_senders), ledger
         self.state = state
+        self.daemon = daemon                      # the slash commands' methods (daemon.Yerkd), or None: off
         self.capture = capture                    # the day's log (memory.DailyLog.capture), or None
         self.rooms: dict[int, Room] = {}          # channel id -> room
         self.names: dict[str, int] = {}           # room name -> channel id
@@ -153,6 +169,7 @@ class DiscordChannel:
         client.event(self.on_message)
         client.event(self.on_raw_message_edit)    # raw: with no message cache these are the only ones
         client.event(self.on_raw_message_delete)
+        client.event(self.on_interaction)
 
     def add_room(self, channel_id: int, room: Room) -> None:
         self.rooms[channel_id], self.names[room.name] = room, channel_id
@@ -320,6 +337,69 @@ class DiscordChannel:
                     await hook()
                 except Exception:
                     log.exception("discord: a start-up step after recovery failed")
+            await self.register()
+
+    # slash commands
+    async def register(self) -> None:
+        """This install's commands, exactly, on each guild its rooms live in (guild commands show at once;
+        never global): Discord's bulk overwrite replaces whatever the application had there."""
+        if self.daemon is None:
+            return
+        guilds = set()
+        for cid in self.rooms:
+            try:
+                guilds.add(int((self.client.get_channel(cid) or await self.client.fetch_channel(cid)).guild.id))
+            except (discord.HTTPException, AttributeError) as e:
+                log.warning("discord: no guild for channel %s, no commands there: %s", cid, e)
+        for g in sorted(guilds):
+            try:
+                await self.client.http.bulk_upsert_guild_commands(self.client.application_id, g,
+                                                                  commands(self.daemon.models))
+                log.info("discord: %d slash command(s) registered in guild %s", len(words.COMMANDS), g)
+            except discord.HTTPException as e:
+                log.warning("discord: slash commands not registered in guild %s: %s", g, e)
+
+    async def on_interaction(self, it: Any) -> None:
+        """A slash command: the owner's only, in a room only; anyone else, or any other channel, gets one
+        ephemeral line. Off (`daemon` None): left to whatever else answers."""
+        if self.daemon is None or it.type != discord.InteractionType.application_command:
+            return
+        data = it.data or {}
+        args = {str(o["name"]): str(o.get("value", "")) for o in data.get("options") or []}
+        room = self.rooms.get(int(it.channel_id or 0))
+        if getattr(it.user, "id", None) != self.owner:
+            await it.response.send_message(f"{words.NOT_DONE} {words.NOT_OWNER}", ephemeral=True)
+        elif room is None:
+            await it.response.send_message(f"{words.NOT_DONE} {words.NOT_A_ROOM}", ephemeral=True)
+        else:
+            await self._answer(it, self._command(str(data.get("name", "")), room.name, args))
+
+    async def _command(self, name: str, room: str, args: dict[str, str]) -> str:
+        """Each command is the daemon method the room's tool or `yerk` command calls; no second path."""
+        d = self.daemon
+        if name == "status":
+            return "\n".join(status.card(await d.status_now({})))
+        if name in ("model", "effort"):
+            r = await d.tool_settings(room, args.get("model", ""), args.get("effort", ""))
+            return f"{words.DONE if r['ok'] and args else words.PLAIN if r['ok'] else words.NOT_DONE} {r['line']}"
+        if name in ("new", "stop"):
+            r = await (d.room_new(room) if name == "new" else d.room_stop(room))
+            return f"{words.DONE if r['ok'] else words.PLAIN} {r['line']}"
+        return f"{words.NOT_DONE} {words.NOT_RUN}"
+
+    async def _answer(self, it: Any, call: Awaitable[str]) -> None:
+        """Ephemeral, inside Discord's three seconds: a call still running after QUICK is deferred first
+        (Discord shows it thinking) and answered when it ends."""
+        task = asyncio.ensure_future(call)
+        slow = not (await asyncio.wait({task}, timeout=QUICK))[0]
+        if slow:
+            await it.response.defer(ephemeral=True, thinking=True)
+        try:
+            text = await task
+        except Exception:
+            log.exception("discord: a slash command failed")
+            text = f"{words.NOT_DONE} {words.NOT_RUN}"
+        await (it.followup.send if slow else it.response.send_message)(text[:MAX], ephemeral=True)
 
     async def recover(self, cid: int, room: Room) -> None:
         ch = self.client.get_channel(cid) or await self.client.fetch_channel(cid)
