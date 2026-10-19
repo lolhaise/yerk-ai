@@ -692,3 +692,51 @@ def resume(a: argparse.Namespace) -> dict[str, Any]:
     out["ok"] = any(x["ok"] for x in attempts)
     out["works"] = [x["variant"] for x in attempts if x["ok"]]
     return out
+
+
+def imessage(a: argparse.Namespace) -> dict[str, Any]:
+    """The inbound check (Layer 8): never sends anything. The newest rows of each iMessage room's chat,
+    read from the bridge on a read-only connection, each looked up in the inbound and delivery
+    ledgers; the result is a ledger row (health, account "imessage", source "probe") for the morning
+    diff, and a lost text the machine room has not heard of yet is one line there."""
+    import asyncio
+    import hashlib
+    from . import jobs, words
+    from .channels.imessage import probe
+    from .config import load_toml, private_dir, rooms
+    priv, state = private_dir(getattr(a, "private", None)), state_dir(a.state)
+    confs = rooms(priv)
+    named = {n: str(c.get("channel", "")).partition(":")[2] for n, c in confs.items()
+             if str(c.get("channel", "")).startswith("imessage:")}
+    if not named:
+        return {"ok": False, "error": 'no room has channel = "imessage:<chat identifier>" in rooms.toml'}
+    conf = dict((load_toml(priv / "yerkd.toml") if (priv / "yerkd.toml").is_file() else {}).get("imessage", {}))
+    ledger = Ledger(state / "ledger.sqlite")
+    out = asyncio.run(probe(named, conf, ledger, limit=int(a.rows), grace=float(a.grace)))
+    lost = list(out.get("gaps", []))
+    ledger.health(account="imessage", source="probe", ok=1 if out.get("ok") else 0,
+                  failure=out.get("error") or ("lost" if lost else None),
+                  note=json.dumps({"rooms": out.get("rooms", {}), "lost": len(lost)}))
+    told = ledger.health_notes("imessage", "probe-gap")
+    new = [g for g in lost if hashlib.sha1(g["guid"].encode()).hexdigest()[:16] not in told]
+    machine = next((n for n, c in confs.items() if c.get("role") == "machine"), None)
+    out["alerted"] = 0
+    for room in sorted({g["room"] for g in new}):
+        mine = [g for g in new if g["room"] == room]
+        marks = sorted(hashlib.sha1(g["guid"].encode()).hexdigest()[:16] for g in mine)
+        text = words.line(words.IMSG_GAP.format(n=len(mine), s="" if len(mine) == 1 else "s", room=room))
+        if machine is None:
+            print(f"probe imessage: no machine room for: {text}")
+            continue
+        try:
+            sent = jobs.post_control(state, {"machine": {"room": machine, "text": text,
+                                                         "key": "imsg-gap-" + hashlib.sha1("".join(marks).encode()).hexdigest()[:12]}}, 60)
+        except (OSError, ValueError) as e:
+            out["alert_error"] = f"yerkd did not answer ({type(e).__name__})"
+            continue
+        if sent.get("ok"):
+            for m in marks:
+                ledger.health(account="imessage", source="probe-gap", ok=0, note=m)
+            out["alerted"] += len(mine)
+    out["gaps"] = len(lost)                       # counts only on stdout: a guid stays in the ledger
+    return out

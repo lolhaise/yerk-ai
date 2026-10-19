@@ -216,7 +216,14 @@ RESET = "new session in this room\nthe last one could not go on\nearlier message
 FILE_WHY = {"missing": "there is no such file", "type": "this room does not take {ext} files",
             "size": "it is {size} and this room takes {limit}", "empty": "it is empty",
             "outside": "it is outside this room's folders", "too large": "Discord said too large (limit {limit})",
-            "refused": "Discord turned it down", "gone": "its saved copy is gone"}
+            "refused": "Discord turned it down", "gone": "its saved copy is gone",
+            "imessage": "files do not go out on iMessage yet"}
+# iMessage (channels/imessage.py): the outage is said in the machine room only, never in a human room (A60)
+MAC_AWAY = WORKING + " iMessage: the Mac is away, texts wait"
+MAC_BACK = DONE + " iMessage: the Mac is back, {n} waiting text{s} sent"
+NOT_FETCHED_MAC = "not fetched from the Mac yet"
+IMSG_GAP = NOT_DONE + " iMessage: {n} text{s} never reached Yerk AI in {room}"
+IMSG_PROBE = "iMessage probe {day}: {runs} runs, {gaps} lost"
 
 
 def file_why(kind: str, **say: Any) -> str:

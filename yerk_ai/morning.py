@@ -84,6 +84,11 @@ def build(private: Path, state: Path, accounts: list[Account], cooldowns: Cooldo
         add(f"shadow {rule}", W.WORKING, W.SHADOW.format(rule=rule, n=n))
     if not flags:
         add("", W.PLAIN, W.NO_SHADOW)
+    checks = ledger.health_between("imessage", "probe", since, until)     # the iMessage inbound check (Layer 8)
+    if checks:
+        lost = sum(int(json.loads(str(r["note"] or "{}")).get("lost", 0)) for r in checks)
+        add(f"imessage lost {lost}" if lost else "", W.NOT_DONE if lost else W.PLAIN,
+            W.IMSG_PROBE.format(day=W.YESTERDAY, runs=len(checks), gaps=lost))
     if live is None:
         add("unknown units", W.NOT_DONE, W.UNKNOWN.format(what="memory", why=W.NOT_ANSWERING_WHY))
     for u in (live or {}).get("units", []):

@@ -723,15 +723,36 @@ class Yerkd:
             kind, _, cid = str(conf.get("channel", "")).partition(":")
             if kind == "discord" and cid.isdigit():
                 dc.add_room(int(cid), self.add_room(name, dc))
-        if not dc.rooms:
-            raise SystemExit("no room has a discord:<channel id> in rooms.toml")
+        im = self.imessage_rooms()
+        if not dc.rooms and im is None:
+            raise SystemExit("no room has a discord:<channel id> or an imessage:<chat identifier> in rooms.toml")
         self.workers.begin(asyncio.get_running_loop())
         dc.after_recover.append(self.workers.reattach)   # their cards are edited, so after the connect
         dc.after_recover.append(self.jobs.reattach)      # a script run that ended with no daemon up: delivered late
         self.write_status("discord")
         self.link = dc
         await asyncio.gather(self.serve_http(), self.reap(min(60.0, self.idle_seconds / 2)),
-                             self.beat.tick(self.listening), dc.start())
+                             self.beat.tick(self.listening), dc.start(), *([im.start()] if im else []))
+
+    def imessage_rooms(self) -> Any:
+        """Rooms with channel = "imessage:<chat identifier>", all served by one bridge connection
+        (yerkd.toml [imessage]); the outage lines go to the machine room through its own channel."""
+        named = {n: str(c.get("channel", "")).partition(":")[2] for n, c in self.room_confs.items()
+                 if str(c.get("channel", "")).startswith("imessage:")}
+        if not named:
+            return None
+        from .channels.imessage import IMessageChannel
+        machine = next((n for n, c in self.room_confs.items() if c.get("role") == "machine"), None)
+
+        async def tell(text: str, key: str) -> Any:
+            if machine is None or machine not in self.channels:
+                return None
+            return await self.channels[machine].send_text(machine, text, key=key)
+        im = IMessageChannel(dict(self.conf.get("imessage", {})), self.ledger, state=self.state,
+                             capture=self.daily.capture, machine=tell)
+        for name, ident in named.items():
+            im.add_room(ident, self.add_room(name, im))
+        return im
 
     async def run_console(self, name: str) -> None:
         room = self.add_room(name, ConsoleChannel())
