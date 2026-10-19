@@ -424,8 +424,7 @@ class Room:
                 return
             with self.lock:
                 old = self.rp
-                restart = old is None or not old.alive() or old.account != account or fresh
-                if restart:
+                if (restart := old is None or not old.alive() or old.account != account or fresh):
                     self.rp = None
             if restart:
                 if old:
@@ -482,8 +481,7 @@ class Room:
             if action == "hop_account" and f and hops < len(self.accounts) - 1:
                 kind = f.kind or "auth"
                 self.cooldowns.fail(account.name, kind, lambda r: self.failures.cooldown_seconds(kind, r))
-                nxt = self._account()
-                if nxt != account:
+                if (nxt := self._account()) != account:
                     log.info("room %s: %s on %s, continuing on %s", self.name, f.cls, account.name, nxt.name)
                     hop = ",".join(filter(None, [hop, f"{f.cls}:{account.name}"]))
                     hops, account, self.first_line = hops + 1, nxt, None

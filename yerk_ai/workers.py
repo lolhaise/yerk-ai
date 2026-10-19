@@ -171,8 +171,7 @@ class Systemd:
             # with the worker's own room's work folder bound back at its own path, read and write: the
             # one room folder a brief may name (systemd.exec's TemporaryFileSystem plus BindPaths pattern)
             props.append(f"TemporaryFileSystem={rooms}:ro")
-            room = str(self._room(folder))
-            if room and "/" not in room and room not in (".", ".."):
+            if (room := str(self._room(folder))) and "/" not in room and room not in (".", ".."):
                 props.append(f"BindPaths=-{rooms / room / 'work'}")
         return [x for p in props for x in ("-p", p)]
 
@@ -254,8 +253,7 @@ class Watch:
         loop.add_reader(self.fd, self._read)
 
     def add(self, d: Path) -> None:
-        wd = int(self.libc.inotify_add_watch(self.fd, os.fsencode(d), self.MASK))
-        if wd < 0:
+        if (wd := int(self.libc.inotify_add_watch(self.fd, os.fsencode(d), self.MASK))) < 0:
             raise OSError(f"inotify_add_watch failed for {d}")
         self.dirs[wd] = d
 
@@ -472,8 +470,7 @@ class Workers:
 
     # the tool and the command line
     async def handle(self, caller: str, req: dict[str, Any]) -> dict[str, Any]:
-        action = str(req.get("action", ""))
-        if action == "start":
+        if (action := str(req.get("action", ""))) == "start":
             room = str(req.get("room") or caller) or (next(iter(self.rooms)) if len(self.rooms) == 1 else "")
             return await self.start(room, str(req.get("brief") or ""),
                                     str(req.get("brief_file") or ""), str(req.get("account") or ""),
@@ -488,8 +485,7 @@ class Workers:
         return {"ok": False, "error": f"no action {action!r}; actions: start, list, stop, report"}
 
     def _account(self, name: str) -> Account | None:
-        want = name or self.conf.account
-        if want:
+        if (want := name or self.conf.account):
             return next((a for a in self.accounts if a.name == want), None)
         return pick(self.accounts, self.cooldowns) if self.accounts else None
 
@@ -505,8 +501,7 @@ class Workers:
                 return {"ok": False, "error": f"cannot read the brief file: {e}"}
         if not brief.strip():
             return {"ok": False, "error": "a worker needs a brief: give `brief` (text) or `brief_file` (a path)"}
-        acct = self._account(account)
-        if acct is None:
+        if (acct := self._account(account)) is None:
             return {"ok": False, "error": f"no account {account or self.conf.account!r}; accounts: "
                                           f"{', '.join(a.name for a in self.accounts)}"}
         wid = uuid.uuid4().hex[:6]
@@ -564,8 +559,7 @@ class Workers:
             log.info("worker %s: waiting for account %s (%s in line)", wid, acct.name, words.nth(row["line"]))
             return {**out, "waiting": words.WAITING_ACCOUNT, "line": row["line"], "card": row["card"]}
         await self._show(row)
-        why = await self._launch(row)
-        if why:
+        if (why := await self._launch(row)):
             return {"ok": False, "id": wid, "error": f"the unit did not start: {why}"}
         return {**out, "card": row["card"]}
 
@@ -613,8 +607,7 @@ class Workers:
                     await self._show(r)
 
     async def stop(self, wid: str) -> dict[str, Any]:
-        row = self.ledger.worker_get(wid)
-        if row is None:
+        if (row := self.ledger.worker_get(wid)) is None:
             return {"ok": False, "error": f"no worker {wid!r}"}
         if row["finished"]:
             return {"ok": False, "error": f"worker {wid} already ended: {row['exit']}"}
@@ -716,8 +709,7 @@ class Workers:
         q, room = self.waiting.get(name), self.rooms.get(name)
         if not q or room is None or self.asked.get(name):
             return
-        why = room.idle_reason(self.conf.idle_seconds)
-        if why:
+        if (why := room.idle_reason(self.conf.idle_seconds)):
             return
         msg = q.pop(0)
         done = msg.then
@@ -828,8 +820,7 @@ def listing(ledger: Ledger, limit: int = 20) -> list[dict[str, Any]]:
 
 def report(ledger: Ledger, wid: str, limit: int = 6000) -> dict[str, Any]:
     """A worker's report: its path, first line and text (at most `limit` characters)."""
-    row = ledger.worker_get(wid)
-    if row is None:
+    if (row := ledger.worker_get(wid)) is None:
         return {"ok": False, "error": f"no worker {wid!r}"}
     try:
         text = Path(row["report"]).read_text(errors="replace")

@@ -358,6 +358,7 @@ class DailyLog:
 NOTE = "note"                # the role of a day-log line a room files with `remember` (DESIGN 5; L58)
 BY = re.compile(re.escape(mentions.OLD) + r" by (\S+?:\d+)\]")     # a mark naming its replacement; `[superseded]` names none
 LATER = "superseded.tsv"     # in the tree, `old cite<TAB>new cite`: a line a correction named but could not mark with its cite
+RULES = "rules.md"           # in the tree: the install's one rules file, how each job is done in every room (decision 15)
 
 
 def later(s: Settings) -> dict[str, str]:
@@ -424,8 +425,7 @@ def remember(s: Settings, log: DailyLog, room: str, mid: str, text: str, about: 
                 ln = parse_line(lines[k - 1])
                 oc, orid = (ln.cls, ln.rid) if ln and p.parent == s.daily.resolve() else file_class(p)
                 shown = oc not in ("room", "shared") or nc[0] == "shared" or nc == (oc, orid)    # no private cite on it (F1)
-                lines[k - 1] = re.sub(r"^(.*?)((?: \[c:\w+\])?(?: \[m:[^\]\s]+\])?)$",
-                                      lambda m: f"{m[1]} {mentions.OLD}{' by ' + new if shown else ''}]{m[2]}", lines[k - 1], count=1)
+                lines[k - 1] = mark(lines[k - 1], new if shown else "")
                 write_private(p, "\n".join(lines))
                 pairs += [] if shown else [(c, new)]
     if pairs:
@@ -433,6 +433,32 @@ def remember(s: Settings, log: DailyLog, room: str, mid: str, text: str, about: 
             f.write("".join(f"{a}\t{b}\n" for a, b in pairs))
     return {"ok": True, "cite": new, "superseded": [c for c in edit if c not in taken], "refused": refused, "not_edited":
             [*taken.values(), *(f"{c}: a read-only root or not this room's own line; the new line names it" for c in named)]}
+
+
+def mark(line: str, by: str = "") -> str:
+    """`line` marked superseded, by `by` (its replacement's cite) when given; the mark goes before a line's class and id."""
+    return re.sub(r"^(.*?)((?: \[c:\w+\])?(?: \[m:[^\]\s]+\])?)$", lambda m: f"{m[1]} {mentions.OLD}{' by ' + by if by else ''}]{m[2]}",
+                  line, count=1)
+
+
+def rule(s: Settings, room: str, mid: str, job: str, text: str) -> dict[str, Any]:
+    """How a job is done from now on, from an owner's room, into RULES: the one file every room starts with and hears
+    from on its next message when it changes (context.news), shared so read_memory reads it anywhere. One line with its
+    room, message and time; the job's live line before it is marked superseded by the new one, never deleted."""
+    job, body = one_line(job).strip(" :").lower(), one_line(text)
+    if not job or not body:
+        return {"ok": False, "error": "a rule needs the job's short name and how it is done, both as text"}
+    path, head, at = s.root / RULES, f"- {job}: ", datetime.now(timezone.utc).astimezone(s.tz)
+    with daily_lock(s.daily):                  # the one writers' lock
+        lines = path.read_text().splitlines() if path.is_file() else ["---", "class: shared", "---", "# Rules: one live line per job, in every room", ""]
+        live = [i for i, x in enumerate(lines) if x.startswith(head) and mentions.OLD not in x]
+        n = next((i + 1 for i in live if lines[i].startswith(f"{head}{body} (")), 0)       # a retried call
+        gone = [] if n else live
+        if not n:
+            n = len(lines) + 1
+            lines = [mark(x, f"{cite(s, path)}:{n}") if i in gone else x for i, x in enumerate(lines)]
+            write_private(path, "\n".join([*lines, f"{head}{body} ({room}, {at:%Y-%m-%d %H:%M:%S%:z}) [m:{mid}]"]) + "\n")
+    return {"ok": True, "job": job, "cite": f"{cite(s, path)}:{n}", "replaced": [f"{cite(s, path)}:{i + 1}" for i in gone]}
 
 
 def live_first(s: Settings, r: dict[str, Any], reader: Reader | None = None) -> dict[str, Any]:

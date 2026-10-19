@@ -46,8 +46,7 @@ def split_message(content: str, max_length: int = 2000, len_fn: Callable[[str], 
     carry_lang: str | None = None
     while remaining:
         prefix = f"```{carry_lang}\n" if carry_lang is not None else ""
-        headroom = max_length - INDICATOR_RESERVE - _len(prefix) - _len(FENCE_CLOSE)
-        if headroom < 1:
+        if (headroom := max_length - INDICATOR_RESERVE - _len(prefix) - _len(FENCE_CLOSE)) < 1:
             headroom = max(1, max_length // 2)
         if _len(prefix) + _len(remaining) <= max_length - INDICATOR_RESERVE:
             final_chunk = prefix + remaining
@@ -57,8 +56,7 @@ def split_message(content: str, max_length: int = 2000, len_fn: Callable[[str], 
             break
         cp_limit = _custom_unit_to_cp(remaining, headroom, _len) if _len is not len else headroom
         region = remaining[:cp_limit]
-        split_at = region.rfind("\n")
-        if split_at < cp_limit // 2:
+        if (split_at := region.rfind("\n")) < cp_limit // 2:
             split_at = region.rfind(" ")
         if split_at < 1:
             split_at = max(1, cp_limit)

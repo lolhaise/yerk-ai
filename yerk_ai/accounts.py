@@ -11,7 +11,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
-from .config import load_toml
+from .config import load_toml, write_private
 from .lifted.cooldowns import cooldown_until
 from .lifted.expiry import DAY_MS, login_state
 
@@ -64,11 +64,7 @@ def store_token(account: Account, token: str, issued: date | None = None) -> Pat
     """Write the token file 0600 (its folder 0700), with today's date as the issue date."""
     assert account.token_file
     account.token_file.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    tmp = account.token_file.with_suffix(".tmp")
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as fh:
-        json.dump({"token": token.strip(), "issued": (issued or date.today()).isoformat()}, fh)
-    os.replace(tmp, account.token_file)
+    write_private(account.token_file, json.dumps({"token": token.strip(), "issued": (issued or date.today()).isoformat()}))
     return account.token_file
 
 

@@ -1,8 +1,8 @@
 """Claude Code hooks, answered over local HTTP (`type: http`, one POST per event).
 
-UserPromptSubmit adds the per-message parts as context: the clock line, the metadata line and the
-recall part (the owner's people and things named in the message, then this room's own lines of the
-last 14 days on the message's topic), the recall part capped at budgets.toml's `recall`. Every
+UserPromptSubmit adds the per-message parts as context: the clock line, the metadata line, the rules
+changed since the session looked (context.news, capped at `rules`) and the recall part (the owner's people
+and things named in the message, then this room's own lines of the last 14 days on its topic, capped at `recall`). Every
 assembly is written to the room's assembled.jsonl, the daemon's own record of what the model got.
 SessionStart with source `compact` re-adds the recall pack. Claude Code takes only command and
 mcp_tool hooks on SessionStart, so that one entry is a command that posts the same payload to the
@@ -79,7 +79,7 @@ def record(state: Path, room: str, event: str, session_id: str, parts: dict[str,
 
 def user_prompt_submit(payload: dict[str, Any], state: Path, rooms: dict[str, dict[str, Any]], meta: Meta,
                        budgets: dict[str, Any], now: datetime | None = None,
-                       recall: Recall | None = None, room: str | None = None) -> dict[str, Any]:
+                       recall: Recall | None = None, room: str | None = None, news: Callable[[str, str], str] | None = None) -> dict[str, Any]:
     sid = str(payload.get("session_id", ""))
     room = room or room_for_session(SessionTable(state / "sessions.json"), sid)
     if room is None or room not in rooms:
@@ -90,6 +90,8 @@ def user_prompt_submit(payload: dict[str, Any], state: Path, rooms: dict[str, di
     now = now or datetime.now(timezone.utc)
     last = datetime.fromtimestamp(prev, timezone.utc) if prev else None
     parts = context.per_message(room, rooms[room], sender, now, last, budgets)
+    if news and (told := news(room, sid)):                     # (room, session) -> the rules block, or ""
+        parts.append(context.Part("rules", told, int(budgets["per_message"]["on_hit"]["rules"]), context.chars(told)))
     names: list[dict[str, Any]] = []
     topics: list[dict[str, Any]] = []
     took = None
@@ -112,8 +114,7 @@ def session_start(payload: dict[str, Any], state: Path, pack: Callable[[str], st
     if payload.get("source") != "compact":
         return {}
     sid = str(payload.get("session_id", ""))
-    room = room or room_for_session(SessionTable(state / "sessions.json"), sid)
-    if room is None:
+    if (room := room or room_for_session(SessionTable(state / "sessions.json"), sid)) is None:
         log.warning("hook: SessionStart (compact) for session %s matches no room binding; answered unbound", sid[:8] or "?")
         return dict(UNBOUND)
     text = pack(room)

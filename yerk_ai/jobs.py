@@ -161,8 +161,7 @@ def _field(text: str, lo: int, hi: int, names: dict[str, int] | None = None) -> 
 
 def _compact(values: set[int], lo: int, hi: int) -> str:
     """A set as systemd writes it: "*" for all, "lo/step" for a stride from lo, else the list."""
-    s = sorted(values)
-    if s == list(range(lo, hi + 1)):
+    if (s := sorted(values)) == list(range(lo, hi + 1)):
         return "*"
     for step in range(2, hi - lo + 1):
         if len(s) >= 3 and s == list(range(lo, hi + 1, step)):
@@ -240,8 +239,7 @@ def parse_every(text: str) -> int:
     found = DURATION.findall(t)
     if not found or DURATION.sub("", t).strip(" ,"):
         raise JobError(f"{text!r} is not a duration (write it like 30m, 2h, 1h30m or 90s)")
-    secs = sum(int(n) * UNITS_S[u[0]] for n, u in found)
-    if secs < MIN_EVERY:
+    if (secs := sum(int(n) * UNITS_S[u[0]] for n, u in found)) < MIN_EVERY:
         raise JobError(f"every {text!r} is under {MIN_EVERY} seconds; that close together is a watcher's job")
     return secs
 
@@ -324,9 +322,7 @@ class Job:
             return f"watcher on {'regex' if self.regex else 'prefix'} {self.match!r}, wakes the {self.wake}"
         if self.when == "cron":
             return f"cron `{self.spec}` {self.tz}"
-        if self.when == "every":
-            return f"every {self.spec}"
-        return f"one-shot {when_text(self.at_epoch, self.tz)}"
+        return f"every {self.spec}" if self.when == "every" else f"one-shot {when_text(self.at_epoch, self.tz)}"
 
     @property
     def cron(self) -> Cron | None:
@@ -334,9 +330,7 @@ class Job:
         or a day; None for a one-shot or an interval that runs on the monotonic clock."""
         if self.when == "cron":
             return Cron.parse(self.spec)
-        if self.when == "every" and (expr := every_cron(self.every_seconds)):
-            return Cron.parse(expr)
-        return None
+        return Cron.parse(expr) if self.when == "every" and (expr := every_cron(self.every_seconds)) else None
 
     def next_fire(self, now: float, last: float | None = None) -> float | None:
         """What the schedule says comes next (systemd's own answer is the one shown; this is for
@@ -373,11 +367,9 @@ def make_job(name: str, raw: dict[str, Any], now: float | None = None) -> Job:
     if not isinstance(name, str) or not NAME.match(name):
         raise JobError("the name must be lowercase letters, digits and hyphens, starting with a letter or digit, "
                        "at most 60 characters")
-    bad = sorted(set(raw) - set(KEYS))
-    if bad:
+    if (bad := sorted(set(raw) - set(KEYS))):
         raise JobError(f"unknown key{'s' if len(bad) > 1 else ''} {', '.join(bad)}; the keys are {', '.join(KEYS)}")
-    kind = str(raw.get("kind", ""))
-    if kind not in KINDS:
+    if (kind := str(raw.get("kind", ""))) not in KINDS:
         raise JobError(f'`kind` must be "script", "agent" or "watcher"' + (f", not {kind!r}" if kind else ""))
     if kind == "watcher":
         return make_watcher(name, raw)
@@ -392,8 +384,7 @@ def make_job(name: str, raw: dict[str, Any], now: float | None = None) -> Job:
     tz = zone(tz_name) if tz_name else None
     if when == "cron" and tz is None:
         raise JobError("`schedule` needs `tz` (an IANA name such as Europe/Paris), so the hours mean what you mean")
-    room = str(raw.get("room", "") or "")
-    if not room:
+    if not (room := str(raw.get("room", "") or "")):
         raise JobError("`room` is required: the room the output or the relay lands in")
     try:
         cap = float(raw.get("cap", DEFAULT_CAP[kind]))
@@ -401,8 +392,7 @@ def make_job(name: str, raw: dict[str, Any], now: float | None = None) -> Job:
         raise JobError("`cap` must be a number of minutes") from None
     if not cap > 0:
         raise JobError("`cap` must be above 0 minutes")
-    deliver = str(raw.get("deliver", "announce"))
-    if deliver not in DELIVER:
+    if (deliver := str(raw.get("deliver", "announce"))) not in DELIVER:
         raise JobError('`deliver` must be "announce" or "silent"')
     account = str(raw.get("account", "") or "")
     if kind == "script":
@@ -441,8 +431,7 @@ def make_watcher(name: str, raw: dict[str, Any]) -> Job:
     """A watcher: a command that runs all the time, no schedule; its matching lines are events."""
     if any(k in raw for k in ("schedule", "every", "at")):
         raise JobError("a watcher runs all the time: no `schedule`, `every` or `at`")
-    room = str(raw.get("room", "") or "")
-    if not room:
+    if not (room := str(raw.get("room", "") or "")):
         raise JobError("`room` is required: the room the events wake")
     command = str(raw.get("command", "") or "")
     if not command.strip():
@@ -457,11 +446,9 @@ def make_watcher(name: str, raw: dict[str, Any]) -> Job:
             re.compile(match)
         except re.error as e:
             raise JobError(f"`regex` does not compile: {e}") from None
-    wake = str(raw.get("wake", "room"))
-    if wake not in WAKES:
+    if (wake := str(raw.get("wake", "room"))) not in WAKES:
         raise JobError('`wake` must be "room" or "worker"')
-    account = str(raw.get("account", "") or "")
-    if account and wake != "worker":
+    if (account := str(raw.get("account", "") or "")) and wake != "worker":
         raise JobError('`account` is for a watcher that wakes a worker (wake = "worker")')
     try:
         cap, batch = float(raw.get("cap", DEFAULT_CAP["watcher"])), float(raw.get("batch", 10))
@@ -470,11 +457,9 @@ def make_watcher(name: str, raw: dict[str, Any]) -> Job:
         raise JobError("`cap`, `batch`, `lines` and `prime` are numbers") from None
     if not cap > 0 or batch < 0 or lines < 1 or prime < 0:
         raise JobError("`cap` is above 0 minutes, `batch` and `prime` 0 seconds or more, `lines` at least 1")
-    deliver = str(raw.get("deliver", "announce"))
-    if deliver not in DELIVER:
+    if (deliver := str(raw.get("deliver", "announce"))) not in DELIVER:
         raise JobError('`deliver` must be "announce" or "silent"')
-    tz = str(raw.get("tz", "") or "")
-    if tz:
+    if (tz := str(raw.get("tz", "") or "")):
         zone(tz)
     return Job(name, "watcher", room, "watch", "", tz, cap, deliver, command, account, match=match, regex=regex,
                batch=batch, lines=lines, wake=wake, prime=prime, ask=str(raw.get("message", "") or ""))
@@ -545,8 +530,7 @@ def block(name: str, fields: dict[str, Any]) -> str:
 def _span(text: str, name: str) -> tuple[int, int] | None:
     """Where [jobs.NAME] sits in the file: its header line through the blank lines before the next
     table; for the last table, the blank lines before it go too, so the file ends cleanly."""
-    m = re.search(rf"^\[jobs\.{re.escape(name)}\][ \t]*(#[^\n]*)?\n", text, re.M)
-    if not m:
+    if not (m := re.search(rf"^\[jobs\.{re.escape(name)}\][ \t]*(#[^\n]*)?\n", text, re.M)):
         return None
     nxt = re.search(r"^\[", text[m.end():], re.M)
     start = m.start()
@@ -575,8 +559,7 @@ def remove(path: Path, name: str) -> bool:
     """Drop [jobs.NAME] from the file; False when it is not there."""
     with locked(path):
         text = path.read_text() if path.is_file() else ""
-        span = _span(text, name)
-        if span is None:
+        if (span := _span(text, name)) is None:
             return False
         path.write_text(text[:span[0]] + text[span[1]:])
     return True
@@ -717,9 +700,7 @@ class Systemd:
         text = p.stdout + p.stderr
         if p.returncode or "Failed to parse" in text:
             return f"systemd does not take {spec!r}: {text.strip().splitlines()[-1][:160] if text.strip() else 'no reason'}"
-        if "Next elapse: never" in text:
-            return f"{spec!r} never fires again (it is in the past)"
-        return ""
+        return f"{spec!r} never fires again (it is in the past)" if "Next elapse: never" in text else ""
 
     def timers(self) -> dict[str, dict[str, float | None]]:   # timer unit -> {"next", "last"} (epoch)
         p = systemctl("list-timers", "--all", "--output=json", f"{UNIT}*", check="list-timers")
@@ -744,15 +725,13 @@ def plan(path: Path, units: Systemd, env: Env, now: float | None = None) -> Plan
     p = Plan(jobs=jobs, errors=errors)
     for name, job in jobs.items():
         for spec in job.calendar():
-            why = units.check(spec)
-            if why:
+            if (why := units.check(spec)):
                 p.errors[name] = why
                 break
         if name in p.errors:
             continue
         timer, service = unit_texts(job, env)
-        have = (units.read(f"{job.unit}.timer"), units.read(f"{job.unit}.service"))
-        if have == (timer or None, service):
+        if (have := (units.read(f"{job.unit}.timer"), units.read(f"{job.unit}.service"))) == (timer or None, service):
             p.unchanged.append(name)
         elif have == (None, None):
             p.added.append(name)
@@ -785,12 +764,10 @@ def apply(p: Plan, units: Systemd, env: Env) -> None:
     if p.added or p.changed or p.removed:
         units.reload()
     for name in p.added:
-        why = units.enable_now(lead(name))
-        if why:
+        if (why := units.enable_now(lead(name))):
             p.failed[name] = why
     for name in p.changed:
-        why = units.enable_now(lead(name)) or units.restart(lead(name))
-        if why:
+        if (why := units.enable_now(lead(name)) or units.restart(lead(name))):
             p.failed[name] = why
 
 
@@ -966,8 +943,7 @@ class Watcher:
 
     def once(self) -> int:
         """One run of the command, to its end; returns its exit code."""
-        job = self.job()
-        if job is None:
+        if (job := self.job()) is None:
             self.diag("not a watcher in the jobs file; `yerk jobs sync` removes this unit")
             return 2
         rows = self.ledger.watch_events(self.name, limit=5000)
@@ -1038,8 +1014,7 @@ class Watcher:
             rc = self.once()
             if self.stopping:
                 break
-            ran = time.time() - t0
-            if ran >= STABLE:
+            if (ran := time.time() - t0) >= STABLE:
                 backoff = BACKOFF[0]
             self.diag(f"the command ended (exit {rc}) after {ran:.0f} s; restarting in {backoff:g} s")
             time.sleep(backoff)
@@ -1073,8 +1048,7 @@ def run(name: str, private: Path, state: Path, units: Systemd | None = None,
     fired = time.time() if now is None else now
     ledger = Ledger(state / "ledger.sqlite")
     jobs, errors = load(private / FILE, now=0)              # now=0: a one-shot that just fired is still a job
-    job = jobs.get(name)
-    if job is None:
+    if (job := jobs.get(name)) is None:
         why = errors.get(name, "not in the jobs file")
         ledger.job_run_add(job=name, kind="", room="", unit=f"{UNIT}{name}", planned=fired, fired=fired, ended=fired,
                            exit="not run", result=f"no such job: {why}", delivery="none")
@@ -1225,8 +1199,7 @@ class Jobs:
 
     # the schedule tool and yerk schedule
     async def handle(self, caller: str, req: dict[str, Any]) -> dict[str, Any]:
-        action = str(req.get("action", ""))
-        if action == "add":
+        if (action := str(req.get("action", ""))) == "add":
             return await asyncio.to_thread(self.add, caller, req)
         if action == "remove":
             return await asyncio.to_thread(self.remove, str(req.get("name", "")))
@@ -1244,8 +1217,7 @@ class Jobs:
 
     # watcher events: one turn each, handled only after it ends clean, replayed once at most
     async def event(self, event_id: int) -> dict[str, Any]:
-        ev = self.ledger.watch_get(event_id)
-        if ev is None:
+        if (ev := self.ledger.watch_get(event_id)) is None:
             return {"ok": False, "error": f"no event {event_id}"}
         if ev["state"] != "pending" or event_id in self.waking:
             return {"ok": True, "id": event_id, "state": ev["state"]}
@@ -1319,15 +1291,13 @@ class Jobs:
         """Pending events with no turn asked; after a restart, a turn the old process left: its reply
         found delivered means handled, else the one replay (attempts below 2), else failed."""
         for ev in self.ledger.watch_events(states=("pending", "waking")):
-            eid = int(ev["id"])
-            if eid in self.waking:
+            if (eid := int(ev["id"])) in self.waking:
                 continue
             if ev["state"] == "waking":
                 if not restarted:
                     continue
                 if ev["worker"]:
-                    w = self.ledger.worker_get(str(ev["worker"]))
-                    if w and not w["finished"]:
+                    if (w := self.ledger.worker_get(str(ev["worker"]))) and not w["finished"]:
                         self.waking.add(eid)             # still running: its completion decides
                         continue
                     if w:                                # it ended before its event was settled: its end decides
@@ -1429,8 +1399,7 @@ class Jobs:
         return {"ok": True, "run": run_id, "result": result, "delivery": delivery, "message_ids": ids}
 
     async def post(self, room: str, text: str, key: str) -> list[str]:
-        ch = self.channels.get(room)
-        if ch is None:
+        if (ch := self.channels.get(room)) is None:
             log.warning("jobs: no channel for room %r; nothing posted", room)
             return []
         try:
@@ -1443,8 +1412,7 @@ class Jobs:
         """One line to the machine room (rooms.toml role = "machine"), else [jobs] ops_room, else the job's room."""
         machine = [n for n, c in self.room_confs.items() if c.get("role") == "machine" and n in self.channels]
         target = (machine or [self.ops_room if self.ops_room in self.channels else (job.room if job else room)])[0]
-        ch = self.channels.get(target)
-        if ch is None:
+        if (ch := self.channels.get(target)) is None:
             log.warning("jobs: no room to alert (%r); %s", target, line)
             return []
         try:
@@ -1464,8 +1432,7 @@ class Jobs:
                              note=f"worker {row['id']}: {end.get('detail') or ''}", cap=float(row.get("cap") or 0),
                              result=str(end.get("result_code") or ""))
             return False
-        name = str(row.get("job") or "")
-        if not name:
+        if not (name := str(row.get("job") or "")):
             return False
         run = self.ledger.job_run_for_worker(str(row["id"]))
         run_id = int(run["id"]) if run else 0
@@ -1494,8 +1461,7 @@ class Jobs:
         def after(state: str, ids: list[str], chars: int) -> None:
             self.ledger.job_run_set(run_id, result="done", delivery="delivered" if state == "answered" else "failed",
                                     message_ids=",".join(ids))
-        why = await self.workers.relay(row, end, text=line[:self.workers.conf.relay_message], after=after)
-        if why:
+        if (why := await self.workers.relay(row, end, text=line[:self.workers.conf.relay_message], after=after)):
             self.ledger.job_run_set(run_id, result="done", delivery=f"skipped: {why}")
         return True
 

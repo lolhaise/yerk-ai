@@ -275,8 +275,7 @@ def prove(state: Path, sd: Systemd, ask: Ask, served: set[str], want: str, wait:
                   (served <= got, words.PROOF_ROOMS.format(n=len(served & got), of=len(served)))]
         if unit_file:
             checks.append((sd.show("FragmentPath") == unit_file and sd.show("Type") == "notify", words.PROOF_FILE))
-        ok = all(c for c, _ in checks)
-        if ok or time.monotonic() >= end:
+        if (ok := all(c for c, _ in checks)) or time.monotonic() >= end:
             return ok, [words.line(f"{words.DONE if c else words.NOT_DONE} {say}") for c, say in checks]
         sleep(2.0)
 
@@ -426,8 +425,7 @@ def say(private: Path, state: Path, lines: list[str], post: Callable[[dict[str, 
     text = "\n".join(lines)
     with contextlib.suppress(OSError):                # a terminal closed under it: the machine room still gets it
         print(text)
-    machine = [n for n, c in rooms(private).items() if c.get("role") == "machine"]
-    if machine:
+    if (machine := [n for n, c in rooms(private).items() if c.get("role") == "machine"]):
         req = {"machine": {"room": machine[0], "text": text, "key": f"deploy-{int(time.time())}"}}
         try:
             out = (post or (lambda p: jobs.post_control(state, p, 60)))(req)

@@ -33,8 +33,7 @@ def state(name: str, ab: dict[str, Any], tab: dict[str, dict[str, Any]], s: Any)
         if key is not None and key.is_file() and key.stat().st_size > 0:
             return words.ability("on")
         return words.ability("needs", provider=ab.get("provider", "a provider key"))
-    up = str(ab.get("upgrade", ""))
-    if up and up in tab and state(up, tab[up], tab, s)[0] != words.DONE:
+    if (up := str(ab.get("upgrade", ""))) and up in tab and state(up, tab[up], tab, s)[0] != words.DONE:
         return words.ability("free")
     return words.ability("on")
 

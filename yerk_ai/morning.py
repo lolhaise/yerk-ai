@@ -17,7 +17,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
-from . import context, jobs, status, words
+from . import context, jobs, memory, status, words
 from .accounts import Account, Cooldowns
 from .config import budgets, rooms
 from .ledger import Ledger
@@ -28,11 +28,11 @@ STATIC = ("mechanics", "persona", "rulebook", "room_voice", "pinned_memory")   #
                                                                                # finding: the recall pack moves daily
 
 
-def sizes(private: Path) -> dict[str, dict[str, int]]:
+def sizes(private: Path, state: Path) -> dict[str, dict[str, int]]:
     """Each room's session-start parts in characters before any trim (`yerk map`'s raw numbers), so a
     part past its budget still shows its growth."""
-    b = budgets()
-    return {name: {p.name: p.raw for p in context.session_start(private, conf, b)} for name, conf in rooms(private).items()}
+    b, rules = budgets(), memory.settings(private, state).root / memory.RULES
+    return {name: {p.name: p.raw for p in context.session_start(private, conf, b, rules=rules)} for name, conf in rooms(private).items()}
 
 
 def build(private: Path, state: Path, accounts: list[Account], cooldowns: Cooldowns, ledger: Ledger,
@@ -48,7 +48,7 @@ def build(private: Path, state: Path, accounts: list[Account], cooldowns: Cooldo
 
     def add(key: str, mark: str, text: str) -> None:
         rows.append((key, W.line(f"{mark} {text}")))
-    now_sizes = sizes(private)
+    now_sizes = sizes(private, state)
     for room, parts in now_sizes.items():
         before = last.get("sizes", {}).get(room)
         d = sum(parts.values()) - sum((before or {}).values())
@@ -129,8 +129,7 @@ def run(private: Path, state: Path, accounts: list[Account], cooldowns: Cooldown
     path = state / "morning" / time.strftime("%Y-%m-%d.txt", time.localtime(now))
     path.write_text(text + "\n")
     print(text)
-    machine = [n for n, c in rooms(private).items() if c.get("role") == "machine"]
-    if not machine:
+    if not (machine := [n for n, c in rooms(private).items() if c.get("role") == "machine"]):
         print(f"morning: no room in rooms.toml has role = \"machine\"; the diff is at {path}", file=sys.stderr)
     else:
         req = {"morning": {"room": machine[0], "text": text, "key": f"morning-{int(now)}"}}

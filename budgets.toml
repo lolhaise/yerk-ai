@@ -42,6 +42,9 @@ output_cap = 10000
 # Paid only when a message hits: the people and things it names, then the room's own lines
 # of the last 14 days on its topic (L19, decision 20). The parts above plus these stay under `cap`.
 recall = 1500
+# Its turn and the last part closes the (case 00): before the next run starts the, example note
+# note says the sample item moved to, the next step and; the test, reads it back as plain text with.
+rules = 1500
 
 [relay]
 # A worker's end, told in its room (DESIGN 6, decision 11): the harness line the room's session
@@ -55,4 +58,4 @@ reply = 1500
 # only goes down: the budget test fails when the package grows past it and also when it
 # shrinks under it, so a change that cuts lowers this number in the same commit, and a
 # change that adds cuts as much somewhere else. A change that raises it is not merged.
-lines = 14628
+lines = 14612

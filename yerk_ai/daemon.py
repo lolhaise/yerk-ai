@@ -173,7 +173,8 @@ class Yerkd:
         rdir = self.state / "rooms" / name
         (work := rdir / "work").mkdir(parents=True, exist_ok=True)
         layer = context.layer_dir(self.private, conf)
-        parts = context.session_start(self.private, conf, self.budgets, pack=lambda left: self.room_pack(name, left))
+        self.rules_news(name)          # first, the look a new session starts with: a rule filed meanwhile is told twice, never lost
+        parts = context.session_start(self.private, conf, self.budgets, lambda left: self.room_pack(name, left), self.memory.root / memory.RULES)
         (ctx := rdir / "context.md").write_text(context.appended_file(parts))
         hooks.record(self.state, name, "session_start", "", {p.name: p.size for p in parts},
                      next((p.text for p in parts if p.name == "recall_pack"), ""), file=str(ctx))
@@ -293,6 +294,15 @@ class Yerkd:
             return {"ok": False, "line": words.WORKER_OWN_ROOM.format(room=named)}
         return None
 
+    async def tool_rule(self, room: str, text: str, job: str) -> dict[str, Any]:
+        """`remember` with a `job`: an owner's room files how it is done from now on (memory.rule) for every room."""
+        if room not in self.rooms or not self.owner(room):
+            return {"ok": False, "line": words.RULES_OWNER_ONLY}
+        with self.rooms[room].lock:
+            mid = ",".join(m.id for m in self.rooms[room].inflight) or f"x{self.rooms[room].turn_key}"
+        r = await asyncio.to_thread(memory.rule, self.memory, room, mid, job, text)
+        return {**r, "line": words.RULE_FILED.format(job=r["job"])} if r["ok"] else r
+
     async def tool_worker(self, room: str, req: dict[str, Any]) -> dict[str, Any]:
         """The `worker` tool (rooms only; a worker has no MCP server). `yerk worker` comes through
         /control, which keeps every form, for any room."""
@@ -384,6 +394,11 @@ class Yerkd:
         topics = memory.topic_hits(self.memory, room, prompt, r.current_ids() if r else set(), rid=room_id(room, conf),
                                    owner=self.owner(room)) if conf.get("topic_recall", True) else []
         return abilities.asked(prompt, self.memory) + names, topics      # "can you do voice": the manifest's answer
+
+    def rules_news(self, room: str, sid: str = "") -> str:
+        """The rules block for session `sid` (context.news), under budgets.toml's `rules`; "" records a process start."""
+        return context.news(self.state / "rooms" / room / "rules-seen.json", sid, self.private, self.room_confs[room],
+                            self.memory.root / memory.RULES, int(self.budgets["per_message"]["on_hit"]["rules"]))
 
     def shadow_stop(self, name: str, room: Room, reply: str, sid: str) -> list[tuple[str, str]]:
         """The evidence rules after a reply: ledgered and logged, never a block (shadow, DESIGN 8)."""
@@ -556,7 +571,7 @@ class Yerkd:
         if event != "UserPromptSubmit":
             return {}
         out = await asyncio.to_thread(hooks.user_prompt_submit, payload, self.state, self.room_confs,
-                                      lambda r, p: self.rooms[r].meta_for(p), self.budgets, None, self.recall_for, name)
+                                      lambda r, p: self.rooms[r].meta_for(p), self.budgets, None, self.recall_for, name, self.rules_news)
         if out and "hookSpecificOutput" in out and name in self.rooms:
             prompt = str(payload.get("prompt", ""))
             said = self.said_in_turn(name, sid, prompt)

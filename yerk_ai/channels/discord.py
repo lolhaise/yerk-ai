@@ -225,8 +225,7 @@ class DiscordChannel:
             log.warning("room %s: message %s not filed in the day's log: %s", room, mid, e)
 
     async def take(self, room: Room, m: Any) -> None:
-        sender = self.sender_of(m)
-        if sender is None:
+        if (sender := self.sender_of(m)) is None:
             return
         if sender != "owner" and not self.guard.admit(m.channel.id)[0]:
             log.warning("room %s: loop guard holding webhook messages", room.name)
@@ -405,8 +404,7 @@ class DiscordChannel:
         """Ephemeral, inside Discord's three seconds: a call still running after QUICK is deferred first
         (Discord shows it thinking) and answered when it ends."""
         task = asyncio.ensure_future(call)
-        slow = not (await asyncio.wait({task}, timeout=QUICK))[0]
-        if slow:
+        if (slow := not (await asyncio.wait({task}, timeout=QUICK))[0]):
             await it.response.defer(ephemeral=True, thinking=True)
         try:
             text = await task
@@ -428,8 +426,7 @@ class DiscordChannel:
         for row in self.ledger.inbound_open(room.name):
             if row["channel"] != str(cid):                 # the other channel's, or a relay (workers.py's to redo)
                 continue
-            attempts = int(row["attempts"] or 0)
-            if attempts >= 2:
+            if (attempts := int(row["attempts"] or 0)) >= 2:
                 self.ledger.inbound_set(row["message_id"], state="abandoned", note="redelivered once already")
                 await self._post(room.name, f"{words.NOT_DONE} {words.NOT_RUN_AGAIN}", "notice", [row["message_id"]])
                 continue
@@ -457,8 +454,7 @@ class DiscordChannel:
         """Parts a crash left unconfirmed: posted once, labelled, unless the room already shows
         them (posted before the crash, never confirmed); their messages are then answered."""
         pending = self.ledger.deliveries(room.name, "pending")
-        keys = list(dict.fromkeys(r["key"].rsplit(":", 1)[0] for r in pending))
-        if not keys:
+        if not (keys := list(dict.fromkeys(r["key"].rsplit(":", 1)[0] for r in pending))):
             return
         mine: dict[str, str] = {}
         files: list[tuple[str, str, int]] = []    # (message id, file name, size) of the bot's own posts
@@ -702,8 +698,7 @@ class DiscordChannel:
         f = self.state / "debug" / "pause-delivery" if self.state else None
         if f is None or not f.is_file():
             return
-        words = f.read_text().split()
-        if words and words[0] == point:
+        if (words := f.read_text().split()) and words[0] == point:
             secs = float(words[1]) if len(words) > 1 else 60.0
             log.warning("debug pause at %s for %.0f s", point, secs)
             await asyncio.sleep(secs)
@@ -757,13 +752,10 @@ class DiscordChannel:
             return words.file_why("missing")
         if path.suffix.lower() in FORBIDDEN:
             return words.file_why("type", ext=path.suffix.lower())
-        size = path.stat().st_size
-        if size > limit:
+        if (size := path.stat().st_size) > limit:
             said, cap = words.sizes(size, limit)
             return words.file_why("size", size=said, limit=cap)
-        if size == 0:
-            return words.file_why("empty")
-        return None
+        return words.file_why("empty") if size == 0 else None
 
     async def send_file(self, room: str, path: Path, caption: str = "", key: str | None = None,
                         inbound: str = "") -> list[str]:

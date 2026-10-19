@@ -79,8 +79,7 @@ class Evidence:
 
     def observe(self, ev: dict[str, Any]) -> None:
         """The stream's tool_use blocks open a call; its tool_result closes it with the text."""
-        kind = ev.get("type")
-        if kind not in ("assistant", "user"):
+        if (kind := ev.get("type")) not in ("assistant", "user"):
             return
         done = []
         with self.lock:
@@ -92,8 +91,7 @@ class Evidence:
                     self.calls[str(c.get("id"))] = {"tool": str(c.get("name")), "input": ti, "id": str(c.get("id")),
                                                     "target": target(str(c.get("name")), ti), "result": ""}
                 elif kind == "user" and c.get("type") == "tool_result":
-                    call = self.calls.get(str(c.get("tool_use_id")))
-                    if call is not None:
+                    if (call := self.calls.get(str(c.get("tool_use_id")))) is not None:
                         call["result"] = result_text(c.get("content"))
                         self.kept += len(call["result"])
                         done.append(dict(call, chars=len(call["result"])))

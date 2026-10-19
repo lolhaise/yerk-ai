@@ -92,8 +92,7 @@ class Card:
     def feed(self, ev: dict[str, Any]) -> bool:
         """Take one stream event; True when the card's text changed."""
         before = self.render()
-        kind = ev.get("type")
-        if kind == "stream_event":
+        if (kind := ev.get("type")) == "stream_event":
             self._stream(ev.get("event") or {})
         elif kind == "assistant":
             for c in (ev.get("message") or {}).get("content") or []:
@@ -128,8 +127,7 @@ class Card:
             self.partial[i] = ""
         elif t == "content_block_delta" and delta.get("type") == "text_delta":
             self.text += str(delta.get("text") or "")
-            line = next((x for x in self.text.splitlines() if x.strip()), "")
-            if line:
+            if (line := next((x for x in self.text.splitlines() if x.strip()), "")):
                 self.narration = line
         elif t == "content_block_delta" and delta.get("type") == "thinking_delta":
             self.thinking += str(delta.get("thinking") or "")

@@ -30,7 +30,6 @@ import asyncio
 import contextlib
 import json
 import logging
-import os
 import re
 import time
 import uuid
@@ -40,6 +39,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable, Coroutine, TypeVar
 
 from .. import words
+from ..config import write_private
 from ..ledger import Ledger
 from ..lifted.loopguard import LoopGuard
 from ..lifted.split import split_message
@@ -186,8 +186,7 @@ class Bridge:
                 if msg.get("id") is not None and ("result" in msg or "error" in msg):
                     fut = self.pending.pop(int(msg["id"]), None)
                     if fut is not None and not fut.done():
-                        err = msg.get("error")
-                        if err:
+                        if (err := msg.get("error")):
                             fut.set_exception(BridgeError(error_class(err)))
                         else:
                             fut.set_result(msg.get("result"))
@@ -291,12 +290,7 @@ class IMessageChannel:
     def _save(self) -> None:
         if self.state is None:
             return
-        path = self.state / "imessage.json"
-        tmp = path.with_suffix(".tmp")
-        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "w") as f:
-            json.dump({"cursor": self.cursor}, f)
-        os.replace(tmp, path)
+        write_private(self.state / "imessage.json", json.dumps({"cursor": self.cursor}))
 
     def _advance(self, ident: str, rowid: int) -> None:
         if rowid > self.cursor.get(ident, 0):
@@ -333,8 +327,7 @@ class IMessageChannel:
             for c in chats if isinstance(chats, list) else []:
                 ident = str(c.get("identifier") or "")
                 if ident in self.rooms and c.get("id") is not None:
-                    why = refusal(c, self.owner)
-                    if why is None:
+                    if (why := refusal(c, self.owner)) is None:
                         self.chat_ids[ident] = int(c["id"])
                         self.refused.pop(ident, None)
                     else:                         # never subscribed, never sent to: told once
@@ -349,8 +342,7 @@ class IMessageChannel:
             for ident in self.rooms:
                 if ident in self.refused:
                     continue
-                cid = self.chat_ids.get(ident)
-                if cid is None:
+                if (cid := self.chat_ids.get(ident)) is None:
                     log.warning("imessage: room %s: its chat is not in the bridge's chat list", self.rooms[ident].name)
                     continue
                 if ident not in self.cursor:      # a first start: from the newest row, never a replay (the
@@ -423,8 +415,7 @@ class IMessageChannel:
             log.warning("imessage: the bridge's watch reported an error")
 
     def ident_of(self, msg: dict[str, Any]) -> str | None:
-        ident = str(msg.get("chat_identifier") or "")
-        if ident in self.rooms:
+        if (ident := str(msg.get("chat_identifier") or "")) in self.rooms:
             return ident
         cid = msg.get("chat_id")
         return next((i for i, c in self.chat_ids.items() if cid is not None and c == int(cid)), None)
@@ -480,8 +471,7 @@ class IMessageChannel:
         now = time.time()
         q = deque(e for e in self.unclaimed.get(ident, ()) if e[2] >= now and not self._resolved(e[0]))
         self.unclaimed[ident] = q
-        hit = next((e for e in q if rowid > e[1] and in_attempt(msg, e[3])), None)
-        if hit is None:
+        if (hit := next((e for e in q if rowid > e[1] and in_attempt(msg, e[3])), None)) is None:
             return False
         q.remove(hit)
         self.ledger.delivery_set(hit[0], state="sent", message_id=guid, sent=time.time(),
