@@ -20,7 +20,7 @@ import re
 import time
 from fnmatch import fnmatch
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 ENTRY_CHARS = 300
 KEY_MIN, KEY_MAX, KEY_WORDS = 3, 44, 6
@@ -178,8 +178,8 @@ class Index:
             self.stamp = (st.st_mtime_ns, st.st_size)
         return self
 
-    def match(self, text: str, limit: int = MATCH_MAX) -> list[dict[str, Any]]:
-        """Entries for the names in `text`, in the order they are named, each once."""
+    def match(self, text: str, limit: int = MATCH_MAX, keep: Callable[[str], bool] | None = None) -> list[dict[str, Any]]:
+        """Entries for the names in `text`, in the order they are named, each once; only those whose file `keep` takes, if given."""
         words = tokens(text)
         out: list[dict[str, Any]] = []
         seen: set[int] = set()
@@ -189,7 +189,7 @@ class Index:
             for key, ids in self.first.get(words[i], []):
                 if words[i:i + len(key)] == key:
                     for n in ids:
-                        if n not in seen and len(out) < limit:
+                        if n not in seen and len(out) < limit and (keep is None or keep(self.entries[n]["cite"].rpartition(":")[0])):
                             seen.add(n)
                             out.append(self.entries[n])
                     step = len(key)

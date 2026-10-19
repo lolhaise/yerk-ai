@@ -373,8 +373,7 @@ def make_job(name: str, raw: dict[str, Any], now: float | None = None) -> Job:
     if not isinstance(name, str) or not NAME.match(name):
         raise JobError("the name must be lowercase letters, digits and hyphens, starting with a letter or digit, "
                        "at most 60 characters")
-    bad = sorted(set(raw) - set(KEYS))
-    if bad:
+    if (bad := sorted(set(raw) - set(KEYS))):
         raise JobError(f"unknown key{'s' if len(bad) > 1 else ''} {', '.join(bad)}; the keys are {', '.join(KEYS)}")
     kind = str(raw.get("kind", ""))
     if kind not in KINDS:
@@ -392,8 +391,7 @@ def make_job(name: str, raw: dict[str, Any], now: float | None = None) -> Job:
     tz = zone(tz_name) if tz_name else None
     if when == "cron" and tz is None:
         raise JobError("`schedule` needs `tz` (an IANA name such as Europe/Paris), so the hours mean what you mean")
-    room = str(raw.get("room", "") or "")
-    if not room:
+    if not (room := str(raw.get("room", "") or "")):
         raise JobError("`room` is required: the room the output or the relay lands in")
     try:
         cap = float(raw.get("cap", DEFAULT_CAP[kind]))
@@ -441,8 +439,7 @@ def make_watcher(name: str, raw: dict[str, Any]) -> Job:
     """A watcher: a command that runs all the time, no schedule; its matching lines are events."""
     if any(k in raw for k in ("schedule", "every", "at")):
         raise JobError("a watcher runs all the time: no `schedule`, `every` or `at`")
-    room = str(raw.get("room", "") or "")
-    if not room:
+    if not (room := str(raw.get("room", "") or "")):
         raise JobError("`room` is required: the room the events wake")
     command = str(raw.get("command", "") or "")
     if not command.strip():
@@ -473,8 +470,7 @@ def make_watcher(name: str, raw: dict[str, Any]) -> Job:
     deliver = str(raw.get("deliver", "announce"))
     if deliver not in DELIVER:
         raise JobError('`deliver` must be "announce" or "silent"')
-    tz = str(raw.get("tz", "") or "")
-    if tz:
+    if (tz := str(raw.get("tz", "") or "")):
         zone(tz)
     return Job(name, "watcher", room, "watch", "", tz, cap, deliver, command, account, match=match, regex=regex,
                batch=batch, lines=lines, wake=wake, prime=prime, ask=str(raw.get("message", "") or ""))
@@ -575,8 +571,7 @@ def remove(path: Path, name: str) -> bool:
     """Drop [jobs.NAME] from the file; False when it is not there."""
     with locked(path):
         text = path.read_text() if path.is_file() else ""
-        span = _span(text, name)
-        if span is None:
+        if (span := _span(text, name)) is None:
             return False
         path.write_text(text[:span[0]] + text[span[1]:])
     return True
