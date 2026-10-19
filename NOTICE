@@ -7,8 +7,6 @@ copyright line in its header. All sources are under the MIT License.
 
 Hermes Agent v0.22.2, https://github.com/NousResearch/hermes-agent
 Copyright (c) 2025 Nous Research. MIT License.
-- yerk_ai/memindex.py: the FTS5 capability checks and the orphan shadow-table repair, from
-  hermes_state_fts.py (_is_fts5_unavailable_error, _drop_orphan_fts_shadow_tables)
 - yerk_ai/lifted/trim.py: from agent/prompt_builder.py (_truncate_content, _omitted_headings)
 - yerk_ai/lifted/cooldowns.py: from agent/credential_pool_model_cooldowns.py
   (model_cooldown_until, merge_model_cooldowns)

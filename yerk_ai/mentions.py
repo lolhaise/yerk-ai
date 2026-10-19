@@ -16,7 +16,6 @@ ENTRY_CHARS, with the file and line it came from. An entry carrying a do-not-sur
 from __future__ import annotations
 
 import json
-import os
 import re
 import time
 from fnmatch import fnmatch
@@ -133,6 +132,7 @@ class Builder:
         return path.name in self.curated or (path.parent.name == "facts" and path.suffix == ".md")
 
     def refresh(self, disk: dict[str, tuple[int, int]]) -> tuple[int, int, int] | None:
+        from .config import write_private
         srcs = sorted((p, *st) for p, st in disk.items() if self.is_source(Path(p)))
         if srcs == self.sig and self.out.is_file():
             return None
@@ -151,20 +151,11 @@ class Builder:
             k = " ".join(tokens(entry["key"]))
             if k and n not in keys.setdefault(k, []):
                 keys[k].append(n)
+        self.out.parent.mkdir(parents=True, exist_ok=True)
         write_private(self.out, json.dumps({"built": round(time.time(), 3), "sources": len(srcs),
                                             "entries": entries, "keys": keys}))
         self.sig = srcs
         return len(keys), len(entries), dropped
-
-
-def write_private(path: Path, text: str) -> None:
-    """0600 from the first byte, swapped in whole so a reader never sees half a file."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f".{path.name}.tmp")
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as f:
-        f.write(text)
-    os.replace(tmp, path)
 
 
 class Index:
