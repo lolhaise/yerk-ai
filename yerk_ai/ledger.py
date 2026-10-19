@@ -349,8 +349,18 @@ class Ledger:
     def stalls(self, since: float, until: float = math.inf) -> list[dict[str, Any]]:
         return self._select("SELECT * FROM stalls WHERE began >= ? AND began < ? ORDER BY began", (since, until))
 
-    def deploy(self, **row: Any) -> int:
-        return self._insert("deploys", {"at": time.time(), **row})
+    def deploy(self, row_id: int = 0, **row: Any) -> int:
+        """A deploys row; given one's id, its columns set instead (deploy.py writes the row before the
+        restart, outcome "begun", and sets it once the proof is in)."""
+        if not row_id:
+            return self._insert("deploys", {"at": time.time(), **row})
+        bad = set(row) - {"kind", "unit", "before", "after", "outcome", "cut", "proof", "note"}
+        if bad:
+            raise ValueError(f"unknown deploys columns: {sorted(bad)}")
+        with self.lock:
+            self.db.execute(f"UPDATE deploys SET {', '.join(f'{k} = ?' for k in row)} WHERE id = ?",
+                            (*row.values(), row_id))
+        return row_id
 
     def deploys(self, since: float) -> list[dict[str, Any]]:
         return self._select("SELECT * FROM deploys WHERE at >= ? ORDER BY at, id", (since,))

@@ -10,6 +10,8 @@ import logging
 import os
 import re
 import shutil
+import signal
+import sqlite3
 import stat
 import subprocess
 import threading
@@ -425,7 +427,7 @@ def test_a_fault_before_the_stop_refuses_and_one_after_it_or_in_the_proof_rolls_
     assert out[:3] == [f"{words.NOT_DONE} {ids[1][:7]} broke off, not proven", f"{words.PLAIN} fast tests skipped",
                        f"{words.NOT_DONE} TimeoutExpired in ctl"] and f"{words.DONE} rolled back to {ids[0][:7]}" in out
     assert u.log.count("back") == 1 and (u.up, u.commit, u.file) == (True, ids[0], "") and where(tree) == ("main", ids[0])
-    assert rows(state)[-2:] == [("deploy", ids[0], ids[1], "fault", 0), ("rollback", ids[1], ids[0], "proven", 0)]
+    assert rows(state)[-2:] == [("deploy", ids[0], ids[1], "fault", None), ("rollback", ids[1], ids[0], "proven", 0)]   # not counted
     u = Unit(tree, home, "is-active")                                  # the proof, after the move
     assert deploy.run(priv, state, ids[1], tests=False, unit_file=True, sd=u, ask=u.ask, post=ok, sleep=nap, home=home) == 1
     out = capsys.readouterr().out.splitlines()
@@ -443,7 +445,7 @@ def test_a_fault_before_the_stop_refuses_and_one_after_it_or_in_the_proof_rolls_
     f.restart = restart
     assert deploy.run(priv, state, ids[1], tests=False, sd=f, ask=f.ask, post=ok, sleep=nap) == 1
     assert f"{words.NOT_DONE} OSError in restart" in capsys.readouterr().out.splitlines()
-    assert f.commit == ids[0] and rows(state)[-2:] == [("deploy", ids[0], ids[1], "fault", 0),
+    assert f.commit == ids[0] and rows(state)[-2:] == [("deploy", ids[0], ids[1], "fault", None),   # not counted
                                                        ("rollback", ids[1], ids[0], "proven", 0)]
 
 
@@ -510,6 +512,167 @@ def test_a_unit_whose_main_process_is_not_yerkd_is_refused_and_a_named_unit_wins
     out = capsys.readouterr().out.splitlines()
     assert made == ["host", "yerkd-named"] and f.restarts == [ids[1]] and not [x for x in out if "from its pid" in x]
     assert Ledger(state / "ledger.sqlite").rows(1, "deploys")[0]["unit"] == "yerkd-named"
+
+
+def test_a_fault_in_the_quiet_wait_or_the_open_rows_read_refuses_and_puts_the_tree_back(tmp_path, capsys, monkeypatch):
+    tree, ids = repo(tmp_path)
+    priv, state = layer(tmp_path, tree)
+    f = Fake(tree)
+    for name in ("last_received", "inbound_open"):                     # the quiet check's read, then settle's own
+        real, once = getattr(Ledger, name), []
+
+        def locked(self, *a, real=real, once=once, **k):
+            if not once:
+                once.append(1)
+                raise sqlite3.OperationalError("database is locked")
+            return real(self, *a, **k)
+        with monkeypatch.context() as m:
+            m.setattr(Ledger, name, locked)
+            assert deploy.run(priv, state, ids[1], tests=False, sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap) == 1
+        assert capsys.readouterr().out.splitlines() == [f"{words.NOT_DONE} not deployed",
+                                                        f"{words.PLAIN} OperationalError in locked",
+                                                        f"{words.PLAIN} nothing was stopped", f"{words.PLAIN} fast tests skipped"]
+        assert once and f.restarts == [] and where(tree) == ("main", ids[0])          # the checkout put back
+    assert rows(state) == [("deploy", ids[0], ids[1], "fault", 0)] * 2
+
+
+def test_ctrl_c_in_the_quiet_wait_stops_nothing_and_in_the_proof_rolls_back_then_exits_130(tmp_path, capsys, monkeypatch):
+    tree, ids = repo(tmp_path)
+    priv, state = layer(tmp_path, tree)
+    f = Fake(tree)
+    f.busy = True                                                      # a turn runs: Ctrl-C lands in the wait
+
+    def ctrl_c(_s):
+        raise KeyboardInterrupt
+    try:
+        code = deploy.run(priv, state, ids[1], tests=False, sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=ctrl_c)
+    except KeyboardInterrupt:
+        code = "a traceback"
+    assert code == 130 and f.restarts == [] and where(tree) == ("main", ids[0])
+    assert capsys.readouterr().out.splitlines() == [f"{words.NOT_DONE} not deployed", f"{words.PLAIN} KeyboardInterrupt in ctrl_c",
+                                                    f"{words.PLAIN} nothing was stopped", f"{words.PLAIN} fast tests skipped"]
+    f.busy, real, calls = False, deploy.prove, []
+
+    def prove(*a, **k):
+        calls.append(1)
+        if len(calls) == 1:
+            raise KeyboardInterrupt                                    # after the restart, before any check
+        return real(*a, **k)
+    monkeypatch.setattr(deploy, "prove", prove)
+    try:
+        code = deploy.run(priv, state, ids[1], tests=False, sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap)
+    except KeyboardInterrupt:
+        code = "a traceback"
+    out = capsys.readouterr().out.splitlines()
+    assert code == 130 and f.restarts == [ids[1], ids[0]] and f.commit == ids[0] and where(tree) == ("main", ids[0])
+    assert out[:4] == [f"{words.NOT_DONE} {ids[1][:7]} broke off, not proven", f"{words.PLAIN} fast tests skipped",
+                       f"{words.NOT_DONE} KeyboardInterrupt in prove", f"{words.PLAIN} no turn cut"]
+    assert f"{words.DONE} rolled back to {ids[0][:7]}" in out
+    assert rows(state)[-2:] == [("deploy", ids[0], ids[1], "fault", 0), ("rollback", ids[1], ids[0], "proven", 0)]
+
+
+def test_sigterm_or_sighup_in_the_proof_rolls_back_as_ctrl_c_does_and_the_handlers_come_back(tmp_path, capsys):
+    for sig in (signal.SIGTERM, signal.SIGHUP):
+        (tmp_path / sig.name).mkdir()
+        tree, ids = repo(tmp_path / sig.name)
+        priv, state = layer(tmp_path / sig.name, tree)
+        f, hits, sent = Fake(tree), [], []
+        plain = f.ask
+
+        def ask(st, f=f, plain=plain, sent=sent, sig=sig):            # the first check after the restart: the signal
+            if f.restarts and not sent:
+                sent.append(sig)
+                os.kill(os.getpid(), sig)
+            return plain(st)
+        f.ask = ask
+
+        def mine(*a, hits=hits):                                       # the test's own: the old code left it the signal
+            hits.append(a)
+        before = signal.signal(sig, mine)
+        try:
+            code = deploy.run(priv, state, ids[1], tests=False, sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap)
+            assert signal.getsignal(sig) is mine                       # put back after the deploy
+        finally:
+            signal.signal(sig, before)
+        out = capsys.readouterr().out.splitlines()
+        assert sent == [sig] and hits == [] and code == 130 and f.restarts == [ids[1], ids[0]] and f.commit == ids[0]
+        assert out[2].startswith(f"{words.NOT_DONE} {sig.name} in ") and f"{words.DONE} rolled back to {ids[0][:7]}" in out
+        assert rows(state) == [("deploy", ids[0], ids[1], "fault", 0), ("rollback", ids[1], ids[0], "proven", 0)]
+
+
+def test_the_row_is_written_before_the_restart_so_a_sigkill_there_leaves_one_the_morning_diff_names(tmp_path, capsys):
+    tree, ids = repo(tmp_path)
+    priv, state = layer(tmp_path, tree)
+    f, seen = Fake(tree), []
+    led, accounts, cool = Ledger(state / "ledger.sqlite"), load_accounts(priv / "accounts.toml"), Cooldowns(state / "c.json")
+    live, real = {"units": [], "started": time.time() - 86400}, f.restart
+
+    def restart():                                                     # a SIGKILL here leaves what the ledger holds now
+        seen.append((rows(state), morning.build(priv, state, accounts, cool, led, live, time.time() + 60)[0]))
+        return real()
+    f.restart = restart
+    assert deploy.run(priv, state, ids[1], tests=False, sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap) == 0
+    (during, diff), = seen
+    assert during == [("deploy", ids[0], ids[1], "begun", None)]
+    assert [x for x in diff if x.startswith(f"{words.NOT_DONE} deploy {ids[1][:7]}: begun")]
+    assert rows(state) == [("deploy", ids[0], ids[1], "proven", 0)]                # the same row, set after the proof
+
+
+def test_a_row_that_cannot_be_written_never_skips_the_rollback_and_a_deploy_without_one_never_restarts(
+        tmp_path, capsys, monkeypatch):
+    tree, ids = repo(tmp_path)
+    priv, state = layer(tmp_path, tree)
+    f, real, lock = Fake(tree, connected=lambda commit: commit != ids[1]), Ledger.deploy, {"outcome": "proof failed"}
+
+    def deploy_row(self, *a, **k):                                     # the ledger locked when that row is written
+        if k.get("outcome") == lock["outcome"]:
+            raise sqlite3.OperationalError("database is locked")
+        return real(self, *a, **k)
+    monkeypatch.setattr(Ledger, "deploy", deploy_row)
+    assert deploy.run(priv, state, ids[1], tests=False, sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap) == 1
+    got = capsys.readouterr()
+    out = got.out.splitlines()
+    assert f.restarts == [ids[1], ids[0]] and f.commit == ids[0] and where(tree) == ("main", ids[0])   # rolled back
+    assert f"{words.NOT_DONE} deploy outcome not in the ledger" in out and f"{words.DONE} rolled back to {ids[0][:7]}" in out
+    assert got.err.splitlines() == ["deploy: the deploy row was not written: OperationalError in deploy_row"]
+    assert rows(state) == [("deploy", ids[0], ids[1], "begun", None), ("rollback", ids[1], ids[0], "proven", 0)]
+    lock["outcome"] = "begun"                                          # no row before the restart: no restart
+    assert deploy.run(priv, state, ids[1], tests=False, sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap) == 1
+    assert capsys.readouterr().out.splitlines() == [f"{words.NOT_DONE} not deployed",
+                                                    f"{words.PLAIN} OperationalError in deploy_row",
+                                                    f"{words.PLAIN} nothing was stopped", f"{words.PLAIN} fast tests skipped"]
+    assert f.restarts == [ids[1], ids[0]] and where(tree) == ("main", ids[0]) and rows(state)[-1][3] == "fault"
+
+
+def test_when_the_restart_or_the_cut_count_raised_the_card_says_the_cut_was_not_counted(tmp_path, capsys, monkeypatch):
+    tree, ids = repo(tmp_path)
+    priv, state = layer(tmp_path, tree)
+    f = Fake(tree)
+    real, calls = f.restart, []
+
+    def restart():
+        calls.append(1)
+        if len(calls) == 1:
+            raise OSError("the bus did not answer")
+        return real()
+    f.restart = restart
+    assert deploy.run(priv, state, ids[1], tests=False, sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap) == 1
+    out = capsys.readouterr().out.splitlines()
+    assert out[2:4] == [f"{words.NOT_DONE} OSError in restart", f"{words.NOT_DONE} turns cut: not counted"]
+    assert out.count(f"{words.PLAIN} no turn cut") == 1 and out.index(f"{words.PLAIN} no turn cut") > 4   # the rollback's
+    assert rows(state) == [("deploy", ids[0], ids[1], "fault", None), ("rollback", ids[1], ids[0], "proven", 0)]
+    real_cut, counts = deploy.cut, []
+
+    def cut(*a, **k):                                                  # the ledger locked when the cut is counted
+        counts.append(1)
+        if len(counts) == 1:
+            raise sqlite3.OperationalError("database is locked")
+        return real_cut(*a, **k)
+    monkeypatch.setattr(deploy, "cut", cut)
+    assert deploy.run(priv, state, ids[1], tests=False, sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap) == 1
+    out = capsys.readouterr().out.splitlines()
+    assert out[2:4] == [f"{words.NOT_DONE} OperationalError in cut", f"{words.NOT_DONE} turns cut: not counted"]
+    assert rows(state)[-2:] == [("deploy", ids[0], ids[1], "fault", None), ("rollback", ids[1], ids[0], "proven", 0)]
 
 
 def test_with_no_status_before_the_deploy_the_proof_wants_every_room_in_rooms_toml(tmp_path, capsys):
