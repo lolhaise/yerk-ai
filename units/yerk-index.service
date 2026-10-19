@@ -2,6 +2,15 @@
 # ~/.config/systemd/user/ and `systemctl --user enable --now yerk-index.service`. It reads
 # [memory] in the private yerkd.toml for its roots; the index file is <state>/memory/index.sqlite.
 # Low CPU and idle IO priority so index work never competes with the daemon serving rooms.
+#
+# Memory is mostly the vectors meaning search keeps here: one float16 matrix grown in blocks of 16,384
+# vectors, 8.3M a block (346,389 vectors, 22 blocks, 183M on 2026-10-19). The interpreter, numpy and
+# SQLite add about 50M, and the searches' scratch about 90M more, which glibc kept one arena per request
+# thread; MALLOC_ARENA_MAX=2 keeps that to about 35M (a copy of the tree after 300 searches, 2026-10-19).
+# That is about 270M; MemoryHigh=300M sat on it, so the unit lived at its cap, reclaiming and swapping
+# (a 19 to 239M swap peak every run). MemoryHigh=450M is the 270M, 25M of file pages and 150M for 18
+# more blocks (about 295,000 vectors): past it the kernel reclaims and slows the unit, and kills nothing.
+# Raise it by 9M per 16,384 vectors past 640,000.
 [Unit]
 Description=Yerk AI memory index (FTS5 over the private memory tree)
 
@@ -10,13 +19,14 @@ Type=simple
 Environment=YERK_PRIVATE=%h/yerk-private
 Environment=YERK_STATE=%h/.local/state/yerk
 Environment=PYTHONUNBUFFERED=1
+Environment=MALLOC_ARENA_MAX=2
 WorkingDirectory=%h/yerk-ai
 ExecStart=%h/yerk-ai/.venv/bin/python -m yerk_ai.memindex
 Restart=on-failure
 RestartSec=10s
 Nice=10
 IOSchedulingClass=idle
-MemoryHigh=300M
+MemoryHigh=450M
 
 [Install]
 WantedBy=default.target

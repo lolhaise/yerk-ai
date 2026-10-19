@@ -126,10 +126,10 @@ class Builder:
         self.sig: list[Any] | None = None
 
     def is_source(self, path: Path) -> bool:
+        if not (path.name in self.curated or (path.parent.name == "facts" and path.suffix == ".md")):
+            return False                                  # most paths: no stat, no cite (a pass asks of every one)
         rel = short_cite(path, self.roots)
-        if any(fnmatch(rel, p) or fnmatch(path.name, p) for p in self.exclude):
-            return False
-        return path.name in self.curated or (path.parent.name == "facts" and path.suffix == ".md")
+        return not any(fnmatch(rel, p) or fnmatch(path.name, p) for p in self.exclude)
 
     def refresh(self, disk: dict[str, tuple[int, int]]) -> tuple[int, int, int] | None:
         from .config import write_private

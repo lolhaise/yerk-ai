@@ -8,7 +8,7 @@
 
 One SQLite file in the state folder (DESIGN 5; L47) holds an FTS5 keyword index over the private memory
 the daily logs, fact files, the curated file and open loops, plus any read-only roots the private
-yerkd.toml adds. Every `interval` seconds the process stats the tree; a file whose size or mtime
+yerkd.toml adds. The process stats the tree when inotify says a file in it moved; a file whose size or mtime
 moved is chunked again and only the chunks whose text changed are written, one short transaction
 so a line appended to a day's log rewrites one chunk (L48, L49). A full rebuild runs only on `--rebuild`.
 `--check` compares the index with the disk, never with the index's own report (L53), and a timeout reads
@@ -23,8 +23,10 @@ import logging
 import math
 import os
 import re
+import select
 import signal
 import sqlite3
+import struct
 import sys
 import time
 import unicodedata
@@ -155,8 +157,8 @@ class Scope:
                 return not any(p.startswith(".") or p in SKIP_DIRS for p in parts) and not self.skipped(path)
         return False
 
-    def files(self, deadline: float | None = None) -> dict[str, tuple[int, int]]:
-        """path -> (size, mtime_ns) for every file in scope, from the disk."""
+    def files(self, deadline: float | None = None, folders: list[str] | None = None) -> dict[str, tuple[int, int]]:
+        """path -> (size, mtime_ns) for every file in scope, from the disk; `folders` gets each folder read."""
         if not self.roots:
             raise ValueError("the memory index has no roots: refusing to index nothing as if it were fresh")
         out: dict[str, tuple[int, int]] = {}
@@ -164,10 +166,14 @@ class Scope:
             if root.is_file():
                 st = root.stat()
                 out[str(root)] = (st.st_size, st.st_mtime_ns)
+                if folders is not None:
+                    folders.append(str(root.parent))
                 continue
             for dirpath, dirnames, filenames in os.walk(root):
                 if deadline is not None and time.monotonic() > deadline:
                     raise Timeout(f"walking {root} ran past the deadline")
+                if folders is not None:
+                    folders.append(dirpath)
                 dirnames[:] = sorted(d for d in dirnames if not d.startswith(".") and d not in SKIP_DIRS)
                 for n in filenames:
                     p = Path(dirpath, n)
@@ -249,6 +255,7 @@ class Index:
         self.db, self.scope = db, scope
         self.real = live(db)
         self.disk: dict[str, tuple[int, int]] = {}      # the last pass's view of the disk
+        self.folders: list[str] = []                      # the folders that pass read: the ones the watch covers
         self.on_insert = on_insert                        # (chunk hashes, unit hashes) just written: the embedding thread
         self.conn = connect(db, readonly=False)
         cur = self.conn.cursor()
@@ -339,7 +346,8 @@ class Index:
             self.conn.close()
             self.real, self.conn = live(self.db), connect(self.db, readonly=False)
             log.info("the index was rebuilt: writing to %s now", self.real.name)
-        disk = self.disk = self.scope.files()
+        self.folders = []
+        disk = self.disk = self.scope.files(folders=self.folders)
         indexed = {p: (s, m) for p, s, m in self.conn.execute("SELECT path, size, mtime_ns FROM files")}
         st = {"files": len(disk), "changed": 0, "gone": 0, "inserted": 0, "deleted": 0}
         for path, stat in disk.items():
@@ -485,6 +493,45 @@ def check(db: Path, scope: Scope, deadline_s: float = 10.0, grace: float = GRACE
 
 
 CHECK_EXIT = {"fresh": 0, "pending": 0, "stale": 1, "scope-changed": 1, "failure": 2, "timeout": 3}
+BACKSTOP = 60.0          # seconds a watched loop waits with no event before it walks anyway (a lost event)
+
+
+class Wake:
+    """inotify on the folders a pass read (the approach of workers.Watch): the loop sleeps until a
+    Markdown file there, or a root that is one file, is written, moved, made or deleted, or a folder
+    comes or goes. With no inotify, or past the watch limit, the loop walks every `interval` as it did;
+    BACKSTOP catches a folder inotify cannot see (a network or Windows mount)."""
+    MASK = 0x2 | 0x4 | 0x8 | 0x40 | 0x80 | 0x100 | 0x200     # MODIFY ATTRIB CLOSE_WRITE MOVED_FROM MOVED_TO CREATE DELETE
+    ANY = 0x4000 | 0x8000 | 0x40000000                       # Q_OVERFLOW IGNORED ISDIR: a pass whatever the name
+
+    def __init__(self, names: tuple[str, ...] = ()):
+        import ctypes
+        self.libc = ctypes.CDLL("libc.so.6", use_errno=True)
+        self.fd = int(self.libc.inotify_init1(os.O_NONBLOCK | os.O_CLOEXEC))
+        self.names, self.wds = {os.fsencode(n) for n in names}, set[int]()
+
+    def watch(self, folder: str) -> bool:
+        """True when the folder is new to the watch: the caller walks once more, for a file made in it
+        before its watch was there. A folder gone since the walk is skipped; the next pass sees it."""
+        wd = int(self.libc.inotify_add_watch(self.fd, os.fsencode(folder), self.MASK)) if self.fd >= 0 else -1
+        if wd < 0 <= self.fd and os.path.isdir(folder):          # the watch limit: back to the interval
+            log.warning("no watch for %s: a pass every interval from now", folder)
+            os.close(self.fd)
+            self.fd = -1
+        new = wd >= 0 and wd not in self.wds
+        self.wds.add(wd)
+        return new
+
+    def wait(self, timeout: float) -> bool:
+        """True when an event that can move the scope came within `timeout` seconds."""
+        if self.fd < 0 or not select.select([self.fd], [], [], max(0.0, timeout))[0]:
+            return False
+        data, i, hit = os.read(self.fd, 65536), 0, False
+        while i + 16 <= len(data):
+            _, mask, _, n = struct.unpack_from("iIII", data, i)
+            name, i = data[i + 16:i + 16 + n].rstrip(b"\0"), i + 16 + n
+            hit = hit or bool(mask & self.ANY) or name.endswith(b".md") or name in self.names
+        return hit
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -495,7 +542,7 @@ def main(argv: list[str] | None = None) -> int:
                                 "memory tree, updated per changed chunk, in its own process.")
     p.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else the fake example layer)")
     p.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
-    p.add_argument("--interval", type=float, help="seconds between passes (default: [memory] interval, else 2)")
+    p.add_argument("--interval", type=float, help="the least seconds between passes, which wait on a folder watch (default: [memory] interval, else 2)")
     p.add_argument("--once", action="store_true", help="one pass, then exit")
     p.add_argument("--rebuild", action="store_true", help="drop the index and build it again (the only full reindex)")
     p.add_argument("--check", action="store_true", help="compare the index with the disk; exit 0 fresh or "
@@ -532,6 +579,7 @@ def main(argv: list[str] | None = None) -> int:
     signal.signal(signal.SIGTERM, _stop)
     signal.signal(signal.SIGINT, _stop)
     interval = a.interval or m.interval
+    wake = Wake(tuple(r.name for r in m.scope.roots if r.is_file()))
     first = True
     chunks = 0
     while not stop:
@@ -564,9 +612,13 @@ def main(argv: list[str] | None = None) -> int:
             first = False
         if a.once:
             break
-        end = time.monotonic() + max(0.2, interval - took)
+        again = any([wake.watch(f) for f in idx.folders]) or not st      # a new folder, or a skipped pass: walk again
+        end = time.monotonic() + max(0.2, interval - took)       # never two passes closer than `interval`
         while not stop and time.monotonic() < end:
             time.sleep(0.1)
+        late = time.monotonic() + (0 if again or wake.fd < 0 else BACKSTOP)    # then sleep until a file in scope moves
+        while not stop and time.monotonic() < late and not wake.wait(min(1.0, late - time.monotonic())):
+            pass
     back.stop.set()
     server.stop()
     idx.close()
