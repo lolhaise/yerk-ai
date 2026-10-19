@@ -74,13 +74,8 @@ def units_of(body: str) -> list[tuple[str, str]]:
     fact or topic file): every line whose text past its bullet or heading marks is UNIT_MIN
     characters or more, once per distinct text. A chunk of one line yields that line, whose sha is
     the chunk's own, so the two share one vector."""
-    out: dict[str, str] = {}
-    for line in body.splitlines():
-        text = line.strip()
-        if len(text.lstrip("-*#> ").strip()) < UNIT_MIN:
-            continue
-        out.setdefault(hashlib.sha1(text.encode()).hexdigest(), text)
-    return list(out.items())
+    texts = (line.strip() for line in body.splitlines())
+    return list({hashlib.sha1(t.encode()).hexdigest(): t for t in texts if len(t.lstrip("-*#> ").strip()) >= UNIT_MIN}.items())
 
 STOP = frozenset("""a about after again all also am an and any are as at be because been before being both
 but by can could did do does doing done for from get got had has have he her here him his how i if in into
@@ -95,20 +90,17 @@ class Timeout(Exception):
 
 
 def norm(s: str) -> str:
-    s = unicodedata.normalize("NFKD", s or "")
-    s = "".join(ch for ch in s if not unicodedata.combining(ch))
+    s = "".join(ch for ch in unicodedata.normalize("NFKD", s or "") if not unicodedata.combining(ch))
     return re.sub(r"\s+", " ", s).lower()
 
 
 def is_timeout(e: BaseException) -> bool:
     """A locked, busy or interrupted database is a timeout; anything else from SQLite is a failure."""
-    m = str(e).lower()
-    return isinstance(e, Timeout) or "locked" in m or "busy" in m or "interrupted" in m
+    return isinstance(e, Timeout) or any(w in str(e).lower() for w in ("locked", "busy", "interrupted"))
 
 
 def fts5_unavailable(e: sqlite3.OperationalError) -> bool:
-    m = str(e).lower()
-    return ("no such module" in m and "fts5" in m) or "no such tokenizer" in m
+    return ("no such module" in (m := str(e).lower()) and "fts5" in m) or "no such tokenizer" in m
 
 
 def drop_orphan_shadow_tables(cur: sqlite3.Cursor, families: list[str]) -> list[str]:
@@ -121,9 +113,8 @@ def drop_orphan_shadow_tables(cur: sqlite3.Cursor, families: list[str]) -> list[
                        "AND sql LIKE 'CREATE VIRTUAL TABLE%'", (fam,)).fetchone():
             continue
         shadows = [f"{fam}_{s}" for s in ("content", "data", "docsize", "idx", "config")]
-        orphans = [r[0] for r in cur.execute(
-            f"SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ({','.join('?' * len(shadows))})",
-            shadows)]
+        orphans = [r[0] for r in cur.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN "
+                                             f"({','.join('?' * len(shadows))})", shadows)]
         for name in orphans:
             cur.execute(f'DROP TABLE "{name}"')
         if orphans:
@@ -162,18 +153,17 @@ class Scope:
         if not self.roots:
             raise ValueError("the memory index has no roots: refusing to index nothing as if it were fresh")
         out: dict[str, tuple[int, int]] = {}
+        folders = [] if folders is None else folders
         for root in self.roots:
             if root.is_file():
                 st = root.stat()
                 out[str(root)] = (st.st_size, st.st_mtime_ns)
-                if folders is not None:
-                    folders.append(str(root.parent))
+                folders.append(str(root.parent))
                 continue
             for dirpath, dirnames, filenames in os.walk(root):
                 if deadline is not None and time.monotonic() > deadline:
                     raise Timeout(f"walking {root} ran past the deadline")
-                if folders is not None:
-                    folders.append(dirpath)
+                folders.append(dirpath)
                 dirnames[:] = sorted(d for d in dirnames if not d.startswith(".") and d not in SKIP_DIRS)
                 for n in filenames:
                     p = Path(dirpath, n)
@@ -268,13 +258,11 @@ class Index:
             raise
         if repaired:
             self.conn.execute("INSERT INTO chunks_fts(chunks_fts) VALUES ('rebuild')")
-        old = self.meta("scope")
-        if old and old != scope.key():
+        if (old := self.meta("scope")) and old != scope.key():
             log.warning("index scope changed (%s -> %s): files out of scope go, new ones come in", old, scope.key())
 
     def meta(self, key: str) -> str | None:
-        row = self.conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
-        return str(row[0]) if row else None
+        return str(row[0]) if (row := self.conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()) else None
 
     def set_meta(self, **kv: Any) -> None:
         self.conn.executemany("INSERT INTO meta(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET "
@@ -303,7 +291,7 @@ class Index:
         gone = [sha for sha, kept in old.items() if kept]
         units = [(u, sha, t) for _, _, _, sha, body in ins for u, t in units_of(body)]
         self.conn.execute("BEGIN IMMEDIATE")
-        try:
+        with self.conn:                                         # COMMIT, or ROLLBACK on any exception
             self.conn.executemany("DELETE FROM chunks WHERE id = ?", dels)
             self.conn.executemany("UPDATE chunks SET lo = ?, hi = ? WHERE id = ?", moves)
             self.conn.executemany("INSERT INTO chunks(path, lo, hi, sha, body) VALUES (?, ?, ?, ?, ?)", ins)
@@ -313,10 +301,6 @@ class Index:
                               "ON CONFLICT(path) DO UPDATE SET size = excluded.size, mtime_ns = excluded.mtime_ns, "
                               "chunks = excluded.chunks, indexed = excluded.indexed",
                               (path, stat[0], stat[1], len(new), time.time()))
-            self.conn.execute("COMMIT")
-        except BaseException:
-            self.conn.execute("ROLLBACK")
-            raise
         if ins and self.on_insert:
             self.on_insert([sha for _, _, _, sha, _ in ins], [u for u, _, _ in units])
         return len(ins), len(dels)
@@ -329,14 +313,10 @@ class Index:
     def forget(self, path: str) -> int:
         shas = [str(r[0]) for r in self.conn.execute("SELECT DISTINCT sha FROM chunks WHERE path = ?", (path,))]
         self.conn.execute("BEGIN IMMEDIATE")
-        try:
+        with self.conn:
             n = self.conn.execute("DELETE FROM chunks WHERE path = ?", (path,)).rowcount
             self.conn.execute("DELETE FROM files WHERE path = ?", (path,))
             self._drop_units(shas)
-            self.conn.execute("COMMIT")
-        except BaseException:
-            self.conn.execute("ROLLBACK")
-            raise
         return n
 
     def sync(self) -> dict[str, int]:
@@ -353,15 +333,12 @@ class Index:
         for path, stat in disk.items():
             if indexed.get(path) != stat:
                 i, d = self.update(path, stat)
-                st["changed"] += 1
-                st["inserted"] += i
-                st["deleted"] += d
+                st.update(changed=st["changed"] + 1, inserted=st["inserted"] + i, deleted=st["deleted"] + d)
         for path in indexed.keys() - disk.keys():
             st["deleted"] += self.forget(path)
             st["gone"] += 1
-        chunks = self.conn.execute("SELECT max(id), count(*) FROM chunks").fetchone()
-        self.set_meta(scope=self.scope.key(), synced=round(time.time(), 3), chunks=chunks[1] or 0)
-        st["chunks"] = int(chunks[1] or 0)
+        st["chunks"] = int(self.conn.execute("SELECT count(*) FROM chunks").fetchone()[0])
+        self.set_meta(scope=self.scope.key(), synced=round(time.time(), 3), chunks=st["chunks"])
         return st
 
     def close(self) -> None:
@@ -421,11 +398,7 @@ def sweep(db: Path, grace: float = SWEEP_GRACE, now: float | None = None) -> lis
 
 
 def terms(query: str) -> list[str]:
-    out: list[str] = []
-    for w in WORD.findall(norm(query)):
-        if len(w) > 1 and w not in STOP and w not in out:
-            out.append(w)
-    return out[:24]
+    return list(dict.fromkeys(w for w in WORD.findall(norm(query)) if len(w) > 1 and w not in STOP))[:24]
 
 
 def search(conn: sqlite3.Connection, query: str, k: int = 6, pool: int = 80,
@@ -481,12 +454,7 @@ def check(db: Path, scope: Scope, deadline_s: float = 10.0, grace: float = GRACE
     gone = [p for p in indexed if p not in disk]
     old = [p for p in changed if now - disk[p][1] / 1e9 > grace]
     lag = max((now - disk[p][1] / 1e9 for p in changed), default=0.0)
-    if key != scope.key():
-        status = "scope-changed"
-    elif old or gone:
-        status = "stale"
-    else:
-        status = "pending" if changed else "fresh"
+    status = "scope-changed" if key != scope.key() else "stale" if old or gone else "pending" if changed else "fresh"
     return {"status": status, "files": len(disk), "indexed": len(indexed), "changed": len(changed),
             "stale": len(old), "gone": len(gone), "lag_s": round(lag, 1), "synced_ago_s": round(now - synced, 1),
             "examples": (old or gone or changed)[:3]}
@@ -497,12 +465,10 @@ BACKSTOP = 60.0          # seconds a watched loop waits with no event before it 
 
 
 class Wake:
-    """inotify on the folders a pass read (the approach of workers.Watch): the loop sleeps until a
-    Markdown file there, or a root that is one file, is written, moved, made or deleted, or a folder
-    comes or goes. With no inotify, or past the watch limit, the loop walks every `interval` as it did;
-    BACKSTOP catches a folder inotify cannot see (a network or Windows mount)."""
+    """inotify on the folders a pass read (the approach of workers.Watch): the loop sleeps until a Markdown file
+    there, a root that is one file, or a folder moves. With no inotify, or past the watch limit, it walks every
+    `interval` as it did; BACKSTOP catches a folder inotify cannot see (a network or Windows mount)."""
     MASK = 0x2 | 0x4 | 0x8 | 0x40 | 0x80 | 0x100 | 0x200     # MODIFY ATTRIB CLOSE_WRITE MOVED_FROM MOVED_TO CREATE DELETE
-    ANY = 0x4000 | 0x8000 | 0x40000000                       # Q_OVERFLOW IGNORED ISDIR: a pass whatever the name
 
     def __init__(self, names: tuple[str, ...] = ()):
         import ctypes
@@ -511,10 +477,9 @@ class Wake:
         self.names, self.wds = {os.fsencode(n) for n in names}, set[int]()
 
     def watch(self, folder: str) -> bool:
-        """True when the folder is new to the watch: the caller walks once more, for a file made in it
-        before its watch was there. A folder gone since the walk is skipped; the next pass sees it."""
+        """True for a folder new to the watch: the caller walks once more, for a file made before the watch."""
         wd = int(self.libc.inotify_add_watch(self.fd, os.fsencode(folder), self.MASK)) if self.fd >= 0 else -1
-        if wd < 0 <= self.fd and os.path.isdir(folder):          # the watch limit: back to the interval
+        if wd < 0 <= self.fd and os.path.isdir(folder):          # past the watch limit (a folder gone is no matter)
             log.warning("no watch for %s: a pass every interval from now", folder)
             os.close(self.fd)
             self.fd = -1
@@ -523,14 +488,14 @@ class Wake:
         return new
 
     def wait(self, timeout: float) -> bool:
-        """True when an event that can move the scope came within `timeout` seconds."""
-        if self.fd < 0 or not select.select([self.fd], [], [], max(0.0, timeout))[0]:
+        """True when a Markdown file or a folder moved within `timeout` seconds; with no watch, a sleep."""
+        if not select.select([self.fd] if self.fd >= 0 else [], [], [], max(0.0, timeout))[0]:
             return False
         data, i, hit = os.read(self.fd, 65536), 0, False
         while i + 16 <= len(data):
             _, mask, _, n = struct.unpack_from("iIII", data, i)
             name, i = data[i + 16:i + 16 + n].rstrip(b"\0"), i + 16 + n
-            hit = hit or bool(mask & self.ANY) or name.endswith(b".md") or name in self.names
+            hit = hit or bool(mask & 0x4000C000) or name.endswith(b".md") or name in self.names   # OVERFLOW IGNORED ISDIR
         return hit
 
 
@@ -542,7 +507,7 @@ def main(argv: list[str] | None = None) -> int:
                                 "memory tree, updated per changed chunk, in its own process.")
     p.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else the fake example layer)")
     p.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
-    p.add_argument("--interval", type=float, help="the least seconds between passes, which wait on a folder watch (default: [memory] interval, else 2)")
+    p.add_argument("--interval", type=float, help="the least seconds between passes (default: [memory] interval, else 2)")
     p.add_argument("--once", action="store_true", help="one pass, then exit")
     p.add_argument("--rebuild", action="store_true", help="drop the index and build it again (the only full reindex)")
     p.add_argument("--check", action="store_true", help="compare the index with the disk; exit 0 fresh or "
@@ -552,8 +517,7 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     m = settings(private_dir(a.private), state_dir(a.state))
     if a.check:
-        r = check(m.index_db, m.scope, a.deadline)
-        print(json.dumps(r))
+        print(json.dumps(r := check(m.index_db, m.scope, a.deadline)))
         return CHECK_EXIT[r["status"]]
     if a.rebuild:
         rebuild(m.index_db, m.scope)
@@ -571,17 +535,12 @@ def main(argv: list[str] | None = None) -> int:
         log.info("meaning search: %s; %d vectors loaded (%s, %d of %d dimensions kept, %.1f MB); serving on 127.0.0.1:%d",
                  "key present" if embedder.available() else "no key, keywords only", loaded, m.embeddings_units,
                  store.width, m.embeddings_dim, store.bytes() / 1e6, port)
-    stop = False
-
-    def _stop(*_: Any) -> None:
-        nonlocal stop
-        stop = True
-    signal.signal(signal.SIGTERM, _stop)
-    signal.signal(signal.SIGINT, _stop)
+    stop: list[int] = []                                     # the signal that ends the loop, once one came
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        signal.signal(sig, lambda n, _: stop.append(n))
     interval = a.interval or m.interval
     wake = Wake(tuple(r.name for r in m.scope.roots if r.is_file()))
-    first = True
-    chunks = 0
+    first, chunks = True, 0
     while not stop:
         t0 = time.monotonic()
         try:
@@ -597,12 +556,10 @@ def main(argv: list[str] | None = None) -> int:
             for gone in sweep(m.index_db):
                 log.info("swept the old generation file %s", gone)
             if not a.once:
-                embeddings.write_status(m.index_status, port=server.port, chunks=chunks,
-                                        embeddings={"key": embedder.available(), "model": m.embeddings_model,
-                                                    "dim": m.embeddings_dim, "vectors": store.n, "units": m.embeddings_units,
-                                                    "width": store.width, **back.status(),
-                                                    "requests": embedder.requests, "tokens": embedder.tokens,
-                                                    "rss_kb": embeddings.rss_kb(), "store_bytes": store.bytes()})
+                embeddings.write_status(m.index_status, port=server.port, chunks=chunks, embeddings={
+                    "key": embedder.available(), "model": m.embeddings_model, "dim": m.embeddings_dim, "vectors": store.n,
+                    "units": m.embeddings_units, "width": store.width, **back.status(), "requests": embedder.requests,
+                    "tokens": embedder.tokens, "rss_kb": embeddings.rss_kb(), "store_bytes": store.bytes()})
         except OSError as e:
             log.warning("mention index, sweep or status skipped: %s", e)
         took = time.monotonic() - t0
@@ -613,12 +570,10 @@ def main(argv: list[str] | None = None) -> int:
         if a.once:
             break
         again = any([wake.watch(f) for f in idx.folders]) or not st      # a new folder, or a skipped pass: walk again
-        end = time.monotonic() + max(0.2, interval - took)       # never two passes closer than `interval`
-        while not stop and time.monotonic() < end:
-            time.sleep(0.1)
-        late = time.monotonic() + (0 if again or wake.fd < 0 else BACKSTOP)    # then sleep until a file in scope moves
-        while not stop and time.monotonic() < late and not wake.wait(min(1.0, late - time.monotonic())):
-            pass
+        soon = time.monotonic() + max(0.2, interval - took)              # never two passes closer than `interval`;
+        late, woke = soon + BACKSTOP, again or wake.fd < 0               # past it, a file in scope that moves starts one
+        while not stop and time.monotonic() < (soon if woke else late):
+            woke = wake.wait(min(1.0, (soon if woke else late) - time.monotonic())) or woke
     back.stop.set()
     server.stop()
     idx.close()
