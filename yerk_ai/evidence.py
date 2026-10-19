@@ -128,14 +128,40 @@ def has_figure(text: str, fig: str) -> bool:
     return re.search(r"(?<![\w$,.\-])" + re.escape(fig) + r"(?![\w,]|\.\d)", text) is not None
 
 
+# Not quotes of a line, so not looked up on file (matching their digits found unrelated lines: three
+# false alarms in one conversation, 2026-10-18): a version after a name ("Opus 5.5", "Python 3.12"),
+# a figure the reply marks as approximate ("about 22,000"), and a round figure with a number within
+# NEAR of it read this turn ("22,000" from a read 21,822).
+VERSION = re.compile(r"\b(?:opus|sonnet|haiku|fable|mythos|claude(?:\s+code)?|gpt|gemini|llama|qwen|python|node|"
+                     r"version|release|v)\s*$", re.I)
+APPROX = re.compile(r"(?:\b(?:about|around|roughly|nearly|almost|over|under|more\s+than|less\s+than|fewer\s+than|"
+                    r"close\s+to|upwards\s+of|approximately)\s+|~\s*)$", re.I)
+NUMBER = re.compile(r"(?<![\w.])\d{1,3}(?:,\d{3})+(?:\.\d+)?|(?<![\w.,])\d+(?:\.\d+)?")
+NEAR = 0.1
+
+
+def rounded_near(fig: str, seen: str) -> bool:
+    """A round figure (1,000 or more, ending in 00) with a number within NEAR of it in `seen`."""
+    digits = fig.lstrip("$").replace(",", "")
+    if not digits.isdigit() or int(digits) < 1000 or not digits.endswith("00"):
+        return False
+    v = int(digits)
+    return any(abs(float(n.replace(",", "")) - v) <= NEAR * v for n in NUMBER.findall(seen))
+
+
 def check(reply: str, prompts: list[str], ev: Evidence, roots: tuple[Path, ...],
           filed: Callable[[str], str | None], known: Callable[[str], str | None]) -> list[tuple[str, str]]:
     """(rule, detail) for each thing the reply leans on that the turn never read. Logs only."""
     out: list[tuple[str, str]] = []
     seen = ev.read_text()
-    for fig in dict.fromkeys(m.group(0).replace("$ ", "$") for m in FIGURE.finditer(reply)):
+    figures: dict[str, str] = {}                    # each figure once, with the words just before it
+    for m in FIGURE.finditer(reply):
+        figures.setdefault(m.group(0).replace("$ ", "$"), reply[max(0, m.start() - 24):m.start()])
+    for fig, before in figures.items():
         bare = fig.lstrip("$")
         if has_figure(seen, fig) or has_figure(seen, bare):
+            continue
+        if VERSION.search(before) or APPROX.search(before) or rounded_near(bare, seen):
             continue
         where = filed(bare)
         if where:
