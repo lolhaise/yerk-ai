@@ -40,12 +40,8 @@ KEY_STOP = frozenset("the and people home house work money rule rules note notes
 
 def tokens(s: str) -> list[str]:
     """Lowercase words, the possessive folded away, so "the kettle's lid" matches the key "kettle"."""
-    out = []
-    for t in TOKEN.findall(str(s or "").lower().replace("’", "'")):
-        t = re.sub(r"'s$|'$", "", t).strip(".-")
-        if t:
-            out.append(t)
-    return out
+    words = (re.sub(r"'s$|'$", "", t).strip(".-") for t in TOKEN.findall(str(s or "").lower().replace("’", "'")))
+    return [t for t in words if t]
 
 
 def strip_md(s: str) -> str:
@@ -126,10 +122,10 @@ class Builder:
         self.sig: list[Any] | None = None
 
     def is_source(self, path: Path) -> bool:
+        if not (path.name in self.curated or (path.parent.name == "facts" and path.suffix == ".md")):
+            return False                                  # most paths: no stat, no cite (a pass asks of every one)
         rel = short_cite(path, self.roots)
-        if any(fnmatch(rel, p) or fnmatch(path.name, p) for p in self.exclude):
-            return False
-        return path.name in self.curated or (path.parent.name == "facts" and path.suffix == ".md")
+        return not any(fnmatch(rel, p) or fnmatch(path.name, p) for p in self.exclude)
 
     def refresh(self, disk: dict[str, tuple[int, int]]) -> tuple[int, int, int] | None:
         from .config import write_private
@@ -138,8 +134,7 @@ class Builder:
             return None
         entries: list[dict[str, Any]] = []
         dropped = 0
-        for p, _, _ in srcs:
-            path = Path(p)
+        for path in (Path(p) for p, _, _ in srcs):
             try:
                 e, d = entries_of(path, short_cite(path, self.roots), path.name in self.curated)
             except OSError:
@@ -147,13 +142,11 @@ class Builder:
             entries += e
             dropped += d
         keys: dict[str, list[int]] = {}
-        for n, entry in enumerate(entries):
-            k = " ".join(tokens(entry["key"]))
-            if k and n not in keys.setdefault(k, []):
-                keys[k].append(n)
+        for n, entry in enumerate(entries):                    # each n once, so a key never lists it twice
+            if k := " ".join(tokens(entry["key"])):
+                keys.setdefault(k, []).append(n)
         self.out.parent.mkdir(parents=True, exist_ok=True)
-        write_private(self.out, json.dumps({"built": round(time.time(), 3), "sources": len(srcs),
-                                            "entries": entries, "keys": keys}))
+        write_private(self.out, json.dumps({"built": round(time.time(), 3), "sources": len(srcs), "entries": entries, "keys": keys}))
         self.sig = srcs
         return len(keys), len(entries), dropped
 
