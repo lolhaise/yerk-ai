@@ -465,16 +465,17 @@ BACKSTOP = 60.0          # seconds a watched loop waits with no event before it 
 
 
 class Wake:
-    """inotify on the folders a pass read (the approach of workers.Watch): the loop sleeps until a Markdown file
-    there, a root that is one file, or a folder moves. With no inotify, or past the watch limit, it walks every
-    `interval` as it did; BACKSTOP catches a folder inotify cannot see (a network or Windows mount)."""
-    MASK = 0x2 | 0x4 | 0x8 | 0x40 | 0x80 | 0x100 | 0x200     # MODIFY ATTRIB CLOSE_WRITE MOVED_FROM MOVED_TO CREATE DELETE
+    """inotify on the folders a pass read (the approach of workers.Watch): the loop sleeps until a Markdown file there,
+    a root that is one file, or a folder moves. With no inotify, or past the watch limit, it walks every `interval` as
+    it did; BACKSTOP catches what the watch cannot see (a network or Windows mount, an edit through another hard link)."""
+    MASK = 0x2 | 0x4 | 0x8 | 0x40 | 0x80 | 0x100 | 0x200 | 0x800   # MODIFY ATTRIB CLOSE_WRITE MOVED_FROM MOVED_TO CREATE DELETE MOVE_SELF
 
     def __init__(self, names: tuple[str, ...] = ()):
         import ctypes
         self.libc = ctypes.CDLL("libc.so.6", use_errno=True)
-        self.fd = int(self.libc.inotify_init1(os.O_NONBLOCK | os.O_CLOEXEC))
-        self.names, self.wds = {os.fsencode(n) for n in names}, set[int]()
+        if (fd := int(self.libc.inotify_init1(os.O_NONBLOCK | os.O_CLOEXEC))) < 0:
+            log.warning("no inotify (%s): a pass every interval", os.strerror(ctypes.get_errno()))
+        self.fd, self.names, self.wds = fd, {os.fsencode(n) for n in names}, set[int]()
 
     def watch(self, folder: str) -> bool:
         """True for a folder new to the watch: the caller walks once more, for a file made before the watch."""
@@ -495,7 +496,7 @@ class Wake:
         while i + 16 <= len(data):
             _, mask, _, n = struct.unpack_from("iIII", data, i)
             name, i = data[i + 16:i + 16 + n].rstrip(b"\0"), i + 16 + n
-            hit = hit or bool(mask & 0x4000C000) or name.endswith(b".md") or name in self.names   # OVERFLOW IGNORED ISDIR
+            hit = hit or bool(mask & 0x4000C800) or name.endswith(b".md") or name in self.names   # OVERFLOW IGNORED MOVE_SELF ISDIR
         return hit
 
 
@@ -550,8 +551,7 @@ def main(argv: list[str] | None = None) -> int:
             log.warning("pass skipped (%s): %s", "timeout" if is_timeout(e) else "failure", e)
             st = {}
         try:
-            built = names.refresh(idx.disk)
-            if built is not None:
+            if (built := names.refresh(idx.disk)) is not None:
                 log.info("mention index: %d keys, %d entries, %d dropped as ask-only", *built)
             for gone in sweep(m.index_db):
                 log.info("swept the old generation file %s", gone)

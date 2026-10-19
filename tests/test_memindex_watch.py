@@ -1,5 +1,8 @@
 """Checks yerk-index, the program that keeps the memory's search index, between its passes: it sleeps on a folder watch
 and a pass costs one stat per file and no stat per path for the mention check."""
+import ctypes
+import errno
+import logging
 import os
 import signal
 import sqlite3
@@ -104,6 +107,37 @@ def test_the_watch_wakes_for_markdown_folders_and_a_root_file_by_name_only(tmp_p
         assert w.wait(1.0)
     finally:
         os.close(w.fd)
+
+
+def test_a_root_folder_renamed_away_and_made_again_wakes_the_watch_before_the_backstop(tmp_path):
+    root = tmp_path / "also"
+    root.mkdir()
+    w = memindex.Wake()
+    try:
+        assert w.watch(str(root))
+        root.rename(tmp_path / "also.old")          # the watch goes with the old folder: only its MOVE_SELF tells
+        root.mkdir()
+        (root / "n.md").write_text("x\n")           # the new folder has no watch until the next pass
+        assert w.wait(1.0)                          # that pass now, not after BACKSTOP
+    finally:
+        os.close(w.fd)
+
+
+def test_no_inotify_says_so_once_and_the_wait_is_a_plain_sleep(tmp_path, monkeypatch, caplog):
+    class NoInotify:                                # inotify_init1 fails, as at the per-user instance limit
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        def inotify_init1(self, flags: int) -> int:
+            ctypes.set_errno(errno.EMFILE)
+            return -1
+    monkeypatch.setattr(ctypes, "CDLL", NoInotify)
+    with caplog.at_level(logging.WARNING, logger="yerk.index"):
+        w = memindex.Wake()
+    assert w.fd < 0 and caplog.text.count("no inotify (Too many open files): a pass every interval") == 1
+    assert not w.watch(str(tmp_path))
+    t0 = time.monotonic()
+    assert not w.wait(0.1) and time.monotonic() - t0 >= 0.09     # slept, then the loop walks every interval
 
 
 def test_the_mention_check_cites_only_its_sources(tmp_path, monkeypatch):
