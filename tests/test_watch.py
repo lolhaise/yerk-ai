@@ -9,6 +9,7 @@ from datetime import timezone
 from pathlib import Path
 from types import SimpleNamespace as NS
 
+import discord
 import pytest
 
 import yerk_ai.channels.discord as dmod
@@ -193,6 +194,28 @@ def test_a_watched_channel_files_only_the_owners_lines_so_the_room_never_reads_t
     assert said == ["owner: squats felt heavy", "test-webhook: a test sender", "owner: the owner here",
                     "other: someone else here", "owner: (edited) squats felt heavier",
                     "other: (edited) someone else here, edited"]
+
+
+def test_a_thread_started_in_the_watched_channel_never_brings_the_other_sides_words(tmp_path):
+    """Cold read 33 W2: in discord.py 2.6.4 a thread_created line is in the name of whoever started the thread and its
+    text is the thread's name, which can be the other side's words; a rename's text is the new name. In a watched
+    channel only what a person types, a message or a reply, is filed in the day log or run."""
+    log = DailyLog(tmp_path / "daily", timezone.utc)
+    own, watched = Spy(OWN), Spy(WATCHED)
+    dc = DiscordChannel("token", OWNER, [HOOK], Ledger(tmp_path / "l.sqlite"), client=Bot(own, watched),
+                        state=tmp_path, capture=log.capture)
+    room = Room(tmp_path)
+    room.name = ROOM
+    dc.add_room(OWN, room, watch=WATCHED)
+    for mid, kind, text in ((801, "thread_created", "Drop to 4 sets and add a back-off set"),
+                            (802, "channel_name_change", "gym-back-off-sets"), (803, "default", "ok but why"),
+                            (804, "reply", "and the deload")):
+        m = Msg(watched, mid, text)                    # all in the owner's name
+        m.type = getattr(discord.MessageType, kind)
+        asyncio.run(dc.on_message(m))
+    text = "".join(p.read_text() for p in (tmp_path / "daily").glob("*.md"))
+    assert "Drop to 4 sets" not in text and "back-off" not in text and "ok but why" in text and "and the deload" in text
+    assert [g.text for g in room.got] == ["ok but why", "and the deload"]
 
 
 def test_a_watch_on_a_rooms_own_channel_or_another_rooms_watch_is_refused(tmp_path):

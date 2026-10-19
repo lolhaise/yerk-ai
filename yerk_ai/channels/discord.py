@@ -72,6 +72,7 @@ IMAGE = ("image/png", "image/jpeg", "image/gif", "image/webp")
 BOT_UPLOAD = 20 * 1024 * 1024
 REPLY_MAX = 300
 QUICK = 1.0           # seconds a slash command may take before its answer is deferred (Discord gives three)
+SAID = (discord.MessageType.default, discord.MessageType.reply)   # what a person types; the rest are Discord's lines
 
 
 def commands(models: dict[str, str]) -> list[dict[str, Any]]:
@@ -172,6 +173,8 @@ class DiscordChannel:
 
     # inbound
     def sender_of(self, m: Any) -> str | None:
+        if getattr(m, "type", discord.MessageType.default) not in SAID and m.channel.id not in self.names.values():
+            return None                           # watched: a system line (a thread's name) is not the owner's words
         if getattr(m, "webhook_id", None):
             return "test-webhook" if m.webhook_id in self.test_senders else None
         if self.client.user is not None and m.author.id == self.client.user.id:
@@ -195,11 +198,9 @@ class DiscordChannel:
         return f'[a reply to {who}: "{said if len(said) <= REPLY_MAX else said[:REPLY_MAX - 3] + "..."}"]'
 
     async def on_message(self, m: Any) -> None:
-        room = self.rooms.get(m.channel.id)
-        if room is None:
-            return
-        self.file(room.name, m)
-        await self.take(room, m)
+        if (room := self.rooms.get(m.channel.id)) is not None:
+            self.file(room.name, m)
+            await self.take(room, m)
 
     def file(self, room: str, m: Any, edited: bool = False) -> None:
         """Every message in a room's own channel into the day's log as it lands (L55), whoever sent it, taken or not;
@@ -263,8 +264,6 @@ class DiscordChannel:
                 if room in self.cards:
                     return
                 await ch.typing()
-        except asyncio.CancelledError:
-            raise
         except Exception as e:
             log.debug("typing in %s failed: %s", room, e)
         finally:
