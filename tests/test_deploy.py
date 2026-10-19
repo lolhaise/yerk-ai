@@ -675,6 +675,20 @@ def test_when_the_restart_or_the_cut_count_raised_the_card_says_the_cut_was_not_
     assert rows(state)[-2:] == [("deploy", ids[0], ids[1], "fault", None), ("rollback", ids[1], ids[0], "proven", 0)]
 
 
+def test_the_morning_diff_names_a_proven_deploy_that_cut_a_turn(tmp_path):
+    priv, state, accounts, cool = dead_layer(tmp_path)
+    led = Ledger(state / "ledger.sqlite")
+    led.deploy(kind="deploy", unit="u", before="a" * 40, after="b" * 40, outcome="proven", cut=2)   # its card may be lost
+    led.deploy(kind="deploy", unit="u", before="b" * 40, after="c" * 40, outcome="proof failed", cut=1)
+    led.deploy(kind="rollback", unit="u", before="c" * 40, after="b" * 40, outcome="proven", cut=0)  # clean: not named
+    live, now = {"units": [], "started": time.time() - 86400}, time.time() + 60
+    lines, _ = morning.build(priv, state, accounts, cool, led, live, now)
+    at = words.clock(float(led.deploys(0)[0]["at"]), now)
+    assert [x for x in lines if " deploy " in x or " rollback " in x] == [
+        f"{words.NOT_DONE} deploy bbbbbbb: proven, 2 cut, {at}", f"{words.NOT_DONE} deploy ccccccc: proof failed, 1 cut"]
+    assert all(words.width(x) <= words.PHONE for x in lines)
+
+
 def test_with_no_status_before_the_deploy_the_proof_wants_every_room_in_rooms_toml(tmp_path, capsys):
     tree, ids = repo(tmp_path)
     priv, state = layer(tmp_path, tree)
