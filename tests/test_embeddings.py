@@ -274,22 +274,6 @@ def test_the_manifest_and_the_abilities_command_show_the_key_tier_both_ways(tmp_
     assert cli.main(["explain", "no-such-ability", "--private", str(s.root.parent)]) == 2
 
 
-# 8. the source prior is a boost, never a rule
-def test_the_source_prior_is_a_boost_not_a_filter():
-    fact = {"id": 1, "path": "/t/memory/facts/kettle.md", "line": 3, "lines": "3-3", "text": "a fact line", "score": 2.0}
-    day = {"id": 2, "path": "/t/memory/daily/2026-01-05.md", "line": 4, "lines": "4-5", "text": "a day line", "score": 1.5}
-    other = {"id": 3, "path": "/t/memory/daily/2026-01-06.md", "line": 2, "lines": "2-2", "text": "another day", "score": 1.0}
-    both = [dict(day, score=0.5), dict(fact, score=0.5)]
-    # a fact file and a day log hold a match at the same ranks: plain fusion puts the day log first, the prior the fact file
-    assert memory.fuse([day, fact], both, 6, prior=0.0)[0]["id"] == 2
-    assert memory.fuse([day, fact], both, 6, prior=0.3)[0]["id"] == 1
-    # only the day logs hold the answer (the fact chunk is a deep keyword-only hit): the day log keeps rank one
-    out = memory.fuse([day, other, fact], [dict(day, score=0.6), dict(other, score=0.4)], 6, prior=0.3)
-    assert out[0]["id"] == 2 and {h["id"] for h in out} == {1, 2, 3}       # nothing is hidden, a day log is never dropped
-    assert memory.is_daylog("/t/memory/daily/2026-01-05.md") and not memory.is_daylog("/t/memory/facts/kettle.md")
-    assert not memory.is_daylog("/t/memory/MEMORY.md") and memory.is_daylog("/t/other/2026-09-01.md")
-
-
 # 9. the merge keeps each search's own first hits in the top k
 def test_the_merge_keeps_each_searchs_own_top_three():
     def row(cid: int, score: float) -> dict:

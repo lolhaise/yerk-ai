@@ -65,8 +65,6 @@ CREATE INDEX IF NOT EXISTS units_sha ON units(sha);
 """
 
 UNIT_MIN = 20                          # characters a line needs, past its bullet, to get a vector of its own
-UNITS_VERSION = "1"                    # the unit rule: a change here fills the units table again
-UNITS_FILL = 2000                      # chunks per transaction when the table is filled on first start
 
 
 def units_of(body: str) -> list[tuple[str, str]]:
@@ -113,7 +111,8 @@ def fts5_unavailable(e: sqlite3.OperationalError) -> bool:
 
 def drop_orphan_shadow_tables(cur: sqlite3.Cursor, families: list[str]) -> list[str]:
     """Shadow tables left without their virtual table (a recovered file) make every later CREATE
-    VIRTUAL TABLE fail; drop them by exact name so the index is recreated from `chunks`."""
+    VIRTUAL TABLE fail, so yerk-index would never start again; drop them by exact name and the
+    keyword index is rebuilt from `chunks`, with no one asked to run anything."""
     repaired = []
     for fam in families:
         if cur.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ? "
@@ -265,34 +264,6 @@ class Index:
         old = self.meta("scope")
         if old and old != scope.key():
             log.warning("index scope changed (%s -> %s): files out of scope go, new ones come in", old, scope.key())
-        filled = self.fill_units()
-        if filled:
-            log.info("units filled for %d chunks (the per-line vectors' table)", filled)
-
-    def fill_units(self) -> int:
-        """The units of every chunk already indexed, once (an index from before per-line vectors, or
-        a changed unit rule), in short transactions so a reader never waits. Chunks indexed from
-        now on write their units as they land."""
-        if self.meta("units") == UNITS_VERSION:
-            return 0
-        n = last = 0
-        while True:
-            rows = self.conn.execute("SELECT id, sha, body FROM chunks WHERE id > ? ORDER BY id LIMIT ?",
-                                     (last, UNITS_FILL)).fetchall()
-            if not rows:
-                break
-            self.conn.execute("BEGIN IMMEDIATE")
-            try:
-                self.conn.executemany("INSERT OR IGNORE INTO units(sha, chunk, body) VALUES (?, ?, ?)",
-                                      [(u, sha, t) for _, sha, body in rows for u, t in units_of(body)])
-                self.conn.execute("COMMIT")
-            except BaseException:
-                self.conn.execute("ROLLBACK")
-                raise
-            n += len(rows)
-            last = int(rows[-1][0])
-        self.set_meta(units=UNITS_VERSION)
-        return n
 
     def meta(self, key: str) -> str | None:
         row = self.conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
@@ -416,21 +387,15 @@ def rebuild(db: Path, scope: Scope) -> Path:
 
 
 def copy_vectors(conn: sqlite3.Connection, old: Path) -> int:
-    """A rebuild never embeds twice: every vector of the old generation whose chunk hash is still in
-    the new one comes across (an old file without the table, from before meaning search, gives 0)."""
+    """A rebuild never embeds twice: every vector of the old generation whose chunk or line hash is
+    still in the new one comes across."""
     conn.execute("ATTACH DATABASE ? AS old", (str(old),))
     try:
-        try:
-            n = conn.execute("INSERT OR IGNORE INTO vectors(sha, model, dim, vec) SELECT o.sha, o.model, o.dim, o.vec "
-                             "FROM old.vectors o WHERE o.sha IN (SELECT sha FROM chunks) "
-                             "OR o.sha IN (SELECT sha FROM units)").rowcount
-        except sqlite3.OperationalError as e:
-            if "no such table" not in str(e):
-                raise
-            n = 0
+        return int(conn.execute("INSERT OR IGNORE INTO vectors(sha, model, dim, vec) SELECT o.sha, o.model, o.dim, o.vec "
+                                "FROM old.vectors o WHERE o.sha IN (SELECT sha FROM chunks) "
+                                "OR o.sha IN (SELECT sha FROM units)").rowcount)
     finally:
         conn.execute("DETACH DATABASE old")
-    return int(n)
 
 
 def sweep(db: Path, grace: float = SWEEP_GRACE, now: float | None = None) -> list[str]:
@@ -565,7 +530,6 @@ def main(argv: list[str] | None = None) -> int:
     interval = a.interval or m.interval
     first = True
     chunks = 0
-    told = (0, time.monotonic())                   # the backfill's count and time at its last log line
     while not stop:
         t0 = time.monotonic()
         try:
@@ -594,10 +558,6 @@ def main(argv: list[str] | None = None) -> int:
             log.info("pass: %d files, %d changed, %d gone, %d chunks in, %d out, %.2f s", st.get("files", 0),
                      st.get("changed", 0), st.get("gone", 0), st.get("inserted", 0), st.get("deleted", 0), took)
             first = False
-        if back.done != told[0] and time.monotonic() - told[1] >= 30.0:
-            log.info("backfill: %d embedded since start (%d vectors of %d chunks), %d requests, %d tokens, "
-                     "%d kB resident", back.done, store.n, chunks, embedder.requests, embedder.tokens, embeddings.rss_kb())
-            told = (back.done, time.monotonic())
         if a.once:
             break
         end = time.monotonic() + max(0.2, interval - took)
