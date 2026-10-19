@@ -190,11 +190,11 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
     return mcp
 
 
-def room_config(url: str, room: str, path: Path, token: str = "") -> Path:
-    """The per-room --mcp-config file (0600): this server only, preloaded, the process's own token as
-    its secret header. The daemon knows the room by the token's binding, so no room header is sent."""
+def room_config(url: str, room: str, path: Path, token: str = "", servers: dict[str, Any] | None = None) -> Path:
+    """The per-room --mcp-config file (0600): this server, preloaded, the process's own token as its secret header
+    (the daemon knows the room by the token's binding), and the room's `mcp` servers from rooms.toml, never as yerk."""
     from .config import write_private
-    cfg = {"mcpServers": {"yerk": {"type": "http", "url": url, "headers": {HEADER: token}, "alwaysLoad": True}}}
+    cfg = {"mcpServers": {**dict(servers or {}), "yerk": {"type": "http", "url": url, "headers": {HEADER: token}, "alwaysLoad": True}}}
     write_private(path, json.dumps(cfg, indent=1))
     return path
 

@@ -327,8 +327,8 @@ class RoomProcess:
             self._log = open(self.log_path, "a")
             self._note({"argv": self.argv(), "account": self.account.name, "session_id": self.session_id})
         err = open(self.stderr_path, "ab")
-        self.proc = subprocess.Popen(self.argv(), cwd=self.spec.cwd, env=account_env(self.account),
-                                     stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=err)
+        self.proc = subprocess.Popen(self.argv(), cwd=self.spec.cwd, env={**account_env(self.account), "CLAUDE_CODE_MCP_ALLOWLIST_ENV": "1"},
+                                     stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=err)   # a stdio server: a baseline env, not ours
         err.close()
         threading.Thread(target=self._read, name=f"read-{self.spec.room}", daemon=True).start()
         return self.session_id
@@ -388,8 +388,7 @@ class RoomProcess:
         turn = Turn(started=started)
         deadline = time.monotonic() + timeout
         while turn.ended is None:
-            item = self.next_event(deadline - time.monotonic())
-            if item is None:
+            if (item := self.next_event(deadline - time.monotonic())) is None:
                 turn.outcome = "timeout"
                 break
             t, ev = item

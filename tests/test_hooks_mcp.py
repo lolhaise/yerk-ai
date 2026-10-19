@@ -61,6 +61,10 @@ def test_eight_preloaded_tools_with_slim_schemas(tmp_path):
                                                               "account", "model"]
     cfg = json.loads(mcp_server.room_config("http://127.0.0.1:1/mcp", "example-room", tmp_path / "m.json").read_text())
     assert cfg["mcpServers"]["yerk"]["alwaysLoad"] is True and list(cfg["mcpServers"]) == ["yerk"]
+    web = {"type": "stdio", "command": "/usr/bin/node", "args": ["server.mjs"], "timeout": 180000}   # a room's `mcp` table
+    cfg = json.loads(mcp_server.room_config("http://127.0.0.1:1/mcp", "example-room", tmp_path / "m.json", "t",
+                                            {"web-ladder": web, "yerk": {"type": "stdio", "command": "x"}}).read_text())
+    assert cfg["mcpServers"]["web-ladder"] == web and cfg["mcpServers"]["yerk"]["type"] == "http"   # yerk is never replaced
 
 
 def test_send_and_hold(tmp_path, capsys):
@@ -251,6 +255,31 @@ def test_a_read_written_as_one_string_stops_the_daemon_with_one_plain_line(tmp_p
         with pytest.raises(SystemExit) as e:
             Yerkd(private, state)
         assert str(e.value) == f'room example-room: read must be a list of folders, like read = ["~/notes"], not {shown}'
+
+
+def test_a_rooms_mcp_that_is_not_server_tables_or_names_like_yerk_stops_the_daemon_with_one_plain_line(tmp_path):
+    """Cold read of pull request 37, B2 and B3: `mcp = "web"` raised a ValueError at the room's first spawn and an entry
+    that is not a table went through to Claude Code as it was; a server named yerk-web or a__b makes tools that the map,
+    the evidence rules and the card read as Yerk's own (mcp__yerk-web__*, a last segment of send). Each now stops the
+    start with one line that names the room and never shows a value (an entry's env may hold a key)."""
+    import shutil
+    import pytest
+    private, state = tmp_path / "private", tmp_path / "state"
+    shutil.copytree(EXAMPLE_PRIVATE, private)
+    state.mkdir()
+    base = (private / "rooms.toml").read_text()
+    shape = "room example-room: mcp must be a table of servers, like [rooms.example-room.mcp.web], each one a table"
+    for toml, said in (('mcp = "web"\n', shape), ('mcp = ["web"]\n', shape), ('mcp = { web = "x", ok = {} }\n', shape),
+                       ('[rooms.example-room.mcp.yerk-web]\ncommand = "x"\n', "mcp server yerk-web could pass"),
+                       ('[rooms.example-room.mcp.YERK]\ncommand = "x"\n', "mcp server YERK could pass"),
+                       ('[rooms.example-room.mcp.a__b]\ncommand = "x"\n', "mcp server a__b could pass")):
+        (private / "rooms.toml").write_text(base.replace("[rooms.example-room]\n", f"[rooms.example-room]\n{toml}", 1)
+                                            if toml.startswith("mcp") else base + "\n" + toml)
+        with pytest.raises(SystemExit) as e:
+            Yerkd(private, state)
+        assert said in str(e.value) and "\n" not in str(e.value) and '"x"' not in str(e.value)
+    (private / "rooms.toml").write_text(base + '\n[rooms.example-room.mcp.web-ladder]\ncommand = "/usr/bin/node"\n')
+    assert Yerkd(private, state).room_confs["example-room"]["mcp"] == {"web-ladder": {"command": "/usr/bin/node"}}
 
 
 def test_a_rooms_sandbox_table_reaches_its_claude_code_settings_and_no_other_room(tmp_path):

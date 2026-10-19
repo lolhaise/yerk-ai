@@ -445,8 +445,7 @@ class Workers:
         t.add_done_callback(self.tasks.discard)
 
     def _changed(self, d: Path, name: str) -> None:
-        row = self.live.get(d.name)
-        if row is None:
+        if (row := self.live.get(d.name)) is None:
             return
         if name == TASKS:
             self._spawn(self._show(row))
@@ -454,8 +453,7 @@ class Workers:
             self._spawn(self.complete(d.name))
 
     async def _show(self, row: dict[str, Any], end: dict[str, Any] | None = None) -> None:
-        ch = self.channels.get(row["room"])
-        if ch is None:
+        if (ch := self.channels.get(row["room"])) is None:
             return
         text = card_text(row, tasks_of(Path(row["tasks"])), end, accounts=len(self.accounts),
                          privacy=str(self.room_confs.get(row["room"], {}).get("privacy", "owner")))
