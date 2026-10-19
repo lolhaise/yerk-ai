@@ -1,0 +1,13 @@
+# The morning diff (yerk morning): payload changes per room, yesterday's waits, stalls and shadow
+# flags, memory and CPU, the meters; posted to the room with role = "machine" in rooms.toml, else
+# written under the state folder. Installed with yerk-morning.timer: copy both to
+# ~/.config/systemd/user/ and `systemctl --user enable --now yerk-morning.timer`.
+[Unit]
+Description=Yerk AI morning diff
+
+[Service]
+Type=oneshot
+Environment=YERK_PRIVATE=%h/yerk-private
+Environment=YERK_STATE=%h/.local/state/yerk
+ExecStart=%h/yerk-ai/.venv/bin/yerk morning
+TimeoutStartSec=300

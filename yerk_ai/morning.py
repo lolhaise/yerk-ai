@@ -1,0 +1,117 @@
+"""`yerk morning`: the morning diff, a daily report on how the install ran and what changed since the last
+report, for the 06:30 timer (units/yerk-morning.timer). In plain words, a line each (DESIGN 9, L196, L197,
+L204): every room's payload against the last delivered diff (`yerk map`'s numbers, so a planted change shows
+wait and time to the first visible line, stalls and shadow-gate flags from the run ledger, memory
+night's sweep, memory and CPU per unit from the running yerkd's /status, and the account meters. It is
+posted through the running yerkd to the room whose rooms.toml entry says role = "machine", and to no other
+room; with no such room it is only written under the state folder, and one line says where. A finding the
+delivered diff did not have is an alert: the diff opens with it. The sizes and findings are stamped
+only once the diff is delivered, so a failed post shows the same change again the next morning."""
+from __future__ import annotations
+
+import json
+import statistics
+import sys
+import time
+from pathlib import Path
+from typing import Any, Callable
+
+from . import context, jobs, status, words
+from .accounts import Account, Cooldowns
+from .config import budgets, rooms
+from .ledger import Ledger
+from .meters import Meters, meter_short
+
+STATIC = ("mechanics", "persona", "rulebook", "room_voice", "pinned_memory")   # the parts whose change is a
+                                                                               # finding: the recall pack moves daily
+
+
+def sizes(private: Path) -> dict[str, dict[str, int]]:
+    """Each room's session-start parts in characters before any trim (`yerk map`'s raw numbers), so a
+    part past its budget still shows its growth."""
+    b = budgets()
+    return {name: {p.name: p.raw for p in context.session_start(private, conf, b)} for name, conf in rooms(private).items()}
+
+
+def build(private: Path, state: Path, accounts: list[Account], cooldowns: Cooldowns, ledger: Ledger,
+          live: dict[str, Any] | None, now: float) -> tuple[list[str], dict[str, Any]]:
+    """(the diff's lines, the stamp to keep once it is delivered: sizes and finding keys)."""
+    W = words
+    try:
+        last = json.loads((state / "morning" / "last.json").read_text())
+    except (OSError, ValueError):
+        last = {}
+    since, until = status.midnight(now, 1), status.midnight(now)
+    rows: list[tuple[str, str]] = []                     # (finding key or "", line)
+
+    def add(key: str, mark: str, text: str) -> None:
+        rows.append((key, W.line(f"{mark} {text}")))
+    now_sizes = sizes(private)
+    for room, parts in now_sizes.items():
+        before = last.get("sizes", {}).get(room)
+        d = sum(parts.values()) - sum((before or {}).values())
+        add("", W.PLAIN, W.PAYLOAD.format(room=room, size=sum(parts.values()),
+                                          change=W.FIRST_MAP if before is None else f"{d:+,}" if d else W.SAME))
+        for part in STATIC if before else ():
+            if d := parts.get(part, 0) - before.get(part, 0):
+                add(f"payload {room} {part} {d:+}", W.WORKING, W.PART.format(room=room, part=part, change=f"{d:+,}"))
+    waits = ledger.waits(since, until)
+    add("", W.PLAIN, W.ANSWERED.format(day=W.YESTERDAY, n=len(waits)))
+    for word, xs in ((W.WAIT, [float(r["wait"]) for r in waits]),
+                     (W.FIRST_LINE, [float(r["first"]) for r in waits if r["first"] is not None])):
+        if xs:
+            add("", W.PLAIN, word.format(mid=W.secs(statistics.median(xs)), worst=W.secs(max(xs))))
+    stalls, started = ledger.stalls(since, until), float((live or {}).get("started") or 0)
+    if not stalls and live is None:                      # a blind detector says so (L190)
+        add("unknown stalls", W.NOT_DONE, W.UNKNOWN.format(what="stalls", why=W.NOT_ANSWERING_WHY))
+    else:
+        partly = W.SINCE.format(at=W.clock(started, now)) if since < started < until else ""
+        rows.append(("stalls" if stalls else "", status.stall_line(stalls, W.YESTERDAY, partly)))
+    flags = ledger.shadow_rules(since, until)
+    for rule, n in sorted(flags.items()):
+        add(f"shadow {rule}", W.WORKING, W.SHADOW.format(rule=rule, n=n))
+    if not flags:
+        add("", W.PLAIN, W.NO_SHADOW)
+    if live is None:
+        add("unknown units", W.NOT_DONE, W.UNKNOWN.format(what="memory", why=W.NOT_ANSWERING_WHY))
+    for u in (live or {}).get("units", []):
+        if not u.get("gone"):
+            add("", W.PLAIN, W.UNIT_USE.format(name=u["name"], mb=round(u["rss_mb"]), cpu=u["cpu_pct"]))
+    meters = Meters(state / "meters.json")
+    for a in accounts:
+        rest = cooldowns.show(a.name)
+        line = meter_short(a.name, meters.reading(a), rest[0]["until"] if rest else None, now)
+        rows.append(("" if line.startswith(W.PLAIN) else f"account {a.name}", line))   # at or near its limit
+    found = [k for k, _ in rows if k]
+    new = [k for k in found if k not in last.get("findings", [])]
+    head = (f"{W.NOT_DONE} " + W.MORNING_NEW.format(n=len(new)) if new else
+            f"{W.PLAIN} {W.MORNING_SAME}" + (W.KNOWN.format(n=len(found)) if found else ""))
+    lines = [W.line(head), *[x for k, x in rows if k in new], *[x for k, x in rows if k not in new]]
+    return lines, {"at": now, "sizes": now_sizes, "findings": found}
+
+
+def run(private: Path, state: Path, accounts: list[Account], cooldowns: Cooldowns,
+        post: Callable[[dict[str, Any]], dict[str, Any]] | None = None, now: float | None = None) -> int:
+    """Build the diff, write it under <state>/morning/, post it to the machine room; 1 if not delivered."""
+    now = time.time() if now is None else now
+    live = status.ask(state) if status.alive(state) else None
+    lines, stamp = build(private, state, accounts, cooldowns, Ledger(state / "ledger.sqlite"), live, now)
+    text = "\n".join(lines)
+    (state / "morning").mkdir(parents=True, exist_ok=True)
+    path = state / "morning" / time.strftime("%Y-%m-%d.txt", time.localtime(now))
+    path.write_text(text + "\n")
+    print(text)
+    machine = [n for n, c in rooms(private).items() if c.get("role") == "machine"]
+    if not machine:
+        print(f"morning: no room in rooms.toml has role = \"machine\"; the diff is at {path}", file=sys.stderr)
+    else:
+        req = {"morning": {"room": machine[0], "text": text, "key": f"morning-{int(now)}"}}
+        try:
+            out = (post or (lambda p: jobs.post_control(state, p, 60)))(req)
+        except (OSError, ValueError) as e:
+            out = {"ok": False, "error": f"yerkd did not answer ({type(e).__name__})"}
+        if not out.get("ok"):
+            print(f"morning: not posted to {machine[0]}: {out.get('error')}; the diff is at {path}", file=sys.stderr)
+            return 1
+    (state / "morning" / "last.json").write_text(json.dumps(stamp))     # only now: delivered (L196)
+    return 0

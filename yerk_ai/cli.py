@@ -264,42 +264,54 @@ def cmd_accounts(a: argparse.Namespace) -> int:
 
 
 def cmd_status(a: argparse.Namespace) -> int:
-    """What runs (the daemon and its rooms), each account's 5-hour and weekly meters and the running
-    workers: one short line each, state first (STYLE.md). --full: the developer detail (pid, units,
-    how old each meter reading is)."""
+    """The card (status.py): the running yerkd's /status, else what the files say, at phone width and
+    state first (STYLE.md). --full: the developer detail (pid, units, how old each meter reading is,
+    today's stall rows and their dumps)."""
     import os
-    from . import words
-    from .meters import Meters, meter_line, meter_short
+    import time
+    from . import status, words
+    from .ledger import Ledger
+    from .meters import Meters, meter_line
     priv, state, accounts, cool = _engine(a)
-    full = bool(getattr(a, "full", False))
+    if not getattr(a, "full", False):
+        s = status.ask(state) if status.alive(state) else None
+        for line in status.card(s or {**status.collect(priv, state, accounts, cool, Ledger(state / "ledger.sqlite")),
+                                      "alive": status.alive(state)}):
+            print(line)
+        return 0
     try:
         st = json.loads((state / "yerkd.json").read_text())
         os.kill(int(st["pid"]), 0)
-        print(f"yerkd: running ({st['mode']}), pid {st['pid']}, rooms {', '.join(st['rooms'])}" if full
-              else words.line(f"{words.DONE} {words.RUNNING_ROOMS.format(rooms=', '.join(st['rooms']))}"))
+        print(f"yerkd: running ({st['mode']}), pid {st['pid']}, rooms {', '.join(st['rooms'])}")
     except (OSError, ValueError, KeyError):
-        print(words.NOT_RUNNING if full else f"{words.NOT_DONE} {words.NOT_RUNNING}")
+        print(words.NOT_RUNNING)
     meters = Meters(state / "meters.json")
     for x in accounts:
         rest = cool.show(x.name)
-        print(meter_line(x.name, meters.reading(x)) + (f"; rests until {_clock(rest[0]['until'])}" if rest else "")
-              if full else meter_short(x.name, meters.reading(x), rest[0]["until"] if rest else None))
+        print(meter_line(x.name, meters.reading(x)) + (f"; rests until {_clock(rest[0]['until'])}" if rest else ""))
     from . import workers
-    from .ledger import Ledger
     try:
         units: set[str] | None = workers.Systemd().running()
     except (OSError, subprocess.SubprocessError):
         units = None                          # no systemd here: the ledger alone, unchecked
-    lines = workers.status_lines(Ledger(state / "ledger.sqlite"), units, full=full)
+    lines = workers.status_lines(Ledger(state / "ledger.sqlite"), units, full=True)
     for line in lines or ["workers: none running"]:
         print(line)
     from . import jobs
     for line in jobs.status_lines(priv / jobs.FILE, jobs.Systemd()) or [f"{jobs.NOTHING} jobs: none scheduled"]:
         print(line)                           # every job's next fire, from systemd, never from memory
-    if full:                                  # the detail a room line leaves out: exit codes, systemd's words
-        for r in [r for r in Ledger(state / "ledger.sqlite").job_runs(limit=50) if r["delivery"] == "alert"][:5]:
-            print(f"job {r['job']} run {r['id']}: {r['exit'] or 'no exit'}, {r['result']}; {r['note'] or 'no note'}")
+    for r in [r for r in Ledger(state / "ledger.sqlite").job_runs(limit=50) if r["delivery"] == "alert"][:5]:
+        print(f"job {r['job']} run {r['id']}: {r['exit'] or 'no exit'}, {r['result']}; {r['note'] or 'no note'}")
+    for r in Ledger(state / "ledger.sqlite").stalls(status.midnight(time.time())):   # the detail a card leaves out
+        print(f"stall {_clock(r['began'])}: {r['seconds']} s late, in {r['doing']}; dump {r['dump'] or 'none'}")
     return 0
+
+
+def cmd_morning(a: argparse.Namespace) -> int:
+    """The morning diff (morning.py): to the room with role = "machine", else a file under the state folder."""
+    from . import morning
+    priv, state, accounts, cool = _engine(a)
+    return morning.run(priv, state, accounts, cool)
 
 
 def cmd_probe(a: argparse.Namespace) -> int:
@@ -467,6 +479,8 @@ def main(argv: list[str] | None = None) -> int:
     st = sub.add_parser("status", help="the daemon, its rooms, each account's 5-hour and weekly meters, and the "
                         "running workers (from the ledger, checked against the unit list)")
     st.add_argument("--full", action="store_true", help="the developer detail: pid, unit names, reading ages")
+    mo = sub.add_parser("morning", help="the morning diff (payload changes, yesterday's waits, stalls, shadow flags, "
+                        "memory and CPU, meters) to the room with role = \"machine\", else a file under the state folder")
     wk = sub.add_parser("worker", help="workers: start (needs a running yerkd), list, stop, report")
     wk.add_argument("action", choices=["start", "list", "stop", "report"])
     wk.add_argument("id", nargs="?", help="stop, report: the worker's id")
@@ -506,7 +520,7 @@ def main(argv: list[str] | None = None) -> int:
     ex = sub.add_parser("explain", help="one ability (what it does, needs and costs, its free path, its state here) "
                         "or one setting")
     ex.add_argument("ability")
-    for x in (ac, st, rb, ab, ex, jb, sc):
+    for x in (ac, st, mo, rb, ab, ex, jb, sc):
         x.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else the fake example layer)")
         x.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
     mm = sub.add_parser("memory", help="the memory tree's one-time migrations: migrate-daylogs (offsets, room ids, "
@@ -554,7 +568,7 @@ def main(argv: list[str] | None = None) -> int:
     if a.cmd == "schedule":
         return cmd_schedule(a)
     return int({"map": cmd_map, "probe": cmd_probe, "setup-room": cmd_setup_room, "room": cmd_room,
-                "accounts": cmd_accounts, "status": cmd_status, "recall-bench": cmd_recall_bench,
+                "accounts": cmd_accounts, "status": cmd_status, "morning": cmd_morning, "recall-bench": cmd_recall_bench,
                 "abilities": cmd_abilities, "explain": cmd_explain, "memory": cmd_memory}[a.cmd](a))
 
 

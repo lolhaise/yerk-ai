@@ -72,12 +72,13 @@ def meter_line(name: str, m: dict[str, Any], now: float | None = None) -> str:
 
 
 def meter_short(name: str, m: dict[str, Any], rests_until: float | None = None, now: float | None = None) -> str:
-    """`yerk status`: one phone-width line, state first. Resting: red, with when it comes back; a
-    window at 90% or more: orange; else green; no reading yet: white. The reading's age is --full's."""
+    """`yerk status`: one phone-width line, state first. Resting or a window at 100%: red, with when it
+    comes back; a window at 90% or more: orange; else a dash (no colour: nothing to see), as with no
+    reading yet. The reading's age is --full's, and the card's own line once it is an hour old."""
     if rests_until:
         return words.line(f"{words.NOT_DONE} {words.RESTS.format(name=name, until=words.clock(rests_until, now))}")
     if "error" in m:
-        return words.line(f"{words.NOTHING} {words.NO_READING.format(name=name)}")
+        return words.line(f"{words.PLAIN} {words.NO_READING.format(name=name)}")
     now = time.time() if now is None else now
     parts = []
     for w, label in (("five_hour", "5h"), ("seven_day", "wk")):
@@ -85,5 +86,6 @@ def meter_short(name: str, m: dict[str, Any], rests_until: float | None = None, 
             r = m[w].get("resets")
             at = "" if not r else f" ({datetime.fromtimestamp(r).strftime('%H:%M' if r - now < 86400 else '%a')})"
             parts.append(f"{label} {round(m[w]['pct'])}%{at}")
-    high = max((m[w]["pct"] for w in WINDOWS if w in m), default=0) >= 90
-    return words.line(f"{words.WORKING if high else words.DONE} {name}: " + (" · ".join(parts) or "no windows"))
+    top = max((m[w]["pct"] for w in WINDOWS if w in m), default=0)
+    mark = words.NOT_DONE if top >= 100 else words.WORKING if top >= 90 else words.PLAIN
+    return words.line(f"{mark} {name}: " + (" · ".join(parts) or "no windows"))

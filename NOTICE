@@ -20,6 +20,8 @@ Copyright (c) 2025 Nous Research. MIT License.
   gateway/delivery_ledger.py (pending, attempting with a visible marker, capped attempts)
 - yerk_ai/lifted/hardline.py: the commands that never run, from tools/approval_detection.py
   (HARDLINE_PATTERNS, _hardline_rm_path, _HARDLINE_SYSTEM_DIRS)
+- yerk_ai/lifted/systemd_notify.py: gateway/systemd_notify.py, whole (notify,
+  watchdog_interval_seconds, SystemdWatchdog), with one type: ignore added
 
 claude-code-context-map (the author's own MIT tool)
 Copyright (c) 2026 Eric McLaren. MIT License.
@@ -36,3 +38,8 @@ Copyright (c) 2026 Eric McLaren.
   the room-voice part)
 - yerk_ai/lifted/shellguard.py: from the author's hook dispatcher in tools/hooks/ (the heredoc
   strip, the quote spans, the delete rewrite to the trash and its bounded lstat)
+- yerk_ai/status.py, yerk_ai/beat.py and yerk_ai/morning.py: the shapes of tools/status-card (one
+  phone-width line per fact, each account's meters with reset times), tools/loop-stall-catcher (a
+  dump taken while the stall lasts, outside any indexed folder; an unreadable /proc field said,
+  never filled in) and tools/turn-latency (a turn's latency counts its queue wait), re-pointed from
+  OpenClaw's state to Yerk AI's ledgers; no code copied
