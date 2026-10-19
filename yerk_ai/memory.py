@@ -17,7 +17,7 @@ import sqlite3
 import threading
 import time
 from contextlib import contextmanager, suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta, timezone, tzinfo
 from pathlib import Path
 from typing import Any, Iterator
@@ -56,6 +56,7 @@ class Settings:
     embeddings_width: int           # dimensions kept in memory (the first `width` of `dim`, renormalised)
     index_status: Path              # what yerk-index serves: its port and the embeddings' state
     recall_chars: int               # one recall's first six snippets together, at most
+    scoped: bool = False            # a room's own `also` (only): index hits and names kept to the roots in `scope`
 
     @property
     def daily(self) -> Path:
@@ -64,6 +65,14 @@ class Settings:
     @property
     def roots_for_mentions(self) -> tuple[Path, ...]:
         return self.scope.roots
+
+    def only(self, private: Path, room: str, also: list[Any]) -> Settings:
+        """A room's `also` in rooms.toml, resolved as `[memory] also` is: these settings with the read-only roots cut to those,
+        so its recall, read_memory and mention recall serve its own tree and them; a root the install lacks stops the start."""
+        want = [(private / Path(str(x)).expanduser()).resolve() for x in also]
+        for p in (p for p in want if p not in self.scope.roots[1:]):
+            raise SystemExit(f"room {room}: also {p} is not in [memory] also in yerkd.toml, so the install never indexes it")
+        return replace(self, scoped=True, scope=replace(self.scope, roots=tuple(r for r in self.scope.roots if r in (self.root, *want))))
 
 
 def settings(private: Path, state: Path, conf: dict[str, Any] | None = None) -> Settings:
@@ -624,6 +633,8 @@ def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader:
     state, vectors = meaning(s, query)
     if state in ("provider-timeout", "provider-error", "index-timeout", "failure"):
         log.warning("recall: meaning search skipped (%s); keywords only for this query", state)
+    if s.scoped:             # a room's own `also`: its roots' candidates only, before fusion keeps k (every root is indexed)
+        keywords, vectors = ([h for h in x if s.scope.contains(Path(h["path"]))] for x in (keywords, vectors))
     hits = fuse(keywords, vectors, k)
     if reader and not reader.owner:                 # another room's private lines never leave the tree (R2)
         kept = []
@@ -748,10 +759,6 @@ def window(s: Settings, now: datetime | None = None, days: int = WINDOW_DAYS) ->
     return [(today - timedelta(days=n)).isoformat() for n in range(days)]
 
 
-def _stem(w: str) -> str:
-    return w[:5] if len(w) >= 5 else w
-
-
 def room_lines(s: Settings, room: str, now: datetime | None = None,
                rid: str | None = None, owner: bool = True) -> Iterator[tuple[str, int, Line, list[str]]]:
     """(day, line number, the parsed line, the lines of its file) for this room's lines of the last
@@ -782,14 +789,14 @@ def topic_hits(s: Settings, room: str, text: str, exclude: set[str] | None = Non
     ts = memindex.terms(text)
     if not ts:
         return []
-    want = {_stem(t) for t in ts}
+    want = {t[:5] for t in ts}                                            # a term's stem: its first five letters
     need = 1 if len(want) <= 2 else max(2, -(-len(want) * 3 // 10))     # a long message needs 30% of its terms
     body = one_line(text)
     hits = []
     for day, n, ln, _ in room_lines(s, room, now, rid, owner):
         if ln.mid.split(".e")[0] in (exclude or set()) or ln.body.strip() == body or mentions.OLD in ln.body:
             continue
-        cover = len(want & {_stem(w) for w in memindex.WORD.findall(memindex.norm(ln.body))})
+        cover = len(want & {w[:5] for w in memindex.WORD.findall(memindex.norm(ln.body))})
         if cover >= need:
             hits.append({"day": day, "time": ln.time[:5], "role": ln.role, "who": ln.who, "text": ln.body,
                          "cite": f"daily/{day}.md:{n + 1}", "cover": cover})
