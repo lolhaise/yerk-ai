@@ -342,7 +342,7 @@ class DiscordChannel:
             for cid, room in self.rooms.items():
                 try:
                     await self.recover(cid, room)
-                except discord.HTTPException as e:    # one channel it cannot read (a 403, a 404) never stops the rest
+                except Exception as e:    # whatever one channel hits (a 403, a 404, the network) never stops the rest
                     log.warning("room %s: channel %s not recovered after the restart: %s", room.name, cid, e)
             for hook in self.after_recover:
                 try:

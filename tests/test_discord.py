@@ -330,6 +330,36 @@ def test_a_channel_it_cannot_read_never_stops_the_other_rooms_recovery(tmp_path,
                                                         "restart: 403 Forbidden (error code: 50001): Missing Access"]
 
 
+def test_a_network_error_in_one_channels_recovery_never_stops_the_other_rooms(tmp_path, caplog):
+    """Cold read 33 W1: discord.py 2.6.4 re-raises an OSError unwrapped (only a connection reset is retried), and a
+    sqlite error or a bad ledger id is no HTTPException either, so the per-channel guard takes any Exception: the
+    next room still runs what was sent while it was down, and the steps after recovery still run."""
+    client = Client()
+    del client.chans[ROOM_CH]
+
+    async def fetch_channel(cid):
+        raise OSError(101, "Network is unreachable")
+    client.fetch_channel = fetch_channel
+    d = DiscordChannel("token", OWNER, [HOOK], Ledger(tmp_path / "l.sqlite"), client=client, state=tmp_path)
+    first, second = Room(tmp_path), Room(tmp_path)
+    second.name = "second-room"
+    d.add_room(ROOM_CH, first)
+    d.add_room(OTHER_CH, second)
+    d.ledger.inbound_add("1", "second-room", str(OTHER_CH), "owner", 5)
+    d.ledger.inbound_set("1", state="answered")
+    client.chans[OTHER_CH].past = [Msg(client.chans[OTHER_CH], 2, "sent while down")]
+    ran = []
+
+    async def reattach():
+        ran.append("reattach")
+    d.after_recover.append(reattach)
+    with caplog.at_level("WARNING", logger="yerk.discord"):
+        run(d.on_ready())
+    assert [(g.id, g.text) for g in second.got] == [("2", "sent while down")] and ran == ["reattach"]
+    assert [r.getMessage() for r in caplog.records] == [f"room test-room: channel {ROOM_CH} not recovered after the "
+                                                        "restart: [Errno 101] Network is unreachable"]
+
+
 def test_files_take_one_path_checked_with_the_id_recorded(dc, tmp_path, monkeypatch):
     d, client, _ = dc
     ch = client.chans[ROOM_CH]
