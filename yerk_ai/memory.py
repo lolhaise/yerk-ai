@@ -29,6 +29,9 @@ from .config import REPO, load_toml, write_private
 MARK = re.compile(r"\[m:([^\]\s]+)\]$", re.M)        # the message id that ends each captured line
 READ_MAX = 400                                       # read_memory: lines per call
 READ_CHARS = 20_000
+READ_LINES = 12          # read_memory's default window: a whole hit chunk from its first line for 98 in 100 hits (measured)
+SNIPPET = 700            # recall: characters per hit at most, the fewest that kept 98 in 100 answers on the question set
+RECALL_CHARS = 4200      # recall: one call's snippets together ([memory] recall_chars), six hits of SNIPPET
 
 
 @dataclass(frozen=True)
@@ -48,6 +51,7 @@ class Settings:
     embeddings_units: str           # what gets a vector in memory: both (lines and chunks, measured best), lines, or chunks
     embeddings_width: int           # dimensions kept in memory (the first `width` of `dim`, renormalised)
     index_status: Path              # what yerk-index serves: its port and the embeddings' state
+    recall_chars: int               # one recall's snippets together, at most
 
     @property
     def daily(self) -> Path:
@@ -84,7 +88,8 @@ def settings(private: Path, state: Path, conf: dict[str, Any] | None = None) -> 
                     embeddings_dim=int(conf.get("embeddings_dim", 256)),
                     embeddings_units=str(conf.get("embeddings_units", "both")),
                     embeddings_width=int(conf.get("embeddings_width") or conf.get("embeddings_dim") or 256),
-                    index_status=state / "memory" / "index.json")
+                    index_status=state / "memory" / "index.json",
+                    recall_chars=max(100, int(conf.get("recall_chars", RECALL_CHARS))))
 
 
 # the embedding settings a user with another model or budget can pick, described from the code (run 5):
@@ -112,18 +117,26 @@ EMBEDDING_SETTINGS: dict[str, tuple[tuple[str, ...], str, str]] = {
                          "(a smaller store), or the chunks alone (the fewest vectors, a paraphrase then rarely found)", "both"),
 }
 EMBEDDING_RELOADS = "takes effect when yerk-index restarts; the backfill then embeds what is missing, in the background"
+RECALL_SETTINGS: dict[str, tuple[tuple[str, ...], str, str]] = {
+    "recall_chars": ((str(RECALL_CHARS), "any number from 100"),
+                     f"characters one recall call hands the room at most, its hits' snippets together (each hit at most "
+                     f"{SNIPPET}: the lines that carry the match, the cite reads on); measured on the 164-question set, "
+                     f"{RECALL_CHARS} kept 116 of 116 answers found with the key and 83 of 84 keywords only; less shrinks "
+                     "every hit of a call", str(RECALL_CHARS)),
+}
 
 
 def described(conf: dict[str, Any] | None) -> list[dict[str, Any]]:
-    """The [memory] embedding settings with their value here, where it came from, choices and plain words
-    (the shape `yerk config` prints for every described setting)."""
+    """The [memory] embedding and recall settings with their value here, where it came from, choices and
+    plain words (the shape `yerk config` prints for every described setting)."""
     conf = conf or {}
     out = []
-    for key, (choices, what, default) in EMBEDDING_SETTINGS.items():
-        value = conf.get(key, default)
-        out.append({"key": f"memory.{key}", "value": str(value),
-                    "default": default, "source": "yerkd.toml" if key in conf else "default", "choices": list(choices),
-                    "what": what, "reloads": EMBEDDING_RELOADS})
+    for table, reloads in ((EMBEDDING_SETTINGS, EMBEDDING_RELOADS), (RECALL_SETTINGS, "takes effect when yerkd restarts")):
+        for key, (choices, what, default) in table.items():
+            value = conf.get(key, default)
+            out.append({"key": f"memory.{key}", "value": str(value),
+                        "default": default, "source": "yerkd.toml" if key in conf else "default", "choices": list(choices),
+                        "what": what, "reloads": reloads})
     return out
 
 
@@ -344,13 +357,20 @@ class DailyLog:
         return True
 
 
-def read(s: Settings, path: str, start: int = 1, lines: int = 40, reader: Reader | None = None) -> dict[str, Any]:
-    """An exact excerpt of a file in the memory tree. A relative path is taken from the tree's root;
-    anything that resolves outside the scope (a `..`, an absolute path elsewhere, a link out) is refused.
+def read(s: Settings, path: str, start: int = 1, lines: int = READ_LINES, reader: Reader | None = None) -> dict[str, Any]:
+    """An exact excerpt of a file in the memory tree. A relative path is taken from the tree's root, else
+    as a cite names it (a root's name, then the path under it); a recall `cite` (file:line) starts at its
+    line unless `start` is past 1. Anything that resolves outside the scope (a `..`, an absolute path
+    elsewhere, a link out) is refused.
     `reader` (the asking room) sees only what its class allows: a private file is refused outright, a
     day log keeps its own room's lines and blanks the others, so the line numbers still cite."""
+    m = re.fullmatch(r"(.+?):(\d+)", path)
+    if m:
+        path, start = m.group(1), start if int(start) > 1 else int(m.group(2))
     p = Path(path).expanduser()
-    p = p if p.is_absolute() else s.root / p
+    if not p.is_absolute():
+        p = next((c for c in (s.root / p, *(r.parent / p for r in s.scope.roots if p.parts[:1] == (r.name,)))
+                  if c.exists()), s.root / p)
     try:
         real = p.resolve(strict=True)
     except (OSError, RuntimeError):
@@ -458,6 +478,7 @@ def fuse(keywords: list[dict[str, Any]], vectors: list[dict[str, Any]], k: int, 
             score[h["id"]] = score.get(h["id"], 0.0) + 1.0 / (RRF_K + rank)
             rows.setdefault(h["id"], h)
     cos = {h["id"]: float(h["score"]) for h in vectors}
+    near = {h["id"]: h["near"] for h in vectors if h.get("near")}       # the line the meaning matched
     order = sorted(score, key=lambda i: (-score[i], -cos.get(i, 0.0)))
     held = list(dict.fromkeys([h["id"] for h in keywords[:keep]] + [h["id"] for h in vectors[:keep]]))[:k]
     chosen = set(held) | set([cid for cid in order if cid not in held][:k - len(held)])
@@ -465,21 +486,25 @@ def fuse(keywords: list[dict[str, Any]], vectors: list[dict[str, Any]], k: int, 
     for cid in [cid for cid in order if cid in chosen]:
         h = dict(rows[cid])
         h["score"] = round(score[cid], 4)
+        if cid in near:
+            h["near"] = near[cid]
         out.append(h)
     return out
 
 
-def recall(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader: Reader | None = None) -> dict[str, Any]:
-    """The recall tool: ranked chunks with path and line, the keyword rank fused with the meaning rank
-    when yerk-index serves one. A timeout and a failure of the index read differently (L54); a
-    provider timeout or error reads differently from both: keywords only for this query, logged."""
+def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader: Reader | None = None,
+           weights: dict[str, float] | None = None) -> dict[str, Any]:
+    """Ranked chunks, whole, with path and line, the keyword rank fused with the meaning rank when
+    yerk-index serves one (the bench's rank reads these; the recall tool cuts them). A timeout and a
+    failure of the index read differently (L54); a provider timeout or error reads differently from
+    both: keywords only for this query, logged. `weights` gets the query words' weights."""
     k = max(1, min(int(k), 20))
     try:
         conn = memindex.connect(s.index_db, readonly=True, deadline=time.monotonic() + deadline_s)
         try:
             # twice the pool by bm25, re-ranked by cover down to the pool: the cover re-rank needs
             # the candidates bm25 alone ranks low (measured on the fixed question set: 2 more top-six hits)
-            keywords = memindex.search(conn, query, POOL, POOL * 2)
+            keywords = memindex.search(conn, query, POOL, POOL * 2, weights)
         finally:
             conn.close()
     except FileNotFoundError as e:
@@ -504,6 +529,80 @@ def recall(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader:
         h.pop("id", None)
         h["cite"] = f"{cite(s, Path(h['path']))}:{h['line']}"
     return {"ok": True, "status": "ok", "hits": hits}
+
+
+def recall(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader: Reader | None = None) -> dict[str, Any]:
+    """The recall tool: the hits `ranked` gives, in its order, each cut to the lines that carry the match
+    with a cite (file:line of its first line) that read_memory reads on from; one call's snippets
+    together hold at most `recall_chars` characters, each at most SNIPPET."""
+    weights: dict[str, float] = {}
+    r = ranked(s, query, k, deadline_s, reader, weights)
+    return {**r, "hits": snippets(r["hits"], weights, s.recall_chars)} if r["ok"] else r
+
+
+def snippets(hits: list[dict[str, Any]], weights: dict[str, float], budget: int) -> list[dict[str, Any]]:
+    """Each ranked hit as {cite, text}: a share of what is left of `budget` (at most SNIPPET), so a
+    short snippet leaves more for the hits after it and a call of many hits cuts each one shorter."""
+    out = []
+    for n, h in enumerate(hits):
+        first, text = snippet(str(h.get("text", "")), int(h["line"]), weights, h.get("near"),
+                              min(SNIPPET, budget // (len(hits) - n)))
+        budget -= len(text)
+        out.append({"cite": f"{h['cite'].rpartition(':')[0]}:{first}", "text": text})
+    return out
+
+
+def _root(word: str) -> str:
+    """A word's match key: its first five letters, a short word less a plural s."""
+    return word[:5] if len(word) > 5 else word[:-1] if len(word) > 3 and word.endswith("s") else word
+
+
+def snippet(text: str, lo: int, weights: dict[str, float], near: str | None = None, cap: int = SNIPPET) -> tuple[int, str]:
+    """(first line, text): the lines of a hit that carry the match, at most about `cap` characters, kept in
+    file order. Taken in this order while they fit: the best line (the most query weight; `near`, the line
+    the meaning search matched, counts as a match), every other line holding a query word, heaviest first,
+    then the lines nearest the best one. A line too long for what is left is cut around its matches (the
+    best line always, another matching line when 80 or more are left); a gap between kept lines reads …."""
+    lines = text.splitlines() or [""]
+    want = {_root(t): w for t, w in weights.items()}
+    top = max(want.values(), default=1.0)
+    score = [sum(w for r, w in want.items() if r in {_root(x) for x in memindex.WORD.findall(memindex.norm(ln))})
+             + (top if near and ln.strip() == near.strip() else 0.0) for ln in lines]
+    best = max(range(len(lines)), key=lambda i: (score[i], -i))
+    order = [best, *sorted((i for i in range(len(lines)) if score[i] > 0 and i != best), key=lambda i: (-score[i], i)),
+             *(j for d in range(1, len(lines)) for j in (best + d, best - d) if 0 <= j < len(lines) and score[j] <= 0)]
+    took: dict[int, str] = {}
+    left = cap
+    for i in order:
+        ln = lines[i].strip()
+        if not ln:
+            continue
+        if len(ln) <= left:
+            took[i], left = ln, left - len(ln) - 1
+        elif not took or (left >= 80 and score[i] > 0):
+            took[i], left = _cut(ln, want, left), 0
+        if left < 40:
+            break
+    keys = sorted(took) or [best]
+    parts: list[str] = []
+    for n, i in enumerate(keys):            # a gap of blank lines is no gap
+        parts += (["…"] if n and any(x.strip() for x in lines[keys[n - 1] + 1:i]) else []) + [took.get(i, "")]
+    return lo + keys[0], "\n".join(parts)
+
+
+def _cut(line: str, want: dict[str, float], room: int) -> str:
+    """The `room` characters of a long line that hold the most query weight, cut at spaces, marked with …."""
+    at = [(m.start(), r, w) for r, w in want.items() for m in re.finditer(r"(?<!\w)" + re.escape(r), line, re.I)]
+    starts = sorted({max(0, min(p - room // 4, len(line) - room)) for p, _, _ in at}) or [0]
+    a = max(starts, key=lambda a0: (sum({r: w for p, r, w in at if a0 <= p < a0 + room - len(r)}.values()), -a0))
+    b = min(len(line), a + room)
+    if a > 0:
+        sp = line.find(" ", a, a + 24)
+        a = sp + 1 if sp != -1 else a
+    if b < len(line):
+        sp = line.rfind(" ", b - 24, b)
+        b = sp if sp > a else b
+    return ("…" if a > 0 else "") + line[a:b] + ("…" if b < len(line) else "")
 
 
 def cite(s: Settings, path: Path) -> str:
@@ -714,19 +813,23 @@ def has_all(text: str, tokens: list[str]) -> bool:
 
 
 def bench(s: Settings, questions: Path | None = None, k: int = 6) -> dict[str, Any]:
-    """Each question's search; a hit is a result in the top k whose text holds every answer token
-    and whose path is not a stale copy. Controls must hit, or the instrument is blind."""
+    """Each question's search; a hit is a result in the top k whose whole chunk holds every answer token
+    and whose path is not a stale copy. Controls must hit, or the instrument is blind. `kept`: the hits
+    whose snippet, as recall hands it to the room, still holds every answer token."""
     qfile = questions or s.bench
     data = json.loads(qfile.read_text())
     stale = re.compile(str(data.get("stale") or r"(^|/)overwrite-backups/"))
     rows = []
     for q in data["questions"]:
-        r = recall(s, str(q["q"]), k, deadline_s=30.0)
+        weights: dict[str, float] = {}
+        r = ranked(s, str(q["q"]), k, deadline_s=30.0, weights=weights)
         if not r["ok"]:
             return {"ok": False, "status": r["status"], "error": r["error"]}
         rank = next((i + 1 for i, h in enumerate(r["hits"])
                      if not stale.search(h["path"]) and has_all(h["text"], list(q["answer_tokens"]))), None)
+        cut = snippets(r["hits"], weights, s.recall_chars) if rank else []
         rows.append({"id": q["id"], "control": bool(q.get("control")), "rank": rank,
+                     "kept": has_all(cut[rank - 1]["text"], list(q["answer_tokens"])) if rank else None,
                      "top": r["hits"][0]["path"] if r["hits"] else None})
     scored = [r for r in rows if not r["control"]]
     n = len(scored) or 1
@@ -735,4 +838,5 @@ def bench(s: Settings, questions: Path | None = None, k: int = 6) -> dict[str, A
     return {"ok": True, "questions": len(scored), "controls": len(rows) - len(scored),
             "blind": [r["id"] for r in rows if r["control"] and not r["rank"]],
             "top_k": top_k, "top_1": top_1, "k": k, "top_k_rate": round(top_k / n, 3), "top_1_rate": round(top_1 / n, 3),
+            "kept": sum(1 for r in scored if r["kept"]), "lost": [r["id"] for r in scored if r["rank"] and not r["kept"]],
             "rows": rows, "file": str(qfile)}

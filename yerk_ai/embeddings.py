@@ -272,16 +272,18 @@ class Server:
         marks = ",".join("?" * len(score))
         conn = sqlite3.connect(f"file:{self.live(self.db)}?mode=ro", uri=True, timeout=2.0)
         try:
-            # a hash is a line's (through units) or a chunk's own; a chunk keeps its best line's cosine
-            rows = conn.execute(f"SELECT c.id, c.path, c.lo, c.hi, c.body, u.sha FROM units u JOIN chunks c ON c.sha = u.chunk "
-                                f"WHERE u.sha IN ({marks}) UNION ALL SELECT id, path, lo, hi, body, sha FROM chunks "
-                                f"WHERE sha IN ({marks})", list(score) * 2).fetchall()
+            # a hash is a line's (through units) or a chunk's own; a chunk keeps its best line's cosine, and
+            # that line's text as `near` (recall's snippet keeps the line the meaning matched)
+            rows = conn.execute(f"SELECT c.id, c.path, c.lo, c.hi, c.body, u.sha, u.body FROM units u JOIN chunks c ON "
+                                f"c.sha = u.chunk WHERE u.sha IN ({marks}) UNION ALL SELECT id, path, lo, hi, body, sha, NULL "
+                                f"FROM chunks WHERE sha IN ({marks})", list(score) * 2).fetchall()
         finally:
             conn.close()
         best: dict[int, dict[str, Any]] = {}
-        for cid, p, lo, hi, body, sha in rows:
+        for cid, p, lo, hi, body, sha, line in rows:
             if cid not in best or score[sha] > best[cid]["score"]:
-                best[cid] = {"id": cid, "path": p, "line": lo, "lines": f"{lo}-{hi}", "text": body, "score": round(score[sha], 4)}
+                best[cid] = {"id": cid, "path": p, "line": lo, "lines": f"{lo}-{hi}", "text": body, "score": round(score[sha], 4),
+                             **({"near": line} if line else {})}
         hits = sorted(best.values(), key=lambda h: -h["score"])[:pool]
         return {"ok": True, "status": "ok", "hits": hits, "vectors": self.store.n}
 

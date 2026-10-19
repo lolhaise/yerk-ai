@@ -679,7 +679,7 @@ class Yerkd:
         if isinstance(payload.get("read_memory"), dict):
             req = dict(payload["read_memory"])
             return await self.tool_read_memory(str(req.get("room", "")), str(req.get("path", "")),
-                                               int(req.get("start") or 1), int(req.get("lines") or 40))
+                                               int(req.get("start") or 1), int(req.get("lines") or memory.READ_LINES))
         if isinstance(payload.get("morning") or payload.get("machine"), dict):   # the morning diff, a deploy card:
             req = dict(payload.get("morning") or payload["machine"])                # the machine room only (L197)
             name = str(req.get("room", ""))

@@ -135,11 +135,11 @@ def test_a_room_cannot_read_another_rooms_private_lines_or_files(tmp_path):
         "- 09:02:00 room-a owner: an old line, kettle [m:3]\n")
     build(s)
     owner, b, nobody = memory.Reader.owner_room("room-a"), memory.Reader("room-b", "b-id", False), memory.Reader()
-    paths = lambda r: sorted({h["path"].rsplit("/", 1)[-1] for h in r["hits"]})  # noqa: E731
+    paths = lambda r: sorted({h["cite"].rpartition(":")[0].rsplit("/", 1)[-1] for h in r["hits"]})  # noqa: E731
     assert paths(memory.recall(s, "kettle", 20, reader=owner)) == ["2026-01-05.md", "kettle.md", "shared.md", "side.md"]
     got = memory.recall(s, "kettle", 20, reader=b)
     assert paths(got) == ["2026-01-05.md", "shared.md", "side.md"]
-    day = next(h for h in got["hits"] if h["path"].endswith("2026-01-05.md"))
+    day = next(h for h in got["hits"] if "/2026-01-05.md:" in h["cite"])
     assert "in room b" in day["text"] and "in room a" not in day["text"] and "an old line" not in day["text"]
     assert paths(memory.recall(s, "kettle", 20, reader=nobody)) == ["shared.md"]
     assert not memory.read(s, "facts/kettle.md", reader=b)["ok"] and memory.read(s, "facts/kettle.md", reader=owner)["ok"]
@@ -301,8 +301,7 @@ def test_recall_ranks_the_fact_above_a_chunk_that_repeats_one_word(tmp_path):
     s = tree(tmp_path)
     build(s)
     r = memory.recall(s, "What colour is the example kettle in the example room?")
-    assert r["ok"] and r["hits"][0]["path"].endswith("facts/kettle.md")
-    assert r["hits"][0]["line"] == 1 and r["hits"][0]["cite"] == "memory/facts/kettle.md:1"
+    assert r["ok"] and r["hits"][0]["cite"] == "memory/facts/kettle.md:1" and set(r["hits"][0]) == {"cite", "text"}
     assert "painted teal" in r["hits"][0]["text"]
     assert memory.recall(s, "the of and")["hits"] == []
 
@@ -339,6 +338,73 @@ def test_read_memory_reads_exact_lines_and_only_inside_the_tree(tmp_path):
         r = memory.read(s, path)
         assert not r["ok"] and ("outside the memory tree" in r["error"] or "no such file" in r["error"]), path
     assert not memory.read(s, "facts")["ok"] and not memory.read(s, "facts/missing.md")["ok"]
+
+
+# the recall diet: a hit is the lines that carry the match and a cite, one call has a cap
+LINES = ["# Example notes", "", "- the lamp sits on the example shelf", "- an unrelated line about the weather",
+         "- the kettle is painted teal and lives in the example kitchen", "- another unrelated line", "- a last line"]
+
+
+def test_the_snippet_keeps_whole_lines_around_the_match_in_file_order():
+    text = "\n".join(LINES)
+    w = {"kettle": 3.0, "teal": 4.0}
+    first, cut = memory.snippet(text, 10, w, cap=120)          # the match mid-file: the line after it first
+    assert first == 14 and cut.splitlines() == [LINES[4], LINES[5]]          # whole lines, cut at line ends
+    first, cut = memory.snippet(text, 10, w, cap=160)          # then the line before
+    assert first == 13 and cut.splitlines() == [LINES[3], LINES[4], LINES[5]]
+    first, cut = memory.snippet(text, 1, {"notes": 2.0}, cap=40)               # the match on the file's first line
+    assert first == 1 and cut == LINES[0]
+    first, cut = memory.snippet(text, 1, {"last": 2.0}, cap=60)                # and on its last line
+    assert first == 6 and cut.splitlines() == [LINES[5], LINES[6]]
+    first, cut = memory.snippet(text, 1, {"lamp": 2.0, "teal": 2.0}, cap=140)  # two matches with room for the line between
+    assert first == 3 and cut.splitlines() == [LINES[2], LINES[3], LINES[4]]
+    _, cut = memory.snippet(text, 1, {"lamp": 2.0, "teal": 2.0}, cap=110)      # without it: a gap reads …
+    assert cut.splitlines() == [LINES[2], "…", LINES[4]]
+    _, cut = memory.snippet("# Head\n\nthe kettle line", 1, {"kettle": 1.0})   # a blank line between is no gap
+    assert cut == "# Head\nthe kettle line"
+    _, cut = memory.snippet(text, 1, {}, near=LINES[3], cap=60)              # the meaning's line counts as a match
+    assert cut == LINES[3]
+
+
+def test_a_line_longer_than_the_cap_is_cut_around_its_match():
+    long = " ".join(f"word{i}" for i in range(200)) + " the example kettle is teal " + " ".join(f"tail{i}" for i in range(200))
+    first, cut = memory.snippet(long, 7, {"kettle": 3.0}, cap=120)
+    assert first == 7 and "kettle" in cut and cut.startswith("…") and cut.endswith("…") and len(cut) <= 122
+    assert cut[1:-1] in long and long[long.index(cut[1:-1]) - 1] == " "      # cut at a space, never mid-word
+    _, cut = memory.snippet("kettle " + "x " * 300, 1, {"kettle": 3.0}, cap=80)   # the match at the line's start
+    assert cut.startswith("kettle") and cut.endswith("…") and len(cut) <= 81
+
+
+def test_recall_hands_snippets_in_rank_order_under_the_call_cap(tmp_path):
+    s = tree(tmp_path)
+    for i in range(12):
+        (s.root / "facts" / f"k{i}.md").write_text(f"# K{i}\n\n" + "\n".join(f"- kettle note {i}.{j} " + "x" * 80
+                                                                           for j in range(8)) + "\n")
+    build(s)
+    whole = memory.ranked(s, "kettle note", 20)["hits"]
+    r = memory.recall(s, "kettle note", 20)
+    assert [h["cite"].rpartition(":")[0] for h in r["hits"]] == [h["cite"].rpartition(":")[0] for h in whole]
+    assert len(r["hits"]) == len(whole) > 6 and sum(len(h["text"]) for h in r["hits"]) <= s.recall_chars
+    assert all(len(h["text"]) <= memory.SNIPPET + 2 for h in r["hits"])
+    assert sum(len(h["text"]) for h in whole) > s.recall_chars                # the cap did the cutting
+    small = memory.settings(tmp_path / "private", tmp_path / "state", {"timezone": "UTC", "recall_chars": 600})
+    r = memory.recall(small, "kettle note", 6)
+    assert len(r["hits"]) == 6 and sum(len(h["text"]) for h in r["hits"]) <= 600
+    f, _, line = r["hits"][0]["cite"].rpartition(":")
+    read = memory.read(s, r["hits"][0]["cite"])                               # the cite is what read_memory takes
+    assert read["ok"] and read["from"] == int(line) and read["to"] - read["from"] + 1 <= memory.READ_LINES
+    assert read["path"].endswith(f.split("/", 1)[1]) and r["hits"][0]["text"].splitlines()[0] in read["text"]
+    assert memory.read(s, r["hits"][0]["cite"], 2)["from"] == 2                # a from_line past 1 wins
+
+
+def test_recall_chars_is_a_described_setting_with_a_floor(tmp_path):
+    s = memory.settings(tmp_path / "private", tmp_path / "state", {"timezone": "UTC"})
+    assert s.recall_chars == memory.RECALL_CHARS == 6 * memory.SNIPPET
+    assert memory.settings(tmp_path / "p", tmp_path / "s", {"recall_chars": 2000}).recall_chars == 2000
+    assert memory.settings(tmp_path / "p", tmp_path / "s", {"recall_chars": 5}).recall_chars == 100
+    row = next(r for r in memory.described({"recall_chars": 2000}) if r["key"] == "memory.recall_chars")
+    assert row["value"] == "2000" and row["source"] == "yerkd.toml" and row["default"] == str(memory.RECALL_CHARS)
+    assert next(r for r in memory.described({}) if r["key"] == "memory.recall_chars")["source"] == "default"
 
 
 # the bench and the manifest

@@ -378,7 +378,7 @@ def cmd_recall_bench(a: argparse.Namespace) -> int:
         print(f"recall-bench: the index {'timed out (busy, not down)' if r['status'] == 'timeout' else 'failed'}: "
               f"{r['error']}", file=sys.stderr)
         return 3 if r["status"] == "timeout" else 1
-    keep = ("questions", "controls", "k", "top_k", "top_1", "top_k_rate", "top_1_rate", "blind")
+    keep = ("questions", "controls", "k", "top_k", "top_1", "top_k_rate", "top_1_rate", "blind", "kept", "lost")
     row = {"at": datetime.now(timezone.utc).isoformat(timespec="seconds"), **{x: r[x] for x in keep},
            "misses": [x["id"] for x in r["rows"] if not x["rank"]]}
     (state / "memory").mkdir(parents=True, exist_ok=True)
@@ -388,7 +388,8 @@ def cmd_recall_bench(a: argparse.Namespace) -> int:
         print(json.dumps({**row, "rows": r["rows"]}, indent=1))
     else:
         print(f"top {r['k']}: {r['top_k']}/{r['questions']} ({r['top_k_rate']:.1%})   "
-              f"top one: {r['top_1']}/{r['questions']} ({r['top_1_rate']:.1%})   controls: {r['controls']}")
+              f"top one: {r['top_1']}/{r['questions']} ({r['top_1_rate']:.1%})   controls: {r['controls']}   "
+              f"answer in the snippet: {r['kept']}/{r['top_k']}")
         print("misses: " + (" ".join(row["misses"]) or "none"))
         if r["blind"]:
             print(f"BLIND: control question(s) missed: {', '.join(r['blind'])}", file=sys.stderr)

@@ -26,16 +26,17 @@ from mcp.server.fastmcp import Context, FastMCP
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
+from .memory import READ_LINES
+
 log = logging.getLogger("yerk.http")
 HEADER = "x-yerk-secret"
 Auth = dict[str, str]                      # {"kind": install | room | worker, "room": the bound room or ""}
 RECALL = ("Search the owner's memory (daily logs, fact files, the curated file, open loops) by keywords\n"
           "and, where the install has a provider key, by meaning too, so a paraphrase finds the line.\n"
-          "Returns ranked chunks, each with its file path, first line and `cite` (file:line). Cite every\n"
-          "fact you use by its `cite`; read_memory gives the exact lines around a hit. A \"timeout\" status\n"
-          "means busy, not down.")
-READ_MEMORY = ("An exact excerpt of a memory file: `lines` lines from `from_line` (1-based). `path` as recall\n"
-               "returned it, or relative to the memory folder. Files outside the memory tree are refused.")
+          "Each hit is the lines that carry the match and a `cite` (file:line). Cite every fact you use\n"
+          "by its `cite`; read_memory(cite) reads on from it. A \"timeout\" status means busy, not down.")
+READ_MEMORY = (f"Exact lines of a memory file, `lines` of them (default {READ_LINES}; ask more, up to 400, or a later\n"
+               "`from_line` to read on). `path`: a recall `cite` (its line is the start) or a memory path.")
 
 
 class Daemon(Protocol):
@@ -119,7 +120,7 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         return json.dumps(await daemon.tool_recall(caller_room(ctx), query, k))
 
     @mcp.tool(description=READ_MEMORY)
-    async def read_memory(path: str, from_line: int = 1, lines: int = 40, *, ctx: Context) -> str:
+    async def read_memory(path: str, from_line: int = 1, lines: int = READ_LINES, *, ctx: Context) -> str:
         return json.dumps(await daemon.tool_read_memory(caller_room(ctx), path, from_line, lines))
 
     @mcp.tool()
@@ -210,7 +211,7 @@ def worker_server(state: Path, room: str, tools: list[str]) -> FastMCP:
             return await call({"recall": {"room": room, "query": query, "k": k}})
         mcp.tool(description=RECALL)(recall)
     if "read_memory" in allowed:
-        async def read_memory(path: str, from_line: int = 1, lines: int = 40) -> str:
+        async def read_memory(path: str, from_line: int = 1, lines: int = READ_LINES) -> str:
             return await call({"read_memory": {"room": room, "path": path, "start": from_line, "lines": lines}})
         mcp.tool(description=READ_MEMORY)(read_memory)
     return mcp
