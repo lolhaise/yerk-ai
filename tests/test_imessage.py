@@ -51,9 +51,8 @@ class FakeBridge:
             w.close()
         await asyncio.gather(*(w.wait_closed() for w in self.conns), return_exceptions=True)
         self.conns, self.subs = [], []
-        if self.server is not None:
-            self.server.close()
-            await self.server.wait_closed()
+        if self.server is not None:               # close() frees the socket; on 3.12 wait_closed() never returns
+            self.server.close()                   # once every connection closed before it, so it is not awaited
             self.server = None
         Path(self.path).unlink(missing_ok=True)
 
