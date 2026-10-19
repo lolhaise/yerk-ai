@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any, Iterator
 from zoneinfo import ZoneInfo
 
-from . import memindex
+from . import memindex, mentions
 from .config import REPO, load_toml, write_private
 
 MARK = re.compile(r"\[m:([^\]\s]+)\]$", re.M)        # the message id that ends each captured line
@@ -187,10 +187,6 @@ class Reader:
     name: str = ""
     rid: str = ""
     owner: bool = False
-
-    @staticmethod
-    def owner_room(name: str = "owner") -> "Reader":
-        return Reader(name, name, True)
 
 
 def file_class(path: Path) -> tuple[str, str]:
@@ -357,6 +353,112 @@ class DailyLog:
                 f.write(head + "\n".join(lines) + "\n")
             ids.add(key)
         return True
+
+
+NOTE = "note"                # the role of a day-log line a room files with `remember` (DESIGN 5; L58)
+BY = re.compile(re.escape(mentions.OLD) + r" by (\S+?:\d+)\]")     # a mark naming its replacement; `[superseded]` names none
+LATER = "superseded.tsv"     # in the tree, `old cite<TAB>new cite`: a line a correction named but could not mark with its cite
+
+
+def later(s: Settings) -> dict[str, str]:
+    f = s.root / LATER                                               # old cite -> new cite, the newest last
+    return {a: b for a, _, b in (x.partition("\t") for x in f.read_text().splitlines()) if b} if f.is_file() else {}
+
+
+def remember(s: Settings, log: DailyLog, room: str, mid: str, text: str, about: str = "",
+             old: tuple[str, ...] = (), reader: Reader | None = None) -> dict[str, Any]:
+    """A fact, decision or correction into the install's own tree, with its room, message and time. An owner
+    room's fact goes to facts/<about>.md, named by a key mention recall keys (private); anything else, or a fact
+    with no such key or no folder inside the tree, to the room's day log as a `note` line of its class. Each line in
+    `old` (`file:line | its words`: the one line holding them, from there through the next 12) it replaces: the
+    room's own line in this tree (any, for an owner room) is marked superseded, by the new cite where all its readers
+    may read it, else in LATER as a line it may only read is; a heading or a blank is refused."""
+    body, about = one_line(text), about.strip()
+    if not body:
+        return {"ok": False, "error": "nothing to remember: give the fact, decision or correction as text"}
+    rid, cls = log.rooms.get(room, (room, "private"))
+    owner, refused, olds = reader is None or reader.owner, [], {b: list[tuple[Path, int]]() for b in (True, False)}
+    for c in old:
+        c, _, said = (x.strip() for x in c.partition("|"))
+        r, want = read(s, c, lines=READ_LINES + 1 if said else 1), set(memindex.WORD.findall(memindex.norm(said)))
+        rows = (allowed_text(reader, Path(r["path"]), r["text"], whole=True, daily=s.daily) or "").split("\n") if r["ok"] else [""]
+        hit = [i for i, x in enumerate(rows) if want <= set(memindex.WORD.findall(memindex.norm(x)))]
+        line = rows[hit[0]] if len(hit) == 1 else ""
+        if not re.search(r":\d*[1-9]\d*$", c) or not re.search(r"\w", line) or line.lstrip().startswith("#"):
+            refused.append(f"{c}: " + (r.get("error") or (f"{len(hit)} lines from there to the next {READ_LINES} hold those words"
+                           if said and len(hit) != 1 else "a heading, a blank or not a line this room may read")))
+            continue
+        p, ln, k = Path(r["path"]), parse_line(line), r["from"] + hit[0]
+        olds[p.is_relative_to(s.root) and (owner or (ln is not None and (ln.cls, ln.rid) == (cls, rid)))].append((p, k))
+    edit, named = ([f"{cite(s, p)}:{k}" for p, k in olds[b]] for b in (True, False))
+    note = body + (f" (supersedes {', '.join(edit + named)})" if edit or named else "")
+    at = datetime.now(timezone.utc).astimezone(s.tz)
+    words = [w for w in "-".join(mentions.tokens(about)).split("-") if w][:mentions.KEY_WORDS]
+    while len("-".join(words)) > mentions.KEY_MAX:          # a name mention recall keys, never too long to file (F7)
+        words.pop()
+    path = (s.root / "facts" / f"{'-'.join(words)}.md").resolve()       # never through a link out of the tree (F8)
+    if owner and mentions.key_of(" ".join(words)) and path.is_relative_to(s.root) and file_class(path)[0] == "private" and not any(
+            path.is_relative_to(a) and not s.root.is_relative_to(a) for a in s.scope.roots[1:]):
+        with daily_lock(s.daily):                  # the one writers' lock, a fact file's too
+            have = path.read_text().splitlines() if path.is_file() else [f"# {about}", ""]
+            n = next((i + 1 for i, x in enumerate(have) if x.startswith(f"- {note} (")), 0)     # a retried call
+            if not n:
+                src = f"{room if rid in ('', room) else f'{room}#{rid}'}, {at:%Y-%m-%d %H:%M:%S%:z}"
+                path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+                write_private(path, "\n".join(have := have + [f"- {note} ({src}) [m:{mid}]"]) + "\n")
+                n = len(have)
+    else:
+        key = f"{mid}.n{hashlib.sha1(note.encode()).hexdigest()[:8]}"     # one line per note, a retry once
+        log.capture(room, key, NOTE, f"{about}: {note}" if about and not note.lower().startswith(about.lower()) else note, when=at)
+        path = s.daily / f"{at:%Y-%m-%d}.md"
+        n = next((i + 1 for i, x in enumerate(path.read_text().splitlines()) if x.endswith(f"[m:{key}]")), 0)
+    new, nc = f"{cite(s, path)}:{n}", (cls, rid) if path.parent == s.daily else ("private", "")    # the new line's class
+    taken, pairs = dict[str, str](), [(c, new) for c in named]
+    for (p, k), c in zip(olds[True], edit):
+        with daily_lock(s.daily):
+            lines = p.read_text().split("\n")
+            by = BY.findall(lines[k - 1]) or ([later(s).get(c, "")] if mentions.OLD in lines[k - 1] else [])
+            if by and by[0] != new:         # another correction marked it first (F6)
+                taken[c] = f"{c}: already superseded" + (f" by {by[0]}" if BY.search(lines[k - 1]) else "")
+            elif not by:                    # the mark goes before a day-log line's class and id
+                ln = parse_line(lines[k - 1])
+                oc, orid = (ln.cls, ln.rid) if ln and p.parent == s.daily.resolve() else file_class(p)
+                shown = oc not in ("room", "shared") or nc[0] == "shared" or nc == (oc, orid)    # no private cite on it (F1)
+                lines[k - 1] = re.sub(r"^(.*?)((?: \[c:\w+\])?(?: \[m:[^\]\s]+\])?)$",
+                                      lambda m: f"{m[1]} {mentions.OLD}{' by ' + new if shown else ''}]{m[2]}", lines[k - 1], count=1)
+                write_private(p, "\n".join(lines))
+                pairs += [] if shown else [(c, new)]
+    if pairs:
+        with daily_lock(s.daily), os.fdopen(os.open(s.root / LATER, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600), "a") as f:
+            f.write("".join(f"{a}\t{b}\n" for a, b in pairs))
+    return {"ok": True, "cite": new, "superseded": [c for c in edit if c not in taken], "refused": refused, "not_edited":
+            [*taken.values(), *(f"{c}: a read-only root or not this room's own line; the new line names it" for c in named)]}
+
+
+def live_first(s: Settings, r: dict[str, Any], reader: Reader | None = None) -> dict[str, Any]:
+    """Recall's answer with no superseded line above its replacement: a hit that a later hit names as replaced
+    gets that hit right above it, and a hit showing a marked line, or whose window (its line and the next 12)
+    holds a line in LATER, gets the live end of that line's replacements (five hops at most) read in right above
+    it, as the reader may see it, unless a hit above already shows it."""
+    hits, kept = list(r.get("hits") or []), later(s)
+
+    def above(j: int) -> int:
+        names = {c.strip().rpartition(":")[0] for m in re.findall(r"\(supersedes ([^)]+)\)", hits[j]["text"]) for c in m.split(",")}
+        return next((i for i in range(j) if hits[i]["cite"].rpartition(":")[0] in names), j)
+    out: list[dict[str, Any]] = []
+    for h in [hits[j] for j in sorted(range(len(hits)), key=lambda j: (above(j), above(j) == j, j))]:
+        f, _, at = h["cite"].rpartition(":")
+        for c in BY.findall(h["text"]) + [b for a, b in kept.items() if a.rpartition(":")[0] == f
+                                           and 0 <= int(a.rpartition(":")[2]) - int(at) <= READ_LINES]:
+            for _ in range(5):          # a replacement replaced in turn: on to the live end (F4)
+                got = read(s, c, lines=1)
+                line = (allowed_text(reader, Path(got["path"]), got["text"], daily=s.daily) or "").strip() if got["ok"] else ""
+                if not (c := (BY.findall(line) or [kept.get(f"{cite(s, Path(got['path']))}:{got['from']}", "")])[0] if line else ""):
+                    break
+            if line and not any(line in x["text"] for x in [*out, h]):
+                out.append({"cite": f"{cite(s, Path(got['path']))}:{got['from']}", "text": line})
+        out.append(h)
+    return {**r, "hits": out} if r.get("ok") else r
 
 
 def read(s: Settings, path: str, start: int = 1, lines: int = READ_LINES, reader: Reader | None = None) -> dict[str, Any]:
@@ -646,10 +748,6 @@ def window(s: Settings, now: datetime | None = None, days: int = WINDOW_DAYS) ->
     return [(today - timedelta(days=n)).isoformat() for n in range(days)]
 
 
-def _short(text: str) -> str:
-    return text if len(text) <= ITEM_CHARS else text[:ITEM_CHARS - 1] + "…"
-
-
 def _stem(w: str) -> str:
     return w[:5] if len(w) >= 5 else w
 
@@ -689,7 +787,7 @@ def topic_hits(s: Settings, room: str, text: str, exclude: set[str] | None = Non
     body = one_line(text)
     hits = []
     for day, n, ln, _ in room_lines(s, room, now, rid, owner):
-        if ln.mid.split(".e")[0] in (exclude or set()) or ln.body.strip() == body:
+        if ln.mid.split(".e")[0] in (exclude or set()) or ln.body.strip() == body or mentions.OLD in ln.body:
             continue
         cover = len(want & {_stem(w) for w in memindex.WORD.findall(memindex.norm(ln.body))})
         if cover >= need:
@@ -712,7 +810,7 @@ def room_items(s: Settings, room: str, now: datetime | None = None,
             found, last_day = [], day
         if ln.mid.split(".e")[0] in (exclude or set()):
             continue
-        if ln.role not in OWNER_ROLES and not DECIDED.search(ln.body):
+        if (ln.role not in (*OWNER_ROLES, NOTE) and not DECIDED.search(ln.body)) or mentions.OLD in ln.body:
             continue
         files = []
         for nxt in lines[n + 1:]:
@@ -733,8 +831,9 @@ def room_pack(s: Settings, room: str, budget: int = 6000, now: datetime | None =
     out, used, shown = [head], len(head), 0
     items = room_items(s, room, now, exclude, rid, owner)
     for it in items:
+        text = it["text"] if len(it["text"]) <= ITEM_CHARS else it["text"][:ITEM_CHARS - 1] + "…"
         extra = "".join(f" [{f}]" for f in it["files"])
-        line = f"- {it['day'][5:]} {it['time']} {it['role']}: {_short(it['text'])}{extra} ({it['cite']})"
+        line = f"- {it['day'][5:]} {it['time']} {it['role']}: {text}{extra} ({it['cite']})"
         if used + 1 + len(line) > budget - 60:
             break
         out.append(line)

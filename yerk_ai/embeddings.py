@@ -61,11 +61,6 @@ def scrub(text: object) -> str:
     return KEY_SHAPE.sub("sk-[removed]", str(text))[:240]
 
 
-def _timed_out(e: BaseException) -> bool:
-    reason = getattr(e, "reason", None)
-    return isinstance(e, TimeoutError) or isinstance(reason, TimeoutError) or "timed out" in str(e).lower()
-
-
 class Embedder:
     """The provider client. The key file is read per request and never held between them."""
 
@@ -120,7 +115,7 @@ class Embedder:
                     time.sleep(wait)
                     wait *= 2
                     continue
-                if _timed_out(e):
+                if isinstance(e, TimeoutError) or isinstance(getattr(e, "reason", None), TimeoutError) or "timed out" in str(e).lower():
                     raise ProviderTimeout(f"no answer from the provider in {timeout:.0f} s") from None
                 raise ProviderError(f"the provider could not be reached: {scrub(e)}") from None
         del key
@@ -135,10 +130,6 @@ class Embedder:
         self.requests += 1
         self.tokens += int(data.get("usage", {}).get("total_tokens", 0))
         return out
-
-
-def to_blob(vec: np.ndarray) -> bytes:
-    return np.asarray(vec, dtype=np.float16).tobytes()
 
 
 UNITS = ("lines", "chunks", "both")     # what gets a vector in memory: the lines (and bullets), the chunks, or both
@@ -423,7 +414,8 @@ class Backfill:
         conn.execute("BEGIN IMMEDIATE")
         try:
             conn.executemany("INSERT OR REPLACE INTO vectors(sha, model, dim, vec) VALUES (?, ?, ?, ?)",
-                             [(s, self.embedder.model, self.embedder.dim, to_blob(v)) for (s, _), v in zip(rows, vecs)])
+                             [(s, self.embedder.model, self.embedder.dim, np.asarray(v, dtype=np.float16).tobytes())
+                              for (s, _), v in zip(rows, vecs)])
             conn.execute("COMMIT")
         except BaseException:
             conn.execute("ROLLBACK")

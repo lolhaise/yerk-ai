@@ -38,7 +38,7 @@ from . import abilities, words   # STYLE.md: what a room reads
 
 log = logging.getLogger("yerk.daemon")
 YERK_TOOLS = ["mcp__yerk__send", "mcp__yerk__hold", "mcp__yerk__recall", "mcp__yerk__read_memory",
-              "mcp__yerk__worker", "mcp__yerk__schedule", "mcp__yerk__settings"]
+              "mcp__yerk__remember", "mcp__yerk__worker", "mcp__yerk__schedule", "mcp__yerk__settings"]
 NO_KEY_LINE = words.needs("meaning search", "an OpenAI key", "embeddings", "recall matches words only")
 
 
@@ -249,8 +249,10 @@ class Yerkd:
 
     async def tool_recall(self, room: str, query: str, k: int) -> dict[str, Any]:
         """Off the loop: the index is yerk-index's file, read here, never built here (L47). The first
-        recall in a room while yerk-index runs without a provider key tells the room so, once."""
-        r = await asyncio.to_thread(memory.recall, self.memory, query, k, 5.0, self.reader(room))
+        recall in a room while yerk-index runs without a provider key tells the room so, once. A superseded
+        line never comes above its replacement (memory.live_first)."""
+        rd = self.reader(room)
+        r = await asyncio.to_thread(lambda: memory.live_first(self.memory, memory.recall(self.memory, query, k, 5.0, rd), rd))
         log.info("recall: %s, %d hit(s)%s", room or "?", len(r.get("hits", [])), "" if r["ok"] else f", {r['status']}")
         if r["ok"] and room in self.rooms and memory.meaning_state(self.memory) == "no-key":
             await self.tell_once(room, "embeddings", NO_KEY_LINE)
@@ -268,6 +270,16 @@ class Yerkd:
 
     async def tool_read_memory(self, room: str, path: str, start: int, lines: int) -> dict[str, Any]:
         return await asyncio.to_thread(memory.read, self.memory, path, start, lines, self.reader(room))
+
+    async def tool_remember(self, room: str, text: str, about: str, replaces: list[str]) -> dict[str, Any]:
+        """The `remember` tool: a room's own note into Yerk's own tree (memory.remember), stamped with
+        the ids of the messages its turn answers."""
+        if room not in self.rooms:
+            return {"ok": False, "error": "remember is for a room's own session"}
+        with self.rooms[room].lock:
+            mid = ",".join(m.id for m in self.rooms[room].inflight) or f"x{self.rooms[room].turn_key}"
+        return await asyncio.to_thread(memory.remember, self.memory, self.daily, room, mid, text, about,
+                                       tuple(replaces), self.reader(room))
 
     def owner_only(self, room: str, named: str, line: str = words.WORKERS_OWNER_ONLY) -> dict[str, Any] | None:
         """A room's own call that would start or read a worker: the owner's rooms only (a worker runs as

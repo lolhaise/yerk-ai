@@ -134,7 +134,7 @@ def test_a_room_cannot_read_another_rooms_private_lines_or_files(tmp_path):
         "- 09:01:00+00:00 room-b#b-id other@h: kettle kettle kettle in room b [c:room] [m:2]\n"
         "- 09:02:00 room-a owner: an old line, kettle [m:3]\n")
     build(s)
-    owner, b, nobody = memory.Reader.owner_room("room-a"), memory.Reader("room-b", "b-id", False), memory.Reader()
+    owner, b, nobody = memory.Reader("room-a", "room-a", True), memory.Reader("room-b", "b-id", False), memory.Reader()
     paths = lambda r: sorted({h["cite"].rpartition(":")[0].rsplit("/", 1)[-1] for h in r["hits"]})  # noqa: E731
     assert paths(memory.recall(s, "kettle", 20, reader=owner)) == ["2026-01-05.md", "kettle.md", "shared.md", "side.md"]
     got = memory.recall(s, "kettle", 20, reader=b)
@@ -165,7 +165,7 @@ def test_a_free_form_line_and_a_date_named_note_stay_with_the_owner(tmp_path):
         "- 10:01:00+00:00 room-b#b-id other: the room's own line [c:room] [m:2]\n  - attachment: own-file.png, image/png, 2 bytes\n")
     (s.root / "2026-01-06.md").write_text("# 2026-01-06\n\nA DATE-NAMED NOTE at the root, no class\n")
     (s.root / "2026-01-09.md").write_text("---\nclass: shared\n---\n# 2026-01-09\n\nA DATE-NAMED NOTE marked shared\n")
-    owner, b = memory.Reader.owner_room("room-a"), memory.Reader("room-b", "b-id", False)
+    owner, b = memory.Reader("room-a", "room-a", True), memory.Reader("room-b", "b-id", False)
     r = memory.read(s, "daily/2026-01-06.md", 1, 40, reader=b)
     assert r["ok"] and r["text"].splitlines() == [
         "# 2026-01-06", "", "(a line of another room)", "(a line of another room)", "(a line of another room)",

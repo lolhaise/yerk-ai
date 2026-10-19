@@ -23,18 +23,13 @@ def manifest() -> dict[str, dict[str, Any]]:
     return dict(load_toml(table("abilities.toml"))["abilities"])
 
 
-def key_path(name: str, s: Any) -> Path | None:
-    """Where an ability's provider key lives on this install (memory settings), if it takes one."""
-    return {"embeddings": getattr(s, "embeddings_key", None)}.get(name)
-
-
 def state(name: str, ab: dict[str, Any], tab: dict[str, dict[str, Any]], s: Any) -> tuple[str, str]:
     """(mark, words): on; needs <provider>; runs on the free path (the ability that lifts it is
     off); known, not built (described only, decision 26). The key file is looked at, never read."""
     if ab.get("state", "built") == "described":
         return words.ability("described")
     if ab["tier"] in ("key", "paid"):
-        key = key_path(name, s)
+        key: Path | None = {"embeddings": getattr(s, "embeddings_key", None)}.get(name)     # the provider key's path
         if key is not None and key.is_file() and key.stat().st_size > 0:
             return words.ability("on")
         return words.ability("needs", provider=ab.get("provider", "a provider key"))

@@ -1000,6 +1000,14 @@ free_path = "keywords (FTS5) alone; the embeddings ability (key tier) adds meani
 upgrade = "embeddings"
 layer = 4
 
+[abilities.remember]
+state = "built"
+what = "The remember tool: a room files a new fact, decision or correction into the install's own memory tree the same turn, each line carrying its room, source message and time. An owner room's fact goes to facts/<about>.md, where mention recall finds it by name; anything else to the room's day log as a note of the room's class, where the recall pack and the topic hit find it. A correction marks every old line it names in that tree as superseded (a line in a read-only root is named in the new line instead), and recall never puts a superseded line above its replacement. A room that is not an owner room writes its own class and supersedes only its own lines."
+tier = "free"
+needs = "nothing; writes <private>/memory/facts/ and the day's log"
+free_path = "this is the free path"
+layer = 4
+
 [abilities.embeddings]
 state = "built"
 what = "Meaning search behind the keywords: yerk-index embeds every line of a day log and every bullet of a fact or topic file once (changed lines only, the vector stored next to the line's hash, copied across a rebuild) and answers recall's query by cosine, each hit mapped to its chunk; recall fuses that rank with the keyword rank by reciprocal rank fusion, holds each search's own first hits in the top six and gives a fact or topic file a small edge over a day log, so a paraphrase finds the line its words never name."
