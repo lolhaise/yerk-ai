@@ -144,6 +144,8 @@ class Yerkd:
         self.jobs = jobs.Jobs(private, state, self.ledger, dict(self.conf.get("jobs", {})), self.rooms, self.channels,
                               self.room_confs, self.conf, self.workers)
         self.gates = gates.settings(self.conf.get("gates"))      # the rule-based gates (DESIGN 8)
+        self.workers.gate = {"trash": list(self.gates.trash), "private": str(self.private),   # workers pass them too
+                             "external": self.gates.external}
         self.rebuild_running = gates.rebuild_running
         self.rewrites: dict[str, tuple[str, str]] = {}           # tool_use id -> (room, the trash command)
         self.worded: set[str] = set()                            # inbound ids whose approval word was used

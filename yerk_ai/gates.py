@@ -25,6 +25,7 @@ import os
 import re
 import shlex
 import shutil
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -261,6 +262,43 @@ def is_word(prompt: str, sender: str, s: Settings) -> bool:
     return sender in s.approvers and prompt.strip().lower().rstrip(".!") == s.word
 
 
+def worker_check(payload: dict[str, Any], folder: Path, spec: dict[str, Any]) -> dict[str, Any]:
+    """A worker's PreToolUse (workers.py writes the hook): the room's gates on what it would run, with
+    deletes held to the worker's own folder. A worker has nobody to say the word, so an external action,
+    a write to Yerk AI's config or a restart of it is refused, never held."""
+    g = dict(spec.get("gate") or {})
+    s = Settings(trash=tuple(g.get("trash") or find_trash()),
+                 external={str(k): dict(v) for k, v in dict(g.get("external") or EXTERNAL).items()})
+    tool, ti = str(payload.get("tool_name") or ""), dict(payload.get("tool_input") or {})
+    v = None
+    if tool == "Bash":
+        v = check_shell(str(ti.get("command") or ""), str(payload.get("cwd") or folder), s, root=str(folder))
+        if v and v.new_input is not None:
+            v.new_input = {**ti, **v.new_input}
+    if v is None and (what := restart_hit(tool, ti, Path(str(g.get("private") or "/nonexistent")))):
+        v = Verdict("restart", "deny", f"Refused: {what} would change or restart Yerk AI, and a worker never does "
+                                       "that. Say in your report what should change; the owner does it.")
+    if v is None and (hit := external_hit(tool, ti, str(spec.get("room") or ""), s)):
+        _, what, call = hit
+        v = Verdict("approval", "deny", f"Refused: {what} (`{call}`) is an external action, and a worker never "
+                                        "takes one. Put it in your report as a draft; the owner decides.")
+    return v.output() if v else {}
+
+
+def worker_hook(folder: Path) -> int:
+    """`python -m yerk_ai.gates worker-hook FOLDER`: the hook's payload on stdin, the answer on stdout.
+    A call it cannot read is refused: a gate that fails open is no gate."""
+    try:
+        out = worker_check(json.loads(sys.stdin.read() or "{}"), folder,
+                           json.loads((folder / "worker.json").read_text()))
+    except Exception as e:  # noqa: BLE001  fail closed on anything
+        out = Verdict("worker", "deny", f"Refused: the worker gate could not read this call ({type(e).__name__}). "
+                                        "Try it again in a plainer form.").output()
+    if out:
+        print(json.dumps(out))
+    return 0
+
+
 def rebuild_running(proc: Path = Path("/proc")) -> bool:
     """A full memory index rebuild (`yerk_ai.memindex --rebuild`, `yerk-index --rebuild`) is running."""
     try:
@@ -276,3 +314,10 @@ def rebuild_running(proc: Path = Path("/proc")) -> bool:
     except OSError:
         return False
     return False
+
+
+if __name__ == "__main__":
+    if len(sys.argv) == 3 and sys.argv[1] == "worker-hook":
+        sys.exit(worker_hook(Path(sys.argv[2])))
+    print("usage: python -m yerk_ai.gates worker-hook FOLDER (a worker's PreToolUse hook)", file=sys.stderr)
+    sys.exit(2)

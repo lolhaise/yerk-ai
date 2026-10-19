@@ -205,8 +205,6 @@ class Vectors:
         return self.n
 
     def add(self, shas: list[str], vecs: np.ndarray) -> None:
-        if not shas:
-            return
         with self.lock:
             self._put(shas, vecs)
 
@@ -269,10 +267,8 @@ class Server:
             return {"ok": False, "status": "provider-timeout", "error": str(e)}
         except ProviderError as e:
             return {"ok": False, "status": "provider-error", "error": scrub(e)}
-        top = self.store.search(q, max(1, min(int(pool), 400)))
-        if not top:
-            return {"ok": True, "status": "ok", "hits": [], "vectors": self.store.n}
-        score = dict(top)
+        pool = max(1, min(int(pool), 400))
+        score = dict(self.store.search(q, pool))
         marks = ",".join("?" * len(score))
         conn = sqlite3.connect(f"file:{self.live(self.db)}?mode=ro", uri=True, timeout=2.0)
         try:
@@ -286,7 +282,7 @@ class Server:
         for cid, p, lo, hi, body, sha in rows:
             if cid not in best or score[sha] > best[cid]["score"]:
                 best[cid] = {"id": cid, "path": p, "line": lo, "lines": f"{lo}-{hi}", "text": body, "score": round(score[sha], 4)}
-        hits = sorted(best.values(), key=lambda h: -h["score"])[:max(1, min(int(pool), 400))]
+        hits = sorted(best.values(), key=lambda h: -h["score"])[:pool]
         return {"ok": True, "status": "ok", "hits": hits, "vectors": self.store.n}
 
     def status(self) -> dict[str, Any]:
@@ -355,7 +351,6 @@ class Backfill:
         self.paused_until = 0.0
         self.done = self.failed = 0
         self.last_error = ""
-        self.started = 0.0
         self.thread: threading.Thread | None = None
         self.conn: sqlite3.Connection | None = None
         self.real: Path | None = None
@@ -435,7 +430,6 @@ class Backfill:
         return len(rows)
 
     def run(self) -> None:
-        self.started = time.time()
         while not self.stop.is_set():
             if not self.embedder.available() or time.monotonic() < self.paused_until:
                 self.stop.wait(2.0)

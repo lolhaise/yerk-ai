@@ -457,9 +457,6 @@ def cmd_memory(a: argparse.Namespace) -> int:
     s = memory.settings(priv, state, dict(conf.get("memory", {})))
     rooms = {n: (room_id(n, c), memory.room_class(c)) for n, c in load_rooms(priv).items()}
     backup = Path(a.backup) if a.backup else priv / "backups" / f"daily-before-{time.strftime('%Y-%m-%d')}"
-    if a.action != "migrate-daylogs":
-        print("usage: yerk memory migrate-daylogs [--backup DIR]", file=sys.stderr)
-        return 2
     print(json.dumps(memory.migrate_daylogs(s.daily, s.tz, rooms, backup)))
     return 0
 

@@ -108,6 +108,17 @@ def yerk_tools(conf: dict[str, Any]) -> list[str]:
     return [t for t in WORKER_TOOLS if t in want]
 
 
+def gate_settings(folder: Path) -> Path:
+    """A worker's --settings: one PreToolUse hook on every tool call, the room's gates run as a local
+    process (gates.py worker-hook: no daemon round trip, no secret) with the worker's folder as the root."""
+    cmd = shlex.join(["env", f"PYTHONPATH={PACKAGE.parent}", sys.executable, "-P", "-m", "yerk_ai.gates",
+                      "worker-hook", str(folder)])
+    path = folder / "settings.json"
+    path.write_text(json.dumps({"hooks": {"PreToolUse": [{"matcher": "*", "hooks": [
+        {"type": "command", "command": cmd, "timeout": 15}]}]}}, indent=1))
+    return path
+
+
 def mcp_config(state: Path, room: str, tools: list[str], path: Path) -> Path:
     """A worker's --mcp-config: its own stdio server (mcp_server.py `worker`) with only `tools`."""
     args = ["-P", "-m", "yerk_ai.mcp_server", "worker", str(state), room, ",".join(tools)]
@@ -172,6 +183,8 @@ def run(spec_path: Path) -> int:
     if spec.get("mcp_config") and spec.get("yerk_tools"):     # only the read-only tools, from its own server
         argv += ["--mcp-config", str(spec["mcp_config"]),
                  "--allowedTools", ",".join(f"mcp__yerk__{t}" for t in spec["yerk_tools"] if t in WORKER_TOOLS)]
+    if spec.get("settings"):                                   # the gates' hook (gate_settings)
+        argv += ["--settings", str(spec["settings"])]
     fd = os.open(spec["prompt"], os.O_RDONLY)
     os.dup2(fd, 0)
     os.close(fd)
@@ -373,6 +386,7 @@ class Workers:
         self.state = state or conf.root.parent             # the daemon's state folder (a worker's tools reach it)
         self.rooms, self.channels, self.room_confs = rooms, channels, room_confs
         self.launcher: Launcher = launcher or Systemd()
+        self.gate: dict[str, Any] = {}       # the daemon's [gates] for a worker's hook: trash, private, external
         self.watch: Watch | None = None
         self.live: dict[str, dict[str, Any]] = {}      # id -> its ledger row, while its unit runs
         self.tasks: set[asyncio.Future[Any]] = set()
@@ -484,13 +498,16 @@ class Workers:
             f"- Write your report to {report}. Its first line is the one-line result; the card shows it.\n"
             "- Your last message is the deliverable: end with it, no tool call after it.\n"
             f"- You have no room session, no Yerk AI tools and no subagents. Your cap is {cap / 60:g} minutes; "
-            "past it the run is stopped.\n\n"
+            "past it the run is stopped.\n"
+            "- Your tool calls pass Yerk AI's gates: a plain delete in your folder goes to the trash; a delete "
+            "elsewhere or after a cd, an external action (a post, a login, money, a message out) and a change to "
+            "Yerk AI's own config are refused. Put what you could not do in your report.\n\n"
             f"The brief (also in {d / 'BRIEF.md'}):\n\n{brief.strip()}\n")
         sid = str(uuid.uuid4())
         spec = {"id": wid, "room": room, "account": acct.name, "model": model, "session_id": sid,
                 "claude": shutil.which(claude_bin()) or claude_bin(), "tools": self.conf.tools,
                 "permission_mode": self.conf.permission_mode, "prompt": str(prompt), "report": str(report),
-                "tasks": str(tasks_md), "cap": cap}
+                "tasks": str(tasks_md), "cap": cap, "gate": self.gate, "settings": str(gate_settings(d))}
         if self.conf.yerk_tools:
             spec["yerk_tools"] = list(self.conf.yerk_tools)
             spec["mcp_config"] = str(mcp_config(self.state, room, self.conf.yerk_tools, d / "mcp.json"))

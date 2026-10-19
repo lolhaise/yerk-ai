@@ -188,15 +188,13 @@ def room_config(url: str, room: str, path: Path, token: str = "") -> Path:
     return path
 
 
-WORKER_TOOLS = ("recall", "read_memory")    # workers.WORKER_TOOLS: what a worker's own server can carry
-
-
 def worker_server(state: Path, room: str, tools: list[str]) -> FastMCP:
     """A worker's own MCP server (stdio, started by its claude from workers.mcp_config): only the
-    read-only tools named in `tools` and in WORKER_TOOLS, each one /control call to the running
+    read-only tools named in `tools` and in workers.WORKER_TOOLS, each one /control call to the running
     daemon for the worker's room, under the worker secret (reads only). It has no send, hold, worker
     or schedule tool to give, and no secret that would open them."""
     from .jobs import post_control                       # late: jobs imports workers, which builds this config
+    from .workers import WORKER_TOOLS
     mcp = FastMCP("yerk")
     allowed = [t for t in WORKER_TOOLS if t in tools]
 
