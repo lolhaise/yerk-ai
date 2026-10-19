@@ -49,6 +49,7 @@ import urllib.request
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
+from itertools import product
 from pathlib import Path
 from typing import Any, Callable, Iterator, Protocol
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -121,19 +122,16 @@ class JobError(ValueError):
 # the schedule: cron, every, at
 MONTHS = {m: i + 1 for i, m in enumerate(("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov",
                                           "dec"))}
-DAYS = {d: i for i, d in enumerate(("sun", "mon", "tue", "wed", "thu", "fri", "sat"))}
 DAY_NAMES = ("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
+DAYS = {d.lower(): i for i, d in enumerate(DAY_NAMES)}
 
 
 def _num(text: str, names: dict[str, int], lo: int, hi: int) -> int:
     key = text.strip().lower()[:3]
-    if names and key in names and not text.strip().isdigit():
-        n = names[key]
-    else:
-        try:
-            n = int(text)
-        except ValueError:
-            raise JobError(f"{text!r} is not a number") from None
+    try:
+        n = names[key] if key in names else int(text)
+    except ValueError:
+        raise JobError(f"{text!r} is not a number") from None
     if not lo <= n <= hi:
         raise JobError(f"{n} is outside {lo}-{hi}")
     return n
@@ -197,42 +195,22 @@ class Cron:
                    parts[2] == "*", parts[4] == "*")
 
     def day_ok(self, d: date) -> bool:
-        if d.month not in self.month:
-            return False
         dom, dow = d.day in self.dom, (d.isoweekday() % 7) in self.dow
-        if self.dom_any and self.dow_any:
-            return True
-        if self.dom_any:
-            return dow
-        if self.dow_any:
-            return dom
-        return dom or dow                  # vixie cron: when both are restricted, either one matches
+        either = not (self.dom_any or self.dow_any)      # vixie cron: when both are restricted, either one matches
+        return d.month in self.month and ((dom or dow) if either else (dom and dow))
 
-    def _times(self, d: date, tz: ZoneInfo, reverse: bool = False) -> Iterator[datetime]:
-        for h in sorted(self.hour, reverse=reverse):
-            for m in sorted(self.minute, reverse=reverse):
+    def fire(self, at: float, tz: ZoneInfo, back: bool = False) -> float | None:
+        """The first fire after `at`, or with `back` the last one at or before it; None if none in five years."""
+        start = datetime.fromtimestamp(at, tz).date()
+        for i in range(366 * 5):
+            d = start + timedelta(days=-i if back else i)
+            if not self.day_ok(d):
+                continue
+            for h, m in sorted(product(self.hour, self.minute), reverse=back):
                 t = datetime(d.year, d.month, d.day, h, m, tzinfo=tz)
-                if t.astimezone(timezone.utc).astimezone(tz).replace(tzinfo=None) == t.replace(tzinfo=None):
-                    yield t                # a wall time the zone skips (a spring-forward gap) is not a fire
-
-    def next(self, after: float, tz: ZoneInfo) -> float:
-        start = datetime.fromtimestamp(after, tz).date()
-        for i in range(366 * 5):
-            d = start + timedelta(days=i)
-            if self.day_ok(d):
-                for t in self._times(d, tz):
-                    if t.timestamp() > after:
-                        return t.timestamp()
-        raise JobError("no fire time in the next five years")
-
-    def prev(self, before: float, tz: ZoneInfo) -> float | None:
-        start = datetime.fromtimestamp(before, tz).date()
-        for i in range(366 * 5):
-            d = start - timedelta(days=i)
-            if self.day_ok(d):
-                for t in self._times(d, tz, reverse=True):
-                    if t.timestamp() <= before:
-                        return t.timestamp()
+                real = t.astimezone(timezone.utc).astimezone(tz).replace(tzinfo=None) == t.replace(tzinfo=None)
+                if real and (t.timestamp() <= at if back else t.timestamp() > at):   # real: not a spring-forward gap
+                    return t.timestamp()
         return None
 
     def calendar(self, tz: str) -> list[str]:
@@ -364,7 +342,7 @@ class Job:
         """What the schedule says comes next (systemd's own answer is the one shown; this is for
         the plan, the planned time and the tests)."""
         if self.cron is not None:
-            return self.cron.next(now, self.zone)
+            return self.cron.fire(now, self.zone)
         if self.when == "every":
             return (last if last else now) + self.every_seconds
         return self.at_epoch if self.at_epoch > now else None
@@ -373,7 +351,7 @@ class Job:
         """The time this run was meant for: the clock instant at or before the fire, the one-shot's
         time, or for a monotonic interval the timer's own trigger time."""
         if self.cron is not None:
-            return self.cron.prev(fired, self.zone) or fired
+            return self.cron.fire(fired, self.zone, back=True) or fired
         if self.when == "at":
             return self.at_epoch
         return last_trigger if last_trigger and abs(fired - last_trigger) < 3600 else fired
