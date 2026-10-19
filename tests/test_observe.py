@@ -109,30 +109,42 @@ def test_the_card_is_phone_width_state_first_and_colours_only_what_means_somethi
 def test_the_status_endpoint_answers_and_yerk_status_renders_it(tmp_path, capsys):
     y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
     y.add_room("example-room", ConsoleChannel())
-    with TestClient(mcp_server.build(y, y.port, y.hook, y.control, y.status_now).streamable_http_app()) as c:
-        r = c.post("/status", json={})
+    y.sessions.bind("example-room", "s-1", "one", token="room-token")
+    h = mcp_server.HEADER
+    app = mcp_server.app(mcp_server.build(y, y.port, y.hook, y.control, y.status_now), y.check())  # as serve_http
+    with TestClient(app) as c:
+        refused = [c.post("/status", json={}, headers=hd).status_code
+                   for hd in ({}, {h: y.worker_secret}, {h: "room-token"}, {h: "wrong"})]
+        hook_by_room = c.post("/hook", json={}, headers={h: "room-token"}).status_code
+        r = c.post("/status", json={}, headers={h: y.secret})
+    assert refused == [401, 401, 401, 401] and hook_by_room == 200   # a room's token opens its own door only
     s = r.json()
     assert r.status_code == 200 and s["running"] and s["rooms"] == [{"room": "example-room", "busy": False,
                                                                      "waiting": 0, "since": None}]
     assert s["units"][0]["name"] == "yerkd" and s["units"][0]["rss_mb"] > 0 and s["stalls"] == [] and s["started"]
     assert [a["name"] for a in s["accounts"]] == ["one", "two"] and s["accounts"][0]["meter"]["error"]
 
-    class Answer(BaseHTTPRequestHandler):
+    secret_file = tmp_path / "http.secret"
+    secret_file.write_text("install-secret\n")
+
+    class Answer(BaseHTTPRequestHandler):           # answers only the install's secret, as the Guard does
         def do_POST(self):
-            body = json.dumps(s).encode()
-            self.send_response(200)
+            ok = self.headers.get(h) == "install-secret"
+            body = json.dumps(s if ok else {"ok": False}).encode()
+            self.send_response(200 if ok else 401)
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
     server = HTTPServer(("127.0.0.1", 0), Answer)
     threading.Thread(target=server.handle_request, daemon=True).start()
-    (tmp_path / "yerkd.json").write_text(json.dumps({"pid": os.getpid(), "port": server.server_port}))
+    st = {"pid": os.getpid(), "port": server.server_port, "secret_file": str(secret_file)}
+    (tmp_path / "yerkd.json").write_text(json.dumps(st))
     assert cli.main(["status", "--private", str(EXAMPLE_PRIVATE), "--state", str(tmp_path)]) == 0
     out = capsys.readouterr().out.splitlines()
     server.server_close()
     assert out[0] == "- yerkd running: example-room" and any(x.startswith("- yerkd: ") for x in out)
     assert all(words.width(x) <= words.PHONE for x in out)
-    (tmp_path / "yerkd.json").write_text(json.dumps({"pid": os.getpid(), "port": server.server_port}))
+    (tmp_path / "yerkd.json").write_text(json.dumps(st))
     assert cli.main(["status", "--private", str(EXAMPLE_PRIVATE), "--state", str(tmp_path)]) == 0   # alive, silent
     assert capsys.readouterr().out.splitlines()[0] == f"{words.NOT_DONE} yerkd: running, not answering"
 

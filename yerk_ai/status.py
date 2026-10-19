@@ -119,11 +119,15 @@ def alive(state: Path) -> bool:
 
 
 def ask(state: Path, timeout: float = 10.0) -> dict[str, Any] | None:
-    """The running yerkd's /status (its port is in <state>/yerkd.json); None when none answers."""
+    """The running yerkd's /status under the install's secret, as jobs.post_control asks /control
+    (<state>/yerkd.json names the port and the secret's file, never its value); None when none answers."""
+    from .config import read_secret
+    from .mcp_server import HEADER
     try:
-        port = json.loads((state / "yerkd.json").read_text())["port"]
-        req = urllib.request.Request(f"http://127.0.0.1:{port}/status", data=b"{}",
-                                     headers={"Content-Type": "application/json"})
+        st = json.loads((state / "yerkd.json").read_text())
+        secret = read_secret(Path(str(st.get("secret_file") or "/nonexistent")))
+        req = urllib.request.Request(f"http://127.0.0.1:{st['port']}/status", data=b"{}",
+                                     headers={"Content-Type": "application/json", HEADER: secret})
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return dict(json.loads(r.read()))
     except (OSError, ValueError, KeyError):

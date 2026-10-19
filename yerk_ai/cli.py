@@ -64,14 +64,11 @@ def cmd_setup_room(a: argparse.Namespace) -> int:
 
 
 def _control(state_arg: str | None, payload: dict[str, Any], timeout: float = 60) -> dict[str, Any]:
-    """One POST to the running yerkd's /control (its port is in <state>/yerkd.json)."""
-    import urllib.request
+    """One POST to the running yerkd's /control (its port and the secret file's path are in
+    <state>/yerkd.json), under the install's secret."""
     from .config import state_dir
-    st = json.loads((state_dir(state_arg) / "yerkd.json").read_text())
-    req = urllib.request.Request(f"http://127.0.0.1:{st['port']}/control", data=json.dumps(payload).encode(),
-                                 headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return dict(json.loads(r.read()))
+    from .jobs import post_control
+    return post_control(state_dir(state_arg), payload, timeout)
 
 
 def cmd_room(a: argparse.Namespace) -> int:
@@ -433,6 +430,28 @@ def cmd_config(a: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_memory(a: argparse.Namespace) -> int:
+    """`yerk memory migrate-daylogs`: the rewrite of day-log lines written before offsets, room ids,
+    authors and classes (restart test R5, R2), every file that changes copied to the private layer's
+    backups folder first. The daemon runs the same rewrite at its start; by hand it is safe beside a
+    running daemon, since the rewrite and the daemon's capture hold one lock (cold read F3)."""
+    import time
+    from pathlib import Path
+    from . import memory
+    from .config import load_toml, room_id, state_dir
+    from .config import rooms as load_rooms
+    priv, state = private_dir(a.private), state_dir(a.state)
+    conf = load_toml(priv / "yerkd.toml") if (priv / "yerkd.toml").is_file() else {}
+    s = memory.settings(priv, state, dict(conf.get("memory", {})))
+    rooms = {n: (room_id(n, c), memory.room_class(c)) for n, c in load_rooms(priv).items()}
+    backup = Path(a.backup) if a.backup else priv / "backups" / f"daily-before-{time.strftime('%Y-%m-%d')}"
+    if a.action != "migrate-daylogs":
+        print("usage: yerk memory migrate-daylogs [--backup DIR]", file=sys.stderr)
+        return 2
+    print(json.dumps(memory.migrate_daylogs(s.daily, s.tz, rooms, backup)))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="yerk", description="Yerk AI: chat rooms as long-lived Claude Code sessions.")
     p.add_argument("--version", action="version", version=f"yerk {__version__}")
@@ -507,6 +526,12 @@ def main(argv: list[str] | None = None) -> int:
     for x in (ac, st, mo, rb, ab, ex, jb, sc):
         x.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else the fake example layer)")
         x.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
+    mm = sub.add_parser("memory", help="the memory tree's one-time migrations: migrate-daylogs (offsets, room ids, "
+                        "authors and classes on every day-log line written before them; files copied to backups/ first)")
+    mm.add_argument("action", choices=["migrate-daylogs"])
+    mm.add_argument("--backup", help="where the copies go (default: <private>/backups/daily-before-<today>)")
+    mm.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else the fake example layer)")
+    mm.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
     cf = sub.add_parser("config", help="the settings Yerk AI describes, with their values here and plain words")
     cf.add_argument("action", choices=["get"])
     cf.add_argument("key", nargs="?", default="", help="a setting or section (presentation, memory); all when left out")
@@ -547,7 +572,7 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_schedule(a)
     return int({"map": cmd_map, "probe": cmd_probe, "setup-room": cmd_setup_room, "room": cmd_room,
                 "accounts": cmd_accounts, "status": cmd_status, "morning": cmd_morning, "recall-bench": cmd_recall_bench,
-                "abilities": cmd_abilities, "explain": cmd_explain}[a.cmd](a))
+                "abilities": cmd_abilities, "explain": cmd_explain, "memory": cmd_memory}[a.cmd](a))
 
 
 if __name__ == "__main__":

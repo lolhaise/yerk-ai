@@ -412,5 +412,5 @@ def test_every_message_in_the_room_is_filed_in_the_days_log_once(tmp_path, monke
     assert [x.split(": ", 1)[0].split(" ", 2)[2] for x in lines] == [
         "test-room owner", "test-room test-webhook", "test-room owner", "test-room other", "test-room yerk"]
     assert text.count("[m:31]") == 1 and "[m:35]" not in text
-    assert "(attachment only) [m:32]\n  - attachment: photo.png, image/png, 1,234 bytes" in text
-    assert " owner: k [m:33]" in text and " yerk: a reply from Yerk [m:" in text
+    assert "(attachment only) [c:private] [m:32]\n  - attachment: photo.png, image/png, 1,234 bytes" in text
+    assert " owner: k [c:private] [m:33]" in text and " yerk: a reply from Yerk [c:private] [m:" in text

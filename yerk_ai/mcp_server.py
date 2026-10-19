@@ -6,12 +6,19 @@
 HTTP, preloaded in every room. A worker gets none of it: by default no MCP server at all, and with
 [workers] yerk_tools its own stdio server (`worker_server`) carrying recall and read_memory only.
 
-Each room's process gets a config naming this one server with `alwaysLoad: true` and a header
-carrying its room id, passed with --strict-mcp-config. The same HTTP app answers the hooks.
+Every endpoint (/mcp, /hook, /control) wants the `x-yerk-secret` header (restart test R3). Three
+values open it: the install's secret (the CLI, the job units, the tests: everything), a room process's
+own token (minted per process start and bound with its session in sessions.json: /hook and /mcp, and
+the room's identity IS that binding, never a header a caller picks), and the worker secret (/control,
+recall and read_memory only, so a worker holds nothing that starts a worker or schedules a job).
+Each room's process gets a config naming this one server with `alwaysLoad: true` and its token as the
+header, passed with --strict-mcp-config. The same HTTP app answers the hooks.
 """
 from __future__ import annotations
 
+import hmac
 import json
+import logging
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Protocol
 
@@ -19,7 +26,9 @@ from mcp.server.fastmcp import Context, FastMCP
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-ROOM_HEADER = "x-yerk-room"
+log = logging.getLogger("yerk.http")
+HEADER = "x-yerk-secret"
+Auth = dict[str, str]                      # {"kind": install | room | worker, "room": the bound room or ""}
 RECALL = ("Search the owner's memory (daily logs, fact files, the curated file, open loops) by keywords\n"
           "and, where the install has a provider key, by meaning too, so a paraphrase finds the line.\n"
           "Returns ranked chunks, each with its file path, first line and `cite` (file:line). Cite every\n"
@@ -39,11 +48,53 @@ class Daemon(Protocol):
 
 
 def caller_room(ctx: Context) -> str:
+    """The room a tool call comes from: the binding that holds the call's token (set by Guard)."""
     req = ctx.request_context.request
-    return str(req.headers.get(ROOM_HEADER, "")) if req is not None else ""
+    auth = getattr(req.state, "yerk_auth", None) if req is not None else None
+    return str(auth.get("room", "")) if isinstance(auth, dict) else ""
 
 
-Handler = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
+Handler = Callable[[dict[str, Any], Auth], Awaitable[dict[str, Any]]]
+Check = Callable[[str, str], Auth | None]   # (path, header value) -> who this is, or None: refused
+
+
+def checker(install: str, worker: str, room_of_token: Callable[[str], str | None]) -> Check:
+    """The one rule for every endpoint, compared in constant time; an empty secret never matches. A
+    room's own token opens /hook and /mcp only: /control and /status show every room, not a room's to read."""
+    def check(path: str, value: str) -> Auth | None:
+        if value and install and hmac.compare_digest(value, install):
+            return {"kind": "install", "room": ""}
+        if value and worker and path.startswith("/control") and hmac.compare_digest(value, worker):
+            return {"kind": "worker", "room": ""}
+        room = room_of_token(value) if value and not path.startswith(("/control", "/status")) else None
+        return {"kind": "room", "room": room} if room else None
+    return check
+
+
+class Guard:
+    """ASGI middleware: refuses a request without a valid x-yerk-secret (401, one warning line), else
+    hands the request on with who it is in `request.state.yerk_auth`."""
+
+    def __init__(self, app: Any, check: Check):
+        self.app, self.check = app, check
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        if scope["type"] == "http":
+            headers = {k.decode().lower(): v.decode() for k, v in scope.get("headers") or []}
+            auth = self.check(str(scope.get("path", "")), headers.get(HEADER, ""))
+            if auth is None:
+                log.warning("http: refused %s %s: no valid %s header (unbound or unauthenticated caller)",
+                            scope.get("method", "?"), scope.get("path", "?"), HEADER)
+                resp = JSONResponse({"ok": False, "error": f"refused: a valid {HEADER} header is required"}, status_code=401)
+                await resp(scope, receive, send)
+                return
+            scope.setdefault("state", {})["yerk_auth"] = auth
+        await self.app(scope, receive, send)
+
+
+def app(mcp: FastMCP, check: Check) -> Any:
+    """The HTTP app every client speaks to: the MCP server's, behind the guard."""
+    return Guard(mcp.streamable_http_app(), check)
 
 
 def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = None,
@@ -108,20 +159,23 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
                 payload = await request.json()
             except ValueError:
                 return JSONResponse({}, status_code=400)
-            return JSONResponse(await handler(payload))
+            auth = getattr(request.state, "yerk_auth", None)
+            return JSONResponse(await handler(payload, dict(auth) if isinstance(auth, dict) else {"kind": "", "room": ""}))
 
     route("/hook", hook)
     if control:
-        route("/control", control)      # `yerk room close`, `yerk worker`: local only, like everything here
+        route("/control", control)      # `yerk room close`, `yerk worker`, the job units, a worker's reads
     if status:
         route("/status", status)        # `yerk status`: what runs now (status.py), local only the same way
     return mcp
 
 
-def room_config(url: str, room: str, path: Path) -> Path:
-    """The per-room --mcp-config file: this server only, preloaded."""
-    cfg = {"mcpServers": {"yerk": {"type": "http", "url": url, "headers": {ROOM_HEADER: room}, "alwaysLoad": True}}}
-    path.write_text(json.dumps(cfg, indent=1))
+def room_config(url: str, room: str, path: Path, token: str = "") -> Path:
+    """The per-room --mcp-config file (0600): this server only, preloaded, the process's own token as
+    its secret header. The daemon knows the room by the token's binding, so no room header is sent."""
+    from .config import write_private
+    cfg = {"mcpServers": {"yerk": {"type": "http", "url": url, "headers": {HEADER: token}, "alwaysLoad": True}}}
+    write_private(path, json.dumps(cfg, indent=1))
     return path
 
 
@@ -131,7 +185,8 @@ WORKER_TOOLS = ("recall", "read_memory")    # workers.WORKER_TOOLS: what a worke
 def worker_server(state: Path, room: str, tools: list[str]) -> FastMCP:
     """A worker's own MCP server (stdio, started by its claude from workers.mcp_config): only the
     read-only tools named in `tools` and in WORKER_TOOLS, each one /control call to the running
-    daemon for the worker's room. It has no send, hold, worker or schedule tool to give."""
+    daemon for the worker's room, under the worker secret (reads only). It has no send, hold, worker
+    or schedule tool to give, and no secret that would open them."""
     from .jobs import post_control                       # late: jobs imports workers, which builds this config
     mcp = FastMCP("yerk")
     allowed = [t for t in WORKER_TOOLS if t in tools]
@@ -139,7 +194,7 @@ def worker_server(state: Path, room: str, tools: list[str]) -> FastMCP:
     async def call(payload: dict[str, Any]) -> str:
         import asyncio
         try:
-            return json.dumps(await asyncio.to_thread(post_control, state, payload, 60))
+            return json.dumps(await asyncio.to_thread(post_control, state, payload, 60, True))
         except (OSError, ValueError) as e:
             return json.dumps({"ok": False, "error": f"the daemon did not answer: {e}"})
 

@@ -14,6 +14,7 @@ import hashlib
 import json
 import logging
 import os
+import secrets
 import socket
 import sys
 import threading
@@ -24,7 +25,7 @@ from typing import Any
 
 from . import beat, context, evidence, gates, hooks, jobs, mcp_server, memory, mentions, status, workers
 from .accounts import Account, Cooldowns, from_dir, load_accounts
-from .config import budgets, flag, load_toml, private_dir, rooms, state_dir, table
+from .config import REPO, budgets, flag, load_toml, private_dir, read_secret, room_id, rooms, state_dir, table
 from .engine import RoomSpec, SessionTable
 from .ledger import Ledger
 from .lifted.classify import FailureTable
@@ -111,7 +112,23 @@ class Yerkd:
         self.cooldowns = Cooldowns(state / "cooldowns.json")
         self.meters = Meters(state / "meters.json")
         self.memory = memory.settings(private, state, dict(self.conf.get("memory", {})))
-        self.daily = memory.DailyLog(self.memory.daily, self.memory.tz)
+        self.daily = memory.DailyLog(self.memory.daily, self.memory.tz,
+                                     {n: (room_id(n, c), memory.room_class(c)) for n, c in self.room_confs.items()})
+        # day-log lines written before offsets, ids, authors and classes are rewritten once, here, before any
+        # channel opens and under the lock capture holds, so no second writer ever races the rewrite (cold
+        # read F3); the originals go beside the private layer, or under the state folder for the example one
+        backup = (state if private.resolve().is_relative_to(REPO) else private) / "backups" / f"daily-before-{time.strftime('%Y-%m-%d')}"
+        moved = memory.migrate_daylogs(self.memory.daily, self.memory.tz, self.daily.rooms, backup)
+        if moved["rewritten"]:
+            log.info("memory: %d day-log line(s) in %d file(s) rewritten in today's shape; the originals are under %s",
+                     moved["rewritten"], moved["files"], backup)
+        # the install's secrets for /hook, /control and /mcp (R3): under the state folder for every layer, so
+        # no room's Read(/<layer>/**) rule or --add-dir reaches them (cold read F4); yerkd.json names the paths
+        sdir = state / "secrets"
+        self.secret_file, self.worker_secret_file = sdir / "yerk-http.secret", sdir / "yerk-worker.secret"
+        self.secret = read_secret(self.secret_file, create=True)
+        self.worker_secret = read_secret(self.worker_secret_file, create=True)
+        self.sessions = SessionTable(state / "sessions.json")
         self.names = mentions.Index(self.memory.mentions)      # yerk-index writes it; reloaded when it changes
         self.idle_seconds, self.log_dir = idle_minutes * 60, log_dir
         self.rooms: dict[str, Room] = {}
@@ -147,14 +164,27 @@ class Yerkd:
         ctx.write_text(context.appended_file(parts))
         hooks.record(self.state, name, "session_start", "", {p.name: p.size for p in parts},
                      next((p.text for p in parts if p.name == "recall_pack"), ""), file=str(ctx))
+        token = secrets.token_hex(16)                      # this process's credential, bound with its session
         settings = {"permissions": {"allow": [f"Read(/{layer}/**)", *YERK_TOOLS, *conf.get("allow", [])]},
-                    "hooks": hooks.settings_for(f"{self.url}/hook")}
-        mcp = mcp_server.room_config(f"{self.url}/mcp", name, rdir / "mcp.json")
+                    "hooks": hooks.settings_for(f"{self.url}/hook", token)}
+        mcp = mcp_server.room_config(f"{self.url}/mcp", name, rdir / "mcp.json", token)
         extra = ["--effort", str(conf["effort"])] if conf.get("effort") else []
         if flag(conf.get("thinking_panel")) and conf.get("privacy", "owner") == "owner":
             extra += ["--thinking-display", "summarized"]      # the panel's text; off: the stream says nothing
         return RoomSpec(room=name, model=str(conf["model"]), cwd=work, tools=list(conf.get("tools", [])),
-                        settings=settings, context_file=ctx, mcp_config=mcp, add_dirs=[layer], extra_args=extra)
+                        settings=settings, context_file=ctx, mcp_config=mcp, add_dirs=[layer], extra_args=extra,
+                        token=token)
+
+    def reader(self, room: str) -> memory.Reader:
+        """Who a memory read is for: an owner room reads everything, any other room its own lines and
+        shared files, and a caller that is no room at all reads shared files only (R2)."""
+        conf = self.room_confs.get(room)
+        if conf is None:
+            return memory.Reader(room, "", False)
+        return memory.Reader(room, room_id(room, conf), str(conf.get("privacy", "owner")) == "owner")
+
+    def check(self) -> mcp_server.Check:
+        return mcp_server.checker(self.secret, self.worker_secret, self.sessions.by_token)
 
     def add_room(self, name: str, channel: Channel) -> Room:
         conf = self.room_confs[name]
@@ -204,7 +234,7 @@ class Yerkd:
     async def tool_recall(self, room: str, query: str, k: int) -> dict[str, Any]:
         """Off the loop: the index is yerk-index's file, read here, never built here (L47). The first
         recall in a room while yerk-index runs without a provider key tells the room so, once."""
-        r = await asyncio.to_thread(memory.recall, self.memory, query, k)
+        r = await asyncio.to_thread(memory.recall, self.memory, query, k, 5.0, self.reader(room))
         log.info("recall: %s, %d hit(s)%s", room or "?", len(r.get("hits", [])), "" if r["ok"] else f", {r['status']}")
         if r["ok"] and room in self.rooms and memory.meaning_state(self.memory) == "no-key":
             await self.tell_once(room, "embeddings", NO_KEY_LINE)
@@ -221,7 +251,7 @@ class Yerkd:
         return True
 
     async def tool_read_memory(self, room: str, path: str, start: int, lines: int) -> dict[str, Any]:
-        return await asyncio.to_thread(memory.read, self.memory, path, start, lines)
+        return await asyncio.to_thread(memory.read, self.memory, path, start, lines, self.reader(room))
 
     async def tool_worker(self, room: str, req: dict[str, Any]) -> dict[str, Any]:
         """The `worker` tool (rooms only; a worker has no MCP server) and `yerk worker` (via /control)."""
@@ -240,7 +270,8 @@ class Yerkd:
     # recall before the first word (DESIGN 5)
     def room_pack(self, room: str, left: int = 6000) -> tuple[str, str]:
         r = self.rooms.get(room)
-        text, _ = memory.room_pack(self.memory, room, left, exclude=r.current_ids() if r else set())
+        text, _ = memory.room_pack(self.memory, room, left, exclude=r.current_ids() if r else set(),
+                                   rid=room_id(room, self.room_confs.get(room, {})), owner=self.reader(room).owner)
         return text, str(self.memory.daily)
 
     def compact_pack(self, room: str) -> str:
@@ -261,8 +292,8 @@ class Yerkd:
             except (OSError, ValueError, KeyError) as e:
                 log.warning("mention recall skipped: %s", e)
         r = self.rooms.get(room)
-        topics = memory.topic_hits(self.memory, room, prompt, r.current_ids() if r else set()) \
-            if conf.get("topic_recall", True) else []
+        topics = memory.topic_hits(self.memory, room, prompt, r.current_ids() if r else set(), rid=room_id(room, conf),
+                                   owner=self.reader(room).owner) if conf.get("topic_recall", True) else []
         return abilities.asked(prompt, self.memory) + names, topics      # "can you do voice": the manifest's answer
 
     def shadow_stop(self, name: str, room: Room, reply: str, sid: str) -> list[tuple[str, str]]:
@@ -279,9 +310,12 @@ class Yerkd:
         return new
 
     # the hooks
-    def room_of(self, payload: dict[str, Any]) -> str | None:
-        """The room a hook call belongs to: by its session id, else by its cwd (a room's work folder)."""
-        name = hooks.room_for_session(SessionTable(self.state / "sessions.json"), str(payload.get("session_id", "")))
+    def room_of(self, payload: dict[str, Any], auth: dict[str, str] | None = None) -> str | None:
+        """The room a hook call belongs to: the binding that holds the call's token; for the install's
+        own callers, by the payload's session id, else by its cwd (a room's work folder)."""
+        if auth and auth.get("kind") == "room" and auth.get("room") in self.rooms:
+            return str(auth["room"])
+        name = hooks.room_for_session(self.sessions, str(payload.get("session_id", "")))
         if name in self.rooms:
             return name
         cwd = Path(str(payload.get("cwd") or "/nonexistent"))
@@ -316,14 +350,21 @@ class Yerkd:
         except Exception:
             log.exception("hook: %d timing rows were not written", len(rows))
 
-    async def hook(self, payload: dict[str, Any]) -> dict[str, Any]:
+    async def hook(self, payload: dict[str, Any], auth: dict[str, str] | None = None) -> dict[str, Any]:
         """Every hook event, timed: the daemon's own time per call goes to the hook_calls ledger, so
-        the overhead per turn is a query (Ledger.hook_overhead), never a guess."""
+        the overhead per turn is a query (Ledger.hook_overhead), never a guess. A call no binding
+        explains is answered with the unbound marker and logged, never with a silent {}."""
         t0 = time.monotonic()
         event = str(payload.get("hook_event_name") or "")
-        name = self.room_of(payload)
+        name = self.room_of(payload, auth)
         out: dict[str, Any] = {}
         try:
+            if name is None:
+                log.warning("hook: %s from session %s (%s caller) matches no room binding; answered unbound",
+                            event or "?", str(payload.get("session_id", ""))[:8] or "?", (auth or {}).get("kind") or "no")
+                out = dict(hooks.UNBOUND)
+                return out
+            self.learn_transcript(name, payload)
             out = await self._hook(event, name, payload)
             return out
         finally:
@@ -335,6 +376,23 @@ class Yerkd:
                                          "session_id": str(payload.get("session_id", "")),
                                          "turn": room.turn_key if room else "", "event": event,
                                          "ms": round((time.monotonic() - t0) * 1000, 2), "outcome": str(outcome)})
+
+    def learn_transcript(self, name: str, payload: dict[str, Any]) -> None:
+        """The session's transcript path, from the first hook call that carries it, into the room's
+        binding: an account hop then resumes by that path (R1), which Claude Code's docs promise.
+        Only a path Claude Code would name is taken, an absolute `<session id>.jsonl`, so a room's own
+        hook call cannot point its binding at another file (cold read F5); anything else is logged
+        and ignored."""
+        path = str(payload.get("transcript_path") or "")
+        sid = str(payload.get("session_id", ""))
+        if not path:
+            return
+        if not (sid and Path(path).is_absolute() and Path(path).name == f"{sid}.jsonl"):
+            log.warning("hook: room %s named a transcript that is not its session's own file; ignored", name)
+            return
+        row = self.sessions.get(name) or {}
+        if row.get("session_id") == sid and row.get("transcript") != path:
+            self.sessions.update(name, transcript=path)
 
     async def _hook(self, event: str, name: str | None, payload: dict[str, Any]) -> dict[str, Any]:
         sid = str(payload.get("session_id", ""))
@@ -384,7 +442,7 @@ class Yerkd:
             return {"decision": "block", "reason": reason} if reason else {}
         if event == "SessionStart":
             if payload.get("source") == "compact":
-                return await asyncio.to_thread(hooks.session_start, payload, self.state, self.compact_pack)
+                return await asyncio.to_thread(hooks.session_start, payload, self.state, self.compact_pack, name)
             prev = self.was_reset(name, sid) if name and payload.get("source") in ("startup", "clear") else ""
             if name and prev:                 # told only when the replaced session had answered something
                 lost = self.ledger.answered_in(prev)
@@ -400,8 +458,8 @@ class Yerkd:
         if event != "UserPromptSubmit":
             return {}
         out = await asyncio.to_thread(hooks.user_prompt_submit, payload, self.state, self.room_confs,
-                                      lambda r, p: self.rooms[r].meta_for(p), self.budgets, None, self.recall_for)
-        if out and name in self.rooms:
+                                      lambda r, p: self.rooms[r].meta_for(p), self.budgets, None, self.recall_for, name)
+        if out and "hookSpecificOutput" in out and name in self.rooms:
             prompt = str(payload.get("prompt", ""))
             said = self.said_in_turn(name, sid, prompt)
             if said and said.id not in self.worded and gates.is_word(prompt, said.sender, self.gates):
@@ -424,7 +482,8 @@ class Yerkd:
         tool, ti = str(payload.get("tool_name") or ""), dict(payload.get("tool_input") or {})
         v = None
         if tool == "Bash":
-            v = gates.check_shell(str(ti.get("command") or ""), str(payload.get("cwd") or self.state / "rooms" / name / "work"), self.gates)
+            work = self.state / "rooms" / name / "work"
+            v = gates.check_shell(str(ti.get("command") or ""), str(payload.get("cwd") or work), self.gates, root=str(work))
             if v and v.new_input is not None:
                 v.new_input = {**ti, **v.new_input}
         if v is None and (what := gates.restart_hit(tool, ti, self.private)):
@@ -460,7 +519,7 @@ class Yerkd:
         session id (the cwd fallback is not enough), and the prompt must be a message the room itself
         wrote into its running turn. /hook has no secret yet (restart test R3), so this binding is what
         keeps a posted "approve" from counting."""
-        if hooks.room_for_session(SessionTable(self.state / "sessions.json"), sid) != name:
+        if hooks.room_for_session(self.sessions, sid) != name:
             return None
         room = self.rooms[name]
         with room.lock:
@@ -509,10 +568,15 @@ class Yerkd:
                            diff_sha=hashlib.sha256(diff.encode()).hexdigest(),
                            diff_lines=sum(1 for x in diff.splitlines() if x[:1] in "+-" and x[:3] not in ("+++", "---")))
 
-    async def control(self, payload: dict[str, Any]) -> dict[str, Any]:
+    async def control(self, payload: dict[str, Any], auth: dict[str, str] | None = None) -> dict[str, Any]:
         """`yerk room close ROOM`: close the room's process now unless a turn runs; the session stays.
         `yerk room compact ROOM`: the overflow path's /compact, asked for, when no turn runs.
-        `yerk worker ...`: start, list, stop, report. `{"job": ...}`: the job runner's fire and result."""
+        `yerk worker ...`: start, list, stop, report. `{"job": ...}`: the job runner's fire and result.
+        Under the worker secret only `recall` and `read_memory` answer: a worker starts nothing."""
+        if auth and auth.get("kind") == "worker" and not (isinstance(payload.get("recall"), dict)
+                                                          or isinstance(payload.get("read_memory"), dict)):
+            log.warning("control: a worker-secret call asked for %s; refused", ", ".join(sorted(payload)) or "nothing")
+            return {"ok": False, "error": "the worker secret reads memory only (recall, read_memory)"}
         if isinstance(payload.get("worker"), dict):
             req = dict(payload["worker"])
             return await self.workers.handle(str(req.get("room") or ""), req)
@@ -549,7 +613,7 @@ class Yerkd:
         """Each open room's Claude Code pid (the stall dump's /proc lines)."""
         return {n: r.rp.proc.pid for n, r in list(self.rooms.items()) if r.rp is not None and r.rp.proc is not None}
 
-    async def status_now(self, payload: dict[str, Any]) -> dict[str, Any]:
+    async def status_now(self, payload: dict[str, Any], auth: dict[str, str] | None = None) -> dict[str, Any]:
         """/status: what runs now, for `yerk status` and any program that asks (status.py)."""
         out = await asyncio.to_thread(status.collect, self.private, self.state, self.accounts, self.cooldowns,
                                       self.ledger, self.rooms)
@@ -562,12 +626,13 @@ class Yerkd:
         fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w") as f:
             json.dump({"pid": os.getpid(), "port": self.port, "mode": mode, "started": round(time.time(), 3),
-                       "rooms": sorted(self.rooms)}, f)
+                       "rooms": sorted(self.rooms), "secret_file": str(self.secret_file),      # paths, never values
+                       "worker_secret_file": str(self.worker_secret_file)}, f)
         os.replace(tmp, path)
 
     async def serve_http(self) -> None:
         import uvicorn
-        app = mcp_server.build(self, self.port, self.hook, self.control, self.status_now).streamable_http_app()
+        app = mcp_server.app(mcp_server.build(self, self.port, self.hook, self.control, self.status_now), self.check())
         self.http = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=self.port, log_level="warning"))
         await self.http.serve()
 
