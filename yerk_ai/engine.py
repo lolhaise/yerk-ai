@@ -12,6 +12,7 @@ tools only from the `--tools` allowlist, and the assembled context from
 """
 from __future__ import annotations
 
+import contextlib
 import fcntl
 import hashlib
 import hmac
@@ -41,6 +42,18 @@ STREAM_FLAGS = ["-p", "--input-format", "stream-json", "--output-format", "strea
 
 def claude_bin() -> str:
     return os.environ.get("YERK_CLAUDE", "claude")
+
+
+def project_dir(cwd: Path) -> str:
+    """Claude Code's folder for a working directory under <config dir>/projects/ (its 2.1.301 sanitizer; the docs agree):
+    each UTF-16 unit outside [a-zA-Z0-9] a "-"; past 200, the first 200, "-" and |the path's string hash| in base 36."""
+    units, h, tail = memoryview(str(cwd).encode("utf-16", "surrogatepass")[2:]).cast("H"), 0, ""
+    for u in units:                               # JavaScript's 32-bit string hash: h * 31 + unit
+        h = (h * 31 + u) % 2 ** 32
+    name, h = "".join(chr(u) if chr(u).isascii() and chr(u).isalnum() else "-" for u in units), min(h, 2 ** 32 - h)
+    while h or not tail:                          # h is now the signed 32-bit value's absolute value
+        h, tail = h // 36, "0123456789abcdefghijklmnopqrstuvwxyz"[h % 36] + tail
+    return name if len(name) <= 200 else f"{name[:200]}-{tail}"
 
 
 class SessionBusy(RuntimeError):
@@ -250,6 +263,7 @@ class RoomProcess:
                  failures: FailureTable | None = None, log: Path | None = None,
                  meters: Callable[[str, dict[str, Any]], None] | None = None, evidence: Any = None):
         self.spec, self.account, self.state = spec, account, state
+        self.projects = account.config_dir / "projects" / project_dir(spec.cwd.resolve())   # its own sessions
         self.evidence = evidence               # the room's evidence ledger: every tool call and what it read
         self.ledger, self.failures, self.log_path, self.meters = ledger, failures, log, meters
         self.sessions = SessionTable(state / "sessions.json")
@@ -275,8 +289,8 @@ class RoomProcess:
         a += ["--resume", self.resume_arg] if self.resume_arg else ["--session-id", self.session_id]
         if s.mcp_config:
             a += ["--mcp-config", str(s.mcp_config)]
-        for d in s.add_dirs:
-            a += ["--add-dir", str(d)]
+        for d in [*s.add_dirs, self.projects]:    # its own sessions' folder only, where a tool output too big to return
+            a += ["--add-dir", str(d)]           # is saved (<session>/tool-results/), so it can Read it back
         if s.allow:
             a += ["--allowedTools", ",".join(s.allow)]
         if s.settings:
@@ -303,6 +317,8 @@ class RoomProcess:
             self.resume_arg, self.session_id = None, str(uuid.uuid4())
         (self.state / "locks").mkdir(parents=True, exist_ok=True)
         self.room_dir.mkdir(parents=True, exist_ok=True)
+        with contextlib.suppress(OSError):        # an --add-dir missing at start is dropped; 0700 as Claude Code's own
+            self.projects.mkdir(mode=0o700, parents=True, exist_ok=True)
         self.lock = SessionLock(self.state / "locks" / f"{self.session_id}.lock").acquire()
         self.sessions.bind(self.spec.room, self.session_id, self.account.name, self.spec.token)
         if self.spec.settings:
@@ -337,10 +353,8 @@ class RoomProcess:
                     if c.get("type") == "tool_use" and c.get("name") == "Read":
                         self.read_paths.add(str((c.get("input") or {}).get("file_path") or ""))
             if self.evidence is not None:
-                try:
+                with contextlib.suppress(Exception):   # the ledger never stops the stream
                     self.evidence.observe(ev)
-                except Exception:                  # the ledger never stops the stream
-                    pass
             self.events.put((t, ev))
         self.events.put((time.time(), None))
 
@@ -440,10 +454,8 @@ class RoomProcess:
         rc = None
         if self.proc:
             if self.proc.stdin:
-                try:
+                with contextlib.suppress(OSError):
                     self.proc.stdin.close()
-                except OSError:
-                    pass
             try:
                 rc = self.proc.wait(grace)
             except subprocess.TimeoutExpired:

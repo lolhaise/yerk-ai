@@ -16,6 +16,7 @@ reason is logged.
 from __future__ import annotations
 
 import base64
+import contextlib
 import json
 import logging
 import os
@@ -233,12 +234,10 @@ class Vectors:
 
 def rss_kb() -> int:
     """This process's resident size from /proc, in kB (0 where /proc is not there)."""
-    try:
+    with contextlib.suppress(OSError, ValueError, IndexError):
         for line in Path("/proc/self/status").read_text().splitlines():
             if line.startswith("VmRSS:"):
                 return int(line.split()[1])
-    except (OSError, ValueError, IndexError):
-        pass
     return 0
 
 

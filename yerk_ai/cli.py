@@ -24,6 +24,8 @@ def cmd_map(a: argparse.Namespace) -> int:
     msg = context.per_message(a.room, rs[a.room], "owner", now, now - timedelta(minutes=27), b)
     label = "the fake example layer" if priv == EXAMPLE_PRIVATE else str(priv)
     print(context.render(a.room, label, start, msg, b))
+    if rs[a.room].get("watch"):
+        print(f"\nWatches {rs[a.room]['watch']}: read as its own channel, never written to; it answers in {rs[a.room].get('channel')}.")
     bad = context.violations(start, msg, b)
     for v in bad:
         print("OVER BUDGET: " + v)

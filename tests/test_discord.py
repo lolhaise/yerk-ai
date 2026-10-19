@@ -66,8 +66,8 @@ class Chan:
     async def fetch_message(self, mid):
         return self.old[mid]
 
-    async def history(self, **kw):
-        for m in self.past:
+    async def history(self, limit=100, **kw):            # as discord.py's: at most `limit` messages, None for all
+        for m in self.past[:limit]:
             yield m
 
 
@@ -239,6 +239,125 @@ def test_a_message_sent_during_the_outage_is_run(dc):
     ch.past = [Msg(ch, 2, "sent while down")]
     run(d.recover(ROOM_CH, room))
     assert [(m.id, m.text) for m in room.got] == [("2", "sent while down")]
+
+
+def test_a_message_sent_during_the_outage_is_filed_once_before_it_runs(tmp_path):
+    """recover's history read files each message as on_message does, then takes it: one line however often it is
+    read (filed live before a crash, then read again by two restarts); from a watched channel, the owner's only."""
+    from datetime import datetime, timezone
+
+    from yerk_ai.memory import MARK, DailyLog
+    log = DailyLog(tmp_path / "daily", timezone.utc)
+    client = Client()
+    d = DiscordChannel("token", OWNER, [HOOK], Ledger(tmp_path / "l.sqlite"), client=client, state=tmp_path,
+                       capture=log.capture)
+    room = Room(tmp_path)
+    d.add_room(ROOM_CH, room, watch=OTHER_CH)
+    own, watched = client.chans[ROOM_CH], client.chans[OTHER_CH]
+    for ch, mid in ((own, "1"), (watched, "2")):                       # the last message each channel ledgered
+        d.ledger.inbound_add(mid, "test-room", str(ch.id), "owner", 5)
+        d.ledger.inbound_set(mid, state="answered")
+    own.past = [Msg(own, 10, "the owner, while it was down"), Msg(own, 11, "someone else", author=12345)]
+    watched.past = [Msg(watched, 20, "the owner, in the watched channel"),
+                    Msg(watched, 21, "the other side's answer", author=12345)]
+    for m in own.past + watched.past:
+        m.created_at = datetime(2026, 10, 19, 12, 0, tzinfo=timezone.utc)
+    d.file("test-room", own.past[0])                                  # filed live, then a crash before its ledger row
+    for _ in range(2):                                                 # two restarts read the same history
+        for cid in (ROOM_CH, OTHER_CH):
+            run(d.recover(cid, room))
+        for mid in ("10", "20"):
+            d.ledger.inbound_set(mid, state="answered")
+    text = "".join(p.read_text() for p in (tmp_path / "daily").glob("*.md"))
+    assert MARK.findall(text) == ["10", "11", "20"] and "the other side's answer" not in text
+    assert [(m.id, m.text) for m in room.got] == [("10", "the owner, while it was down"),
+                                                  ("20", "the owner, in the watched channel")]
+
+
+def test_a_busy_watched_channel_never_pushes_the_owners_missed_messages_past_the_cap(tmp_path):
+    """After a restart the history read is capped on the owner's missed messages, 50, not on every message: in a
+    watched channel where the other side answered 60 times after the last message the room ledgered, the owner's 50
+    that follow are still filed and run, in order, and a 51st is not (the cap still holds)."""
+    from datetime import datetime, timezone
+
+    from yerk_ai.memory import MARK, DailyLog
+    log = DailyLog(tmp_path / "daily", timezone.utc)
+    client = Client()
+    d = DiscordChannel("token", OWNER, [HOOK], Ledger(tmp_path / "l.sqlite"), client=client, state=tmp_path,
+                       capture=log.capture)
+    room = Room(tmp_path)
+    d.add_room(ROOM_CH, room, watch=OTHER_CH)
+    watched = client.chans[OTHER_CH]
+    d.ledger.inbound_add("1", "test-room", str(OTHER_CH), "owner", 5)   # the last message it ledgered there
+    d.ledger.inbound_set("1", state="answered")
+    watched.past = ([Msg(watched, 100 + i, f"the other side's answer {i}", author=12345) for i in range(60)]
+                    + [Msg(watched, 200 + i, f"the owner's message {i}") for i in range(51)])
+    for m in watched.past:
+        m.created_at = datetime(2026, 10, 19, 12, 0, tzinfo=timezone.utc)
+    run(d.recover(OTHER_CH, room))
+    assert [m.id for m in room.got] == [str(200 + i) for i in range(50)]
+    text = "".join(p.read_text() for p in (tmp_path / "daily").glob("*.md"))
+    assert MARK.findall(text) == [str(200 + i) for i in range(50)]
+
+
+def test_a_channel_it_cannot_read_never_stops_the_other_rooms_recovery(tmp_path, caplog):
+    """on_ready with the first room's channel answering 403 (the bot cannot see it): that room is passed over with
+    one line naming it and its channel, the next room still runs what was sent while it was down, and the steps
+    after recovery (the workers' and the jobs' reattach) still run."""
+    client = Client()
+    del client.chans[ROOM_CH]                                          # not in the cache, so fetched: Discord says 403
+
+    async def fetch_channel(cid):
+        raise discord.Forbidden(NS(status=403, reason="Forbidden"), {"code": 50001, "message": "Missing Access"})
+    client.fetch_channel = fetch_channel
+    d = DiscordChannel("token", OWNER, [HOOK], Ledger(tmp_path / "l.sqlite"), client=client, state=tmp_path)
+    first, second = Room(tmp_path), Room(tmp_path)
+    second.name = "second-room"
+    d.add_room(ROOM_CH, first)
+    d.add_room(OTHER_CH, second)
+    d.ledger.inbound_add("1", "second-room", str(OTHER_CH), "owner", 5)
+    d.ledger.inbound_set("1", state="answered")
+    client.chans[OTHER_CH].past = [Msg(client.chans[OTHER_CH], 2, "sent while down")]
+    ran = []
+
+    async def reattach():
+        ran.append("reattach")
+    d.after_recover.append(reattach)
+    with caplog.at_level("WARNING", logger="yerk.discord"):
+        run(d.on_ready())
+    assert [(m.id, m.text) for m in second.got] == [("2", "sent while down")] and ran == ["reattach"]
+    assert [r.getMessage() for r in caplog.records] == [f"room test-room: channel {ROOM_CH} not recovered after the "
+                                                        "restart: 403 Forbidden (error code: 50001): Missing Access"]
+
+
+def test_a_network_error_in_one_channels_recovery_never_stops_the_other_rooms(tmp_path, caplog):
+    """Cold read 33 W1: discord.py 2.6.4 re-raises an OSError unwrapped (only a connection reset is retried), and a
+    sqlite error or a bad ledger id is no HTTPException either, so the per-channel guard takes any Exception: the
+    next room still runs what was sent while it was down, and the steps after recovery still run."""
+    client = Client()
+    del client.chans[ROOM_CH]
+
+    async def fetch_channel(cid):
+        raise OSError(101, "Network is unreachable")
+    client.fetch_channel = fetch_channel
+    d = DiscordChannel("token", OWNER, [HOOK], Ledger(tmp_path / "l.sqlite"), client=client, state=tmp_path)
+    first, second = Room(tmp_path), Room(tmp_path)
+    second.name = "second-room"
+    d.add_room(ROOM_CH, first)
+    d.add_room(OTHER_CH, second)
+    d.ledger.inbound_add("1", "second-room", str(OTHER_CH), "owner", 5)
+    d.ledger.inbound_set("1", state="answered")
+    client.chans[OTHER_CH].past = [Msg(client.chans[OTHER_CH], 2, "sent while down")]
+    ran = []
+
+    async def reattach():
+        ran.append("reattach")
+    d.after_recover.append(reattach)
+    with caplog.at_level("WARNING", logger="yerk.discord"):
+        run(d.on_ready())
+    assert [(g.id, g.text) for g in second.got] == [("2", "sent while down")] and ran == ["reattach"]
+    assert [r.getMessage() for r in caplog.records] == [f"room test-room: channel {ROOM_CH} not recovered after the "
+                                                        "restart: [Errno 101] Network is unreachable"]
 
 
 def test_files_take_one_path_checked_with_the_id_recorded(dc, tmp_path, monkeypatch):

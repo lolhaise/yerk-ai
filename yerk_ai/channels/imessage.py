@@ -27,6 +27,7 @@ plus socat as OpenClaw's imsg-ssh does, speaking imsg's JSON-RPC, one request or
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
@@ -231,16 +232,12 @@ class Bridge:
 
     async def close(self) -> None:
         if self.writer is not None:
-            try:
+            with contextlib.suppress(OSError, RuntimeError):
                 self.writer.close()
-            except (OSError, RuntimeError):
-                pass
         if self.proc is not None and self.proc.returncode is None:
-            try:
+            with contextlib.suppress(ProcessLookupError):
                 self.proc.kill()
                 await self.proc.wait()
-            except ProcessLookupError:
-                pass
         if self.task is not None and not self.task.done():
             self.task.cancel()
         self._fail("closed")

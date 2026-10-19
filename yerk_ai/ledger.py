@@ -150,6 +150,12 @@ def ids_of(text: Any) -> list[str]:
     return [x for x in str(text or "").split(",") if x]
 
 
+def known(cols: dict[str, Any], allowed: tuple[str, ...] | set[str], table: str) -> None:
+    """Every column named is one `table` has: the names go into the SQL text, so an unknown one fails loudly."""
+    if bad := set(cols) - set(allowed):
+        raise ValueError(f"unknown {table} columns: {sorted(bad)}")
+
+
 # the migrations, in order: (version, what it does). Each runs once, inside one transaction, on a
 # ledger whose user_version is below it; the version is written as the step's last statement.
 def add_columns(db: sqlite3.Connection) -> None:
@@ -354,9 +360,7 @@ class Ledger:
         restart, outcome "begun", and sets it once the proof is in)."""
         if not row_id:
             return self._insert("deploys", {"at": time.time(), **row})
-        bad = set(row) - {"kind", "unit", "before", "after", "outcome", "cut", "proof", "note"}
-        if bad:
-            raise ValueError(f"unknown deploys columns: {sorted(bad)}")
+        known(row, {"kind", "unit", "before", "after", "outcome", "cut", "proof", "note"}, "deploys")
         with self.lock:
             self.db.execute(f"UPDATE deploys SET {', '.join(f'{k} = ?' for k in row)} WHERE id = ?",
                             (*row.values(), row_id))
@@ -392,9 +396,7 @@ class Ledger:
         return {str(r["rule"]): int(r["n"]) for r in rows}
 
     def record(self, **row: Any) -> int:
-        bad = set(row) - set(COLUMNS)
-        if bad:
-            raise ValueError(f"unknown ledger columns: {sorted(bad)}")
+        known(row, COLUMNS, "ledger")
         return self._insert("turns", row)
 
     def rows(self, limit: int = 20, table: str = "turns") -> list[dict[str, Any]]:
@@ -421,9 +423,7 @@ class Ledger:
         return True
 
     def inbound_set(self, message_id: str, **fields: Any) -> None:
-        bad = set(fields) - set(INBOUND)
-        if bad:
-            raise ValueError(f"unknown inbound columns: {sorted(bad)}")
+        known(fields, INBOUND, "inbound")
         sets = ", ".join(f"{k} = ?" for k in fields)
         with self.lock:
             self.db.execute(f"UPDATE inbound SET {sets} WHERE message_id = ?", (*fields.values(), message_id))
@@ -455,9 +455,7 @@ class Ledger:
 
     # health
     def health(self, **row: Any) -> int:
-        bad = set(row) - set(HEALTH)
-        if bad:
-            raise ValueError(f"unknown health columns: {sorted(bad)}")
+        known(row, HEALTH, "health")
         return self._insert("health", {"at": time.time(), **row})
 
     def health_between(self, account: str, source: str, since: float, until: float) -> list[dict[str, Any]]:
@@ -478,15 +476,11 @@ class Ledger:
 
     # workers (workers.py)
     def worker_add(self, **row: Any) -> None:
-        bad = set(row) - {"id", *WORKERS}
-        if bad:
-            raise ValueError(f"unknown worker columns: {sorted(bad)}")
+        known(row, {"id", *WORKERS}, "worker")
         self._insert("workers", row)
 
     def worker_set(self, worker_id: str, **fields: Any) -> None:
-        bad = set(fields) - set(WORKERS)
-        if bad:
-            raise ValueError(f"unknown worker columns: {sorted(bad)}")
+        known(fields, WORKERS, "worker")
         sets = ", ".join(f"{k} = ?" for k in fields)
         with self.lock:
             self.db.execute(f"UPDATE workers SET {sets} WHERE id = ?", (*fields.values(), worker_id))
@@ -503,15 +497,11 @@ class Ledger:
 
     # job runs (jobs.py): one row per fire of a scheduled job
     def job_run_add(self, **row: Any) -> int:
-        bad = set(row) - set(JOB_RUNS)
-        if bad:
-            raise ValueError(f"unknown job_runs columns: {sorted(bad)}")
+        known(row, JOB_RUNS, "job_runs")
         return self._insert("job_runs", row)
 
     def job_run_set(self, run_id: int, **fields: Any) -> None:
-        bad = set(fields) - set(JOB_RUNS)
-        if bad:
-            raise ValueError(f"unknown job_runs columns: {sorted(bad)}")
+        known(fields, JOB_RUNS, "job_runs")
         sets = ", ".join(f"{k} = ?" for k in fields)
         with self.lock:
             self.db.execute(f"UPDATE job_runs SET {sets} WHERE id = ?", (*fields.values(), run_id))
@@ -525,15 +515,11 @@ class Ledger:
     # holding the lines its first start absorbed; state pending, waking, handled, failed, stopped (its
     # worker stopped by the owner: final) or primed
     def watch_add(self, **row: Any) -> int:
-        bad = set(row) - set(WATCH_EVENTS)
-        if bad:
-            raise ValueError(f"unknown watch_events columns: {sorted(bad)}")
+        known(row, WATCH_EVENTS, "watch_events")
         return self._insert("watch_events", row)
 
     def watch_set(self, event_id: int, **fields: Any) -> None:
-        bad = set(fields) - set(WATCH_EVENTS)
-        if bad:
-            raise ValueError(f"unknown watch_events columns: {sorted(bad)}")
+        known(fields, WATCH_EVENTS, "watch_events")
         sets = ", ".join(f"{k} = ?" for k in fields)
         with self.lock:
             self.db.execute(f"UPDATE watch_events SET {sets} WHERE id = ?", (*fields.values(), event_id))

@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import random
 import tempfile
@@ -537,10 +538,8 @@ def descendants(pid: int) -> list[int]:
     kids: dict[int, list[int]] = {}
     for d in Path("/proc").iterdir():
         if d.name.isdigit():
-            try:
+            with contextlib.suppress(OSError, IndexError, ValueError):
                 kids.setdefault(int((d / "stat").read_text().rsplit(")", 1)[1].split()[1]), []).append(int(d.name))
-            except (OSError, IndexError, ValueError):
-                pass
     out, todo = [], list(kids.get(pid, []))
     while todo:
         p = todo.pop()
@@ -678,6 +677,8 @@ def resume(a: argparse.Namespace) -> dict[str, Any]:
     if not attempts[-1]["ok"] and found:
         project = found[0].parent
         link = dst.config_dir / "projects" / project.name
+        with contextlib.suppress(OSError):     # an empty one is the plain try's own start (engine.py), holding nothing
+            link.rmdir()
         if link.exists() or link.is_symlink() or not link.parent.is_dir():
             attempts.append({"variant": "shared-folder", "ok": False, "note": "target folder exists or has no projects folder; not touched"})
         else:

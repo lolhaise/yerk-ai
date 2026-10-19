@@ -75,9 +75,7 @@ def explain(name: str, ab: dict[str, Any], tab: dict[str, dict[str, Any]], s: An
     if ab.get("how"):
         out += ["", "How it would be built:", *[f"- {x}" for x in ab["how"]]]
     out += ["", f"Needs: {ab['needs']}"]
-    for field, label in (("provider", "Provider"), ("model", "Model")):
-        if ab.get(field):
-            out.append(f"{label}: {ab[field]}")
+    out += [f"{label}: {ab[field]}" for field, label in (("provider", "Provider"), ("model", "Model")) if ab.get(field)]
     out.append(f"Cost: {ab.get('price') or 'nothing, it runs on the box'}")
     if name == "embeddings" and getattr(s, "embeddings_model", None):
         out.append(f"Here: {s.embeddings_model} at {s.embeddings_dim} dimensions, {s.embeddings_width} kept in memory, "
@@ -118,8 +116,6 @@ def asked(prompt: str, s: Any, tab: dict[str, dict[str, Any]] | None = None) -> 
     except (OSError, ValueError, KeyError) as e:
         log.warning("abilities: the manifest could not be read: %s", e)
         return []
-    low, out = prompt.lower(), []
-    for name, ab in tab.items():
-        if any(re.search(rf"\b{re.escape(str(p).lower())}\b", low) for p in ab.get("asked_as", [])):
-            out.append({"key": name, "text": brief(name, ab, tab, s), "cite": f"yerk explain {name}"})
-    return out
+    low = prompt.lower()
+    return [{"key": name, "text": brief(name, ab, tab, s), "cite": f"yerk explain {name}"} for name, ab in tab.items()
+            if any(re.search(rf"\b{re.escape(str(p).lower())}\b", low) for p in ab.get("asked_as", []))]

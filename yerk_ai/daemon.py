@@ -753,8 +753,9 @@ class Yerkd:
                             daemon=self if flag(d.get("commands"), True) else None)   # the slash commands
         for name, conf in self.room_confs.items():
             kind, _, cid = str(conf.get("channel", "")).partition(":")
+            wk, _, wid = str(conf.get("watch", "")).partition(":")     # read as the room's own, never written to
             if kind == "discord" and cid.isdigit():
-                dc.add_room(int(cid), self.add_room(name, dc))
+                dc.add_room(int(cid), self.add_room(name, dc), int(wid) if wk == "discord" and wid.isdigit() else None)
         im = self.imessage_rooms()
         if not dc.rooms and im is None:
             raise SystemExit("no room has a discord:<channel id> or an imessage:<chat identifier> in rooms.toml")

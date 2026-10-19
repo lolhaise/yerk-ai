@@ -1,6 +1,7 @@
 """Where Yerk AI keeps things and how it reads them: its own tables such as budgets.toml, the private folder, the state folder."""
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -64,7 +65,14 @@ def state_dir(arg: str | None = None) -> Path:
 
 
 def rooms(private: Path) -> dict[str, dict[str, Any]]:
-    return dict(load_toml(private / "rooms.toml").get("rooms", {}))
+    """rooms.toml's rooms; a `watch` (read, never written to) that a room owns or watches is refused, naming both."""
+    rs = dict(load_toml(private / "rooms.toml").get("rooms", {}))
+    taken = {str(c.get("channel")): f"which is {n}'s own channel" for n, c in rs.items()}
+    for n, w in ((n, str(c["watch"])) for n, c in rs.items() if c.get("watch")):
+        if w in taken:
+            raise SystemExit(f"rooms.toml: {n} watches {w}, {taken[w]}")
+        taken[w] = f"which {n} watches too"
+    return rs
 
 
 def room_id(name: str, conf: dict[str, Any]) -> str:
@@ -124,10 +132,8 @@ def write_private(path: Path, text: str, mode: int = 0o600) -> Path:
             f.write(text)
         os.replace(tmp, path)
     except BaseException:
-        try:
+        with contextlib.suppress(OSError):
             os.unlink(tmp)
-        except OSError:
-            pass
         raise
     return path
 

@@ -80,7 +80,7 @@ def collect(private: Path, state: Path, accounts: list[Account], cooldowns: Cool
     for name, room in (rooms or {}).items():
         with room.lock:
             msgs, waiting, busy, rp = [*room.inflight, *room.pending, *room.queue], len(room.queue), room.busy, room.rp
-        out["rooms"].append({"room": name, "busy": busy, "waiting": waiting,
+        out["rooms"].append({"room": name, "busy": busy, "waiting": waiting, "watch": room.conf.get("watch"),
                              "since": min((m.received for m in msgs), default=None) if busy else None})
         if rp is not None and rp.proc is not None and rp.alive():
             out["units"].append(use(name, tree(rp.proc.pid, proc)))
@@ -152,6 +152,8 @@ def card(s: dict[str, Any], now: float | None = None) -> list[str]:
             took = now - r["since"]
             out.append(W.named(f"{W.NOT_DONE if took > BLOCKED else W.PLAIN} {W.TURN_FOR}"
                                + (W.QUEUED.format(n=r["waiting"]) if r["waiting"] else ""), r["room"], took=W.span(took)))
+    out += [W.named(f"{W.PLAIN} {W.WATCHES}", r["room"], channel=str(r["watch"]).partition(":")[2])
+            for r in s["rooms"] if r.get("watch")]
     nth: dict[str, int] = {}
     for w in sorted(s["workers"], key=lambda w: (bool(w["waiting"]), float(w["queued"] or 0))):
         if w["waiting"]:
