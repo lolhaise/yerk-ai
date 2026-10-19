@@ -12,6 +12,7 @@ import re
 import sqlite3
 import threading
 import time
+import urllib.request
 from pathlib import Path
 
 import numpy as np
@@ -133,9 +134,10 @@ def test_a_missing_key_keeps_the_keyword_path_and_the_room_hears_it_once(tmp_pat
     idx, store, server, back, status = serve(s, stub)
     assert not stub.available() and memory.meaning_state(s) == "no-key"
     assert memory.meaning(s, "the example kettle") == ("no-key", [])
-    r = memory.recall(s, "What colour is the example kettle in the example room?")
+    r = memory.ranked(s, "What colour is the example kettle in the example room?")
     assert r["ok"] and r["hits"][0]["path"].endswith("facts/kettle.md") and r["hits"][0]["score"] > 1   # the keyword cover, as before
     assert sorted(r["hits"][0]) == ["cite", "line", "lines", "path", "score", "text"]
+    assert sorted(memory.recall(s, "What colour is the example kettle in the example room?")["hits"][0]) == ["cite", "text"]
     assert stub.calls == []
     y = Yerkd(EXAMPLE_PRIVATE, tmp_path / "state")
     y.add_room("example-room", ConsoleChannel())
@@ -160,7 +162,7 @@ def test_a_provider_timeout_and_a_provider_error_fall_back_and_read_apart(tmp_pa
     stub.fail = embeddings.ProviderTimeout("no answer from the provider in 4 s")
     assert memory.meaning(s, "example kettle")[0] == "provider-timeout"
     with caplog.at_level(logging.WARNING, logger="yerk.memory"):
-        r = memory.recall(s, "What colour is the example kettle in the example room?")
+        r = memory.ranked(s, "What colour is the example kettle in the example room?")
     assert r["ok"] and r["status"] == "ok" and r["hits"][0]["path"].endswith("facts/kettle.md")
     assert "provider-timeout" in caplog.text and "keywords only" in caplog.text
     stub.fail = embeddings.ProviderError("HTTP 401 from the provider: bad key sk-[removed]")
@@ -193,7 +195,7 @@ def test_fusion_ranks_a_paraphrase_above_a_keyword_only_near_miss(tmp_path):
     keywords = memindex.search(sqlite3.connect(f"file:{memindex.live(s.index_db)}?mode=ro", uri=True),
                                "what colour is the example kettle", 6, 80)
     assert [Path(h["path"]).name for h in keywords][:2] == ["paint.md", "2026-01-05.md"]   # keywords alone miss the paraphrase
-    r = memory.recall(s, "what colour is the example kettle")
+    r = memory.ranked(s, "what colour is the example kettle")
     assert [Path(h["path"]).name for h in r["hits"]][:3] == ["paint.md", "kettle.md", "2026-01-05.md"]
     assert r["hits"][0]["score"] > r["hits"][1]["score"] >= r["hits"][2]["score"]
     server.stop()
@@ -241,16 +243,19 @@ def test_the_bench_shape_is_unchanged_and_the_example_set_has_the_room_kinds(tmp
     kinds = [q["kind"] for q in json.loads(qfile.read_text())["questions"]]
     assert "room-recent" in kinds and "room-day" in kinds
     r = memory.bench(s, qfile)
-    assert sorted(r) == ["blind", "controls", "file", "k", "ok", "questions", "rows", "top_1", "top_1_rate", "top_k", "top_k_rate"]
-    assert all(sorted(row) == ["control", "id", "rank", "top"] for row in r["rows"])
+    assert sorted(r) == ["blind", "controls", "file", "k", "kept", "lost", "ok", "questions", "rows", "top_1", "top_1_rate",
+                         "top_k", "top_k_rate"]
+    assert all(sorted(row) == ["control", "id", "kept", "rank", "top"] for row in r["rows"])
+    assert r["kept"] == sum(1 for row in r["rows"] if row["kept"] and not row["control"]) and r["kept"] + len(r["lost"]) == r["top_k"]
     assert r["ok"] and r["blind"] == [] and r["controls"] == 1 and r["top_k"] >= 6
     assert cli.main(["recall-bench", "--private", str(EXAMPLE_PRIVATE), "--state", str(tmp_path / "state"),
                      "--questions", str(qfile)]) == 0
     out = capsys.readouterr().out.splitlines()
-    assert re.fullmatch(r"top 6: \d+/\d+ \(\d+\.\d%\)   top one: \d+/\d+ \(\d+\.\d%\)   controls: \d+", out[0]), out[0]
+    assert re.fullmatch(r"top 6: \d+/\d+ \(\d+\.\d%\)   top one: \d+/\d+ \(\d+\.\d%\)   controls: \d+   "
+                        r"answer in the snippet: \d+/\d+", out[0]), out[0]
     assert out[1].startswith("misses: ")
     assert sorted(json.loads((tmp_path / "state" / "memory" / "recall-bench.jsonl").read_text().splitlines()[-1])) == [
-        "at", "blind", "controls", "k", "misses", "questions", "top_1", "top_1_rate", "top_k", "top_k_rate"]
+        "at", "blind", "controls", "k", "kept", "lost", "misses", "questions", "top_1", "top_1_rate", "top_k", "top_k_rate"]
 
 
 # 7. the manifest, and `yerk abilities` and `yerk explain` both ways
@@ -330,13 +335,14 @@ def test_a_model_change_re_embeds_once_and_a_narrower_width_keeps_the_shape(tmp_
     embeddings.write_status(s.index_status, port=server2.start(), chunks=0,
                             embeddings={"key": True, "model": "stub-large", "dim": 6, "vectors": store2.n})
     r = memory.recall(s, "what colour is the example kettle")
-    assert r["ok"] and sorted(r["hits"][0]) == ["cite", "line", "lines", "path", "score", "text"]
+    assert r["ok"] and sorted(r["hits"][0]) == ["cite", "text"]
     qfile = tmp_path / "q.json"
     qfile.write_text(json.dumps({"questions": [
         {"id": "q1", "kind": "fact", "q": "what colour is the example kettle", "answer_tokens": ["teal"]},
         {"id": "c1", "kind": "fact", "control": True, "q": "example kettle", "answer_tokens": ["kettle"]}]}))
     b = memory.bench(s, qfile)
-    assert sorted(b) == ["blind", "controls", "file", "k", "ok", "questions", "rows", "top_1", "top_1_rate", "top_k", "top_k_rate"]
+    assert sorted(b) == ["blind", "controls", "file", "k", "kept", "lost", "ok", "questions", "rows", "top_1", "top_1_rate",
+                         "top_k", "top_k_rate"]
     assert b["blind"] == [] and b["top_k"] == 1
     server2.stop()
     server.stop()
@@ -367,5 +373,34 @@ def test_the_stall_line_stays_silent_during_a_backfill(tmp_path, caplog):
     back.thread.join(5.0)
     assert store.n >= 60 and len(stub.calls) >= 15
     assert not any("stall" in r.getMessage() for r in caplog.records)
+    server.stop()
+    idx.close()
+
+
+# 13. the matched line (`near`) only when the request asks: a daemon from before the diet never asks, and its room
+# filter would hand a non-owner room another room's line unfiltered
+def test_a_search_carries_the_matched_line_only_when_the_request_asks(tmp_path):
+    s = tree(tmp_path)
+    stub = StubEmbedder(s.embeddings_key)
+    idx, store, server, back, status = serve(s, stub)
+    while back.step():
+        pass
+    status()
+
+    def post(payload: dict) -> dict:
+        req = urllib.request.Request(f"http://127.0.0.1:{server.port}/search", data=json.dumps(payload).encode(),
+                                     headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return json.loads(r.read())
+    line = "- 09:01 a person: lunch at example.com with a person"
+    old = post({"query": "the meal", "pool": 10})                             # what a daemon before the diet sends
+    assert old["ok"] and old["hits"] and all("near" not in h for h in old["hits"])
+    new = post({"query": "the meal", "pool": 10, "near": True})
+    assert new["hits"][0]["path"].endswith("2026-01-05.md") and new["hits"][0]["near"] == line
+    assert [{k: v for k, v in h.items() if k != "near"} for h in new["hits"]] == old["hits"]     # nothing else moves
+    assert all("near" not in h for h in post({"query": "the meal", "pool": 10, "near": "yes"})["hits"])   # true only
+    assert all("near" not in h for h in server.search("the meal", 10)["hits"])
+    state, rows = memory.meaning(s, "the meal")                               # this daemon asks
+    assert state == "ok" and rows[0]["near"] == line
     server.stop()
     idx.close()

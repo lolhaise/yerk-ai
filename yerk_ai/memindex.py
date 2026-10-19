@@ -420,9 +420,11 @@ def terms(query: str) -> list[str]:
     return out[:24]
 
 
-def search(conn: sqlite3.Connection, query: str, k: int = 6, pool: int = 80) -> list[dict[str, Any]]:
+def search(conn: sqlite3.Connection, query: str, k: int = 6, pool: int = 80,
+           weights: dict[str, float] | None = None) -> list[dict[str, Any]]:
     """Ranked chunks for a query: any of its words (FTS5, stemmed), ordered by how much of the
-    query's weight a chunk covers (each distinct word weighted by its rarity), then by bm25."""
+    query's weight a chunk covers (each distinct word weighted by its rarity), then by bm25.
+    `weights`, when given, gets each word's weight (recall's snippet cut reads them)."""
     ts = terms(query)
     if not ts:
         return []
@@ -438,6 +440,8 @@ def search(conn: sqlite3.Connection, query: str, k: int = 6, pool: int = 80) -> 
     for t in ts:
         df = conn.execute("SELECT count(*) FROM chunks_fts WHERE chunks_fts MATCH ?", (f'"{t}"',)).fetchone()[0]
         w = math.log(1 + (max(total, df) - df + 0.5) / (df + 0.5))
+        if weights is not None:
+            weights[t] = w
         for (rid,) in conn.execute(f"SELECT rowid FROM chunks_fts WHERE chunks_fts MATCH ? AND rowid IN ({marks})",
                                    (f'"{t}"', *ids)):
             cover[rid] = cover.get(rid, 0.0) + w
