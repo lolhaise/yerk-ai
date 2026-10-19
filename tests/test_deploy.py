@@ -180,10 +180,12 @@ def test_the_fast_tests_run_in_the_tree_and_a_failure_deploys_nothing(tmp_path, 
 
 def test_the_move_onto_the_unit_file_keeps_the_command_folder_and_environment_and_can_go_back(tmp_path, monkeypatch):
     calls = []
-    shown = {"ExecStart": "{ path=/v/bin/python ; argv[]=/v/bin/python -m yerk_ai.daemon --state /s ; ignore_errors=no }",
-             "WorkingDirectory": "/code", "Environment": "YERK_PRIVATE=/p PATH=/v/bin:/usr/bin"}
+    shown = {"WorkingDirectory": "/code", "Environment": "YERK_PRIVATE=/p PATH=/v/bin:/usr/bin"}
 
     class Unit(deploy.Systemd):
+        def argv(self):
+            return ["/v/bin/python", "-m", "yerk_ai.daemon", "--state", "/s"]
+
         def ctl(self, *args):
             calls.append(args)
             return subprocess.CompletedProcess(args, 0, shown.get(args[2], "") if args[0] == "show" else "", "")

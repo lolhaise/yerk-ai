@@ -54,15 +54,24 @@ class Systemd:
     def show(self, prop: str) -> str:
         return self.ctl("show", "-p", prop, "--value", self.unit).stdout.strip()
 
+    def argv(self) -> list[str]:
+        """The unit's command word by word, from systemd's bus (systemctl show drops the quoting)."""
+        path = "/org/freedesktop/systemd1/unit/" + "".join(c if c.isalnum() else f"_{ord(c):02x}" for c in self.unit
+                                                            + ".service")
+        w = shlex.split(subprocess.run(["busctl", "--user", "get-property", "org.freedesktop.systemd1", path,
+                                        "org.freedesktop.systemd1.Service", "ExecStart"], capture_output=True,
+                                       text=True, timeout=30).stdout)       # a(sasbttttuii) 1 path n arg...
+        return w[4:4 + int(w[3])]
+
     def move(self, tree: Path, home: Path) -> dict[str, Any]:
         """The transient unit's command, folder and environment into units/yerkd.service, written 0600
         under ~/.config/systemd/user with the unit's own name; the transient unit stopped, the file's
         started (Type=notify). Returns what `back` needs to put the transient unit back."""
-        was = {"argv": shlex.split(re.search(r"argv\[\]=([^;]*)", self.show("ExecStart")).group(1)),  # type: ignore[union-attr]
-               "cwd": self.show("WorkingDirectory"), "env": shlex.split(self.show("Environment"))}
+        was = {"argv": self.argv(), "cwd": self.show("WorkingDirectory"), "env": shlex.split(self.show("Environment"))}
         text = re.sub(r"(?m)^Environment=.*\n", "", (tree / "units" / "yerkd.service").read_text())
         text = re.sub(r"(?m)^ExecStart=.*$", lambda _: "".join(f"Environment={shlex.quote(e)}\n" for e in was["env"])
-                      + f"WorkingDirectory={was['cwd']}\nExecStart={shlex.join(was['argv'])}", text)
+                      + f"WorkingDirectory={was['cwd']}\nExecStart="
+                      + shlex.join(was["argv"]).replace("%", "%%").replace("$", "$$"), text)   # no unit-file expansion
         path = home / f"{self.unit}.service"
         path.parent.mkdir(parents=True, exist_ok=True)
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
