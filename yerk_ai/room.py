@@ -16,7 +16,8 @@ adapter's event loop.
   one-line recap; anything else ends in a visible notice. An empty reply retries once fresh.
 - A turn Claude Code answered on a fallback model after a block stands, marked on its card and
   ledger row; the room's next turn starts a fresh session on the room's own model.
-- After `idle_seconds` without a turn the process closes; the next message resumes the session.
+- After `idle_seconds` without a turn the process closes; the next message resumes the session. A new
+  model or effort (the settings tool) closes it when the running turn ends, never inside it.
 - Each turn owns one card (card.py), fed from the stream; every outbound part carries the turn's
   key. A turn that was sent an image and never read it is bounced once at Stop, naming the file;
   a working turn answering a person that ends with nothing visible in the room bounces once,
@@ -134,6 +135,8 @@ class Room:
         self.silent_bounced = False               # the silent-ending check bounced this result already
         self.evidence = Evidence(on_call=self._ledger_call)   # every tool call of the turn and what it read
         self.answering: set[str] = set()                      # ids of the batch the turn answers
+        self.stale = False                        # the settings changed mid-turn: the process closes at its end
+        self.ran: RoomSpec | None = None          # the spec of the last process started
 
     def _ledger_call(self, call: dict[str, Any]) -> None:
         self.ledger.evidence(t=round(time.time(), 3), room=self.name, session_id=self.rp.session_id if self.rp else "",
@@ -288,6 +291,15 @@ class Room:
         log.info("room %s: idle process closed, session %s kept", self.name, rp.session_id)
         return True
 
+    def respec(self) -> None:
+        """The room's model or effort changed: never mid-turn. With no turn running the process closes
+        now, else when the turn ends; either way the next message resumes the same session on the new spec."""
+        with self.lock:
+            self.stale = self.busy
+            rp, self.rp = (None, self.rp) if self.busy else (self.rp, None)
+        if rp:
+            rp.close()
+
     # the room's thread
     def _write(self, msg: Inbound, recap: str | None = None) -> None:
         assert self.rp
@@ -303,7 +315,11 @@ class Room:
 
     def _start(self, account: Account, fresh: bool = False) -> None:
         log_path = self.log_dir / f"{self.name}.jsonl" if self.log_dir else None
-        rp = RoomProcess(self.spec(), account, self.state, ledger=self.ledger, failures=self.failures, log=log_path,
+        spec = self.spec()
+        if self.stale and self.ran:              # a hop or retry inside the turn that changed the settings
+            spec.model, spec.extra_args = self.ran.model, self.ran.extra_args       # stays on the turn's own
+        self.ran = spec
+        rp = RoomProcess(spec, account, self.state, ledger=self.ledger, failures=self.failures, log=log_path,
                          meters=self.meters, evidence=self.evidence)
         rp.start(fresh=fresh)
         self.rp = rp
@@ -323,6 +339,11 @@ class Room:
                     while not batch[0].alone and self.queue and not self.queue[0].alone:
                         batch.append(self.queue.popleft())
                 self._turn(batch)
+                with self.lock:                  # the settings changed in that turn: it has ended, so its
+                    rp, self.rp, self.stale = (self.rp, None, False) if self.stale else (None, self.rp, False)
+                if rp:                           # process goes and the next message resumes on the new spec
+                    rp.close()
+                    log.info("room %s: settings changed, process closed, session %s kept", self.name, rp.session_id)
         except Exception:
             log.exception("room %s: turn crashed", self.name)
             with self.lock:

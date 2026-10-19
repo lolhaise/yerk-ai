@@ -1,6 +1,7 @@
 """Where Yerk AI keeps things and how it reads them: its own tables such as budgets.toml, the private folder, the state folder."""
 from __future__ import annotations
 
+import json
 import os
 import tomllib
 from pathlib import Path
@@ -58,6 +59,30 @@ def room_id(name: str, conf: dict[str, Any]) -> str:
     """A room's stable id in the day log: `id` in rooms.toml, else its channel (a Discord channel id
     survives a rename), else its name. The name stays on every line as a label."""
     return str(conf.get("id") or conf.get("channel") or name)
+
+
+def models(conf: dict[str, Any]) -> dict[str, str]:
+    """The models a room may be switched to (alias = full id): [models] in yerkd.toml, else the
+    example layer's list."""
+    ex = EXAMPLE_PRIVATE / "yerkd.toml"
+    listed = conf.get("models") or (load_toml(ex).get("models", {}) if ex.is_file() else {})
+    return {str(k).lower(): str(v) for k, v in listed.items()}
+
+
+def override(state: Path, name: str) -> dict[str, Any]:
+    """A room's override: the settings tool's file under the state folder (the daemon's own, never the
+    room's; `settings.json` beside it is Claude Code's), {} when there is none."""
+    try:
+        return dict(json.loads((state / "rooms" / name / "override.json").read_text()))
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
+def room_settings(conf: dict[str, Any], state: Path, name: str) -> dict[str, tuple[str, str]]:
+    """A room's model and effort, each with where it comes from: the room's override over rooms.toml."""
+    over = override(state, name)
+    return {k: (str(over[k]), "the room's override") if over.get(k) else
+            (str(conf[k]), "rooms.toml") if conf.get(k) else ("", "the model's own default") for k in ("model", "effort")}
 
 
 # Private files are created WITH their mode, never created then chmod-ed (after the owner's

@@ -354,8 +354,11 @@ def relay_text(row: dict[str, Any], end: dict[str, Any], cap: int) -> str:
 
 
 def relay_line(row: dict[str, Any]) -> str:
-    """The line a relay reply always carries: the report is saved, and the command that opens it.
-    The relay names the report's path as the line its reply must carry, and room.fit says it this way."""
+    """The line a relay reply always carries: the report is saved, and the command that opens it, or,
+    when the worker left no report file, that there is none. The relay asks for it and names it as the
+    line its reply must carry (room.fit adds it when the reply lacks it)."""
+    if not Path(str(row["report"])).is_file():
+        return words.SUB + words.NO_REPORT.format(id=row["id"])
     return words.carried(str(row["report"]))
 
 
@@ -651,7 +654,7 @@ class Workers:
         busy = room.idle_reason(self.conf.idle_seconds) if room is not None else ""
         self.ledger.worker_set(row["id"], relay="waiting" if busy or self.waiting.get(row["room"]) else "sent",
                                relay_note=f"inbound {mid}" + (f", waiting: {busy}" if busy else ""))
-        self.ask(row["room"], Inbound(mid, "yerk", text, cap=self.conf.relay_reply, must=str(row["report"]), then=then,
+        self.ask(row["room"], Inbound(mid, "yerk", text, cap=self.conf.relay_reply, must=relay_line(row), then=then,
                                       alone=True))
         return ""
 

@@ -1,0 +1,9 @@
+# The fake private layer's daemon settings (example). A real private folder holds its own yerkd.toml.
+
+# The Claude models a room can be switched to from inside the room (by its settings tool), one line each,
+# either. Edit this list when Anthropic ships a new model. A yerkd.toml with no [models] uses this one.
+[models]
+opus = "claude-opus-5-5"
+sonnet = "claude-sonnet-5-5"
+haiku = "claude-haiku-5-5"
+fable = "claude-fable-5-1"

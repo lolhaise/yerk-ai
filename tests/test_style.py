@@ -191,7 +191,8 @@ def phrases() -> list[str]:
     out = [t for _, t in words.OUTCOME.values()] + [t for _, t in words.ABILITY.values()] + list(words.WHY.values())
     out += [words.REPORT_SAVED, words.NO_REPORT, words.NOT_SENT, words.NOT_SENT_AGAIN, words.NOT_FETCHED,
             words.NOT_RUN_AGAIN, words.SENT_AGAIN, words.NOT_ANSWERED, words.GONE, words.STRAY, *words.BACKUP,
-            words.MOVED, words.COMPACTING, *words.FILE_WHY.values()]
+            words.MOVED, words.COMPACTING, *words.FILE_WHY.values(), words.NEXT_REPLY, words.OWNER_ONLY,
+            words.NOT_LISTED, words.NOT_A_LEVEL]
     fixed = (re.split(r"[{\n]", x)[0].strip(" :,;") for x in out)
     return sorted({p for p in fixed if " " in p and len(p) >= 8 and p not in words.OUTCOME})
 

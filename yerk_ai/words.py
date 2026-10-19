@@ -76,7 +76,8 @@ START = "working on it"
 VERBS = {"read": "read", "write": "write", "edit": "edit", "multiedit": "edit", "notebookedit": "edit",
          "bash": "run", "webfetch": "fetch", "fetch": "fetch", "websearch": "search the web for", "grep": "search",
          "glob": "list", "send": "send", "hold": "wait for", "recall": "recall", "read_memory": "read",
-         "todowrite": "update the plan", "task": "hand off", "agent": "hand off", "toolsearch": "load"}
+         "todowrite": "update the plan", "task": "hand off", "agent": "hand off", "toolsearch": "load",
+         "settings": "switch to"}
 EARLIER, EARLIER_ROWS = "{n} earlier steps", "{n} earlier rows"
 THINKING = "thinking: "
 NOT_ANSWERED = "not answered"
@@ -277,6 +278,20 @@ NOT_ANSWERING_WHY = "yerkd not answering"
 def secs(seconds: float) -> str:
     """'1.7 s' under ten seconds, else span's '18 s', '3 min'."""
     return f"{seconds:.1f} s" if seconds < 10 else span(seconds)
+
+
+# a room's model and thinking level (the settings tool)
+NEXT_REPLY = "next reply: {model}, {effort} thinking"
+THIS_ROOM = "this room: {model}, {effort} thinking"
+OWNER_ONLY = "only the owner's rooms can change this"
+NOT_LISTED = "not on the list: {model}\nthe list: {models}"
+NOT_A_LEVEL = "not a thinking level: {effort}\nthe levels: {levels}"
+
+
+def model_name(mid: str) -> str:
+    """A model id as a person says it: 'claude-opus-5-5' is 'Opus 5.5'; any other id as it is."""
+    m = re.fullmatch(r"claude-([a-z]+)-(\d+)(?:-(\d))?", mid)
+    return f"{m[1].title()} {m[2]}{'.' + m[3] if m[3] else ''}" if m else mid
 
 
 # the presentation settings (decision 27): the first choice is the default
