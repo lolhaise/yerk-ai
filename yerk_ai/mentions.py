@@ -26,7 +26,7 @@ ENTRY_CHARS = 300
 KEY_MIN, KEY_MAX, KEY_WORDS = 3, 44, 6
 MATCH_MAX = 6
 DROP = re.compile(r"⛔|ask[- ]only", re.I)
-OLD = "[superseded by "             # a corrected line (memory.remember): never an entry, its line read as blank
+OLD = "[superseded"                 # a corrected line (memory.remember): never an entry, its line read as blank
 TOKEN = re.compile(r"[a-z0-9][a-z0-9'.\-]*")
 BOLD = re.compile(r"\*\*(.+?)\*\*")
 SPLIT = re.compile(r"\s+[—–-]\s+|\s*[(,:=;]|\s+→\s+")

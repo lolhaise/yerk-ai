@@ -9,7 +9,7 @@ Hermes Agent v0.22.2, https://github.com/NousResearch/hermes-agent
 Copyright (c) 2025 Nous Research. MIT License.
 - yerk_ai/lifted/trim.py: from agent/prompt_builder.py (_truncate_content, _omitted_headings)
 - yerk_ai/lifted/cooldowns.py: from agent/credential_pool_model_cooldowns.py
-  (model_cooldown_until, merge_model_cooldowns)
+  (model_cooldown_until)
 - yerk_ai/lifted/split.py: from gateway/platforms/base.py (truncate_message, _custom_unit_to_cp)
   and gateway/platforms/helpers.py (fence_state_after)
 - yerk_ai/lifted/loopguard.py: from gateway/bot_loop_guard.py (BotLoopGuard.admit)

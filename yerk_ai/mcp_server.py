@@ -128,8 +128,9 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
     async def remember(text: str, about: str = "", replaces: list[str] | None = None, *, ctx: Context) -> str:
         """File in memory now, before your reply, what you were just told: a new fact, a decision or a
         correction, one line in plain words. `about`: for a fact, the person, place or thing it is about,
-        by the name the owner uses (it names the fact file). `replaces`: for a correction, the cite
-        (file:line) of every line it corrects; each is marked superseded. Returns the new line's cite."""
+        by the name the owner uses (it names the fact file). `replaces`: for a correction, each old line as
+        `cite | its words` (a hit's cite, then the old line's words); the one line from that cite through the
+        next 12 holding those words is marked superseded. Returns the new line's cite."""
         return json.dumps(await daemon.tool_remember(caller_room(ctx), text, about, replaces or []))
 
     @mcp.tool()

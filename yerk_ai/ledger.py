@@ -458,11 +458,8 @@ class Ledger:
                                                      (account, source))}
 
     def health_last(self, account: str, source: str | None = None) -> dict[str, Any] | None:
-        if source is None:
-            r = self._select("SELECT * FROM health WHERE account = ? ORDER BY id DESC LIMIT 1", (account,))
-        else:
-            r = self._select("SELECT * FROM health WHERE account = ? AND source = ? ORDER BY id DESC LIMIT 1",
-                             (account, source))
+        r = self._select(f"SELECT * FROM health WHERE account = ?{'' if source is None else ' AND source = ?'} ORDER BY id DESC "
+                         "LIMIT 1", (account,) if source is None else (account, source))
         return r[0] if r else None
 
     # workers (workers.py)

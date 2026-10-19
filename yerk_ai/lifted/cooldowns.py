@@ -1,5 +1,5 @@
 # Adapted from Hermes Agent v0.22.2, agent/credential_pool_model_cooldowns.py
-# (model_cooldown_until and merge_model_cooldowns), https://github.com/NousResearch/hermes-agent
+# (model_cooldown_until), https://github.com/NousResearch/hermes-agent
 # Copyright (c) 2025 Nous Research. MIT License. See NOTICE.
 # Changes: keyed on an account name instead of a pooled credential and a model; the pool,
 # provider and entitlement logic is gone.
@@ -19,15 +19,3 @@ def cooldown_until(cooldowns: Mapping[str, Any], key: str | None, now: float | N
     now = time.time() if now is None else now
     active = [float(until) for until in values if isinstance(until, (int, float)) and until > now]
     return max(active) if active else None
-
-
-def merge_cooldowns(*maps: Any) -> dict[str, float]:
-    """Latest reset per key across snapshots; each writer only observed its own key."""
-    merged: dict[str, float] = {}
-    for cooldowns in maps:
-        if not isinstance(cooldowns, dict):
-            continue
-        for key, until in cooldowns.items():
-            if isinstance(until, (int, float)):
-                merged[key] = max(float(until), merged.get(key, 0.0))
-    return merged

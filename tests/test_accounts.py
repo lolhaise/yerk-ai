@@ -7,7 +7,6 @@ from pathlib import Path
 from yerk_ai.accounts import (TOKEN_ENV, Account, Cooldowns, account_env, load_accounts, pick, read_token,
                               store_token, token_info)
 from yerk_ai.config import EXAMPLE_PRIVATE
-from yerk_ai.lifted.cooldowns import merge_cooldowns
 from yerk_ai.lifted.expiry import DAY_MS, login_state
 
 A = [Account("one", Path("/x/one")), Account("two", Path("/x/two")), Account("three", Path("/x/three"))]
@@ -104,10 +103,6 @@ def test_a_rest_set_by_hand_is_seen_without_a_restart(tmp_path):
 def test_a_layer_1_cooldown_file_still_reads(tmp_path):
     (tmp_path / "cool.json").write_text(json.dumps({"one": {"until": time.time() + 60, "repeats": 1}}))
     assert pick(A, Cooldowns(tmp_path / "cool.json")) == A[1]
-
-
-def test_merge_keeps_the_latest_reset():
-    assert merge_cooldowns({"one": 5, "two": 9}, {"one": 7}, None) == {"one": 7.0, "two": 9.0}
 
 
 def test_login_state_window():
