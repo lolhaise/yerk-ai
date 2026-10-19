@@ -110,16 +110,8 @@ class Evidence:
 
     def memory_read(self, roots: tuple[Path, ...]) -> bool:
         with self.lock:
-            if self.injected_recall:
-                return True
-            for c in self.calls.values():
-                name = c["tool"].rsplit("__", 1)[-1]
-                if name in MEMORY_TOOLS:
-                    return True
-                blob = json.dumps(c["input"])
-                if any(str(r) in blob for r in roots):
-                    return True
-        return False
+            return self.injected_recall or any(c["tool"].rsplit("__", 1)[-1] in MEMORY_TOOLS
+                                               or any(str(r) in json.dumps(c["input"]) for r in roots) for c in self.calls.values())
 
 
 def has_figure(text: str, fig: str) -> bool:

@@ -17,7 +17,7 @@ import sqlite3
 import threading
 import time
 from contextlib import contextmanager, suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta, timezone, tzinfo
 from pathlib import Path
 from typing import Any, Iterator
@@ -56,6 +56,7 @@ class Settings:
     embeddings_width: int           # dimensions kept in memory (the first `width` of `dim`, renormalised)
     index_status: Path              # what yerk-index serves: its port and the embeddings' state
     recall_chars: int               # one recall's first six snippets together, at most
+    scoped: bool = False            # a room's own `also` (only): index hits and names kept to the roots in `scope`
 
     @property
     def daily(self) -> Path:
@@ -64,6 +65,14 @@ class Settings:
     @property
     def roots_for_mentions(self) -> tuple[Path, ...]:
         return self.scope.roots
+
+    def only(self, private: Path, room: str, also: list[Any]) -> Settings:
+        """A room's `also` in rooms.toml, resolved as `[memory] also` is: these settings with the read-only roots cut to those,
+        so its recall, read_memory and mention recall serve its own tree and them; a root the install lacks stops the start."""
+        want = [(private / Path(str(x)).expanduser()).resolve() for x in also]
+        for p in (p for p in want if p not in self.scope.roots[1:]):
+            raise SystemExit(f"room {room}: also {p} is not one of the [memory] also roots in yerkd.toml")
+        return replace(self, scoped=True, scope=replace(self.scope, roots=tuple(r for r in self.scope.roots if r in (self.root, *want))))
 
 
 def settings(private: Path, state: Path, conf: dict[str, Any] | None = None) -> Settings:
@@ -183,10 +192,12 @@ def room_class(conf: dict[str, Any]) -> str:
 
 @dataclass(frozen=True)
 class Reader:
-    """Who is asking: the room's name, its stable id, and whether it is an owner room."""
+    """Who is asking: the room's name, its stable id, whether it is an owner room, and whether `sealed` keeps it, in Yerk's
+    own tree, to its own room's lines (its `also` roots stay as its class lets it read them)."""
     name: str = ""
     rid: str = ""
     owner: bool = False
+    sealed: bool = False
 
 
 def file_class(path: Path) -> tuple[str, str]:
@@ -215,8 +226,9 @@ def file_class(path: Path) -> tuple[str, str]:
 
 
 def may_read(reader: Reader | None, cls: str, room: str) -> bool:
-    """An owner room reads everything; any other room reads shared files and its own room's lines."""
-    return reader is None or reader.owner or cls == "shared" or (cls == "room" and bool(room) and room == reader.rid)
+    """An owner room reads everything; any other room reads shared files and its own room's lines; a sealed one its own lines only."""
+    return reader is None or ((reader.owner or cls == "shared") and not reader.sealed) or (
+        (cls == "room" or reader.sealed) and bool(room) and room == reader.rid)
 
 
 def allowed_text(reader: Reader | None, path: Path, text: str, blank: str = "", whole: bool = False,
@@ -227,7 +239,7 @@ def allowed_text(reader: Reader | None, path: Path, text: str, blank: str = "", 
     kept line stay. None when nothing is left unless `whole`, an exact read that must keep its line
     count. A day log is a date-named file, under `daily` when given: a date-named file anywhere else
     is a plain file, whole or None by its class, like the rest."""
-    if reader is None or reader.owner:
+    if reader is None or reader.owner and not (reader.sealed and (daily is None or Path(path).resolve().is_relative_to(daily.resolve().parent))):
         return text
     if is_daylog(str(path)) and (daily is None or Path(path).resolve().parent == daily.resolve()):
         out = []
@@ -378,7 +390,7 @@ def remember(s: Settings, log: DailyLog, room: str, mid: str, text: str, about: 
     if not body:
         return {"ok": False, "error": "nothing to remember: give the fact, decision or correction as text"}
     rid, cls = log.rooms.get(room, (room, "private"))
-    owner, refused, olds = reader is None or reader.owner, [], {b: list[tuple[Path, int]]() for b in (True, False)}
+    owner, refused, olds = reader is None or reader.owner and not reader.sealed, [], {b: list[tuple[Path, int]]() for b in (True, False)}
     for c in old:
         c, _, said = (x.strip() for x in c.partition("|"))
         r, want = read(s, c, lines=READ_LINES + 1 if said else 1), set(memindex.WORD.findall(memindex.norm(said)))
@@ -414,7 +426,7 @@ def remember(s: Settings, log: DailyLog, room: str, mid: str, text: str, about: 
         path = s.daily / f"{at:%Y-%m-%d}.md"
         n = next((i + 1 for i, x in enumerate(path.read_text().splitlines()) if x.endswith(f"[m:{key}]")), 0)
     new, nc = f"{cite(s, path)}:{n}", (cls, rid) if path.parent == s.daily else ("private", "")    # the new line's class
-    taken, pairs = dict[str, str](), [(c, new) for c in named]
+    taken, pairs = dict[str, str](), [(c if p.is_relative_to(s.root) else f"{p}:{k}", new) for (p, k), c in zip(olds[False], named)]
     for (p, k), c in zip(olds[True], edit):
         with daily_lock(s.daily):
             lines = p.read_text().split("\n")
@@ -473,8 +485,9 @@ def live_first(s: Settings, r: dict[str, Any], reader: Reader | None = None) -> 
         return next((i for i in range(j) if hits[i]["cite"].rpartition(":")[0] in names), j)
     out: list[dict[str, Any]] = []
     for h in [hits[j] for j in sorted(range(len(hits)), key=lambda j: (above(j), above(j) == j, j))]:
-        f, _, at = h["cite"].rpartition(":")
-        for c in BY.findall(h["text"]) + [b for a, b in kept.items() if a.rpartition(":")[0] == f
+        f, _, at = h["cite"].rpartition(":")         # a read-only root's pair names its real file: two copies share a cite (A1)
+        mine = (f, read(s, h["cite"], lines=1).get("path") if kept else f)
+        for c in BY.findall(h["text"]) + [b for a, b in kept.items() if a.rpartition(":")[0] in mine
                                            and 0 <= int(a.rpartition(":")[2]) - int(at) <= READ_LINES]:
             for _ in range(5):          # a replacement replaced in turn: on to the live end (F4)
                 got = read(s, c, lines=1)
@@ -511,7 +524,7 @@ def read(s: Settings, path: str, start: int = 1, lines: int = READ_LINES, reader
         return {"ok": False, "error": f"{path} is a folder, not a file"}
     start, lines = max(1, int(start)), max(1, min(int(lines), READ_MAX))
     daylog = is_daylog(str(real)) and real.parent == s.daily.resolve()   # date-named elsewhere: a plain file
-    if reader and not reader.owner and not daylog and not may_read(reader, *file_class(real)):
+    if reader and (not reader.owner or reader.sealed and real.is_relative_to(s.root)) and not daylog and not may_read(reader, *file_class(real)):
         return {"ok": False, "error": f"{path} is not readable from room {reader.name or '?'}: its class keeps it to "
                                       "the owner's rooms"}
     out: list[str] = []
@@ -521,7 +534,7 @@ def read(s: Settings, path: str, start: int = 1, lines: int = READ_LINES, reader
             if start <= total < start + lines:
                 out.append(line.rstrip("\n"))
     text = "\n".join(out)
-    if reader and not reader.owner and daylog:
+    if reader and (not reader.owner or reader.sealed) and daylog:
         text = allowed_text(reader, real, text, blank="(a line of another room)", whole=True, daily=s.daily) or ""
     cut = len(text) > READ_CHARS
     return {"ok": True, "path": str(real), "from": start, "to": start + len(out) - 1, "total_lines": total,
@@ -650,8 +663,10 @@ def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader:
     state, vectors = meaning(s, query)
     if state in ("provider-timeout", "provider-error", "index-timeout", "failure"):
         log.warning("recall: meaning search skipped (%s); keywords only for this query", state)
+    if s.scoped:             # a room's own `also`: its roots' candidates only, before fusion keeps k (every root is indexed)
+        keywords, vectors = ([h for h in x if s.scope.contains(Path(h["path"]))] for x in (keywords, vectors))
     hits = fuse(keywords, vectors, k)
-    if reader and not reader.owner:                 # another room's private lines never leave the tree (R2)
+    if reader and (not reader.owner or reader.sealed):          # another room's private lines never leave the tree (R2)
         kept = []
         for h in hits:
             text = allowed_text(reader, Path(h["path"]), str(h.get("text", "")), daily=s.daily)
@@ -774,10 +789,6 @@ def window(s: Settings, now: datetime | None = None, days: int = WINDOW_DAYS) ->
     return [(today - timedelta(days=n)).isoformat() for n in range(days)]
 
 
-def _stem(w: str) -> str:
-    return w[:5] if len(w) >= 5 else w
-
-
 def room_lines(s: Settings, room: str, now: datetime | None = None,
                rid: str | None = None, owner: bool = True) -> Iterator[tuple[str, int, Line, list[str]]]:
     """(day, line number, the parsed line, the lines of its file) for this room's lines of the last
@@ -808,14 +819,14 @@ def topic_hits(s: Settings, room: str, text: str, exclude: set[str] | None = Non
     ts = memindex.terms(text)
     if not ts:
         return []
-    want = {_stem(t) for t in ts}
+    want = {t[:5] for t in ts}                                            # a term's stem: its first five letters
     need = 1 if len(want) <= 2 else max(2, -(-len(want) * 3 // 10))     # a long message needs 30% of its terms
     body = one_line(text)
     hits = []
     for day, n, ln, _ in room_lines(s, room, now, rid, owner):
         if ln.mid.split(".e")[0] in (exclude or set()) or ln.body.strip() == body or mentions.OLD in ln.body:
             continue
-        cover = len(want & {_stem(w) for w in memindex.WORD.findall(memindex.norm(ln.body))})
+        cover = len(want & {w[:5] for w in memindex.WORD.findall(memindex.norm(ln.body))})
         if cover >= need:
             hits.append({"day": day, "time": ln.time[:5], "role": ln.role, "who": ln.who, "text": ln.body,
                          "cite": f"daily/{day}.md:{n + 1}", "cover": cover})

@@ -1,9 +1,13 @@
 import json
+import os
 import re
+import shutil
+import sys
 from pathlib import Path
 
 import pytest
 
+from yerk_ai import mcp_server
 from yerk_ai.accounts import Account
 from yerk_ai.config import table
 from yerk_ai.engine import STREAM_FLAGS, RoomProcess, RoomSpec, SessionBusy, Turn
@@ -48,6 +52,37 @@ def test_one_turn_round_trip(make, tmp_path):
     assert "--strict-mcp-config" in argv
     assert rec["config_dir"] == str(tmp_path / "cfg")
     assert not any(k.startswith("ANTHROPIC") for k in rec["env_keys"])
+
+
+def test_a_rooms_claude_runs_its_stdio_servers_on_a_baseline_env(make, tmp_path):
+    """Claude Code hands a stdio server in a room's `mcp` table the room process's whole environment (the messaging
+    socket and token of the room's session, SSH_AUTH_SOCK, YERK_STATE, any key the daemon started with) unless
+    CLAUDE_CODE_MCP_ALLOWLIST_ENV=1, which gives it HOME, PATH, PWD and Claude Code's own session variables plus the
+    `env` its table names (Claude Code's docs, code-5.md:26; measured on 2.1.301 in the cold read of pull request 37)."""
+    with make() as rp:
+        rp.start()
+    assert "CLAUDE_CODE_MCP_ALLOWLIST_ENV" in records(tmp_path)[0]["env_keys"]
+
+
+@pytest.mark.live
+@pytest.mark.skipif(os.environ.get("YERK_LIVE") != "1" or not shutil.which("claude"), reason="needs the real Claude Code")
+def test_a_plug_in_server_sees_none_of_the_daemons_environment(tmp_path, monkeypatch):
+    """The real Claude Code with a made-up token (its one request is refused) and a stdio server in the room's mcp.json
+    that writes the names of its environment and exits: a variable the daemon was started with never reaches it."""
+    seen, server = tmp_path / "seen.json", tmp_path / "server.py"
+    server.write_text(f"import json, os\nopen({str(seen)!r}, 'w').write(json.dumps(sorted(os.environ)))\n")
+    (tmp_path / "t.token").write_text("not-a-real-token\n")
+    monkeypatch.setenv("YERK_CLAUDE", str(shutil.which("claude")))
+    monkeypatch.setenv("YERK_DAEMON_ONLY", "x")       # stands in for SSH_AUTH_SOCK, YERK_STATE or a key in the daemon's env
+    cfg = mcp_server.room_config("http://127.0.0.1:1/mcp", "r1", tmp_path / "m.json", "t",
+                                 {"rec": {"type": "stdio", "command": sys.executable, "args": [str(server)]}})
+    spec = RoomSpec(room="r1", model="claude-fable-5-1", cwd=tmp_path, tools=["Read"], mcp_config=cfg)
+    with RoomProcess(spec, Account("one", tmp_path / "cfg", token_file=tmp_path / "t.token"), tmp_path,
+                     ledger=Ledger(tmp_path / "l.sqlite"), failures=FailureTable.load(table("failures.toml"))) as rp:
+        rp.start()
+        rp.ask("hi", timeout=90)
+    names = json.loads(seen.read_text())
+    assert "PATH" in names and "YERK_DAEMON_ONLY" not in names and not any(k.startswith("SSH_") for k in names)
 
 
 def test_the_room_reads_its_own_sessions_folder_where_a_big_tool_output_is_saved(make, tmp_path):

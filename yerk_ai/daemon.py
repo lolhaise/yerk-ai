@@ -108,18 +108,24 @@ class Yerkd:
         self.url = f"http://127.0.0.1:{self.port}"
         self.budgets, self.room_confs, self.models = budgets(), rooms(private), models(self.conf)
         for n, c in self.room_confs.items():               # one string would be read as one folder per letter
-            if not isinstance(c.get("read", []), list):
-                raise SystemExit(f'room {n}: read must be a list of folders, like read = ["~/notes"], not {c["read"]!r}')
+            for key in (k for k in ("read", "also") if not isinstance(c.get(k, []), list)):
+                raise SystemExit(f'room {n}: {key} must be a list of folders, like {key} = ["~/notes"], not {c[key]!r}')
         self.read_dirs = {n: [(state / "rooms" / n / "work" / Path(x).expanduser()).resolve() for x in c.get("read", [])]
                           for n, c in self.room_confs.items()}   # from the work folder, as Claude Code lands one
         for n, p in ((n, p) for n, ps in self.read_dirs.items() for p in ps):
             if any(q.is_relative_to(p) or p.is_relative_to(q) for q in (private.resolve(), state.resolve())):   # F4
                 raise SystemExit(f"room {n}: read {p} reaches Yerk's own folders; name one outside {private} and {state}")
-        self.accounts = [only_account] if only_account else load_accounts(private / "accounts.toml")
+        for n, m in ((n, c.get("mcp", {})) for n, c in self.room_confs.items()):   # never the values: an env may hold a key
+            if not isinstance(m, dict) or not all(isinstance(v, dict) for v in m.values()):
+                raise SystemExit(f"room {n}: mcp must be a table of servers, like [rooms.{n}.mcp.web], each one a table")
+            for s in (s for s in m if s.lower().startswith("yerk") or "__" in s):
+                raise SystemExit(f"room {n}: mcp server {s} could pass for Yerk's own tools; name it without yerk at the start or __")
+        self.accounts =[only_account] if only_account else load_accounts(private / "accounts.toml")
         self.ledger, self.failures = Ledger(state / "ledger.sqlite"), FailureTable.load(table("failures.toml"))
         self.cooldowns = Cooldowns(state / "cooldowns.json")
         self.meters = Meters(state / "meters.json")
         self.memory = memory.settings(private, state, dict(self.conf.get("memory", {})))
+        self.scoped = {n: self.memory.only(private, n, c["also"]) for n, c in self.room_confs.items() if "also" in c}
         self.daily = memory.DailyLog(self.memory.daily, self.memory.tz,
                                      {n: (room_id(n, c), memory.room_class(c)) for n, c in self.room_confs.items()})
         # day-log lines written before offsets, ids, authors and classes are rewritten once, here, before any
@@ -187,7 +193,7 @@ class Yerkd:
         if flag(conf.get("thinking_panel")) and self.owner(name):
             extra += ["--thinking-display", "summarized"]      # the panel's text; off: the stream says nothing
         return RoomSpec(room=name, model=now["model"][0], cwd=work, tools=list(conf.get("tools", [])), settings=settings,
-                        context_file=ctx, mcp_config=mcp_server.room_config(f"{self.url}/mcp", name, rdir / "mcp.json", token),
+                        context_file=ctx, mcp_config=mcp_server.room_config(f"{self.url}/mcp", name, rdir / "mcp.json", token, conf.get("mcp")),
                         extra_args=extra, token=token, add_dirs=[layer, *self.read_dirs.get(name, [])])   # `read`, as F4 judged it
 
     def owner(self, room: str) -> bool:
@@ -196,9 +202,9 @@ class Yerkd:
 
     def reader(self, room: str) -> memory.Reader:
         """Who a memory read is for: an owner room reads everything, any other room its own lines and
-        shared files, and a caller that is no room at all reads shared files only (R2)."""
+        shared files, a caller that is no room at all shared files only (R2), and a sealed room its own lines in Yerk's tree."""
         return memory.Reader(room, room_id(room, self.room_confs[room]) if room in self.room_confs else "",
-                             self.owner(room))
+                             self.owner(room), flag(self.room_confs.get(room, {}).get("sealed")))
 
     def check(self) -> mcp_server.Check:
         return mcp_server.checker(self.secret, self.worker_secret, self.sessions.by_token)
@@ -252,8 +258,8 @@ class Yerkd:
         """Off the loop: the index is yerk-index's file, read here, never built here (L47). The first
         recall in a room while yerk-index runs without a provider key tells the room so, once. A superseded
         line never comes above its replacement (memory.live_first)."""
-        rd = self.reader(room)
-        r = await asyncio.to_thread(lambda: memory.live_first(self.memory, memory.recall(self.memory, query, k, 5.0, rd), rd))
+        rd, s = self.reader(room), self.scoped.get(room, self.memory)
+        r = await asyncio.to_thread(lambda: memory.live_first(s, memory.recall(s, query, k, 5.0, rd), rd))
         log.info("recall: %s, %d hit(s)%s", room or "?", len(r.get("hits", [])), "" if r["ok"] else f", {r['status']}")
         if r["ok"] and room in self.rooms and memory.meaning_state(self.memory) == "no-key":
             await self.tell_once(room, "embeddings", NO_KEY_LINE)
@@ -270,7 +276,7 @@ class Yerkd:
         return True
 
     async def tool_read_memory(self, room: str, path: str, start: int, lines: int) -> dict[str, Any]:
-        return await asyncio.to_thread(memory.read, self.memory, path, start, lines, self.reader(room))
+        return await asyncio.to_thread(memory.read, self.scoped.get(room, self.memory), path, start, lines, self.reader(room))
 
     async def tool_remember(self, room: str, text: str, about: str, replaces: list[str]) -> dict[str, Any]:
         """The `remember` tool: a room's own note into Yerk's own tree (memory.remember), stamped with
@@ -279,7 +285,7 @@ class Yerkd:
             return {"ok": False, "error": "remember is for a room's own session"}
         with self.rooms[room].lock:
             mid = ",".join(m.id for m in self.rooms[room].inflight) or f"x{self.rooms[room].turn_key}"
-        return await asyncio.to_thread(memory.remember, self.memory, self.daily, room, mid, text, about,
+        return await asyncio.to_thread(memory.remember, self.scoped.get(room, self.memory), self.daily, room, mid, text, about,
                                        tuple(replaces), self.reader(room))
 
     def owner_only(self, room: str, named: str, line: str = words.WORKERS_OWNER_ONLY) -> dict[str, Any] | None:
@@ -383,11 +389,12 @@ class Yerkd:
 
     def recall_for(self, room: str, prompt: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         """Names on file (owner-privacy rooms only) and the room's own lines on the topic. Off the loop."""
-        conf = self.room_confs.get(room, {})
+        conf, s, rd = self.room_confs.get(room, {}), self.scoped.get(room, self.memory), self.reader(room)
         names: list[dict[str, Any]] = []
         if self.owner(room) and conf.get("mention_recall", True):
-            try:
-                names = self.names.load().match(prompt)
+            try:            # a room's own `also`: the entries from its roots only (a cite is relative in Yerk's own tree, which sealed skips)
+                names = self.names.load().match(prompt, keep=(lambda f: s.scope.contains(s.root / f) and (Path(f).is_absolute() or not rd.sealed))
+                                                if s.scoped or rd.sealed else None)
             except (OSError, ValueError, KeyError) as e:
                 log.warning("mention recall skipped: %s", e)
         r = self.rooms.get(room)
@@ -475,11 +482,9 @@ class Yerkd:
             if name is None:
                 log.warning("hook: %s from session %s (%s caller) matches no room binding; answered unbound",
                             event or "?", str(payload.get("session_id", ""))[:8] or "?", (auth or {}).get("kind") or "no")
-                out = dict(hooks.UNBOUND)
-                return out
+                return (out := dict(hooks.UNBOUND))
             self.learn_transcript(name, payload)
-            out = await self._hook(event, name, payload)
-            return out
+            return (out := await self._hook(event, name, payload))
         finally:
             room = self.rooms.get(name or "")
             hso = out.get("hookSpecificOutput") or {}
