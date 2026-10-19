@@ -1,0 +1,8 @@
+# The Claude models a room can be switched to from inside the room (by its settings tool), one line each,
+# alias = full model id; the room may name either. Shipped inside the package beside budgets.toml and
+# failures.toml; [models] in the private folder's yerkd.toml replaces this list whole. Edit it when
+[models]
+opus = "claude-opus-5-5"
+sonnet = "claude-sonnet-5-5"
+haiku = "claude-haiku-5-5"
+fable = "claude-fable-5-1"

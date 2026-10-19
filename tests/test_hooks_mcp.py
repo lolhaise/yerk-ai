@@ -43,10 +43,12 @@ def test_the_hook_endpoint_answers_over_http(tmp_path):
     assert other.json() == {}
 
 
-def test_six_preloaded_tools_with_slim_schemas(tmp_path):
+def test_seven_preloaded_tools_with_slim_schemas(tmp_path):
     y = daemon(tmp_path)
     tools = {t.name: t for t in asyncio.run(mcp_server.build(y, y.port, y.hook).list_tools())}
-    assert set(tools) == {"send", "hold", "recall", "read_memory", "worker", "schedule"}
+    assert set(tools) == {"send", "hold", "recall", "read_memory", "worker", "schedule", "settings"}
+    assert list(tools["settings"].inputSchema["properties"]) == ["model", "effort"]
+    assert "the owner asks to change this room's model or thinking level" in str(tools["settings"].description).lower()
     assert list(tools["schedule"].inputSchema["properties"]) == ["action", "name", "when", "what", "kind", "tz",
                                                                 "deliver", "room", "cap_minutes", "account"]
     assert list(tools["send"].inputSchema["properties"]) == ["room", "text", "file"]

@@ -420,7 +420,20 @@ def cmd_explain(a: argparse.Namespace) -> int:
 
 def cmd_config(a: argparse.Namespace) -> int:
     """`yerk config get [KEY]`: the settings Yerk AI describes in code (decisions 16 and 27), each with
-    its value here, where it came from, its choices and its plain words. Only these are printed."""
+    its value here, where it came from, its choices and its plain words. Only these are printed.
+    `yerk config get room NAME`: the room's model and effort, each from rooms.toml or the room's override."""
+    if a.key == "room":
+        from .config import load_toml, models, room_settings, state_dir
+        confs = rooms(priv := private_dir(a.private))
+        if a.name not in confs:
+            print(f"no room {a.name!r}; rooms: {', '.join(confs)}", file=sys.stderr)
+            return 2
+        listed = models(load_toml(priv / "yerkd.toml") if (priv / "yerkd.toml").is_file() else {})
+        now = room_settings(confs[a.name], state_dir(a.state), a.name, listed)
+        got = [{"key": f"rooms.{a.name}.{k}", "value": v, "source": src} for k, (v, src) in now.items()]
+        print(json.dumps(got) if a.json else "\n".join(f"{r['key']} = {r['value'] or 'unset'} ({r['source']})"
+                                                       for r in got))
+        return 0
     rows = _settings(a)
     pick = _pick(rows, a.key, sections=True)
     if not pick:
@@ -531,9 +544,11 @@ def main(argv: list[str] | None = None) -> int:
     mm.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
     cf = sub.add_parser("config", help="the settings Yerk AI describes, with their values here and plain words")
     cf.add_argument("action", choices=["get"])
-    cf.add_argument("key", nargs="?", default="", help="a setting or section (presentation, memory); all when left out")
+    cf.add_argument("key", nargs="?", default="", help="a setting or section (presentation, memory, room); all when left out")
+    cf.add_argument("name", nargs="?", default="", help="room: the room's name")
     cf.add_argument("--json", action="store_true")
     cf.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else the fake example layer)")
+    cf.add_argument("--state", help="room: state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
     pr = sub.add_parser("probe", help="contract probes against a real Claude Code login")
     pr.add_argument("name", choices=["hello", "fold", "resume", "blocks", "smoke", "measure", "short", "think", "check",
                                      "idle"])

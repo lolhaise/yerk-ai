@@ -2,7 +2,7 @@
 # official Python SDK) and the send tool's shape are adapted from Hermes Agent v0.22.2,
 # mcp_serve.py (create_mcp_server, messages_send), https://github.com/NousResearch/hermes-agent
 # Copyright (c) 2025 Nous Research. MIT License. See NOTICE.
-"""Yerk AI's own MCP server: six tools (send, hold, recall, read_memory, worker, schedule), local-only
+"""Yerk AI's own MCP server: seven tools (send, hold, recall, read_memory, worker, schedule, settings), local-only
 HTTP, preloaded in every room. A worker gets none of it: by default no MCP server at all, and with
 [workers] yerk_tools its own stdio server (`worker_server`) carrying recall and read_memory only.
 
@@ -45,6 +45,7 @@ class Daemon(Protocol):
     async def tool_read_memory(self, room: str, path: str, start: int, lines: int) -> dict[str, Any]: ...
     async def tool_worker(self, room: str, req: dict[str, Any]) -> dict[str, Any]: ...
     async def tool_schedule(self, room: str, req: dict[str, Any]) -> dict[str, Any]: ...
+    async def tool_settings(self, room: str, model: str, effort: str) -> dict[str, Any]: ...
 
 
 def caller_room(ctx: Context) -> str:
@@ -151,6 +152,14 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         req = {"action": action, "name": name, "when": when, "what": what, "kind": kind, "tz": tz,
                "deliver": deliver, "room": room, "cap_minutes": cap_minutes, "account": account}
         return json.dumps(await daemon.tool_schedule(caller_room(ctx), req))
+
+    @mcp.tool()
+    async def settings(model: str = "", effort: str = "", *, ctx: Context) -> str:
+        """The owner asks to change this room's model or thinking level ("put this room on Opus at max
+        thinking"): `model` an alias or full id from the install's list, `effort` low, medium, high,
+        xhigh or max; "default" for either goes back to the room's own. It applies from the next reply
+        on, in the same conversation; with neither it says what the room runs now. Say its `line`."""
+        return json.dumps(await daemon.tool_settings(caller_room(ctx), model, effort))
 
     def route(path: str, handler: Handler) -> None:
         @mcp.custom_route(path, methods=["POST"])

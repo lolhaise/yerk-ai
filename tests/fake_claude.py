@@ -15,6 +15,8 @@ message and a success result echoing the text. Variations:
 - a line containing SLOW: waits up to 1.5 s for another line; if one comes, it is replayed and
   answered in the same result (a fold)
 - --resume with FAKE_CLAUDE_MISSING=1: "No conversation found" on stderr, exit 1
+- --model equal to FAKE_CLAUDE_BAD_MODEL: every line fails as model_not_found, "There's an issue
+  with the selected model" (a model on the list that no account can run)
 - FAKE_CLAUDE_WINDOWS="0.07,0.03": a rate_limit_event with those 5-hour and weekly utilizations;
   FAKE_CLAUDE_TOKEN_SHIFT=N moves the 5-hour reset N seconds when CLAUDE_CODE_OAUTH_TOKEN is set
   (a token that belongs to another account)
@@ -67,6 +69,8 @@ sid = (argv[argv.index("--session-id") + 1] if "--session-id" in argv else
        argv[argv.index("--resume") + 1] if "--resume" in argv else str(uuid.uuid4()))
 failing = listed("FAKE_CLAUDE_FAIL_DIRS")
 mark = os.environ.get("FAKE_CLAUDE_MARK", "")
+model = argv[argv.index("--model") + 1] if "--model" in argv else ""
+bad_model = bool(model) and model == os.environ.get("FAKE_CLAUDE_BAD_MODEL")
 
 
 def out(obj):
@@ -94,6 +98,10 @@ def first(name):
 
 
 def answer(text):
+    if bad_model:
+        said = f"There's an issue with the selected model ({model}). It may not exist or you may not have access to it."
+        out({"type": "assistant", "error": "model_not_found", "message": {"content": [{"type": "text", "text": said}]}})
+        return result(said, error=True)
     if failing or "FAIL_RATE" in text:
         out({"type": "assistant", "error": "rate_limit", "message": {"content": [{"type": "text", "text": "limit"}]}})
         return result("You've hit your session limit", error=True)

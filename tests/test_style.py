@@ -149,6 +149,7 @@ def test_every_notice_is_state_first_plain_and_phone_width():
     notices += [f"{words.NOT_DONE} {words.NOT_FETCHED.format(name='photo.png')}", f"{words.NOT_DONE} {words.NOT_RUN_AGAIN}",
                 f"{words.NOT_DONE} {words.NOT_SENT_AGAIN.format(name='report.pdf', why=words.file_why('gone'))}",
                 f"{words.NOT_DONE} {words.NOT_ANSWERED}\n{words.why('quota', 'error')}", NO_KEY_LINE,
+                f"{words.NOT_DONE} {words.NOT_ANSWERED}\n{words.BACK_ON.format(model='Sonnet 5.5', usual='Fable 5.1')}",
                 f"{dmod.REDELIVERED}\nthe reply"]
     for text in notices:
         assert (state_first(text) or text.startswith(words.SUB)) and not room_safe(text), text
@@ -191,7 +192,8 @@ def phrases() -> list[str]:
     out = [t for _, t in words.OUTCOME.values()] + [t for _, t in words.ABILITY.values()] + list(words.WHY.values())
     out += [words.REPORT_SAVED, words.NO_REPORT, words.NOT_SENT, words.NOT_SENT_AGAIN, words.NOT_FETCHED,
             words.NOT_RUN_AGAIN, words.SENT_AGAIN, words.NOT_ANSWERED, words.GONE, words.STRAY, *words.BACKUP,
-            words.MOVED, words.COMPACTING, *words.FILE_WHY.values()]
+            words.MOVED, words.COMPACTING, *words.FILE_WHY.values(), words.NEXT_REPLY, words.OWNER_ONLY,
+            words.NOT_LISTED, words.NOT_A_LEVEL, words.BACK_ON]
     fixed = (re.split(r"[{\n]", x)[0].strip(" :,;") for x in out)
     return sorted({p for p in fixed if " " in p and len(p) >= 8 and p not in words.OUTCOME})
 
