@@ -4,9 +4,11 @@ card), the move onto units/yerkd.service, READY=1 only once the port listens, th
 from the message, the card that cuts the name and never the fact, job alerts to the machine room, and the upgrade drill.
 systemd, the channel and the daemon's /status are fakes; git is a real repository in tmp_path. Layer 7, run 2."""
 import asyncio
+import functools
 import json
 import logging
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -14,9 +16,10 @@ import threading
 import time
 from types import SimpleNamespace
 
-from yerk_ai import beat, cli, deploy, jobs, morning, probes, status, words
+from yerk_ai import beat, cli, deploy, gates, jobs, morning, probes, status, words
 from yerk_ai.accounts import Cooldowns, load_accounts
 from yerk_ai.config import EXAMPLE_PRIVATE
+from yerk_ai.daemon import Yerkd
 from yerk_ai.ledger import Ledger
 from yerk_ai.room import Inbound
 
@@ -29,22 +32,37 @@ def nap(_s):
 
 
 def repo(tmp_path):
-    """Three commits in a row, the tree checked out detached at the first."""
+    """Three commits in a row; a bare origin whose main is the second; the tree on main at the first, one
+    behind origin/main, as the merge lane leaves the daemon's checkout."""
     t = tmp_path / "tree"
     t.mkdir()
 
     def g(*a):
         return subprocess.run(["git", "-C", str(t), "-c", "core.hooksPath=/dev/null", "-c", "commit.gpgsign=false", *a],
                               check=True, capture_output=True, text=True).stdout.strip()
-    g("init", "-q")
+    g("init", "-q", "-b", "main")
     ids = []
     for i in range(3):
         (t / "f.txt").write_text(f"{i}\n")
         g("add", "f.txt")
         g("-c", "user.email=nobody", "-c", "user.name=t", "commit", "-qm", f"c{i}")
         ids.append(g("rev-parse", "HEAD"))
-    g("checkout", "-q", "--detach", ids[0])
+    g("init", "-q", "--bare", str(tmp_path / "origin.git"))
+    g("remote", "add", "origin", str(tmp_path / "origin.git"))
+    g("push", "-q", "origin", f"{ids[1]}:refs/heads/main")
+    g("fetch", "-q", "origin")
+    g("branch", "-q", "--set-upstream-to=origin/main", "main")
+    g("reset", "-q", "--hard", ids[0])
     return t, ids
+
+
+def git(tree, *a):
+    return subprocess.run(["git", "-C", str(tree), "-c", "core.hooksPath=/dev/null", *a], capture_output=True, text=True)
+
+
+def where(tree):
+    """(the branch checked out, "" when detached; the commit)"""
+    return git(tree, "symbolic-ref", "-q", "--short", "HEAD").stdout.strip(), git(tree, "rev-parse", "HEAD").stdout.strip()
 
 
 def layer(tmp_path, tree, **deploy_conf):
@@ -99,7 +117,7 @@ def test_a_deploy_that_fast_forwards_waits_for_quiet_restarts_proves_and_ledgers
                    f"{words.DONE} running {ids[1][:7]}", f"{words.DONE} rooms served: 1 of 1", f"{words.PLAIN} no turn cut"]
     assert rows(state) == [("deploy", ids[0], ids[1], "proven", 0)]
     assert posts == [{"room": "example-quiet", "text": "\n".join(out), "key": posts[0]["key"]}]   # the machine room
-    assert subprocess.run(["git", "-C", str(tree), "symbolic-ref", "-q", "HEAD"]).returncode == 1  # detached: no branch moved
+    assert where(tree) == ("main", ids[1])                                 # the branch moved, nothing detached
 
 
 def test_a_planted_failing_proof_rolls_back_the_same_way_and_the_card_says_both(tmp_path, capsys):
@@ -180,11 +198,15 @@ def test_the_fast_tests_run_in_the_tree_and_a_failure_deploys_nothing(tmp_path, 
 
 def test_the_move_onto_the_unit_file_keeps_the_command_folder_and_environment_and_can_go_back(tmp_path, monkeypatch):
     calls = []
-    shown = {"WorkingDirectory": "/code", "Environment": "YERK_PRIVATE=/p PATH=/v/bin:/usr/bin"}
+    shown = {"WorkingDirectory": "/code", "Type": "notify", "WatchdogUSec": "30s"}
+    bus = {"ExecStart": 'a(sasbttttuii) 1 "/v/bin/python" 5 "/v/bin/python" "-m" "yerk_ai.daemon" "--state" "/s" '
+                        'false 0 0 0 0 0 0 0\n',                      # as busctl prints them
+           "Environment": r'as 5 "YERK_PRIVATE=/p" "PATH=/v/bin:/mnt/c/Program Files/x" "PCT=50%off" "DOLLAR=a$b" '
+                          r'"BS=a\\b"' + "\n"}
 
     class Unit(deploy.Systemd):
-        def argv(self):
-            return ["/v/bin/python", "-m", "yerk_ai.daemon", "--state", "/s"]
+        def busctl(self, prop):
+            return bus[prop]
 
         def ctl(self, *args):
             calls.append(args)
@@ -194,14 +216,127 @@ def test_the_move_onto_the_unit_file_keeps_the_command_folder_and_environment_an
     path = tmp_path / "units" / "yerkd-fake.service"
     text = path.read_text()
     assert stat.S_IMODE(path.stat().st_mode) == 0o600 and "Type=notify" in text and "WatchdogSec=30" in text
-    assert "MemoryMax=" in text and "WorkingDirectory=/code\n" in text and "Environment=YERK_PRIVATE=/p\n" in text
+    assert "MemoryMax=" in text and "WorkingDirectory=/code\n" in text
+    assert [x for x in text.splitlines() if x.startswith("Environment=")] == [   # % a specifier, \\ and " escapes
+        'Environment="YERK_PRIVATE=/p"', 'Environment="PATH=/v/bin:/mnt/c/Program Files/x"', 'Environment="PCT=50%%off"',
+        'Environment="DOLLAR=a$b"', 'Environment="BS=a\\\\b"']
     assert "ExecStart=/v/bin/python -m yerk_ai.daemon --state /s\n" in text and "YERK_STATE=%h" not in text
     assert [c[0] for c in calls if c[0] != "show"] == ["stop", "daemon-reload", "start"]
     ran = []
     monkeypatch.setattr(deploy.subprocess, "run", lambda cmd, **k: ran.append(cmd) or subprocess.CompletedProcess(cmd, 0))
     assert u.back(was) and not path.exists() and (tmp_path / "units" / "yerkd-fake.service.failed").exists()
+    assert [c[0] for c in calls if c[0] != "show"][3:] == ["stop", "daemon-reload", "reset-failed"]   # then systemd-run
     assert ran[0][:3] == ["systemd-run", "--user", "--unit=yerkd-fake"] and ran[0][-5:] == \
-        ["/v/bin/python", "-m", "yerk_ai.daemon", "--state", "/s"] and "--setenv=PATH=/v/bin:/usr/bin" in ran[0]
+        ["/v/bin/python", "-m", "yerk_ai.daemon", "--state", "/s"]
+    assert {"--setenv=PATH=/v/bin:/mnt/c/Program Files/x", "--setenv=PCT=50%off", "--setenv=DOLLAR=a$b",
+            "--setenv=BS=a\\b"} <= set(ran[0])
+    assert ran[0][ran[0].index("Type=notify") - 1] == "-p" and ran[0][ran[0].index("WatchdogSec=30s") - 1] == "-p"
+
+
+def test_a_deploy_moves_the_branch_forward_a_rollback_moves_it_back_and_the_next_pull_still_works(tmp_path, capsys):
+    tree, ids = repo(tmp_path)
+    priv, state = layer(tmp_path, tree)
+    f, ok = Fake(tree, connected=lambda commit: commit != ids[2]), (lambda p: {"ok": True})   # the next merge fails
+    assert deploy.run(priv, state, "origin/main", tests=False, sd=f, ask=f.ask, post=ok, sleep=nap) == 0
+    assert where(tree) == ("main", ids[1]) and "Your branch is up to date with 'origin/main'" in git(tree, "status").stdout
+    assert git(tree, "pull", "-q", "--ff-only").returncode == 0
+    git(tree, "push", "-q", "origin", f"{ids[2]}:refs/heads/main")             # the merge lane's next merge, pulled
+    assert git(tree, "pull", "-q", "--ff-only").returncode == 0 and where(tree) == ("main", ids[2])
+    capsys.readouterr()
+    assert deploy.run(priv, state, tests=False, sd=f, ask=f.ask, post=ok, sleep=nap) == 1
+    out = capsys.readouterr().out.splitlines()
+    assert where(tree) == ("main", ids[1]) and f.commit == ids[1]
+    assert out[-3:] == [f"- main moved back to {ids[1][:7]}", "- origin/main is 1 ahead",
+                        f"- a pull brings {ids[2][:7]} back to the tree"] and all(words.width(x) <= words.PHONE for x in out)
+    assert "Your branch is behind 'origin/main' by 1 commit" in git(tree, "status").stdout
+    assert git(tree, "pull", "-q", "--ff-only").returncode == 0 and where(tree) == ("main", ids[2])
+    assert deploy.run(priv, state, ids[1], tests=False, sd=f, ask=f.ask, post=ok, sleep=nap) == 1   # behind main
+    assert capsys.readouterr().out.splitlines()[1] == f"- {ids[1][:7]} is not ahead of main"
+    assert where(tree) == ("main", ids[2]) and len(f.restarts) == 3                   # refused: as it was found
+    git(tree, "checkout", "-q", "--detach", ids[1])                                   # found detached: kept detached
+    f.connected = lambda commit: True
+    assert deploy.run(priv, state, ids[2], tests=False, sd=f, ask=f.ask, post=ok, sleep=nap) == 0
+    assert where(tree) == ("", ids[2]) and capsys.readouterr().out.splitlines()[-1] == f"- detached at {ids[2][:7]}"
+
+
+def test_every_way_out_that_deploys_nothing_leaves_the_branch_where_it_was(tmp_path, capsys):
+    tree, ids = repo(tmp_path)
+    (tree / "tests").mkdir()
+    (tree / "tests" / "test_x.py").write_text("def test_x():\n    assert open('f.txt').read() != '1\\n'\n")
+    priv, state = layer(tmp_path, tree, tests=["tests/test_x.py"])
+    f = Fake(tree)
+    assert deploy.run(priv, state, ids[1], sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap) == 1   # tests fail
+    assert where(tree) == ("main", ids[0])
+    f.busy = True
+    assert deploy.run(priv, state, ids[1], tests=False, sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap) == 1
+    assert where(tree) == ("main", ids[0]) and f.restarts == []                       # gave up at the cap
+    assert "Your branch is behind 'origin/main' by 1 commit" in git(tree, "status").stdout
+
+
+def test_after_the_move_the_proof_checks_the_unit_runs_from_its_file(tmp_path):
+    tree, ids = repo(tmp_path)
+    priv, state = layer(tmp_path, tree)
+    f = Fake(tree)
+    props = {"FragmentPath": "/run/user/1000/systemd/transient/yerkd-fake.service", "Type": "simple"}
+    f.show = lambda prop: props.get(prop, "")                       # a transient unit still loaded
+    ok, lines = deploy.prove(state, f, f.ask, {"example-room"}, ids[0], 0, nap, "/u/yerkd-fake.service")
+    assert not ok and lines[-1] == f"{words.NOT_DONE} unit runs from its file"
+    props.update(FragmentPath="/u/yerkd-fake.service", Type="notify")
+    ok, lines = deploy.prove(state, f, f.ask, {"example-room"}, ids[0], 0, nap, "/u/yerkd-fake.service")
+    assert ok and lines[-1] == f"{words.DONE} unit runs from its file"
+
+
+def test_a_rollback_that_never_gets_quiet_says_why_writes_gave_up_and_leaves_the_tree_on_what_runs(tmp_path, capsys):
+    tree, ids = repo(tmp_path)
+    priv, state = layer(tmp_path, tree)
+    f = Fake(tree, connected=lambda commit: commit != ids[1])          # the planted commit never connects
+    real = f.restart
+
+    def restart():                     # a person writes while it runs: the rollback never gets a quiet moment
+        Ledger(state / "ledger.sqlite").inbound_add("m3", "example-room", "discord", "owner", 2)
+        return real()
+    f.restart = restart
+    assert deploy.run(priv, state, ids[1], tests=False, sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap) == 1
+    out = capsys.readouterr().out.splitlines()
+    assert f.restarts == [ids[1]] and where(tree) == ("main", ids[1])               # the tree on what runs
+    never = out.index(f"{words.NOT_DONE} rollback to {ids[0][:7]} never ran")
+    assert out[never + 1] == f"{words.PLAIN} never quiet in {words.span(0.3)}"
+    assert out[never + 2].startswith(f"{words.PLAIN} example-room had a message ") and len(out) == never + 3
+    assert not [x for x in out if "rollback" in x and "failed its proof" in x]
+    assert rows(state) == [("deploy", ids[0], ids[1], "proof failed", 0), ("rollback", ids[1], ids[0], "gave up", 0)]
+
+
+def test_no_restart_while_the_memory_index_rebuilds_and_status_says_so(tmp_path, capsys):
+    proc = tmp_path / "proc"
+    (proc / "4242").mkdir(parents=True)
+    (proc / "4242" / "cmdline").write_bytes(b"/v/bin/python\x00-m\x00yerk_ai.memindex\x00--rebuild\x00")
+    (tmp_path / "ystate").mkdir()
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path / "ystate")
+    y.rebuild_running = functools.partial(gates.rebuild_running, proc)   # a planted rebuild, as the restart gate reads
+    assert asyncio.run(y.status_now({}))["rebuilding"] is True
+    (proc / "4242" / "cmdline").write_bytes(b"/v/bin/python\x00-m\x00yerk_ai.memindex\x00")
+    assert asyncio.run(y.status_now({}))["rebuilding"] is False
+    tree, ids = repo(tmp_path)
+    priv, state = layer(tmp_path, tree)
+    f = Fake(tree)
+    plain = f.ask
+    f.ask = lambda st: {**plain(st), "rebuilding": True}
+    assert deploy.run(priv, state, ids[1], tests=False, sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap) == 1
+    out = capsys.readouterr().out.splitlines()
+    assert out[:3] == [f"{words.NOT_DONE} not deployed", f"{words.PLAIN} never quiet in {words.span(0.3)}",
+                       f"{words.PLAIN} {words.REBUILDING}"]
+    assert f.restarts == [] and where(tree) == ("main", ids[0]) and [r[3] for r in rows(state)] == ["gave up"]
+
+
+def test_the_unit_file_slows_the_rooms_before_any_ceiling_kills_one():
+    text = (deploy.REPO / "units" / "yerkd.service").read_text()
+    unit = {"K": 1 << 10, "M": 1 << 20, "G": 1 << 30}
+
+    def size(key):
+        v = re.search(rf"(?m)^{key}=(\d+)([KMG])$", text)
+        return int(v[1]) * unit[v[2]] if v else 0
+    assert size("MemoryHigh") >= (100 + 5 * 307) << 20                 # yerkd idle plus five rooms at the most read here
+    assert size("MemoryMax") >= 2 * size("MemoryHigh") > 0             # the hard ceiling is for a leak only
 
 
 def test_ready_goes_out_only_once_the_port_listens(tmp_path):

@@ -653,7 +653,8 @@ class Yerkd:
         out = await asyncio.to_thread(status.collect, self.private, self.state, self.accounts, self.cooldowns,
                                       self.ledger, self.rooms)
         return {**out, "started": self.started, "commit": self.commit,
-                "connected": bool(getattr(self.link, "connected", False))}
+                "connected": bool(getattr(self.link, "connected", False)),
+                "rebuilding": await asyncio.to_thread(self.rebuild_running)}   # deploy waits it out, as the gate does
 
     def write_status(self, mode: str) -> None:
         """state/yerkd.json: what is running, for `yerk room close` and the probes."""
