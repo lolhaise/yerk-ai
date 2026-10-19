@@ -257,6 +257,31 @@ def test_a_read_written_as_one_string_stops_the_daemon_with_one_plain_line(tmp_p
         assert str(e.value) == f'room example-room: read must be a list of folders, like read = ["~/notes"], not {shown}'
 
 
+def test_a_rooms_mcp_that_is_not_server_tables_or_names_like_yerk_stops_the_daemon_with_one_plain_line(tmp_path):
+    """Cold read of pull request 37, B2 and B3: `mcp = "web"` raised a ValueError at the room's first spawn and an entry
+    that is not a table went through to Claude Code as it was; a server named yerk-web or a__b makes tools that the map,
+    the evidence rules and the card read as Yerk's own (mcp__yerk-web__*, a last segment of send). Each now stops the
+    start with one line that names the room and never shows a value (an entry's env may hold a key)."""
+    import shutil
+    import pytest
+    private, state = tmp_path / "private", tmp_path / "state"
+    shutil.copytree(EXAMPLE_PRIVATE, private)
+    state.mkdir()
+    base = (private / "rooms.toml").read_text()
+    shape = "room example-room: mcp must be a table of servers, like [rooms.example-room.mcp.web], each one a table"
+    for toml, said in (('mcp = "web"\n', shape), ('mcp = ["web"]\n', shape), ('mcp = { web = "x", ok = {} }\n', shape),
+                       ('[rooms.example-room.mcp.yerk-web]\ncommand = "x"\n', "mcp server yerk-web could pass"),
+                       ('[rooms.example-room.mcp.YERK]\ncommand = "x"\n', "mcp server YERK could pass"),
+                       ('[rooms.example-room.mcp.a__b]\ncommand = "x"\n', "mcp server a__b could pass")):
+        (private / "rooms.toml").write_text(base.replace("[rooms.example-room]\n", f"[rooms.example-room]\n{toml}", 1)
+                                            if toml.startswith("mcp") else base + "\n" + toml)
+        with pytest.raises(SystemExit) as e:
+            Yerkd(private, state)
+        assert said in str(e.value) and "\n" not in str(e.value) and '"x"' not in str(e.value)
+    (private / "rooms.toml").write_text(base + '\n[rooms.example-room.mcp.web-ladder]\ncommand = "/usr/bin/node"\n')
+    assert Yerkd(private, state).room_confs["example-room"]["mcp"] == {"web-ladder": {"command": "/usr/bin/node"}}
+
+
 def test_a_rooms_sandbox_table_reaches_its_claude_code_settings_and_no_other_room(tmp_path):
     """`[rooms.NAME.sandbox]` is passed as Claude Code's own `sandbox` setting for that room's process, so a room
     can run a shell that writes only where the table lets it; a room without the table gets no sandbox key."""

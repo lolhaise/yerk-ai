@@ -115,7 +115,12 @@ class Yerkd:
         for n, p in ((n, p) for n, ps in self.read_dirs.items() for p in ps):
             if any(q.is_relative_to(p) or p.is_relative_to(q) for q in (private.resolve(), state.resolve())):   # F4
                 raise SystemExit(f"room {n}: read {p} reaches Yerk's own folders; name one outside {private} and {state}")
-        self.accounts = [only_account] if only_account else load_accounts(private / "accounts.toml")
+        for n, m in ((n, c.get("mcp", {})) for n, c in self.room_confs.items()):   # never the values: an env may hold a key
+            if not isinstance(m, dict) or not all(isinstance(v, dict) for v in m.values()):
+                raise SystemExit(f"room {n}: mcp must be a table of servers, like [rooms.{n}.mcp.web], each one a table")
+            for s in (s for s in m if s.lower().startswith("yerk") or "__" in s):
+                raise SystemExit(f"room {n}: mcp server {s} could pass for Yerk's own tools; name it without yerk at the start or __")
+        self.accounts =[only_account] if only_account else load_accounts(private / "accounts.toml")
         self.ledger, self.failures = Ledger(state / "ledger.sqlite"), FailureTable.load(table("failures.toml"))
         self.cooldowns = Cooldowns(state / "cooldowns.json")
         self.meters = Meters(state / "meters.json")
@@ -460,11 +465,9 @@ class Yerkd:
             if name is None:
                 log.warning("hook: %s from session %s (%s caller) matches no room binding; answered unbound",
                             event or "?", str(payload.get("session_id", ""))[:8] or "?", (auth or {}).get("kind") or "no")
-                out = dict(hooks.UNBOUND)
-                return out
+                return (out := dict(hooks.UNBOUND))
             self.learn_transcript(name, payload)
-            out = await self._hook(event, name, payload)
-            return out
+            return (out := await self._hook(event, name, payload))
         finally:
             room = self.rooms.get(name or "")
             hso = out.get("hookSpecificOutput") or {}
