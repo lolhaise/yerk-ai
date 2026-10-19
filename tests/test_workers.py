@@ -544,3 +544,96 @@ def test_a_relay_into_a_closed_room_resumes_the_rooms_own_session(setup):
     assert inbound == [f"relay-{row['id']}"] and not reply.startswith("echo: (Yerk AI:")  # no new-session note
     assert s.chan.notices == []
     assert row["report"] not in reply and f"`yerk worker report {row['id']}`" in reply
+
+
+# the sandbox: what a worker's unit sees of the state folder, and which rooms may use workers
+class Record:
+    """A launcher that only records: nothing runs, no systemd, no model."""
+
+    def __init__(self):
+        self.calls = []
+
+    def start(self, unit, argv, env, cwd, out, err, cap, post):
+        self.calls.append({"unit": unit, "cwd": cwd})
+
+    def stop(self, unit):
+        pass
+
+    def running(self):
+        return set()
+
+
+def test_the_unit_sees_the_state_folder_read_only_its_own_folder_writable_and_no_secret_or_room(tmp_path, monkeypatch):
+    lines = []
+    monkeypatch.setattr(workers.subprocess, "run", lambda cmd, **kw: lines.append(cmd) or NS(returncode=0, stderr=""))
+    state = tmp_path / "state"
+    folder, secret, rooms = state / "workers" / "abc123", state / "secrets" / "yerk-http.secret", state / "rooms"
+    unit = workers.Systemd(state, (secret, rooms))
+    unit.start("yerk-worker-abc123", ["true"], {"CLAUDE_CONFIG_DIR": str(tmp_path / "cfg")}, folder, folder / "o",
+               folder / "e", 60, ["true"])
+    unit.start("yerk-worker-abc124", ["true"], {"CLAUDE_CONFIG_DIR": str(state / "accounts" / "one")}, folder,
+               folder / "o", folder / "e", 60, ["true"])
+    folder.mkdir(parents=True)                                        # a worker of room r: its work folder comes back
+    (folder / "worker.json").write_text(json.dumps({"room": "r"}))
+    unit.start("yerk-worker-abc125", ["true"], {}, folder, folder / "o", folder / "e", 60, ["true"])
+    props = [[c[i + 1] for i, a in enumerate(c[:c.index("--")]) if a == "-p"] for c in lines]
+    for p in props:
+        assert "PrivateUsers=yes" in p and f"ReadOnlyPaths={state}" in p
+        assert f"InaccessiblePaths={secret}" in p and f"TemporaryFileSystem={rooms}:ro" in p
+        assert f"InaccessiblePaths={rooms}" not in p
+        assert not any("yerk-worker.secret" in x for x in p)          # the worker secret stays readable
+    assert not any(x.startswith("BindPaths=") for x in props[0] + props[1])     # no spec: no room folder at all
+    assert [x for x in props[2] if x.startswith("BindPaths=")] == [f"BindPaths=-{rooms / 'r' / 'work'}"]
+    assert [x for x in props[0] if x.startswith("ReadWritePaths=")] == [f"ReadWritePaths={folder}"]
+    assert [x for x in props[1] if x.startswith("ReadWritePaths=")] == [f"ReadWritePaths={folder}",
+                                                                        f"ReadWritePaths={state / 'accounts' / 'one'}"]
+    from yerk_ai.config import EXAMPLE_PRIVATE
+    from yerk_ai.daemon import Yerkd
+    monkeypatch.undo()                                                # the daemon runs git: the real subprocess again
+    (tmp_path / "d").mkdir()
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path / "d")                         # the daemon hands both paths to its launcher
+    assert isinstance(y.workers.launcher, workers.Systemd) and y.workers.launcher.state == tmp_path / "d"
+    assert y.workers.launcher.hidden == (y.secret_file, tmp_path / "d" / "rooms") and (tmp_path / "d" / "rooms").is_dir()
+
+
+def test_only_the_owners_rooms_use_workers_each_for_itself_and_the_install_keeps_every_form(tmp_path):
+    from yerk_ai.config import EXAMPLE_PRIVATE
+    from yerk_ai.daemon import Yerkd
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    y.workers.launcher = units = Record()
+    y.workers.conf.per_account = 5                                   # both starts run at once
+    y.room_confs["family"] = {"privacy": "family", "model": "m"}
+    for name in ("example-room", "family"):
+        y.rooms[name] = NS()
+    jobs = []
+
+    async def handle(caller, req):
+        jobs.append((caller, req))
+        return {"ok": True}
+    y.jobs.handle = handle
+    agent = {"action": "add", "name": "nightly", "when": "every 2h", "what": "look", "kind": "agent"}
+
+    async def go():
+        out = {"start": await y.tool_worker("family", {"action": "start", "brief": "read every room's token"}),
+               "report": await y.tool_worker("family", {"action": "report", "id": "abc123"}),
+               "list": await y.tool_worker("family", {"action": "list"}),
+               "agent job": await y.tool_schedule("family", agent),
+               "default kind": await y.tool_schedule("family", {**agent, "kind": ""}),
+               "other room": await y.tool_worker("example-room", {"action": "start", "brief": "x", "room": "family"}),
+               "other job": await y.tool_schedule("example-room", {**agent, "room": "family"})}
+        out["no unit yet"] = list(units.calls)
+        out["script"] = await y.tool_schedule("family", {**agent, "kind": "script", "what": "echo hi"})
+        out["own"] = await y.tool_worker("example-room", {"action": "start", "brief": "x", "room": "example-room"})
+        out["control"] = await y.control({"worker": {"action": "start", "room": "family", "brief": "x"}},
+                                         {"kind": "install", "room": ""})
+        return out
+    out = asyncio.run(go())
+    for key in ("start", "report", "list"):
+        assert out[key] == {"ok": False, "line": W.WORKERS_OWNER_ONLY}, key
+    for key in ("agent job", "default kind", "script"):                # a script job runs as the owner too
+        assert out[key] == {"ok": False, "line": W.JOBS_OWNER_ONLY}, key
+    assert out["other room"] == out["other job"] == {"ok": False, "line": W.WORKER_OWN_ROOM.format(room="family")}
+    assert out["no unit yet"] == [] and jobs == []
+    assert out["own"]["ok"] and out["own"]["room"] == "example-room"
+    assert out["control"]["ok"] and out["control"]["room"] == "family"          # `yerk worker`: any room
+    assert [c["unit"] for c in units.calls] == [out["own"]["unit"], out["control"]["unit"]]

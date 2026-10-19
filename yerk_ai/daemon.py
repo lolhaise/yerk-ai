@@ -136,10 +136,13 @@ class Yerkd:
         self.channels: dict[str, Any] = {}       # room -> its channel adapter
         self.http: Any = None
         self.sends = 0
+        # a worker's unit never sees the install's secret or any room's folder (each room's token, settings
+        # and override): both exist before the first unit, since a hidden path that is missing fails its start
+        (state / "rooms").mkdir(parents=True, exist_ok=True)
         self.workers = workers.Workers(self.ledger, workers.settings(state, dict(self.conf.get("workers", {})),
                                                                      self.budgets),
                                        self.accounts, self.cooldowns, self.rooms, self.channels, self.room_confs,
-                                       state=state)
+                                       state=state, hidden=(self.secret_file, state / "rooms"))
         self.jobs = jobs.Jobs(private, state, self.ledger, dict(self.conf.get("jobs", {})), self.rooms, self.channels,
                               self.room_confs, self.conf, self.workers)
         self.gates = gates.settings(self.conf.get("gates"))      # the rule-based gates (DESIGN 8)
@@ -258,12 +261,33 @@ class Yerkd:
     async def tool_read_memory(self, room: str, path: str, start: int, lines: int) -> dict[str, Any]:
         return await asyncio.to_thread(memory.read, self.memory, path, start, lines, self.reader(room))
 
+    def owner_only(self, room: str, named: str) -> dict[str, Any] | None:
+        """A room's own call that would start or read a worker: the owner's rooms only (a worker runs as
+        the owner's user), and for the calling room only. None means go on; else the one line."""
+        if not room:                                   # the install's own callers keep every form
+            return None
+        if room not in self.room_confs or str(self.room_confs[room].get("privacy", "owner")) != "owner":
+            log.warning("workers: room %s is not an owner room; its worker call was refused", room)
+            return {"ok": False, "line": words.WORKERS_OWNER_ONLY}
+        if named and named != room:
+            return {"ok": False, "line": words.WORKER_OWN_ROOM.format(room=named)}
+        return None
+
     async def tool_worker(self, room: str, req: dict[str, Any]) -> dict[str, Any]:
-        """The `worker` tool (rooms only; a worker has no MCP server) and `yerk worker` (via /control)."""
-        return await self.workers.handle(room, req)
+        """The `worker` tool (rooms only; a worker has no MCP server). `yerk worker` comes through
+        /control, which keeps every form, for any room."""
+        named = str(req.get("room") or "") if req.get("action") == "start" else ""
+        return self.owner_only(room, named) or await self.workers.handle(room, req)
 
     async def tool_schedule(self, room: str, req: dict[str, Any]) -> dict[str, Any]:
-        """The `schedule` tool (add, remove, list) and the job runner's hand-offs (via /control)."""
+        """The `schedule` tool (add, remove, list); the job runner's hand-offs come through /control.
+        Any job runs as the owner's user (an agent job starts a worker; a script job runs its shell
+        command with no sandbox at all), so a room adds one by the worker rule, whatever its kind."""
+        if req.get("action") == "add":
+            refused = self.owner_only(room, str(req.get("room") or ""))
+            if refused:
+                return {**refused, "line": words.JOBS_OWNER_ONLY} if refused["line"] == words.WORKERS_OWNER_ONLY \
+                    else refused
         return await self.jobs.handle(room, req)
 
     async def tool_hold(self, room: str, wait_for: str, reason: str) -> dict[str, Any]:
