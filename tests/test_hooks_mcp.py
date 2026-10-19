@@ -184,6 +184,88 @@ def test_the_secrets_sit_outside_every_rooms_layer(tmp_path):
     assert not (private / "secrets").exists()
 
 
+def test_a_rooms_read_folders_are_added_and_never_reach_yerks_own(tmp_path):
+    """`read` in rooms.toml: each folder is one more --add-dir for that room. A folder that is, holds or sits
+    inside the private or the state folder stops the daemon at start, so no room can read the secrets (F4)."""
+    import shutil
+    import pytest
+    private, state, notes = tmp_path / "private", tmp_path / "state", tmp_path / "notes"
+    shutil.copytree(EXAMPLE_PRIVATE, private)
+    state.mkdir()
+    notes.mkdir()
+    base = (private / "rooms.toml").read_text()
+
+    def read(p: Path) -> None:
+        (private / "rooms.toml").write_text(base.replace("[rooms.example-room]\n", f'[rooms.example-room]\nread = ["{p}"]\n', 1))
+    read(notes)
+    assert Yerkd(private, state).spec_for("example-room").add_dirs[1:] == [notes]
+    assert Yerkd(private, state).spec_for("example-quiet").add_dirs[1:] == []
+    for bad in (private, private / "rooms", state, state / "secrets", tmp_path):
+        read(bad)
+        with pytest.raises(SystemExit, match="reaches Yerk's own folders"):
+            Yerkd(private, state)
+
+
+def test_a_relative_read_folder_is_judged_where_claude_code_lands_it_and_handed_over_resolved(tmp_path, monkeypatch):
+    """Cold read 33 R1: Claude Code lands a relative --add-dir from the room's work folder, so the start-up check resolves
+    `read` from there too, whatever folder the daemon started in, and the room is handed the very folder judged:
+    `../../../secrets` is the state folder's secrets and stops the daemon; a symlink goes over as the folder it was."""
+    import shutil
+    import pytest
+    private, state, notes = tmp_path / "private", tmp_path / "state", tmp_path / "notes"
+    shutil.copytree(EXAMPLE_PRIVATE, private)
+    state.mkdir()
+    notes.mkdir()
+    (tmp_path / "link").symlink_to(notes)
+    (cwd := tmp_path / "a" / "b" / "c").mkdir(parents=True)
+    monkeypatch.chdir(cwd)                          # three deep, like the live unit's, so ../../.. from here is tmp_path
+    base = (private / "rooms.toml").read_text()
+
+    def read(*ps: str) -> None:
+        (private / "rooms.toml").write_text(base.replace("[rooms.example-room]\n", f"[rooms.example-room]\nread = {json.dumps(ps)}\n", 1))
+    for bad, lands in (("../../../secrets", state / "secrets"), ("../..", state / "rooms"),
+                       ("../../../../private/memory", private / "memory")):
+        read(bad)
+        with pytest.raises(SystemExit) as e:
+            Yerkd(private, state)
+        assert f"read {lands} reaches Yerk's own folders" in str(e.value)
+    read("../../../../notes", str(tmp_path / "link"))
+    y = Yerkd(private, state)
+    assert y.spec_for("example-room").add_dirs[1:] == y.read_dirs["example-room"] == [notes, notes]
+
+
+def test_a_read_written_as_one_string_stops_the_daemon_with_one_plain_line(tmp_path):
+    """Cold read 33: `read = "<folder>"`, a string where a list belongs, was read one character at a time (a relative one
+    became an --add-dir per letter, an absolute one a refusal of `/`); now the daemon stops at start with one line naming
+    the room and the shape it wants, and so does any other value that is not a list."""
+    import shutil
+    import pytest
+    private, state = tmp_path / "private", tmp_path / "state"
+    shutil.copytree(EXAMPLE_PRIVATE, private)
+    state.mkdir()
+    base = (private / "rooms.toml").read_text()
+    for toml, shown in (('"notes"', "'notes'"), (f'"{tmp_path}/notes"', repr(f"{tmp_path}/notes")), ("5", "5")):
+        (private / "rooms.toml").write_text(base.replace("[rooms.example-room]\n", f"[rooms.example-room]\nread = {toml}\n", 1))
+        with pytest.raises(SystemExit) as e:
+            Yerkd(private, state)
+        assert str(e.value) == f'room example-room: read must be a list of folders, like read = ["~/notes"], not {shown}'
+
+
+def test_a_rooms_sandbox_table_reaches_its_claude_code_settings_and_no_other_room(tmp_path):
+    """`[rooms.NAME.sandbox]` is passed as Claude Code's own `sandbox` setting for that room's process, so a room
+    can run a shell that writes only where the table lets it; a room without the table gets no sandbox key."""
+    import shutil
+    private, state = tmp_path / "private", tmp_path / "state"
+    shutil.copytree(EXAMPLE_PRIVATE, private)
+    state.mkdir()
+    rooms_toml = private / "rooms.toml"
+    rooms_toml.write_text(rooms_toml.read_text() + '\n[rooms.example-room.sandbox]\nenabled = true\n'
+                          '[rooms.example-room.sandbox.filesystem]\ndenyWrite = ["/home/someone/notes"]\n')
+    y = Yerkd(private, state)
+    assert y.spec_for("example-room").settings["sandbox"] == {"enabled": True, "filesystem": {"denyWrite": ["/home/someone/notes"]}}
+    assert "sandbox" not in y.spec_for("example-quiet").settings
+
+
 def test_the_daemon_reads_a_rooms_lines_in_that_rooms_view(tmp_path):
     """Cold read F2, the daemon's side: the topic hits and the recall pack of a room that is not an
     owner room carry the room's own view, so a former room's old lines (no id) never reach it."""

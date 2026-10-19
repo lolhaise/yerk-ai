@@ -107,9 +107,16 @@ class Yerkd:
         self.port = port or int(self.conf.get("http", {}).get("port", 0)) or free_port()
         self.url = f"http://127.0.0.1:{self.port}"
         self.budgets, self.room_confs, self.models = budgets(), rooms(private), models(self.conf)
+        for n, c in self.room_confs.items():               # one string would be read as one folder per letter
+            if not isinstance(c.get("read", []), list):
+                raise SystemExit(f'room {n}: read must be a list of folders, like read = ["~/notes"], not {c["read"]!r}')
+        self.read_dirs = {n: [(state / "rooms" / n / "work" / Path(x).expanduser()).resolve() for x in c.get("read", [])]
+                          for n, c in self.room_confs.items()}   # from the work folder, as Claude Code lands one
+        for n, p in ((n, p) for n, ps in self.read_dirs.items() for p in ps):
+            if any(q.is_relative_to(p) or p.is_relative_to(q) for q in (private.resolve(), state.resolve())):   # F4
+                raise SystemExit(f"room {n}: read {p} reaches Yerk's own folders; name one outside {private} and {state}")
         self.accounts = [only_account] if only_account else load_accounts(private / "accounts.toml")
-        self.ledger = Ledger(state / "ledger.sqlite")
-        self.failures = FailureTable.load(table("failures.toml"))
+        self.ledger, self.failures = Ledger(state / "ledger.sqlite"), FailureTable.load(table("failures.toml"))
         self.cooldowns = Cooldowns(state / "cooldowns.json")
         self.meters = Meters(state / "meters.json")
         self.memory = memory.settings(private, state, dict(self.conf.get("memory", {})))
@@ -164,25 +171,23 @@ class Yerkd:
     def spec_for(self, name: str) -> RoomSpec:
         conf = self.room_confs[name]
         rdir = self.state / "rooms" / name
-        work = rdir / "work"
-        work.mkdir(parents=True, exist_ok=True)
+        (work := rdir / "work").mkdir(parents=True, exist_ok=True)
         layer = context.layer_dir(self.private, conf)
-        ctx = rdir / "context.md"
         parts = context.session_start(self.private, conf, self.budgets, pack=lambda left: self.room_pack(name, left))
-        ctx.write_text(context.appended_file(parts))
+        (ctx := rdir / "context.md").write_text(context.appended_file(parts))
         hooks.record(self.state, name, "session_start", "", {p.name: p.size for p in parts},
                      next((p.text for p in parts if p.name == "recall_pack"), ""), file=str(ctx))
         token = secrets.token_hex(16)                      # this process's credential, bound with its session
         settings = {"permissions": {"allow": [f"Read(/{layer}/**)", *YERK_TOOLS, *conf.get("allow", [])]},
                     "hooks": hooks.settings_for(f"{self.url}/hook", token)}
-        mcp = mcp_server.room_config(f"{self.url}/mcp", name, rdir / "mcp.json", token)
+        settings.update({"sandbox": conf["sandbox"]} if "sandbox" in conf else {})   # Claude Code's own shell sandbox
         now = room_settings(conf, self.state, name, self.models)    # the room's override over rooms.toml
         extra = ["--effort", now["effort"][0]] if now["effort"][0] else []
         if flag(conf.get("thinking_panel")) and self.owner(name):
             extra += ["--thinking-display", "summarized"]      # the panel's text; off: the stream says nothing
-        return RoomSpec(room=name, model=now["model"][0], cwd=work, tools=list(conf.get("tools", [])),
-                        settings=settings, context_file=ctx, mcp_config=mcp, add_dirs=[layer], extra_args=extra,
-                        token=token)
+        return RoomSpec(room=name, model=now["model"][0], cwd=work, tools=list(conf.get("tools", [])), settings=settings,
+                        context_file=ctx, mcp_config=mcp_server.room_config(f"{self.url}/mcp", name, rdir / "mcp.json", token),
+                        extra_args=extra, token=token, add_dirs=[layer, *self.read_dirs.get(name, [])])   # `read`, as F4 judged it
 
     def owner(self, room: str) -> bool:
         """An owner room (rooms.toml privacy, "owner" when unset); a name that is no room is not one."""
@@ -286,11 +291,8 @@ class Yerkd:
         """The `schedule` tool (add, remove, list); the job runner's hand-offs come through /control.
         Any job runs as the owner's user (an agent job starts a worker; a script job runs its shell
         command with no sandbox at all), so a room adds one by the worker rule, whatever its kind."""
-        if req.get("action") == "add":
-            refused = self.owner_only(room, str(req.get("room") or ""), words.JOBS_OWNER_ONLY)
-            if refused:
-                return refused
-        return await self.jobs.handle(room, req)
+        refused = self.owner_only(room, str(req.get("room") or ""), words.JOBS_OWNER_ONLY) if req.get("action") == "add" else None
+        return refused or await self.jobs.handle(room, req)
 
     async def tool_hold(self, room: str, wait_for: str, reason: str) -> dict[str, Any]:
         if room not in self.rooms:
@@ -355,9 +357,7 @@ class Yerkd:
         """The recall pack as session start builds it, for the re-add after a compaction."""
         conf = self.room_confs[room]
         limit = int(self.budgets["session_start"]["appended"]["recall_pack"])
-        text, _ = context.recall_pack(context.layer_dir(self.private, conf), conf, limit,
-                                      lambda left: self.room_pack(room, left))
-        return text
+        return context.recall_pack(context.layer_dir(self.private, conf), conf, limit, lambda left: self.room_pack(room, left))[0]
 
     def recall_for(self, room: str, prompt: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         """Names on file (owner-privacy rooms only) and the room's own lines on the topic. Off the loop."""
