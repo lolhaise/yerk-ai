@@ -84,6 +84,12 @@ def build(private: Path, state: Path, accounts: list[Account], cooldowns: Cooldo
         add(f"shadow {rule}", W.WORKING, W.SHADOW.format(rule=rule, n=n))
     if not flags:
         add("", W.PLAIN, W.NO_SHADOW)
+    for d in ledger.deploys(now - DAY):                  # its card may never have reached the machine room
+        if d["outcome"] != "proven" or (d["cut"] or 0) > 0:      # a proven one that cut a person's turn too
+            said = W.UNPROVEN.format(kind=d["kind"], commit=str(d["after"] or d["before"] or "?")[:7], outcome=d["outcome"])
+            said += W.UNPROVEN_CUT.format(n=d["cut"]) if d["cut"] else ""
+            at = W.UNPROVEN_AT.format(at=W.clock(float(d["at"]), now))
+            add(f"deploy {d['id']}", W.NOT_DONE, said + at if W.width(f"{W.NOT_DONE} {said}{at}") <= W.PHONE else said)
     checks = ledger.health_between("imessage", "probe", since, until)     # the iMessage inbound check (Layer 8)
     if checks:                                           # a run that never reached the Mac saw nothing
         notes = [json.loads(str(r["note"] or "{}")) for r in checks]

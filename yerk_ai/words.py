@@ -319,7 +319,12 @@ TURN_RUNS, RECENT = "{name} has a turn", "{name} had a message {ago} ago"
 PROOF_UP, PROOF_CONNECTED, PROOF_STATUS = "yerkd up", "channel connected", "status answers"
 PROOF_COMMIT, PROOF_ROOMS = "running {commit}", "rooms served: {n} of {of}"
 PROOF_FILE = "unit runs from its file"
-NO_CUT, CUT = "no turn cut", "turns cut: {n}"
+NO_CUT, CUT, NOT_COUNTED = "no turn cut", "turns cut: {n}", "turns cut: not counted"
+NO_UNIT, UNIT_FOUND = "no unit found: set [deploy] unit", "unit {name}, from its pid"
+FAULT, NOTHING_STOPPED, BROKE_OFF = "{what} in {at}", "nothing was stopped", "{commit} broke off, not proven"
+NO_ROW = "{kind} outcome not in the ledger"
+UNPROVEN, UNPROVEN_AT = "{kind} {commit}: {outcome}", ", {at}"   # the morning diff: a deploys row not proven,
+UNPROVEN_CUT = ", {n} cut"                                         # or one that cut a person's turn
 
 
 def secs(seconds: float) -> str:

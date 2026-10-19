@@ -7,17 +7,26 @@ index is not rebuilding, and gives quiet_seconds and the memory index is not reb
 found. The proof: the unit active, the channel connected, /status answering under the install's secret with the
 new commit and every room served before. A failed proof rolls back the same way. Each deploy and rollback is a
 ledger row with the commits and the turns cut (never any); the card goes to the machine room, else to the
-units/yerkd.service under its own name, and a failed proof puts the transient unit back."""
+terminal. `--unit` moves a systemd-run daemon onto units/yerkd.service under its own name, and a failed proof
+puts the transient unit back. The unit is [deploy] unit, else the user service whose main process is the running
+else nothing is touched. Each row is written before its restart. A fault, Ctrl-C, SIGTERM or SIGHUP from
+SIGHUP from the quiet wait to the proof is never a traceback: once the daemon was stopped or moved it is a
+proof and the rollback runs; before that, a refusal with the daemon as it was."""
 from __future__ import annotations
 
+import contextlib
+import json
 import os
 import re
 import shlex
+import signal
 import subprocess
 import sys
+import sysconfig
 import time
+import traceback
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
 
 from . import jobs, status, words
 from .config import REPO, load_toml, rooms
@@ -85,6 +94,84 @@ def unit_text(template: str, argv: list[str], cwd: str, env: list[str]) -> str:
                   + "ExecStart=" + shlex.join(argv).replace("%", "%%").replace("$", "$$"), text)
 
 
+def unit_of(state: Path, proc: Path = Path("/proc"), main_pid: Callable[[str], str] | None = None) -> str:
+    """The unit the running yerkd is, from its pid (yerkd.json): the `.service` leaf of its cgroup
+    (/proc/<pid>/cgroup, the unified or name=systemd line) under this user's manager (user@<uid>.service,
+    the one `systemctl --user` talks to), without the suffix, and only when that unit's MainPID is the
+    pid: a yerkd started inside another program's service (a tmux, a gateway) is in its cgroup, and a
+    restart of that unit restarts the other program. "" when no yerkd runs on this state folder, the
+    pid is another program's by now, or yerkd is not the main process of a user service."""
+    try:
+        pid = int(json.loads((state / "yerkd.json").read_text())["pid"])
+        argv = (proc / str(pid) / "cmdline").read_bytes().split(b"\0")
+        groups = (proc / str(pid) / "cgroup").read_text().splitlines()
+    except (OSError, ValueError, KeyError, TypeError):
+        return ""
+    if not any(a == b"yerk_ai.daemon" or a == b"yerkd" or a.endswith(b"/yerkd") for a in argv):
+        return ""                                       # a pid handed to another program since
+    for g in groups:
+        ctrl, _, path = g.partition(":")[2].partition(":")
+        *above, leaf = path.split("/")
+        if ctrl in ("", "name=systemd") and leaf.endswith(".service") and leaf != ".service":
+            unit = leaf.removesuffix(".service")
+            if f"user@{os.getuid()}.service" not in above:
+                return ""                               # the system manager's, or another user's
+            shown = (main_pid or (lambda u: Systemd(u).show("MainPID")))(unit)
+            return unit if shown == str(pid) else ""    # yerkd is a child of the unit's own program
+    return ""
+
+
+def configured(private: Path) -> set[str]:
+    """The rooms.toml rooms with a channel, a Discord one with its channel id (the rooms yerkd serves,
+    daemon.run_discord): what the proof wants served when no /status answered before the deploy."""
+    out = set()
+    for name, conf in rooms(private).items():
+        kind, _, cid = str(conf.get("channel") or "").partition(":")
+        if kind and (kind != "discord" or cid.isdigit()):
+            out.add(name)
+    return out
+
+
+def fault(e: BaseException) -> str:
+    """'IndexError in argv': the exception's class and the innermost frame outside the standard
+    library, never its message (a failed command's carries its command line and environment). A
+    SIGTERM or SIGHUP is its name, at the frame it landed in ('SIGTERM in prove')."""
+    std = sysconfig.get_paths()["stdlib"]
+    at = [f.name for f in traceback.extract_tb(e.__traceback__) if not f.filename.startswith(std)]
+    what = type(e).__name__
+    if isinstance(e, KeyboardInterrupt) and at and at[-1] == interrupt.__name__:
+        what, at = str(e), at[:-1]
+    return words.FAULT.format(what=what, at=at[-1] if at else "?")
+
+
+def interrupt(signum: int, _frame: Any) -> None:
+    """SIGTERM or SIGHUP as Ctrl-C: a KeyboardInterrupt where the deploy is, so the way back runs."""
+    raise KeyboardInterrupt(signal.Signals(signum).name)
+
+
+@contextlib.contextmanager
+def interruptible() -> Iterator[None]:
+    """SIGTERM and SIGHUP raise KeyboardInterrupt inside (a stopped unit, a closed terminal), and the
+    handlers before come back after; off the main thread they stay as they are."""
+    before: dict[int, Any] = {}
+    try:
+        for s in (signal.SIGTERM, signal.SIGHUP):
+            before[s] = signal.signal(s, interrupt)
+    except ValueError:                                  # signal.signal works on the main thread only
+        pass
+    try:
+        yield
+    finally:
+        for n, h in before.items():
+            signal.signal(n, signal.SIG_DFL if h is None else h)   # None: one set outside Python
+
+
+def warn(text: str) -> None:
+    """One line to stderr; a terminal closed under the deploy (SIGHUP) never stops it."""
+    with contextlib.suppress(OSError):
+        print(text, file=sys.stderr)
+
+
 class Systemd:
     def __init__(self, unit: str):
         self.unit = unit
@@ -119,22 +206,27 @@ class Systemd:
         w = shlex.split(self.busctl("Environment"))       # as n "KEY=value"...
         return w[2:2 + int(w[1])] if len(w) > 1 else []
 
-    def move(self, tree: Path, home: Path) -> dict[str, Any]:
+    def move(self, tree: Path, home: Path, was: dict[str, Any] | None = None) -> dict[str, Any]:
         """The transient unit's command, folder and environment into units/yerkd.service, written 0600
         under ~/.config/systemd/user with the unit's own name; the transient unit stopped, the file's
-        started (Type=notify). Returns what `back` needs to put the transient unit back."""
-        was: dict[str, Any] = {"argv": self.argv(), "cwd": self.show("WorkingDirectory"), "env": self.env(),
-                               "type": self.show("Type"), "watchdog": self.show("WatchdogUSec")}
+        started (Type=notify). Returns what `back` needs to put the transient unit back, filled in `was`
+        as it goes (`file` once begun, `stopped` just before the stop), so a fault part way still says
+        whether anything stopped and leaves `back` what it needs."""
+        was = {} if was is None else was
+        was.update(argv=self.argv(), cwd=self.show("WorkingDirectory"), env=self.env(), type=self.show("Type"),
+                   watchdog=self.show("WatchdogUSec"))
         text = unit_text((tree / "units" / "yerkd.service").read_text(), was["argv"], was["cwd"], was["env"])
         path = home / f"{self.unit}.service"
         path.parent.mkdir(parents=True, exist_ok=True)
+        was["file"] = str(path)
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w") as f:
             f.write(text)
+        was["stopped"] = True
         self.ctl("stop", self.unit)
         self.ctl("daemon-reload")
         self.ctl("start", self.unit)                    # Type=notify: back once READY=1, after the port listens
-        return {**was, "file": str(path)}
+        return was
 
     def back(self, was: dict[str, Any]) -> bool:
         """The file unit out, the transient unit as it was (its Type and watchdog too); reset-failed
@@ -190,47 +282,104 @@ def prove(state: Path, sd: Systemd, ask: Ask, served: set[str], want: str, wait:
         sleep(2.0)
 
 
-def cut(ledger: Ledger, at: float) -> int:
-    """A person's messages a restart at `at` left taken and not answered (the turns it cut)."""
-    return len([r for r in ledger.inbound_open() if r["sender"] != "yerk" and at - 3600 < r["received"] < at])
+def cut(ledger: Ledger, opened: set[str], until: float) -> int:
+    """A person's messages a restart left taken and not answered (the turns it cut): open once it
+    returned at `until` and received before then, and not already open at the last quiet check (a row a
+    crash or a dropped room left open long before is not this deploy's)."""
+    return len([r for r in ledger.inbound_open() if r["sender"] != "yerk" and str(r["message_id"]) not in opened
+                and r["received"] < until])
 
 
 def run(private: Path, state: Path, ref: str = "", tests: bool = True, unit_file: bool = False, *,
         sd: Systemd | None = None, ask: Ask = status.ask, post: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
-        sleep: Callable[[float], None] = time.sleep, home: Path = Path.home() / ".config" / "systemd" / "user") -> int:
-    """0 deployed and proven; 1 rolled back or not deployed (the card says which and why)."""
+        sleep: Callable[[float], None] = time.sleep, home: Path = Path.home() / ".config" / "systemd" / "user",
+        systemd: Callable[[str], Systemd] = Systemd, proc: Path = Path("/proc")) -> int:
+    """0 deployed and proven; 1 rolled back or not deployed (the card says which and why); 2 the rollback
+    failed or never ran, so the daemon may run a commit no proof passed (the morning diff says it again);
+    130 stopped by Ctrl-C, SIGTERM or SIGHUP, and rolled back or nothing stopped (the card says which)."""
     conf = dict(load_toml(private / "yerkd.toml").get("deploy", {})) if (private / "yerkd.toml").is_file() else {}
-    sd = sd or Systemd(str(conf.get("unit", "yerkd")))
+    W, ledger = words, Ledger(state / "ledger.sqlite")
+    named = str(conf.get("unit") or "")
+    found = "" if named or sd else unit_of(state, proc, lambda u: systemd(u).show("MainPID"))
+    was = ask(state) if status.alive(state) else None
+    if not (sd or named or found):                    # neither: refused before anything is touched
+        reason = W.line(f"{W.PLAIN} {W.NO_UNIT}")
+        ledger.deploy(kind="deploy", unit="", before=str((was or {}).get("commit") or ""), after="",
+                      outcome="refused", cut=0, note=reason)
+        return say(private, state, [W.line(f"{W.NOT_DONE} {W.NOT_DEPLOYED}"), reason], post)
+    sd = sd or systemd(named or found)
     tree = Path(conf.get("tree") or sd.show("WorkingDirectory") or REPO)
     window, cap = float(conf.get("quiet_seconds", 240)), float(conf.get("cap_minutes", 60)) * 60
-    wait, W = float(conf.get("proof_seconds", 60)), words
-    ledger = Ledger(state / "ledger.sqlite")
-    was = ask(state) if status.alive(state) else None
+    wait = float(conf.get("proof_seconds", 60))
     before = str((was or {}).get("commit") or head(tree))
-    served = {r["room"] for r in (was or {}).get("rooms", [])}
+    served = {r["room"] for r in was.get("rooms", [])} if was else configured(private)
     card: list[str] = []
     moved: dict[str, Any] = {}
+    unit = [W.named(f"{W.PLAIN} {W.UNIT_FOUND}", found)] if found else []
+    row: dict[str, int] = {}                            # kind: its row, once settle wrote it before the restart
+    stopped: list[BaseException] = []                   # a Ctrl-C, SIGTERM or SIGHUP caught on the way
+
+    def tell(lines: list[str], code: int = 1) -> int:
+        return say(private, state, [*lines[:1], *unit, *lines[1:]], post, code)
+
+    def ledgered(kind: str, **cols: Any) -> list[str]:
+        """The row written, or set again once settle wrote it; a failed write is a stderr line and a card
+        line, never a traceback that skips the rollback or the card."""
+        try:
+            row[kind] = ledger.deploy(row.get(kind, 0), kind=kind, unit=sd.unit, **cols)
+            return []
+        except Exception as e:
+            warn(f"deploy: the {kind} row was not written: {fault(e)}")
+            return [W.line(f"{W.NOT_DONE} {W.NO_ROW.format(kind=kind)}")]
 
     def no(outcome: str, *why: str, after: str = "") -> int:
-        ledger.deploy(kind="deploy", unit=sd.unit, before=before, after=after, outcome=outcome, cut=0,
-                      note="; ".join(why))
-        return say(private, state, [W.line(f"{W.NOT_DONE} {W.NOT_DEPLOYED}"), *why], post)
+        lost = ledgered("deploy", before=before, after=after, outcome=outcome, cut=0, note="; ".join(why))
+        return tell([W.line(f"{W.NOT_DONE} {W.NOT_DEPLOYED}"), *why, *lost], 130 if stopped else 1)
 
-    def settle(kind: str, want: str, came_from: str, restart: Callable[[], Any]) -> tuple[bool, list[str]]:
-        """Wait for quiet (or the cap), then the restart and the proof: (proven, why it never restarted)."""
+    def settle(kind: str, want: str, came_from: str, restart: Callable[[], Any]) -> tuple[bool, list[str], str]:
+        """Wait for quiet (or the cap), then the restart and the proof: (proven, why it never restarted,
+        the outcome). The row is written before the restart (outcome "begun", so even a SIGKILL leaves
+        one the morning diff names; a deploy whose row cannot be written never restarts) and set again
+        after the proof. A fault, Ctrl-C, SIGTERM or SIGHUP from the quiet wait to the proof is never a
+        traceback: once the daemon may be stopped or moved (a restart begun, the move past its stop) it
+        is the outcome "fault", its line where the checks go, and the way back runs; before that, a
+        reason and nothing stopped. The cut is counted only once the restart returned."""
         end = time.monotonic() + cap
-        while not (q := quiet(state, ask, window, time.time(), blind_ok=kind == "rollback"))[0]:
-            if time.monotonic() >= end:
-                return False, [W.line(f"{W.PLAIN} {W.NOT_QUIET.format(span=W.span(cap))}"), q[1]]
-            sleep(5.0)
-        at = time.time()
-        restart()
-        n = cut(ledger, at)
-        ok, lines = prove(state, sd, ask, served, want, wait, sleep, moved.get("file", "") if kind == "deploy" else "")
-        card.extend(lines + [W.line(f"{W.NOT_DONE if n else W.PLAIN} " + (W.CUT.format(n=n) if n else W.NO_CUT))])
-        ledger.deploy(kind=kind, unit=sd.unit, before=came_from, after=want,
-                      outcome="proven" if ok else "proof failed", cut=n, proof="; ".join(lines))
-        return ok, []
+        n, ok, outcome, begun, counted = 0, False, "", False, False
+        lines: list[str] = []
+        lost: list[str] = []
+        try:
+            with interruptible():
+                while not (q := quiet(state, ask, window, time.time(), blind_ok=kind == "rollback"))[0]:
+                    if time.monotonic() >= end:
+                        return False, [W.line(f"{W.PLAIN} {W.NOT_QUIET.format(span=W.span(cap))}"), q[1]], "gave up"
+                    sleep(5.0)
+                opened = {str(r["message_id"]) for r in ledger.inbound_open()}   # left open before: not this restart's
+                if kind == "deploy":                    # no row, no restart
+                    row[kind] = ledger.deploy(kind=kind, unit=sd.unit, before=came_from, after=want, outcome="begun")
+                else:                                   # a rollback runs with or without its row
+                    lost = ledgered(kind, before=came_from, after=want, outcome="begun")
+                begun = True
+                restart()
+                n, counted = cut(ledger, opened, time.time()), True
+                ok, lines = prove(state, sd, ask, served, want, wait, sleep, moved.get("file", "") if kind == "deploy" else "")
+        except BaseException as e:                      # KeyboardInterrupt too: the way back runs, then exit 130
+            if not isinstance(e, Exception):
+                stopped.append(e)
+            if not begun or kind == "deploy" and unit_file and not moved.get("stopped"):   # nothing stopped
+                if kind == "deploy":
+                    if moved.get("file"):
+                        with contextlib.suppress(OSError):
+                            os.rename(moved["file"], moved["file"] + ".failed")
+                    moved.clear()
+                return False, [W.line(f"{W.PLAIN} {fault(e)}"), W.line(f"{W.PLAIN} {W.NOTHING_STOPPED}")], "fault"
+            lines, outcome = [W.line(f"{W.NOT_DONE} {fault(e)}")], "fault"
+        said = (W.CUT.format(n=n) if n else W.NO_CUT) if counted else W.NOT_COUNTED
+        card.extend(lines + [W.line(f"{W.NOT_DONE if n or not counted else W.PLAIN} {said}")])
+        outcome = outcome or ("proven" if ok else "proof failed")
+        card.extend(lost + ledgered(kind, before=came_from, after=want, outcome=outcome, cut=n if counted else None,
+                                    proof="; ".join(lines)))
+        return ok, [], outcome
 
     try:
         target = git(tree, "rev-parse", f"{ref or 'HEAD'}^{{commit}}")
@@ -250,35 +399,34 @@ def run(private: Path, state: Path, ref: str = "", tests: bool = True, unit_file
         return no("tests failed", W.line(f"{W.PLAIN} {W.TESTS_FAILED}"), after=target)
     tested = W.line(f"{W.DONE if tests else W.PLAIN} {W.TESTS_PASSED if tests else W.TESTS_SKIPPED}")
     where = [] if on else [W.line(f"{W.PLAIN} {W.DETACHED.format(commit=target[:7])}")]
-    ok, why = settle("deploy", target, before, (lambda: moved.update(sd.move(tree, home))) if unit_file else sd.restart)
+    ok, why, outcome = settle("deploy", target, before, (lambda: sd.move(tree, home, moved)) if unit_file else sd.restart)
     if why:
         move(tree, on, found)
-        return no("gave up", *why, tested, after=target)
+        return no(outcome, *why, tested, after=target)
     if ok:
-        return say(private, state, [W.line(f"{W.DONE} {W.DEPLOYED.format(commit=target[:7])}"), tested, *card, *where],
-                   post, 0)
-    first = [W.line(f"{W.NOT_DONE} {W.FAILED_PROOF.format(commit=target[:7])}"), tested, *card]
+        return tell([W.line(f"{W.DONE} {W.DEPLOYED.format(commit=target[:7])}"), tested, *card, *where], 0)
+    first = [W.line(f"{W.NOT_DONE} {(W.BROKE_OFF if outcome == 'fault' else W.FAILED_PROOF).format(commit=target[:7])}"),
+             tested, *card]
     card.clear()
 
     def restart_before() -> bool:
         move(tree, on, before)                        # the checkout moves back only when the restart comes
-        return sd.back(moved) if moved else sd.restart()
-    back, why = settle("rollback", before, target, restart_before)
-    if why:                                           # never quiet: the daemon and the checkout stay on the target
-        ledger.deploy(kind="rollback", unit=sd.unit, before=target, after=before, outcome="gave up", cut=0,
-                      note="; ".join(why))
-        return say(private, state, [*first, W.line(f"{W.NOT_DONE} {W.ROLLBACK_NEVER.format(commit=before[:7])}"),
-                                    *why, *where], post)
-    return say(private, state, [*first, W.line(f"{W.DONE if back else W.NOT_DONE} "
-                                               f"{(W.ROLLED_BACK if back else W.ROLLBACK_FAILED).format(commit=before[:7])}"),
-                                *card, *moved_back(tree, on, target)], post)
+        return sd.back(moved) if moved.get("stopped") else sd.restart()
+    back, why, how = settle("rollback", before, target, restart_before)
+    if why:                                           # never quiet, or a fault first: the daemon and the checkout stay on the target
+        lost = ledgered("rollback", before=target, after=before, outcome=how, cut=0, note="; ".join(why))
+        return tell([*first, W.line(f"{W.NOT_DONE} {W.ROLLBACK_NEVER.format(commit=before[:7])}"), *why, *lost, *where], 2)
+    return tell([*first, W.line(f"{W.DONE if back else W.NOT_DONE} "
+                                f"{(W.ROLLED_BACK if back else W.ROLLBACK_FAILED).format(commit=before[:7])}"),
+                 *card, *moved_back(tree, on, target)], (130 if stopped else 1) if back else 2)
 
 
 def say(private: Path, state: Path, lines: list[str], post: Callable[[dict[str, Any]], dict[str, Any]] | None,
         code: int = 1) -> int:
     """The card to the machine room through the running yerkd, and always to the terminal."""
     text = "\n".join(lines)
-    print(text)
+    with contextlib.suppress(OSError):                # a terminal closed under it: the machine room still gets it
+        print(text)
     machine = [n for n, c in rooms(private).items() if c.get("role") == "machine"]
     if machine:
         req = {"machine": {"room": machine[0], "text": text, "key": f"deploy-{int(time.time())}"}}
@@ -287,5 +435,5 @@ def say(private: Path, state: Path, lines: list[str], post: Callable[[dict[str, 
         except (OSError, ValueError) as e:
             out = {"ok": False, "error": type(e).__name__}
         if not out.get("ok"):
-            print(f"deploy: the card did not reach {machine[0]}: {out.get('error')}", file=sys.stderr)
+            warn(f"deploy: the card did not reach {machine[0]}: {out.get('error')}")
     return code
