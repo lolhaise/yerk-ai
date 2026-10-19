@@ -22,6 +22,8 @@ Copyright (c) 2025 Nous Research. MIT License.
   (HARDLINE_PATTERNS, _hardline_rm_path, _HARDLINE_SYSTEM_DIRS)
 - yerk_ai/lifted/systemd_notify.py: gateway/systemd_notify.py, whole (notify,
   watchdog_interval_seconds, SystemdWatchdog), with one type: ignore added
+- yerk_ai/memindex.py: the FTS5 capability checks and the orphan shadow-table repair, from
+  hermes_state_fts.py (_is_fts5_unavailable_error, _drop_orphan_fts_shadow_tables)
 
 claude-code-context-map (the author's own MIT tool)
 Copyright (c) 2026 Eric McLaren. MIT License.

@@ -1,3 +1,7 @@
+# The FTS5 capability checks and the orphan shadow-table repair are adapted from Hermes Agent v0.22.2,
+# hermes_state_fts.py (_is_fts5_unavailable_error, _drop_orphan_fts_shadow_tables),
+# https://github.com/NousResearch/hermes-agent
+# Copyright (c) 2025 Nous Research. MIT License. See NOTICE.
 # The scope rule (named roots, temp and backup names skipped, an empty scope refused) follows the
 # workspace memory-index tool this harness replaces.
 """yerk-index, the memory search program: in its own process it keeps a keyword index of the memory folder, and a meaning index when an embeddings key is set.
@@ -98,6 +102,32 @@ def is_timeout(e: BaseException) -> bool:
     """A locked, busy or interrupted database is a timeout; anything else from SQLite is a failure."""
     m = str(e).lower()
     return isinstance(e, Timeout) or "locked" in m or "busy" in m or "interrupted" in m
+
+
+def fts5_unavailable(e: sqlite3.OperationalError) -> bool:
+    m = str(e).lower()
+    return ("no such module" in m and "fts5" in m) or "no such tokenizer" in m
+
+
+def drop_orphan_shadow_tables(cur: sqlite3.Cursor, families: list[str]) -> list[str]:
+    """Shadow tables left without their virtual table (a recovered file) make every later CREATE
+    VIRTUAL TABLE fail, so yerk-index would never start again; drop them by exact name and the
+    keyword index is rebuilt from `chunks`, with no one asked to run anything."""
+    repaired = []
+    for fam in families:
+        if cur.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ? "
+                       "AND sql LIKE 'CREATE VIRTUAL TABLE%'", (fam,)).fetchone():
+            continue
+        shadows = [f"{fam}_{s}" for s in ("content", "data", "docsize", "idx", "config")]
+        orphans = [r[0] for r in cur.execute(
+            f"SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ({','.join('?' * len(shadows))})",
+            shadows)]
+        for name in orphans:
+            cur.execute(f'DROP TABLE "{name}"')
+        if orphans:
+            log.warning("dropped orphan FTS5 shadow tables of %s (%s)", fam, ", ".join(orphans))
+            repaired.append(fam)
+    return repaired
 
 
 @dataclass(frozen=True)
@@ -221,7 +251,16 @@ class Index:
         self.disk: dict[str, tuple[int, int]] = {}      # the last pass's view of the disk
         self.on_insert = on_insert                        # (chunk hashes, unit hashes) just written: the embedding thread
         self.conn = connect(db, readonly=False)
-        self.conn.executescript(SCHEMA)
+        cur = self.conn.cursor()
+        repaired = drop_orphan_shadow_tables(cur, ["chunks_fts"])
+        try:
+            cur.executescript(SCHEMA)
+        except sqlite3.OperationalError as e:
+            if fts5_unavailable(e):
+                raise SystemExit("this Python's sqlite3 has no FTS5 module; yerk-index needs it") from e
+            raise
+        if repaired:
+            self.conn.execute("INSERT INTO chunks_fts(chunks_fts) VALUES ('rebuild')")
         old = self.meta("scope")
         if old and old != scope.key():
             log.warning("index scope changed (%s -> %s): files out of scope go, new ones come in", old, scope.key())
