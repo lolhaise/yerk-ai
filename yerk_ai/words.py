@@ -208,6 +208,8 @@ NOT_RUN_AGAIN = "not answered: sent before a restart\nask again"
 SENT_AGAIN = "sent again after a restart"
 # the gates (gates.py): the room hears one notice, state first, and only when it must act or know
 HELD = "held: {what}\nsay {word} here to let it run once"
+HELD_ATTACHED = "the exact text is in the file below"
+HELD_FILE = "the exact text held for approval"
 REFUSED = "not done: {what}\nit would restart Yerk AI\n{why}"
 REBUILDING = "the memory index is rebuilding"
 IN_PROGRESS = "a conversation is in progress"

@@ -244,12 +244,20 @@ def call_key(tool: str, ti: dict[str, Any]) -> str:
     return f"{tool} {json.dumps(ti, sort_keys=True, ensure_ascii=False)}"
 
 
-def held(what: str, call: str, word: str) -> tuple[str, str]:
-    """(for the model, for the room)."""
+SHOW = 1500        # the most of a held call's exact text one message shows; longer goes as a file (the daemon)
+
+
+def held(what: str, call: str, word: str, exact: str = "") -> tuple[str, str]:
+    """(for the model, for the room). The room sees the exact text the word would release, the call as
+    the approval matches it (call_key), so nobody is asked for a yes on words they have not read: inline
+    when it fits one message, else a line saying the file below holds it."""
+    line = f"{words.WORKING} {words.HELD.format(what=what, word=word)}"
+    if exact:
+        shown = exact.replace("```", "``​`")            # a fence inside the text cannot close the block
+        line += f"\n```\n{shown}\n```" if len(exact) <= SHOW else f"\n{words.HELD_ATTACHED}"
     return (f"Held: {what} (`{call}`) is an external action and runs only after the owner says `{word}` in this "
-            "room. The room has been told in one line; do not repeat it. End the turn with one short line, and "
-            "try the same action again once the word is said.",
-            f"{words.WORKING} {words.HELD.format(what=what, word=word)}")
+            "room. The room has been shown its exact text; do not repeat it. End the turn with one short line, and "
+            "try the same action again once the word is said.", line)
 
 
 def refused(what: str, why: str) -> tuple[str, str]:

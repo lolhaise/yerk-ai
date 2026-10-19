@@ -150,7 +150,8 @@ def test_the_approval_gate_holds_then_the_owners_word_releases_it_once_ledgered_
     push = {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "git push origin main"}}
     out = call(y, push)["hookSpecificOutput"]
     assert out["permissionDecision"] == "deny" and out["permissionDecisionReason"].startswith("Held: a public post")
-    assert ch.notes == [f"{words.WORKING} held: a public post\nsay approve here to let it run once"]
+    assert ch.notes == [f"{words.WORKING} held: a public post\nsay approve here to let it run once\n"
+                        "```\ngit push origin main\n```"]                # the exact call the word would release
     room.busy, room.inflight = True, [Inbound("m2", "test-webhook", "approve")]    # not an approver by default
     call(y, {"hook_event_name": "UserPromptSubmit", "prompt": "approve"})
     assert call(y, push)["hookSpecificOutput"]["permissionDecision"] == "deny"     # still held
