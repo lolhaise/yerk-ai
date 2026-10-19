@@ -254,6 +254,34 @@ def test_a_session_that_cannot_be_resumed_starts_fresh_with_a_one_line_recap(env
     room.rp.close()
 
 
+def test_a_process_gone_before_its_first_message_is_an_exit_never_a_crashed_turn(env, monkeypatch):
+    """The race the test above lost once under load (the fix-22 run): `--resume` of a session that is
+    gone exits at once, and when that exit beat the write, the write's BrokenPipeError crashed the turn
+    and left message 2 running with no reply. Here every resume waits for its process to end first."""
+    from yerk_ai.engine import RoomProcess
+    real = RoomProcess.start
+
+    def start(self, **k):
+        sid = real(self, **k)
+        if self.resume_arg:
+            self.proc.wait(10)
+        return sid
+    make, ledger, tmp_path = env
+    chan = Chan()
+    room = make(chan)
+    send(room, ledger, "1", "hello")
+    wait_idle(room)
+    room.rp.close()
+    monkeypatch.setattr(RoomProcess, "start", start)
+    monkeypatch.setenv("FAKE_CLAUDE_MISSING", "1")
+    send(room, ledger, "2", "again")
+    wait_idle(room)
+    assert [(r["outcome"], r["failure"], r["action"]) for r in rows_of(ledger)[1:]] == [
+        ("exited", "fatal", "fresh_with_recap"), ("ok", None, None)]
+    assert chan.replies[-1][1] == ["2"] and ledger.inbound_get("2")["state"] == "answered"
+    room.rp.close()
+
+
 def test_meters_come_from_the_stream_per_account(env, monkeypatch):
     from yerk_ai.meters import Meters, meter_line
     make, ledger, tmp_path = env

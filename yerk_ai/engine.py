@@ -345,13 +345,19 @@ class RoomProcess:
         self.events.put((time.time(), None))
 
     def send(self, text: str) -> float:
-        """Write one user message on stdin; returns the time it was written."""
+        """Write one user message on stdin; returns the time it was written. A process already gone
+        (`--resume` of a session that is gone exits at once, before its first message under load) takes
+        nothing: the turn reads its exit and stderr like any other, never a crashed turn."""
         assert self.proc and self.proc.stdin
         line = json.dumps({"type": "user", "message": {"role": "user", "content": text}}) + "\n"
         with self._stdin_lock:
             t = time.time()
-            self.proc.stdin.write(line.encode())
-            self.proc.stdin.flush()
+            try:
+                self.proc.stdin.write(line.encode())
+                self.proc.stdin.flush()
+            except BrokenPipeError:
+                self._note({"unsent": text})
+                return t
         self._note({"sent": text})
         return t
 

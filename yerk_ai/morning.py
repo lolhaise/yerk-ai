@@ -84,6 +84,12 @@ def build(private: Path, state: Path, accounts: list[Account], cooldowns: Cooldo
         add(f"shadow {rule}", W.WORKING, W.SHADOW.format(rule=rule, n=n))
     if not flags:
         add("", W.PLAIN, W.NO_SHADOW)
+    for d in ledger.deploys(now - DAY):                  # its card may never have reached the machine room
+        if d["outcome"] != "proven" or (d["cut"] or 0) > 0:      # a proven one that cut a person's turn too
+            said = W.UNPROVEN.format(kind=d["kind"], commit=str(d["after"] or d["before"] or "?")[:7], outcome=d["outcome"])
+            said += W.UNPROVEN_CUT.format(n=d["cut"]) if d["cut"] else ""
+            at = W.UNPROVEN_AT.format(at=W.clock(float(d["at"]), now))
+            add(f"deploy {d['id']}", W.NOT_DONE, said + at if W.width(f"{W.NOT_DONE} {said}{at}") <= W.PHONE else said)
     if live is None:
         add("unknown units", W.NOT_DONE, W.UNKNOWN.format(what="memory", why=W.NOT_ANSWERING_WHY))
     for u in (live or {}).get("units", []):
