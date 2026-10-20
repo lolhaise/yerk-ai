@@ -4,14 +4,16 @@ gate holds and releases once; the tamper row; the silent-ending bounce once and 
 decision 25 rule's fixture; the hooks' own time measured over a real local HTTP round trip."""
 import asyncio
 import json
+import re
 import threading
 import time
 import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
-from yerk_ai import evidence, gates, hooks, mcp_server, memindex, words
+from yerk_ai import evidence, gates, hooks, mcp_server, memindex, memory, words
 from yerk_ai.config import EXAMPLE_PRIVATE, room_id
 from yerk_ai.daemon import ConsoleChannel, Yerkd
 from yerk_ai.engine import SessionTable
@@ -360,6 +362,50 @@ def test_a_room_quoting_its_own_filed_reply_is_not_flagged_and_a_figure_on_file_
                 f"- 00:00:00-00:00 with-one#{rid} queue@for-its: turn 000,000.00 and? [the:last] [part:closes0]\n")
     assert flagged("The 00.00% test 000,000.00 reads.") == ["the 000,000.00, check while a second/0000-00-00.entry:0",
                                                          "turn 00.00%, and the last part/0000-00-00.closes:0"]
+
+
+def test_a_figure_the_room_said_earlier_in_its_session_counts_as_read_and_its_first_saying_is_checked(tmp_path):
+    """A second entry: waits-in-the queue for 0000-00-00 00:00 its 00.00% turn 000,000 and the last 00:00 part, closes
+    its turns repeated 99.99% into the next morning, flagged each time as on file in Ben'step and the test reads's reply,
+    the case before the next run starts the example note (0 says 00 the sample). Item moved to the next step and the,
+    its text in the session'the next run starts the example note says the sample item moved to the next's first row, counts as
+    read. The first saying is checked as before: this turn'a second entry, waits in the, queue for's line from before the
+    while a second entry waits in the queue for."""
+    y, room, ch = setup(tmp_path)
+    at = datetime.fromisoformat
+    y.daily.capture("example-room", "r0", "yerk", "Its turn and the last 0,000 part.", when=at("2026-10-19T21:00:00-04:00"))
+    y.daily.capture("example-room", "r1", "yerk", "The example0 note says the sample item: 000,000 moved to the next "
+                    "000,000.00, waits 00.00% in the.", when=at("2026-10-19T22:21:01-04:00"))
+    y.daily.capture("example-room", "n1", memory.NOTE, "the long shelf is 1,105 mm", when=at("2026-10-19T22:22:00-04:00"))
+    y.daily.capture("other-room", "o1", "yerk", "00.00% while 000,000 a 0,000 second 0,000 entry 0,000 waits 0,000 in 0,000 the queue",
+                    when=at("2026-10-19T22:30:00-04:00"))
+    memindex.Index(y.memory.index_db, y.memory.scope).sync()
+
+    def write(sid, rows):                     # Claude Code's rows, stamped in UTC, the last one still being written
+        (tmp_path / f"{sid}.jsonl").write_text("".join(json.dumps(
+            {"type": kind, "timestamp": f"{at(t).astimezone(timezone.utc):%Y-%m-%dT%H:%M:%S.000Z}", **extra,
+             "message": {"role": kind, "content": [{"type": "text", "text": text}] if kind == "assistant" else text}}) + "\n"
+            for t, kind, text, extra in rows) + '{"type": "assistant", "timest')
+
+    def flagged(reply, since, sid="sid-g"):
+        human_turn(room, "and how close is it?")
+        room.evidence = evidence.Evidence()
+        room.evidence.started = at(since).timestamp()
+        last = max([r["id"] for r in y.ledger.rows(1, "shadow")], default=0)
+        call(y, {"hook_event_name": "Stop", "stop_hook_active": False, "last_assistant_message": reply, "session_id": sid,
+                 "transcript_path": str(tmp_path / f"{sid}.jsonl")})
+        return sorted(re.match(r"quoted (.+?), on file at", r["detail"])[1] for r in y.ledger.rows(50, "shadow")
+                      if r["id"] > last and r["rule"] == "figure")
+    write("sid-g", [("2026-10-19T21:53:55-04:00", "user", "a second entry waits0 in?", {}),
+                    ("2026-10-19T22:21:00-04:00", "assistant", "Moved to0: 000,000 the, 00.00% next step and.", {}),
+                    ("2026-10-19T22:30:00-04:00", "assistant", "Next Step: 0,000", {"isApiErrorMessage": True}),
+                    ("2026-10-19T22:44:40-04:00", "assistant", "Queue 0,000 for.", {})])
+    assert flagged("Queue 00.00% for 000,000 its. Turn and the 0,000 last; part 0,000 closes 0,000 the 0,000 case 0,000.",
+                   "2026-10-19T22:44:30-04:00") == ["1,234", "1,472", "3,260", "4,015"]
+    assert flagged("00.00% the, last part 0,000 closes, the 0,000.", "2026-10-20T10:34:30-04:00") == []    # its turn and
+    SessionTable(tmp_path / "sessions.json").bind("example-room", "sid-h", "one")
+    write("sid-h", [("2026-10-20T11:00:00-04:00", "user", "as plain: text with one more?", {})])
+    assert flagged("99.99% still.", "2026-10-20T11:00:00-04:00", "sid-h") == ["99.99%"]      # next step and the test
 
 
 CONTROL_REPLIES = [   # known-good replies with the turn that made them: none may be flagged

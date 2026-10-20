@@ -330,15 +330,6 @@ class Job:
             return Cron.parse(self.spec)
         return Cron.parse(expr) if self.when == "every" and (expr := every_cron(self.every_seconds)) else None
 
-    def next_fire(self, now: float, last: float | None = None) -> float | None:
-        """What the schedule says comes next (systemd's own answer is the one shown; this is for
-        the plan, the planned time and the tests)."""
-        if self.cron is not None:
-            return self.cron.fire(now, self.zone)
-        if self.when == "every":
-            return (last if last else now) + self.every_seconds
-        return self.at_epoch if self.at_epoch > now else None
-
     def planned(self, fired: float, last_trigger: float | None = None) -> float:
         """The time this run was meant for: the clock instant at or before the fire, the one-shot's
         time, or for a monotonic interval the timer's own trigger time."""

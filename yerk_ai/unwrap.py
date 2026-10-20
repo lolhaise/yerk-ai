@@ -55,22 +55,9 @@ def unwrap(command: str, depth: int = 4) -> list[list[str]] | None:
     open quote, more than depth levels, or a command known only at run time.
     """
     try:
-        return _parse(command, depth, set())
+        return _parse(command, depth)
     except _Unreadable:
         return None
-
-
-def sudo_in(command: str) -> bool:
-    """True when any simple command, at any depth, runs behind sudo, doas or su.
-
-    True as well when the text cannot be read, since then sudo cannot be ruled out.
-    """
-    seen: set[str] = set()
-    try:
-        _parse(command, 4, seen)
-    except _Unreadable:
-        return True
-    return "sudo" in seen
 
 
 def delete_targets(argv: list[str], cwd: str) -> list[str] | None:
@@ -144,14 +131,14 @@ def inside(paths: list[str], root: str) -> bool:
     return bool(paths) and all(os.path.commonpath([os.path.realpath(p), top]) == top for p in paths)
 
 
-def _parse(text: str, depth: int, seen: set[str]) -> list[list[str]]:
+def _parse(text: str, depth: int) -> list[list[str]]:
     """The simple commands in the text, in the order they start, each peeled."""
     out: list[list[str]] = []
-    _scan(text, 0, depth, seen, out, nested=False)
+    _scan(text, 0, depth, out, nested=False)
     return out
 
 
-def _scan(text: str, i: int, depth: int, seen: set[str], out: list[list[str]], nested: bool) -> int:
+def _scan(text: str, i: int, depth: int, out: list[list[str]], nested: bool) -> int:
     """Read the commands from i into out; when nested, stop after the ) that closes them."""
     words: list[_Word] = []
     heredocs: list[tuple[str, bool]] = []
@@ -169,7 +156,7 @@ def _scan(text: str, i: int, depth: int, seen: set[str], out: list[list[str]], n
             i = _arithmetic(text, i + 2)
             continue
         if text.startswith(("<(", ">("), i):
-            start, i = i, _substitution(text, i + 2, depth, seen, out)
+            start, i = i, _substitution(text, i + 2, depth, out)
             word: _Word = (text[start:i], True)
         elif operator := _REDIRECT.match(text, i):
             if redirect:
@@ -181,7 +168,7 @@ def _scan(text: str, i: int, depth: int, seen: set[str], out: list[list[str]], n
             if redirect or (nested and separator is None):
                 raise _Unreadable  # an operator with no word after it, or a $( never closed
             if words:
-                out.extend(_peel(words, depth, seen))
+                out.extend(_peel(words, depth))
                 words = []
             if separator is None:
                 return i
@@ -202,7 +189,7 @@ def _scan(text: str, i: int, depth: int, seen: set[str], out: list[list[str]], n
                 heredocs = []
             continue
         else:
-            word, i = _word(text, i, depth, seen, out)
+            word, i = _word(text, i, depth, out)
         if redirect.startswith("<<") and redirect != "<<<":
             heredocs.append((word[0], redirect == "<<-"))
         if redirect:
@@ -211,7 +198,7 @@ def _scan(text: str, i: int, depth: int, seen: set[str], out: list[list[str]], n
             words.append(word)
 
 
-def _word(text: str, i: int, depth: int, seen: set[str], out: list[list[str]]) -> tuple[_Word, int]:
+def _word(text: str, i: int, depth: int, out: list[list[str]]) -> tuple[_Word, int]:
     """One word from i with its quotes removed, and the index after it."""
     chars: list[str] = []
     expands = quoted = False
@@ -237,7 +224,7 @@ def _word(text: str, i: int, depth: int, seen: set[str], out: list[list[str]]) -
             chars.append(text[start:i])
             expands = True
         elif text.startswith("$(", i):
-            start, i = i, _substitution(text, i + 2, depth, seen, out)
+            start, i = i, _substitution(text, i + 2, depth, out)
             chars.append(text[start:i])
             expands = True
         elif c == "`":
@@ -246,7 +233,7 @@ def _word(text: str, i: int, depth: int, seen: set[str], out: list[list[str]]) -
                 end += 2 if text[end] == "\\" else 1
             if end >= len(text) or depth == 0:
                 raise _Unreadable
-            out.extend(_parse(re.sub(r"\\([$`\\])", r"\1", text[i + 1:end]), depth - 1, seen))
+            out.extend(_parse(re.sub(r"\\([$`\\])", r"\1", text[i + 1:end]), depth - 1))
             chars.append(text[i:end + 1])
             expands, i = True, end + 1
         else:
@@ -269,14 +256,14 @@ def _arithmetic(text: str, i: int) -> int:
     return i
 
 
-def _substitution(text: str, i: int, depth: int, seen: set[str], out: list[list[str]]) -> int:
+def _substitution(text: str, i: int, depth: int, out: list[list[str]]) -> int:
     """Read the commands of a $(, <( or >( whose body starts at i; the index after its )."""
     if depth == 0:
         raise _Unreadable
-    return _scan(text, i, depth - 1, seen, out, nested=True)
+    return _scan(text, i, depth - 1, out, nested=True)
 
 
-def _peel(argv: list[_Word], depth: int, seen: set[str]) -> list[list[str]]:
+def _peel(argv: list[_Word], depth: int) -> list[list[str]]:
     """The commands one simple command stands for, with wrappers and shell words peeled."""
     while argv:
         word, name = argv[0][0], os.path.basename(argv[0][0])
@@ -287,11 +274,9 @@ def _peel(argv: list[_Word], depth: int, seen: set[str]) -> list[list[str]]:
         elif word in ("for", "case", "select"):
             return []  # a loop or case header, not a command
         elif name in _SHELLS or name in ("eval", "su"):
-            return _reread(argv, name, depth, seen)
+            return _reread(argv, name, depth)
         elif name in _WRAPPERS:
             takes, before = _WRAPPERS[name]
-            if name in ("sudo", "doas"):
-                seen.add("sudo")
             i = 1
             while i < len(argv) and argv[i][0].startswith("-"):
                 option, i = argv[i][0], i + 1
@@ -312,7 +297,7 @@ def _peel(argv: list[_Word], depth: int, seen: set[str]) -> list[list[str]]:
             if i + before >= len(argv):
                 return [[w for w, _ in argv]]  # nothing wrapped: the wrapper itself runs
             if name == "xargs":
-                return [found[:1] for found in _peel(argv[i:], depth, seen)]
+                return [found[:1] for found in _peel(argv[i:], depth)]
             argv = argv[i + before:]
         else:
             break
@@ -325,17 +310,16 @@ def _peel(argv: list[_Word], depth: int, seen: set[str]) -> list[list[str]]:
         for i, (word, _) in enumerate(argv):
             if word in ("-exec", "-execdir", "-ok", "-okdir"):
                 end = next((j for j in range(i + 1, len(argv)) if argv[j][0] in (";", "+")), len(argv))
-                found += _peel(argv[i + 1:end], depth, seen)
+                found += _peel(argv[i + 1:end], depth)
     return found
 
 
-def _reread(argv: list[_Word], name: str, depth: int, seen: set[str]) -> list[list[str]]:
+def _reread(argv: list[_Word], name: str, depth: int) -> list[list[str]]:
     """Read again the string that a shell's -c, su -c or eval would run, one level deeper."""
     words = [w for w, _ in argv]
     if name == "eval":
         string = (" ".join(words[1:]), any(e for _, e in argv[1:]))
     elif name == "su":
-        seen.add("sudo")
         if "-c" not in words[:-1] or {"-", "-l", "--login"} & set(words):
             raise _Unreadable  # a root shell that reads its input, or one that runs in root's home
         string = argv[words.index("-c") + 1]
@@ -356,4 +340,4 @@ def _reread(argv: list[_Word], name: str, depth: int, seen: set[str]) -> list[li
         string = argv[i]
     if string[1] or depth == 0:
         raise _Unreadable  # the outer shell expands it first, or it is nested too deep
-    return _parse(string[0], depth - 1, seen)
+    return _parse(string[0], depth - 1)

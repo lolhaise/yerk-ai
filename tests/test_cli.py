@@ -4,6 +4,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from yerk_ai.config import budgets
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -34,7 +36,7 @@ def test_map_shows_the_rules_file_as_a_part_of_its_own(tmp_path):
     (tmp_path / "memory" / "tree" / "rules.md").write_text("# Rules\n\n- a job: done this way.\n")
     r = yerk("map", "example-room", "--state", str(tmp_path))
     assert r.returncode == 0, r.stdout + r.stderr
-    assert re.search(r"^  rules +\d+ +6,600  ok  \[\S+/rules\.md\]$", r.stdout, re.M)
+    assert re.search(rf"^  rules +\d+ +{budgets()['session_start']['appended']['rules']:,}  ok  \[\S+/rules\.md\]$", r.stdout, re.M)
     assert r.stdout.index("  pinned_memory ") < r.stdout.index("  rules ") < r.stdout.index("  recall_pack ")
     assert "rules.md" not in next(x for x in r.stdout.splitlines() if x.startswith("  rulebook "))
 
