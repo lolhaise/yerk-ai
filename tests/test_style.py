@@ -93,9 +93,9 @@ def test_the_turn_card_is_state_first_phone_width_and_names_no_path():
     lines = c.render().splitlines()
     assert lines[0].startswith(f"{words.WORKING} Checking the three places") and lines[0].endswith("...")
     assert lines[1] == "-# thinking: The owner wants the date" and lines[2].startswith("-# first. The owner")
-    assert [x.split(" ", 2)[:2] for x in lines[-3:]] == [[words.DONE, "read"], [words.NOT_DONE, "run"],
-                                                          [words.WORKING, "fetch"]]
-    assert lines[-1] == f"{words.WORKING} fetch docs.example.org"
+    assert [x.split(" ", 2)[:2] for x in lines[-3:]] == [[words.DONE, "reading"], [words.NOT_DONE, "running"],
+                                                          [words.WORKING, "reading"]]
+    assert lines[-1] == f"{words.WORKING} reading docs.example.org" and "grep" not in c.render()   # never the command
 
 
 def test_every_worker_card_running_and_settled_is_state_first_with_no_path_and_no_exit():
@@ -194,6 +194,9 @@ def phrases() -> list[str]:
             words.NOT_RUN_AGAIN, words.SENT_AGAIN, words.NOT_ANSWERED, words.GONE, words.STRAY, *words.BACKUP,
             words.MOVED, words.COMPACTING, *words.FILE_WHY.values(), words.NEXT_REPLY, words.OWNER_ONLY,
             words.NOT_LISTED, words.NOT_A_LEVEL, words.BACK_ON]
+    out += [v for k, v in words.STEP.items() if k != "hold"]            # a worker's card says "waiting for an account" itself
+    out += [*words.WORKER_STEP.values(), *words.JOB_STEP.values(), words.MESSAGE_TO, words.NOTES, *words.FILES.values(),
+            words.ANOTHER_WAY, words.ROOM_NOW]
     fixed = (re.split(r"[{\n]", x)[0].strip(" :,;") for x in out)
     return sorted({p for p in fixed if " " in p and len(p) >= 8 and p not in words.OUTCOME})
 

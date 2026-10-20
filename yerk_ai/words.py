@@ -1,12 +1,10 @@
-"""The words a user reads (STYLE.md): every state mark, state word, tool verb and time phrase that
-a card, a notice or a status line uses, in one place. Every renderer that writes into a room, and
-the commands a room may quote (`yerk status`, `yerk abilities`, `yerk explain`), takes them from
-here, so a card in one room reads like a card in any other. tests/test_style.py fails the build
-when a renderer spells a state mark or a state phrase itself, or when room-bound text carries a
-path, an exit code, a raw timestamp or an em dash.
-
-The presentation choices are named settings ([presentation] in yerkd.toml, decision 27), each
-described here in plain words; `yerk config get presentation` prints them from this table.
+"""The words a user reads (STYLE.md): every state mark, state word, card row and time phrase a card, a
+notice or a status line uses, in one place, so a card in one room reads like a card in any other; the
+commands a room may quote (`yerk status`, `yerk abilities`, `yerk explain`) take them from here too.
+tests/test_style.py fails the build when a renderer spells a state mark or a state phrase itself, or
+when room-bound text carries a path, an exit code, a raw timestamp or an em dash. The presentation
+choices are named settings ([presentation] in yerkd.toml, decision 27), each described here in plain
+words; `yerk config get presentation` prints them from this table.
 """
 from __future__ import annotations
 
@@ -80,17 +78,23 @@ def named(template: str, name: str, cols: int = PHONE, **facts: Any) -> str:
     return line(text, cols)
 
 
-# the turn card
+# the turn card: a row says what the step is FOR, never the call (STYLE.md rule 4); {what} its target, {where} a folder
 START = "working on it"
-VERBS = {"read": "read", "write": "write", "edit": "edit", "multiedit": "edit", "notebookedit": "edit",
-         "bash": "run", "webfetch": "fetch", "fetch": "fetch", "websearch": "search the web for", "grep": "search",
-         "glob": "list", "send": "send", "hold": "wait for", "recall": "recall", "read_memory": "read",
-         "todowrite": "update the plan", "task": "hand off", "agent": "hand off", "toolsearch": "load",
-         "settings": "switch to"}
-EARLIER, EARLIER_ROWS = "{n} earlier steps", "{n} earlier rows"
-THINKING = "thinking: "
-NOT_ANSWERED = "not answered"
-YOU_ASKED = 'you asked: "{asked}"'
+STEP = {"bash": "running a command", "read": "reading {what}", "read_memory": "reading {what}", "write": "writing {what}",
+        "edit": "editing {what}", "multiedit": "editing {what}", "notebookedit": "editing {what}",
+        "grep": "searching {where} for {what}", "glob": "looking for {what} files", "recall": "looking up {what}",
+        "webfetch": "reading {what}", "web_fetch": "reading {what}", "fetch": "reading {what}",
+        "websearch": "searching the web for {what}", "web_search": "searching the web for {what}", "send": "sending {what}",
+        "remember": "filing a note", "hold": "waiting for {what}", "settings": "switching to {what}",
+        "todowrite": "updating the plan", "task": "handing off {what}", "agent": "handing off {what}", "toolsearch": "loading a tool"}
+WORKER_STEP = {"start": "starting a worker", "list": "listing the workers", "stop": "stopping worker {id}",
+               "report": "reading worker {id}'s report"}
+JOB_STEP = {"add": "scheduling job {name}", "remove": "removing job {name}", "list": "listing the jobs"}
+MESSAGE_TO, NOTES, DAY_NOTES, FACT_FILE = "a message to {room}", "your notes", "the {day} notes", "{name}'s file"
+FILES = {"open-loops.md": "your open items", "MEMORY.md": "the pinned notes", "pinned.md": "the pinned notes", "rules.md": "the rules"}
+ANOTHER_WAY = "that did not work, trying another way"       # two or more failed steps in a row, as one row
+EARLIER, EARLIER_ROWS, ROOM_NOW = "{n} earlier steps", "{n} earlier rows", "checking what this room runs"
+THINKING, NOT_ANSWERED, YOU_ASKED = "thinking: ", "not answered", 'you asked: "{asked}"'
 WHY = {                                   # a failed turn, in plain words: the failure class, else the outcome
     "auth": "the account's login was refused", "quota": "out of usage on every account",
     "transient": "Claude was busy; ask again", "overflow": "the conversation is too long",
@@ -98,8 +102,7 @@ WHY = {                                   # a failed turn, in plain words: the f
     "timeout": "it ran past the time limit", "exited": "Claude Code stopped midway",
     "empty": "the reply came back empty", "error": "Claude Code reported an error"}
 BACKUP = ("answered by a backup model", "the next message starts fresh")
-MOVED = "still on it, moved to account {name}"
-COMPACTING = "shortening the conversation first"
+MOVED, COMPACTING = "still on it, moved to account {name}", "shortening the conversation first"
 
 
 def why(cls: str | None, outcome: str) -> str:
@@ -116,18 +119,15 @@ OUTCOME = {"done": (DONE, "finished clean"), "partly": (WORKING, "finished, {tic
 DIED = {"exit-code": "it ended with an error", "signal": "it was killed", "core-dump": "it crashed",
         "oom-kill": "it ran out of memory", "watchdog": "it stopped answering", "resources": "it could not start",
         "start-limit-hit": "it was started too often", "protocol": "it could not start"}
-REPORT_SAVED = "report saved: `yerk worker report {id}`"
-NO_REPORT = "no report: `yerk worker report {id}`"
+REPORT_SAVED, NO_REPORT = "report saved: `yerk worker report {id}`", "no report: `yerk worker report {id}`"
 RELAY_ASK = ("[tell the room the outcome in your own voice, under {cap:,} characters, ending with the line "
              "\"{saved}\"; no file path and no exit code; {where}; do not paste it]")
-GONE = "gone, no result"
 WORKERS_OWNER_ONLY = "only the owner's rooms can use workers"       # start, report, list, stop
 JOBS_OWNER_ONLY = "only the owner's rooms can schedule jobs"         # any kind: every job runs as the owner
 RULES_OWNER_ONLY = "only the owner's rooms can file rules"           # remember with a job: a rule reaches every room
 RULE_FILED = "from now on every room does {job} this way"            # the line a filed rule's reply says
 WORKER_OWN_ROOM = "a room starts workers for itself only, not for {room}"
-STRAY = "unknown worker {id} running"
-NONE_RUNNING = "workers: none running"
+GONE, STRAY, NONE_RUNNING = "gone, no result", "unknown worker {id} running", "workers: none running"
 
 
 def outcome(state: str, **say: Any) -> tuple[str, str]:
@@ -143,8 +143,7 @@ def died(result: str) -> str:
 
 # jobs and watchers in a room: the exit code and systemd's words stay in the unit's log and in
 # `yerk status --full`, never in the line
-JOB_FAILED = "job {name} failed: {why}"
-JOB_STOPPED = "job {name} {stopped}"
+JOB_FAILED, JOB_STOPPED = "job {name} failed: {why}", "job {name} {stopped}"
 NOT_STARTED = {"did not start": "it could not start", "lost": "it ended with no record"}
 
 
@@ -160,8 +159,7 @@ def job_line(name: str, state: str, cap_seconds: float = 0.0, result: str = "") 
 
 
 # one heavy worker per account
-WAITING_ACCOUNT = "waiting for an account"
-IN_LINE = "{nth} in line for account {name}"
+WAITING_ACCOUNT, IN_LINE = "waiting for an account", "{nth} in line for account {name}"
 IN_LINE_SHORT = "waiting, {nth} in line"            # `yerk status`, phone width
 
 
@@ -201,15 +199,12 @@ def clock(epoch: float, now: float | None = None) -> str:
 
 # notices
 # a notice: a short state line, then the reason on its own line (phone width, one look)
-NOT_SENT = "not sent: {name}\n{why}"
-NOT_SENT_AGAIN = "not resent: {name}\n{why}; ask again"
-NOT_FETCHED = "could not fetch {name}\nsend it again"
-NOT_RUN_AGAIN = "not answered: sent before a restart\nask again"
+NOT_SENT, NOT_SENT_AGAIN = "not sent: {name}\n{why}", "not resent: {name}\n{why}; ask again"
+NOT_FETCHED, NOT_RUN_AGAIN = "could not fetch {name}\nsend it again", "not answered: sent before a restart\nask again"
 SENT_AGAIN = "sent again after a restart"
 # the gates (gates.py): the room hears one notice, state first, and only when it must act or know
 HELD = "held: {what}\nsay {word} here to let it run once"
-HELD_ATTACHED = "the exact text is in the file below"
-HELD_FILE = "the exact text held for approval"
+HELD_ATTACHED, HELD_FILE = "the exact text is in the file below", "the exact text held for approval"
 REFUSED = "not done: {what}\nit would restart Yerk AI\n{why}"
 REBUILDING = "the memory index is rebuilding"
 IN_PROGRESS = "a conversation is in progress"
@@ -230,8 +225,7 @@ IMSG_PROBE = "iMessage {day}: Mac seen {reached}/{runs}"           # probe runs 
 IMSG_LOST = "iMessage {day}: {n} lost text{s}"                    # distinct texts, however many runs saw them
 # an iMessage turn room is only ever the owner's own thread, so Yerk AI never texts anyone in his name
 IMSG_GROUP, IMSG_OTHERS = "a group", "others in it"
-IMSG_REFUSED = NOT_DONE + " {room} not served: {why}"
-IMSG_NOT_SERVED = "the room's chat is not served"
+IMSG_REFUSED, IMSG_NOT_SERVED = NOT_DONE + " {room} not served: {why}", "the room's chat is not served"
 IMSG_LOOP = NOT_DONE + " {room}: loop guard, paused {mins} min"
 
 
@@ -270,42 +264,25 @@ def ability(state: str, **say: Any) -> tuple[str, str]:
 
 # status (yerk status, the card): the colour only where it means something (an account at or near
 # its limit, a blocked room, a stall, a daemon down); every other line starts with a dash
-PLAIN = "-"
-RUNNING_ROOMS = "yerkd running: {rooms}"
+PLAIN, RUNNING_ROOMS = "-", "yerkd running: {rooms}"
 ROOMS_N, ROOM_1 = "{n} rooms", "1 room"
-NOT_RUNNING = "yerkd: not running"
-NOT_ANSWERING = "yerkd: running, not answering"
-NO_READING = "{name}: no reading yet"
-RESTS = "{name}: resting until {until}"
-OLD_READING = "{name}: last reading {ago}"
-TURN_FOR = "{name}: busy {took}"
-QUEUED = ", {n} waiting"
-WATCHES = "{name}: watches {channel}"
-UNIT_USE = "{name}: {mb} MB, {cpu:.1f}% cpu"
-JOB_DUE = "job {name}: in {left}"
-NO_JOB_DUE = "jobs: none due within the hour"
-NO_TIMERS = "jobs: the timer list is unreadable"
-STALLS = "stalls {day}: {n}, longest {took}"
-NO_STALLS = "stalls {day}: none"
+NOT_RUNNING, NOT_ANSWERING = "yerkd: not running", "yerkd: running, not answering"
+NO_READING, RESTS = "{name}: no reading yet", "{name}: resting until {until}"
+OLD_READING, TURN_FOR = "{name}: last reading {ago}", "{name}: busy {took}"
+QUEUED, WATCHES = ", {n} waiting", "{name}: watches {channel}"
+UNIT_USE, JOB_DUE = "{name}: {mb} MB, {cpu:.1f}% cpu", "job {name}: in {left}"
+NO_JOB_DUE, NO_TIMERS = "jobs: none due within the hour", "jobs: the timer list is unreadable"
+STALLS, NO_STALLS = "stalls {day}: {n}, longest {took}", "stalls {day}: none"
 TODAY, YESTERDAY = "today", "yesterday"
 # the morning diff (morning.py), for the machine room
-MORNING_NEW = "morning: {n} new since the last diff"
-MORNING_SAME = "morning: nothing new"
-KNOWN = ", {n} known"
-PAYLOAD = "{room}: {size:,} chars, {change}"
-PART = "{room} {part}: {change} chars"
+MORNING_NEW, MORNING_SAME, KNOWN = "morning: {n} new since the last diff", "morning: nothing new", ", {n} known"
+PAYLOAD, PART = "{room}: {size:,} chars, {change}", "{room} {part}: {change} chars"
 FIRST_MAP, SAME = "first map", "same"
-ANSWERED = "{day}: {n} messages answered"
-WAIT = "queue wait: {mid} typical, {worst} worst"
-FIRST_LINE = "first line: {mid} typical, {worst} worst"
-SINCE = " since {at}"
-SHADOW = "shadow flag {rule}: {n}"
-NO_SHADOW = "shadow flags: none"
-UNKNOWN = "{what}: unknown, {why}"
-NOT_ANSWERING_WHY = "yerkd not answering"
-DEAD = "dead turns: {n}, {name}, last {at}"
-NO_YERKD = "no yerkd answers"
-NO_DEAD = "dead turns: none in 24h"
+ANSWERED, SINCE = "{day}: {n} messages answered", " since {at}"
+WAIT, FIRST_LINE = "queue wait: {mid} typical, {worst} worst", "first line: {mid} typical, {worst} worst"
+SHADOW, NO_SHADOW = "shadow flag {rule}: {n}", "shadow flags: none"
+UNKNOWN, NOT_ANSWERING_WHY = "{what}: unknown, {why}", "yerkd not answering"
+DEAD, NO_YERKD, NO_DEAD = "dead turns: {n}, {name}, last {at}", "no yerkd answers", "dead turns: none in 24h"
 
 # yerk deploy's card (deploy.py), for the machine room: the state line, then each reason on its own
 DEPLOYED, FAILED_PROOF = "deployed {commit}", "{commit} failed its proof"
@@ -322,9 +299,8 @@ PROOF_UP, PROOF_CONNECTED, PROOF_STATUS = "yerkd up", "channel connected", "stat
 PROOF_COMMIT, PROOF_ROOMS = "running {commit}", "rooms served: {n} of {of}"
 PROOF_FILE = "unit runs from its file"
 NO_CUT, CUT, NOT_COUNTED = "no turn cut", "turns cut: {n}", "turns cut: not counted"
-NO_UNIT, UNIT_FOUND = "no unit found: set [deploy] unit", "unit {name}, from its pid"
+NO_UNIT, UNIT_FOUND, NO_ROW = "no unit found: set [deploy] unit", "unit {name}, from its pid", "{kind} outcome not in the ledger"
 FAULT, NOTHING_STOPPED, BROKE_OFF = "{what} in {at}", "nothing was stopped", "{commit} broke off, not proven"
-NO_ROW = "{kind} outcome not in the ledger"
 UNPROVEN, UNPROVEN_AT = "{kind} {commit}: {outcome}", ", {at}"   # the morning diff: a deploys row not proven,
 UNPROVEN_CUT = ", {n} cut"                                         # or one that cut a person's turn
 
@@ -335,11 +311,9 @@ def secs(seconds: float) -> str:
 
 
 # a room's model and thinking level (the settings tool)
-NEXT_REPLY = "next reply: {model}, {effort} thinking"
-THIS_ROOM = "this room: {model}, {effort} thinking"
+NEXT_REPLY, THIS_ROOM = "next reply: {model}, {effort} thinking", "this room: {model}, {effort} thinking"
 OWNER_ONLY = "only the owner's rooms can change this"
-NOT_LISTED = "not on the list: {model}\nthe list: {models}"
-NOT_A_LEVEL = "not a thinking level: {effort}\nthe levels: {levels}"
+NOT_LISTED, NOT_A_LEVEL = "not on the list: {model}\nthe list: {models}", "not a thinking level: {effort}\nthe levels: {levels}"
 BACK_ON = "{model} not found; back on {usual}"       # a switched-to model no account could run
 USUAL = "the default"                                # a room whose rooms.toml names no model
 # slash commands on the rooms' own bot (Discord): the owner's only, every answer seen by the owner alone
@@ -347,14 +321,12 @@ COMMANDS = {"model": "this room's model, from the next reply", "effort": "this r
             "new": "a new session in this room; memory stays", "stop": "end the running turn now",
             "status": "what runs now"}
 CHOICE = {"model": "a model on the list, or default", "effort": "a thinking level, or default"}
-NOT_OWNER = "only the owner can use this"
+NOT_OWNER, NOT_A_ROOM = "only the owner can use this", "this channel is not a Yerk room"
 NO_OWNER = "set [discord] owner in yerkd.toml"       # every command, while yerkd.toml names no owner
-NOT_A_ROOM = "this channel is not a Yerk room"
 WATCHED = "{room} answers in <#{own}>, not here"     # a channel a room watches: read, never written to
 NEW_NEXT = "new session from the next message\nmemory stays"
 STOPPED = "stopped with /stop"                       # the stopped turn's card
-STOP_DONE = "stopped the running turn"
-NOTHING_TO_STOP = "nothing is running here"
+STOP_DONE, NOTHING_TO_STOP = "stopped the running turn", "nothing is running here"
 NOT_RUN = "that did not run\nthe daemon's log says why"
 
 
