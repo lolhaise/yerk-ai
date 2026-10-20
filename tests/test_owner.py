@@ -132,7 +132,7 @@ def test_an_owner_attachment_is_staged_under_its_own_name(env):
     staged = room.tmp / "inbox" / "502" / "shelf photo.png"
     assert staged.stat().st_size == 24 and got.files[0]["type"] == "image/png"
     assert got.text == f"look at this\n[attachment] shelf photo.png, image/png, 24 bytes, saved at {staged}"
-    assert [(r["name"], r["state"]) for r in d.ledger.attachments("502")] == [("shelf photo.png", "staged")]
+    assert [(r["name"], r["state"]) for r in d.ledger._select("SELECT * FROM attachments WHERE message_id = ? ORDER BY id", ("502",))] == [("shelf photo.png", "staged")]
 
 
 def test_a_mention_of_the_bot_reads_as_its_name_not_an_id(env):

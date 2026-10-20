@@ -1,5 +1,6 @@
 # The iMessage inbound check (Layer 8): reads the newest rows of each iMessage room's chat from the
-# Mac's bridge, read only, and checks each reached the inbound ledger; it never sends. Installed by
+# Mac's bridge, read only, and checks each reached the inbound ledger; it never sends. It runs from the
+# checkout's tests/contract/ (the contract probes left the package). Installed by
 # copying both files to ~/.config/systemd/user/ and `systemctl --user enable --now
 # yerk-imessage-probe.timer`. Set YERK_PRIVATE and YERK_STATE below.
 [Unit]
@@ -9,5 +10,5 @@ Description=Yerk AI iMessage inbound check (read only, never sends)
 Type=oneshot
 Environment=YERK_PRIVATE=%h/yerk-private
 Environment=YERK_STATE=%h/.local/state/yerk
-ExecStart=%h/yerk-ai/.venv/bin/yerk probe imessage
+ExecStart=%h/yerk-ai/.venv/bin/python %h/yerk-ai/tests/contract/probes.py imessage
 TimeoutStartSec=120

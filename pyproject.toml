@@ -40,5 +40,5 @@ markers = ["live: needs a real Claude Code login; skipped unless YERK_LIVE=1"]
 
 [tool.mypy]
 python_version = "3.12"
-files = ["yerk_ai"]
+files = ["yerk_ai", "tests/contract"]
 warn_unused_ignores = true

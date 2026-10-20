@@ -13,6 +13,8 @@ from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai.daemon import ConsoleChannel, Yerkd
 from yerk_ai.engine import SessionTable
 
+DOTS = (words.DONE, words.WORKING, words.NOT_DONE, words.NOTHING)
+
 TAB = abilities.manifest()
 DESCRIBED = {k: v for k, v in TAB.items() if v.get("state") == "described"}
 DEV = ("/home/", "exited", "Result=", "SERVICE_RESULT", "systemd", "Traceback", "Errno", "<t:", "—")
@@ -82,7 +84,7 @@ def test_yerk_abilities_is_one_phone_width_line_per_ability_built_first(tmp_path
     lines = capsys.readouterr().out.splitlines()
     shown, tail = lines[:-1], lines[-1]
     assert tail.startswith("yerk explain") and len(shown) == len(TAB)
-    assert all(x[:1] in "".join(words.DOTS) and words.width(x) <= words.PHONE for x in shown), shown
+    assert all(x[:1] in "".join(DOTS) and words.width(x) <= words.PHONE for x in shown), shown
     names = [x.split(" ", 1)[1].split(":", 1)[0] for x in shown]
     assert sorted(names) == sorted(TAB)
     states = [TAB[n]["state"] for n in names]

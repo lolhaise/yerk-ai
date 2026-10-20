@@ -61,6 +61,8 @@ A room's own memory scope: `also = [...]` in rooms.toml names which of yerkd.tom
 
 People rooms and the memory they read, two fixes. A day log is chunked by room id and class as well as by size (`memindex.lane`): a line of another room or class than the chunk's starts a new chunk, an attachment line stays with its line (after a line cut in pieces it is a chunk of its own, never the head of the next line's), a free-form line is the owner's alone and the day header goes with the first chunk, so a room that is not an owner room, which ranks and gets only the chunks it may read whole, finds every line of its own, where before a line of hers beside one of the owner's left her recall and reached her through her pack, her topic hits and read_memory only. The chunker's VERSION is 2, and a yerk-index whose index was built under another VERSION or scope chunks every file again on its first pass, writing only the chunks whose text changed (an unchanged chunk keeps its hash and with it its vector; the changed ones are embedded in the background), so no `--rebuild` is needed; `yerk-index --check` reads scope-changed until that pass lands. Mention recall runs in every room with `mention_recall` on: an owner room gets every name on file as before, and any other room gets the entries of the files it may read when it asks, class shared or class room with its own id (the daemon reads the file's front matter or `.class` sidecar then, as recall and read_memory do, so a sidecar edit counts from the next message; yerk-index records each entry's class and room too, and the front matter itself is no entry), never an owner-class file's, and a name only such a file holds takes no words from one of its own, under the same 1,500-character cap.
 
+Moving in, keeping clean, and the probes out of the package: `yerk room add` (Moving a chat in, below) and `yerk retention` land together, paid for by the contract probes leaving the package for tests/contract/probes.py, where a person or a timer runs them as `python tests/contract/probes.py NAME` (the drill as `... drill`; units/yerk-imessage-probe.service calls it there), each still writing its raw event log to <state>/probes; `yerk probe` and `yerk drill` are gone, and the package's ceiling goes from 14,611 to 14,226 lines. The sweep covers a room's scratch: its work folder but the person's files in inbox/ and the dot entries Claude Code and its sandbox keep at its top, and the copies of the files it sent (outbox/, read only to send one again after a crash), are kept 2 days, and past 500 MB a room loses its oldest files first, never one written in the last hour and never while it has a turn in flight; what leaves waits a day in the trash (`scratch_trash`; everything else a week). A month of a busy room in tests/test_retention.py (page renders, a 900 MB burst, sends, transcripts, workers, ledger rows, the sweep each morning) stays under one bound fixed before it starts. A person room made by `yerk room add` copies the other person room's persona and rulebook without that room's own text: every line naming its folder goes, and so does the persona's `# About the owner` section, written again from the template with OWNER, PERSON and RELATION for the owner to fill in.
+
 ## Use
 
 ```
@@ -71,6 +73,7 @@ uv run yerkd --console example-room --config-dir ~/.claude   # one room on the t
 uv run yerk map example-room --wire          # also the sizes as sent, read from the room's Claude Code transcript
 uv run yerk setup-room ROOM                  # a Discord room's test webhook; its URL goes to secrets/ (0600), never printed
 uv run yerk room close ROOM                  # the running yerkd closes ROOM's process now (never mid-turn); the session stays
+uv run yerk room add NAME --from discord:ID  # a Discord chat moves in as the room NAME-on-yerk (Moving a chat in, below)
 uv run yerk accounts                         # per account: order, token age and days left (warns inside 30), rests, last health call
 uv run yerk accounts cool NAME MINUTES       # rest an account by hand; `clear NAME` lifts it; a running yerkd sees both at its next pick
 uv run yerk accounts mint NAME               # `claude setup-token` for NAME: the browser flow shown, the token stored 0600, never shown
@@ -80,13 +83,27 @@ uv run yerk status                           # the card: what runs, the meters w
 uv run yerk morning                          # the morning diff to the role = "machine" room (units/yerk-morning.timer: 06:30)
 uv run yerk deploy [REF]                     # REF onto the running yerkd: fast-forward only, fast tests, a quiet room, proof, else rollback
 uv run yerk deploy --unit                    # the same, moving a systemd-run yerkd onto units/yerkd.service (Install below)
-uv run yerk drill --config-dir DIR           # the Claude Code upgrade drill: the version, hello, fold and resume on one account, a verdict
-uv run yerk probe hello|fold|resume|blocks|smoke|measure|check|idle --config-dir ~/.claude
+uv run yerk retention --dry-run              # what the nightly sweep (units/yerk-retention.timer) would move to the trash, by kind
+uv run python tests/contract/probes.py drill --config-dir DIR   # the Claude Code upgrade drill: the version, hello, fold and resume on one account, a verdict
+uv run python tests/contract/probes.py hello|fold|resume|blocks|smoke|measure|check|idle --config-dir ~/.claude   # one contract probe
 uv run pytest
 ```
 
 - `--private DIR` or `YERK_PRIVATE` points at your private folder (default: the fake one in `examples/private/`).
-- `YERK_STATE` sets the state folder (default `~/.local/state/yerk`): the room-to-session table, session locks, the ledgers, cooldowns, logs.
+- `YERK_STATE` sets the state folder (default `~/.local/state/yerk`): the room-to-session table, session locks, the ledgers, cooldowns, logs, which `yerk retention` (units/yerk-retention.timer, 04:20) keeps from growing forever: the days each kind keeps are `[retention]` in yerkd.toml, a room's scratch (its work folder but the person's files in inbox/, and the copies of what it sent) keeps 2 days and 500 MB (`scratch`, `scratch_mb`), and what leaves waits a week in the state folder's trash, a room's scratch a day (`trash`, `scratch_trash`).
+
+## Moving a chat in
+
+`yerk room add NAME --from discord:<channel or thread id> [--person ID] [--voice FILE] [--since YYYY-MM-DD] [--like ROOM] [--dry-run]` moves a Discord chat in as the room NAME-on-yerk, in six steps, each said as it is done. `--dry-run` reads and prints every step and writes and sends nothing: run it first.
+
+1. Channel: a private channel NAME-on-yerk, made with the bot token yerkd.toml names, with the permission overwrites of the room it is made like (so the same people see it); with `--person` that person is let in as well. A channel of that name already there is kept.
+2. Voice: `--voice FILE` is copied to the layer's rooms/NAME.md; without it, a one-line placeholder to write.
+3. Block: `[rooms.NAME-on-yerk]` from a template in examples/rooms/. owner.toml copies an owner room of yours (`--like`, else the last owner room in rooms.toml that is not the machine room) with its channel and voice set. person.toml copies a person room (`--like`, else the last room with `people`), so its wall is reused: privacy family, `people` the id, Read, Grep and Glob only, no `read`, `also` or sandbox, and a layer of its own under the private folder (0700) holding copies of that room's persona and rulebook less its own text (every line naming its folder, and the persona's `# About the owner` section, the one about its person), the template's `about` section at the persona's end in its place, and pinned.md and open-loops.md to write. Before anything changes, the rooms.toml it would write is loaded (config.rooms) and the daemon's people guard runs on it, and a person room's files are read for any path into the private folder outside its own layer; a miss stops it with one line. Then rooms.toml is copied into backups/ with the time in the name, and the block is appended.
+4. History: the old channel's or thread's messages (from `--since` on, else all) filed in the day log under the room's id and class: the owner's lines `owner`, the person's `person`, everyone else's `other`, each with its author's handle, as the daemon files a live line; attachments up to 25 MB saved into the layer's NAME-attachments/ (0700, files 0600). It goes by message id and file name, so a second run only tops up. Yerk's bot must be able to read the old channel.
+5. Restart: none. It prints the one `yerk deploy` line to run, detached, at a quiet moment.
+6. Check: the room's context against budgets.toml; the test webhook (yerk-test-sender) found or made in the new channel, its URL in secrets/discord-NAME-webhook.url (0600, never printed); the yerkd.toml `test_senders` line with its id added, printed to apply before the deploy and never written here; and the warm-up line to post through it.
+
+A person room's persona and rulebook start as the other person room's less its own text: fill in OWNER, PERSON and RELATION in the persona's last section, read the rest for anything else of that room's, and write pinned.md, before the person talks there.
 
 ## Install as a service
 

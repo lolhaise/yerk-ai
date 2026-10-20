@@ -55,6 +55,17 @@ def layer_dir(private: Path, room: dict[str, Any]) -> Path:
     return (private / str(room.get("layer", "."))).resolve()
 
 
+def walls(private: Path, state: Path, roots: tuple[Path, ...], rooms: dict[str, dict[str, Any]]) -> None:
+    """The people guard: a room with `people` has a layer of its own (a working folder, its files the prompt)."""
+    held = (*roots, (private / "secrets").resolve(), state.resolve())
+    for n, c in ((n, c) for n, c in rooms.items() if c.get("people")):
+        lay, others = layer_dir(private, c), [layer_dir(private, d) for m, d in rooms.items() if m != n]
+        files = [lay / str(c[k]) for k in ("persona", "rulebook", "voice", "pinned_memory", "open_loops") if c.get(k)]
+        if lay in others or private.resolve().is_relative_to(lay) or any(p.is_relative_to(lay) or lay.is_relative_to(p) for p in held) \
+                or any(not f.resolve().is_relative_to(lay) for f in files):
+            raise SystemExit(f"room {n}: people needs a `layer` of its own, holding no memory root, secrets/ or state, its files inside it")
+
+
 def cited(path: Path, text: str) -> str:
     """A file's text under the absolute path it came from, so the model can re-read it."""
     return f"[from {path}]\n{text}" if text else ""
@@ -167,10 +178,6 @@ def news(path: Path, sid: str, private: Path, room: dict[str, Any], rules: Path,
         return out
     where = ", ".join(f'read_memory("{now[k][1].name}")' if k == "rules" else f"Read {now[k][1]}" for k, r in rows.items() if r)
     return f"{NEWS} {len(lines)} lines new or replaced, past the {budget:,} characters this note holds; read them: {where}."
-
-
-def message_text(parts: list[Part], body: str) -> str:
-    return "\n".join(p.text for p in parts if p.text) + SEP + body
 
 
 def session_total(parts: list[Part], budgets: dict[str, Any]) -> int:

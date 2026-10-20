@@ -15,13 +15,14 @@ from typing import Any
 
 import pytest
 
-from yerk_ai import jobs, morning, probes, status, words
+from yerk_ai import jobs, morning, status, words
 from yerk_ai.accounts import Cooldowns, load_accounts
 from yerk_ai.channels import imessage as imod
 from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai.channels.imessage import LIMIT, Bridge, IMessageChannel
 from yerk_ai.ledger import Ledger
 from yerk_ai.lifted.split import split_message
+from contract import probes
 
 CHAT, OTHER_CHAT = "test-thread", "someone-else"
 

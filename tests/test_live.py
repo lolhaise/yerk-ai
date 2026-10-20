@@ -4,7 +4,7 @@ import os
 
 import pytest
 
-from yerk_ai import probes
+from contract import probes
 
 pytestmark = [pytest.mark.live, pytest.mark.skipif(
     os.environ.get("YERK_LIVE") != "1" or not os.environ.get("YERK_LIVE_CONFIG_DIR"),

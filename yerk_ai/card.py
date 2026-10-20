@@ -104,7 +104,6 @@ class Card:
         self.narration = ""
         self.text = ""                        # the text block streaming now
         self.thinking = ""
-        self.thinking_tokens = 0
         self.thinking_at: int | None = None   # the open thinking block's index: its line waits for the block
         self.rows: list[Row] = []
         self.by_id: dict[str, Row] = {}
@@ -153,7 +152,6 @@ class Card:
                 self.narration = line
         elif t == "content_block_delta" and delta.get("type") == "thinking_delta":
             self.thinking += str(delta.get("thinking") or "")
-            self.thinking_tokens += int(delta.get("estimated_tokens") or 0)
         elif t == "content_block_delta" and delta.get("type") == "input_json_delta":
             self.partial[i] = self.partial.get(i, "") + str(delta.get("partial_json") or "")
         elif t == "content_block_stop" and i in self.by_index:

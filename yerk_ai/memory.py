@@ -330,9 +330,9 @@ class DailyLog:
         return self.seen[day]
 
     def capture(self, room: str, mid: str, role: str, text: str, files: list[tuple[str, str, int]] | None = None,
-                when: datetime | None = None, edited: bool = False, who: str = "") -> bool:
-        """One message into the log; False when its line is already there. The time carries its own
-        UTC offset (the zone resolved for that instant), the room its stable id with the name as the
+                when: datetime | None = None, edited: bool = False, who: str = "", dry: bool = False) -> bool:
+        """One message into the log (with `dry`, nothing is written); False when its line is already there. The time
+        carries its own UTC offset (the zone resolved for that instant), the room its stable id with the name as the
         label, the author a role and, when known, who (a handle), and the line its room's class."""
         files = files or []
         at = (when or datetime.now(timezone.utc)).astimezone(self.tz)
@@ -346,6 +346,8 @@ class DailyLog:
             ids = self._ids(day)
             if key in ids:
                 return False
+            if dry:
+                return True
             path = self.daily / f"{day}.md"
             head = "" if path.exists() else f"# {day}\n\n"
             fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)

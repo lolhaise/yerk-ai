@@ -12,14 +12,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-CLASSES = ("transient", "overflow", "auth", "quota", "refusal", "fatal")
-ACTIONS = ("rerun", "compact_then_rerun", "hop_account", "fresh_next_turn", "fresh_with_recap", "stop")
-
 
 @dataclass(frozen=True)
 class Failure:
-    cls: str            # one of CLASSES
-    action: str         # one of ACTIONS
+    cls: str            # transient, overflow, auth, quota, refusal or fatal
+    action: str         # rerun, compact_then_rerun, hop_account, fresh_next_turn, fresh_with_recap or stop
     kind: str | None    # cooldown kind (rate_limit, billing, auth) or None
     source: str         # "type:<value>", "event:<name>", "pattern:<name>" or "none"
 

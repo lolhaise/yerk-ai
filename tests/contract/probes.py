@@ -1,8 +1,15 @@
-"""Contract probes: real Claude Code processes, tiny prompts, raw event logs kept.
+"""Contract probes: real Claude Code processes, tiny prompts, raw event logs kept (DESIGN 12: nightly, and before an
+upgrade). They live beside the tests, out of the package, and run from a checkout with its venv:
+`python tests/contract/probes.py NAME --config-dir DIR` prints one probe's JSON, `... drill --config-dir DIR` is the
+upgrade drill; each exits 0 when it passed. The raw event logs go to <state>/probes (--logs).
 
 - hello: one scripted turn end to end, with its run ledger row
 - fold: is a message written to stdin mid-turn answered inside the turn it lands in?
 - resume: does a session started under one account resume under another?
+- blocks, smoke, measure, short, think, check, idle: the setup pieces behind the first-message blocks, scripted rooms
+  through either channel, the room read back through the bot, the idle baseline
+- imessage: the inbound check against the Mac's bridge, read only (units/yerk-imessage-probe.timer)
+- drill: the Claude Code version, then hello, fold and resume on one account, a verdict; it upgrades nothing
 """
 from __future__ import annotations
 
@@ -10,16 +17,18 @@ import argparse
 import contextlib
 import json
 import random
+import subprocess
+import sys
 import tempfile
 import time
 from pathlib import Path
 from typing import Any, Callable
 
-from .accounts import Account, from_dir
-from .config import state_dir, table
-from .engine import RoomProcess, RoomSpec, SessionBusy, Turn
-from .ledger import Ledger
-from .lifted.classify import FailureTable
+from yerk_ai.accounts import Account, from_dir
+from yerk_ai.config import state_dir, table
+from yerk_ai.engine import RoomProcess, RoomSpec, SessionBusy, Turn
+from yerk_ai.ledger import Ledger
+from yerk_ai.lifted.classify import FailureTable
 
 HELLO = "Say hello in five words or fewer."
 FOLD_1 = ("Use the Bash tool to run `sleep 8`. When it finishes, run `sleep 8` a second time as a "
@@ -166,8 +175,8 @@ class Variant(RoomProcess):
 
 
 def blocks(a: argparse.Namespace) -> dict[str, Any]:
-    from . import context
-    from .config import EXAMPLE_PRIVATE, budgets, rooms
+    from yerk_ai import context
+    from yerk_ai.config import EXAMPLE_PRIVATE, budgets, rooms
     env = Env(a)
     room = rooms(EXAMPLE_PRIVATE)["example-room"]
     ctx = env.state / "blocks-context.md"
@@ -376,10 +385,8 @@ def drive(a: argparse.Namespace, script: Callable[[str, str], list[tuple[str, fl
     webhook (secrets/discord-test-webhook.url in the private folder), into a yerkd this starts,
     or with --attach into the one already running on the same state folder."""
     import os
-    import subprocess
-    import sys
-    from . import context
-    from .config import private_dir, rooms
+    from yerk_ai import context
+    from yerk_ai.config import private_dir, rooms
     env = Env(a)
     priv = private_dir(a.private)
     layer = str(context.layer_dir(priv, rooms(priv)[a.room]))
@@ -471,7 +478,7 @@ def check(a: argparse.Namespace) -> dict[str, Any]:
     --since carries the done mark and no eyes, every card is gone, every reply and file is there."""
     import urllib.error
     import urllib.request
-    from .config import load_toml, private_dir, rooms
+    from yerk_ai.config import load_toml, private_dir, rooms
     env, priv = Env(a), private_dir(a.private)
     cid = str(rooms(priv)[a.room]["channel"]).partition(":")[2]
     d = load_toml(priv / "yerkd.toml")["discord"]
@@ -549,7 +556,6 @@ def descendants(pid: int) -> list[int]:
 def idle(a: argparse.Namespace) -> dict[str, Any]:
     """The idle baseline: the running yerkd and its room processes sampled every 30 s for
     --minutes, then `yerk room close`, then the daemon alone for --alone-minutes."""
-    import subprocess
     import urllib.request
     env = Env(a)
     st = json.loads((env.state / "yerkd.json").read_text())
@@ -698,9 +704,9 @@ def imessage(a: argparse.Namespace) -> dict[str, Any]:
     may not have replayed it yet. The first miss is noted by its guid's hash, the second is said."""
     import asyncio
     import hashlib
-    from . import jobs, words
-    from .channels.imessage import probe
-    from .config import load_toml, private_dir, rooms
+    from yerk_ai import jobs, words
+    from yerk_ai.channels.imessage import probe
+    from yerk_ai.config import load_toml, private_dir, rooms
     priv, state = private_dir(getattr(a, "private", None)), state_dir(a.state)
     confs = rooms(priv)
     named = {n: str(c.get("channel", "")).partition(":")[2] for n, c in confs.items() if str(c.get("channel", "")).startswith("imessage:")}
@@ -747,3 +753,75 @@ def imessage(a: argparse.Namespace) -> dict[str, Any]:
             out["alerted"] += len(mine)
     out["ok"], out["gaps"], out["first_misses"] = ok, len(lost), len(misses) - len(lost)   # counts only on stdout
     return out
+
+
+def drill(a: argparse.Namespace) -> int:
+    """The Claude Code upgrade drill (DESIGN 11, L225): the installed version, the contract probes on
+    one account (resume onto itself), a verdict, a line in <state>/drills.jsonl. It upgrades nothing."""
+    from yerk_ai import words
+    try:
+        version = subprocess.run(["claude", "--version"], capture_output=True, text=True, timeout=60).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        version = ""
+    print(f"{words.PLAIN} claude {version or 'not found'}")
+    a.to_config_dir, passed = a.config_dir, {}
+    for name in ("hello", "fold", "resume"):
+        out = globals()[name](a) if version else {"ok": False}
+        passed[name] = bool(out.get("ok"))
+        print(f"{words.DONE if passed[name] else words.NOT_DONE} probe {name}: {'passed' if passed[name] else 'failed'}")
+    failed = [n for n, ok in passed.items() if not ok]
+    print(f"{words.NOT_DONE} verdict: stay, {', '.join(failed)} failed" if failed else
+          f"{words.DONE} verdict: {version} keeps the contract")
+    with open(state_dir(a.state) / "drills.jsonl", "a") as f:
+        f.write(json.dumps({"at": round(time.time()), "version": version, "probes": passed, "ok": not failed}) + "\n")
+    return 1 if failed else 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    """What `yerk probe NAME` and `yerk drill` were, run from here by a person or a timer: one probe's JSON, or
+    the drill's lines and its verdict; 0 when it passed, 1 when it did not, 2 for a missing folder."""
+    p = argparse.ArgumentParser(prog="tests/contract/probes.py", description="contract probes against a real Claude Code "
+                                "login; imessage: the inbound check against the Mac's bridge, read only; drill: the upgrade "
+                                "drill, hello, fold and resume on one account and a verdict, upgrading nothing")
+    p.add_argument("name", choices=["hello", "fold", "resume", "blocks", "smoke", "measure", "short", "think", "check",
+                                    "idle", "imessage", "drill"])
+    p.add_argument("--config-dir", help="Claude Code config folder of the account to use (every probe but imessage)")
+    p.add_argument("--rows", type=int, default=20, help="imessage: the newest rows read per room's chat")
+    p.add_argument("--grace", type=float, default=120.0, help="imessage: seconds a new row may still be in flight")
+    p.add_argument("--to-config-dir", help="resume: the second account's config folder")
+    p.add_argument("--model", default="claude-fable-5-1")
+    p.add_argument("--reps", type=int, default=0, help="fold: repeats (default 3, the drill's 1)")
+    p.add_argument("--delay", type=float, default=3.0, help="fold: seconds before the second message")
+    p.add_argument("--trailing-wait", type=float, default=30.0, help="fold: seconds to wait for a trailing turn")
+    p.add_argument("--logs", help="folder for raw event logs (default: <state>/probes)")
+    p.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
+    p.add_argument("--room", default="yerk-test", help="smoke: the room to drive")
+    p.add_argument("--private", help="smoke: private folder (default: $YERK_PRIVATE)")
+    p.add_argument("--only-account", action="store_true", help="smoke: run on --config-dir only, no hop")
+    p.add_argument("--via", choices=["console", "discord"], default="console", help="smoke, measure: the channel")
+    p.add_argument("--minutes", type=float, default=10.0, help="idle: minutes with the room's process open")
+    p.add_argument("--alone-minutes", type=float, default=5.0, help="idle: minutes of the daemon alone after the close")
+    p.add_argument("--unit", help="idle: the systemd user unit running yerkd, for its cgroup totals")
+    p.add_argument("--compare-unit", help="idle: another user unit sampled over the same window")
+    p.add_argument("--only", help="blocks: setups to run, joined with |")
+    p.add_argument("--message", help="blocks: the first message (default: the hello line)")
+    p.add_argument("--since", type=float, default=0.0, help="check: messages ledgered since this epoch time")
+    p.add_argument("--attach", action="store_true", help="smoke, measure: drive the yerkd already running on --state")
+    p.set_defaults(on_second=None, fold_settings=None)
+    a = p.parse_args(argv)
+    if a.name != "imessage" and not a.config_dir:
+        print(f"{a.name} needs --config-dir", file=sys.stderr)
+        return 2
+    if a.name == "resume" and not a.to_config_dir:
+        print("resume needs --to-config-dir", file=sys.stderr)
+        return 2
+    a.reps = a.reps or (1 if a.name == "drill" else 3)
+    if a.name == "drill":
+        return drill(a)
+    out: dict[str, Any] = globals()[a.name](a)
+    print(json.dumps(out, indent=1, default=str))
+    return 0 if out.get("ok") else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
