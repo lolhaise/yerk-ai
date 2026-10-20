@@ -238,8 +238,9 @@ class Cooldowns:
             self.mtime = self.path.stat().st_mtime_ns
 
 
-def pick(accounts: list[Account], cooldowns: Cooldowns, now: float | None = None) -> Account:
-    """The first account in order that is not resting; when every one rests, the last anyway."""
+def pick(accounts: list[Account], cooldowns: Cooldowns, now: float | None = None, first: str = "") -> Account:
+    """The first account in order that is not resting, `first` (a room's pinned one) ahead of the rest; when every one rests, the last anyway."""
+    accounts = sorted(accounts, key=lambda a: a.name != first)
     for a in accounts:
         if cooldowns.until(a.name, now) is None:
             return a

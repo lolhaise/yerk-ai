@@ -113,8 +113,7 @@ class Beat:
         except RuntimeError as e:                        # the task set changed under the read
             lines.append(f"  unreadable: {e}")
         tasks = self.proc / str(os.getpid()) / "task"
-        rows = [("yerkd", r) for t in sorted(tasks.iterdir()) if (r := stat(int(t.name), self.proc, tasks))] \
-            if tasks.is_dir() else []
+        rows = [("yerkd", r) for t in sorted(tasks.iterdir()) if (r := stat(int(t.name), self.proc, tasks))] if tasks.is_dir() else []
         rows += [(room, r) for room, pid in self.pids().items() for r in tree(pid, self.proc)]
         lines += ["processes (who, pid, name, state, wchan, resident, cpu):"]
         lines += [f"  {who} {r['pid']} {r['name']} {r['state']} {r['wchan']} {r['rss_mb']} MB {r['cpu_s']:.1f} s"

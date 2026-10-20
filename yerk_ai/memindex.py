@@ -195,8 +195,7 @@ def chunks_of(text: str) -> list[tuple[int, int, str]]:
         if buf and (line.startswith("#") or size + len(line) + 1 > CHUNK_MAX):
             flush(n - 1)
         if len(line) > CHUNK_MAX:
-            out.extend((n, n, line[i:i + CHUNK_MAX].strip()) for i in range(0, len(line), CHUNK_MAX)
-                       if line[i:i + CHUNK_MAX].strip())
+            out.extend((n, n, line[i:i + CHUNK_MAX].strip()) for i in range(0, len(line), CHUNK_MAX) if line[i:i + CHUNK_MAX].strip())
             continue
         if not buf:
             if not line.strip():

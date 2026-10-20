@@ -80,6 +80,18 @@ def test_pick_skips_resting_accounts_and_always_tries_the_last(tmp_path):
     assert pick(A, c, now=31) == A[0]
 
 
+def test_the_account_a_room_is_put_on_goes_first_and_the_order_stays_behind_it(tmp_path):
+    c = Cooldowns(tmp_path / "cool.json")
+    assert [pick(A, c, now=0, first=n).name for n in ("three", "two", "", "gone")] == ["three", "two", "one", "one"]
+    c.fail("three", "rate_limit", lambda r: 30, now=0)                  # the pinned one rests: the order's first starts
+    assert pick(A, c, now=1, first="three") == A[0]
+    c.fail("one", "auth", lambda r: 30, now=0)                          # and past it, the next in the order
+    assert pick(A, c, now=1, first="three") == A[1]
+    c.fail("two", "billing", lambda r: 30, now=0)
+    assert pick(A, c, now=1, first="three") == A[1]                     # every one rests: the last of that order
+    assert pick(A, c, now=31, first="three") == A[2] and [a.name for a in A] == ["one", "two", "three"]   # back on it
+
+
 def test_cooldowns_double_per_account_and_kind_persist_and_clear(tmp_path):
     c = Cooldowns(tmp_path / "cool.json")
     assert c.fail("one", "rate_limit", lambda r: 30 * 2 ** r, now=0) == 30

@@ -48,7 +48,7 @@ class Daemon(Protocol):
     async def tool_rule(self, room: str, text: str, job: str) -> dict[str, Any]: ...
     async def tool_worker(self, room: str, req: dict[str, Any]) -> dict[str, Any]: ...
     async def tool_schedule(self, room: str, req: dict[str, Any]) -> dict[str, Any]: ...
-    async def tool_settings(self, room: str, model: str, effort: str) -> dict[str, Any]: ...
+    async def tool_settings(self, room: str, model: str, effort: str, account: str = "") -> dict[str, Any]: ...
 
 
 def caller_room(ctx: Context) -> str:
@@ -170,12 +170,13 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         return json.dumps(await daemon.tool_schedule(caller_room(ctx), req))
 
     @mcp.tool()
-    async def settings(model: str = "", effort: str = "", *, ctx: Context) -> str:
-        """The owner asks to change this room's model or thinking level ("put this room on Opus at max
-        thinking"): `model` an alias or full id from the install's list, `effort` low, medium, high,
-        xhigh or max; "default" for either goes back to the room's own. It applies from the next reply
-        on, in the same conversation; with neither it says what the room runs now. Say its `line`."""
-        return json.dumps(await daemon.tool_settings(caller_room(ctx), model, effort))
+    async def settings(model: str = "", effort: str = "", account: str = "", *, ctx: Context) -> str:
+        """The owner asks to change this room's model or thinking level, or the account it runs on ("put this room on
+        Opus at max thinking on account three"): `model` an alias or full id from the install's list, `effort` low,
+        medium, high, xhigh or max, `account` an account's name (tried first, the others behind it); "default" for any
+        goes back to the room's own. It applies from the next reply on, in the same conversation unless the line says
+        a new session starts; with none it says what the room runs now. Say its `line`."""
+        return json.dumps(await daemon.tool_settings(caller_room(ctx), model, effort, account))
 
     def route(path: str, handler: Handler) -> None:
         @mcp.custom_route(path, methods=["POST"])

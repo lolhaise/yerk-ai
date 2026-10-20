@@ -218,8 +218,7 @@ class Bridge:
         fut: asyncio.Future[Any] = asyncio.get_running_loop().create_future()
         self.pending[rid] = fut
         try:
-            self.writer.write((json.dumps({"jsonrpc": "2.0", "id": rid, "method": method, "params": params or {}})
-                               + "\n").encode())
+            self.writer.write((json.dumps({"jsonrpc": "2.0", "id": rid, "method": method, "params": params or {}}) + "\n").encode())
             await self.writer.drain()
             return await asyncio.wait_for(fut, wait)
         except asyncio.TimeoutError as e:
@@ -474,8 +473,7 @@ class IMessageChannel:
         if (hit := next((e for e in q if rowid > e[1] and in_attempt(msg, e[3])), None)) is None:
             return False
         q.remove(hit)
-        self.ledger.delivery_set(hit[0], state="sent", message_id=guid, sent=time.time(),
-                                 note="guid from the chat's next from-me row")
+        self.ledger.delivery_set(hit[0], state="sent", message_id=guid, sent=time.time(), note="guid from the chat's next from-me row")
         log.info("imessage: %s claimed its guid from the watch", hit[0])
         return True
 
@@ -583,8 +581,7 @@ class IMessageChannel:
         try:
             last = re.search(r"after row (\d+) from (\d+(?:\.\d+)?) to (\d+(?:\.\d+)?)", str(r["note"] or ""))
             if last:                              # an earlier try got no answer: it may have gone out
-                prior = await self._guid_from_history(ident, cid, int(last.group(1)),
-                                                      (float(last.group(2)), float(last.group(3))))
+                prior = await self._guid_from_history(ident, cid, int(last.group(1)), (float(last.group(2)), float(last.group(3))))
                 if prior:
                     self._unclaim(ident, key)
                     self.ledger.delivery_set(key, state="sent", message_id=prior, sent=time.time(),
@@ -703,8 +700,7 @@ async def probe(rooms: dict[str, str], conf: dict[str, Any], ledger: Ledger, lim
     """`yerk probe imessage`: never sends. For each room's chat, the bridge's newest `limit` rows (a
     read-only connection: any other method is refused), each looked up in the inbound ledger and
     the delivery ledger; a row neither holds, older than `grace` seconds, is a lost text."""
-    b = Bridge(None if conf.get("unix") else transport(conf), str(conf["unix"]) if conf.get("unix") else None,
-               read_only=True)
+    b = Bridge(None if conf.get("unix") else transport(conf), str(conf["unix"]) if conf.get("unix") else None, read_only=True)
     out: dict[str, Any] = {"ok": False, "rooms": {}, "gaps": []}
     owner = conf.get("owner") or []
     owner = {str(h) for h in ([owner] if isinstance(owner, str) else owner)}
@@ -723,8 +719,7 @@ async def probe(rooms: dict[str, str], conf: dict[str, Any], ledger: Ledger, lim
                 out["rooms"][room] = {"read": 0, "missing": 0, "chat": f"not served, {why}"}
                 out["failure"] = out.get("failure") or "not served"
                 continue
-            rows = (await b.request("messages.history", {"chat_id": int(chat["id"]), "limit": limit})
-                    or {}).get("messages", [])
+            rows = (await b.request("messages.history", {"chat_id": int(chat["id"]), "limit": limit}) or {}).get("messages", [])
             miss = []
             for m in rows:
                 guid, w = str(m.get("guid") or ""), when_of(m)

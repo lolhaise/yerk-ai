@@ -61,8 +61,7 @@ def model_call(account: Account, model: str, failures: FailureTable, meters: Met
     turn = Turn(started=time.time())
     with tempfile.TemporaryDirectory(prefix="yerk-health-") as cwd:
         try:
-            p = subprocess.run(argv, env=env or account_env(account), cwd=cwd, capture_output=True, text=True,
-                               timeout=timeout)
+            p = subprocess.run(argv, env=env or account_env(account), cwd=cwd, capture_output=True, text=True, timeout=timeout)
             out, err = p.stdout, p.stderr
         except subprocess.TimeoutExpired as e:
             out, err, turn.outcome = str(e.stdout or ""), "health call timed out", "timeout"

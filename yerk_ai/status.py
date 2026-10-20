@@ -17,7 +17,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
 
-from . import jobs, words, workers
+from . import config, jobs, words, workers
 from .accounts import Account, Cooldowns
 from .ledger import Ledger
 from .meters import Meters, meter_short
@@ -81,7 +81,8 @@ def collect(private: Path, state: Path, accounts: list[Account], cooldowns: Cool
         with room.lock:
             msgs, waiting, busy, rp = [*room.inflight, *room.pending, *room.queue], len(room.queue), room.busy, room.rp
         out["rooms"].append({"room": name, "busy": busy, "waiting": waiting, "watch": room.conf.get("watch"),
-                             "since": min((m.received for m in msgs), default=None) if busy else None})
+                             "since": min((m.received for m in msgs), default=None) if busy else None,
+                             "account": config.pinned(state, name, [a.name for a in accounts])})   # the one it is put on
         if rp is not None and rp.proc is not None and rp.alive():
             out["units"].append(use(name, tree(rp.proc.pid, proc)))
     try:
@@ -154,6 +155,7 @@ def card(s: dict[str, Any], now: float | None = None) -> list[str]:
                                + (W.QUEUED.format(n=r["waiting"]) if r["waiting"] else ""), r["room"], took=W.span(took)))
     out += [W.named(f"{W.PLAIN} {W.WATCHES}", r["room"], channel=str(r["watch"]).partition(":")[2])
             for r in s["rooms"] if r.get("watch")]
+    out += [W.named(f"{W.PLAIN} {W.PINNED}", r["room"], account=r["account"]) for r in s["rooms"] if r.get("account")]
     nth: dict[str, int] = {}
     for w in sorted(s["workers"], key=lambda w: (bool(w["waiting"]), float(w["queued"] or 0))):
         if w["waiting"]:

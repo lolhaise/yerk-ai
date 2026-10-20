@@ -234,8 +234,7 @@ def backed(cls: str, calls: list[dict[str, Any]], memory_read: bool) -> bool:
     if cls == "decision":
         return memory_read
     if cls == "file":
-        return any(n in ("Read", "Grep", "Glob", "read_memory", "NotebookRead") for n in names) or any(
-            READS.match(w) for w in words)
+        return any(n in ("Read", "Grep", "Glob", "read_memory", "NotebookRead") for n in names) or any(READS.match(w) for w in words)
     return True
 
 

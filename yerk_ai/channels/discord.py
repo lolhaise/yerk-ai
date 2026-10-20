@@ -48,6 +48,7 @@ from typing import Any, Awaitable, Callable, Coroutine, TypeVar
 import discord
 
 from .. import status, words
+from ..accounts import Account
 from ..config import EFFORTS
 from ..ledger import Ledger
 from ..lifted.loopguard import LoopGuard
@@ -74,12 +75,13 @@ QUICK = 1.0           # seconds a slash command may take before its answer is de
 SAID = (discord.MessageType.default, discord.MessageType.reply)   # what a person types; the rest are Discord's lines
 
 
-def commands(models: dict[str, str]) -> list[dict[str, Any]]:
-    """Exactly this install's slash commands, in the shape Discord's bulk overwrite takes."""
+def commands(models: dict[str, str], accounts: list[Account]) -> list[dict[str, Any]]:
+    """Exactly this install's slash commands, in the shape Discord's bulk overwrite takes; /model takes an account too."""
     def pick(name: str, values: list[str]) -> list[dict[str, Any]]:
         return [{"type": 3, "name": name, "description": words.CHOICE[name], "required": False,
                  "choices": [{"name": v, "value": v} for v in values][:25]}]
-    opts = {"model": pick("model", [*models, "default"]), "effort": pick("effort", [*EFFORTS, "default"])}
+    opts = {"model": pick("model", [*models, "default"]) + pick("account", [*(a.name for a in accounts), "default"]),
+            "effort": pick("effort", [*EFFORTS, "default"])}
     return [{"type": 1, "name": n, "description": what, "options": opts.get(n, [])} for n, what in words.COMMANDS.items()]
 
 
@@ -363,7 +365,7 @@ class DiscordChannel:
         for g in sorted(guilds):
             try:
                 await self.client.http.bulk_upsert_guild_commands(self.client.application_id, g,
-                                                                  commands(self.daemon.models))
+                                                                  commands(self.daemon.models, self.daemon.accounts))
                 log.info("discord: %d slash command(s) registered in guild %s", len(words.COMMANDS), g)
             except discord.HTTPException as e:
                 log.warning("discord: slash commands not registered in guild %s: %s", g, e)
@@ -393,7 +395,7 @@ class DiscordChannel:
         if name == "status":
             return "\n".join(status.card(await d.status_now({})))
         if name in ("model", "effort"):
-            r = await d.tool_settings(room, args.get("model", ""), args.get("effort", ""))
+            r = await d.tool_settings(room, args.get("model", ""), args.get("effort", ""), args.get("account", ""))
             return f"{words.DONE if r['ok'] and args else words.PLAIN if r['ok'] else words.NOT_DONE} {r['line']}"
         if name in ("new", "stop"):
             r = await (d.room_new(room) if name == "new" else d.room_stop(room))

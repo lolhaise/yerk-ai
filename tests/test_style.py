@@ -150,7 +150,9 @@ def test_every_notice_is_state_first_plain_and_phone_width():
                 f"{words.NOT_DONE} {words.NOT_SENT_AGAIN.format(name='report.pdf', why=words.file_why('gone'))}",
                 f"{words.NOT_DONE} {words.NOT_ANSWERED}\n{words.why('quota', 'error')}", NO_KEY_LINE,
                 f"{words.NOT_DONE} {words.NOT_ANSWERED}\n{words.BACK_ON.format(model='Sonnet 5.5', usual='Fable 5.1')}",
-                f"{dmod.REDELIVERED}\nthe reply", f"{words.NOT_DONE} {words.HOOKS_DEAD}"]
+                f"{dmod.REDELIVERED}\nthe reply", f"{words.NOT_DONE} {words.HOOKS_DEAD}",
+                f"{words.NOT_DONE} {words.NOT_AN_ACCOUNT.format(account='five', accounts='one, two, default')}",
+                f"{words.DONE} {words.CARRIED}", f"{words.DONE} {words.RECAPPED}"]
     for text in notices:
         assert (state_first(text) or text.startswith(words.SUB)) and not room_safe(text), text
         assert all(words.width(x) <= words.PHONE for x in text.splitlines()), text
@@ -193,7 +195,7 @@ def phrases() -> list[str]:
     out += [words.REPORT_SAVED, words.NO_REPORT, words.NOT_SENT, words.NOT_SENT_AGAIN, words.NOT_FETCHED,
             words.NOT_RUN_AGAIN, words.SENT_AGAIN, words.NOT_ANSWERED, words.GONE, words.STRAY, *words.BACKUP,
             words.MOVED, words.COMPACTING, *words.FILE_WHY.values(), words.NEXT_REPLY, words.OWNER_ONLY,
-            words.NOT_LISTED, words.NOT_A_LEVEL, words.BACK_ON]
+            words.NOT_LISTED, words.NOT_A_LEVEL, words.BACK_ON, words.ON, words.NOT_AN_ACCOUNT, words.CARRIED, words.RECAPPED]
     out += [v for k, v in words.STEP.items() if k != "hold"]            # a worker's card says "waiting for an account" itself
     out += [*words.WORKER_STEP.values(), *words.JOB_STEP.values(), words.MESSAGE_TO, words.NOTES, *words.FILES.values(),
             words.ANOTHER_WAY, words.ROOM_NOW]

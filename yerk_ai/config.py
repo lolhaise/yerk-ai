@@ -113,6 +113,16 @@ def room_settings(conf: dict[str, Any], state: Path, name: str, listed: dict[str
     return out
 
 
+def pinned(state: Path, name: str, names: list[str]) -> str:
+    """The account a room is put on first (the settings tool's `account`, in its override), "" for none. A name off
+    accounts.toml's `names` is ignored, logged once, as room_settings does: a stale or planted file never runs."""
+    v = str(override(state, name).get("account") or "")
+    if v and v not in names and (name, "account", v) not in _IGNORED:
+        _IGNORED.add((name, "account", v))
+        log.warning("room %s: the override's account %r is not in accounts.toml; the room's order is used", name, v[:80])
+    return v if v in names else ""
+
+
 # Private files are created WITH their mode, never created then chmod-ed (after the owner's
 # tools/safe_write.py): between a create and a chmod the file sits at the umask's mode, and on a box
 # with umask 0002 that is a group-writable session table or token file for a moment that only has to

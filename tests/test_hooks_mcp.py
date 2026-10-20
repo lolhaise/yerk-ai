@@ -49,8 +49,9 @@ def test_eight_preloaded_tools_with_slim_schemas(tmp_path):
     assert set(tools) == {"send", "hold", "recall", "read_memory", "remember", "worker", "schedule", "settings"}
     assert list(tools["remember"].inputSchema["properties"]) == ["text", "about", "replaces", "job"]
     assert {f"mcp__yerk__{t}" for t in tools} == set(YERK_TOOLS) and "`remember`" in context.MECHANICS.read_text()
-    assert list(tools["settings"].inputSchema["properties"]) == ["model", "effort"]
+    assert list(tools["settings"].inputSchema["properties"]) == ["model", "effort", "account"]
     assert "the owner asks to change this room's model or thinking level" in str(tools["settings"].description).lower()
+    assert "`account` an account's name (tried first, the others behind it)" in str(tools["settings"].description)
     assert list(tools["schedule"].inputSchema["properties"]) == ["action", "name", "when", "what", "kind", "tz",
                                                                 "deliver", "room", "cap_minutes", "account"]
     assert list(tools["send"].inputSchema["properties"]) == ["room", "text", "file"]

@@ -146,6 +146,35 @@ def test_a_session_that_answered_before_resumes_on_the_next_account(env, monkeyp
     room.rp.close()
 
 
+def test_the_account_the_room_is_put_on_starts_first_and_a_failure_on_it_still_hops_to_the_next(env, monkeypatch):
+    make, ledger, tmp_path = env
+    (tmp_path / "rooms" / "r").mkdir(parents=True)
+    (tmp_path / "rooms" / "r" / "override.json").write_text(json.dumps({"account": "two"}))   # the settings tool's file
+    chan = Chan()
+    room = make(chan)
+    send(room, ledger, "1", "hello")
+    wait_idle(room)
+    assert argvs(tmp_path)[-1]["config_dir"] == str(tmp_path / "cfg2")          # the pin, ahead of the order's first
+    monkeypatch.setenv("FAKE_CLAUDE_FAIL_DIRS", str(tmp_path / "cfg2"))         # then the pinned account hits its limit
+    room.rp.close()
+    send(room, ledger, "2", "again")
+    wait_idle(room)
+    rows = rows_of(ledger)[1:]
+    assert [(r["account"], r["outcome"], r["failure"]) for r in rows] == [("two", "error", "quota"), ("one", "ok", None)]
+    assert rows[-1]["hop"] == "quota:two" and chan.replies[-1] == ("echo: again", ["2"])
+    assert f"{words.WORKING} still on it, moved to account one" in chan.cards
+    room.rp.close()
+    send(room, ledger, "3", "still resting?")                                     # the pin rests: the next one starts
+    wait_idle(room)
+    assert argvs(tmp_path)[-1]["config_dir"] == str(tmp_path / "cfg1") and len(rows_of(ledger)) == 4
+    monkeypatch.delenv("FAKE_CLAUDE_FAIL_DIRS")
+    Cooldowns(tmp_path / "cooldowns.json").clear("two")                          # its rest is over
+    send(room, ledger, "4", "back?")
+    wait_idle(room)
+    assert argvs(tmp_path)[-1]["config_dir"] == str(tmp_path / "cfg2") and chan.replies[-1] == ("echo: back?", ["4"])
+    room.rp.close()
+
+
 def test_empty_reply_retries_once_in_a_fresh_session(env):
     make, ledger, _ = env
     chan = Chan()

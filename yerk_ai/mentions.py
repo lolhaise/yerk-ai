@@ -77,8 +77,7 @@ def entries_of(path: Path, cite: str, curated: bool) -> tuple[list[dict[str, Any
             dropped += 1
             return
         body = re.sub(r"\s+", " ", strip_md(text))
-        out.append({"key": key, "text": body[:ENTRY_CHARS - 1] + "…" if len(body) > ENTRY_CHARS else body,
-                    "cite": f"{cite}:{line}"})
+        out.append({"key": key, "text": body[:ENTRY_CHARS - 1] + "…" if len(body) > ENTRY_CHARS else body, "cite": f"{cite}:{line}"})
 
     def section(i: int) -> str:
         """A heading's text and the lines under it up to the next heading, as one run."""
@@ -93,8 +92,7 @@ def entries_of(path: Path, cite: str, curated: bool) -> tuple[list[dict[str, Any
         return " ".join(run)
 
     if not curated:                               # the file's own name, over its first unmarked lines
-        body = [(i, ln.strip()) for i, ln in enumerate(lines)
-                if ln.strip() and not HEADING.match(ln) and not DROP.search(ln)][:6]
+        body = [(i, ln.strip()) for i, ln in enumerate(lines) if ln.strip() and not HEADING.match(ln) and not DROP.search(ln)][:6]
         if body:
             add(key_of(path.stem.replace("-", " ").replace("_", " ")), " ".join(t for _, t in body), body[0][0] + 1)
     for i, ln in enumerate(lines):

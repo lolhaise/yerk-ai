@@ -243,8 +243,7 @@ class Turn:
             info = ev.get("rate_limit_info") or {}
             self.windows = info.get("unifiedWindows") or self.windows
             if info.get("status") == "rejected":
-                self.flags.append("credits_required" if info.get("errorCode") == "credits_required"
-                                  else "rate_limit_rejected")
+                self.flags.append("credits_required" if info.get("errorCode") == "credits_required" else "rate_limit_rejected")
         elif kind == "result":
             self.result, self.ended = ev, t
             self.text = str(ev.get("result") or "")

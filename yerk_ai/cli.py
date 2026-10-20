@@ -251,8 +251,7 @@ def cmd_accounts(a: argparse.Namespace) -> int:
         hl = "no health call yet" if not h else (
             f"health {'pass' if h['ok'] else 'FAIL'} {_clock(h['at'])}"
             + {1: ", identity ok", 0: ", IDENTITY FAIL", None: ""}[h["identity_ok"]])
-        out.append({"name": x.name, "order": x.order, "config_dir": str(x.config_dir), **t, "rests": rests,
-                    "health": h})
+        out.append({"name": x.name, "order": x.order, "config_dir": str(x.config_dir), **t, "rests": rests, "health": h})
         if not a.json:
             print(f"{x.name} (order {x.order}): {tok}; {rest}; {hl}")
     if a.json:
