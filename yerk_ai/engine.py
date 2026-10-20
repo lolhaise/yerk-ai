@@ -17,7 +17,6 @@ import fcntl
 import hashlib
 import hmac
 import json
-import logging
 import os
 import queue
 import secrets
@@ -35,7 +34,6 @@ from .config import write_private
 from .ledger import Ledger
 from .lifted.classify import Failure, FailureTable
 
-log = logging.getLogger("yerk.engine")
 STREAM_FLAGS = ["-p", "--input-format", "stream-json", "--output-format", "stream-json",
                 "--verbose", "--include-partial-messages", "--replay-user-messages"]
 
@@ -246,8 +244,8 @@ class Turn:
             if info.get("status") == "rejected":
                 self.flags.append("credits_required" if info.get("errorCode") == "credits_required" else "rate_limit_rejected")
                 self.resets = info.get("resetsAt") or ((self.windows or {}).get(str(info.get("rateLimitType"))) or {}).get("resetsAt")
-        elif kind == "result":
-            self.result, self.ended = ev, t
+        elif kind == "result" and (ev.get("origin") or {}).get("kind") != "task-notification":   # a result of Claude Code's
+            self.result, self.ended = ev, t        # own turn for a background command's notice (a resume reports the orphans) ends nothing
             self.text = str(ev.get("result") or "")
             self.subtype = str(ev.get("subtype") or "")
             self.is_error = bool(ev.get("is_error"))

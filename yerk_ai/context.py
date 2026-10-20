@@ -7,6 +7,7 @@ news: the clock line, the message metadata, and what changed in the rules since 
 """
 from __future__ import annotations
 
+import contextlib
 import json
 from dataclasses import dataclass
 from datetime import datetime
@@ -195,12 +196,15 @@ def wire(transcript: Path) -> dict[str, Any]:
     holds the system blocks and tool definitions as sent; `api-request-blob` rows hold each
     request's new content blocks. A request carrying a new message is that message plus what
     Claude Code and the hook put around it."""
-    import json
-    rows = [json.loads(line) for line in transcript.open()]
+    rows: list[dict[str, Any]] = []
+    lines = transcript.read_text(errors="replace").splitlines()
+    for line in lines:                     # a line a hard power-off zeroed (NUL bytes) or cut short: skipped, and counted
+        with contextlib.suppress(ValueError):
+            rows.append(json.loads(line))
     shape: dict[str, Any] = next((r["shape"] for r in rows if r.get("type") == "api-request-shape"), {})
     out: dict[str, Any] = {"system": sum(chars(b.get("text", "")) for b in shape.get("system", [])),
                            "tools": {str(t.get("name")): chars(json.dumps(t)) for t in shape.get("tools", [])},
-                           "messages": []}
+                           "messages": [], "skipped": len(lines) - len(rows)}
     group: list[tuple[str, str]] = []
     prompt: tuple[str, bool] | None = None          # the newest message not yet sent: (text, folded)
     added: list[str] = []                           # its attachments, rendered as Claude Code sends them
@@ -246,7 +250,8 @@ def render_wire(room_name: str, w: dict[str, Any], appended: int, budgets: dict[
     folds = sorted(sum(m["around"]) for m in msgs if m["folded"])
     total = w["system"] + sum(tools.values()) + first
     row = "  {:<34}{:>9}{:>9}  {}"
-    L = [f"yerk map {room_name} --wire  (from the room's transcript: what Claude Code sent)", "",
+    skipped = f"; damaged lines skipped: {w['skipped']}" if w.get("skipped") else ""      # a crash's zeroed or cut lines
+    L = [f"yerk map {room_name} --wire  (from the room's transcript: what Claude Code sent{skipped})", "",
          f"{'Session start, as sent':<36}{'chars':>9}{'budget':>9}",
          row.format("system prompt: Claude Code's own", fmt(w["system"] - appended), fmt(cc["claude_code_prompt"]), ""),
          row.format("system prompt: Yerk AI's file", fmt(appended), "", ""),

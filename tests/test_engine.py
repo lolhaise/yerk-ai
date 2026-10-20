@@ -167,6 +167,29 @@ def test_a_rejected_rate_limit_event_names_when_its_limit_resets():
     assert t.resets == 7                                                             # no top-level reset: the window it names
 
 
+def test_a_task_notification_result_never_ends_the_turn_or_sets_its_text():
+    """Seen live: on the resume after a crash Claude Code 2.1.301 first reported two background commands the
+    dead process orphaned, in a turn of its own whose result (origin kind task-notification, result "") landed 1.2 s in.
+    Taken as the end of the owner's turn, it read as an empty reply and the room went fresh mid-answer."""
+    t = Turn(started=100.0)
+    t.observe(101.0, {"type": "system", "subtype": "task_notification", "task_id": "bg1", "status": "stopped"})
+    t.observe(101.2, {"type": "result", "subtype": "success", "is_error": False, "result": "", "num_turns": 0,
+                      "origin": {"kind": "task-notification"}})
+    assert (t.ended, t.outcome, t.text, t.result) == (None, "running", "", None)
+    t.observe(105.0, {"type": "result", "subtype": "success", "result": "the answer key", "modelUsage": {"m": {}}})
+    assert (t.ended, t.outcome, t.text) == (105.0, "ok", "the answer key")
+
+
+def test_a_notice_turn_while_idle_never_ends_the_next_turn_or_lends_it_its_text(make):
+    """A background command that finishes after its turn ended gets a turn of its own while nothing is asked; its events
+    wait in the queue, and the next turn reads them first."""
+    with make() as rp:
+        rp.start()
+        assert rp.ask("BACKGROUND render the plans", timeout=20).text == "echo: BACKGROUND render the plans"
+        turn = rp.ask("is it done?", timeout=20)
+    assert (turn.outcome, turn.text, len(turn.accepted)) == ("ok", "echo: is it done?", 1)
+
+
 def test_turn_keeps_claude_codes_hook_error_notification_as_a_flag():
     t = Turn(started=100.0)
     t.observe(101.0, {"type": "system", "subtype": "notification", "key": "stop-hook-error", "text": "Stop hook error occurred"})
