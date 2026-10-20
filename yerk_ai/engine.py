@@ -287,8 +287,7 @@ class RoomProcess:
 
     def argv(self) -> list[str]:
         s = self.spec
-        a = [claude_bin(), *STREAM_FLAGS, "--model", s.model, "--setting-sources", "",
-             "--strict-mcp-config", "--tools", ",".join(s.tools)]
+        a = [claude_bin(), *STREAM_FLAGS, "--model", s.model, "--setting-sources", "", "--strict-mcp-config", "--tools", ",".join(s.tools)]
         a += ["--resume", self.resume_arg] if self.resume_arg else ["--session-id", self.session_id]
         if s.mcp_config:
             a += ["--mcp-config", str(s.mcp_config)]

@@ -57,8 +57,7 @@ def ahead(tree: Path, old: str, new: str) -> bool:
 
 def branch(tree: Path) -> str:
     """The branch checked out in `tree`; "" when it is detached."""
-    return subprocess.run(["git", "-C", str(tree), "symbolic-ref", "-q", "--short", "HEAD"], capture_output=True,
-                          text=True).stdout.strip()
+    return subprocess.run(["git", "-C", str(tree), "symbolic-ref", "-q", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()
 
 
 def move(tree: Path, on: str, commit: str) -> None:
@@ -77,8 +76,7 @@ def moved_back(tree: Path, on: str, failed: str) -> list[str]:
     if not on:
         return [words.line(f"{words.PLAIN} {words.DETACHED.format(commit=head(tree)[:7])}")]
     out = [words.named(f"{words.PLAIN} {words.MOVED_BACK}", on, commit=head(tree)[:7])]
-    up = subprocess.run(["git", "-C", str(tree), "rev-parse", "--abbrev-ref", "@{upstream}"], capture_output=True,
-                        text=True).stdout.strip()
+    up = subprocess.run(["git", "-C", str(tree), "rev-parse", "--abbrev-ref", "@{upstream}"], capture_output=True, text=True).stdout.strip()
     if up and (n := int(git(tree, "rev-list", "--count", f"HEAD..{up}"))):
         out.append(words.named(f"{words.PLAIN} {words.AHEAD}", up, n=n))
         if ahead(tree, failed, up):
@@ -284,8 +282,7 @@ def cut(ledger: Ledger, opened: set[str], until: float) -> int:
     """A person's messages a restart left taken and not answered (the turns it cut): open once it
     returned at `until` and received before then, and not already open at the last quiet check (a row a
     crash or a dropped room left open long before is not this deploy's)."""
-    return len([r for r in ledger.inbound_open() if r["sender"] != "yerk" and str(r["message_id"]) not in opened
-                and r["received"] < until])
+    return len([r for r in ledger.inbound_open() if r["sender"] != "yerk" and str(r["message_id"]) not in opened and r["received"] < until])
 
 
 def run(private: Path, state: Path, ref: str = "", tests: bool = True, unit_file: bool = False, *,
@@ -302,8 +299,7 @@ def run(private: Path, state: Path, ref: str = "", tests: bool = True, unit_file
     was = ask(state) if status.alive(state) else None
     if not (sd or named or found):                    # neither: refused before anything is touched
         reason = W.line(f"{W.PLAIN} {W.NO_UNIT}")
-        ledger.deploy(kind="deploy", unit="", before=str((was or {}).get("commit") or ""), after="",
-                      outcome="refused", cut=0, note=reason)
+        ledger.deploy(kind="deploy", unit="", before=str((was or {}).get("commit") or ""), after="", outcome="refused", cut=0, note=reason)
         return say(private, state, [W.line(f"{W.NOT_DONE} {W.NOT_DEPLOYED}"), reason], post)
     sd = sd or systemd(named or found)
     tree = Path(conf.get("tree") or sd.show("WorkingDirectory") or REPO)

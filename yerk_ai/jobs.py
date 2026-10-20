@@ -189,8 +189,7 @@ class Cron:
             dow = {d % 7 for d in _field(parts[4], 0, 7, DAYS)}
         except JobError as e:
             raise JobError(f"in the cron expression {expr!r}: {e}") from None
-        return cls(frozenset(minute), frozenset(hour), frozenset(dom), frozenset(month), frozenset(dow),
-                   parts[2] == "*", parts[4] == "*")
+        return cls(frozenset(minute), frozenset(hour), frozenset(dom), frozenset(month), frozenset(dow), parts[2] == "*", parts[4] == "*")
 
     def day_ok(self, d: date) -> bool:
         dom, dow = d.day in self.dom, (d.isoweekday() % 7) in self.dow
@@ -627,8 +626,7 @@ def unit_texts(job: Job, env: Env) -> tuple[str, str]:
         timer += [f"OnCalendar={c}" for c in job.calendar()] + ["Persistent=true"]
     timer += ["AccuracySec=1s", f"Unit={job.unit}.service", "", "[Install]", "WantedBy=timers.target", ""]
     start = 120 if job.kind == "agent" else int(job.cap * 60) + 120      # the runner's own cap comes first (L163)
-    service = [head, "[Unit]", f"Description=Yerk AI job {job.name}", "", "[Service]", "Type=oneshot", *run,
-               f"TimeoutStartSec={start}", ""]
+    service = [head, "[Unit]", f"Description=Yerk AI job {job.name}", "", "[Service]", "Type=oneshot", *run, f"TimeoutStartSec={start}", ""]
     return "\n".join(timer), "\n".join(service)
 
 
@@ -1075,8 +1073,7 @@ def run(name: str, private: Path, state: Path, units: Systemd | None = None,
     if not out.get("ok"):
         why = str(out.get("error", "the daemon refused it"))
         if job.kind == "script":
-            ledger.job_run_set(run_id, result="output" if payload["job"]["output"].strip() else "nothing",
-                               delivery=f"undelivered: {why}")
+            ledger.job_run_set(run_id, result="output" if payload["job"]["output"].strip() else "nothing", delivery=f"undelivered: {why}")
         else:
             ledger.job_run_set(run_id, ended=time.time(), exit="not run", result="did not start", delivery=f"undelivered: {why}")
         print(f"job {name}: {why}", file=sys.stderr)

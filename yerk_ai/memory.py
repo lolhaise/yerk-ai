@@ -243,7 +243,7 @@ def allowed_text(reader: Reader | None, path: Path, text: str, blank: str = "", 
         kept = False
         for raw in text.splitlines():
             if (ln := parse_line(raw)) is None:
-                shown = (kept and raw.startswith("  - attachment: ")) or not raw.strip() or bool(DAY_HEAD.match(raw))
+                shown = (kept and raw.startswith("  - attachment: ")) or not raw.strip() or bool(memindex.DAY_HEAD.match(raw))
                 out.append(raw if shown else blank)
                 kept = kept and raw.startswith("  - attachment: ")
                 continue
@@ -252,13 +252,6 @@ def allowed_text(reader: Reader | None, path: Path, text: str, blank: str = "", 
         return "\n".join(out) if whole or any(parse_line(x) for x in out) else None
     cls, room = file_class(path)
     return text if may_read(reader, cls, room) else None
-
-
-# the day-log line: `- HH:MM:SS+hh:mm label#id role@who: body [c:class] [m:id]`, every field after the
-# time optional, so the line written before the offset, the id, the author and the class still reads
-LINE = re.compile(r"^- (\d\d:\d\d:\d\d)([+-]\d\d:\d\d)? (\S+?)(?:#(\S+))? ([\w-]+)(?:@(\S+))?: (.*?)"
-                  r"(?: \[c:(\w+)\])?(?: \[m:([^\]\s]+)\])?$")
-DAY_HEAD = re.compile(r"^# \d{4}-\d{2}-\d{2}\b")      # the day log's first line
 
 
 @dataclass(frozen=True)
@@ -283,7 +276,7 @@ class Line:
 
 
 def parse_line(raw: str) -> Line | None:
-    if not (m := LINE.match(raw)):
+    if not (m := memindex.LINE.match(raw)):          # the grammar sits in memindex, whose chunker reads it too
         return None
     return Line(m.group(1), m.group(2) or "", m.group(3), m.group(4) or "", m.group(5), m.group(6) or "",
                 m.group(7), m.group(8) or "", m.group(9) or "")

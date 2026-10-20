@@ -184,8 +184,7 @@ class Vectors:
 
     def load(self, conn: sqlite3.Connection, model: str, units: str = "both") -> int:
         """Every stored vector of the chosen units, a block at a time (never the whole table at once)."""
-        cur = conn.execute(f"SELECT v.sha, v.vec FROM vectors v WHERE v.model = ? AND v.dim = ? AND {unit_where(units)}",
-                           (model, self.dim))
+        cur = conn.execute(f"SELECT v.sha, v.vec FROM vectors v WHERE v.model = ? AND v.dim = ? AND {unit_where(units)}", (model, self.dim))
         fresh = Vectors(self.dim, self.width)
         while True:
             if not (rows := cur.fetchmany(LOAD_ROWS)):
