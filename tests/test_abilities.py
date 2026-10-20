@@ -45,7 +45,7 @@ def text_of(ab: dict) -> str:
 
 
 def test_every_entry_says_built_or_described():
-    assert TAB and all(ab.get("state") in abilities.STATES for ab in TAB.values()), \
+    assert TAB and all(ab.get("state") in ("built", "described") for ab in TAB.values()), \
         {k: v.get("state") for k, v in TAB.items()}
     assert len(DESCRIBED) > 40 and "voice" in DESCRIBED
 

@@ -15,7 +15,6 @@ from . import words
 from .config import load_toml, table
 
 log = logging.getLogger("yerk.abilities")
-STATES = ("built", "described")
 SELF = "abilities"                  # "what can you do": its answer is every ability's name by state
 
 

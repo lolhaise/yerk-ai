@@ -34,6 +34,7 @@ from .ledger import Ledger
 from .workers import systemctl, unit_line
 
 FAST = ["tests/test_scrub.py", "tests/test_budget.py", "tests/test_card.py", "tests/test_style.py"]
+FAILED = re.compile(r"^/\S+:\d+: (?:AssertionError: )?(.+)$", re.M)     # pytest --tb=line: where a test failed, and why
 Ask = Callable[[Path], "dict[str, Any] | None"]
 
 
@@ -386,10 +387,12 @@ def run(private: Path, state: Path, ref: str = "", tests: bool = True, unit_file
     if on and not ahead(tree, found, target):
         return no("refused", W.named(f"{W.PLAIN} {W.NOT_AHEAD}", on, ref=target[:7]), after=target)
     move(tree, on, target)
-    if tests and subprocess.run([sys.executable, "-m", "pytest", "-q", "-x", *conf.get("tests", FAST)], cwd=tree,
-                                capture_output=True).returncode:
+    env = {**os.environ, "YERK_PRIVATE": str(private), "YERK_STATE": str(state)}    # the budget test reads the real rooms
+    if tests and (t := subprocess.run([sys.executable, "-m", "pytest", "-q", "-x", "--tb=line", *conf.get("tests", FAST)],
+                                      cwd=tree, capture_output=True, text=True, env=env)).returncode:
         move(tree, on, found)
-        return no("tests failed", W.line(f"{W.PLAIN} {W.TESTS_FAILED}"), after=target)
+        why = [W.line(f"{W.PLAIN} {W.no_paths(x)}") for x in FAILED.findall(t.stdout)[:1]]     # the first failure, in its words
+        return no("tests failed", W.line(f"{W.PLAIN} {W.TESTS_FAILED}"), *why, after=target)
     tested = W.line(f"{W.DONE if tests else W.PLAIN} {W.TESTS_PASSED if tests else W.TESTS_SKIPPED}")
     where = [] if on else [W.line(f"{W.PLAIN} {W.DETACHED.format(commit=target[:7])}")]
     ok, why, outcome = settle("deploy", target, before, (lambda: sd.move(tree, home, moved)) if unit_file else sd.restart)

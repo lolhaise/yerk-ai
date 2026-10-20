@@ -6,7 +6,6 @@ import asyncio
 import hashlib
 import io
 import subprocess
-import time
 from contextlib import redirect_stdout
 from datetime import datetime, timezone
 from pathlib import Path
@@ -105,12 +104,14 @@ def epoch(*a, tz):
 
 # the schedules
 def test_cron_every_and_at_compute_the_right_next_fire():
+    def nxt(job, at):                   # the clock's next fire after `at`, in the job's zone
+        return job.cron.fire(at, job.zone)
     # cron, across the spring-forward night in Toronto: Friday 08:00 EST fires at 09:00 EST the same day,
     # Friday 10:00 EST fires Monday 09:00 EDT (13:00 UTC, an hour earlier in UTC than the Friday one)
     weekdays = make_job("brief", {"kind": "agent", "schedule": "0 9 * * 1-5", "tz": "America/Toronto", "room": "r",
                                   "message": "m"})
-    assert weekdays.next_fire(epoch(2026, 3, 6, 8, 0, tz=TOR)) == epoch(2026, 3, 6, 9, 0, tz=TOR) == epoch(2026, 3, 6, 14, 0, tz=UTC)
-    assert weekdays.next_fire(epoch(2026, 3, 6, 10, 0, tz=TOR)) == epoch(2026, 3, 9, 9, 0, tz=TOR) == epoch(2026, 3, 9, 13, 0, tz=UTC)
+    assert nxt(weekdays, epoch(2026, 3, 6, 8, 0, tz=TOR)) == epoch(2026, 3, 6, 9, 0, tz=TOR) == epoch(2026, 3, 6, 14, 0, tz=UTC)
+    assert nxt(weekdays, epoch(2026, 3, 6, 10, 0, tz=TOR)) == epoch(2026, 3, 9, 9, 0, tz=TOR) == epoch(2026, 3, 9, 13, 0, tz=UTC)
     assert weekdays.calendar() == ["Mon,Tue,Wed,Thu,Fri *-*-* 9:0:00 America/Toronto"]
     assert weekdays.planned(epoch(2026, 3, 9, 9, 0, 4, tz=TOR)) == epoch(2026, 3, 9, 9, 0, tz=TOR)      # the instant it was meant for
     # names, steps and the cron rule that a restricted day of month OR a restricted weekday fires
@@ -118,24 +119,24 @@ def test_cron_every_and_at_compute_the_right_next_fire():
                           "command": "true"}).calendar() == ["Mon,Tue,Wed,Thu,Fri *-1,7-* 8,9,10:0/15:00 UTC"]
     either = make_job("x", {"kind": "script", "schedule": "0 0 1 * 1", "tz": "UTC", "room": "r", "command": "true"})
     assert either.calendar() == ["Mon *-*-* 0:0:00 UTC", "*-*-1 0:0:00 UTC"]
-    assert either.next_fire(epoch(2026, 10, 18, 12, 0, tz=UTC)) == epoch(2026, 10, 19, 0, 0, tz=UTC)    # the Monday, not Nov 1
-    # every: an interval off the clock's boundaries runs one interval after the last fire, else after now
+    assert nxt(either, epoch(2026, 10, 18, 12, 0, tz=UTC)) == epoch(2026, 10, 19, 0, 0, tz=UTC)    # the Monday, not Nov 1
+    # every: an interval off the clock's boundaries has no clock: its timer counts from the last run (OnUnitActiveSec)
     odd = make_job("h", {"kind": "script", "every": "1h30m", "room": "r", "command": "true"})
-    assert odd.every_seconds == 5400 and odd.next_fire(1000.0) == 6400.0 and odd.next_fire(1000.0, last=500.0) == 5900.0
+    assert odd.every_seconds == 5400 and odd.cron is None
     assert odd.planned(7000.0, last_trigger=6400.0) == 6400.0 and odd.describe() == "every 1h30m" and odd.calendar() == []
     # an interval that divides an hour or a day runs on the clock's boundaries, in its zone, like a cron line
     two = make_job("t", {"kind": "script", "every": "2m", "room": "r", "command": "true"})
-    assert two.calendar() == ["*-*-* *:0/2:00 UTC"] and two.next_fire(epoch(2026, 10, 18, 12, 1, 30, tz=UTC)) == epoch(2026, 10, 18, 12, 2, tz=UTC)
+    assert two.calendar() == ["*-*-* *:0/2:00 UTC"] and nxt(two, epoch(2026, 10, 18, 12, 1, 30, tz=UTC)) == epoch(2026, 10, 18, 12, 2, tz=UTC)
     assert two.planned(epoch(2026, 10, 18, 12, 2, 0, 190000, tz=UTC)) == epoch(2026, 10, 18, 12, 2, tz=UTC)
     six = make_job("s", {"kind": "script", "every": "6h", "tz": "Asia/Tokyo", "room": "r", "command": "true"})
-    assert six.calendar() == ["*-*-* 0/6:0:00 Asia/Tokyo"] and six.next_fire(epoch(2026, 10, 18, 7, 0, tz=TOK)) == epoch(2026, 10, 18, 12, 0, tz=TOK)
+    assert six.calendar() == ["*-*-* 0/6:0:00 Asia/Tokyo"] and nxt(six, epoch(2026, 10, 18, 7, 0, tz=TOK)) == epoch(2026, 10, 18, 12, 0, tz=TOK)
     assert make_job("d", {"kind": "script", "every": "1d", "room": "r", "command": "true"}).calendar() == ["*-*-* 0:0:00 UTC"]
     assert make_job("m", {"kind": "script", "every": "1h", "room": "r", "command": "true"}).calendar() == ["*-*-* *:0:00 UTC"]
     assert jobs.every_cron(7 * 60) is None and jobs.every_cron(90) is None and jobs.every_cron(5 * 3600) is None
     # at: a naive time is read in tz, one with an offset keeps its instant, a past one is refused
     at = make_job("a", {"kind": "script", "at": "2099-01-02 09:00", "tz": "Asia/Tokyo", "room": "r", "command": "true"})
     assert at.at_epoch == epoch(2099, 1, 2, 9, 0, tz=TOK) and at.calendar() == ["2099-01-02 09:00:00 Asia/Tokyo"]
-    assert at.next_fire(time.time()) == at.at_epoch and at.planned(at.at_epoch + 2) == at.at_epoch
+    assert at.cron is None and at.planned(at.at_epoch + 2) == at.at_epoch
     offs = make_job("a", {"kind": "script", "at": "2099-01-02T09:00:00+09:00", "tz": "America/Toronto", "room": "r",
                           "command": "true"})
     assert offs.at_epoch == at.at_epoch and offs.calendar() == ["2099-01-01 19:00:00 America/Toronto"]

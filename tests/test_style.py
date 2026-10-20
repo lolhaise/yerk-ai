@@ -239,7 +239,7 @@ def test_the_vocabulary_grep_catches_a_renderer_that_spells_its_own():
 # 3. the manifest: built or described on every entry, voice among the described (tests/test_abilities.py has the rest)
 def test_every_ability_says_built_or_described_and_voice_is_described():
     tab = abilities.manifest()
-    assert all(ab.get("state") in abilities.STATES for ab in tab.values()), {k: v.get("state") for k, v in tab.items()}
+    assert all(ab.get("state") in ("built", "described") for ab in tab.values()), {k: v.get("state") for k, v in tab.items()}
     assert "voice" in [k for k, ab in tab.items() if ab["state"] == "described"]
     v = tab["voice"]
     assert v["tier"] == "paid" and len(v["how"]) >= 5 and v["why_not"].startswith("The owner's call")

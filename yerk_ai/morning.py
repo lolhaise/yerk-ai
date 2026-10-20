@@ -24,8 +24,8 @@ from .ledger import Ledger
 from .meters import Meters, meter_short
 
 DAY = 86400.0
-STATIC = ("mechanics", "persona", "rulebook", "room_voice", "pinned_memory")   # the parts whose change is a
-                                                                               # finding: the recall pack moves daily
+STATIC = ("mechanics", "persona", "rulebook", "room_voice", "pinned_memory", "rules")   # the parts whose change is
+                                                                                        # a finding: the recall pack moves daily
 
 
 def sizes(private: Path, state: Path) -> dict[str, dict[str, int]]:

@@ -10,8 +10,8 @@ store is bounded by characters and drops the OLDEST result text first, never a l
 
 After each reply the Stop check runs three rules and LOGS what it would bounce, never blocks
 (shadow mode, until 100 cases show under 1 in 10 false alarms):
-- figure: the reply quotes a figure that is on file in the memory tree and no read of the turn
-  carries it;
+- figure: the reply quotes a figure that is on file in the memory tree, that no read of the turn
+  carries and that the room did not post in a reply earlier in its session (the check read that reply);
 - file: the reply names a file of the memory tree the turn never read;
 - decide: the prompt asks what was decided and the turn made no memory read (a recall or
   read_memory call, a read inside a memory root, or recall the prompt hook put in).
@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 import re
 import threading
+import time
 from pathlib import Path
 from typing import Any, Callable
 
@@ -69,6 +70,7 @@ class Evidence:
             self.injected_recall = False
             self.logged: set[tuple[str, str]] = set()
             self.kept = 0
+            self.started = time.time()          # a reply posted before this came from an earlier turn
 
     def give(self, text: str, recall: bool = False) -> None:
         with self.lock:
@@ -138,9 +140,10 @@ def rounded_near(fig: str, seen: str) -> bool:
     return any(abs(float(n.replace(",", "")) - v) <= NEAR * v for n in NUMBER.findall(seen))
 
 
-def check(reply: str, prompts: list[str], ev: Evidence, roots: tuple[Path, ...],
-          filed: Callable[[str], str | None], known: Callable[[str], str | None]) -> list[tuple[str, str]]:
-    """(rule, detail) for each thing the reply leans on that the turn never read. Logs only."""
+def check(reply: str, prompts: list[str], ev: Evidence, roots: tuple[Path, ...], filed: Callable[[str], str | None],
+          known: Callable[[str], str | None], said: str = "") -> list[tuple[str, str]]:
+    """(rule, detail) for each thing the reply leans on that the turn never read. Logs only. A figure in what the room
+    posted in its session's earlier replies, `said` (Ledger.said), counts as read: the check ran on those replies."""
     out: list[tuple[str, str]] = []
     seen = ev.read_text()
     figures: dict[str, str] = {}                    # each figure once, with the words just before it
@@ -148,7 +151,7 @@ def check(reply: str, prompts: list[str], ev: Evidence, roots: tuple[Path, ...],
         figures.setdefault(m.group(0).replace("$ ", "$"), reply[max(0, m.start() - 24):m.start()])
     for fig, before in figures.items():
         bare = fig.lstrip("$")
-        if has_figure(seen, fig) or has_figure(seen, bare):
+        if any(has_figure(text, f) for text in (seen, said) for f in (fig, bare)):
             continue
         if VERSION.search(before) or APPROX.search(before) or rounded_near(bare, seen):
             continue

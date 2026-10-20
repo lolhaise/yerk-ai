@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from yerk_ai.unwrap import delete_targets, inside, sudo_in, unwrap
+from yerk_ai.unwrap import delete_targets, inside, unwrap
 
 TOOL = "yerk-banned-tool"
 RUN = [[TOOL, "--flag"]]
@@ -217,15 +217,9 @@ def test_a_command_known_only_at_run_time_is_none(text: str) -> None:
     assert unwrap(text) is None
 
 
-def test_sudo_in() -> None:
-    assert sudo_in(f"sudo {TOOL}")
-    assert sudo_in(f"timeout 5 sudo -u nobody {TOOL}")
-    assert sudo_in(f"ls && bash -c 'sudo {TOOL}'")
-    assert sudo_in(f"doas {TOOL}")
-    assert sudo_in(f"su -c '{TOOL}'")
-    assert not sudo_in(f"{TOOL} --flag")
-    assert not sudo_in("echo sudo")
-    assert sudo_in("echo 'open")  # unreadable, so sudo cannot be ruled out
+def test_the_command_behind_su_c_and_a_nested_sudo_is_read() -> None:
+    assert unwrap(f"su -c '{TOOL} --flag'") == RUN
+    assert unwrap(f"ls && bash -c 'sudo {TOOL} --flag'") == [["ls"], *RUN]
 
 
 # Where a delete points
