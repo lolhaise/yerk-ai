@@ -138,9 +138,10 @@ def test_a_room_cannot_read_another_rooms_private_lines_or_files(tmp_path):
     paths = lambda r: sorted({h["cite"].rpartition(":")[0].rsplit("/", 1)[-1] for h in r["hits"]})  # noqa: E731
     assert paths(memory.recall(s, "kettle", 20, reader=owner)) == ["2026-01-05.md", "kettle.md", "shared.md", "side.md"]
     got = memory.recall(s, "kettle", 20, reader=b)
-    assert paths(got) == ["2026-01-05.md", "shared.md", "side.md"]
-    day = next(h for h in got["hits"] if "/2026-01-05.md:" in h["cite"])
-    assert "in room b" in day["text"] and "in room a" not in day["text"] and "an old line" not in day["text"]
+    assert paths(got) == ["shared.md", "side.md"] and "in room b" not in str(got["hits"])   # the day log holds room a's lines too: never
+    assert memory.recall(s, "old", 20, reader=b)["hits"] == []                 # ranked for b, on its words or on room a's; b's own line
+    hits = memory.topic_hits(s, "room-b", "kettle in room b?", set(), datetime(2026, 1, 6, tzinfo=UTC), rid="b-id", owner=False)
+    assert [h["text"] for h in hits] == ["kettle kettle kettle in room b"]     # reaches it through topic hits, and read (below)
     assert paths(memory.recall(s, "kettle", 20, reader=nobody)) == ["shared.md"]
     assert not memory.read(s, "facts/kettle.md", reader=b)["ok"] and memory.read(s, "facts/kettle.md", reader=owner)["ok"]
     assert memory.read(s, "facts/side.md", reader=b)["ok"] and not memory.read(s, "facts/side.md", reader=nobody)["ok"]

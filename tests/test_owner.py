@@ -11,13 +11,14 @@ from yerk_ai.channels.discord import ACK, DiscordChannel
 from yerk_ai.ledger import Ledger
 from yerk_ai.room import Inbound, Room
 
-from test_discord import BOT, HOOK, OTHER_CH, OWNER, ROOM_CH, Client
+from test_discord import BOT, HOOK, OTHER_CH, OWNER, PERSON, ROOM_CH, Client
 
 GUILD = 33
 PILOT = 10 ** 15 + BOT          # the bot: an id long enough for discord.py's mention pattern (15 to 20 digits)
 MEMBER = {"roles": [], "joined_at": "2026-01-25T00:00:00+00:00", "deaf": False, "mute": False, "flags": 0}
 OWNER_USER = {"id": str(OWNER), "username": "owner", "global_name": "Owner", "discriminator": "0", "avatar": None,
               "public_flags": 0}
+PERSON_USER = {**OWNER_USER, "id": str(PERSON), "username": "mom", "global_name": "Mom"}     # listed in the room's `people`
 BOT_USER = {"id": str(PILOT), "username": "Pilot", "global_name": None, "discriminator": "4321", "avatar": None,
             "bot": True}
 
@@ -102,7 +103,7 @@ def env(tmp_path, monkeypatch):
     client.user = NS(id=PILOT)
     d = DiscordChannel("token", OWNER, [], Ledger(tmp_path / "l.sqlite"), client=client, state=tmp_path)
     room = FakeRoom(tmp_path)
-    d.add_room(ROOM_CH, room)
+    d.add_room(ROOM_CH, room, people=frozenset({PERSON}))
     return d, client, room, Parsed()
 
 
@@ -244,6 +245,27 @@ def test_a_delete_drops_a_waiting_message_and_keeps_an_answered_one(env):
         "ignored", "deleted by its sender before it ran")
     assert (d.ledger.inbound_get("509")["state"], d.ledger.inbound_get("509")["note"]) == (
         "answered", "deleted by its sender after it ran (answered)")
+
+
+def test_a_listed_person_is_answered_and_their_edits_and_deletes_reach_only_their_own_messages(env):
+    """A person in the room's `people`, on the real inbound shape: their message is ledgered as sender person, acked
+    and run; their edit revises their own waiting message; an edit event for the owner's waiting message whose author
+    is the person (a shape Discord never sends, since only an author edits) changes nothing; a delete drops the waiting
+    message it names. Discord's delete event carries no deleter, so whose hand it was is left to Discord's permissions."""
+    d, client, room, p = env
+    run(d.on_message(p.create(payload(701, "mom here", author=PERSON_USER))))
+    run(d.on_message(p.create(payload(702, "the owner's, waiting"))))
+    assert [(m.id, m.sender) for m in room.got] == [("701", "person"), ("702", "owner")]
+    assert d.ledger.inbound_get("701")["sender"] == "person" and client.chans[ROOM_CH].reactions == [(701, "+", ACK), (702, "+", ACK)]
+    room.waiting.extend(room.got)
+    run(d.on_raw_message_edit(p.update(payload(701, "mom here, edited", author=PERSON_USER,
+                                               edited_timestamp="2026-10-17T23:22:00.000000+00:00"))))
+    assert room.got[0].text == "mom here, edited" and d.ledger.inbound_get("701")["note"] == "edited before it ran"
+    run(d.on_raw_message_edit(p.update(payload(702, "not the owner's words", author=PERSON_USER,
+                                               edited_timestamp="2026-10-17T23:23:00.000000+00:00"))))
+    assert len(room.got) == 2 and room.got[1].text == "the owner's, waiting" and not d.ledger.inbound_get("702")["note"]
+    run(d.on_raw_message_delete(p.delete(701)))
+    assert [m.id for m in room.waiting] == ["702"] and d.ledger.inbound_get("701")["state"] == "ignored"
 
 
 def test_the_room_revises_and_withdraws_only_messages_still_waiting(tmp_path):

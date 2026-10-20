@@ -14,13 +14,15 @@ from yerk_ai.channels.discord import ACK, DONE, LIMIT, REDELIVERED, DiscordChann
 from yerk_ai.ledger import Ledger
 from yerk_ai.lifted.split import fence_state_after, split_message
 
-ROOM_CH, OTHER_CH, OWNER, HOOK, BOT = 11, 22, 7, 55, 99
+ROOM_CH, OTHER_CH, OWNER, PERSON, HOOK, BOT = 11, 22, 7, 31, 55, 99     # PERSON: a user the test room lists in `people`
 
 
 class Msg:
-    def __init__(self, ch, mid, content="", author=OWNER, webhook_id=None, attachments=()):
+    def __init__(self, ch, mid, content="", author=OWNER, webhook_id=None, attachments=(), name=""):
         self.channel, self.id, self.content, self.webhook_id = ch, mid, content, webhook_id
         self.author, self.attachments, self.edits, self.deleted, self.file = NS(id=author), list(attachments), [], False, None
+        if name:
+            self.author.name = name
 
     async def edit(self, content):
         self.edits.append(content)
@@ -115,7 +117,7 @@ def dc(tmp_path, monkeypatch):
     client = Client()
     d = DiscordChannel("token", OWNER, [HOOK], Ledger(tmp_path / "l.sqlite"), client=client, state=tmp_path)
     room = Room(tmp_path)
-    d.add_room(ROOM_CH, room)
+    d.add_room(ROOM_CH, room, people=frozenset({PERSON}))
     return d, client, room
 
 
@@ -133,20 +135,69 @@ def test_split_stays_under_the_limit_and_never_inside_a_code_block():
     assert LIMIT + len(REDELIVERED) + 1 <= 2000                       # a labelled part still fits
 
 
-def test_only_the_room_its_owner_and_its_webhook_are_answered(dc):
+def test_only_the_room_its_owner_its_people_and_its_webhook_are_answered(dc):
+    """The sender gate: the owner in every room, a listed person in the room that lists them, the test webhook. A
+    stranger, the bot itself, an unlisted webhook, another channel, and a listed person in a room that does not list
+    them get no turn, no reaction and no ledger row."""
     d, client, room = dc
     room_ch, other = client.chans[ROOM_CH], client.chans[OTHER_CH]
-    run(d.on_message(Msg(other, 1, "hi")))                            # another channel: nothing at all
+    second = Room(room.tmp)                                            # a second room, listing nobody
+    second.name = "second-room"
+    d.add_room(OTHER_CH, second)
+    run(d.on_message(Msg(Chan(33), 1, "hi")))                          # another channel: nothing at all
     run(d.on_message(Msg(room_ch, 2, "hi", author=12345)))             # a stranger
     run(d.on_message(Msg(room_ch, 3, "hi", author=BOT)))               # itself
     run(d.on_message(Msg(room_ch, 4, "hi", webhook_id=777)))           # an unlisted webhook
-    assert room.got == [] and other.reactions == room_ch.reactions == [] and d.ledger.rows(5, "inbound") == []
+    run(d.on_message(Msg(other, 9, "hi", author=PERSON)))              # a listed person, in a room that does not list them
+    assert room.got == second.got == [] and other.reactions == room_ch.reactions == [] and d.ledger.rows(5, "inbound") == []
     run(d.on_message(Msg(room_ch, 5, "from owner")))
     run(d.on_message(Msg(room_ch, 6, "from hook", webhook_id=HOOK)))
+    run(d.on_message(Msg(room_ch, 7, "from a listed person", author=PERSON)))
+    run(d.on_message(Msg(other, 8, "the owner, in a room that lists nobody")))    # the owner: every room, listed or not
     run(d.on_message(Msg(room_ch, 5, "from owner")))                   # a duplicate delivery
-    assert [(m.id, m.sender) for m in room.got] == [("5", "owner"), ("6", "test-webhook")]
-    assert {r["message_id"]: r["state"] for r in d.ledger.rows(5, "inbound")} == {"5": "received", "6": "received"}
-    assert room_ch.reactions == [(5, "+", ACK), (6, "+", ACK)]
+    assert [(m.id, m.sender) for m in room.got] == [("5", "owner"), ("6", "test-webhook"), ("7", "person")]
+    assert [(m.id, m.sender) for m in second.got] == [("8", "owner")]
+    assert {r["message_id"]: (r["sender"], r["state"]) for r in d.ledger.rows(5, "inbound")} == {
+        "5": ("owner", "received"), "6": ("test-webhook", "received"), "7": ("person", "received"), "8": ("owner", "received")}
+    assert room_ch.reactions == [(5, "+", ACK), (6, "+", ACK), (7, "+", ACK)] and other.reactions == [(8, "+", ACK)]
+
+
+def test_a_listed_person_is_never_held_by_the_webhook_loop_guard(tmp_path):
+    """The loop guard counts machine-sent messages: a webhook's burst past the cap is held, a listed person's runs
+    like the owner's, since a person is not a script."""
+    from yerk_ai.lifted.loopguard import LoopGuard
+    client = Client()
+    d = DiscordChannel("token", OWNER, [HOOK], Ledger(tmp_path / "l.sqlite"), client=client, state=tmp_path,
+                       guard=LoopGuard(max_events=2))
+    room = Room(tmp_path)
+    d.add_room(ROOM_CH, room, people=frozenset({PERSON}))
+    ch = client.chans[ROOM_CH]
+    for i in range(3):
+        run(d.on_message(Msg(ch, 10 + i, f"person {i}", author=PERSON)))
+        run(d.on_message(Msg(ch, 20 + i, f"hook {i}", webhook_id=HOOK)))
+    assert [m.id for m in room.got] == ["10", "20", "11", "21", "12"]           # the third webhook message is held
+
+
+def test_people_is_a_list_of_discord_user_ids_or_the_start_stops(tmp_path):
+    """`people` in rooms.toml: ids (TOML integers, or digits in quotes) on a room whose privacy is family or shared; unset
+    or empty is the owner only; anything else is refused when rooms.toml is read, with one plain line, so a typo never
+    makes a room that answers nobody, and a listed person never talks to a room that reads the owner's whole memory."""
+    from yerk_ai.config import people, rooms
+    assert people("r", {}) == people("r", {"people": []}) == people("r", {"people": [], "privacy": "owner"}) == frozenset()
+    assert people("r", {"people": [PERSON, "7"], "privacy": "family"}) == frozenset({PERSON, 7})    # an int, digits in quotes
+    for bad in (str(PERSON), [0], [1, "x"], [1.5], [True]):                                           # one string is not a list
+        with pytest.raises(SystemExit, match="people must be a list of Discord user ids"):
+            people("r", {"people": bad, "privacy": "family"})
+    for conf in ({"people": [7]}, {"people": [7], "privacy": "owner"}):
+        with pytest.raises(SystemExit, match='people needs privacy = "family" or "shared"'):
+            people("r", conf)
+    for more in ({"tools": ["Read", "Bash"]}, {"read": ["/srv/notes"]}):              # a shell or a read folder: past the classes
+        with pytest.raises(SystemExit, match='people needs tools without "Bash" and no `read`'):
+            people("r", {"people": [7], "privacy": "family", **more})
+    assert people("r", {"people": [7], "privacy": "family", "tools": ["Read", "Grep", "Glob"]}) == frozenset({7})
+    (tmp_path / "rooms.toml").write_text('[rooms.a]\nchannel = "discord:1"\nprivacy = "family"\npeople = "7"\n')
+    with pytest.raises(SystemExit, match="rooms.toml: a: people must be a list"):
+        rooms(tmp_path)
 
 
 def test_card_is_edited_then_replaced_by_the_split_reply(dc):
@@ -517,19 +568,21 @@ def test_every_message_in_the_room_is_filed_in_the_days_log_once(tmp_path, monke
     d = DiscordChannel("token", OWNER, [HOOK], Ledger(tmp_path / "l.sqlite"), client=client, state=tmp_path,
                        capture=log.capture)
     room = Room(tmp_path)
-    d.add_room(ROOM_CH, room)
+    d.add_room(ROOM_CH, room, people=frozenset({PERSON}))
     ch = client.chans[ROOM_CH]
-    run(d.on_message(Msg(ch, 31, "a longer line from the owner")))
+    run(d.on_message(Msg(ch, 31, "a longer line from the owner", name="owner_handle")))
     run(d.on_message(Msg(ch, 32, "", webhook_id=HOOK, attachments=[Attachment("photo.png", b"x" * 1234, "image/png")])))
     run(d.on_message(Msg(ch, 33, "k")))
     run(d.on_message(Msg(ch, 34, "a person who is not the owner", author=12345)))
+    run(d.on_message(Msg(ch, 36, "a listed person, named by handle as the owner is", author=PERSON, name="mom_handle")))
     run(d.on_message(Msg(ch, 35, "the bot's own post, filed where it is sent", author=BOT)))
     run(d.on_message(Msg(ch, 31, "a longer line from the owner")))                 # delivered twice
     run(d.send_text("test-room", "a reply from Yerk"))
     text = "".join(p.read_text() for p in (tmp_path / "memory" / "daily").glob("*.md"))
     lines = [x for x in text.splitlines() if x.startswith("- ")]
     assert [x.split(": ", 1)[0].split(" ", 2)[2] for x in lines] == [
-        "test-room owner", "test-room test-webhook", "test-room owner", "test-room other", "test-room yerk"]
-    assert text.count("[m:31]") == 1 and "[m:35]" not in text
+        "test-room owner@owner_handle", "test-room test-webhook", "test-room owner", "test-room other",
+        "test-room person@mom_handle", "test-room yerk"]
+    assert text.count("[m:31]") == 1 and "[m:35]" not in text and [m.id for m in room.got] == ["31", "32", "33", "36"]
     assert "(attachment only) [c:private] [m:32]\n  - attachment: photo.png, image/png, 1,234 bytes" in text
     assert " owner: k [c:private] [m:33]" in text and " yerk: a reply from Yerk [c:private] [m:" in text

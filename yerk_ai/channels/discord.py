@@ -3,8 +3,8 @@
 - Every other channel is ignored before anything is read: no reply, no reaction, no history.
 - A room's `watch` channel is read as its own and never written to: what it sends, its card, its typing
   signal and its reactions go to its own channel only; a slash command there gets one ephemeral line.
-- Only the owner, and in test mode the listed webhooks, are answered. Webhook senders pass a
-  loop guard (lifted/loopguard.py) so a runaway script cannot run the room.
+- Only the owner, the people a room lists (`people` in rooms.toml), and in test mode the listed webhooks,
+  are answered. Webhook senders pass a loop guard (lifted/loopguard.py) so a runaway script cannot run the room.
 - A message is ledgered by its Discord id before anything runs, then acked with a reaction. Its
   files are staged in the room's inbox under their own names, a ledger row each; a file that
   cannot be fetched gets a visible "could not fetch NAME" and the turn still runs. Every notice
@@ -20,7 +20,7 @@
   outbox snapshot, found by name and size); then messages a crash left open run again once,
   marked, told which files are already in the room, and messages that arrived while the daemon
   was down are read from the room's own history, filed and run.
-- The owner's edits and deletes: a message still waiting is revised or dropped before it runs;
+- A sender's edits and deletes of their own messages: one still waiting is revised or dropped before it runs;
   an edit of one already run comes in again, marked; a reply says which message it answers.
 - Replies: the final text only, split under 2,000 characters, never inside a code block.
 - Files: one path (`send_file`): a snapshot under a new name in the room's outbox, size and type
@@ -62,8 +62,7 @@ ACK, DONE, FAILED = "\N{EYES}", "\N{WHITE HEAVY CHECK MARK}", "\N{WARNING SIGN}"
 REDELIVERED = words.SUB + words.SENT_AGAIN    # the line above a part posted again after a restart
 MIN_EDIT = 1.0        # seconds between card edits after the first
 TYPING_EVERY = 8.0    # the typing signal is refreshed this often while nothing is visible (Discord shows it ~10 s)
-FORBIDDEN = {".exe", ".bat", ".cmd", ".com", ".scr", ".msi", ".dll", ".ps1", ".vbs", ".jar", ".apk", ".lnk",
-             ".reg", ".hta", ".cpl", ".pif"}
+FORBIDDEN = {".exe", ".bat", ".cmd", ".com", ".scr", ".msi", ".dll", ".ps1", ".vbs", ".jar", ".apk", ".lnk", ".reg", ".hta", ".cpl", ".pif"}
 # What the bot can send, measured 2026-10-17 through discord.py's own send with the bot's token in
 # the test room's guild (boost tier 1, which discord.py's table puts at 10,485,760): 20,971,520
 # bytes sent, 20,971,521 refused with 413 / 40005 "Request entity too large". Discord's answer wins
@@ -149,6 +148,7 @@ class DiscordChannel:
         self.connected = False                   # /status: the gateway said ready (yerk deploy's proof)
         self.recovered = False
         self.edits: dict[str, str] = {}           # message id -> the edit already taken (its edited_at)
+        self.people: dict[int, frozenset[int]] = {}   # channel id -> the user ids answered there besides the owner
         self.after_recover: list[Callable[[], Awaitable[None]]] = []   # once, after the rooms recovered
         self.typing: dict[str, asyncio.Task[None]] = {}   # room name -> its typing refresh, while nothing is visible
         if client is None:
@@ -163,10 +163,11 @@ class DiscordChannel:
         client.event(self.on_raw_message_delete)
         client.event(self.on_interaction)
 
-    def add_room(self, channel_id: int, room: Room, watch: int | None = None) -> None:
-        self.rooms[channel_id], self.names[room.name] = room, channel_id
-        if watch:
-            self.rooms[watch] = room
+    def add_room(self, channel_id: int, room: Room, watch: int | None = None, people: frozenset[int] = frozenset()) -> None:
+        """The room's own channel, the one it watches (read as its own), and the people it answers there besides the owner."""
+        self.names[room.name] = channel_id
+        for cid in (channel_id, watch) if watch else (channel_id,):
+            self.rooms[cid], self.people[cid] = room, people
 
     async def start(self) -> None:
         self.loop = asyncio.get_running_loop()
@@ -174,13 +175,16 @@ class DiscordChannel:
 
     # inbound
     def sender_of(self, m: Any) -> str | None:
+        """owner, person (a user id in this room's `people`) or test-webhook; None: not answered, whoever it is."""
         if getattr(m, "type", discord.MessageType.default) not in SAID and m.channel.id not in self.names.values():
             return None                           # watched: a system line (a thread's name) is not the owner's words
         if getattr(m, "webhook_id", None):
             return "test-webhook" if m.webhook_id in self.test_senders else None
         if self.client.user is not None and m.author.id == self.client.user.id:
             return None
-        return "owner" if self.owner is not None and m.author.id == self.owner else None
+        if self.owner is not None and m.author.id == self.owner:
+            return "owner"
+        return "person" if m.author.id in self.people.get(m.channel.id, ()) else None
 
     def reply_line(self, room: str, m: Any) -> str:
         """Which message a reply answers, so the model knows what "this" means. In a watched channel a reply to anyone
@@ -210,8 +214,7 @@ class DiscordChannel:
         if self.capture is None or m.author.id == self._me() or (role is None and m.channel.id != self.names[room]):
             return
         role = role or ("webhook" if getattr(m, "webhook_id", None) else "other")
-        text = "\n".join(x for x in (self.reply_line(room, m), str(getattr(m, "clean_content", None) or m.content or ""))
-                         if x)
+        text = "\n".join(x for x in (self.reply_line(room, m), str(getattr(m, "clean_content", None) or m.content or "")) if x)
         files = [(a.filename, file_type(a.filename, getattr(a, "content_type", None)), int(a.size or 0))
                  for a in getattr(m, "attachments", []) or []]
         who = str(getattr(getattr(m, "author", None), "name", "") or "")      # the handle, beside the role
@@ -229,7 +232,7 @@ class DiscordChannel:
     async def take(self, room: Room, m: Any) -> None:
         if (sender := self.sender_of(m)) is None:
             return
-        if sender != "owner" and not self.guard.admit(m.channel.id)[0]:
+        if sender == "test-webhook" and not self.guard.admit(m.channel.id)[0]:
             log.warning("room %s: loop guard holding webhook messages", room.name)
             return
         if not (m.content or getattr(m, "attachments", None)):
@@ -279,15 +282,15 @@ class DiscordChannel:
         return self.client.user.id if self.client.user is not None else None
 
     async def on_raw_message_edit(self, p: Any) -> None:
-        """An edit of a message the room took: still waiting, it runs as edited; already run (or
-        running), the new text comes in again, marked. Not an edit (an embed unfurl): nothing."""
+        """An edit of a message the room took, by its own sender: still waiting, it runs as edited; already run (or
+        running), the new text comes in again, marked. Not an edit (an embed unfurl), or another sender's: nothing."""
         m, room = getattr(p, "message", None), self.rooms.get(int(p.channel_id))
         if room is None or m is None or getattr(m, "edited_at", None) is None:
             return
         self.file(room.name, m, edited=True)
         sender, mid = self.sender_of(m), str(m.id)
         row = self.ledger.inbound_get(mid)
-        if sender is None or row is None or self.edits.get(mid) == str(m.edited_at):
+        if sender is None or row is None or row["sender"] != sender or self.edits.get(mid) == str(m.edited_at):
             return
         self.edits[mid] = str(m.edited_at)
         files = await self.stage(room, m)
@@ -327,8 +330,7 @@ class DiscordChannel:
                 f.update(ok=False, error=f"{type(e).__name__}: {str(e)[:120]}")
                 self.ledger.attachment(message_id=str(m.id), room=room.name, name=a.filename, size=f["size"],
                                        type=f["type"], state="missing", error=f["error"])
-                await self._post(room.name, f"{words.NOT_DONE} {words.NOT_FETCHED.format(name=a.filename)}", "notice",
-                                 [str(m.id)])
+                await self._post(room.name, f"{words.NOT_DONE} {words.NOT_FETCHED.format(name=a.filename)}", "notice", [str(m.id)])
             files.append(f)
         return files
 
@@ -364,8 +366,7 @@ class DiscordChannel:
                 log.warning("discord: no guild for channel %s, no commands there: %s", cid, e)
         for g in sorted(guilds):
             try:
-                await self.client.http.bulk_upsert_guild_commands(self.client.application_id, g,
-                                                                  commands(self.daemon.models))
+                await self.client.http.bulk_upsert_guild_commands(self.client.application_id, g, commands(self.daemon.models))
                 log.info("discord: %d slash command(s) registered in guild %s", len(words.COMMANDS), g)
             except discord.HTTPException as e:
                 log.warning("discord: slash commands not registered in guild %s: %s", g, e)
@@ -494,12 +495,10 @@ class DiscordChannel:
         an attachment of its name and size that no other delivery holds), it is recorded; absent, it
         is sent once from its outbox snapshot, labelled; with no snapshot, the room is told."""
         key, name, size = str(r["key"]), str(r["file"] or ""), r["size"]
-        hit = next((mid for mid, n, s in seen if n == name and (size is None or s == int(size)) and mid not in claimed),
-                   None)
+        hit = next((mid for mid, n, s in seen if n == name and (size is None or s == int(size)) and mid not in claimed), None)
         if hit:
             claimed.add(hit)
-            self.ledger.delivery_set(key, state="sent", message_id=hit, sent=time.time(),
-                                     note="found in the room after a restart")
+            self.ledger.delivery_set(key, state="sent", message_id=hit, sent=time.time(), note="found in the room after a restart")
             log.info("room %s: file %s (%s) found in the room after a restart", room, name, key)
             return
         base = key.rsplit(":", 1)[0]
@@ -511,8 +510,7 @@ class DiscordChannel:
         if why is None and snap is not None:
             try:
                 async with self._lock(room):
-                    m = await ch.send(content=caption[:MAX], file=discord.File(str(snap), filename=name),
-                                      nonce=nonce_for(key))
+                    m = await ch.send(content=caption[:MAX], file=discord.File(str(snap), filename=name), nonce=nonce_for(key))
             except discord.HTTPException as e:
                 why = refusal(e, upload_limit(ch))
         if m is None:
@@ -547,8 +545,7 @@ class DiscordChannel:
     def notice(self, room: str, text: str, inbound: list[str], card: str | None = None,
                key: str | None = None) -> list[str]:
         """A visible failure: the turn's card kept and edited to `card` (what was owed), else `text` posted."""
-        return self._call(self._finish(room, text, inbound, FAILED, kind="notice", card=card, key=key,
-                                       instead=card is not None)) or []
+        return self._call(self._finish(room, text, inbound, FAILED, kind="notice", card=card, key=key, instead=card is not None)) or []
 
     # outbound: on the loop
     def _lock(self, room: str) -> asyncio.Lock:
@@ -719,16 +716,14 @@ class DiscordChannel:
             try:
                 m = await ch.send(body[:MAX], nonce=nonce_for(str(r["key"])))
             except discord.HTTPException as e:
-                self.ledger.delivery_set(r["key"], state="failed", error=str(e)[:300],
-                                         attempts=int(r["attempts"] or 0) + 1)
+                self.ledger.delivery_set(r["key"], state="failed", error=str(e)[:300], attempts=int(r["attempts"] or 0) + 1)
                 self.ledger.outbound(room=room, channel=str(ch.id), kind=r["kind"], chars=len(body), error=str(e)[:300],
                                      inbound=r["inbound"])
                 raise
             await self._debug_pause("after-post")
             self.ledger.delivery_set(r["key"], state="sent", message_id=str(m.id), sent=time.time(),
                                      attempts=int(r["attempts"] or 0) + 1, note=REDELIVERED if label else None)
-            self.ledger.outbound(room=room, channel=str(ch.id), kind=r["kind"], message_id=str(m.id), chars=len(body),
-                                 inbound=r["inbound"])
+            self.ledger.outbound(room=room, channel=str(ch.id), kind=r["kind"], message_id=str(m.id), chars=len(body), inbound=r["inbound"])
             self._file(room, str(m.id), "yerk", body)
             ids.append(str(m.id))
         return ids
@@ -771,11 +766,9 @@ class DiscordChannel:
         if inbound and size is not None:
             for r in self.ledger.files_sent_for(inbound.split(",")):
                 if r["file"] == name and r["size"] == size:
-                    log.info("room %s: %s is in the room already for this message (%s); not sent again", room, name,
-                             r["message_id"])
+                    log.info("room %s: %s is in the room already for this message (%s); not sent again", room, name, r["message_id"])
                     return [str(r["message_id"])]
-        row = self.ledger.delivery_plan(f"{key}:0", room, "file", caption, inbound, file=name, size=size,
-                                        type=file_type(name))
+        row = self.ledger.delivery_plan(f"{key}:0", room, "file", caption, inbound, file=name, size=size, type=file_type(name))
         if row["state"] == "sent":                # this key went out already
             return [str(row["message_id"])]
         why = self.file_problem(ch, path)
@@ -797,10 +790,8 @@ class DiscordChannel:
                 why = refusal(e, upload_limit(ch))
         if m is None:
             self.ledger.delivery_set(f"{key}:0", state="failed", error=why)
-            self.ledger.outbound(room=room, channel=str(ch.id), kind="file", chars=len(caption), file=name,
-                                 error=str(why)[:300])
-            await self._post(room, f"{words.NOT_DONE} {words.NOT_SENT.format(name=name, why=why)}", "notice", [],
-                             key=f"{key}-notice")
+            self.ledger.outbound(room=room, channel=str(ch.id), kind="file", chars=len(caption), file=name, error=str(why)[:300])
+            await self._post(room, f"{words.NOT_DONE} {words.NOT_SENT.format(name=name, why=why)}", "notice", [], key=f"{key}-notice")
             raise ValueError(f"{name} did not go out: {why}; the room was told")
         self.ledger.delivery_set(f"{key}:0", state="sent", message_id=str(m.id), sent=time.time(), attempts=1)
         self.ledger.outbound(room=room, channel=str(ch.id), kind="file", message_id=str(m.id), chars=len(caption),
@@ -824,8 +815,7 @@ async def setup_room(token: str, guild_id: int, name: str, webhook_name: str,
                 raise ValueError(f"channel {channel_id} is not the text channel {name!r} in guild {guild_id}")
             ch = got
         else:
-            ch = next((c for c in await guild.fetch_channels() if c.name == name and isinstance(c, discord.TextChannel)),
-                      None)
+            ch = next((c for c in await guild.fetch_channels() if c.name == name and isinstance(c, discord.TextChannel)), None)
         created = ch is None
         if ch is None:
             ch = await guild.create_text_channel(name, reason="Yerk AI test room")

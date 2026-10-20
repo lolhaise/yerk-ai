@@ -13,10 +13,14 @@ from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai.daemon import Yerkd
 
 
-def install(tmp_path, frozen: object = None, live: object = None, sealed: bool = False) -> Yerkd:
+MOM = 31        # the one person of the family room; a stand-in, since a real id (17 to 20 digits) never goes in this repository
+
+
+def install(tmp_path, frozen: object = None, live: object = None, sealed: bool = False, family: bool = False) -> Yerkd:
     """Two read-only roots, each a curated file and a memory folder holding the same file names with their own words:
     `frozen-room` gets `frozen` as its `also` (default the snap pair), `live-room` gets `live` (default the live pair,
-    written relative to the private folder), `example-room` sets none. The index and the name index are built."""
+    written relative to the private folder), `example-room` sets none; `family` adds `Alex`, a `privacy = "family"`
+    room with one listed person and no `also`. The index and the name index are built."""
     private, state = tmp_path / "private", tmp_path / "state"
     shutil.copytree(EXAMPLE_PRIVATE, private)
     state.mkdir()
@@ -33,8 +37,10 @@ def install(tmp_path, frozen: object = None, live: object = None, sealed: bool =
     frozen = pair["snap"] if frozen is None else frozen
     live = ["../live/MEMORY.md", "../live/memory"] if live is None else live
     sealing = block.replace("CHANNEL_ID", "FROZEN_ID") + "sealed = true\n" if sealed else block    # its own room id, as live
+    mom = block.replace("CHANNEL_ID", "MOM_ID").replace('privacy = "owner"', 'privacy = "family"') + f"people = [{MOM}]\nlayer = \"mom\"\n"
     (private / "rooms.toml").write_text(base + f"\n[rooms.frozen-room]\n{sealing}also = {json.dumps(frozen)}\n"
-                                        f"\n[rooms.live-room]\n{block}also = {json.dumps(live)}\n")
+                                        f"\n[rooms.live-room]\n{block}also = {json.dumps(live)}\n"
+                                        + (f"\n[rooms.example-two]\n{mom}" if family else ""))
     y = Yerkd(private, state)
     s = y.memory
     memindex.Index(s.index_db, s.scope).sync()
@@ -159,8 +165,11 @@ def test_a_sealed_room_reads_its_own_lines_and_its_also_roots_only(tmp_path):
     for query in ("example shed key saffron shelf", "example ladder", "periwinkle door"):
         assert "saffron" not in texts(y, "frozen-room", query, 20)
         assert "saffron" in texts(y, "example-room", query, 20) or query == "periwinkle door"
-    assert "frozen room itself" in texts(y, "frozen-room", "example shed key question") and "periwinkle" in texts(y, "frozen-room", "periwinkle door")
-    assert "teal" in texts(y, "frozen-room", "example ladder")
+    assert asyncio.run(y.tool_recall("frozen-room", "saffron shelf", 20))["hits"] == []        # the hidden words: no hit, and its own
+    assert "frozen room itself" not in texts(y, "frozen-room", "example shed key question", 20)   # lines in the chunk beside them are
+    assert "teal" not in texts(y, "frozen-room", "example ladder", 20) and "periwinkle" in texts(y, "frozen-room", "periwinkle door")
+    assert [t for t in y.recall_for("frozen-room", "the example shed key question?")[1] if "frozen room itself" in t["text"]]  # never recall's:
+    assert [t for t in y.recall_for("frozen-room", "what is the example ladder?")[1] if "teal" in t["text"]]   # topic hits and read_memory (below)
     day = fact["cite"] if fact["cite"].startswith("memory/daily/") else own["cite"]
     log = asyncio.run(y.tool_read_memory("frozen-room", day.rpartition(":")[0], 1, 50))
     assert log["ok"] and "frozen room itself" in log["text"] and "saffron" not in log["text"] and "(a line of another room)" in log["text"]
@@ -169,3 +178,98 @@ def test_a_sealed_room_reads_its_own_lines_and_its_also_roots_only(tmp_path):
     assert "periwinkle" in asyncio.run(y.tool_read_memory("frozen-room", "memory/2026-10-19.md:3", 1, 1))["text"]
     assert not [e for e in y.recall_for("frozen-room", "what is the example ladder?")[0] if "saffron" in e["text"]]
     assert [e for e in y.recall_for("example-room", "what is the example ladder?")[0] if "saffron" in e["text"]]
+
+
+def test_a_family_room_with_one_person_reads_its_own_lines_and_shared_files_only(tmp_path):
+    """The room for the owner's mother, end to end, on the block the brief names (`privacy = "family"`, one listed
+    person, no `also`): its lines carry class room; recall and read_memory from it return nothing from the owner's
+    private files, another room's lines or the read-only roots; the shared rules file reads; its `remember` files a
+    the sample item moved to the next step and, the test reads it; back as plain text with one; more, line,
+    one more line for the. Check while a second entry waits."""
+    from yerk_ai import words
+    from yerk_ai.config import people
+    from yerk_ai.daemon import ConsoleChannel
+    from yerk_ai.room import Inbound
+    y, mom = install(tmp_path, family=True), "Alex"
+    assert people(mom, y.room_confs[mom]) == frozenset({MOM}) and not y.owner(mom) and y.daily.rooms[mom] == ("discord:MOM_ID", "room")
+    y.daily.capture("example-room", "o1", "owner", "the owner's private line about the example kettle")
+    y.daily.capture(mom, "p1", "person", "the mother's line about the example kettle", who="mom")
+    memory.remember(y.memory, y.daily, "example-room", "o2", "The example kettle is teal", "example kettle", (), y.reader("example-room"))
+    memory.rule(y.memory, "example-room", "o3", "tea", "sample item moved to the next")
+    sync(y)
+    got = texts(y, mom, "example kettle", 20)
+    assert "a second entry" not in got and "part closes the" not in got and "teal" not in got and "periwinkle" not in got
+    assert asyncio.run(y.tool_recall(mom, "owner's private", 20))["hits"] == []    # the hidden words: no hit; her own line beside them is
+    assert "entry waits in" in y.room_pack(mom)[0]                             # while a: second entry, waits in, the_queue (for)
+    assert "four minutes" in texts(y, mom, "steep the example tea", 20)                      # rules.md is shared
+    assert "teal" in texts(y, "example-room", "example kettle", 20)                        # the owner's room: everything
+    day = asyncio.run(y.tool_read_memory(mom, f"daily/{memory.window(y.memory)[0]}.md", 1, 50))
+    assert "the mother's line" in day["text"] and "owner's private" not in day["text"] and "(a line of another room)" in day["text"]
+    assert not asyncio.run(y.tool_read_memory(mom, "facts/example-kettle.md", 1, 5))["ok"]
+    assert "four minutes" in asyncio.run(y.tool_read_memory(mom, "rules.md", 1, 10))["text"]
+    ask = "what colour is the example kettle?"
+    assert not [e for e in y.recall_for(mom, ask)[0] if "teal" in e["text"]] and [e for e in y.recall_for("example-room", ask)[0] if "teal" in e["text"]]
+    y.add_room(mom, ConsoleChannel()).inflight = [Inbound("p2", "person", "a placeholder message")]
+    note = asyncio.run(y.tool_remember(mom, "Example dinner: Sunday at six", "example dinner", []))
+    assert note["ok"] and note["cite"].startswith("memory/daily/") and not (y.memory.root / "facts" / "example-dinner.md").exists()
+    line = asyncio.run(y.tool_read_memory(mom, note["cite"], 1, 1))["text"]
+    assert " The#check:While_A second: Entry waits: In the queue [for:its] [turn:and0." in line
+    assert asyncio.run(y.tool_settings(mom, "opus", "")) == {"ok": False, "line": words.OWNER_ONLY}
+    assert y.owner_only(mom, "") == {"ok": False, "line": words.WORKERS_OWNER_ONLY}
+    assert y.owner_only(mom, "", words.JOBS_OWNER_ONLY) == {"ok": False, "line": words.JOBS_OWNER_ONLY}
+    assert asyncio.run(y.tool_rule(mom, "steep it longer", "tea")) == {"ok": False, "line": words.RULES_OWNER_ONLY}
+
+
+def test_a_family_room_never_learns_what_it_may_not_read(tmp_path):
+    """A chunk the room may not read whole never ranks in its recall, since its rank alone would say the hidden lines hold
+    and the; test reads it back as plain text with one more line, for the check while a_second, entry waits;
+    a private-class line carrying the room's id stays out of its pack and topic hits, as read_memory blanks it;
+    one more line for, the check while a; second entry waits in the queue for; its turn and The Last
+    process refuses file reads outside its working folders in every mode. The owner's room keeps all of it."""
+    from yerk_ai import words
+    from yerk_ai.daemon import ConsoleChannel
+    y, mom = install(tmp_path, family=True), "Alex"
+    y.daily.capture("example-room", "o5", "owner", "zanzibar quartz is the owner's private code word")
+    y.daily.capture(mom, "p5", "person", "see you at dinner on sunday", who="mom")
+    with (y.memory.daily / f"{memory.window(y.memory)[0]}.md").open("a") as f:
+        f.write(f"- 08:00:00-04:00 {mom}#discord:MOM_ID owner@owner: a private-class line on the example anchor [c:private] [m:zz1]\n")
+    sync(y)
+    assert asyncio.run(y.tool_recall(mom, "zanzibar quartz", 20))["hits"] == [] and "zanzibar" in texts(y, "example-room", "zanzibar quartz", 20)
+    assert "its turn and" not in texts(y, mom, "starts the example", 20)              # the queue for its turn and the: last part,
+    assert "dinner on sunday" in y.room_pack(mom)[0] and [t for t in y.recall_for(mom, "dinner on sunday?")[1] if "dinner on sunday" in t["text"]]
+    y.daily.capture("example-room", "o6", "owner", "the carpenter quoted the attic job")
+    y.daily.capture(mom, "p6", "person", "the new carpet came and we went for runs", who="mom")
+    sync(y)                                     # matched as the index matches: a shared first five letters is not a match, a stem is
+    assert asyncio.run(y.tool_recall(mom, "carpenter", 20))["hits"] == [] and "for runs" not in texts(y, mom, "running", 20)
+    assert "for runs" in y.room_pack(mom)[0]                   # it back as plain text with one more: line for the check, while a
+    with (y.memory.daily / f"{(yday := memory.window(y.memory)[1])}.md").open("w") as f:       # a day of hers alone: one pure chunk,
+        f.write(f"# {yday}\n\n- 09:00:00-04:00 {mom}#discord:MOM_ID person@mom: she runs by the river after her study group [c:room] [m:p7]\n")
+    sync(y)                                                                                     # which its stems still find
+    assert "runs by the river" in texts(y, mom, "running", 20) and "study group" in texts(y, mom, "studies", 20)
+    assert not [t for t in y.recall_for(mom, "the example anchor?")[1] if "anchor" in t["text"]] and "anchor" not in y.room_pack(mom)[0]
+    for req in ({"action": "list"}, {"action": "remove", "name": "example-heartbeat"}, {"action": "sync"}):
+        assert asyncio.run(y.tool_schedule(mom, req)) == {"ok": False, "line": words.JOBS_OWNER_ONLY}
+    y.add_room(mom, ConsoleChannel())
+    y.add_room("example-room", ConsoleChannel())
+    assert not asyncio.run(y.tool_send("example-room", "a line into the owner's room", "", mom))["ok"]
+    assert y.spec_for(mom).settings["permissions"]["blockReadsOutsideWorkingDirectories"] is True
+    assert "blockReadsOutsideWorkingDirectories" not in y.spec_for("example-room").settings["permissions"]
+
+
+def test_a_room_that_lists_people_needs_a_layer_of_its_own(tmp_path):
+    """Its layer is a working folder and its files are its prompt: unset (the private folder itself), the memory tree, or a
+    context file outside it stops the start; a folder of its own starts."""
+    for i, extra in enumerate(("", 'layer = "."\n', 'layer = "memory"\n', 'layer = "mom"\npersona = "../memory/pinned.md"\n', 'layer = "mom"\n')):
+        private, state = tmp_path / f"p{i}", tmp_path / f"s{i}"
+        shutil.copytree(EXAMPLE_PRIVATE, private)
+        state.mkdir()
+        block = (private / "rooms.toml").read_text().split("[rooms.example-room]\n", 1)[1].split("\n[rooms.", 1)[0]
+        block = "".join(x + "\n" for x in block.replace('privacy = "owner"', 'privacy = "family"').replace("CHANNEL_ID", "MOM_ID").splitlines()
+                        if not x.startswith(("persona", "pinned_memory", "open_loops")))
+        with (private / "rooms.toml").open("a") as f:
+            f.write(f"\n[last.part-closes]\n{block}as = [{MOM}]\n{extra}")
+        if i < 4:
+            with pytest.raises(SystemExit, match="people needs a `layer` of its own"):
+                Yerkd(private, state)
+        else:
+            Yerkd(private, state)

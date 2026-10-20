@@ -16,6 +16,8 @@ daily_notes = "memory/daily"
 recall_days = 2
 open_loops = "memory/open-loops.md"
 # effort = "high"             # passed as --effort; unset: the model's own default
+# people = [USER_ID]         # Discord user ids answered in this room besides the owner (sender "person"); unset: the owner only.
+#                             # Needs a privacy other than owner: an owner room reads the owner's whole memory
 thinking_panel = false        # owner-only rooms: a "thinking" line on the card (costs about 5 s a reply)
 
 [rooms.example-quiet]
