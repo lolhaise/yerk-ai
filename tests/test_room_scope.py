@@ -213,3 +213,28 @@ def test_a_family_room_with_one_person_reads_its_own_lines_and_shared_files_only
     assert y.owner_only(mom, "") == {"ok": False, "line": words.WORKERS_OWNER_ONLY}
     assert y.owner_only(mom, "", words.JOBS_OWNER_ONLY) == {"ok": False, "line": words.JOBS_OWNER_ONLY}
     assert asyncio.run(y.tool_rule(mom, "steep it longer", "tea")) == {"ok": False, "line": words.RULES_OWNER_ONLY}
+
+
+def test_a_family_room_never_learns_what_it_may_not_read(tmp_path):
+    """The last part closes the case before the next run starts the example note, says the sample item moved to the next
+    run; starts the-example note says the sample item moved to the next step and the test, reads it_back as plain;
+    one more line for, the check while a; second entry waits in the queue for; its turn and The Last
+    process refuses file reads outside its working folders in every mode. The owner's room keeps all of it."""
+    from yerk_ai import words
+    from yerk_ai.daemon import ConsoleChannel
+    y, mom = install(tmp_path, family=True), "Alex"
+    y.daily.capture("example-room", "o5", "owner", "zanzibar quartz is the owner's private code word")
+    y.daily.capture(mom, "p5", "person", "see you at dinner on sunday", who="mom")
+    with (y.memory.daily / f"{memory.window(y.memory)[0]}.md").open("a") as f:
+        f.write(f"- 08:00:00-04:00 {mom}#discord:MOM_ID owner@owner: a private-class line on the example anchor [c:private] [m:zz1]\n")
+    sync(y)
+    assert asyncio.run(y.tool_recall(mom, "zanzibar quartz", 20))["hits"] == [] and "zanzibar" in texts(y, "example-room", "zanzibar quartz", 20)
+    assert "note says the" in texts(y, mom, "reads it back", 20)                  # starts the example, note says the sample
+    assert not [t for t in y.recall_for(mom, "the example anchor?")[1] if "anchor" in t["text"]] and "anchor" not in y.room_pack(mom)[0]
+    for req in ({"action": "list"}, {"action": "remove", "name": "example-heartbeat"}, {"action": "sync"}):
+        assert asyncio.run(y.tool_schedule(mom, req)) == {"ok": False, "line": words.JOBS_OWNER_ONLY}
+    y.add_room(mom, ConsoleChannel())
+    y.add_room("example-room", ConsoleChannel())
+    assert not asyncio.run(y.tool_send("example-room", "a line into the owner's room", "", mom))["ok"]
+    assert y.spec_for(mom).settings["permissions"]["blockReadsOutsideWorkingDirectories"] is True
+    assert "blockReadsOutsideWorkingDirectories" not in y.spec_for("example-room").settings["permissions"]

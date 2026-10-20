@@ -520,8 +520,7 @@ def read(s: Settings, path: str, start: int = 1, lines: int = READ_LINES, reader
     start, lines = max(1, int(start)), max(1, min(int(lines), READ_MAX))
     daylog = is_daylog(str(real)) and real.parent == s.daily.resolve()   # date-named elsewhere: a plain file
     if reader and (not reader.owner or reader.sealed and real.is_relative_to(s.root)) and not daylog and not may_read(reader, *file_class(real)):
-        return {"ok": False, "error": f"{path} is not readable from room {reader.name or '?'}: its class keeps it to "
-                                      "the owner's rooms"}
+        return {"ok": False, "error": f"{path} is not readable from room {reader.name or '?'}: its class keeps it to " "the owner's rooms"}
     out: list[str] = []
     total = 0
     with real.open(encoding="utf-8", errors="replace") as f:
@@ -661,10 +660,10 @@ def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader:
         keywords, vectors = ([h for h in x if s.scope.contains(Path(h["path"]))] for x in (keywords, vectors))
     hits = fuse(keywords, vectors, k)
     if reader and (not reader.owner or reader.sealed):          # another room's private lines never leave the tree (R2)
-        kept = []
+        kept, want = [], {t[:5] for t in memindex.terms(query)}      # a hit only its hidden lines matched would say they hold the words
         for h in hits:
             text = allowed_text(reader, Path(h["path"]), str(h.get("text", "")), daily=s.daily)
-            if text is not None:
+            if text is not None and (text == h.get("text") or want & {w[:5] for w in memindex.WORD.findall(memindex.norm(text))}):
                 kept.append({**h, "text": text})
         hits = kept
     for h in hits:
@@ -786,8 +785,8 @@ def room_lines(s: Settings, room: str, now: datetime | None = None,
     """(day, line number, the parsed line, the lines of its file) for this room's lines of the last
     14 days, newest day first: by the room's stable id (`rid`, default its name), and, for an owner
     room (`owner`, the view every caller but the daemon's non-owner rooms has), by name on a line
-    written before ids. A room that is not an owner room gets only lines that carry a class and its
-    id, as read_memory shows it: a former room's name is not its history (R2). The room's own day
+    written before ids. A room that is not an owner room gets only its id's lines of class room or
+    shared, as read_memory shows them: a former room's name is not its history (R2). The room's own day
     files are small, so they are read straight from disk: fresher than the index (which trails by a
     pass) and a few milliseconds per message."""
     rid = rid or room
@@ -798,7 +797,7 @@ def room_lines(s: Settings, room: str, now: datetime | None = None,
         lines = f.read_text(errors="replace").splitlines()
         for n, raw in enumerate(lines):
             ln = parse_line(raw)
-            if ln and (ln.of_room(room, rid) if owner else bool(ln.cls) and ln.rid == rid):
+            if ln and (ln.of_room(room, rid) if owner else ln.cls in ("room", "shared") and ln.rid == rid):
                 yield day, n, ln, lines
 
 

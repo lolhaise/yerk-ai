@@ -62,8 +62,7 @@ ACK, DONE, FAILED = "\N{EYES}", "\N{WHITE HEAVY CHECK MARK}", "\N{WARNING SIGN}"
 REDELIVERED = words.SUB + words.SENT_AGAIN    # the line above a part posted again after a restart
 MIN_EDIT = 1.0        # seconds between card edits after the first
 TYPING_EVERY = 8.0    # the typing signal is refreshed this often while nothing is visible (Discord shows it ~10 s)
-FORBIDDEN = {".exe", ".bat", ".cmd", ".com", ".scr", ".msi", ".dll", ".ps1", ".vbs", ".jar", ".apk", ".lnk",
-             ".reg", ".hta", ".cpl", ".pif"}
+FORBIDDEN = {".exe", ".bat", ".cmd", ".com", ".scr", ".msi", ".dll", ".ps1", ".vbs", ".jar", ".apk", ".lnk", ".reg", ".hta", ".cpl", ".pif"}
 # What the bot can send, measured 2026-10-17 through discord.py's own send with the bot's token in
 # the test room's guild (boost tier 1, which discord.py's table puts at 10,485,760): 20,971,520
 # bytes sent, 20,971,521 refused with 413 / 40005 "Request entity too large". Discord's answer wins
@@ -722,8 +721,7 @@ class DiscordChannel:
             await self._debug_pause("after-post")
             self.ledger.delivery_set(r["key"], state="sent", message_id=str(m.id), sent=time.time(),
                                      attempts=int(r["attempts"] or 0) + 1, note=REDELIVERED if label else None)
-            self.ledger.outbound(room=room, channel=str(ch.id), kind=r["kind"], message_id=str(m.id), chars=len(body),
-                                 inbound=r["inbound"])
+            self.ledger.outbound(room=room, channel=str(ch.id), kind=r["kind"], message_id=str(m.id), chars=len(body), inbound=r["inbound"])
             self._file(room, str(m.id), "yerk", body)
             ids.append(str(m.id))
         return ids

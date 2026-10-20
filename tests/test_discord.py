@@ -191,6 +191,10 @@ def test_people_is_a_list_of_discord_user_ids_or_the_start_stops(tmp_path):
     for conf in ({"people": [7]}, {"people": [7], "privacy": "owner"}):
         with pytest.raises(SystemExit, match='people needs privacy = "family" or "shared"'):
             people("r", conf)
+    for more in ({"tools": ["Read", "Bash"]}, {"read": ["/srv/notes"]}):              # a shell or a read folder: past the classes
+        with pytest.raises(SystemExit, match='people needs tools without "Bash" and no `read`'):
+            people("r", {"people": [7], "privacy": "family", **more})
+    assert people("r", {"people": [7], "privacy": "family", "tools": ["Read", "Grep", "Glob"]}) == frozenset({7})
     (tmp_path / "rooms.toml").write_text('[rooms.a]\nchannel = "discord:1"\nprivacy = "family"\npeople = "7"\n')
     with pytest.raises(SystemExit, match="rooms.toml: a: people must be a list"):
         rooms(tmp_path)

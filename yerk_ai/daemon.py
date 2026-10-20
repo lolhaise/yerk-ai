@@ -188,6 +188,7 @@ class Yerkd:
         settings = {"permissions": {"allow": [f"Read(/{layer}/**)", *YERK_TOOLS, *conf.get("allow", [])]},
                     "hooks": hooks.settings_for(f"{self.url}/hook", token)}
         settings.update({"sandbox": conf["sandbox"]} if "sandbox" in conf else {})   # Claude Code's own shell sandbox
+        settings["permissions"].update({} if self.owner(name) else {"blockReadsOutsideWorkingDirectories": True})   # file tools, every mode
         now = room_settings(conf, self.state, name, self.models)    # the room's override over rooms.toml
         extra = ["--effort", now["effort"][0]] if now["effort"][0] else []
         if flag(conf.get("thinking_panel")) and self.owner(name):
@@ -230,6 +231,8 @@ class Yerkd:
         return any(p.is_relative_to(r) for r in roots) and not p.is_relative_to((self.private / "secrets").resolve())
 
     async def tool_send(self, room: str, text: str, file: str, caller: str) -> dict[str, Any]:
+        if caller in self.rooms and not self.owner(caller) and room != caller:     # a room that is not the owner's posts to itself only
+            return {"ok": False, "error": f"room {caller} posts to itself only; it is not one of the owner's rooms"}
         if room not in self.rooms:
             return {"ok": False, "error": f"no room {room!r}; rooms: {', '.join(self.rooms)}"}
         if not text and not file:
@@ -237,8 +240,7 @@ class Yerkd:
         ch = self.channels[room]
         if file and not self.may_send(caller if caller in self.rooms else room, Path(file)):
             await ch.notify(room, f"{words.NOT_DONE} {words.NOT_SENT.format(name=Path(file).name, why=words.file_why('outside'))}")
-            return {"ok": False, "error": f"{file} is outside this room's folders; only files from them can be sent; "
-                                          "the room was told"}
+            return {"ok": False, "error": f"{file} is outside this room's folders; only files from them can be sent; " "the room was told"}
         src = self.rooms.get(caller) or self.rooms[room]
         self.sends += 1
         with src.lock:                        # in a turn: its key and the messages it answers
@@ -318,8 +320,8 @@ class Yerkd:
     async def tool_schedule(self, room: str, req: dict[str, Any]) -> dict[str, Any]:
         """The `schedule` tool (add, remove, list); the job runner's hand-offs come through /control.
         Any job runs as the owner's user (an agent job starts a worker; a script job runs its shell
-        command with no sandbox at all), so a room adds one by the worker rule, whatever its kind."""
-        refused = self.owner_only(room, str(req.get("room") or ""), words.JOBS_OWNER_ONLY) if req.get("action") == "add" else None
+        command with no sandbox at all), so a room adds one by the worker rule, whatever its kind, and lists or removes one by it too."""
+        refused = self.owner_only(room, str(req.get("room") or "") if req.get("action") == "add" else "", words.JOBS_OWNER_ONLY)
         return refused or await self.jobs.handle(room, req)
 
     async def tool_hold(self, room: str, wait_for: str, reason: str) -> dict[str, Any]:
@@ -786,8 +788,7 @@ class Yerkd:
             kind, _, cid = str(conf.get("channel", "")).partition(":")
             wk, _, wid = str(conf.get("watch", "")).partition(":")     # read as the room's own, never written to
             if kind == "discord" and cid.isdigit():
-                dc.add_room(int(cid), self.add_room(name, dc), int(wid) if wk == "discord" and wid.isdigit() else None,
-                            people(name, conf))
+                dc.add_room(int(cid), self.add_room(name, dc), int(wid) if wk == "discord" and wid.isdigit() else None, people(name, conf))
         im = self.imessage_rooms()
         if not dc.rooms and im is None:
             raise SystemExit("no room has a discord:<channel id> or an imessage:<chat identifier> in rooms.toml")
