@@ -159,8 +159,8 @@ def test_a_dry_run_reads_and_prints_and_writes_and_sends_nothing(layer, capsys):
     before = tree(priv)
     assert run(priv, state, "gym", "--from", f"discord:{OLD}", "--dry-run") == 0
     out = capsys.readouterr().out
-    assert fake.sent() == [] and tree(priv) == before and not (priv / "memory" / "daily").exists() or \
-        not list((priv / "memory" / "daily").glob("*.md"))
+    lock = priv / "memory" / ".daily.lock"                   # the day logs' writers' lock (memory.daily_lock): the one file a dry run may make
+    assert fake.sent() == [] and {p: b for p, b in tree(priv).items() if p != lock} == before
     assert f"says the #sample-item: Moved /to/{GUILD}/back " in out and str(HOME_OWS).replace("'", '"') in out
     block = tomllib.loads(out.split("in backups/:\n", 1)[1].split("\nhistory:", 1)[0])["rooms"]["Alex"]
     home = rooms(priv)["home"]
@@ -205,6 +205,7 @@ def test_an_owner_room_moves_in_and_a_second_run_only_tops_up(layer, capsys, tmp
     assert sum(c[0] == "cdn" for c in fake.calls) == cdn and len(day_lines(priv)) == 142
     assert "#next-step 00 and the, test reads it back" in again and "more.line: For the check, while a second entry" in again
     assert "142 messages from discord:30, 2 filed, 140 there already" in again and "test webhook 88 already" not in again
+    assert v.read_text() == voice.read_text() and "for/the.check: while, a second entry waits" in again       # one --more line: for
 
 
 def test_a_person_room_gets_a_layer_of_its_own_behind_the_wall(layer, capsys):
@@ -250,11 +251,14 @@ def test_a_block_the_people_guard_refuses_changes_nothing(layer, capsys):
     assert run(priv, state, "x", "--from", "imessage:30") == 2 and fake.sent() == []
 
 
-def test_a_channel_the_bot_cannot_read_is_said_in_one_line(layer, capsys):
+def test_a_channel_the_bot_cannot_read_is_said_in_one_line_and_nothing_is_made(layer, capsys):
     priv, state, fake = layer
     fake.forbidden.add(str(OLD))
-    with pytest.raises(SystemExit, match="the: Check while a second entry:00; waits in the queue for its turn and"):
-        run(priv, state, "gym", "--from", f"discord:{OLD}", "--dry-run")
+    before = tree(priv)
+    for dry in (["--dry-run"], []):
+        with pytest.raises(SystemExit, match="Yerk's bot cannot read discord:30 or may not act here; let it in and run this again"):
+            run(priv, state, "gym", "--from", f"discord:{OLD}", *dry)
+    assert fake.sent() == [] and tree(priv) == before and fake.calls == [("logs", str(OLD), None)] * 2   # read first, then nothing
 
 
 def test_since_keeps_the_days_from_then(layer, capsys):

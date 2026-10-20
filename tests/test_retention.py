@@ -116,20 +116,25 @@ def test_a_transcript_written_in_the_last_24_hours_stays_whatever_the_setting(tm
 def test_an_attachment_never_moves_and_its_size_is_said(tmp_path, capsys):
     priv, state, projects, led = layer(tmp_path, "[retention]\nlogs = 1\nassembled = 1\ntranscripts = 1\nworkers = 1\ntrash = 1\n")
     photo = state / "rooms" / "room-a" / "work" / "inbox" / "m1" / "photo.png"
+    mem = put(state / "memory" / "daily" / "2025-09-01.md", "- a line\n", days=400)          # the memory tree: never a kind
     assert retention.main(priv, state, now=NOW) == 0
-    assert photo.read_text() == "p" * 300
+    assert photo.read_text() == "p" * 300 and mem.read_text() == "- a line\n"
     assert retention.run(priv, state, dry=True, now=NOW)["inbox"] == 300
     assert cli.main(["retention", "--dry-run", "--private", str(priv), "--state", str(state)]) == 0
     out = capsys.readouterr().out
     assert "inbox: 300 bytes of attachments, kept" in out and "transcripts: 0 would be moved to the trash, 0 bytes" in out
 
 
-def test_the_trash_empties_after_7_days_and_nothing_else_is_deleted(tmp_path):
+def test_the_trash_empties_after_7_days_a_rooms_scratch_after_1_and_nothing_else_is_deleted(tmp_path):
     priv, state, projects, led = layer(tmp_path)
     gone = put(state / "trash" / retention.day(NOW - 8 * DAY) / "logs" / "room-a.jsonl", "old")
     stays = put(state / "trash" / retention.day(NOW - 6 * DAY) / "logs" / "room-a.jsonl", "newer")
+    week = put(state / "trash" / retention.day(NOW - 2 * DAY) / "rooms" / "room-a" / "assembled.jsonl", "a")   # not scratch: a week
+    sgone = put(state / "trash" / "scratch" / retention.day(NOW - 2 * DAY) / "rooms" / "room-a" / "work" / "r.pgm", "rr")
+    sstays = put(state / "trash" / "scratch" / retention.day(NOW - DAY) / "rooms" / "room-a" / "work" / "s.pgm", "s")
     r = retention.run(priv, state, now=NOW)
     assert not gone.parent.parent.exists() and stays.exists() and r["kinds"]["trash"] == [1, 3]
+    assert not sgone.parent.parent.parent.parent.exists() and sstays.exists() and week.exists() and r["kinds"]["scratch_trash"] == [1, 2]
     assert oct((state / "trash").stat().st_mode & 0o777) == "0o700"
 
 
@@ -210,11 +215,11 @@ def test_a_failure_exits_1_and_the_morning_diff_opens_with_it(tmp_path, capsys):
 def test_the_days_come_from_yerkd_toml_and_explain_says_them(tmp_path, capsys):
     priv, state, projects, led = layer(tmp_path, '[retention]\nlogs = 3\nledger = "x"\nworkers = -1\ntrash = true\n')
     assert retention.keep({"retention": {"logs": 3, "ledger": "x", "workers": -1, "trash": True, "scratch_mb": 0}}) == {
-        "logs": 3, "assembled": 14, "transcripts": 30, "ledger": 90, "workers": 30, "scratch": 2, "trash": 7, "scratch_mb": 500}
+        "logs": 3, "assembled": 14, "transcripts": 30, "ledger": 90, "workers": 30, "scratch": 2, "trash": 7, "scratch_trash": 1, "scratch_mb": 500}
     assert cli.main(["explain", "retention", "--private", str(priv), "--state", str(state)]) == 0
     out = capsys.readouterr().out
     assert out.startswith(f"{words.DONE} retention: ") and "Here: logs 3 days, assembled 14 days, transcripts 30 days" in out
-    assert "scratch 2 days, trash 7 days, a room's scratch at most 500 MB ([retention] in yerkd.toml)" in out
+    assert "scratch 2 days, trash 7 days, scratch_trash 1 days, a room's scratch at most 500 MB ([retention] in yerkd.toml)" in out
 
 
 def test_a_rooms_scratch_goes_after_its_days_then_the_oldest_past_the_cap_and_never_the_persons_files(tmp_path):
@@ -241,9 +246,37 @@ def test_a_rooms_scratch_goes_after_its_days_then_the_oldest_past_the_cap_and_ne
     assert not any(p.exists() or p.is_symlink() for p in (old, sent, p1, p2, link, render, tiny))   # tiny: past its days, under the cap
     assert not (room / "work" / "outbox" / "pages").exists() and (room / "work" / "renders").is_dir()
     assert all(p.exists() for p in (notes, fresh, *own, photo, target, mid, young, room / "work" / "outbox" / "held.log"))
-    gone = state / "trash" / retention.day(NOW) / "rooms" / "room-a"
+    gone = state / "trash" / "scratch" / retention.day(NOW) / "rooms" / "room-a"
     assert (gone / "outbox" / sent.name).read_text() == "s" * 200 and (gone / "work" / "outbox" / "pages" / "p2.pgm").exists()
     assert (gone / "work" / "outbox" / "link.txt").is_symlink() and (room / "work" / "linked-folder").is_symlink()
+
+
+def test_a_room_yerkd_says_is_busy_or_waiting_keeps_all_and_a_yerkd_that_does_not_answer_keeps_every_room(tmp_path, monkeypatch):
+    priv, state, projects, led = layer(tmp_path)
+    led.inbound_set("m9", state="answered")                                       # no open row: yerkd's word alone
+    render = put(state / "rooms" / "room-a" / "work" / "render.pgm", "r", days=5)
+    log = put(state / "logs" / "room-a.jsonl", '{"t": 1}\n', days=1)
+    monkeypatch.setattr(retention.status, "alive", lambda s: True)
+    for said in ({"rooms": [{"room": "room-a", "busy": True, "waiting": 0}]}, {"rooms": [{"room": "room-a", "busy": False, "waiting": 2}]},
+                 None):                                                          # running, and not answering
+        monkeypatch.setattr(retention.status, "ask", lambda s, said=said: said)
+        assert "error" not in retention.run(priv, state, now=NOW) and render.exists() and log.exists(), said
+    monkeypatch.setattr(retention.status, "ask", lambda s: {"rooms": [{"room": "room-a", "busy": False, "waiting": 0}]})
+    retention.run(priv, state, now=NOW)
+    assert not render.exists() and not log.exists()                               # quiet: swept
+
+
+def test_a_trash_folder_holding_an_open_file_and_a_folder_a_process_runs_in_stay(tmp_path):
+    priv, state, projects, led = layer(tmp_path)
+    held = put(state / "trash" / retention.day(NOW - 9 * DAY) / "logs" / "room-a.jsonl", "h")
+    deep = put(state / "rooms" / "room-a" / "work" / "renders" / "run1" / "r.pgm", "r", days=5)
+    proc = tmp_path / "proc"
+    for d in (proc / "self" / "fd", proc / "4242" / "fd"):
+        d.mkdir(parents=True)
+    (proc / "4242" / "cwd").symlink_to(deep.parent)                               # a process runs in the folder the sweep empties
+    (proc / "4242" / "fd" / "3").symlink_to(held)                                  # and holds a file in a week-old trash folder
+    r = retention.run(priv, state, now=NOW, proc=proc)
+    assert held.exists() and "trash" not in r["kinds"] and not deep.exists() and deep.parent.is_dir()
 
 
 def test_a_file_written_in_the_last_hour_stays_whatever_the_cap(tmp_path):
@@ -303,11 +336,11 @@ def test_a_busy_month_stays_under_one_fixed_bound_from_day_3_to_day_30(tmp_path)
     t0 = time.mktime((2027, 1, 4, 0, 0, 0, 0, 0, -1))                     # a Monday, a month with no clock change
     RENDER, SEND, INBOX, TRANSCRIPT, WORKER, LOG, ASM, LEDGER = 60 * MB, 10_600_000, 40 * MB, 10 * MB, 3 * MB, 40_000, 4_000, 32 * MB
     DAILY, BURST = 5 * RENDER + 2 * SEND, 15 * RENDER
-    # Turn and the last part closes the case before 0 the next (0 run, starts the example note says the), sample item moved to
-    # for its 0 turn and the: last part closes the case 00 before the next, run starts the. Example note says the sample, item
-    # plain text with one more line for: 00 the, 00 check, while a second; entry waits in the, 00 queue for 0 its
-    # the case before the (00, next run starts the example). Note Says the sample item moved to.
-    bound = 11 * DAILY + BURST + 30 * TRANSCRIPT + 10 * WORKER + 31 * (LOG + ASM) + LEDGER + MB
+    # Plain text with one more line for the check 0 while a (0 second, entry waits in the queue for), its turn and the
+    # the/next/ step and 0 the test reads (it_back, 0 as): plain text with one more 0 line for the, check while
+    # the. Sample item moved to the, next step and the test reads it back: 00 as, 00 plain, text with one; more
+    # the case before, 00 the next 0 run starts the example note (00, says the sample item moved). To The next step and the test.
+    bound = 5 * DAILY + BURST + 30 * TRANSCRIPT + 10 * WORKER + 31 * (LOG + ASM) + LEDGER + MB
     written, seen = 0, []
     for k in range(1, 31):
         day0, sid = t0 + (k - 1) * DAY, f"{k:08x}-0000-4000-8000-{k:012x}"
@@ -340,6 +373,7 @@ def test_a_busy_month_stays_under_one_fixed_bound_from_day_3_to_day_30(tmp_path)
         assert sum(s.st_size for _, s in left) <= 500 * MB and all(s.st_mtime >= sweep - 2 * DAY for _, s in left), k
         assert len(list((work / "inbox").glob("m*/drawing.pdf"))) == k and len(list((work / "outbox").iterdir())) <= 3, k
         assert all(d.name >= retention.day(sweep - 7 * DAY) for d in (state / "trash").glob("????-??-??")), k
+        assert all(d.name >= retention.day(sweep - DAY) for d in (state / "trash" / "scratch").glob("????-??-??")), k
         assert k < 3 or max(late, early) <= bound, (k, late, early, bound, seen)
     assert written > 2 * bound and files(priv) == before, (written, bound)             # the bound means something; the layer as it was
     assert on_disk(work / "inbox") == 30 * INBOX + 300                                   # every attachment, kept (the fixture's photo too)

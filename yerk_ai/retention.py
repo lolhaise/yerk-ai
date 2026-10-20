@@ -9,10 +9,10 @@ is checkpointed; a finished worker's folder and its project folder are kept `wor
 (scratch(): its work folder but the person's files, and the copies of the files it sent) is kept `scratch` days,
 and past `scratch_mb` a room loses its oldest files first, never one written in the last hour and never while
 it has a turn in flight. What leaves moves to <state>/trash/YYYY-MM-DD/ first (a cut log's original, a table's
-rows as gzipped JSON lines), and only the trash past `trash` days is deleted, so a wrong rule costs a week, not
-data. Never touched: the memory tree, the private layer (yerkd.toml and accounts.toml are read), attachments in
-work/inbox (their size is said), anything a process holds open or runs in (from /proc), anything else outside
-the state folder."""
+rows as gzipped JSON lines; a room's scratch under trash/scratch/), and only the trash past `trash` days is
+deleted, scratch's past `scratch_trash`, so a wrong rule costs a week (scratch: a day), not data. Never touched:
+the memory tree, the private layer (yerkd.toml and accounts.toml are read), attachments in work/inbox (their size
+is said), anything a process holds open or runs in (from /proc), anything else outside the state folder."""
 from __future__ import annotations
 
 import contextlib
@@ -35,7 +35,7 @@ from .ledger import Ledger
 from .workers import settings as worker_settings
 
 DAY = 86400.0
-DAYS = {"logs": 14, "assembled": 14, "transcripts": 30, "ledger": 90, "workers": 30, "scratch": 2, "trash": 7}
+DAYS = {"logs": 14, "assembled": 14, "transcripts": 30, "ledger": 90, "workers": 30, "scratch": 2, "trash": 7, "scratch_trash": 1}
 CAP = {"scratch_mb": 500}             # past this a room's scratch loses its oldest files first
 TIMED = {"outbound": "sent", "hook_calls": "t", "tool_times": "t", "evidence": "t", "shadow": "t"}
 SESSION = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
@@ -95,7 +95,7 @@ def in_flight(state: Path, ledger: Ledger, rooms: list[str]) -> set[str]:
 
 def run(private: Path, state: Path, dry: bool = False, now: float | None = None, proc: Path = PROC) -> dict[str, Any]:
     """One sweep: {"at", "dry", "kinds": {kind: [items, bytes]}, "inbox": bytes, "error", "why"}; with `dry` nothing
-    moves. A kind's bytes are what moved to the trash; the trash's, what was deleted from it."""
+    moves. A kind's bytes are what moved to the trash; trash's and scratch_trash's, what was deleted from it."""
     now = time.time() if now is None else now
     out: dict[str, Any] = {"at": now, "dry": dry, "kinds": {}, "inbox": 0}
     trash, busy = state / "trash" / day(now), set[tuple[int, int]]()
@@ -115,7 +115,7 @@ def run(private: Path, state: Path, dry: bool = False, now: float | None = None,
         tally(kind, 1, size(found))
         if dry:
             return path
-        (dest := trash / rel).parent.mkdir(parents=True, exist_ok=True)
+        (dest := (trash.parent / "scratch" / trash.name if kind == "scratch" else trash) / rel).parent.mkdir(parents=True, exist_ok=True)
         return Path(shutil.move(path, dest.with_name(f"{dest.name}.{time.time_ns()}") if dest.exists() else dest))
     try:
         conf = load_toml(private / "yerkd.toml") if (private / "yerkd.toml").is_file() else {}
@@ -186,9 +186,9 @@ def run(private: Path, state: Path, dry: bool = False, now: float | None = None,
         if not dry:
             ledger.checkpoint()
         out["inbox"] = sum(size(tree(r / "work" / "inbox")) for r in rooms if (r / "work" / "inbox").is_dir())
-        for d in sorted((state / "trash").glob("????-??-??")):
-            if d.name < day(now - days["trash"] * DAY) and free(found := tree(d)):
-                tally("trash", 1, size(found))
+        for d in sorted([*(state / "trash").glob("????-??-??"), *(state / "trash" / "scratch").glob("????-??-??")]):
+            if d.name < day(now - days[(k := "scratch_trash" if d.parent.name == "scratch" else "trash")] * DAY) and free(found := tree(d)):
+                tally(k, 1, size(found))
                 if not dry:
                     shutil.rmtree(d)
     except Exception as e:      # any failure is said, kept for the morning diff, exits 1; what moved before it stays counted
@@ -201,7 +201,7 @@ def main(private: Path, state: Path, dry: bool = False, now: float | None = None
     r = run(private, state, dry, now, proc)
     for kind in DAYS if dry else r["kinds"]:                         # a dry run names every kind, zeros too
         n, nbytes = r["kinds"].get(kind, (0, 0))
-        verb = ("would be " if dry else "") + ("deleted" if kind == "trash" else "moved to the trash")
+        verb = ("would be " if dry else "") + ("deleted" if kind.endswith("trash") else "moved to the trash")
         print(f"{kind}: {n} {verb}, {words.size(nbytes)}")
     if dry or r["kinds"]:
         print(f"inbox: {words.size(r['inbox'])} of attachments, kept")

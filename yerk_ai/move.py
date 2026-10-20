@@ -112,6 +112,7 @@ async def add(a: argparse.Namespace) -> int:
     await client.login((priv / d["token_file"]).read_text().strip())
     try:
         http: Any = client.http                     # the raw REST calls: payloads exactly as Discord takes them
+        await http.logs_from(old, 1)                # the old chat is read first: a 403 here stops it before anything is written
         have = rs.get(room)
         found = [c["id"] for c in await http.get_all_guild_channels(d["guild"]) if c["name"] == room and c["type"] == 0]
         cid = str(have["channel"]).partition(":")[2] if have else found[0] if found else ""
@@ -158,10 +159,7 @@ async def add(a: argparse.Namespace) -> int:
         log = memory.DailyLog(s.daily, s.tz, {room: (room_id(room, block), memory.room_class(block))})
         since = datetime.fromisoformat(a.since).replace(tzinfo=s.tz) if a.since else SINCE
         roles = {str(d["owner"]): "owner", **({str(a.person): "person"} if a.person else {})}
-        try:
-            n = await history(http, log, room, old, roles, lay / f"{a.room}-attachments", since, dry)
-        except discord.Forbidden:
-            raise SystemExit(f"history: Yerk's bot cannot read {a.source}; let it in there and run this again, it tops up") from None
+        n = await history(http, log, room, old, roles, lay / f"{a.room}-attachments", since, dry)
         print(f"history: {n['messages']} messages from {a.source}, {n['new']} {'to file' if dry else 'filed'}, "
               f"{n['messages'] - n['new']} there already; {n['files']} files up to 25 MB, {n['saved']} {'to save' if dry else 'saved'}")
         hooks = [w for w in await http.channel_webhooks(cid) if w["name"] == HOOK] if cid else []
@@ -169,6 +167,8 @@ async def add(a: argparse.Namespace) -> int:
         url = priv / "secrets" / f"discord-{a.room}-webhook.url"
         if hook and not dry and not url.exists():
             write_private(url, f"https://discord.com/api/webhooks/{hook['id']}/{hook['token']}\n")
+    except discord.Forbidden:
+        raise SystemExit(f"Discord said no (403): Yerk's bot cannot read {a.source} or may not act here; let it in and run this again") from None
     finally:
         await client.close()
     ids, wid = list(d.get("test_senders", [])), int(hook["id"]) if hook else "NEW"
