@@ -658,14 +658,10 @@ def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader:
         log.warning("recall: meaning search skipped (%s); keywords only for this query", state)
     if s.scoped:             # a room's own `also`: its roots' candidates only, before fusion keeps k (every root is indexed)
         keywords, vectors = ([h for h in x if s.scope.contains(Path(h["path"]))] for x in (keywords, vectors))
-    hits = fuse(keywords, vectors, k)
-    if reader and (not reader.owner or reader.sealed):          # another room's private lines never leave the tree (R2)
-        kept, want = [], {t[:5] for t in memindex.terms(query)}      # a hit only its hidden lines matched would say they hold the words
-        for h in hits:
-            text = allowed_text(reader, Path(h["path"]), str(h.get("text", "")), daily=s.daily)
-            if text is not None and (text == h.get("text") or want & {w[:5] for w in memindex.WORD.findall(memindex.norm(text))}):
-                kept.append({**h, "text": text})
-        hits = kept
+    if reader and (not reader.owner or reader.sealed):   # a room that is not an owner room, or is sealed, ranks and gets only chunks it can
+        keywords, vectors = ([h for h in x if allowed_text(reader, Path(h["path"]), str(h.get("text", "")), daily=s.daily) == h.get("text")]
+                             for x in (keywords, vectors))     # read whole (R2): its own line beside a hidden one reaches it through its pack,
+    hits = fuse(keywords, vectors, k)       # its topic hits and read_memory, never recall: a chunk read in part would rank on words it may not see
     for h in hits:
         h.pop("id", None)
         h["cite"] = f"{cite(s, Path(h['path']))}:{h['line']}"

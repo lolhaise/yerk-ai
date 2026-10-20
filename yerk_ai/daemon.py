@@ -65,14 +65,12 @@ class ConsoleChannel:
     def progress(self, room: str, text: str) -> None:
         print(f"[card] {text}", file=sys.stderr, flush=True)
 
-    def reply(self, room: str, text: str, inbound: list[str], card: str | None = None,
-              key: str | None = None) -> list[str]:
+    def reply(self, room: str, text: str, inbound: list[str], card: str | None = None, key: str | None = None) -> list[str]:
         if card:
             self.progress(room, card)
         return self._out({"room": room, "reply": text, "inbound": inbound, **({"card": card} if card else {})})
 
-    def notice(self, room: str, text: str, inbound: list[str], card: str | None = None,
-               key: str | None = None) -> list[str]:
+    def notice(self, room: str, text: str, inbound: list[str], card: str | None = None, key: str | None = None) -> list[str]:
         if card:
             self.progress(room, card)
         return self._out({"room": room, "notice": text, "inbound": inbound})
@@ -93,8 +91,7 @@ class ConsoleChannel:
         print(f"[{key}] {text}", file=sys.stderr, flush=True)
         return message_id or f"console-{key}"
 
-    async def worker_settle(self, room: str, key: str, text: str, how: str,
-                            message_id: str | None = None) -> str | None:
+    async def worker_settle(self, room: str, key: str, text: str, how: str, message_id: str | None = None) -> str | None:
         return await self.worker_card(room, key, f"{text}\n({how})", message_id)
 
 
@@ -126,6 +123,13 @@ class Yerkd:
         self.meters = Meters(state / "meters.json")
         self.memory = memory.settings(private, state, dict(self.conf.get("memory", {})))
         self.scoped = {n: self.memory.only(private, n, c["also"]) for n, c in self.room_confs.items() if "also" in c}
+        held = (*self.memory.scope.roots, (private / "secrets").resolve(), state.resolve())
+        for n, c in ((n, c) for n, c in self.room_confs.items() if c.get("people")):   # its layer is a working folder, its files the prompt
+            lay, others = context.layer_dir(private, c), [context.layer_dir(private, d) for m, d in self.room_confs.items() if m != n]
+            files = [lay / str(c[k]) for k in ("persona", "rulebook", "voice", "pinned_memory", "open_loops") if c.get(k)]
+            if lay in others or private.resolve().is_relative_to(lay) or any(p.is_relative_to(lay) or lay.is_relative_to(p) for p in held) \
+                    or any(not f.resolve().is_relative_to(lay) for f in files):
+                raise SystemExit(f"room {n}: people needs a `layer` of its own, holding no memory root, secrets/ or state, its files inside it")
         self.daily = memory.DailyLog(self.memory.daily, self.memory.tz,
                                      {n: (room_id(n, c), memory.room_class(c)) for n, c in self.room_confs.items()})
         # day-log lines written before offsets, ids, authors and classes are rewritten once, here, before any

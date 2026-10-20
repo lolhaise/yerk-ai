@@ -141,7 +141,7 @@ def run_discord(tmp_path, monkeypatch, discord_table):
     priv = tmp_path / "private"
     shutil.copytree(EXAMPLE_PRIVATE, priv)
     rooms = priv / "rooms.toml"
-    rooms.write_text(rooms.read_text().replace('"discord:CHANNEL_ID"', f'"discord:{ROOM_CH}"\npeople = [{PERSON}]', 1)
+    rooms.write_text(rooms.read_text().replace('"discord:CHANNEL_ID"', f'"discord:{ROOM_CH}"\npeople = [{PERSON}]\nlayer = "family"', 1)
                      .replace('privacy = "owner"', 'privacy = "family"', 1))      # a room that lists people is not the owner's alone
     (priv / "discord.token").write_text("not-a-token\n")
     (priv / "yerkd.toml").write_text('[discord]\ntoken_file = "discord.token"\n' + discord_table)
