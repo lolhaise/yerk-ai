@@ -364,48 +364,55 @@ def test_a_room_quoting_its_own_filed_reply_is_not_flagged_and_a_figure_on_file_
                                                          "turn 00.00%, and the last part/0000-00-00.closes:0"]
 
 
-def test_a_figure_the_room_said_earlier_in_its_session_counts_as_read_and_its_first_saying_is_checked(tmp_path):
-    """A second entry: waits-in-the queue for 0000-00-00 00:00 its 00.00% turn 000,000 and the last 00:00 part, closes
-    its turns repeated 99.99% into the next morning, flagged each time as on file in Ben'step and the test reads's reply,
-    the case before the next run starts the example note (0 says 00 the sample). Item moved to the next step and the,
-    its text in the session'the next run starts the example note says the sample item moved to the next's first row, counts as
-    read. The first saying is checked as before: this turn'a second entry, waits in the, queue for's line from before the
-    while a second entry waits in the queue for."""
+def test_a_figure_the_room_posted_earlier_in_its_session_counts_as_read_and_what_the_check_never_read_does_not(tmp_path):
+    """Step and the: test-reads-it back as 0000-00-00 00:00 plain 00.00% text 000,000 with one more 00:00 line, for
+    its turns repeated 99.99% into the next morning, flagged each time as on file in another notes folder or another room's reply.
+    A figure the room posted in a reply earlier in the same session counts as read: the Stop check read that reply. What
+    the check never read does not count, so its first saying after is checked: narration written before a tool call (in
+    the transcript, never posted), the room'and the test reads it (back as plain text with-one more), line for's own reply
+    (posted before its check runs), a reply of an earlier session, and a new session's first quote."""
     y, room, ch = setup(tmp_path)
     at = datetime.fromisoformat
-    y.daily.capture("example-room", "r0", "yerk", "Its turn and the last 0,000 part.", when=at("2026-10-19T21:00:00-04:00"))
-    y.daily.capture("example-room", "r1", "yerk", "The example0 note says the sample item: 000,000 moved to the next "
-                    "000,000.00, waits 00.00% in the.", when=at("2026-10-19T22:21:01-04:00"))
+
+    def posted(key, sid, t, text, kind="reply"):  # a part the channel posted: its ledger row, its day-log line, its turn
+        if "-s" not in key:                       # a send's key is its turn's, then -s
+            y.ledger.record(room="example-room", session_id=sid, turn_key=key, started=t - 30)
+        y.ledger.delivery_plan(f"{key}:0", "example-room", kind, text)
+        y.ledger.delivery_set(f"{key}:0", state="sent", created=t)
+        y.daily.capture("example-room", key, "yerk", text, when=datetime.fromtimestamp(t, timezone.utc))
+    posted("t0", "sid-f", at("2026-10-19T21:00:00-04:00").timestamp(), "Run one came in at 4,015 kg.")
+    posted("t1", "sid-g", at("2026-10-19T22:21:01-04:00").timestamp(), "Scale two is the best run yet: 148,290 kg against "
+           "the weighbridge's 148,304.83, so 99.99% of it.")
+    posted("t1-s1", "sid-g", at("2026-10-19T22:21:30-04:00").timestamp(), "The shelf is 2,390 mm.", kind="send")
+    posted("t2", "sid-g", at("2026-10-19T22:26:00-04:00").timestamp(), "Not answered: run two stopped at 1,725 rows.", kind="notice")
     y.daily.capture("example-room", "n1", memory.NOTE, "the long shelf is 1,105 mm", when=at("2026-10-19T22:22:00-04:00"))
-    y.daily.capture("other-room", "o1", "yerk", "00.00% while 000,000 a 0,000 second 0,000 entry 0,000 waits 0,000 in 0,000 the queue",
-                    when=at("2026-10-19T22:30:00-04:00"))
+    y.daily.capture("other-room", "o1", "yerk", "00.00% the 000,000 example 0,000 note 0,000 says 0,000 the 0,000 sample 0,000 item 0,000 "
+                    "here too", when=at("2026-10-19T22:30:00-04:00"))
     memindex.Index(y.memory.index_db, y.memory.scope).sync()
+    tool = {"type": "tool_use", "id": "tu1", "name": "Read", "input": {"file_path": "/x/run-two.csv"}}
+    (tmp_path / "sid-g.jsonl").write_text("".join(json.dumps(   # Claude Code's rows, stamped in UTC, the last one being written
+        {"type": kind, "timestamp": f"{at(t).astimezone(timezone.utc):%Y-%m-%dT%H:%M:%S.000Z}",
+         "message": {"role": kind, "content": [{"type": "text", "text": text}, *calls] if kind == "assistant" else text}}) + "\n"
+        for t, kind, text, calls in [("2026-10-19T21:53:55-04:00", "user", "how did fable v2 do?", []),
+                                     ("2026-10-19T22:20:40-04:00", "assistant", "Checking 3,260 first.", [tool]),
+                                     ("2026-10-19T22:21:00-04:00", "assistant", "Scale two: 148,290 kg, 99.99% of the weighbridge.", [])])
+        + '{"type": "assistant", "timest')
 
-    def write(sid, rows):                     # Claude Code's rows, stamped in UTC, the last one still being written
-        (tmp_path / f"{sid}.jsonl").write_text("".join(json.dumps(
-            {"type": kind, "timestamp": f"{at(t).astimezone(timezone.utc):%Y-%m-%dT%H:%M:%S.000Z}", **extra,
-             "message": {"role": kind, "content": [{"type": "text", "text": text}] if kind == "assistant" else text}}) + "\n"
-            for t, kind, text, extra in rows) + '{"type": "assistant", "timest')
-
-    def flagged(reply, since, sid="sid-g"):
+    def flagged(reply, since, key, sid="sid-g"):
         human_turn(room, "and how close is it?")
-        room.evidence = evidence.Evidence()
+        room.turn_key, room.evidence = key, evidence.Evidence()
         room.evidence.started = at(since).timestamp()
+        posted(key, sid, room.evidence.started + 20, reply)          # the reply is in the room before its Stop check runs
         last = max([r["id"] for r in y.ledger.rows(1, "shadow")], default=0)
         call(y, {"hook_event_name": "Stop", "stop_hook_active": False, "last_assistant_message": reply, "session_id": sid,
                  "transcript_path": str(tmp_path / f"{sid}.jsonl")})
         return sorted(re.match(r"quoted (.+?), on file at", r["detail"])[1] for r in y.ledger.rows(50, "shadow")
                       if r["id"] > last and r["rule"] == "figure")
-    write("sid-g", [("2026-10-19T21:53:55-04:00", "user", "a second entry waits0 in?", {}),
-                    ("2026-10-19T22:21:00-04:00", "assistant", "Moved to0: 000,000 the, 00.00% next step and.", {}),
-                    ("2026-10-19T22:30:00-04:00", "assistant", "Next Step: 0,000", {"isApiErrorMessage": True}),
-                    ("2026-10-19T22:44:40-04:00", "assistant", "Queue 0,000 for.", {})])
-    assert flagged("Queue 00.00% for 000,000 its. Turn and the 0,000 last; part 0,000 closes 0,000 the 0,000 case 0,000.",
-                   "2026-10-19T22:44:30-04:00") == ["1,234", "1,472", "3,260", "4,015"]
-    assert flagged("00.00% the, last part 0,000 closes, the 0,000.", "2026-10-20T10:34:30-04:00") == []    # its turn and
+    assert flagged("Still 99.99% and 148,290 kg. The long shelf is 1,105 mm, then 3,260 and 1,472 and 2,390 and 4,015 and 1,725.",
+                   "2026-10-19T22:44:30-04:00", "tk-a") == ["1,105", "1,472", "1,725", "2,390", "3,260", "4,015"]
+    assert flagged("99.99% still, the long shelf 1,105 mm, and 3,260 and 2,390.", "2026-10-20T10:34:30-04:00", "tk-b") == []
     SessionTable(tmp_path / "sessions.json").bind("example-room", "sid-h", "one")
-    write("sid-h", [("2026-10-20T11:00:00-04:00", "user", "as plain: text with one more?", {})])
-    assert flagged("99.99% still.", "2026-10-20T11:00:00-04:00", "sid-h") == ["99.99%"]      # next step and the test
+    assert flagged("99.99% still.", "2026-10-20T11:00:00-04:00", "tk-c", "sid-h") == ["99.99%"]   # a new session's first saying
 
 
 CONTROL_REPLIES = [   # known-good replies with the turn that made them: none may be flagged

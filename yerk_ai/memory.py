@@ -941,25 +941,6 @@ def on_file(s: Settings, rid: str = "", deadline_s: float = 1.5) -> tuple[Any, A
     return figure, known
 
 
-def said(s: Settings, rid: str, transcript: str | Path | None, since: float) -> str:
-    """What room `rid` said in its session before `since`, its turn's start: its text in the session's transcript, an
-    error row aside, and its `yerk` and `note` day-log lines from the transcript's first row on."""
-    start, out = since, []
-    with suppress(OSError), open(transcript or os.devnull, errors="replace") as rows:      # row by row: a transcript runs to MBs
-        for raw in rows:
-            with suppress(ValueError, KeyError, TypeError, AttributeError):    # a row still being written, or one with no time
-                r = json.loads(raw)
-                start = min(start, t := datetime.fromisoformat(str(r["timestamp"]).replace("Z", "+00:00")).timestamp())
-                if t < since and r["type"] == "assistant" and not r.get("isApiErrorMessage"):
-                    out += [str(b["text"]) for b in r["message"]["content"] if b.get("type") == "text"]
-    first, last = (datetime.fromtimestamp(t, s.tz).date() for t in (start, since))
-    for f in (s.daily / f"{first + timedelta(n)}.md" for n in range((last - first).days + 1)):
-        lines = map(parse_line, f.read_text(errors="replace").splitlines() if f.is_file() else [])
-        out += [x.body for x in lines if x and x.role in ("yerk", NOTE) and x.rid == rid
-                and start <= datetime.fromisoformat(f"{f.stem}T{x.time}{x.offset}").timestamp() < since]
-    return "\n".join(out)
-
-
 # the recall bench: a fixed question set, run against the index (L63)
 def has_all(text: str, tokens: list[str]) -> bool:
     t = memindex.norm(text)

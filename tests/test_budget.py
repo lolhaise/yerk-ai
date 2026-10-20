@@ -60,10 +60,10 @@ def test_the_real_layer_test_counts_the_rules_file(tmp_path, monkeypatch):
     without the rules file, as it was, the test passed such a room."""
     private = tmp_path / "private"
     shutil.copytree(EXAMPLE_PRIVATE, private)
-    (private / "memory" / memory.RULES).write_text("- a job: done this way.\n" + "- another job: " + "x" * 7000 + "\n")
+    (private / "memory" / memory.RULES).write_text("- a job: done this way.\n" + "- another job: " + "x" * 12000 + "\n")
     monkeypatch.setenv("YERK_PRIVATE", str(private))
     monkeypatch.setenv("YERK_STATE", str(tmp_path / "state"))
-    with pytest.raises(AssertionError, match=rf"^example-room rules: 7,\d{{3}} > {budgets()['session_start']['appended']['rules']:,} \("):
+    with pytest.raises(AssertionError, match=rf"^example-room rules: 12,\d{{3}} > {budgets()['session_start']['appended']['rules']:,} \("):
         test_real_private_layer_fits()
 
 
@@ -73,7 +73,7 @@ def test_the_rules_file_is_a_part_of_its_own_so_a_full_rulebook_never_pushes_a_r
     it as they go); past its own budget its trim marker names it; a sealed room gets none."""
     private = tmp_path / "private"
     shutil.copytree(EXAMPLE_PRIVATE, private)
-    (private / "rulebook.md").write_text("- a rule of this room.\n" * 500)                        # 11,500: near its cap
+    (private / "rulebook.md").write_text("- a rule of this room.\n" * 290)                        # 6,670: near its cap
     rules = private / "memory" / memory.RULES
     rules.write_text("".join(f"- job {i}: how job {i} is done in every room.\n" for i in range(120)))      # 5,300
     bad, start = build(private, "example-room", tmp_path / "state")
@@ -81,7 +81,7 @@ def test_the_rules_file_is_a_part_of_its_own_so_a_full_rulebook_never_pushes_a_r
     assert list(part) == ["mechanics", "persona", "rulebook", "room_voice", "pinned_memory", "rules", "recall_pack"]
     assert bad == [] and not part["rulebook"].over and part["rules"].raw > 5000
     assert all(f"- job {i}: " in part["rules"].text for i in range(120)) and "[...trimmed" not in context.appended_file(start)
-    rules.write_text(rules.read_text() * 2)                                                     # past the part's own budget
+    rules.write_text(rules.read_text() * 3)                                                     # past the part's own budget
     bad, start = build(private, "example-room", tmp_path / "state")
     part = {p.name: p for p in start}
     assert [v.split(":")[0] for v in bad] == ["rules"] and "[...trimmed rules: kept" in part["rules"].text
@@ -125,6 +125,26 @@ def test_claude_codes_parts_as_the_rooms_send_them_fit_their_lines_and_what_is_l
     assert all(line <= sent * 1.02 for name, (sent, line) in rows.items() if name != "Yerk AI's tools"), rows
     s = b["session_start"]
     assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 80000
+
+
+# The largest room rulebook, the room's own text only since PR 47, across the six rooms (`yerk map`, 2026-10-20).
+LIVE_RULEBOOK = 6019
+
+
+def test_the_rulebook_line_keeps_about_1000_over_the_largest_room_text_and_what_it_freed_went_to_the_rules(tmp_path):
+    """Once the rules file left the rulebook, its line held 12,000 for a room text of 6,019 at the most. It keeps about
+    1,000 over that now and every character it freed went to `rules`: a rulebook of that size and a rules file of about
+    11,000 both go out whole, where `rules` at 6,886 trimmed that file, and the total stays 80,000 (decision 12)."""
+    s = budgets()["session_start"]
+    assert 900 <= s["appended"]["rulebook"] - LIVE_RULEBOOK <= 1100 and s["appended"]["rules"] == 6886 + 12000 - s["appended"]["rulebook"]
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 80000
+    private = tmp_path / "private"
+    shutil.copytree(EXAMPLE_PRIVATE, private)
+    (private / "rulebook.md").write_text("r" * (LIVE_RULEBOOK - 1) + "\n")
+    (private / "memory" / memory.RULES).write_text("".join(f"- job {i}: " + "x" * 100 + "\n" for i in range(100)))
+    bad, start = build(private, "example-room", tmp_path / "state")
+    part = {p.name: p for p in start}
+    assert bad == [] and part["rules"].raw > 11000 and "[...trimmed" not in context.appended_file(start)
 
 
 def test_declared_parts_fit_the_declared_total():

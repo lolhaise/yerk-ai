@@ -11,7 +11,7 @@ store is bounded by characters and drops the OLDEST result text first, never a l
 After each reply the Stop check runs three rules and LOGS what it would bounce, never blocks
 (shadow mode, until 100 cases show under 1 in 10 false alarms):
 - figure: the reply quotes a figure that is on file in the memory tree, that no read of the turn
-  carries and that the room did not say earlier in its session (its first saying was checked);
+  carries and that the room did not post in a reply earlier in its session (the check read that reply);
 - file: the reply names a file of the memory tree the turn never read;
 - decide: the prompt asks what was decided and the turn made no memory read (a recall or
   read_memory call, a read inside a memory root, or recall the prompt hook put in).
@@ -70,7 +70,7 @@ class Evidence:
             self.injected_recall = False
             self.logged: set[tuple[str, str]] = set()
             self.kept = 0
-            self.started = time.time()          # the room's words before this were said in its earlier turns
+            self.started = time.time()          # a reply posted before this came from an earlier turn
 
     def give(self, text: str, recall: bool = False) -> None:
         with self.lock:
@@ -143,7 +143,7 @@ def rounded_near(fig: str, seen: str) -> bool:
 def check(reply: str, prompts: list[str], ev: Evidence, roots: tuple[Path, ...], filed: Callable[[str], str | None],
           known: Callable[[str], str | None], said: str = "") -> list[tuple[str, str]]:
     """(rule, detail) for each thing the reply leans on that the turn never read. Logs only. A figure in what the room
-    `said` earlier in its session (memory.said) counts as read: the first time it said it, the check ran on it."""
+    posted in its session's earlier replies, `said` (Ledger.said), counts as read: the check ran on those replies."""
     out: list[tuple[str, str]] = []
     seen = ev.read_text()
     figures: dict[str, str] = {}                    # each figure once, with the words just before it
