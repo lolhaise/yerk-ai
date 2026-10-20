@@ -1,17 +1,16 @@
-"""A turn's progress card, built from Claude Code's stream events. One per turn of every kind.
-
-In order: the state and the narration line (the model's newest text as it streams in), an optional
-thinking line (owner-only rooms that turn it on; the start of the summary, then "..."), then one
-row per tool call as it starts, a plain verb and its target (a file name, a command's head, a URL's
-host), marked done or not done when its result comes back. Every line holds to phone width
-(words.PHONE); the newest rows win when there are many. The words come from words.py (STYLE.md).
-The room swaps the card for the reply at the end, or edits it to say what was owed when a turn ends
-with nothing to show. (Ideas from OpenClaw's session cards; no code.)
+"""Builds the live progress card a room shows while it works, from Claude Code's stream events. One card per turn of every kind: the state and the
+waits in (the queue for its), turn and the last (part-closes the case before the next; run
+start of the summary, then "..."), then one row per tool call saying what the step is FOR in plain words
+(words.STEP), marked done or not done by its result, two or more failures in a row folded into one. Every
+line holds to phone width (words.PHONE); the newest rows win. The room swaps the card for the reply at the
+end, or edits it to say what was owed when a turn ends with nothing to show. (Ideas from OpenClaw's cards.)
 """
 from __future__ import annotations
 
+import calendar
 import json
 import os
+import re
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlparse
@@ -20,6 +19,10 @@ from . import words
 from .words import DONE as OK, NOT_DONE as FAILED, START, WORKING as RUNNING
 
 ROW_MAX, THINKING_MAX, ROWS_SHOWN = words.PHONE, 2 * words.PHONE, 12
+DAY = re.compile(r"\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])\.md")           # a day log is named by its day
+# a search pattern's syntax, read out by terms(): group and flag openers, escapes (an escaped character stays),
+# classes, repeats, wildcard runs, alternations, stray marks and quotes
+SYNTAX = re.compile(r"\(\?[a-zA-Z]*[:)]|\\[bBAZdDwWsS]|\\(.)|\[\^?[^\]]*\]|\{\d*,?\d*\}|\.[*+?]|\s*\|\s*|[()^$*+?\"']")
 
 
 def short(text: str, n: int) -> str:
@@ -32,48 +35,62 @@ def tool_name(name: str) -> str:
     return (name.split("__")[-1] if name.startswith("mcp__") else name).lower()
 
 
-def verb(name: str) -> str:
-    """The row's verb in plain words: Bash -> run, WebFetch -> fetch, another server's tool by its own name."""
-    n = tool_name(name)
-    return words.VERBS.get(n, n.replace("_", " "))
+def plain(path: str) -> str:
+    """A file as a person names it (STYLE.md rule 4): a day log "the Oct 6 notes", open-loops.md "your open items",
+    MEMORY.md "the pinned notes", rules.md "the rules", facts/<name>.md "<name>'s file", else its bare name."""
+    parts = re.sub(r":\d+$", "", path).rstrip("/").split("/")
+    name = parts[-1]
+    if m := DAY.fullmatch(name):
+        return words.DAY_NOTES.format(day=f"{calendar.month_abbr[int(m[1])]} {int(m[2])}")
+    if name in words.FILES:
+        return words.FILES[name]
+    stem = os.path.splitext(name)[0]
+    return words.FACT_FILE.format(name=stem) if parts[-2:-1] == ["facts"] else stem
 
 
-def target(name: str, args: dict[str, Any]) -> str:
-    """The tool's target in plain words."""
+def terms(pattern: str) -> str:
+    """A search pattern in words: `a|b|c` reads "a, b, c"; anchors, groups, classes, repeats and quotes go."""
+    out = SYNTAX.sub(lambda m: m[1] or (", " if "|" in m[0] else " " if m[0][0] == "." else ""), pattern)
+    return " ".join(out.split()).strip(", ")
+
+
+def step(name: str, args: dict[str, Any]) -> str:
+    """A row's words, what the step is for and never the call (STYLE.md rule 4): a Bash call's own description,
+    a search's folder ("your notes" in the memory tree) and terms, a file's plain name, a page's host, a query."""
     n = tool_name(name)
-    path = args.get("file_path") or args.get("notebook_path") or args.get("file")
-    if n in ("read", "write", "edit", "multiedit", "notebookedit") and path:
-        return os.path.basename(str(path))
-    if n == "bash" and args.get("command"):
-        return str(args["command"]).strip().splitlines()[0]
-    if n in ("webfetch", "fetch") and args.get("url"):
-        return urlparse(str(args["url"])).hostname or str(args["url"])
-    if n == "grep" and args.get("pattern"):
-        where = os.path.basename(str(args.get("path") or "").rstrip("/"))
-        return f'"{args["pattern"]}"' + (f" in {where}" if where else "")
-    if n == "glob" and args.get("pattern"):
-        return str(args["pattern"])
-    if n == "send":
-        return f"file {os.path.basename(str(path))}" if path else "a message"
-    if n == "hold":
-        return str(args.get("wait_for") or "")
-    if n == "worker":
-        return " ".join(str(args.get(k) or "") for k in ("action", "id")).strip() or "a worker"
-    if n in ("recall", "websearch") and args.get("query"):
-        return f'"{args["query"]}"'
-    first = next((v for v in args.values() if isinstance(v, str) and v), "")
-    return str(first)
+    path, where = str(args.get("file_path") or args.get("notebook_path") or args.get("path") or args.get("file") or ""), ""
+    if n == "bash":
+        what = " ".join(str(args.get("description") or "").split())
+        return what[:1].lower() + what[1:] if what else words.STEP[n]
+    if n in ("worker", "schedule"):
+        act, table = str(args.get("action") or ""), words.WORKER_STEP if n == "worker" else words.JOB_STEP
+        return table.get(act, f"{n} {act}").format(id=args.get("id") or "", name=args.get("name") or "").strip()
+    if n == "grep":
+        where = words.NOTES if set(path.split("/")) & {"memory", "daily", "facts"} else plain(path)
+        what = terms(str(args.get("pattern") or ""))
+    elif n == "glob":
+        what = os.path.basename(str(args.get("pattern") or ""))
+    elif n in ("webfetch", "web_fetch", "fetch"):
+        what = urlparse(str(args.get("url") or "")).hostname or str(args.get("url") or "")
+    elif n == "send":
+        what = os.path.basename(path) if path else words.MESSAGE_TO.format(room=args.get("room") or "")
+    elif n == "hold":
+        what = str(args.get("wait_for") or "")
+    else:
+        what = plain(path) if path else next((v for v in args.values() if isinstance(v, str) and v), "")
+    return words.STEP.get(n, n.replace("_", " ") + " {what}").format(what=what, where=where)
 
 
 @dataclass
 class Row:
     id: str
     name: str
-    target: str = ""
+    text: str = ""
     state: str = RUNNING
 
     def line(self) -> str:
-        return words.line(words.no_paths(f"{self.state} {verb(self.name)} {self.target}".rstrip()), ROW_MAX)
+        text = self.text or words.STEP.get(tool_name(self.name), tool_name(self.name)).split("{")[0]   # no input yet
+        return words.line(words.no_paths(f"{self.state} {text}".rstrip()), ROW_MAX)
 
 
 class Card:
@@ -98,7 +115,7 @@ class Card:
             for c in (ev.get("message") or {}).get("content") or []:
                 if c.get("type") == "tool_use":
                     row = self._row(str(c.get("id")), str(c.get("name")))
-                    row.target = short(target(row.name, c.get("input") or {}), ROW_MAX) or row.target
+                    row.text = step(row.name, c.get("input") or {}) or row.text
         elif kind == "user":
             content = (ev.get("message") or {}).get("content")
             for c in content if isinstance(content, list) else []:
@@ -140,8 +157,8 @@ class Card:
                 args = json.loads(self.partial.pop(i, "") or "{}")
             except ValueError:
                 args = {}
-            if isinstance(args, dict) and not row.target:
-                row.target = short(target(row.name, args), ROW_MAX)
+            if isinstance(args, dict) and not row.text:
+                row.text = step(row.name, args)
 
     def render(self, head: str | None = None) -> str:
         lines = [head or words.line(f"{RUNNING} {self.narration or START}")]
@@ -154,11 +171,17 @@ class Card:
             lines.append(words.SUB + words.line(words.THINKING + first))
             if rest:
                 lines.append(words.SUB + words.line(rest + "..."))
-        rows = self.rows[-ROWS_SHOWN:]
-        if len(self.rows) > len(rows):
-            lines.append(words.SUB + words.EARLIER.format(n=len(self.rows) - len(rows)))
-        lines += [r.line() for r in rows]
-        return "\n".join(lines)
+        rows: list[str] = []
+        run = 0                                   # failed steps in a row: the second folds into the first
+        for r in self.rows:
+            run = run + 1 if r.state == FAILED else 0
+            if run < 2:
+                rows.append(r.line())
+            elif run == 2:
+                rows[-1] = words.line(f"{FAILED} {words.ANOTHER_WAY}", ROW_MAX)
+        if len(rows) > ROWS_SHOWN:
+            lines.append(words.SUB + words.EARLIER.format(n=len(rows) - ROWS_SHOWN))
+        return "\n".join(lines + rows[-ROWS_SHOWN:])
 
     def owed(self, why: str, asked: str) -> str:
         """The card of a turn that ends with nothing visible: not answered, why in plain words, what

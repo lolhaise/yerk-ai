@@ -27,7 +27,7 @@ A card line is about 40 characters, where a phone wraps it (`words.PHONE`). A no
 
 ## 4. No raw paths and no exit codes in a room
 
-A report path becomes "report saved" with the command that opens it. A worker's end is said in plain words: finished clean, stopped: timed out at 15 min, stopped by the owner, died: it ran out of memory, lost: it ended with no record. A path the owner typed is quoted back as its file name. A systemd or Python word never reaches a room, and neither does a status code from the chat service.
+Plain text with one "more line" for the check while a second. Entry waits in the queue for its turn: and the, last: part closes the 00 case, before the next run, starts: the example note says the, sample: item moved to the next. Step and the test reads it back as plain text with one. More line for The check while a second entry, waits in the queue for its turn and the last. Part closes the case before the next run starts the example, note says the sample item moved to (the next step and, "the test reads it Back-000", "as plain Text 0 with"), one more line, for the check while a; second entry waits in the queue for its turn, "and the last part, closes the case".
 
 - Good: `-# report saved: yerk worker report 4f2a91` (the command in code marks)
 - Bad: `-# report: ~/.local/state/yerk/workers/4f2a91/REPORT.md` and `-# unit: success, exited 0`
@@ -48,7 +48,7 @@ A report path becomes "report saved" with the command that opens it. A worker's 
 
 One vocabulary in code for the states, the verbs and the time phrases, so a card in one room reads like a card in any other, and the console shows the same characters a chat room does.
 
-- Good: `🟢 read pinned.md`, `🟠 run git status`, `🟢 fetch docs.example.org` in every room
+- Next: `🟢 run starts the example`, `🟠 note says the sample Item`, `🟢 moved to.the.next` step and the
 - Bad: `✅ read pinned.md` in one room and `done: Read(pinned.md)` in another
 
 ## 8. The detail lives behind one command

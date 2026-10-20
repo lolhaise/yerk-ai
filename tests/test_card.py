@@ -39,9 +39,9 @@ def test_the_card_streams_narration_then_rows_ticked_and_crossed():
     c.feed(result("a"))
     c.feed(result("b", error=True))
     lines = c.render().splitlines()
-    assert lines == [f"{RUNNING} Checking the notes first", f"{OK} read pinned.md", f"{FAILED} run git status --short",
-                     f"{RUNNING} fetch docs.example.org", f"{RUNNING} send file report.pdf",
-                     f'{RUNNING} search "owner" in rules.md']
+    assert lines == [f"{RUNNING} Checking the notes first", f"{OK} reading pinned", f"{FAILED} running a command",
+                     f"{RUNNING} reading docs.example.org", f"{RUNNING} sending report.pdf",
+                     f"{RUNNING} searching the rules for owner"]
 
 
 def test_rows_stay_short_and_the_newest_win():
@@ -59,7 +59,7 @@ def test_a_row_gets_its_target_from_the_streamed_input_alone():
     c.feed(se({"type": "content_block_delta", "index": 0, "delta": {"type": "input_json_delta",
                                                                     "partial_json": '{"pattern": "**/*.md"}'}}))
     c.feed(se({"type": "content_block_stop", "index": 0}))
-    assert c.render().splitlines()[1] == f"{RUNNING} list **/*.md"
+    assert c.render().splitlines()[1] == f"{RUNNING} looking for *.md files"
 
 
 def test_the_thinking_line_shows_only_where_the_room_turns_it_on():
@@ -83,12 +83,12 @@ def test_the_thinking_line_shows_only_where_the_room_turns_it_on():
 
 def test_a_card_with_nothing_to_show_says_what_was_owed():
     c = Card()
-    for ev in tool(0, "a", "Read", {"file_path": "/x/a.md"}):
+    for ev in tool(0, "a", "Read", {"file_path": "/x/units.md"}):
         c.feed(ev)
     first = c.owed(words.why("auth", "error"), "what units does the owner prefer, check the file please")
     assert first.splitlines()[:3] == [f"{FAILED} not answered", "the account's login was refused",
                                       '-# you asked: "what units does the..."']
-    assert first.splitlines()[3] == f"{RUNNING} read a.md"
+    assert first.splitlines()[3] == f"{RUNNING} reading units"
 
 
 def test_an_image_never_read_bounces_once_at_stop(tmp_path):
@@ -102,3 +102,98 @@ def test_an_image_never_read_bounces_once_at_stop(tmp_path):
     assert room.stop_check(active=True) is None                        # Claude Code's own loop guard
     room.rp.read_paths.add("/in/5/photo.png")
     assert room.stop_check(active=False) is None                       # read: nothing to say
+
+
+# for its turn and the (Last.part closes 0; the case, 0000-00-00: before the next run starts the example note says)
+MEM = "/home/someone/.local/state/yerk/memory"                         # the memory tree: "your notes", never a path
+
+
+def rows(*calls, failed=()):
+    """A card fed `calls` of (tool name, input), each result back in turn; its rows, without the head."""
+    c = Card()
+    for i, (name, args) in enumerate(calls):
+        for ev in tool(i, f"t{i}", name, args):
+            c.feed(ev)
+        c.feed(result(f"t{i}", error=i in failed))
+    return c.render().splitlines()[1:]
+
+
+def test_rule_1_a_bash_row_is_its_own_description_never_the_command():
+    told, bare = rows(("Bash", {"command": "sed -n '245p' yerk-snapshot-2026-10-06.md",
+                                "description": "For its Turn And 0:0"}),
+                      ("Bash", {"command": "git status --short && ls"}))
+    assert told == f"{OK} line for The Check 0:0" and bare == f"{OK} its turn and"
+    assert "sed" not in told and "git" not in bare and "run " not in told + bare
+
+
+def test_rule_2_a_search_says_where_and_what_in_words():
+    notes, code, files = rows(("Grep", {"pattern": "ABC-578|OPS-10001|Reports", "path": MEM}),
+                              ("Grep", {"pattern": r"^\s*(owner|the owner)\b.*$", "path": "/home/someone/code/yerk-ai", "-i": True}),
+                              ("Glob", {"pattern": "**/*.md", "path": MEM}))
+    assert notes == f"{OK} while a second entry Waits-000..." and "|" not in notes       # step and the test, reads it
+    assert code == f"{OK} note says-the sample item, moved to" and files == f"{OK} reads it *.back as"
+    assert words.width(notes) <= words.PHONE and "memory" not in notes
+
+
+def test_rule_3_a_read_names_the_file_as_a_person_would():
+    got = rows(("Read", {"file_path": f"{MEM}/daily/2026-10-06.md"}), ("Read", {"file_path": f"{MEM}/open-loops.md"}),
+               ("Read", {"file_path": f"{MEM}/facts/alex.md"}), ("Read", {"file_path": f"{MEM}/MEMORY.md"}),
+               ("mcp__yerk__read_memory", {"path": "rules.md", "lines": 40}),
+               ("mcp__yerk__read_memory", {"path": "daily/2026-10-06.md:12", "from_line": 12}),
+               ("Read", {"file_path": "/home/someone/code/yerk-ai/README.md"}))
+    assert got == [f"{OK} turn and The 0 last", f"{OK} the example note says", f"{OK} the Test reads",
+                   f"{OK} reading the pinned notes", f"{OK} reading the rules", f"{OK} reading the Oct 6 notes",
+                   f"{OK} reading README"]
+
+
+def test_rule_4_a_recall_row_is_the_owners_own_words():
+    [row] = rows(("mcp__yerk__recall", {"query": "In The 0:0", "k": 6}))
+    assert row == f"{OK} example note Says The 0:0"
+
+
+def test_rule_5_the_web_is_a_host_or_a_search():
+    got = rows(("mcp__openclaw__web_fetch", {"url": "https://docs.example.org/a/very/long/path?b=1"}),
+               ("WebFetch", {"url": "https://www.bdc.ca/en/rates", "prompt": "the base rate"}),
+               ("WebSearch", {"query": "BDC prime rate October 2026"}),
+               ("mcp__openclaw__web_search", {"query": "Rick Mercer BDC campaign", "count": 5}))
+    assert got == [f"{OK} reading docs.example.org", f"{OK} reading www.bdc.ca", f"{OK} searching the web for BDC prime...",
+                   f"{OK} searching the web for Rick Mercer..."]                   # a long query is cut at a word
+
+
+def test_rule_6_yerks_own_tools_say_what_they_do():
+    got = rows(("mcp__yerk__send", {"room": "Alex", "file": "/w/out/report.pdf", "text": "here"}),
+               ("mcp__yerk__send", {"room": "Alex", "text": "on it"}),
+               ("mcp__yerk__remember", {"text": "Line 0:0 for the Check", "about": "Alex"}),
+               ("mcp__yerk__hold", {"wait_for": "worker abc123", "reason": "its report"}),
+               ("mcp__yerk__worker", {"action": "start", "brief": "read every room's token and report"}),
+               ("mcp__yerk__worker", {"action": "report", "id": "abc123"}),
+               ("mcp__yerk__schedule", {"action": "add", "name": "morning", "when": "every 1d", "what": "the brief"}),
+               ("mcp__yerk__settings", {"model": "opus"}))
+    assert got == [f"{OK} sending report.pdf", f"{OK} queue for its turn And", f"{OK} next run starts",
+                   f"{OK} waiting for worker abc123", f"{OK} starting a worker", f"{OK} reading worker abc123's report",
+                   f"{OK} the test reads", f"{OK} the check while"]
+    assert "token" not in "\n".join(got) and "/w/" not in "\n".join(got)
+
+
+def test_rule_7_a_failure_keeps_its_words_and_two_in_a_row_fold_into_one():
+    [one] = rows(("Bash", {"command": "F=box-2026-10-06.json; jq . $F", "description": "Pull item 274 from the box export"}),
+                 failed={0})
+    assert one == f"{FAILED} pull item 274 from the box export"
+    got = rows(("Read", {"file_path": f"{MEM}/open-loops.md"}),
+               ("Bash", {"command": "F=box-2026-10-06.json; jq . $F", "description": "Pull item 274 from the box export"}),
+               ("Bash", {"command": "for n in 274 308 309; do echo $n; done", "description": "Check items 274, 308 and 309"}),
+               ("Bash", {"command": "cat box-2026-10-06.json", "description": "Read the export whole"}),
+               ("Bash", {"command": "grep -n '08:37\\|09:51' daily/2026-10-06.md", "description": "Check the 8:37 and 9:51 entries"}),
+               failed={1, 2, 3})
+    assert got == [f"{OK} reading your open items", f"{FAILED} that did not work, trying another way",
+                   f"{OK} check the 8:37 and 9:51 entries"]
+    assert not any(x in "\n".join(got) for x in ("jq", "for n", "cat ", "exit", "stderr", "$F"))
+    many = rows(*[("Read", {"file_path": f"{MEM}/daily/2026-10-{d:02d}.md"}) for d in range(1, 15)],
+                ("Bash", {"command": "a"}), ("Bash", {"command": "b"}), failed={14, 15})
+    assert many[0] == "-# 3 earlier steps" and len(many) == 13 and many[-1] == f"{FAILED} that did not work, trying another way"
+
+
+def test_rule_8_every_row_holds_to_phone_width_cut_at_a_word():
+    q = "run starts The example note says The sample item moved to the Next step and the Test reads"
+    [row] = rows(("mcp__yerk__recall", {"query": q, "k": 6}))
+    assert row == f"{OK} waits in the queue For its..." and words.width(row) <= words.PHONE
