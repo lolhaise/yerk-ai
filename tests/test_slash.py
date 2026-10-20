@@ -213,6 +213,8 @@ def test_model_puts_the_room_on_an_account_between_turns_through_the_settings_to
     assert slash(dc, "model") == [("message", f"{words.PLAIN} this room: Fable 5.1, default thinking, on account two", True)]
     assert slash(dc, "model", account="five") == [("message", f"{words.NOT_DONE} not an account: five\n"
                                                               "the accounts: one, two, default", True)]
+    assert slash(dc, "model", user=STRANGER, account="one") == [("message", f"{words.NOT_DONE} {words.NOT_OWNER}", True)]
+    assert json.loads((tmp_path / "rooms" / ROOM / "override.json").read_text()) == {"account": "two"}   # untouched
     room.rp.close()
 
 
