@@ -293,6 +293,26 @@ def test_a_day_log_is_chunked_by_room_and_class_so_a_persons_line_beside_the_own
     assert "free-form line nobody filed" in str(memory.recall(s, "free-form teapot", 20, reader=owner)["hits"])
 
 
+def test_a_piece_of_a_long_line_that_reads_as_another_line_is_never_one(tmp_path):
+    """Cold read of PR 46 (G, on main too): a line past CHUNK_MAX is cut in pieces and recall judges a piece by its own text, so a
+    piece that itself read as a family-room line with its class at its end (day-log lines pasted into an owner line) ranked in
+    that room's recall while read_memory blanked the whole line. Such a piece is marked and reads as no line; a first piece
+    with no class or its line's own, and every other piece, keeps its text and its hash."""
+    s, C = tree(tmp_path), memindex.CHUNK_MAX
+    head = "- 00:00:00-00:00 as-plain#text:With one@more: line for the Check while: "
+    forged, tag = "- 00:00:00-00:00 The#test:Reads_It back@as: plain text with ", " [c:room] [m:f1]"
+    line = head + "o" * (C - len(head) - 1) + " " + forged + "p" * (C - len(forged) - len(tag)) + tag + " and the rest [c:private] [m:o9]"
+    hers = "- 00:00:00-00:00 While#a:Second_Entry waits@in: the queue for its " + "q" * C + " [c:room] [m:p50]"
+    (s.root / "daily" / "2026-01-07.md").write_text(f"# 2026-01-07\n\n{line}\n{hers}\n")
+    build(s)
+    her, owner = memory.Reader("Alex", "discord:MOM_ID", False), memory.Reader("example-room", "discord:CH", True)
+    assert memory.recall(s, "gannet words", 20, reader=her)["hits"] == []
+    assert "gannet words" in str(memory.recall(s, "gannet words", 20, reader=owner)["hits"])
+    pieces = [b for lo, hi, b in memindex.chunks_of((s.root / "daily" / "2026-01-07.md").read_text()) if lo == hi]
+    assert [b for b in pieces if b.startswith("… ")] == [b for b in pieces if "gannet" in b] and len(pieces) == 5
+    assert [b[:10] for b in pieces if b.startswith("- ")] == ["- 10:00:00", "- 10:05:00"]       # each line's own start, as it was
+
+
 def test_a_new_chunker_version_chunks_every_file_again_on_the_next_pass_and_keeps_what_did_not_change(tmp_path, monkeypatch):
     """A VERSION bump used to chunk nothing again until a file's size or mtime moved (2026-10-20: a second pass after the bump
     reported changed 0 and the check said fresh); now a scope key other than the index's is one pass over every file, writing

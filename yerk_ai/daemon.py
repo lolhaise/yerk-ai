@@ -410,14 +410,14 @@ class Yerkd:
         return context.recall_pack(context.layer_dir(self.private, conf), conf, limit, lambda left: self.room_pack(room, left))[0]
 
     def recall_for(self, room: str, prompt: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-        """Names on file (every one for an owner room; for any other, those in files it may read, R2) and the room's own lines on the topic. Off the loop."""
+        """Names on file (every one for an owner room; for any other, those in files it may read now, R2) and the room's own lines on the topic. Off the loop."""
         conf, s, rd = self.room_confs.get(room, {}), self.scoped.get(room, self.memory), self.reader(room)
         names: list[dict[str, Any]] = []
         if conf.get("mention_recall", True):
             try:            # a room's own `also`: the entries from its roots only (a cite is relative in Yerk's own tree, which sealed skips)
-                names = self.names.load().match(prompt, keep=lambda e: (rd.owner or memory.may_read(rd, e.get("class", "private"), e.get("room", "")))
+                names = self.names.load().match(prompt, keep=lambda e: (rd.owner or memory.may_read(rd, *memory.file_class(s.root / e["cite"].rpartition(":")[0])))
                                                 and (not (s.scoped or rd.sealed) or s.scope.contains(s.root / e["cite"].rpartition(":")[0])
-                                                     and (Path(e["cite"].rpartition(":")[0]).is_absolute() or not rd.sealed)))
+                                                     and (Path(e["cite"].rpartition(":")[0]).is_absolute() or not rd.sealed)), strict=not rd.owner)
             except (OSError, ValueError, KeyError) as e:
                 log.warning("mention recall skipped: %s", e)
         r = self.rooms.get(room)

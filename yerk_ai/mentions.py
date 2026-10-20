@@ -180,8 +180,8 @@ class Index:
             self.stamp = (st.st_mtime_ns, st.st_size)
         return self
 
-    def match(self, text: str, limit: int = MATCH_MAX, keep: Callable[[dict[str, Any]], bool] | None = None) -> list[dict[str, Any]]:
-        """Entries for the names in `text`, in the order they are named, each once; only those `keep` takes (by cite, class and room), if given."""
+    def match(self, text: str, limit: int = MATCH_MAX, keep: Callable[[dict[str, Any]], bool] | None = None, strict: bool = False) -> list[dict[str, Any]]:
+        """Entries for the names in `text`, in the order named, each once; only those `keep` takes, if given; `strict`: a key with none it takes is no match."""
         words = tokens(text)
         out: list[dict[str, Any]] = []
         seen: set[int] = set()
@@ -189,7 +189,7 @@ class Index:
         while i < len(words) and len(out) < limit:
             step = 1
             for key, ids in self.first.get(words[i], []):
-                if words[i:i + len(key)] == key:
+                if words[i:i + len(key)] == key and not (strict and keep and not any(keep(self.entries[n]) for n in ids)):
                     for n in ids:
                         if n not in seen and len(out) < limit and (keep is None or keep(self.entries[n])):
                             seen.add(n)

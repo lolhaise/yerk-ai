@@ -228,6 +228,43 @@ def test_a_family_room_with_one_person_reads_its_own_lines_and_shared_files_only
     assert asyncio.run(y.tool_rule(mom, "steep it longer", "tea")) == {"ok": False, "line": words.RULES_OWNER_ONLY}
 
 
+def test_a_family_rooms_names_follow_each_files_class_as_it_is_now(tmp_path):
+    """Cold read of PR 46 (D): yerk-index stamps each entry with its file's class when it builds the name index, and a `.class`
+    sidecar edit moves no Markdown file, so the stamp stayed until yerk-index restarted and the family room kept getting the
+    names of a file made private, which its recall and read_memory already refused. The daemon reads the class as it is now."""
+    y = install(tmp_path, family=True)
+    s, mom, ask = y.memory, "Alex", "as plain text with one?"
+    (s.root / "facts").mkdir(exist_ok=True)
+    (s.root / "facts" / "example-club.md").write_text("# example club\n\n- Example Club: meets on Tuesdays.\n")
+    (s.root / "facts" / "example-club.md.class").write_text("shared\n")
+    idx, names = memindex.Index(s.index_db, s.scope), mentions.Builder(s.mentions, s.roots_for_mentions, s.curated, s.mentions_exclude)
+    idx.sync()
+    names.refresh(idx.disk)                       # one Index and one Builder across passes, as yerk-index holds them
+    assert [e for e in y.recall_for(mom, ask)[0] if "Tuesdays" in e["text"]]
+    (s.root / "facts" / "example-club.md.class").write_text("private\n")
+    idx.sync()
+    assert names.refresh(idx.disk) is None        # no Markdown file moved: the name index is not built again
+    assert not [e for e in y.recall_for(mom, ask)[0] if "Tuesdays" in e["text"]]
+    assert not asyncio.run(y.tool_read_memory(mom, "facts/example-club.md", 1, 5))["ok"]
+    assert [e for e in y.recall_for("example-room", ask)[0] if "Tuesdays" in e["text"]]     # the owner's room: every name
+    idx.close()
+
+
+def test_a_hidden_longer_name_never_takes_the_words_of_a_family_rooms_own(tmp_path):
+    """Cold read of PR 46 (B): the longest key at a position took its words even when the room could read none of its entries,
+    so a name in an owner-class file ("Example Aunt Mary") hid the room's own ("Example Aunt"), and the gap said the hidden
+    file held the words. For a room that is not an owner room such a key is no match; an owner room keeps the longest key."""
+    y = install(tmp_path, family=True)
+    facts = y.memory.root / "facts"
+    facts.mkdir(exist_ok=True)
+    (facts / "example-aunt.md").write_text("---\nclass: room\nroom: discord:MOM_ID\n---\n# example aunt\n\n- Example Aunt: knits on Sundays.\n")
+    (facts / "example-family.md").write_text("# example family\n\n- Example Aunt Mary: the attic code.\n")
+    sync(y)
+    hers, his = ([e["text"] for e in y.recall_for(r, "the next step and the?")[0]] for r in ("Alex", "example-room"))
+    assert [t for t in hers if "knits" in t] and not [t for t in hers if "attic" in t]
+    assert [t for t in his if "attic" in t] and not [t for t in his if "knits" in t]       # the owner's room: the longest key, as before
+
+
 def test_a_family_room_never_learns_what_it_may_not_read(tmp_path):
     """A chunk the room may not read whole never ranks in its recall, since its rank alone would say the hidden lines hold
     the words; a day log is chunked by room id and class, so the room's own line beside them is a chunk of its own and recall

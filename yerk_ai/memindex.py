@@ -214,7 +214,8 @@ def chunks_of(text: str) -> list[tuple[int, int, str]]:
         if buf and (line.startswith("#") or who is not None and (size + len(line) + 1 > CHUNK_MAX or key and who != key)):
             flush(n - 1)
         if len(line) > CHUNK_MAX or not buf and line.startswith("  - attachment: "):      # cut in pieces; an attachment line after one
-            out.extend((n, n, line[i:i + CHUNK_MAX].strip()) for i in range(0, len(line), CHUNK_MAX) if line[i:i + CHUNK_MAX].strip())
+            out.extend((n, n, ("… " if (w := lane(p)) and w[0] and (i or w[1] not in ("", who and who[1])) else "") + p)   # a piece that reads
+                       for i in range(0, len(line), CHUNK_MAX) if (p := line[i:i + CHUNK_MAX].strip()))     # as a line it is not: never one
             continue
         if not buf:
             if not line.strip():
@@ -473,8 +474,7 @@ def check(db: Path, scope: Scope, deadline_s: float = 10.0, grace: float = GRACE
     lag = max((now - disk[p][1] / 1e9 for p in changed), default=0.0)
     status = "scope-changed" if key != scope.key() else "stale" if old or gone else "pending" if changed else "fresh"
     return {"status": status, "files": len(disk), "indexed": len(indexed), "changed": len(changed),
-            "stale": len(old), "gone": len(gone), "lag_s": round(lag, 1), "synced_ago_s": round(now - synced, 1),
-            "examples": (old or gone or changed)[:3]}
+            "stale": len(old), "gone": len(gone), "lag_s": round(lag, 1), "synced_ago_s": round(now - synced, 1), "examples": (old or gone or changed)[:3]}
 
 
 CHECK_EXIT = {"fresh": 0, "pending": 0, "stale": 1, "scope-changed": 1, "failure": 2, "timeout": 3}
