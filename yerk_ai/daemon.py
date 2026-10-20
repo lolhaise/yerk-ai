@@ -434,8 +434,7 @@ class Yerkd:
 
     def shadow_stop(self, name: str, room: Room, reply: str, sid: str) -> list[tuple[str, str]]:
         """The evidence rules after a reply: ledgered and logged, never a block (shadow, DESIGN 8)."""
-        rid = room_id(name, self.room_confs.get(name, {}))
-        figure, known = memory.on_file(self.memory, rid)     # its own lines: not on file
+        figure, known = memory.on_file(self.memory)
         said = self.ledger.said(name, sid, room.evidence.started)     # its replies posted earlier in this session
         found = evidence.check(reply, room.prompts(), room.evidence, self.memory.scope.roots, figure, known, said)
         found += evidence.check_claims(reply, room.evidence, self.memory.scope.roots)     # decision 25

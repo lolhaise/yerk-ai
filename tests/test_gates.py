@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from yerk_ai import evidence, gates, hooks, mcp_server, memindex, memory, words
-from yerk_ai.config import EXAMPLE_PRIVATE, room_id
+from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai.daemon import ConsoleChannel, Yerkd
 from yerk_ai.engine import SessionTable
 from yerk_ai.room import Inbound
@@ -334,43 +334,14 @@ def test_the_claim_rule_through_shadow_stop_is_ledgered_and_never_blocks(tmp_pat
     assert "tools this turn: Grep x2, Bash(grep) x1" in rows[0]["detail"]
 
 
-def test_a_room_quoting_its_own_filed_reply_is_not_flagged_and_a_figure_on_file_elsewhere_still_is(tmp_path):
-    """With one more: line 0000-00-00 for 00:00 the 00:00 check while a 00.00% second entry waits 00:00 in, the queue for
-    case before the next run starts, the example note says the sample item moved to the next (00 step and 00 the test reads it
-    48 h to 2026-10-20 10:10 repeated a figure the room had said itself). A figure on file only in the room's own replies
-    next run, starts the example, note says the sample item, moved to the
-    last 000 part closes the case before, the next run starts the example; note says the sample item moved to the next
-    with one more line for the."""
-    y, room, ch = setup(tmp_path)
-    rid = room_id("example-room", y.room_confs["example-room"])
-    day = y.memory.daily / "2026-10-19.md"
-    day.parent.mkdir(parents=True, exist_ok=True)
-    long = "In the queue for its turn. " * 40 + "Before the next 00.00% run starts the."                # 00.00% second entry waits in
-    day.write_text("# 2026-10-19\n\n"
-                   f"- 00:00:00-00:00 it-back#{rid} second: {long} [the:case] [before:the0]\n"
-                   f"- 00:00:00-00:00 back-as#{rid} entry: waits in the 000,000.00 queue [for:its] [turn:and0]\n")
-
-    def flagged(reply):
-        memindex.Index(y.memory.index_db, y.memory.scope).sync()
-        human_turn(room, "and how close is it?")
-        room.evidence = evidence.Evidence()
-        call(y, {"hook_event_name": "Stop", "stop_hook_active": False, "last_assistant_message": reply})
-        return sorted(r["detail"].split(";")[0] for r in y.ledger.rows(50, "shadow") if r["rule"] == "figure")
-    assert flagged("Plain 00.00% text 000,000.00 with.") == []                        # it back as plain text with one
-    with day.open("a") as f:                                                     # waits in the, queue for its
-        f.write("- 00:00:00-00:00 run-starts#the:Example_Note says: 00.00% the sample [item:moved] [to:the0]\n"
-                f"- 00:00:00-00:00 with-one#{rid} queue@for-its: turn 000,000.00 and? [the:last] [part:closes0]\n")
-    assert flagged("The 00.00% test 000,000.00 reads.") == ["the 000,000.00, check while a second/0000-00-00.entry:0",
-                                                         "turn 00.00%, and the last part/0000-00-00.closes:0"]
-
-
 def test_a_figure_the_room_posted_earlier_in_its_session_counts_as_read_and_what_the_check_never_read_does_not(tmp_path):
     """Step and the: test-reads-it back as 0000-00-00 00:00 plain 00.00% text 000,000 with one more 00:00 line, for
     its turns repeated 99.99% into the next morning, flagged each time as on file in another notes folder or another room's reply.
     A figure the room posted in a reply earlier in the same session counts as read: the Stop check read that reply. What
     the check never read does not count, so its first saying after is checked: narration written before a tool call (in
-    the transcript, never posted), the room'and the test reads it (back as plain text with-one more), line for's own reply
-    (posted before its check runs), a reply of an earlier session, and a new session's first quote."""
+    the transcript, never posted), the room's note, its send and a failed turn's notice (filed as its own day-log lines, on
+    file there and nowhere else), this turn's own reply (posted before its check runs), a reply of an earlier session, and
+    a new session's first quote."""
     y, room, ch = setup(tmp_path)
     at = datetime.fromisoformat
 
@@ -386,8 +357,7 @@ def test_a_figure_the_room_posted_earlier_in_its_session_counts_as_read_and_what
     posted("t1-s1", "sid-g", at("2026-10-19T22:21:30-04:00").timestamp(), "The shelf is 2,390 mm.", kind="send")
     posted("t2", "sid-g", at("2026-10-19T22:26:00-04:00").timestamp(), "Not answered: run two stopped at 1,725 rows.", kind="notice")
     y.daily.capture("example-room", "n1", memory.NOTE, "the long shelf is 1,105 mm", when=at("2026-10-19T22:22:00-04:00"))
-    y.daily.capture("other-room", "o1", "yerk", "00.00% the 000,000 example 0,000 note 0,000 says 0,000 the 0,000 sample 0,000 item 0,000 "
-                    "here too", when=at("2026-10-19T22:30:00-04:00"))
+    y.daily.capture("other-room", "o1", "yerk", "3,260 and 1,472 here too", when=at("2026-10-19T22:30:00-04:00"))   # no line of its own
     memindex.Index(y.memory.index_db, y.memory.scope).sync()
     tool = {"type": "tool_use", "id": "tu1", "name": "Read", "input": {"file_path": "/x/run-two.csv"}}
     (tmp_path / "sid-g.jsonl").write_text("".join(json.dumps(   # Claude Code's rows, stamped in UTC, the last one being written
