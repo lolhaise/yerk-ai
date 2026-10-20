@@ -277,6 +277,22 @@ def test_a_failed_post_stamps_nothing_so_the_change_shows_again(tmp_path, capsys
     assert f"{words.WORKING} example-room persona: +40 chars" in seen[0]["morning"]["text"]
 
 
+def test_a_rule_filed_since_the_last_diff_is_named_as_each_rooms_rules_part(tmp_path):
+    """The install's rules file is a part of its own, out of the rulebook: a rule filed overnight shows in the morning
+    diff as the rules part of every room that reads the file, and no rulebook moves."""
+    priv, state, accounts, cool = layer(tmp_path)
+    posts = []
+    post = lambda p: posts.append(p["morning"]["text"]) or {"ok": True}                 # noqa: E731
+    (priv / "memory" / "rules.md").write_text("# Rules\n\n- a job: done this way.\n")
+    assert morning.run(priv, state, accounts, cool, post=post, now=NOW) == 0
+    with (priv / "memory" / "rules.md").open("a") as f:
+        f.write("- another job: done that way.\n")                                       # 30 characters with its line break
+    assert morning.run(priv, state, accounts, cool, post=post, now=NOW + 86400) == 0
+    lines = posts[1].splitlines()
+    assert {f"{words.WORKING} example-room rules: +30 chars", f"{words.WORKING} example-quiet rules: +30 chars"} <= set(lines)
+    assert not any(" rulebook: " in x for x in lines)
+
+
 def test_with_no_machine_room_the_diff_goes_to_a_file_and_one_line_says_where(tmp_path, capsys):
     priv, state, accounts, cool = layer(tmp_path, machine=None)
     assert morning.run(priv, state, accounts, cool, post=lambda p: 1 / 0, now=NOW) == 0     # never posted

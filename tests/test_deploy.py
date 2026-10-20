@@ -20,7 +20,7 @@ from types import SimpleNamespace
 
 from yerk_ai import beat, cli, deploy, gates, jobs, morning, probes, status, words
 from yerk_ai.accounts import Cooldowns, load_accounts
-from yerk_ai.config import EXAMPLE_PRIVATE
+from yerk_ai.config import EXAMPLE_PRIVATE, REPO, budgets
 from yerk_ai.daemon import Yerkd
 from yerk_ai.ledger import Ledger
 from yerk_ai.room import Inbound
@@ -196,6 +196,29 @@ def test_the_fast_tests_run_in_the_tree_and_a_failure_deploys_nothing(tmp_path, 
     assert f.restarts == [] and deploy.head(tree) == ids[0]
     assert deploy.run(priv, state, ids[2], sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap) == 0
     assert f"{words.DONE} fast tests passed" in capsys.readouterr().out.splitlines()
+
+
+def test_the_fast_tests_read_the_layer_deployed_for_and_the_card_names_the_room_and_part(tmp_path, capsys, monkeypatch):
+    """The fast tests run with the deploy's --private and --state, so the real-layer budget test is the gate (it skipped
+    without YERK_PRIVATE, so a room over budget passed). A planted over-budget part fails the deploy's own fast tests
+    (FAST, untracked in the tree), the card names the room and the part, and nothing restarts."""
+    monkeypatch.delenv("YERK_PRIVATE", raising=False)
+    monkeypatch.delenv("YERK_STATE", raising=False)
+    tree, ids = repo(tmp_path)
+    for name in ("pyproject.toml", "yerk_ai", "tests"):
+        (tree / name).symlink_to(REPO / name)
+    priv, state = layer(tmp_path, tree)
+    (priv / "memory" / "rules.md").write_text("- a job: " + "x" * 12000 + "\n")       # every room's rules part past its budget
+    envs, run = [], subprocess.run
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: envs.append(k.get("env")) or run(*a, **k))
+    f = Fake(tree)
+    assert deploy.run(priv, state, ids[1], sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap) == 1
+    out = capsys.readouterr().out.splitlines()
+    rules = budgets()["session_start"]["appended"]["rules"]
+    assert out[1] == f"{words.PLAIN} the fast tests failed" and re.fullmatch(rf"- example-room rules: 12,\d{{3}} >(?: {rules:,})?\.\.\.", out[2])
+    assert all(words.width(x) <= words.PHONE for x in out) and f.restarts == [] and deploy.head(tree) == ids[0]
+    assert [(e["YERK_PRIVATE"], e["YERK_STATE"]) for e in envs if e] == [(str(priv), str(state))]
+    assert rows(state) == [("deploy", ids[0], ids[1], "tests failed", 0)]
 
 
 def test_the_move_onto_the_unit_file_keeps_the_command_folder_and_environment_and_can_go_back(tmp_path, monkeypatch):

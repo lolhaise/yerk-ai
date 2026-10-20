@@ -318,10 +318,13 @@ class Ledger:
                          (f"{turn_key}:%", f"{turn_key}-s%"))
         return int(r[0]["n"])
 
-    def evidence_timed(self, turn: str) -> list[dict[str, Any]]:
-        """The turn's evidence rows with each call's time and failure (None until its PostToolUse)."""
-        return self._select("SELECT e.*, t.ms, t.failed, t.error FROM evidence e LEFT JOIN tool_times t "
-                            "ON e.tool_use_id = t.tool_use_id WHERE e.turn = ? ORDER BY e.id", (turn,))
+    def said(self, room: str, session_id: str, before: float) -> str:
+        """The replies `room` posted in session `session_id` before `before`, its turn's start: what the Stop check read.
+        Its narration before a tool call, its sends, captions and notes were never checked, so they are not here."""
+        rows = self._select("SELECT body FROM deliveries d WHERE room = ? AND kind = 'reply' AND state = 'sent' AND created < ? "
+                            "AND EXISTS (SELECT 1 FROM turns t WHERE t.room = d.room AND t.session_id = ? AND d.key LIKE "
+                            "t.turn_key || ':%')", (room, before, session_id))
+        return "\n".join(str(r["body"]) for r in rows)
 
     def hook_overhead(self, since: float = 0.0) -> dict[str, Any]:
         """The hooks' own time per turn (every event of the turn summed): turns, calls, p50, p95, max."""

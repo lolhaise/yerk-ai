@@ -4,14 +4,16 @@ gate holds and releases once; the tamper row; the silent-ending bounce once and 
 decision 25 rule's fixture; the hooks' own time measured over a real local HTTP round trip."""
 import asyncio
 import json
+import re
 import threading
 import time
 import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
-from yerk_ai import evidence, gates, hooks, mcp_server, words
+from yerk_ai import evidence, gates, hooks, mcp_server, memindex, memory, words
 from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai.daemon import ConsoleChannel, Yerkd
 from yerk_ai.engine import SessionTable
@@ -291,7 +293,8 @@ def test_post_tool_use_adds_each_calls_time_and_failure_to_the_evidence_ledger(t
     room.evidence.observe({"type": "user", "message": {"content": [
         {"type": "tool_result", "tool_use_id": "t1", "content": "text"},
         {"type": "tool_result", "tool_use_id": "t2", "content": "1 failed"}]}})
-    rows = y.ledger.evidence_timed("tk-1")
+    rows = y.ledger._select("SELECT e.*, t.ms, t.failed, t.error FROM evidence e LEFT JOIN tool_times t "   # each call's time
+                            "ON e.tool_use_id = t.tool_use_id WHERE e.turn = ? ORDER BY e.id", ("tk-1",))  # and failure
     assert [(r["tool"], r["ms"], r["failed"]) for r in rows] == [("Read", 7, 0), ("Bash", 4187, 1)]
     assert rows[1]["error"].startswith("Exit code 1")
 
@@ -329,6 +332,57 @@ def test_the_claim_rule_through_shadow_stop_is_ledgered_and_never_blocks(tmp_pat
     rows = [r for r in y.ledger.rows(10, "shadow") if r["rule"] == "claim"]
     assert len(rows) == 1 and 'behaviour: "Checked: nothing implements it."' in rows[0]["detail"]
     assert "tools this turn: Grep x2, Bash(grep) x1" in rows[0]["detail"]
+
+
+def test_a_figure_the_room_posted_earlier_in_its_session_counts_as_read_and_what_the_check_never_read_does_not(tmp_path):
+    """Step and the: test-reads-it back as 0000-00-00 00:00 plain 00.00% text 000,000 with one more 00:00 line, for
+    its turns repeated 99.99% into the next morning, flagged each time as on file in another notes folder or another room's reply.
+    A figure the room posted in a reply earlier in the same session counts as read: the Stop check read that reply. What
+    the check never read does not count, so its first saying after is checked: narration written before a tool call (in
+    the transcript, never posted), the room's note, its send and a failed turn's notice (filed as its own day-log lines, on
+    file there and nowhere else), this turn's own reply (posted before its check runs), a reply of an earlier session, and
+    a new session's first quote."""
+    y, room, ch = setup(tmp_path)
+    at = datetime.fromisoformat
+
+    def posted(key, sid, t, text, kind="reply"):  # a part the channel posted: its ledger row, its day-log line, its turn
+        if "-s" not in key:                       # a send's key is its turn's, then -s
+            y.ledger.record(room="example-room", session_id=sid, turn_key=key, started=t - 30)
+        y.ledger.delivery_plan(f"{key}:0", "example-room", kind, text)
+        y.ledger.delivery_set(f"{key}:0", state="sent", created=t)
+        y.daily.capture("example-room", key, "yerk", text, when=datetime.fromtimestamp(t, timezone.utc))
+    posted("t0", "sid-f", at("2026-10-19T21:00:00-04:00").timestamp(), "Run one came in at 4,015 kg.")
+    posted("t1", "sid-g", at("2026-10-19T22:21:01-04:00").timestamp(), "Scale two is the best run yet: 148,290 kg against "
+           "the weighbridge's 148,304.83, so 99.99% of it.")
+    posted("t1-s1", "sid-g", at("2026-10-19T22:21:30-04:00").timestamp(), "The shelf is 2,390 mm.", kind="send")
+    posted("t2", "sid-g", at("2026-10-19T22:26:00-04:00").timestamp(), "Not answered: run two stopped at 1,725 rows.", kind="notice")
+    y.daily.capture("example-room", "n1", memory.NOTE, "the long shelf is 1,105 mm", when=at("2026-10-19T22:22:00-04:00"))
+    y.daily.capture("other-room", "o1", "yerk", "3,260 and 1,472 here too", when=at("2026-10-19T22:30:00-04:00"))   # no line of its own
+    memindex.Index(y.memory.index_db, y.memory.scope).sync()
+    tool = {"type": "tool_use", "id": "tu1", "name": "Read", "input": {"file_path": "/x/run-two.csv"}}
+    (tmp_path / "sid-g.jsonl").write_text("".join(json.dumps(   # Claude Code's rows, stamped in UTC, the last one being written
+        {"type": kind, "timestamp": f"{at(t).astimezone(timezone.utc):%Y-%m-%dT%H:%M:%S.000Z}",
+         "message": {"role": kind, "content": [{"type": "text", "text": text}, *calls] if kind == "assistant" else text}}) + "\n"
+        for t, kind, text, calls in [("2026-10-19T21:53:55-04:00", "user", "how did fable v2 do?", []),
+                                     ("2026-10-19T22:20:40-04:00", "assistant", "Checking 3,260 first.", [tool]),
+                                     ("2026-10-19T22:21:00-04:00", "assistant", "Scale two: 148,290 kg, 99.99% of the weighbridge.", [])])
+        + '{"type": "assistant", "timest')
+
+    def flagged(reply, since, key, sid="sid-g"):
+        human_turn(room, "and how close is it?")
+        room.turn_key, room.evidence = key, evidence.Evidence()
+        room.evidence.started = at(since).timestamp()
+        posted(key, sid, room.evidence.started + 20, reply)          # the reply is in the room before its Stop check runs
+        last = max([r["id"] for r in y.ledger.rows(1, "shadow")], default=0)
+        call(y, {"hook_event_name": "Stop", "stop_hook_active": False, "last_assistant_message": reply, "session_id": sid,
+                 "transcript_path": str(tmp_path / f"{sid}.jsonl")})
+        return sorted(re.match(r"quoted (.+?), on file at", r["detail"])[1] for r in y.ledger.rows(50, "shadow")
+                      if r["id"] > last and r["rule"] == "figure")
+    assert flagged("Still 99.99% and 148,290 kg. The long shelf is 1,105 mm, then 3,260 and 1,472 and 2,390 and 4,015 and 1,725.",
+                   "2026-10-19T22:44:30-04:00", "tk-a") == ["1,105", "1,472", "1,725", "2,390", "3,260", "4,015"]
+    assert flagged("99.99% still, the long shelf 1,105 mm, and 3,260 and 2,390.", "2026-10-20T10:34:30-04:00", "tk-b") == []
+    SessionTable(tmp_path / "sessions.json").bind("example-room", "sid-h", "one")
+    assert flagged("99.99% still.", "2026-10-20T11:00:00-04:00", "tk-c", "sid-h") == ["99.99%"]   # a new session's first saying
 
 
 CONTROL_REPLIES = [   # known-good replies with the turn that made them: none may be flagged

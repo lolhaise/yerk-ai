@@ -8,22 +8,29 @@ total = 80000
 
 # Load order, most stable first, so the cached start of the prompt survives.
 # The first five parts are Claude Code's own (its default prompt, the built-in tools
-# allowed by --tools, Yerk AI's MCP tools, their deferred names, the room's skills):
+# allowed by --tools, Yerk AI's MCP tools, its other tool entries, the room's skills):
 # `yerk map` shows them at their budget until they are measured from a transcript.
+# Other tool entries: Claude Code's deferred-loading placeholder and other MCP servers' tools (web-ladder's).
+# Measured 2026-10-20 in each room's newest transcript (Claude Code 2.1.301): prompt 10,889, built-in tools 10,401, other entries 1,713.
+# No room sends a skill: every room starts with --setting-sources "" and no allowlist has Skill.
 [session_start.claude_code]
-claude_code_prompt = 11400
-builtin_tools = 15000
+claude_code_prompt = 11000
+builtin_tools = 10401
 yerk_tools = 8000
-deferred_tool_names = 1500
-skills = 2000
+deferred_tool_names = 1713
+skills = 0
 
-# Yerk AI's own parts, joined into the one file passed by --append-system-prompt-file.
+# Yerk AI's own parts, joined into the one file passed by --append-system-prompt-file. `rules` is the
+# install's rules file (decision 15), the one part the rooms write as they go, so it comes after the
+# hand-kept files; it was inside the room's rulebook, where a rulebook near its cap pushed rules out.
+# Measured 2026-10-20 with `yerk map` in all six rooms: the largest rulebook is 6,019, so 7,000; the 5,000 freed went to rules.
 [session_start.appended]
 mechanics = 3000
 persona = 12000
-rulebook = 12000
+rulebook = 7000
 room_voice = 5000
 pinned_memory = 4000
+rules = 11886
 recall_pack = 6000
 
 [per_message]
@@ -58,4 +65,4 @@ reply = 1500
 # only goes down: the budget test fails when the package grows past it and also when it
 # shrinks under it, so a change that cuts lowers this number in the same commit, and a
 # change that adds cuts as much somewhere else. A change that raises it is not merged.
-lines = 14611
+lines = 14595

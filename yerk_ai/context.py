@@ -1,8 +1,8 @@
 """A room's context: the session-start file built to its budget, and the small per-message parts.
 
 Session start, most stable first so the cached start of the prompt survives: Claude Code's own
-prompt, tools and skills, then one appended file holding the mechanics, persona, rulebook (and the
-install's rules file), room voice, pinned memory and the recall pack. Per message: only parts with
+prompt, tools and skills, then one appended file holding the mechanics, persona, rulebook, room voice,
+pinned memory, the install's rules file and the recall pack. Per message: only parts with
 news: the clock line, the message metadata, and what changed in the rules since the session looked.
 """
 from __future__ import annotations
@@ -22,7 +22,7 @@ from .memory import FRONT
 from .mentions import OLD
 
 MECHANICS = Path(__file__).with_name("mechanics.md")
-APPENDED = ("mechanics", "persona", "rulebook", "room_voice", "pinned_memory", "recall_pack")
+APPENDED = ("mechanics", "persona", "rulebook", "room_voice", "pinned_memory", "rules", "recall_pack")
 SEP = "\n\n"
 NEWS = "Rules changed since you last looked:"
 
@@ -93,13 +93,12 @@ def recall_pack(base: Path, room: dict[str, Any], limit: int = 6000, pack: Pack 
     return SEP.join(texts), ", ".join(srcs)
 
 
-def rulebook(base: Path, room: dict[str, Any], rules: Path | None) -> tuple[str, str]:
-    """The room's rulebook, then the install's rules file's live lines (memory.rule): no front matter or superseded line."""
-    text, src = _read(base, room.get("rulebook"))
+def rules_text(room: dict[str, Any], rules: Path | None) -> tuple[str, str]:
+    """The install's rules file's live lines (memory.rule), a part of its own: no front matter or superseded line."""
     if not rules or not rules.is_file() or flag(room.get("sealed")):      # sealed: its own rulebook, no other room's rule
-        return text, src
+        return "", ""
     live = "\n".join(x for x in FRONT.sub("", rules.read_text()).strip().splitlines() if OLD not in x)
-    return SEP.join(x for x in (text, cited(rules.resolve(), live)) if x), ", ".join(x for x in (src, str(rules.resolve())) if x)
+    return cited(rules.resolve(), live), str(rules.resolve())
 
 
 def session_start(private: Path, room: dict[str, Any], budgets: dict[str, Any], pack: Pack | None = None,
@@ -111,9 +110,10 @@ def session_start(private: Path, room: dict[str, Any], budgets: dict[str, Any], 
     raw = {
         "mechanics": (MECHANICS.read_text().strip(), "yerk_ai/mechanics.md"),
         "persona": _read(base, room.get("persona")),
-        "rulebook": rulebook(base, room, rules),
+        "rulebook": _read(base, room.get("rulebook")),
         "room_voice": (cited(vpath, room_voice(vpath) or ""), str(vpath)) if vpath else ("", ""),
         "pinned_memory": _read(base, room.get("pinned_memory")),
+        "rules": rules_text(room, rules),
         "recall_pack": recall_pack(base, room, int(limits["recall_pack"]), pack),
     }
     parts = []
