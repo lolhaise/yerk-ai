@@ -689,7 +689,7 @@ def body(text: str, files: list[dict[str, Any]]) -> str:
 
 
 async def probe(rooms: dict[str, str], conf: dict[str, Any], ledger: Ledger, limit: int = 20, grace: float = 120.0) -> dict[str, Any]:
-    """`yerk probe imessage`: never sends. For each room's chat, the bridge's newest `limit` rows (a
+    """`tests/contract/probes.py imessage`: never sends. For each room's chat, the bridge's newest `limit` rows (a
     read-only connection: any other method is refused), each looked up in the inbound ledger and
     the delivery ledger; a row neither holds, older than `grace` seconds, is a lost text."""
     b = Bridge(None if conf.get("unix") else transport(conf), str(conf["unix"]) if conf.get("unix") else None, read_only=True)

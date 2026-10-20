@@ -2,7 +2,7 @@
 report, for the 06:30 timer (units/yerk-morning.timer). In plain words, a line each (DESIGN 9, L196, L197,
 L204): every room's payload against the last delivered diff (`yerk map`'s numbers, so a planted change shows
 up), yesterday's messages, queue wait and time to the first visible line, stalls, dead turns (a person's
-with no reply or notice for it) and shadow-gate flags from the run ledger, memory
+message in the last 24 hours with no reply or notice for it) and shadow-gate flags from the run ledger, the
 night's sweep, memory and CPU per unit from the running yerkd's /status, and the account meters. It is
 posted through the running yerkd to the room whose rooms.toml entry says role = "machine", and to no other
 room; with no such room it is only written under the state folder, and one line says where. A finding the
@@ -17,7 +17,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
-from . import context, jobs, memory, status, words
+from . import context, jobs, memory, retention, status, words
 from .accounts import Account, Cooldowns
 from .config import budgets, rooms
 from .ledger import Ledger
@@ -90,6 +90,8 @@ def build(private: Path, state: Path, accounts: list[Account], cooldowns: Cooldo
             said += W.UNPROVEN_CUT.format(n=d["cut"]) if d["cut"] else ""
             at = W.UNPROVEN_AT.format(at=W.clock(float(d["at"]), now))
             add(f"deploy {d['id']}", W.NOT_DONE, said + at if W.width(f"{W.NOT_DONE} {said}{at}") <= W.PHONE else said)
+    if (swept := retention.line(state, now)):            # the night's sweep: what it moved by kind, or that it failed
+        rows.append(swept)
     checks = ledger.health_between("imessage", "probe", since, until)     # the iMessage inbound check (Layer 8)
     if checks:                                           # a run that never reached the Mac saw nothing
         notes = [json.loads(str(r["note"] or "{}")) for r in checks]

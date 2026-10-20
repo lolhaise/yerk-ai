@@ -18,7 +18,7 @@ import threading
 import time
 from types import SimpleNamespace
 
-from yerk_ai import beat, cli, deploy, gates, jobs, morning, probes, status, words
+from yerk_ai import beat, cli, deploy, gates, jobs, morning, status, words
 from yerk_ai.accounts import Cooldowns, load_accounts
 from yerk_ai.config import EXAMPLE_PRIVATE, REPO, budgets
 from yerk_ai.daemon import Yerkd
@@ -858,19 +858,3 @@ def test_a_job_failure_alerts_the_machine_room_before_the_ops_room(tmp_path):
     asyncio.run(j.alert(None, "job x: failed", 0, "work"))
     assert said == ["machine", "ops"]
 
-
-def test_the_upgrade_drill_records_the_version_runs_three_probes_and_upgrades_nothing(tmp_path, monkeypatch, capsys):
-    ran = []
-    real = subprocess.run
-    monkeypatch.setattr(cli.subprocess, "run", lambda cmd, **k: subprocess.CompletedProcess(cmd, 0, "2.1.301 (Claude Code)\n", "")
-                        if cmd[:2] == ["claude", "--version"] else real(cmd, **k))
-    for name, ok in (("hello", True), ("fold", True), ("resume", False)):
-        monkeypatch.setattr(probes, name, lambda a, n=name, ok=ok: ran.append((n, a.config_dir, a.to_config_dir)) or {"ok": ok})
-    assert cli.main(["drill", "--config-dir", "/acct/four", "--state", str(tmp_path)]) == 1
-    out = capsys.readouterr().out.splitlines()
-    assert out == [f"{words.PLAIN} claude 2.1.301 (Claude Code)", f"{words.DONE} probe hello: passed",
-                   f"{words.DONE} probe fold: passed", f"{words.NOT_DONE} probe resume: failed",
-                   f"{words.NOT_DONE} verdict: stay, resume failed"]
-    assert ran == [(n, "/acct/four", "/acct/four") for n in ("hello", "fold", "resume")]   # one account
-    line = json.loads((tmp_path / "drills.jsonl").read_text())
-    assert line["version"] == "2.1.301 (Claude Code)" and line["probes"] == {"hello": True, "fold": True, "resume": False}

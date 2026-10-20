@@ -25,7 +25,6 @@ WORKING = "\N{LARGE ORANGE CIRCLE}"       # running, partly, needs something
 NOT_DONE = "\N{LARGE RED CIRCLE}"         # not done, failed, stopped
 NOTHING = "\N{MEDIUM WHITE CIRCLE}"       # nothing to do, free path, known but not built
 WAITING = "\N{MIDDLE DOT}"
-DOTS = (DONE, WORKING, NOT_DONE, NOTHING)
 PHONE = 40                                # a card line, in phone columns, before it wraps
 SUB = "-# "                               # Discord's small grey line: a card's footer
 
@@ -286,6 +285,7 @@ WAIT, FIRST_LINE = "queue wait: {mid} typical, {worst} worst", "first line: {mid
 SHADOW, NO_SHADOW = "shadow flag {rule}: {n}", "shadow flags: none"
 UNKNOWN, NOT_ANSWERING_WHY = "{what}: unknown, {why}", "yerkd not answering"
 DEAD, NO_YERKD, NO_DEAD = "dead turns: {n}, {name}, last {at}", "no yerkd answers", "dead turns: none in 24h"
+SWEPT, SWEEP_FAILED = "swept: {kinds}", "retention failed: {why}"     # the night's sweep (retention.py)
 
 # yerk deploy's card (deploy.py), for the machine room: the state line, then each reason on its own
 DEPLOYED, FAILED_PROOF = "deployed {commit}", "{commit} failed its proof"

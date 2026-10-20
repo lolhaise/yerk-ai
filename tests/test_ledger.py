@@ -22,12 +22,18 @@ def old_ledger(path):
     db.close()
 
 
+def links(led, table, row_key, col):
+    """The ids of one row's list column, as rows, in order."""
+    return [m for (m,) in led.db.execute("SELECT message_id FROM message_links WHERE tbl = ? AND row_key = ? AND col = ? "
+                                         "ORDER BY pos", (table, str(row_key), col))]
+
+
 def test_a_ledger_from_before_versions_migrates_in_order_once(tmp_path):
     old_ledger(tmp_path / "l.sqlite")
     assert sqlite3.connect(tmp_path / "l.sqlite").execute("PRAGMA user_version").fetchone()[0] == 0
     led = L.Ledger(tmp_path / "l.sqlite")
-    assert led.migrated == [1, 2, 3] and led.version() == L.VERSION == 3
-    assert led.links("inbound", "m1", "reply_ids") == ["a", "b"] and led.links("job_runs", 1, "message_ids") == ["x", "y", "z"]
+    assert led.migrated == [1, 2, 3] and led.version() == L.MIGRATIONS[-1][0] == 3
+    assert links(led, "inbound", "m1", "reply_ids") == ["a", "b"] and links(led, "job_runs", 1, "message_ids") == ["x", "y", "z"]
     assert led.delivered_for("m1") == ["o1"] and [r["key"] for r in led.files_sent_for(["m1"])] == ["k1:1"]
     assert led.files_sent_for([]) == [] and led.delivered_for("nobody") == []
     again = L.Ledger(tmp_path / "l.sqlite")
@@ -51,20 +57,20 @@ def test_every_write_of_an_id_list_writes_its_rows(tmp_path):
     led = L.Ledger(tmp_path / "l.sqlite")
     led.inbound_add("m2", "r", "c", "owner", 1)
     led.inbound_set("m2", reply_ids="p,q")
-    assert led.links("inbound", "m2", "reply_ids") == ["p", "q"]
+    assert links(led, "inbound", "m2", "reply_ids") == ["p", "q"]
     led.inbound_set("m2", reply_ids="q")
-    assert led.links("inbound", "m2", "reply_ids") == ["q"]
+    assert links(led, "inbound", "m2", "reply_ids") == ["q"]
     tid = led.record(room="r", inbound="m2,m3", outcome="ok", turn_key="k2")
-    assert led.links("turns", tid, "inbound") == ["m2", "m3"]
+    assert links(led, "turns", tid, "inbound") == ["m2", "m3"]
     led.delivery_plan("k2:1", "r", "text", inbound="m2")
     led.delivery_set("k2:1", state="sent", message_id="o2")
     led.delivery_plan("k2:2", "r", "text", inbound="m3")
     led.delivery_set("k2:2", state="sent", message_id="o3")
     led.delivery_plan("k2:1", "r", "text", inbound="other")          # a second plan changes nothing
-    assert led.links("deliveries", "k2:1", "inbound") == ["m2"] and led.delivered_for("m3") == ["o2", "o3"]
+    assert links(led, "deliveries", "k2:1", "inbound") == ["m2"] and led.delivered_for("m3") == ["o2", "o3"]
     rid = led.job_run_add(job="j", kind="script")
     led.job_run_set(rid, message_ids="a,b")
-    assert led.links("job_runs", rid, "message_ids") == ["a", "b"]
+    assert links(led, "job_runs", rid, "message_ids") == ["a", "b"]
     eid = led.watch_add(job="w", room="r", state="pending")
     led.watch_set(eid, reply_ids="c", inbound="m9")
-    assert led.links("watch_events", eid, "reply_ids") == ["c"] and led.links("watch_events", eid, "inbound") == ["m9"]
+    assert links(led, "watch_events", eid, "reply_ids") == ["c"] and links(led, "watch_events", eid, "inbound") == ["m9"]

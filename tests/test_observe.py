@@ -23,6 +23,8 @@ from yerk_ai.ledger import Ledger
 from yerk_ai.meters import Meters
 from yerk_ai.room import Inbound
 
+DOTS = (words.DONE, words.WORKING, words.NOT_DONE, words.NOTHING)
+
 TICK, PAGE = os.sysconf("SC_CLK_TCK"), os.sysconf("SC_PAGE_SIZE")
 NOW = 1792303200.0                     # a fixed morning for the diff
 
@@ -89,7 +91,7 @@ def test_the_card_is_phone_width_state_first_and_colours_only_what_means_somethi
                        now=now, proc=proc, units=lambda: {"yerk-worker-abc123"},
                        timers=Timers({f"{jobs.UNIT}backup.timer": {"next": now + 600, "last": None}}))
     lines = status.card(json.loads(json.dumps(s)), now)            # what the socket carries is plain JSON
-    assert all(words.width(x) <= words.PHONE and x[:1] in (*words.DOTS, words.PLAIN) for x in lines), lines
+    assert all(words.width(x) <= words.PHONE and x[:1] in (*DOTS, words.PLAIN) for x in lines), lines
     assert lines[0] == "- yerkd running: 2 rooms"                         # two names would not fit
     assert lines[1].startswith(f"{words.WORKING} one: 5h 95% (") and lines[2].startswith(f"{words.NOT_DONE} two: resting")
     assert "- example-room: busy 2 min, 1 waiting" in lines            # in flight, since when
@@ -116,7 +118,7 @@ def test_a_room_put_on_an_account_says_so_on_the_card_and_a_room_on_its_order_sa
     lines = status.card(json.loads(json.dumps(s)))
     assert [r["account"] for r in s["rooms"]] == ["two", "", ""]
     assert [x for x in lines if "account" in x] == ["- example-room: on account two"]   # the pin, and only the pin
-    assert all(words.width(x) <= words.PHONE and x[:1] in (*words.DOTS, words.PLAIN) for x in lines), lines
+    assert all(words.width(x) <= words.PHONE and x[:1] in (*DOTS, words.PLAIN) for x in lines), lines
 
 
 def test_the_status_endpoint_answers_and_yerk_status_renders_it(tmp_path, capsys):

@@ -8,7 +8,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from . import __version__, context, memory, probes
+from . import __version__, context, memory
 from .config import EXAMPLE_PRIVATE, budgets, private_dir, rooms, state_dir
 
 
@@ -71,6 +71,10 @@ def _control(state_arg: str | None, payload: dict[str, Any], timeout: float = 60
 
 
 def cmd_room(a: argparse.Namespace) -> int:
+    if a.action == "add":                       # a Discord chat moves in (move.py); the daemon is never touched
+        import asyncio
+        from .move import add
+        return asyncio.run(add(a))
     out = _control(a.state, {a.action: a.room}, 900 if a.action == "compact" else 60)
     print(json.dumps(out))
     return 0 if out.get("ok") else 1
@@ -309,49 +313,18 @@ def cmd_morning(a: argparse.Namespace) -> int:
     return morning.run(priv, state, accounts, cool)
 
 
+def cmd_retention(a: argparse.Namespace) -> int:
+    """The daily sweep (retention.py): a line per kind it moved, none when nothing did; --dry-run moves nothing."""
+    from . import retention
+    return retention.main(private_dir(a.private), state_dir(a.state), a.dry_run)
+
+
 def cmd_deploy(a: argparse.Namespace) -> int:
     """`yerk deploy [REF]` (deploy.py): fast-forward, fast tests, a quiet room, the restart, the proof,
     else the rollback; the card to the machine room. --unit: onto units/yerkd.service as well."""
     from . import deploy
     from .config import state_dir
     return deploy.run(private_dir(a.private), state_dir(a.state), a.ref or "", tests=not a.no_tests, unit_file=a.unit)
-
-
-def cmd_drill(a: argparse.Namespace) -> int:
-    """The Claude Code upgrade drill (DESIGN 11, L225): the installed version, the contract probes on
-    one account (resume onto itself), a verdict, a line in <state>/drills.jsonl. It upgrades nothing."""
-    import time
-    from .config import state_dir
-    from . import words
-    try:
-        version = subprocess.run(["claude", "--version"], capture_output=True, text=True, timeout=60).stdout.strip()
-    except (OSError, subprocess.SubprocessError):
-        version = ""
-    print(f"{words.PLAIN} claude {version or 'not found'}")
-    a.to_config_dir, passed = a.config_dir, {}
-    for name in ("hello", "fold", "resume"):
-        out = getattr(probes, name)(a) if version else {"ok": False}
-        passed[name] = bool(out.get("ok"))
-        print(f"{words.DONE if passed[name] else words.NOT_DONE} probe {name}: {'passed' if passed[name] else 'failed'}")
-    failed = [n for n, ok in passed.items() if not ok]
-    print(f"{words.NOT_DONE} verdict: stay, {', '.join(failed)} failed" if failed else
-          f"{words.DONE} verdict: {version} keeps the contract")
-    state = state_dir(a.state)
-    with open(state / "drills.jsonl", "a") as f:
-        f.write(json.dumps({"at": round(time.time()), "version": version, "probes": passed, "ok": not failed}) + "\n")
-    return 1 if failed else 0
-
-
-def cmd_probe(a: argparse.Namespace) -> int:
-    if a.name != "imessage" and not a.config_dir:
-        print(f"{a.name} needs --config-dir", file=sys.stderr)
-        return 2
-    if a.name == "resume" and not a.to_config_dir:
-        print("resume needs --to-config-dir", file=sys.stderr)
-        return 2
-    out: dict[str, Any] = getattr(probes, a.name)(a)
-    print(json.dumps(out, indent=1, default=str))
-    return 0 if out.get("ok") else 1
 
 
 def cmd_recall_bench(a: argparse.Namespace) -> int:
@@ -445,6 +418,9 @@ def cmd_explain(a: argparse.Namespace) -> int:
         print("keys of a [jobs.NAME] table in the private jobs.toml:")
         for key, words in jobs.KEYS.items():
             print(f"  {key}: {words}")
+    if a.ability == "retention":              # the days this install keeps, from its yerkd.toml
+        from . import retention
+        print(retention.here(private_dir(a.private)))
     return 0
 
 
@@ -504,9 +480,16 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--private", help="private folder (default: $YERK_PRIVATE)")
     s.add_argument("--channel", help="the channel id, when rooms.toml has none yet")
     s.add_argument("--webhook", default="yerk-test-sender")
-    r = sub.add_parser("room", help="act on a running yerkd's room")
-    r.add_argument("action", choices=["close", "compact"])
-    r.add_argument("room")
+    r = sub.add_parser("room", help="act on a running yerkd's room (close, compact), or add one: a Discord chat moved in")
+    r.add_argument("action", choices=["close", "compact", "add"])
+    r.add_argument("room", help="the room; add: NAME, for a room NAME-on-yerk")
+    r.add_argument("--from", dest="source", default="", help="add: discord:<channel or thread id>, the chat that moves in")
+    r.add_argument("--person", type=int, default=0, help="add: a person room, for this Discord user id, behind the wall")
+    r.add_argument("--voice", help="add: the voice file copied in (default: a one-line placeholder)")
+    r.add_argument("--since", help="add: the history from this day on, YYYY-MM-DD (default: all of it)")
+    r.add_argument("--like", help="add: the room it is made like (default: the last of its kind in rooms.toml)")
+    r.add_argument("--dry-run", action="store_true", help="add: read and print; write and send nothing")
+    r.add_argument("--private", help="add: private folder (default: $YERK_PRIVATE, else the fake example layer)")
     r.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
     ac = sub.add_parser("accounts", help="tokens, rests and health per account; cool, clear, token, mint, health")
     ac.add_argument("action", nargs="?", default="list", choices=["list", "cool", "clear", "token", "mint", "health"])
@@ -560,7 +543,10 @@ def main(argv: list[str] | None = None) -> int:
     ab = sub.add_parser("abilities", help="every ability and its state on this install, one line each")
     ex = sub.add_parser("explain", help="one ability (what it does, needs and costs, its free path, its state here) or one setting")
     ex.add_argument("ability")
-    for x in (ac, st, mo, rb, ab, ex, jb, sc):
+    rt = sub.add_parser("retention", help="the daily sweep: logs, transcripts, timing rows, finished workers and rooms' scratch "
+                        "past their days ([retention] in yerkd.toml) into the trash, and the trash past its days deleted")
+    rt.add_argument("--dry-run", action="store_true", help="say what would move and how much, move nothing")
+    for x in (ac, st, mo, rb, ab, ex, jb, sc, rt):
         x.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else the fake example layer)")
         x.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
     mm = sub.add_parser("memory", help="the memory tree's one-time migrations: migrate-daylogs (offsets, room ids, "
@@ -583,43 +569,6 @@ def main(argv: list[str] | None = None) -> int:
     dp.add_argument("--unit", action="store_true", help="also move a systemd-run daemon onto units/yerkd.service")
     dp.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else the fake example layer)")
     dp.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
-    dr = sub.add_parser("drill", help="the Claude Code upgrade drill: the version, the hello, fold and resume "
-                        "probes on one account, a verdict; upgrades nothing")
-    dr.add_argument("--config-dir", required=True, help="Claude Code config folder of the account to use")
-    dr.add_argument("--model", default="claude-fable-5-1")
-    dr.add_argument("--reps", type=int, default=1, help="fold: repeats")
-    dr.add_argument("--delay", type=float, default=3.0, help="fold: seconds before the second message")
-    dr.add_argument("--trailing-wait", type=float, default=30.0, help="fold: seconds to wait for a trailing turn")
-    dr.add_argument("--logs", help="folder for raw event logs (default: <state>/probes)")
-    dr.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
-    dr.set_defaults(on_second=None, fold_settings=None)
-    pr = sub.add_parser("probe", help="contract probes against a real Claude Code login; imessage: the inbound "
-                        "check against the Mac's bridge, read only")
-    pr.add_argument("name", choices=["hello", "fold", "resume", "blocks", "smoke", "measure", "short", "think", "check",
-                                     "idle", "imessage"])
-    pr.add_argument("--config-dir", help="Claude Code config folder of the account to use (every probe but imessage)")
-    pr.add_argument("--rows", type=int, default=20, help="imessage: the newest rows read per room's chat")
-    pr.add_argument("--grace", type=float, default=120.0, help="imessage: seconds a new row may still be in flight")
-    pr.add_argument("--to-config-dir", help="resume: the second account's config folder")
-    pr.add_argument("--model", default="claude-fable-5-1")
-    pr.add_argument("--reps", type=int, default=3, help="fold: repeats")
-    pr.add_argument("--delay", type=float, default=3.0, help="fold: seconds before the second message")
-    pr.add_argument("--trailing-wait", type=float, default=30.0, help="fold: seconds to wait for a trailing turn")
-    pr.add_argument("--logs", help="folder for raw event logs (default: <state>/probes)")
-    pr.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
-    pr.add_argument("--room", default="yerk-test", help="smoke: the room to drive")
-    pr.add_argument("--private", help="smoke: private folder (default: $YERK_PRIVATE)")
-    pr.add_argument("--only-account", action="store_true", help="smoke: run on --config-dir only, no hop")
-    pr.add_argument("--via", choices=["console", "discord"], default="console", help="smoke, measure: the channel")
-    pr.add_argument("--minutes", type=float, default=10.0, help="idle: minutes with the room's process open")
-    pr.add_argument("--alone-minutes", type=float, default=5.0, help="idle: minutes of the daemon alone after the close")
-    pr.add_argument("--unit", help="idle: the systemd user unit running yerkd, for its cgroup totals")
-    pr.add_argument("--compare-unit", help="idle: another user unit sampled over the same window")
-    pr.add_argument("--only", help="blocks: setups to run, joined with |")
-    pr.add_argument("--message", help="blocks: the first message (default: the hello line)")
-    pr.add_argument("--since", type=float, default=0.0, help="check: messages ledgered since this epoch time")
-    pr.add_argument("--attach", action="store_true", help="smoke, measure: drive the yerkd already running on --state")
-    pr.set_defaults(on_second=None, fold_settings=None)
     a = p.parse_args(argv)
     if a.cmd == "config":
         return cmd_config(a)
@@ -629,10 +578,10 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_jobs(a)
     if a.cmd == "schedule":
         return cmd_schedule(a)
-    return int({"map": cmd_map, "probe": cmd_probe, "setup-room": cmd_setup_room, "room": cmd_room,
+    return int({"map": cmd_map, "setup-room": cmd_setup_room, "room": cmd_room,
                 "accounts": cmd_accounts, "status": cmd_status, "morning": cmd_morning, "recall-bench": cmd_recall_bench,
                 "abilities": cmd_abilities, "explain": cmd_explain, "memory": cmd_memory, "deploy": cmd_deploy,
-                "drill": cmd_drill}[a.cmd](a))
+                "retention": cmd_retention}[a.cmd](a))
 
 
 if __name__ == "__main__":

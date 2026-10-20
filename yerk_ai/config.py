@@ -29,6 +29,17 @@ def load_toml(path: Path) -> dict[str, Any]:
     return tomllib.loads(path.read_text())
 
 
+def toml_value(v: Any) -> str:
+    """One value as TOML writes it: true or false, a number, a string, or a list of them."""
+    if isinstance(v, list):
+        return f"[{', '.join(toml_value(x) for x in v)}]"
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, (int, float)):
+        return f"{v:g}" if isinstance(v, float) else str(v)
+    return json.dumps(str(v), ensure_ascii=False)
+
+
 def flag(value: Any, default: bool = False) -> bool:
     """A yes-or-no setting, read strictly: a TOML true or false, or the word "true" or "false" in
     quotes (any case); any other value is the default, so a quoted "false" turns nothing on."""
@@ -64,9 +75,9 @@ def state_dir(arg: str | None = None) -> Path:
     return d
 
 
-def rooms(private: Path) -> dict[str, dict[str, Any]]:
-    """rooms.toml's rooms; a `watch` (read, never written to) that a room owns or watches is refused, naming both."""
-    rs = dict(load_toml(private / "rooms.toml").get("rooms", {}))
+def rooms(private: Path, text: str | None = None) -> dict[str, dict[str, Any]]:
+    """rooms.toml's rooms, or those of `text` not yet written; a `watch` that a room owns or watches is refused, naming both."""
+    rs = dict((tomllib.loads(text) if text is not None else load_toml(private / "rooms.toml")).get("rooms", {}))
     taken = {str(c.get("channel")): f"which is {n}'s own channel" for n, c in rs.items()}
     for n, w in ((n, str(c["watch"])) for n, c in rs.items() if c.get("watch")):
         if w in taken:
@@ -148,14 +159,14 @@ def pinned(state: Path, name: str, names: list[str]) -> str:
 _COUNT = 0
 
 
-def write_private(path: Path, text: str, mode: int = 0o600) -> Path:
-    """Write `text` to `path` through a private temp file of this writer's own, then rename."""
+def write_private(path: Path, text: str | bytes, mode: int = 0o600) -> Path:
+    """Write `text` (or bytes) to `path` through a private temp file of this writer's own, then rename."""
     global _COUNT
     _COUNT += 1
     tmp = path.with_name(f".{path.name}.{os.getpid()}.{_COUNT}.tmp")
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), mode)
     try:
-        with os.fdopen(fd, "w") as f:
+        with os.fdopen(fd, "wb" if isinstance(text, bytes) else "w") as f:
             f.write(text)
         os.replace(tmp, path)
     except BaseException:

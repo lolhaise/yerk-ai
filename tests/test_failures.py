@@ -3,9 +3,11 @@ its stream events, and the error messages its error reference documents. Those m
 import pytest
 
 from yerk_ai.config import table
-from yerk_ai.lifted.classify import ACTIONS, CLASSES, FailureTable
+from yerk_ai.lifted.classify import FailureTable
 
 T = FailureTable.load(table("failures.toml"))
+CLASSES = ("transient", "overflow", "auth", "quota", "refusal", "fatal")
+ACTIONS = ("rerun", "compact_then_rerun", "hop_account", "fresh_next_turn", "fresh_with_recap", "stop")
 
 # Claude Code's error types, as listed for the StopFailure matcher and the assistant `error` field.
 CC_TYPES = ["rate_limit", "overloaded", "authentication_failed", "oauth_org_not_allowed", "account_on_hold",
