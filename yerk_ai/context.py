@@ -204,7 +204,7 @@ def wire(transcript: Path) -> dict[str, Any]:
     request's new content blocks. A request carrying a new message is that message plus what
     Claude Code and the hook put around it."""
     rows: list[dict[str, Any]] = []
-    lines = transcript.read_text(errors="replace").splitlines()
+    lines = list(transcript.open(errors="replace"))     # split on newlines only: a raw U+2028 inside a valid line stays
     for line in lines:                     # a line a hard power-off zeroed (NUL bytes) or cut short: skipped, and counted
         with contextlib.suppress(ValueError):
             rows.append(json.loads(line))
