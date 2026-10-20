@@ -315,11 +315,11 @@ class DiscordChannel:
     async def stage(self, room: Room, m: Any) -> list[dict[str, Any]]:
         """Each attachment saved under the room's inbox with its own name, a ledger row each; a
         visible notice for any that cannot be fetched."""
-        files = []
+        files: list[dict[str, Any]] = []
         for a in getattr(m, "attachments", []) or []:
             f = {"name": a.filename, "size": int(a.size or 0), "type": file_type(a.filename, a.content_type)}
             try:
-                dest = room.inbox(str(m.id)) / safe_name(a.filename)
+                dest = room.inbox(str(m.id)) / (safe_name(a.filename) if all(x["name"] != a.filename for x in files) else f"{len(files)}-{safe_name(a.filename)}")   # two image.png in one message: the second is 1-image.png
                 if not dest.is_file() or dest.stat().st_size != f["size"]:
                     await a.save(dest)
                 f.update(ok=True, path=str(dest), size=dest.stat().st_size)
@@ -395,7 +395,7 @@ class DiscordChannel:
         if name == "status":
             return "\n".join(status.card(await d.status_now({})))
         if name in ("model", "effort"):
-            r = await d.tool_settings(room, args.get("model", ""), args.get("effort", ""), args.get("account", ""))
+            r = await d.tool_settings(room, args.get("model", ""), args.get("effort", ""), args.get("account", ""), by_owner=True)
             return f"{words.DONE if r['ok'] and args else words.PLAIN if r['ok'] else words.NOT_DONE} {r['line']}"
         if name in ("new", "stop"):
             r = await (d.room_new(room) if name == "new" else d.room_stop(room))

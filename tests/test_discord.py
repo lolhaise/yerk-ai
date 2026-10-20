@@ -448,6 +448,22 @@ def test_attachments_are_staged_and_a_missing_one_is_said_out_loud(dc):
     assert ch.sent[0].content == f"{words.NOT_DONE} could not fetch bad.pdf\nsend it again"
 
 
+def test_two_attachments_with_one_name_in_one_message_are_both_staged(dc):
+    """Sample item moved (0000-00-00 00:00, #to-the-next): step and the test reads it, back as plain.text with
+    Discord (one webp, one png); the second was staged over the first in inbox/<message>/ and the room read one. The
+    second takes a numbered name, the message names both, and the ledger has both paths."""
+    d, client, room = dc
+    ch = client.chans[ROOM_CH]
+    files = [Attachment("image.png", b"\x89PNG" + b"1" * 20, "image/png"), Attachment("image.png", b"RIFF" + b"2" * 30, "image/webp")]
+    run(d.on_message(Msg(ch, 6, "two shots", attachments=files)))
+    [got] = room.got
+    first, second = room.tmp / "inbox" / "6" / "image.png", room.tmp / "inbox" / "6" / "1-image.png"
+    assert first.read_bytes().startswith(b"\x89PNG") and second.read_bytes().startswith(b"RIFF")
+    assert [f["path"] for f in got.files] == [str(first), str(second)] and f"saved at {second}" in got.text
+    rows = d.ledger._select("SELECT * FROM attachments WHERE message_id = ? ORDER BY id", ("6",))
+    assert [(r["name"], r["path"]) for r in rows] == [("image.png", str(first)), ("image.png", str(second))]
+
+
 def test_a_failed_turn_keeps_its_card_saying_what_was_owed(dc):
     d, client, _ = dc
     ch = client.chans[ROOM_CH]
