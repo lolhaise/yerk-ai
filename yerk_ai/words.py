@@ -34,8 +34,7 @@ def width(text: str) -> int:
     """Columns on a phone: a wide character (the state dots, most emoji) counts two; Discord's
     footer mark and inline code marks count nothing."""
     text = text[len(SUB):] if text.startswith(SUB) else text
-    return sum(0 if unicodedata.combining(c) or c in "`️" else 2 if unicodedata.east_asian_width(c) in "WF"
-               else 1 for c in text)
+    return sum(0 if unicodedata.combining(c) or c in "`️" else 2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in text)
 
 
 PATH = re.compile(r"(?<![\w:/.])(?:~|\.{1,2})?(?:/[\w.@+-]+){2,}/?")
@@ -104,6 +103,7 @@ WHY = {                                   # a failed turn, in plain words: the f
 BACKUP = ("answered by a backup model", "the next message starts fresh")
 MOVED, COMPACTING = "still on it, moved to account {name}", "shortening the conversation first"
 MOVED_ON = "still on it, trying another way"      # the hop note in a room that is not the owner's: no account name there
+OUT_OF = "on {model}, {pinned} back {until}"      # every account out of the model the room was put on: the room's own one runs it
 
 
 def why(cls: str | None, outcome: str) -> str:

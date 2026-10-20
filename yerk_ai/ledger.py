@@ -34,9 +34,9 @@ from typing import Any, Callable
 
 COLUMNS = ("room", "account", "config_dir", "session_id", "started", "first_visible", "ended",
            "outcome", "failure", "action", "output_chars", "models", "fallback_model", "accepted", "inbound",
-           "source", "hop", "recap", "turn_key")
+           "source", "hop", "recap", "turn_key", "model", "out_of")
 ADDED = {"turns": {"inbound": "TEXT", "source": "TEXT", "hop": "TEXT", "recap": "INTEGER",   # newer than run 1
-                   "turn_key": "TEXT"},
+                   "turn_key": "TEXT", "model": "TEXT", "out_of": "TEXT"},   # the model asked for; the pinned one every account was out of
          "outbound": {"body": "TEXT"},                      # a card's text, each post and edit
          "workers": {"job": "TEXT"},                        # the scheduled job a worker runs for (jobs.py)
          "evidence": {"tool_use_id": "TEXT"},               # joins a call to its time (tool_times)
@@ -49,7 +49,7 @@ SCHEMA = """CREATE TABLE IF NOT EXISTS turns (
   started REAL, first_visible REAL, ended REAL,
   outcome TEXT, failure TEXT, action TEXT,
   output_chars INTEGER, models TEXT, fallback_model TEXT, accepted INTEGER, inbound TEXT,
-  source TEXT, hop TEXT, recap INTEGER, turn_key TEXT);
+  source TEXT, hop TEXT, recap INTEGER, turn_key TEXT, model TEXT, out_of TEXT);
 CREATE TABLE IF NOT EXISTS inbound (
   message_id TEXT PRIMARY KEY, room TEXT, channel TEXT, sender TEXT,
   received REAL, chars INTEGER, state TEXT, attempts INTEGER DEFAULT 0,
@@ -295,8 +295,7 @@ class Ledger:
             try:
                 for table, row in rows:
                     verb = "INSERT OR REPLACE" if table == "tool_times" else "INSERT"
-                    self.db.execute(f"{verb} INTO {table} ({', '.join(row)}) VALUES ({', '.join('?' * len(row))})",
-                                    tuple(row.values()))
+                    self.db.execute(f"{verb} INTO {table} ({', '.join(row)}) VALUES ({', '.join('?' * len(row))})", tuple(row.values()))
                 self.db.execute("COMMIT")
             except Exception:
                 self.db.execute("ROLLBACK")
@@ -397,8 +396,7 @@ class Ledger:
             return [dict(zip(names, r)) for r in cur.fetchall()]
 
     # inbound
-    def inbound_add(self, message_id: str, room: str, channel: str, sender: str, chars: int,
-                    created: float | None = None) -> bool:
+    def inbound_add(self, message_id: str, room: str, channel: str, sender: str, chars: int, created: float | None = None) -> bool:
         """Ledger a channel message before anything runs (`created`: its own time on the channel, the
         order messages are read back in). False when it is already ledgered."""
         try:
@@ -540,8 +538,7 @@ class Ledger:
         return self._insert("outbound", {"sent": time.time(), **row})
 
     # deliveries: one row per outbound part, keyed by its turn and part index, before the post
-    def delivery_plan(self, key: str, room: str, kind: str, body: str = "", inbound: str = "",
-                      **extra: Any) -> dict[str, Any]:
+    def delivery_plan(self, key: str, room: str, kind: str, body: str = "", inbound: str = "", **extra: Any) -> dict[str, Any]:
         """The part's row, written once: a second plan for the same key returns the first row."""
         with self.lock:
             cur = self.db.execute("INSERT OR IGNORE INTO deliveries (key, room, kind, body, inbound, state, created"

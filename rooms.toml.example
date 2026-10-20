@@ -4,7 +4,7 @@
 [rooms.example-room]
 channel = "discord:CHANNEL_ID"
 accounts = ["one", "two"]     # tried in this order, then the rest of accounts.toml; the settings tool or /model can put the room on one account first
-model = "claude-fable-5-1"
+model = "claude-fable-5-1"     # also what a turn runs on, saying so on its card, while every account is out of the model the settings tool or /model put the room on
 tools = ["Read", "Grep", "Glob"]
 privacy = "owner"
 timezone = "UTC"

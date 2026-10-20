@@ -79,8 +79,7 @@ def commands(models: dict[str, str]) -> list[dict[str, Any]]:
     def pick(name: str, values: list[str]) -> list[dict[str, Any]]:
         return [{"type": 3, "name": name, "description": words.CHOICE[name], "required": False,
                  **({"choices": [{"name": v, "value": v} for v in values][:25]} if values else {})}]
-    opts = {"model": pick("model", [*models, "default"]) + pick("account", []),
-            "effort": pick("effort", [*EFFORTS, "default"])}
+    opts = {"model": pick("model", [*models, "default"]) + pick("account", []), "effort": pick("effort", [*EFFORTS, "default"])}
     return [{"type": 1, "name": n, "description": what, "options": opts.get(n, [])} for n, what in words.COMMANDS.items()]
 
 
@@ -489,8 +488,7 @@ class DiscordChannel:
                 await self._react(ch.id, mid, DONE, remove=ACK)
             log.info("room %s: %s redelivered after a restart (%d part(s))", room.name, key, len(ids))
 
-    async def _redeliver_file(self, ch: Any, room: str, r: dict[str, Any], seen: list[tuple[str, str, int]],
-                              claimed: set[str]) -> None:
+    async def _redeliver_file(self, ch: Any, room: str, r: dict[str, Any], seen: list[tuple[str, str, int]], claimed: set[str]) -> None:
         """A file a crash left unconfirmed: in the room already (a bot post since it was planned with
         an attachment of its name and size that no other delivery holds), it is recorded; absent, it
         is sent once from its outbox snapshot, labelled; with no snapshot, the room is told."""
@@ -537,13 +535,11 @@ class DiscordChannel:
         self.want[room] = text
         self._call(self._edit(room), wait=False)
 
-    def reply(self, room: str, text: str, inbound: list[str], card: str | None = None,
-              key: str | None = None) -> list[str]:
+    def reply(self, room: str, text: str, inbound: list[str], card: str | None = None, key: str | None = None) -> list[str]:
         """The reply; the card goes, unless `card` is given: then the card keeps that line."""
         return self._call(self._finish(room, text, inbound, DONE, card=card, key=key)) or []
 
-    def notice(self, room: str, text: str, inbound: list[str], card: str | None = None,
-               key: str | None = None) -> list[str]:
+    def notice(self, room: str, text: str, inbound: list[str], card: str | None = None, key: str | None = None) -> list[str]:
         """A visible failure: the turn's card kept and edited to `card` (what was owed), else `text` posted."""
         return self._call(self._finish(room, text, inbound, FAILED, kind="notice", card=card, key=key, instead=card is not None)) or []
 
@@ -637,8 +633,7 @@ class DiscordChannel:
         card = self.cards.get(key)
         return str(card.id) if card is not None else message_id
 
-    async def worker_settle(self, room: str, key: str, text: str, how: str,
-                            message_id: str | None = None) -> str | None:
+    async def worker_settle(self, room: str, key: str, text: str, how: str, message_id: str | None = None) -> str | None:
         """The worker's last card text, shown on the same cadence; the card then closes in the
         ledger and is never edited again."""
         mid = await self.worker_card(room, key, text, message_id)
@@ -754,8 +749,7 @@ class DiscordChannel:
             return words.file_why("size", size=said, limit=cap)
         return words.file_why("empty") if size == 0 else None
 
-    async def send_file(self, room: str, path: Path, caption: str = "", key: str | None = None,
-                        inbound: str = "") -> list[str]:
+    async def send_file(self, room: str, path: Path, caption: str = "", key: str | None = None, inbound: str = "") -> list[str]:
         """The one file path: checked, sent from a snapshot under a new name, its message id
         recorded; any miss is a visible notice in the room and a ValueError for the caller. A file
         the same message already had in the room (a turn a crash cut short, run again) is not sent
@@ -800,8 +794,7 @@ class DiscordChannel:
         return [str(m.id)]
 
 
-async def setup_room(token: str, guild_id: int, name: str, webhook_name: str,
-                     channel_id: int | None = None) -> dict[str, Any]:
+async def setup_room(token: str, guild_id: int, name: str, webhook_name: str, channel_id: int | None = None) -> dict[str, Any]:
     """Find the text channel (by `channel_id` when given, which never creates one; else by `name`,
     created when absent) and its webhook `webhook_name` (created when absent). REST only."""
     client = discord.Client(intents=discord.Intents.none())

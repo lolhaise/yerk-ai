@@ -417,8 +417,7 @@ def run(private: Path, state: Path, ref: str = "", tests: bool = True, unit_file
                  *card, *moved_back(tree, on, target)], (130 if stopped else 1) if back else 2)
 
 
-def say(private: Path, state: Path, lines: list[str], post: Callable[[dict[str, Any]], dict[str, Any]] | None,
-        code: int = 1) -> int:
+def say(private: Path, state: Path, lines: list[str], post: Callable[[dict[str, Any]], dict[str, Any]] | None, code: int = 1) -> int:
     """The card to the machine room through the running yerkd, and always to the terminal."""
     text = "\n".join(lines)
     with contextlib.suppress(OSError):                # a terminal closed under it: the machine room still gets it

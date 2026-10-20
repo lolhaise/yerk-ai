@@ -1,6 +1,7 @@
 """Checks the daily health call, a tiny model turn per account, and `yerk accounts` / `yerk status`, on the fake claude."""
 import io
 import json
+import time
 from pathlib import Path
 
 import pytest
@@ -55,6 +56,21 @@ def test_a_refused_login_fails_and_rests_the_account(box, monkeypatch):
     assert (rows["two"]["ok"], rows["two"]["failure"], rows["two"]["login"]) == (0, "auth", "none")
     assert rows["two"]["identity_ok"] is None and rows["one"]["ok"] == 1
     assert Cooldowns(state / "cooldowns.json").until("two") is not None
+
+
+def test_a_pass_on_the_health_model_leaves_a_rest_keyed_to_another_model_alone(box, monkeypatch):
+    priv, state, tmp = box
+    cool = Cooldowns(state / "cooldowns.json")
+    cool.fail("two", "rate_limit", lambda r: 30, model="claude-fable-5-1", until=time.time() + 7200)   # out of Fable until its reset
+    cool.fail("three", "auth", lambda r: 600)                                                          # a refused login: any model
+    monkeypatch.setenv("FAKE_CLAUDE_FAIL_DIRS", str(tmp / "cfg-four"))                                 # four is out of haiku itself
+    monkeypatch.setenv("FAKE_CLAUDE_RESETS", "2000300000")
+    rows = {r["account"]: r for r in run_check(priv, state)}
+    assert (rows["two"]["ok"], rows["three"]["ok"], rows["four"]["ok"], rows["four"]["failure"]) == (1, 1, 0, "quota")
+    fresh = Cooldowns(state / "cooldowns.json")
+    assert fresh.until("two", model="claude-fable-5-1") is not None and fresh.until("two", model="haiku") is None
+    assert fresh.until("three") is None                                                                # the pass cleared it
+    assert fresh.until("four", model="haiku") == 2000300000 and fresh.until("four", model="claude-fable-5-1") is None
 
 
 def test_two_accounts_on_one_login_and_a_changed_login_fail_the_identity_check(box):

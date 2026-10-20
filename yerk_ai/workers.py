@@ -182,8 +182,7 @@ class Systemd:
         except (OSError, ValueError):
             return ""
 
-    def start(self, unit: str, argv: list[str], env: dict[str, str], cwd: Path, out: Path, err: Path,
-              cap: float, post: list[str]) -> None:
+    def start(self, unit: str, argv: list[str], env: dict[str, str], cwd: Path, out: Path, err: Path, cap: float, post: list[str]) -> None:
         cmd = ["systemd-run", "--user", "--unit", unit, "--collect", "--quiet", "--working-directory", str(cwd),
                "--description", f"Yerk AI worker {unit.removeprefix(UNIT)}",
                "-p", f"RuntimeMaxSec={max(1, int(cap))}", "-p", f"StandardOutput=append:{out}",
@@ -480,10 +479,10 @@ class Workers:
             return report(self.ledger, str(req.get("id", "")))
         return {"ok": False, "error": f"no action {action!r}; actions: start, list, stop, report"}
 
-    def _account(self, name: str) -> Account | None:
+    def _account(self, name: str, model: str = "") -> Account | None:
         if (want := name or self.conf.account):
             return next((a for a in self.accounts if a.name == want), None)
-        return pick(self.accounts, self.cooldowns) if self.accounts else None
+        return pick(self.accounts, self.cooldowns, model=model) if self.accounts else None
 
     async def start(self, room: str, brief: str = "", brief_file: str = "", account: str = "", model: str = "",
                     cap_minutes: float = 0.0, tasks: list[str] | None = None, job: str = "",
@@ -497,7 +496,8 @@ class Workers:
                 return {"ok": False, "error": f"cannot read the brief file: {e}"}
         if not brief.strip():
             return {"ok": False, "error": "a worker needs a brief: give `brief` (text) or `brief_file` (a path)"}
-        if (acct := self._account(account)) is None:
+        model = model or self.conf.model or str(self.room_confs.get(room, {}).get("model", ""))
+        if (acct := self._account(account, model)) is None:
             return {"ok": False, "error": f"no account {account or self.conf.account!r}; accounts: "
                                           f"{', '.join(a.name for a in self.accounts)}"}
         wid = uuid.uuid4().hex[:6]
@@ -506,7 +506,6 @@ class Workers:
         d = self.conf.root / wid
         d.mkdir(mode=0o700, parents=True)
         cap = (cap_minutes or self.conf.cap_minutes) * 60
-        model = model or self.conf.model or str(self.room_confs.get(room, {}).get("model", ""))
         report, tasks_md = d / REPORT, d / TASKS
         (d / "BRIEF.md").write_text(brief)
         if tasks:

@@ -185,13 +185,11 @@ def check_shell(command: str, cwd: str, s: Settings, root: str = "") -> Verdict 
                                         f"Run the delete on its own as `{how} -- PATH ...` with named paths.",
                        detail=f"not rewritable: {command[:200]}")
     cmd = str(new["command"])
-    note = (f"The delete was run as `{cmd}` (recoverable from the trash); the tool result is that command's. "
-            "Do not repeat it.")
+    note = f"The delete was run as `{cmd}` (recoverable from the trash); the tool result is that command's. Do not repeat it."
     dropped = [str(x) for x in new["dropped"]] if isinstance(new["dropped"], list) else []
     if dropped:
         note += f" Left out, not there: {', '.join(dropped)[:200]}."
-    return Verdict("trash", "rewrite", note, detail=f"{command[:160]} -> {cmd[:160]}",
-                   new_input={"command": cmd})
+    return Verdict("trash", "rewrite", note, detail=f"{command[:160]} -> {cmd[:160]}", new_input={"command": cmd})
 
 
 def restart_hit(tool: str, ti: dict[str, Any], private: Path) -> str | None:
@@ -297,8 +295,7 @@ def worker_hook(folder: Path) -> int:
     """`python -m yerk_ai.gates worker-hook FOLDER`: the hook's payload on stdin, the answer on stdout.
     A call it cannot read is refused: a gate that fails open is no gate."""
     try:
-        out = worker_check(json.loads(sys.stdin.read() or "{}"), folder,
-                           json.loads((folder / "worker.json").read_text()))
+        out = worker_check(json.loads(sys.stdin.read() or "{}"), folder, json.loads((folder / "worker.json").read_text()))
     except Exception as e:  # noqa: BLE001  fail closed on anything
         out = Verdict("worker", "deny", f"Refused: the worker gate could not read this call ({type(e).__name__}). "
                                         "Try it again in a plainer form.").output()

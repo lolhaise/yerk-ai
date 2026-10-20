@@ -173,7 +173,7 @@ def account_env(account: Account, base: Mapping[str, str] | None = None) -> dict
 
 class Cooldowns:
     """Resting accounts, per account and failure kind, with doubling backoff, in one JSON file
-    in the state folder: {account: {kind: {until, repeats}}}. A restart keeps them, a hand edit
+    in the state folder: {account: {kind or kind:model: {until, repeats}}}. A restart keeps them, a hand edit
     (`yerk accounts cool`) is seen at the next pick, and a delivered reply clears the account."""
 
     def __init__(self, path: Path | None = None):
@@ -195,18 +195,22 @@ class Cooldowns:
             self.data = {k: ({"legacy": v} if "until" in v else v) for k, v in raw.items()}
             self.mtime = m
 
-    def until(self, name: str, now: float | None = None) -> float | None:
+    def until(self, name: str, now: float | None = None, model: str = "") -> float | None:
+        """When the account's rest ends, None when it is free; for `model`, a rest keyed to another model does not count."""
         self._refresh()
-        return cooldown_until({k: v["until"] for k, v in self.data.get(name, {}).items()}, None, now)
+        rests = {k: v["until"] for k, v in self.data.get(name, {}).items() if not model or k.partition(":")[2] in ("", model)}
+        return cooldown_until(rests, None, now)
 
-    def fail(self, name: str, kind: str, seconds: Callable[[int], float], now: float | None = None) -> float:
-        """Rest `name` for seconds(repeats of this kind so far); returns when the rest ends."""
+    def fail(self, name: str, kind: str, seconds: Callable[[int], float], now: float | None = None, model: str = "",
+             until: float | None = None) -> float:
+        """Rest `name` for seconds(repeats of this kind so far), or until `until` when the failure named when its limit
+        resets; a `model` keys the rest to that model alone (kind:model, a weekly meter being per model). Returns the end."""
         self._refresh()
         now = time.time() if now is None else now
-        kinds = self.data.setdefault(name, {})
-        repeats = int(kinds.get(kind, {}).get("repeats", 0))
-        until = now + seconds(repeats)
-        kinds[kind] = {"until": until, "repeats": repeats + 1, "at": now}
+        kinds, key = self.data.setdefault(name, {}), f"{kind}:{model}" if model else kind
+        repeats = int(kinds.get(key, {}).get("repeats", 0))
+        until = until if until and until > now else now + seconds(repeats)
+        kinds[key] = {"until": until, "repeats": repeats + 1, "at": now}
         self._save()
         return until
 
@@ -217,9 +221,13 @@ class Cooldowns:
         kinds[kind] = {**kinds.get(kind, {"repeats": 0}), "until": until, "at": time.time()}
         self._save()
 
-    def clear(self, name: str) -> None:
+    def clear(self, name: str, model: str = "") -> None:
+        """Every rest of the account goes; with a `model`, those keyed to it or to no model (a reply on one model says
+        nothing about another model's meter)."""
         self._refresh()
-        if self.data.pop(name, None) is not None:
+        kept = {k: v for k, v in self.data.get(name, {}).items() if model and k.partition(":")[2] not in ("", model)}
+        if name in self.data and self.data[name] != kept:
+            self.data[name] = kept
             self._save()
 
     def show(self, name: str, now: float | None = None) -> list[dict[str, Any]]:
@@ -238,10 +246,11 @@ class Cooldowns:
             self.mtime = self.path.stat().st_mtime_ns
 
 
-def pick(accounts: list[Account], cooldowns: Cooldowns, now: float | None = None, first: str = "") -> Account:
-    """The first account in order that is not resting, `first` (a room's pinned one) ahead of the rest; when every one rests, the last anyway."""
+def pick(accounts: list[Account], cooldowns: Cooldowns, now: float | None = None, first: str = "", model: str = "") -> Account:
+    """The first account in order not resting (for `model`, when one is named), `first` (a room's pinned one) ahead of the rest;
+    when every one rests, the last anyway."""
     accounts = sorted(accounts, key=lambda a: a.name != first)
     for a in accounts:
-        if cooldowns.until(a.name, now) is None:
+        if cooldowns.until(a.name, now, model) is None:
             return a
     return accounts[-1]

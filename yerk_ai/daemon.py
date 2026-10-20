@@ -81,8 +81,7 @@ class ConsoleChannel:
     async def notify(self, room: str, text: str) -> list[str]:
         return self._out({"room": room, "notice": text, "inbound": []})
 
-    async def send_file(self, room: str, path: Path, caption: str = "", key: str | None = None,
-                        inbound: str = "") -> list[str]:
+    async def send_file(self, room: str, path: Path, caption: str = "", key: str | None = None, inbound: str = "") -> list[str]:
         if not path.is_file():
             raise FileNotFoundError(str(path))
         return self._out({"room": room, "file": str(path), "caption": caption})
@@ -222,7 +221,7 @@ class Yerkd:
         accts = named + [a for a in self.accounts if a not in named]
         room = Room(name, conf, lambda: self.spec_for(name), accts, channel, self.state, self.ledger,
                     self.failures, self.cooldowns, idle_seconds=self.idle_seconds, log_dir=self.log_dir,
-                    meters=self.meters.seen)
+                    meters=self.meters)
         self.rooms[name], self.channels[name] = room, channel
         return room
 
@@ -377,7 +376,8 @@ class Yerkd:
         row, r = self.sessions.get(room) or {}, self.rooms.get(room)
         if not row or r is None or r.fresh_next or (self.state / "rooms" / room / "fresh-next").is_file():
             return ""
-        same = row.get("account") == pick(r.accounts, self.cooldowns, first=pin).name
+        model = room_settings(r.conf, self.state, room, self.models)["model"][0]      # a rest keyed to another model does not count
+        same = row.get("account") == pick(r.accounts, self.cooldowns, first=pin, model=model).name
         return "\n" + (words.CARRIED if same or os.path.isfile(str(row.get("transcript") or "")) else words.RECAPPED)
 
     async def room_new(self, room: str) -> dict[str, Any]:
