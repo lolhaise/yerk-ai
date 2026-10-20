@@ -72,7 +72,22 @@ def rooms(private: Path) -> dict[str, dict[str, Any]]:
         if w in taken:
             raise SystemExit(f"rooms.toml: {n} watches {w}, {taken[w]}")
         taken[w] = f"which {n} watches too"
+    for n, c in rs.items():
+        people(n, c)                                    # a `people` that is not a list of ids stops the start here
     return rs
+
+
+def people(name: str, conf: dict[str, Any]) -> frozenset[int]:
+    """The Discord user ids a room answers besides the owner (`people` in rooms.toml); unset or empty, the owner only.
+    Anything but a list of ids, or a list on a room whose privacy is owner (it reads the owner's whole memory and recalls
+    the owner's people and things), stops the start with one plain line."""
+    raw = conf.get("people") or []
+    ids = [discord_id(x) for x in raw] if isinstance(raw, list) else []
+    if not isinstance(raw, list) or None in ids:
+        raise SystemExit(f"rooms.toml: {name}: people must be a list of Discord user ids, like people = [<user id>, <user id>], not {raw!r}")
+    if ids and str(conf.get("privacy", "owner")) == "owner":
+        raise SystemExit(f'rooms.toml: {name}: people needs privacy = "family" or "shared"; a room whose privacy is owner reads the owner\'s whole memory')
+    return frozenset(i for i in ids if i)
 
 
 def room_id(name: str, conf: dict[str, Any]) -> str:

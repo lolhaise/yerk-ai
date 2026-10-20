@@ -26,7 +26,7 @@ from typing import Any
 
 from . import beat, context, deploy, evidence, gates, hooks, jobs, mcp_server, memory, mentions, status, workers
 from .accounts import Account, Cooldowns, from_dir, load_accounts
-from .config import (EFFORTS, REPO, budgets, discord_id, flag, load_toml, models, override, private_dir,
+from .config import (EFFORTS, REPO, budgets, discord_id, flag, load_toml, models, override, people, private_dir,
                      read_secret, room_id, room_settings, rooms, state_dir, table, write_private)
 from .engine import RoomSpec, SessionTable
 from .ledger import Ledger
@@ -236,8 +236,7 @@ class Yerkd:
             return {"ok": False, "error": "nothing to send: give text, a file, or both"}
         ch = self.channels[room]
         if file and not self.may_send(caller if caller in self.rooms else room, Path(file)):
-            await ch.notify(room, f"{words.NOT_DONE} "
-                                  f"{words.NOT_SENT.format(name=Path(file).name, why=words.file_why('outside'))}")
+            await ch.notify(room, f"{words.NOT_DONE} {words.NOT_SENT.format(name=Path(file).name, why=words.file_why('outside'))}")
             return {"ok": False, "error": f"{file} is outside this room's folders; only files from them can be sent; "
                                           "the room was told"}
         src = self.rooms.get(caller) or self.rooms[room]
@@ -247,8 +246,7 @@ class Yerkd:
             inbound = ",".join(m.id for m in src.inflight) if src.busy else ""
         key = f"{turn}-s{self.sends}"                         # and this send's number: unique across restarts
         try:
-            ids = await (ch.send_file(room, Path(file), text, key=key, inbound=inbound) if file
-                         else ch.send_text(room, text, key=key))
+            ids = await (ch.send_file(room, Path(file), text, key=key, inbound=inbound) if file else ch.send_text(room, text, key=key))
         except (OSError, ValueError) as e:
             return {"ok": False, "error": str(e)}
         log.info("send: %s -> %s, %d message(s)", caller or "?", room, len(ids))
@@ -550,16 +548,14 @@ class Yerkd:
                 log.info("room %s: Stop bounced once: an image was never read", name)
             elif room and name:
                 said = payload["last_assistant_message"] if "last_assistant_message" in payload else None
-                reason = room.silent_check(active, None if said is None else str(said or ""),
-                                           self.ledger.landed(room.turn_key))
+                reason = room.silent_check(active, None if said is None else str(said or ""), self.ledger.landed(room.turn_key))
                 if reason:
                     self.ledger.gate(room=name, session_id=sid, turn=room.turn_key, gate="silent", decision="bounce",
                                      tool="", rule="silent-ending", detail=reason[:300])
                     log.info("room %s: Stop bounced once: the turn ended with nothing visible", name)
             if room and name:
                 try:
-                    await asyncio.to_thread(self.shadow_stop, name, room, str(payload.get("last_assistant_message")
-                                                                              or ""), sid)
+                    await asyncio.to_thread(self.shadow_stop, name, room, str(payload.get("last_assistant_message") or ""), sid)
                 except Exception:
                     log.exception("room %s: the shadow Stop check failed (nothing blocked)", name)
             return {"decision": "block", "reason": reason} if reason else {}
@@ -621,8 +617,7 @@ class Yerkd:
             key = gates.call_key(tool, ti)
             rel = self.ledger.release(name, rule, key, cwd, self.gates.window_s)
             if rel:
-                v = gates.Verdict("approval", "release", detail=f"{what}: {call}; approved by {rel['approved_by']}",
-                                  rule=rule)
+                v = gates.Verdict("approval", "release", detail=f"{what}: {call}; approved by {rel['approved_by']}", rule=rule)
             else:
                 model, line = gates.held(what, call, self.gates.word, exact=key)
                 v = gates.Verdict("approval", "hold", model, line, f"{what}: {call}", rule=rule)
@@ -741,8 +736,7 @@ class Yerkd:
 
     async def status_now(self, payload: dict[str, Any], auth: dict[str, str] | None = None) -> dict[str, Any]:
         """/status: what runs now, for `yerk status` and any program that asks (status.py)."""
-        out = await asyncio.to_thread(status.collect, self.private, self.state, self.accounts, self.cooldowns,
-                                      self.ledger, self.rooms)
+        out = await asyncio.to_thread(status.collect, self.private, self.state, self.accounts, self.cooldowns, self.ledger, self.rooms)
         return {**out, "started": self.started, "commit": self.commit,
                 "connected": bool(getattr(self.link, "connected", False)),
                 "rebuilding": await asyncio.to_thread(self.rebuild_running)}   # deploy waits it out, as the gate does
@@ -792,7 +786,8 @@ class Yerkd:
             kind, _, cid = str(conf.get("channel", "")).partition(":")
             wk, _, wid = str(conf.get("watch", "")).partition(":")     # read as the room's own, never written to
             if kind == "discord" and cid.isdigit():
-                dc.add_room(int(cid), self.add_room(name, dc), int(wid) if wk == "discord" and wid.isdigit() else None)
+                dc.add_room(int(cid), self.add_room(name, dc), int(wid) if wk == "discord" and wid.isdigit() else None,
+                            people(name, conf))
         im = self.imessage_rooms()
         if not dc.rooms and im is None:
             raise SystemExit("no room has a discord:<channel id> or an imessage:<chat identifier> in rooms.toml")
@@ -818,8 +813,7 @@ class Yerkd:
             if machine is None or machine not in self.channels:
                 return None
             return await self.channels[machine].send_text(machine, text, key=key)
-        im = IMessageChannel(dict(self.conf.get("imessage", {})), self.ledger, state=self.state,
-                             capture=self.daily.capture, machine=tell)
+        im = IMessageChannel(dict(self.conf.get("imessage", {})), self.ledger, state=self.state, capture=self.daily.capture, machine=tell)
         for name, ident in named.items():
             im.add_room(ident, self.add_room(name, im))
         return im

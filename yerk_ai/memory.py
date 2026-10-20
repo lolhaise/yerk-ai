@@ -692,8 +692,7 @@ def snippets(hits: list[dict[str, Any]], weights: dict[str, float], budget: int)
     shared = min(len(hits), RECALL_HITS)
     for n, h in enumerate(hits):
         if n < shared:
-            first, text = snippet(str(h.get("text", "")), int(h["line"]), weights, h.get("near"),
-                                  min(SNIPPET, budget // (shared - n)))
+            first, text = snippet(str(h.get("text", "")), int(h["line"]), weights, h.get("near"), min(SNIPPET, budget // (shared - n)))
             budget -= len(text)
         else:
             first, text = snippet(str(h.get("text", "")), int(h["line"]), weights, h.get("near"), EXTRA, one=True)
@@ -770,7 +769,7 @@ def cite(s: Settings, path: Path) -> str:
 
 
 # the room's own log: the topic hit per message and the recall pack at session start (decision 20)
-OWNER_ROLES = frozenset({"owner", "test-webhook"})   # the test webhook stands in for the owner in a test room
+PEOPLE_ROLES = frozenset({"owner", "person", "test-webhook"})   # whose messages fill the pack; the webhook stands in for the owner
 DECIDED = re.compile(r"\b(?:decided|decision|agreed|settled on|going with|go with|draft(?:ed)?)\b", re.I)
 WINDOW_DAYS = 14
 ITEM_CHARS = 280
@@ -827,8 +826,8 @@ def topic_hits(s: Settings, room: str, text: str, exclude: set[str] | None = Non
 
 def room_items(s: Settings, room: str, now: datetime | None = None,
                exclude: set[str] | None = None, rid: str | None = None, owner: bool = True) -> list[dict[str, Any]]:
-    """The room's filed items of the last 14 days, newest first: every message the owner sent
-    (its attachments with it) and every line that reads as a decision or a draft. The messages
+    """The room's filed items of the last 14 days, newest first: every message its people sent (the owner,
+    a listed person; its attachments with it) and every line that reads as a decision or a draft. The messages
     the turn is answering (`exclude`) are the prompt itself and stay out."""
     items: list[dict[str, Any]] = []
     found: list[dict[str, Any]] = []
@@ -839,7 +838,7 @@ def room_items(s: Settings, room: str, now: datetime | None = None,
             found, last_day = [], day
         if ln.mid.split(".e")[0] in (exclude or set()):
             continue
-        if (ln.role not in (*OWNER_ROLES, NOTE) and not DECIDED.search(ln.body)) or mentions.OLD in ln.body:
+        if (ln.role not in (*PEOPLE_ROLES, NOTE) and not DECIDED.search(ln.body)) or mentions.OLD in ln.body:
             continue
         files = []
         for nxt in lines[n + 1:]:
@@ -855,8 +854,8 @@ def room_items(s: Settings, room: str, now: datetime | None = None,
 def room_pack(s: Settings, room: str, budget: int = 6000, now: datetime | None = None,
               exclude: set[str] | None = None, rid: str | None = None, owner: bool = True) -> tuple[str, int]:
     """(text, items shown): the recall pack's room part, newest first, cut to `budget` characters."""
-    head = (f"[recall pack] Room {room}, last {WINDOW_DAYS} days of filed items, newest first: what the owner "
-            "sent, decisions and drafts. Each ends with its file and line; read_memory gives the whole line.")
+    head = (f"[recall pack] Room {room}, last {WINDOW_DAYS} days of filed items, newest first: what the room "
+            "was sent, decisions and drafts. Each ends with its file and line; read_memory gives the whole line.")
     out, used, shown = [head], len(head), 0
     items = room_items(s, room, now, exclude, rid, owner)
     for it in items:

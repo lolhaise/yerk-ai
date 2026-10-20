@@ -13,10 +13,14 @@ from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai.daemon import Yerkd
 
 
-def install(tmp_path, frozen: object = None, live: object = None, sealed: bool = False) -> Yerkd:
+MOM = 31        # the one person of the family room; a stand-in, since a real id (17 to 20 digits) never goes in this repository
+
+
+def install(tmp_path, frozen: object = None, live: object = None, sealed: bool = False, family: bool = False) -> Yerkd:
     """Two read-only roots, each a curated file and a memory folder holding the same file names with their own words:
     `frozen-room` gets `frozen` as its `also` (default the snap pair), `live-room` gets `live` (default the live pair,
-    written relative to the private folder), `example-room` sets none. The index and the name index are built."""
+    written relative to the private folder), `example-room` sets none; `family` adds `Alex`, a `privacy = "family"`
+    room with one listed person and no `also`. The index and the name index are built."""
     private, state = tmp_path / "private", tmp_path / "state"
     shutil.copytree(EXAMPLE_PRIVATE, private)
     state.mkdir()
@@ -33,8 +37,10 @@ def install(tmp_path, frozen: object = None, live: object = None, sealed: bool =
     frozen = pair["snap"] if frozen is None else frozen
     live = ["../live/MEMORY.md", "../live/memory"] if live is None else live
     sealing = block.replace("CHANNEL_ID", "FROZEN_ID") + "sealed = true\n" if sealed else block    # its own room id, as live
+    mom = block.replace("CHANNEL_ID", "MOM_ID").replace('turn = "and"', 'the = "example"') + f"the = [{MOM}]\n"
     (private / "rooms.toml").write_text(base + f"\n[rooms.frozen-room]\n{sealing}also = {json.dumps(frozen)}\n"
-                                        f"\n[rooms.live-room]\n{block}also = {json.dumps(live)}\n")
+                                        f"\n[rooms.live-room]\n{block}also = {json.dumps(live)}\n"
+                                        + (f"\n[rooms.example-two]\n{mom}" if family else ""))
     y = Yerkd(private, state)
     s = y.memory
     memindex.Index(s.index_db, s.scope).sync()
@@ -169,3 +175,41 @@ def test_a_sealed_room_reads_its_own_lines_and_its_also_roots_only(tmp_path):
     assert "periwinkle" in asyncio.run(y.tool_read_memory("frozen-room", "memory/2026-10-19.md:3", 1, 1))["text"]
     assert not [e for e in y.recall_for("frozen-room", "what is the example ladder?")[0] if "saffron" in e["text"]]
     assert [e for e in y.recall_for("example-room", "what is the example ladder?")[0] if "saffron" in e["text"]]
+
+
+def test_a_family_room_with_one_person_reads_its_own_lines_and_shared_files_only(tmp_path):
+    """The room for the owner's mother, end to end, on the block the brief names (`privacy = "family"`, one listed
+    person, no `also`): its lines carry class room; recall and read_memory from it return nothing from the owner's
+    private files, another room's lines or the read-only roots; the shared rules file reads; its `remember` files a
+    the sample item moved to the next step and, the test reads it; back as plain text with one; more, line,
+    one more line for the. Check while a second entry waits."""
+    from yerk_ai import words
+    from yerk_ai.config import people
+    from yerk_ai.daemon import ConsoleChannel
+    from yerk_ai.room import Inbound
+    y, mom = install(tmp_path, family=True), "Alex"
+    assert people(mom, y.room_confs[mom]) == frozenset({MOM}) and not y.owner(mom) and y.daily.rooms[mom] == ("discord:MOM_ID", "room")
+    y.daily.capture("example-room", "o1", "owner", "the owner's private line about the example kettle")
+    y.daily.capture(mom, "p1", "person", "the mother's line about the example kettle", who="mom")
+    memory.remember(y.memory, y.daily, "example-room", "o2", "The example kettle is teal", "example kettle", (), y.reader("example-room"))
+    memory.rule(y.memory, "example-room", "o3", "tea", "sample item moved to the next")
+    sync(y)
+    got = texts(y, mom, "example kettle", 20)
+    assert "the mother's line" in got and "owner's private line" not in got and "teal" not in got and "periwinkle" not in got
+    assert "four minutes" in texts(y, mom, "steep the example tea", 20)                      # rules.md is shared
+    assert "teal" in texts(y, "example-room", "example kettle", 20)                        # the owner's room: everything
+    day = asyncio.run(y.tool_read_memory(mom, f"daily/{memory.window(y.memory)[0]}.md", 1, 50))
+    assert "the mother's line" in day["text"] and "owner's private" not in day["text"] and "(a line of another room)" in day["text"]
+    assert not asyncio.run(y.tool_read_memory(mom, "facts/example-kettle.md", 1, 5))["ok"]
+    assert "four minutes" in asyncio.run(y.tool_read_memory(mom, "rules.md", 1, 10))["text"]
+    ask = "what colour is the example kettle?"
+    assert not [e for e in y.recall_for(mom, ask)[0] if "teal" in e["text"]] and [e for e in y.recall_for("example-room", ask)[0] if "teal" in e["text"]]
+    y.add_room(mom, ConsoleChannel()).inflight = [Inbound("p2", "person", "a placeholder message")]
+    note = asyncio.run(y.tool_remember(mom, "Example dinner: Sunday at six", "example dinner", []))
+    assert note["ok"] and note["cite"].startswith("memory/daily/") and not (y.memory.root / "facts" / "example-dinner.md").exists()
+    line = asyncio.run(y.tool_read_memory(mom, note["cite"], 1, 1))["text"]
+    assert " The#check:While_A second: Entry waits: In the queue [for:its] [turn:and0." in line
+    assert asyncio.run(y.tool_settings(mom, "opus", "")) == {"ok": False, "line": words.OWNER_ONLY}
+    assert y.owner_only(mom, "") == {"ok": False, "line": words.WORKERS_OWNER_ONLY}
+    assert y.owner_only(mom, "", words.JOBS_OWNER_ONLY) == {"ok": False, "line": words.JOBS_OWNER_ONLY}
+    assert asyncio.run(y.tool_rule(mom, "steep it longer", "tea")) == {"ok": False, "line": words.RULES_OWNER_ONLY}
