@@ -318,11 +318,6 @@ class Ledger:
                          (f"{turn_key}:%", f"{turn_key}-s%"))
         return int(r[0]["n"])
 
-    def evidence_timed(self, turn: str) -> list[dict[str, Any]]:
-        """The turn's evidence rows with each call's time and failure (None until its PostToolUse)."""
-        return self._select("SELECT e.*, t.ms, t.failed, t.error FROM evidence e LEFT JOIN tool_times t "
-                            "ON e.tool_use_id = t.tool_use_id WHERE e.turn = ? ORDER BY e.id", (turn,))
-
     def hook_overhead(self, since: float = 0.0) -> dict[str, Any]:
         """The hooks' own time per turn (every event of the turn summed): turns, calls, p50, p95, max."""
         per = [float(r["ms"]) for r in self._select(

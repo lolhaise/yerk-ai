@@ -10,20 +10,26 @@ total = 80000
 # The first five parts are Claude Code's own (its default prompt, the built-in tools
 # allowed by --tools, Yerk AI's MCP tools, their deferred names, the room's skills):
 # `yerk map` shows them at their budget until they are measured from a transcript.
+# Measured in the rooms' transcripts (Claude Code 2.1.301, 2026-10-20): the built-in tools of the widest
+# allowlist a room has (Bash, Glob, Grep, Read) are 10,401, and no room sends a skill, since every room
+# starts with --setting-sources "" and no allowlist has Skill. Those two lines gave the rules part its 6,600.
 [session_start.claude_code]
 claude_code_prompt = 11400
-builtin_tools = 15000
+builtin_tools = 10500
 yerk_tools = 8000
 deferred_tool_names = 1500
-skills = 2000
+skills = 0
 
-# Yerk AI's own parts, joined into the one file passed by --append-system-prompt-file.
+# Yerk AI's own parts, joined into the one file passed by --append-system-prompt-file. `rules` is the
+# install's rules file (decision 15), the one part the rooms write as they go, so it comes after the
+# hand-kept files; it was inside the room's rulebook, where a rulebook near its cap pushed rules out.
 [session_start.appended]
 mechanics = 3000
 persona = 12000
 rulebook = 12000
 room_voice = 5000
 pinned_memory = 4000
+rules = 6600
 recall_pack = 6000
 
 [per_message]

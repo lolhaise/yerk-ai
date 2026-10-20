@@ -911,8 +911,9 @@ def migrate_daylogs(daily: Path, tz: tzinfo, rooms: dict[str, tuple[str, str]], 
     return stats
 
 
-def on_file(s: Settings, deadline_s: float = 1.5) -> tuple[Any, Any]:
-    """(figure lookup, file lookup) for the shadow Stop check, each answering the cite or None."""
+def on_file(s: Settings, rid: str = "", deadline_s: float = 1.5) -> tuple[Any, Any]:
+    """(figure lookup, file lookup) for the shadow Stop check, each answering the cite or None. A day-log line room `rid`
+    filed itself, its reply or its note, is not where a figure is on file: quoting it, the room quotes its own words."""
     from .evidence import has_figure
 
     def rows(sql: str, args: tuple[str, ...]) -> list[Any]:
@@ -927,11 +928,13 @@ def on_file(s: Settings, deadline_s: float = 1.5) -> tuple[Any, Any]:
 
     def figure(fig: str) -> str | None:
         found = []                  # a fact file first, then the install's own tree, then a read-only root
-        for path, lo, body in rows("SELECT c.path, c.lo, c.body FROM chunks_fts JOIN chunks c ON c.id = "
-                                   "chunks_fts.rowid WHERE chunks_fts MATCH ? LIMIT 60",
-                                   ('"' + " ".join(re.findall(r"\d+", fig)) + '"',)):
-            for n, line in enumerate(body.splitlines()):
-                if has_figure(line, fig):
+        for path, lo, body, head in rows("SELECT c.path, c.lo, c.body, (SELECT h.body FROM chunks h WHERE h.path = c.path "
+                                         "AND h.lo = c.lo ORDER BY h.id LIMIT 1) FROM chunks_fts JOIN chunks c ON c.id = "
+                                         "chunks_fts.rowid WHERE chunks_fts MATCH ? LIMIT 60",
+                                         ('"' + " ".join(re.findall(r"\d+", fig)) + '"',)):
+            for n, line in enumerate(body.splitlines()):    # a line past CHUNK_MAX comes in pieces: the first names who wrote it
+                x = parse_line(line if n else head.split("\n", 1)[0]) if rid and is_daylog(path) else None
+                if has_figure(line, fig) and not (x and x.role in ("yerk", NOTE) and x.rid == rid):
                     p = Path(path)
                     rank = 0 if p.parent.name == "facts" else 1 if p.is_relative_to(s.root) else 2
                     found.append((rank, str(p.relative_to(s.root)) if p.is_relative_to(s.root) else path, lo + n))

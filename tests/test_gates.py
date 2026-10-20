@@ -11,8 +11,8 @@ from pathlib import Path
 
 import pytest
 
-from yerk_ai import evidence, gates, hooks, mcp_server, words
-from yerk_ai.config import EXAMPLE_PRIVATE
+from yerk_ai import evidence, gates, hooks, mcp_server, memindex, words
+from yerk_ai.config import EXAMPLE_PRIVATE, room_id
 from yerk_ai.daemon import ConsoleChannel, Yerkd
 from yerk_ai.engine import SessionTable
 from yerk_ai.room import Inbound
@@ -291,7 +291,8 @@ def test_post_tool_use_adds_each_calls_time_and_failure_to_the_evidence_ledger(t
     room.evidence.observe({"type": "user", "message": {"content": [
         {"type": "tool_result", "tool_use_id": "t1", "content": "text"},
         {"type": "tool_result", "tool_use_id": "t2", "content": "1 failed"}]}})
-    rows = y.ledger.evidence_timed("tk-1")
+    rows = y.ledger._select("SELECT e.*, t.ms, t.failed, t.error FROM evidence e LEFT JOIN tool_times t "   # each call's time
+                            "ON e.tool_use_id = t.tool_use_id WHERE e.turn = ? ORDER BY e.id", ("tk-1",))  # and failure
     assert [(r["tool"], r["ms"], r["failed"]) for r in rows] == [("Read", 7, 0), ("Bash", 4187, 1)]
     assert rows[1]["error"].startswith("Exit code 1")
 
@@ -329,6 +330,36 @@ def test_the_claim_rule_through_shadow_stop_is_ledgered_and_never_blocks(tmp_pat
     rows = [r for r in y.ledger.rows(10, "shadow") if r["rule"] == "claim"]
     assert len(rows) == 1 and 'behaviour: "Checked: nothing implements it."' in rows[0]["detail"]
     assert "tools this turn: Grep x2, Bash(grep) x1" in rows[0]["detail"]
+
+
+def test_a_room_quoting_its_own_filed_reply_is_not_flagged_and_a_figure_on_file_elsewhere_still_is(tmp_path):
+    """With one more: line 0000-00-00 for 00:00 the 00:00 check while a 00.00% second entry waits 00:00 in, the queue for
+    case before the next run starts, the example note says the sample item moved to the next (00 step and 00 the test reads it
+    48 h to 2026-10-20 10:10 repeated a figure the room had said itself). A figure on file only in the room's own replies
+    next run, starts the example, note says the sample item, moved to the
+    last 000 part closes the case before, the next run starts the example; note says the sample item moved to the next
+    with one more line for the."""
+    y, room, ch = setup(tmp_path)
+    rid = room_id("example-room", y.room_confs["example-room"])
+    day = y.memory.daily / "2026-10-19.md"
+    day.parent.mkdir(parents=True, exist_ok=True)
+    long = "In the queue for its turn. " * 40 + "Before the next 00.00% run starts the."                # 00.00% second entry waits in
+    day.write_text("# 2026-10-19\n\n"
+                   f"- 00:00:00-00:00 it-back#{rid} second: {long} [the:case] [before:the0]\n"
+                   f"- 00:00:00-00:00 back-as#{rid} entry: waits in the 000,000.00 queue [for:its] [turn:and0]\n")
+
+    def flagged(reply):
+        memindex.Index(y.memory.index_db, y.memory.scope).sync()
+        human_turn(room, "and how close is it?")
+        room.evidence = evidence.Evidence()
+        call(y, {"hook_event_name": "Stop", "stop_hook_active": False, "last_assistant_message": reply})
+        return sorted(r["detail"].split(";")[0] for r in y.ledger.rows(50, "shadow") if r["rule"] == "figure")
+    assert flagged("Plain 00.00% text 000,000.00 with.") == []                        # it back as plain text with one
+    with day.open("a") as f:                                                     # waits in the, queue for its
+        f.write("- 00:00:00-00:00 run-starts#the:Example_Note says: 00.00% the sample [item:moved] [to:the0]\n"
+                f"- 00:00:00-00:00 with-one#{rid} queue@for-its: turn 000,000.00 and? [the:last] [part:closes0]\n")
+    assert flagged("The 00.00% test 000,000.00 reads.") == ["the 000,000.00, check while a second/0000-00-00.entry:0",
+                                                         "turn 00.00%, and the last part/0000-00-00.closes:0"]
 
 
 CONTROL_REPLIES = [   # known-good replies with the turn that made them: none may be flagged
