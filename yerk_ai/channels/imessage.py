@@ -503,8 +503,7 @@ class IMessageChannel:
             files.append(f)
         return files
 
-    def _file(self, room: str, mid: str, role: str, text: str, files: list[tuple[str, str, int]] | None = None,
-              when: Any = None) -> None:
+    def _file(self, room: str, mid: str, role: str, text: str, files: list[tuple[str, str, int]] | None = None, when: Any = None) -> None:
         if self.capture is None:
             return
         try:
@@ -523,13 +522,11 @@ class IMessageChannel:
     def progress(self, room: str, text: str) -> None:
         return None                               # no edits on iMessage
 
-    def reply(self, room: str, text: str, inbound: list[str], card: str | None = None,
-              key: str | None = None) -> list[str]:
+    def reply(self, room: str, text: str, inbound: list[str], card: str | None = None, key: str | None = None) -> list[str]:
         """The turn's reply, in parts; a card line has nowhere to go and is dropped."""
         return self._call(self._post(room, text, "reply", inbound, key)) or []
 
-    def notice(self, room: str, text: str, inbound: list[str], card: str | None = None,
-               key: str | None = None) -> list[str]:
+    def notice(self, room: str, text: str, inbound: list[str], card: str | None = None, key: str | None = None) -> list[str]:
         return self._call(self._post(room, text, "notice", inbound, key)) or []
 
     # outbound: on the loop
@@ -639,8 +636,7 @@ class IMessageChannel:
         rows = (await self.bridge.request("messages.history", {"chat_id": cid, "limit": 10}) or {}).get("messages", [])
         return next((str(m["guid"]) for m in rows if int(m.get("id") or 0) == rowid and m.get("guid")), None)
 
-    async def _guid_from_history(self, ident: str, cid: int | None, before: int,
-                                 window: tuple[float, float]) -> str | None:
+    async def _guid_from_history(self, ident: str, cid: int | None, before: int, window: tuple[float, float]) -> str | None:
         """The answer had no guid: the chat's first from-me row past `before`, made during the send
         attempt (`window`), that is no one's yet, taken from a row that already waited, else from the
         history (a few looks, a second apart)."""
@@ -669,8 +665,7 @@ class IMessageChannel:
     async def notify(self, room: str, text: str) -> list[str]:
         return await self._post(room, text, "notice", [])
 
-    async def send_file(self, room: str, path: Path, caption: str = "", key: str | None = None,
-                        inbound: str = "") -> list[str]:
+    async def send_file(self, room: str, path: Path, caption: str = "", key: str | None = None, inbound: str = "") -> list[str]:
         why = words.file_why("imessage")
         await self._post(room, f"{words.NOT_DONE} {words.NOT_SENT.format(name=path.name, why=why)}", "notice", [],
                          key=f"{key or 'f' + uuid.uuid4().hex[:12]}-notice")
@@ -684,8 +679,7 @@ class IMessageChannel:
         ids = await self._post(room, first, "worker-card", [], key=f"{key}-start")
         return ids[0] if ids else f"imessage-{key}"
 
-    async def worker_settle(self, room: str, key: str, text: str, how: str,
-                            message_id: str | None = None) -> str | None:
+    async def worker_settle(self, room: str, key: str, text: str, how: str, message_id: str | None = None) -> str | None:
         return message_id or f"imessage-{key}"    # the relay is the worker's last word, as a turn's reply
 
 
@@ -695,8 +689,7 @@ def body(text: str, files: list[dict[str, Any]]) -> str:
     return "\n".join(x for x in lines if x).strip()
 
 
-async def probe(rooms: dict[str, str], conf: dict[str, Any], ledger: Ledger, limit: int = 20,
-                grace: float = 120.0) -> dict[str, Any]:
+async def probe(rooms: dict[str, str], conf: dict[str, Any], ledger: Ledger, limit: int = 20, grace: float = 120.0) -> dict[str, Any]:
     """`yerk probe imessage`: never sends. For each room's chat, the bridge's newest `limit` rows (a
     read-only connection: any other method is refused), each looked up in the inbound ledger and
     the delivery ledger; a row neither holds, older than `grace` seconds, is a lost text."""

@@ -4,7 +4,9 @@
 Each user line gets: a replay (with --replay-user-messages), one text delta, an assistant
 message and a success result echoing the text. Variations:
 - a line containing FAIL_RATE, or any line when CLAUDE_CONFIG_DIR is in FAKE_CLAUDE_FAIL_DIRS
-  (comma separated): an assistant message with error rate_limit and an error result
+  (comma separated; on --model FAKE_CLAUDE_FAIL_MODEL alone when that is set): an assistant message
+  with error rate_limit and an error result, after a rejected rate_limit_event naming its reset
+  (FAKE_CLAUDE_RESETS, epoch seconds) when that is set, as a weekly meter's rejection streams
 - any line when CLAUDE_CONFIG_DIR is in FAKE_CLAUDE_AUTH_DIRS: error authentication_failed,
   "Not logged in" (a config folder with no login)
 - a line containing EMPTY_ONCE: an empty result the first time (marker file FAKE_CLAUDE_MARK)
@@ -69,9 +71,9 @@ if "--resume" in argv and os.environ.get("FAKE_CLAUDE_MISSING") == "1":
 one_shot = "--input-format" not in argv
 sid = (argv[argv.index("--session-id") + 1] if "--session-id" in argv else
        argv[argv.index("--resume") + 1] if "--resume" in argv else str(uuid.uuid4()))
-failing = listed("FAKE_CLAUDE_FAIL_DIRS")
 mark = os.environ.get("FAKE_CLAUDE_MARK", "")
 model = argv[argv.index("--model") + 1] if "--model" in argv else ""
+failing = listed("FAKE_CLAUDE_FAIL_DIRS") and model == os.environ.get("FAKE_CLAUDE_FAIL_MODEL", model)   # one model, when named
 bad_model = bool(model) and model == os.environ.get("FAKE_CLAUDE_BAD_MODEL")
 
 
@@ -105,6 +107,11 @@ def answer(text):
         out({"type": "assistant", "error": "model_not_found", "message": {"content": [{"type": "text", "text": said}]}})
         return result(said, error=True)
     if failing or "FAIL_RATE" in text:
+        if resets := os.environ.get("FAKE_CLAUDE_RESETS"):      # the stream's shape for a weekly meter's rejection (seen live)
+            out({"type": "rate_limit_event", "session_id": sid, "uuid": str(uuid.uuid4()), "rate_limit_info": {
+                "status": "rejected", "rateLimitType": "seven_day_overage_included", "resetsAt": int(resets), "unifiedWindows": {
+                    "seven_day": {"utilization": 0.7, "resetsAt": int(resets)},
+                    "seven_day_overage_included": {"utilization": 1, "resetsAt": int(resets)}}}})
         out({"type": "assistant", "error": "rate_limit", "message": {"content": [{"type": "text", "text": "limit"}]}})
         return result("You've hit your session limit", error=True)
     if no_login:

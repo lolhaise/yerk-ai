@@ -217,6 +217,7 @@ class Turn:
     fallback_model: str | None = None
     flags: list[str] = field(default_factory=list)            # stream events the failure table reads
     windows: dict[str, Any] | None = None                     # the last rate_limit_event's usage windows
+    resets: float | None = None                               # when the limit a rejected rate_limit_event hit resets (epoch)
     tools: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     result: dict[str, Any] | None = None
@@ -244,6 +245,7 @@ class Turn:
             self.windows = info.get("unifiedWindows") or self.windows
             if info.get("status") == "rejected":
                 self.flags.append("credits_required" if info.get("errorCode") == "credits_required" else "rate_limit_rejected")
+                self.resets = info.get("resetsAt") or ((self.windows or {}).get(str(info.get("rateLimitType"))) or {}).get("resetsAt")
         elif kind == "result":
             self.result, self.ended = ev, t
             self.text = str(ev.get("result") or "")
@@ -312,8 +314,7 @@ class RoomProcess:
             # on writing where its transcript was: a transcript outside this account's folder (a hop, a room put on another
             # account, and every start after) resumes by its absolute path (restart test R1); one inside it, by id.
             path = str(row.get("transcript") or "")
-            self.resume_arg = path if path and Path(path).parent != self.projects and os.path.isfile(path) \
-                else self.session_id
+            self.resume_arg = path if path and Path(path).parent != self.projects and os.path.isfile(path) else self.session_id
         else:
             self.resume_arg, self.session_id = None, str(uuid.uuid4())
         (self.state / "locks").mkdir(parents=True, exist_ok=True)
@@ -418,7 +419,7 @@ class RoomProcess:
         return self.read_turn(self.send(text), timeout)
 
     def record(self, turn: Turn, inbound: list[str] | None = None, **extra: Any) -> int:
-        """One ledger row for the turn; `extra` carries the room's hop and recap columns."""
+        """One ledger row for the turn; `extra` carries the room's hop, recap and out_of columns."""
         if not self.ledger:
             return 0
         f = turn.failure
@@ -427,7 +428,7 @@ class RoomProcess:
             session_id=self.session_id, started=turn.started, first_visible=turn.first_visible,
             ended=turn.ended, outcome=turn.outcome, failure=f.cls if f else None,
             action=f.action if f else None, output_chars=len(turn.text), models=",".join(turn.models),
-            fallback_model=turn.fallback_model, accepted=len(turn.accepted),
+            fallback_model=turn.fallback_model, accepted=len(turn.accepted), model=self.spec.model,
             inbound=",".join(inbound) if inbound else None, source=f.source if f else None, **extra)
 
     def stderr_tail(self, n: int = 2000) -> str:

@@ -370,8 +370,7 @@ def measure(a: argparse.Namespace) -> dict[str, Any]:
     return out
 
 
-def drive(a: argparse.Namespace, script: Callable[[str, str], list[tuple[str, float | None]]],
-          pace: list[float]) -> dict[str, Any]:
+def drive(a: argparse.Namespace, script: Callable[[str, str], list[tuple[str, float | None]]], pace: list[float]) -> dict[str, Any]:
     """A script through either channel; replies are judged from the ledgers, never from what the
     channel printed. --via console: yerkd --console and stdin. --via discord: the room's test
     webhook (secrets/discord-test-webhook.url in the private folder), into a yerkd this starts,
@@ -624,8 +623,7 @@ def turn_table(env: Env, t0: float, room: str, sent: list[dict[str, Any]] | None
     inbound = sorted([r for r in env.ledger.rows(5000, "inbound") if r["room"] == room and r["received"] >= t0],
                      key=lambda r: r["received"])
     turns = {r["id"]: r for r in env.ledger.rows(5000) if r["room"] == room}
-    out_rows = sorted([r for r in env.ledger.rows(20000, "outbound") if r["room"] == room and r["sent"] >= t0],
-                      key=lambda r: r["sent"])
+    out_rows = sorted([r for r in env.ledger.rows(20000, "outbound") if r["room"] == room and r["sent"] >= t0], key=lambda r: r["sent"])
     marks = stream_marks(env.state / "logs" / f"{room}.jsonl")
     table = []
     for n, m in enumerate(inbound, 1):
@@ -667,8 +665,7 @@ def resume(a: argparse.Namespace) -> dict[str, Any]:
         sid = rp.start(fresh=True)
         first = rp.ask(f"Remember this code word: {word}. Reply only OK.", timeout=180)
     found = sorted(src.config_dir.glob(f"projects/*/{sid}.jsonl"))
-    out: dict[str, Any] = {"word": word, "session_id": sid, "start": summary(first),
-                           "transcript_in_source": bool(found), "attempts": []}
+    out: dict[str, Any] = {"word": word, "session_id": sid, "start": summary(first), "transcript_in_source": bool(found), "attempts": []}
     attempts: list[dict[str, Any]] = out["attempts"]
     attempts.append(ask_word(env, spec, dst, sid, "plain", word))
     if not attempts[-1]["ok"] and found:

@@ -116,8 +116,7 @@ class Beat:
         rows = [("yerkd", r) for t in sorted(tasks.iterdir()) if (r := stat(int(t.name), self.proc, tasks))] if tasks.is_dir() else []
         rows += [(room, r) for room, pid in self.pids().items() for r in tree(pid, self.proc)]
         lines += ["processes (who, pid, name, state, wchan, resident, cpu):"]
-        lines += [f"  {who} {r['pid']} {r['name']} {r['state']} {r['wchan']} {r['rss_mb']} MB {r['cpu_s']:.1f} s"
-                  for who, r in rows]
+        lines += [f"  {who} {r['pid']} {r['name']} {r['state']} {r['wchan']} {r['rss_mb']} MB {r['cpu_s']:.1f} s" for who, r in rows]
         self.dumps.mkdir(parents=True, exist_ok=True)
         path = self.dumps / time.strftime("%Y%m%d-%H%M%S.txt", time.localtime(began))
         path.write_text("\n".join(lines) + "\n")

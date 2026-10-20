@@ -330,8 +330,7 @@ class Backfill:
     batch is committed as it lands and a restart asks the index what is still missing. Shared with
     the writer through `pending` (hashes of chunks just inserted) and `dirty` (scan again)."""
 
-    def __init__(self, db: Path, live: Any, store: Vectors, embedder: Embedder, batch: int = BATCH, gap: float = GAP,
-                 units: str = "both"):
+    def __init__(self, db: Path, live: Any, store: Vectors, embedder: Embedder, batch: int = BATCH, gap: float = GAP, units: str = "both"):
         self.db, self.live, self.store, self.embedder, self.batch, self.gap = db, live, store, embedder, batch, gap
         self.units = units
         unit_where(units)
@@ -362,8 +361,7 @@ class Backfill:
                 self.conn.close()
             self.conn = sqlite3.connect(real, timeout=5.0, isolation_level=None)
             if self.real is not None:
-                log.info("the index was rebuilt: %d vectors loaded from %s", self.store.load(self.conn, self.embedder.model),
-                         real.name)
+                log.info("the index was rebuilt: %d vectors loaded from %s", self.store.load(self.conn, self.embedder.model), real.name)
                 self.dirty.set()
             self.real = real
         return self.conn

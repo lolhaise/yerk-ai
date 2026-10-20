@@ -25,7 +25,7 @@ from .config import write_private
 from .engine import Turn, claude_bin
 from .ledger import Ledger
 from .lifted.classify import FailureTable
-from .meters import Meters
+from .meters import Meters, rest_until
 
 PROMPT = "Reply with the single word OK."
 
@@ -121,10 +121,11 @@ def check(accounts: list[Account], failures: FailureTable, ledger: Ledger, coold
                 note.append("token identity unverified (no reset times to compare)")
         f = turn.failure
         if ok:
-            cooldowns.clear(a.name)
+            cooldowns.clear(a.name, model=model)          # a pass on this model frees the account for it, not for another model's meter
         elif f and f.action == "hop_account":
             kind = f.kind or "auth"
-            cooldowns.fail(a.name, kind, lambda r: failures.cooldown_seconds(kind, r))
+            cooldowns.fail(a.name, kind, lambda r: failures.cooldown_seconds(kind, r), model=model if kind == "rate_limit" else "",
+                           until=rest_until(turn.resets, meters, a.name, kind))
         row = {"account": a.name, "config_dir": str(a.config_dir), "ok": int(ok), "failure": f.cls if f else None,
                "source": f.source if f else None, "login": login, "identity": ident, "identity_ok": ident_ok,
                "model": ",".join(turn.models) or model, "ms": turn.ms(turn.ended), "note": "; ".join(note) or None}

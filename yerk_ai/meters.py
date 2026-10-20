@@ -52,6 +52,13 @@ class Meters:
         return dict(last) if last else {"error": "no stream has reported it yet"}
 
 
+def rest_until(resets: float | None, meters: Meters | None, account: str, kind: str, now: float | None = None) -> float | None:
+    """When a quota rest ends: the reset the limit named; for a rate limit that named none, the account's weekly reset from
+    its last reading, an hour away at the least; None: the kind's backoff (failures.toml) stands."""
+    week = ((meters.load().get(account) or {}).get("seven_day") or {}).get("resets") if meters and kind == "rate_limit" else None
+    return resets or (max(float(week), (time.time() if now is None else now) + 3600) if week else None)
+
+
 def when(epoch: float | None, now: float | None = None) -> str:
     """A reset as a clock time inside a day, else a weekday: phone-short."""
     if not epoch:

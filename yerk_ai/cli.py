@@ -462,8 +462,7 @@ def cmd_config(a: argparse.Namespace) -> int:
         listed = models(load_toml(priv / "yerkd.toml") if (priv / "yerkd.toml").is_file() else {})
         now = room_settings(confs[a.name], state_dir(a.state), a.name, listed)
         got = [{"key": f"rooms.{a.name}.{k}", "value": v, "source": src} for k, (v, src) in now.items()]
-        print(json.dumps(got) if a.json else "\n".join(f"{r['key']} = {r['value'] or 'unset'} ({r['source']})"
-                                                       for r in got))
+        print(json.dumps(got) if a.json else "\n".join(f"{r['key']} = {r['value'] or 'unset'} ({r['source']})" for r in got))
         return 0
     rows = _settings(a)
     if not (pick := _pick(rows, a.key, sections=True)):
@@ -560,8 +559,7 @@ def main(argv: list[str] | None = None) -> int:
     rb.add_argument("-k", type=int, default=6, help="results per question (default 6, the recall tool's default)")
     rb.add_argument("--json", action="store_true", help="the run as JSON, per-question ranks included")
     ab = sub.add_parser("abilities", help="every ability and its state on this install, one line each")
-    ex = sub.add_parser("explain", help="one ability (what it does, needs and costs, its free path, its state here) "
-                        "or one setting")
+    ex = sub.add_parser("explain", help="one ability (what it does, needs and costs, its free path, its state here) or one setting")
     ex.add_argument("ability")
     for x in (ac, st, mo, rb, ab, ex, jb, sc):
         x.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else the fake example layer)")

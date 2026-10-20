@@ -9,7 +9,7 @@ import pytest
 
 from yerk_ai import words
 from yerk_ai.accounts import Account, Cooldowns
-from yerk_ai.config import table
+from yerk_ai.config import override, table
 from yerk_ai.engine import RoomSpec
 from yerk_ai.ledger import Ledger
 from yerk_ai.lifted.classify import FailureTable
@@ -57,8 +57,9 @@ def env(tmp_path, monkeypatch):
     data["rerun"]["wait"] = [0.0]                       # the reruns without the waits
 
     def make(chan, idle=1800.0, meters=None, conf=None):
-        spec = lambda: RoomSpec(room="r", model="m", cwd=tmp_path, tools=["Read"])  # noqa: E731
-        return Room("r", conf or {}, spec, accounts, chan, tmp_path, ledger, FailureTable(data),
+        conf = {"model": "m", **(conf or {})}      # rooms.toml's model, under the settings tool's override, as the daemon's spec reads them
+        spec = lambda: RoomSpec(room="r", model=str(override(tmp_path, "r").get("model") or conf["model"]), cwd=tmp_path, tools=["Read"])  # noqa: E731
+        return Room("r", conf, spec, accounts, chan, tmp_path, ledger, FailureTable(data),
                     Cooldowns(tmp_path / "cooldowns.json"), idle_seconds=idle, meters=meters)
     return make, ledger, tmp_path
 
@@ -338,7 +339,7 @@ def test_meters_come_from_the_stream_per_account(env, monkeypatch):
     monkeypatch.setenv("FAKE_CLAUDE_WINDOWS", "0.07,0.03")
     meters = Meters(tmp_path / "meters.json")
     chan = Chan()
-    room = make(chan, meters=meters.seen)
+    room = make(chan, meters=meters)
     send(room, ledger, "1", "hello")
     wait_idle(room)
     m = meters.load()["one"]
@@ -423,3 +424,103 @@ def test_a_hook_error_with_a_hook_call_at_the_daemon_is_quiet(env):
     wait_idle(room)
     assert chan.notices == [] and len(chan.replies) == 1
     assert ledger._select("SELECT count(*) AS n FROM gates", ())[0]["n"] == 0
+
+
+def test_a_rate_limit_rests_the_account_for_that_model_until_the_reset_the_stream_names(env, monkeypatch):
+    """The walk this ends (seen live: a room put on a model three of four accounts were out of for the week):
+    every message hopped one, four, two before landing on three, each rest a minute's backoff. The rejected event names
+    when the limit resets, so the rest ends there, for that model alone, and the next message goes straight to the
+    account that answered."""
+    make, ledger, tmp_path = env
+    monkeypatch.setenv("FAKE_CLAUDE_FAIL_DIRS", str(tmp_path / "cfg1"))
+    monkeypatch.setenv("FAKE_CLAUDE_RESETS", "2000300000")
+    chan = Chan()
+    room = make(chan)
+    send(room, ledger, "1", "hello")
+    wait_idle(room)
+    cool = Cooldowns(tmp_path / "cooldowns.json")
+    assert cool.until("one", model="m") == 2000300000 and cool.until("one", model="other") is None   # keyed to the model it hit
+    assert cool.until("one") == 2000300000 and cool.show("one")[0]["kind"] == "rate_limit:m"
+    assert [r["hop"] for r in rows_of(ledger)] == [None, "quota:one"] and chan.replies == [("echo: hello", ["1"])]
+    room.rp.close()                                            # the next message picks its account again
+    send(room, ledger, "2", "again")
+    wait_idle(room)
+    rows = rows_of(ledger)
+    assert [(r["account"], r["outcome"], r["hop"], r["model"]) for r in rows[2:]] == [("two", "ok", None, "m")]   # no walk
+    assert [a["config_dir"] for a in argvs(tmp_path)].count(str(tmp_path / "cfg1")) == 1
+    assert chan.cards.count(f"{words.WORKING} still on it, moved to account two") == 1
+    room.rp.close()
+
+
+def test_a_rate_limit_naming_no_reset_rests_until_the_weekly_reset_on_file_an_hour_at_the_least(env, monkeypatch):
+    from yerk_ai.meters import Meters, rest_until
+    make, ledger, tmp_path = env
+    meters, now = Meters(tmp_path / "meters.json"), time.time()
+    meters.seen("one", {"seven_day": {"utilization": 0.9, "resetsAt": now + 7200}})
+    assert rest_until(None, meters, "one", "rate_limit", now=now) == now + 7200       # the account's weekly reset
+    assert rest_until(now + 5, meters, "one", "rate_limit", now=now) == now + 5         # the reset the stream named wins
+    assert rest_until(None, meters, "two", "rate_limit", now=now) is None             # no reading: the backoff stands
+    assert rest_until(None, meters, "one", "auth", now=now) is None                   # a login has no reset
+    meters.seen("one", {"seven_day": {"utilization": 0.9, "resetsAt": now + 60}})
+    assert rest_until(None, meters, "one", "rate_limit", now=now) == now + 3600       # the floor
+    monkeypatch.setenv("FAKE_CLAUDE_FAIL_DIRS", str(tmp_path / "cfg1"))                 # an error with no event: no reset named
+    chan = Chan()
+    room = make(chan, meters=meters)
+    send(room, ledger, "1", "hello")
+    wait_idle(room)
+    until = Cooldowns(tmp_path / "cooldowns.json").until("one", model="m")
+    assert until is not None and now + 3590 < until < now + 3660 and chan.replies == [("echo: hello", ["1"])]
+    room.rp.close()
+
+
+def test_every_account_out_of_the_pinned_model_runs_the_turn_on_the_rooms_own_model_and_says_so(env, monkeypatch):
+    """item moved, 0000-00-00 00:00: "to the next step and the test reads it back as plain text with one more, line for
+    next one in order, and with none left the turn runs on the room's own model."""
+    make, ledger, tmp_path = env
+    (tmp_path / "rooms" / "r").mkdir(parents=True)
+    (tmp_path / "rooms" / "r" / "override.json").write_text(json.dumps({"model": "m"}))      # put on m; rooms.toml says usual
+    monkeypatch.setenv("FAKE_CLAUDE_FAIL_DIRS", f"{tmp_path / 'cfg1'},{tmp_path / 'cfg2'}")
+    monkeypatch.setenv("FAKE_CLAUDE_FAIL_MODEL", "m")                                        # both out of m; usual answers
+    reset = int(time.time()) + 6
+    monkeypatch.setenv("FAKE_CLAUDE_RESETS", str(reset))
+    chan = Chan()
+    room = make(chan, conf={"model": "usual"})
+    send(room, ledger, "1", "hello")
+    wait_idle(room)
+    rows = rows_of(ledger)
+    assert [(r["account"], r["outcome"], r["model"], r["out_of"], r["hop"]) for r in rows] == [
+        ("one", "error", "m", None, None), ("two", "error", "m", None, "quota:one"), ("one", "ok", "usual", "m", "quota:one,quota:two")]
+    assert chan.replies == [("echo: hello", ["1"])] and not chan.notices
+    assert f"{words.WORKING} the sample, item moved {words.clock(reset)}" in chan.cards
+    cool = Cooldowns(tmp_path / "cooldowns.json")
+    assert cool.until("one", model="m") == reset and cool.until("one", model="usual") is None   # the reply on usual left m's rest
+    send(room, ledger, "2", "still out")                                                    # inside the rest: usual at once, no walk
+    wait_idle(room)
+    row = rows_of(ledger)[-1]
+    assert (row["account"], row["model"], row["out_of"], row["hop"]) == ("one", "usual", "m", None) and len(argvs(tmp_path)) == 3
+    time.sleep(max(0.0, reset + 0.5 - time.time()))
+    monkeypatch.delenv("FAKE_CLAUDE_FAIL_DIRS")                                              # the limit lifted with its reset
+    send(room, ledger, "3", "back?")
+    wait_idle(room)
+    last, row = argvs(tmp_path)[-1], rows_of(ledger)[-1]
+    assert last["argv"][last["argv"].index("--model") + 1] == "m" and "--resume" in last["argv"]   # the pinned model, same session
+    assert (row["account"], row["model"], row["out_of"], row["hop"]) == ("one", "m", None, None) and chan.replies[-1] == ("echo: back?", ["3"])
+    room.rp.close()
+
+
+def test_a_room_that_is_not_the_owners_falls_back_naming_no_model_or_account(env, monkeypatch):
+    make, ledger, tmp_path = env
+    (tmp_path / "rooms" / "r").mkdir(parents=True)
+    (tmp_path / "rooms" / "r" / "override.json").write_text(json.dumps({"model": "m"}))
+    monkeypatch.setenv("FAKE_CLAUDE_FAIL_DIRS", f"{tmp_path / 'cfg1'},{tmp_path / 'cfg2'}")
+    monkeypatch.setenv("FAKE_CLAUDE_FAIL_MODEL", "m")
+    monkeypatch.setenv("FAKE_CLAUDE_RESETS", "2000300000")
+    chan = Chan()
+    room = make(chan, conf={"model": "usual", "privacy": "family"})
+    send(room, ledger, "1", "hello")
+    wait_idle(room)
+    row = rows_of(ledger)[-1]
+    assert chan.replies == [("echo: hello", ["1"])] and (row["model"], row["out_of"], row["hop"]) == ("usual", "m", "quota:one,quota:two")
+    assert f"{words.WORKING} {words.MOVED_ON}" in chan.cards
+    assert not any("usual" in c or "back" in c or "account" in c or "two" in c.split() for c in chan.cards)
+    room.rp.close()

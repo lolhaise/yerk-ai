@@ -153,6 +153,20 @@ def test_turn_records_fallback_and_first_visible():
     assert (t.fallback_model, t.ms(t.first_visible), t.outcome, t.models) == ("other", 3000, "ok", ["a", "other"])
 
 
+def test_a_rejected_rate_limit_event_names_when_its_limit_resets():
+    t = Turn(started=100.0)
+    t.observe(101.0, {"type": "rate_limit_event", "rate_limit_info": {"status": "allowed_warning", "resetsAt": 5,
+                                                                        "unifiedWindows": {"seven_day": {"utilization": 0.9, "resetsAt": 5}}}})
+    assert t.resets is None and t.flags == []                                        # a warning rests nothing
+    t.observe(102.0, {"type": "rate_limit_event", "rate_limit_info": {               # the Fable limit's shape, as seen live
+        "status": "rejected", "rateLimitType": "seven_day_overage_included", "resetsAt": 9, "unifiedWindows": {
+            "seven_day": {"utilization": 0.68, "resetsAt": 9}, "seven_day_overage_included": {"utilization": 1, "resetsAt": 9}}}})
+    assert (t.resets, t.flags) == (9, ["rate_limit_rejected"])
+    t.observe(103.0, {"type": "rate_limit_event", "rate_limit_info": {"status": "rejected", "rateLimitType": "five_hour",
+                                                                        "unifiedWindows": {"five_hour": {"utilization": 1, "resetsAt": 7}}}})
+    assert t.resets == 7                                                             # no top-level reset: the window it names
+
+
 def test_turn_keeps_claude_codes_hook_error_notification_as_a_flag():
     t = Turn(started=100.0)
     t.observe(101.0, {"type": "system", "subtype": "notification", "key": "stop-hook-error", "text": "Stop hook error occurred"})

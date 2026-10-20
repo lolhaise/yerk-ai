@@ -679,8 +679,7 @@ class Systemd:
 
     def _unit_cmd(self, *args: str) -> str:
         p = systemctl(*args)
-        return "" if p.returncode == 0 else f"systemctl --user {' '.join(args)} exited {p.returncode}: " \
-                                             f"{p.stderr.strip()[:200]}"
+        return "" if p.returncode == 0 else f"systemctl --user {' '.join(args)} exited {p.returncode}: {p.stderr.strip()[:200]}"
 
     def enable_now(self, timer: str) -> str:
         return self._unit_cmd("enable", "--now", timer)
@@ -1021,8 +1020,7 @@ class Watcher:
         return 0
 
 
-def post_control(state: Path, payload: dict[str, Any], timeout: float = 120, worker: bool = False,
-                 path: str = "control") -> dict[str, Any]:
+def post_control(state: Path, payload: dict[str, Any], timeout: float = 120, worker: bool = False, path: str = "control") -> dict[str, Any]:
     """One POST to the running daemon's /control (or /status) under the install's secret (a worker's own
     server: the worker secret, reads only); OSError when no daemon runs on this state folder. yerkd.json
     names the secret files by path, never by value."""
@@ -1056,8 +1054,7 @@ def run(name: str, private: Path, state: Path, units: Systemd | None = None,
     folder = state / "jobs" / name / time.strftime("%Y%m%d-%H%M%S", time.localtime(fired))
     folder.mkdir(parents=True, exist_ok=True)
     planned = job.planned(fired, last_trigger(units, job) if job.when == "every" and job.cron is None else None)
-    run_id = ledger.job_run_add(job=name, kind=job.kind, room=job.room, unit=job.unit, planned=planned, fired=fired,
-                                folder=str(folder))
+    run_id = ledger.job_run_add(job=name, kind=job.kind, room=job.room, unit=job.unit, planned=planned, fired=fired, folder=str(folder))
     log.info("job %s: run %d fired %.1f s after its time", name, run_id, fired - planned)
     rc = 0
     if job.kind == "script":
@@ -1255,8 +1252,7 @@ class Jobs:
         log.info("watcher %s: event %d asked a turn in %s (attempt %d)", name, eid, room, attempt)
         return {"ok": True, "id": eid, "inbound": mid}
 
-    async def ended(self, eid: int, state: str, ids: list[str], note: str = "", cap: float = 0.0,
-                    result: str = "") -> None:
+    async def ended(self, eid: int, state: str, ids: list[str], note: str = "", cap: float = 0.0, result: str = "") -> None:
         """The woken turn or worker ended: handled when it ended clean ("answered"); final and silent
         when the owner stopped its worker ("stopped"); else one replay, then failed with one alert line
         naming the end (a worker "timed out" at `cap` seconds, "died" of `result`, a turn "failed")."""
@@ -1322,8 +1318,7 @@ class Jobs:
                            str(req.get("deliver") or "announce"), float(req.get("cap_minutes") or 0),
                            str(req.get("account") or ""))
         if out["ok"]:
-            log.info("job %s: added from %s (%s), next %s", out["name"], caller or "the command line",
-                     out["schedule"], out["next_text"])
+            log.info("job %s: added from %s (%s), next %s", out["name"], caller or "the command line", out["schedule"], out["next_text"])
         return out
 
     def remove(self, name: str) -> dict[str, Any]:

@@ -46,6 +46,7 @@ from .engine import RoomProcess, RoomSpec, Turn
 from .evidence import Evidence
 from .ledger import Ledger
 from .lifted.classify import Failure, FailureTable
+from .meters import Meters, rest_until
 
 log = logging.getLogger("yerk.room")
 
@@ -96,8 +97,7 @@ RESUME_RECAP = ("(Yerk AI: the earlier session of this room could not be resumed
                 "The last reply here began: \"{last}\")")
 REFUSAL_RECAP = ("(Yerk AI: this is a new session. The previous one was moved to another model after a block, "
                  "so its messages are not in this context.)")
-NEW_RECAP = ("(Yerk AI: the owner asked for a new session with /new, so this is a new one. "
-             "The last reply here began: \"{last}\")")
+NEW_RECAP = "(Yerk AI: the owner asked for a new session with /new, so this is a new one. The last reply here began: \"{last}\")"
 
 
 class Channel(Protocol):
@@ -113,7 +113,7 @@ class Room:
     def __init__(self, name: str, conf: dict[str, Any], spec: Callable[[], RoomSpec], accounts: list[Account],
                  channel: Channel, state: Any, ledger: Ledger, failures: FailureTable, cooldowns: Cooldowns,
                  idle_seconds: float = 1800.0, turn_timeout: float = 900.0, log_dir: Any = None,
-                 meters: Callable[[str, dict[str, Any]], None] | None = None):
+                 meters: Meters | None = None):
         self.name, self.conf, self.spec, self.accounts, self.channel = name, conf, spec, accounts, channel
         self.state, self.ledger, self.failures, self.cooldowns = state, ledger, failures, cooldowns
         self.idle_seconds, self.turn_timeout, self.log_dir, self.meters = idle_seconds, turn_timeout, log_dir, meters
@@ -140,6 +140,7 @@ class Room:
         self.answering: set[str] = set()                      # ids of the batch the turn answers
         self.stale = False                        # the settings changed mid-turn: the process closes at its end
         self.ran: RoomSpec | None = None          # the spec of the last process started
+        self.out_of = ""                          # the pinned model every account is out of: the turn runs on rooms.toml's
         self.stopped = False                      # /stop: the running turn ends now and is never run again
         self.halt = threading.Event()             # ... and a rerun's wait ends at once
 
@@ -252,8 +253,7 @@ class Room:
         self.bounced = True
         names = ", ".join(n for n, _ in unread)
         paths = " ".join(p for _, p in unread)
-        return (f"You were sent {names} and have not opened it. Read {paths} with the Read tool, "
-                "then answer with what it shows.")
+        return f"You were sent {names} and have not opened it. Read {paths} with the Read tool, then answer with what it shows."
 
     def silent_check(self, active: bool, text: str | None, landed: int) -> str | None:
         """The Stop hook's second rule, no judge: a turn that ran tools for a person and ends with
@@ -358,16 +358,30 @@ class Room:
         spec = self.spec()
         if self.stale and self.ran:              # a hop or retry inside the turn that changed the settings
             spec.model, spec.extra_args = self.ran.model, self.ran.extra_args       # stays on the turn's own
+        spec.model = str(self.conf["model"]) if self.out_of else spec.model   # every account out of the pinned model: the room's own
         self.ran = spec
         rp = RoomProcess(spec, account, self.state, ledger=self.ledger, failures=self.failures, log=log_path,
-                         meters=self.meters, evidence=self.evidence)
+                         meters=self.meters.seen if self.meters else None, evidence=self.evidence)
         rp.start(fresh=fresh)
         self.rp = rp
         self.hooked = self.hooks_warned = False   # per process start: its first hook call proves the hooks alive; the notice went out
 
-    def _account(self) -> Account:
-        """The first account not resting, in the room's order with the one it is put on (config.pinned) first."""
-        return pick(self.accounts, self.cooldowns, first=pinned(self.state, self.name, [a.name for a in self.accounts]))
+    def _account(self, model: str = "") -> Account:
+        """The first account not resting (for `model`, when named), in the room's order with the one it is put on (config.pinned) first."""
+        return pick(self.accounts, self.cooldowns, first=pinned(self.state, self.name, [a.name for a in self.accounts]), model=model)
+
+    def _fall_back(self, model: str, account: Account) -> tuple[str, Account] | None:
+        """When `account` (pick's answer for `model`, the one the room was put on) rests for it, every account does: the turn
+        runs on rooms.toml's model, when that is another one, on the first account free for it, and the card says so (an owner
+        room hears the models and when the first account comes back; any other the hop's plain line). None: nothing to fall to."""
+        usual = str(self.conf.get("model") or "")
+        if usual in ("", model) or self.cooldowns.until(account.name, model=model) is None:
+            return None
+        self.out_of, back = model, min(filter(None, (self.cooldowns.until(a.name, model=model) for a in self.accounts)))
+        log.info("room %s: every account is out of %s until %s, the turn runs on %s", self.name, model, words.clock(back), usual)
+        self._note(words.OUT_OF.format(model=words.model_name(usual), pinned=words.model_name(model), until=words.clock(back))
+                   if str(self.conf.get("privacy", "owner")) == "owner" else words.MOVED_ON)
+        return usual, self._account(usual)
 
     def _run(self) -> None:
         try:
@@ -415,7 +429,8 @@ class Room:
         if ctx.is_file():
             self.evidence.give(ctx.read_text(errors="replace"))     # the session-start file was read too
         self._new_card()
-        account = self._account()
+        self.out_of, model = "", str(override(self.state, self.name).get("model") or self.conf.get("model") or "")   # the pinned model
+        on, account = self._fall_back(model, a := self._account(model)) or (model, a)   # `on`: the model the turn runs on
         recap = self._take_fresh()                              # a refusal fallback last turn, or /new
         fresh, retried, compacted, reruns, hops, hop = bool(recap), False, False, 0, 0, None
         recap_sid = None                       # the session that already got the recap
@@ -426,13 +441,14 @@ class Room:
                 return
             with self.lock:
                 old = self.rp
-                if (restart := old is None or not old.alive() or old.account != account or fresh):
+                if (restart := old is None or not old.alive() or old.account != account or old.spec.model != on or fresh):
                     self.rp = None
             if restart:
                 if old:
                     old.close()
                 self._start(account, fresh=fresh)
                 fresh = False
+                model = on = self.rp.spec.model if self.rp and not self.out_of else model   # the process's model is the truth: an override off the list was ignored
             assert self.rp
             note = recap if self.rp.session_id != recap_sid else None   # a recap rides until a session has it
             with self.lock:                       # Room.stop sets `stopped` under this lock: it sees `reading`
@@ -480,14 +496,19 @@ class Room:
                 log.info("room %s: the session could not be resumed, starting fresh with a recap", self.name)
                 fresh, retried, recap = True, True, RESUME_RECAP.format(last=self.last_reply or "nothing yet")
                 continue
-            if action == "hop_account" and f and hops < len(self.accounts) - 1:
-                kind = f.kind or "auth"
-                self.cooldowns.fail(account.name, kind, lambda r: self.failures.cooldown_seconds(kind, r))
-                if (nxt := self._account()) != account:
+            if action == "hop_account" and f:
+                kind = f.kind or "auth"                       # a rate limit rests the account for this model until its reset
+                self.cooldowns.fail(account.name, kind, lambda r: self.failures.cooldown_seconds(kind, r),
+                                    model=on if kind == "rate_limit" else "", until=rest_until(turn.resets, self.meters, account.name, kind))
+                nxt = self._account(on)
+                if not self.out_of and (fell := self._fall_back(model, nxt)):   # every account is out of the pinned model now
+                    (on, nxt), hops = fell, 0
+                if (nxt != account and hops < len(self.accounts) - 1) or on != self.rp.spec.model:   # a model switch, once; hops capped
                     log.info("room %s: %s on %s, continuing on %s", self.name, f.cls, account.name, nxt.name)
                     hop = ",".join(filter(None, [hop, f"{f.cls}:{account.name}"]))
                     hops, account, self.first_line = hops + 1, nxt, None
-                    self._note(words.MOVED.format(name=nxt.name) if str(self.conf.get("privacy", "owner")) == "owner" else words.MOVED_ON)
+                    if on == self.rp.spec.model:              # the hop's own line; a model switch said its line already
+                        self._note(words.MOVED.format(name=nxt.name) if str(self.conf.get("privacy", "owner")) == "owner" else words.MOVED_ON)
                     # a session that never answered may have no transcript to resume elsewhere
                     fresh = not (self.rp and (self.rp.resume_arg or self.rp.session_id in self.answered))
                     continue
@@ -536,10 +557,10 @@ class Room:
                 n = len(turn.accepted) or (1 if turn.outcome == "ok" else 0)
                 covered = [self.pending.popleft() for _ in range(min(n, len(self.pending)))]
             ids = [m.id for m in covered]
-            turn_id = self.rp.record(turn, ids, hop=hop, recap=1 if recapped else None, turn_key=self.turn_key)
+            turn_id = self.rp.record(turn, ids, hop=hop, recap=1 if recapped else None, turn_key=self.turn_key, out_of=self.out_of or None)
             if turn.outcome != "ok":
                 return "failed", turn
-            self.cooldowns.clear(account.name)
+            self.cooldowns.clear(account.name, model=self.rp.spec.model)
             self.answered.add(self.rp.session_id)
             why = next((f[11:] for f in turn.flags if f.startswith("hook_error:")), "")   # Claude Code said a hook failed
             if why and not self.hooked and not self.hooks_warned:    # and none reached the daemon: the gates and the

@@ -101,8 +101,7 @@ def app(mcp: FastMCP, check: Check) -> Any:
     return Guard(mcp.streamable_http_app(), check)
 
 
-def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = None,
-          status: Handler | None = None) -> FastMCP:
+def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = None, status: Handler | None = None) -> FastMCP:
     mcp = FastMCP("yerk", host="127.0.0.1", port=port, stateless_http=True, json_response=True, log_level="WARNING")
 
     @mcp.tool()

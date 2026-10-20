@@ -117,6 +117,19 @@ def test_a_layer_1_cooldown_file_still_reads(tmp_path):
     assert pick(A, Cooldowns(tmp_path / "cool.json")) == A[1]
 
 
+def test_a_rest_keyed_to_a_model_blocks_that_model_alone_and_ends_at_the_reset_it_was_given(tmp_path):
+    c = Cooldowns(tmp_path / "cool.json")
+    assert c.fail("one", "rate_limit", lambda r: 30, now=0, model="fable", until=5000) == 5000   # the reset the stream named
+    assert c.fail("one", "rate_limit", lambda r: 30, now=0, until=0) == 30                        # a reset gone by: the backoff
+    assert (c.until("one", now=1, model="fable"), c.until("one", now=1, model="opus"), c.until("one", now=1)) == (5000, 30, 5000)
+    assert (pick(A, c, now=1, model="opus"), pick(A, c, now=31, model="opus"), pick(A, c, now=31, model="fable")) == (A[1], A[0], A[1])
+    assert [(r["kind"], r["repeats"]) for r in c.show("one", now=1)] == [("rate_limit:fable", 1), ("rate_limit", 1)]
+    c.clear("one", model="opus")                               # a reply on opus: its own and the model-less rests go, fable's stays
+    assert (c.until("one", now=1, model="opus"), c.until("one", now=1, model="fable")) == (None, 5000)
+    c.clear("one", model="fable")
+    assert Cooldowns(tmp_path / "cool.json").until("one", now=1) is None and pick(A, c, now=1, model="fable") == A[0]
+
+
 def test_login_state_window():
     now = 10 * DAY_MS
     assert login_state(None, True, now)[0] == "dead"

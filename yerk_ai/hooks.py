@@ -54,8 +54,7 @@ def render_recall(names: list[dict[str, Any]], topics: list[dict[str, Any]], bud
     return "\n".join(out)
 
 
-def record(state: Path, room: str, event: str, session_id: str, parts: dict[str, int], text: str,
-           **extra: Any) -> None:
+def record(state: Path, room: str, event: str, session_id: str, parts: dict[str, int], text: str, **extra: Any) -> None:
     """One line in the room's assembled.jsonl: what was put in front of the model, part by part."""
     path = state / "rooms" / room / "assembled.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -97,8 +96,7 @@ def user_prompt_submit(payload: dict[str, Any], state: Path, rooms: dict[str, di
     return {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": text}}
 
 
-def session_start(payload: dict[str, Any], state: Path, pack: Callable[[str], str],
-                  room: str | None = None) -> dict[str, Any]:
+def session_start(payload: dict[str, Any], state: Path, pack: Callable[[str], str], room: str | None = None) -> dict[str, Any]:
     """After a compaction the recall pack comes back, fresh from the day logs (DESIGN 3)."""
     if payload.get("source") != "compact":
         return {}
