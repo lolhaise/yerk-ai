@@ -220,6 +220,20 @@ def test_model_puts_the_room_on_an_account_between_turns_through_the_settings_to
     room.rp.close()
 
 
+def test_the_owners_model_command_works_in_a_family_room_where_the_rooms_own_tool_does_not(y, tmp_path):
+    """0000-00-00 00:00, #the-last: part closes the /case before "the next run starts the example note". Says the sample
+    already proven the owner; the settings tool then judged the room (family). The owner's slash command is theirs in any of
+    their rooms; a room's own `settings` call from a people room still is not."""
+    y.room_confs[ROOM]["privacy"] = "family"
+    dc, room, chan = wire(y)
+    assert slash(dc, "model") == [("message", f"{words.PLAIN} it back: As 0.0, plain text", True)]
+    assert slash(dc, "effort", effort="low")[0][1] == f"{words.DONE} next reply: Fable 5.1, low thinking"
+    assert slash(dc, "model", user=STRANGER, effort="max") == [("message", f"{words.NOT_DONE} {words.NOT_OWNER}", True)]
+    assert slash(dc, "model", user=PERSON, effort="max") == [("message", f"{words.NOT_DONE} {words.NOT_OWNER}", True)]   # in its people
+    assert asyncio.run(y.tool_settings(ROOM, "", "max")) == {"ok": False, "line": words.OWNER_ONLY}
+    assert json.loads((tmp_path / "rooms" / ROOM / "override.json").read_text()) == {"effort": "low"}
+
+
 def test_stop_ends_the_running_turn_now_and_for_good(y, tmp_path):
     dc, room, chan = wire(y)
     say(y, room, "1", "HANG build the thing")
