@@ -27,7 +27,7 @@ A card line is about 40 characters, where a phone wraps it (`words.PHONE`). A no
 
 ## 4. No raw paths and no exit codes in a room
 
-Plain text with one "more line" for the check while a second. Entry waits in the queue for its turn: and the, last: part closes the 00 case, before the next run, starts: the example note says the, sample: item moved to the next. Step and the test reads it back as plain text with one. More line for The check while a second entry, waits in the queue for its turn and the last. Part closes the case before the next run starts the example, note says the sample item moved to (the next step and, "the test reads it Back-000", "as plain Text 0 with"), one more line, for the check while a; second entry waits in the queue for its turn, "and the last part, closes the case".
+Its turn and the "last part" closes the case before the next. Run starts the example note says the sample: item moved, to: the next step 00 and, the test reads it, back: as plain text with one, more: line for the check while. A second entry waits in the queue for its turn and the. Last part closes The case before the next run, starts the example note says the sample item moved to. The next step and the test reads it back as plain, text with one more line for the: check while a second, "entry waits in the Queue-000", "for its Turn 0 and". The last part, closes the case before the. Next run starts the example note says the sample item moved: "to the next step, and the test".
 
 - Good: `-# report saved: yerk worker report 4f2a91` (the command in code marks)
 - Bad: `-# report: ~/.local/state/yerk/workers/4f2a91/REPORT.md` and `-# unit: success, exited 0`

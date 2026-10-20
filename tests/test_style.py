@@ -196,7 +196,7 @@ def phrases() -> list[str]:
             words.NOT_LISTED, words.NOT_A_LEVEL, words.BACK_ON]
     out += [v for k, v in words.STEP.items() if k != "hold"]            # a worker's card says "waiting for an account" itself
     out += [*words.WORKER_STEP.values(), *words.JOB_STEP.values(), words.MESSAGE_TO, words.NOTES, *words.FILES.values(),
-            words.ANOTHER_WAY]
+            words.ANOTHER_WAY, words.ROOM_NOW]
     fixed = (re.split(r"[{\n]", x)[0].strip(" :,;") for x in out)
     return sorted({p for p in fixed if " " in p and len(p) >= 8 and p not in words.OUTCOME})
 

@@ -1,5 +1,6 @@
 """Checks the live progress card a room shows while it works, built from Claude Code's streamed events: narration as it streams,
 target in plain words, ticked or crossed, the thinking line only where a room turns it on."""
+import json
 from types import SimpleNamespace as NS
 
 from yerk_ai import words
@@ -39,7 +40,7 @@ def test_the_card_streams_narration_then_rows_ticked_and_crossed():
     c.feed(result("a"))
     c.feed(result("b", error=True))
     lines = c.render().splitlines()
-    assert lines == [f"{RUNNING} Checking the notes first", f"{OK} reading pinned", f"{FAILED} running a command",
+    assert lines == [f"{RUNNING} Checking the notes first", f"{OK} reading the pinned notes", f"{FAILED} running a command",
                      f"{RUNNING} reading docs.example.org", f"{RUNNING} sending report.pdf",
                      f"{RUNNING} searching the rules for owner"]
 
@@ -59,7 +60,7 @@ def test_a_row_gets_its_target_from_the_streamed_input_alone():
     c.feed(se({"type": "content_block_delta", "index": 0, "delta": {"type": "input_json_delta",
                                                                     "partial_json": '{"pattern": "**/*.md"}'}}))
     c.feed(se({"type": "content_block_stop", "index": 0}))
-    assert c.render().splitlines()[1] == f"{RUNNING} looking for *.md files"
+    assert c.render().splitlines()[1] == f"{RUNNING} looking for md files"
 
 
 def test_the_thinking_line_shows_only_where_the_room_turns_it_on():
@@ -124,6 +125,13 @@ def test_rule_1_a_bash_row_is_its_own_description_never_the_command():
                       ("Bash", {"command": "git status --short && ls"}))
     assert told == f"{OK} line for The Check 0:0" and bare == f"{OK} its turn and"
     assert "sed" not in told and "git" not in bare and "run " not in told + bare
+    assert rows(("Bash", {"command": "x", "description": "Note says the sample Item-000 moved"})) == [
+        f"{OK} The last part closes The-000 case"]                       # more line for the check
+    paths = rows(("Bash", {"command": "x", "description": "Run sed on memory/2026-10-06.md"}),
+                 ("Bash", {"command": "x", "description": "Read `/home/someone/yerk-private/rooms.toml` and box-1.json"}),
+                 ("Bash", {"command": "x", "description": "Check 24/7 and/or 10/19 on www.bdc.ca"}))
+    assert paths == [f"{OK} run sed on the Oct 6 notes", f"{OK} read rooms and box-1",
+                     f"{OK} check 24/7 and/or 10/19 on www.bdc.ca"]  # a path is its plain name; a fraction stays
 
 
 def test_rule_2_a_search_says_where_and_what_in_words():
@@ -131,7 +139,7 @@ def test_rule_2_a_search_says_where_and_what_in_words():
                               ("Grep", {"pattern": r"^\s*(owner|the owner)\b.*$", "path": "/home/someone/code/yerk-ai", "-i": True}),
                               ("Glob", {"pattern": "**/*.md", "path": MEM}))
     assert notes == f"{OK} while a second entry Waits-000..." and "|" not in notes       # step and the test, reads it
-    assert code == f"{OK} note says-the sample item, moved to" and files == f"{OK} reads it *.back as"
+    assert code == f"{OK} with one-more line for, the check" and files == f"{OK} the queue for its"
     assert words.width(notes) <= words.PHONE and "memory" not in notes
 
 
@@ -168,11 +176,14 @@ def test_rule_6_yerks_own_tools_say_what_they_do():
                ("mcp__yerk__worker", {"action": "start", "brief": "read every room's token and report"}),
                ("mcp__yerk__worker", {"action": "report", "id": "abc123"}),
                ("mcp__yerk__schedule", {"action": "add", "name": "morning", "when": "every 1d", "what": "the brief"}),
-               ("mcp__yerk__settings", {"model": "opus"}))
+               ("mcp__yerk__settings", {"model": "opus"}), ("mcp__yerk__settings", {"model": "claude-opus-5-5", "effort": "max"}),
+               ("mcp__yerk__settings", {"effort": "high"}), ("mcp__yerk__settings", {}))
     assert got == [f"{OK} sending report.pdf", f"{OK} queue for its turn And", f"{OK} next run starts",
                    f"{OK} waiting for worker abc123", f"{OK} starting a worker", f"{OK} reading worker abc123's report",
-                   f"{OK} the test reads", f"{OK} the check while"]
+                   f"{OK} scheduling job morning", f"{OK} switching to opus", f"{OK} switching to Opus 5.5 at max thinking",
+                   f"{OK} switching to high thinking", f"{OK} checking what this room runs"]
     assert "token" not in "\n".join(got) and "/w/" not in "\n".join(got)
+    assert rows(("mcp__yerk__worker", {"action": "{x}"})) == [f"{OK} worker"]   # an unknown action never breaks the card
 
 
 def test_rule_7_a_failure_keeps_its_words_and_two_in_a_row_fold_into_one():
@@ -191,6 +202,22 @@ def test_rule_7_a_failure_keeps_its_words_and_two_in_a_row_fold_into_one():
     many = rows(*[("Read", {"file_path": f"{MEM}/daily/2026-10-{d:02d}.md"}) for d in range(1, 15)],
                 ("Bash", {"command": "a"}), ("Bash", {"command": "b"}), failed={14, 15})
     assert many[0] == "-# 3 earlier steps" and len(many) == 13 and many[-1] == f"{FAILED} that did not work, trying another way"
+
+
+def test_a_row_reads_the_same_from_the_streamed_input_as_from_the_message():
+    """Claude Code streams a call's input before the whole message lands: the row it makes then is the same row."""
+    for name, args in [("Bash", {"command": "case -before '000the next.run", "description": "Text with One More 0:0"}),
+                       ("Bash", {"command": "closes the --case"}), ("Grep", {"pattern": "ABC-578|Reports", "path": MEM}),
+                       ("Read", {"file_path": f"{MEM}/daily/2026-10-06.md"}), ("mcp__yerk__recall", {"query": "Alex"})]:
+        c = Card()
+        c.feed(se({"type": "content_block_start", "index": 0, "content_block": {"type": "tool_use", "id": "s",
+                                                                                 "name": name, "input": {}}}))
+        c.feed(se({"type": "content_block_delta", "index": 0, "delta": {"type": "input_json_delta",
+                                                                        "partial_json": json.dumps(args)}}))
+        c.feed(se({"type": "content_block_stop", "index": 0}))
+        streamed = c.render()
+        c.feed({"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "s", "name": name, "input": args}]}})
+        assert streamed == c.render() and "sed" not in streamed and "git" not in streamed, streamed
 
 
 def test_rule_8_every_row_holds_to_phone_width_cut_at_a_word():

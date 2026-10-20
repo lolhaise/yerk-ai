@@ -20,6 +20,7 @@ from .words import DONE as OK, NOT_DONE as FAILED, START, WORKING as RUNNING
 
 ROW_MAX, THINKING_MAX, ROWS_SHOWN = words.PHONE, 2 * words.PHONE, 12
 DAY = re.compile(r"\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])\.md")           # a day log is named by its day
+FILE = re.compile(r"(?<![\w:/.])~?/[\w.@+-]+(?:/[\w.@+-]+)*|(?<![\w/.-])[\w@+/-]+\.(?:md|json|py|sh|txt|toml|log|pdf)\b")
 # a search pattern's syntax, read out by terms(): group and flag openers, escapes (an escaped character stays),
 # classes, repeats, wildcard runs, alternations, stray marks and quotes
 SYNTAX = re.compile(r"\(\?[a-zA-Z]*[:)]|\\[bBAZdDwWsS]|\\(.)|\[\^?[^\]]*\]|\{\d*,?\d*\}|\.[*+?]|\s*\|\s*|[()^$*+?\"']")
@@ -59,17 +60,21 @@ def step(name: str, args: dict[str, Any]) -> str:
     a search's folder ("your notes" in the memory tree) and terms, a file's plain name, a page's host, a query."""
     n = tool_name(name)
     path, where = str(args.get("file_path") or args.get("notebook_path") or args.get("path") or args.get("file") or ""), ""
-    if n == "bash":
-        what = " ".join(str(args.get("description") or "").split())
-        return what[:1].lower() + what[1:] if what else words.STEP[n]
+    if n == "bash":                           # in the words the model wrote, a path as its plain name, no code marks
+        what = FILE.sub(lambda m: plain(m[0]), " ".join(str(args.get("description") or "").replace("`", "").split()))
+        return what[:1].lower() + what[1:] if what[1:2].islower() else what or words.STEP[n]   # "PDF" stays
     if n in ("worker", "schedule"):
         act, table = str(args.get("action") or ""), words.WORKER_STEP if n == "worker" else words.JOB_STEP
-        return table.get(act, f"{n} {act}").format(id=args.get("id") or "", name=args.get("name") or "").strip()
+        return table.get(act, n).format(id=args.get("id") or "", name=args.get("name") or "").strip()
+    if n == "settings":                       # neither a model nor a level: the call only reads what the room runs
+        model, effort = words.model_name(str(args.get("model") or "")), str(args.get("effort") or "")
+        what = " at ".join(x for x in (model, effort and f"{effort} thinking") if x)
+        return words.STEP[n].format(what=what) if what else words.ROOM_NOW
     if n == "grep":
         where = words.NOTES if set(path.split("/")) & {"memory", "daily", "facts"} else plain(path)
         what = terms(str(args.get("pattern") or ""))
     elif n == "glob":
-        what = os.path.basename(str(args.get("pattern") or ""))
+        what = " ".join(re.findall(r"\w+", os.path.splitext(str(args.get("pattern") or ""))[1]))   # **/*.md: md
     elif n in ("webfetch", "web_fetch", "fetch"):
         what = urlparse(str(args.get("url") or "")).hostname or str(args.get("url") or "")
     elif n == "send":
@@ -171,17 +176,16 @@ class Card:
             lines.append(words.SUB + words.line(words.THINKING + first))
             if rest:
                 lines.append(words.SUB + words.line(rest + "..."))
-        rows: list[str] = []
-        run = 0                                   # failed steps in a row: the second folds into the first
-        for r in self.rows:
-            run = run + 1 if r.state == FAILED else 0
-            if run < 2:
-                rows.append(r.line())
-            elif run == 2:
-                rows[-1] = words.line(f"{FAILED} {words.ANOTHER_WAY}", ROW_MAX)
+        rows: list[Row | None] = []               # None: two or more failed steps in a row, folded into one
+        for i, r in enumerate(self.rows):         # a line only for a row that shows: a long turn stays cheap
+            if r.state == FAILED and i and self.rows[i - 1].state == FAILED:
+                rows[-1] = None
+            else:
+                rows.append(r)
         if len(rows) > ROWS_SHOWN:
             lines.append(words.SUB + words.EARLIER.format(n=len(rows) - ROWS_SHOWN))
-        return "\n".join(lines + rows[-ROWS_SHOWN:])
+        fold = words.line(f"{FAILED} {words.ANOTHER_WAY}", ROW_MAX)
+        return "\n".join(lines + [r.line() if r else fold for r in rows[-ROWS_SHOWN:]])
 
     def owed(self, why: str, asked: str) -> str:
         """The card of a turn that ends with nothing visible: not answered, why in plain words, what

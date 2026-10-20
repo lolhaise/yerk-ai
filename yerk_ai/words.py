@@ -91,9 +91,9 @@ WORKER_STEP = {"start": "starting a worker", "list": "listing the workers", "sto
                "report": "reading worker {id}'s report"}
 JOB_STEP = {"add": "scheduling job {name}", "remove": "removing job {name}", "list": "listing the jobs"}
 MESSAGE_TO, NOTES, DAY_NOTES, FACT_FILE = "a message to {room}", "your notes", "the {day} notes", "{name}'s file"
-FILES = {"open-loops.md": "your open items", "MEMORY.md": "the pinned notes", "rules.md": "the rules"}
+FILES = {"open-loops.md": "your open items", "MEMORY.md": "the pinned notes", "pinned.md": "the pinned notes", "rules.md": "the rules"}
 ANOTHER_WAY = "that did not work, trying another way"       # two or more failed steps in a row, as one row
-EARLIER, EARLIER_ROWS = "{n} earlier steps", "{n} earlier rows"
+EARLIER, EARLIER_ROWS, ROOM_NOW = "{n} earlier steps", "{n} earlier rows", "checking what this room runs"
 THINKING, NOT_ANSWERED, YOU_ASKED = "thinking: ", "not answered", 'you asked: "{asked}"'
 WHY = {                                   # a failed turn, in plain words: the failure class, else the outcome
     "auth": "the account's login was refused", "quota": "out of usage on every account",
@@ -159,8 +159,7 @@ def job_line(name: str, state: str, cap_seconds: float = 0.0, result: str = "") 
 
 
 # one heavy worker per account
-WAITING_ACCOUNT = "waiting for an account"
-IN_LINE = "{nth} in line for account {name}"
+WAITING_ACCOUNT, IN_LINE = "waiting for an account", "{nth} in line for account {name}"
 IN_LINE_SHORT = "waiting, {nth} in line"            # `yerk status`, phone width
 
 
@@ -226,8 +225,7 @@ IMSG_PROBE = "iMessage {day}: Mac seen {reached}/{runs}"           # probe runs 
 IMSG_LOST = "iMessage {day}: {n} lost text{s}"                    # distinct texts, however many runs saw them
 # an iMessage turn room is only ever the owner's own thread, so Yerk AI never texts anyone in his name
 IMSG_GROUP, IMSG_OTHERS = "a group", "others in it"
-IMSG_REFUSED = NOT_DONE + " {room} not served: {why}"
-IMSG_NOT_SERVED = "the room's chat is not served"
+IMSG_REFUSED, IMSG_NOT_SERVED = NOT_DONE + " {room} not served: {why}", "the room's chat is not served"
 IMSG_LOOP = NOT_DONE + " {room}: loop guard, paused {mins} min"
 
 
@@ -301,9 +299,8 @@ PROOF_UP, PROOF_CONNECTED, PROOF_STATUS = "yerkd up", "channel connected", "stat
 PROOF_COMMIT, PROOF_ROOMS = "running {commit}", "rooms served: {n} of {of}"
 PROOF_FILE = "unit runs from its file"
 NO_CUT, CUT, NOT_COUNTED = "no turn cut", "turns cut: {n}", "turns cut: not counted"
-NO_UNIT, UNIT_FOUND = "no unit found: set [deploy] unit", "unit {name}, from its pid"
+NO_UNIT, UNIT_FOUND, NO_ROW = "no unit found: set [deploy] unit", "unit {name}, from its pid", "{kind} outcome not in the ledger"
 FAULT, NOTHING_STOPPED, BROKE_OFF = "{what} in {at}", "nothing was stopped", "{commit} broke off, not proven"
-NO_ROW = "{kind} outcome not in the ledger"
 UNPROVEN, UNPROVEN_AT = "{kind} {commit}: {outcome}", ", {at}"   # the morning diff: a deploys row not proven,
 UNPROVEN_CUT = ", {n} cut"                                         # or one that cut a person's turn
 
@@ -324,14 +321,12 @@ COMMANDS = {"model": "this room's model, from the next reply", "effort": "this r
             "new": "a new session in this room; memory stays", "stop": "end the running turn now",
             "status": "what runs now"}
 CHOICE = {"model": "a model on the list, or default", "effort": "a thinking level, or default"}
-NOT_OWNER = "only the owner can use this"
+NOT_OWNER, NOT_A_ROOM = "only the owner can use this", "this channel is not a Yerk room"
 NO_OWNER = "set [discord] owner in yerkd.toml"       # every command, while yerkd.toml names no owner
-NOT_A_ROOM = "this channel is not a Yerk room"
 WATCHED = "{room} answers in <#{own}>, not here"     # a channel a room watches: read, never written to
 NEW_NEXT = "new session from the next message\nmemory stays"
 STOPPED = "stopped with /stop"                       # the stopped turn's card
-STOP_DONE = "stopped the running turn"
-NOTHING_TO_STOP = "nothing is running here"
+STOP_DONE, NOTHING_TO_STOP = "stopped the running turn", "nothing is running here"
 NOT_RUN = "that did not run\nthe daemon's log says why"
 
 
