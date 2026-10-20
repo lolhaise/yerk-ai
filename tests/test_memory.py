@@ -3,6 +3,7 @@ the index (per-chunk updates, scope, freshness against the disk, timeout apart f
 recall bench and the manifest. Every value here is a placeholder."""
 import json
 import os
+import re
 import sqlite3
 import time
 import tomllib
@@ -138,10 +139,10 @@ def test_a_room_cannot_read_another_rooms_private_lines_or_files(tmp_path):
     paths = lambda r: sorted({h["cite"].rpartition(":")[0].rsplit("/", 1)[-1] for h in r["hits"]})  # noqa: E731
     assert paths(memory.recall(s, "kettle", 20, reader=owner)) == ["2026-01-05.md", "kettle.md", "shared.md", "side.md"]
     got = memory.recall(s, "kettle", 20, reader=b)
-    assert paths(got) == ["shared.md", "side.md"] and "in room b" not in str(got["hits"])   # the day log holds room a's lines too: never
-    assert memory.recall(s, "old", 20, reader=b)["hits"] == []                 # ranked for b, on its words or on room a's; b's own line
+    assert paths(got) == ["2026-01-05.md", "shared.md", "side.md"] and "in room b" in str(got["hits"])   # room a's lines beside b's are
+    assert "in room a" not in str(got["hits"]) and memory.recall(s, "old", 20, reader=b)["hits"] == []   # chunks of their own (lane): b's
     hits = memory.topic_hits(s, "room-b", "kettle in room b?", set(), datetime(2026, 1, 6, tzinfo=UTC), rid="b-id", owner=False)
-    assert [h["text"] for h in hits] == ["kettle kettle kettle in room b"]     # reaches it through topic hits, and read (below)
+    assert [h["text"] for h in hits] == ["kettle kettle kettle in room b"]     # line ranks whole, theirs never, on b's words or on room a's
     assert paths(memory.recall(s, "kettle", 20, reader=nobody)) == ["shared.md"]
     assert not memory.read(s, "facts/kettle.md", reader=b)["ok"] and memory.read(s, "facts/kettle.md", reader=owner)["ok"]
     assert memory.read(s, "facts/side.md", reader=b)["ok"] and not memory.read(s, "facts/side.md", reader=nobody)["ok"]
@@ -259,6 +260,56 @@ def test_appending_a_line_rewrites_one_chunk_and_a_touch_writes_none(tmp_path):
     day.unlink()
     st = idx.sync()
     assert st["gone"] == 1 and not idx.conn.execute("SELECT 1 FROM chunks WHERE path = ?", (str(day),)).fetchone()
+
+
+def test_a_day_log_is_chunked_by_room_and_class_so_a_persons_line_beside_the_owners_ranks_whole(tmp_path):
+    """Fix 2b: a chunk of a day log never mixes room ids or classes, an attachment line stays with its line, a free-form
+    line is the owner's alone and the day header goes with the first chunk, so a room that is not an owner room, which ranks
+    only chunks it may read whole, finds every line of its own; under the old chunker a line of hers beside an owner line
+    (one in eleven of the mother's live lines) left her recall and reached her through her pack and read_memory only."""
+    s = tree(tmp_path)
+    hers = "- 00:%02d:00-00:00 Turn#and:The_Last part@closes: the case before the next %d example note says [the:sample] [item:moved%d]"
+    his = "- 00:%02d:00-00:00 with-one#more:Line for@the: check while a second entry %d queue for its [turn:and] [the:last%d]"
+    lines = ["# 2026-01-06", ""]
+    for i in range(12):
+        lines += [his % (i, i, i), hers % (i, i, i)] + (["  - attachment: teapot.jpeg, image/jpeg, 1,234 bytes"] if i == 3 else [])
+    lines += ["a free-form line nobody filed, about the teapot too", his % (12, 12, 12)]
+    lines += [hers % (12, 12, 12) + " " + "x" * memindex.CHUNK_MAX, "  - attachment: long.jpeg, image/jpeg, 1 bytes", hers % (13, 13, 13)]
+    text = "\n".join(lines) + "\n"
+    (s.root / "daily" / "2026-01-06.md").write_text(text)
+    build(s)
+    chunks = memindex.chunks_of(text)
+    assert all(len({memindex.lane(x) for x in body.splitlines()} - {None}) <= 1 for _, _, body in chunks)   # one lane a chunk
+    assert any("[m:p3]" in body and "attachment: teapot.jpeg" in body for _, _, body in chunks)          # the attachment with its line
+    assert chunks[0][2].startswith("# 2026-01-06\n") and "zanzibar note number 0" in chunks[0][2]          # the header with the first
+    assert [body for _, _, body in chunks if "free-form" in body] == ["a free-form line nobody filed, about the teapot too"]
+    assert "- attachment: long.jpeg, image/jpeg, 1 bytes" in [body for _, _, body in chunks]     # after a line cut in pieces: its own chunk,
+    assert all(not body.startswith("- attachment") or "\n" not in body for _, _, body in chunks)    # never the head of the next line's
+    her, owner = memory.Reader("Alex", "discord:MOM_ID", False), memory.Reader("example-room", "discord:CH", True)
+    got = memory.recall(s, "teapot by the window", 20, reader=her)
+    assert {int(n) for h in got["hits"] for n in re.findall(r"teapot line number (\d+)", h["text"])} == set(range(12)) | {13}
+    assert "zanzibar" not in str(got["hits"]) and "free-form" not in str(got["hits"])     # line 12, cut in pieces without its class, stays out
+    assert memory.recall(s, "zanzibar attic", 20, reader=her)["hits"] == []                           # the hidden words: no hit
+    assert "free-form line nobody filed" in str(memory.recall(s, "free-form teapot", 20, reader=owner)["hits"])
+
+
+def test_a_new_chunker_version_chunks_every_file_again_on_the_next_pass_and_keeps_what_did_not_change(tmp_path, monkeypatch):
+    """A VERSION bump used to chunk nothing again until a file's size or mtime moved (2026-10-20: a second pass after the bump
+    reported changed 0 and the check said fresh); now a scope key other than the index's is one pass over every file, writing
+    only the chunks whose text changed, so a live index takes a new chunker with no --rebuild and every unchanged chunk keeps
+    its hash, and with it its vector."""
+    s = tree(tmp_path)
+    idx = build(s)
+    before = {r[0] for r in idx.conn.execute("SELECT sha FROM chunks")}
+    idx.close()
+    monkeypatch.setattr(memindex, "VERSION", "test-bump")
+    idx = memindex.Index(s.index_db, s.scope)
+    assert memindex.check(s.index_db, s.scope)["status"] == "scope-changed"
+    st = idx.sync()
+    assert st["changed"] == st["files"] == 4 and (st["inserted"], st["deleted"]) == (0, 0)       # the same text: the same chunks
+    assert {r[0] for r in idx.conn.execute("SELECT sha FROM chunks")} == before
+    assert memindex.check(s.index_db, s.scope)["status"] == "fresh" and idx.sync()["changed"] == 0   # once: the key is on file
+    idx.close()
 
 
 def test_temp_backup_and_hidden_files_stay_out_of_the_index(tmp_path):

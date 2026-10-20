@@ -38,7 +38,7 @@ from typing import Any, Callable
 log = logging.getLogger("yerk.index")
 
 CHUNK_MAX = 900                        # characters per chunk; a heading always starts a new one
-VERSION = "1"                          # the chunker and tokenizer: a change here re-chunks every file
+VERSION = "2"                          # the chunker and tokenizer: a change here chunks every file again on the next pass (sync)
 TOKENIZER = "porter unicode61 remove_diacritics 2"
 SKIP_DIRS = {"node_modules", "__pycache__", "overwrite-backups"}     # and every dot-folder
 SKIP_NAMES = ("*.tmp", "*.bak", "*.swp", "*~", ".#*", "*.part", "*.pre-*")   # temp and backup copies (L52)
@@ -177,24 +177,43 @@ class Scope:
         return out
 
 
+# the day-log line: `- HH:MM:SS+hh:mm label#id role@who: body [c:class] [m:id]`, every field after the
+# time optional, so the line written before the offset, the id, the author and the class still reads
+LINE = re.compile(r"^- (\d\d:\d\d:\d\d)([+-]\d\d:\d\d)? (\S+?)(?:#(\S+))? ([\w-]+)(?:@(\S+))?: (.*?)"
+                  r"(?: \[c:(\w+)\])?(?: \[m:([^\]\s]+)\])?$")
+DAY_HEAD = re.compile(r"^# \d{4}-\d{2}-\d{2}\b")      # the day log's first line
+
+
+def lane(line: str) -> tuple[str, str] | None:
+    """Who may read a line, as memory.allowed_text reads it: (room id, class) of a day-log line; ("", "") for a free-form
+    line, the owner's alone; None for a blank, the day header or an attachment line, which go with the line above."""
+    if (m := LINE.match(line)):
+        return m.group(4) or m.group(3), m.group(8) or ""
+    return None if not line.strip() or DAY_HEAD.match(line) or line.startswith("  - attachment: ") else ("", "")
+
+
 def chunks_of(text: str) -> list[tuple[int, int, str]]:
     """(first line, last line, text) per chunk. A heading starts a chunk, a blank line past half the
     size ends one, lines gather up to CHUNK_MAX and a longer line is cut in pieces. A chunk depends
-    only on the lines up to the one after it, so appending to a file changes its last chunk only."""
+    only on the lines up to the one after it, so appending to a file changes its last chunk only.
+    A day log is chunked by room id and class too (`lane`): a line of another lane than the chunk's starts a new one, and an
+    attachment line stays with its line (after a line cut in pieces it is a chunk of its own), so a room that may read a chunk reads all of it."""
     out: list[tuple[int, int, str]] = []
     buf: list[str] = []
     start = size = n = 0
+    key: tuple[str, str] | None = None                 # the chunk's lane, from its first line that has one
 
     def flush(end: int) -> None:
-        nonlocal buf, size
+        nonlocal buf, size, key
         if (body := "\n".join(buf).strip()):
             out.append((start, end, body))
-        buf, size = [], 0
+        buf, size, key = [], 0, None
 
     for n, line in enumerate(text.splitlines(), 1):
-        if buf and (line.startswith("#") or size + len(line) + 1 > CHUNK_MAX):
+        who = lane(line)
+        if buf and (line.startswith("#") or who is not None and (size + len(line) + 1 > CHUNK_MAX or key and who != key)):
             flush(n - 1)
-        if len(line) > CHUNK_MAX:
+        if len(line) > CHUNK_MAX or not buf and line.startswith("  - attachment: "):      # cut in pieces; an attachment line after one
             out.extend((n, n, line[i:i + CHUNK_MAX].strip()) for i in range(0, len(line), CHUNK_MAX) if line[i:i + CHUNK_MAX].strip())
             continue
         if not buf:
@@ -203,6 +222,7 @@ def chunks_of(text: str) -> list[tuple[int, int, str]]:
             start = n
         buf.append(line)
         size += len(line) + 1
+        key = key or who
         if not line.strip() and size > CHUNK_MAX // 2:
             flush(n)
     flush(n)
@@ -257,7 +277,7 @@ class Index:
         if repaired:
             self.conn.execute("INSERT INTO chunks_fts(chunks_fts) VALUES ('rebuild')")
         if (old := self.meta("scope")) and old != scope.key():
-            log.warning("index scope changed (%s -> %s): files out of scope go, new ones come in", old, scope.key())
+            log.warning("index version or scope changed (%s -> %s): every file is chunked again this pass", old, scope.key())
 
     def meta(self, key: str) -> str | None:
         return str(row[0]) if (row := self.conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()) else None
@@ -318,8 +338,8 @@ class Index:
         return n
 
     def sync(self) -> dict[str, int]:
-        """One pass: every file whose size or mtime moved is updated, every file gone is forgotten.
-        A rebuild elsewhere swapped the link: the writer moves to the new generation first."""
+        """One pass: every file whose size or mtime moved is updated (every file, once, after a VERSION or scope change),
+        every file gone is forgotten. A rebuild elsewhere swapped the link: the writer moves to the new generation first."""
         if live(self.db) != self.real:
             self.conn.close()
             self.real, self.conn = live(self.db), connect(self.db, readonly=False)
@@ -327,9 +347,10 @@ class Index:
         self.folders = []
         disk = self.disk = self.scope.files(folders=self.folders)
         indexed = {p: (s, m) for p, s, m in self.conn.execute("SELECT path, size, mtime_ns FROM files")}
+        again = self.meta("scope") != self.scope.key()       # a new chunker (VERSION) or scope: every file again, its changed chunks written
         st = {"files": len(disk), "changed": 0, "gone": 0, "inserted": 0, "deleted": 0}
         for path, stat in disk.items():
-            if indexed.get(path) != stat:
+            if again or indexed.get(path) != stat:
                 i, d = self.update(path, stat)
                 st.update(changed=st["changed"] + 1, inserted=st["inserted"] + i, deleted=st["deleted"] + d)
         for path in indexed.keys() - disk.keys():
@@ -420,8 +441,7 @@ def search(conn: sqlite3.Connection, query: str, k: int = 6, pool: int = 80,
         w = math.log(1 + (max(total, df) - df + 0.5) / (df + 0.5))
         if weights is not None:
             weights[t] = w
-        for (rid,) in conn.execute(f"SELECT rowid FROM chunks_fts WHERE chunks_fts MATCH ? AND rowid IN ({marks})",
-                                   (f'"{t}"', *ids)):
+        for (rid,) in conn.execute(f"SELECT rowid FROM chunks_fts WHERE chunks_fts MATCH ? AND rowid IN ({marks})", (f'"{t}"', *ids)):
             cover[rid] = cover.get(rid, 0.0) + w
     ranked = sorted(rows, key=lambda r: (-round(cover.get(r[0], 0.0), 2), r[5]))
     return [{"id": cid, "path": p, "line": lo, "lines": f"{lo}-{hi}", "text": body, "score": round(cover.get(cid, 0.0), 2)}

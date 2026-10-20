@@ -63,9 +63,12 @@ def key_of(text: str) -> str | None:
     return head if re.search(r"[A-Za-z]", head) else None
 
 
-def entries_of(path: Path, cite: str, curated: bool) -> tuple[list[dict[str, Any]], int]:
-    """(entries, dropped) for one file: headings always; for a fact file also its name and bullets."""
+def entries_of(path: Path, cite: str, curated: bool, cls: str = "private", room: str = "") -> tuple[list[dict[str, Any]], int]:
+    """(entries, dropped) for one file: headings always; for a fact file also its name and bullets; each with the file's class
+    and room (memory.file_class), which the daemon keeps a room that is not an owner room to. The front matter is no entry."""
     lines = ["" if OLD in x else x for x in path.read_text(errors="replace").splitlines()]
+    if lines[:1] == ["---"] and "---" in lines[1:]:
+        lines = [""] * (end := lines.index("---", 1) + 1) + lines[end:]
     out: list[dict[str, Any]] = []
     dropped = 0
 
@@ -77,7 +80,8 @@ def entries_of(path: Path, cite: str, curated: bool) -> tuple[list[dict[str, Any
             dropped += 1
             return
         body = re.sub(r"\s+", " ", strip_md(text))
-        out.append({"key": key, "text": body[:ENTRY_CHARS - 1] + "…" if len(body) > ENTRY_CHARS else body, "cite": f"{cite}:{line}"})
+        out.append({"key": key, "text": body[:ENTRY_CHARS - 1] + "…" if len(body) > ENTRY_CHARS else body, "cite": f"{cite}:{line}",
+                    "class": cls, "room": room})
 
     def section(i: int) -> str:
         """A heading's text and the lines under it up to the next heading, as one run."""
@@ -127,6 +131,7 @@ class Builder:
 
     def refresh(self, disk: dict[str, tuple[int, int]]) -> tuple[int, int, int] | None:
         from .config import write_private
+        from .memory import file_class
         srcs = sorted((p, *st) for p, st in disk.items() if self.is_source(Path(p)))
         if srcs == self.sig and self.out.is_file():
             return None
@@ -134,7 +139,7 @@ class Builder:
         dropped = 0
         for path in (Path(p) for p, _, _ in srcs):
             try:
-                e, d = entries_of(path, short_cite(path, self.roots), path.name in self.curated)
+                e, d = entries_of(path, short_cite(path, self.roots), path.name in self.curated, *file_class(path))
             except OSError:
                 continue
             entries += e
@@ -175,8 +180,8 @@ class Index:
             self.stamp = (st.st_mtime_ns, st.st_size)
         return self
 
-    def match(self, text: str, limit: int = MATCH_MAX, keep: Callable[[str], bool] | None = None) -> list[dict[str, Any]]:
-        """Entries for the names in `text`, in the order they are named, each once; only those whose file `keep` takes, if given."""
+    def match(self, text: str, limit: int = MATCH_MAX, keep: Callable[[dict[str, Any]], bool] | None = None) -> list[dict[str, Any]]:
+        """Entries for the names in `text`, in the order they are named, each once; only those `keep` takes (by cite, class and room), if given."""
         words = tokens(text)
         out: list[dict[str, Any]] = []
         seen: set[int] = set()
@@ -186,7 +191,7 @@ class Index:
             for key, ids in self.first.get(words[i], []):
                 if words[i:i + len(key)] == key:
                     for n in ids:
-                        if n not in seen and len(out) < limit and (keep is None or keep(self.entries[n]["cite"].rpartition(":")[0])):
+                        if n not in seen and len(out) < limit and (keep is None or keep(self.entries[n])):
                             seen.add(n)
                             out.append(self.entries[n])
                     step = len(key)

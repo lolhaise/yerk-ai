@@ -208,8 +208,7 @@ def cmd_accounts(a: argparse.Namespace) -> int:
         from .accounts import mint
         from .engine import claude_bin
         status, stored = mint(by[a.name], claude_bin())
-        print(f"{a.name}: " + (f"token stored in {by[a.name].token_file} (0600)" if stored else
-                               "no token in the output, nothing stored"))
+        print(f"{a.name}: " + (f"token stored in {by[a.name].token_file} (0600)" if stored else "no token in the output, nothing stored"))
         return 0 if stored else 1
     if a.action == "token":
         import getpass

@@ -122,8 +122,7 @@ def gate_settings(folder: Path) -> Path:
 def mcp_config(state: Path, room: str, tools: list[str], path: Path) -> Path:
     """A worker's --mcp-config: its own stdio server (mcp_server.py `worker`) with only `tools`."""
     args = ["-P", "-m", "yerk_ai.mcp_server", "worker", str(state), room, ",".join(tools)]
-    cfg = {"mcpServers": {"yerk": {"type": "stdio", "command": sys.executable, "args": args,
-                                   "env": {"PYTHONPATH": str(PACKAGE.parent)}}}}
+    cfg = {"mcpServers": {"yerk": {"type": "stdio", "command": sys.executable, "args": args, "env": {"PYTHONPATH": str(PACKAGE.parent)}}}}
     path.write_text(json.dumps(cfg, indent=1))
     return path
 
@@ -770,8 +769,7 @@ class Workers:
                 await self.complete(row["id"], lost=not (d / EXIT).is_file())
         for u in sorted((units or set()) - {r["unit"] for r in rows}):
             log.warning("workers: unit %s is not in the ledger; left alone", u)
-        for i, r in enumerate(sorted((r for r in self.live.values() if r.get("waiting")),
-                                     key=lambda r: float(r.get("queued") or 0)), 1):
+        for i, r in enumerate(sorted((r for r in self.live.values() if r.get("waiting")), key=lambda r: float(r.get("queued") or 0)), 1):
             r["line"] = i
             await self._show(r)
         await self.next_in_line()

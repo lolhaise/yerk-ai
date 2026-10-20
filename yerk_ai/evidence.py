@@ -30,8 +30,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 KEEP_CHARS = 400_000
-FIGURE = re.compile(r"(?<![\w.,$])(?:\$\s?\d[\d,]*(?:\.\d+)?[kKmM]?|\d{1,3}(?:,\d{3})+(?:\.\d+)?%?|\d+\.\d+%?|\d+%)"
-                    r"(?![\w,]|\.\d)")
+FIGURE = re.compile(r"(?<![\w.,$])(?:\$\s?\d[\d,]*(?:\.\d+)?[kKmM]?|\d{1,3}(?:,\d{3})+(?:\.\d+)?%?|\d+\.\d+%?|\d+%)" r"(?![\w,]|\.\d)")
 FILE = re.compile(r"(?<![\w/.-])((?:[\w.-]+/)*[\w.-]+\.(?:md|txt|json|toml|csv|pdf))(?::\d+)?\b")
 DECIDE = re.compile(r"\bwhat\s+(?:did|have|had)\s+we\s+(?:decide|agree|settle|choose|pick|land|go\s+with)"
                     r"|\bdid\s+we\s+(?:decide|agree|settle)\b|\bwhat\s+was\s+(?:the|our)\s+(?:decision|call)\b", re.I)
@@ -256,5 +255,4 @@ def check_claims(reply: str, ev: Evidence, roots: tuple[Path, ...]) -> list[tupl
     with ev.lock:
         calls = list(ev.calls.values())
     mem = ev.memory_read(roots)
-    return [("claim", f"{cls}: \"{s}\"; tools this turn: {tools_line(calls)}") for cls, s in claims(reply)
-            if not backed(cls, calls, mem)]
+    return [("claim", f"{cls}: \"{s}\"; tools this turn: {tools_line(calls)}") for cls, s in claims(reply) if not backed(cls, calls, mem)]

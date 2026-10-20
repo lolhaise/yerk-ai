@@ -599,8 +599,7 @@ class IMessageChannel:
                 return
             except BridgeDown:                    # it may have gone out: its row, if it comes, is this part's
                 end = time.time()
-                self.ledger.delivery_set(key, attempts=attempts,
-                                         note=f"no answer after row {before} from {start:.3f} to {end:.3f}; held")
+                self.ledger.delivery_set(key, attempts=attempts, note=f"no answer after row {before} from {start:.3f} to {end:.3f}; held")
                 self._unclaim(ident, key)
                 self.unclaimed.setdefault(ident, deque()).append((key, before, end + CLAIM_WINDOW, (start, end)))
                 raise
