@@ -214,7 +214,7 @@ REFUSED = "not done: {what}\nit would restart Yerk AI\n{why}"
 REBUILDING = "the memory index is rebuilding"
 IN_PROGRESS = "a conversation is in progress"
 TRASH_FAILED = "not deleted: {name}\nthe trash said: {why}"
-RESET = "new session in this room\nthe last one could not go on\nearlier messages are not in it"
+RESET = "new session in this room\nearlier messages are not in it\nmemory carries on"        # true for a crash and for a fresh start alike
 HOOKS_DEAD = "hooks are not reaching this room\nno clock, no recall, no gates\nuntil the hooks are fixed"
 FILE_WHY = {"missing": "there is no such file", "type": "this room does not take {ext} files",
             "size": "it is {size} and this room takes {limit}", "empty": "it is empty",
