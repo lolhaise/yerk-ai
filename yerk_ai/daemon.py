@@ -26,7 +26,7 @@ from typing import Any
 
 from . import beat, context, deploy, evidence, gates, hooks, jobs, mcp_server, memory, mentions, status, workers
 from .accounts import Account, Cooldowns, from_dir, load_accounts
-from .config import (EFFORTS, REPO, budgets, discord_id, flag, load_toml, models, override, private_dir,
+from .config import (EFFORTS, REPO, budgets, discord_id, flag, load_toml, models, override, people, private_dir,
                      read_secret, room_id, room_settings, rooms, state_dir, table, write_private)
 from .engine import RoomSpec, SessionTable
 from .ledger import Ledger
@@ -65,14 +65,12 @@ class ConsoleChannel:
     def progress(self, room: str, text: str) -> None:
         print(f"[card] {text}", file=sys.stderr, flush=True)
 
-    def reply(self, room: str, text: str, inbound: list[str], card: str | None = None,
-              key: str | None = None) -> list[str]:
+    def reply(self, room: str, text: str, inbound: list[str], card: str | None = None, key: str | None = None) -> list[str]:
         if card:
             self.progress(room, card)
         return self._out({"room": room, "reply": text, "inbound": inbound, **({"card": card} if card else {})})
 
-    def notice(self, room: str, text: str, inbound: list[str], card: str | None = None,
-               key: str | None = None) -> list[str]:
+    def notice(self, room: str, text: str, inbound: list[str], card: str | None = None, key: str | None = None) -> list[str]:
         if card:
             self.progress(room, card)
         return self._out({"room": room, "notice": text, "inbound": inbound})
@@ -93,8 +91,7 @@ class ConsoleChannel:
         print(f"[{key}] {text}", file=sys.stderr, flush=True)
         return message_id or f"console-{key}"
 
-    async def worker_settle(self, room: str, key: str, text: str, how: str,
-                            message_id: str | None = None) -> str | None:
+    async def worker_settle(self, room: str, key: str, text: str, how: str, message_id: str | None = None) -> str | None:
         return await self.worker_card(room, key, f"{text}\n({how})", message_id)
 
 
@@ -126,6 +123,13 @@ class Yerkd:
         self.meters = Meters(state / "meters.json")
         self.memory = memory.settings(private, state, dict(self.conf.get("memory", {})))
         self.scoped = {n: self.memory.only(private, n, c["also"]) for n, c in self.room_confs.items() if "also" in c}
+        held = (*self.memory.scope.roots, (private / "secrets").resolve(), state.resolve())
+        for n, c in ((n, c) for n, c in self.room_confs.items() if c.get("people")):   # its layer is a working folder, its files the prompt
+            lay, others = context.layer_dir(private, c), [context.layer_dir(private, d) for m, d in self.room_confs.items() if m != n]
+            files = [lay / str(c[k]) for k in ("persona", "rulebook", "voice", "pinned_memory", "open_loops") if c.get(k)]
+            if lay in others or private.resolve().is_relative_to(lay) or any(p.is_relative_to(lay) or lay.is_relative_to(p) for p in held) \
+                    or any(not f.resolve().is_relative_to(lay) for f in files):
+                raise SystemExit(f"room {n}: people needs a `layer` of its own, holding no memory root, secrets/ or state, its files inside it")
         self.daily = memory.DailyLog(self.memory.daily, self.memory.tz,
                                      {n: (room_id(n, c), memory.room_class(c)) for n, c in self.room_confs.items()})
         # day-log lines written before offsets, ids, authors and classes are rewritten once, here, before any
@@ -188,6 +192,7 @@ class Yerkd:
         settings = {"permissions": {"allow": [f"Read(/{layer}/**)", *YERK_TOOLS, *conf.get("allow", [])]},
                     "hooks": hooks.settings_for(f"{self.url}/hook", token)}
         settings.update({"sandbox": conf["sandbox"]} if "sandbox" in conf else {})   # Claude Code's own shell sandbox
+        settings["permissions"].update({} if self.owner(name) else {"blockReadsOutsideWorkingDirectories": True})   # file tools, every mode
         now = room_settings(conf, self.state, name, self.models)    # the room's override over rooms.toml
         extra = ["--effort", now["effort"][0]] if now["effort"][0] else []
         if flag(conf.get("thinking_panel")) and self.owner(name):
@@ -230,16 +235,16 @@ class Yerkd:
         return any(p.is_relative_to(r) for r in roots) and not p.is_relative_to((self.private / "secrets").resolve())
 
     async def tool_send(self, room: str, text: str, file: str, caller: str) -> dict[str, Any]:
+        if caller in self.rooms and not self.owner(caller) and room != caller:     # a room that is not the owner's posts to itself only
+            return {"ok": False, "error": f"room {caller} posts to itself only; it is not one of the owner's rooms"}
         if room not in self.rooms:
             return {"ok": False, "error": f"no room {room!r}; rooms: {', '.join(self.rooms)}"}
         if not text and not file:
             return {"ok": False, "error": "nothing to send: give text, a file, or both"}
         ch = self.channels[room]
         if file and not self.may_send(caller if caller in self.rooms else room, Path(file)):
-            await ch.notify(room, f"{words.NOT_DONE} "
-                                  f"{words.NOT_SENT.format(name=Path(file).name, why=words.file_why('outside'))}")
-            return {"ok": False, "error": f"{file} is outside this room's folders; only files from them can be sent; "
-                                          "the room was told"}
+            await ch.notify(room, f"{words.NOT_DONE} {words.NOT_SENT.format(name=Path(file).name, why=words.file_why('outside'))}")
+            return {"ok": False, "error": f"{file} is outside this room's folders; only files from them can be sent; " "the room was told"}
         src = self.rooms.get(caller) or self.rooms[room]
         self.sends += 1
         with src.lock:                        # in a turn: its key and the messages it answers
@@ -247,8 +252,7 @@ class Yerkd:
             inbound = ",".join(m.id for m in src.inflight) if src.busy else ""
         key = f"{turn}-s{self.sends}"                         # and this send's number: unique across restarts
         try:
-            ids = await (ch.send_file(room, Path(file), text, key=key, inbound=inbound) if file
-                         else ch.send_text(room, text, key=key))
+            ids = await (ch.send_file(room, Path(file), text, key=key, inbound=inbound) if file else ch.send_text(room, text, key=key))
         except (OSError, ValueError) as e:
             return {"ok": False, "error": str(e)}
         log.info("send: %s -> %s, %d message(s)", caller or "?", room, len(ids))
@@ -320,8 +324,8 @@ class Yerkd:
     async def tool_schedule(self, room: str, req: dict[str, Any]) -> dict[str, Any]:
         """The `schedule` tool (add, remove, list); the job runner's hand-offs come through /control.
         Any job runs as the owner's user (an agent job starts a worker; a script job runs its shell
-        command with no sandbox at all), so a room adds one by the worker rule, whatever its kind."""
-        refused = self.owner_only(room, str(req.get("room") or ""), words.JOBS_OWNER_ONLY) if req.get("action") == "add" else None
+        command with no sandbox at all), so a room adds one by the worker rule, whatever its kind, and lists or removes one by it too."""
+        refused = self.owner_only(room, str(req.get("room") or "") if req.get("action") == "add" else "", words.JOBS_OWNER_ONLY)
         return refused or await self.jobs.handle(room, req)
 
     async def tool_hold(self, room: str, wait_for: str, reason: str) -> dict[str, Any]:
@@ -550,16 +554,14 @@ class Yerkd:
                 log.info("room %s: Stop bounced once: an image was never read", name)
             elif room and name:
                 said = payload["last_assistant_message"] if "last_assistant_message" in payload else None
-                reason = room.silent_check(active, None if said is None else str(said or ""),
-                                           self.ledger.landed(room.turn_key))
+                reason = room.silent_check(active, None if said is None else str(said or ""), self.ledger.landed(room.turn_key))
                 if reason:
                     self.ledger.gate(room=name, session_id=sid, turn=room.turn_key, gate="silent", decision="bounce",
                                      tool="", rule="silent-ending", detail=reason[:300])
                     log.info("room %s: Stop bounced once: the turn ended with nothing visible", name)
             if room and name:
                 try:
-                    await asyncio.to_thread(self.shadow_stop, name, room, str(payload.get("last_assistant_message")
-                                                                              or ""), sid)
+                    await asyncio.to_thread(self.shadow_stop, name, room, str(payload.get("last_assistant_message") or ""), sid)
                 except Exception:
                     log.exception("room %s: the shadow Stop check failed (nothing blocked)", name)
             return {"decision": "block", "reason": reason} if reason else {}
@@ -621,8 +623,7 @@ class Yerkd:
             key = gates.call_key(tool, ti)
             rel = self.ledger.release(name, rule, key, cwd, self.gates.window_s)
             if rel:
-                v = gates.Verdict("approval", "release", detail=f"{what}: {call}; approved by {rel['approved_by']}",
-                                  rule=rule)
+                v = gates.Verdict("approval", "release", detail=f"{what}: {call}; approved by {rel['approved_by']}", rule=rule)
             else:
                 model, line = gates.held(what, call, self.gates.word, exact=key)
                 v = gates.Verdict("approval", "hold", model, line, f"{what}: {call}", rule=rule)
@@ -741,8 +742,7 @@ class Yerkd:
 
     async def status_now(self, payload: dict[str, Any], auth: dict[str, str] | None = None) -> dict[str, Any]:
         """/status: what runs now, for `yerk status` and any program that asks (status.py)."""
-        out = await asyncio.to_thread(status.collect, self.private, self.state, self.accounts, self.cooldowns,
-                                      self.ledger, self.rooms)
+        out = await asyncio.to_thread(status.collect, self.private, self.state, self.accounts, self.cooldowns, self.ledger, self.rooms)
         return {**out, "started": self.started, "commit": self.commit,
                 "connected": bool(getattr(self.link, "connected", False)),
                 "rebuilding": await asyncio.to_thread(self.rebuild_running)}   # deploy waits it out, as the gate does
@@ -792,7 +792,7 @@ class Yerkd:
             kind, _, cid = str(conf.get("channel", "")).partition(":")
             wk, _, wid = str(conf.get("watch", "")).partition(":")     # read as the room's own, never written to
             if kind == "discord" and cid.isdigit():
-                dc.add_room(int(cid), self.add_room(name, dc), int(wid) if wk == "discord" and wid.isdigit() else None)
+                dc.add_room(int(cid), self.add_room(name, dc), int(wid) if wk == "discord" and wid.isdigit() else None, people(name, conf))
         im = self.imessage_rooms()
         if not dc.rooms and im is None:
             raise SystemExit("no room has a discord:<channel id> or an imessage:<chat identifier> in rooms.toml")
@@ -818,8 +818,7 @@ class Yerkd:
             if machine is None or machine not in self.channels:
                 return None
             return await self.channels[machine].send_text(machine, text, key=key)
-        im = IMessageChannel(dict(self.conf.get("imessage", {})), self.ledger, state=self.state,
-                             capture=self.daily.capture, machine=tell)
+        im = IMessageChannel(dict(self.conf.get("imessage", {})), self.ledger, state=self.state, capture=self.daily.capture, machine=tell)
         for name, ident in named.items():
             im.add_room(ident, self.add_room(name, im))
         return im

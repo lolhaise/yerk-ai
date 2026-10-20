@@ -25,7 +25,7 @@ from yerk_ai.ledger import Ledger
 from yerk_ai.room import NEW_RECAP, Inbound, Room
 
 FAKE = Path(__file__).with_name("fake_claude.py")
-ROOM, ROOM_CH, OTHER_CH, OWNER, STRANGER = "example-room", 11, 22, 7, 8
+ROOM, ROOM_CH, OTHER_CH, OWNER, STRANGER, PERSON = "example-room", 11, 22, 7, 8, 31    # PERSON: listed in the room's `people`
 
 
 class Chan:
@@ -101,7 +101,7 @@ def wire(y):
     chan = Chan()
     room = y.add_room(ROOM, chan)
     dc = DiscordChannel("token", OWNER, [], y.ledger, client=Bot({ROOM_CH: 1}), daemon=y)
-    dc.add_room(ROOM_CH, room)
+    dc.add_room(ROOM_CH, room, people=frozenset({PERSON}))
     return dc, room, chan
 
 
@@ -141,7 +141,8 @@ def run_discord(tmp_path, monkeypatch, discord_table):
     priv = tmp_path / "private"
     shutil.copytree(EXAMPLE_PRIVATE, priv)
     rooms = priv / "rooms.toml"
-    rooms.write_text(rooms.read_text().replace('"discord:CHANNEL_ID"', f'"discord:{ROOM_CH}"', 1))
+    rooms.write_text(rooms.read_text().replace('"discord:CHANNEL_ID"', f'"discord:{ROOM_CH}"\npeople = [{PERSON}]\nlayer = "family"', 1)
+                     .replace('privacy = "owner"', 'privacy = "family"', 1))      # a room that lists people is not the owner's alone
     (priv / "discord.token").write_text("not-a-token\n")
     (priv / "yerkd.toml").write_text('[discord]\ntoken_file = "discord.token"\n' + discord_table)
     (tmp_path / "state").mkdir()
@@ -168,6 +169,7 @@ def test_only_the_owner_is_answered_and_only_in_a_room(y):
     asked = []
     y.room_stop = lambda r: asked.append(r)                  # reaching the daemon would record the room
     assert slash(dc, "stop", user=STRANGER) == [("message", f"{words.NOT_DONE} {words.NOT_OWNER}", True)]
+    assert slash(dc, "stop", user=PERSON) == [("message", f"{words.NOT_DONE} {words.NOT_OWNER}", True)]   # listed, not the owner
     assert slash(dc, "stop", channel=OTHER_CH) == [("message", f"{words.NOT_DONE} {words.NOT_A_ROOM}", True)]
     assert asked == [] and not room.busy
 
@@ -384,6 +386,7 @@ def test_registration_is_exactly_these_commands_on_exactly_the_rooms_guilds(y, t
 def test_the_commands_line_in_yerkd_toml(tmp_path, monkeypatch, line, on):
     d, dc = run_discord(tmp_path, monkeypatch, f"owner = {OWNER}\n{line}")
     assert dc.daemon is (d if on else None) and dc.owner == OWNER and dc.rooms[ROOM_CH] is d.rooms[ROOM]
+    assert dc.people[ROOM_CH] == frozenset({PERSON})          # rooms.toml's `people`, through run_discord's wiring
     asyncio.run(dc.register())                                 # on_ready's step, once the gateway says ready
     assert [(app, g) for app, g, _ in dc.client.puts] == ([(4242, 1)] if on else [])
     said = slash(dc, "stop")
@@ -403,5 +406,6 @@ def test_a_missing_or_malformed_owner_still_starts_and_every_command_names_it(tm
         for user in (OWNER, 1, None):                          # 7.0 and true read as 7 and 1 before; no id at all
             assert slash(dc, name, user=user) == [("message", f"{words.NOT_DONE} {words.NO_OWNER}", True)]
     assert asked == [] and words.width(f"{words.NOT_DONE} {words.NO_OWNER}") <= words.PHONE
-    assert dc.sender_of(NS(webhook_id=None, author=NS(id=OWNER))) is None          # no person's message runs
+    assert dc.sender_of(NS(webhook_id=None, author=NS(id=OWNER), channel=NS(id=ROOM_CH))) is None    # no owner's message runs
+    assert dc.sender_of(NS(webhook_id=None, author=NS(id=PERSON), channel=NS(id=ROOM_CH))) == "person"   # a listed person's still does
     assert [discord_id(v) for v in (7, "7", " 7 ", True, False, 7.0, 0, -7, "7x", "", None)] == [7, 7, 7] + [None] * 8

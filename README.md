@@ -92,7 +92,7 @@ uv run pytest
 
 ## The private folder
 
-- `rooms.toml`: one entry per room: channel (`discord:<channel id>`), account order, model, tool allowlist, privacy class, time zone, and the context files. `layer` names the folder those files come from (default: the private folder itself).
+- `rooms.toml`: one entry per room: channel (`discord:<channel id>`), account order, model, tool allowlist, privacy class, time zone, and the context files. `layer` names the folder those files come from (default: the private folder itself). `people` lists the Discord user ids the room answers besides the owner (unset: the owner only; the owner is answered in every room).
 - `accounts.toml`: one line per account: `name = { config_dir = "...", order = 1 }`, optionally `token = "secrets/..."` (the default is `secrets/claude-<name>.token`). Adding or removing an account is that one line; a room's own `accounts` list only orders the accounts it names, the rest follow.
 - `yerkd.toml`: the daemon's settings: the Discord token file, the owner's user id, webhook ids accepted as senders in test mode, the local port. A running `yerkd` writes its pid and port to `yerkd.json` in the state folder.
 - `secrets/`: files only you can read (mode 0600), for example the bot token. Nothing in the repository reads them except the daemon at start.
