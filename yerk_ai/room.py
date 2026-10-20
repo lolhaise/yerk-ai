@@ -487,7 +487,7 @@ class Room:
                     log.info("room %s: %s on %s, continuing on %s", self.name, f.cls, account.name, nxt.name)
                     hop = ",".join(filter(None, [hop, f"{f.cls}:{account.name}"]))
                     hops, account, self.first_line = hops + 1, nxt, None
-                    self._note(words.MOVED.format(name=nxt.name))
+                    self._note(words.MOVED.format(name=nxt.name) if str(self.conf.get("privacy", "owner")) == "owner" else words.MOVED_ON)
                     # a session that never answered may have no transcript to resume elsewhere
                     fresh = not (self.rp and (self.rp.resume_arg or self.rp.session_id in self.answered))
                     continue
@@ -559,8 +559,7 @@ class Room:
             self.last_reply = text.strip().split("\n")[0][:160]
             now = time.time()
             for m in covered:
-                self.ledger.inbound_set(m.id, state="answered", answered=now, turn_id=turn_id,
-                                        reply_ids=",".join(reply_ids))
+                self.ledger.inbound_set(m.id, state="answered", answered=now, turn_id=turn_id, reply_ids=",".join(reply_ids))
                 self._then(m, "answered", reply_ids, len(text))
             with self.lock:
                 self.inflight = list(self.pending)

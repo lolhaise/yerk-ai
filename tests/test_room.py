@@ -56,9 +56,9 @@ def env(tmp_path, monkeypatch):
     data = tomllib.loads(table("failures.toml").read_text())
     data["rerun"]["wait"] = [0.0]                       # the reruns without the waits
 
-    def make(chan, idle=1800.0, meters=None):
+    def make(chan, idle=1800.0, meters=None, conf=None):
         spec = lambda: RoomSpec(room="r", model="m", cwd=tmp_path, tools=["Read"])  # noqa: E731
-        return Room("r", {}, spec, accounts, chan, tmp_path, ledger, FailureTable(data),
+        return Room("r", conf or {}, spec, accounts, chan, tmp_path, ledger, FailureTable(data),
                     Cooldowns(tmp_path / "cooldowns.json"), idle_seconds=idle, meters=meters)
     return make, ledger, tmp_path
 
@@ -126,6 +126,27 @@ def test_quota_failure_hops_to_the_next_account_in_the_same_turn(env, monkeypatc
     assert Cooldowns(tmp_path / "cooldowns.json").until("one") is not None
     second = argvs(tmp_path)[-1]
     assert second["config_dir"] == str(tmp_path / "cfg2") and "--session-id" in second["argv"]  # never answered: fresh
+    room.rp.close()
+
+
+def test_a_hop_in_a_room_that_is_not_the_owners_names_no_account(env, monkeypatch):
+    make, ledger, tmp_path = env
+    monkeypatch.setenv("FAKE_CLAUDE_FAIL_DIRS", str(tmp_path / "cfg1"))
+    chan = Chan()
+    room = make(chan, conf={"privacy": "family"})              # the wall: such a room never learns an account name
+    send(room, ledger, "1", "hello")
+    wait_idle(room)
+    rows = sorted(ledger.rows(5), key=lambda r: r["id"])
+    assert chan.replies == [("echo: hello", ["1"])] and [r["hop"] for r in rows] == [None, "quota:one"]   # it did hop
+    assert f"{words.WORKING} {words.MOVED_ON}" in chan.cards
+    assert not any("account" in c or "two" in c.split() for c in chan.cards)
+    room.rp.close()
+    (tmp_path / "cooldowns.json").unlink()                     # one rests after that hop; the owner's room gets it fresh
+    owner = Chan()
+    room = make(owner)                                         # privacy unset: the owner's room, its note names the account
+    send(room, ledger, "2", "again")
+    wait_idle(room)
+    assert owner.replies == [("echo: again", ["2"])] and f"{words.WORKING} still on it, moved to account two" in owner.cards
     room.rp.close()
 
 

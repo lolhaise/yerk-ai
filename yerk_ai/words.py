@@ -103,6 +103,7 @@ WHY = {                                   # a failed turn, in plain words: the f
     "empty": "the reply came back empty", "error": "Claude Code reported an error"}
 BACKUP = ("answered by a backup model", "the next message starts fresh")
 MOVED, COMPACTING = "still on it, moved to account {name}", "shortening the conversation first"
+MOVED_ON = "still on it, trying another way"      # the hop note in a room that is not the owner's: no account name there
 
 
 def why(cls: str | None, outcome: str) -> str:

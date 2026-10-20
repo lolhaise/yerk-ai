@@ -10,7 +10,7 @@ import pytest
 from yerk_ai import mcp_server
 from yerk_ai.accounts import Account
 from yerk_ai.config import table
-from yerk_ai.engine import STREAM_FLAGS, RoomProcess, RoomSpec, SessionBusy, Turn
+from yerk_ai.engine import STREAM_FLAGS, RoomProcess, RoomSpec, SessionBusy, Turn, project_dir
 from yerk_ai.ledger import Ledger
 from yerk_ai.lifted.classify import FailureTable
 
@@ -232,9 +232,17 @@ def test_a_hop_resumes_by_the_transcripts_path_when_the_folders_are_not_shared(m
     argv = records(tmp_path)[-1]["argv"]
     assert argv[argv.index("--resume") + 1] == str(transcript) and records(tmp_path)[-1]["config_dir"] == str(tmp_path / "cfg2")
     same = RoomProcess(spec, Account("two", tmp_path / "cfg2"), tmp_path, ledger=make().ledger)
-    with same:                                                        # the bound account resumes by id
-        same.start()
+    with same:                                                        # bound to two now, its transcript still in one's folder:
+        same.start()                                                  # by path again, since two's id search never reaches it
+    assert records(tmp_path)[-1]["argv"][records(tmp_path)[-1]["argv"].index("--resume") + 1] == str(transcript)
+    own = tmp_path / "cfg" / "projects" / project_dir(tmp_path.resolve()) / f"{sid}.jsonl"
+    own.parent.mkdir(parents=True, exist_ok=True)                      # the first start made it
+    own.write_text("{}\n")
+    SessionTable(tmp_path / "sessions.json").update("r1", transcript=str(own))
+    with make() as home:                                              # a transcript in the account's own folder: by id
+        home.start()
     assert records(tmp_path)[-1]["argv"][records(tmp_path)[-1]["argv"].index("--resume") + 1] == sid
+    own.unlink()
     transcript.unlink()
     with make() as gone:                                              # a hop with no file: the id, and the resume rule decides
         gone.start()

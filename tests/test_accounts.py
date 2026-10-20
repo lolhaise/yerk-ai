@@ -43,10 +43,10 @@ def test_token_age_days_left_and_the_30_day_warning(tmp_path):
     acct = Account("one", tmp_path, 1, tmp_path / "t.token")
     assert token_info(acct) == {"token": "none"}
     store_token(acct, "fake", issued=date.today() - timedelta(days=10))
-    t = token_info(acct)
+    t = token_info(acct, noon := time.mktime(date.today().timetuple()) + 43200)   # noon: one clock-change hour moves no x.5 day
     assert (t["token"], t["age_days"], t["days_left"]) == ("ok", 10, 354)
     store_token(acct, "fake", issued=date.today() - timedelta(days=340))
-    assert token_info(acct)["token"] == "due" and token_info(acct)["days_left"] == 24
+    assert token_info(acct, noon)["token"] == "due" and token_info(acct, noon)["days_left"] == 24
     store_token(acct, "fake", issued=date.today() - timedelta(days=366))
     assert token_info(acct)["token"] == "dead"
 

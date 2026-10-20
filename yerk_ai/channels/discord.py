@@ -48,7 +48,6 @@ from typing import Any, Awaitable, Callable, Coroutine, TypeVar
 import discord
 
 from .. import status, words
-from ..accounts import Account
 from ..config import EFFORTS
 from ..ledger import Ledger
 from ..lifted.loopguard import LoopGuard
@@ -75,12 +74,13 @@ QUICK = 1.0           # seconds a slash command may take before its answer is de
 SAID = (discord.MessageType.default, discord.MessageType.reply)   # what a person types; the rest are Discord's lines
 
 
-def commands(models: dict[str, str], accounts: list[Account]) -> list[dict[str, Any]]:
-    """Exactly this install's slash commands, in the shape Discord's bulk overwrite takes; /model takes an account too."""
+def commands(models: dict[str, str]) -> list[dict[str, Any]]:
+    """Exactly this install's slash commands, in the shape Discord's bulk overwrite takes; /model takes an account too,
+    typed, never offered: a command's choices show to everyone in its guild, a people room's people too."""
     def pick(name: str, values: list[str]) -> list[dict[str, Any]]:
         return [{"type": 3, "name": name, "description": words.CHOICE[name], "required": False,
-                 "choices": [{"name": v, "value": v} for v in values][:25]}]
-    opts = {"model": pick("model", [*models, "default"]) + pick("account", [*(a.name for a in accounts), "default"]),
+                 **({"choices": [{"name": v, "value": v} for v in values][:25]} if values else {})}]
+    opts = {"model": pick("model", [*models, "default"]) + pick("account", []),
             "effort": pick("effort", [*EFFORTS, "default"])}
     return [{"type": 1, "name": n, "description": what, "options": opts.get(n, [])} for n, what in words.COMMANDS.items()]
 
@@ -365,7 +365,7 @@ class DiscordChannel:
         for g in sorted(guilds):
             try:
                 await self.client.http.bulk_upsert_guild_commands(self.client.application_id, g,
-                                                                  commands(self.daemon.models, self.daemon.accounts))
+                                                                  commands(self.daemon.models))
                 log.info("discord: %d slash command(s) registered in guild %s", len(words.COMMANDS), g)
             except discord.HTTPException as e:
                 log.warning("discord: slash commands not registered in guild %s: %s", g, e)

@@ -397,7 +397,7 @@ def test_registration_is_exactly_these_commands_on_exactly_the_rooms_guilds(y, t
     assert [c["value"] for c in sent[0]["options"][0]["choices"]] == [*y.models, "default"]
     assert [c["value"] for c in sent[1]["options"][0]["choices"]] == [*EFFORTS, "default"]
     assert [o["name"] for o in sent[0]["options"]] == ["model", "account"] and len(sent[1]["options"]) == 1
-    assert [c["value"] for c in sent[0]["options"][1]["choices"]] == ["one", "two", "default"]   # accounts.toml's names
+    assert "choices" not in sent[0]["options"][1] and "two" not in json.dumps(sent)   # typed: no account name for the guild
     assert all(len(c["description"]) <= 100 and c["type"] == 1 for c in sent)
     assert all(len(o["description"]) <= 100 and not o["required"] for c in sent for o in c["options"])
     off = Bot({ROOM_CH: 1})                                    # [discord] commands = false
