@@ -9,7 +9,15 @@ message and a success result echoing the text. Variations:
   (FAKE_CLAUDE_RESETS, epoch seconds) when that is set, as a weekly meter's rejection streams
 - any line when CLAUDE_CONFIG_DIR is in FAKE_CLAUDE_AUTH_DIRS: error authentication_failed,
   "Not logged in" (a config folder with no login)
-- a line containing EMPTY_ONCE: an empty result the first time (marker file FAKE_CLAUDE_MARK)
+- a line containing EMPTY_ONCE: an empty result the first time (marker file FAKE_CLAUDE_MARK); EMPTY_TWICE: the
+  first two times
+- --resume with FAKE_CLAUDE_ORPHANS=1, the first time: before the first line's reply, the turn Claude Code 2.1.301
+  ran of its own on the resume after a crash (seen live): two task_notification events for background
+  commands the dead process orphaned, an init, and that turn's empty result, origin kind task-notification
+- a line containing BACKGROUND: after its answer, while nothing is asked, a background command's notice turn
+  (task_notification, init, a result with origin kind task-notification and text of its own)
+- a line containing STALL: no word, every later line taken and never replayed, until stdin closes (a turn that goes
+  silent with a message folded into it)
 - a line containing FIXTURE:<name>: the events of fixtures/<name>.jsonl the first time (marker
   FAKE_CLAUDE_MARK.<name>), then the plain echo; {sid} in a fixture is the session id
 - a line containing TOO_LONG_ONCE: "Prompt is too long" (invalid_request) until a /compact
@@ -138,6 +146,8 @@ def answer(text):
     if "EMPTY_ONCE" in text and mark and not os.path.exists(mark):
         open(mark, "w").close()
         return result("")
+    if "EMPTY_TWICE" in text and (first("empty-1") or first("empty-2")):
+        return result("")
     if windows := os.environ.get("FAKE_CLAUDE_WINDOWS"):
         five, week = (float(x) for x in windows.split(","))
         shift = int(os.environ.get("FAKE_CLAUDE_TOKEN_SHIFT", "0")) if os.environ.get("CLAUDE_CODE_OAUTH_TOKEN") else 0
@@ -154,6 +164,17 @@ def answer(text):
     return result(reply)
 
 
+def notice_turn(status, text, tasks=("bg1",)):
+    """A turn Claude Code runs of its own for background commands' notices, as 2.1.301 streams it."""
+    for task in tasks:
+        out({"type": "system", "subtype": "task_notification", "task_id": task, "tool_use_id": "toolu_" + task,
+             "status": status, "output_file": "", "summary": "Orphaned by a previous Claude Code process exit and reported "
+             "in an aggregate summary." if status == "stopped" else "Background command finished.", "session_id": sid})
+    out({"type": "system", "subtype": "init", "session_id": sid, "model": "fake", "tools": []})
+    out({"type": "result", "subtype": "success", "is_error": False, "result": text, "num_turns": 0, "session_id": sid,
+         "origin": {"kind": "task-notification"}, "modelUsage": {"fake-model": {}}})
+
+
 out({"type": "system", "subtype": "init", "session_id": sid, "model": "fake", "tools": []})
 if one_shot:
     answer(argv[argv.index("-p") + 1])
@@ -166,6 +187,12 @@ while True:
         continue
     msg = json.loads(line)
     text = msg["message"]["content"]
+    if "--resume" in argv and os.environ.get("FAKE_CLAUDE_ORPHANS") == "1" and first("orphans"):
+        notice_turn("stopped", "", tasks=("bg1", "bg2"))
+    if "STALL" in text:
+        for _ in sys.stdin:                    # a message folded in is taken and never replayed
+            pass
+        break
     replay(msg)
     if "SLOW" in text and select.select([sys.stdin], [], [], 1.5)[0]:
         extra = json.loads(sys.stdin.readline())
@@ -178,3 +205,5 @@ while True:
             out({"type": "stream_event", "event": {"type": "content_block_delta", "delta": {"type": "text_delta", "text": "."}}})
             time.sleep(0.3)
     answer(text)
+    if "BACKGROUND" in text:                   # the notice turn lands while the room asks nothing
+        notice_turn("completed", "The render finished.")
