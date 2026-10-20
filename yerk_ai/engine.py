@@ -384,15 +384,15 @@ class RoomProcess:
 
     def read_turn(self, started: float, timeout: float = 600.0, record: bool = True,
                   on_event: Callable[[Turn, dict[str, Any]], None] | None = None) -> Turn:
-        """Consume events until the turn's result, the timeout, or the process exiting.
+        """Consume events until the turn's result, `timeout` seconds of silence, the 8-hour ceiling, or the process exiting.
         `on_event` sees every event after the turn has observed it (the progress card's feed)."""
         turn = Turn(started=started)
-        deadline = time.monotonic() + timeout
+        deadline, ceiling = time.monotonic() + timeout, time.monotonic() + 8 * 3600     # silence ends a turn, never its length
         while turn.ended is None:
-            if (item := self.next_event(deadline - time.monotonic())) is None:
+            if (item := self.next_event(min(deadline, ceiling) - time.monotonic())) is None:
                 turn.outcome = "timeout"
                 break
-            t, ev = item
+            (t, ev), deadline = item, time.monotonic() + timeout     # every event restarts the silence window
             if ev is None:
                 turn.outcome = "exited"
                 break

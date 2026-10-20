@@ -17,6 +17,7 @@ message and a success result echoing the text. Variations:
 - a line containing SLOW: waits up to 1.5 s for another line; if one comes, it is replayed and
   answered in the same result (a fold)
 - a line containing HANG: no answer for 60 s (a turn only /stop ends)
+- a line containing CHATTY: a stream event every 0.3 s for about 2 s, then the answer
 - --resume with FAKE_CLAUDE_MISSING=1: "No conversation found" on stderr, exit 1
 - --model equal to FAKE_CLAUDE_BAD_MODEL: every line fails as model_not_found, "There's an issue
   with the selected model" (a model on the list that no account can run)
@@ -172,4 +173,8 @@ while True:
         text = text + " + " + extra["message"]["content"]
     if "HANG" in text:
         time.sleep(60)
+    if "CHATTY" in text:     # keeps talking for about 2 s in 0.3 s steps: a silence window must not cut it
+        for _ in range(7):
+            out({"type": "stream_event", "event": {"type": "content_block_delta", "delta": {"type": "text_delta", "text": "."}}})
+            time.sleep(0.3)
     answer(text)
