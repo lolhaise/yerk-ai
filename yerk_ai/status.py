@@ -153,8 +153,7 @@ def card(s: dict[str, Any], now: float | None = None) -> list[str]:
             took = now - r["since"]
             out.append(W.named(f"{W.NOT_DONE if took > BLOCKED else W.PLAIN} {W.TURN_FOR}"
                                + (W.QUEUED.format(n=r["waiting"]) if r["waiting"] else ""), r["room"], took=W.span(took)))
-    out += [W.named(f"{W.PLAIN} {W.WATCHES}", r["room"], channel=str(r["watch"]).partition(":")[2])
-            for r in s["rooms"] if r.get("watch")]
+    out += [W.named(f"{W.PLAIN} {W.WATCHES}", r["room"], channel=str(r["watch"]).partition(":")[2]) for r in s["rooms"] if r.get("watch")]
     out += [W.named(f"{W.PLAIN} {W.PINNED}", r["room"], account=r["account"]) for r in s["rooms"] if r.get("account")]
     nth: dict[str, int] = {}
     for w in sorted(s["workers"], key=lambda w: (bool(w["waiting"]), float(w["queued"] or 0))):
@@ -171,6 +170,5 @@ def card(s: dict[str, Any], now: float | None = None) -> list[str]:
     out += [W.named(f"{W.PLAIN} {W.JOB_DUE}", j["name"], left=W.span(j["next"] - now)) for j in s["jobs"] or []]
     if s["jobs"] == []:
         out.append(row(W.PLAIN, W.NO_JOB_DUE))
-    out += [W.named(f"{W.PLAIN} {W.UNIT_USE}", u["name"], mb=round(u["rss_mb"]), cpu=u["cpu_pct"])
-            for u in s["units"] if not u.get("gone")]
+    out += [W.named(f"{W.PLAIN} {W.UNIT_USE}", u["name"], mb=round(u["rss_mb"]), cpu=u["cpu_pct"]) for u in s["units"] if not u.get("gone")]
     return out + [stall_line(s["stalls"], W.TODAY)]

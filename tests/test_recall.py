@@ -57,7 +57,7 @@ def test_mention_index_keys_names_files_and_headings_and_drops_marked_and_exclud
     assert not any(k.startswith("The example ladder") for k in keys)
     hit = idx.match("did example neighbour's ladder come back? and the car")
     assert [e["key"] for e in hit] == ["Example Neighbour", "car"]
-    assert hit[0]["cite"] == "facts/people.md:3"
+    assert hit[0]["cite"] == "facts/people.md:3" and (hit[0]["class"], hit[0]["room"]) == ("private", "")   # no front matter: private
     assert idx.match("nothing named here") == []
 
 

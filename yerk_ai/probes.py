@@ -703,8 +703,7 @@ def imessage(a: argparse.Namespace) -> dict[str, Any]:
     from .config import load_toml, private_dir, rooms
     priv, state = private_dir(getattr(a, "private", None)), state_dir(a.state)
     confs = rooms(priv)
-    named = {n: str(c.get("channel", "")).partition(":")[2] for n, c in confs.items()
-             if str(c.get("channel", "")).startswith("imessage:")}
+    named = {n: str(c.get("channel", "")).partition(":")[2] for n, c in confs.items() if str(c.get("channel", "")).startswith("imessage:")}
     if not named:
         return {"ok": False, "error": 'no room has channel = "imessage:<chat identifier>" in rooms.toml'}
     conf = dict((load_toml(priv / "yerkd.toml") if (priv / "yerkd.toml").is_file() else {}).get("imessage", {}))

@@ -513,8 +513,7 @@ class DiscordChannel:
                 why = refusal(e, upload_limit(ch))
         if m is None:
             self.ledger.delivery_set(key, state="failed", error=f"not confirmed before a restart; {why}")
-            await self._post(room, f"{words.NOT_DONE} {words.NOT_SENT_AGAIN.format(name=name, why=why)}", "notice", [],
-                             key=f"{base}-notice")
+            await self._post(room, f"{words.NOT_DONE} {words.NOT_SENT_AGAIN.format(name=name, why=why)}", "notice", [], key=f"{base}-notice")
             return
         self.ledger.delivery_set(key, state="sent", message_id=str(m.id), sent=time.time(),
                                  attempts=int(r["attempts"] or 0) + 1, note=REDELIVERED)
