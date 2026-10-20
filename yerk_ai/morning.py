@@ -80,8 +80,9 @@ def build(private: Path, state: Path, accounts: list[Account], cooldowns: Cooldo
     else:
         add("", W.PLAIN, W.NO_DEAD)
     flags = ledger.shadow_rules(since, until)
-    for rule, n in sorted(flags.items()):
-        add(f"shadow {rule}", W.WORKING, W.SHADOW.format(rule=rule, n=n))
+    for rule, n in sorted(flags.items()):                # a reply that held or conceded is counted, never a finding
+        fine = rule in ("stance held", "stance conceded")
+        add("" if fine else f"shadow {rule}", W.PLAIN if fine else W.WORKING, W.SHADOW.format(rule=rule, n=n))
     if not flags:
         add("", W.PLAIN, W.NO_SHADOW)
     for d in ledger.deploys(now - DAY):                  # its card may never have reached the machine room
