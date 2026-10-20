@@ -122,13 +122,7 @@ class Yerkd:
         self.meters = Meters(state / "meters.json")
         self.memory = memory.settings(private, state, dict(self.conf.get("memory", {})))
         self.scoped = {n: self.memory.only(private, n, c["also"]) for n, c in self.room_confs.items() if "also" in c}
-        held = (*self.memory.scope.roots, (private / "secrets").resolve(), state.resolve())
-        for n, c in ((n, c) for n, c in self.room_confs.items() if c.get("people")):   # its layer is a working folder, its files the prompt
-            lay, others = context.layer_dir(private, c), [context.layer_dir(private, d) for m, d in self.room_confs.items() if m != n]
-            files = [lay / str(c[k]) for k in ("persona", "rulebook", "voice", "pinned_memory", "open_loops") if c.get(k)]
-            if lay in others or private.resolve().is_relative_to(lay) or any(p.is_relative_to(lay) or lay.is_relative_to(p) for p in held) \
-                    or any(not f.resolve().is_relative_to(lay) for f in files):
-                raise SystemExit(f"room {n}: people needs a `layer` of its own, holding no memory root, secrets/ or state, its files inside it")
+        context.walls(private, state, self.memory.scope.roots, self.room_confs)
         self.daily = memory.DailyLog(self.memory.daily, self.memory.tz,
                                      {n: (room_id(n, c), memory.room_class(c)) for n, c in self.room_confs.items()})
         # day-log lines written before offsets, ids, authors and classes are rewritten once, here, before any
@@ -497,7 +491,7 @@ class Yerkd:
 
     async def hook(self, payload: dict[str, Any], auth: dict[str, str] | None = None) -> dict[str, Any]:
         """Every hook event, timed: the daemon's own time per call goes to the hook_calls ledger, so
-        the overhead per turn is a query (Ledger.hook_overhead), never a guess. A call no binding
+        the overhead per turn is a query on that table, never a guess. A call no binding
         explains is answered with the unbound marker and logged, never with a silent {}."""
         t0 = time.monotonic()
         event = str(payload.get("hook_event_name") or "")

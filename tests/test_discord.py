@@ -443,7 +443,7 @@ def test_attachments_are_staged_and_a_missing_one_is_said_out_loud(dc):
     assert staged.read_bytes().startswith(b"\x89PNG") and f"saved at {staged}" in got.text
     assert "bad.pdf: could not be fetched (OSError: cdn said no)" in got.text
     assert [f["ok"] for f in got.files] == [True, False] and got.files[0]["type"] == "image/png"
-    rows = d.ledger.attachments("5")
+    rows = d.ledger._select("SELECT * FROM attachments WHERE message_id = ? ORDER BY id", ("5",))
     assert [(r["name"], r["state"], r["size"]) for r in rows] == [("photo one.png", "staged", 24), ("bad.pdf", "missing", 1)]
     assert ch.sent[0].content == f"{words.NOT_DONE} could not fetch bad.pdf\nsend it again"
 

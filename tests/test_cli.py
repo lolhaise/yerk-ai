@@ -14,7 +14,7 @@ def yerk(*args):
 
 def test_help_lists_the_commands():
     r = yerk("--help")
-    assert r.returncode == 0 and "map" in r.stdout and "probe" in r.stdout
+    assert r.returncode == 0 and "map" in r.stdout and "retention" in r.stdout and "probe" not in r.stdout   # tests/contract/
 
 
 def test_map_example_room_is_within_budget():

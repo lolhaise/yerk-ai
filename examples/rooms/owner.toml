@@ -1,0 +1,14 @@
+# The owner-room template of `yerk room add NAME --from discord:ID`: one of your own chats, moved in.
+# The room is made like an owner room you have (--like ROOM, else the last owner room in rooms.toml that
+# is on Discord and is not the machine room): that room's block less `drop`, with [set] written over it,
+# and its channel's permission overwrites copied onto the new channel. {name} and {channel} are filled in.
+room = "{name}-on-yerk"
+drop = ["id", "watch", "role", "people", "pinned_memory", "open_loops"]   # the other room's own, never copied
+
+[set]
+channel = "discord:{channel}"
+voice = "rooms/{name}.md"
+
+# Written into the room's layer when missing; --voice FILE is copied in place of the voice line.
+[files]
+"rooms/{name}.md" = "# {name}: how this room talks. One line until you write it.\n"

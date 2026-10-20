@@ -184,7 +184,6 @@ MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], Any]]] = [
     (2, "ids as rows: message_links backfilled from the comma-joined columns", backfill_links),
     (3, "the indexes the hot queries need", lambda db: [db.execute(x) for x in INDEXES.split(";") if x.strip()]),
 ]
-VERSION = MIGRATIONS[-1][0]
 
 
 class Ledger:
@@ -240,12 +239,6 @@ class Ledger:
             for pos, mid in enumerate(ids_of(row[col])):
                 self.db.execute("INSERT OR IGNORE INTO message_links (tbl, row_key, col, message_id, pos) VALUES (?, ?, ?, ?, ?)",
                                 (table, str(row_key), col, mid, pos))
-
-    def links(self, table: str, row_key: Any, col: str) -> list[str]:
-        """The ids of one row's list column, as rows, in order."""
-        return [str(r["message_id"]) for r in self._select(
-            "SELECT message_id FROM message_links WHERE tbl = ? AND row_key = ? AND col = ? ORDER BY pos",
-            (table, str(row_key), col))]
 
     def evidence(self, **row: Any) -> int:
         """One tool call of a turn and what it read (L185)."""
@@ -322,18 +315,6 @@ class Ledger:
         """The turn's evidence rows with each call's time and failure (None until its PostToolUse)."""
         return self._select("SELECT e.*, t.ms, t.failed, t.error FROM evidence e LEFT JOIN tool_times t "
                             "ON e.tool_use_id = t.tool_use_id WHERE e.turn = ? ORDER BY e.id", (turn,))
-
-    def hook_overhead(self, since: float = 0.0) -> dict[str, Any]:
-        """The hooks' own time per turn (every event of the turn summed): turns, calls, p50, p95, max."""
-        per = [float(r["ms"]) for r in self._select(
-            "SELECT turn, sum(ms) AS ms FROM hook_calls WHERE t >= ? AND turn != '' GROUP BY turn ORDER BY ms",
-            (since,))]
-        calls = self._select("SELECT count(*) AS n FROM hook_calls WHERE t >= ?", (since,))[0]["n"]
-
-        def pct(q: float) -> float | None:                  # nearest rank
-            return round(per[max(0, math.ceil(q * len(per)) - 1)], 1) if per else None
-        return {"turns": len(per), "calls": int(calls), "p50_ms": pct(0.5), "p95_ms": pct(0.95),
-                "max_ms": round(per[-1], 1) if per else None}
 
     # observability (beat.py, status.py, morning.py)
     def stall(self, **row: Any) -> int:
@@ -600,9 +581,6 @@ class Ledger:
     def attachment(self, **row: Any) -> int:
         return self._insert("attachments", {"at": time.time(), **row})
 
-    def attachments(self, message_id: str) -> list[dict[str, Any]]:
-        return self._select("SELECT * FROM attachments WHERE message_id = ? ORDER BY id", (message_id,))
-
     def card_open(self, message_id: str, room: str, kind: str) -> None:
         self._insert("cards", {"message_id": message_id, "room": room, "kind": kind, "opened": time.time()})
 
@@ -615,3 +593,19 @@ class Ledger:
 
     def hold(self, room: str, wait_for: str, reason: str) -> int:
         return self._insert("holds", {"room": room, "wait_for": wait_for, "reason": reason, "at": time.time()})
+
+    # retention (retention.py): a timing table's rows past their days, then the WAL into the database
+    def older(self, table: str, column: str, before: float) -> list[dict[str, Any]]:
+        return self._select(f"SELECT * FROM {table} WHERE {column} < ?", (before,))
+
+    def expire(self, table: str, column: str, before: float) -> None:
+        """Those rows deleted, the id rows of their list columns first."""
+        with self.lock:
+            for (tbl, col), key in ((k, v) for k, v in LINKED.items() if k[0] == table):
+                self.db.execute(f"DELETE FROM message_links WHERE tbl = ? AND col = ? AND row_key IN (SELECT CAST({key} AS TEXT) "
+                                f"FROM {table} WHERE {column} < ?)", (tbl, col, before))
+            self.db.execute(f"DELETE FROM {table} WHERE {column} < ?", (before,))
+
+    def checkpoint(self) -> None:
+        with self.lock:
+            self.db.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchall()

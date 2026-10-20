@@ -1,0 +1,38 @@
+# The person-room template of `yerk room add NAME --from discord:ID --person USER_ID`: someone else's chat,
+# moved in behind the wall. The room is made like a person room you have (--like ROOM, else the last room in
+# rooms.toml with `people`), so its wall is reused: model, effort, time zone and web tools come from it, and
+# its persona and rulebook (`copy`, by their keys) are copied into a layer of the new room's own under the
+# private folder, made 0700. [set] wins over whatever that room had, `people` is the --person id, and the
+# channel lets the person in with `allow` (view, send, embed links, attach files, read history, react: what a
+# person room's person is given). {name}, {channel} and {layer} are filled in.
+room = "{name}-on-yerk"
+drop = ["id", "watch", "role", "read", "also", "sandbox", "class", "sealed"]
+copy = ["persona", "rulebook"]
+allow = 117824
+
+# A copy keeps none of the other room's own text: a line naming its folder goes, and so does the persona's section
+# under this heading, the one about its person; this section is written at the persona's end in its place. OWNER,
+# PERSON and RELATION are yours to fill in before they are let in.
+about = """# About the owner
+
+OWNER is the owner of this install and PERSON's RELATION. What you know about OWNER in this room is what is said in this room; OWNER's life outside it is OWNER's to tell, never yours to guess at or repeat.
+
+This room reads its own folder, {layer}, with Read, Grep and Glob; its memory comes through recall and read_memory: its own day-log lines, the memory files marked shared or as this room's own, and memory/rules.md.
+"""
+
+[set]
+channel = "discord:{channel}"
+layer = "{layer}"
+tools = ["Read", "Grep", "Glob"]
+privacy = "family"
+persona = "persona.md"
+rulebook = "rulebook.md"
+voice = "rooms/{name}.md"
+pinned_memory = "pinned.md"
+open_loops = "open-loops.md"
+
+# Written into the room's layer when missing; --voice FILE is copied in place of the voice line.
+[files]
+"rooms/{name}.md" = "# {name}: how this room talks. One line until you write it.\n"
+"pinned.md" = "# {name}: the standing card, what this room always has in front of it. Write it before they are let in.\n"
+"open-loops.md" = "# {name}: open items, one per line.\n"

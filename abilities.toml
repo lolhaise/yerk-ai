@@ -1099,3 +1099,12 @@ tier = "free"
 needs = "nothing; the model list is models.toml in the package (alias = full id), replaced whole by [models] in yerkd.toml"
 free_path = "this is the free path"
 asked_as = ["change your model", "switch your model", "change the model", "switch the model", "thinking level"]
+
+[abilities.retention]
+state = "built"
+what = "Keeps the state folder from growing forever: `yerk retention` runs each night (units/yerk-retention.timer) and keeps a room's stream log and assembled log 14 days, gzipped a day at a time; a room's Claude Code transcripts 30 days after their last write, and never the session the room is on, one written in the last 24 hours or one of a room mid-turn or with a message waiting; the ledger's timing rows 90 days; a finished worker's folder and its transcript 30 days; a room's scratch, its work folder but the person's files and the copies of what it sent, 2 days, and past 500 MB its oldest files first, never one written in the last hour or while the room has a turn running. Nothing is deleted on the spot: what leaves waits 7 days in the state folder's trash, so a wrong rule costs a week, not data. It never touches the memory tree, the private layer, a room's attachments or a file still open. The days are [retention] in yerkd.toml; `yerk retention --dry-run` says what would go and how much, and the morning diff says what went."
+tier = "free"
+needs = "a systemd user timer (units/yerk-retention.timer) and Linux /proc, which says what is still open"
+free_path = "this is the free path"
+asked_as = ["how long do you keep", "retention sweep", "your trash folder"]
+layer = 11

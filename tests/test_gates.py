@@ -401,6 +401,6 @@ def test_hook_overhead_per_turn_is_under_150_ms_at_the_95th_percentile(served):
     p95 = per_turn[18]                                    # nearest rank of 20
     time.sleep(0.2)
     y.flush_times()
-    over = y.ledger.hook_overhead()
-    assert over["turns"] == 20 and over["calls"] == 160
-    assert p95 < 150 and over["p95_ms"] < 150, (p95, over)
+    per = [ms for _, ms in y.ledger.db.execute("SELECT turn, sum(ms) FROM hook_calls WHERE turn != '' GROUP BY turn ORDER BY 2")]
+    assert len(per) == 20 and y.ledger.db.execute("SELECT count(*) FROM hook_calls").fetchone()[0] == 160
+    assert p95 < 150 and per[18] < 150, (p95, per)        # the hooks' own time per turn, every event summed

@@ -54,7 +54,7 @@ from typing import Any, Callable, Iterator
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from . import words
-from .config import REPO
+from .config import REPO, toml_value
 from .ledger import Ledger
 from .lifted.killtree import stop_group
 from .room import HARNESS, Inbound
@@ -510,18 +510,10 @@ def locked(path: Path) -> Iterator[None]:
             fcntl.flock(f, fcntl.LOCK_UN)
 
 
-def _toml_value(v: Any) -> str:
-    if isinstance(v, bool):
-        return "true" if v else "false"
-    if isinstance(v, (int, float)):
-        return f"{v:g}" if isinstance(v, float) else str(v)
-    return json.dumps(str(v), ensure_ascii=False)
-
-
 def block(name: str, fields: dict[str, Any]) -> str:
     """A [jobs.NAME] table as text, keys in KEYS order."""
     lines = [f"[jobs.{name}]"]
-    lines += [f"{k} = {_toml_value(fields[k])}" for k in KEYS if k in fields and fields[k] not in ("", None)]
+    lines += [f"{k} = {toml_value(fields[k])}" for k in KEYS if k in fields and fields[k] not in ("", None)]
     return "\n".join(lines) + "\n"
 
 

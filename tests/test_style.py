@@ -20,6 +20,8 @@ from yerk_ai.daemon import NO_KEY_LINE, ConsoleChannel, Yerkd
 from yerk_ai.engine import SessionTable
 from yerk_ai.room import fit
 
+DOTS = (words.DONE, words.WORKING, words.NOT_DONE, words.NOTHING)
+
 PKG = Path(__file__).resolve().parents[1] / "yerk_ai"
 HOME = "/home/someone/.local/state/yerk/workers/abc123"          # a path that must never reach a room
 ISO = re.compile(r"\b\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}")
@@ -33,7 +35,7 @@ def room_safe(text: str) -> list[str]:
 
 
 def state_first(text: str) -> bool:
-    return text.split("\n")[0][:1] in "".join(words.DOTS)
+    return text.split("\n")[0][:1] in "".join(DOTS)
 
 
 def se(event):
@@ -225,7 +227,7 @@ def spelled(source: str) -> list[str]:
 def test_the_vocabulary_is_the_only_place_a_state_mark_or_phrase_is_spelled():
     hits = [f"{rel}: {h}" for rel in RENDERERS for h in spelled((PKG / rel).read_text())]
     assert not hits, "\n".join(hits)
-    assert len(phrases()) > 30 and words.DOTS == ("\U0001F7E2", "\U0001F7E0", "\U0001F534", "\u26AA")
+    assert len(phrases()) > 30 and DOTS == ("\U0001F7E2", "\U0001F7E0", "\U0001F534", "\u26AA")
 
 
 def test_the_vocabulary_grep_catches_a_renderer_that_spells_its_own():
