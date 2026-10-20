@@ -229,6 +229,7 @@ def test_the_owners_model_command_works_in_a_family_room_where_the_rooms_own_too
     assert slash(dc, "model") == [("message", f"{words.PLAIN} it back: As 0.0, plain text", True)]
     assert slash(dc, "effort", effort="low")[0][1] == f"{words.DONE} next reply: Fable 5.1, low thinking"
     assert slash(dc, "model", user=STRANGER, effort="max") == [("message", f"{words.NOT_DONE} {words.NOT_OWNER}", True)]
+    assert slash(dc, "model", user=PERSON, effort="max") == [("message", f"{words.NOT_DONE} {words.NOT_OWNER}", True)]   # in its people
     assert asyncio.run(y.tool_settings(ROOM, "", "max")) == {"ok": False, "line": words.OWNER_ONLY}
     assert json.loads((tmp_path / "rooms" / ROOM / "override.json").read_text()) == {"effort": "low"}
 

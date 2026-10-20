@@ -464,6 +464,17 @@ def test_two_attachments_with_one_name_in_one_message_are_both_staged(dc):
     assert [(r["name"], r["path"]) for r in rows] == [("image.png", str(first)), ("image.png", str(second))]
 
 
+def test_two_names_that_stage_as_one_name_are_both_kept(dc):
+    """safe_name makes a#.png and a!.png both a_.png: the second is numbered like a repeated name, never staged over it."""
+    d, client, room = dc
+    files = [Attachment("a#.png", b"1" * 10), Attachment("a!.png", b"2" * 20), Attachment("a#.png", b"3" * 30)]
+    run(d.on_message(Msg(client.chans[ROOM_CH], 7, "three", attachments=files)))
+    [got] = room.got
+    inbox = room.tmp / "inbox" / "7"
+    assert [f["path"] for f in got.files] == [str(inbox / "a_.png"), str(inbox / "1-a_.png"), str(inbox / "2-a_.png")]
+    assert [(inbox / n).read_bytes()[:1] for n in ("a_.png", "1-a_.png", "2-a_.png")] == [b"1", b"2", b"3"]
+
+
 def test_a_failed_turn_keeps_its_card_saying_what_was_owed(dc):
     d, client, _ = dc
     ch = client.chans[ROOM_CH]
