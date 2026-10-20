@@ -147,6 +147,15 @@ def test_the_rulebook_line_keeps_about_1000_over_the_largest_room_text_and_what_
     assert bad == [] and part["rules"].raw > 11000 and "[...trimmed" not in context.appended_file(start)
 
 
+def test_the_mechanics_say_when_work_goes_to_a_worker_inside_their_budget():
+    """Seen live: a 36-step job ran 15 minutes inside a room's own turn; knowing `worker` exists is not knowing
+    when to use it."""
+    text = context.MECHANICS.read_text().strip()
+    line = next(x for x in text.splitlines() if "`worker`" in x)
+    assert "five minutes" in line and "one line now" in line
+    assert context.chars(text) < budgets()["session_start"]["appended"]["mechanics"]
+
+
 def test_declared_parts_fit_the_declared_total():
     s = budgets()["session_start"]
     assert sum(s["claude_code"].values()) + sum(s["appended"].values()) <= s["total"]

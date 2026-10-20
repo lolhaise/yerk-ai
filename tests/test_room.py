@@ -197,15 +197,78 @@ def test_the_account_the_room_is_put_on_starts_first_and_a_failure_on_it_still_h
     room.rp.close()
 
 
-def test_empty_reply_retries_once_in_a_fresh_session(env):
-    make, ledger, _ = env
+def test_an_empty_reply_resumes_the_same_session_once_more(env):
+    """The bound session holds the day's context and a second resume costs seconds (seen live: the empty reply
+    went straight to a new session)."""
+    make, ledger, tmp_path = env
     chan = Chan()
     room = make(chan)
-    send(room, ledger, "1", "EMPTY_ONCE please")
+    send(room, ledger, "1", "hello")
     wait_idle(room)
-    rows = sorted(ledger.rows(5), key=lambda r: r["id"])
-    assert [r["outcome"] for r in rows] == ["empty", "ok"] and rows[0]["session_id"] != rows[1]["session_id"]
-    assert chan.replies == [("echo: EMPTY_ONCE please", ["1"])]
+    sid = room.rp.session_id
+    send(room, ledger, "2", "EMPTY_ONCE please")
+    wait_idle(room)
+    assert [(r["outcome"], r["session_id"], r["recap"]) for r in rows_of(ledger)] == [
+        ("ok", sid, None), ("empty", sid, None), ("ok", sid, None)]
+    last = argvs(tmp_path)[-1]["argv"]
+    assert len(argvs(tmp_path)) == 2 and last[last.index("--resume") + 1] == sid       # a new process, the same session
+    assert chan.replies[-1] == ("echo: EMPTY_ONCE please", ["2"]) and f"{words.WORKING} {words.EMPTY_AGAIN}" in chan.cards
+    room.rp.close()
+
+
+def test_an_empty_reply_twice_starts_fresh_through_the_recap(env):
+    make, ledger, tmp_path = env
+    chan = Chan()
+    room = make(chan)
+    send(room, ledger, "1", "hello")
+    wait_idle(room)
+    sid = room.rp.session_id
+    send(room, ledger, "2", "EMPTY_TWICE please")
+    wait_idle(room)
+    assert [(r["outcome"], r["session_id"] == sid, r["recap"]) for r in rows_of(ledger)[1:]] == [
+        ("empty", True, None), ("empty", True, None), ("ok", False, 1)]
+    text, ids = chan.replies[-1]
+    assert ids == ["2"] and text.startswith("echo: (Yerk AI: the earlier session") and "the day log holds what was said" in text
+    assert 'The last reply here began: "echo: hello")' in text and text.endswith("\n\nEMPTY_TWICE please")
+    assert f"{words.WORKING} {words.EMPTY_AGAIN}" in chan.cards and f"{words.WORKING} {words.NEW_SESSION}" in chan.cards
+    room.rp.close()
+
+
+def test_a_resume_that_first_reports_orphaned_commands_answers_on_the_same_session(env, monkeypatch):
+    """The live shape (ledger turns 369 and 372): the process died with two background commands
+    running; on the next message's resume Claude Code first reported them in a turn of its own, whose empty result
+    ended the owner's turn, and the room killed the process mid-answer and went fresh with no recap."""
+    make, ledger, tmp_path = env
+    chan = Chan()
+    room = make(chan)
+    send(room, ledger, "1", "move the split pages to the trash")
+    wait_idle(room)
+    sid = room.rp.session_id
+    room.rp.close()                                            # the machine went down; the next message resumes
+    monkeypatch.setenv("FAKE_CLAUDE_ORPHANS", "1")
+    send(room, ledger, "2", "yea try to get the answer key")
+    wait_idle(room)
+    assert [(r["outcome"], r["session_id"], r["accepted"]) for r in rows_of(ledger)] == [("ok", sid, 1), ("ok", sid, 1)]
+    assert chan.replies[-1] == ("echo: yea try to get the answer key", ["2"]) and len(argvs(tmp_path)) == 2
+    room.rp.close()
+
+
+def test_a_message_folded_into_a_turn_that_dies_gets_its_own_turn(env):
+    """Seen live (ledger turn 372): the owner's greeting folded into a 36-step job's turn, was never replayed,
+    and was marked failed with it when the turn ended timeout, fatal."""
+    make, ledger, tmp_path = env
+    chan = Chan()
+    room = make(chan)
+    room.turn_timeout = 1.0                                    # its silence window, short
+    assert send(room, ledger, "1", "STALL work through every markup") == "started"
+    time.sleep(0.4)
+    assert send(room, ledger, "2", "hello") == "folded"
+    wait_idle(room)
+    assert [ids for _, ids in chan.notices] == [["1"]] and chan.replies == [("echo: hello", ["2"])]
+    assert (ledger.inbound_get("1")["state"], ledger.inbound_get("2")["state"]) == ("failed", "answered")
+    rows = rows_of(ledger)
+    assert [(r["outcome"], r["failure"]) for r in rows] == [("timeout", "fatal"), ("ok", None)]
+    assert rows[0]["session_id"] == rows[1]["session_id"] and f"{words.WORKING} {words.AFTER_FAILED}" in chan.cards
     room.rp.close()
 
 
