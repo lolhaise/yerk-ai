@@ -268,3 +268,15 @@ def test_the_hook_error_flag_drops_claude_codes_key_hint():
     t.observe(101.0, {"type": "system", "subtype": "notification", "key": "stop-hook-error",
                       "text": "Stop hook error occurred · ctrl+o to see"})
     assert t.flags == ["hook_error:Stop hook error occurred"]
+
+
+def test_a_turn_ends_on_silence_never_on_length(make):
+    """a second, 0000-00-00 00:00, entry waits in #the-queue-for its turn and the 00 last: "part closes the case before 00 the
+    is still working. The timeout is a silence window: a turn still streaming runs past it; a silent one ends."""
+    with make() as rp:
+        rp.start()
+        talking = rp.ask("CHATTY measure every roof", timeout=1.0)
+        assert talking.outcome == "ok" and "CHATTY" in talking.text      # about 2 s long, never 1 s quiet
+        silent = rp.ask("HANG", timeout=1.0)
+        assert silent.outcome == "timeout"
+        rp.end_now()                       # the fake sleeps 60 s: no 15 s close() grace in teardown
