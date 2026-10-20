@@ -194,6 +194,32 @@ def test_model_and_effort_land_between_turns_through_the_settings_tool(y, tmp_pa
     room.rp.close()
 
 
+def test_model_puts_the_room_on_an_account_between_turns_through_the_settings_tool(y, tmp_path):
+    y.accounts.append(Account("two", tmp_path / "cfg2"))
+    dc, room, chan = wire(y)
+    say(y, room, "1", "SLOW hello")
+    wait(lambda: room.reading)
+    first = room.rp
+    t = tmp_path / "projects" / f"{first.session_id}.jsonl"                 # the transcript the hooks named
+    t.parent.mkdir()
+    t.write_text("{}\n")
+    y.learn_transcript(ROOM, {"session_id": first.session_id, "transcript_path": str(t)})
+    assert slash(dc, "model", account="two") == [
+        ("message", f"{words.DONE} next reply: Fable 5.1, default thinking, on account two\n{words.CARRIED}", True)]
+    assert room.rp is first and first.alive()                # never inside the running turn
+    wait(lambda: not room.busy)
+    say(y, room, "2", "and now?")
+    wait(lambda: not room.busy)
+    r = rows(tmp_path)[-1]                                   # the same session, carried to the pinned account
+    assert r["config_dir"] == str(tmp_path / "cfg2") and r["argv"][r["argv"].index("--resume") + 1] == str(t)
+    assert slash(dc, "model") == [("message", f"{words.PLAIN} this room: Fable 5.1, default thinking, on account two", True)]
+    assert slash(dc, "model", account="five") == [("message", f"{words.NOT_DONE} not an account: five\n"
+                                                              "the accounts: one, two, default", True)]
+    assert slash(dc, "model", user=STRANGER, account="one") == [("message", f"{words.NOT_DONE} {words.NOT_OWNER}", True)]
+    assert json.loads((tmp_path / "rooms" / ROOM / "override.json").read_text()) == {"account": "two"}   # untouched
+    room.rp.close()
+
+
 def test_stop_ends_the_running_turn_now_and_for_good(y, tmp_path):
     dc, room, chan = wire(y)
     say(y, room, "1", "HANG build the thing")
@@ -365,13 +391,17 @@ def test_registration_is_exactly_these_commands_on_exactly_the_rooms_guilds(y, t
     dc = DiscordChannel("t", OWNER, [], y.ledger, client=bot, daemon=y)
     for cid in (ROOM_CH, OTHER_CH, 33):
         dc.add_room(cid, NS(name=f"r{cid}"))
+    y.accounts.append(Account("two", tmp_path / "cfg2"))
     asyncio.run(dc.register())
     assert [(app, g) for app, g, _ in bot.puts] == [(4242, 1), (4242, 2)]   # one overwrite per guild
     sent = bot.puts[0][2]
     assert bot.puts[1][2] == sent and [c["name"] for c in sent] == ["model", "effort", "new", "stop", "status"]
     assert [c["value"] for c in sent[0]["options"][0]["choices"]] == [*y.models, "default"]
     assert [c["value"] for c in sent[1]["options"][0]["choices"]] == [*EFFORTS, "default"]
+    assert [o["name"] for o in sent[0]["options"]] == ["model", "account"] and len(sent[1]["options"]) == 1
+    assert "choices" not in sent[0]["options"][1] and "two" not in json.dumps(sent)   # typed: no account name for the guild
     assert all(len(c["description"]) <= 100 and c["type"] == 1 for c in sent)
+    assert all(len(o["description"]) <= 100 and not o["required"] for c in sent for o in c["options"])
     off = Bot({ROOM_CH: 1})                                    # [discord] commands = false
     dc = DiscordChannel("t", OWNER, [], y.ledger, client=off, daemon=None)
     dc.add_room(ROOM_CH, NS(name="r"))

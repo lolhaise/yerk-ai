@@ -128,8 +128,7 @@ CREATE INDEX IF NOT EXISTS watch_events_job_state ON watch_events (job, state, i
 CREATE INDEX IF NOT EXISTS cards_room_closed ON cards (room, closed);
 CREATE INDEX IF NOT EXISTS health_account_id ON health (account, id);
 CREATE INDEX IF NOT EXISTS message_links_message ON message_links (message_id, tbl)"""
-HEALTH = ("at", "account", "config_dir", "ok", "failure", "source", "login", "identity", "identity_ok", "model",
-          "ms", "note")
+HEALTH = ("at", "account", "config_dir", "ok", "failure", "source", "login", "identity", "identity_ok", "model", "ms", "note")
 
 WORKERS = ("room", "account", "unit", "model", "session_id", "brief", "staging", "report", "tasks", "cap", "card",
            "started", "finished", "exit", "exit_detail", "result", "stop_requested", "relay", "relay_note",
@@ -226,8 +225,7 @@ class Ledger:
     def _insert(self, table: str, row: dict[str, Any]) -> int:
         cols = ", ".join(row)
         with self.lock:
-            cur = self.db.execute(f"INSERT INTO {table} ({cols}) VALUES ({', '.join('?' * len(row))})",
-                                  tuple(row.values()))
+            cur = self.db.execute(f"INSERT INTO {table} ({cols}) VALUES ({', '.join('?' * len(row))})", tuple(row.values()))
             rid = int(cur.lastrowid or 0)
             self._link(table, row, rid)
         return rid
@@ -273,8 +271,7 @@ class Ledger:
         if not r:
             return None
         with self.lock:
-            self.db.execute("UPDATE approvals SET approved = ?, approved_by = ? WHERE id = ?",
-                            (time.time(), by, r[0]["id"]))
+            self.db.execute("UPDATE approvals SET approved = ?, approved_by = ? WHERE id = ?", (time.time(), by, r[0]["id"]))
         return r[0]
 
     def release(self, room: str, rule: str, call: str, cwd: str, window_s: float) -> dict[str, Any] | None:
@@ -353,8 +350,7 @@ class Ledger:
             return self._insert("deploys", {"at": time.time(), **row})
         known(row, {"kind", "unit", "before", "after", "outcome", "cut", "proof", "note"}, "deploys")
         with self.lock:
-            self.db.execute(f"UPDATE deploys SET {', '.join(f'{k} = ?' for k in row)} WHERE id = ?",
-                            (*row.values(), row_id))
+            self.db.execute(f"UPDATE deploys SET {', '.join(f'{k} = ?' for k in row)} WHERE id = ?", (*row.values(), row_id))
         return row_id
 
     def deploys(self, since: float) -> list[dict[str, Any]]:
@@ -454,8 +450,7 @@ class Ledger:
                             (account, source, since, until))
 
     def health_notes(self, account: str, source: str) -> set[str]:
-        return {str(r["note"]) for r in self._select("SELECT note FROM health WHERE account = ? AND source = ?",
-                                                     (account, source))}
+        return {str(r["note"]) for r in self._select("SELECT note FROM health WHERE account = ? AND source = ?", (account, source))}
 
     def health_last(self, account: str, source: str | None = None) -> dict[str, Any] | None:
         r = self._select(f"SELECT * FROM health WHERE account = ?{'' if source is None else ' AND source = ?'} ORDER BY id DESC "

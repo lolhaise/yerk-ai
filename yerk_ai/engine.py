@@ -243,8 +243,7 @@ class Turn:
             info = ev.get("rate_limit_info") or {}
             self.windows = info.get("unifiedWindows") or self.windows
             if info.get("status") == "rejected":
-                self.flags.append("credits_required" if info.get("errorCode") == "credits_required"
-                                  else "rate_limit_rejected")
+                self.flags.append("credits_required" if info.get("errorCode") == "credits_required" else "rate_limit_rejected")
         elif kind == "result":
             self.result, self.ended = ev, t
             self.text = str(ev.get("result") or "")
@@ -309,11 +308,11 @@ class RoomProcess:
             self.resume_arg, self.session_id = resume, Path(resume).stem if resume.endswith(".jsonl") else resume
         elif row:
             self.session_id = str(row["session_id"])
-            # Under another account Claude Code searches that account's own projects folder for the id,
-            # so a hop resumes by the transcript's absolute path, which the docs promise for --resume
-            # (restart test R1); the same account resumes by id, which also finds a moved transcript.
+            # Claude Code searches only its own account's projects folder for an id, and a session resumed by path goes
+            # on writing where its transcript was: a transcript outside this account's folder (a hop, a room put on another
+            # account, and every start after) resumes by its absolute path (restart test R1); one inside it, by id.
             path = str(row.get("transcript") or "")
-            self.resume_arg = path if path and row.get("account") != self.account.name and os.path.isfile(path) \
+            self.resume_arg = path if path and Path(path).parent != self.projects and os.path.isfile(path) \
                 else self.session_id
         else:
             self.resume_arg, self.session_id = None, str(uuid.uuid4())

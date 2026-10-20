@@ -89,8 +89,7 @@ class Embedder:
         """(len(texts), dim) float32 unit vectors, in order. ProviderTimeout or ProviderError past the budget."""
         if (key := self._key()) is None:
             raise ProviderError("no provider key")
-        body = json.dumps({"model": self.model, "input": texts, "dimensions": self.dim,
-                           "encoding_format": "base64"}).encode()
+        body = json.dumps({"model": self.model, "input": texts, "dimensions": self.dim, "encoding_format": "base64"}).encode()
         timeout = self.timeout if timeout is None else timeout
         retries = self.retries if retries is None else retries
         wait = 1.0

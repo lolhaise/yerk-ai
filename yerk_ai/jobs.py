@@ -120,8 +120,7 @@ class JobError(ValueError):
 
 
 # the schedule: cron, every, at
-MONTHS = {m: i + 1 for i, m in enumerate(("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov",
-                                          "dec"))}
+MONTHS = {m: i + 1 for i, m in enumerate(("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"))}
 DAY_NAMES = ("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
 DAYS = {d.lower(): i for i, d in enumerate(DAY_NAMES)}
 
@@ -1082,8 +1081,7 @@ def run(name: str, private: Path, state: Path, units: Systemd | None = None,
             ledger.job_run_set(run_id, result="output" if payload["job"]["output"].strip() else "nothing",
                                delivery=f"undelivered: {why}")
         else:
-            ledger.job_run_set(run_id, ended=time.time(), exit="not run", result="did not start",
-                               delivery=f"undelivered: {why}")
+            ledger.job_run_set(run_id, ended=time.time(), exit="not run", result="did not start", delivery=f"undelivered: {why}")
         print(f"job {name}: {why}", file=sys.stderr)
         rc = rc or 1
     if job.when == "at":
@@ -1253,8 +1251,7 @@ class Jobs:
 
         def then(state: str, ids: list[str], chars: int) -> None:
             loop.call_soon_threadsafe(lambda: self.workers._spawn(self.ended(eid, state, ids)))
-        self.workers.ask(room, Inbound(mid, HARNESS, text[:self.workers.conf.relay_message], cap=cap, then=then,
-                                       alone=True))
+        self.workers.ask(room, Inbound(mid, HARNESS, text[:self.workers.conf.relay_message], cap=cap, then=then, alone=True))
         log.info("watcher %s: event %d asked a turn in %s (attempt %d)", name, eid, room, attempt)
         return {"ok": True, "id": eid, "inbound": mid}
 
@@ -1284,8 +1281,7 @@ class Jobs:
         self.ledger.watch_set(eid, state="failed", ended=round(time.time(), 3),
                               note=f"attempt {ev['attempts']} {state}: {note}".strip(": "))
         end = state if state in ("timed out", "died", "lost", "did not start") else "failed"
-        await self.alert(self.jobs().get(str(ev["job"])), words.job_line(str(ev["job"]), end, cap, result), 0,
-                         str(ev["room"]))
+        await self.alert(self.jobs().get(str(ev["job"])), words.job_line(str(ev["job"]), end, cap, result), 0, str(ev["room"]))
 
     async def events_open(self, restarted: bool = False) -> None:
         """Pending events with no turn asked; after a restart, a turn the old process left: its reply
@@ -1485,8 +1481,7 @@ class Jobs:
                 continue
             text = f"(late: the daemon was not running when job {r['job']} ran at {when_text(r['fired'], job.tz if job else 'UTC')})\n{output[:OUTPUT_MAX]}"
             ids = await self.post(str(r["room"]), text, f"job-{r['id']}-late")
-            self.ledger.job_run_set(int(r["id"]), delivery="delivered late" if ids else r["delivery"],
-                                    message_ids=",".join(ids))
+            self.ledger.job_run_set(int(r["id"]), delivery="delivered late" if ids else r["delivery"], message_ids=",".join(ids))
 
 
 def main(argv: list[str] | None = None) -> int:

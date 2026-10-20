@@ -3,7 +3,7 @@
 
 [rooms.example-room]
 channel = "discord:CHANNEL_ID"
-accounts = ["one", "two"]
+accounts = ["one", "two"]     # tried in this order, then the rest of accounts.toml; the settings tool or /model can put the room on one account first
 model = "claude-fable-5-1"
 tools = ["Read", "Grep", "Glob"]
 privacy = "owner"

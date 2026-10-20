@@ -56,9 +56,9 @@ def env(tmp_path, monkeypatch):
     data = tomllib.loads(table("failures.toml").read_text())
     data["rerun"]["wait"] = [0.0]                       # the reruns without the waits
 
-    def make(chan, idle=1800.0, meters=None):
+    def make(chan, idle=1800.0, meters=None, conf=None):
         spec = lambda: RoomSpec(room="r", model="m", cwd=tmp_path, tools=["Read"])  # noqa: E731
-        return Room("r", {}, spec, accounts, chan, tmp_path, ledger, FailureTable(data),
+        return Room("r", conf or {}, spec, accounts, chan, tmp_path, ledger, FailureTable(data),
                     Cooldowns(tmp_path / "cooldowns.json"), idle_seconds=idle, meters=meters)
     return make, ledger, tmp_path
 
@@ -129,6 +129,27 @@ def test_quota_failure_hops_to_the_next_account_in_the_same_turn(env, monkeypatc
     room.rp.close()
 
 
+def test_a_hop_in_a_room_that_is_not_the_owners_names_no_account(env, monkeypatch):
+    make, ledger, tmp_path = env
+    monkeypatch.setenv("FAKE_CLAUDE_FAIL_DIRS", str(tmp_path / "cfg1"))
+    chan = Chan()
+    room = make(chan, conf={"privacy": "family"})              # the wall: such a room never learns an account name
+    send(room, ledger, "1", "hello")
+    wait_idle(room)
+    rows = sorted(ledger.rows(5), key=lambda r: r["id"])
+    assert chan.replies == [("echo: hello", ["1"])] and [r["hop"] for r in rows] == [None, "quota:one"]   # it did hop
+    assert f"{words.WORKING} {words.MOVED_ON}" in chan.cards
+    assert not any("account" in c or "two" in c.split() for c in chan.cards)
+    room.rp.close()
+    (tmp_path / "cooldowns.json").unlink()                     # one rests after that hop; the owner's room gets it fresh
+    owner = Chan()
+    room = make(owner)                                         # privacy unset: the owner's room, its note names the account
+    send(room, ledger, "2", "again")
+    wait_idle(room)
+    assert owner.replies == [("echo: again", ["2"])] and f"{words.WORKING} still on it, moved to account two" in owner.cards
+    room.rp.close()
+
+
 def test_a_session_that_answered_before_resumes_on_the_next_account(env, monkeypatch):
     make, ledger, tmp_path = env
     chan = Chan()
@@ -143,6 +164,35 @@ def test_a_session_that_answered_before_resumes_on_the_next_account(env, monkeyp
     last = argvs(tmp_path)[-1]
     assert last["config_dir"] == str(tmp_path / "cfg2") and last["argv"][last["argv"].index("--resume") + 1] == sid
     assert chan.replies[-1] == ("echo: again", ["2"])
+    room.rp.close()
+
+
+def test_the_account_the_room_is_put_on_starts_first_and_a_failure_on_it_still_hops_to_the_next(env, monkeypatch):
+    make, ledger, tmp_path = env
+    (tmp_path / "rooms" / "r").mkdir(parents=True)
+    (tmp_path / "rooms" / "r" / "override.json").write_text(json.dumps({"account": "two"}))   # the settings tool's file
+    chan = Chan()
+    room = make(chan)
+    send(room, ledger, "1", "hello")
+    wait_idle(room)
+    assert argvs(tmp_path)[-1]["config_dir"] == str(tmp_path / "cfg2")          # the pin, ahead of the order's first
+    monkeypatch.setenv("FAKE_CLAUDE_FAIL_DIRS", str(tmp_path / "cfg2"))         # then the pinned account hits its limit
+    room.rp.close()
+    send(room, ledger, "2", "again")
+    wait_idle(room)
+    rows = rows_of(ledger)[1:]
+    assert [(r["account"], r["outcome"], r["failure"]) for r in rows] == [("two", "error", "quota"), ("one", "ok", None)]
+    assert rows[-1]["hop"] == "quota:two" and chan.replies[-1] == ("echo: again", ["2"])
+    assert f"{words.WORKING} still on it, moved to account one" in chan.cards
+    room.rp.close()
+    send(room, ledger, "3", "still resting?")                                     # the pin rests: the next one starts
+    wait_idle(room)
+    assert argvs(tmp_path)[-1]["config_dir"] == str(tmp_path / "cfg1") and len(rows_of(ledger)) == 4
+    monkeypatch.delenv("FAKE_CLAUDE_FAIL_DIRS")
+    Cooldowns(tmp_path / "cooldowns.json").clear("two")                          # its rest is over
+    send(room, ledger, "4", "back?")
+    wait_idle(room)
+    assert argvs(tmp_path)[-1]["config_dir"] == str(tmp_path / "cfg2") and chan.replies[-1] == ("echo: back?", ["4"])
     room.rp.close()
 
 

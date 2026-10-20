@@ -103,6 +103,7 @@ WHY = {                                   # a failed turn, in plain words: the f
     "empty": "the reply came back empty", "error": "Claude Code reported an error"}
 BACKUP = ("answered by a backup model", "the next message starts fresh")
 MOVED, COMPACTING = "still on it, moved to account {name}", "shortening the conversation first"
+MOVED_ON = "still on it, trying another way"      # the hop note in a room that is not the owner's: no account name there
 
 
 def why(cls: str | None, outcome: str) -> str:
@@ -310,17 +311,19 @@ def secs(seconds: float) -> str:
     return f"{seconds:.1f} s" if seconds < 10 else span(seconds)
 
 
-# a room's model and thinking level (the settings tool)
-NEXT_REPLY, THIS_ROOM = "next reply: {model}, {effort} thinking", "this room: {model}, {effort} thinking"
+# a room's model, thinking level and account (the settings tool); {on} is ON for a room put on an account, else nothing
+NEXT_REPLY, THIS_ROOM = "next reply: {model}, {effort} thinking{on}", "this room: {model}, {effort} thinking{on}"
+ON, PINNED, NOT_AN_ACCOUNT = ", on account {account}", "{name}: on account {account}", "not an account: {account}\nthe accounts: {accounts}"
+CARRIED, RECAPPED = "the same session goes on", "a new session starts, with a recap\nmemory stays"   # the next message, after a switch
 OWNER_ONLY = "only the owner's rooms can change this"
 NOT_LISTED, NOT_A_LEVEL = "not on the list: {model}\nthe list: {models}", "not a thinking level: {effort}\nthe levels: {levels}"
 BACK_ON = "{model} not found; back on {usual}"       # a switched-to model no account could run
 USUAL = "the default"                                # a room whose rooms.toml names no model
 # slash commands on the rooms' own bot (Discord): the owner's only, every answer seen by the owner alone
-COMMANDS = {"model": "this room's model, from the next reply", "effort": "this room's thinking level, from the next reply",
+COMMANDS = {"model": "this room's model or account, from the next reply", "effort": "this room's thinking level, from the next reply",
             "new": "a new session in this room; memory stays", "stop": "end the running turn now",
             "status": "what runs now"}
-CHOICE = {"model": "a model on the list, or default", "effort": "a thinking level, or default"}
+CHOICE = {"model": "a model on the list, or default", "effort": "a thinking level, or default", "account": "an account by name, or default"}
 NOT_OWNER, NOT_A_ROOM = "only the owner can use this", "this channel is not a Yerk room"
 NO_OWNER = "set [discord] owner in yerkd.toml"       # every command, while yerkd.toml names no owner
 WATCHED = "{room} answers in <#{own}>, not here"     # a channel a room watches: read, never written to

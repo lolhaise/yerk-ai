@@ -1,5 +1,5 @@
-"""A room's model and thinking level from the room (the settings tool): owner rooms only, listed models
-and levels, the daemon's override over rooms.toml, applied once the running turn ends with the same
+"""Checks the settings tool, with which a room's model, thinking level and account are changed from the room
+itself. Owner rooms only, listed models, levels and accounts, the daemon's override over rooms.toml, applied once
 session resumed; and the relay of a worker that left no report."""
 import asyncio
 import json
@@ -19,7 +19,7 @@ from yerk_ai.daemon import Yerkd
 from yerk_ai.engine import RoomSpec
 from yerk_ai.ledger import Ledger
 from yerk_ai.lifted.classify import FailureTable
-from yerk_ai.room import Inbound, Room, fit
+from yerk_ai.room import RESUME_RECAP, Inbound, Room, fit
 
 FAKE = Path(__file__).with_name("fake_claude.py")
 ROOM = "example-room"
@@ -52,8 +52,8 @@ def y(tmp_path, monkeypatch):
     return Yerkd(EXAMPLE_PRIVATE, tmp_path, only_account=Account("one", tmp_path / "cfg1"))
 
 
-def ask(y, model="", effort="", room=ROOM):
-    return asyncio.run(y.tool_settings(room, model, effort))
+def ask(y, model="", effort="", room=ROOM, account=""):
+    return asyncio.run(y.tool_settings(room, model, effort, account))
 
 
 def say(y, room, mid, text):
@@ -249,4 +249,71 @@ def test_a_turn_that_raises_after_the_switch_still_lands_it_at_its_end(tmp_path,
     room.submit(Inbound("2", "owner", "and now?"))
     wait_idle(room)
     assert [a[a.index("--model") + 1] for a in argvs(tmp_path)] == ["m-old", "m-new"] and room.rp.spec.model == "m-new"
+    room.rp.close()
+
+
+def test_an_account_puts_the_room_on_it_first_default_clears_and_a_name_off_the_list_is_refused(y, tmp_path, capsys):
+    y.accounts.append(Account("two", tmp_path / "cfg2"))
+    f, before = tmp_path / "rooms" / ROOM / "override.json", (EXAMPLE_PRIVATE / "rooms.toml").read_bytes()
+    y.room_confs["example-quiet"] = {**y.room_confs["example-quiet"], "privacy": "family"}
+    assert ask(y, account="two", room="example-quiet") == {"ok": False, "line": words.OWNER_ONLY}
+    assert ask(y, account="five") == {"ok": False, "line": "not an account: five\nthe accounts: one, two, default"}
+    assert ask(y, "opus", "max", account="five")["ok"] is False and not f.exists()      # a refusal writes nothing
+    assert ask(y, account="Two") == {"ok": True, "line": "next reply: Fable 5.1, default thinking, on account two"}
+    assert json.loads(f.read_text()) == {"account": "two"} and f.stat().st_mode & 0o777 == 0o600
+    assert ask(y) == {"ok": True, "line": "this room: Fable 5.1, default thinking, on account two"}
+    assert ask(y, "sonnet", "high")["line"] == "next reply: Sonnet 5.5, high thinking, on account two"   # the pin stays
+    assert ask(y, account="DEFAULT") == {"ok": True, "line": "next reply: Sonnet 5.5, high thinking"}  # cleared: no word
+    assert json.loads(f.read_text()) == {"model": "claude-sonnet-5-5", "effort": "high"}
+    assert ask(y)["line"] == "this room: Sonnet 5.5, high thinking" and y.spec_for(ROOM).model == "claude-sonnet-5-5"
+    assert config_get(tmp_path, capsys) == [f"rooms.{ROOM}.model = claude-sonnet-5-5 (the room's override)",
+                                            f"rooms.{ROOM}.effort = high (the room's override)"]   # yerk sets no account
+    assert (EXAMPLE_PRIVATE / "rooms.toml").read_bytes() == before                         # never written
+
+
+def test_a_planted_account_off_accounts_toml_is_ignored_and_logged_once(y, tmp_path, caplog, monkeypatch):
+    monkeypatch.setattr(config, "_IGNORED", set(), raising=False)
+    y.accounts.append(Account("two", tmp_path / "cfg2"))
+    f = tmp_path / "rooms" / ROOM / "override.json"
+    f.parent.mkdir(parents=True)
+    f.write_text(json.dumps({"account": "gone"}))              # an account since taken out of accounts.toml
+    room = y.add_room(ROOM, Chan())
+    with caplog.at_level(logging.WARNING, logger="yerk.config"):
+        assert [room._account().name, room._account().name] == ["one", "one"]           # two starts: the room's order
+        assert ask(y) == {"ok": True, "line": "this room: Fable 5.1, default thinking"}  # nothing said about accounts
+    assert [r.getMessage() for r in caplog.records if r.name == "yerk.config"] == [
+        f"room {ROOM}: the override's account 'gone' is not in accounts.toml; the room's order is used"]
+    f.write_text(json.dumps({"account": "two"}))
+    assert room._account().name == "two" and ask(y)["line"].endswith(", on account two")
+
+
+def test_an_account_switch_lands_between_turns_and_its_line_says_what_the_next_message_does(y, tmp_path, monkeypatch):
+    y.accounts.append(Account("two", tmp_path / "cfg2"))
+    chan = Chan()
+    room = y.add_room(ROOM, chan)
+    say(y, room, "1", "SLOW hello")
+    time.sleep(0.4)                                                    # the turn is running
+    first = room.rp
+    t = tmp_path / "cfg1" / "projects" / "work" / f"{first.session_id}.jsonl"
+    t.parent.mkdir(parents=True)
+    t.write_text("{}\n")
+    y.learn_transcript(ROOM, {"session_id": first.session_id, "transcript_path": str(t)})   # the hooks named it
+    assert ask(y, account="two")["line"] == f"next reply: Fable 5.1, default thinking, on account two\n{words.CARRIED}"
+    assert room.rp is first and first.alive() and first.account.name == "one"                # never mid-turn
+    wait_idle(room)
+    assert room.rp is None and chan.replies == ["echo: SLOW hello"]                       # closed at its end
+    say(y, room, "2", "and now?")
+    wait_idle(room)
+    run = [json.loads(x) for x in (tmp_path / "argv.jsonl").read_text().splitlines()][-1]
+    assert run["config_dir"] == str(tmp_path / "cfg2") and run["argv"][run["argv"].index("--resume") + 1] == str(t)
+    assert chan.replies[-1] == "echo: and now?" and room.rp.session_id == first.session_id   # the same session, as a hop
+    t.unlink()                                                         # no path on file now: the id alone, on account one,
+    monkeypatch.setenv("FAKE_CLAUDE_MISSING", "1")                     # where Claude Code finds no such session
+    assert ask(y, account="default")["line"] == f"next reply: Fable 5.1, default thinking\n{words.RECAPPED}"
+    assert room.rp is None                                             # idle: closed at once
+    say(y, room, "3", "still there?")
+    wait_idle(room)
+    assert chan.replies[-1] == "echo: " + RESUME_RECAP.format(last="echo: and now?") + "\n\nstill there?"
+    assert room.rp.account.name == "one" and room.rp.session_id != first.session_id
+    assert ask(y, account="default")["line"] == "next reply: Fable 5.1, default thinking"   # no change: no second line
     room.rp.close()

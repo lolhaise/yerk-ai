@@ -17,7 +17,7 @@ adapter's event loop.
 - A turn Claude Code answered on a fallback model after a block stands, marked on its card and
   ledger row; the room's next turn starts a fresh session on the room's own model.
 - After `idle_seconds` without a turn the process closes; the next message resumes the session. A new
-  model or effort (the settings tool) closes it when the running turn ends, never inside it.
+  model, effort or account (the settings tool) closes it when the running turn ends, never inside it.
 - Each turn owns one card (card.py), fed from the stream; every outbound part carries the turn's
   key. A turn that was sent an image and never read it is bounced once at Stop, naming the file;
   a working turn answering a person that ends with nothing visible in the room bounces once,
@@ -41,7 +41,7 @@ from typing import Any, Callable, Protocol
 from . import words
 from .accounts import Account, Cooldowns, pick
 from .card import Card
-from .config import flag, override, write_private
+from .config import flag, override, pinned, write_private
 from .engine import RoomProcess, RoomSpec, Turn
 from .evidence import Evidence
 from .ledger import Ledger
@@ -297,8 +297,8 @@ class Room:
         return True
 
     def respec(self) -> None:
-        """The room's model or effort changed: never mid-turn. With no turn running the process closes
-        now, else when the turn ends; either way the next message resumes the same session on the new spec."""
+        """The room's model, effort or account changed: never mid-turn. With no turn running the process closes now, else
+        when the turn ends; the next message resumes the same session on the new spec (another account: as a hop does)."""
         with self.lock:
             self.stale = self.busy
             rp, self.rp = (None, self.rp) if self.busy else (self.rp, None)
@@ -366,7 +366,8 @@ class Room:
         self.hooked = self.hooks_warned = False   # per process start: its first hook call proves the hooks alive; the notice went out
 
     def _account(self) -> Account:
-        return pick(self.accounts, self.cooldowns)
+        """The first account not resting, in the room's order with the one it is put on (config.pinned) first."""
+        return pick(self.accounts, self.cooldowns, first=pinned(self.state, self.name, [a.name for a in self.accounts]))
 
     def _run(self) -> None:
         try:
@@ -486,7 +487,7 @@ class Room:
                     log.info("room %s: %s on %s, continuing on %s", self.name, f.cls, account.name, nxt.name)
                     hop = ",".join(filter(None, [hop, f"{f.cls}:{account.name}"]))
                     hops, account, self.first_line = hops + 1, nxt, None
-                    self._note(words.MOVED.format(name=nxt.name))
+                    self._note(words.MOVED.format(name=nxt.name) if str(self.conf.get("privacy", "owner")) == "owner" else words.MOVED_ON)
                     # a session that never answered may have no transcript to resume elsewhere
                     fresh = not (self.rp and (self.rp.resume_arg or self.rp.session_id in self.answered))
                     continue
@@ -558,8 +559,7 @@ class Room:
             self.last_reply = text.strip().split("\n")[0][:160]
             now = time.time()
             for m in covered:
-                self.ledger.inbound_set(m.id, state="answered", answered=now, turn_id=turn_id,
-                                        reply_ids=",".join(reply_ids))
+                self.ledger.inbound_set(m.id, state="answered", answered=now, turn_id=turn_id, reply_ids=",".join(reply_ids))
                 self._then(m, "answered", reply_ids, len(text))
             with self.lock:
                 self.inflight = list(self.pending)

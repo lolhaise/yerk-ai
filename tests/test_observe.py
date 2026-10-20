@@ -106,6 +106,19 @@ def test_the_card_is_phone_width_state_first_and_colours_only_what_means_somethi
                      f"{words.NOT_DONE} jobs: the timer list is unreadable", "- stalls today: none"]
 
 
+def test_a_room_put_on_an_account_says_so_on_the_card_and_a_room_on_its_order_says_nothing_new(tmp_path):
+    for room, account in (("example-room", "two"), ("example-quiet", "gone")):    # gone: off accounts.toml
+        (tmp_path / "rooms" / room).mkdir(parents=True)
+        (tmp_path / "rooms" / room / "override.json").write_text(json.dumps({"account": account}))
+    rooms = {"example-room": busy_room(), "example-quiet": busy_room(), "third": busy_room()}
+    s = status.collect(EXAMPLE_PRIVATE, tmp_path, load_accounts(EXAMPLE_PRIVATE / "accounts.toml"), Cooldowns(None),
+                       Ledger(tmp_path / "ledger.sqlite"), rooms, units=set, timers=Timers({}))
+    lines = status.card(json.loads(json.dumps(s)))
+    assert [r["account"] for r in s["rooms"]] == ["two", "", ""]
+    assert [x for x in lines if "account" in x] == ["- example-room: on account two"]   # the pin, and only the pin
+    assert all(words.width(x) <= words.PHONE and x[:1] in (*words.DOTS, words.PLAIN) for x in lines), lines
+
+
 def test_the_status_endpoint_answers_and_yerk_status_renders_it(tmp_path, capsys):
     y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
     y.add_room("example-room", ConsoleChannel())
@@ -120,7 +133,7 @@ def test_the_status_endpoint_answers_and_yerk_status_renders_it(tmp_path, capsys
     assert refused == [401, 401, 401, 401] and hook_by_room == 200   # a room's token opens its own door only
     s = r.json()
     assert r.status_code == 200 and s["running"] and s["rooms"] == [{"room": "example-room", "busy": False,
-                                                                     "waiting": 0, "watch": None, "since": None}]
+                                                                     "waiting": 0, "watch": None, "since": None, "account": ""}]
     assert s["units"][0]["name"] == "yerkd" and s["units"][0]["rss_mb"] > 0 and s["stalls"] == [] and s["started"]
     assert [a["name"] for a in s["accounts"]] == ["one", "two"] and s["accounts"][0]["meter"]["error"]
 

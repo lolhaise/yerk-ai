@@ -189,8 +189,7 @@ class Systemd:
 
     def busctl(self, prop: str) -> str:
         """A Service property as systemd's bus prints it: each string quoted, exactly as held."""
-        path = "/org/freedesktop/systemd1/unit/" + "".join(c if c.isalnum() else f"_{ord(c):02x}" for c in self.unit
-                                                            + ".service")
+        path = "/org/freedesktop/systemd1/unit/" + "".join(c if c.isalnum() else f"_{ord(c):02x}" for c in self.unit + ".service")
         return subprocess.run(["busctl", "--user", "get-property", "org.freedesktop.systemd1", path,
                                "org.freedesktop.systemd1.Service", prop], capture_output=True, text=True,
                               timeout=30).stdout
@@ -403,8 +402,7 @@ def run(private: Path, state: Path, ref: str = "", tests: bool = True, unit_file
         return no(outcome, *why, tested, after=target)
     if ok:
         return tell([W.line(f"{W.DONE} {W.DEPLOYED.format(commit=target[:7])}"), tested, *card, *where], 0)
-    first = [W.line(f"{W.NOT_DONE} {(W.BROKE_OFF if outcome == 'fault' else W.FAILED_PROOF).format(commit=target[:7])}"),
-             tested, *card]
+    first = [W.line(f"{W.NOT_DONE} {(W.BROKE_OFF if outcome == 'fault' else W.FAILED_PROOF).format(commit=target[:7])}"), tested, *card]
     card.clear()
 
     def restart_before() -> bool:

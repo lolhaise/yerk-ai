@@ -25,8 +25,8 @@ from types import SimpleNamespace
 from typing import Any
 
 from . import beat, context, deploy, evidence, gates, hooks, jobs, mcp_server, memory, mentions, status, workers
-from .accounts import Account, Cooldowns, from_dir, load_accounts
-from .config import (EFFORTS, REPO, budgets, discord_id, flag, load_toml, models, override, people, private_dir,
+from .accounts import Account, Cooldowns, from_dir, load_accounts, pick
+from .config import (EFFORTS, REPO, budgets, discord_id, flag, load_toml, models, override, people, pinned, private_dir,
                      read_secret, room_id, room_settings, rooms, state_dir, table, write_private)
 from .engine import RoomSpec, SessionTable
 from .ledger import Ledger
@@ -334,35 +334,51 @@ class Yerkd:
         hid = self.ledger.hold(room, wait_for, reason)
         return {"ok": True, "hold": hid, "next": "End your turn now with one short line; no more tool calls."}
 
-    async def tool_settings(self, room: str, model: str, effort: str) -> dict[str, Any]:
-        """The `settings` tool: an owner room's model and thinking level, the daemon's override over
-        rooms.toml (which is never written). The running turn ends as it began; then the room's process
-        closes and the next message resumes the same session on the new ones (Room.respec)."""
+    async def tool_settings(self, room: str, model: str, effort: str, account: str = "") -> dict[str, Any]:
+        """The `settings` tool: an owner room's model, thinking level and account (tried first, the room's order behind
+        it), the daemon's override over rooms.toml (which is never written). The running turn ends as it began; then the
+        room's process closes and the next message resumes the same session on the new ones (Room.respec), on another
+        account as a hop does; after an account change the line's second line says which (`carried`)."""
         if not self.owner(room):
             return {"ok": False, "line": words.OWNER_ONLY}
-        conf = self.room_confs[room]
-        want, level = model.strip(), effort.strip().lower()
+        conf, names = self.room_confs[room], {a.name.lower(): a.name for a in self.accounts}
+        want, level, acct = model.strip(), effort.strip().lower(), account.strip()
         full = self.models.get(want.lower()) or (want if want in self.models.values() else want.lower())
+        put = "default" if acct.lower() == "default" else names.get(acct.lower(), "")
         if want and full != "default" and full not in self.models.values():
             listed = ", ".join(f"{a} ({words.model_name(m)})" for a, m in self.models.items())
             return {"ok": False, "line": words.NOT_LISTED.format(model=want, models=listed)}
         if level and level != "default" and level not in EFFORTS:
             return {"ok": False, "line": words.NOT_A_LEVEL.format(effort=level, levels=", ".join([*EFFORTS, "default"]))}
+        if acct and not put:
+            return {"ok": False, "line": words.NOT_AN_ACCOUNT.format(account=acct, accounts=", ".join([*names.values(), "default"]))}
         before, over = room_settings(conf, self.state, room, self.models), override(self.state, room)
-        for key, value in (("model", full if want else ""), ("effort", level)):
+        pin = pinned(self.state, room, [*names.values()])
+        for key, value in (("model", full if want else ""), ("effort", level), ("account", put)):
             if value == "default":
                 over.pop(key, None)
             elif value:
                 over[key] = value
-        if want or level:
+        if want or level or acct:
             (self.state / "rooms" / room).mkdir(parents=True, exist_ok=True)
             write_private(self.state / "rooms" / room / "override.json", json.dumps(over))
-        now = room_settings(conf, self.state, room, self.models)
-        if [v for v, _ in now.values()] != [v for v, _ in before.values()] and room in self.rooms:
+        now, on = room_settings(conf, self.state, room, self.models), pinned(self.state, room, [*names.values()])
+        if ([v for v, _ in now.values()], on) != ([v for v, _ in before.values()], pin) and room in self.rooms:
             await asyncio.to_thread(self.rooms[room].respec)        # an idle process's close, off the loop
-        log.info("settings: room %s on %s, effort %s", room, now["model"][0], now["effort"][0] or "default")
-        return {"ok": True, "line": (words.NEXT_REPLY if want or level else words.THIS_ROOM).format(
-            model=words.model_name(now["model"][0]), effort=now["effort"][0] or "default")}
+        log.info("settings: room %s on %s, effort %s, account %s", room, now["model"][0], now["effort"][0] or "default", on or "by order")
+        line = (words.NEXT_REPLY if want or level or acct else words.THIS_ROOM).format(
+            model=words.model_name(now["model"][0]), effort=now["effort"][0] or "default", on=words.ON.format(account=on) if on else "")
+        return {"ok": True, "line": line + (self.carried(room, on) if on != pin else "")}
+
+    def carried(self, room: str, pin: str) -> str:
+        """After an account change, the line's second line: what the next message does where it starts (RoomProcess.start).
+        The session goes on, by id on its own account, by the transcript's path on another; with no path on file there is
+        none to find, so the turn starts fresh with a recap (session_missing). Nothing if no session or a fresh start is due."""
+        row, r = self.sessions.get(room) or {}, self.rooms.get(room)
+        if not row or r is None or r.fresh_next or (self.state / "rooms" / room / "fresh-next").is_file():
+            return ""
+        same = row.get("account") == pick(r.accounts, self.cooldowns, first=pin).name
+        return "\n" + (words.CARRIED if same or os.path.isfile(str(row.get("transcript") or "")) else words.RECAPPED)
 
     async def room_new(self, room: str) -> dict[str, Any]:
         """/new: the room's next message starts a fresh session with its recap line (Room.renew). The

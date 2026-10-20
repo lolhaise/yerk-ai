@@ -38,8 +38,7 @@ class Env:
         self.model = a.model
 
     def room(self, spec: RoomSpec, account: Account, log: str) -> RoomProcess:
-        return RoomProcess(spec, account, self.state, ledger=self.ledger, failures=self.failures,
-                           log=self.logs / log)
+        return RoomProcess(spec, account, self.state, ledger=self.ledger, failures=self.failures, log=self.logs / log)
 
 
 def scratch(env: "Env", tag: str) -> Path:
@@ -633,13 +632,11 @@ def turn_table(env: Env, t0: float, room: str, sent: list[dict[str, Any]] | None
         mid, s = str(m["message_id"]), sent_at.get(str(m["message_id"]))
         t_msg = s["t"] if s else (snowflake_time(mid) or m["received"])
         tr = turns.get(m["turn_id"]) or {}
-        reply = next((o for o in out_rows if o["kind"] in ("reply", "notice") and mid in str(o["inbound"] or "").split(",")),
-                     None)
+        reply = next((o for o in out_rows if o["kind"] in ("reply", "notice") and mid in str(o["inbound"] or "").split(",")), None)
         end = reply["sent"] if reply else None
 
         def first(kind: str, rows: list[dict[str, Any]] = out_rows) -> float | None:
-            o = next((o for o in rows if o["kind"] == kind and o["sent"] >= t_msg and (end is None or o["sent"] <= end)),
-                     None)
+            o = next((o for o in rows if o["kind"] == kind and o["sent"] >= t_msg and (end is None or o["sent"] <= end)), None)
             return o["sent"] if o else None
         block = next((t for t, _ in marks if t >= t_msg and (end is None or t <= end)), None)
         thinking = next((t for t, k in marks if k == "thinking" and t >= t_msg and (end is None or t <= end)), None)

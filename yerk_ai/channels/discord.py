@@ -74,11 +74,13 @@ SAID = (discord.MessageType.default, discord.MessageType.reply)   # what a perso
 
 
 def commands(models: dict[str, str]) -> list[dict[str, Any]]:
-    """Exactly this install's slash commands, in the shape Discord's bulk overwrite takes."""
+    """Exactly this install's slash commands, in the shape Discord's bulk overwrite takes; /model takes an account too,
+    typed, never offered: a command's choices show to everyone in its guild, a people room's people too."""
     def pick(name: str, values: list[str]) -> list[dict[str, Any]]:
         return [{"type": 3, "name": name, "description": words.CHOICE[name], "required": False,
-                 "choices": [{"name": v, "value": v} for v in values][:25]}]
-    opts = {"model": pick("model", [*models, "default"]), "effort": pick("effort", [*EFFORTS, "default"])}
+                 **({"choices": [{"name": v, "value": v} for v in values][:25]} if values else {})}]
+    opts = {"model": pick("model", [*models, "default"]) + pick("account", []),
+            "effort": pick("effort", [*EFFORTS, "default"])}
     return [{"type": 1, "name": n, "description": what, "options": opts.get(n, [])} for n, what in words.COMMANDS.items()]
 
 
@@ -394,7 +396,7 @@ class DiscordChannel:
         if name == "status":
             return "\n".join(status.card(await d.status_now({})))
         if name in ("model", "effort"):
-            r = await d.tool_settings(room, args.get("model", ""), args.get("effort", ""))
+            r = await d.tool_settings(room, args.get("model", ""), args.get("effort", ""), args.get("account", ""))
             return f"{words.DONE if r['ok'] and args else words.PLAIN if r['ok'] else words.NOT_DONE} {r['line']}"
         if name in ("new", "stop"):
             r = await (d.room_new(room) if name == "new" else d.room_stop(room))

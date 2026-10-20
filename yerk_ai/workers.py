@@ -112,8 +112,7 @@ def yerk_tools(conf: dict[str, Any]) -> list[str]:
 def gate_settings(folder: Path) -> Path:
     """A worker's --settings: one PreToolUse hook on every tool call, the room's gates run as a local
     process (gates.py worker-hook: no daemon round trip, no secret) with the worker's folder as the root."""
-    cmd = shlex.join(["env", f"PYTHONPATH={PACKAGE.parent}", sys.executable, "-P", "-m", "yerk_ai.gates",
-                      "worker-hook", str(folder)])
+    cmd = shlex.join(["env", f"PYTHONPATH={PACKAGE.parent}", sys.executable, "-P", "-m", "yerk_ai.gates", "worker-hook", str(folder)])
     path = folder / "settings.json"
     path.write_text(json.dumps({"hooks": {"PreToolUse": [{"matcher": "*", "hooks": [
         {"type": "command", "command": cmd, "timeout": 15}]}]}}, indent=1))
@@ -346,8 +345,7 @@ def card_text(row: dict[str, Any], items: list[tuple[bool, str]], end: dict[str,
         lines.append(words.line(str(end["result"])))
     current = next((i for i, (t, _) in enumerate(items) if not t), None)
     stuck = words.WORKING if end is None else words.NOT_DONE if mark == words.NOT_DONE else words.WAITING
-    rows = [words.line(f"{words.DONE if t else stuck if i == current else words.WAITING} {text}")
-            for i, (t, text) in enumerate(items)]
+    rows = [words.line(f"{words.DONE if t else stuck if i == current else words.WAITING} {text}") for i, (t, text) in enumerate(items)]
     if len(rows) > ROWS_SHOWN:
         lines.append(words.SUB + words.EARLIER_ROWS.format(n=len(rows) - ROWS_SHOWN))
     lines += rows[-ROWS_SHOWN:]
@@ -649,8 +647,7 @@ class Workers:
         end: dict[str, Any] = {"exit": state, "detail": detail, "finished": float(x.get("ended") or time.time()),
                "result": first_line(report) or ("no report file" if state == "done" else ""),
                "has_report": report.is_file(), "result_code": x.get("result") or ""}
-        self.ledger.worker_set(wid, finished=round(end["finished"], 3), exit=state, exit_detail=detail,
-                               result=end["result"])
+        self.ledger.worker_set(wid, finished=round(end["finished"], 3), exit=state, exit_detail=detail, result=end["result"])
         row["card"] = row.get("card") or fresh.get("card")
         row["job"] = row.get("job") or fresh.get("job")
         await self._show(row, end)
@@ -692,8 +689,7 @@ class Workers:
         busy = room.idle_reason(self.conf.idle_seconds) if room is not None else ""
         self.ledger.worker_set(row["id"], relay="waiting" if busy or self.waiting.get(row["room"]) else "sent",
                                relay_note=f"inbound {mid}" + (f", waiting: {busy}" if busy else ""))
-        self.ask(row["room"], Inbound(mid, "yerk", text, cap=self.conf.relay_reply, must=relay_line(row), then=then,
-                                      alone=True))
+        self.ask(row["room"], Inbound(mid, "yerk", text, cap=self.conf.relay_reply, must=relay_line(row), then=then, alone=True))
         return ""
 
     # harness turns: one at a time per room, in order, each alone, when the room is idle
