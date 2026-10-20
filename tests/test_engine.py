@@ -279,3 +279,4 @@ def test_a_turn_ends_on_silence_never_on_length(make):
         assert talking.outcome == "ok" and "CHATTY" in talking.text      # about 2 s long, never 1 s quiet
         silent = rp.ask("HANG", timeout=1.0)
         assert silent.outcome == "timeout"
+        rp.end_now()                       # the fake sleeps 60 s: no 15 s close() grace in teardown
