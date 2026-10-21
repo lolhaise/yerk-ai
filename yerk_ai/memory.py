@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any, Iterator
 from zoneinfo import ZoneInfo
 
-from . import memindex, mentions
+from . import memindex, mentions, words
 from .config import REPO, load_toml, write_private
 
 MARK = re.compile(r"\[m:([^\]\s]+)\]$", re.M)        # the message id that ends each captured line
@@ -629,9 +629,9 @@ def fuse(keywords: list[dict[str, Any]], vectors: list[dict[str, Any]], k: int, 
 
 
 def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader: Reader | None = None,
-           weights: dict[str, float] | None = None) -> dict[str, Any]:
+           weights: dict[str, float] | None = None, wide: bool = True, wait: float = MEANING_WAIT) -> dict[str, Any]:
     """Ranked chunks, whole, with path and line, the keyword rank fused with the meaning rank when
-    yerk-index serves one (the bench's rank reads these; the recall tool cuts them). A timeout and a
+    yerk-index serves one and `wide`, waiting `wait` for it at most (the bench's rank reads these; the recall tool cuts them). A timeout and a
     failure of the index read differently (L54); a provider timeout or error reads differently from
     both: keywords only for this query, logged. `weights` gets the query words' weights."""
     k = max(1, min(int(k), 20))
@@ -650,7 +650,7 @@ def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader:
             return {"ok": False, "status": "timeout", "error": f"the index was busy for {deadline_s:.0f} s; "
                     "memory is not down, try once more"}
         return {"ok": False, "status": "failure", "error": f"the index could not be read: {e}"}
-    state, vectors = meaning(s, query)
+    state, vectors = meaning(s, query, deadline_s=wait) if wide else ("off", [])
     if state in ("provider-timeout", "provider-error", "index-timeout", "failure"):
         log.warning("recall: meaning search skipped (%s); keywords only for this query", state)
     if s.scoped:             # a room's own `also`: its roots' candidates only, before fusion keeps k (every root is indexed)
@@ -665,14 +665,37 @@ def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader:
     return {"ok": True, "status": "ok", "hits": hits}
 
 
-def recall(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader: Reader | None = None) -> dict[str, Any]:
+def recall(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader: Reader | None = None, chars: int = 0,
+           wait: float = MEANING_WAIT) -> dict[str, Any]:
     """The recall tool: the hits `ranked` gives, in its order, each cut to the lines that carry the match
     with a cite (file:line of its first line) that read_memory reads on from; the first six snippets
-    together hold at most `recall_chars` characters, each at most SNIPPET, and each hit past the sixth
+    together hold at most `recall_chars` characters (`chars`, the prompt hook's part), each at most SNIPPET, and each hit past the sixth
     adds its best line, at most EXTRA."""
     weights: dict[str, float] = {}
-    r = ranked(s, query, k, deadline_s, reader, weights)
-    return {**r, "hits": snippets(r["hits"], weights, s.recall_chars)} if r["ok"] else r
+    r = ranked(s, query, k, deadline_s, reader, weights, wait=wait)
+    return {**r, "hits": snippets(r["hits"], weights, chars or s.recall_chars)} if r["ok"] else r
+
+
+def lines_on(s: Settings, what: str, reader: Reader | None = None, k: int = 8, exclude: set[str] | None = None,
+             best: int = 6) -> list[dict[str, Any]]:
+    """Deep recall (decision 42): the `best` lines on `what`, a name or a topic, in the reader's scope, in the order of the k chunks
+    the keyword rank gives (a name is its words: no meaning search), each holding every word of it; then a standing file's lines
+    first, the day logs' newest first. Never a line of the message being answered (`exclude`, its ids), a corrected line, or one
+    that asks about it (words.ASKED): an ask is not on file."""
+    want = {t for t in mentions.tokens(what, True) if len(t) > 1 and t not in memindex.STOP}
+    out: list[dict[str, Any]] = []
+    for h in ranked(s, what, k, 2.0, reader, wide=False).get("hits", []) if want else []:
+        day = Path(h["path"]).stem if is_daylog(h["path"]) else ""
+        for i, raw in enumerate(str(h["text"]).splitlines()):
+            ln = parse_line(raw)
+            if not want <= set(mentions.tokens(raw, True)) or mentions.OLD in raw or words.ASKED.search(raw) or (
+                    ln and ln.mid.split(".e")[0] in (exclude or set())):
+                continue
+            text = (f"{day[5:]} " if day else "") + (f"{ln.time[:5]} {ln.role}: {ln.body}" if ln else raw.strip().removeprefix("- "))
+            out.append({"cite": f"{h['cite'].rpartition(':')[0]}:{h['line'] + i}", "at": f"{h['path']}:{h['line'] + i}", "day": day, "n": h["line"] + i,
+                        "text": text if len(text) <= ITEM_CHARS else _cut(text, {_root(t): 1.0 for t in want}, ITEM_CHARS - 2)})
+    out = [x for n, x in enumerate(out) if x["text"] not in {y["text"] for y in out[:n]}][:best]     # a snapshot's copy of a line: once
+    return [x for x in out if not x["day"]] + sorted((x for x in out if x["day"]), key=lambda x: (x["day"], x["n"]), reverse=True)
 
 
 def snippets(hits: list[dict[str, Any]], weights: dict[str, float], budget: int) -> list[dict[str, Any]]:

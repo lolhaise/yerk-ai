@@ -196,19 +196,19 @@ class Index:
         return self
 
     def match(self, text: str, limit: int = MATCH_MAX, keep: Callable[[dict[str, Any]], bool] | None = None, strict: bool = False) -> list[dict[str, Any]]:
-        """Entries for the names in `text`, in the order named, each once; only those `keep` takes, if given; `strict`: a key with none it takes is no match."""
+        """Entries for the names in `text`, in the order named, each once and at most `limit` a name, each with the name it came
+        under (`named`: the recall part shares its budget by name); only those `keep` takes, if given; `strict`: a key with none it takes is no match."""
         words = tokens(text, True)
         out: list[dict[str, Any]] = []
         seen: set[int] = set()
         i = 0
-        while i < len(words) and len(out) < limit:
+        while i < len(words):
             step = 1
             for key, ids in self.first.get(words[i], []):
                 if words[i:i + len(key)] == key and not (strict and keep and not any(keep(self.entries[n]) for n in ids)):
-                    for n in ids:
-                        if n not in seen and len(out) < limit and (keep is None or keep(self.entries[n])):
-                            seen.add(n)
-                            out.append(self.entries[n])
+                    for n in [n for n in ids if n not in seen and (keep is None or keep(self.entries[n]))][:limit]:
+                        seen.add(n)
+                        out.append({**self.entries[n], "named": " ".join(key)})
                     step = len(key)
                     break
             i += step

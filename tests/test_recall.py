@@ -10,7 +10,7 @@ from pathlib import Path
 
 from starlette.testclient import TestClient
 
-from yerk_ai import evidence, hooks, mcp_server, memindex, memory, mentions
+from yerk_ai import evidence, hooks, mcp_server, memindex, memory, mentions, words
 from yerk_ai.config import EXAMPLE_PRIVATE, budgets, rooms
 from yerk_ai.daemon import ConsoleChannel, Yerkd
 from yerk_ai.engine import SessionTable
@@ -67,7 +67,7 @@ def test_the_hook_puts_named_entries_in_before_the_model_and_records_the_cost(tm
     idx = build_names(s)
     SessionTable(tmp_path / "sessions.json").bind("example-room", "sid-1", "one")
     meta = lambda room, prompt: ("owner", None)  # noqa: E731
-    recall = lambda room, prompt: (idx.match(prompt), memory.topic_hits(s, room, prompt, set(), NOW))  # noqa: E731
+    recall = lambda room, prompt: (idx.match(prompt), memory.topic_hits(s, room, prompt, set(), NOW), [], [])  # noqa: E731
     out = hooks.user_prompt_submit({"session_id": "sid-1", "prompt": "is Example Neighbour around?"}, tmp_path,
                                    rooms(EXAMPLE_PRIVATE), meta, budgets(), now=NOW, recall=recall)
     ctx = out["hookSpecificOutput"]["additionalContext"]
@@ -316,3 +316,35 @@ def test_a_recall_during_a_rebuild_answers_from_the_old_or_new_index_never_an_er
     names = {p.name for p in s.index_db.parent.iterdir()}
     assert gen.name in names and "index.sqlite-wal" not in names and "index.sqlite-shm" not in names
     assert memory.recall(s, "example kettle", 3)["ok"]
+
+
+# 5. rail run 2: code decides when the room's memory is searched, and the on-hit budget bends per hit (decision 42)
+def test_a_question_about_the_past_or_a_name_asked_about_fires_and_ordinary_chat_stays_quiet():
+    fire = ["who did i go to lunch with at the example office", "what did i do last friday?", "when did example neighbour move",
+            "remember when we went to the example diner", "did we cancel the example subscription?", "so where was that example store",
+            "last friday what did we eat", "anything on aug 14?", "how many days did we say the example park needs"]
+    quiet = ["what was that", "how was it?", "what did you change", "so why did it fail", "i went to the gym last night",
+             "what happened: the room did the job", "continue with what was going on", "see you friday", "who is coming tonight",
+             "remember to call the example shop", "can we meet on oct 30"]
+    assert [q for q in fire if not words.PAST.search(q)] == [] and [q for q in quiet if words.PAST.search(q)] == []
+    assert words.asked("who is Examplia?") == ["Examplia"] and words.asked("what do you know about the example ladder") == ["example ladder"]
+    assert words.asked("who is example neighbour bro") == ["example neighbour"] and words.asked("tell me about my brother and his car") == ["brother"]
+    assert [words.asked(q) for q in ("who is coming", "who's more senior Ada or Bo?", "tell me about your day", "who is the guy")] == [[]] * 4
+
+
+def test_the_on_hit_budget_bends_one_name_takes_the_part_several_share_it_and_a_past_search_takes_what_they_leave():
+    def card(name: str, n: int, size: int = 240) -> list[dict]:
+        return [{"key": name, "text": f"{name} line {i} " + "x" * size, "cite": f"facts/{name}.md:{i}", "named": name} for i in range(n)]
+    past = [{"cite": f"daily/2026-01-0{i}.md:3", "text": f"the past hit {i} " + "y" * 200} for i in range(1, 7)]
+    one = hooks.render_recall(card("ada", 8), [], 1500)
+    assert len(one) <= 1500 and one.count("ada line") == 5                        # one name: the whole part
+    two = hooks.render_recall(card("ada", 8) + card("bo", 8), [], 1500)
+    assert len(two) <= 1500 and two.count("ada line") >= 2 and two.count("bo line") >= 2   # two: a share each, what one leaves passed on
+    both = hooks.render_recall(card("ada", 8), [], 1500, past)
+    assert len(both) <= 1500 and both.count("ada line") == 1 and both.count("the past hit") == 4 and hooks.HEADS[1] in both   # beside a
+    # past-tense search a name brings its card's first line, the search the rest
+    assert hooks.render_recall([], [], 1500, past).count("the past hit") == 6       # no name: the past hits take the part
+    many = hooks.render_recall([e for k in ("k1", "k2", "k3", "k4", "k5", "k6", "k7", "k8", "k9") for e in card(k, 1, 290)], [], 1500)
+    assert [ln.split(" line ")[0][2:] for ln in many.splitlines()[1:]] == ["k1", "k2", "k3", "k4"]     # in the order named, whole
+    gone = hooks.render_recall(card("ada", 8), [], 1500, None, ["Zorblaxia"])
+    assert gone.splitlines()[0] == "[named, nothing on file: Zorblaxia]" and len(gone) <= 1500     # the absence line first, never cut
