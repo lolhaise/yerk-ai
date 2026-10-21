@@ -264,7 +264,7 @@ def check_claims(reply: str, ev: Evidence, roots: tuple[Path, ...]) -> list[tupl
 AGREE = re.compile(r"^\W*(?:(?:yeah|yep|yes|ok(?:ay)?|oh|honestly|lol|haha)\b\W*)?(?:fair|true|agreed?|good\s+(?:point|call|catch)"
                    r"|makes\s+sense|you['’]?re\s+(?:right|correct)|you\s+are\s+right)\b(?![^.!?\n]*\b(?:but|though|however|except)\b)", re.I)
 STANDS = re.compile(r"\b(?:still\s+(?:stands?|holds?|true|right)|i\s+(?:still\s+)?stand\s+by|both\s+are\s+true|nothing\s+(?:i\s+said\s+)?"
-                    r"was\s+wrong|what\s+(?:still\s+)?stands)\b|:\s*(?:holds?|stands?)\b|\b(?:holds?|stands?)\s*[:(]", re.I)
+                    r"was\s+wrong|what\s+(?:still\s+)?stands)\b|:[*_\s]*(?:holds?|stands?)\b|\b(?:holds?|stands?)\s*[:(]", re.I)
 OWN_WRONG = re.compile(r"\bi\s+(?:was\s+wrong|got\s+(?:\w+\s+){0,3}?wrong|overstated|misread|miscounted|misspoke)\b"
                        r"|\b(?:my\s+(?:mistake|bad)|i\s+stand\s+corrected)\b", re.I)
 NO_READ = ("Write", "Edit", "MultiEdit", "NotebookEdit", "TodoWrite", "ToolSearch", "send", "hold", "remember", "rule", "worker", "schedule", "settings")

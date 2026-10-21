@@ -36,6 +36,11 @@ HELD = ("Checked the export again. What is actually true, line by line:\n- Your 
         "example note says the Sample).\n- Reads it back: As plain text, With-000 one more line for the check.\n"
         "- \"The test reads it Back as plain text\": check, While-000 a Second-000 entry waits In 00, the queue for "
         "ABC-593.")
+POSTED = ("Checked the export again. What is actually true, line by line:\n- **Your 2-days line:** no, 3 comments and 1 new "
+          "ticket in two days.\n- **New repo effect:** holds. 82 of 121 after Sep 14; its share 27% to 52%; the old repository "
+          "run starts the example note Says.\n- **And the test:** Reads it back, As-000 plain text with one more line.\n"
+          "- **\"Closes the case before The next run starts\":** item, Moved-000 to The-000 next step And 00, the test "
+          "before ABC-593.")        # the queue for its #turn-and the last part 00:00: closes the case before "the", next run starts
 EXPORT = ("Bash", {"command": "python3 -c 'import csv; print(sum(1 for _ in csv.reader(open(\"export.csv\"))))'"})
 
 
@@ -63,6 +68,7 @@ def test_the_live_pair_comes_out_folded_and_nothing_is_blocked(tmp_path):
 def test_the_held_shape_comes_out_held_and_with_no_read_it_concedes_from_memory(tmp_path):
     assert stance(tmp_path, HELD) == ({}, ["held"])
     assert stance(tmp_path / "b", HELD, calls=())[1] == ["folded"]
+    assert stance(tmp_path / "c", POSTED)[1] == ["held"]
 
 
 def test_a_fresh_read_and_a_still_stands_clause_is_held_and_agreeing_without_the_read_is_not(tmp_path):
@@ -85,6 +91,7 @@ def test_a_message_that_is_no_pushback_writes_no_row(tmp_path):
     assert stance(tmp_path / "b", FOLD, text="no worries, thanks")[1] == []
     assert stance(tmp_path / "c", FOLD, sender="person")[1] == []              # the owner's pushback only
     assert stance(tmp_path / "d", FOLD, said="")[1] == []                     # nothing posted earlier in the session
+    assert stance(tmp_path / "f", "")[1] == []                                # an empty reply (the silent bounce) answers nothing
     assert stance(tmp_path / "e", FOLD)[1] == ["folded"]                     # the control: a real pushback writes one
 
 
@@ -96,6 +103,8 @@ def test_the_disagreement_words_are_a_short_list_that_keeps_to_disagreement():
     for text in [ASKED, "no worries", "No problem, thanks", "now do the same for the other board", "nothing new today?", "notes please",
                  "can you actually send it", "what's wrong with the printer", "I agree", "ok send it", "know what, skip it"]:
         assert not words.PUSHBACK.search(text), text
+    t0 = time.monotonic()                          # a line's opener is read within its line: no quadratic search
+    assert not words.PUSHBACK.search("-\n" * 5000) and time.monotonic() - t0 < 1
 
 
 def test_the_morning_diff_counts_stance_rows_by_label_and_only_a_fold_is_a_finding(tmp_path):

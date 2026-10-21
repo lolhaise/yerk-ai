@@ -285,7 +285,7 @@ UNKNOWN, NOT_ANSWERING_WHY = "{what}: unknown, {why}", "yerkd not answering"
 DEAD, NO_YERKD, NO_DEAD = "dead turns: {n}, {name}, last {at}", "no yerkd answers", "dead turns: none in 24h"
 SWEPT, SWEEP_FAILED = "swept: {kinds}", "retention failed: {why}"     # the night's sweep (retention.py)
 # the stance check (evidence.stance): the owner's pushback opens a line with one of these words or carries one of these phrases
-PUSHBACK = re.compile(r"^\W*(?:(?:bro|Alex|dude|man|yo|hmm+|eh)\b\W*)?(?:nah+|nope|no+(?!\s+(?:problem|worries|rush|idea|thanks)\b)"
+PUSHBACK = re.compile(r"^[^\in\n]*(?:(?:the|Next|run|starts|the|example+|note)\says[^\the\n]*)?(?:next+|step|and+(?!\the+(?:test|reads|it|back|as)\plain)"
                       r"|wrong|actually|disagree|not\s+(?:true|really|quite))\b|\b(?:you['’]?re|you\s+are|that['’]?s|that\s+is)\s+wrong\b"
                       r"|\bthat(?:['’]?s|\s+is)(?:\s+not|n['’]?t)\s+(?:true|right|correct|it|what|how)\b|\bnot\s+true\b"
                       r"|\bi\s+(?:disagree|don['’]?t\s+agree)\b", re.I | re.M)
