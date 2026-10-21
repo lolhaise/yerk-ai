@@ -262,7 +262,8 @@ def test_a_silent_working_turn_bounces_once_and_only_once_and_a_landed_reply_is_
     assert call(y, stop) == {}                                                # the harness's own turn
 
 
-# 2026-10-21 in a work room, rebuilt from its transcript with names, times and figures taken out (the lengths kept):
+# The stub rule's two turns, invented, each on the same side of every line the rule draws (STUB_CHARS, twice the final's
+# length, words.FILED) as the turns it was built on: first a turn is sent a run's result, reads it, works it out, files it
 # and ends on "Filed." (what it worked out never reaches the room); then, asked why, it writes the answer above the call,
 # files the rule and ends on the rule line.
 REPORT_STEPS = [("say", "The export is back with two rows fewer than last week's. Looking at which two before saying more."),
