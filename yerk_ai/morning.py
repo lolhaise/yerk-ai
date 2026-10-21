@@ -17,7 +17,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
-from . import context, curate, doctor, jobs, memory, retention, status, words
+from . import context, curate, docs, doctor, jobs, memory, retention, status, words
 from .accounts import Account, Cooldowns
 from .config import budgets, rooms
 from .ledger import Ledger
@@ -94,6 +94,8 @@ def build(private: Path, state: Path, accounts: list[Account], cooldowns: Cooldo
     if (swept := retention.line(state, now)):            # the night's sweep: what it moved by kind, or that it failed
         rows.append(swept)
     rows.append(doctor.line(state, now))                 # the daily check: ok, or its count and first finding
+    rows += [x for x in [doctor.shape_line(state, now)] if x]           # the rule files' shape totals (shape.py)
+    rows += docs.changed(state, float(last.get("at") or now - DAY))    # a docs page whose hash moved since the last diff
     rows.append(curate.line(state, now))                 # the night's curation: what landed, else what to read and the first
     if live is None:
         add("unknown units", W.NOT_DONE, W.UNKNOWN.format(what="memory", why=W.NOT_ANSWERING_WHY))

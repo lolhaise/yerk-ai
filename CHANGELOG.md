@@ -26,6 +26,56 @@ with the originals kept under `backups/`; the index chunks every file again when
   cuts.
 - **Upgrading:** budgets.toml `[code] lines` moved to the new count. Nothing to do.
 
+### note-jobs (#71)
+
+- Every room can set reminders: a fourth job kind, `note` (`room`, `message`, one of `at`, `every` or `schedule`
+  with `tz`, `deliver`). When it is due the room's own session is told `[reminder NAME due]` and the message and
+  says it in its own voice; no worker, shell, account or cap. A one-shot note leaves the jobs file after it fires.
+- A note that fires while yerkd is down, or whose turn a restart cuts, is told at the next start, and never twice
+  when its reply was already in the room.
+- A room that is not the owner's adds, lists and removes its own notes with the `schedule` tool and sees no other
+  job; agent, script and watcher jobs, and any job for another room, stay the owner's rooms' own, and the refusal
+  says what the room can do instead. `yerk schedule --kind note` adds one from the command line.
+- Such a room keeps 20 notes at most and adds one per 5 minutes, and its `schedule` call with no `kind` sets a
+  note (the owner's rooms keep "agent"); a note's message is at most 600 characters in every room and from
+  `yerk schedule`, refused, never cut. Each refusal says the cap and when the next fits.
+- A held card in a room with `people` shows the call's content in plain words (for a send: the room in its first
+  line, the text below), never the tool call's JSON; the exact call stays in the ledger. The owner's rooms see the
+  exact call as before.
+- **Upgrading:** budgets.toml changed ([code] lines, up 122 for the note kind, its gate, the plain card, the note's
+  restart replay and its caps). yerkd.toml takes three optional `[jobs]` keys, listed by `yerk explain jobs`:
+  `room_notes` (20), `room_note_minutes` (5) and `note_chars` (600). Nothing to do.
+
+### sheet-rule (#70)
+
+- A sixth shadow rule, `sheet`: a turn that sends a document through the send tool (.docx, .pdf, .xlsx, .pptx, .txt,
+  .md or .csv) or pastes a block (a fenced block with no language tag, or tagged text, plain or none) in its reply or
+  in a send's text, with no claims sheet written or named in the turn (a Write, Edit or NotebookEdit of a file whose
+  name holds claims and ends in .md, .txt or .csv, or a shell command naming one), is ledgered once as `sheet` and the
+  morning diff counts it ("shadow flag sheet: N"). Nothing is blocked: it measures how often a room ships something
+  in the owner's name without checking its claims against source first. `yerk explain sheet` describes it.
+- **Upgrading:** budgets.toml changed ([code] lines, up 50 for the rule and its call). Nothing to do.
+
+### harness-expert (#69)
+
+- `yerk docs refresh | list | show NAME | shape [ROOM] [--rules]`: the Claude docs Yerk runs on (the prompting guide,
+  each model's prompting page, the Claude Code pages on settings, hooks, memory, sandboxing, MCP, the CLI and the
+  system prompt) are fetched as Markdown into `<state>/docs/claude/` and kept as a memory root of class shared, so a
+  room's own recall and read_memory reach them; they never ride in what a room is handed per message, and in a room's
+  own recall the owner's notes rank above them.
+- The doctor refreshes the pages once a week (`[docs] fetch = false` turns that off; `yerk docs refresh` still
+  fetches), and the morning diff says `docs changed: <slug>` once per change.
+- The doctor scores every rule file a room loads against the prompting guide (no why, loud, untagged examples, alarm
+  marks, a topic said twice): a report per room in `docs/shape/<room>.md`, one totals line in the morning diff, and a
+  finding for a file past a budgets.toml `[shape]` threshold. mechanics.md and examples/private are rewritten in the
+  guide's shape.
+- `yerk explain` takes a command's name (`yerk explain docs`), and the built abilities `claude-docs` and `rule-shape`
+  answer a room asked whether its rules are written the docs' way.
+- **Upgrading:** yerkd.toml takes an optional `[docs]` table (`pages`, `refresh_days` 7, `fetch` true, `topics`,
+  `acronyms`); budgets.toml gains `[shape]` (every threshold 0) and [code] lines rises by 452. The memory index takes
+  `<state>/docs` as a new root at its next start and chunks every file again once; run `yerk docs refresh` once after
+  the deploy so the pages are there before the first weekly run.
+
 ### budgets-voice (#68)
 
 - The taste rules (one line each: a rule and the rated replies that prove it) fit a rulebook: its budget rises from

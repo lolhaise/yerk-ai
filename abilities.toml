@@ -713,7 +713,7 @@ price = "none"
 free_path = "this is the free path"
 why_not = "After the rooms move."
 asked_as = ["docs mirror", "what changed in the docs"]
-upgrade = "jobs"
+upgrade = "claude-docs"
 
 [abilities.rules-review]
 state = "described"
@@ -729,7 +729,7 @@ price = "none"
 free_path = "this is the free path"
 why_not = "After the rooms move."
 asked_as = ["review your rules", "review your own rules", "stale rules"]
-upgrade = "jobs"
+upgrade = "rule-shape"
 
 [abilities.reply-checks]
 state = "described"
@@ -1085,8 +1085,17 @@ free_path = "this is the free path"
 asked_as = ["stance check", "fold when i push back", "agree with whoever pushes back", "do you just agree with me"]
 layer = 6
 
+[abilities.sheet]
+state = "built"
+what = "The sheet rule, in shadow: a turn that sends a document through the send tool (.docx, .pdf, .xlsx, .pptx, .txt, .md or .csv) or pastes a block (a fenced block with no language tag, or tagged text, plain or none) in its reply or in a send's text, with no claims sheet written or named in the turn (a Write, Edit or NotebookEdit of a file whose name holds claims and ends in .md, .txt or .csv, or a shell command naming one), is ledgered once and counted in the morning diff; nothing is blocked, it measures how often a room ships something in the owner's name without checking its claims against source first."
+tier = "free"
+needs = "nothing beyond the evidence ledger; the document suffixes, the paste tags and the sheet's name are short lists in the code, not a model"
+free_path = "this is the free path"
+asked_as = ["sheet rule", "claims sheet", "did you check the claims", "sent it without checking"]
+layer = 6
+
 [abilities.jobs]
-what = "Scheduled jobs from one private jobs.toml: `yerk jobs sync` makes one systemd user timer and service per job (idempotent: unchanged left alone, changed rewritten, removed disabled and cleaned), shows the diff and reads every next fire time back from systemd; `yerk jobs list` is the read-back. Three schedules (a cron expression with a tz, an interval, a one-shot that is removed after it fires), two kinds: a script (its command run in the unit with no account, its output posted to the room; exit 0 with nothing posts nothing; a failure alerts the ops room) and an agent job (a worker with the message as its brief, its last message told by the room, exactly NO_REPLY for silence). Every run is a job_runs ledger row; `yerk status` lists the jobs with their next fire time. `yerk explain jobs` describes every key of the file."
+what = "Scheduled jobs from one private jobs.toml: `yerk jobs sync` makes one systemd user timer and service per job (idempotent: unchanged left alone, changed rewritten, removed disabled and cleaned), shows the diff and reads every next fire time back from systemd; `yerk jobs list` is the read-back. Three schedules (a cron expression with a tz, an interval, a one-shot that is removed after it fires), three kinds: a script (its command run in the unit with no account, its output posted to the room; exit 0 with nothing posts nothing; a failure alerts the ops room), an agent job (a worker with the message as its brief, its last message told by the room, exactly NO_REPLY for silence) and a note (a reminder: when it is due the room's own session is told its message and says it in its voice; no worker, shell or account, and one missed while yerkd was down is told at its next start). Every run is a job_runs ledger row; `yerk status` lists the jobs with their next fire time. `yerk explain jobs` describes every key of the file."
 tier = "free"
 needs = "systemd user timers (systemctl --user, systemd-analyze); a running yerkd for the delivery and for agent jobs; the jobs file in the private folder (examples/private/jobs.toml is the template)"
 free_path = "this is the free path"
@@ -1102,7 +1111,7 @@ layer = 5
 state = "built"
 
 [abilities.schedule]
-what = "The schedule tool in every room, and `yerk schedule`: add a one-shot or a recurring job (a name, when with a zone, what, how to deliver), remove one, list them; writes the jobs file, syncs the timers and answers with the next fire time read back from systemd. A missing zone is the room's configured one, never UTC by accident."
+what = "The schedule tool in every room, and `yerk schedule`: add a one-shot or a recurring job (a name, when with a zone, what, how to deliver), remove one, list them; writes the jobs file, syncs the timers and answers with the next fire time read back from systemd. A missing zone is the room's configured one, never UTC by accident. Any room adds, lists and removes its own notes; agent and script jobs run as the owner, so only the owner's rooms set them."
 tier = "free"
 needs = "the jobs ability"
 free_path = "this is the free path"
@@ -1125,3 +1134,21 @@ needs = "a systemd user timer (units/yerk-retention.timer) and Linux /proc, whic
 free_path = "this is the free path"
 asked_as = ["how long do you keep", "retention sweep", "your trash folder"]
 layer = 11
+
+[abilities.claude-docs]
+state = "built"
+what = "Knows its own harness from the source: `yerk docs` keeps the Claude docs Yerk runs on (the prompting guide, each model's prompting page, the Claude Code pages on settings, hooks, memory, sandboxing, MCP, the command line and the system prompt flags) in the state folder as a memory root of class shared, so every room's own recall finds them, below the owner's notes, and cites docs/claude/<slug>.md:line; what a room is handed per message never holds them. `yerk doctor` fetches them from the web once a week ([docs] refresh_days in yerkd.toml, 7; [docs] fetch = false turns that off, and `yerk docs refresh` still fetches when run; [docs] pages replaces the list), and a page whose content changed is a line in the morning diff, since a changed guide means the rules may be stale against it."
+tier = "free"
+needs = "web access for the weekly refresh; the pages are indexed like any memory file"
+free_path = "this is the free path"
+asked_as = ["claude docs", "what the docs say", "the prompting guide"]
+command = "docs"
+
+[abilities.rule-shape]
+state = "built"
+what = "Checks how its own rules are written: the doctor scores every rule file a room loads (the mechanics, its persona, rulebook and voice, the rules file) against the prompting guide, counting negatives with no why, shouted words, examples outside example tags, alarm marks on an instruction and topics said in two files. A count past budgets.toml [shape] is a finding, a rule filed in the last day that misses the shape is named by its cite, each room's report is docs/shape/<room>.md, the morning diff carries the totals, and `yerk docs shape` prints the report with each count's exact rule."
+tier = "free"
+needs = "nothing; it runs in the daily doctor (units/yerk-doctor.timer)"
+free_path = "this is the free path"
+asked_as = ["rule shape", "are your rules written", "how your rules are written"]
+command = "docs shape"

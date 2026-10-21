@@ -292,10 +292,12 @@ class Yerkd:
             await self.tell_once(room, "embeddings", NO_KEY_LINE)
         return r
 
-    def search(self, room: str, query: str, k: int = 6, chars: int = 0, wait: float = memory.MEANING_WAIT, deadline: float = 5.0) -> dict[str, Any]:
-        """The recall tool's search, for the tool and the prompt hook alike (which waits less, inside its 10 s): the room's reader in its own scope."""
+    def search(self, room: str, query: str, k: int = 6, chars: int = 0, wait: float = memory.MEANING_WAIT, deadline: float = 5.0,
+               docs: bool = True) -> dict[str, Any]:
+        """The recall tool's search, for the tool and the prompt hook alike (which waits less, inside its 10 s): the room's reader in its own
+        scope; the hook's without the docs root (`docs`), which a room reaches by its own recall and read_memory."""
         rd, s = self.reader(room), self.scoped.get(room, self.memory)
-        return memory.live_first(s, memory.recall(s, query, k, deadline, rd, chars, wait), rd)
+        return memory.live_first(s, memory.recall(s, query, k, deadline, rd, chars, wait, docs), rd)
 
     async def tell_once(self, room: str, what: str, text: str) -> bool:
         """One plain line to the room about `what`, the first time only (a marker file remembers it)."""
@@ -321,14 +323,14 @@ class Yerkd:
                                     tuple(replaces), self.reader(room))
         return {**r, "next": words.FILED_NEXT.format(clause=words.FILED_AT_MOST)} if r["ok"] else r
 
-    def owner_only(self, room: str, named: str, line: str = words.WORKERS_OWNER_ONLY) -> dict[str, Any] | None:
+    def owner_only(self, room: str, named: str) -> dict[str, Any] | None:
         """A room's own call that would start or read a worker: the owner's rooms only (a worker runs as
         the owner's user), and for the calling room only. None means go on; else the one line."""
         if not room:                                   # the install's own callers keep every form
             return None
         if not self.owner(room):
             log.warning("workers: room %s is not an owner room; its worker call was refused", room)
-            return {"ok": False, "line": line}
+            return {"ok": False, "line": words.WORKERS_OWNER_ONLY}
         if named and named != room:
             return {"ok": False, "line": words.WORKER_OWN_ROOM.format(room=named)}
         return None
@@ -360,10 +362,13 @@ class Yerkd:
         return self.owner_only(room, named) or await self.workers.handle(room, req)
 
     async def tool_schedule(self, room: str, req: dict[str, Any]) -> dict[str, Any]:
-        """The `schedule` tool (add, remove, list); the job runner's hand-offs come through /control.
-        Any job runs as the owner's user (an agent job starts a worker; a script job runs its shell
-        command with no sandbox at all), so a room adds one by the worker rule, whatever its kind, and lists or removes one by it too."""
-        refused = self.owner_only(room, str(req.get("room") or "") if req.get("action") == "add" else "", words.JOBS_OWNER_ONLY)
+        """The `schedule` tool (add, remove, list); the job runner's hand-offs come through /control. An agent,
+        script or watcher job runs as the owner's user (a worker; a shell command with no sandbox at all), so an
+        owner's room adds one for itself by the worker rule and lists or removes any. A note runs nothing (its room
+        is told its text when due), so a room that is not the owner's keeps its own notes and nothing else."""
+        if room and not self.owner(room):
+            return await self.jobs.notes(room, req)
+        refused = self.owner_only(room, str(req.get("room") or "") if req.get("action") == "add" else "")
         return refused or await self.jobs.handle(room, req)
 
     async def tool_hold(self, room: str, wait_for: str, reason: str) -> dict[str, Any]:
@@ -452,7 +457,8 @@ class Yerkd:
         """(names, topics, past, absent), each search decided by code (decision 42), read as the room's reader in its scope: names
         on file (every one for an owner room; for any other, those in files it may read now, R2), each with its best lines from
         the room's whole scope (memory.lines_on), as each name or topic the message asks about gets (words.asked), or the absence
-        line when it has none; the room's own lines on the topic; a question about the past (words.PAST): the recall tool's own search. Off the loop."""
+        line when it has none; the room's own lines on the topic; a question about the past (words.PAST): the recall tool's own search.
+        None of them reads the docs root: a room reaches the docs by its own recall and read_memory. Off the loop."""
         conf, s, rd = self.room_confs.get(room, {}), self.scoped.get(room, self.memory), self.reader(room)
         names: list[dict[str, Any]] = []
         deep: list[dict[str, Any]] = []
@@ -477,8 +483,8 @@ class Yerkd:
                 absent += [] if got or what in keyed else [what]
         topics = memory.topic_hits(self.memory, room, prompt, mine, rid=room_id(room, conf),
                                    owner=self.owner(room)) if conf.get("topic_recall", True) else []
-        past = [h for h in self.search(room, prompt, PAST_HITS, int(self.budgets["per_message"]["on_hit"]["recall"]), 2.0, 3.0).get("hits", [])
-                if not any(f"[m:{m}" in h["text"] for m in mine)] if back else []
+        past = [h for h in self.search(room, prompt, PAST_HITS, int(self.budgets["per_message"]["on_hit"]["recall"]), 2.0, 3.0, docs=False)
+                .get("hits", []) if not any(f"[m:{m}" in h["text"] for m in mine)] if back else []
         return abilities.asked(prompt, self.memory) + names + deep, topics, past, absent     # "can you do voice": the manifest's answer
 
     def rules_news(self, room: str, sid: str = "") -> str:
@@ -494,6 +500,7 @@ class Yerkd:
         said = self.ledger.said(name, sid, room.evidence.started)     # its replies posted earlier in this session
         found = evidence.check(reply, room.prompts(), room.evidence, self.memory.scope.roots, figure, known, said)
         found += evidence.check_claims(reply, room.evidence, self.memory.scope.roots)     # decision 25
+        found += evidence.check_sheet(reply, room.evidence)                               # the sheet rule
         with room.lock:                                   # claim 3: the owner pushing back on a reply posted earlier
             pushed = [m.received for m in room.inflight if m.sender == "owner" and words.PUSHBACK.search(m.text)]
         found += evidence.stance(reply, pushed, room.evidence) if pushed and said and reply.strip() else []
@@ -698,26 +705,27 @@ class Yerkd:
             if why:
                 model, line = gates.refused(what, why)
                 v = gates.Verdict("restart", "deny", model, line, f"{what}; {why}")
-        key, cwd = "", str(payload.get("cwd") or self.state / "rooms" / name / "work")
+        key, shown, cwd = "", "", str(payload.get("cwd") or self.state / "rooms" / name / "work")
         if v is None and (hit := gates.external_hit(tool, ti, name, self.gates)):
             rule, what, call = hit
             key = gates.call_key(tool, ti)
+            shown = gates.plain(tool, ti) if self.room_confs[name].get("people") else key     # a person reads it: no JSON
             rel = self.ledger.release(name, rule, key, cwd, self.gates.window_s)
             if rel:
                 v = gates.Verdict("approval", "release", detail=f"{what}: {call}; approved by {rel['approved_by']}", rule=rule)
             else:
-                model, line = gates.held(what, call, self.gates.word, exact=key)
+                model, line = gates.held(what, call, self.gates.word, exact=shown)
                 v = gates.Verdict("approval", "hold", model, line, f"{what}: {call}", rule=rule)
         if v is None:
             return {}, ""
         gid = self.ledger.gate(room=name, session_id=sid, turn=room.turn_key, gate=v.gate, decision=v.decision,
                                tool=tool, rule=v.rule, detail=v.detail)
         if v.decision == "hold":
-            self.ledger.hold_add(name, v.rule, v.detail.split(":")[0], gid, key, cwd)
-            if len(key) > gates.SHOW:                     # too long for one message: the exact text as a file
+            self.ledger.hold_add(name, v.rule, v.detail.split(":")[0], gid, key, cwd)    # the exact call: the receipt
+            if len(shown) > gates.SHOW:                   # too long for one message: the text shown, as a file
                 path = self.state / "rooms" / name / "held" / f"{gid}.txt"
                 path.parent.mkdir(parents=True, exist_ok=True)
-                write_private(path, key + "\n")
+                write_private(path, shown + "\n")
                 self.held_files[name] = path
         if v.decision == "rewrite" and v.new_input:
             self.rewrites[str(payload.get("tool_use_id") or "")] = (name, str(v.new_input.get("command")))
