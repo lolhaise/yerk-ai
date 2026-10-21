@@ -319,6 +319,12 @@ def cmd_retention(a: argparse.Namespace) -> int:
     return retention.main(private_dir(a.private), state_dir(a.state), a.dry_run)
 
 
+def cmd_doctor(a: argparse.Namespace) -> int:
+    """The daily check and the crash repair (doctor.py): a line per finding, none when all is well; --dry-run changes nothing."""
+    from . import doctor
+    return doctor.main(private_dir(a.private), state_dir(a.state), a.dry_run)
+
+
 def cmd_deploy(a: argparse.Namespace) -> int:
     """`yerk deploy [REF]` (deploy.py): fast-forward, fast tests, a quiet room, the restart, the proof,
     else the rollback; the card to the machine room. --unit: onto units/yerkd.service as well."""
@@ -546,15 +552,13 @@ def main(argv: list[str] | None = None) -> int:
     rt = sub.add_parser("retention", help="the daily sweep: logs, transcripts, timing rows, finished workers and rooms' scratch "
                         "past their days ([retention] in yerkd.toml) into the trash, and the trash past its days deleted")
     rt.add_argument("--dry-run", action="store_true", help="say what would move and how much, move nothing")
-    for x in (ac, st, mo, rb, ab, ex, jb, sc, rt):
-        x.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else the fake example layer)")
-        x.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
+    dc = sub.add_parser("doctor", help="the daily check (the private folder's shape, rooms.toml keys, memory classes, tokens, "
+                        "the index, hooks, disk growth) and the crash repair of NUL lines, each file backed up first")
+    dc.add_argument("--dry-run", action="store_true", help="say what would be mended, change nothing")
     mm = sub.add_parser("memory", help="the memory tree's one-time migrations: migrate-daylogs (offsets, room ids, "
                         "authors and classes on every day-log line written before them; files copied to backups/ first)")
     mm.add_argument("action", choices=["migrate-daylogs"])
     mm.add_argument("--backup", help="where the copies go (default: <private>/backups/daily-before-<today>)")
-    mm.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else the fake example layer)")
-    mm.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
     cf = sub.add_parser("config", help="the settings Yerk AI describes, with their values here and plain words")
     cf.add_argument("action", choices=["get"])
     cf.add_argument("key", nargs="?", default="", help="a setting or section (presentation, memory, room); all when left out")
@@ -567,21 +571,14 @@ def main(argv: list[str] | None = None) -> int:
     dp.add_argument("ref", nargs="?", help="the commit (default: the daemon's tree's HEAD)")
     dp.add_argument("--no-tests", action="store_true", help="skip the fast tests (the card says so)")
     dp.add_argument("--unit", action="store_true", help="also move a systemd-run daemon onto units/yerkd.service")
-    dp.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else the fake example layer)")
-    dp.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
+    for x in (ac, st, mo, rb, ab, ex, jb, sc, rt, dc, mm, dp):
+        x.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else the fake example layer)")
+        x.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
     a = p.parse_args(argv)
-    if a.cmd == "config":
-        return cmd_config(a)
-    if a.cmd == "worker":
-        return cmd_worker(a)
-    if a.cmd == "jobs":
-        return cmd_jobs(a)
-    if a.cmd == "schedule":
-        return cmd_schedule(a)
-    return int({"map": cmd_map, "setup-room": cmd_setup_room, "room": cmd_room,
-                "accounts": cmd_accounts, "status": cmd_status, "morning": cmd_morning, "recall-bench": cmd_recall_bench,
-                "abilities": cmd_abilities, "explain": cmd_explain, "memory": cmd_memory, "deploy": cmd_deploy,
-                "retention": cmd_retention}[a.cmd](a))
+    return int({"map": cmd_map, "setup-room": cmd_setup_room, "room": cmd_room, "worker": cmd_worker, "jobs": cmd_jobs,
+                "schedule": cmd_schedule, "accounts": cmd_accounts, "status": cmd_status, "morning": cmd_morning,
+                "recall-bench": cmd_recall_bench, "abilities": cmd_abilities, "explain": cmd_explain, "config": cmd_config,
+                "memory": cmd_memory, "deploy": cmd_deploy, "retention": cmd_retention, "doctor": cmd_doctor}[a.cmd](a))
 
 
 if __name__ == "__main__":

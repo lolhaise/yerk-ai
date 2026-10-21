@@ -24,7 +24,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from . import beat, context, deploy, evidence, gates, hooks, jobs, mcp_server, memory, mentions, status, workers
+from . import beat, context, deploy, doctor, evidence, gates, hooks, jobs, mcp_server, memory, mentions, status, workers
 from .accounts import Account, Cooldowns, from_dir, load_accounts, pick
 from .config import (EFFORTS, REPO, budgets, discord_id, flag, load_toml, models, override, people, pinned, private_dir,
                      read_secret, room_id, room_settings, rooms, state_dir, table, write_private)
@@ -125,6 +125,9 @@ class Yerkd:
         context.walls(private, state, self.memory.scope.roots, self.room_confs)
         self.daily = memory.DailyLog(self.memory.daily, self.memory.tz,
                                      {n: (room_id(n, c), memory.room_class(c)) for n, c in self.room_confs.items()})
+        # crash repair before anything reads a day log, assembled log or bound transcript (doctor.py): a hard power-off
+        # zeroes the line a file was writing; a room the crash left with a message waiting is left for the daily run
+        log.info("%s", doctor.start(private, state, self.memory, {str(r["room"]) for r in self.ledger.inbound_open()}))
         # day-log lines written before offsets, ids, authors and classes are rewritten once, here, before any
         # channel opens and under the lock capture holds, so no second writer ever races the rewrite (cold
         # read F3); the originals go beside the private layer, or under the state folder for the example one

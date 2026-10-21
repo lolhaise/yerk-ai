@@ -17,7 +17,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
-from . import context, jobs, memory, retention, status, words
+from . import context, doctor, jobs, memory, retention, status, words
 from .accounts import Account, Cooldowns
 from .config import budgets, rooms
 from .ledger import Ledger
@@ -93,6 +93,7 @@ def build(private: Path, state: Path, accounts: list[Account], cooldowns: Cooldo
             add(f"deploy {d['id']}", W.NOT_DONE, said + at if W.width(f"{W.NOT_DONE} {said}{at}") <= W.PHONE else said)
     if (swept := retention.line(state, now)):            # the night's sweep: what it moved by kind, or that it failed
         rows.append(swept)
+    rows.append(doctor.line(state, now))                 # the daily check: ok, or its count and first finding
     if live is None:
         add("unknown units", W.NOT_DONE, W.UNKNOWN.format(what="memory", why=W.NOT_ANSWERING_WHY))
     for u in (live or {}).get("units", []):

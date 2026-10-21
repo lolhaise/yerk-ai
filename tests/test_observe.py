@@ -258,7 +258,7 @@ def test_a_planted_payload_change_shows_up_the_next_morning_in_the_machine_room_
     assert set(text[1:3]) == {f"{words.WORKING} example-room rulebook: +500 chars",
                               f"{words.WORKING} example-quiet rulebook: +500 chars"}
     assert morning.run(priv, state, accounts, cool, post=post, now=NOW + 2 * 86400) == 0
-    assert posts[2]["text"].splitlines()[0] == "- morning: nothing new, 3 known"     # the three blind detectors
+    assert posts[2]["text"].splitlines()[0] == "- morning: nothing new, 4 known"     # the four blind detectors, the doctor's
     assert {p["room"] for p in posts} == {"example-quiet"}                            # the machine room, no other
     assert all(words.width(x) <= words.PHONE for p in posts for x in p["text"].splitlines())
     assert (state / "morning" / time.strftime("%Y-%m-%d.txt", time.localtime(NOW))).is_file()
@@ -322,7 +322,7 @@ def test_the_morning_diff_reads_yesterday_from_the_ledger_and_says_unknown_when_
     assert "- first line: 2.0 s typical, 4.0 s worst" in lines and "- yerkd: 85 MB, 0.3% cpu" in lines
     assert f"{words.NOT_DONE} stalls yesterday: 1, longest 3.4 s" in lines
     assert f"{words.WORKING} shadow flag unread-figure: 1" in lines
-    assert stamp["findings"] == ["stalls", "shadow unread-figure"]
+    assert stamp["findings"] == ["stalls", "shadow unread-figure", "unknown doctor"]       # no doctor run in the last day
     empty = Ledger(state / "empty.sqlite")
     blind, _ = morning.build(priv, state, accounts, cool, empty, None, NOW)
     assert f"{words.NOT_DONE} stalls: unknown, yerkd not answering" in blind      # a blind detector says so
