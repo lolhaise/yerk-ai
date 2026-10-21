@@ -21,6 +21,8 @@ with the originals kept under `backups/`; the index chunks every file again when
 - A held card in a room with `people` shows the call's content in plain words (for a send: the room in its first
   line, the text below), never the tool call's JSON; the exact call stays in the ledger. The owner's rooms see the
   exact call as before.
+- **Upgrading:** budgets.toml changed ([code] lines, up 92 for the note kind, its gate, the plain card and the note's
+  restart replay). Nothing to do.
 
 ### budgets-voice (#68)
 
