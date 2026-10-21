@@ -9,12 +9,15 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import difflib
+import fcntl
 import hashlib
 import json
 import logging
 import os
 import secrets
+import signal
 import socket
 import sys
 import threading
@@ -22,7 +25,7 @@ import time
 import uuid
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 from . import beat, context, deploy, doctor, evidence, gates, hooks, jobs, mcp_server, memory, mentions, status, workers
 from .accounts import Account, Cooldowns, from_dir, load_accounts, pick
@@ -32,6 +35,7 @@ from .engine import RoomSpec, SessionTable
 from .ledger import Ledger
 from .lifted.classify import FailureTable
 from .lifted.loopguard import LoopGuard
+from .lifted.systemd_notify import notify
 from .meters import Meters
 from .room import Channel, Inbound, Room
 from . import abilities, words   # STYLE.md: what a room reads
@@ -803,6 +807,45 @@ class Yerkd:
         """The HTTP port is bound: READY=1 may go out (a start counts only when it can answer)."""
         return self.http is not None and bool(self.http.started)
 
+    def claim(self) -> None:
+        """One daemon per state folder: an exclusive flock on <state>/yerkd.lock, held for the process's life, so a
+        second yerkd started on the same folder stops with one line instead of two answering the same rooms."""
+        fd = os.open(self.state / "yerkd.lock", os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            os.close(fd)
+            raise SystemExit(f"another yerkd runs on {self.state} (yerkd.json names its pid); stop it first") from None
+        self.claimed = fd
+
+    async def until_stopped(self, tasks: list[asyncio.Task[Any]], close: Callable[[], Awaitable[Any]]) -> None:
+        """The daemon runs until one of its tasks ends (the channel's start raising at boot ends it as before: that error
+        is the exit) or SIGTERM or SIGINT comes. On a signal: STOPPING=1 to systemd, every room's process ended (a turn
+        mid-run is cut and its messages stay open in the ledger, so the next start runs them once more, marked), the
+        channel closed clean, the HTTP server ended, exit 0; measured 1 to 2 s with a turn running (signal drill)."""
+        asked = asyncio.Event()
+        loop = asyncio.get_running_loop()
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            loop.add_signal_handler(sig, asked.set)
+        waiter = asyncio.create_task(asked.wait())
+        done, _ = await asyncio.wait([waiter, *tasks], return_when=asyncio.FIRST_COMPLETED)
+        if waiter not in done:
+            waiter.cancel()
+            for t in done:
+                t.result()                                # a task that raised: its error ends the daemon
+            return
+        notify("STOPPING=1")
+        cut = await asyncio.gather(*(asyncio.to_thread(r.shutdown) for r in self.rooms.values()))
+        log.info("stopping: %d room(s) closed, %d turn(s) cut; a cut turn's messages run again once at the next start",
+                 len(cut), sum(cut))
+        with contextlib.suppress(Exception):
+            await close()
+        if self.http is not None:
+            self.http.should_exit = True
+        for t in tasks:
+            t.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
     async def reap(self, every: float = 60.0) -> None:
         while True:
             await asyncio.sleep(every)
@@ -834,16 +877,19 @@ class Yerkd:
                 dc.add_room(int(cid), self.add_room(name, dc), int(wid) if wk == "discord" and wid.isdigit() else None, people(name, conf))
         if not dc.rooms:
             raise SystemExit("no room has a discord:<channel id> in rooms.toml")
+        self.claim()
         self.workers.begin(asyncio.get_running_loop())
         dc.after_recover.append(self.workers.reattach)   # their cards are edited, so after the connect
         dc.after_recover.append(self.jobs.reattach)      # a script run that ended with no daemon up: delivered late
         self.write_status("discord")
         self.link = dc
-        await asyncio.gather(self.serve_http(), self.reap(min(60.0, self.idle_seconds / 2)),
-                             self.beat.tick(self.listening), dc.start())
+        tasks = [asyncio.create_task(c) for c in (self.serve_http(), self.reap(min(60.0, self.idle_seconds / 2)),
+                                                   self.beat.tick(self.listening), dc.start())]
+        await self.until_stopped(tasks, dc.close)
 
     async def run_console(self, name: str) -> None:
         room = self.add_room(name, ConsoleChannel())
+        self.claim()
         self.workers.begin(asyncio.get_running_loop())
         await self.workers.reattach()
         await self.jobs.reattach()

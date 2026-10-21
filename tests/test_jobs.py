@@ -7,7 +7,7 @@ import hashlib
 import io
 import subprocess
 from contextlib import redirect_stdout
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -16,7 +16,6 @@ import pytest
 from yerk_ai import cli, jobs
 from yerk_ai import words as W
 from yerk_ai.jobs import Env, JobError, make_job
-from yerk_ai.ledger import Ledger
 
 from test_workers import Chan, ended, setup  # noqa: F401  (the worker fixture: fake units, fake claude, a room)
 

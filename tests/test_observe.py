@@ -15,7 +15,7 @@ from types import SimpleNamespace
 
 from starlette.testclient import TestClient
 
-from yerk_ai import beat, cli, jobs, mcp_server, morning, status, words
+from yerk_ai import __version__, beat, cli, jobs, mcp_server, morning, status, words
 from yerk_ai.accounts import Cooldowns, load_accounts
 from yerk_ai.config import EXAMPLE_PRIVATE, REPO
 from yerk_ai.daemon import ConsoleChannel, Yerkd
@@ -104,7 +104,7 @@ def test_the_card_is_phone_width_state_first_and_colours_only_what_means_somethi
     assert len(reds) == 4                                                   # resting, blocked, gone, stall: no other
     quiet = status.card(status.collect(EXAMPLE_PRIVATE, tmp_path / "q", [], cool, Ledger(tmp_path / "q.sqlite"),
                                        units=set, timers=Timers()), now)
-    assert quiet == [f"{words.NOT_DONE} yerkd: not running", "- workers: none running",
+    assert quiet == [f"{words.NOT_DONE} yerkd: not running", f"- yerk {__version__} at ?", "- workers: none running",
                      f"{words.NOT_DONE} jobs: the timer list is unreadable", "- stalls today: none"]
 
 

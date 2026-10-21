@@ -701,7 +701,7 @@ class Workers:
         q, room = self.waiting.get(name), self.rooms.get(name)
         if not q or room is None or self.asked.get(name):
             return
-        if (why := room.idle_reason(self.conf.idle_seconds)):
+        if room.idle_reason(self.conf.idle_seconds):
             return
         msg = q.pop(0)
         done = msg.then

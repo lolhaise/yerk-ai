@@ -359,7 +359,7 @@ def make_job(name: str, raw: dict[str, Any], now: float | None = None) -> Job:
     if (bad := sorted(set(raw) - set(KEYS))):
         raise JobError(f"unknown key{'s' if len(bad) > 1 else ''} {', '.join(bad)}; the keys are {', '.join(KEYS)}")
     if (kind := str(raw.get("kind", ""))) not in KINDS:
-        raise JobError(f'`kind` must be "script", "agent" or "watcher"' + (f", not {kind!r}" if kind else ""))
+        raise JobError('`kind` must be "script", "agent" or "watcher"' + (f", not {kind!r}" if kind else ""))
     if kind == "watcher":
         return make_watcher(name, raw)
     for k in ("prefix", "regex", "batch", "lines", "wake", "prime"):
