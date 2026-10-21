@@ -39,14 +39,14 @@ def load_toml(path: Path) -> dict[str, Any]:
 
 
 def toml_value(v: Any) -> str:
-    """One value as TOML writes it: true or false, a number, a string, or a list of them."""
+    """One value as TOML writes it: true or false, a number, a string (a DEL escaped, a lone surrogate as ?), or a list."""
     if isinstance(v, list):
         return f"[{', '.join(toml_value(x) for x in v)}]"
     if isinstance(v, bool):
         return "true" if v else "false"
     if isinstance(v, (int, float)):
         return f"{v:g}" if isinstance(v, float) else str(v)
-    return json.dumps(str(v), ensure_ascii=False)
+    return json.dumps(str(v).encode("utf-8", "replace").decode(), ensure_ascii=False).replace("\x7f", "\\u007f")
 
 
 def flag(value: Any, default: bool = False) -> bool:

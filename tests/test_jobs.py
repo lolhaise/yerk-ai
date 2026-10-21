@@ -468,6 +468,18 @@ async def settled(ledger, run_id, timeout=20.0):
     raise AssertionError(f"run {run_id} was not told: {ledger.job_run_get(run_id)}")
 
 
+def test_a_message_toml_cannot_hold_raw_is_written_so_the_file_still_parses_and_no_other_timer_goes(tmp_path):
+    """Any room writes a note's message now. A DEL in it made the jobs file unparseable, so the add's own sync took
+    every other job's timer away; a lone surrogate truncated the file to nothing. Both are written so the file parses."""
+    keep = '[jobs.keep]\nkind = "script"\nevery = "1h"\nroom = "r"\ncommand = "true"\n'
+    path, sd = write_jobs(tmp_path / "jobs.toml", keep), FakeSystemd(tmp_path / "units")
+    jobs.sync(path, sd, ENV)
+    for name, text in (("del", "call\x7f the clinic"), ("half", "call \ud800 the clinic")):
+        assert jobs.schedule_add(path, sd, ENV, name, "note", "2099-01-03 10:00", text, "r", "UTC")["ok"], name
+    assert sd.ours() == ["del", "half", "keep"] and path.read_text().startswith(keep)
+    assert [j.payload for j in jobs.load(path)[0].values()] == ["true", "call\x7f the clinic", "call ? the clinic"]
+
+
 def test_a_note_builds_syncs_and_reads_back_like_any_timed_job(tmp_path):
     note = make_job("call-clinic", {"kind": "note", "at": "2099-01-03 10:00", "tz": "UTC", "room": "r",
                                     "message": "Remind them to call the clinic."})
