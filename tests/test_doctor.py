@@ -125,6 +125,28 @@ def test_a_secret_shaped_line_in_memory_or_an_import_is_named_by_file_and_line_n
     assert {k for k, rx in doctor.SECRETS.items() for t in planted.values() if rx.search(t)} == set(doctor.SECRETS)
 
 
+def test_a_one_time_code_in_an_import_two_days_past_its_own_lines_date_is_dead_and_not_said(tree, capsys):
+    """PR 66's cold read: 194 of the live tree's 213 secret-shaped lines were verification codes in old mail. Under
+    imports/, a code on a line more than two days past its own date (its entry's stamp, else its month file's end) is
+    dead and not said; a fresh one is, so is one with no date, and a dead code's line still says the password it holds."""
+    priv, state, *_ = tree
+    code, fresh = "your verification code is 482913", datetime.now() - timedelta(hours=1)
+    planted = {"imports/mail/2019-02.md": f"# Mail 2019-02\n\n  {code}\n- 2019-02-14 09:12 From: Example Bank | Subject: sign in\n"
+                                          f"  {code}\n- 2019-02-15 10:00 From: Example Shop | Subject: login code 551234, the password is Exa-mple9!\n",
+               "imports/texts/example-bank.md": f"# example bank\n\n- 2019-02-14 09:12 bank: {code}\n",
+               f"imports/mail/{fresh:%Y-%m}.md": f"# Mail {fresh:%Y-%m}\n\n- {fresh:%Y-%m-%d %H:%M} From: Example Bank | Subject: sign in\n  {code}\n",
+               "imports/mail/undated.md": f"# Mail undated\n\n- undated From: Example Bank | Subject: sign in\n  {code}\n"}
+    for rel, text in planted.items():
+        (priv / rel).parent.mkdir(parents=True, exist_ok=True)
+        (priv / rel).write_text(text)
+    assert doctor.main(priv, state) == 1
+    assert capsys.readouterr().out.splitlines() == ["secret-shaped lines: 3 in 3 files, first imports/mail/2019-02.md:6 (password line); "
+                                                    "scrub by hand, rotate the key"]
+    assert doctor.scan(priv / f"imports/mail/{fresh:%Y-%m}.md", time.time()) == [(4, "one-time code")]
+    assert doctor.scan(priv / "imports/mail/2019-02.md", time.time()) == [(6, "password line")]
+    assert doctor.scan(priv / "imports/mail/2019-02.md") == [(3, "one-time code"), (5, "one-time code"), (6, "one-time code")]
+
+
 def test_the_doctors_key_shapes_are_the_scrub_tests(tree):
     from tests.test_scrub import PATTERNS
     assert PATTERNS["secret"].pattern == doctor.SECRETS["key"].pattern

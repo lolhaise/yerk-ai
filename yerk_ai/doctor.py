@@ -11,6 +11,7 @@ import re
 import stat
 import time
 from contextlib import suppress
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
 
@@ -33,6 +34,31 @@ SECRETS = {"key": re.compile(r"sk-ant-[A-Za-z0-9_-]{16,}|sk-[A-Za-z0-9]{32,}|gh[
            "password line": re.compile(r"(?i)\bpass(?:word|phrase)\s*(?:is|:|=)\s*(?=\S*[\d!#$%^&*])\S{6,}"),
            "token line": re.compile(r"(?i)\b(?:token|api[ _-]?key|secret|bearer)\s*[:=]\s*[\"'`]?[\w.-]{16,}")}
 TEXT = (".md", ".txt", ".json", ".jsonl", ".csv", ".eml")
+SPENT = 2 * DAY                                         # a one-time code is dead this long after its own line's date
+
+
+def dated(text: str, fmt: str) -> datetime | None:
+    try:
+        return datetime.strptime(text, fmt)
+    except ValueError:
+        return None
+
+
+def scan(f: Path, now: float | None = None) -> list[tuple[int, str]]:
+    """(line, kind) of each secret-shaped line of `f`, by its first shape. With `now`, for an import's file: a one-time code
+    is dead, and no hit, on a line whose own date is more than two days old, its entry's `- YYYY-MM-DD HH:MM` (the lines
+    under an entry share it), else the end of its month file (imports/mail/YYYY-MM.md); with no date it is said. PR 66's
+    cold read scanned a live tree on 2026-10-21: 194 of its 213 hits were old mail's verification codes."""
+    month = dated(f.stem, "%Y-%m")
+    end = (month.replace(day=28) + timedelta(days=4)).replace(day=1).timestamp() if month else None
+    out, at = list[tuple[int, str]](), None
+    for n, line in enumerate(f.read_text(errors="replace").splitlines(), 1):
+        if line.startswith("- "):                           # an entry's first line: its own time, or none
+            at = d.timestamp() if (d := dated(line[2:18], "%Y-%m-%d %H:%M")) else None
+        dead = now is not None and now - (at or end or now) > SPENT
+        if kind := next((k for k, rx in SECRETS.items() if not (dead and k == "one-time code") and rx.search(line)), ""):
+            out.append((n, kind))
+    return out
 
 
 def reads(line: bytes, daylog: bool) -> bool:
@@ -195,8 +221,7 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
     def leaks() -> None:             # the day logs, notes and fact files, and the text an import saved: report, never rewrite
         roots = [m.root] + [private / d for d in ("attachments", "imports") if (private / d).is_dir()]     # an import's files
         hits = [(f, n, kind) for f in sorted(p for r in roots for p in r.rglob("*") if p.suffix in TEXT and p.is_file())
-                for n, line in enumerate(f.read_text(errors="replace").splitlines(), 1)
-                for kind in [next((k for k, rx in SECRETS.items() if rx.search(line)), "")] if kind]
+                for n, kind in scan(f, now if f.is_relative_to(private / "imports") else None)]    # an import's dead codes: not said
         if hits:
             (f, n, kind), files = hits[0], len({h[0] for h in hits})
             found.append(f"secret-shaped lines: {len(hits)} in {files} file{'s' * (files > 1)}, first "
