@@ -98,6 +98,29 @@ def test_a_card_in_her_rooms_class_gets_nothing_from_his_private_sources(layer):
     assert [x for _, _, x in pk[s.root / "facts" / "pets.md"]] == ["- the vet saw Zed today"] and "back" not in said_as
 
 
+def test_an_also_root_cited_by_its_own_name_feeds_the_pack_and_lands_and_a_later_copy_of_it_stays_out(layer, monkeypatch):
+    """Each root's cite is its own: a second root's notes cite under that root's own folder name (here ben/memory/...), and nothing
+    of that name sits beside the private layer. Curate reads that root's day, its line lands, and a later root's copy stays out."""
+    priv, state, s, log = layer
+    (ben := priv.parent / "ws" / "ben" / "memory").mkdir(parents=True)
+    (snap := priv.parent / "snap" / "memory").mkdir(parents=True)
+    (ben / "2026-10-20.md").write_text("# Oct 20\n- Ada's new car is a green Example Coupe\n")
+    (snap / "2026-10-20.md").write_text("# Oct 20\n- Ada's new car is a green Example Coupe\n- Ada said the copy only line\n")
+    conf = (priv / "yerkd.toml").read_text().splitlines()
+    (priv / "yerkd.toml").write_text("\n".join(f'also = ["{ben}", "{snap}"]' if x.startswith("also = ") else x for x in conf) + "\n")
+    s = memory.settings(priv, state, {"timezone": "UTC", "also": [str(ben), str(snap)]})
+    assert memory.cite(s, (ben / "2026-10-20.md").resolve()) == "ben/memory/2026-10-20.md"
+    pack = curate.packs(s, priv, [], [datetime(2026, 10, 20).date()])[0][s.root / "facts" / "ada.md"]
+    assert ((ben / "2026-10-20.md").resolve(), 2, "- Ada's new car is a green Example Coupe") in pack
+    assert not any("copy only" in x for _, _, x in pack)
+    monkeypatch.setattr(curate, "bench", lambda s: {"top_k": 10, "top_1": 5, "at": "now", "seconds": 1.0})
+    monkeypatch.setattr(curate, "taken", lambda s, cards: True)
+    mine = "ada.md: - Ada's new car: a green Example Coupe (src: ben/memory/2026-10-20.md:2)"
+    calls: list = []
+    r = curate.run(priv, state, now=NOW, model=fake([mine, f"KEEP {mine}"], calls))
+    assert "[ben/memory/2026-10-20.md:2] - Ada's new car is a green Example Coupe" in calls[0][0] and r["landed"] == [mine]
+
+
 def test_a_curate_log_never_feeds_her_card_whatever_its_class_and_her_recall_never_finds_a_promoted_line(layer, monkeypatch):
     priv, state, s, log = layer
     (log.parent / f"{log.name}.class").write_text("shared\n")                 # her recall never reads it: it is outside the scope

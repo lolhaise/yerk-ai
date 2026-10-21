@@ -267,3 +267,41 @@ def test_every_key_a_loader_reads_from_a_room_is_in_room_keys(tmp_path, monkeypa
         config.room_settings(conf, tmp_path, name, y.models), memory.room_class(conf), config.room_id(name, conf)
     assert Seen.read - ROOM_KEYS == set(), f"read by a loader, not in config.ROOM_KEYS: {sorted(Seen.read - ROOM_KEYS)}"
     assert len(Seen.read) >= 20, sorted(Seen.read)          # the tables were read through: the test sees the loaders
+
+
+def test_the_four_index_checks_each_fire_on_their_case_and_are_quiet_when_all_is_well(tree, monkeypatch, tmp_path):
+    """2026-10-21: the index lived at a 450M cap with 861,965 vectors (a), its backfill retried one batch the provider
+    refused, cycle after cycle (b), two roots named `memory` shared a cite (c), and yerk-index ran older code than yerkd
+    for four hours (d). The doctor's dry run said nothing of it; each is now a line, and a well index is quiet."""
+    import os
+    from dataclasses import replace
+    from yerk_ai import retention
+    priv, state, *_ = tree
+    leaf = "user.slice/app.slice/yerk-index.service"
+    (proc := tmp_path / "proc" / str(os.getpid())).mkdir(parents=True)
+    (proc / "cgroup").write_text(f"0::/{leaf}\n")
+    (cap := tmp_path / "cgroup" / leaf / "memory.high").parent.mkdir(parents=True)
+    monkeypatch.setattr(retention, "PROC", tmp_path / "proc")
+    monkeypatch.setattr(doctor, "CGROUP", tmp_path / "cgroup")
+    monkeypatch.setattr(status, "ask", lambda s, *a: {"rooms": [], "units": [{"name": "yerkd"}], "commit": "b" * 40})
+
+    def index(high, **emb):
+        cap.write_text(f"{high}\n")
+        (state / "memory" / "index.json").write_text(json.dumps({"pid": os.getpid(), "port": 1, "commit": emb.pop("commit", "b" * 40),
+                                                                 "embeddings": {"vectors": 861965, "width": 256, **emb}}))
+        return [x for x in doctor.run(priv, state, dry=True) if x.startswith(("memory index", "meaning search", "memory roots"))]
+    assert index(1 << 30, paused=False, streak=0) == [] and index("max", paused=True, streak=2) == []
+    assert index(450 << 20) == ["memory index: memory capped at 450M, under the 696M its unit's rule gives 861,965 vectors"]
+    stuck = 'HTTP 400 from the provider: {\n  "error": {\n    "message": "Invalid \'input\': maximum request size is 300000 tokens'
+    assert index("max", paused=True, streak=3, failed=9, last_error=stuck) == [
+        "meaning search: backfill paused after 3 failures: " + ' '.join(stuck.split())[:100]]
+    assert index("max", paused=True, failed=138, last_error=stuck)[0].startswith("meaning search: backfill paused after 138 failures")   # before streak
+    assert index("max", commit="a" * 40) == ["memory index: runs aaaaaaa, yerkd bbbbbbb: restart yerk-index"]
+    # (c): two roots named `memory` and no cite of their own each, as every cite was before 2026-10-21
+    for n in ("one", "two"):
+        (tmp_path / n / "memory").mkdir(parents=True)
+    (priv / "yerkd.toml").write_text(f'[memory]\nalso = ["{tmp_path / "one" / "memory"}", "{tmp_path / "two" / "memory"}"]\n')
+    assert index("max") == []                                            # each its own cite: quiet
+    real = memory.settings
+    monkeypatch.setattr(memory, "settings", lambda *a, **k: replace(real(*a, **k), cites=()))
+    assert index("max") == ["memory roots: 3 share the cite memory"]

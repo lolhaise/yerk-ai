@@ -858,3 +858,37 @@ def test_a_job_failure_alerts_the_machine_room_before_the_ops_room(tmp_path):
     asyncio.run(j.alert(None, "job x: failed", 0, "work"))
     assert said == ["machine", "ops"]
 
+
+
+def test_a_deploy_restarts_yerk_index_after_yerkd_and_the_running_line_wants_both_on_the_commit(tmp_path, capsys):
+    """yerk-index ran an older mentions.py than yerkd for about four hours on 2026-10-20: a deploy never restarted it. Its
+    unit now comes from its pid (index.json), it restarts right after yerkd, and the running line holds only once it runs
+    the commit too; an index that comes back on the old code fails the proof, and the rollback restarts both again."""
+    tree, ids = repo(tmp_path)
+    priv, state = layer(tmp_path, tree)
+    (ix := state / "memory" / "index.json").parent.mkdir()
+    ix.write_text(json.dumps({"pid": os.getpid(), "commit": ids[0]}))
+    uid = os.getuid()
+    manager = f"/user.slice/user-{uid}.slice/user" + chr(64) + f"{uid}.service"
+    proc = planted_proc(tmp_path, f"0::{manager}/app.slice/yerk-index.service\n", b"/v/bin/python\x00-m\x00yerk_ai.memindex\x00")
+    order, takes, made, f = [], [True], [], Fake(tree)
+    f.restart = lambda: order.append("yerkd") or Fake.restart(f)
+
+    class Index(Fake):
+        def restart(self):
+            order.append("yerk-index")
+            if takes[0]:                                 # else it comes back on the code it ran before
+                ix.write_text(json.dumps({"pid": os.getpid(), "commit": deploy.head(tree)}))
+            return True
+
+        def show(self, prop):
+            return str(os.getpid()) if prop == "MainPID" else ""
+    run = functools.partial(deploy.run, priv, state, tests=False, sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap,
+                            proc=proc, systemd=lambda name: made.append(name) or Index(tree))
+    assert run(ids[1]) == 0 and order == ["yerkd", "yerk-index"] and set(made) == {"yerk-index"}
+    assert f"{words.DONE} running {ids[1][:7]}" in capsys.readouterr().out.splitlines()
+    takes[0], order[:] = False, []
+    assert run(ids[2]) == 1 and order == ["yerkd", "yerk-index"] * 2 and deploy.head(tree) == ids[1]
+    out = capsys.readouterr().out.splitlines()
+    assert f"{words.NOT_DONE} running {ids[2][:7]}" in out and f"{words.DONE} rolled back to {ids[1][:7]}" in out
+    assert [r[3] for r in rows(state)] == ["proven", "proof failed", "proven"]

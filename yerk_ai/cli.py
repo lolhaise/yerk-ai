@@ -506,7 +506,9 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
     im = sub.add_parser("import", help="a chat's whole history into the day logs, no room made: discord:<channel or thread id>, "
                         "or discord-guild:<guild id> for every chat on the server no room covers (--dry-run: the inventory)")
-    im.add_argument("source", help="discord:<channel or thread id> or discord-guild:<guild id>")
+    im.add_argument("source", help="discord:<channel or thread id>, discord-guild:<guild id>, imessage:<a Messages chat.db> "
+                    "(texts into imports/texts) or gmail (All Mail into imports/mail, by yerkd.toml [gmail])")
+    im.add_argument("--contacts", help="imessage: a Contacts database, for the names its numbers and addresses have")
     im.add_argument("--since", help="the history from this day on, YYYY-MM-DD (default: all of it)")
     im.add_argument("--files", action="store_true", help="save attachments up to 25 MB too (default: each named with its size, none downloaded)")
     im.add_argument("--dry-run", action="store_true", help="read and count, write nothing; on one chat, also print every line it would file")

@@ -282,6 +282,41 @@ PUSHBACK = re.compile(r"^[^\in\n]*(?:(?:the|Next|run|starts|the|example+|note)\s
                       r"|wrong|actually|disagree|not\s+(?:true|really|quite))\b|\b(?:you['’]?re|you\s+are|that['’]?s|that\s+is)\s+wrong\b"
                       r"|\bthat(?:['’]?s|\s+is)(?:\s+not|n['’]?t)\s+(?:true|right|correct|it|what|how)\b|\bnot\s+true\b"
                       r"|\bi\s+(?:disagree|don['’]?t\s+agree)\b", re.I | re.M)
+# recall before the answer (decision 42): code decides when a message searches the room's memory before the model starts.
+# A question about the owner's past: a question word opening a sentence, or after a filler or a time word, with a past verb
+# within four words ("what did I", "who did I go to lunch with", "when did", "where was that"), never with you beside the
+# verb, a bare it, that or this after it (the session's own last step) or a colon (a pasted heading); "do you remember",
+# "remember when"; "did" or "was" to open, never "did you", "did it" or "did this"; "did we" in a question; or, in a
+# question, "last time", "last friday", "the other day", "two weeks ago", a date. Never "why": that asks what broke.
+_DAY, _MONTH = r"(?:mon|tues|wednes|thurs|fri|satur|sun)day", r"(?:jan|feb|mar|apr|may|jun|jul|aug|sept?|oct|nov|dec)[a-z]*"
+_LEAD = rf"(?:^|[.!?;(]\s*|\b(?:so|and|but|ok|okay|like|yo|bro|Alex|man|wait|hey|also|then|or|um|uh)[,\s]+|\b(?:yesterday|{_DAY}|night|week|ago)\s+)"
+PAST = re.compile(rf"{_LEAD}(?:what|who|whom|when|where|which|how)(?:\s+(?!(?:it|you|u|that|this|is|are|am)\b)[\w'’]+){{0,4}}?\s+"
+                  r"(?:did|was|were|had|happened|went|said|told|asked|sent|bought|met|saw|ate)\b(?!\s+(?:you|u|your|ur)\b|\s+(?:it|that|this)\s*(?:[?.!,]|$)|:)"
+                  r"|\b(?:do|did|can)\s+(?:you|u)\s+(?:remember|recall)\b|\bremember\s+(?:when|the\s+(?:time|day|night))\b"
+                  r"|^\W*(?:did|was|were)\s+(?!(?:you|u|it|this)\b)\w|^\W*have\s+(?:i|we)\b|\b(?:did|have)\s+(?:i|we)\b(?=[^.!\n]*\?)"
+                  rf"|\b(?:last\s+(?:time|{_DAY}|week|weekend|month|year|night)"
+                  r"|the\s+other\s+(?:day|night)|(?:a|one|two|three|few|couple|\d+)\s+(?:days?|weeks?|months?|years?)\s+ago"
+                  rf"|on\s+(?:{_MONTH}\s+\d{{1,2}}|\d{{4}}-\d\d-\d\d))\b(?=[^.!\n]*\?)", re.I | re.M)
+# a name or topic a message asks about ("who is X" with X one or two words ending the question, "what do you know about X",
+# "tell me about X", "do you remember X"): X's best lines from the room's whole scope come in before the answer, or, when
+# it has none, the absence line, code's word (claim 3)
+ASKED = re.compile(r"\bwho(?:\s+(?:is|was)|['’]s)\s+(?P<who>[\w'’.-]+(?:\s+[\w'’.-]+)?)(?=\s*(?:(?:bro|Alex|man|dude|Alex|lol)\b\s*)?(?:[?.!,;:]|$))|\b(?:what\s+do\s+(?:you|u|we)"
+                   r"\s+know\s+about|tell\s+me\s+(?:more\s+)?about|do\s+(?:you|u)\s+(?:know|remember))\s+(?P<what>[^?.!,;:\n]+)", re.I | re.M)
+NOT_ASKED = frozenset("it he she they we i you u me us him them this that these those what who where when why how which there "
+                      "here up out in on at off your ur his her their guy girl one person dude".split())
+ABSENT = "[named, nothing on file: {what}]"
+
+
+def asked(text: str) -> list[str]:
+    """What a message asks about by name (ASKED), each at most four words, cut at its first "and" or "or", its leading
+    article or possessive dropped; none when it opens on a pronoun, a question word or an -ing verb ("who is coming")."""
+    out = []
+    for m in ASKED.finditer(text):
+        w = re.split(r"\s+(?:and|or|but|so|if|when|because|cuz|lol|lmao|bro|Alex|man|dude|Alex|fr|tho)\b", (m.group("who") or m.group("what")).strip(), maxsplit=1, flags=re.I)[0].split()
+        w = (w[1:] if w and w[0].lower() in ("the", "a", "an", "my", "our") else w)[:4]
+        if w and re.split(r"['’]", w[0].lower())[0] not in NOT_ASKED and not w[0].lower().endswith("ing"):
+            out.append(" ".join(w).strip("'’\""))
+    return list(dict.fromkeys(out))
 
 # yerk deploy's card (deploy.py), for the machine room: the state line, then each reason on its own
 DEPLOYED, FAILED_PROOF = "deployed {commit}", "{commit} failed its proof"

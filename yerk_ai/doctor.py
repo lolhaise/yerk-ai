@@ -12,7 +12,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
-from . import hooks, memindex, memory, retention, status, words
+from . import deploy, hooks, memindex, memory, retention, status, words
 from .accounts import load_accounts, token_info
 from .config import REPO, ROOM_KEYS, load_toml, rooms, write_private
 from .context import layer_dir
@@ -20,6 +20,7 @@ from .ledger import Ledger
 from .mentions import Builder
 
 DAY, LAST, GROWTH_MB = 86400.0, "doctor.json", 500      # [doctor] growth_mb in yerkd.toml over GROWTH_MB
+CGROUP, STUCK = Path("/sys/fs/cgroup"), 3               # where a process's memory cap is read; backfill pauses in a row that are a finding
 
 
 def reads(line: bytes, daylog: bool) -> bool:
@@ -176,8 +177,31 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
             if days >= 0.75 and k in last.get("sizes", {}) and (n - last["sizes"][k]) / days > mb * 1e6:
                 found.append(f"{k}: grew {words.size(n - last['sizes'][k])} in {days:.0f} day{'s' if round(days) != 1 else ''}")
 
+    def high() -> None:                                         # yerk-index's memory cap against its unit's rule (F1, 2026-10-21)
+        from . import embeddings                                # numpy stays out of yerkd, which imports this module
+        e, f = (st := memory.index_status(m)).get("embeddings") or {}, retention.PROC / str(st.get("pid")) / "cgroup"
+        cg = next((x[3:] for x in f.read_text().splitlines() if x.startswith("0::")), "") if f.is_file() else ""
+        got = int(t) if cg and (p := CGROUP / cg.lstrip("/") / "memory.high").is_file() and (t := p.read_text().strip()).isdigit() else 0
+        need = embeddings.HIGH_BASE + -(-int(e.get("vectors", 0)) // embeddings.BLOCK) * embeddings.BLOCK * (2 * int(e.get("width", 256)) + 20)
+        found.extend([f"memory index: memory capped at {got >> 20}M, under the {need >> 20}M its unit's rule gives "
+                      f"{int(e.get('vectors', 0)):,} vectors"] if 0 < got < need else [])
+
+    def backfill() -> None:                                     # the meaning backfill failing cycle after cycle (F2)
+        e = memory.index_status(m).get("embeddings") or {}
+        if e.get("paused") and (n := int(e.get("streak", e.get("failed", 0)))) >= STUCK:     # an index from before streak: failed
+            found.append(f"meaning search: backfill paused after {n} failures: {words.no_paths(' '.join(str(e.get('last_error')).split()))[:100]}")
+
+    def cites() -> None:                                        # two roots of one folder name and one cite: it opens only one (F3)
+        named = [memory.cite(m, r) for r in m.scope.roots]
+        found.extend(f"memory roots: {named.count(n)} share the cite {n}" for n in sorted(set(named)) if named.count(n) > 1)
+
+    def code() -> None:                                         # yerk-index on older code than yerkd (four hours, 2026-10-20)
+        ran, ix = ((status.ask(state) or {}) if status.alive(state) else {}).get("commit"), deploy.indexed(state)
+        if ran and ix and ran != ix:
+            found.append(f"memory index: runs {ix[:7]}, yerkd {str(ran)[:7]}: restart yerk-index")
+
     for what, check in (("shape", shape), ("classes", classes), ("tokens", tokens), ("index", index), ("hooks", hooked),
-                        ("disk", growth)):
+                        ("disk", growth), ("memory cap", high), ("backfill", backfill), ("cites", cites), ("code", code)):
         try:
             check()
         except (Exception, SystemExit) as e:                    # a check that cannot run is a line; the others still run

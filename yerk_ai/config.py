@@ -5,6 +5,7 @@ import contextlib
 import json
 import logging
 import os
+import subprocess
 import tomllib
 from pathlib import Path
 from typing import Any
@@ -23,6 +24,14 @@ def table(name: str) -> Path:
         if (base / name).is_file():
             return base / name
     raise FileNotFoundError(name)
+
+
+def head(tree: Path) -> str:
+    """The commit checked out in `tree`; "" outside a git checkout. yerkd and yerk-index each keep the one they started on."""
+    try:
+        return subprocess.run(["git", "-C", str(tree), "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return ""
 
 
 def load_toml(path: Path) -> dict[str, Any]:
@@ -76,7 +85,7 @@ def state_dir(arg: str | None = None) -> Path:
 
 
 # Every key a loader reads from a room in rooms.toml; `yerk doctor` names any other as a typo (test_doctor fails on a read past it).
-ROOM_KEYS = frozenset({"accounts", "allow", "also", "channel", "class", "daily_notes", "effort", "id", "layer", "mcp", "mention_recall",
+ROOM_KEYS = frozenset({"accounts", "allow", "also", "channel", "class", "compact_window", "daily_notes", "effort", "id", "layer", "mcp", "mention_recall",
                        "model", "open_loops", "people", "persona", "pinned_memory", "privacy", "read", "recall_days", "role", "rulebook",
                        "sandbox", "sealed", "thinking_panel", "timezone", "tools", "topic_recall", "voice", "watch"})
 

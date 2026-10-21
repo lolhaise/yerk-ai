@@ -102,10 +102,11 @@ def names(card: Path, text: str, said_as: set[str] = set()) -> re.Pattern[str]:
 
 
 def resolve(s: memory.Settings, private: Path, logs: list[Path], path: str) -> Path | None:
-    """The file a cite names, as cards write it (a root's name, the private layer's parent, a root's folder), kept to the
-    memory scope and the [curate] logs."""
+    """The file a cite names, as cards write it (a root's name, the private layer's parent, a root's folder, a root's own
+    cite name as memory.read takes it), kept to the memory scope and the [curate] logs."""
     p = Path(path.strip())
-    for c in (s.root / p, private.parent / p, *(r.parent / p for r in s.scope.roots)):
+    for c in (s.root / p, private.parent / p, *(r.parent / p for r in s.scope.roots),
+              *(r / p.relative_to(n) for r, n in s.cites if "/" in n and p.is_relative_to(n))):
         if c.is_file() and (s.scope.contains(f := c.resolve()) or f in logs):
             return f
     return None
@@ -176,11 +177,15 @@ def sweep(s: memory.Settings, private: Path, logs: list[Path], backup: Path, dry
 
 def sources(s: memory.Settings, private: Path, logs: list[Path], day: date) -> list[tuple[Path, list[tuple[int, str]]]]:
     """A day's kept lines with their numbers: each date-named file in the memory scope whole, the install's day log
-    first and the `also` roots in their order, but a copy whose cite names another file first (a snapshot of a root),
-    then the lines of each [curate] log that start with the day."""
-    name, out = f"{day.isoformat()}.md", []
-    files = {p for f in s.scope.files() if (p := Path(f).resolve()).name == name and resolve(s, private, logs, memory.cite(s, p)) == p}
-    for p in sorted(files, key=lambda p: (next((i for i, r in enumerate(s.scope.roots) if p.is_relative_to(r)), 99), str(p))) + logs:
+    first and the `also` roots in their order, but a copy (a snapshot of a root: its path under its root also sits under
+    an earlier root of the same folder name, read from the roots since each root's cite name is its own), then the lines
+    of each [curate] log that start with the day."""
+    name, out, rs = f"{day.isoformat()}.md", [], s.scope.roots
+    at = {p: next((i for i, r in enumerate(rs) if p.is_relative_to(r)), len(rs)) for f in s.scope.files()
+          if (p := Path(f).resolve()).name == name}
+    files = [p for p, i in at.items() if i < len(rs) and not any(
+        r.name == rs[i].name and (r / p.relative_to(rs[i])).is_file() for r in rs[:i])]
+    for p in sorted(files, key=lambda p: (at[p], str(p))) + logs:
         rows = p.read_text(errors="replace").splitlines() if p.is_file() else []
         out.append((p, [(i, x) for i, (x, k) in enumerate(zip(rows, kept(rows)), 1) if k and x.strip()
                         and (p not in logs or x.startswith(day.isoformat()))]))
