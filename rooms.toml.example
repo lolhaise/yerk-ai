@@ -16,6 +16,7 @@ daily_notes = "memory/daily"
 recall_days = 2
 open_loops = "memory/open-loops.md"
 # effort = "high"             # passed as --effort; unset: the model's own default
+# compact_window = 250000     # tokens the session keeps before Claude Code compacts; unset: budgets.toml [session]; 0: the model's own
 # allow = ["Bash", "Write"]   # permission rules beyond Read; add the tool to `tools` too. The gates run first
 # also = ["~/notes"]          # only these of yerkd.toml's [memory] also roots reach its recall, read_memory and names; unset: all
 # sealed = true               # in Yerk's own tree, its own room's lines only: no other room's lines, notes, facts or rules

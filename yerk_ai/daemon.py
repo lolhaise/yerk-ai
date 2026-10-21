@@ -186,9 +186,11 @@ class Yerkd:
         hooks.record(self.state, name, "session_start", "", {p.name: p.size for p in parts},
                      next((p.text for p in parts if p.name == "recall_pack"), ""), file=str(ctx))
         token = secrets.token_hex(16)                      # this process's credential, bound with its session
-        settings = {"permissions": {"allow": [f"Read(/{layer}/**)", *YERK_TOOLS, *conf.get("allow", [])]},
-                    "hooks": hooks.settings_for(f"{self.url}/hook", token)}
+        settings: dict[str, Any] = {"permissions": {"allow": [f"Read(/{layer}/**)", *YERK_TOOLS, *conf.get("allow", [])]},
+                                    "hooks": hooks.settings_for(f"{self.url}/hook", token)}
         settings.update({"sandbox": conf["sandbox"]} if "sandbox" in conf else {})   # Claude Code's own shell sandbox
+        window = int(conf.get("compact_window", self.budgets.get("session", {}).get("compact_window", 0)) or 0)
+        settings.update({"autoCompactWindow": min(max(window, 100000), 1000000)} if window else {})   # Claude Code drops a value outside its range, silently
         settings["permissions"].update({} if self.owner(name) else {"blockReadsOutsideWorkingDirectories": True})   # file tools, every mode
         now = room_settings(conf, self.state, name, self.models)    # the room's override over rooms.toml
         extra = ["--effort", now["effort"][0]] if now["effort"][0] else []
