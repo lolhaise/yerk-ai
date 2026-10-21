@@ -432,6 +432,9 @@ class Yerkd:
         said = self.ledger.said(name, sid, room.evidence.started)     # its replies posted earlier in this session
         found = evidence.check(reply, room.prompts(), room.evidence, self.memory.scope.roots, figure, known, said)
         found += evidence.check_claims(reply, room.evidence, self.memory.scope.roots)     # decision 25
+        with room.lock:                                   # claim 3: the owner pushing back on a reply posted earlier
+            pushed = [m.received for m in room.inflight if m.sender == "owner" and words.PUSHBACK.search(m.text)]
+        found += evidence.stance(reply, pushed, room.evidence) if pushed and said and reply.strip() else []
         new = [f for f in found if f not in room.evidence.logged]
         for rule, detail in new:
             room.evidence.logged.add((rule, detail))

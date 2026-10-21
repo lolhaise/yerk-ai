@@ -302,7 +302,7 @@ def test_the_probe_never_sends_and_finds_a_planted_gap(where):
         led.inbound_add(seen["guid"], "imsg-room", f"imessage:{CHAT}", "owner", 3)
         lost = fake.add(1, "never reached it", False, ago=800)
         fake.add(1, "just now, maybe in flight", False, ago=5)
-        out = await imod.probe({"imsg-room": CHAT}, {"unix": fake.path, "owner": [CHAT]}, led)
+        out = await probes.probe({"imsg-room": CHAT}, {"unix": fake.path, "owner": [CHAT]}, led)
         assert out["ok"] is False and out["gaps"] == [{"room": "imsg-room", "guid": lost["guid"]}]
         assert out["rooms"]["imsg-room"] == {"read": 3, "missing": 1}
         assert "send" not in fake.calls and set(fake.calls) <= {"chats.list", "messages.history"}
@@ -472,7 +472,7 @@ def test_a_tapback_is_never_a_lost_text(where):
         await fake.start()
         fake.add(1, "Loved a message", True, ago=900)["is_tapback"] = True
         fake.add(1, "Liked a message", False, ago=900)["is_reaction"] = True
-        out = await imod.probe({"imsg-room": CHAT}, {"unix": fake.path, "owner": [CHAT]}, led)
+        out = await probes.probe({"imsg-room": CHAT}, {"unix": fake.path, "owner": [CHAT]}, led)
         assert out["ok"] is True and out["gaps"] == [] and out["rooms"]["imsg-room"] == {"read": 2, "missing": 0}
         await fake.stop()
     asyncio.run(go())
@@ -513,10 +513,10 @@ def test_the_probe_is_not_ok_when_a_rooms_chat_is_not_listed_or_not_served(where
         fake, _, _, _, led = setup(where)
         fake.chats[3], fake.meta[3] = "family", {"is_group": True, "participants": [CHAT, "aunt"]}
         await fake.start()
-        out = await imod.probe({"imsg-room": CHAT, "gone-room": "an-old-chat"}, {"unix": fake.path, "owner": [CHAT]}, led)
+        out = await probes.probe({"imsg-room": CHAT, "gone-room": "an-old-chat"}, {"unix": fake.path, "owner": [CHAT]}, led)
         assert out["ok"] is False and out["failure"] == "chat not listed" and out["gaps"] == []
         assert out["rooms"]["gone-room"]["chat"] == "not in the chat list"
-        out = await imod.probe({"imsg-room": CHAT, "family-room": "family"}, {"unix": fake.path, "owner": [CHAT]}, led)
+        out = await probes.probe({"imsg-room": CHAT, "family-room": "family"}, {"unix": fake.path, "owner": [CHAT]}, led)
         assert out["ok"] is False and out["failure"] == "not served" and out["gaps"] == []
         assert out["rooms"]["family-room"]["chat"] == f"not served, {words.IMSG_GROUP}"
         assert "send" not in fake.calls
@@ -579,7 +579,7 @@ def test_the_probe_with_the_bridge_down_is_a_run_that_did_not_reach_the_mac_with
     run = led.health_last("imessage")
     assert out["ok"] is False and "did not answer" in out["error"] and out["gaps"] == 0 and posted == []
     assert run is not None and run["ok"] == 0 and json.loads(run["note"]).get("reached") is False
-    assert led.health_notes("imessage", "probe-gap") == set()
+    assert probes.health_notes(led, "imessage", "probe-gap") == set()
 
 
 def test_the_morning_line_counts_runs_that_reached_the_mac_and_each_lost_text_once(tmp_path):

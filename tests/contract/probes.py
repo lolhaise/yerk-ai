@@ -695,6 +695,53 @@ def resume(a: argparse.Namespace) -> dict[str, Any]:
     return out
 
 
+async def probe(rooms: dict[str, str], conf: dict[str, Any], ledger: Ledger, limit: int = 20, grace: float = 120.0) -> dict[str, Any]:
+    """The read behind `imessage`: never sends. For each room's chat, the bridge's newest `limit` rows (a
+    read-only connection: any other method is refused), each looked up in the inbound ledger and
+    the delivery ledger; a row neither holds, older than `grace` seconds, is a lost text."""
+    from yerk_ai.channels.imessage import Bridge, BridgeDown, BridgeError, is_tapback, refusal, transport, when_of
+    b = Bridge(None if conf.get("unix") else transport(conf), str(conf["unix"]) if conf.get("unix") else None, read_only=True)
+    out: dict[str, Any] = {"ok": False, "rooms": {}, "gaps": []}
+    owner = conf.get("owner") or []
+    owner = {str(h) for h in ([owner] if isinstance(owner, str) else owner)}
+    try:
+        await b.open()
+        chats = (await b.request("chats.list", {"limit": int(conf.get("chat_limit", 200))}) or {}).get("chats", [])
+        listed = {str(c.get("identifier") or ""): c for c in chats if c.get("id") is not None}
+        now = time.time()
+        for room, ident in rooms.items():
+            chat = listed.get(ident)
+            if chat is None:                      # blind to this room: the run is not ok, on its own word
+                out["rooms"][room] = {"read": 0, "missing": 0, "chat": "not in the chat list"}
+                out["failure"] = out.get("failure") or "chat not listed"
+                continue
+            if (why := refusal(chat, owner)) is not None:   # not served, so its rows never reach a ledger
+                out["rooms"][room] = {"read": 0, "missing": 0, "chat": f"not served, {why}"}
+                out["failure"] = out.get("failure") or "not served"
+                continue
+            rows = (await b.request("messages.history", {"chat_id": int(chat["id"]), "limit": limit}) or {}).get("messages", [])
+            miss = []
+            for m in rows:
+                guid, w = str(m.get("guid") or ""), when_of(m)
+                if not guid or is_tapback(m) or (w is not None and now - w.timestamp() < grace):
+                    continue
+                if ledger.inbound_get(guid) is None and ledger.delivery_by_message(guid) is None:
+                    miss.append(guid)
+            out["rooms"][room] = {"read": len(rows), "missing": len(miss)}
+            out["gaps"] += [{"room": room, "guid": g} for g in miss]
+        out["ok"] = not out["gaps"] and "failure" not in out
+    except (BridgeDown, BridgeError, OSError) as e:
+        out["error"] = f"the bridge did not answer ({type(e).__name__})"
+    finally:
+        await b.close()
+    return out
+
+
+def health_notes(ledger: Ledger, account: str, source: str) -> set[str]:
+    """The notes of every `account`, `source` health row: for `imessage`, the gaps the machine room has heard of."""
+    return {str(r["note"]) for r in ledger._select("SELECT note FROM health WHERE account = ? AND source = ?", (account, source))}
+
+
 def imessage(a: argparse.Namespace) -> dict[str, Any]:
     """The inbound check (Layer 8): never sends anything. The newest rows of each iMessage room's chat,
     read from the bridge on a read-only connection, each looked up in the inbound and delivery
@@ -705,7 +752,6 @@ def imessage(a: argparse.Namespace) -> dict[str, Any]:
     import asyncio
     import hashlib
     from yerk_ai import jobs, words
-    from yerk_ai.channels.imessage import probe
     from yerk_ai.config import load_toml, private_dir, rooms
     priv, state = private_dir(getattr(a, "private", None)), state_dir(a.state)
     confs = rooms(priv)
@@ -730,7 +776,7 @@ def imessage(a: argparse.Namespace) -> dict[str, Any]:
                   note=json.dumps({"rooms": out.get("rooms", {}), "reached": reached, "lost": len(lost),
                                    "marks": sorted({mark(g) for g in lost}),
                                    "missed": sorted({mark(g) for g in misses}) if reached else sorted(before)}))
-    told = ledger.health_notes("imessage", "probe-gap")
+    told = health_notes(ledger, "imessage", "probe-gap")
     new = [g for g in lost if mark(g) not in told]
     machine = next((n for n, c in confs.items() if c.get("role") == "machine"), None)
     out["alerted"] = 0

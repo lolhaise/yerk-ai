@@ -1085,6 +1085,15 @@ needs = "nothing beyond the daemon"
 free_path = "this is the free path"
 layer = 4
 
+[abilities.stance]
+state = "built"
+what = "The stance check, in shadow: when the owner pushes back on a reply (a message after one of the room's replies in the same session that opens with or carries a disagreement word, such as nah, no, nope, wrong, actually, not true or you're wrong), the reply to it is ledgered once as held (it says what still stands, with a source read after the message, or it neither agrees nor names a mistake of its own), conceded (it says what it got wrong, with that read) or folded (it agrees or concedes with neither), and the morning diff counts each, a fold as a finding. Nothing is blocked: a fold would start bouncing only once the check shows under 1 in 10 false alarms on 100 cases and a known-good control passes."
+tier = "free"
+needs = "nothing beyond the evidence ledger; the disagreement words are a short list in the code, not a model"
+free_path = "this is the free path"
+asked_as = ["stance check", "fold when i push back", "agree with whoever pushes back", "do you just agree with me"]
+layer = 6
+
 [abilities.jobs]
 what = "Scheduled jobs from one private jobs.toml: `yerk jobs sync` makes one systemd user timer and service per job (idempotent: unchanged left alone, changed rewritten, removed disabled and cleaned), shows the diff and reads every next fire time back from systemd; `yerk jobs list` is the read-back. Three schedules (a cron expression with a tz, an interval, a one-shot that is removed after it fires), two kinds: a script (its command run in the unit with no account, its output posted to the room; exit 0 with nothing posts nothing; a failure alerts the ops room) and an agent job (a worker with the message as its brief, its last message told by the room, exactly NO_REPLY for silence). Every run is a job_runs ledger row; `yerk status` lists the jobs with their next fire time. `yerk explain jobs` describes every key of the file."
 tier = "free"
