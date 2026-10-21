@@ -8,6 +8,16 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-21
 
+### sheet-rule (#70)
+
+- A sixth shadow rule, `sheet`: a turn that sends a document through the send tool (.docx, .pdf, .xlsx, .pptx, .txt,
+  .md or .csv) or pastes a block (a fenced block with no language tag, or tagged text, plain or none) in its reply or
+  in a send's text, with no claims sheet written or named in the turn (a Write, Edit or NotebookEdit of a file whose
+  name holds claims and ends in .md, .txt or .csv, or a shell command naming one), is ledgered once as `sheet` and the
+  morning diff counts it ("shadow flag sheet: N"). Nothing is blocked: it measures how often a room ships something
+  in the owner's name without checking its claims against source first. `yerk explain sheet` describes it.
+- **Upgrading:** budgets.toml changed ([code] lines, up 50 for the rule and its call). Nothing to do.
+
 ### budgets-voice (#68)
 
 - The taste rules (one line each: a rule and the rated replies that prove it) fit a rulebook: its budget rises from
