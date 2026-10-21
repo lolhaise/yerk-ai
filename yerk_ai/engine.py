@@ -374,8 +374,8 @@ class RoomProcess:
             self._note({"e": ev})
             if ev.get("type") == "assistant":
                 for c in (ev.get("message") or {}).get("content") or []:
-                    if c.get("type") == "tool_use" and c.get("name") == "Read":
-                        self.read_paths.add(str((c.get("input") or {}).get("file_path") or ""))
+                    if c.get("type") == "tool_use" and c.get("name") in ("Read", "mcp__yerk__transcribe"):   # opened, or heard
+                        self.read_paths.add(str((c.get("input") or {}).get("file_path") or (c.get("input") or {}).get("path") or ""))
             if self.evidence is not None:
                 with contextlib.suppress(Exception):   # the ledger never stops the stream
                     self.evidence.observe(ev)

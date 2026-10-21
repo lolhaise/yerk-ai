@@ -8,6 +8,35 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-21
 
+### transcribe (#77)
+
+- A room hears a voice note. A Discord voice message or another audio file (ogg, m4a, mp3, wav, webm) arrives with a
+  line under its `[attachment]` line: the room takes in the sound only through the new `transcribe` tool, so it calls
+  the tool on the saved path before it answers, opens its reply with what the note says or that it could not be
+  transcribed, and calls that step transcribing, never listening. A turn that ends without calling it bounces once, as
+  an unopened image does, and the card's row reads "transcribing voice-message".
+- `transcribe`, on Yerk's own MCP server in every room (the daemon runs it, since a room's shell has no network):
+  ffmpeg cuts the audio into 14-minute mono mp3 chunks; pass 1 is OpenAI whisper-1 on each chunk in parallel, a segment
+  both near silence and low in confidence dropped (no_speech_prob over 0.9 and avg_logprob under -1.0); with a Groq
+  key, pass 2 is Groq whisper-large-v3-turbo on the same chunks, the two aligned word by word, and a segment where they
+  differ on more than 3 words in 10 (fillers such as "um" aside) is marked `(uncertain)` with both readings. The text,
+  a timestamp per segment, is returned and saved beside the audio as NAME.transcript.txt (0600), its first line saying
+  whether a second pass checked it.
+- Every paid call is a row in the ledger's `spend` table at list price (US$0.006 a minute on OpenAI; US$0.04 an hour
+  on Groq, 10 s billed at least; both read 2026-10-21), and the morning diff says "spent yesterday: US$X on N calls";
+  the table, its reader and the morning line are the ones #76 adds. A recording estimated past US$1 is refused until
+  the owner says yes (decision 32).
+- Measured on a 6:39 voice note: 16.1 s end to end (whisper-1 15.3 s, Groq 1.3 s, one chunk), 99 segments, 6 marked
+  uncertain, US$0.0443 in two spend rows. A wait that long is why the room calls the tool instead of the daemon
+  transcribing before the turn starts: the turn would start 16 s late with no card to show for it.
+- `yerk abilities` and `yerk explain transcribe`: transcribe is built, on when the OpenAI key is there; a built
+  ability's `how` lines are headed "How it works".
+
+**Upgrading:** for the second pass, put Groq's key on the first line of `secrets/groq.key` in the private folder
+(0600); the OpenAI key is the one the embeddings already read (`secrets/openai.key`, or where `[memory] embeddings_key`
+points). ffmpeg must be on the daemon's PATH. The ledger gains its `spend` table at the next start, and each room's
+settings allow `mcp__yerk__transcribe` from its next process start.
+
 ### mechanics-lines (#75)
 
 - Every room's mechanics (yerk_ai/mechanics.md) take the three lines owed since #69, in the prompting guide's shape:

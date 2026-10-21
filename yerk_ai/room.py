@@ -42,7 +42,7 @@ from collections import deque
 from dataclasses import dataclass, field, replace
 from typing import Any, Callable, Protocol
 
-from . import words
+from . import transcribe, words
 from .accounts import Account, Cooldowns, pick
 from .card import Card
 from .config import flag, override, pinned, write_private
@@ -139,8 +139,8 @@ class Room:
         self.fresh_next: str | None = None        # a recap: the next turn starts a fresh session
         self.card = Card()
         self.turn_key = ""                        # the idempotency key of the result being produced
-        self.images: dict[str, str] = {}          # path -> name: images sent in since the last result
-        self.bounced = False                      # the unread-image check bounced this result already
+        self.to_open: dict[str, str] = {}         # path -> name: images and voice notes sent in since the last result
+        self.bounced = False                      # the unopened-file check bounced this result already
         self.silent_bounced = False               # the silent-ending check bounced this result already
         self.stub_bounced = False                 # the stub check bounced this result already
         self.evidence = Evidence(on_call=self._ledger_call)   # every tool call of the turn and what it read
@@ -285,21 +285,25 @@ class Room:
         d.mkdir(parents=True, exist_ok=True)
         return d
 
-    def unread_images(self) -> list[tuple[str, str]]:
-        """(name, path) of the images sent in this result that the process never Read."""
+    def unopened(self) -> list[tuple[str, str]]:
+        """(name, path) of the images and voice notes sent in this result that the process never Read or transcribed."""
         with self.lock:
             read = self.rp.read_paths if self.rp else set()
-            return [(n, p) for p, n in self.images.items() if p not in read]
+            return [(n, p) for p, n in self.to_open.items() if p not in read]
 
     def stop_check(self, active: bool) -> str | None:
-        """The Stop hook's rule, no judge: an image sent in and never read bounces once, naming it."""
-        unread = self.unread_images()
+        """The Stop hook's rule, no judge: an image sent in and never read, or a voice note never transcribed, bounces once,
+        naming it, so a room never answers a note it did not hear."""
+        unread = self.unopened()
         if not unread or active or self.bounced:
             return None
         self.bounced = True
-        names = ", ".join(n for n, _ in unread)
-        paths = " ".join(p for _, p in unread)
-        return f"You were sent {names} and have not opened it. Read {paths} with the Read tool, then answer with what it shows."
+        heard = [x for x in unread if transcribe.is_audio(x[0])]
+        seen = [x for x in unread if x not in heard]
+        return " ".join(([f"You were sent {', '.join(n for n, _ in seen)} and have not opened it. Read {' '.join(p for _, p in seen)} "
+                          "with the Read tool, then answer with what it shows."] if seen else []) +
+                        ([f"You were sent {', '.join(n for n, _ in heard)}, a recording, and have not transcribed it. Call transcribe "
+                          f"on {' '.join(p for _, p in heard)}, then open your answer with what it says."] if heard else []))
 
     def silent_check(self, active: bool, text: str | None, landed: int) -> str | None:
         """The Stop hook's second rule, no judge: a turn that ran tools for a person and ends with
@@ -422,8 +426,8 @@ class Room:
         self.pending.append(msg)
         self.inflight.append(msg)
         for f in msg.files:
-            if f.get("ok") and str(f.get("type", "")).startswith("image/"):
-                self.images[str(f["path"])] = str(f["name"])
+            if f.get("ok") and (str(f.get("type", "")).startswith("image/") or transcribe.is_audio(str(f["name"]), str(f.get("type", "")))):
+                self.to_open[str(f["path"])] = str(f["name"])
         text = f"{recap}\n\n{msg.text}" if recap else msg.text
         if recap:
             self.seen[text.strip()] = msg
@@ -499,7 +503,7 @@ class Room:
 
     def _turn(self, batch: list[Inbound]) -> None:
         with self.lock:
-            self.images, self.stopped = {}, False
+            self.to_open, self.stopped = {}, False
             self.halt.clear()
             self.answering = {m.id for m in batch}
         self.evidence.reset()
@@ -674,7 +678,7 @@ class Room:
                 self._then(m, "answered", reply_ids, len(text))
             with self.lock:
                 self.inflight = list(self.pending)
-                self.images = {}
+                self.to_open = {}
                 if not self.pending or self.fresh_next:
                     self.reading = False          # from here a new message queues for the next turn
                     return ("fresh" if self.pending else "done"), turn

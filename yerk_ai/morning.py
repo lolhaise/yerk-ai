@@ -85,6 +85,8 @@ def build(private: Path, state: Path, accounts: list[Account], cooldowns: Cooldo
         add("" if fine else f"shadow {rule}", W.PLAIN if fine else W.WORKING, W.SHADOW.format(rule=rule, n=n))
     if not flags:
         add("", W.PLAIN, W.NO_SHADOW)
+    if (spent := ledger.spent(since, until)).get("n"):   # the paid calls, a spend row each (the transcribe tool's)
+        add("", W.PLAIN, W.SPENT.format(day=W.YESTERDAY, **spent))
     for d in ledger.deploys(now - DAY):                  # its card may never have reached the machine room
         if d["outcome"] != "proven" or (d["cut"] or 0) > 0:      # a proven one that cut a person's turn too
             said = W.UNPROVEN.format(kind=d["kind"], commit=str(d["after"] or d["before"] or "?")[:7], outcome=d["outcome"])

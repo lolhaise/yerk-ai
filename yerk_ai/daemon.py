@@ -27,7 +27,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Awaitable, Callable
 
-from . import beat, context, deploy, doctor, evidence, gates, hooks, jobs, mcp_server, memory, mentions, status, workers
+from . import beat, context, deploy, doctor, evidence, gates, hooks, jobs, mcp_server, memory, mentions, status, transcribe, workers
 from .accounts import Account, Cooldowns, from_dir, load_accounts, pick
 from .config import (EFFORTS, REPO, SHELLS, budgets, discord_id, flag, load_toml, models, override, people, pinned, private_dir,
                      read_secret, room_id, room_settings, rooms, state_dir, table, trusted, write_private)
@@ -42,7 +42,7 @@ from . import abilities, words   # STYLE.md: what a room reads
 
 log = logging.getLogger("yerk.daemon")
 YERK_TOOLS = ["mcp__yerk__send", "mcp__yerk__hold", "mcp__yerk__recall", "mcp__yerk__read_memory",
-              "mcp__yerk__remember", "mcp__yerk__worker", "mcp__yerk__schedule", "mcp__yerk__settings"]
+              "mcp__yerk__remember", "mcp__yerk__worker", "mcp__yerk__schedule", "mcp__yerk__settings", "mcp__yerk__transcribe"]
 # A shell room's sandbox when rooms.toml gives it no [rooms.NAME.sandbox] table: unsandboxed, a Read deny stops `cat` and
 # the Read tool, but a script, grep or redirect read every secret (Claude Code 2.1.304, PR 66's cold read, 2026-10-21)
 SANDBOX = {"enabled": True, "autoAllowBashIfSandboxed": True}
@@ -361,6 +361,24 @@ class Yerkd:
             return {"ok": False, "error": str(e)}
         log.info("send: %s -> %s, %d message(s)", caller or "?", room, len(ids))
         return {"ok": True, "message_ids": ids}
+
+    async def tool_transcribe(self, room: str, path: str, owner_yes: bool = False) -> dict[str, Any]:
+        """The `transcribe` tool: an audio file from the calling room's own folders (may_send's rule; its inbox holds what
+        was sent) made text off the loop (transcribe.run) on the install's one OpenAI key, each paid call a spend row."""
+        p = Path(path).expanduser().resolve()
+        if room not in self.rooms or not self.may_send(room, p):
+            return {"ok": False, "error": f"{p.name} is outside this room's folders; transcribe reads the files sent to it"}
+        if not (p.is_file() and transcribe.is_audio(p.name)):
+            return {"ok": False, "error": f"{p.name} is not an audio file in this room's folders"}
+
+        def book(engine: str, usd: float, note: str) -> None:
+            try:
+                self.ledger.spend(room=room, tool="transcribe", engine=engine, usd=round(usd, 6), note=note)
+            except Exception as e:                    # the ledger never stops a paid call's answer reaching the room
+                log.warning("transcribe: a spend row was not written (%s, US$%.4f): %s", engine, usd, e)
+        r = await asyncio.to_thread(transcribe.run, p, self.memory.embeddings_key, self.private / transcribe.GROQ_KEY, book, owner_yes)
+        log.info("transcribe: %s, %s", room, f"{r['segments']} segments, {r['uncertain']} uncertain" if r["ok"] else r["error"][:160])
+        return r
 
     async def tool_recall(self, room: str, query: str, k: int) -> dict[str, Any]:
         """Off the loop: the index is yerk-index's file, read here, never built here (L47). The first

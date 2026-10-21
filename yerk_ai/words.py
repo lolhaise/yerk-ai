@@ -83,7 +83,7 @@ STEP = {"bash": "running a command", "read": "reading {what}", "read_memory": "r
         "grep": "searching {where} for {what}", "glob": "looking for {what} files", "recall": "looking up {what}",
         "webfetch": "reading {what}", "web_fetch": "reading {what}", "fetch": "reading {what}",
         "websearch": "searching the web for {what}", "web_search": "searching the web for {what}", "send": "sending {what}",
-        "remember": "filing a note", "hold": "waiting for {what}", "settings": "switching to {what}",
+        "remember": "filing a note", "hold": "waiting for {what}", "settings": "switching to {what}", "transcribe": "transcribing {what}",
         "todowrite": "updating the plan", "task": "handing off {what}", "agent": "handing off {what}", "toolsearch": "loading a tool"}
 WORKER_STEP = {"start": "starting a worker", "list": "listing the workers", "stop": "stopping worker {id}",
                "report": "reading worker {id}'s report"}
@@ -242,6 +242,22 @@ def file_why(kind: str, **say: Any) -> str:
     return FILE_WHY[kind].format(**say)
 
 
+# a voice note (transcribe.py): the line under its [attachment] line, then what the tool's result and file say
+VOICE_NOTE = ("[voice note] {name} is a recording. You take in sound only as the text the transcribe tool returns, so call "
+              "transcribe on the path above before you answer, then open your reply with what it says, or with the fact that it "
+              "could not be transcribed. Call that step transcribing, never listening, since nothing plays the sound to you.")
+TRANSCRIBED_NEXT = ("Open your reply with what the recording says, in your own words. A segment marked (uncertain) has two "
+                    "readings that disagree, so give that part as unsure or ask about it, since either reading may be wrong.")
+TRANSCRIPT_HEAD, UNCERTAIN, NO_WORDS = "{name}, {minutes} min, {how}", "(uncertain) {first} | second pass: {second}", "(no words)"
+CHECKED = "checked by a second pass: {n} of {of} segments uncertain"
+PART_CHECKED = "checked by a second pass but for chunk {chunks}, where it failed: {n} of {of} segments uncertain"
+UNCHECKED = "one pass only, so nothing in it was checked: a second pass needs a Groq key at secrets/groq.key"
+MORE_IN_FILE = "(the rest is in the file: Read it from this line on)"
+NO_SPEECH_KEY = "no OpenAI key in the private folder (secrets/openai.key), so the recording could not be transcribed"
+OVER_GATE = ("not transcribed yet, since {minutes} min of audio is about US${usd:.2f}, past the US$1 a call spends only with the "
+             "owner's yes: ask, then call again with owner_yes true once the owner says yes")
+
+
 def size(n: int) -> str:
     """'25 MB', '900 KB', '12 bytes'."""
     if n >= 1024 * 1024:
@@ -291,6 +307,7 @@ FIRST_MAP, SAME = "first map", "same"
 ANSWERED, SINCE = "{day}: {n} messages answered", " since {at}"
 WAIT, FIRST_LINE = "queue wait: {mid} typical, {worst} worst", "first line: {mid} typical, {worst} worst"
 SHADOW, NO_SHADOW = "shadow flag {rule}: {n}", "shadow flags: none"
+SPENT = "spent {day}: US${usd:.2f} on {n} calls"                     # the spend rows, one per paid call (ledger.spent)
 UNKNOWN, NOT_ANSWERING_WHY = "{what}: unknown, {why}", "yerkd not answering"
 DEAD, NO_YERKD, NO_DEAD = "dead turns: {n}, {name}, last {at}", "no yerkd answers", "dead turns: none in 24h"
 SWEPT, SWEEP_FAILED = "swept: {kinds}", "retention failed: {why}"     # the night's sweep (retention.py)

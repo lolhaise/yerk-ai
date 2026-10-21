@@ -428,18 +428,21 @@ why_not = "Not planned for the public harness: it is a business product, not a p
 asked_as = ["website chatbot", "chat widget", "chatbot for my business"]
 
 [abilities.transcribe]
-state = "described"
-what = "Transcribes a voice note or recording in two passes: the words, then the tone, then a check for made-up words."
+state = "built"
+what = "The transcribe tool on Yerk's own MCP server: a voice note or recording in a room's own folders becomes text with a timestamp per segment, saved beside the audio as NAME.transcript.txt and returned to the room; a voice note's arrival line tells the room it hears the note only through this tool. The daemon runs it, since a room's shell has no network."
 how = [
-  "A speech-to-text vendor for the words, never slow local transcription by default.",
-  "A second pass that reads the tone and flags any word the first pass may have invented.",
+  "Chunks: ffmpeg cuts the audio into 14-minute mono mp3s, under both providers' 25 MB upload cap, sent in parallel.",
+  "Pass 1: OpenAI whisper-1 on every chunk; a segment both near silence and low in confidence is dropped, the made-up line whisper writes over quiet.",
+  "Pass 2: with a Groq key, Groq whisper-large-v3-turbo on the same chunks, the two aligned word by word; a segment where they differ on more than 3 words in 10 is marked uncertain with both readings, so a room gives it as unsure.",
+  "Spend: every paid call is a spend row in the ledger, the morning diff says the day's total, and a recording past US$1 waits for the owner's yes.",
 ]
 tier = "key"
-provider = "a speech-to-text vendor"
-needs = "a speech-to-text vendor key in the private folder"
-price = "the vendor's per-minute price, paid to the vendor"
-free_path = "local transcription on the box, slower"
-why_not = "After the rooms move."
+provider = "OpenAI, and Groq for the second pass"
+model = "whisper-1, then whisper-large-v3-turbo"
+needs = "ffmpeg on the machine; the install's OpenAI key (secrets/openai.key in the private folder, the one embeddings use); a Groq key at secrets/groq.key for the second pass, optional"
+price = "US$0.006 a minute on OpenAI (its pricing page) and US$0.04 an hour on Groq, 10 s billed at least per call (its speech-to-text page), both read 2026-10-21: a 7-minute voice note is about 4.7 US cents with both passes"
+key = "put each key on the first line of its own file in the private folder's secrets/, 0600: openai.key and groq.key; the next call reads it, no restart"
+free_path = "none: without the OpenAI key the room says the note could not be transcribed and answers from the message text"
 asked_as = ["transcribe", "transcription", "transcribe this", "what does this recording say"]
 
 [abilities.voice-notes]

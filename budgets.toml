@@ -117,4 +117,7 @@ duplicated_topics = 0
 # to fit.
 # 2026-10-21: trusted-room raised it by 109, the trusted shell's wall (what it denies, built from what the daemon knows),
 # its start checks and the outbox kept read only (the owner's ask), not folded to fit.
-lines = 16175
+# 0000-00-00: one more line for 000, the check while (a.second, 000), entry waits in the queue for its
+# Stop bounce, and the ledger's spend table with its writer, reader and morning line (the same table PR 76 adds; whichever
+# entry waits in the queue), for its turn and.
+lines = 16438
