@@ -307,9 +307,9 @@ def pasted(text: str) -> bool:
     return False
 
 
-def check_sheet(reply: str, ev: Evidence, roots: tuple[Path, ...]) -> list[tuple[str, str]]:
+def check_sheet(reply: str, ev: Evidence) -> list[tuple[str, str]]:
     """The sheet rule in shadow: ("sheet", detail) once when the turn sent a document or pasted a block and no call
-    of the turn wrote or named a claims sheet. Logs only. `roots` is the shape the rules share; this one reads none."""
+    of the turn wrote or named a claims sheet. Logs only."""
     with ev.lock:
         calls = list(ev.calls.values())
     sent: list[str] = []

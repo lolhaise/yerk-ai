@@ -5,8 +5,6 @@ a sheet. The two slips it was built on: a one-page file whose rules the person i
 remembered remark and not from the worksheet it was about."""
 from __future__ import annotations
 
-from pathlib import Path
-
 from test_gates import call, human_turn, setup, turn_of
 from test_observe import NOW, layer
 
@@ -14,8 +12,7 @@ from yerk_ai import abilities, cli, evidence, morning, status, words
 from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai.ledger import Ledger
 
-ROOTS = (Path("memory"),)
-SEND = ("mcp__yerk__send", {"room": "example-room", "text": "Next-000, run starts the.", "file": "/w/ABC-565-v0.1.docx"})
+SEND =("mcp__yerk__send", {"room": "example-room", "text": "The-000, test reads it.", "file": "/w/ABC-565-v0.1.docx"})
 PASTE = "Here is the follow-up prompt for the run:\n```\nCount the shared corner once.\nKeep the edge total.\n```\n"
 CODE = "The check is one function:\n```python\ndef pasted(text):\n    return '```' in text\n```\n"
 FIRED_SEND = "for The-000-check0.0.while a second entry waits in the queue"
@@ -23,7 +20,7 @@ FIRED_PASTE = "pasted a block with no claims sheet written this turn"
 
 
 def sheet(reply: str, calls=()) -> list[str]:
-    return [d for rule, d in evidence.check_sheet(reply, turn_of(list(calls)), ROOTS) if rule == "sheet"]
+    return [d for rule, d in evidence.check_sheet(reply, turn_of(list(calls))) if rule == "sheet"]
 
 
 def test_a_document_sent_with_no_claims_sheet_fires_once():
@@ -58,7 +55,7 @@ def test_a_plain_reply_with_no_send_is_silent():
 
 
 def test_a_send_and_a_paste_in_one_turn_with_no_sheet_fire_once():
-    found = evidence.check_sheet(PASTE, turn_of([SEND]), ROOTS)
+    found = evidence.check_sheet(PASTE, turn_of([SEND]))
     assert found == [("sheet", "and The-000-last0.0.part closes the case before the next run starts the example note")]
     pasted_send = ("mcp__yerk__send", {"room": "example-room", "text": PASTE, "file": ""})     # the paste in a send's text
     assert sheet("Sent the prompt.", [pasted_send]) == [FIRED_PASTE]
