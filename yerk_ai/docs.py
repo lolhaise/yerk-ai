@@ -119,11 +119,11 @@ def changed(state: Path, since: float) -> list[tuple[str, str]]:
 
 
 def listing(state: Path, conf: dict[str, Any]) -> list[str]:
-    """`yerk docs list`: a line per page, what is kept of it and when it was fetched."""
-    out, failures = [], load(state).get("failed", {})
+    """`yerk docs list`: a line per page, what is kept of it and how long ago it was fetched (STYLE.md 5: no raw timestamp)."""
+    out, failures, now = [], load(state).get("failed", {}), time.time()
     for slug, url in pages(conf).items():
         path = root(state) / "claude" / f"{slug}.md"
         k = kept(path)
-        said = f"fetched {k['fetched']}, {path.stat().st_size:,} bytes, sha256 {k['sha256'][:12]}" if k else "not fetched yet"
+        said = f"fetched {words.ago(now - path.stat().st_mtime)}, {words.size(path.stat().st_size)}, sha256 {k['sha256'][:12]}" if k else "not fetched yet"
         out.append(f"{slug}: {said}" + (f"; last try failed, {failures[slug]}" if slug in failures else "") + f" ({url})")
     return out
