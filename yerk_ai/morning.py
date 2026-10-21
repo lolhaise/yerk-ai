@@ -17,7 +17,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
-from . import context, jobs, memory, retention, status, words
+from . import context, doctor, jobs, memory, retention, status, words
 from .accounts import Account, Cooldowns
 from .config import budgets, rooms
 from .ledger import Ledger
@@ -92,6 +92,7 @@ def build(private: Path, state: Path, accounts: list[Account], cooldowns: Cooldo
             add(f"deploy {d['id']}", W.NOT_DONE, said + at if W.width(f"{W.NOT_DONE} {said}{at}") <= W.PHONE else said)
     if (swept := retention.line(state, now)):            # the night's sweep: what it moved by kind, or that it failed
         rows.append(swept)
+    rows.append(doctor.line(state, now))                 # the daily check: ok, or its count and first finding
     checks = ledger.health_between("imessage", "probe", since, until)     # the iMessage inbound check (Layer 8)
     if checks:                                           # a run that never reached the Mac saw nothing
         notes = [json.loads(str(r["note"] or "{}")) for r in checks]

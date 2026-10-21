@@ -75,6 +75,12 @@ def state_dir(arg: str | None = None) -> Path:
     return d
 
 
+# Every key a loader reads from a room in rooms.toml; `yerk doctor` names any other as a typo (test_doctor fails on a read past it).
+ROOM_KEYS = frozenset({"accounts", "allow", "also", "channel", "class", "daily_notes", "effort", "id", "layer", "mcp", "mention_recall",
+                       "model", "open_loops", "people", "persona", "pinned_memory", "privacy", "read", "recall_days", "role", "rulebook",
+                       "sandbox", "sealed", "thinking_panel", "timezone", "tools", "topic_recall", "voice", "watch"})
+
+
 def rooms(private: Path, text: str | None = None) -> dict[str, dict[str, Any]]:
     """rooms.toml's rooms, or those of `text` not yet written; a `watch` that a room owns or watches is refused, naming both."""
     rs = dict((tomllib.loads(text) if text is not None else load_toml(private / "rooms.toml")).get("rooms", {}))

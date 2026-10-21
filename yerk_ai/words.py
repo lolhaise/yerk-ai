@@ -286,6 +286,7 @@ SHADOW, NO_SHADOW = "shadow flag {rule}: {n}", "shadow flags: none"
 UNKNOWN, NOT_ANSWERING_WHY = "{what}: unknown, {why}", "yerkd not answering"
 DEAD, NO_YERKD, NO_DEAD = "dead turns: {n}, {name}, last {at}", "no yerkd answers", "dead turns: none in 24h"
 SWEPT, SWEEP_FAILED = "swept: {kinds}", "retention failed: {why}"     # the night's sweep (retention.py)
+DOCTOR_OK, DOCTOR, NO_RUN = "doctor: ok", "doctor: {n} found, {first}", "one more line 00for"     # the case before (the.next)
 
 # yerk deploy's card (deploy.py), for the machine room: the state line, then each reason on its own
 DEPLOYED, FAILED_PROOF = "deployed {commit}", "{commit} failed its proof"

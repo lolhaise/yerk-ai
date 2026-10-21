@@ -497,11 +497,11 @@ def test_a_failed_rollback_exits_2_and_the_morning_diff_names_every_deploy_not_p
     want = [f"{words.NOT_DONE} deploy {ids[1][:7]}: proof failed, {at[0]}",
             f"{words.NOT_DONE} rollback {ids[0][:7]}: proof failed, {at[1]}"]
     assert [x for x in lines if " deploy " in x or " rollback " in x] == want and lines[1:3] == want   # new: on top
-    assert lines[0] == f"{words.NOT_DONE} morning: 2 new since the last diff" and all(words.width(x) <= words.PHONE for x in want)
+    assert lines[0] == f"{words.NOT_DONE} morning: 3 new since the last diff" and all(words.width(x) <= words.PHONE for x in want)   # and no doctor run yet
     (state / "morning").mkdir()
     (state / "morning" / "last.json").write_text(json.dumps(stamp))
     again, _ = morning.build(priv, state, accounts, cool, led, live, now + 60)
-    assert again[0] == f"{words.PLAIN} morning: nothing new, 2 known" and sum(x in want for x in again) == 2   # said once
+    assert again[0] == f"{words.PLAIN} morning: nothing new, 3 known" and sum(x in want for x in again) == 2   # said once
     later, _ = morning.build(priv, state, accounts, cool, led, live, now + 86400)
     assert not [x for x in later if " rollback " in x]                                    # the last 24 hours only
 
@@ -833,11 +833,11 @@ def test_dead_turns_are_found_from_the_message_and_a_changed_set_alerts_once(tmp
     live = {"units": [], "started": NOW - 3 * 86400}
     lines, stamp = morning.build(priv, state, accounts, cool, led, live, NOW)
     want = f"{words.NOT_DONE} dead turns: 2, 2 rooms, last {words.clock(t + 180, NOW)}"
-    assert want in lines and lines[0] == f"{words.NOT_DONE} morning: 1 new since the last diff"
+    assert want in lines and lines[0] == f"{words.NOT_DONE} morning: 2 new since the last diff"   # and no doctor run yet
     (state / "morning").mkdir()
     (state / "morning" / "last.json").write_text(json.dumps(stamp))
     again, stamp = morning.build(priv, state, accounts, cool, led, live, NOW + 60)
-    assert again[0] == f"{words.PLAIN} morning: nothing new, 1 known"   # the same set: said once
+    assert again[0] == f"{words.PLAIN} morning: nothing new, 2 known"   # the same set: said once
     message(led, "i", NOW - 900)
     third, _ = morning.build(priv, state, accounts, cool, led, live, NOW + 120)
     assert third[0] == f"{words.NOT_DONE} morning: 1 new since the last diff"
