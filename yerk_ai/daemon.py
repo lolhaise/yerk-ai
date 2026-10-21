@@ -432,7 +432,10 @@ class Yerkd:
                 log.warning("mention recall skipped: %s", e)
             keyed, cards = list(dict.fromkeys(e["named"] for e in names)), {e["cite"] if e["cite"].startswith("/") else f"{s.root}/{e['cite']}" for e in names}
             for what in ([] if back else keyed) + [a for a in words.asked(prompt) if " ".join(mentions.tokens(a, True)) not in keyed]:
-                got = memory.lines_on(s, what, rd, exclude=mine)
+                try:            # a read that did not finish proves no absence; when eight chunks hold none, twenty are read once
+                    got = memory.lines_on(s, what, rd, exclude=mine) or memory.lines_on(s, what, rd, 20, exclude=mine)
+                except LookupError:
+                    continue
                 deep += [{"key": "", "text": x["text"], "cite": x["cite"], "named": what} for x in got if x["at"] not in cards]
                 absent += [] if got or what in keyed else [what]
         topics = memory.topic_hits(self.memory, room, prompt, mine, rid=room_id(room, conf),

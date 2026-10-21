@@ -372,3 +372,21 @@ def test_a_name_brings_its_best_lines_newest_first_and_a_name_with_none_gets_the
         f"{live}/facts/examplia.md:1", "memory/2026-10-12.md:3"]          # the card, then its newest line, cited as recall cites it
     from yerk_ai import hooks
     assert hooks.render_recall(names, topics, 1500, past, absent).startswith("[named, nothing on file: Zorblaxia]\n" + hooks.HEADS[0])
+
+
+def test_an_unfinished_keyword_read_is_no_absence_and_eight_crowded_chunks_are_looked_past(tmp_path, monkeypatch):
+    """2026-10-21 cold read: ranked() answers a busy or broken index read with ok False and no hits, and lines_on read
+    that as no lines, so a room said "nothing on file" about a name it holds; and in a room reading a snapshot beside the
+    live notes, the copies took all eight chunks and the line holding every word ranked ninth."""
+    y = install(tmp_path)
+    (tmp_path / "live" / "memory" / "2026-10-01.md").write_text("# 2026-10-01\n\n- Zorblaxia lent the example ladder.\n")
+    sync(y)
+    real = memory.ranked
+    monkeypatch.setattr(memory, "ranked", lambda *a, **k: {"ok": False, "status": "timeout", "error": "busy"})
+    assert y.recall_for("live-room", "who is Zorblaxia?")[3] == []                  # busy: no absence line
+    def crowded(s, q, k=6, *a, **kw):
+        r = real(s, q, k, *a, **kw)
+        return r if k > 8 else {**r, "hits": [{**h, "text": "- the example ladder."} for h in r.get("hits", [])]}
+    monkeypatch.setattr(memory, "ranked", crowded)
+    names, topics, past, absent = y.recall_for("live-room", "who is Zorblaxia?")
+    assert absent == [] and any("Zorblaxia lent" in e["text"] for e in names)       # the deeper read found it

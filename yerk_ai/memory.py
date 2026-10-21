@@ -681,10 +681,13 @@ def lines_on(s: Settings, what: str, reader: Reader | None = None, k: int = 8, e
     """Deep recall (decision 42): the `best` lines on `what`, a name or a topic, in the reader's scope, in the order of the k chunks
     the keyword rank gives (a name is its words: no meaning search), each holding every word of it; then a standing file's lines
     first, the day logs' newest first. Never a line of the message being answered (`exclude`, its ids), a corrected line, or one
-    that asks about it (words.ASKED): an ask is not on file."""
+    that asks about it (words.ASKED): an ask is not on file. A keyword read that did not finish raises LookupError: it proves no absence."""
     want = {t for t in mentions.tokens(what, True) if len(t) > 1 and t not in memindex.STOP}
     out: list[dict[str, Any]] = []
-    for h in ranked(s, what, k, 2.0, reader, wide=False).get("hits", []) if want else []:
+    r: dict[str, Any] = ranked(s, what, k, 2.0, reader, wide=False) if want else {"ok": True}
+    if not r["ok"]:
+        raise LookupError(f"the keyword read on {what!r} did not finish: {r['status']}")
+    for h in r.get("hits", []):
         day = Path(h["path"]).stem if is_daylog(h["path"]) else ""
         for i, raw in enumerate(str(h["text"]).splitlines()):
             ln = parse_line(raw)
