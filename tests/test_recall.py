@@ -109,11 +109,12 @@ def test_a_known_name_at_the_head_of_a_line_keys_the_line(tmp_path):
     assert not any("nobody here" in e["text"] for e in idx.match("examplia"))      # no name in its first six tokens
 
 
-def test_a_two_word_name_answers_to_its_first_word_and_a_three_word_key_does_not(tmp_path):
-    idx = named(tmp_path, {"people": "- Ada Example: the example office's chief.\n- Example week one: the first week there.\n"
-                                     "- About Example: a rule line, never a name.\n"})
-    assert cites(idx.match("what does ada do?")) == cites(idx.match("and ada example?")) == ["facts/people.md:1"]
-    assert idx.match("the example") == [] and idx.match("what about it") == []        # "about" is a stop word, never a name
+def test_a_two_word_name_answers_to_both_words_and_a_first_name_to_its_own_line(tmp_path):
+    idx = named(tmp_path, {"people": "- Ada Example: the example office's chief.\n- Black Example: an example show.\n"})
+    assert cites(idx.match("and ada example?")) == ["facts/people.md:1"]
+    assert idx.match("what does ada do?") == idx.match("the black cat") == []           # a first word alone is no key
+    alias = named(tmp_path / "b", {"people": "- Ada Example: the chief.\n- Ada: Ada Example, by her first name.\n"})
+    assert set(cites(alias.match("what does ada do?"))) == {"facts/people.md:1", "facts/people.md:2"}
 
 
 def test_a_keys_own_fact_file_comes_first_and_a_text_is_listed_once(tmp_path):
@@ -126,6 +127,14 @@ def test_a_keys_own_fact_file_comes_first_and_a_text_is_listed_once(tmp_path):
     twice = named(tmp_path / "b", {"examplia": "- Examplia: likes tea.\n- Examplia: likes tea. And the example ladder.\n"})
     assert cites(twice.match("examplia")) == ["facts/examplia.md:1", "facts/examplia.md:2"]    # the name's entry, then line 2
     assert cites(named(tmp_path / "c", {"x": "- Examplia: likes tea.\n- Examplia: likes tea. And more.\n"}).match("examplia")) == ["facts/x.md:1"]
+
+
+def test_a_line_is_listed_under_a_name_it_writes_as_one_and_a_keys_own_lines_come_first(tmp_path):
+    idx = named(tmp_path, {"car": "- An example hatchback, grey.\n", "aaa": "- ALL EXAMPLE BROTHERS: an example game rank.\n",
+                           "people": "- Examplia's car: an example coupe.\n- Car notes: the example hatchback's tyres.\n"
+                                     "- Brother: two, both older, example names.\n"})
+    assert cites(idx.match("my car")) == ["facts/car.md:1", "facts/people.md:2"]       # another's car is no line about the owner's
+    assert cites(idx.match("what does my brother do?")) == ["facts/people.md:3", "facts/aaa.md:1"]     # the key's own line first
 
 
 def test_a_plural_meets_its_singular_on_keys_and_messages_alike(tmp_path):
@@ -147,6 +156,17 @@ def test_a_marked_line_still_drops_nested_or_named(tmp_path):
     idx = named(tmp_path, {"examplia": "- Examplia: the eldest.\n  - ⛔ Examplia's example secret: never raised.\n"
                                        "- Examplia (ask-only): an example line.\n  - Examplia's example note ⛔\n"})
     assert cites(idx.match("examplia")) == ["facts/examplia.md:1"] and len(idx.entries) == 1
+
+
+def test_a_line_under_a_marked_bullet_or_heading_never_enters(tmp_path):
+    idx = named(tmp_path, {"examplia": "- Examplia: the eldest. ⛔ never said as fact: an example claim.\n"
+                                       "  - Examplia's example job: an example firm.\n    - Examplia lives on the example street.\n\n"
+                                       "  - Examplia's example bike: blue.\n- Examplia's example car: grey.\n## Ask-only\n"
+                                       "- Examplia's example habit.\n### Examplia's example sub\n- Examplia's example note.\n"
+                                       "## Examplia\n- Examplia's example hobby.\n"})
+    assert {"facts/examplia.md:6", "facts/examplia.md:12"} <= set(cites(idx.match("examplia", limit=20)))
+    assert not {f"facts/examplia.md:{n}" for n in (1, 2, 3, 5, 7, 8, 9, 10)} & set(cites(idx.entries))     # children, a blank line, a section
+    assert not any(w in e["text"] for e in idx.entries for w in ("example job", "example street", "example bike"))
 
 
 def test_a_scoped_room_keeps_its_own_copy_when_another_root_holds_the_same_words(tmp_path):
