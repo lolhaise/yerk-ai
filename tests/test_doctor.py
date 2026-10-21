@@ -44,6 +44,8 @@ def tree(tmp_path, monkeypatch):
     (state / "memory").mkdir()
     (state / "memory" / "mentions.json").write_text(json.dumps({"built": time.time() + 60}))
     (state / "yerkd.json").write_text(json.dumps({"pid": 1, "port": 4321}))
+    priv.chmod(0o700)                                        # as yerkd makes its state folder and the README says the
+    state.chmod(0o700)                                       # private one is kept: nothing in either for another user
     monkeypatch.setattr(memindex, "check", lambda db, scope, *a: {"status": "fresh"})
     monkeypatch.setattr(memory, "meaning_state", lambda s: "ok")
     monkeypatch.setattr(status, "alive", lambda s: True)
@@ -57,6 +59,59 @@ def test_a_healthy_tree_prints_nothing_and_its_run_is_kept(tree, capsys):
     d = json.loads((state / "doctor.json").read_text())
     assert d["findings"] == [] and d["repaired"] == [] and d["sizes"]["state folder"] > 0
     assert doctor.line(state, time.time()) == ("", f"{words.PLAIN} doctor: ok")
+
+
+def test_a_file_another_user_can_read_is_named_and_a_0700_folder_hides_what_is_in_it(tree, capsys, tmp_path):
+    """The modes check: under the 0700 state folder a 0644 context file is no one else's to read; opened to the group, the
+    folder is named with the count. In a planted tree a user passing through a 0711 folder reads a 0755 folder and a 0644
+    file in it; a 0600 file, anything under a 0700 folder and the target of a link are never named."""
+    priv, state, *_ = tree
+    assert oct(config.state_dir(str(tmp_path / "fresh" / "yerk")).stat().st_mode & 0o777) == "0o700"   # as the first start makes it
+    (ctx := state / "rooms" / "example-room" / "context.md").write_text("the owner's lines")
+    ctx.chmod(0o644)
+    assert doctor.main(priv, state) == 0 and capsys.readouterr().out == ""
+    state.chmod(0o750)
+    seen = doctor.exposed(state)
+    assert doctor.main(priv, state) == 1 and ("rooms/example-room/context.md", 0o644) in seen
+    assert capsys.readouterr().out.splitlines() == [f"state folder: other users can read {len(seen)} of its files and "
+                                                    "folders, first the folder itself (750); chmod 700 it"]
+    t = tmp_path / "t"
+    (t / "open" / "shut").mkdir(parents=True)
+    for name, mode in (("open/a", 0o644), ("open/b", 0o600), ("open/shut/c", 0o644)):
+        (t / name).write_text("x")
+        (t / name).chmod(mode)
+    (t / "open" / "link").symlink_to("/etc/passwd")
+    for d, mode in ((t / "open" / "shut", 0o700), (t, 0o711), (t / "open", 0o755)):
+        d.chmod(mode)
+    assert doctor.exposed(t) == [("open", 0o755), ("open/a", 0o644)]
+
+
+def test_a_secret_shaped_line_in_memory_or_an_import_is_named_by_file_and_line_never_by_value(tree, capsys):
+    """Claim 4's scan: each shape planted once (a key, a bot token, a one-time code, a password line, a token line) across
+    a day log, a fact file and a file an import saved is counted and the first named by file:line and kind, the values
+    nowhere in what the doctor says; a password that is only "wrong" and an area code are not secrets."""
+    priv, state, day, *_ = tree
+    key, bot = "sk-ant-" + "a" * 24, "M" + "a" * 24 + "." + "b" * 6 + "." + "c" * 27
+    said = ["your verification code is 482913", "the example wifi password is Exa-mple9!", "the password is wrong; area code 416"]
+    at = datetime(2026, 10, 20, 11, 20).astimezone()
+    planted = {"attachments/discord-1/note.txt": "token: " + "abcd1234" * 3,
+               "memory/facts/example-thing.md": f"# example thing\n\n- the example key {key}\n- the bot's {bot}\n",
+               "memory/daily/2026-10-20.md": day.read_text() + "".join(
+                   memory.format_line(at, "example-room", "", "owner", "", t, "private", f"s{i}") + "\n" for i, t in enumerate(said))}
+    for rel, text in planted.items():
+        (priv / rel).parent.mkdir(parents=True, exist_ok=True)
+        (priv / rel).write_text(text)
+    assert doctor.main(priv, state) == 1
+    out = capsys.readouterr().out
+    assert out.splitlines() == ["secret-shaped lines: 5 in 3 files, first attachments/discord-1/note.txt:1 (token line); "
+                                "scrub by hand, rotate the key"]
+    assert not [v for v in (key, bot, "482913", "Exa-mple9!", "abcd1234") if v in out]
+    assert {k for k, rx in doctor.SECRETS.items() for t in planted.values() if rx.search(t)} == set(doctor.SECRETS)
+
+
+def test_the_doctors_key_shapes_are_the_scrub_tests(tree):
+    from tests.test_scrub import PATTERNS
+    assert PATTERNS["secret"].pattern == doctor.SECRETS["key"].pattern
 
 
 def test_a_zeroed_day_log_line_is_backed_up_then_blank_so_every_line_number_holds(tree, capsys):

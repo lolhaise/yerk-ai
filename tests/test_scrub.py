@@ -1,4 +1,5 @@
 """The scrub test: no personal data or secrets anywhere in the repository."""
+import os
 import re
 from pathlib import Path
 
@@ -23,21 +24,43 @@ def repo_files():
             yield p
 
 
-def scan(path: Path, rel: str) -> list[str]:
+def denylist() -> list[re.Pattern[str]]:
+    """Decision 22: the owner's own names, people, rooms, companies and handles, one a line (`#` a comment), from a file in
+    the private layer that is never committed (secrets/denylist.txt), named by YERK_DENYLIST_FILE, which only the owner's
+    CI sets. Unset, as in a stranger's clone, it is empty and the generic shapes above are the whole test."""
+    f = os.environ.get("YERK_DENYLIST_FILE")
+    words = [w.strip() for w in Path(f).expanduser().read_text().splitlines()] if f else []
+    return [re.compile(rf"(?<![\w]){re.escape(w).replace(chr(92) + ' ', chr(92) + 's+')}(?![\w])", re.I)
+            for w in words if w and not w.startswith("#")]
+
+
+def scan(path: Path, rel: str, deny: tuple[re.Pattern[str], ...] | list[re.Pattern[str]] = ()) -> list[str]:
     text = path.read_text(errors="ignore")
     hits = [f"{rel}: {name}: {m.group()[:40]}" for name, rx in PATTERNS.items() for m in rx.finditer(text)]
     if not rel.startswith(HOME_OK):
         hits += [f"{rel}: home path: {m.group()}" for m in HOME.finditer(text)]
-    return hits
+    lines = text.splitlines()          # a denied word is named by its entry's number, never spelled out in a CI log
+    return hits + [f"{rel}:{n}: denylist entry {i}" for i, rx in enumerate(deny, 1) for n, x in enumerate(lines, 1) if rx.search(x)]
 
 
 def test_repository_is_clean():
-    hits = []
+    hits, deny = [], denylist()
     for p in repo_files():
         rel = p.relative_to(ROOT).as_posix()
         if rel != "tests/test_scrub.py":
-            hits += scan(p, rel)
+            hits += scan(p, rel, deny)
     assert not hits, "\n".join(hits)
+
+
+def test_the_denylist_fails_a_planted_name_and_is_empty_without_its_file(tmp_path, monkeypatch):
+    monkeypatch.delenv("YERK_DENYLIST_FILE", raising=False)
+    assert denylist() == []
+    (words := tmp_path / "denylist.txt").write_text("# the owner's names, one a line\nExamplia Quux\nquuxcorp\n")
+    monkeypatch.setenv("YERK_DENYLIST_FILE", str(words))
+    (bad := tmp_path / "leak.md").write_text("a line\nmet examplia  quux at QuuxCorp today\nquuxcorporate is fine\n")
+    assert scan(bad, "docs/leak.md", denylist()) == ["docs/leak.md:2: denylist entry 1", "docs/leak.md:2: denylist entry 2"]
+    bad.write_text("met Examplia Quux and QUUXCORP\n")
+    assert scan(bad, "docs/leak.md", denylist()) == ["docs/leak.md:1: denylist entry 1", "docs/leak.md:1: denylist entry 2"]
 
 
 def test_the_scrub_catches_what_it_should(tmp_path):

@@ -7,8 +7,10 @@ itself without them), else is blank in a day log (recall cites file:line) or dro
 from __future__ import annotations
 
 import json
+import re
 import stat
 import time
+from contextlib import suppress
 from pathlib import Path
 from typing import Any, Callable
 
@@ -21,6 +23,16 @@ from .mentions import Builder
 
 DAY, LAST, GROWTH_MB = 86400.0, "doctor.json", 500      # [doctor] growth_mb in yerkd.toml over GROWTH_MB
 CGROUP, STUCK = Path("/sys/fs/cgroup"), 3               # where a process's memory cap is read; backfill pauses in a row that are a finding
+# Secret-shaped text in memory (claim 4): the key shapes tests/test_scrub.py knows, then one-time codes and password or
+# token lines. Said by file:line and kind, never the value; the owner scrubs and rotates (a key in a log is already out).
+SECRETS = {"key": re.compile(r"sk-ant-[A-Za-z0-9_-]{16,}|sk-[A-Za-z0-9]{32,}|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{20,}"
+                             r"|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----"
+                             r"|[MN][A-Za-z0-9]{23,25}\.[A-Za-z0-9_-]{6}\.[A-Za-z0-9_-]{27,}"),
+           "one-time code": re.compile(r"(?i)\b(?:(?:verification|security|one[- ]time|login|sign[- ]in|2fa|confirmation)\s+"
+                                       r"(?:code|pin)|otp|passcode|your (?:code|pin) is)\b\D{0,12}\d{4,8}\b"),
+           "password line": re.compile(r"(?i)\bpass(?:word|phrase)\s*(?:is|:|=)\s*(?=\S*[\d!#$%^&*])\S{6,}"),
+           "token line": re.compile(r"(?i)\b(?:token|api[ _-]?key|secret|bearer)\s*[:=]\s*[\"'`]?[\w.-]{16,}")}
+TEXT = (".md", ".txt", ".json", ".jsonl", ".csv", ".eml")
 
 
 def reads(line: bytes, daylog: bool) -> bool:
@@ -52,6 +64,21 @@ def mend(path: Path, daylog: bool, backup: Path, dry: bool) -> list[int]:
             parts[i] = x + b"\n" if x else b"\n" if daylog else b""
         write_private(path, b"".join(parts), stat.S_IMODE(path.stat().st_mode))
     return [i + 1 for i in hit]
+
+
+def exposed(root: Path) -> list[tuple[str, int]]:
+    """(path under `root`, mode) of each file and folder, `root` too, that a group or other user can read: its read bit
+    for them, every folder above it up to `root` searchable by them. A 0700 root hides everything in it. Links: not followed."""
+    out, todo = [], [(root, 0o044)]                      # 0o044: the group and other read bits still reachable
+    while todo:
+        p, reach = todo.pop()
+        with suppress(OSError):
+            st = p.lstat()
+            if (mode := stat.S_IMODE(st.st_mode)) & reach and not stat.S_ISLNK(st.st_mode):
+                out.append((p.relative_to(root).as_posix(), mode))
+            if stat.S_ISDIR(st.st_mode) and (inner := reach & (mode << 2)):   # x for a class, shifted onto its r bit
+                todo += [(c, inner) for c in p.iterdir()]
+    return sorted(out)
 
 
 def repair(private: Path, state: Path, m: memory.Settings, flight: set[str], dry: bool = False,
@@ -159,6 +186,22 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
                                                               for e in got.values() for x in e for h in x.get("hooks", [])):
                 found.append(f"room {n}: hooks not as yerkd puts them")
 
+    def modes() -> None:             # the example layer is a public checkout: a private folder of the owner's own only
+        for what, root in (("private folder", private), ("state folder", state)):
+            if not (root == private and private.resolve().is_relative_to(REPO)) and (seen := exposed(root)):
+                found.append(f"{what}: other users can read {len(seen)} of its files and folders, first "
+                             f"{'the folder itself' if seen[0][0] == '.' else seen[0][0]} ({seen[0][1]:o}); chmod 700 it")
+
+    def leaks() -> None:             # the day logs, notes and fact files, and the text an import saved: report, never rewrite
+        roots = [m.root] + ([private / "attachments"] if (private / "attachments").is_dir() else [])
+        hits = [(f, n, kind) for f in sorted(p for r in roots for p in r.rglob("*") if p.suffix in TEXT and p.is_file())
+                for n, line in enumerate(f.read_text(errors="replace").splitlines(), 1)
+                for kind in [next((k for k, rx in SECRETS.items() if rx.search(line)), "")] if kind]
+        if hits:
+            (f, n, kind), files = hits[0], len({h[0] for h in hits})
+            found.append(f"secret-shaped lines: {len(hits)} in {files} file{'s' * (files > 1)}, first "
+                         f"{f.relative_to(private) if f.is_relative_to(private) else f.name}:{n} ({kind}); scrub by hand, rotate the key")
+
     now_sizes: dict[str, int] = {}
 
     def growth() -> None:
@@ -195,7 +238,8 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
             found.append(f"memory index: runs {ix[:7]}, yerkd {str(ran)[:7]}: restart yerk-index")
 
     for what, check in (("shape", shape), ("classes", classes), ("tokens", tokens), ("index", index), ("hooks", hooked),
-                        ("disk", growth), ("memory cap", high), ("backfill", backfill), ("cites", cites), ("code", code)):
+                        ("modes", modes), ("secrets", leaks), ("disk", growth), ("memory cap", high), ("backfill", backfill),
+                        ("cites", cites), ("code", code)):
         try:
             check()
         except (Exception, SystemExit) as e:                    # a check that cannot run is a line; the others still run

@@ -77,10 +77,11 @@ def private_dir(arg: str | None = None) -> Path:
 
 
 def state_dir(arg: str | None = None) -> Path:
-    """--state, then $YERK_STATE, then $XDG_STATE_HOME/yerk (~/.local/state/yerk)."""
+    """--state, then $YERK_STATE, then $XDG_STATE_HOME/yerk (~/.local/state/yerk); made 0700, so nothing in it
+    (the conversation logs, the ledger, a room's context) is another local user's to read."""
     p = arg or os.environ.get("YERK_STATE")
     d = Path(p).expanduser() if p else Path(os.environ.get("XDG_STATE_HOME", "~/.local/state")).expanduser() / "yerk"
-    d.mkdir(parents=True, exist_ok=True)
+    d.mkdir(mode=0o700, parents=True, exist_ok=True)
     return d
 
 
