@@ -331,6 +331,13 @@ def cmd_doctor(a: argparse.Namespace) -> int:
     return doctor.main(private_dir(a.private), state_dir(a.state), a.dry_run)
 
 
+def cmd_curate(a: argparse.Namespace) -> int:
+    """The night's card curation (curate.py): the sweep, then yesterday's facts, or each day from --since, proposed,
+    knocked down, checked and landed past the bench; --dry-run changes nothing."""
+    from . import curate
+    return curate.main(private_dir(a.private), state_dir(a.state), a.since, a.dry_run)
+
+
 def cmd_deploy(a: argparse.Namespace) -> int:
     """`yerk deploy [REF]` (deploy.py): fast-forward, fast tests, a quiet room, the restart, the proof,
     else the rollback; the card to the machine room. --unit: onto units/yerkd.service as well."""
@@ -505,7 +512,9 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
     im = sub.add_parser("import", help="a chat's whole history into the day logs, no room made: discord:<channel or thread id>, "
                         "or discord-guild:<guild id> for every chat on the server no room covers (--dry-run: the inventory)")
-    im.add_argument("source", help="discord:<channel or thread id> or discord-guild:<guild id>")
+    im.add_argument("source", help="discord:<channel or thread id>, discord-guild:<guild id>, imessage:<a Messages chat.db> "
+                    "(texts into imports/texts) or gmail (All Mail into imports/mail, by yerkd.toml [gmail])")
+    im.add_argument("--contacts", help="imessage: a Contacts database, for the names its numbers and addresses have")
     im.add_argument("--since", help="the history from this day on, YYYY-MM-DD (default: all of it)")
     im.add_argument("--files", action="store_true", help="save attachments up to 25 MB too (default: each named with its size, none downloaded)")
     im.add_argument("--dry-run", action="store_true", help="read and count, write nothing; on one chat, also print every line it would file")
@@ -571,6 +580,10 @@ def main(argv: list[str] | None = None) -> int:
     dc = sub.add_parser("doctor", help="the daily check (the private folder's shape, rooms.toml keys, memory classes, tokens, "
                         "the index, hooks, disk growth) and the crash repair of NUL lines, each file backed up first")
     dc.add_argument("--dry-run", action="store_true", help="say what would be mended, change nothing")
+    cu = sub.add_parser("curate", help="the night's card curation: the sweep (repeats, superseded and past-date lines, cite "
+                        "drift), then the day's facts proposed, knocked down, checked and landed only if the bench holds")
+    cu.add_argument("--since", default="", help="each day from this date (YYYY-MM-DD) to yesterday, for a backfill")
+    cu.add_argument("--dry-run", action="store_true", help="say what it would change and propose, change nothing")
     mm = sub.add_parser("memory", help="the memory tree's one-time migrations: migrate-daylogs (offsets, room ids, "
                         "authors and classes on every day-log line written before them; files copied to backups/ first)")
     mm.add_argument("action", choices=["migrate-daylogs"])
@@ -587,14 +600,15 @@ def main(argv: list[str] | None = None) -> int:
     dp.add_argument("ref", nargs="?", help="the commit (default: the daemon's tree's HEAD)")
     dp.add_argument("--no-tests", action="store_true", help="skip the fast tests (the card says so)")
     dp.add_argument("--unit", action="store_true", help="also move a systemd-run daemon onto units/yerkd.service")
-    for x in (ac, st, mo, rb, ab, ex, jb, sc, rt, dc, mm, dp):
+    for x in (ac, st, mo, rb, ab, ex, jb, sc, rt, dc, cu, mm, dp):
         x.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else the fake example layer)")
         x.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
     a = p.parse_args(argv)
     return int({"map": cmd_map, "setup-room": cmd_setup_room, "room": cmd_room, "import": cmd_room, "worker": cmd_worker,
                 "jobs": cmd_jobs, "schedule": cmd_schedule, "accounts": cmd_accounts, "status": cmd_status, "morning": cmd_morning,
                 "recall-bench": cmd_recall_bench, "abilities": cmd_abilities, "explain": cmd_explain, "config": cmd_config,
-                "memory": cmd_memory, "deploy": cmd_deploy, "retention": cmd_retention, "doctor": cmd_doctor}[a.cmd](a))
+                "memory": cmd_memory, "deploy": cmd_deploy, "retention": cmd_retention, "doctor": cmd_doctor,
+                "curate": cmd_curate}[a.cmd](a))
 
 
 if __name__ == "__main__":

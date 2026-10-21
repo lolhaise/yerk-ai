@@ -8,7 +8,7 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-21
 
-### reliability (this pull request)
+### reliability (#65)
 
 - A stop (`systemctl stop`, `yerk deploy`) ends the daemon clean: STOPPING=1 to systemd, every room's Claude Code
   ended by the daemon, the gateway closed, exit 0, about a second. A turn cut mid-run has its messages run again
@@ -31,6 +31,35 @@ with the originals kept under `backups/`; the index chunks every file again when
 **Upgrading**: copy `units/yerkd.service` and `units/yerk-index.service` again (KillMode, TimeoutStopSec,
 NoNewPrivileges, PrivateTmp) and `systemctl --user daemon-reload`; `budgets.toml` `[code] lines` moved to the new
 count; the dev group gained hypothesis, ruff and pip-audit (`pip install -e . pytest mypy hypothesis ruff pip-audit`).
+
+### curate (#63)
+
+- `yerk curate`, nightly at 05:00 after the doctor: a sweep in code blanks a card line said twice, a superseded line
+  and a line past its `[until YYYY-MM-DD]`, and moves a cite only when its quoted words sit on exactly one line; any
+  other drift is a finding in the morning diff, each card backed up first. Then a worker proposes lines from the
+  day's logs for each card, a second knocks them down, code checks each one, and they land only when the recall
+  bench does not fall. A correction is only proposed, never applied. `--dry-run` shows the night, `--since DATE`
+  runs a range as a backfill.
+
+**Upgrading**: copy `units/yerk-curate.service` and `units/yerk-curate.timer` and enable the timer; `[curate]
+account` in yerkd.toml pins the account it runs on, and `[curate] logs` adds logs of the owner's own.
+
+### compact-window (#64)
+
+- A room compacts where Yerk AI says, never at the model's window edge: `budgets.toml` `[session] compact_window`
+  (250,000 tokens) is written as every room's `autoCompactWindow`; a room's own `compact_window` in rooms.toml
+  overrides it (kept between 100,000 and 1,000,000), and 0 leaves it to the model.
+
+**Upgrading**: `budgets.toml` gained `[session] compact_window`; each room takes it at its next start.
+
+### import-sources (#62)
+
+- `yerk import imessage:<chat.db> [--contacts <db>]` and `yerk import gmail`: a person's texts and mail come in as
+  files, `imports/texts/<person or group>.md` and `imports/mail/<YYYY-MM>.md`, one line a message, both sources
+  only read. Anything shaped like a key, a token, a password or a one-time code is written as its kind only.
+
+**Upgrading**: for mail, `[gmail] user` and `password_file` (an app password) in yerkd.toml; `[import] me` names
+your own texts.
 
 ### rail-2 (#59)
 

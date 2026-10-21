@@ -17,7 +17,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
-from . import context, doctor, jobs, memory, retention, status, words
+from . import context, curate, doctor, jobs, memory, retention, status, words
 from .accounts import Account, Cooldowns
 from .config import budgets, rooms
 from .ledger import Ledger
@@ -94,6 +94,7 @@ def build(private: Path, state: Path, accounts: list[Account], cooldowns: Cooldo
     if (swept := retention.line(state, now)):            # the night's sweep: what it moved by kind, or that it failed
         rows.append(swept)
     rows.append(doctor.line(state, now))                 # the daily check: ok, or its count and first finding
+    rows.append(curate.line(state, now))                 # the night's curation: what landed, else what to read and the first
     if live is None:
         add("unknown units", W.NOT_DONE, W.UNKNOWN.format(what="memory", why=W.NOT_ANSWERING_WHY))
     for u in (live or {}).get("units", []):
