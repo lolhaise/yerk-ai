@@ -273,9 +273,15 @@ def cmd_status(a: argparse.Namespace) -> int:
     from .meters import Meters, meter_line
     priv, state, accounts, cool = _engine(a)
     if not getattr(a, "full", False):
+        from . import deploy
+        from .config import REPO
+        ledger = Ledger(state / "ledger.sqlite")
         s = status.ask(state) if status.alive(state) else None
-        for line in status.card(s or {**status.collect(priv, state, accounts, cool, Ledger(state / "ledger.sqlite")),
-                                      "alive": status.alive(state)}):
+        s = s or {**status.collect(priv, state, accounts, cool, ledger), "alive": status.alive(state), "commit": deploy.head(REPO)}
+        if getattr(a, "json", False):             # one document for a monitoring tool (status.document)
+            print(json.dumps(status.document(priv, state, s, ledger), default=str))
+            return 0
+        for line in status.card(s):
             print(line)
         return 0
     try:
@@ -526,6 +532,8 @@ def main(argv: list[str] | None = None) -> int:
     st = sub.add_parser("status", help="the daemon, its rooms, each account's 5-hour and weekly meters, and the "
                         "running workers (from the ledger, checked against the unit list)")
     st.add_argument("--full", action="store_true", help="the developer detail: pid, unit names, reading ages")
+    st.add_argument("--json", action="store_true", help="one JSON document for a monitoring tool: rooms, accounts, last turn "
+                    "per room, the last day's failures, the index, the backup's age")
     mo = sub.add_parser("morning", help="the morning diff (payload changes, yesterday's waits, stalls, shadow flags, "
                         "memory and CPU, meters) to the room with role = \"machine\", else a file under the state folder")
     wk = sub.add_parser("worker", help="workers: start (needs a running yerkd), list, stop, report")

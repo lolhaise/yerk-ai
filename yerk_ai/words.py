@@ -98,7 +98,8 @@ WHY = {                                   # a failed turn, in plain words: the f
     "transient": "Claude was busy; ask again", "overflow": "the conversation is too long",
     "fatal": "Claude Code could not run it", "refusal": "the model declined",
     "timeout": "it ran past the time limit", "exited": "Claude Code stopped midway",
-    "empty": "the reply came back empty", "error": "Claude Code reported an error"}
+    "empty": "the reply came back empty", "error": "Claude Code reported an error",
+    "crashed": "the harness failed; it is in the log"}
 BACKUP = ("answered by a backup model", "the next message starts fresh")
 MOVED, COMPACTING = "still on it, moved to account {name}", "shortening the conversation first"
 MOVED_ON = "still on it, trying another way"      # the hop note in a room that is not the owner's: no account name there
@@ -256,6 +257,7 @@ def ability(state: str, **say: Any) -> tuple[str, str]:
 # its limit, a blocked room, a stall, a daemon down); every other line starts with a dash
 PLAIN, RUNNING_ROOMS = "-", "yerkd running: {rooms}"
 ROOMS_N, ROOM_1 = "{n} rooms", "1 room"
+VERSION_AT = "yerk {version} at {commit}"      # the package's version and the commit that runs (an upgrade's receipt)
 NOT_RUNNING, NOT_ANSWERING = "yerkd: not running", "yerkd: running, not answering"
 NO_READING, RESTS = "{name}: no reading yet", "{name}: resting until {until}"
 OLD_READING, TURN_FOR = "{name}: last reading {ago}", "{name}: busy {took}"

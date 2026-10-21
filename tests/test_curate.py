@@ -149,10 +149,10 @@ def proposals(s):
     return [f"ada.md: - Ada's new job: starts at Example Co on Monday (src: {day}:3)",
             f"ada.md: - Back: starts at Example Co (src: {day}:3)",
             f"ada.md: - Ada's login: her password is hunter22 (src: {day}:3)",
-            f"ada.md: - Ada's tea: green tea only — she said so (src: memory/daily/2026-10-19.md:4)",
+            "ada.md: - Ada's tea: green tea only — she said so (src: memory/daily/2026-10-19.md:4)",
             "ada.md: - Ada's cousin: lives in Example Bay (src: memory/daily/2026-10-19.md:1)",
             "ada.md: - Bea: Ada's daughter passed her exam (src: texts.log:2)",
-            f"ada.md: - Ada's tea: green tea only (src: memory/daily/2026-10-19.md:4)"]
+            "ada.md: - Ada's tea: green tea only (src: memory/daily/2026-10-19.md:4)"]
 
 
 def test_the_promotion_lands_only_what_the_knockdown_passed_and_the_checks_hold(layer, monkeypatch):

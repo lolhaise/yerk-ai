@@ -14,16 +14,14 @@ import signal
 import sqlite3
 import stat
 import subprocess
-import threading
 import time
 from types import SimpleNamespace
 
-from yerk_ai import beat, cli, deploy, gates, jobs, morning, status, words
+from yerk_ai import beat, deploy, gates, jobs, morning, status, words
 from yerk_ai.accounts import Cooldowns, load_accounts
 from yerk_ai.config import EXAMPLE_PRIVATE, REPO, budgets
 from yerk_ai.daemon import Yerkd
 from yerk_ai.ledger import Ledger
-from yerk_ai.room import Inbound
 
 NOW = 1792303200.0
 NAP = 0.01

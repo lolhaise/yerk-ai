@@ -30,6 +30,12 @@ RestartSec=10s
 Nice=10
 IOSchedulingClass=idle
 MemoryHigh=800M
+# A stop ends the loop after the pass that runs (SIGTERM is handled); a pass that is a full rebuild can run past the
+# 90 s default, and the WAL keeps the index consistent under the SIGKILL that follows. The daemon's recall reads the
+# index file itself and treats a missing meaning search as keywords only for that query, so a restart here costs the
+# vectors, never an answer. No setuid gain and a /tmp of its own (proven on a scratch install under systemd-run).
+NoNewPrivileges=yes
+PrivateTmp=yes
 
 [Install]
 WantedBy=default.target

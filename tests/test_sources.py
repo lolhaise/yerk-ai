@@ -5,7 +5,7 @@ draft, a security mail, sent mail longer, the HTML stripper), the secret rules, 
 --since and --dry-run, and a person room that never reads an imported line. Every value here is a placeholder."""
 import sqlite3
 import stat
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import pytest

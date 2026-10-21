@@ -17,7 +17,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
 
-from . import config, jobs, words, workers
+from . import __version__, config, jobs, words, workers
 from .accounts import Account, Cooldowns
 from .ledger import Ledger
 from .meters import Meters, meter_short
@@ -105,6 +105,28 @@ def collect(private: Path, state: Path, accounts: list[Account], cooldowns: Cool
     return out
 
 
+def document(private: Path, state: Path, s: dict[str, Any], ledger: Ledger, now: float | None = None) -> dict[str, Any]:
+    """`yerk status --json`: one document a monitoring tool reads. The /status answer (rooms, accounts, workers, jobs,
+    units, stalls, commit, connected, rebuilding) plus the version, each room's last answered turn, the turns that failed
+    and the person's messages left unanswered in the last day, the index's state (yerk-index's own status file and its
+    age) and the newest backup's age when `[backup] path` names a folder."""
+    from . import memory
+    now = time.time() if now is None else now
+    conf = config.load_toml(private / "yerkd.toml") if (private / "yerkd.toml").is_file() else {}
+    ok, failed = ledger.turn_summary(now - 86400.0)
+    out = {**s, "version": __version__, "last_turn": ok, "failed_turns": failed,
+           "dead_messages": len(ledger.dead_turns(now - 86400.0, now - BLOCKED))}
+    try:
+        index = memory.index_status(memory.settings(private, state, dict(conf.get("memory", {}))))
+        out["index"] = {**index, "age": round(now - float(index.get("at") or 0), 1)} if index else None
+    except (OSError, ValueError, KeyError):
+        out["index"] = None
+    folder = Path(str((conf.get("backup") or {}).get("path") or "")).expanduser()
+    newest = max((p.stat().st_mtime for p in folder.glob("yerk-*") if p.is_file()), default=None) if folder.is_dir() else None
+    out["backup_age"] = None if newest is None else round(now - newest, 1)
+    return out
+
+
 def midnight(now: float, days: int = 0) -> float:
     """The start of the local day `days` before the one `now` falls in."""
     return (datetime.fromtimestamp(now).replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=days)).timestamp()
@@ -155,6 +177,8 @@ def card(s: dict[str, Any], now: float | None = None) -> list[str]:
                                + (W.QUEUED.format(n=r["waiting"]) if r["waiting"] else ""), r["room"], took=W.span(took)))
     out += [W.named(f"{W.PLAIN} {W.WATCHES}", r["room"], channel=str(r["watch"]).partition(":")[2]) for r in s["rooms"] if r.get("watch")]
     out += [W.named(f"{W.PLAIN} {W.PINNED}", r["room"], account=r["account"]) for r in s["rooms"] if r.get("account")]
+    out.append(row(W.PLAIN, W.VERSION_AT.format(version=s.get("version") or __version__,   # what runs: an upgrade's receipt
+                                                 commit=str(s.get("commit") or "")[:7] or "?")))
     nth: dict[str, int] = {}
     for w in sorted(s["workers"], key=lambda w: (bool(w["waiting"]), float(w["queued"] or 0))):
         if w["waiting"]:
