@@ -161,8 +161,7 @@ def check(private: Path, m: Settings, rooms: dict[str, dict[str, Any]], docs: di
             twice.setdefault(t, fs)
     fresh = []
     if rules.is_file():
-        rows = rules.read_text(encoding="utf-8", errors="replace").split("\n")
-        for n, raw, ex in lines("\n".join(rows), rules=True):
+        for n, raw, ex in lines(rules.read_text(encoding="utf-8", errors="replace"), rules=True):
             at = STAMP.search(raw)
             if not ex and at and now - datetime.fromisoformat(at.group(2)).timestamp() <= 86400 and (o := offenses(raw, True, acronyms)):
                 fresh.append((f"{cite(m, rules)}:{n}", o))

@@ -16,7 +16,7 @@ import time
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from . import __version__, words
 from .config import DOCS_PAGES, load_toml, write_private
@@ -24,7 +24,6 @@ from .config import DOCS_PAGES, load_toml, write_private
 REFRESH_DAYS, MAX_BYTES, TIMEOUT, STAMP = 7, 4_000_000, 30, "refresh.json"
 SLUG = re.compile(r"[a-z0-9][a-z0-9-]{0,63}")
 HEAD = re.compile(r"\A---\nclass: shared\nsource: (\S+)\nfetched: (\S+)\nsha256: ([0-9a-f]{64})\n---\n")
-Fetch = Callable[[str], tuple[str, bytes]]       # url -> (content type, body)
 
 
 def root(state: Path) -> Path:
@@ -71,7 +70,7 @@ def due(state: Path, conf: dict[str, Any], now: float) -> bool:
     return now - float(load(state).get("at", 0)) >= days * 86400
 
 
-def refresh(state: Path, conf: dict[str, Any], get: Fetch | None = None, now: float | None = None) -> dict[str, Any]:
+def refresh(state: Path, conf: dict[str, Any], now: float | None = None) -> dict[str, Any]:
     """Every page fetched: one whose bytes moved is rewritten, a failure keeps its old file and leaves the refresh due, so
     the next doctor run tries again. Returns the slugs new, changed and the same, and each failure's why."""
     now = time.time() if now is None else now
@@ -83,7 +82,7 @@ def refresh(state: Path, conf: dict[str, Any], get: Fetch | None = None, now: fl
         try:
             if not SLUG.fullmatch(slug):
                 raise ValueError("a slug is lowercase letters, digits and hyphens")
-            ctype, body = (get or fetch)(url)
+            ctype, body = fetch(url)
             if "markdown" not in ctype and not ctype.startswith("text/plain"):
                 raise ValueError(f"not Markdown ({ctype.split(';')[0] or 'no type'})")
             if len(body) > MAX_BYTES:
