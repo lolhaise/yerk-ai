@@ -198,8 +198,7 @@ class Yerkd:
                                     "hooks": hooks.settings_for(f"{self.url}/hook", header)}
         shell = conf.get("sandbox", dict(SANDBOX) if SHELLS & set(conf.get("tools") or []) else None)   # Claude Code's own
         settings.update({"sandbox": shell} if shell is not None else {})    # shell sandbox: a shell room's is on unless its table says
-        window = int(conf.get("compact_window", self.budgets.get("session", {}).get("compact_window", 0)) or 0)
-        settings.update({"autoCompactWindow": min(max(window, 100000), 1000000)} if window else {})   # Claude Code drops a value outside its range, silently
+        settings.update({"autoCompactWindow": w} if (w := self.window(name)) else {})
         settings["permissions"].update({} if self.owner(name) else {"blockReadsOutsideWorkingDirectories": True})   # file tools, every mode
         now = room_settings(conf, self.state, name, self.models)    # the room's override over rooms.toml
         extra = ["--effort", now["effort"][0]] if now["effort"][0] else []
@@ -208,6 +207,12 @@ class Yerkd:
         return RoomSpec(room=name, model=now["model"][0], cwd=work, tools=list(conf.get("tools", [])), settings=settings,
                         context_file=ctx, mcp_config=mcp_server.room_config(f"{self.url}/mcp", name, rdir / "mcp.json", token, conf.get("mcp")),
                         extra_args=extra, token=token, add_dirs=[layer, *self.read_dirs.get(name, [])])   # `read`, as F4 judged it
+
+    def window(self, name: str) -> int:
+        """The tokens a room's session keeps before Claude Code compacts it: rooms.toml `compact_window`, else budgets.toml
+        [session]'s; 0 leaves it to the model. Clamped to 100,000 to 1,000,000: Claude Code drops a value outside, silently."""
+        w = int(self.room_confs[name].get("compact_window", self.budgets.get("session", {}).get("compact_window", 0)) or 0)
+        return min(max(w, 100000), 1000000) if w else 0
 
     def secrets_at(self) -> tuple[list[Path], list[Path]]:
         """(folders, files) no room reads or sends: both secrets folders; every room's token files, each account's token
@@ -244,9 +249,10 @@ class Yerkd:
         # accounts.toml order, so adding or removing an account is one line in accounts.toml
         named = [a for n in conf.get("accounts") or [] for a in self.accounts if a.name == n]
         accts = named + [a for a in self.accounts if a not in named]
+        s = {**self.budgets.get("session", {}), **conf}          # the room's idle compaction keys over the budget's
         room = Room(name, conf, lambda: self.spec_for(name), accts, channel, self.state, self.ledger,
-                    self.failures, self.cooldowns, idle_seconds=self.idle_seconds, log_dir=self.log_dir,
-                    meters=self.meters)
+                    self.failures, self.cooldowns, idle_seconds=self.idle_seconds, log_dir=self.log_dir, meters=self.meters,
+                    compact=(self.window(name), float(s.get("idle_compact_at", 0)), 60 * float(s.get("idle_compact_after", 0))))
         self.rooms[name], self.channels[name] = room, channel
         return room
 
@@ -863,6 +869,7 @@ class Yerkd:
         while True:
             await asyncio.sleep(every)
             for room in self.rooms.values():
+                await asyncio.to_thread(room.idle_compact)     # first: a room it starts is busy, so the reap leaves it open
                 await asyncio.to_thread(room.reap_idle)
             try:
                 await self.workers.reconcile()         # the backstop for a missed watch event

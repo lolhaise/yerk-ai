@@ -21,7 +21,11 @@ message and a success result echoing the text. Variations:
 - a line containing FIXTURE:<name>: the events of fixtures/<name>.jsonl the first time (marker
   FAKE_CLAUDE_MARK.<name>), then the plain echo; {sid} in a fixture is the session id
 - a line containing TOO_LONG_ONCE: "Prompt is too long" (invalid_request) until a /compact
-- the line /compact: a compaction result
+- the line /compact: a compact_boundary as 2.1.304 streams it (post_tokens FAKE_CLAUDE_POST, else 20000), then a
+  compaction result; each one appends a line to FAKE_CLAUDE_MARK.compacted. FAKE_CLAUDE_COMPACT_SLOW=S waits S seconds
+  first; FAKE_CLAUDE_COMPACT_FAIL=1: Claude Code's failed-compaction status and an error result, no boundary
+- note says the Sample:Item: moved to the next step and the test Reads it; Back:As plain, text with,
+  the test reads (it_back_as_plain text) with one more Line
 - a line containing SLOW: waits up to 1.5 s for another line; if one comes, it is replayed and
   answered in the same result (a fold)
 - a line containing HANG: no answer for 60 s (a turn only /stop ends)
@@ -129,7 +133,14 @@ def answer(text):
         return result("Not logged in · Please run /login", error=True)
     if text.strip() == "/compact":
         if mark:
-            open(f"{mark}.compacted", "w").close()
+            with open(f"{mark}.compacted", "a") as f:
+                f.write("compact\n")
+        time.sleep(float(os.environ.get("FAKE_CLAUDE_COMPACT_SLOW") or 0))
+        if os.environ.get("FAKE_CLAUDE_COMPACT_FAIL"):
+            out({"type": "system", "subtype": "status", "status": None, "compact_result": "failed", "compact_error": "fake", "session_id": sid})
+            return result("Error during compaction: fake", error=True)
+        out({"type": "system", "subtype": "compact_boundary", "session_id": sid, "uuid": str(uuid.uuid4()),
+             "compact_metadata": {"trigger": "manual", "post_tokens": int(os.environ.get("FAKE_CLAUDE_POST") or 20000)}})
         return result("Compacted.")
     if "TOO_LONG_ONCE" in text and mark and not os.path.exists(f"{mark}.compacted"):
         out({"type": "assistant", "error": "invalid_request",
@@ -160,7 +171,12 @@ def answer(text):
              "key": "stop-hook-error", "text": "Stop hook error occurred \u00b7 ctrl+o to see"})
     reply = "echo: " + text
     out({"type": "stream_event", "event": {"type": "content_block_delta", "delta": {"type": "text_delta", "text": reply}}})
-    out({"type": "assistant", "message": {"content": [{"type": "text", "text": reply}]}})
+    n = int(text.split("CONTEXT:")[1].split()[0]) if "CONTEXT:" in text else 0
+    out({"type": "assistant", "message": {"content": [{"type": "text", "text": reply}],
+                                          **({"usage": {"input_tokens": 2, "cache_read_input_tokens": n - 2}} if n else {})}})
+    if "SUBAGENT:" in text:
+        out({"type": "assistant", "parent_tool_use_id": "toolu_sub", "message": {
+            "content": [], "usage": {"input_tokens": int(text.split("SUBAGENT:")[1].split()[0])}}})
     return result(reply)
 
 

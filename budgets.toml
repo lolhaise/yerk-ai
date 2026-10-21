@@ -1,6 +1,6 @@
 # Every size limit Yerk AI enforces, in one place.
 # Unit: characters as Claude Code counts them (UTF-16 code units, so one emoji outside
-# the basic plane counts 2), except [session], in tokens, and [code] at the end, which counts lines. The budget test
+# the basic plane counts 2), except [session], in tokens (its idle keys say their own), and [code] at the end, which counts lines. The budget test
 # fails the build when a part or a total passes its number here.
 
 [session_start]
@@ -70,6 +70,16 @@ rules = 1500
 # back after it. A quarter of the window until a latency bench picks the number. A room's own
 # `compact_window` in rooms.toml overrides it; 0 leaves it to the model.
 compact_window = 250000
+# A room idle `idle_compact_after` minutes (no turn, nothing queued) whose session holds `idle_compact_at` of its window
+# or more is compacted then by the daemon, as `yerk room compact` does it, so a compaction never lands in a person's turn
+# (2026-10-21: a one-line question waited 5 min 20 s for one). Measured that day: Claude Code compacts at the window less
+# 33,000 (2.1.304: its 20,000 output reserve and 13,000 buffer); the most a room's session grew in one turn was 100,831,
+# and a process start added up to 43,479, so at 0.7 a 700,000 window keeps 177,000 for the next turn and 400,000 keeps
+# 87,000. 25 minutes is under the 30 a room's process stays open, so it compacts warm, inside the hour the prompt cache
+# holds; a message came in while one would run after 12% of the idle stretches that long (9 of 75, the slowest compaction
+# seen: 320 s). A room's own keys in rooms.toml override these; idle_compact_at = 0 turns it off, as a window left to the model does.
+idle_compact_at = 0.7
+idle_compact_after = 25
 
 [relay]
 # A worker's end, told in its room (DESIGN 6, decision 11): the harness line the room's session
@@ -83,4 +93,4 @@ reply = 1500
 # only goes down: the budget test fails when the package grows past it and also when it
 # shrinks under it, so a change that cuts lowers this number in the same commit, and a
 # change that adds cuts as much somewhere else. A change that raises it is not merged.
-lines = 15310
+lines = 15373

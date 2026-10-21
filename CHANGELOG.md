@@ -8,6 +8,19 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-21
 
+### idle-compact
+
+- A room compacts between turns, never inside one: idle 25 minutes with its session at 0.7 of its compaction window
+  or more, the daemon compacts it in the background as `yerk room compact` does, so the next message finds it small
+  (on Oct 21 a one-line question waited 5 min 20 s for Claude Code's own compaction). `budgets.toml` `[session]`
+  `idle_compact_at` and `idle_compact_after` set the line, a room's own keys in rooms.toml move it, and
+  `idle_compact_at = 0` turns it off.
+- A message sent during `yerk room compact` runs right after it; it waited for the next message before.
+- Each turn's ledger row holds the session's size in tokens (`context`).
+
+**Upgrading**: `budgets.toml` gained `[session] idle_compact_at` and `idle_compact_after`; the ledger adds its column
+at the next start. Nothing to do.
+
 ### budgets-voice (#68)
 
 - The taste rules (one line each: a rule and the rated replies that prove it) fit a rulebook: its budget rises from
