@@ -174,7 +174,8 @@ def test_a_rooms_settings_and_mcp_config_carry_its_token_and_are_private(tmp_pat
 
 def test_a_rooms_settings_carry_the_compaction_window_from_budgets_and_a_room_may_override_it(tmp_path):
     """A room compacts where budgets.toml [session] compact_window says, never at the model's window edge;
-    rooms.toml `compact_window` overrides it for one room, and 0 leaves the window to the model."""
+    rooms.toml `compact_window` overrides it for one room, and 0 leaves the window to the model. A value outside
+    Claude Code's 100,000 to 1,000,000 is clamped into it: Claude Code drops it silently and compacts at the model's edge."""
     import shutil
     from yerk_ai.config import budgets
     private, state = tmp_path / "private", tmp_path / "state"
@@ -182,7 +183,7 @@ def test_a_rooms_settings_carry_the_compaction_window_from_budgets_and_a_room_ma
     state.mkdir()
     assert Yerkd(private, state).spec_for("example-room").settings["autoCompactWindow"] == budgets()["session"]["compact_window"] == 250000
     base = (private / "rooms.toml").read_text()
-    for value, expect in ((400000, 400000), (0, None)):
+    for value, expect in ((400000, 400000), (50000, 100000), (2000000, 1000000), (0, None)):
         (private / "rooms.toml").write_text(base.replace("[rooms.example-room]\n", f"[rooms.example-room]\ncompact_window = {value}\n", 1))
         assert Yerkd(private, state).spec_for("example-room").settings.get("autoCompactWindow") == expect
         assert Yerkd(private, state).spec_for("example-quiet").settings["autoCompactWindow"] == 250000   # the other room keeps the budget
