@@ -499,7 +499,7 @@ def main(argv: list[str] | None = None) -> int:
     im.add_argument("--dry-run", action="store_true", help="read and count, write nothing; on one chat, also print every line it would file")
     im.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else the fake example layer)")
     im.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
-    ac = sub.add_parser("accounts",help="tokens, rests and health per account; cool, clear, token, mint, health")
+    ac = sub.add_parser("accounts", help="tokens, rests and health per account; cool, clear, token, mint, health")
     ac.add_argument("action", nargs="?", default="list", choices=["list", "cool", "clear", "token", "mint", "health"])
     ac.add_argument("name", nargs="?", help="cool, clear, token: the account")
     ac.add_argument("minutes", nargs="?", type=float, default=30.0, help="cool: minutes to rest")
