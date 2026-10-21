@@ -98,7 +98,7 @@ def state_dir(arg: str | None = None) -> Path:
 # Every key a loader reads from a room in rooms.toml; `yerk doctor` names any other as a typo (test_doctor fails on a read past it).
 ROOM_KEYS = frozenset({"accounts", "allow", "also", "channel", "class", "compact_window", "daily_notes", "effort", "id", "idle_compact_after",
                        "idle_compact_at", "layer", "mcp", "mention_recall", "model", "open_loops", "people", "persona", "pinned_memory", "privacy",
-                       "read", "recall_days", "role", "rulebook", "sandbox", "sealed", "thinking_panel", "timezone", "tools", "topic_recall", "voice", "watch"})
+                       "read", "recall_days", "role", "rulebook", "sandbox", "sealed", "shell", "thinking_panel", "timezone", "tools", "topic_recall", "voice", "watch"})
 
 
 def rooms(private: Path, text: str | None = None) -> dict[str, dict[str, Any]]:
@@ -115,20 +115,53 @@ def rooms(private: Path, text: str | None = None) -> dict[str, dict[str, Any]]:
 
 
 SHELLS = frozenset({"Bash", "Monitor", "PowerShell", "default"})   # the tools that run a shell ("default" brings Bash)
+EDITS = ("Edit", "Write", "MultiEdit", "NotebookEdit")             # the file tools' permission rules (Claude Code consults Edit's)
+# What a trusted room's own [rooms.NAME.sandbox] table may add; the rest of its sandbox is the daemon's (Yerkd.wall)
+OWN_SANDBOX = {"filesystem": ("denyRead", "denyWrite"), "network": ("strictAllowlist", "allowedDomains", "deniedDomains")}
+
+
+def trusted(conf: dict[str, Any]) -> bool:
+    """`shell = "trusted"`: the room runs the owner rooms' tools, its shell inside the wall the daemon builds (Yerkd.wall)."""
+    return conf.get("shell") == "trusted"
+
+
+def unwalled(conf: dict[str, Any]) -> str:
+    """What in a trusted room's rooms.toml would undo the daemon's wall, "" for nothing: a sandbox key past the denies and
+    the network allowlist (turning it off, a command run outside it, a folder re-opened or made writable), or an `allow`
+    rule for the file tools, which the daemon gives the room's own folders only."""
+    box = conf.get("sandbox", {})
+    if not isinstance(box, dict):
+        return "its sandbox must be a table"
+    for k, v in box.items():
+        if k in OWN_SANDBOX and isinstance(v, dict):
+            bad = [f"{k}.{x}" for x in v if x not in OWN_SANDBOX[k]]
+        else:
+            bad = [] if k == "autoAllowBashIfSandboxed" or (k == "enabled" and v is True) else [k]
+        if bad:
+            return f"its sandbox sets {bad[0]}, and only denyRead, denyWrite and the network allowlist are the room's to add"
+    rules = [str(r) for r in conf.get("allow") or [] if str(r).split("(")[0] in EDITS]
+    return f"allow names {rules[0]}, and the daemon gives the file tools the room's own folders only" if rules else ""
 
 
 def people(name: str, conf: dict[str, Any]) -> frozenset[int]:
     """The Discord user ids a room answers besides the owner (`people` in rooms.toml); unset or empty, the owner only.
     Anything but a list of ids, or a list on a room whose privacy is owner (it reads the owner's whole memory and recalls the
-    owner's people and things) or that has Bash or a `read` folder (both read past the classes), stops the start with one line."""
+    owner's people and things) or that has a `read` folder or Bash without shell = "trusted" (each reads past the classes),
+    stops the start with one line; so does a `shell` other than "trusted", and a trusted room whose rooms.toml would undo
+    the daemon's wall (unwalled)."""
     raw = conf.get("people") or []
     ids = [discord_id(x) for x in raw] if isinstance(raw, list) else []
     if not isinstance(raw, list) or None in ids:
         raise SystemExit(f"rooms.toml: {name}: people must be a list of Discord user ids, like people = [<user id>, <user id>], not {raw!r}")
+    if conf.get("shell", "trusted") != "trusted":
+        raise SystemExit(f'rooms.toml: {name}: shell must be "trusted" or unset, not {conf["shell"]!r}')
     if ids and str(conf.get("privacy", "owner")) == "owner":
         raise SystemExit(f'rooms.toml: {name}: people needs privacy = "family" or "shared"; a room whose privacy is owner reads the owner\'s whole memory')
-    if ids and (SHELLS & set(conf.get("tools") or []) or conf.get("read")):
-        raise SystemExit(f'rooms.toml: {name}: people needs tools without "Bash" and no `read`: a shell or a read folder reads past the memory classes')
+    if ids and (SHELLS & set(conf.get("tools") or []) and not trusted(conf) or conf.get("read")):
+        raise SystemExit(f'rooms.toml: {name}: people needs tools without "Bash" and no `read`: a shell or a read folder reads past the memory classes; '
+                         'shell = "trusted" runs the shell inside the daemon\'s wall')
+    if trusted(conf) and (why := unwalled(conf)):
+        raise SystemExit(f'rooms.toml: {name}: shell = "trusted" needs the daemon\'s wall whole: {why}')
     return frozenset(i for i in ids if i)
 
 

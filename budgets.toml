@@ -115,4 +115,6 @@ duplicated_topics = 0
 # (5 of them its cold read's: a compaction's own outcome, so it is never one of the day's failed turns).
 # 2026-10-21: answer-first raised it by 64, the answer-first line, the stub bounce and the rules-file warning, not folded
 # to fit.
-lines = 16066
+# 2026-10-21: trusted-room raised it by 109, the trusted shell's wall (what it denies, built from what the daemon knows),
+# its start checks and the outbox kept read only (the owner's ask), not folded to fit.
+lines = 16175

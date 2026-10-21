@@ -30,7 +30,7 @@ from typing import Any, Awaitable, Callable
 from . import beat, context, deploy, doctor, evidence, gates, hooks, jobs, mcp_server, memory, mentions, status, workers
 from .accounts import Account, Cooldowns, from_dir, load_accounts, pick
 from .config import (EFFORTS, REPO, SHELLS, budgets, discord_id, flag, load_toml, models, override, people, pinned, private_dir,
-                     read_secret, room_id, room_settings, rooms, state_dir, table, write_private)
+                     read_secret, room_id, room_settings, rooms, state_dir, table, trusted, write_private)
 from .engine import RoomSpec, SessionTable
 from .ledger import Ledger
 from .lifted.classify import FailureTable
@@ -46,8 +46,39 @@ YERK_TOOLS = ["mcp__yerk__send", "mcp__yerk__hold", "mcp__yerk__recall", "mcp__y
 # A shell room's sandbox when rooms.toml gives it no [rooms.NAME.sandbox] table: unsandboxed, a Read deny stops `cat` and
 # the Read tool, but a script, grep or redirect read every secret (Claude Code 2.1.304, PR 66's cold read, 2026-10-21)
 SANDBOX = {"enabled": True, "autoAllowBashIfSandboxed": True}
+# A trusted room's (shell = "trusted"): no command retried outside it, no start without it (Claude Code would run unsandboxed)
+WALL = {**SANDBOX, "allowUnsandboxedCommands": False, "failIfUnavailable": True}
 PAST_HITS = 6          # a question about the past: the recall tool's own six hits (its default), cut to the prompt hook's part
 NO_KEY_LINE = words.needs("meaning search", "an OpenAI key", "embeddings", "recall matches words only")
+
+
+def around(root: Path, own: list[Path]) -> list[Path]:
+    """`root` whole when it holds none of `own`, else each of its entries the same way (a link by its target); nothing
+    that is one of `own`, inside one or holding one (Claude Code's sandbox would deny the room its own work folder)."""
+    if any(root.is_relative_to(o) for o in own):
+        return []
+    if not any(o.is_relative_to(root) for o in own):
+        return [root]
+    try:
+        kids = sorted(root.iterdir())
+    except OSError:
+        return []
+    out: list[Path] = []
+    for c in kids:
+        t = c.resolve()
+        if not c.is_symlink():
+            out += around(c, own)
+        elif not any(o.is_relative_to(t) or t.is_relative_to(o) for o in own):
+            out.append(t)
+    return out
+
+
+def site_packages() -> list[Path]:
+    """The owner's Python user site-packages (the libraries installed with pip --user, python-docx among them): a
+    trusted room's shell reads them, since under blockReadsOutsideWorkingDirectories it reads nothing else in the home."""
+    home = Path.home()
+    return sorted({p.resolve() for g in (".local/lib/python3*/site-packages", "Library/Python/3*/lib/python/site-packages")
+                   for p in home.glob(g) if p.is_dir()})
 
 
 def free_port() -> int:
@@ -131,6 +162,8 @@ class Yerkd:
         self.memory = memory.settings(private, state, dict(self.conf.get("memory", {})))
         self.scoped = {n: self.memory.only(private, n, c["also"]) for n, c in self.room_confs.items() if "also" in c}
         context.walls(private, state, self.memory.scope.roots, self.room_confs)
+        for n in (n for n, c in self.room_confs.items() if trusted(c)):
+            self.walled(n)                         # a trusted room's wall that cannot be built stops the start here
         self.daily = memory.DailyLog(self.memory.daily, self.memory.tz,
                                      {n: (room_id(n, c), memory.room_class(c)) for n, c in self.room_confs.items()})
         # crash repair before anything reads a day log, assembled log or bound transcript (doctor.py): a hard power-off
@@ -197,6 +230,12 @@ class Yerkd:
         settings: dict[str, Any] = {"permissions": {"allow": [f"Read(/{layer}/**)", *YERK_TOOLS, *conf.get("allow", [])], "deny": self.never_read()},
                                     "hooks": hooks.settings_for(f"{self.url}/hook", header)}
         shell = conf.get("sandbox", dict(SANDBOX) if SHELLS & set(conf.get("tools") or []) else None)   # Claude Code's own
+        dirs = [layer, *self.read_dirs.get(name, [])]                       # `read`, as F4 judged it
+        if trusted(conf):                    # the daemon's wall; Write and Edit on the room's own folders; its outbox read only
+            shell = self.wall(name)
+            settings["permissions"]["allow"] += [f"Edit(/{p}/**)" for p in (layer, work.resolve())]
+            (outbox := rdir / "outbox").mkdir(parents=True, exist_ok=True)
+            dirs.append(outbox.resolve())
         settings.update({"sandbox": shell} if shell is not None else {})    # shell sandbox: a shell room's is on unless its table says
         settings.update({"autoCompactWindow": w} if (w := self.window(name)) else {})
         settings["permissions"].update({} if self.owner(name) else {"blockReadsOutsideWorkingDirectories": True})   # file tools, every mode
@@ -206,7 +245,42 @@ class Yerkd:
             extra += ["--thinking-display", "summarized"]      # the panel's text; off: the stream says nothing
         return RoomSpec(room=name, model=now["model"][0], cwd=work, tools=list(conf.get("tools", [])), settings=settings,
                         context_file=ctx, mcp_config=mcp_server.room_config(f"{self.url}/mcp", name, rdir / "mcp.json", token, conf.get("mcp")),
-                        extra_args=extra, token=token, add_dirs=[layer, *self.read_dirs.get(name, [])])   # `read`, as F4 judged it
+                        extra_args=extra, token=token, add_dirs=dirs)
+
+    def walled(self, name: str) -> list[Path]:
+        """What a trusted room's shell never reads or writes, from what the daemon knows, at each process start: every entry
+        of the private and state folders but the room's own (the other layers, the memory folder, rooms.toml, imports and
+        backups; every other room's folder, the ledger, the logs, the index), every memory root, every other room's layer
+        and `read` folders, projects/ under every account's config folder (each room's transcripts), and each folder of the
+        owner's home that holds a memory root, a layer or a `read` folder (on the box, its workspace and its staging).
+        One of those inside the room's own folders stops the start with one line."""
+        conf, home = self.room_confs[name], Path.home().resolve()
+        own = [context.layer_dir(self.private, conf), (self.state / "rooms" / name).resolve()]
+        theirs = [*self.memory.scope.roots, *(context.layer_dir(self.private, c) for m, c in self.room_confs.items() if m != name),
+                  *(p for m, ps in self.read_dirs.items() if m != name for p in ps)]
+        known = [self.private.resolve(), self.state.resolve(), *theirs, *((self.state / "rooms" / m).resolve() for m in self.room_confs if m != name),
+                 *(a.config_dir.expanduser().resolve() / "projects" for a in self.accounts)]
+        if (inside := next((p for p in known if any(p.is_relative_to(o) for o in own)), None)) is not None:
+            raise SystemExit(f'room {name}: shell = "trusted" cannot wall {inside}: it is inside the room\'s own folders')
+        tops = sorted({(home / p.relative_to(home).parts[0]).resolve() for p in theirs if p.is_relative_to(home) and p != home})
+        out: list[Path] = []
+        for p in (q for root in (*known, *tops) for q in around(root, own)):
+            if not any(p.is_relative_to(q) for q in out):
+                out = [q for q in out if not q.is_relative_to(p)] + [p]
+        return out
+
+    def wall(self, name: str) -> dict[str, Any]:
+        """A trusted room's sandbox: the daemon's (WALL), its rooms.toml table adding denies and the network allowlist only
+        (config.unwalled refused the rest). The walled folders are denied the shell for reads and writes, the room's outbox
+        for writes (what went out stays as it went), and the owner's Python libraries re-opened to it read only."""
+        own = dict(self.room_confs[name].get("sandbox") or {})
+        fs = {k: [str(x) for x in v] for k, v in dict(own.get("filesystem") or {}).items()}
+        walled = [str(p) for p in self.walled(name)]
+        outbox = str((self.state / "rooms" / name / "outbox").resolve())
+        fs["denyRead"] = list(dict.fromkeys([*fs.get("denyRead", []), *walled]))
+        fs["denyWrite"] = list(dict.fromkeys([*fs.get("denyWrite", []), *walled, outbox]))
+        fs["allowRead"] = [str(p) for p in site_packages()]
+        return {**own, **WALL, "autoAllowBashIfSandboxed": own.get("autoAllowBashIfSandboxed", True), "filesystem": fs}
 
     def window(self, name: str) -> int:
         """The tokens a room's session keeps before Claude Code compacts it: rooms.toml `compact_window`, else budgets.toml
