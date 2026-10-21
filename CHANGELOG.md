@@ -8,6 +8,13 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-21
 
+### budgets-voice (#68)
+
+- The taste rules (one line each: a rule and the rated replies that prove it) fit a rulebook: its budget rises from
+  7,000 to 10,850 characters and a room voice's from 5,000 to 5,500; the session-start total rises by the same 4,350,
+  to 84,350.
+- **Upgrading:** budgets.toml changed (rulebook, room_voice, total). Nothing to do.
+
 ### hardening (#66)
 
 - A room's token reaches its hooks through a 0600 file beside its settings, never on a command line (which every

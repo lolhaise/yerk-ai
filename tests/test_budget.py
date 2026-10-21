@@ -124,20 +124,22 @@ def test_claude_codes_parts_as_the_rooms_send_them_fit_their_lines_and_what_is_l
     assert all(sent <= line for sent, line in rows.values()), out
     assert all(line <= sent * 1.02 for name, (sent, line) in rows.items() if name != "Yerk AI's tools"), rows
     s = b["session_start"]
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 80000
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 84350
 
 
-# The largest room rulebook, the room's own text only since PR 47, across the six rooms (`yerk map`, 2026-10-20).
-LIVE_RULEBOOK = 6019
+# The largest room rulebook, the room's own text only since PR 47, across the six rooms (`yerk map`, 2026-10-21, with the taste rules).
+LIVE_RULEBOOK = 9860
 
 
 def test_the_rulebook_line_keeps_about_1000_over_the_largest_room_text_and_what_it_freed_went_to_the_rules(tmp_path):
     """Once the rules file left the rulebook, its line held 12,000 for a room text of 6,019 at the most. It keeps about
     1,000 over that now and every character it freed went to `rules`: a rulebook of that size and a rules file of about
-    11,000 both go out whole, where `rules` at 6,886 trimmed that file, and the total stays 80,000 (decision 12)."""
+    11,000 both go out whole, where `rules` at 6,886 trimmed that file, the total holding at 80,000 (decision 12). On
+    2026-10-21 the taste rules took the largest room text to 9,860: the line followed it, `rules` kept its 11,886, and the
+    total rose by the rulebook's 3,850 and room_voice's 500 to 84,350."""
     s = budgets()["session_start"]
-    assert 900 <= s["appended"]["rulebook"] - LIVE_RULEBOOK <= 1100 and s["appended"]["rules"] == 6886 + 12000 - s["appended"]["rulebook"]
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 80000
+    assert 900 <= s["appended"]["rulebook"] - LIVE_RULEBOOK <= 1100 and s["appended"]["rules"] == 11886
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 84350
     private = tmp_path / "private"
     shutil.copytree(EXAMPLE_PRIVATE, private)
     (private / "rulebook.md").write_text("r" * (LIVE_RULEBOOK - 1) + "\n")
