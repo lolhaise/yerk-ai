@@ -8,7 +8,7 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-21
 
-### answer-first
+### answer-first (#73)
 
 - A room's answer comes first and whole: every `remember` result ends with `next`, the shape of the reply that follows
   the call (the result, the numbers, what was found, then the filing in one clause at most), since only the text after
