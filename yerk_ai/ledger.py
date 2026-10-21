@@ -255,7 +255,7 @@ class Ledger:
         return self._insert("evidence", row)
 
     def shadow(self, **row: Any) -> int:
-        """One thing the shadow Stop check would have bounced; nothing was blocked."""
+        """One thing the shadow Stop check would have bounced, nothing blocked; or a `stub` bounce, which was."""
         return self._insert("shadow", row)
 
     # the gates (gates.py)

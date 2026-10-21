@@ -1,7 +1,8 @@
 """Checks the rule-based gates, checks in code, never a model, that block or hold a room's risky commands and send back a reply that
 falls short. The cases (DESIGN 8, decision 18): each gate's control set passes untouched and its blocked case is blocked; the parser
-gate holds and releases once; the tamper row; the silent-ending bounce once and only once; the
-decision 25 rule's fixture; the hooks' own time measured over a real local HTTP round trip."""
+reads quotes and heredocs the way the shell does; the approval gate holds and releases once; the tamper row; the silent-ending
+bounce on both of 2026-10-21's filed-instead-of-answered turns; the decision 25 rule's fixture; the hooks'
+own time measured over a real local HTTP round trip."""
 import asyncio
 import json
 import re
@@ -259,6 +260,70 @@ def test_a_silent_working_turn_bounces_once_and_only_once_and_a_landed_reply_is_
     assert call(y, {**stop, "last_assistant_message": "Done, it finished."}) == {}
     room.inflight = [Inbound("r1", "yerk", "relay: worker 1 finished")]
     assert call(y, stop) == {}                                                # the harness's own turn
+
+
+# The stub rule's two turns, invented, each on the same side of every line the rule draws (STUB_CHARS, twice the final's
+# length, words.FILED) as the turns it was built on: first a turn is sent a run's result, reads it, works it out, files it
+# and ends on "Filed." (what it worked out never reaches the room); then, asked why, it writes the answer above the call,
+# files the rule and ends on the rule line.
+REPORT_STEPS = [("say", "The export is back with two rows fewer than last week's. Looking at which two before saying more."),
+                      ("call", "Read"), ("call", "Bash"), ("call", "Bash"), ("call", "mcp__yerk__remember")]
+FILED_ONLY = "Filed. The rest is done too: the invite is sent, the slides are drafted, and only the export job is still running."
+              ANSWER_ABOVE = [("say", "Because the summary came first and the table never did. Both times the full table was open, and both "
+"times a line on what it meant went out in its place, and that line missed the column that mattered. "
+                      "The table was the answer, and it took a second ask to get it.\n\nFrom here a result goes out as its "
+                      "table first, then one line on it if it needs one. Filing that as the rule."), ("call", "mcp__yerk__remember")]
+                      RULE_LINE = "From now on every room puts the table first and its reading after, in one line."
+                      
+
+
+
+def stream(room, *steps):
+    """One result's stream as the room reads it: the previous result ends, then ("say", text) a text block, ("fold", text)
+    a message folded in and replayed, and ("call", name) a tool call with its result, in order."""
+    room.evidence.observe({"type": "result", "subtype": "success"})
+    for i, (kind, value) in enumerate(steps):
+        if kind in ("say", "fold"):
+            room.evidence.observe({"type": "assistant", "message": {"content": [{"type": "text", "text": value}]}}
+                                  if kind == "say" else {"type": "user", "isReplay": True, "message": {"content": value}})
+            continue
+        room.evidence.observe({"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": f"s{i}", "name": value, "input": {}}]}})
+        room.evidence.observe({"type": "user", "message": {"content": [
+            {"type": "tool_result", "tool_use_id": f"s{i}", "content": '{"ok": true}'}]}})
+
+
+def test_a_final_that_only_reports_a_filing_bounces_once_and_so_does_an_answer_left_above_the_call(tmp_path):
+    """The stub rule: both turns bounce, each once, each bounce a shadow row `stub` the morning diff counts; a plain
+    short reply after a filing call stands, so does one opening "Noted" (a whole answer, bounced that day while
+    "noted" was an opener word), and so does a final whose result's last call ran something."""
+    y, room, ch = setup(tmp_path)
+    stop = {"hook_event_name": "Stop", "stop_hook_active": False}
+    human_turn(room)
+    stream(room, *REPORT_STEPS)
+    out = call(y, {**stop, "last_assistant_message": FILED_ONLY})
+    assert out["decision"] == "block" and '"Filed. The rest is done too: the invite is sent' in out["reason"]
+    assert "Write the whole answer as your final message now" in out["reason"]
+    assert call(y, {**stop, "stop_hook_active": True, "last_assistant_message": FILED_ONLY}) == {}   # Claude Code's guard
+    assert call(y, {**stop, "last_assistant_message": FILED_ONLY}) == {}                             # and ours: once
+    room._new_card()                                                          # the next result
+    stream(room, *ANSWER_ABOVE)
+    assert call(y, {**stop, "last_assistant_message": RULE_LINE})["decision"] == "block"
+    rows = [r["detail"] for r in reversed(y.ledger.rows(20, "shadow")) if r["rule"] == "stub"]
+    assert rows == [f"{len(FILED_ONLY)} characters after the remember call, opening as a filing",
+                    f"{len(ANSWER_ABOVE[0][1])} characters above the remember call, {len(RULE_LINE)} after it"]
+    assert y.ledger.shadow_rules(0, time.time() + 1)["stub"] == 2             # the morning diff's count
+    for steps, final in (([("say", "Checking the calendar."), ("call", "mcp__yerk__remember")], "Got it, 9:30 then."),
+                         ([("say", "Logging that."), ("call", "mcp__yerk__remember")],
+                          "Noted, and that moves the review to Thursday with the same three people on it."),
+                         ([("say", "Filing it, then the build."), ("call", "mcp__yerk__remember"), ("call", "Bash")],
+                          "Filed, and the build is green.")):
+        room._new_card()
+        stream(room, *steps)
+        assert call(y, {**stop, "last_assistant_message": final}) == {}, final
+    room._new_card()                                  # an answer above a message folded in is lost all the same
+    stream(room, ANSWER_ABOVE[0], ("fold", "and keep it to one line"), ("call", "mcp__yerk__remember"))
+    assert call(y, {**stop, "last_assistant_message": "Got it, one line from now on."})["decision"] == "block"
 
 
 def test_session_start_posts_a_reset_line_only_when_a_new_session_replaced_one(tmp_path):

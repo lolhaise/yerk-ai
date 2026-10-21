@@ -154,7 +154,9 @@ def test_every_notice_is_state_first_plain_and_phone_width():
                 f"{words.NOT_DONE} {words.NOT_ANSWERED}\n{words.BACK_ON.format(model='Sonnet 5.5', usual='Fable 5.1')}",
                 f"{dmod.REDELIVERED}\nthe reply", f"{words.NOT_DONE} {words.HOOKS_DEAD}",
                 f"{words.NOT_DONE} {words.NOT_AN_ACCOUNT.format(account='five', accounts='one, two, default')}",
-                f"{words.DONE} {words.CARRIED}", f"{words.DONE} {words.RECAPPED}"]
+                f"{words.DONE} {words.CARRIED}", f"{words.DONE} {words.RECAPPED}",
+                f"{words.WORKING} {words.RULES_CUT.format(file='rules.md', size=12398, cap=11886)}\n"   # 2026-10-21's numbers
+                f"{words.CUT_LINES.format(first=31, last=38)}"]
     for text in notices:
         assert (state_first(text) or text.startswith(words.SUB)) and not room_safe(text), text
         assert all(words.width(x) <= words.PHONE for x in text.splitlines()), text

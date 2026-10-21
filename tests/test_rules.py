@@ -3,11 +3,14 @@ into the install's one rules file, from an owner's room only; every running room
 message, once per version, and a session that starts after the change has it in its start file and hears nothing
 is a placeholder."""
 import asyncio
+import json
+import re
 import shutil
 
 from yerk_ai import context, memory, words
 from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai.daemon import ConsoleChannel, Yerkd
+from yerk_ai.lifted.trim import truncate
 from yerk_ai.room import Inbound
 
 A, B, FAMILY = "example-room", "example-quiet", "family-room"
@@ -44,7 +47,8 @@ def test_a_rule_filed_in_one_room_reaches_a_running_room_on_its_next_message_onc
     assert context.NEWS not in told(y, "sid-b")                         # nothing changed since its start
     r = rule(y, A, "Open web pages with the example browser, never the example fetcher.", "Open web pages:")
     assert r == {"ok": True, "job": "open web pages", "cite": "tree/rules.md:6", "replaced": [],
-                 "line": "from now on every room does open web pages this way"}
+                 "next": words.FILED_NEXT.format(clause=words.RULE_CLAUSE.format(job="open web pages", over=""))}
+    assert r["next"].endswith("the filing is one clause at its end, this one: every room now does open web pages this way.")
     block = told(y, "sid-b")
     assert block.count(f"{context.NEWS}\nnew in rules.md: open web pages: Open web pages with the example browser, never "
                        "the example fetcher. (example-room, ") == 1 and "[m:m-1]" in block
@@ -91,6 +95,34 @@ def test_the_block_keeps_to_its_budget_and_past_it_gives_the_count_and_where_to_
     assert note == (f"{context.NEWS} 12 lines new or replaced, past the {budget:,} characters this note holds; "
                     'read them: read_memory("rules.md").') and context.chars(note) <= budget
     assert memory.read(y.memory, "rules.md", 6, 1, y.reader(FAMILY))["ok"]      # the pointer reads from any room
+
+
+def test_a_rule_past_the_rules_budget_is_filed_and_said_and_the_machine_room_hears_which_lines_every_start_cuts(tmp_path, capsys):
+    """2026-10-21: a room's rule took the rules part to 12,398 against its 11,886 and nothing said so, so every session
+    start sent it trimmed. Filed all the same (a correction is never lost); the result carries `over_budget` and the
+    reply's closing clause; the machine room gets one line naming the file, its size, the cap and the lines the trim drops."""
+    y = daemon(tmp_path)
+    y.room_confs["example-machine"] = {**y.room_confs[A], "role": "machine", "id": "example-machine-id"}
+    y.add_room("example-machine", ConsoleChannel())
+    cap, path = y.budgets["session_start"]["appended"]["rules"], y.memory.root / memory.RULES
+    assert "over_budget" not in rule(y, A, "Example job zero is done the example way.", "example job zero")
+    path.write_text(path.read_text() + "".join(f"- example job {i}: done the example way, {'with care ' * 9}[m:m-{i}]\n"
+                                               for i in range(110)))
+    r = rule(y, A, "Example job last is done the example way.", "example job last")
+    text = context.rules_text(y.room_confs[A], path)[0]
+    assert path.read_text().splitlines()[-1].startswith("- example job last: Example job last is done the example way. (")
+    assert r["over_budget"] == {"size": context.chars(text), "cap": cap} and context.chars(text) > cap
+    assert list(r)[-1] == "next" and r["next"].endswith(
+        "every room now does example job last this way, and the shared rules file is over its cap.")
+    posts = [json.loads(x) for x in capsys.readouterr().out.splitlines() if x.startswith("{")]
+    said = [p["notice"] for p in posts if p["room"] == "example-machine"]
+    assert len(said) == 1 and [p for p in posts if p["room"] == A] == []          # the room says it in its reply
+    head, cut = said[0].split("\n")
+    assert head == f"{words.WORKING} rules.md over cap: {context.chars(text):,} of {cap:,}"
+    first, last = map(int, re.fullmatch(r"session starts cut lines (\d+) to (\d+)", cut).groups())
+    lines, sent = path.read_text().splitlines(), truncate(text, "rules", cap)[0]
+    assert first < last and all(lines[n - 1] not in sent for n in range(first, last + 1))   # each one gone or broken
+    assert lines[first - 2] in sent and lines[last] in sent                                 # either side goes out whole
 
 
 def test_a_session_started_after_the_change_has_the_rules_at_start_and_no_block(tmp_path):

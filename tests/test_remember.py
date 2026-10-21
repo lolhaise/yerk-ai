@@ -7,7 +7,7 @@ import re
 import threading
 from datetime import datetime, timezone
 
-from yerk_ai import memindex, memory, mentions
+from yerk_ai import memindex, memory, mentions, words
 from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai.daemon import ConsoleChannel, Yerkd
 from yerk_ai.room import Inbound
@@ -38,7 +38,10 @@ def names(y: Yerkd) -> mentions.Index:
 def test_a_fact_lands_in_its_own_fact_file_with_its_source_and_mention_recall_has_it_next(tmp_path):
     y = daemon(tmp_path)
     r = remember(y, "example-room", "Example kettle: painted teal, bought on the 3rd.", "example kettle")
-    assert r == {"ok": True, "cite": "tree/facts/example-kettle.md:3", "superseded": [], "refused": [], "not_edited": []}
+    assert r == {"ok": True, "cite": "tree/facts/example-kettle.md:3", "superseded": [], "refused": [], "not_edited": [],
+                 "next": words.FILED_NEXT.format(clause=words.FILED_AT_MOST)}
+    assert list(r)[-1] == "next" and "first and whole" in r["next"]       # the last thing the room reads before it answers
+    assert "next" not in remember(y, "example-room", "  ")                # nothing filed, nothing to say about the answer
     f = y.memory.root / "facts" / "example-kettle.md"
     lines = f.read_text().splitlines()
     assert lines[:2] == ["# example kettle", ""] and oct(f.stat().st_mode & 0o777) == "0o600"
