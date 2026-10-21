@@ -138,6 +138,7 @@ One `claude -p` process per active room, stream-json in and out, with:
 
 - `--session-id` on a session Yerk AI minted, or `--resume` on the room's own session; one live process per session, by lock file
 - `--setting-sources ""` and `--settings`, so only the settings Yerk AI writes apply: a Read rule for the room's folder, Read deny rules on every secret, and the hooks, each a `curl` command posting to the daemon with the room's token read from a 0600 file beside the settings
+- Claude Code's sandbox, `enabled` with `autoAllowBashIfSandboxed`, for a room whose `tools` run a shell (Bash, Monitor, PowerShell or `default`) and that rooms.toml gives no `[rooms.NAME.sandbox]` table: without it a Read deny stops `cat` and the Read tool but not a script, `grep` or a redirect; a room's own table, `enabled = false` included, is passed as written (on Linux the sandbox needs bubblewrap and socat)
 - `--add-dir` on the room's folder; every part of the appended context starts with `[from <absolute path>]`, so the model can re-read the file a fact came from
 - `--mcp-config` naming only Yerk AI's server, with `alwaysLoad: true`, and `--strict-mcp-config`; a `--tools` allowlist; `--model`
 - `--append-system-prompt-file` with the assembled context, built to the sizes in `budgets.toml`; the install's rules file is a part of its own (`rules`, after the hand-kept files, since the rooms write it as they go), so a rulebook near its cap never pushes a shared rule out, and a part past its size is sent trimmed under a marker that names it

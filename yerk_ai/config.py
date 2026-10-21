@@ -106,6 +106,9 @@ def rooms(private: Path, text: str | None = None) -> dict[str, dict[str, Any]]:
     return rs
 
 
+SHELLS = frozenset({"Bash", "Monitor", "PowerShell", "default"})   # the tools that run a shell ("default" brings Bash)
+
+
 def people(name: str, conf: dict[str, Any]) -> frozenset[int]:
     """The Discord user ids a room answers besides the owner (`people` in rooms.toml); unset or empty, the owner only.
     Anything but a list of ids, or a list on a room whose privacy is owner (it reads the owner's whole memory and recalls the
@@ -116,7 +119,7 @@ def people(name: str, conf: dict[str, Any]) -> frozenset[int]:
         raise SystemExit(f"rooms.toml: {name}: people must be a list of Discord user ids, like people = [<user id>, <user id>], not {raw!r}")
     if ids and str(conf.get("privacy", "owner")) == "owner":
         raise SystemExit(f'rooms.toml: {name}: people needs privacy = "family" or "shared"; a room whose privacy is owner reads the owner\'s whole memory')
-    if ids and ({"Bash", "Monitor", "PowerShell", "default"} & set(conf.get("tools") or []) or conf.get("read")):
+    if ids and (SHELLS & set(conf.get("tools") or []) or conf.get("read")):
         raise SystemExit(f'rooms.toml: {name}: people needs tools without "Bash" and no `read`: a shell or a read folder reads past the memory classes')
     return frozenset(i for i in ids if i)
 

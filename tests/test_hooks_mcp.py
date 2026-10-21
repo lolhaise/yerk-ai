@@ -386,6 +386,22 @@ def test_a_rooms_sandbox_table_reaches_its_claude_code_settings_and_no_other_roo
     assert "sandbox" not in y.spec_for("example-quiet").settings
 
 
+def test_a_shell_room_with_no_sandbox_table_gets_claude_codes_sandbox_and_a_room_with_its_own_keeps_it(tmp_path):
+    """PR 66's cold read: on Claude Code 2.1.304 an unsandboxed Bash room read every secret by a script, grep or redirect
+    while `cat` and the Read tool were refused, so a room whose tools run a shell gets the sandbox when rooms.toml gives it
+    no `[rooms.NAME.sandbox]` table; a room's own table (`enabled = false` too) is passed as it is; no shell, no key."""
+    private, state = tmp_path / "private", tmp_path / "state"
+    shutil.copytree(EXAMPLE_PRIVATE, private)
+    state.mkdir()
+    rooms_toml, on = private / "rooms.toml", {"enabled": True, "autoAllowBashIfSandboxed": True}
+    base = rooms_toml.read_text().replace('tools = ["Read", "Grep", "Glob"]\n', 'tools = ["Read", "Grep", "Glob", "Bash"]\n', 1)
+    for quiet, got in (('["Read", "Bash"]', on), ('["default"]', on), ('["Read"]', None)):
+        rooms_toml.write_text(base.replace('tools = ["Read"]\n', f"tools = {quiet}\n", 1) + "\n[rooms.example-room.sandbox]\nenabled = false\n")
+        y = Yerkd(private, state)
+        assert y.spec_for("example-room").settings["sandbox"] == {"enabled": False}
+        assert y.spec_for("example-quiet").settings.get("sandbox") == got
+
+
 def test_the_daemon_reads_a_rooms_lines_in_that_rooms_view(tmp_path):
     """Cold read F2, the daemon's side: the topic hits and the recall pack of a room that is not an
     owner room carry the room's own view, so a former room's old lines (no id) never reach it."""
