@@ -221,7 +221,11 @@ async def imports(a: argparse.Namespace) -> int:
     classes in yerkd.toml gives the id "shared" or "room:<a room's id>" (that room's id and class, so behind its wall,
     its people `person`); a chat a room covers is filed as that room files it. Each chat is said as it is done, one
     that fails said and the rest carried on. --dry-run reads and counts and writes nothing: on a server, the inventory
-    (a chat it cannot read counted by Discord's own thread count where there is one); on one chat, also every line."""
+    (a chat it cannot read counted by Discord's own thread count where there is one); on one chat, also every line.
+    `imessage:<chat.db>` and `gmail`: a person's texts and mail, as files (sources.py)."""
+    if a.source.partition(":")[0] in ("imessage", "gmail"):
+        from . import sources
+        return sources.imports(a)
     priv, state, dry = private_dir(a.private), state_dir(a.state), a.dry_run
     conf = load_toml(priv / "yerkd.toml")
     d, rs, s, imp = conf["discord"], rooms(priv), memory.settings(priv, state, dict(conf.get("memory", {}))), conf.get("import", {})
@@ -231,7 +235,8 @@ async def imports(a: argparse.Namespace) -> int:
     kind, _, cid = a.source.partition(":")
     if wrong or kind not in ("discord", "discord-guild") or not cid.isdigit():
         print(f"yerkd.toml [import] classes: {', '.join(wrong)}: each is private, shared or room:<the id of a room in rooms.toml>"
-              if wrong else "yerk import takes discord:<channel or thread id> or discord-guild:<guild id>", file=sys.stderr)
+              if wrong else "yerk import takes discord:<channel or thread id>, discord-guild:<guild id>, imessage:<chat.db> or gmail",
+              file=sys.stderr)
         return 2
     since = datetime.fromisoformat(a.since).replace(tzinfo=s.tz) if a.since else SINCE
     day = lambda i: f"{discord.utils.snowflake_time(int(i)).astimezone(s.tz):%Y-%m-%d}"     # a Discord id's day, in the install's zone
