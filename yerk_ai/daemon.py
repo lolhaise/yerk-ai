@@ -29,7 +29,7 @@ from typing import Any, Awaitable, Callable
 
 from . import beat, context, deploy, doctor, evidence, gates, hooks, jobs, mcp_server, memory, mentions, status, workers
 from .accounts import Account, Cooldowns, from_dir, load_accounts, pick
-from .config import (EFFORTS, REPO, budgets, discord_id, flag, load_toml, models, override, people, pinned, private_dir,
+from .config import (EFFORTS, REPO, SHELLS, budgets, discord_id, flag, load_toml, models, override, people, pinned, private_dir,
                      read_secret, room_id, room_settings, rooms, state_dir, table, write_private)
 from .engine import RoomSpec, SessionTable
 from .ledger import Ledger
@@ -43,6 +43,9 @@ from . import abilities, words   # STYLE.md: what a room reads
 log = logging.getLogger("yerk.daemon")
 YERK_TOOLS = ["mcp__yerk__send", "mcp__yerk__hold", "mcp__yerk__recall", "mcp__yerk__read_memory",
               "mcp__yerk__remember", "mcp__yerk__worker", "mcp__yerk__schedule", "mcp__yerk__settings"]
+# A shell room's sandbox when rooms.toml gives it no [rooms.NAME.sandbox] table: unsandboxed, a Read deny stops `cat` and
+# the Read tool, but a script, grep or redirect read every secret (Claude Code 2.1.304, PR 66's cold read, 2026-10-21)
+SANDBOX = {"enabled": True, "autoAllowBashIfSandboxed": True}
 PAST_HITS = 6          # a question about the past: the recall tool's own six hits (its default), cut to the prompt hook's part
 NO_KEY_LINE = words.needs("meaning search", "an OpenAI key", "embeddings", "recall matches words only")
 
@@ -186,13 +189,15 @@ class Yerkd:
         layer = context.layer_dir(self.private, conf)
         self.rules_news(name)          # first, the look a new session starts with: a rule filed meanwhile is told twice, never lost
         parts = context.session_start(self.private, conf, self.budgets, lambda left: self.room_pack(name, left), self.memory.root / memory.RULES)
-        (ctx := rdir / "context.md").write_text(context.appended_file(parts))
+        ctx = write_private(rdir / "context.md", context.appended_file(parts))      # the owner's lines: 0600, as every private file
         hooks.record(self.state, name, "session_start", "", {p.name: p.size for p in parts},
                      next((p.text for p in parts if p.name == "recall_pack"), ""), file=str(ctx))
         token = secrets.token_hex(16)                      # this process's credential, bound with its session
-        settings: dict[str, Any] = {"permissions": {"allow": [f"Read(/{layer}/**)", *YERK_TOOLS, *conf.get("allow", [])]},
-                                    "hooks": hooks.settings_for(f"{self.url}/hook", token)}
-        settings.update({"sandbox": conf["sandbox"]} if "sandbox" in conf else {})   # Claude Code's own shell sandbox
+        header = write_private(rdir / "hook-header", f"{mcp_server.HEADER}: {token}\n")    # curl reads it: never in an argv
+        settings: dict[str, Any] = {"permissions": {"allow": [f"Read(/{layer}/**)", *YERK_TOOLS, *conf.get("allow", [])], "deny": self.never_read()},
+                                    "hooks": hooks.settings_for(f"{self.url}/hook", header)}
+        shell = conf.get("sandbox", dict(SANDBOX) if SHELLS & set(conf.get("tools") or []) else None)   # Claude Code's own
+        settings.update({"sandbox": shell} if shell is not None else {})    # shell sandbox: a shell room's is on unless its table says
         window = int(conf.get("compact_window", self.budgets.get("session", {}).get("compact_window", 0)) or 0)
         settings.update({"autoCompactWindow": min(max(window, 100000), 1000000)} if window else {})   # Claude Code drops a value outside its range, silently
         settings["permissions"].update({} if self.owner(name) else {"blockReadsOutsideWorkingDirectories": True})   # file tools, every mode
@@ -203,6 +208,22 @@ class Yerkd:
         return RoomSpec(room=name, model=now["model"][0], cwd=work, tools=list(conf.get("tools", [])), settings=settings,
                         context_file=ctx, mcp_config=mcp_server.room_config(f"{self.url}/mcp", name, rdir / "mcp.json", token, conf.get("mcp")),
                         extra_args=extra, token=token, add_dirs=[layer, *self.read_dirs.get(name, [])])   # `read`, as F4 judged it
+
+    def secrets_at(self) -> tuple[list[Path], list[Path]]:
+        """(folders, files) no room reads or sends: both secrets folders; every room's token files, each account's token
+        file and the secret files yerkd.toml names, wherever they are."""
+        files = [self.state / "rooms" / n / f for n in self.room_confs for f in ("hook-header", "mcp.json")]
+        files += [a.token_file for a in self.accounts if a.token_file] + [self.private / v for t in self.conf.values() if isinstance(t, dict)
+                                                                           for k, v in t.items() if k.endswith(("_file", "_key")) and isinstance(v, str)]
+        return [(d / "secrets").resolve() for d in (self.private, self.state)], [f.expanduser().resolve() for f in files]
+
+    def never_read(self) -> list[str]:
+        """What no room reads, by its Read tool or its shell (Claude Code puts a Read deny in the sandbox too; deny beats the
+        layer's allow): the secrets, and each account config folder's own dot files (its login). Proven on Claude Code
+        2.1.304 (scratch probe, 2026-10-21)."""
+        folders, files = self.secrets_at()
+        return ([f"Read(/{d}/**)" for d in folders] + [f"Read(/{f})" for f in files]
+                + [f"Read(/{a.config_dir.expanduser().resolve()}/.*)" for a in self.accounts])
 
     def owner(self, room: str) -> bool:
         """An owner room (rooms.toml privacy, "owner" when unset); a name that is no room is not one."""
@@ -231,11 +252,11 @@ class Yerkd:
 
     # the MCP tools
     def may_send(self, room: str, path: Path) -> bool:
-        """A file goes out only from the sending room's own folders (its layer, its work folder),
-        never from the private folder's secrets/, whatever the daemon itself can read."""
-        p = path.expanduser().resolve()
+        """A file goes out only from the sending room's own folders (its layer, its work folder), never a secret
+        (secrets_at: a token file kept in the layer too), whatever the daemon itself can read."""
+        p, (folders, files) = path.expanduser().resolve(), self.secrets_at()
         roots = [context.layer_dir(self.private, self.room_confs[room]), (self.state / "rooms" / room / "work").resolve()]
-        return any(p.is_relative_to(r) for r in roots) and not p.is_relative_to((self.private / "secrets").resolve())
+        return any(p.is_relative_to(r) for r in roots) and not any(p.is_relative_to(d) for d in folders) and p not in files
 
     async def tool_send(self, room: str, text: str, file: str, caller: str) -> dict[str, Any]:
         if caller in self.rooms and not self.owner(caller) and room != caller:     # a room that is not the owner's posts to itself only

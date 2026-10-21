@@ -77,10 +77,13 @@ def private_dir(arg: str | None = None) -> Path:
 
 
 def state_dir(arg: str | None = None) -> Path:
-    """--state, then $YERK_STATE, then $XDG_STATE_HOME/yerk (~/.local/state/yerk)."""
+    """--state, then $YERK_STATE, then $XDG_STATE_HOME/yerk (~/.local/state/yerk); made 0700, so nothing in it
+    (the conversation logs, the ledger, a room's context) is another local user's to read."""
     p = arg or os.environ.get("YERK_STATE")
     d = Path(p).expanduser() if p else Path(os.environ.get("XDG_STATE_HOME", "~/.local/state")).expanduser() / "yerk"
-    d.mkdir(parents=True, exist_ok=True)
+    d.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if d.stat().st_mode & 0o077:                            # an install from before 0700: the next start, yerkd, yerk or a deploy, closes it
+        d.chmod(0o700)
     return d
 
 
@@ -103,6 +106,9 @@ def rooms(private: Path, text: str | None = None) -> dict[str, dict[str, Any]]:
     return rs
 
 
+SHELLS = frozenset({"Bash", "Monitor", "PowerShell", "default"})   # the tools that run a shell ("default" brings Bash)
+
+
 def people(name: str, conf: dict[str, Any]) -> frozenset[int]:
     """The Discord user ids a room answers besides the owner (`people` in rooms.toml); unset or empty, the owner only.
     Anything but a list of ids, or a list on a room whose privacy is owner (it reads the owner's whole memory and recalls the
@@ -113,7 +119,7 @@ def people(name: str, conf: dict[str, Any]) -> frozenset[int]:
         raise SystemExit(f"rooms.toml: {name}: people must be a list of Discord user ids, like people = [<user id>, <user id>], not {raw!r}")
     if ids and str(conf.get("privacy", "owner")) == "owner":
         raise SystemExit(f'rooms.toml: {name}: people needs privacy = "family" or "shared"; a room whose privacy is owner reads the owner\'s whole memory')
-    if ids and ({"Bash", "Monitor", "PowerShell", "default"} & set(conf.get("tools") or []) or conf.get("read")):
+    if ids and (SHELLS & set(conf.get("tools") or []) or conf.get("read")):
         raise SystemExit(f'rooms.toml: {name}: people needs tools without "Bash" and no `read`: a shell or a read folder reads past the memory classes')
     return frozenset(i for i in ids if i)
 

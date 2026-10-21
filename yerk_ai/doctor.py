@@ -7,8 +7,11 @@ itself without them), else is blank in a day log (recall cites file:line) or dro
 from __future__ import annotations
 
 import json
+import re
 import stat
 import time
+from contextlib import suppress
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
 
@@ -21,6 +24,41 @@ from .mentions import Builder
 
 DAY, LAST, GROWTH_MB = 86400.0, "doctor.json", 500      # [doctor] growth_mb in yerkd.toml over GROWTH_MB
 CGROUP, STUCK = Path("/sys/fs/cgroup"), 3               # where a process's memory cap is read; backfill pauses in a row that are a finding
+# Secret-shaped text in memory (claim 4): the key shapes tests/test_scrub.py knows, then one-time codes and password or
+# token lines. Said by file:line and kind, never the value; the owner scrubs and rotates (a key in a log is already out).
+SECRETS = {"key": re.compile(r"sk-ant-[A-Za-z0-9_-]{16,}|sk-[A-Za-z0-9]{32,}|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{20,}"
+                             r"|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----"
+                             r"|[MN][A-Za-z0-9]{23,25}\.[A-Za-z0-9_-]{6}\.[A-Za-z0-9_-]{27,}"),
+           "one-time code": re.compile(r"(?i)\b(?:(?:verification|security|one[- ]time|login|sign[- ]in|2fa|confirmation)\s+"
+                                       r"(?:code|pin)|otp|passcode|your (?:code|pin) is)\b\D{0,12}\d{4,8}\b"),
+           "password line": re.compile(r"(?i)\bpass(?:word|phrase)\s*(?:is|:|=)\s*(?=\S*[\d!#$%^&*])\S{6,}"),
+           "token line": re.compile(r"(?i)\b(?:token|api[ _-]?key|secret|bearer)\s*[:=]\s*[\"'`]?[\w.-]{16,}")}
+TEXT = (".md", ".txt", ".json", ".jsonl", ".csv", ".eml")
+SPENT = 2 * DAY                                         # a one-time code is dead this long after its own line's date
+
+
+def dated(text: str, fmt: str) -> datetime | None:
+    try:
+        return datetime.strptime(text, fmt)
+    except ValueError:
+        return None
+
+
+def scan(f: Path, now: float | None = None) -> list[tuple[int, str]]:
+    """(line, kind) of each secret-shaped line of `f`, by its first shape. With `now`, for an import's file: a one-time code
+    is dead, and no hit, on a line whose own date is more than two days old, its entry's `- YYYY-MM-DD HH:MM` (the lines
+    under an entry share it), else the end of its month file (imports/mail/YYYY-MM.md); with no date it is said. PR 66's
+    cold read scanned a live tree on 2026-10-21: 194 of its 213 hits were old mail's verification codes."""
+    month = dated(f.stem, "%Y-%m")
+    end = (month.replace(day=28) + timedelta(days=4)).replace(day=1).timestamp() if month else None
+    out, at = list[tuple[int, str]](), None
+    for n, line in enumerate(f.read_text(errors="replace").splitlines(), 1):
+        if line.startswith("- "):                           # an entry's first line: its own time, or none
+            at = d.timestamp() if (d := dated(line[2:18], "%Y-%m-%d %H:%M")) else None
+        dead = now is not None and now - (at or end or now) > SPENT
+        if kind := next((k for k, rx in SECRETS.items() if not (dead and k == "one-time code") and rx.search(line)), ""):
+            out.append((n, kind))
+    return out
 
 
 def reads(line: bytes, daylog: bool) -> bool:
@@ -58,6 +96,21 @@ def mend(path: Path, daylog: bool, backup: Path, dry: bool) -> list[int]:
         x = next((y for y in (x.rsplit(b"\0", 1)[1], x.replace(b"\0", b"")) if reads(y, daylog)), b"")
         return x + b"\n" if x else b"\n" if daylog else b""
     return rewrite(path, backup, fix, dry)
+
+
+def exposed(root: Path) -> list[tuple[str, int]]:
+    """(path under `root`, mode) of each file and folder, `root` too, that a group or other user can read: its read bit
+    for them, every folder above it up to `root` searchable by them. A 0700 root hides everything in it. Links: not followed."""
+    out, todo = [], [(root, 0o044)]                      # 0o044: the group and other read bits still reachable
+    while todo:
+        p, reach = todo.pop()
+        with suppress(OSError):
+            st = p.lstat()
+            if (mode := stat.S_IMODE(st.st_mode)) & reach and not stat.S_ISLNK(st.st_mode):
+                out.append((p.relative_to(root).as_posix(), mode))
+            if stat.S_ISDIR(st.st_mode) and (inner := reach & (mode << 2)):   # x for a class, shifted onto its r bit
+                todo += [(c, inner) for c in p.iterdir()]
+    return sorted(out)
 
 
 def repair(private: Path, state: Path, m: memory.Settings, flight: set[str], dry: bool = False,
@@ -165,6 +218,21 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
                                                               for e in got.values() for x in e for h in x.get("hooks", [])):
                 found.append(f"room {n}: hooks not as yerkd puts them")
 
+    def modes() -> None:             # the example layer is a public checkout: a private folder of the owner's own only
+        for what, root in (("private folder", private), ("state folder", state)):
+            if not (root == private and private.resolve().is_relative_to(REPO)) and (seen := exposed(root)):
+                found.append(f"{what}: other users can read {len(seen)} of its files and folders, first "
+                             f"{'the folder itself' if seen[0][0] == '.' else seen[0][0]} ({seen[0][1]:o}); chmod 700 it")
+
+    def leaks() -> None:             # the day logs, notes and fact files, and the text an import saved: report, never rewrite
+        roots = [m.root] + [private / d for d in ("attachments", "imports") if (private / d).is_dir()]     # an import's files
+        hits = [(f, n, kind) for f in sorted(p for r in roots for p in r.rglob("*") if p.suffix in TEXT and p.is_file())
+                for n, kind in scan(f, now if f.is_relative_to(private / "imports") else None)]    # an import's dead codes: not said
+        if hits:
+            (f, n, kind), files = hits[0], len({h[0] for h in hits})
+            found.append(f"secret-shaped lines: {len(hits)} in {files} file{'s' * (files > 1)}, first "
+                         f"{f.relative_to(private) if f.is_relative_to(private) else f.name}:{n} ({kind}); scrub by hand, rotate the key")
+
     now_sizes: dict[str, int] = {}
 
     def growth() -> None:
@@ -201,7 +269,8 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
             found.append(f"memory index: runs {ix[:7]}, yerkd {str(ran)[:7]}: restart yerk-index")
 
     for what, check in (("shape", shape), ("classes", classes), ("tokens", tokens), ("index", index), ("hooks", hooked),
-                        ("disk", growth), ("memory cap", high), ("backfill", backfill), ("cites", cites), ("code", code)):
+                        ("modes", modes), ("secrets", leaks), ("disk", growth), ("memory cap", high), ("backfill", backfill),
+                        ("cites", cites), ("code", code)):
         try:
             check()
         except (Exception, SystemExit) as e:                    # a check that cannot run is a line; the others still run
@@ -230,8 +299,12 @@ def run(private: Path, state: Path, dry: bool = False, now: float | None = None,
     now = time.time() if now is None else now
     conf = load_toml(private / "yerkd.toml") if (private / "yerkd.toml").is_file() else {}
     m, found, last = memory.settings(private, state, dict(conf.get("memory", {}))), list[str](), load(state)
-    names = [r.name for r in (state / "rooms").glob("*")]
-    fixed = repair(private, state, m, flight(state, Ledger(state / "ledger.sqlite"), names), dry, now, proc)
+    names, ledger = [r.name for r in (state / "rooms").glob("*")], Ledger(state / "ledger.sqlite")
+    try:
+        busy = flight(state, ledger, names)
+    finally:
+        ledger.close()              # before the checks: its -wal and -shm files go with it, never counted as the install's
+    fixed = repair(private, state, m, busy, dry, now, proc)
     kept = checks(private, state, conf, m, now, last, found)
     if not dry:
         save(state, now, fixed, {"at": now, "findings": found, **kept})
