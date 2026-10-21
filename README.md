@@ -69,6 +69,8 @@ Moving in, keeping clean, and the probes out of the package: `yerk room add` (Mo
 
 `yerk doctor` checks the install each day after the sweep (units/yerk-doctor.timer, 04:40): the private folder's shape, any rooms.toml key no loader reads (config.ROOM_KEYS), memory classes and day-log lines, token expiry where the token file says when it was issued, the index, each running room's hooks and the folders' growth past `[doctor] growth_mb` (500 MB a day), quiet when all is well and a line per finding, the count and the first in the morning diff. It also reads the memory index: a memory cap under what `units/yerk-index.service`'s rule gives its vector count, a backfill paused after three failures in a row, two memory roots with one cite (a root whose folder name an earlier root has is cited with as much of its path as tells them apart), and yerk-index on other code than yerkd. It is also the crash repair, on yerkd's start before any room opens and daily: a hard power-off zeroes the line a file was writing, so every day log, assembled log and bound transcript with a NUL byte is backed up, then its line mended (the NULs out, the text kept when it still reads), else blank in a day log so every cited line number holds, dropped from a JSONL file, never in a room with a turn in flight or waiting.
 
+`yerk curate` keeps the cards each night after the doctor (units/yerk-curate.timer, 05:00), in two parts: a sweep in code blanks a card line said twice, a superseded line and a line `until` a date now past, and moves a cite only when its quoted words sit on exactly one line of its file, every other drift one finding in the morning diff, each card backed up first. Then each card gets a pack of the day's lines that name it as the card's reader may read them, a worker that sees only the pack proposes lines, a second knocks them down by `yerk_ai/curate.md`, code checks shape, head, secrets and that each cite is a line of the pack, and the lines land with a backup only when the recall bench does not fall, a correction only ever proposed, never applied, and `--since DATE` the same code over a range for a backfill.
+
 ## Use
 
 ```
@@ -92,6 +94,7 @@ uv run yerk deploy [REF]                     # REF onto the running yerkd: fast-
 uv run yerk deploy --unit                    # the same, moving a systemd-run yerkd onto units/yerkd.service (Install below)
 uv run yerk retention --dry-run              # what the nightly sweep (units/yerk-retention.timer) would move to the trash, by kind
 uv run yerk doctor --dry-run                 # the daily check (units/yerk-doctor.timer): a line per finding, nothing when all is well
+uv run yerk curate --dry-run --since 2026-10-19   # the night's card curation (units/yerk-curate.timer): what it would sweep and propose
 uv run python tests/contract/probes.py drill --config-dir DIR   # the Claude Code upgrade drill: the version, hello, fold and resume on one account, a verdict
 uv run python tests/contract/probes.py hello|fold|resume|blocks|smoke|measure|check|idle --config-dir ~/.claude   # one contract probe
 uv run pytest

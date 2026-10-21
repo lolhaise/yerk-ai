@@ -1,0 +1,11 @@
+# Every day at 05:00 local time, after the doctor's 04:40 check and before the 06:30 morning diff that carries its
+# line; a night the box was off runs once when it is back, after the doctor's own catch-up run.
+[Unit]
+Description=Yerk AI curate at 05:00
+
+[Timer]
+OnCalendar=*-*-* 05:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

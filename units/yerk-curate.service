@@ -1,0 +1,18 @@
+# The night's card curation (yerk curate): the sweep of the fact cards (a line said twice, a superseded line, a line
+# `until` a date now past, each blanked so cites into a card hold; a cite moved only when its quoted words sit on one
+# line of its file, every other drift a finding), then yesterday's facts: a pack per card, a worker proposes, a second
+# knocks down by yerk_ai/curate.md, code checks, and the lines land with a backup only when the recall bench does not
+# fall. Corrections are only ever proposed. A finding exits 1, which is not a unit failure (the morning diff says it);
+# a run that could not run exits 2 and fails the unit. Installed with yerk-curate.timer: copy both to
+# ~/.config/systemd/user/ and `systemctl --user enable --now yerk-curate.timer`.
+[Unit]
+Description=Yerk AI curate
+After=yerk-doctor.service
+
+[Service]
+Type=oneshot
+Environment=YERK_PRIVATE=%h/yerk-private
+Environment=YERK_STATE=%h/.local/state/yerk
+ExecStart=%h/yerk-ai/.venv/bin/yerk curate
+SuccessExitStatus=1
+TimeoutStartSec=7200

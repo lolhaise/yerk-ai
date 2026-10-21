@@ -497,7 +497,7 @@ def test_a_failed_rollback_exits_2_and_the_morning_diff_names_every_deploy_not_p
     want = [f"{words.NOT_DONE} deploy {ids[1][:7]}: proof failed, {at[0]}",
             f"{words.NOT_DONE} rollback {ids[0][:7]}: proof failed, {at[1]}"]
     assert [x for x in lines if " deploy " in x or " rollback " in x] == want and lines[1:3] == want   # new: on top
-    assert lines[0] == f"{words.NOT_DONE} morning: 3 new since the last diff" and all(words.width(x) <= words.PHONE for x in want)   # and no doctor run yet
+    assert lines[0] == f"{words.NOT_DONE} morning: 3 new since the last diff" and all(words.width(x) <= words.PHONE for x in want)   # no curate run yet; a doctor never run is none
     (state / "morning").mkdir()
     (state / "morning" / "last.json").write_text(json.dumps(stamp))
     again, _ = morning.build(priv, state, accounts, cool, led, live, now + 60)
@@ -833,7 +833,7 @@ def test_dead_turns_are_found_from_the_message_and_a_changed_set_alerts_once(tmp
     live = {"units": [], "started": NOW - 3 * 86400}
     lines, stamp = morning.build(priv, state, accounts, cool, led, live, NOW)
     want = f"{words.NOT_DONE} dead turns: 2, 2 rooms, last {words.clock(t + 180, NOW)}"
-    assert want in lines and lines[0] == f"{words.NOT_DONE} morning: 2 new since the last diff"   # and no doctor run yet
+    assert want in lines and lines[0] == f"{words.NOT_DONE} morning: 2 new since the last diff"   # no curate run yet; a doctor never run is none
     (state / "morning").mkdir()
     (state / "morning" / "last.json").write_text(json.dumps(stamp))
     again, stamp = morning.build(priv, state, accounts, cool, led, live, NOW + 60)
