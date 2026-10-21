@@ -1,0 +1,549 @@
+"""`yerk import imessage:<chat.db>` and `yerk import gmail`: copy your texts and mail into the private folder as plain
+files, imports/texts/<person or group>.md and imports/mail/<YYYY-MM>.md, each line a stored message written out by code
+(its speaker, the install's time, attachments and app messages as tags, a deleted chat's messages placed by ck_chat_id,
+newsletter, a draft and a security mail marked, sent mail kept longer), nothing summed up. A file there carries no
+class, so it reads as private: an owner room reads the two folders once [memory] also names them, and no person room
+does. By id, a message's guid and a mail's UIDVALIDITY:UID, one a line in imports/texts.ids and imports/mail.ids, so a
+second run adds only what is new. A security mail, a security text from a short code and every secret-shaped string are
+written as their kind only. The Messages databases are opened read-only; Gmail is read with EXAMINE and BODY.PEEK only,
+its app password read from the file [gmail] names and never printed."""
+from __future__ import annotations
+
+import argparse
+import base64
+import binascii
+import bisect
+import email
+import fcntl
+import html
+import imaplib
+import os
+import plistlib
+import quopri
+import re
+import sqlite3
+import sys
+import unicodedata
+from collections import Counter, defaultdict
+from contextlib import suppress
+from datetime import datetime, timedelta, timezone, tzinfo
+from email import policy
+from email.header import decode_header, make_header
+from email.message import Message
+from email.utils import getaddresses, parseaddr, parsedate_to_datetime
+from pathlib import Path
+from typing import Any, Iterator
+
+from . import memory
+from .config import load_toml, private_dir, state_dir, write_private
+
+# A security mail, by the words on its subject or anywhere in its fetched text: its body is written as its kind only.
+SECURITY = re.compile(r"\b(?:pass)?codes?\b|\bpasswords?\b|\bverif(?:y|ied|ies|ying|ication)\b|\breset\b"
+                      r"|\b(?:sign[- ]?in|log[- ]?in|magic) link\b", re.I)
+# A code or a credential in other words, on the subject and the line that would be written (an 'OTP for validation'
+# mail and two self-sent gateway tokens passed the words above, 2026-10-20)
+EXTRA = re.compile(r"\bOTP\b|\bone[- ]time\b|(?-i:\bPIN\b)|\b(?:2FA|MFA)\b|\btwo[- ](?:factor|step)\b|token"
+                   r"|\b(?:api|secret|private|access)[ _-]?keys?\b|\bclient[ _-]?secret\b"
+                   r"|(?<![0-9A-Fa-f])[0-9A-Fa-f]{32,}(?![0-9A-Fa-f])", re.I)
+# A secret's own shape: never written, wherever it is, its kind in its place (the high-precision kinds of the
+# 2026-10-21 scrub, and a code said as one)
+SECRETS = {"anthropic-key": r"sk-ant-[A-Za-z0-9_-]{20,}", "openai-key": r"(?<![A-Za-z0-9])sk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{32,}",
+           "github-token": r"(?:ghp|gho|ghs|ghu)_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}",
+           "slack-token": r"xox[abprs]-[A-Za-z0-9-]{10,}", "aws-key-id": r"(?<![A-Z0-9])AKIA[0-9A-Z]{16}(?![A-Z0-9])",
+           "google-api-key": r"AIza[0-9A-Za-z_-]{35}", "google-oauth": r"ya29\.[0-9A-Za-z_-]{20,}",
+           "discord-token": r"(?<![A-Za-z0-9])[MNO][A-Za-z\d_-]{23,27}\.[\w-]{6}\.[\w-]{27,40}",
+           "jwt": r"eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}", "private-key": r"-----BEGIN [A-Z ]*PRIVATE KEY-----",
+           "presigned-url": r"X-Amz-Signature=[0-9a-f]{20,}", "stripe-key": r"(?:sk|rk)_live_[A-Za-z0-9]{20,}",
+           "telegram-token": r"(?<!\d)\d{8,10}:AA[A-Za-z0-9_-]{30,}",
+           "one-time-code": r"(?<![0-9])\d{4,8}(?![0-9])(?i:(?=[\"”']?\s+is your [\w ]{0,30}(?:code|verification)))"}
+SECRET = re.compile("|".join(f"(?P<{k.replace('-', '_')}>{v})" for k, v in SECRETS.items()))
+CODE = re.compile(r"(?<!\d)\d{4,8}(?!\d)")          # a code's shape: in a short code's text, and in a security mail's subject
+HELD_TEXT, HELD_MAIL = "[security text: body withheld]", "[security mail: body withheld]"
+
+
+def scrub(text: str) -> str:
+    return SECRET.sub(lambda m: f"[{str(m.lastgroup).replace('_', '-')} withheld]", text)
+
+
+def put(out: Path, record: Path, files: dict[str, tuple[str, list[tuple[str, str]]]], span: bool, dry: bool) -> tuple[int, int]:
+    """Each file's entries, (id, text) oldest first, whose id is not on record: each put after every entry of its minute
+    in the file (nothing there moves), the title and count written again (`span`: and the first and last day), the file
+    written (0600, its folders 0700), then its ids added to the record. Said a file at a time. (new, there already)"""
+    if not dry:
+        for d in (out.parent, out):
+            d.mkdir(mode=0o700, exist_ok=True)
+            d.chmod(0o700)
+    lock = None if dry else os.open(record, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+    if lock is not None:
+        fcntl.flock(lock, fcntl.LOCK_EX)            # a second import of the same kind waits, then reads the record anew
+    have = set(record.read_text().split()) if record.is_file() else set()
+    added = there = 0
+    try:
+        for name, (title, entries) in files.items():
+            new = [(i, t) for i, t in entries if i not in have]
+            there += len(entries) - len(new)
+            if not new:
+                continue
+            p, rows = out / f"{name}.md", list[str]()
+            if (text := p.read_text() if p.is_file() else "") and "\n\n" not in text:
+                print(f"{name}.md: not as an import writes it (no blank line under its title), left as it is", flush=True)
+                continue
+            for ln in text.split("\n\n", 1)[1].rstrip("\n").split("\n") if text else []:
+                if ln.startswith("- ") or not rows:
+                    rows.append(ln)
+                else:                               # a mail's body line goes with its header line
+                    rows[-1] += "\n" + ln
+            keys = [r[:18] for r in rows]           # "- YYYY-MM-DD HH:MM"
+            for _, t in new if rows else ():
+                j = bisect.bisect_right(keys, t[:18])
+                rows.insert(j, t)
+                keys.insert(j, t[:18])
+            rows = rows or [t for _, t in new]      # a new file: the source's own order
+            count = f"{len(rows)} messages" + (f", {rows[0][2:12]} to {rows[-1][2:12]}" if span else "")
+            print(f"{name}.md: {len(new):,} {'to add' if dry else 'added'}, {len(entries) - len(new):,} there already", flush=True)
+            added += len(new)
+            if lock is not None:
+                write_private(p, "\n".join([title, count, "", *rows]) + "\n")
+                os.write(lock, "".join(f"{i}\n" for i, _ in new).encode())
+    finally:
+        if lock is not None:
+            os.close(lock)
+    return added, there
+
+
+# texts: one file a person (their contact name, else their number or address) or group chat, as texts_export.py
+# (2026-10-20) wrote them, which was checked against 108,733 rows that hold their text both ways
+APPLE = 978307200                                   # 2001-01-01, where Messages' dates count from
+SYSTEM = {1: "member added/removed", 2: "group renamed", 3: "group action (left, photo)", 4: "location sharing event",
+          5: "other system event"}
+LINK = "com.apple.messages.URLBalloonProvider"      # a link preview: its URL is the message's own text
+
+
+def ro(p: Path) -> sqlite3.Connection:
+    return sqlite3.connect(f"{p.resolve().as_uri()}?mode=ro", uri=True)
+
+
+def norm(h: str) -> str:
+    """A handle as a contact key: an address lowercased, else its last ten digits."""
+    h, d = (h or "").strip(), re.sub(r"\D", "", h or "")
+    return h.lower() if "@" in h or not d else d[-10:]
+
+
+def slug(s: str, limit: int = 100) -> str:
+    s = re.sub(r"[^a-zA-Z0-9]+", "-", unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode().lower())
+    return s.strip("-")[:limit].strip("-")
+
+
+def flat(s: str) -> str:
+    """A message on one line: each run of line breaks one space."""
+    return re.sub(r"\s*[\r\n\u2028\u2029]+\s*", " ", s).strip()
+
+
+def body_of(blob: bytes) -> str | None:
+    """An attributedBody's text: after the NSString class entry, '+', a length (one byte, or 0x81 then two bytes, or 0x82
+    then four, little-endian) and that many bytes of UTF-8; None when it cannot be read."""
+    for cls in (b"NSString", b"NSMutableString"):
+        if (i := blob.find(cls)) < 0 or (plus := blob.find(b"+", i + len(cls), i + len(cls) + 16)) < 0:
+            continue
+        if (j := plus + 1) >= len(blob):
+            return None
+        w = {0x81: 2, 0x82: 4}.get(blob[j], 0)
+        n, j = int.from_bytes(blob[j + 1:j + 1 + w], "little") if w else blob[j], j + 1 + w
+        try:
+            return blob[j:j + n].decode() if len(blob[j:j + n]) == n else None
+        except UnicodeDecodeError:
+            return None
+    return None
+
+
+def contacts_of(db: Path | None) -> tuple[dict[int, str], dict[str, int]]:
+    """A contacts database's names by record, and the record (the lowest) each phone number and address belongs to."""
+    if db is None:
+        return {}, {}
+    c, names, keys = ro(db), dict[int, str](), dict[str, int]()
+    ent = c.execute("select Z_ENT from Z_PRIMARYKEY where Z_NAME='ABCDContact'").fetchone()[0]
+    for pk, fn, ln, org, nick in c.execute("select Z_PK, ZFIRSTNAME, ZLASTNAME, ZORGANIZATION, ZNICKNAME from ZABCDRECORD where Z_ENT=?", (ent,)):
+        if name := " ".join(x.strip() for x in (fn, ln) if x and x.strip()) or (org or "").strip() or (nick or "").strip():
+            names[pk] = flat(name)
+    for owner, a in [*c.execute("select ZOWNER, ZFULLNUMBER from ZABCDPHONENUMBER"),
+                     *((o, n or a) for o, a, n in c.execute("select ZOWNER, ZADDRESS, ZADDRESSNORMALIZED from ZABCDEMAILADDRESS"))]:
+        if a and owner in names:
+            keys[norm(a)] = min(keys.get(norm(a), owner), owner)
+    c.close()
+    return names, keys
+
+
+def text_line(at: datetime, who: str, content: str, short: bool) -> str:
+    """A text's line; from a short code (a bank's, a sign-in's), a text with a security word or a code's shape is its kind only."""
+    if short and any(r.search(content) for r in (SECURITY, EXTRA, SECRET, CODE)):
+        content = HELD_TEXT
+    return scrub(f"- {at:%Y-%m-%d %H:%M} {who}: {content}")
+
+
+def texts(db: Path, contacts: Path | None, me: str, tz: tzinfo) -> tuple[dict[str, tuple[str, list[tuple[datetime | None, str, str]]]], Counter[str], int]:
+    """Every conversation of a Messages database, named as a file (a second chat of one name gets -2), its title and its
+    messages oldest first as (time, guid, line); the rows skipped by rule, each by its reason; the rows read. A row is
+    placed by its chat, else by ck_chat_id (a chat deleted on the phone: 'service;-;handle' is one person, a group id or
+    its hex a group of its own), else by its sender."""
+    names, keys = contacts_of(contacts)
+    m = ro(db)
+    handles: dict[int, str] = dict(m.execute("select ROWID, id from handle"))
+
+    def person(raw: str) -> tuple[str, Any]:
+        return ("c", keys[norm(raw)]) if norm(raw) in keys else ("h", norm(raw))
+
+    def label(h: int) -> str:
+        p = person(handles[h])
+        return names[p[1]] if p[0] == "c" else handles[h]
+
+    chats, gids, idents = dict[int, tuple[int, str, str]](), dict[str, int](), dict[str, int]()
+    members, atts = defaultdict[int, list[int]](list), defaultdict[int, list[str]](list)
+    for rid, style, ident, dname, gid, ogid in m.execute("select ROWID, style, chat_identifier, display_name, group_id, original_group_id from chat"):
+        chats[rid] = (style, ident, (dname or "").strip())
+        for g in (gid, ogid) if style == 43 else ():
+            if g:
+                gids.setdefault(g, rid)
+        if style == 43 and ident:
+            idents.setdefault(ident, rid)
+    for cid, hid in m.execute("select chat_id, handle_id from chat_handle_join order by rowid"):
+        members[cid].append(hid)
+    for mid, tn, fn, hide in m.execute("select j.message_id, a.transfer_name, a.filename, a.hide_attachment from message_attachment_join j "
+                                       "join attachment a on a.ROWID=j.attachment_id order by j.message_id, a.ROWID"):
+        if not hide and not (name := (tn or os.path.basename(fn or "") or "").strip()).endswith(".pluginPayloadAttachment"):
+            atts[mid].append(name)                  # a link preview's image and an app's payload are not listed
+    titles = dict(m.execute("select ck_chat_id, group_title from message where item_type=2 and ck_chat_id is not null "
+                            "and group_title is not null and group_title!='' order by date"))   # a deleted group's last name
+    convs: dict[tuple[Any, ...], dict[str, Any]] = {}
+
+    def conv(key: tuple[Any, ...], kind: str) -> dict[str, Any]:
+        return convs.setdefault(key, {"kind": kind, "msgs": [], "raws": Counter(), "rows": set(), "senders": set()})
+
+    def one(raw: str) -> dict[str, Any]:
+        cv = conv(("p", *person(raw)), "person")
+        cv["raws"][raw] += 1
+        return cv
+
+    def group(ck: str) -> str:
+        if len(ck) > 36 and re.fullmatch(r"[0-9A-Fa-f]+", ck):
+            with suppress(ValueError, UnicodeDecodeError):
+                return bytes.fromhex(ck).decode("ascii")
+        return ck
+
+    skips: Counter[str] = Counter()
+    rows = 0
+    for rid, guid, text, ab, hrow, mine, date, item, assoc, balloon, ck, msi, cid in m.execute(
+            "select m.ROWID, m.guid, m.text, m.attributedBody, m.handle_id, m.is_from_me, m.date, m.item_type, m.associated_message_type, "
+            "m.balloon_bundle_id, m.ck_chat_id, m.message_summary_info, j.chat_id from message m "
+            "left join chat_message_join j on j.message_id=m.ROWID order by m.date, m.ROWID"):
+        rows, assoc = rows + 1, assoc or 0
+        if why := (f"system event: {SYSTEM.get(item, f'item_type {item}')}" if item else "tapback / emoji reaction" if 2000 <= assoc < 3000
+                   else "tapback removed" if 3000 <= assoc < 4000 else "sticker placed on a message (reaction)" if assoc == 1000
+                   else "poll vote / poll update" if 4000 <= assoc < 5000 else ""):
+            skips[why] += 1
+            continue
+        if cid is not None and cid in chats:
+            cv = conv(("g", cid), "group") if chats[cid][0] == 43 else one(chats[cid][1])
+            cv["rows"].add(cid)
+        elif ck and ";-;" in ck:
+            cv = one(ck.split(";-;", 1)[1])
+        elif ck:
+            g = ck.split(";+;", 1)[1] if ";+;" in ck else group(ck)
+            crow = gids.get(g) or idents.get(g)
+            cv = conv(("g", crow if crow is not None else "ck:" + g), "group")
+            if crow is not None:
+                cv["rows"].add(crow)
+            else:
+                cv["ck"] = ck
+        elif hrow:
+            cv = one(handles.get(hrow, str(hrow)))
+        else:
+            skips["no chat, no ck_chat_id and no handle: conversation unknown"] += 1
+            continue
+        body, failed, empty = text or None, False, False
+        if body is None and ab is not None:
+            body = body_of(ab)
+            failed, empty = body is None, body is not None and not body.strip()
+        app, files, tokens = balloon if balloon and balloon != LINK else None, iter(atts.get(rid, [])), []
+        pieces = (body or "").replace("\ufffd", "").split("\ufffc")     # U+FFFC: where an attachment sits
+        for k, piece in enumerate(pieces):
+            if p := flat(piece):
+                tokens.append(p)
+            if k < len(pieces) - 1 and ((f := next(files, None)) is not None or not app):
+                tokens.append(f"[attachment: {f}]" if f is not None else "[attachment]")
+        tokens += [f"[attachment: {f}]" for f in files]
+        tokens = ([f"[app: {app.split(':')[-1]}]"] if app else []) + ["[text not decodable]"] * failed + tokens
+        if not (content := " ".join(tokens)):
+            gone = False
+            with suppress(Exception):
+                gone = bool(msi) and "rp" in plistlib.loads(msi)
+            skips["unsent by sender (retracted, no content stored)" if gone else "attributedBody holds an empty string and nothing else is stored"
+                  if empty else "no text, attachment or app content stored"] += 1
+            continue
+        if not mine and cv["kind"] == "group" and hrow:
+            cv["senders"].add(hrow)
+        who = me if mine else None if cv["kind"] == "person" else (label(hrow) if hrow in handles else None) if hrow else "unknown sender"
+        date = date or 0                            # nanoseconds since 2001, or seconds on old rows
+        cv["msgs"].append((date, rid, datetime.fromtimestamp((date / 1e9 if date > 1e11 else float(date)) + APPLE, tz=tz), who, content, guid))
+    m.close()
+    plans = []
+    for key, cv in convs.items():
+        if not cv["msgs"]:
+            continue
+        cv["msgs"].sort(key=lambda x: (x[0], x[1]))
+        if cv["kind"] == "person":
+            raws = sorted(cv["raws"], key=lambda r: (-cv["raws"][r], r))
+            lab = names[key[2]] if key[1] == "c" else raws[0]
+            s = (slug(lab) if key[1] == "c" else "") or slug(raws[0].replace("@", "-at-")) or "unknown"
+            plans.append((cv["msgs"][0][2], key, cv, s, f"# Texts with {lab} ({', '.join(sorted(cv['raws']))})", lab))
+            continue
+        hrows: list[int] = []
+        for crow in sorted(cv["rows"]):
+            hrows += [h for h in members.get(crow, []) if h not in hrows]
+        hrows += [h for h in sorted(cv["senders"]) if h not in hrows]
+        mem = sorted(((label(h), handles[h]) for h in hrows if h in handles), key=lambda x: x[0].lower())
+        dname = next((chats[c][2] for c in sorted(cv["rows"]) if chats[c][2]), "") or flat(titles.get(cv.get("ck"), ""))
+        lab = dname or ", ".join(x for x, _ in mem) or "unnamed group"
+        s = "group-" + (slug(dname or "-".join(x.replace("@", "-at-") for x, _ in mem), 90) or "unnamed")
+        mem_txt = ", ".join(x if x == raw else f"{x} {raw}" for x, raw in mem) or "members not stored"
+        plans.append((cv["msgs"][0][2], key, cv, s, f"# Texts in group {lab} (members: {mem_txt})", lab))
+    out: dict[str, tuple[str, list[tuple[datetime | None, str, str]]]] = {}
+    for _, _, cv, s, title, lab in sorted(plans, key=lambda p: (p[0], str(p[1]))):
+        base, n = s, 2
+        while s in out:
+            s, n = f"{base}-{n}", n + 1
+        short = cv["kind"] == "person" and all(len(re.sub(r"\D", "", r)) < 10 and "@" not in r for r in cv["raws"])
+        out[s] = (title, [(at, guid, text_line(at, who or lab, content, short)) for _, _, at, who, content, guid in cv["msgs"]])
+    return out, skips, rows
+
+
+# mail: one file a month, as mail_export.py (2026-10-20) wrote them
+FIELDS = ("(UID INTERNALDATE X-GM-LABELS BODY.PEEK[HEADER.FIELDS (DATE FROM TO SUBJECT LIST-UNSUBSCRIBE CONTENT-TYPE "
+          "CONTENT-TRANSFER-ENCODING)])")
+WINDOWS = ((4000, 250), (32768, 100))               # bytes of a body fetched, then again for one with no text in them; a batch
+SNIP, SNIP_SENT = 400, 1200                         # characters of a mail's text written, of the owner's own sent mail
+UID_RX, IDATE_RX = re.compile(rb"UID (\d+)"), re.compile(rb'INTERNALDATE "([^"]+)"')
+LABELS_RX, BODY_OPEN = re.compile(rb"X-GM-LABELS \((.*?)\)(?: |$|\))"), re.compile(r"<body\b", re.I)
+ZW = re.compile("[\u200b-\u200f\u034f\u00ad\ufeff\u2060\u180e]")
+
+
+def dec(h: Any) -> str:
+    try:
+        s = str(make_header(decode_header(h))) if h is not None else ""
+    except Exception:
+        s = str(h)
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def addr(name: str, a: str) -> str:
+    name, a = dec(name).strip('"').strip(), (a or "").strip()
+    return f"{name} <{a}>" if name and a and name.lower() != a.lower() else a or name
+
+
+def fetch(c: imaplib.IMAP4, uids: list[int], items: str) -> list[tuple[bytes, bytes, int | None]]:
+    """UID FETCH: each message's prefix, its literal and its UID (read after the literal when it comes there)."""
+    typ, data = c.uid("FETCH", ",".join(map(str, uids)), items)
+    if typ != "OK":
+        raise imaplib.IMAP4.error(f"FETCH said {typ}")
+    out = []
+    for i, d in enumerate(data):
+        if isinstance(d, tuple):
+            nxt = data[i + 1] if i + 1 < len(data) else None
+            mu = UID_RX.search(d[0]) or (UID_RX.search(nxt) if isinstance(nxt, bytes) else None)
+            out.append((d[0], d[1], int(mu.group(1)) if mu else None))
+    return out
+
+
+def dated(h: str | None, tz: tzinfo, now: datetime) -> datetime | None:
+    try:
+        dt = parsedate_to_datetime(str(h))
+        dt = (dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)).astimezone(tz)
+        return dt if dt.year >= 1995 and dt <= now + timedelta(days=2) else None
+    except Exception:
+        return None
+
+
+def header(prefix: bytes, lit: bytes, me: str, tz: tzinfo, now: datetime) -> dict[str, Any]:
+    """A mail's fields: its Date (else Gmail's INTERNALDATE: a Date missing or before 1995 or days ahead), From, To,
+    Subject, whether it is a newsletter (List-Unsubscribe), the owner's own (Gmail's Sent label, or From the owner) or a
+    draft, and the type and encoding its body is read with."""
+    m, idate = email.message_from_bytes(lit or b"", policy=policy.compat32), None
+    if mi := IDATE_RX.search(prefix):
+        with suppress(ValueError):
+            idate = datetime.strptime(mi.group(1).decode(), "%d-%b-%Y %H:%M:%S %z").astimezone(tz)
+    labels = (ml.group(1) if (ml := LABELS_RX.search(prefix)) else b"").decode("utf-8", "replace")
+    fname, faddr = parseaddr(m.get("From", ""))
+    tos = [a for a in getaddresses(m.get_all("To", [])) if a[1] or a[0]]
+    return {"dt": (dated(m.get("Date"), tz, now) if m.get("Date") else None) or idate, "frm": addr(fname, faddr) or "-",
+            "to": addr(*tos[0]) if tos else dec(m.get("To", "")) or "-", "subject": dec(m.get("Subject")) or "(no subject)",
+            "lu": m.get("List-Unsubscribe") is not None, "sent": bool(re.search(r"\\+Sent\b", labels)) or faddr.strip().lower() == me,
+            "draft": bool(re.search(r"\\+Draft\b", labels)), "ct": re.sub(r"\r?\n[ \t]+", " ", m.get("Content-Type", "") or "").strip(),
+            "cte": (m.get("Content-Transfer-Encoding", "") or "").strip()}
+
+
+def cut(s: str, tag: str) -> str:
+    """s less each <tag>...</tag>: an unclosed one ends at a <body> after it (a mail that opens <head> and never closes
+    it), else at the end, where the partial fetch cut it."""
+    o, c, out, i = re.compile(rf"<{tag}\b", re.I), re.compile(rf"</{tag}\s*>", re.I), [], 0
+    while m := o.search(s, i):
+        out.append(s[i:m.start()])
+        if e := c.search(s, m.end()):
+            i = e.end()
+        elif b := BODY_OPEN.search(s, m.end()):
+            i = b.start()
+        else:
+            return " ".join(out)
+    return " ".join([*out, s[i:]])
+
+
+def strip_html(s: str) -> str:
+    for tag in ("head", "script", "style", "title", "noscript"):
+        s = cut(s, tag)
+    return html.unescape(re.sub(r"<[^>]*$", " ", re.sub(r"(?s)<[^>]*>", " ", re.sub(r"(?s)<!--.*?(?:-->|$)", " ", s))))
+
+
+def part_text(part: Message) -> str:
+    cte, raw = (part.get("Content-Transfer-Encoding", "") or "").strip().lower(), part.get_payload(decode=False)
+    if isinstance(raw, list):
+        return ""
+    data = raw.encode("utf-8", "surrogateescape") if isinstance(raw, str) else raw if isinstance(raw, bytes) else b""
+    if cte == "base64":                             # a partial fetch ends mid-quantum: what decodes whole is kept
+        b = re.sub(rb"[^A-Za-z0-9+/=]", b"", data).rstrip(b"=")
+        try:
+            data = base64.b64decode(b[:len(b) - len(b) % 4])
+        except binascii.Error:
+            data = b""
+    elif cte == "quoted-printable":
+        data = quopri.decodestring(data)
+    try:
+        return str(data.decode(part.get_content_charset() or "utf-8", "replace"))
+    except LookupError:
+        return str(data.decode("utf-8", "replace"))
+
+
+def text_of(ct: str, cte: str, partial: bytes) -> str:
+    """The text of a body's first bytes, read under its own type: its first text/plain part, else its first HTML part stripped."""
+    head = "MIME-Version: 1.0\r\n" + (f"Content-Type: {ct}\r\n" if ct else "") + (f"Content-Transfer-Encoding: {cte}\r\n" if cte else "")
+    plain = htm = None
+    for part in email.message_from_bytes(head.encode("utf-8", "replace") + b"\r\n" + (partial or b""), policy=policy.compat32).walk():
+        if part.is_multipart() or (part.get("Content-Disposition", "") or "").lower().startswith("attachment"):
+            continue
+        if part.get_content_type() == "text/plain" and plain is None:
+            plain = part_text(part)
+        elif part.get_content_type() == "text/html" and htm is None:
+            htm = part_text(part)
+    txt = plain if plain and plain.strip() else strip_html(htm) if htm else ""
+    return re.sub(r"\s+", " ", ZW.sub("", txt).replace("\ufffd", "")).strip()
+
+
+def body_line(h: dict[str, Any], partial: bytes) -> str | None:
+    """A mail's body line from its first bytes: its kind only for a security mail, else its first 400 characters (1,200 of the
+    owner's own); None when they hold no text."""
+    try:
+        txt, bad = text_of(h["ct"], h["cte"], partial), False
+    except Exception:
+        txt, bad = "", True
+    body = txt[:SNIP_SENT if h["sent"] else SNIP]
+    if SECURITY.search(txt) or SECURITY.search(h["subject"]) or any(r.search(body) or r.search(h["subject"]) for r in (EXTRA, SECRET)):
+        return HELD_MAIL
+    return "[body could not be parsed]" if bad else body or None
+
+
+def mail(g: dict[str, Any], priv: Path, tz: tzinfo, since: datetime | None, have: set[str]) -> tuple[dict[str, tuple[str, list[tuple[datetime | None, str, str]]]], int, int, int]:
+    """Gmail's All Mail since `since` (all of it without), the mail not on record fetched: its fields in batches of 500, then
+    the body of each that is no newsletter. A batch that fails is said, the connection made again, and its mail left for the
+    next run. (each month's file: its title and its mail oldest first as (time, UIDVALIDITY:UID, entry); mail found; read; failed)"""
+    user, now = str(g["user"]), datetime.now(tz)
+
+    def connect() -> tuple[imaplib.IMAP4, str]:
+        text = (priv / Path(str(g["password_file"])).expanduser()).read_text()
+        c = imaplib.IMAP4_SSL(str(g.get("host", "imap.gmail.com")), 993, timeout=180)
+        try:
+            c.login(user, m.group(1) if (m := re.search(r"(?im)^\W*app password[^:\n]*:\s*(\S+)", text)) else "".join(text.split()))
+        except imaplib.IMAP4.error:
+            raise SystemExit(f"gmail: Gmail said no to {user}'s login: [gmail] user and the app password in its file") from None
+        boxes = [b.decode("utf-8", "replace") for b in c.list()[1] if isinstance(b, bytes) and b"\\All" in b]
+        box = boxes[0].rsplit(' "/" ', 1)[-1].strip() if boxes else '"[Gmail]/All Mail"'
+        if c.select(box, readonly=True)[0] != "OK":     # EXAMINE: nothing is marked read
+            raise SystemExit(f"gmail: {box} would not open")
+        return c, (c.response("UIDVALIDITY")[1][-1] or b"").decode()
+
+    c, v = connect()
+    if have and not any(k.startswith(f"{v}:") for k in have):
+        raise SystemExit(f"gmail: All Mail's UIDVALIDITY is now {v}, so the UIDs on record name other mail; move imports/mail and its record aside")
+    crit = ["SINCE", f"{since - timedelta(days=2):%d-%b-%Y}"] if since else ["ALL"]   # by arrival: two days' margin for its Date
+    found = [int(x) for x in c.uid("SEARCH", *crit)[1][0].split()]
+    uids = [u for u in found if f"{v}:{u}" not in have]
+    hs: dict[int, dict[str, Any]] = {}
+    body: dict[int, str | None] = {}
+    failed: set[int] = set()
+
+    def batches(todo: list[int], size: int, items: str) -> Iterator[tuple[bytes, bytes, int | None]]:
+        nonlocal c
+        for i in range(0, len(todo), size):
+            try:
+                yield from fetch(c, todo[i:i + size], items)
+            except (imaplib.IMAP4.error, imaplib.IMAP4.abort, OSError) as e:
+                print(f"gmail: {len(todo[i:i + size])} mails not read, left for the next run: {type(e).__name__}: {e}", flush=True)
+                failed.update(todo[i:i + size])
+                with suppress(Exception):
+                    c.logout()
+                c = connect()[0]
+
+    for p, lit, uid in batches(uids, 500, FIELDS):
+        h = header(p, lit, user.lower(), tz, now)
+        if uid is not None and (not since or (h["dt"] is not None and h["dt"] >= since)):
+            hs[uid] = h
+    for size, n in WINDOWS:
+        todo = [u for u in sorted(hs, reverse=True) if body.get(u) is None and u not in failed and not (hs[u]["lu"] and not hs[u]["sent"])]
+        for _, lit, uid in batches(todo, n, f"(UID BODY.PEEK[TEXT]<0.{size}>)"):
+            if uid in hs:
+                body[uid] = body_line(hs[uid], lit) or (None if size < WINDOWS[-1][0] else f"[no text body in the first {size} bytes]")
+    with suppress(Exception):
+        c.logout()
+    months: dict[str, list[tuple[str, int, datetime | None, str]]] = defaultdict(list)
+    for uid, h in hs.items():
+        if uid in failed:
+            continue
+        b = "[newsletter]" if h["lu"] and not h["sent"] else body.get(uid)
+        subject = CODE.sub("[code withheld]", h["subject"]) if b == HELD_MAIL else h["subject"]
+        when = f"{h['dt']:%Y-%m-%d %H:%M}" if h["dt"] else "undated"
+        line = (f"- {when} From: {h['frm']} | To: {h['to']} | Subject: {subject}" + (" | [draft]" if h["draft"] else "")
+                + (f"\n  {b}" if b else ""))
+        months[f"{h['dt']:%Y-%m}" if h["dt"] else "undated"].append((h["dt"].isoformat() if h["dt"] else "", uid, h["dt"], scrub(line)))
+    return ({k: (f"# Mail {k}", [(at, f"{v}:{uid}", t) for _, uid, at, t in sorted(es)]) for k, es in sorted(months.items())},
+            len(found), len(uids), len(failed))
+
+
+def imports(a: argparse.Namespace) -> int:
+    """`yerk import imessage:<chat.db> [--contacts <db>]` or `yerk import gmail`, through the same import command, --since and
+    --dry-run as a Discord chat: each file said as it is written, then the whole; --dry-run reads and counts and writes nothing."""
+    priv = private_dir(a.private)
+    conf = load_toml(priv / "yerkd.toml") if (priv / "yerkd.toml").is_file() else {}
+    tz, imp = memory.settings(priv, state_dir(a.state), dict(conf.get("memory", {}))).tz, dict(conf.get("import", {}))
+    since = datetime.fromisoformat(a.since).replace(tzinfo=tz) if a.since else None
+    kind, _, path = a.source.partition(":")
+    db, contacts = Path(path).expanduser(), Path(a.contacts).expanduser() if a.contacts else None
+    g, out = dict(conf.get("gmail", {})), priv / "imports" / ("texts" if kind == "imessage" else "mail")
+    record, why = out.with_suffix(".ids"), ""
+    if kind == "imessage" and (not db.is_file() or contacts and not contacts.is_file()):
+        why = f"{'--contacts' if db.is_file() else 'imessage'}: {contacts if db.is_file() else db} is not a file"
+    elif kind == "gmail" and not (g.get("user") and g.get("password_file")):
+        why = "yerkd.toml [gmail]: user (the address) and password_file (its app password, a path in the private folder) first"
+    elif not record.is_file() and any(out.glob("*.md")):
+        why = f"imports/{out.name}: files no import wrote (no {record.name} beside it); move them aside and run it again"
+    if why:
+        print(why, file=sys.stderr)
+        return 2
+    have = set(record.read_text().split()) if record.is_file() else set()
+    if kind == "imessage":
+        got, skips, rows = texts(db, contacts, str(imp.get("me", "me")), tz)
+        failed, found, n, what = 0, 0, 0, f"{rows:,} rows, {sum(skips.values()):,} skipped by rule ({', '.join(f'{k} {n:,}' for k, n in skips.most_common())})"
+    else:
+        got, found, n, failed = mail(g, priv, tz, since, have)
+        what = f"{found:,} mails found, {n:,} not on record read" + (f", {failed:,} of them not" if failed else "")
+    files = {k: (t, [(i, x) for at, i, x in es if not since or (at is not None and at >= since)]) for k, (t, es) in got.items()}
+    new, there = put(out, record, files, kind == "imessage", a.dry_run)
+    there += found - n                             # mail on record is never fetched
+    print(f"{kind}: {what}; {sum(1 for _, es in files.values() if es):,} files, {new:,} {'to add' if a.dry_run else 'added'}, "
+          f"{there:,} there already")
+    return 1 if failed else 0
