@@ -82,6 +82,8 @@ def state_dir(arg: str | None = None) -> Path:
     p = arg or os.environ.get("YERK_STATE")
     d = Path(p).expanduser() if p else Path(os.environ.get("XDG_STATE_HOME", "~/.local/state")).expanduser() / "yerk"
     d.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if d.stat().st_mode & 0o077:                            # an install from before 0700: the next start, yerkd, yerk or a deploy, closes it
+        d.chmod(0o700)
     return d
 
 

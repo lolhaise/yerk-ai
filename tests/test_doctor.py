@@ -76,7 +76,10 @@ def test_a_file_another_user_can_read_is_named_and_a_0700_folder_hides_what_is_i
     is the count it leaves: the doctor closes its own ledger connection before the check (its -wal and -shm files, at the
     umask's mode, exist until then), never leaving it to the collector, whose pass could fall anywhere (3.13, 2026-10-21)."""
     priv, state, *_ = tree
-    assert oct(config.state_dir(str(tmp_path / "fresh" / "yerk")).stat().st_mode & 0o777) == "0o700"   # as the first start makes it
+    fresh = config.state_dir(str(tmp_path / "fresh" / "yerk"))
+    assert oct(fresh.stat().st_mode & 0o777) == "0o700"     # as the first start makes it
+    fresh.chmod(0o775)                                       # an install from before: the next start closes it, no deploy step
+    assert oct(config.state_dir(str(fresh)).stat().st_mode & 0o777) == "0o700"
     (ctx := state / "rooms" / "example-room" / "context.md").write_text("the owner's lines")
     ctx.chmod(0o644)
     assert doctor.main(priv, state) == 0 and capsys.readouterr().out == ""
