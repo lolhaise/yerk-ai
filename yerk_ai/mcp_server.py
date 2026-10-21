@@ -157,13 +157,16 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         """Timed work that lands in a room, kept on systemd timers that outlive the daemon. action
         "add": `name` (lowercase letters, digits, hyphens); `when` is a date and time ("2026-03-09 09:00":
         a one-shot, removed after it fires), "every 2h" (an interval), or a cron expression
-        ("0 9 * * 1-5"); `tz` an IANA zone (default: this room's); `what` is the brief a worker gets
-        (kind "agent": a headless run with a card here, its last message told by this room, exactly
-        NO_REPLY for silence) or the shell line to run (kind "script": no model call, its output posted
-        as is, exit 0 with no output posts nothing, a failure alerts the ops room; a plain reminder is
-        a script that echoes the text, on the second and at no cost); `deliver` "announce" (default) or
-        "silent" (run and ledger, never post). Returns the next fire time read back from systemd.
-        "remove": by `name`. "list": every job with its next fire time."""
+        ("0 9 * * 1-5"); `tz` an IANA zone (default: this room's); `what`, by `kind`: "note", a reminder
+        (when it is due this room is told the text and says it in its own voice; no worker, shell or
+        account); "agent", the brief a worker gets (a headless run with a card here, its last message told
+        by this room, exactly NO_REPLY for silence); "script", the shell line to run (no model call, its
+        output posted as is, exit 0 with no output posts nothing, a failure alerts the ops room). Any room
+        adds, lists and removes its own notes; an agent or script job runs as the owner, so only the owner's
+        rooms set one. `deliver` "announce" (default) or "silent" (run and ledger, never post). Returns the
+        next fire time read back from systemd. "remove": by `name`. "list": the jobs this room may see.
+        <example>"remind me Saturday at 10 to call the clinic": action "add", kind "note", name
+        "call-clinic", when "2026-10-24 10:00", what "Remind them to call the clinic now."</example>"""
         req = {"action": action, "name": name, "when": when, "what": what, "kind": kind, "tz": tz,
                "deliver": deliver, "room": room, "cap_minutes": cap_minutes, "account": account}
         return json.dumps(await daemon.tool_schedule(caller_room(ctx), req))

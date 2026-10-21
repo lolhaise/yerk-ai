@@ -8,6 +8,20 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-21
 
+### note-jobs (#71)
+
+- Every room can set reminders: a fourth job kind, `note` (`room`, `message`, one of `at`, `every` or `schedule`
+  with `tz`, `deliver`). When it is due the room's own session is told `[reminder NAME due]` and the message and
+  says it in its own voice; no worker, shell, account or cap. A one-shot note leaves the jobs file after it fires.
+- A note that fires while yerkd is down, or whose turn a restart cuts, is told at the next start, and never twice
+  when its reply was already in the room.
+- A room that is not the owner's adds, lists and removes its own notes with the `schedule` tool and sees no other
+  job; agent, script and watcher jobs, and any job for another room, stay the owner's rooms' own, and the refusal
+  says what the room can do instead. `yerk schedule --kind note` adds one from the command line.
+- A held card in a room with `people` shows the call's content in plain words (for a send: the room in its first
+  line, the text below), never the tool call's JSON; the exact call stays in the ledger. The owner's rooms see the
+  exact call as before.
+
 ### budgets-voice (#68)
 
 - The taste rules (one line each: a rule and the rated replies that prove it) fit a rulebook: its budget rises from

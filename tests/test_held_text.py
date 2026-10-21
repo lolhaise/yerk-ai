@@ -1,6 +1,7 @@
 """Checks that an outside action held for your yes, such as a post or a text, shows you its exact text
 before your yes is asked for: inline when it fits one message, as a file right after the line when it does
-cannot close the block it is shown in. Nothing here runs a command or posts anywhere."""
+not, and a code fence inside the text cannot close the block it is shown in; a room with people is shown
+never its JSON. Nothing here runs a command or posts anywhere."""
 
 from __future__ import annotations
 
@@ -62,3 +63,42 @@ def test_a_fence_inside_the_text_cannot_close_the_block() -> None:
     _, line = gates.held("a public post", "x", "approve", exact="before ``` after")
     body = line.split("\n```\n", 1)[1]
     assert body.endswith("\n```") and "```" not in body[:-4]
+
+
+def hold(state: Path, ti: dict, people: bool = False) -> tuple[Yerkd, RecFiles]:
+    """A send from example-room to another room, held; `people`: the room lists a person (a placeholder id)."""
+    state.mkdir()
+    y = Yerkd(EXAMPLE_PRIVATE, state)
+    if people:
+        y.room_confs["example-room"] = {**y.room_confs["example-room"], "privacy": "family", "people": [31]}
+    ch = RecFiles()
+    y.add_room("example-room", ch)
+    SessionTable(state / "sessions.json").bind("example-room", "sid-g", "one")
+
+    async def go() -> None:
+        await y.hook({"session_id": "sid-g", "hook_event_name": "PreToolUse", "tool_name": "mcp__yerk__send", "tool_input": ti})
+        await asyncio.sleep(0.1)
+    asyncio.run(go())
+    return y, ch
+
+
+def test_a_held_send_in_a_room_with_people_shows_its_words_and_the_owners_room_still_sees_the_call(tmp_path) -> None:
+    """Seen live: a person's room was shown the raw `mcp__yerk__send {...}` call on a held card. A room with
+    people is shown the call's content in plain words, the room it goes to in the first line and the text below, inline
+    or, when long, as the file; the exact call stays in the ledger as the receipt. The owner's room still sees the exact
+    call the word releases."""
+    send = {"room": "example-quiet", "text": "They asked to hear once the deals are signed.\n\nWant a check after the trip?"}
+    head = f"{words.WORKING} held: a send to another room (example-quiet)\nsay approve here to let it run once\n"
+    y, ch = hold(tmp_path / "people", send, people=True)
+    assert ch.notes == [head + f"```\n{send['text']}\n```"] and ch.files == []
+    assert "mcp__yerk__send" not in ch.notes[0] and "{" not in ch.notes[0]
+    row, = y.ledger.rows(5, "approvals")
+    assert row["call"] == gates.call_key("mcp__yerk__send", send)                   # the exact call: the receipt
+    long = {"room": "example-quiet", "text": "word " * 400}
+    _, ch = hold(tmp_path / "long", long, people=True)
+    assert ch.notes == [head + words.HELD_ATTACHED] and ch.files == [(long["text"] + "\n", words.HELD_FILE)]
+    _, ch = hold(tmp_path / "owner", send)                                          # the owner's room: as before
+    assert ch.notes == [head + f"```\n{gates.call_key('mcp__yerk__send', send)}\n```"]
+    assert gates.plain("Bash", {"command": "gh  issue comment 1 --body 'x'"}) == gates.call_key("Bash", {"command": "gh issue comment 1 --body 'x'"})
+    assert gates.plain("mcp__mail__send", {"to": "the example list", "file": "/srv/x/notes.pdf", "body": ""}) == \
+        "to: the example list\nfile: notes.pdf"

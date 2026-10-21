@@ -558,8 +558,9 @@ def main(argv: list[str] | None = None) -> int:
     sc.add_argument("name", nargs="?", help="the job's name: lowercase letters, digits, hyphens")
     sc.add_argument("--when", help='add: a date and time ("2026-03-09 09:00", a one-shot), "every 2h", or a cron '
                     'expression ("0 9 * * 1-5")')
-    sc.add_argument("--what", help="add: the worker's brief (kind agent) or the shell line (kind script)")
-    sc.add_argument("--kind", choices=["agent", "script"], default="agent")
+    sc.add_argument("--what", help="add: the worker's brief (kind agent), the shell line (kind script) or the text "
+                    "the room is told (kind note)")
+    sc.add_argument("--kind", choices=["agent", "script", "note"], default="agent")
     sc.add_argument("--tz", help="add: an IANA zone (default: the room's timezone, else [memory] timezone)")
     sc.add_argument("--room", help="add: the room it lands in (default: the only room)")
     sc.add_argument("--deliver", choices=["announce", "silent"], default="announce")

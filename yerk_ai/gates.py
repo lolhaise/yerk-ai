@@ -242,13 +242,24 @@ def call_key(tool: str, ti: dict[str, Any]) -> str:
     return f"{tool} {json.dumps(ti, sort_keys=True, ensure_ascii=False)}"
 
 
+def plain(tool: str, ti: dict[str, Any]) -> str:
+    """A held call as a person reads it, for the card in a room with people: a shell command as call_key has it
+    (the command is the content), a send's text (the card's first line names its room), any other input one per
+    line with paths as their names; never the call's JSON, which stays in the ledger as the receipt."""
+    if tool == "Bash":
+        return call_key(tool, ti)
+    return "\n".join(str(v) if k == "text" else f"{k}: {words.no_paths(str(v))}" for k, v in ti.items()
+                     if k != "room" and v not in ("", None))
+
+
 SHOW = 1500        # the most of a held call's exact text one message shows; longer goes as a file (the daemon)
 
 
 def held(what: str, call: str, word: str, exact: str = "") -> tuple[str, str]:
     """(for the model, for the room). The room sees the exact text the word would release, the call as
     the approval matches it (call_key), so nobody is asked for a yes on words they have not read: inline
-    when it fits one message, else a line saying the file below holds it."""
+    when it fits one message, else a line saying the file below holds it. A room with people is shown the
+    call's content in plain words instead (plain); the exact call stays in the ledger."""
     line = f"{words.WORKING} {words.HELD.format(what=what, word=word)}"
     if exact:
         shown = exact.replace("```", "``​`")            # a fence inside the text cannot close the block
