@@ -33,24 +33,30 @@ def reads(line: bytes, daylog: bool) -> bool:
         return False
 
 
-def mend(path: Path, daylog: bool, backup: Path, dry: bool) -> list[int]:
-    """The lines of `path` that hold a NUL byte (from 1), mended unless `dry`, the file copied into `backup` first."""
+def rewrite(path: Path, backup: Path, fix: Callable[[bytes], bytes | None], dry: bool) -> list[int]:
+    """The lines of `path` (from 1) that `fix` changes (it gets each line with its newline and answers the new bytes,
+    or None to keep it), rewritten unless `dry`, the file copied into `backup` first and its mode kept."""
     data = path.read_bytes()
-    if b"\0" not in data:
-        return []
     parts = [x + b"\n" for x in data.split(b"\n")]
     parts[-1] = parts[-1][:-1]                               # what follows the last newline, if anything
-    hit = [i for i, x in enumerate(parts) if b"\0" in x]
-    if not dry:
+    new = {i: y for i, x in enumerate(parts) if (y := fix(x)) is not None and y != x}
+    if new and not dry:
         backup.mkdir(parents=True, exist_ok=True)
         dest = backup / f"{path.parent.name}.{path.name}"
         write_private(dest.with_name(f"{dest.name}.{time.time_ns()}") if dest.exists() else dest, data)
-        for i in hit:                                        # a long write's first page can outlive the rest: the line a
-            x = parts[i].rstrip(b"\n")                       # writer glued on after the NULs first, else the line without them
-            x = next((y for y in (x.rsplit(b"\0", 1)[1], x.replace(b"\0", b"")) if reads(y, daylog)), b"")
-            parts[i] = x + b"\n" if x else b"\n" if daylog else b""
-        write_private(path, b"".join(parts), stat.S_IMODE(path.stat().st_mode))
-    return [i + 1 for i in hit]
+        write_private(path, b"".join(new.get(i, x) for i, x in enumerate(parts)), stat.S_IMODE(path.stat().st_mode))
+    return [i + 1 for i in new]
+
+
+def mend(path: Path, daylog: bool, backup: Path, dry: bool) -> list[int]:
+    """The lines of `path` that hold a NUL byte (from 1), mended unless `dry`, the file copied into `backup` first."""
+    def fix(line: bytes) -> bytes | None:                    # a long write's first page can outlive the rest: the line a
+        if b"\0" not in line:                                # writer glued on after the NULs first, else the line without them
+            return None
+        x = line.rstrip(b"\n")
+        x = next((y for y in (x.rsplit(b"\0", 1)[1], x.replace(b"\0", b"")) if reads(y, daylog)), b"")
+        return x + b"\n" if x else b"\n" if daylog else b""
+    return rewrite(path, backup, fix, dry)
 
 
 def repair(private: Path, state: Path, m: memory.Settings, flight: set[str], dry: bool = False,
