@@ -177,7 +177,7 @@ class Room:
                 return "busy"
             self.busy = True
         t = self._compact_held("asked")
-        return "ok" if t.outcome in ("ok", "empty") else t.outcome     # /compact answers with no text
+        return "ok" if t.outcome in ("ok", "empty", "compacted") else t.outcome
 
     def idle_compact(self, now: float | None = None) -> bool:
         """`yerk room compact`, by the daemon (its reaper's minute): a room with no turn and nothing queued for `compact_after`
@@ -211,8 +211,7 @@ class Room:
                 alive = self.rp is not None and self.rp.alive()
             if not alive:
                 self._start(self._account())
-            assert self.rp
-            t = self.rp.ask("/compact", self.turn_timeout)
+            t = self._slash_compact()
             before, self.context = self.context, t.context or self.context
             log.info("room %s: compact (%s) ended %s in %.0f s, %d to %d tokens", self.name, why, t.outcome, time.time() - started, before, self.context)
             return t
@@ -675,7 +674,13 @@ class Room:
             alive = self.rp is not None and self.rp.alive()
         if not alive:
             self._start(account)
-        assert self.rp
         self._note(words.COMPACTING)
-        t = self.rp.ask("/compact", self.turn_timeout)
-        log.info("room %s: compact ended %s", self.name, t.outcome)
+        log.info("room %s: compact ended %s", self.name, self._slash_compact().outcome)
+
+    def _slash_compact(self) -> Turn:
+        """/compact, both paths' one call: no text comes back, so a row that compacted says so, never a failed turn."""
+        assert self.rp
+        t = self.rp.read_turn(self.rp.send("/compact"), self.turn_timeout, record=False)
+        t.outcome = "compacted" if t.compacted is not None and t.outcome in ("ok", "empty") else t.outcome
+        self.rp.record(t)                         # read by yerk status --json's failed turns
+        return t

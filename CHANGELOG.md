@@ -17,6 +17,8 @@ with the originals kept under `backups/`; the index chunks every file again when
   `idle_compact_at = 0` turns it off.
 - A message sent during `yerk room compact` runs right after it; it waited for the next message before.
 - Each turn's ledger row holds the session's size in tokens (`context`).
+- A compaction's own row (this one or `yerk room compact`) has the outcome `compacted`, so `yerk status --json` never
+  lists one among the day's failed turns (its empty answer read as a failed turn before).
 
 **Upgrading**: `budgets.toml` gained `[session] idle_compact_at` and `idle_compact_after`; the ledger adds its column
 at the next start. Nothing to do.

@@ -141,7 +141,7 @@ def answer(text):
             return result("Error during compaction: fake", error=True)
         out({"type": "system", "subtype": "compact_boundary", "session_id": sid, "uuid": str(uuid.uuid4()),
              "compact_metadata": {"trigger": "manual", "post_tokens": int(os.environ.get("FAKE_CLAUDE_POST") or 20000)}})
-        return result("Compacted.")
+        return result("")                 # 2.1.304 answers /compact with no text (the live ledger's rows 513, 514)
     if "TOO_LONG_ONCE" in text and mark and not os.path.exists(f"{mark}.compacted"):
         out({"type": "assistant", "error": "invalid_request",
              "message": {"content": [{"type": "text", "text": "Prompt is too long"}]}})

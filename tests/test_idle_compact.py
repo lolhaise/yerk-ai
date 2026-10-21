@@ -98,6 +98,7 @@ def test_the_reaper_compacts_a_room_idle_near_its_window_once_and_the_next_messa
     assert compactions(tmp_path) == 1
     rows = y.ledger.rows(2)                                  # the /compact's own row holds the size after it
     assert [r["context"] for r in rows] == [20000, 200000] and rows[0]["session_id"] == rows[1]["session_id"]
+    assert rows[0]["outcome"] == "compacted" and y.ledger.turn_summary(0)[1] == []   # never one of the day's failed turns
     reap(y, room, IDLE)                                      # once per growth: not again at this size
     wait_idle(room)
     assert compactions(tmp_path) == 1

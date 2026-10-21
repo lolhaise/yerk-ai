@@ -385,7 +385,7 @@ class Ledger:
     def turn_summary(self, since: float) -> tuple[dict[str, float], list[dict[str, Any]]]:
         """(each room's last answered turn's end, the failed turns since `since` by room, outcome and class with a count)."""
         ok = self._select("SELECT room, max(ended) AS ended FROM turns WHERE outcome = 'ok' GROUP BY room", ())
-        failed = self._select("SELECT room, outcome, failure, count(*) AS n FROM turns WHERE started >= ? AND outcome != 'ok' "
+        failed = self._select("SELECT room, outcome, failure, count(*) AS n FROM turns WHERE started >= ? AND outcome NOT IN ('ok', 'compacted') "
                               "GROUP BY room, outcome, failure ORDER BY room", (since,))
         return {str(r["room"]): float(r["ended"]) for r in ok if r["ended"] is not None}, failed
 
