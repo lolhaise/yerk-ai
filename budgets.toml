@@ -98,4 +98,5 @@ duplicated_topics = 0
 # 2026-10-21: harness-expert raised it by 429 on purpose, the lines of `yerk docs` and the rule-shape check (the owner's
 # ask), not folded to fit; its cold read cut 2 dead lines of the 431, and its recall guard added 23 (the docs out of what a
 # room is handed per message and below the owner's notes in its own recall, the doctor's fetch switch, explain by command).
-lines = 15762
+# 2026-10-21: sheet-rule raised it by 50, the sheet shadow rule and its call (the owner's ask), not folded to fit.
+lines = 15812

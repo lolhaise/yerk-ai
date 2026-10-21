@@ -1085,6 +1085,15 @@ free_path = "this is the free path"
 asked_as = ["stance check", "fold when i push back", "agree with whoever pushes back", "do you just agree with me"]
 layer = 6
 
+[abilities.sheet]
+state = "built"
+what = "The sheet rule, in shadow: a turn that sends a document through the send tool (.docx, .pdf, .xlsx, .pptx, .txt, .md or .csv) or pastes a block (a fenced block with no language tag, or tagged text, plain or none) in its reply or in a send's text, with no claims sheet written or named in the turn (a Write, Edit or NotebookEdit of a file whose name holds claims and ends in .md, .txt or .csv, or a shell command naming one), is ledgered once and counted in the morning diff; nothing is blocked, it measures how often a room ships something in the owner's name without checking its claims against source first."
+tier = "free"
+needs = "nothing beyond the evidence ledger; the document suffixes, the paste tags and the sheet's name are short lists in the code, not a model"
+free_path = "this is the free path"
+asked_as = ["sheet rule", "claims sheet", "did you check the claims", "sent it without checking"]
+layer = 6
+
 [abilities.jobs]
 what = "Scheduled jobs from one private jobs.toml: `yerk jobs sync` makes one systemd user timer and service per job (idempotent: unchanged left alone, changed rewritten, removed disabled and cleaned), shows the diff and reads every next fire time back from systemd; `yerk jobs list` is the read-back. Three schedules (a cron expression with a tz, an interval, a one-shot that is removed after it fires), two kinds: a script (its command run in the unit with no account, its output posted to the room; exit 0 with nothing posts nothing; a failure alerts the ops room) and an agent job (a worker with the message as its brief, its last message told by the room, exactly NO_REPLY for silence). Every run is a job_runs ledger row; `yerk status` lists the jobs with their next fire time. `yerk explain jobs` describes every key of the file."
 tier = "free"
