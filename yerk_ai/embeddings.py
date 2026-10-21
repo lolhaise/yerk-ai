@@ -50,7 +50,7 @@ RETRIES = 3              # the retry budget per backfill request, 1, 2 and 4 s a
 PAUSE = 60.0             # seconds the backfill rests after a request spends its budget
 GAP = 0.25               # seconds between backfill requests: the provider and the CPU are shared
 BLOCK = 16384            # rows per block of the store, and per step of the scan (float16 rows widened to float32 a block at a time)
-HIGH_BASE = 160 << 20    # bytes yerk-index holds beside its store: its unit's MemoryHigh rule is this and a block per BLOCK vectors
+HIGH_BASE = 256 << 20    # bytes yerk-index holds beside its store: its unit's MemoryHigh rule is this and a block per BLOCK vectors
 LOAD_ROWS = 4096         # rows fetched per step of the load: the temporary copies stay small, so the load peak stays near the steady size
 KEY_SHAPE = re.compile(r"sk-[A-Za-z0-9_-]{6,}")
 

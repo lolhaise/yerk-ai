@@ -291,7 +291,7 @@ def test_the_four_index_checks_each_fire_on_their_case_and_are_quiet_when_all_is
                                                                  "embeddings": {"vectors": 861965, "width": 256, **emb}}))
         return [x for x in doctor.run(priv, state, dry=True) if x.startswith(("memory index", "meaning search", "memory roots"))]
     assert index(1 << 30, paused=False, streak=0) == [] and index("max", paused=True, streak=2) == []
-    assert index(450 << 20) == ["memory index: memory capped at 450M, under the 600M its unit's rule gives 861,965 vectors"]
+    assert index(450 << 20) == ["memory index: memory capped at 450M, under the 696M its unit's rule gives 861,965 vectors"]
     stuck = 'HTTP 400 from the provider: {\n  "error": {\n    "message": "Invalid \'input\': maximum request size is 300000 tokens'
     assert index("max", paused=True, streak=3, failed=9, last_error=stuck) == [
         "meaning search: backfill paused after 3 failures: " + ' '.join(stuck.split())[:100]]

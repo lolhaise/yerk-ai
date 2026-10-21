@@ -464,6 +464,6 @@ def test_a_batch_past_the_providers_cap_splits_by_size_and_a_stuck_set_drains(tm
 # 14. the unit's sizing rule and the doctor's are one rule
 def test_the_index_units_memory_rule_is_the_one_the_doctor_checks():
     text = (Path(__file__).resolve().parents[1] / "units" / "yerk-index.service").read_text()
-    assert "MemoryHigh = 160M + 8.3M per block of 16,384 vectors" in " ".join(x.lstrip("# ") for x in text.splitlines())
-    assert embeddings.HIGH_BASE == 160 << 20 and embeddings.BLOCK == 16384
+    assert "MemoryHigh = 256M + 8.3M per block of 16,384 vectors" in " ".join(x.lstrip("# ") for x in text.splitlines())
+    assert embeddings.HIGH_BASE == 256 << 20 and embeddings.BLOCK == 16384
     assert round(embeddings.BLOCK * (2 * 256 + 20) / 2**20, 1) == 8.3
