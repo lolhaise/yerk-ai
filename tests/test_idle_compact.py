@@ -60,13 +60,22 @@ def wait_idle(room, timeout=20):
 
 
 def reap(y, room=None, idle=0.0):
-    """A few passes of the daemon's own reaper (Yerkd.reap, its minute cut to 0.05 s), `room` idle `idle` seconds first."""
+    """Two whole passes of the daemon's own reaper (Yerkd.reap, its minute cut to 0.01 s; a pass ends with the workers'
+    reconcile, counted here), `room` idle `idle` seconds first. A compaction a pass starts may still be running after."""
     if room is not None:
         room.last_active = time.time() - idle
 
     async def passes():
-        task = asyncio.create_task(y.reap(0.05))
-        await asyncio.sleep(0.3)
+        ended = []
+        two = asyncio.Event()
+
+        async def counted():
+            ended.append(1)
+            if len(ended) >= 2:
+                two.set()
+        y.workers.reconcile = counted
+        task = asyncio.create_task(y.reap(0.01))
+        await asyncio.wait_for(two.wait(), 30)
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
     asyncio.run(passes())
