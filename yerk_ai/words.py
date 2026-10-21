@@ -127,6 +127,9 @@ RELAY_ASK = ("[tell the room the outcome in your own voice, under {cap:,} charac
              "\"{saved}\"; no file path and no exit code; {where}; do not paste it]")
 WORKERS_OWNER_ONLY = "only the owner's rooms can use workers"       # start, report, list, stop
 JOBS_OWNER_ONLY = "not scheduled: only this room's notes\nscripts and workers run as the owner"   # a room not the owner's
+NOTES_FULL = "not scheduled: this room keeps {most} notes at most\nthe next once one is removed or has fired"   # [jobs] caps
+NOTES_WAIT = "not scheduled: one note per {every} min here\nthe next in {wait}"
+NOTE_LONG = "not scheduled: a note is at most {most:,} characters\nthis one is {n:,}"
 RULES_OWNER_ONLY = "only the owner's rooms can file rules"           # remember with a job: a rule reaches every room
 RULE_FILED = "from now on every room does {job} this way"            # the line a filed rule's reply says
 WORKER_OWN_ROOM = "a room starts workers for itself only, not for {room}"

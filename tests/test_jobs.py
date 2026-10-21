@@ -3,13 +3,14 @@ The cases: the three schedule kinds compute the right next fire, sync is idempot
 diff, a removed job is cleaned, a script job's three exit cases deliver, stay silent and alert, an agent
 job becomes a worker with the right account and cap and relays, NO_REPLY is silent, a note is told by
 its room's own session (late after a restart, never twice), the schedule tool round-trips through the
-owner's keeps its own notes and nothing else."""
+owner's keeps its own notes and nothing else, under its caps."""
 import asyncio
 import hashlib
 import io
+import json
 import subprocess
 import time
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -689,3 +690,80 @@ def test_a_room_with_people_keeps_its_own_notes_and_every_other_job_stays_the_ow
     assert ask(mom, action="remove", name="Trip-Deals ") == {"ok": True, "name": "trip-deals", "removed": True}
     assert "trip-deals" not in path.read_text() and "nightly" in path.read_text() and not sd.read("yerk-job-trip-deals.timer")
     assert {"example-heartbeat", "nightly"} <= {x["name"] for x in ask("example-room", action="list")["jobs"]}   # the owner's: all
+
+
+def test_a_room_that_is_not_the_owners_keeps_room_notes_at_most_and_adds_one_per_room_note_minutes(tmp_path):
+    """Cold read C7 (2026-10-21): a person's room could hold any number of notes and add one every 30 seconds, each a
+    model turn on the owner's account and a post in her channel. [jobs] room_notes (20) and room_note_minutes (5) cap
+    it; the refusal says the cap and when the next one fits; a refused add does not count; the owner's rooms have none."""
+    from test_room_scope import install
+    y, mom = install(tmp_path, family=True), "Alex"
+    y.jobs.units = FakeSystemd(tmp_path / "units")
+
+    def ask(caller, name, when="2099-01-03 10:00"):
+        return asyncio.run(y.tool_schedule(caller, {"action": "add", "kind": "note", "name": name, "when": when,
+                                                    "what": "Remind them to call the clinic."}))
+    assert not ask(mom, "bad", when="soon")["ok"] and ask(mom, "one")["ok"]          # the refused add did not count
+    wait = ask(mom, "two")
+    assert wait == {"ok": False, "line": W.NOTES_WAIT.format(every="5", wait="5 min")}
+    assert wait["line"].splitlines() == ["not scheduled: one note per 5 min here", "the next in 5 min"]
+    y.jobs.conf.update(room_notes=2, room_note_minutes=0)
+    assert ask(mom, "two")["ok"]
+    full = ask(mom, "three")
+    assert full == {"ok": False, "line": W.NOTES_FULL.format(most=2)} and "[jobs.three]" not in y.jobs.path.read_text()
+    assert full["line"].splitlines()[0] == "not scheduled: this room keeps 2 notes at most"
+    assert asyncio.run(y.tool_schedule(mom, {"action": "remove", "name": "one"}))["ok"] and ask(mom, "three")["ok"]
+    y.jobs.conf.update(room_notes=1, room_note_minutes=5)
+    assert all(ask("example-room", f"owner-{i}")["ok"] for i in range(3))            # the owner's rooms: no cap
+    out = io.StringIO()
+    with redirect_stdout(out):
+        assert cli.main(["explain", "jobs", "--private", str(y.jobs.path.parent), "--state", str(tmp_path / "state")]) == 0
+    said = out.getvalue()
+    assert "keys of [jobs] in the private yerkd.toml:" in said and "  ops_room: " in said
+    assert all(f"  {k}: " in said and f"(default {d})" in said for k, d in (("room_notes", 20), ("room_note_minutes", 5),
+                                                                           ("note_chars", 600)))
+
+
+def test_a_notes_message_over_note_chars_is_refused_with_the_cap_and_never_cut(tmp_path):
+    """Cold read A2: a note's text had no ceiling anywhere, and the tell cuts nothing. A note's message is at most
+    [jobs] note_chars (600) characters in every room and from `yerk schedule`; a longer one is refused with the cap in
+    the line and nothing is written."""
+    from test_room_scope import install
+    y, mom = install(tmp_path, family=True), "Alex"
+    y.jobs.units = sd = FakeSystemd(tmp_path / "units")
+    note = {"action": "add", "kind": "note", "when": "2099-01-03 10:00"}
+    long = asyncio.run(y.tool_schedule(mom, {**note, "name": "long", "what": "x" * 601}))
+    assert long == {"ok": False, "error": W.NOTE_LONG.format(most=600, n=601)}
+    assert long["error"].splitlines() == ["not scheduled: a note is at most 600 characters", "this one is 601"]
+    assert asyncio.run(y.tool_schedule("example-room", {**note, "name": "long", "what": "x" * 601})) == long
+    assert "[jobs.long]" not in y.jobs.path.read_text()
+    assert asyncio.run(y.tool_schedule(mom, {**note, "name": "fits", "what": "x" * 600}))["ok"]
+    priv = y.jobs.path.parent
+    (priv / "yerkd.toml").write_text((priv / "yerkd.toml").read_text() + "\n[jobs]\nnote_chars = 10\n")
+    monkey, err = pytest.MonkeyPatch(), io.StringIO()
+    monkey.setattr(jobs, "Systemd", lambda: sd)
+    try:
+        with redirect_stdout(io.StringIO()), redirect_stderr(err):
+            rc = cli.main(["schedule", "add", "short", "--kind", "note", "--when", "2099-01-03 10:00", "--what", "x" * 11,
+                           "--room", mom, "--private", str(priv), "--state", str(tmp_path / "state")])
+    finally:
+        monkey.undo()
+    assert rc == 1 and "a note is at most 10 characters" in err.getvalue() and "[jobs.short]" not in y.jobs.path.read_text()
+
+
+def test_the_schedule_tool_sets_a_note_by_default_in_a_room_that_is_not_the_owners(tmp_path, monkeypatch):
+    """Cold read C3: the tool's `kind` defaulted to "agent", the one kind a person's room can never set, so her call
+    with no kind was refused with a line that never says `kind "note"`. In a room that is not the owner's a missing
+    kind is a note; the owner's rooms keep "agent"."""
+    from test_room_scope import install
+
+    from yerk_ai import mcp_server
+    y, mom = install(tmp_path, family=True), "Alex"
+    y.jobs.units = FakeSystemd(tmp_path / "units")
+    server = mcp_server.build(y, y.port, y.hook)
+    for room, kind in ((mom, "note"), ("example-room", "agent")):
+        monkeypatch.setattr(mcp_server, "caller_room", lambda ctx, room=room: room)
+        got = asyncio.run(server.call_tool("schedule", {"action": "add", "name": f"call-{kind}", "when": "2099-01-03 10:00",
+                                                        "what": "Remind them to call the clinic."}))
+        out = json.loads((got[0] if isinstance(got, tuple) else got)[0].text)
+        assert out["ok"] and (out["kind"], out["room"]) == (kind, room), out

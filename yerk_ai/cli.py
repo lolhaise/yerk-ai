@@ -163,7 +163,8 @@ def cmd_schedule(a: argparse.Namespace) -> int:
             print(f"--room: no room {room!r}; rooms: {', '.join(rs) or 'none'}", file=sys.stderr)
             return 2
         out = jobs.schedule_add(path, units, env, a.name, a.kind, a.when, a.what, room,
-                                a.tz or jobs.default_tz(rs, room, conf), a.deliver, a.cap, a.account or "")
+                                a.tz or jobs.default_tz(rs, room, conf), a.deliver, a.cap, a.account or "",
+                                int(conf.get("jobs", {}).get("note_chars", jobs.NOTE_CHARS)))
     if a.json:
         print(json.dumps(out, default=str))
     elif not out["ok"]:
@@ -434,9 +435,10 @@ def cmd_explain(a: argparse.Namespace) -> int:
     print("\n".join(abilities.explain(a.ability, ab, table_, s)))     # one state line: the first (STYLE 1)
     if a.ability in ("jobs", "watchers"):     # the jobs file's keys, from the code (decision 16)
         from . import jobs
-        print("keys of a [jobs.NAME] table in the private jobs.toml:")
-        for key, words in jobs.KEYS.items():
-            print(f"  {key}: {words}")
+        for head, table in (("a [jobs.NAME] table in the private jobs.toml", jobs.KEYS), ("[jobs] in the private yerkd.toml", jobs.CONF)):
+            print(f"keys of {head}:")
+            for key, words in table.items():
+                print(f"  {key}: {words}")
     if a.ability == "retention":              # the days this install keeps, from its yerkd.toml
         from . import retention
         print(retention.here(private_dir(a.private)))

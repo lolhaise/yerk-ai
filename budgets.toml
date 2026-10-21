@@ -83,6 +83,6 @@ reply = 1500
 # only goes down: the budget test fails when the package grows past it and also when it
 # shrinks under it, so a change that cuts lowers this number in the same commit, and a
 # change that adds cuts as much somewhere else. A change that raises it is not merged.
-# 2026-10-21: note-jobs raised it by 92, the note kind, its gate, the plain card and its restart replay (the owner's
-# ask), not folded to fit; its cold read added 1 of the 92.
-lines = 15402
+# 2026-10-21: note-jobs raised it by 122, the note kind, its gate, the plain card, its restart replay and its caps (the
+# owner's ask), not folded to fit; its cold read added 1 of the 122 and the caps 30.
+lines = 15432

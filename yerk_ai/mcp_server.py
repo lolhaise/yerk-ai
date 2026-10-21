@@ -151,13 +151,14 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         return json.dumps(await daemon.tool_worker(caller_room(ctx), req))
 
     @mcp.tool()
-    async def schedule(action: str, name: str = "", when: str = "", what: str = "", kind: str = "agent",
+    async def schedule(action: str, name: str = "", when: str = "", what: str = "", kind: str = "",
                        tz: str = "", deliver: str = "announce", room: str = "", cap_minutes: float = 0,
                        account: str = "", *, ctx: Context) -> str:
         """Timed work that lands in a room, kept on systemd timers that outlive the daemon. action
         "add": `name` (lowercase letters, digits, hyphens); `when` is a date and time ("2026-03-09 09:00":
         a one-shot, removed after it fires), "every 2h" (an interval), or a cron expression
-        ("0 9 * * 1-5"); `tz` an IANA zone (default: this room's); `what`, by `kind`: "note", a reminder
+        ("0 9 * * 1-5"); `tz` an IANA zone (default: this room's); `what`, by `kind` (default "agent" in the
+        owner's rooms, "note" in any other): "note", a reminder
         (when it is due this room is told the text and says it in its own voice; no worker, shell or
         account); "agent", the brief a worker gets (a headless run with a card here, its last message told
         by this room, exactly NO_REPLY for silence); "script", the shell line to run (no model call, its

@@ -18,11 +18,15 @@ with the originals kept under `backups/`; the index chunks every file again when
 - A room that is not the owner's adds, lists and removes its own notes with the `schedule` tool and sees no other
   job; agent, script and watcher jobs, and any job for another room, stay the owner's rooms' own, and the refusal
   says what the room can do instead. `yerk schedule --kind note` adds one from the command line.
+- Such a room keeps 20 notes at most and adds one per 5 minutes, and its `schedule` call with no `kind` sets a
+  note (the owner's rooms keep "agent"); a note's message is at most 600 characters in every room and from
+  `yerk schedule`, refused, never cut. Each refusal says the cap and when the next fits.
 - A held card in a room with `people` shows the call's content in plain words (for a send: the room in its first
   line, the text below), never the tool call's JSON; the exact call stays in the ledger. The owner's rooms see the
   exact call as before.
-- **Upgrading:** budgets.toml changed ([code] lines, up 92 for the note kind, its gate, the plain card and the note's
-  restart replay). Nothing to do.
+- **Upgrading:** budgets.toml changed ([code] lines, up 122 for the note kind, its gate, the plain card, the note's
+  restart replay and its caps). yerkd.toml takes three optional `[jobs]` keys, listed by `yerk explain jobs`:
+  `room_notes` (20), `room_note_minutes` (5) and `note_chars` (600). Nothing to do.
 
 ### budgets-voice (#68)
 
