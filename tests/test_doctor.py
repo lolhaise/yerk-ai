@@ -2,7 +2,8 @@
 problem in a plain line. Its cases, layer 11: the crash repair of a zeroed line in a day log (backed up, then blank,
 every line number held), in an assembled log and a bound transcript (dropped), and of a line whose text outlived its
 NULs (kept); a room with a turn in flight left alone; each check a plain line (a rooms.toml key no loader reads, a
-tree; a dry run that changes nothing; the morning line; yerkd's repair before any room opens; and every key the
+stale index, a bad class, a token near its end, a secret's mode, hooks not as yerkd puts them, disk growth) and
+repair before any room opens; and every key the
 loaders read from a room in config.ROOM_KEYS."""
 import gc
 import json
@@ -249,6 +250,14 @@ def test_each_other_check_says_one_plain_line(tree, capsys, monkeypatch):
                                   "room example-room: hooks not as yerkd puts them"], out
     assert re.fullmatch(r"token one: (9|10) days left", out[4]) and len(out) == 7, out      # 10 days, less the hours of today
     assert re.fullmatch(r"state folder: grew \d[\d.]* (KB|MB|bytes) in 1 day", out[6]), out
+
+
+def test_the_folder_check_and_the_rule_check_name_themselves_apart_when_neither_can_run(tree):
+    """`layout` is the private folder's check and `rule shape` the rule files'; both were once read as "shape"."""
+    priv, state, *_ = tree
+    (priv / "rooms.toml").write_text("[rooms\n")
+    said = [x.split(",")[0] for x in doctor.run(priv, state) if "not checked" in x]
+    assert said == ["layout: not checked", "rule shape: not checked"], said
 
 
 def test_a_dry_run_says_what_it_would_mend_and_changes_nothing(tree, capsys):

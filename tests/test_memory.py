@@ -601,7 +601,8 @@ def test_two_roots_named_memory_get_cites_of_their_own_and_every_old_cite_opens_
     (b / "only-b.md").write_text("# B\n\n- only the second root has this\n")
     (private / "memory" / "daily").mkdir(parents=True)
     s = memory.settings(private, tmp_path / "state", {"also": [str(a), str(b)], "timezone": "UTC"})
-    assert dict(s.cites) == {(private / "memory").resolve(): "memory", a: "ben/memory", b: "workbot/memory"}
+    assert dict(s.cites) == {(private / "memory").resolve(): "memory", a: "helper/memory", b: "spare/memory",
+                             (tmp_path / "state" / "docs").resolve(): "docs"}                   # the Claude docs (docs.py)
     assert memory.cite(s, b / "2026-01-05.md") == "spare/memory/2026-01-05.md" and memory.cite(s, a / "2026-01-05.md") == "helper/memory/2026-01-05.md"
     assert memory.cite(s, s.daily / "2026-01-05.md") == "memory/daily/2026-01-05.md"           # the install's own tree: as before
     assert "orange" in memory.read(s, "spare/memory/2026-01-05.md:3")["text"] and "teal" in memory.read(s, "helper/memory/2026-01-05.md:3")["text"]

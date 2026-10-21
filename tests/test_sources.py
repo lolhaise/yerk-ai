@@ -372,7 +372,7 @@ def test_a_person_room_never_reads_an_imported_text_or_mail_line(layer, monkeypa
     assert run(priv, state, f"imessage:{tmp / 'chat.db'}", "--contacts", str(tmp / "contacts.db")) == 0
     assert run(priv, state, "gmail") == 0
     s = memory.settings(priv, state)
-    assert [r.name for r in s.scope.roots[1:]] == ["texts", "mail"]
+    assert [r.name for r in s.scope.roots[1:]] == ["texts", "mail", "docs"]          # docs: the Claude docs (docs.py)
     memindex.Index(s.index_db, s.scope).sync()
     her, owner = memory.Reader("cousin-room", "discord:20", False), memory.Reader("home", "discord:10", True)
     for words in ("kettle morning", "Lunch Friday", "statement ready"):

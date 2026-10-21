@@ -8,6 +8,26 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-21
 
+### harness-expert (#69)
+
+- `yerk docs refresh | list | show NAME | shape [ROOM] [--rules]`: the Claude docs Yerk runs on (the prompting guide,
+  each model's prompting page, the Claude Code pages on settings, hooks, memory, sandboxing, MCP, the CLI and the
+  system prompt) are fetched as Markdown into `<state>/docs/claude/` and kept as a memory root of class shared, so a
+  room's own recall and read_memory reach them; they never ride in what a room is handed per message, and in a room's
+  own recall the owner's notes rank above them.
+- The doctor refreshes the pages once a week (`[docs] fetch = false` turns that off; `yerk docs refresh` still
+  fetches), and the morning diff says `docs changed: <slug>` once per change.
+- The doctor scores every rule file a room loads against the prompting guide (no why, loud, untagged examples, alarm
+  marks, a topic said twice): a report per room in `docs/shape/<room>.md`, one totals line in the morning diff, and a
+  finding for a file past a budgets.toml `[shape]` threshold. mechanics.md and examples/private are rewritten in the
+  guide's shape.
+- `yerk explain` takes a command's name (`yerk explain docs`), and the built abilities `claude-docs` and `rule-shape`
+  answer a room asked whether its rules are written the docs' way.
+- **Upgrading:** yerkd.toml takes an optional `[docs]` table (`pages`, `refresh_days` 7, `fetch` true, `topics`,
+  `acronyms`); budgets.toml gains `[shape]` (every threshold 0) and [code] lines rises by 452. The memory index takes
+  `<state>/docs` as a new root at its next start and chunks every file again once; run `yerk docs refresh` once after
+  the deploy so the pages are there before the first weekly run.
+
 ### budgets-voice (#68)
 
 - The taste rules (one line each: a rule and the rated replies that prove it) fit a rulebook: its budget rises from

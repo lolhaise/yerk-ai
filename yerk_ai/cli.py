@@ -328,7 +328,45 @@ def cmd_retention(a: argparse.Namespace) -> int:
 def cmd_doctor(a: argparse.Namespace) -> int:
     """The daily check and the crash repair (doctor.py): a line per finding, none when all is well; --dry-run changes nothing."""
     from . import doctor
-    return doctor.main(private_dir(a.private), state_dir(a.state), a.dry_run)
+    return doctor.main(private_dir(a.private), state_dir(a.state), a.dry_run, refresh=True)
+
+
+def cmd_docs(a: argparse.Namespace) -> int:
+    """The Claude docs Yerk keeps (docs.py): refresh them now, list them, show one; or `shape`, the rule-shape report the
+    doctor writes for each room (shape.py), printed here without a doctor run. Exit 1 on a page not fetched or a count past
+    budgets.toml [shape], 2 on a page that is not on the list."""
+    from . import docs, shape
+    priv, state = private_dir(a.private), state_dir(a.state)
+    conf = docs.settings(priv)
+    if a.action == "refresh":
+        r = docs.refresh(state, conf)
+        print(f"docs: {len(r['new'])} new, {len(r['changed'])} changed, {len(r['same'])} the same" +
+              "".join(f"; changed: {x}" for x in r["changed"]))
+        for x in docs.failed(r):
+            print(x)
+        return 1 if r["failed"] else 0
+    if a.action == "list":
+        print("\n".join(docs.listing(state, conf)))
+        return 0
+    if a.action == "show":
+        path = docs.root(state) / "claude" / f"{a.name}.md"
+        if a.name not in docs.pages(conf) or not docs.SLUG.fullmatch(a.name) or not path.is_file():
+            print(f"no page {a.name!r} kept; pages: {', '.join(docs.pages(conf))}", file=sys.stderr)
+            return 2
+        print(path.read_text(), end="")
+        return 0
+    if a.rules:
+        print(shape.rules_text(), end="")
+        return 0
+    rs, limits = rooms(priv), dict(budgets().get("shape") or {})
+    if a.name and a.name not in rs:
+        print(f"no room {a.name!r} in rooms.toml; rooms: {', '.join(rs)}", file=sys.stderr)
+        return 2
+    r = shape.check(priv, memory.settings(priv, state), rs, conf, datetime.now().timestamp())
+    for name in [a.name] if a.name else r["rooms"]:
+        print(shape.report(name, r, limits, datetime.now().strftime("%Y-%m-%d %H:%M")))
+    print("\n".join(found := shape.findings(r, limits)) or "rule shape: every count is within budgets.toml [shape]")
+    return 1 if found else 0
 
 
 def cmd_curate(a: argparse.Namespace) -> int:
@@ -419,7 +457,8 @@ def _setting_lines(r: dict[str, Any]) -> list[str]:
 
 def cmd_explain(a: argparse.Namespace) -> int:
     """One ability from the manifest (what it does, needs and costs, its free path; how a described
-    one would be built and why it is not), else one setting; state first, plain words, one state line."""
+    one would be built and why it is not), else one setting, else each ability whose entry names the word in its `command`
+    (`yerk explain docs`); state first, plain words, one state line each."""
     from . import abilities, memory
     from .config import state_dir
     from .words import NOT_DONE
@@ -428,8 +467,12 @@ def cmd_explain(a: argparse.Namespace) -> int:
         if (hit := _pick(_settings(a), a.ability)):
             print("\n".join(_setting_lines(hit[0])))
             return 0
-        print(f"{NOT_DONE} no ability or setting {a.ability!r}; abilities: {', '.join(table_)}", file=sys.stderr)
-        return 2
+        if not (served := [n for n, x in table_.items() if a.ability in str(x.get("command", "")).split()]):
+            print(f"{NOT_DONE} no ability, setting or command {a.ability!r}; abilities: {', '.join(table_)}", file=sys.stderr)
+            return 2
+        s = memory.settings(private_dir(a.private), state_dir(a.state))
+        print("\n\n".join("\n".join(abilities.explain(n, table_[n], table_, s)) for n in served))
+        return 0
     s = memory.settings(private_dir(a.private), state_dir(a.state))
     print("\n".join(abilities.explain(a.ability, ab, table_, s)))     # one state line: the first (STYLE 1)
     if a.ability in ("jobs", "watchers"):     # the jobs file's keys, from the code (decision 16)
@@ -577,9 +620,16 @@ def main(argv: list[str] | None = None) -> int:
     rt = sub.add_parser("retention", help="the daily sweep: logs, transcripts, timing rows, finished workers and rooms' scratch "
                         "past their days ([retention] in yerkd.toml) into the trash, and the trash past its days deleted")
     rt.add_argument("--dry-run", action="store_true", help="say what would move and how much, move nothing")
-    dc = sub.add_parser("doctor", help="the daily check (the private folder's shape, rooms.toml keys, memory classes, tokens, "
-                        "the index, hooks, disk growth) and the crash repair of NUL lines, each file backed up first")
+    said = ("the daily check (the private folder's layout, rooms.toml keys, memory classes, tokens, the index, hooks, disk growth, "
+            "the rule files' shape) and the crash repair of NUL lines, each file backed up first; once a week it also fetches "
+            "the Claude docs from the web ([docs] fetch = false in yerkd.toml turns that off)")
+    dc = sub.add_parser("doctor", help=said, description=said)
     dc.add_argument("--dry-run", action="store_true", help="say what would be mended, change nothing")
+    dk = sub.add_parser("docs", help="the Claude docs kept as a memory root every room recalls (refresh, list, show NAME), "
+                        "and shape: every room's rule files scored against the prompting guide")
+    dk.add_argument("action", choices=["refresh", "list", "show", "shape"])
+    dk.add_argument("name", nargs="?", default="", help="show: the page's slug; shape: one room (default: every room)")
+    dk.add_argument("--rules", action="store_true", help="shape: print each count's exact rule")
     cu = sub.add_parser("curate", help="the night's card curation: the sweep (repeats, superseded and past-date lines, cite "
                         "drift), then the day's facts proposed, knocked down, checked and landed only if the bench holds")
     cu.add_argument("--since", default="", help="each day from this date (YYYY-MM-DD) to yesterday, for a backfill")
@@ -600,14 +650,14 @@ def main(argv: list[str] | None = None) -> int:
     dp.add_argument("ref", nargs="?", help="the commit (default: the daemon's tree's HEAD)")
     dp.add_argument("--no-tests", action="store_true", help="skip the fast tests (the card says so)")
     dp.add_argument("--unit", action="store_true", help="also move a systemd-run daemon onto units/yerkd.service")
-    for x in (ac, st, mo, rb, ab, ex, jb, sc, rt, dc, cu, mm, dp):
+    for x in (ac, st, mo, rb, ab, ex, jb, sc, rt, dc, dk, cu, mm, dp):
         x.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else the fake example layer)")
         x.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
     a = p.parse_args(argv)
     return int({"map": cmd_map, "setup-room": cmd_setup_room, "room": cmd_room, "import": cmd_room, "worker": cmd_worker,
                 "jobs": cmd_jobs, "schedule": cmd_schedule, "accounts": cmd_accounts, "status": cmd_status, "morning": cmd_morning,
                 "recall-bench": cmd_recall_bench, "abilities": cmd_abilities, "explain": cmd_explain, "config": cmd_config,
-                "memory": cmd_memory, "deploy": cmd_deploy, "retention": cmd_retention, "doctor": cmd_doctor,
+                "memory": cmd_memory, "deploy": cmd_deploy, "retention": cmd_retention, "doctor": cmd_doctor, "docs": cmd_docs,
                 "curate": cmd_curate}[a.cmd](a))
 
 

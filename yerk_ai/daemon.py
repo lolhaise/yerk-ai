@@ -292,10 +292,12 @@ class Yerkd:
             await self.tell_once(room, "embeddings", NO_KEY_LINE)
         return r
 
-    def search(self, room: str, query: str, k: int = 6, chars: int = 0, wait: float = memory.MEANING_WAIT, deadline: float = 5.0) -> dict[str, Any]:
-        """The recall tool's search, for the tool and the prompt hook alike (which waits less, inside its 10 s): the room's reader in its own scope."""
+    def search(self, room: str, query: str, k: int = 6, chars: int = 0, wait: float = memory.MEANING_WAIT, deadline: float = 5.0,
+               docs: bool = True) -> dict[str, Any]:
+        """The recall tool's search, for the tool and the prompt hook alike (which waits less, inside its 10 s): the room's reader in its own
+        scope; the hook's without the docs root (`docs`), which a room reaches by its own recall and read_memory."""
         rd, s = self.reader(room), self.scoped.get(room, self.memory)
-        return memory.live_first(s, memory.recall(s, query, k, deadline, rd, chars, wait), rd)
+        return memory.live_first(s, memory.recall(s, query, k, deadline, rd, chars, wait, docs), rd)
 
     async def tell_once(self, room: str, what: str, text: str) -> bool:
         """One plain line to the room about `what`, the first time only (a marker file remembers it)."""
@@ -442,7 +444,8 @@ class Yerkd:
         """(names, topics, past, absent), each search decided by code (decision 42), read as the room's reader in its scope: names
         on file (every one for an owner room; for any other, those in files it may read now, R2), each with its best lines from
         the room's whole scope (memory.lines_on), as each name or topic the message asks about gets (words.asked), or the absence
-        line when it has none; the room's own lines on the topic; a question about the past (words.PAST): the recall tool's own search. Off the loop."""
+        line when it has none; the room's own lines on the topic; a question about the past (words.PAST): the recall tool's own search.
+        None of them reads the docs root: a room reaches the docs by its own recall and read_memory. Off the loop."""
         conf, s, rd = self.room_confs.get(room, {}), self.scoped.get(room, self.memory), self.reader(room)
         names: list[dict[str, Any]] = []
         deep: list[dict[str, Any]] = []
@@ -467,8 +470,8 @@ class Yerkd:
                 absent += [] if got or what in keyed else [what]
         topics = memory.topic_hits(self.memory, room, prompt, mine, rid=room_id(room, conf),
                                    owner=self.owner(room)) if conf.get("topic_recall", True) else []
-        past = [h for h in self.search(room, prompt, PAST_HITS, int(self.budgets["per_message"]["on_hit"]["recall"]), 2.0, 3.0).get("hits", [])
-                if not any(f"[m:{m}" in h["text"] for m in mine)] if back else []
+        past = [h for h in self.search(room, prompt, PAST_HITS, int(self.budgets["per_message"]["on_hit"]["recall"]), 2.0, 3.0, docs=False)
+                .get("hits", []) if not any(f"[m:{m}" in h["text"] for m in mine)] if back else []
         return abilities.asked(prompt, self.memory) + names + deep, topics, past, absent     # "can you do voice": the manifest's answer
 
     def rules_news(self, room: str, sid: str = "") -> str:
