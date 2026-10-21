@@ -71,10 +71,10 @@ def _control(state_arg: str | None, payload: dict[str, Any], timeout: float = 60
 
 
 def cmd_room(a: argparse.Namespace) -> int:
-    if a.action == "add":                       # a Discord chat moves in (move.py); the daemon is never touched
+    if a.cmd == "import" or a.action == "add":  # a Discord chat moves in, or its history only (move.py); the daemon is never touched
         import asyncio
-        from .move import add
-        return asyncio.run(add(a))
+        from . import move
+        return asyncio.run(move.imports(a) if a.cmd == "import" else move.add(a))
     out = _control(a.state, {a.action: a.room}, 900 if a.action == "compact" else 60)
     print(json.dumps(out))
     return 0 if out.get("ok") else 1
@@ -491,7 +491,15 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--dry-run", action="store_true", help="add: read and print; write and send nothing")
     r.add_argument("--private", help="add: private folder (default: $YERK_PRIVATE, else the fake example layer)")
     r.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
-    ac = sub.add_parser("accounts", help="tokens, rests and health per account; cool, clear, token, mint, health")
+    im = sub.add_parser("import", help="a chat's whole history into the day logs, no room made: discord:<channel or thread id>, "
+                        "or discord-guild:<guild id> for every chat on the server no room covers (--dry-run: the inventory)")
+    im.add_argument("source", help="discord:<channel or thread id> or discord-guild:<guild id>")
+    im.add_argument("--since", help="the history from this day on, YYYY-MM-DD (default: all of it)")
+    im.add_argument("--files", action="store_true", help="save attachments up to 25 MB too (default: each named with its size, none downloaded)")
+    im.add_argument("--dry-run", action="store_true", help="read and count, write nothing; on one chat, also print every line it would file")
+    im.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else the fake example layer)")
+    im.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
+    ac = sub.add_parser("accounts",help="tokens, rests and health per account; cool, clear, token, mint, health")
     ac.add_argument("action", nargs="?", default="list", choices=["list", "cool", "clear", "token", "mint", "health"])
     ac.add_argument("name", nargs="?", help="cool, clear, token: the account")
     ac.add_argument("minutes", nargs="?", type=float, default=30.0, help="cool: minutes to rest")
@@ -578,7 +586,7 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_jobs(a)
     if a.cmd == "schedule":
         return cmd_schedule(a)
-    return int({"map": cmd_map, "setup-room": cmd_setup_room, "room": cmd_room,
+    return int({"map": cmd_map, "setup-room": cmd_setup_room, "room": cmd_room, "import": cmd_room,
                 "accounts": cmd_accounts, "status": cmd_status, "morning": cmd_morning, "recall-bench": cmd_recall_bench,
                 "abilities": cmd_abilities, "explain": cmd_explain, "memory": cmd_memory, "deploy": cmd_deploy,
                 "retention": cmd_retention}[a.cmd](a))

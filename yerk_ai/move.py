@@ -2,12 +2,14 @@
 block (a template in examples/rooms/, owner.toml or person.toml, over a room of the same kind it is made like), its
 history through the one import below, its test webhook; then the deploy line and the check. Discord through
 discord.py's REST client and the bot token yerkd.toml names, never printed. --dry-run reads and prints, and writes
-and sends nothing. It never restarts the daemon: a deploy runs detached from any room."""
+and sends nothing. It never restarts the daemon: a deploy runs detached from any room. `yerk import` files a chat's
+history, or every chat's on the server, through the same import with no room made."""
 from __future__ import annotations
 
 import argparse
 import json
 import sys
+from contextlib import suppress
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -21,6 +23,10 @@ from .config import REPO, budgets, load_toml, people, private_dir, room_id, room
 MAX_FILE = 25_000_000                               # bytes: a larger attachment is named in its line, not saved
 HOOK = "yerk-test-sender"                           # the test webhook, named as `yerk setup-room` names it
 SINCE = datetime(2015, 1, 1, tzinfo=timezone.utc)   # before Discord: the whole history
+CHATS = {0: "text", 2: "voice", 5: "news", 13: "stage", 15: "forum", 16: "media", 10: "thread", 11: "thread", 12: "private thread"}
+HOLD = (0, 5, 15, 16)                               # the channels threads hang off
+ARCHIVED = (("get_public_archived_threads", False), ("get_private_archived_threads", False),
+            ("get_joined_private_archived_threads", True))     # each paged by the last one's archive time, or its id
 
 
 def made_like(c: dict[str, Any], person: bool) -> bool:
@@ -59,38 +65,46 @@ def toml_lines(head: str, table: dict[str, Any]) -> list[str]:
     return out
 
 
-async def history(http: Any, log: memory.DailyLog, room: str, channel: str, roles: dict[str, str], files: Path,
+async def history(http: Any, log: memory.DailyLog, room: str, channel: str, roles: dict[str, str], files: Path | None,
                   since: datetime = SINCE, dry: bool = False) -> dict[str, int]:
     """The one import: a channel's or thread's messages since `since`, oldest first, each filed by DailyLog.capture
     under the room's id and class, with the role `roles` gives its author (else other) and the author's handle as
     the daemon files a live line; attachments up to MAX_FILE saved into `files` (0700, each 0600) and named in the
-    line. By message id and file name, so a second run only tops up."""
+    line, or with no `files` named with their size only. By message id and file name, so a second run only tops up.
+    `first` and `last` are the ids of the first and last message read (a Discord id holds its time)."""
     msgs: list[dict[str, Any]] = []
     while page := await http.logs_from(channel, 100, before=msgs[-1]["id"] if msgs else None):
         keep = [m for m in page if datetime.fromisoformat(m["timestamp"]) >= since]
         msgs += keep
         if len(keep) < len(page):
             break
-    got = {"messages": len(msgs), "new": 0, "files": 0, "saved": 0}
+    got = {"messages": len(msgs), "new": 0, "files": 0, "saved": 0, "first": int(msgs[-1]["id"]) if msgs else 0,
+           "last": int(msgs[0]["id"]) if msgs else 0}
     for m in reversed(msgs):                        # a page runs newest first
         ref, out = m.get("referenced_message"), []
         said = " ".join(str(ref.get("content") or "").split())[:REPLY_MAX] if ref else ""
         who = (ref["author"].get("global_name") or ref["author"]["username"]) if ref else ""
         text = (f'[a reply to {who}\'s message: "{said}"]\n' if ref else "") + str(m.get("content") or "")
         for i, f in enumerate(m.get("attachments", [])):    # a name the message already used is saved as ID-i-NAME
-            again = any(x["filename"] == f["filename"] for x in m["attachments"][:i])
-            dest, size = files / f"{m['id']}-{f'{i}-' if again else ''}{safe_name(f['filename'])}", int(f.get("size") or 0)
+            again, size = any(x["filename"] == f["filename"] for x in m["attachments"][:i]), int(f.get("size") or 0)
+            dest = files / f"{m['id']}-{f'{i}-' if again else ''}{safe_name(f['filename'])}" if files and size <= MAX_FILE else None
             got["files"] += size <= MAX_FILE
-            if size <= MAX_FILE and not dest.exists():
+            if dest and not dest.exists():
                 got["saved"] += 1
                 if not dry:
-                    files.mkdir(mode=0o700, exist_ok=True)
+                    dest.parent.mkdir(mode=0o700, exist_ok=True)
                     write_private(dest, await http.get_from_cdn(f["url"]))
-            out.append((f"{f['filename']} (saved at {dest})" if size <= MAX_FILE else f["filename"],
-                        file_type(f["filename"], f.get("content_type")), size))
+            out.append((f"{f['filename']} (saved at {dest})" if dest else f["filename"], file_type(f["filename"], f.get("content_type")), size))
         got["new"] += log.capture(room, m["id"], roles.get(m["author"]["id"], "other"), text, out,
                                   when=datetime.fromisoformat(m["timestamp"]), who=m["author"]["username"], dry=dry)
     return got
+
+
+async def login(priv: Path, d: dict[str, Any]) -> discord.Client:
+    """discord.py's REST client, logged in with the bot token yerkd.toml names, read from its file and never printed."""
+    client = discord.Client(intents=discord.Intents.none())
+    await client.login((priv / d["token_file"]).read_text().strip())
+    return client
 
 
 async def add(a: argparse.Namespace) -> int:
@@ -108,8 +122,7 @@ async def add(a: argparse.Namespace) -> int:
               f"--like: {like or 'none'} is no {'person' if a.person else 'owner'} room on Discord to make {room} like",
               file=sys.stderr)
         return 2
-    client = discord.Client(intents=discord.Intents.none())
-    await client.login((priv / d["token_file"]).read_text().strip())
+    client = await login(priv, d)
     try:
         http: Any = client.http                     # the raw REST calls: payloads exactly as Discord takes them
         await http.logs_from(old, 1)                # the old chat is read first: a 403 here stops it before anything is written
@@ -181,3 +194,96 @@ async def add(a: argparse.Namespace) -> int:
     print(f"deploy, detached at a quiet moment: setsid nohup yerk deploy > {state}/deploy-{a.room}.log 2>&1 < /dev/null &")
     print(f"warm-up, after it: curl -s -H 'Content-Type: application/json' -d '{{\"content\": \"...\"}}' \"$(cat {url})\"")
     return 1 if bad else 0
+
+
+async def chats_of(http: Any, guild: str) -> list[dict[str, Any]]:
+    """Every chat on the server in its order, each channel's threads under it, newest first: active and archived, public
+    and the private ones the bot may list; a listing Discord refuses is left out."""
+    chans, found = await http.get_all_guild_channels(guild), (await http.get_active_threads(guild))["threads"]
+    for c, (call, by_id) in ((c, x) for c in chans if c["type"] in HOLD for x in ARCHIVED):
+        before = None
+        with suppress(discord.Forbidden):
+            while (page := await getattr(http, call)(c["id"], before, 100))["threads"]:
+                found += page["threads"]
+                if not page.get("has_more"):
+                    break
+                last = page["threads"][-1]
+                before = last["id"] if by_id else last["thread_metadata"]["archive_timestamp"]
+    cat, threads = {c["id"]: c.get("position", 0) for c in chans if c["type"] == 4}, {t["id"]: t for t in found}.values()
+    top = sorted((c for c in chans if c["type"] in CHATS), key=lambda c: (cat.get(c.get("parent_id"), -1), c.get("position", 0)))
+    return [x for c in top for x in [c, *sorted((t for t in threads if t.get("parent_id") == c["id"]), key=lambda t: -int(t["id"]))]]
+
+
+async def imports(a: argparse.Namespace) -> int:
+    """`yerk import discord:<id>`: a chat's whole history into the day logs through the one import above, with no room
+    made; `discord-guild:<id>`: every chat on the server but those a room covers (its channel or watch) and those in
+    [import] skip. A line is filed under discord:<id>, labelled with the chat's name, class private, unless [import]
+    classes in yerkd.toml gives the id "shared" or "room:<a room's id>" (that room's id and class, so behind its wall,
+    its people `person`); a chat a room covers is filed as that room files it. Each chat is said as it is done, one
+    that fails said and the rest carried on. --dry-run reads and counts and writes nothing: on a server, the inventory
+    (a chat it cannot read counted by Discord's own thread count where there is one); on one chat, also every line."""
+    priv, state, dry = private_dir(a.private), state_dir(a.state), a.dry_run
+    conf = load_toml(priv / "yerkd.toml")
+    d, rs, s, imp = conf["discord"], rooms(priv), memory.settings(priv, state, dict(conf.get("memory", {}))), conf.get("import", {})
+    ids, covers = {room_id(n, c): n for n, c in rs.items()}, {str(c[k]): n for n, c in rs.items() for k in ("channel", "watch") if c.get(k)}
+    classes, skip = {str(k): str(v) for k, v in imp.get("classes", {}).items()}, {str(x) for x in imp.get("skip", [])}
+    wrong = [k for k, v in classes.items() if v not in ("private", "shared") and not (v.startswith("room:") and v[5:] in ids)]
+    kind, _, cid = a.source.partition(":")
+    if wrong or kind not in ("discord", "discord-guild") or not cid.isdigit():
+        print(f"yerkd.toml [import] classes: {', '.join(wrong)}: each is private, shared or room:<the id of a room in rooms.toml>"
+              if wrong else "yerk import takes discord:<channel or thread id> or discord-guild:<guild id>", file=sys.stderr)
+        return 2
+    since = datetime.fromisoformat(a.since).replace(tzinfo=s.tz) if a.since else SINCE
+    day = lambda i: f"{discord.utils.snowflake_time(int(i)).astimezone(s.tz):%Y-%m-%d}"     # a Discord id's day, in the install's zone
+    if a.files and not dry:
+        (priv / "attachments").mkdir(mode=0o700, exist_ok=True)
+    walled: set[str] = set()                        # channels the bot cannot read: their threads are not asked for
+    client, read, msgs, new, failed = await login(priv, d), 0, 0, 0, 0
+    try:
+        http: Any = client.http
+        chats = await chats_of(http, cid) if kind == "discord-guild" else [await http.get_channel(cid)]
+        names = {str(c["id"]): c["name"] for c in chats}
+        for c in chats:
+            ch, room, pid, thread = str(c["id"]), covers.get(f"discord:{c['id']}"), str(c.get("parent_id") or ""), c["type"] in (10, 11, 12)
+            v = classes.get(ch, "private")
+            label, rid, cls = (room, room_id(room, rs[room]), memory.room_class(rs[room])) if room else (
+                c["name"], *((v[5:], "room") if v.startswith("room:") else (f"discord:{ch}", v)))
+            where = f"{'  ' if thread else ''}#{c['name']} {ch} ({CHATS.get(c['type'], 'chat')}{f' in #{names.get(pid, pid)}' if thread else ''})"
+            about = (f"covered by {room}" if room else "in [import] skip" if ch in skip else "not covered") + f"; class {cls}" + (
+                f" behind {ids[rid]}'s wall" if cls == "room" and rid in ids else "")
+            if c["type"] in (15, 16) or kind == "discord-guild" and not dry and (room or ch in skip):
+                print(f"{where}: {'a forum, its posts are the threads under it' if c['type'] in (15, 16) else 'left as it is'}; {about}", flush=True)
+                continue
+            mates = people(ids[rid], rs[ids[rid]]) if cls == "room" and rid in ids else frozenset()
+            log, n, why = memory.DailyLog(s.daily, s.tz, {label: (rid, cls)}), None, "its channel is not readable" if pid in walled else ""
+            try:
+                if not why:
+                    n = await history(http, log, label, ch, {str(d["owner"]): "owner", **{str(p): "person" for p in mates}},
+                                      priv / "attachments" / f"discord-{ch}" if a.files else None, since, dry)
+            except Exception as e:                  # one chat's failure is said, and the rest go on
+                status = e.status if isinstance(e, discord.HTTPException) else 0
+                why = "Yerk's bot cannot read it (403)" if status == 403 else f"Discord said {status}" if status else f"{type(e).__name__}: {e}"
+                walled |= {ch} if status == 403 else set()
+            if n is None:
+                failed += 1
+                est = f"about {c['message_count']:,} messages by Discord's own thread count" if "message_count" in c else "how many unknown"
+                last = f", last message {day(c['last_message_id'])}" if c.get("last_message_id") else ""
+                print(f"{where}: not read, {why}; {est}; made {day(ch)}{last}; {about}", flush=True)
+                continue
+            read, msgs, new = read + 1, msgs + n["messages"], new + n["new"]
+            span = f", {day(n['first'])} to {day(n['last'])}" if n["messages"] else ""
+            saved = f"{n['saved']:,} {'to save' if dry else 'saved'}" if a.files else "named only"
+            print(f"{where}: {n['messages']:,} messages{span}, {n['new']:,} {'to file' if dry else 'filed'}, "
+                  f"{n['messages'] - n['new']:,} there already; {n['files']:,} files up to 25 MB, {saved}; {about}", flush=True)
+            if dry and kind == "discord" and log.shown:
+                print("\n".join(log.shown), flush=True)
+    except discord.HTTPException as e:
+        raise SystemExit(f"Discord said no (403): Yerk's bot cannot read {a.source}; let it in and run this again" if e.status == 403
+                         else f"Discord said {e.status} to {a.source}: {e.text}") from None
+    finally:
+        await client.close()
+    if kind == "discord-guild":
+        cov, skipped = sum(f"discord:{c['id']}" in covers for c in chats), sum(str(c["id"]) in skip for c in chats)
+        print(f"{len(chats)} chats: {read} read, {msgs:,} messages, {new:,} {'to file' if dry else 'filed'}; {failed} not read; "
+              f"{cov} covered by a room; {skipped} in [import] skip")
+    return 1 if failed else 0
