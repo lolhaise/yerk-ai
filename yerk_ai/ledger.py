@@ -431,10 +431,6 @@ class Ledger:
         known(row, HEALTH, "health")
         return self._insert("health", {"at": time.time(), **row})
 
-    def health_between(self, account: str, source: str, since: float, until: float) -> list[dict[str, Any]]:
-        return self._select("SELECT * FROM health WHERE account = ? AND source = ? AND at >= ? AND at < ? ORDER BY id",
-                            (account, source, since, until))
-
     def health_last(self, account: str, source: str | None = None) -> dict[str, Any] | None:
         return self._first(f"SELECT * FROM health WHERE account = ?{'' if source is None else ' AND source = ?'} ORDER BY id DESC "
                            "LIMIT 1", (account,) if source is None else (account, source))
@@ -530,13 +526,6 @@ class Ledger:
         if state:
             sql, args = sql + " AND state = ?", (*args, state)
         return self._select(sql + " ORDER BY created, key", args)
-
-    def delivery_get(self, key: str) -> dict[str, Any] | None:
-        return self._first("SELECT * FROM deliveries WHERE key = ?", (key,))
-
-    def delivery_by_message(self, message_id: str) -> dict[str, Any] | None:
-        """The part a channel message id (an iMessage guid) was recorded for: is this message our own?"""
-        return self._first("SELECT * FROM deliveries WHERE message_id = ? LIMIT 1", (message_id,))
 
     def files_sent_for(self, message_ids: list[str]) -> list[dict[str, Any]]:
         """Files already in the room for any of these inbound messages (a turn a crash cut short): by
