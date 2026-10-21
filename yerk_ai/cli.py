@@ -457,7 +457,8 @@ def _setting_lines(r: dict[str, Any]) -> list[str]:
 
 def cmd_explain(a: argparse.Namespace) -> int:
     """One ability from the manifest (what it does, needs and costs, its free path; how a described
-    one would be built and why it is not), else one setting; state first, plain words, one state line."""
+    one would be built and why it is not), else one setting, else each ability whose entry names the word in its `command`
+    (`yerk explain docs`); state first, plain words, one state line each."""
     from . import abilities, memory
     from .config import state_dir
     from .words import NOT_DONE
@@ -466,8 +467,12 @@ def cmd_explain(a: argparse.Namespace) -> int:
         if (hit := _pick(_settings(a), a.ability)):
             print("\n".join(_setting_lines(hit[0])))
             return 0
-        print(f"{NOT_DONE} no ability or setting {a.ability!r}; abilities: {', '.join(table_)}", file=sys.stderr)
-        return 2
+        if not (served := [n for n, x in table_.items() if a.ability in str(x.get("command", "")).split()]):
+            print(f"{NOT_DONE} no ability, setting or command {a.ability!r}; abilities: {', '.join(table_)}", file=sys.stderr)
+            return 2
+        s = memory.settings(private_dir(a.private), state_dir(a.state))
+        print("\n\n".join("\n".join(abilities.explain(n, table_[n], table_, s)) for n in served))
+        return 0
     s = memory.settings(private_dir(a.private), state_dir(a.state))
     print("\n".join(abilities.explain(a.ability, ab, table_, s)))     # one state line: the first (STYLE 1)
     if a.ability in ("jobs", "watchers"):     # the jobs file's keys, from the code (decision 16)
@@ -615,8 +620,10 @@ def main(argv: list[str] | None = None) -> int:
     rt = sub.add_parser("retention", help="the daily sweep: logs, transcripts, timing rows, finished workers and rooms' scratch "
                         "past their days ([retention] in yerkd.toml) into the trash, and the trash past its days deleted")
     rt.add_argument("--dry-run", action="store_true", help="say what would move and how much, move nothing")
-    dc = sub.add_parser("doctor", help="the daily check (the private folder's shape, rooms.toml keys, memory classes, tokens, "
-                        "the index, hooks, disk growth) and the crash repair of NUL lines, each file backed up first")
+    said = ("the daily check (the private folder's layout, rooms.toml keys, memory classes, tokens, the index, hooks, disk growth, "
+            "the rule files' shape) and the crash repair of NUL lines, each file backed up first; once a week it also fetches "
+            "the Claude docs from the web ([docs] fetch = false in yerkd.toml turns that off)")
+    dc = sub.add_parser("doctor", help=said, description=said)
     dc.add_argument("--dry-run", action="store_true", help="say what would be mended, change nothing")
     dk = sub.add_parser("docs", help="the Claude docs kept as a memory root every room recalls (refresh, list, show NAME), "
                         "and shape: every room's rule files scored against the prompting guide")

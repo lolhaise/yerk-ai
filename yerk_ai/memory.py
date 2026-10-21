@@ -640,18 +640,19 @@ def fuse(keywords: list[dict[str, Any]], vectors: list[dict[str, Any]], k: int, 
 
 
 def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader: Reader | None = None,
-           weights: dict[str, float] | None = None, wide: bool = True, wait: float = MEANING_WAIT) -> dict[str, Any]:
+           weights: dict[str, float] | None = None, wide: bool = True, wait: float = MEANING_WAIT, docs: bool = True) -> dict[str, Any]:
     """Ranked chunks, whole, with path and line, the keyword rank fused with the meaning rank when
     yerk-index serves one and `wide`, waiting `wait` for it at most (the bench's rank reads these; the recall tool cuts them). A timeout and a
     failure of the index read differently (L54); a provider timeout or error reads differently from
-    both: keywords only for this query, logged. `weights` gets the query words' weights."""
+    both: keywords only for this query, logged. `weights` gets the query words' weights. The docs root's hits come after every
+    other hit, and with `docs` False there are none: what a room is handed per message, it reads the docs only when it asks."""
     k = max(1, min(int(k), 20))
     try:
         conn = memindex.connect(s.index_db, readonly=True, deadline=time.monotonic() + deadline_s)
         try:
             # twice the pool by bm25, re-ranked by cover down to the pool: the cover re-rank needs
             # the candidates bm25 alone ranks low (measured on the fixed question set: 2 more top-six hits)
-            keywords = memindex.search(conn, query, POOL, POOL * 2, weights)
+            keywords = memindex.search(conn, query, POOL, POOL * 2, weights, None if docs else s.docs)
         finally:
             conn.close()
     except FileNotFoundError as e:
@@ -666,10 +667,14 @@ def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader:
         log.warning("recall: meaning search skipped (%s); keywords only for this query", state)
     if s.scoped:             # a room's own `also`: its roots' candidates only, before fusion keeps k (every root is indexed)
         keywords, vectors = ([h for h in x if s.scope.contains(Path(h["path"]))] for x in (keywords, vectors))
+    if not docs and s.docs:  # the meaning half has no such filter in yerk-index: the same cut, before fusion keeps k
+        vectors = [h for h in vectors if not Path(h["path"]).is_relative_to(s.docs)]
     if reader and (not reader.owner or reader.sealed):   # a room that is not an owner room, or is sealed, ranks and gets only chunks it can
         keywords, vectors = ([h for h in x if allowed_text(reader, Path(h["path"]), str(h.get("text", "")), daily=s.daily) == h.get("text")]
                              for x in (keywords, vectors))     # read whole (R2): its own line beside a hidden one reaches it through its pack,
     hits = fuse(keywords, vectors, k)       # its topic hits and read_memory, never recall: a chunk read in part would rank on words it may not see
+    # the owner's notes above the docs: they say how this install's things are, the docs how Claude runs anywhere, in the same words
+    hits.sort(key=lambda h: s.docs is not None and Path(h["path"]).is_relative_to(s.docs))
     for h in hits:
         h.pop("id", None)
         h["cite"] = f"{cite(s, Path(h['path']))}:{h['line']}"
@@ -677,25 +682,25 @@ def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader:
 
 
 def recall(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader: Reader | None = None, chars: int = 0,
-           wait: float = MEANING_WAIT) -> dict[str, Any]:
+           wait: float = MEANING_WAIT, docs: bool = True) -> dict[str, Any]:
     """The recall tool: the hits `ranked` gives, in its order, each cut to the lines that carry the match
     with a cite (file:line of its first line) that read_memory reads on from; the first six snippets
     together hold at most `recall_chars` characters (`chars`, the prompt hook's part), each at most SNIPPET, and each hit past the sixth
     adds its best line, at most EXTRA."""
     weights: dict[str, float] = {}
-    r = ranked(s, query, k, deadline_s, reader, weights, wait=wait)
+    r = ranked(s, query, k, deadline_s, reader, weights, wait=wait, docs=docs)
     return {**r, "hits": snippets(r["hits"], weights, chars or s.recall_chars)} if r["ok"] else r
 
 
 def lines_on(s: Settings, what: str, reader: Reader | None = None, k: int = 8, exclude: set[str] | None = None,
              best: int = 6) -> list[dict[str, Any]]:
-    """Deep recall (decision 42): the `best` lines on `what`, a name or a topic, in the reader's scope, in the order of the k chunks
-    the keyword rank gives (a name is its words: no meaning search), each holding every word of it; then a standing file's lines
-    first, the day logs' newest first. Never a line of the message being answered (`exclude`, its ids), a corrected line, or one
+    """Deep recall (decision 42): the `best` lines on `what`, a name or a topic, in the reader's scope less the docs root, in the order
+    of the k chunks the keyword rank gives (a name is its words: no meaning search), each holding every word of it; then a standing file's
+    lines first, the day logs' newest first. Never a line of the message being answered (`exclude`, its ids), a corrected line, or one
     that asks about it (words.ASKED): an ask is not on file. A keyword read that did not finish raises LookupError: it proves no absence."""
     want = {t for t in mentions.tokens(what, True) if len(t) > 1 and t not in memindex.STOP}
     out: list[dict[str, Any]] = []
-    r: dict[str, Any] = ranked(s, what, k, 2.0, reader, wide=False) if want else {"ok": True}
+    r: dict[str, Any] = ranked(s, what, k, 2.0, reader, wide=False, docs=False) if want else {"ok": True}
     if not r["ok"]:
         raise LookupError(f"the keyword read on {what!r} did not finish: {r['status']}")
     for h in r.get("hits", []):

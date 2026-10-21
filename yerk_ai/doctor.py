@@ -1,6 +1,7 @@
-"""`yerk doctor`: the daily check of the install's shape and the crash repair (Layer 11, claim 6, decision 40;
+"""`yerk doctor`: checks the install once a day, and repairs the files a crash or a power cut left damaged. units/yerk-doctor.timer
 units/yerk-doctor.timer, after retention's), quiet when all is well, a plain line per finding, each run kept in
-<state>/doctor.json for the morning diff. A hard power-off zeroes the line a file was writing, so on yerkd's start and
+<state>/doctor.json for the morning diff; once a week it also fetches the Claude docs from the web (docs.py), unless
+[docs] fetch = false in yerkd.toml. A hard power-off zeroes the line a file was writing, so on yerkd's start and
 log, assembled log or bound transcript with a NUL byte is copied first (a day log to backups/doctor-<day>/ beside the private
 layer, the rest to <state>/trash/<day>/doctor/), then each such line keeps what still reads (the line glued on after its NULs, else
 itself without them), else is blank in a day log (recall cites file:line) or dropped."""
@@ -16,7 +17,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import deploy, docs, hooks, memindex, memory, retention, status, words
-from . import shape as rule_shape                      # `shape` is the private folder's check below
+from . import shape as rule_shape                      # the check named "rule shape"; "layout" is the private folder's
 from .accounts import load_accounts, token_info
 from .config import REPO, ROOM_KEYS, budgets, load_toml, room_id, rooms, write_private
 from .context import layer_dir
@@ -144,8 +145,8 @@ def start(private: Path, state: Path, m: memory.Settings, flight: set[str]) -> s
 
 def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings, now: float, last: dict[str, Any],
            found: list[str], dry: bool = False) -> dict[str, Any]:
-    """Every check but the crash repair, each finding a line in `found`; returns the sizes and shape totals to keep."""
-    def shape() -> None:
+    """Every check but the crash repair, each finding a line in `found`; returns the sizes and rule shape totals to keep."""
+    def layout() -> None:
         for name in ("accounts.toml", "rooms.toml"):
             try:
                 load_toml(private / name)
@@ -282,7 +283,7 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
         if ran and ix and ran != ix:
             found.append(f"memory index: runs {ix[:7]}, yerkd {str(ran)[:7]}: restart yerk-index")
 
-    for what, check in (("shape", shape), ("classes", classes), ("tokens", tokens), ("index", index), ("hooks", hooked),
+    for what, check in (("layout", layout), ("classes", classes), ("tokens", tokens), ("index", index), ("hooks", hooked),
                         ("modes", modes), ("secrets", leaks), ("disk", growth), ("memory cap", high), ("backfill", backfill),
                         ("cites", cites), ("code", code), ("rule shape", ruleshape)):
         try:

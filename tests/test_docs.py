@@ -1,7 +1,9 @@
 """Checks `yerk docs` (docs.py), which keeps the Claude docs Yerk AI runs on as files every room can recall. The cases: the fetcher
 against a local site (no network), a kept page headed by its source, fetch time and hash, a page whose hash moved said once in the morning
 diff, a failure that keeps the old page and leaves the refresh due, the docs folder as a memory root of class shared in every room (one
-docs/claude/<slug>.md:line, the doctor's weekly refresh, the command, and a room asking how its rules are written."""
+with its own `also` too) cited as docs/claude/<slug>.md:line, kept out of what a room is handed per message and below the owner's notes in
+doctor's weekly refresh and its off switch, the command, and a room asking how its rules are written."""
+import asyncio
 import hashlib
 import http.server
 import shutil
@@ -12,9 +14,10 @@ from pathlib import Path
 import pytest
 
 from test_doctor import tree  # noqa: F401  (the doctor's healthy install: the example layer, a day log, a fresh index)
-from yerk_ai import abilities, cli, docs, doctor, memory, morning, words
+from yerk_ai import abilities, cli, docs, doctor, memindex, memory, mentions, morning, words
 from yerk_ai.accounts import Cooldowns, load_accounts
 from yerk_ai.config import DOCS_PAGES, EXAMPLE_PRIVATE
+from yerk_ai.daemon import Yerkd
 from yerk_ai.ledger import Ledger
 
 PAGE = (Path(__file__).parent / "fixtures" / "docs" / "page.md").read_bytes()
@@ -85,6 +88,80 @@ def test_the_docs_folder_is_a_memory_root_of_class_shared_in_every_room_cited_as
     assert s.docs in s.only(EXAMPLE_PRIVATE, "a-room", []).scope.roots                      # a room with its own `also` keeps it
 
 
+def install(tmp_path: Path) -> Yerkd:
+    """The example layer with one note of the owner's on a takeoff and a docs page dense in the same words, both indexed."""
+    priv, state = tmp_path / "private", tmp_path / "state"
+    shutil.copytree(EXAMPLE_PRIVATE, priv)
+    state.mkdir()
+    (priv / "memory" / "trips.md").write_text("# Trips\n\nThe example takeoff is at 07:40 from gate 12.\n")
+    y = Yerkd(priv, state)
+    s = y.memory
+    assert s.docs is not None
+    (s.docs / "claude").mkdir()
+    (s.docs / "claude" / "guide.md").write_text("---\nclass: shared\n---\n# Checklists\n\nBefore an example takeoff, say each takeoff "
+                                                "checklist step in order.\n\nA zeppelin checklist names every step.\n")
+    memindex.Index(s.index_db, s.scope).sync()
+    mentions.Builder(s.mentions, s.roots_for_mentions, s.curated, s.mentions_exclude).refresh(s.scope.files())
+    return y
+
+
+def chunks(y: Yerkd) -> list[dict]:
+    """Every chunk in the index as a meaning hit, the page's first: yerk-index's search has no root filter of its own, and a page
+    dense in a question's words is what its meaning rank puts on top."""
+    conn = memindex.connect(y.memory.index_db, readonly=True)
+    try:
+        rows = conn.execute("SELECT id, path, lo, body FROM chunks").fetchall()
+    finally:
+        conn.close()
+    return [{"id": i, "path": p, "line": lo, "text": b, "score": 0.9} for i, p, lo, b in sorted(rows, key=lambda r: "/docs/" not in r[1])]
+
+
+def test_a_room_is_never_handed_a_docs_line_per_message_and_reaches_the_docs_by_its_own_recall(tmp_path, monkeypatch):
+    """A question about a takeoff is answered from the owner's note, never from a prompting page by accident: the lines on what a
+    message asks about and the past-tense search (keywords and meaning alike) leave the docs root out, so a topic only the
+    docs hold is absent from the owner's memory; the room's own recall still finds the page."""
+    y = install(tmp_path)
+    monkeypatch.setattr(memory, "meaning", lambda s, q, **wait: ("ok", chunks(y)))
+
+    def cites(prompt: str) -> tuple[list[str], list[str], list[str]]:
+        named, _, past, absent = y.recall_for("example-room", prompt)
+        return [str(x.get("cite", "")) for x in named], [h["cite"] for h in past], absent
+    named, _, absent = cites("tell me about the example takeoff")
+    assert "memory/trips.md:3" in named and not [c for c in named if c.startswith("docs/")] and absent == []
+    named, _, absent = cites("tell me about the zeppelin checklist")
+    assert not [c for c in named if c.startswith("docs/")] and absent == ["zeppelin checklist"]
+    _, past, _ = cites("when did the example takeoff happen?")
+    assert [c for c in past if c.startswith("memory/trips.md:")] and not [c for c in past if c.startswith("docs/")]
+    assert [h for h in asyncio.run(y.tool_recall("example-room", "zeppelin checklist", 6))["hits"] if h["cite"].startswith("docs/claude/guide.md:")]
+
+
+def test_a_word_the_docs_are_dense_in_still_finds_the_owners_line_per_message(tmp_path):
+    """200 sections of a page say "hooks" and the owner's note says it once. Kept out of the keyword pool itself, the page cannot fill it;
+    a cut after the pool would leave none of the owner's lines and call "hooks" absent."""
+    y = install(tmp_path)
+    s = y.memory
+    assert s.docs is not None
+    (s.root / "box.md").write_text("# Box\n\n- the hooks port on the example box is 7311, set in March\n")
+    (s.docs / "claude" / "hooks.md").write_text("---\nclass: shared\n---\n" + "".join(f"# Hooks {n}\n\nhooks hooks hooks\n\n" for n in range(200)))
+    memindex.Index(s.index_db, s.scope).sync()
+    named, _, _, absent = y.recall_for("example-room", "tell me about hooks")
+    assert [x["cite"] for x in named if x.get("named") == "hooks"] == ["memory/box.md:3"] and absent == []
+
+
+def test_in_a_rooms_own_recall_the_owners_notes_rank_above_the_docs_and_the_page_is_still_found(tmp_path, monkeypatch):
+    """The page holds every word of the query and the owner's note two of them, so on the words alone the page would come first."""
+    y = install(tmp_path)
+
+    def cites() -> list[str]:
+        return [h["cite"] for h in asyncio.run(y.tool_recall("example-room", "the example takeoff checklist", 6))["hits"]]
+    got = cites()                                                       # keywords only
+    assert got[0].startswith("memory/trips.md:") and [c.startswith("docs/") for c in got] == [False] * (len(got) - 1) + [True], got
+    monkeypatch.setattr(memory, "meaning", lambda s, q, **wait: ("ok", chunks(y)))
+    got = cites()                                                       # fused with a meaning rank of every chunk
+    on_docs = [c.startswith("docs/") for c in got]
+    assert True in on_docs and on_docs == sorted(on_docs), got
+
+
 def test_the_default_pages_are_the_guide_the_models_prompting_pages_and_the_claude_code_pages():
     assert DOCS_PAGES["prompting-guide"].endswith("/prompt-engineering/claude-prompting-best-practices")
     assert {"prompting-opus-5-5", "prompting-sonnet-5-5", "prompting-haiku-5-5", "prompting-fable-5-1"} <= set(DOCS_PAGES)
@@ -92,9 +169,11 @@ def test_the_default_pages_are_the_guide_the_models_prompting_pages_and_the_clau
     assert all(docs.SLUG.fullmatch(k) and words.width(f"{words.WORKING} docs changed: {k}") <= words.PHONE for k in DOCS_PAGES)
 
 
-def test_yerk_doctor_refreshes_the_docs_once_a_week_and_says_a_page_it_could_not_fetch(site, tree, capsys):  # noqa: F811
+def test_yerk_doctor_refreshes_the_docs_once_a_week_never_with_fetch_off_and_says_a_page_it_could_not_fetch(site, tree, capsys):  # noqa: F811
     url, seen, _ = site
     priv, state, *_ = tree
+    (priv / "yerkd.toml").write_text(f'[docs]\nfetch = false\n[docs.pages]\nguide = "{url}/page"\n')
+    assert doctor.main(priv, state, refresh=True) == 0 and seen == []      # the off switch: due, and nothing fetched
     (priv / "yerkd.toml").write_text(f'[docs.pages]\nguide = "{url}/page"\n')
     assert doctor.main(priv, state) == 0 and seen == []                    # the doctor's tests and checks: no fetch
     assert doctor.main(priv, state, refresh=True) == 0 and seen == ["text/markdown"]
@@ -131,6 +210,23 @@ def test_yerk_docs_refreshes_lists_shows_and_prints_the_shape_report(site, tmp_p
     assert cli.main(["docs", "shape", *args]) == 0 and capsys.readouterr().out.endswith("rule shape: every count is within budgets.toml [shape]\n")
     assert cli.main(["docs", "shape", "--rules", *args]) == 0 and capsys.readouterr().out.startswith("- no why: a line holding never")
     assert cli.main(["docs", "shape", "no-such-room", *args]) == 2 and "rooms: example-room, example-quiet" in capsys.readouterr().err
+
+
+def test_yerk_explain_takes_the_docs_command_and_the_doctors_help_says_the_weekly_fetch_and_its_off_switch(tmp_path, capsys):
+    """The cold read's C7 and C8: `yerk explain docs` answered "no ability or setting" with exit 2, and nothing a stranger
+    reads first said that the doctor fetches web pages each week or how to stop it."""
+    args, tab = ["--private", str(EXAMPLE_PRIVATE), "--state", str(tmp_path)], abilities.manifest()
+    assert cli.main(["explain", "docs", *args]) == 0
+    out = capsys.readouterr().out
+    assert tab["claude-docs"]["what"] in out and tab["rule-shape"]["what"] in out
+    assert cli.main(["explain", "shape", *args]) == 0
+    out = capsys.readouterr().out
+    assert tab["rule-shape"]["what"] in out and tab["claude-docs"]["what"] not in out
+    assert cli.main(["explain", "claude-docs", *args]) == 0 and "[docs] fetch = false" in capsys.readouterr().out
+    with pytest.raises(SystemExit) as e:
+        cli.main(["doctor", "--help"])
+    said = " ".join(capsys.readouterr().out.split())
+    assert e.value.code == 0 and "once a week it also fetches the Claude docs" in said and "[docs] fetch = false" in said, said
 
 
 def test_a_room_asking_how_its_rules_are_written_gets_the_shape_check_and_the_docs_first(tmp_path):

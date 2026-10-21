@@ -1,11 +1,13 @@
 """`yerk docs`: keeps local copies of the Claude documentation pages Yerk AI relies on, as files every room can search.
 `refresh` fetches each page of [docs] pages in yerkd.toml (config.DOCS_PAGES when unset: the prompting guide, the prompting
 pages of the models in models.toml, the Claude Code pages a room's harness leans on) into <state>/docs/claude/<slug>.md, headed
-fetch time and content hash, class shared. memory.settings adds <state>/docs to every install's memory roots, so recall
-finds a page in every room and cites it as docs/claude/<slug>.md:line. The sites answer `Accept: text/markdown` with the
-page as Markdown (checked 2026-10-21 with a plain GET); anything else is refused and the page's old file kept.
-`yerk doctor` refreshes them once [docs] refresh_days (7) have passed since the last clean refresh, and a page whose hash
-moved is a line in the next morning diff, since a changed guide means the rules may be stale against it."""
+by its source, fetch time and content hash, class shared. memory.settings adds <state>/docs to every install's memory roots, so
+a room's own recall finds a page in every room, below the owner's notes, and cites it as docs/claude/<slug>.md:line; what a room
+per message leaves the docs out (memory.ranked). The sites answer `Accept: text/markdown` with the page as Markdown
+(checked 2026-10-21 with a plain GET); anything else is refused and the page's old file kept. `yerk doctor` fetches them
+once [docs] refresh_days (7) have passed since the last clean refresh, unless [docs] fetch = false (`yerk docs refresh`
+refresh, unless [docs] fetch = false (`yerk docs refresh` still fetches when run), and a page whose hash moved is a line in the
+rules may be stale against it."""
 from __future__ import annotations
 
 import hashlib
@@ -19,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from . import __version__, words
-from .config import DOCS_PAGES, load_toml, write_private
+from .config import DOCS_PAGES, flag, load_toml, write_private
 
 REFRESH_DAYS, MAX_BYTES, TIMEOUT, STAMP = 7, 4_000_000, 30, "refresh.json"
 SLUG = re.compile(r"[a-z0-9][a-z0-9-]{0,63}")
@@ -65,9 +67,10 @@ def load(state: Path) -> dict[str, Any]:
 
 
 def due(state: Path, conf: dict[str, Any], now: float) -> bool:
+    """The doctor's weekly fetch: refresh_days since the last clean refresh, never with [docs] fetch = false."""
     days = conf.get("refresh_days", REFRESH_DAYS)
     days = days if isinstance(days, (int, float)) and not isinstance(days, bool) and days > 0 else REFRESH_DAYS
-    return now - float(load(state).get("at", 0)) >= days * 86400
+    return flag(conf.get("fetch"), True) and now - float(load(state).get("at", 0)) >= days * 86400
 
 
 def refresh(state: Path, conf: dict[str, Any], now: float | None = None) -> dict[str, Any]:
