@@ -38,14 +38,6 @@ needs = "nothing; `yerk abilities` lists them, `yerk explain NAME` has any one, 
 free_path = "this is the free path"
 asked_as = ["what can you do", "what can u do", "what else can you do", "what are you able to do", "what are you capable of", "what are your abilities", "what abilities do you have", "list your abilities"]
 
-[abilities.imessage]
-state = "built"
-what = "A room on an iMessage thread: the owner texts it from his phone and the reply comes back in the same thread, through the owner's Mac. Every text Yerk AI sends is known by its message id, so the owner's own texts and Yerk AI's are never mixed up; texts wait while the Mac sleeps and go out in order when it wakes, and no human room hears about the outage. A check every 15 minutes reads the thread's newest texts, read only, and says in the machine room if one never reached Yerk AI."
-tier = "free"
-needs = "the owner's Mac signed into Messages with its bridge app (BenBridge) answering on its socket, an ssh path from the box with socat on the Mac, [imessage] host and socket in yerkd.toml, and channel = \"imessage:<chat identifier>\" on the room in rooms.toml"
-free_path = "this is the free path"
-asked_as = ["imessage", "imessage room", "text you from my phone", "text yerk", "message you on imessage"]
-
 # The described abilities below are known and not built (decision 26). On a described entry, `upgrade`
 # names the built ability that already ships part of it.
 [abilities.gates]
@@ -164,10 +156,9 @@ tier = "free"
 needs = "a desktop computer signed into the owner's messaging account, the small signed app on it, and an ssh path from the box"
 price = "none"
 free_path = "this is the free path"
-why_not = "Layer 8a built the iMessage rooms (the owner's own threads); texting other people in the owner's voice, with the preview and the veto, is not built."
+why_not = "Layer 8a built the iMessage rooms (the owner's own threads), parked outside the package until Layer 8; texting other people in the owner's voice, with the preview and the veto, is not built."
 asked_as = ["text as me", "text people as me", "send texts as me", "text people for me", "reply to my texts", "text messages for me"]
 layer = 8
-upgrade = "imessage"
 
 [abilities.email]
 state = "described"
