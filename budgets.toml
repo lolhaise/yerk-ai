@@ -99,4 +99,6 @@ duplicated_topics = 0
 # ask), not folded to fit; its cold read cut 2 dead lines of the 431, and its recall guard added 23 (the docs out of what a
 # room is handed per message and below the owner's notes in its own recall, the doctor's fetch switch, explain by command).
 # 2026-10-21: sheet-rule raised it by 50, the sheet shadow rule and its call (the owner's ask), not folded to fit.
-lines = 15812
+# 2026-10-21: note-jobs raised it by 122, the note kind, its gate, the plain card, its restart replay and its caps (the
+# owner's ask), not folded to fit; its cold read added 1 of the 122 and the caps 30.
+lines = 15934

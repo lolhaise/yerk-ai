@@ -163,7 +163,8 @@ def cmd_schedule(a: argparse.Namespace) -> int:
             print(f"--room: no room {room!r}; rooms: {', '.join(rs) or 'none'}", file=sys.stderr)
             return 2
         out = jobs.schedule_add(path, units, env, a.name, a.kind, a.when, a.what, room,
-                                a.tz or jobs.default_tz(rs, room, conf), a.deliver, a.cap, a.account or "")
+                                a.tz or jobs.default_tz(rs, room, conf), a.deliver, a.cap, a.account or "",
+                                int(conf.get("jobs", {}).get("note_chars", jobs.NOTE_CHARS)))
     if a.json:
         print(json.dumps(out, default=str))
     elif not out["ok"]:
@@ -477,9 +478,10 @@ def cmd_explain(a: argparse.Namespace) -> int:
     print("\n".join(abilities.explain(a.ability, ab, table_, s)))     # one state line: the first (STYLE 1)
     if a.ability in ("jobs", "watchers"):     # the jobs file's keys, from the code (decision 16)
         from . import jobs
-        print("keys of a [jobs.NAME] table in the private jobs.toml:")
-        for key, words in jobs.KEYS.items():
-            print(f"  {key}: {words}")
+        for head, table in (("a [jobs.NAME] table in the private jobs.toml", jobs.KEYS), ("[jobs] in the private yerkd.toml", jobs.CONF)):
+            print(f"keys of {head}:")
+            for key, words in table.items():
+                print(f"  {key}: {words}")
     if a.ability == "retention":              # the days this install keeps, from its yerkd.toml
         from . import retention
         print(retention.here(private_dir(a.private)))
@@ -601,8 +603,9 @@ def main(argv: list[str] | None = None) -> int:
     sc.add_argument("name", nargs="?", help="the job's name: lowercase letters, digits, hyphens")
     sc.add_argument("--when", help='add: a date and time ("2026-03-09 09:00", a one-shot), "every 2h", or a cron '
                     'expression ("0 9 * * 1-5")')
-    sc.add_argument("--what", help="add: the worker's brief (kind agent) or the shell line (kind script)")
-    sc.add_argument("--kind", choices=["agent", "script"], default="agent")
+    sc.add_argument("--what", help="add: the worker's brief (kind agent), the shell line (kind script) or the text "
+                    "the room is told (kind note)")
+    sc.add_argument("--kind", choices=["agent", "script", "note"], default="agent")
     sc.add_argument("--tz", help="add: an IANA zone (default: the room's timezone, else [memory] timezone)")
     sc.add_argument("--room", help="add: the room it lands in (default: the only room)")
     sc.add_argument("--deliver", choices=["announce", "silent"], default="announce")

@@ -30,9 +30,9 @@ room = "example-quiet"
 deliver = "silent"                   # runs and is ledgered, posts nothing; a failure still alerts the ops room
 command = "true"
 
-[jobs.example-reminder]              # a one-shot: removed from this file after it fires
-kind = "script"
-at = "2099-01-02 09:00"              # read in `tz`; a time with its own offset needs no tz
+[jobs.example-reminder]              # a note: at its time the room's own session is told the message and says it
+kind = "note"                        # no worker, shell, account or cap, so any room adds, lists and removes its own
+at = "2099-01-02 09:00"              # a one-shot, removed from this file after it fires; read in `tz`, unless it has an offset
 tz = "UTC"
 room = "example-room"
-command = "echo 'Reminder: the example appointment is at 10:00'"
+message = "Remind them the example appointment is at 10:00."

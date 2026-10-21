@@ -1,12 +1,16 @@
 """Checks scheduled jobs, the timed tasks in jobs.toml, on a fake systemd (units and timers as files).
 The cases: the three schedule kinds compute the right next fire, sync is idempotent and shows the right
 diff, a removed job is cleaned, a script job's three exit cases deliver, stay silent and alert, an agent
-account and cap and relays, NO_REPLY is silent, the schedule tool round-trips through the file."""
+job becomes a worker with the right account and cap and relays, NO_REPLY is silent, a note is told by
+its room's own session (late after a restart, never twice), the schedule tool round-trips through the
+owner's keeps its own notes and nothing else, under its caps."""
 import asyncio
 import hashlib
 import io
+import json
 import subprocess
-from contextlib import redirect_stdout
+import time
+from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -144,7 +148,7 @@ def test_cron_every_and_at_compute_the_right_next_fire():
 
 
 @pytest.mark.parametrize("raw, why", [
-    ({"kind": "cron", "schedule": "* * * * *", "tz": "UTC", "room": "r", "command": "x"}, '`kind` must be "script", "agent" or "watcher"'),
+    ({"kind": "cron", "schedule": "* * * * *", "tz": "UTC", "room": "r", "command": "x"}, '`kind` must be "script", "agent", "watcher" or "note"'),
     ({"kind": "script", "schedule": "* * * * *", "every": "1h", "tz": "UTC", "room": "r", "command": "x"}, "exactly one of"),
     ({"kind": "script", "schedule": "0 9 * * *", "room": "r", "command": "x"}, "needs `tz`"),
     ({"kind": "script", "schedule": "0 25 * * *", "tz": "UTC", "room": "r", "command": "x"}, "25 is outside 0-23"),
@@ -160,6 +164,10 @@ def test_cron_every_and_at_compute_the_right_next_fire():
     ({"kind": "script", "every": "1h", "room": "r", "command": "x", "colour": "red"}, "unknown key colour"),
     ({"kind": "script", "every": "1h", "room": "r", "command": "x", "deliver": "loud"}, '"announce" or "silent"'),
     ({"kind": "script", "every": "1h", "room": "r", "command": "x", "cap": 0}, "above 0"),
+    ({"kind": "note", "every": "1h", "room": "r", "message": "x", "command": "echo x"}, "runs nothing, so it takes no `command`"),
+    ({"kind": "note", "every": "1h", "room": "r", "message": "x", "account": "one"}, "takes no `account`"),
+    ({"kind": "note", "every": "1h", "room": "r", "message": "x", "cap": 5}, "takes no `cap`"),
+    ({"kind": "note", "every": "1h", "room": "r"}, "a note needs `message`, the text its room is told"),
 ])
 def test_a_job_that_cannot_be_scheduled_is_named_with_why(raw, why):
     with pytest.raises(JobError, match=why):
@@ -447,6 +455,143 @@ def test_a_one_shot_is_removed_from_the_file_and_its_units_go_after_it_fires(set
     assert s.ledger.job_runs(job="gone")[0]["result"] == "no such job: not in the jobs file"
 
 
+# notes: a reminder its room's own session tells
+NOTE = 'kind = "note"\nat = "2099-01-03 10:00"\ntz = "UTC"\nroom = "r"\nmessage = "Remind them to call the clinic."\n'
+
+
+async def settled(ledger, run_id, timeout=20.0):
+    """The run's row once its told turn has ended, delivered or failed."""
+    end = time.monotonic() + timeout
+    while time.monotonic() < end:
+        if (r := ledger.job_run_get(run_id)) and r["delivery"] in ("delivered", "failed"):
+            return r
+        await asyncio.sleep(0.05)
+    raise AssertionError(f"run {run_id} was not told: {ledger.job_run_get(run_id)}")
+
+
+def test_a_message_toml_cannot_hold_raw_is_written_so_the_file_still_parses_and_no_other_timer_goes(tmp_path):
+    """Any room writes a note's message now. A DEL in it made the jobs file unparseable, so the add's own sync took
+    every other job's timer away; a lone surrogate truncated the file to nothing. Both are written so the file parses."""
+    keep = '[jobs.keep]\nkind = "script"\nevery = "1h"\nroom = "r"\ncommand = "true"\n'
+    path, sd = write_jobs(tmp_path / "jobs.toml", keep), FakeSystemd(tmp_path / "units")
+    jobs.sync(path, sd, ENV)
+    for name, text in (("del", "call\x7f the clinic"), ("half", "call \ud800 the clinic")):
+        assert jobs.schedule_add(path, sd, ENV, name, "note", "2099-01-03 10:00", text, "r", "UTC")["ok"], name
+    assert sd.ours() == ["del", "half", "keep"] and path.read_text().startswith(keep)
+    assert [j.payload for j in jobs.load(path)[0].values()] == ["true", "call\x7f the clinic", "call ? the clinic"]
+
+
+def test_a_note_builds_syncs_and_reads_back_like_any_timed_job(tmp_path):
+    note = make_job("call-clinic", {"kind": "note", "at": "2099-01-03 10:00", "tz": "UTC", "room": "r",
+                                    "message": "Remind them to call the clinic."})
+    assert (note.kind, note.payload, note.cap, note.account) == ("note", "Remind them to call the clinic.", 0.0, "")
+    path, sd = write_jobs(tmp_path / "jobs.toml", f"[jobs.call-clinic]\n{NOTE}"), FakeSystemd(tmp_path / "units")
+    p, back = jobs.sync(path, sd, ENV)
+    assert p.added == ["call-clinic"] and back["call-clinic"]["scheduled"]
+    assert "OnCalendar=2099-01-03 10:00:00 UTC" in sd.read("yerk-job-call-clinic.timer")
+    assert "TimeoutStartSec=120" in sd.read("yerk-job-call-clinic.service")          # the step only hands it on
+    assert jobs.read_lines(back, p.jobs)[0].endswith("; one-shot Sat 2099-01-03 10:00:00 UTC, room r, note")
+    assert jobs.sync(path, sd, ENV)[0].unchanged == ["call-clinic"]
+    assert 'or "note" (a reminder' in jobs.KEYS["kind"] and "Notes: the text" in jobs.KEYS["message"]   # yerk explain jobs
+
+
+def test_a_note_is_told_by_its_rooms_own_session_and_then_leaves_the_file(setup, tmp_path):
+    """No worker, no shell, no post as is: the runner keeps the text in the run's folder and hands the run on, and
+    the daemon asks one harness turn of the room's own session; that turn's end is the run's delivery. A one-shot
+    then leaves the file like any one-shot."""
+    s = setup
+    rec = Rec()
+    j, w, sd, priv, state = manager(setup, tmp_path, {"r": s.room()}, {"r": rec})
+    s.ledger.__init__(state / "ledger.sqlite")
+    j.ledger = w.ledger = s.ledger
+    path = write_jobs(priv / "jobs.toml", f'[jobs.keep]\nkind = "script"\nevery = "1h"\nroom = "r"\ncommand = "true"\n\n'
+                      f"[jobs.call-clinic]\n{NOTE}")
+    jobs.sync(path, sd, ENV)
+
+    async def go():
+        loop = asyncio.get_running_loop()
+        w.begin(loop)
+        handoff = lambda p: asyncio.run_coroutine_threadsafe(j.handle("", p["job"]), loop).result(30)  # noqa: E731
+        rc = await asyncio.to_thread(jobs.run, "call-clinic", priv, state, sd, handoff)
+        return rc, await settled(s.ledger, s.ledger.job_runs(job="call-clinic")[0]["id"])
+    rc, r = asyncio.run(go())
+    assert rc == 0 and (r["kind"], r["exit"], r["result"], r["delivery"], r["message_ids"]) == ("note", "done", "note", "delivered", "m1")
+    (reply, inbound), = s.chan.replies                               # the fake room says back what it was told
+    assert inbound == [f"note-{r['id']}"] and reply.startswith("echo: [reminder call-clinic due] Remind them to call the clinic.\n")
+    assert "do what it says now and tell the room in your own voice" in reply
+    assert (Path(r["folder"]) / "message").read_text() == "Remind them to call the clinic."      # the receipt
+    assert rec.sent == rec.notified == s.units.calls == []          # nothing posted as is, no alert, no worker
+    assert "call-clinic" not in path.read_text() and sd.ours() == ["keep"]
+
+
+def test_a_note_the_daemon_missed_is_told_at_the_next_start_and_one_already_said_is_not_said_again(setup, tmp_path):
+    """A note that fires with no daemon up waits in the ledger as undelivered with its text in the run's folder, as a
+    script's output does, and is told at the next start; one whose reply reached the room before a restart cut its
+    turn's end is marked delivered there, and one fired after the start is this process's, so never said twice."""
+    s = setup
+    j, w, sd, priv, state = manager(setup, tmp_path, {"r": s.room()}, {"r": Rec()})
+    s.ledger.__init__(state / "ledger.sqlite")
+    j.ledger = w.ledger = s.ledger
+    write_jobs(priv / "jobs.toml", '[jobs.water]\nkind = "note"\nevery = "2h"\ntz = "UTC"\nroom = "r"\nmessage = "Water the plants."\n')
+    jobs.sync(priv / "jobs.toml", sd, ENV)
+
+    def down(payload):
+        raise OSError("connection refused")
+    assert jobs.run("water", priv, state, units=sd, handoff=down) == 1
+    rid = s.ledger.job_runs(job="water")[0]["id"]
+    assert s.ledger.job_run_get(rid)["delivery"] == "undelivered: the daemon is not running (OSError)"
+
+    async def go():
+        w.begin(asyncio.get_running_loop())
+        j.started = time.time()                                     # a daemon start
+        await j.reattach()
+        first = await settled(s.ledger, rid)
+        while w.asked.get("r"):                                     # the told turn hands the room back
+            await asyncio.sleep(0.01)
+        turn = s.ledger.inbound_get(f"note-{rid}")["turn_id"]        # its reply posted, then a restart before the
+        key = s.ledger.db.execute("SELECT turn_key FROM turns WHERE id = ?", (turn,)).fetchone()[0]    # end was ledgered
+        s.ledger.delivery_plan(f"{key}:0", "r", "reply", "said", f"note-{rid}")
+        s.ledger.delivery_set(f"{key}:0", state="sent", message_id="d1")
+        s.ledger.job_run_set(rid, delivery="undelivered: waiting for the room's turn")
+        j.started = time.time()                                     # another start
+        await j.reattach()
+        again = s.ledger.job_run_get(rid)
+        assert jobs.run("water", priv, state, units=sd, handoff=lambda p: {"ok": True}) == 0     # fired after the start:
+        mine = max(r["id"] for r in s.ledger.job_runs(job="water"))                               # its turn is in hand
+        s.ledger.job_run_set(mine, delivery="undelivered: waiting for the room's turn")
+        await j.reattach()
+        assert not w.waiting.get("r") and "r" not in w.asked and len(s.chan.replies) == 1   # no turn queued, running or said
+        return first, again
+    first, again = asyncio.run(go())
+    assert first["delivery"] == "delivered" and s.chan.replies[0][0].startswith("echo: [reminder water due] Water the plants.")
+    assert (again["delivery"], again["message_ids"]) == ("delivered", "d1") and len(s.chan.replies) == 1
+
+
+def test_a_note_whose_hand_off_failed_after_the_start_is_told_by_that_start(setup, tmp_path):
+    """Jobs.started is stamped in the daemon's __init__, before /control answers, so a note that fires in between fails
+    its hand-off with a fire time after the start (a reboot fires Persistent timers as the daemon starts). No process
+    has it in hand, so that start's reattach tells it; only a note this process told waits on its own turn."""
+    s = setup
+    j, w, sd, priv, state = manager(setup, tmp_path, {"r": s.room()}, {"r": Rec()})
+    s.ledger.__init__(state / "ledger.sqlite")
+    j.ledger = w.ledger = s.ledger
+    write_jobs(priv / "jobs.toml", '[jobs.water]\nkind = "note"\nevery = "2h"\ntz = "UTC"\nroom = "r"\nmessage = "Water the plants."\n')
+    jobs.sync(priv / "jobs.toml", sd, ENV)
+    j.started = time.time() - 1                                     # the start, before /control answers
+
+    def down(payload):
+        raise OSError("connection refused")
+    assert jobs.run("water", priv, state, units=sd, handoff=down) == 1
+    rid = s.ledger.job_runs(job="water")[0]["id"]
+
+    async def go():
+        w.begin(asyncio.get_running_loop())
+        await j.reattach()
+        return await settled(s.ledger, rid)
+    assert asyncio.run(go())["delivery"] == "delivered"
+    assert s.chan.replies[0][0].startswith("echo: [reminder water due] Water the plants.")
+
+
 # the schedule tool
 def test_the_schedule_tool_round_trips_through_the_file(setup, tmp_path):
     s = setup
@@ -505,3 +650,120 @@ def test_the_schedule_tool_round_trips_through_the_file(setup, tmp_path):
     assert (rc, rc2, rc3, rc4) == (0, 0, 0, 0)
     assert text.startswith("cli-job: every 45m, script job, room r, deliver announce; next ") and "cli-job: next" in text
     assert "= 3 unchanged: remind, paris, cli-job" in text and "cli-job: removed" in text and "cli-job" not in path.read_text()
+
+
+def test_a_room_with_people_keeps_its_own_notes_and_every_other_job_stays_the_owners(tmp_path):
+    """Seen live: a person's room could not set the reminder they asked for, since every job ran as the owner. A
+    queue for its turn and the last part, closes the case before the next, run starts the example note says; the sample,
+    one more line for, the check while a second entry, waits in the queue for its turn and the last; part closes
+    rooms and `yerk schedule` keep every form."""
+    from test_room_scope import install
+    y, mom = install(tmp_path, family=True), "Alex"
+    y.jobs.units = sd = FakeSystemd(tmp_path / "units")
+    path = y.jobs.path
+
+    def ask(caller, **req):
+        return asyncio.run(y.tool_schedule(caller, req))
+    note = {"action": "add", "name": "trip-deals", "kind": "note", "when": "2099-01-03 10:00",
+            "what": "Tell them what was signed on the example trip, and whether any of it ties to the example fund."}
+    out = ask(mom, **note)
+    assert out["ok"] and (out["kind"], out["room"], out["tz"]) == ("note", mom, "UTC") and "diff" not in out
+    assert jobs.load(path)[0]["trip-deals"].room == mom and sd.read("yerk-job-trip-deals.timer")
+    for req in ({**note, "name": "x", "kind": "agent"}, {**note, "name": "x", "kind": "script", "what": "echo hi"},
+                {**note, "name": "x", "kind": "watcher"}, {**note, "name": "x", "room": "example-room"}, {"action": "sync"}):
+        assert ask(mom, **req) == {"ok": False, "line": W.JOBS_OWNER_ONLY}, req
+    assert "[jobs.x]" not in path.read_text()
+    assert W.JOBS_OWNER_ONLY.splitlines()[0] == "not scheduled: only this room's notes"        # state first, what it can do
+    monkey = pytest.MonkeyPatch()
+    monkey.setattr(jobs, "Systemd", lambda: sd)
+    try:
+        with redirect_stdout(io.StringIO()):
+            rc = cli.main(["schedule", "add", "nightly", "--kind", "agent", "--when", "every 2h", "--what", "look",
+                           "--room", mom, "--private", str(path.parent), "--state", str(tmp_path / "state")])
+    finally:
+        monkey.undo()
+    assert rc == 0 and jobs.load(path)[0]["nightly"].kind == "agent"                # `yerk schedule`: every kind, any room
+    listed = ask(mom, action="list")                    # its notes alone: no job of the owner's, not even one for this room
+    assert [x["name"] for x in listed["jobs"]] == ["trip-deals"] and listed["errors"] == {}
+    assert not [x for x in listed["lines"] if "example" in x or "nightly" in x]
+    assert ask(mom, action="remove", name="nightly") == {"ok": False, "error": "no note 'nightly' in this room; its notes: trip-deals"}
+    assert ask(mom, action="remove", name="Trip-Deals ") == {"ok": True, "name": "trip-deals", "removed": True}
+    assert "trip-deals" not in path.read_text() and "nightly" in path.read_text() and not sd.read("yerk-job-trip-deals.timer")
+    assert {"example-heartbeat", "nightly"} <= {x["name"] for x in ask("example-room", action="list")["jobs"]}   # the owner's: all
+
+
+def test_a_room_that_is_not_the_owners_keeps_room_notes_at_most_and_adds_one_per_room_note_minutes(tmp_path):
+    """Cold read C7 (2026-10-21): a person's room could hold any number of notes and add one every 30 seconds, each a
+    model turn on the owner's account and a post in her channel. [jobs] room_notes (20) and room_note_minutes (5) cap
+    it; the refusal says the cap and when the next one fits; a refused add does not count; the owner's rooms have none."""
+    from test_room_scope import install
+    y, mom = install(tmp_path, family=True), "Alex"
+    y.jobs.units = FakeSystemd(tmp_path / "units")
+
+    def ask(caller, name, when="2099-01-03 10:00"):
+        return asyncio.run(y.tool_schedule(caller, {"action": "add", "kind": "note", "name": name, "when": when,
+                                                    "what": "Remind them to call the clinic."}))
+    assert not ask(mom, "bad", when="soon")["ok"] and ask(mom, "one")["ok"]          # the refused add did not count
+    wait = ask(mom, "two")
+    assert wait == {"ok": False, "line": W.NOTES_WAIT.format(every="5", wait="5 min")}
+    assert wait["line"].splitlines() == ["not scheduled: one note per 5 min here", "the next in 5 min"]
+    y.jobs.conf.update(room_notes=2, room_note_minutes=0)
+    assert ask(mom, "two")["ok"]
+    full = ask(mom, "three")
+    assert full == {"ok": False, "line": W.NOTES_FULL.format(most=2)} and "[jobs.three]" not in y.jobs.path.read_text()
+    assert full["line"].splitlines()[0] == "not scheduled: this room keeps 2 notes at most"
+    assert asyncio.run(y.tool_schedule(mom, {"action": "remove", "name": "one"}))["ok"] and ask(mom, "three")["ok"]
+    y.jobs.conf.update(room_notes=1, room_note_minutes=5)
+    assert all(ask("example-room", f"owner-{i}")["ok"] for i in range(3))            # the owner's rooms: no cap
+    out = io.StringIO()
+    with redirect_stdout(out):
+        assert cli.main(["explain", "jobs", "--private", str(y.jobs.path.parent), "--state", str(tmp_path / "state")]) == 0
+    said = out.getvalue()
+    assert "keys of [jobs] in the private yerkd.toml:" in said and "  ops_room: " in said
+    assert all(f"  {k}: " in said and f"(default {d})" in said for k, d in (("room_notes", 20), ("room_note_minutes", 5),
+                                                                           ("note_chars", 600)))
+
+
+def test_a_notes_message_over_note_chars_is_refused_with_the_cap_and_never_cut(tmp_path):
+    """Cold read A2: a note's text had no ceiling anywhere, and the tell cuts nothing. A note's message is at most
+    [jobs] note_chars (600) characters in every room and from `yerk schedule`; a longer one is refused with the cap in
+    the line and nothing is written."""
+    from test_room_scope import install
+    y, mom = install(tmp_path, family=True), "Alex"
+    y.jobs.units = sd = FakeSystemd(tmp_path / "units")
+    note = {"action": "add", "kind": "note", "when": "2099-01-03 10:00"}
+    long = asyncio.run(y.tool_schedule(mom, {**note, "name": "long", "what": "x" * 601}))
+    assert long == {"ok": False, "error": W.NOTE_LONG.format(most=600, n=601)}
+    assert long["error"].splitlines() == ["not scheduled: a note is at most 600 characters", "this one is 601"]
+    assert asyncio.run(y.tool_schedule("example-room", {**note, "name": "long", "what": "x" * 601})) == long
+    assert "[jobs.long]" not in y.jobs.path.read_text()
+    assert asyncio.run(y.tool_schedule(mom, {**note, "name": "fits", "what": "x" * 600}))["ok"]
+    priv = y.jobs.path.parent
+    (priv / "yerkd.toml").write_text((priv / "yerkd.toml").read_text() + "\n[jobs]\nnote_chars = 10\n")
+    monkey, err = pytest.MonkeyPatch(), io.StringIO()
+    monkey.setattr(jobs, "Systemd", lambda: sd)
+    try:
+        with redirect_stdout(io.StringIO()), redirect_stderr(err):
+            rc = cli.main(["schedule", "add", "short", "--kind", "note", "--when", "2099-01-03 10:00", "--what", "x" * 11,
+                           "--room", mom, "--private", str(priv), "--state", str(tmp_path / "state")])
+    finally:
+        monkey.undo()
+    assert rc == 1 and "a note is at most 10 characters" in err.getvalue() and "[jobs.short]" not in y.jobs.path.read_text()
+
+
+def test_the_schedule_tool_sets_a_note_by_default_in_a_room_that_is_not_the_owners(tmp_path, monkeypatch):
+    """Cold read C3: the tool's `kind` defaulted to "agent", the one kind a person's room can never set, so her call
+    with no kind was refused with a line that never says `kind "note"`. In a room that is not the owner's a missing
+    kind is a note; the owner's rooms keep "agent"."""
+    from test_room_scope import install
+
+    from yerk_ai import mcp_server
+    y, mom = install(tmp_path, family=True), "Alex"
+    y.jobs.units = FakeSystemd(tmp_path / "units")
+    server = mcp_server.build(y, y.port, y.hook)
+    for room, kind in ((mom, "note"), ("example-room", "agent")):
+        monkeypatch.setattr(mcp_server, "caller_room", lambda ctx, room=room: room)
+        got = asyncio.run(server.call_tool("schedule", {"action": "add", "name": f"call-{kind}", "when": "2099-01-03 10:00",
+                                                        "what": "Remind them to call the clinic."}))
+        out = json.loads((got[0] if isinstance(got, tuple) else got)[0].text)
+        assert out["ok"] and (out["kind"], out["room"]) == (kind, room), out
