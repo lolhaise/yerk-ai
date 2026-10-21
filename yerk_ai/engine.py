@@ -17,6 +17,7 @@ import fcntl
 import hashlib
 import hmac
 import json
+import logging
 import os
 import queue
 import secrets
@@ -34,6 +35,7 @@ from .config import write_private
 from .ledger import Ledger
 from .lifted.classify import Failure, FailureTable
 
+log = logging.getLogger("yerk.engine")
 STREAM_FLAGS = ["-p", "--input-format", "stream-json", "--output-format", "stream-json",
                 "--verbose", "--include-partial-messages", "--replay-user-messages"]
 
@@ -323,7 +325,10 @@ class RoomProcess:
         if self.spec.settings:
             write_private(self.room_dir / "settings.json", json.dumps(self.spec.settings, indent=1))
         if self.log_path:
-            self._log = open(self.log_path, "a")
+            try:
+                self._log = open(self.log_path, "a")
+            except OSError as e:                  # the stream log is a record of the turn, never the turn (disk-full drill c)
+                log.warning("room %s: no stream log this process: %s", self.spec.room, e)
             self._note({"argv": self.argv(), "account": self.account.name, "session_id": self.session_id})
         err = open(self.stderr_path, "ab")
         self.proc = subprocess.Popen(self.argv(), cwd=self.spec.cwd, env={**account_env(self.account), "CLAUDE_CODE_MCP_ALLOWLIST_ENV": "1"},
@@ -333,10 +338,21 @@ class RoomProcess:
         return self.session_id
 
     def _note(self, obj: dict[str, Any]) -> None:
+        """One line in the stream log. A write that fails (the disk full, the file past a size limit) ends the log
+        for this process and is said once; the turn goes on, since a reader thread that died here would leave the
+        turn waiting out its whole silence timeout (disk-full drill c)."""
         if self._log:
             with self._log_lock:
-                self._log.write(json.dumps({"t": round(time.time(), 3), **obj}) + "\n")
-                self._log.flush()
+                if self._log is None:             # closed under a shutdown while this line waited for the lock
+                    return
+                try:
+                    self._log.write(json.dumps({"t": round(time.time(), 3), **obj}) + "\n")
+                    self._log.flush()
+                except (OSError, ValueError) as e:
+                    log.warning("room %s: the stream log cannot be written, the rest of this process goes unlogged: %s", self.spec.room, e)
+                    with contextlib.suppress(OSError):
+                        self._log.close()
+                    self._log = None
 
     def _read(self) -> None:
         assert self.proc and self.proc.stdout
@@ -466,9 +482,10 @@ class RoomProcess:
             self._note({"exit": rc})
         if self.lock:
             self.lock.release()
-        if self._log:
-            self._log.close()
-            self._log = None
+        with self._log_lock:                      # never under a line the reader thread is writing
+            if self._log:
+                self._log.close()
+                self._log = None
         return rc
 
     def __enter__(self) -> "RoomProcess":

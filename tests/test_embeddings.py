@@ -10,7 +10,6 @@ import logging
 import os
 import re
 import sqlite3
-import threading
 import time
 import urllib.request
 from pathlib import Path

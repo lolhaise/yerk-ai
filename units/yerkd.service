@@ -29,6 +29,15 @@ WatchdogSec=30
 Restart=on-failure
 RestartSec=5
 TimeoutStartSec=120
+# A stop: yerkd gets SIGTERM alone (KillMode=mixed), says STOPPING=1, ends each room's Claude Code itself (a turn
+# mid-run is cut and its messages run again once at the next start, marked), closes the gateway clean and exits 0;
+# anything still alive when it has exited gets SIGKILL. Measured 1.3 s with a turn running (signal drill); 30 s is
+# the ceiling before systemd's SIGKILL. NoNewPrivileges and PrivateTmp: no setuid gain for any room's shell, a /tmp
+# of its own (Claude Code's sandbox, bwrap, needs neither; proven on a scratch install under systemd-run).
+KillMode=mixed
+TimeoutStopSec=30
+NoNewPrivileges=yes
+PrivateTmp=yes
 MemoryHigh=2G
 MemoryMax=4G
 Environment=YERK_PRIVATE=%h/yerk-private

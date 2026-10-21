@@ -98,7 +98,8 @@ WHY = {                                   # a failed turn, in plain words: the f
     "transient": "Claude was busy; ask again", "overflow": "the conversation is too long",
     "fatal": "Claude Code could not run it", "refusal": "the model declined",
     "timeout": "it ran past the time limit", "exited": "Claude Code stopped midway",
-    "empty": "the reply came back empty", "error": "Claude Code reported an error"}
+    "empty": "the reply came back empty", "error": "Claude Code reported an error",
+    "crashed": "the harness failed; it is in the log"}
 BACKUP = ("answered by a backup model", "the next message starts fresh")
 MOVED, COMPACTING = "still on it, moved to account {name}", "shortening the conversation first"
 MOVED_ON = "still on it, trying another way"      # the hop note in a room that is not the owner's: no account name there
@@ -256,6 +257,7 @@ def ability(state: str, **say: Any) -> tuple[str, str]:
 # its limit, a blocked room, a stall, a daemon down); every other line starts with a dash
 PLAIN, RUNNING_ROOMS = "-", "yerkd running: {rooms}"
 ROOMS_N, ROOM_1 = "{n} rooms", "1 room"
+VERSION_AT = "yerk {version} at {commit}"      # the package's version and the commit that runs (an upgrade's receipt)
 NOT_RUNNING, NOT_ANSWERING = "yerkd: not running", "yerkd: running, not answering"
 NO_READING, RESTS = "{name}: no reading yet", "{name}: resting until {until}"
 OLD_READING, TURN_FOR = "{name}: last reading {ago}", "{name}: busy {took}"
@@ -275,6 +277,8 @@ UNKNOWN, NOT_ANSWERING_WHY = "{what}: unknown, {why}", "yerkd not answering"
 DEAD, NO_YERKD, NO_DEAD = "dead turns: {n}, {name}, last {at}", "no yerkd answers", "dead turns: none in 24h"
 SWEPT, SWEEP_FAILED = "swept: {kinds}", "retention failed: {why}"     # the night's sweep (retention.py)
 DOCTOR_OK, DOCTOR, NO_RUN = "doctor: ok", "doctor: {n} found, {first}", "one more line 00for"     # the case before (the.next)
+CURATE_OK, CURATE = "curate: {n} landed, {m} swept", "curate: {n} to read, {first}"     # the night's curation (curate.py)
+CURATE_RUNNING, CURATE_CUT = "curate: running since {at}", "curate: cut off at {at}, {n} to undo"
 # the stance check (evidence.stance): the owner's pushback opens a line with one of these words or carries one of these phrases
 PUSHBACK = re.compile(r"^[^\in\n]*(?:(?:the|Next|run|starts|the|example+|note)\says[^\the\n]*)?(?:next+|step|and+(?!\the+(?:test|reads|it|back|as)\plain)"
                       r"|wrong|actually|disagree|not\s+(?:true|really|quite))\b|\b(?:you['’]?re|you\s+are|that['’]?s|that\s+is)\s+wrong\b"

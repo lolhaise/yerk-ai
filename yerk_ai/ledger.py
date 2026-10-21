@@ -195,6 +195,9 @@ class Ledger:
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA synchronous=NORMAL")
         self.db.execute("PRAGMA busy_timeout=5000")    # the CLI, the units and the daemon all write it
+        if (v := self.version()) > MIGRATIONS[-1][0]:   # a downgrade: refused with one line before anything is written
+            raise SystemExit(f"the ledger {path} is schema version {v}, newer than this code's {MIGRATIONS[-1][0]}: run the "
+                             "version that wrote it, or restore the ledger from a backup; nothing was changed")
         self.db.executescript(SCHEMA)
         add_columns(self.db)                           # a column the code gained is there before any read
         self.migrated = self.migrate()
@@ -372,6 +375,13 @@ class Ledger:
     def record(self, **row: Any) -> int:
         known(row, COLUMNS, "ledger")
         return self._insert("turns", row)
+
+    def turn_summary(self, since: float) -> tuple[dict[str, float], list[dict[str, Any]]]:
+        """(each room's last answered turn's end, the failed turns since `since` by room, outcome and class with a count)."""
+        ok = self._select("SELECT room, max(ended) AS ended FROM turns WHERE outcome = 'ok' GROUP BY room", ())
+        failed = self._select("SELECT room, outcome, failure, count(*) AS n FROM turns WHERE started >= ? AND outcome != 'ok' "
+                              "GROUP BY room, outcome, failure ORDER BY room", (since,))
+        return {str(r["room"]): float(r["ended"]) for r in ok if r["ended"] is not None}, failed
 
     def rows(self, limit: int = 20, table: str = "turns") -> list[dict[str, Any]]:
         order = "received" if table == "inbound" else "id"

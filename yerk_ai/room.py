@@ -30,6 +30,7 @@ adapter's event loop.
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import re
@@ -145,6 +146,7 @@ class Room:
         self.out_of = ""                          # the pinned model every account is out of: the turn runs on rooms.toml's
         self.stopped = False                      # /stop: the running turn ends now and is never run again
         self.halt = threading.Event()             # ... and a rerun's wait ends at once
+        self.closing = False                      # the daemon is stopping (shutdown): nothing more starts or is written
 
     def _ledger_call(self, call: dict[str, Any]) -> None:
         self.ledger.evidence(t=round(time.time(), 3), room=self.name, session_id=self.rp.session_id if self.rp else "",
@@ -343,6 +345,19 @@ class Room:
             rp.end_now()
         return True
 
+    def shutdown(self) -> bool:
+        """A daemon stop (SIGTERM): the room's process ends now, a turn mid-run cut with it. Its messages stay `running`
+        in the ledger, never a `failed` row and never a notice, so the next start runs them once more, marked (the
+        redeliver-once rule); nothing starts or is written after this. True when a turn was cut."""
+        with self.lock:
+            self.closing, rp, busy = True, self.rp, self.busy
+            self.halt.set()
+        if rp:
+            if busy:
+                rp.end_now()
+            rp.close()                            # and the session's lock freed: the next start resumes it
+        return busy
+
     # the room's thread
     def _write(self, msg: Inbound, recap: str | None = None) -> None:
         assert self.rp
@@ -387,6 +402,7 @@ class Room:
         return usual, self._account(usual)
 
     def _run(self) -> None:
+        batch: list[Inbound] = []
         try:
             while True:
                 with self.lock:
@@ -409,6 +425,9 @@ class Room:
             log.exception("room %s: turn crashed", self.name)
             with self.lock:
                 self.busy = self.reading = False
+            if batch and not self.closing:        # said in the room, its rows closed (disk-full drill c: a card left at
+                with contextlib.suppress(Exception):   # "working on it" for good); when the ledger or the channel is what
+                    self._end(batch, words.why(None, "crashed"), "crashed")   # failed, the rows stay open for the next start
 
     def _on_event(self, turn: Turn, ev: dict[str, Any]) -> None:
         """The card from the stream: narration, thinking line, tool rows."""
@@ -437,6 +456,8 @@ class Room:
         recap_sid = None                       # the session that already got the recap
         resend = batch
         while True:
+            if self.closing:                      # the daemon is stopping: no next run, no row, no notice (Room.shutdown)
+                return
             if self.stopped:                      # /stop between two runs: no next run is started or fed
                 self._end(resend, words.STOPPED, "/stop", "stopped")
                 return
@@ -469,7 +490,7 @@ class Room:
             with self.lock:
                 self.reading = False
                 resend = list(self.inflight)
-            if step == "done":
+            if step == "done" or self.closing:    # closing: the process was ended under the turn; its rows stay open
                 return
             if self.stopped:                      # /stop: no rerun, hop or fresh retry, here or after a restart
                 self._end(resend, words.STOPPED, "/stop", "stopped")

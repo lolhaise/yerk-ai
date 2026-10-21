@@ -40,6 +40,7 @@ import logging
 import mimetypes
 import re
 import shutil
+import sqlite3
 import time
 import uuid
 from pathlib import Path
@@ -70,6 +71,7 @@ FORBIDDEN = {".exe", ".bat", ".cmd", ".com", ".scr", ".msi", ".dll", ".ps1", ".v
 BOT_UPLOAD = 20 * 1024 * 1024
 REPLY_MAX = 300
 QUICK = 1.0           # seconds a slash command may take before its answer is deferred (Discord gives three)
+RETRY = 60.0          # seconds before a channel is read again after a message the ledger could not take (disk-full drill b)
 SAID = (discord.MessageType.default, discord.MessageType.reply)   # what a person types; the rest are Discord's lines
 
 
@@ -150,6 +152,7 @@ class DiscordChannel:
         self.people: dict[int, frozenset[int]] = {}   # channel id -> the user ids answered there besides the owner
         self.after_recover: list[Callable[[], Awaitable[None]]] = []   # once, after the rooms recovered
         self.typing: dict[str, asyncio.Task[None]] = {}   # room name -> its typing refresh, while nothing is visible
+        self.retry: set[int] = set()              # channels read again in RETRY s: a message the ledger could not take
         if client is None:
             intents = discord.Intents.none()
             intents.guilds = intents.guild_messages = intents.message_content = True
@@ -171,6 +174,10 @@ class DiscordChannel:
     async def start(self) -> None:
         self.loop = asyncio.get_running_loop()
         await self.client.start(self.token)
+
+    async def close(self) -> None:
+        """A stop: the gateway told and the session closed clean, so the next start identifies fresh."""
+        await self.client.close()
 
     # inbound
     def sender_of(self, m: Any) -> str | None:
@@ -237,8 +244,15 @@ class DiscordChannel:
         if not (m.content or getattr(m, "attachments", None)):
             return
         made = getattr(m, "created_at", None)
-        if not self.ledger.inbound_add(str(m.id), room.name, str(m.channel.id), sender, len(m.content or ""),
-                                       created=made.timestamp() if made is not None and hasattr(made, "timestamp") else None):
+        try:
+            if not self.ledger.inbound_add(str(m.id), room.name, str(m.channel.id), sender, len(m.content or ""),
+                                           created=made.timestamp() if made is not None and hasattr(made, "timestamp") else None):
+                return
+        except sqlite3.OperationalError as e:     # the ledger cannot be written (the disk full): not lost, the channel is
+            log.error("room %s: message %s not taken, the ledger cannot be written (%s); read again in %.0f s", room.name, m.id, e, RETRY)
+            if m.channel.id not in self.retry:    # read again once it can (disk-full drill b), one retry per channel at a time
+                self.retry.add(m.channel.id)
+                asyncio.ensure_future(self._retry(m.channel.id, room))
             return
         await self._typing_begin(room.name, await self._channel(room.name))   # its own channel, never the watched one
         await self._react(m.channel.id, m.id, ACK)
@@ -337,19 +351,43 @@ class DiscordChannel:
         self.loop = asyncio.get_running_loop()
         log.info("discord: connected as %s, serving %d room(s)", self.client.user, len(self.names))
         self.connected = True
-        if not self.recovered:              # once per process: a reconnect must not re-run live turns
-            self.recovered = True
-            for cid, room in self.rooms.items():
-                try:
-                    await self.recover(cid, room)
-                except Exception as e:    # whatever one channel hits (a 403, a 404, the network) never stops the rest
-                    log.warning("room %s: channel %s not recovered after the restart: %s", room.name, cid, e)
-            for hook in self.after_recover:
-                try:
-                    await hook()
-                except Exception:
-                    log.exception("discord: a start-up step after recovery failed")
-            await self.register()
+        first, self.recovered = not self.recovered, True   # the recovery once per process: a reconnect must not re-run
+        for cid, room in self.rooms.items():               # live turns; the catch-up on every ready (network drill 3)
+            try:
+                await (self.recover if first else self.catch_up)(cid, room)
+            except Exception as e:    # whatever one channel hits (a 403, a 404, the network) never stops the rest
+                log.warning("room %s: channel %s not recovered after the restart: %s", room.name, cid, e)
+        if not first:
+            return
+        for hook in self.after_recover:
+            try:
+                await hook()
+            except Exception:
+                log.exception("discord: a start-up step after recovery failed")
+        await self.register()
+
+    async def catch_up(self, cid: int, room: Room) -> None:
+        """The owner's messages the channel got since the last one ledgered: 50 at most, however many others wrote
+        between them, which never count; each filed and taken as on_message does. After every ready, since a gateway
+        session Discord let go replays nothing (network drill 3), and again RETRY s after a message the ledger could
+        not take (disk-full drill b); a channel with no ledgered message yet has no place to read from."""
+        self.retry.discard(cid)
+        last, left = self.ledger.last_inbound(str(cid)), 50
+        if not last:
+            return
+        ch = self.client.get_channel(cid) or await self.client.fetch_channel(cid)
+        async for m in ch.history(after=discord.Object(int(last)), limit=None, oldest_first=True):
+            if (left := left - (self.sender_of(m) is not None)) < 0:
+                break
+            self.file(room.name, m)                    # as on_message: into the day's log, then taken
+            await self.take(room, m)
+
+    async def _retry(self, cid: int, room: Room) -> None:
+        await asyncio.sleep(RETRY)
+        try:
+            await self.catch_up(cid, room)             # a take that fails again schedules the next read itself
+        except Exception as e:
+            log.warning("room %s: the channel could not be read again: %s", room.name, e)
 
     # slash commands
     async def register(self) -> None:
@@ -444,13 +482,7 @@ class DiscordChannel:
                 text += ("\n[already in the room from before the restart, not to be sent again: "
                          + "; ".join(f"file {r['file']} (message {r['message_id']})" for r in sent) + "]")
             room.submit(Inbound(str(m.id), str(row["sender"]), text, attempt=attempts, files=files))
-        last, left = self.ledger.last_inbound(str(cid)), 50      # the owner's missed messages: 50 at most, however
-        if last:                                                  # many others wrote between them, which never count
-            async for m in ch.history(after=discord.Object(int(last)), limit=None, oldest_first=True):
-                if (left := left - (self.sender_of(m) is not None)) < 0:
-                    break
-                self.file(room.name, m)                    # as on_message: into the day's log, then taken
-                await self.take(room, m)
+        await self.catch_up(cid, room)                     # then what arrived while the daemon was down
 
     async def redeliver(self, ch: Any, room: Room) -> None:
         """Parts a crash left unconfirmed: posted once, labelled, unless the room already shows

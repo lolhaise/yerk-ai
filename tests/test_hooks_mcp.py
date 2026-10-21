@@ -259,6 +259,23 @@ def test_a_running_hook_carries_its_token_in_no_process_argument(tmp_path):
     srv.shutdown()
 
 
+def test_a_rooms_settings_carry_the_compaction_window_from_budgets_and_a_room_may_override_it(tmp_path):
+    """A room compacts where budgets.toml [session] compact_window says, never at the model's window edge;
+    rooms.toml `compact_window` overrides it for one room, and 0 leaves the window to the model. A value outside
+    Claude Code's 100,000 to 1,000,000 is clamped into it: Claude Code drops it silently and compacts at the model's edge."""
+    import shutil
+    from yerk_ai.config import budgets
+    private, state = tmp_path / "private", tmp_path / "state"
+    shutil.copytree(EXAMPLE_PRIVATE, private)
+    state.mkdir()
+    assert Yerkd(private, state).spec_for("example-room").settings["autoCompactWindow"] == budgets()["session"]["compact_window"] == 250000
+    base = (private / "rooms.toml").read_text()
+    for value, expect in ((400000, 400000), (50000, 100000), (2000000, 1000000), (0, None)):
+        (private / "rooms.toml").write_text(base.replace("[rooms.example-room]\n", f"[rooms.example-room]\ncompact_window = {value}\n", 1))
+        assert Yerkd(private, state).spec_for("example-room").settings.get("autoCompactWindow") == expect
+        assert Yerkd(private, state).spec_for("example-quiet").settings["autoCompactWindow"] == 250000   # the other room keeps the budget
+
+
 def test_the_secrets_sit_outside_every_rooms_layer(tmp_path):
     """Cold read F4: a room with no `layer` key has the whole private folder in its Read rule and its
     --add-dir, so the secrets are minted under the state folder for every layer, never inside one."""
