@@ -72,7 +72,7 @@ def test_a_scoped_rooms_meaning_hits_are_kept_to_its_roots_too(tmp_path, monkeyp
     rows = conn.execute("SELECT id, path, lo, body FROM chunks").fetchall()
     conn.close()
     every = [{"id": i, "path": p, "line": lo, "text": b, "score": 0.9} for i, p, lo, b in rows]
-    monkeypatch.setattr(memory, "meaning", lambda s, q: ("ok", [dict(h) for h in every]))
+    monkeypatch.setattr(memory, "meaning", lambda s, q, **wait: ("ok", [dict(h) for h in every]))
     assert "vermilion" not in texts(y, "frozen-room", "vermilion", 20)
     assert "periwinkle" not in texts(y, "live-room", "periwinkle", 20)
     assert "vermilion" in texts(y, "example-room", "vermilion", 20) and "periwinkle" in texts(y, "example-room", "periwinkle", 20)
@@ -135,7 +135,7 @@ def test_a_correction_in_the_live_room_never_shows_in_the_frozen_room(tmp_path):
     y = install(tmp_path)
     r = memory.remember(y.scoped["live-room"], y.daily, "live-room", "m1", "Moved to the crimson hook in the hall", "",
                         ("memory/2026-10-19.md:3 | example shed key",), y.reader("live-room"))
-    assert r["ok"] and r["not_edited"] and "(supersedes memory/2026-10-19.md:3)" in (y.memory.daily.parent / r["cite"].split("/", 1)[1].rpartition(":")[0]).read_text()
+    assert r["ok"] and r["not_edited"] and "(supersedes live/memory/2026-10-19.md:3)" in (y.memory.daily.parent / r["cite"].split("/", 1)[1].rpartition(":")[0]).read_text()   # its own cite since F3
     assert (y.memory.root / memory.LATER).read_text().startswith(f"{tmp_path / 'live' / 'memory' / '2026-10-19.md'}:3\t")
     sync(y)
     q = "where does the example shed key hang, by which door?"
@@ -325,3 +325,68 @@ def test_a_room_that_lists_people_needs_a_layer_of_its_own(tmp_path):
                 Yerkd(private, state)
         else:
             Yerkd(private, state)
+
+
+def test_no_new_recall_path_brings_a_family_room_an_owner_line_and_a_scoped_room_stays_in_its_roots(tmp_path):
+    """Rail run 2's paths (the past-tense search, deep name recall, the asked-about search, the absence line) read as the
+    room's reader in its own scope (decisions 22, 23, 44): the family room gets its own lines and shared files, never an
+    owner line; a name only the owner's files hold is not on file for her; a scoped owner room gets its own `also` root only."""
+    from yerk_ai import hooks
+    y, mom = install(tmp_path, family=True), "Alex"
+    y.daily.capture("example-room", "o1", "owner", "we ate at the example diner last friday with Examplia, the owner's private night")
+    y.daily.capture(mom, "p1", "person", "we ate at the example diner last friday, the mother's own night", who="mom")
+    (y.memory.root / "facts").mkdir(exist_ok=True)
+    (y.memory.root / "facts" / "examplia.md").write_text("# examplia\n\n- Examplia: the owner's private friend from the example diner.\n")
+    (y.memory.root / "facts" / "example-club.md").write_text("---\nclass: shared\n---\n# example club\n\n- Example Club: meets at the example diner.\n")
+    sync(y)
+    asks = ["what did we eat at the example diner last friday?", "who is Examplia?", "what do you know about the example diner",
+            "tell me about example club", "do you remember the example kettle"]
+    for ask in asks:
+        names, topics, past, absent = got = y.recall_for(mom, ask)
+        text = hooks.render_recall(names, topics, 1500, past, absent)
+        assert "owner's private" not in text + json.dumps(got) and "periwinkle" not in text and "vermilion" not in text, ask
+    hers = y.recall_for(mom, asks[0])
+    assert hers[2] and any("the mother's own night" in h["text"] for h in hers[2])        # her own line comes in through the past search
+    assert y.recall_for(mom, asks[1])[3] == ["Examplia"]                                  # only the owner's files hold it: not on file for her
+    assert any("meets at the example diner" in e["text"] for e in y.recall_for(mom, asks[3])[0])     # a shared file reaches her
+    his = y.recall_for("example-room", asks[1])
+    assert his[3] == [] and any("owner's private friend" in e["text"] for e in his[0])    # the owner's room: their card, nothing absent
+    frozen = hooks.render_recall(*y.recall_for("frozen-room", "what do you know about the example shed key")[:2], 1500,
+                                 *y.recall_for("frozen-room", "what do you know about the example shed key")[2:])
+    assert "periwinkle" in frozen and "vermilion" not in frozen                           # its own `also` root, never the other
+
+
+def test_a_name_brings_its_best_lines_newest_first_and_a_name_with_none_gets_the_absence_line(tmp_path):
+    y = install(tmp_path)
+    live = tmp_path / "live" / "memory"
+    (live / "facts" / "examplia.md").write_text("- Examplia: the example neighbour, two doors down.\n")
+    (live / "2026-10-01.md").write_text("# 2026-10-01\n\n- Examplia lent the example ladder.\n- who is Examplia?\n")
+    (live / "2026-10-12.md").write_text("# 2026-10-12\n\n- Examplia came back from the example trip.\n")
+    y.daily.capture("example-room", "now1", "owner", "tell me about Examplia")
+    sync(y)
+    lines = memory.lines_on(y.scoped["live-room"], "Examplia", y.reader("live-room"), exclude={"now1"})
+    assert [x["text"] for x in lines] == ["Examplia: the example neighbour, two doors down.", "10-12 Examplia came back from the example trip.",
+                                          "10-01 Examplia lent the example ladder."]     # standing first, then newest first; no ask, no own message
+    names, topics, past, absent = y.recall_for("live-room", "who is Examplia? and who is Zorblaxia?")
+    assert absent == ["Zorblaxia"] and [e["cite"] for e in names if e.get("named") == "examplia"][:2] == [
+        f"{live}/facts/examplia.md:1", "live/memory/2026-10-12.md:3"]          # the card, then its newest line, cited as recall cites it
+    from yerk_ai import hooks
+    assert hooks.render_recall(names, topics, 1500, past, absent).startswith("[named, nothing on file: Zorblaxia]\n" + hooks.HEADS[0])
+
+
+def test_an_unfinished_keyword_read_is_no_absence_and_eight_crowded_chunks_are_looked_past(tmp_path, monkeypatch):
+    """2026-10-21 cold read: ranked() answers a busy or broken index read with ok False and no hits, and lines_on read
+    that as no lines, so a room said "nothing on file" about a name it holds; and in a room reading a snapshot beside the
+    live notes, the copies took all eight chunks and the line holding every word ranked ninth."""
+    y = install(tmp_path)
+    (tmp_path / "live" / "memory" / "2026-10-01.md").write_text("# 2026-10-01\n\n- Zorblaxia lent the example ladder.\n")
+    sync(y)
+    real = memory.ranked
+    monkeypatch.setattr(memory, "ranked", lambda *a, **k: {"ok": False, "status": "timeout", "error": "busy"})
+    assert y.recall_for("live-room", "who is Zorblaxia?")[3] == []                  # busy: no absence line
+    def crowded(s, q, k=6, *a, **kw):
+        r = real(s, q, k, *a, **kw)
+        return r if k > 8 else {**r, "hits": [{**h, "text": "- the example ladder."} for h in r.get("hits", [])]}
+    monkeypatch.setattr(memory, "ranked", crowded)
+    names, topics, past, absent = y.recall_for("live-room", "who is Zorblaxia?")
+    assert absent == [] and any("Zorblaxia lent" in e["text"] for e in names)       # the deeper read found it

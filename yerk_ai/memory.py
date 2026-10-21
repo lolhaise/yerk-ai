@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any, Iterator
 from zoneinfo import ZoneInfo
 
-from . import memindex, mentions
+from . import memindex, mentions, words
 from .config import REPO, load_toml, write_private
 
 MARK = re.compile(r"\[m:([^\]\s]+)\]$", re.M)        # the message id that ends each captured line
@@ -57,6 +57,7 @@ class Settings:
     index_status: Path              # what yerk-index serves: its port and the embeddings' state
     recall_chars: int               # one recall's first six snippets together, at most
     scoped: bool = False            # a room's own `also` (only): index hits and names kept to the roots in `scope`
+    cites: tuple[tuple[Path, str], ...] = ()    # every root of the install and the name a cite gives it, the same in every room
 
     @property
     def daily(self) -> Path:
@@ -90,6 +91,10 @@ def settings(private: Path, state: Path, conf: dict[str, Any] | None = None) -> 
     else:
         root = (private / "memory").resolve()
     tz: tzinfo = ZoneInfo(str(conf.get("timezone") or system_zone()))   # a zone, never one start-time offset (R5)
+    cites: dict[Path, str] = {}
+    for r in (root, *also):          # its folder's name, else as much of its path as no earlier root's cite has (F3, 2026-10-21)
+        names = ["/".join(r.parts[-n:]) for n in range(1, len(r.parts))]
+        cites.setdefault(r, next((x for x in names if x not in cites.values()), names[-1]))
     return Settings(root=root, scope=memindex.Scope(tuple([root, *also]), tuple(conf.get("exclude", []))),
                     index_db=state / "memory" / "index.sqlite", tz=tz, interval=float(conf.get("interval", 2.0)),
                     bench=(private / Path(str(conf.get("bench", "evals/recall-questions.json")))).resolve(),
@@ -102,7 +107,7 @@ def settings(private: Path, state: Path, conf: dict[str, Any] | None = None) -> 
                     embeddings_units=str(conf.get("embeddings_units", "both")),
                     embeddings_width=int(conf.get("embeddings_width") or conf.get("embeddings_dim") or 256),
                     index_status=state / "memory" / "index.json",
-                    recall_chars=max(100, int(conf.get("recall_chars", RECALL_CHARS))))
+                    recall_chars=max(100, int(conf.get("recall_chars", RECALL_CHARS))), cites=tuple(cites.items()))
 
 
 # the embedding settings a user with another model or budget can pick, described from the code (run 5):
@@ -494,7 +499,7 @@ def live_first(s: Settings, r: dict[str, Any], reader: Reader | None = None) -> 
 
 def read(s: Settings, path: str, start: int = 1, lines: int = READ_LINES, reader: Reader | None = None) -> dict[str, Any]:
     """An exact excerpt of a file in the memory tree. A relative path is taken from the tree's root, else
-    as a cite names it (a root's name, then the path under it); a recall `cite` (file:line) starts at its
+    as a cite names it (a root's name, then its cite name, then the path under it); a recall `cite` (file:line) starts at its
     line unless `start` is past 1. Anything that resolves outside the scope (a `..`, an absolute path
     elsewhere, a link out) is refused.
     `reader` (the asking room) sees only what its class allows: a private file is refused outright, a
@@ -505,7 +510,8 @@ def read(s: Settings, path: str, start: int = 1, lines: int = READ_LINES, reader
     try:            # a NUL, or a name too long (3.12 and 3.13 raise that from exists()), is no such file
         p = Path(path).expanduser()
         if not p.is_absolute():
-            p = next((c for c in (s.root / p, *(r.parent / p for r in s.scope.roots if p.parts[:1] == (r.name,)))
+            p = next((c for c in (s.root / p, *(r.parent / p for r in s.scope.roots if p.parts[:1] == (r.name,)),
+                                  *(r / p.relative_to(n) for r, n in s.cites if "/" in n and p.is_relative_to(n)))
                       if c.exists()), s.root / p)
         real = p.resolve(strict=True)
     except (OSError, RuntimeError, ValueError):
@@ -629,9 +635,9 @@ def fuse(keywords: list[dict[str, Any]], vectors: list[dict[str, Any]], k: int, 
 
 
 def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader: Reader | None = None,
-           weights: dict[str, float] | None = None) -> dict[str, Any]:
+           weights: dict[str, float] | None = None, wide: bool = True, wait: float = MEANING_WAIT) -> dict[str, Any]:
     """Ranked chunks, whole, with path and line, the keyword rank fused with the meaning rank when
-    yerk-index serves one (the bench's rank reads these; the recall tool cuts them). A timeout and a
+    yerk-index serves one and `wide`, waiting `wait` for it at most (the bench's rank reads these; the recall tool cuts them). A timeout and a
     failure of the index read differently (L54); a provider timeout or error reads differently from
     both: keywords only for this query, logged. `weights` gets the query words' weights."""
     k = max(1, min(int(k), 20))
@@ -650,7 +656,7 @@ def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader:
             return {"ok": False, "status": "timeout", "error": f"the index was busy for {deadline_s:.0f} s; "
                     "memory is not down, try once more"}
         return {"ok": False, "status": "failure", "error": f"the index could not be read: {e}"}
-    state, vectors = meaning(s, query)
+    state, vectors = meaning(s, query, deadline_s=wait) if wide else ("off", [])
     if state in ("provider-timeout", "provider-error", "index-timeout", "failure"):
         log.warning("recall: meaning search skipped (%s); keywords only for this query", state)
     if s.scoped:             # a room's own `also`: its roots' candidates only, before fusion keeps k (every root is indexed)
@@ -665,14 +671,40 @@ def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader:
     return {"ok": True, "status": "ok", "hits": hits}
 
 
-def recall(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader: Reader | None = None) -> dict[str, Any]:
+def recall(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader: Reader | None = None, chars: int = 0,
+           wait: float = MEANING_WAIT) -> dict[str, Any]:
     """The recall tool: the hits `ranked` gives, in its order, each cut to the lines that carry the match
     with a cite (file:line of its first line) that read_memory reads on from; the first six snippets
-    together hold at most `recall_chars` characters, each at most SNIPPET, and each hit past the sixth
+    together hold at most `recall_chars` characters (`chars`, the prompt hook's part), each at most SNIPPET, and each hit past the sixth
     adds its best line, at most EXTRA."""
     weights: dict[str, float] = {}
-    r = ranked(s, query, k, deadline_s, reader, weights)
-    return {**r, "hits": snippets(r["hits"], weights, s.recall_chars)} if r["ok"] else r
+    r = ranked(s, query, k, deadline_s, reader, weights, wait=wait)
+    return {**r, "hits": snippets(r["hits"], weights, chars or s.recall_chars)} if r["ok"] else r
+
+
+def lines_on(s: Settings, what: str, reader: Reader | None = None, k: int = 8, exclude: set[str] | None = None,
+             best: int = 6) -> list[dict[str, Any]]:
+    """Deep recall (decision 42): the `best` lines on `what`, a name or a topic, in the reader's scope, in the order of the k chunks
+    the keyword rank gives (a name is its words: no meaning search), each holding every word of it; then a standing file's lines
+    first, the day logs' newest first. Never a line of the message being answered (`exclude`, its ids), a corrected line, or one
+    that asks about it (words.ASKED): an ask is not on file. A keyword read that did not finish raises LookupError: it proves no absence."""
+    want = {t for t in mentions.tokens(what, True) if len(t) > 1 and t not in memindex.STOP}
+    out: list[dict[str, Any]] = []
+    r: dict[str, Any] = ranked(s, what, k, 2.0, reader, wide=False) if want else {"ok": True}
+    if not r["ok"]:
+        raise LookupError(f"the keyword read on {what!r} did not finish: {r['status']}")
+    for h in r.get("hits", []):
+        day = Path(h["path"]).stem if is_daylog(h["path"]) else ""
+        for i, raw in enumerate(str(h["text"]).splitlines()):
+            ln = parse_line(raw)
+            if not want <= set(mentions.tokens(raw, True)) or mentions.OLD in raw or words.ASKED.search(raw) or (
+                    ln and ln.mid.split(".e")[0] in (exclude or set())):
+                continue
+            text = (f"{day[5:]} " if day else "") + (f"{ln.time[:5]} {ln.role}: {ln.body}" if ln else raw.strip().removeprefix("- "))
+            out.append({"cite": f"{h['cite'].rpartition(':')[0]}:{h['line'] + i}", "at": f"{h['path']}:{h['line'] + i}", "day": day, "n": h["line"] + i,
+                        "text": text if len(text) <= ITEM_CHARS else _cut(text, {_root(t): 1.0 for t in want}, ITEM_CHARS - 2)})
+    out = [x for n, x in enumerate(out) if x["text"] not in {y["text"] for y in out[:n]}][:best]     # a snapshot's copy of a line: once
+    return [x for x in out if not x["day"]] + sorted((x for x in out if x["day"]), key=lambda x: (x["day"], x["n"]), reverse=True)
 
 
 def snippets(hits: list[dict[str, Any]], weights: dict[str, float], budget: int) -> list[dict[str, Any]]:
@@ -751,12 +783,13 @@ def _cut(line: str, want: dict[str, float], room: int) -> str:
 
 
 def cite(s: Settings, path: Path) -> str:
-    """The short name a room cites a file by: its root's name and the path under it."""
+    """The short name a room cites a file by: its root's cite name (Settings.cites, one per root) and the path under it."""
+    named = dict(s.cites)
     for root in s.scope.roots:
         if path == root:
-            return root.name
+            return named.get(root, root.name)
         if path.is_relative_to(root):
-            return (Path(root.name) / path.relative_to(root)).as_posix()
+            return (Path(named.get(root, root.name)) / path.relative_to(root)).as_posix()
     return path.name
 
 
