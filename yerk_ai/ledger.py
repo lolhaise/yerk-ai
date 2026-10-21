@@ -263,8 +263,7 @@ class Ledger:
                          "LIMIT 1", (room, time.time() - window_s))
         if not r:
             return None
-        with self.lock:
-            self.db.execute("UPDATE approvals SET approved = ?, approved_by = ? WHERE id = ?", (time.time(), by, r[0]["id"]))
+        self._update("approvals", "id", r[0]["id"], {"approved": time.time(), "approved_by": by})
         return r[0]
 
     def release(self, room: str, rule: str, call: str, cwd: str, window_s: float) -> dict[str, Any] | None:
@@ -274,8 +273,7 @@ class Ledger:
                          "AND released IS NULL ORDER BY id DESC LIMIT 1", (room, rule, call, cwd, time.time() - window_s))
         if not r:
             return None
-        with self.lock:
-            self.db.execute("UPDATE approvals SET released = ? WHERE id = ?", (time.time(), r[0]["id"]))
+        self._update("approvals", "id", r[0]["id"], {"released": time.time()})
         return r[0]
 
     def many(self, rows: list[tuple[str, dict[str, Any]]]) -> None:
@@ -332,8 +330,7 @@ class Ledger:
         if not row_id:
             return self._insert("deploys", {"at": time.time(), **row})
         known(row, {"kind", "unit", "before", "after", "outcome", "cut", "proof", "note"}, "deploys")
-        with self.lock:
-            self.db.execute(f"UPDATE deploys SET {', '.join(f'{k} = ?' for k in row)} WHERE id = ?", (*row.values(), row_id))
+        self._update("deploys", "id", row_id, row)
         return row_id
 
     def deploys(self, since: float) -> list[dict[str, Any]]:
@@ -380,6 +377,16 @@ class Ledger:
             names = [d[0] for d in cur.description]
             return [dict(zip(names, r)) for r in cur.fetchall()]
 
+    def _first(self, sql: str, args: tuple[Any, ...]) -> dict[str, Any] | None:
+        return next(iter(self._select(sql, args)), None)
+
+    def _update(self, table: str, where: str, key: Any, fields: dict[str, Any]) -> None:
+        """`fields` (names the caller checked) set on the row whose `where` is `key`, with the ids they link."""
+        sets = ", ".join(f"{k} = ?" for k in fields)
+        with self.lock:
+            self.db.execute(f"UPDATE {table} SET {sets} WHERE {where} = ?", (*fields.values(), key))
+            self._link(table, fields, key=key)
+
     # inbound
     def inbound_add(self, message_id: str, room: str, channel: str, sender: str, chars: int, created: float | None = None) -> bool:
         """Ledger a channel message before anything runs (`created`: its own time on the channel, the
@@ -394,14 +401,10 @@ class Ledger:
 
     def inbound_set(self, message_id: str, **fields: Any) -> None:
         known(fields, INBOUND, "inbound")
-        sets = ", ".join(f"{k} = ?" for k in fields)
-        with self.lock:
-            self.db.execute(f"UPDATE inbound SET {sets} WHERE message_id = ?", (*fields.values(), message_id))
-            self._link("inbound", fields, key=message_id)
+        self._update("inbound", "message_id", message_id, fields)
 
     def inbound_get(self, message_id: str) -> dict[str, Any] | None:
-        r = self._select("SELECT * FROM inbound WHERE message_id = ?", (message_id,))
-        return r[0] if r else None
+        return self._first("SELECT * FROM inbound WHERE message_id = ?", (message_id,))
 
     def inbound_open(self, room: str | None = None) -> list[dict[str, Any]]:
         """Rows a crash left received or running, oldest first."""
@@ -429,9 +432,8 @@ class Ledger:
         return self._insert("health", {"at": time.time(), **row})
 
     def health_last(self, account: str, source: str | None = None) -> dict[str, Any] | None:
-        r = self._select(f"SELECT * FROM health WHERE account = ?{'' if source is None else ' AND source = ?'} ORDER BY id DESC "
-                         "LIMIT 1", (account,) if source is None else (account, source))
-        return r[0] if r else None
+        return self._first(f"SELECT * FROM health WHERE account = ?{'' if source is None else ' AND source = ?'} ORDER BY id DESC "
+                           "LIMIT 1", (account,) if source is None else (account, source))
 
     # workers (workers.py)
     def worker_add(self, **row: Any) -> None:
@@ -440,13 +442,10 @@ class Ledger:
 
     def worker_set(self, worker_id: str, **fields: Any) -> None:
         known(fields, WORKERS, "worker")
-        sets = ", ".join(f"{k} = ?" for k in fields)
-        with self.lock:
-            self.db.execute(f"UPDATE workers SET {sets} WHERE id = ?", (*fields.values(), worker_id))
+        self._update("workers", "id", worker_id, fields)
 
     def worker_get(self, worker_id: str) -> dict[str, Any] | None:
-        r = self._select("SELECT * FROM workers WHERE id = ?", (worker_id,))
-        return r[0] if r else None
+        return self._first("SELECT * FROM workers WHERE id = ?", (worker_id,))
 
     def workers(self, running: bool = False, limit: int = 1000) -> list[dict[str, Any]]:
         """Running ones (no `finished`) oldest first; else the newest `limit`."""
@@ -461,14 +460,10 @@ class Ledger:
 
     def job_run_set(self, run_id: int, **fields: Any) -> None:
         known(fields, JOB_RUNS, "job_runs")
-        sets = ", ".join(f"{k} = ?" for k in fields)
-        with self.lock:
-            self.db.execute(f"UPDATE job_runs SET {sets} WHERE id = ?", (*fields.values(), run_id))
-            self._link("job_runs", fields, key=run_id)
+        self._update("job_runs", "id", run_id, fields)
 
     def job_run_get(self, run_id: int) -> dict[str, Any] | None:
-        r = self._select("SELECT * FROM job_runs WHERE id = ?", (run_id,))
-        return r[0] if r else None
+        return self._first("SELECT * FROM job_runs WHERE id = ?", (run_id,))
 
     # watcher events (jobs.py): one row per event a watcher's command printed, and one "primed" row
     # holding the lines its first start absorbed; state pending, waking, handled, failed, stopped (its
@@ -479,14 +474,10 @@ class Ledger:
 
     def watch_set(self, event_id: int, **fields: Any) -> None:
         known(fields, WATCH_EVENTS, "watch_events")
-        sets = ", ".join(f"{k} = ?" for k in fields)
-        with self.lock:
-            self.db.execute(f"UPDATE watch_events SET {sets} WHERE id = ?", (*fields.values(), event_id))
-            self._link("watch_events", fields, key=event_id)
+        self._update("watch_events", "id", event_id, fields)
 
     def watch_get(self, event_id: int) -> dict[str, Any] | None:
-        r = self._select("SELECT * FROM watch_events WHERE id = ?", (event_id,))
-        return r[0] if r else None
+        return self._first("SELECT * FROM watch_events WHERE id = ?", (event_id,))
 
     def watch_events(self, job: str | None = None, states: tuple[str, ...] = (), limit: int = 2000) -> list[dict[str, Any]]:
         """Oldest first: one watcher's events (all when `job` is None), only `states` when given."""
@@ -499,8 +490,7 @@ class Ledger:
         return rows[::-1]
 
     def job_run_for_worker(self, worker_id: str) -> dict[str, Any] | None:
-        r = self._select("SELECT * FROM job_runs WHERE worker = ? ORDER BY id DESC LIMIT 1", (worker_id,))
-        return r[0] if r else None
+        return self._first("SELECT * FROM job_runs WHERE worker = ? ORDER BY id DESC LIMIT 1", (worker_id,))
 
     def job_runs(self, job: str | None = None, limit: int = 50, undelivered: bool = False) -> list[dict[str, Any]]:
         """The newest runs (of one job when named); `undelivered`: runs whose delivery waits on a daemon."""
@@ -527,10 +517,7 @@ class Ledger:
         return self._select("SELECT * FROM deliveries WHERE key = ?", (key,))[0]
 
     def delivery_set(self, key: str, **fields: Any) -> None:
-        sets = ", ".join(f"{k} = ?" for k in fields)
-        with self.lock:
-            self.db.execute(f"UPDATE deliveries SET {sets} WHERE key = ?", (*fields.values(), key))
-            self._link("deliveries", fields, key=key)
+        self._update("deliveries", "key", key, fields)
 
     def deliveries(self, room: str | None = None, state: str | None = None) -> list[dict[str, Any]]:
         sql, args = "SELECT * FROM deliveries WHERE 1", tuple[Any, ...]()
@@ -573,8 +560,7 @@ class Ledger:
         self._insert("cards", {"message_id": message_id, "room": room, "kind": kind, "opened": time.time()})
 
     def card_close(self, message_id: str, how: str) -> None:
-        with self.lock:
-            self.db.execute("UPDATE cards SET closed = ?, how = ? WHERE message_id = ?", (time.time(), how, message_id))
+        self._update("cards", "message_id", message_id, {"closed": time.time(), "how": how})
 
     def cards_open(self, room: str) -> list[dict[str, Any]]:
         return self._select("SELECT * FROM cards WHERE room = ? AND closed IS NULL ORDER BY opened", (room,))
