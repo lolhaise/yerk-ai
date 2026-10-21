@@ -179,6 +179,42 @@ def test_a_tree_no_import_wrote_and_a_missing_database_stop_before_anything_is_r
     assert (priv / "imports" / "texts" / "15550001111.md").read_text() == "edited by hand\n" and len(texts(priv)) == 6
 
 
+def test_a_database_that_does_not_read_is_said_and_nothing_is_written(layer, capsys):
+    priv, state, tmp = layer
+    (tmp / "junk.db").write_text("not a database\n" * 100)
+    chat_db(tmp / "old.db", ROWS[:1])
+    c = sqlite3.connect(tmp / "old.db")
+    c.execute("alter table message drop column ck_chat_id")                  # an old Messages schema
+    c.commit()
+    c.close()
+    assert run(priv, state, f"imessage:{tmp / 'junk.db'}") == 2 and "junk.db would not read: file is not a database" in capsys.readouterr().err
+    assert run(priv, state, f"imessage:{tmp / 'old.db'}") == 2 and "no such column: ck_chat_id" in capsys.readouterr().err
+    assert not (priv / "imports").exists()
+
+
+def test_a_second_chat_of_one_name_keeps_its_file_when_the_first_one_s_old_texts_go(layer):
+    priv, state, tmp = layer
+    c = sqlite3.connect(tmp / "contacts.db")
+    c.execute("insert into ZABCDRECORD values (3, 22, 'Kettle', 'Person', null, null)")       # a second card of the same name
+    c.execute("insert into ZABCDPHONENUMBER values (3, '+1 555 0002222')")
+    c.commit()
+    c.close()
+    db, ab = f"imessage:{tmp / 'chat.db'}", ["--contacts", str(tmp / "contacts.db")]
+    assert run(priv, state, db, *ab) == 0
+    first = texts(priv)
+    assert first["kettle-person-2.md"][0] == "# Texts with Kettle Person (+15550002222)"
+    c = sqlite3.connect(tmp / "chat.db")
+    c.execute("delete from message where ROWID in (1, 2, 3, 4, 14)")                       # the first card's texts, gone from the phone
+    c.execute("insert into message (ROWID, guid, text, handle_id, is_from_me, date, ck_chat_id) values "
+              "(16, 'guid-16', 'the second card again', 2, 0, ?, 'SMS;-;+15550002222')", (NS(2026, 3, 5, 9, 0),))
+    c.commit()
+    c.close()
+    assert run(priv, state, db, *ab) == 0
+    assert texts(priv)["kettle-person.md"] == first["kettle-person.md"]
+    assert texts(priv)["kettle-person-2.md"][0] == first["kettle-person-2.md"][0]
+    assert texts(priv)["kettle-person-2.md"][-1] == "- 2026-03-05 09:00 Kettle Person: the second card again"
+
+
 # Gmail
 def mime(frm, to, subject, date, body, lu=False, ct="text/plain; charset=utf-8"):
     head = f"Date: {date}\r\nFrom: {frm}\r\nTo: {to}\r\nSubject: {subject}\r\nContent-Type: {ct}\r\n"
@@ -266,6 +302,54 @@ def test_mail_is_a_file_a_month_read_only_and_a_second_run_fetches_nothing_it_ha
     FakeGmail.validity = b"7"
 
 
+def test_the_app_password_is_its_line_or_the_file_alone_and_a_file_without_one_sends_nothing(layer, monkeypatch, capsys):
+    priv, state, _ = layer
+    monkeypatch.setattr(sources.imaplib, "IMAP4_SSL", FakeGmail)
+    pw = priv / "secrets" / "gmail.txt"
+    for good in ("App password: fake pass word\n", "fake pass word\n"):     # four groups, as Google shows one, are one password
+        pw.write_text(good)
+        assert run(priv, state, "gmail", "--dry-run") == 0
+    pw.write_text("# notes\nfakepassword\n")
+    with pytest.raises(SystemExit, match="no app password in"):
+        run(priv, state, "gmail", "--dry-run")
+    pw.unlink()
+    assert run(priv, state, "gmail") == 2 and "gmail.txt is not a file" in capsys.readouterr().err
+
+
+def test_a_batch_that_fails_is_said_the_rest_written_and_one_that_stays_down_ends_1(layer, monkeypatch, capsys):
+    priv, state, _ = layer
+    monkeypatch.setattr(sources, "WINDOWS", ((4000, 2), (32768, 2)))     # bodies two a batch: 8 7, 6 5, 4 3, 1
+
+    class Flaky(FakeGmail):
+        up, made, fail = 2, 0, True
+
+        def __init__(self, host, port, timeout=None):
+            Flaky.made += 1
+            if Flaky.made > Flaky.up:
+                raise OSError("Network is unreachable")
+
+        def uid(self, command, *args):
+            if Flaky.fail and command == "FETCH" and "TEXT" in args[1] and "3" in args[0].split(","):
+                Flaky.fail = False
+                raise sources.imaplib.IMAP4.abort("unexpected response: b'Your code is 482913'")
+            return super().uid(command, *args)
+
+    monkeypatch.setattr(sources.imaplib, "IMAP4_SSL", Flaky)
+    ids = priv / "imports" / "mail.ids"
+    assert run(priv, state, "gmail") == 1                                 # it comes back: 4 and 3 wait for the next run
+    out = capsys.readouterr().out
+    assert "2 mails not read, left for the next run: abort: unexpected response:" in out and "482913" not in out
+    assert sorted(ids.read_text().split()) == [f"7:{u}" for u in (1, 2, 5, 6, 7, 8)]
+    Flaky.up, Flaky.made = 9, 0
+    assert run(priv, state, "gmail") == 0 and sorted(ids.read_text().split()) == [f"7:{u}" for u in range(1, 9)]
+    ids.unlink()
+    for p in (priv / "imports" / "mail").iterdir():
+        p.unlink()
+    Flaky.up, Flaky.made, Flaky.fail = 1, 0, True                         # it stays down: 1 waits too, the rest is written
+    assert run(priv, state, "gmail") == 1 and "Gmail did not answer again (OSError)" in capsys.readouterr().out
+    assert sorted(ids.read_text().split()) == [f"7:{u}" for u in (2, 5, 6, 7, 8)]
+
+
 def test_the_secret_rules_write_a_kind_and_never_the_secret():
     assert sources.scrub("key sk-ant-" + "x" * 30 + " and AKIA" + "A" * 16) == "key [anthropic-key withheld] and [aws-key-id withheld]"
     assert sources.scrub("G-123456 is your Example code") == "G-[one-time-code withheld] is your Example code"
@@ -273,6 +357,9 @@ def test_the_secret_rules_write_a_kind_and_never_the_secret():
     at = datetime(2026, 3, 1, 9, 30, tzinfo=TZ)
     assert sources.text_line(at, "77777", "your PIN is 1234", True) == "- 2026-03-01 09:30 77777: [security text: body withheld]"
     assert sources.text_line(at, "Mom", "the wifi password is on the fridge", False) == "- 2026-03-01 09:30 Mom: the wifi password is on the fridge"
+    assert sources.scrub("Your Example code is 482913. Never share it") == "Your Example [code withheld]. Never share it"
+    assert sources.scrub("the wifi pwd: kettle-4821 or the old one") == "the wifi [password withheld] or the old one"
+    assert sources.scrub("join https://example.test/j/1?pwd=" + "Ab1" * 8 + " at noon") == "join https://example.test/j/1[link-token withheld] at noon"
     h = {"ct": "text/plain", "cte": "", "sent": False, "subject": "hello"}
     assert sources.body_line(h, b"a gateway token for you") == sources.HELD_MAIL
     assert sources.body_line(h, b"pin the note to the fridge") == "pin the note to the fridge"

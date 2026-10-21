@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import argparse
 import base64
-import binascii
 import bisect
 import email
 import fcntl
@@ -46,7 +45,8 @@ EXTRA = re.compile(r"\bOTP\b|\bone[- ]time\b|(?-i:\bPIN\b)|\b(?:2FA|MFA)\b|\btwo
                    r"|\b(?:api|secret|private|access)[ _-]?keys?\b|\bclient[ _-]?secret\b"
                    r"|(?<![0-9A-Fa-f])[0-9A-Fa-f]{32,}(?![0-9A-Fa-f])", re.I)
 # A secret's own shape: never written, wherever it is, its kind in its place (the high-precision kinds of the
-# 2026-10-21 scrub, and a code said as one)
+# 2026-10-21 scrub, a code said as one or after its word, a password's value and a link's token: 91, 82 and 6 lines
+# from long-number senders and others passed the rest on the 2026-10-20 texts)
 SECRETS = {"anthropic-key": r"sk-ant-[A-Za-z0-9_-]{20,}", "openai-key": r"(?<![A-Za-z0-9])sk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{32,}",
            "github-token": r"(?:ghp|gho|ghs|ghu)_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}",
            "slack-token": r"xox[abprs]-[A-Za-z0-9-]{10,}", "aws-key-id": r"(?<![A-Z0-9])AKIA[0-9A-Z]{16}(?![A-Z0-9])",
@@ -55,7 +55,10 @@ SECRETS = {"anthropic-key": r"sk-ant-[A-Za-z0-9_-]{20,}", "openai-key": r"(?<![A
            "jwt": r"eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}", "private-key": r"-----BEGIN [A-Z ]*PRIVATE KEY-----",
            "presigned-url": r"X-Amz-Signature=[0-9a-f]{20,}", "stripe-key": r"(?:sk|rk)_live_[A-Za-z0-9]{20,}",
            "telegram-token": r"(?<!\d)\d{8,10}:AA[A-Za-z0-9_-]{30,}",
-           "one-time-code": r"(?<![0-9])\d{4,8}(?![0-9])(?i:(?=[\"”']?\s+is your [\w ]{0,30}(?:code|verification)))"}
+           "one-time-code": r"(?<![0-9])\d{4,8}(?![0-9])(?i:(?=[\"”']?\s+is your [\w ]{0,30}(?:code|verification)))",
+           "code": r"(?i:\b(?:passcode|code|pin|otp)\b\W{0,3}(?:is\W{0,3})?)\d{4,8}(?!\d)",
+           "password": r"(?i:\b(?:password|passwd|passcode|pwd|pw)\b\s*(?:is\s*:?|[:=-])\s*)(?=\S*[0-9!@#$%^&*_+=~-])\S{6,}",
+           "link-token": r"(?i:[?&#](?:token|access_token|auth\w*|code|key|sig|signature|reset\w*|magic\w*|otp|login\w*|pwd)=)[\w.%-]{16,}"}
 SECRET = re.compile("|".join(f"(?P<{k.replace('-', '_')}>{v})" for k, v in SECRETS.items()))
 CODE = re.compile(r"(?<!\d)\d{4,8}(?!\d)")          # a code's shape: in a short code's text, and in a security mail's subject
 HELD_TEXT, HELD_MAIL = "[security text: body withheld]", "[security mail: body withheld]"
@@ -180,11 +183,12 @@ def text_line(at: datetime, who: str, content: str, short: bool) -> str:
     return scrub(f"- {at:%Y-%m-%d %H:%M} {who}: {content}")
 
 
-def texts(db: Path, contacts: Path | None, me: str, tz: tzinfo) -> tuple[dict[str, tuple[str, list[tuple[datetime | None, str, str]]]], Counter[str], int]:
+def texts(db: Path, contacts: Path | None, me: str, tz: tzinfo, known: dict[str, str]) -> tuple[dict[str, tuple[str, list[tuple[datetime | None, str, str]]]], Counter[str], int]:
     """Every conversation of a Messages database, named as a file (a second chat of one name gets -2), its title and its
     messages oldest first as (time, guid, line); the rows skipped by rule, each by its reason; the rows read. A row is
     placed by its chat, else by ck_chat_id (a chat deleted on the phone: 'service;-;handle' is one person, a group id or
-    its hex a group of its own), else by its sender."""
+    its hex a group of its own), else by its sender. A conversation keeps the file `known` gives it, and no other takes
+    that file, so a -2 never moves when old texts go from the phone; `known` gets every conversation's file."""
     names, keys = contacts_of(contacts)
     m = ro(db)
     handles: dict[int, str] = dict(m.execute("select ROWID, id from handle"))
@@ -307,10 +311,12 @@ def texts(db: Path, contacts: Path | None, me: str, tz: tzinfo) -> tuple[dict[st
         mem_txt = ", ".join(x if x == raw else f"{x} {raw}" for x, raw in mem) or "members not stored"
         plans.append((cv["msgs"][0][2], key, cv, s, f"# Texts in group {lab} (members: {mem_txt})", lab))
     out: dict[str, tuple[str, list[tuple[datetime | None, str, str]]]] = {}
-    for _, _, cv, s, title, lab in sorted(plans, key=lambda p: (p[0], str(p[1]))):
+    taken = set(known.values())
+    for _, key, cv, s, title, lab in sorted(plans, key=lambda p: (p[0], str(p[1]))):
         base, n = s, 2
-        while s in out:
+        while (s in out or s in taken) and str(key) not in known:
             s, n = f"{base}-{n}", n + 1
+        s = known.setdefault(str(key), s)
         short = cv["kind"] == "person" and all(len(re.sub(r"\D", "", r)) < 10 and "@" not in r for r in cv["raws"])
         out[s] = (title, [(at, guid, text_line(at, who or lab, content, short)) for _, _, at, who, content, guid in cv["msgs"]])
     return out, skips, rows
@@ -410,7 +416,7 @@ def part_text(part: Message) -> str:
         b = re.sub(rb"[^A-Za-z0-9+/=]", b"", data).rstrip(b"=")
         try:
             data = base64.b64decode(b[:len(b) - len(b) % 4])
-        except binascii.Error:
+        except ValueError:                          # binascii.Error is one
             data = b""
     elif cte == "quoted-printable":
         data = quopri.decodestring(data)
@@ -456,10 +462,13 @@ def mail(g: dict[str, Any], priv: Path, tz: tzinfo, since: datetime | None, have
 
     def connect() -> tuple[imaplib.IMAP4, str]:
         text = (priv / Path(str(g["password_file"])).expanduser()).read_text()
+        # the rest of the line after an "App password ...:" label, else a file of one line; Google's four groups are one password
+        if not (m := re.search(r"(?im)^\W*app password[^:\n]*:\s*(\S[^\n]*)", text) or re.fullmatch(r"\s*(\S[^\n]*?)\s*", text)):
+            raise SystemExit("gmail: no app password in [gmail] password_file (alone on its one line, or after 'App password:'); nothing sent")
         c = imaplib.IMAP4_SSL(str(g.get("host", "imap.gmail.com")), 993, timeout=180)
         try:
-            c.login(user, m.group(1) if (m := re.search(r"(?im)^\W*app password[^:\n]*:\s*(\S+)", text)) else "".join(text.split()))
-        except imaplib.IMAP4.error:
+            c.login(user, "".join(m.group(1).split()))
+        except (imaplib.IMAP4.error, UnicodeError):     # a refusal's text, or a character LOGIN cannot send, is never said
             raise SystemExit(f"gmail: Gmail said no to {user}'s login: [gmail] user and the app password in its file") from None
         boxes = [b.decode("utf-8", "replace") for b in c.list()[1] if isinstance(b, bytes) and b"\\All" in b]
         box = boxes[0].rsplit(' "/" ', 1)[-1].strip() if boxes else '"[Gmail]/All Mail"'
@@ -476,18 +485,27 @@ def mail(g: dict[str, Any], priv: Path, tz: tzinfo, since: datetime | None, have
     hs: dict[int, dict[str, Any]] = {}
     body: dict[int, str | None] = {}
     failed: set[int] = set()
+    down = False
 
     def batches(todo: list[int], size: int, items: str) -> Iterator[tuple[bytes, bytes, int | None]]:
-        nonlocal c
+        nonlocal c, down
         for i in range(0, len(todo), size):
+            if down:                                    # Gmail did not come back: the rest waits for the next run too
+                failed.update(todo[i:])
+                return
             try:
                 yield from fetch(c, todo[i:i + size], items)
-            except (imaplib.IMAP4.error, imaplib.IMAP4.abort, OSError) as e:
-                print(f"gmail: {len(todo[i:i + size])} mails not read, left for the next run: {type(e).__name__}: {e}", flush=True)
+            except (imaplib.IMAP4.error, imaplib.IMAP4.abort, OSError) as e:     # its text may be a server line: masked
+                print(f"gmail: {len(todo[i:i + size])} mails not read, left for the next run: {type(e).__name__}: "
+                      f"{CODE.sub('[number]', scrub(str(e)))[:200]}", flush=True)
                 failed.update(todo[i:i + size])
                 with suppress(Exception):
                     c.logout()
-                c = connect()[0]
+                try:
+                    c = connect()[0]
+                except (imaplib.IMAP4.error, OSError) as again:
+                    print(f"gmail: Gmail did not answer again ({type(again).__name__}); the rest is left for the next run", flush=True)
+                    down = True
 
     for p, lit, uid in batches(uids, 500, FIELDS):
         h = header(p, lit, user.lower(), tz, now)
@@ -529,20 +547,31 @@ def imports(a: argparse.Namespace) -> int:
         why = f"{'--contacts' if db.is_file() else 'imessage'}: {contacts if db.is_file() else db} is not a file"
     elif kind == "gmail" and not (g.get("user") and g.get("password_file")):
         why = "yerkd.toml [gmail]: user (the address) and password_file (its app password, a path in the private folder) first"
+    elif kind == "gmail" and not (pwf := priv / Path(str(g["password_file"])).expanduser()).is_file():
+        why = f"[gmail] password_file: {pwf} is not a file"
     elif not record.is_file() and any(out.glob("*.md")):
         why = f"imports/{out.name}: files no import wrote (no {record.name} beside it); move them aside and run it again"
     if why:
         print(why, file=sys.stderr)
         return 2
     have = set(record.read_text().split()) if record.is_file() else set()
+    names = out.with_suffix(".names")               # imports/texts.names: each conversation's file, from one run to the next
     if kind == "imessage":
-        got, skips, rows = texts(db, contacts, str(imp.get("me", "me")), tz)
+        known = {k: v for k, v in (ln.split("\t", 1) for ln in names.read_text().splitlines() if "\t" in ln)} if names.is_file() else {}
+        was = dict(known)
+        try:
+            got, skips, rows = texts(db, contacts, str(imp.get("me", "me")), tz, known)
+        except sqlite3.DatabaseError as e:          # locked, not a database, or a schema without a column read here
+            print(f"imessage: {db.name}{f' or {contacts.name}' if contacts else ''} would not read: {e}", file=sys.stderr)
+            return 2
         failed, found, n, what = 0, 0, 0, f"{rows:,} rows, {sum(skips.values()):,} skipped by rule ({', '.join(f'{k} {n:,}' for k, n in skips.most_common())})"
     else:
         got, found, n, failed = mail(g, priv, tz, since, have)
         what = f"{found:,} mails found, {n:,} not on record read" + (f", {failed:,} of them not" if failed else "")
     files = {k: (t, [(i, x) for at, i, x in es if not since or (at is not None and at >= since)]) for k, (t, es) in got.items()}
     new, there = put(out, record, files, kind == "imessage", a.dry_run)
+    if kind == "imessage" and not a.dry_run and known != was:
+        write_private(names, "".join(f"{k}\t{v}\n" for k, v in sorted(known.items())))
     there += found - n                             # mail on record is never fetched
     print(f"{kind}: {what}; {sum(1 for _, es in files.values() if es):,} files, {new:,} {'to add' if a.dry_run else 'added'}, "
           f"{there:,} there already")
