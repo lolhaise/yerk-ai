@@ -199,6 +199,12 @@ class Ledger:
         add_columns(self.db)                           # a column the code gained is there before any read
         self.migrated = self.migrate()
 
+    def close(self) -> None:
+        """The connection closed now, not when the collector gets to it: CPython keeps a connection in a reference
+        cycle (its statement cache is bound to it), and a WAL database's -wal and -shm files, made at the umask's mode,
+        stay beside it until its last connection closes (the doctor's modes check counted its own, 2026-10-21)."""
+        self.db.close()
+
     def version(self) -> int:
         return int(self.db.execute("PRAGMA user_version").fetchone()[0])
 

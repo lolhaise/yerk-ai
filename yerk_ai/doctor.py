@@ -268,8 +268,12 @@ def run(private: Path, state: Path, dry: bool = False, now: float | None = None,
     now = time.time() if now is None else now
     conf = load_toml(private / "yerkd.toml") if (private / "yerkd.toml").is_file() else {}
     m, found, last = memory.settings(private, state, dict(conf.get("memory", {}))), list[str](), load(state)
-    names = [r.name for r in (state / "rooms").glob("*")]
-    fixed = repair(private, state, m, flight(state, Ledger(state / "ledger.sqlite"), names), dry, now, proc)
+    names, ledger = [r.name for r in (state / "rooms").glob("*")], Ledger(state / "ledger.sqlite")
+    try:
+        busy = flight(state, ledger, names)
+    finally:
+        ledger.close()              # before the checks: its -wal and -shm files go with it, never counted as the install's
+    fixed = repair(private, state, m, busy, dry, now, proc)
     kept = checks(private, state, conf, m, now, last, found)
     if not dry:
         save(state, now, fixed, {"at": now, "findings": found, **kept})

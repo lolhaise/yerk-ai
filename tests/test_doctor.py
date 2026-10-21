@@ -4,6 +4,7 @@ every line number held), in an assembled log and a bound transcript (dropped), a
 NULs (kept); a room with a turn in flight left alone; each check a plain line (a rooms.toml key no loader reads, a
 tree; a dry run that changes nothing; the morning line; yerkd's repair before any room opens; and every key the
 loaders read from a room in config.ROOM_KEYS."""
+import gc
 import json
 import re
 import shutil
@@ -53,6 +54,13 @@ def tree(tmp_path, monkeypatch):
     return priv, state, day, assembled, sid
 
 
+@pytest.fixture
+def collector():
+    """The cyclic collector, for a test that turns it off: back on after the test, however it ends."""
+    yield gc
+    gc.enable()
+
+
 def test_a_healthy_tree_prints_nothing_and_its_run_is_kept(tree, capsys):
     priv, state, *_ = tree
     assert doctor.main(priv, state) == 0 and capsys.readouterr().out == ""
@@ -61,20 +69,25 @@ def test_a_healthy_tree_prints_nothing_and_its_run_is_kept(tree, capsys):
     assert doctor.line(state, time.time()) == ("", f"{words.PLAIN} doctor: ok")
 
 
-def test_a_file_another_user_can_read_is_named_and_a_0700_folder_hides_what_is_in_it(tree, capsys, tmp_path):
+def test_a_file_another_user_can_read_is_named_and_a_0700_folder_hides_what_is_in_it(tree, capsys, tmp_path, collector):
     """The modes check: under the 0700 state folder a 0644 context file is no one else's to read; opened to the group, the
     folder is named with the count. In a planted tree a user passing through a 0711 folder reads a 0755 folder and a 0644
-    file in it; a 0600 file, anything under a 0700 folder and the target of a link are never named."""
+    file in it; a 0600 file, anything under a 0700 folder and the target of a link are never named. The count a run says
+    is the count it leaves: the doctor closes its own ledger connection before the check (its -wal and -shm files, at the
+    umask's mode, exist until then), never leaving it to the collector, whose pass could fall anywhere (3.13, 2026-10-21)."""
     priv, state, *_ = tree
     assert oct(config.state_dir(str(tmp_path / "fresh" / "yerk")).stat().st_mode & 0o777) == "0o700"   # as the first start makes it
     (ctx := state / "rooms" / "example-room" / "context.md").write_text("the owner's lines")
     ctx.chmod(0o644)
     assert doctor.main(priv, state) == 0 and capsys.readouterr().out == ""
     state.chmod(0o750)
-    seen = doctor.exposed(state)
+    collector.collect()                                      # whatever an earlier run left to the collector is gone now,
+    seen = doctor.exposed(state)                             # and nothing the next run leaves to it goes before its check
+    collector.disable()
     assert doctor.main(priv, state) == 1 and ("rooms/example-room/context.md", 0o644) in seen
     assert capsys.readouterr().out.splitlines() == [f"state folder: other users can read {len(seen)} of its files and "
                                                     "folders, first the folder itself (750); chmod 700 it"]
+    assert doctor.exposed(state) == seen and not [p for p, _ in seen if p.startswith("ledger.sqlite-")]
     t = tmp_path / "t"
     (t / "open" / "shut").mkdir(parents=True)
     for name, mode in (("open/a", 0o644), ("open/b", 0o600), ("open/shut/c", 0o644)):
