@@ -216,19 +216,7 @@ HOOKS_DEAD = "hooks are not reaching this room\nno clock, no recall, no gates\nu
 FILE_WHY = {"missing": "there is no such file", "type": "this room does not take {ext} files",
             "size": "it is {size} and this room takes {limit}", "empty": "it is empty",
             "outside": "it is outside this room's folders", "too large": "Discord said too large (limit {limit})",
-            "refused": "Discord turned it down", "gone": "its saved copy is gone",
-            "imessage": "files do not go out on iMessage yet"}
-# iMessage (channels/imessage.py): the outage is said in the machine room only, never in a human room (A60)
-MAC_AWAY = WORKING + " iMessage: the Mac is away, texts wait"
-MAC_BACK = DONE + " iMessage: the Mac is back, {n} waiting text{s} sent"
-NOT_FETCHED_MAC = "not fetched from the Mac yet"
-IMSG_GAP = NOT_DONE + " iMessage: {n} text{s} never reached Yerk AI in {room}"
-IMSG_PROBE = "iMessage {day}: Mac seen {reached}/{runs}"           # probe runs that read the Mac's chats, of all
-IMSG_LOST = "iMessage {day}: {n} lost text{s}"                    # distinct texts, however many runs saw them
-# an iMessage turn room is only ever the owner's own thread, so Yerk AI never texts anyone in his name
-IMSG_GROUP, IMSG_OTHERS = "a group", "others in it"
-IMSG_REFUSED, IMSG_NOT_SERVED = NOT_DONE + " {room} not served: {why}", "the room's chat is not served"
-IMSG_LOOP = NOT_DONE + " {room}: loop guard, paused {mins} min"
+            "refused": "Discord turned it down", "gone": "its saved copy is gone"}
 
 
 def file_why(kind: str, **say: Any) -> str:
@@ -286,6 +274,7 @@ SHADOW, NO_SHADOW = "shadow flag {rule}: {n}", "shadow flags: none"
 UNKNOWN, NOT_ANSWERING_WHY = "{what}: unknown, {why}", "yerkd not answering"
 DEAD, NO_YERKD, NO_DEAD = "dead turns: {n}, {name}, last {at}", "no yerkd answers", "dead turns: none in 24h"
 SWEPT, SWEEP_FAILED = "swept: {kinds}", "retention failed: {why}"     # the night's sweep (retention.py)
+DOCTOR_OK, DOCTOR, NO_RUN = "doctor: ok", "doctor: {n} found, {first}", "one more line 00for"     # the case before (the.next)
 # the stance check (evidence.stance): the owner's pushback opens a line with one of these words or carries one of these phrases
 PUSHBACK = re.compile(r"^[^\in\n]*(?:(?:the|Next|run|starts|the|example+|note)\says[^\the\n]*)?(?:next+|step|and+(?!\the+(?:test|reads|it|back|as)\plain)"
                       r"|wrong|actually|disagree|not\s+(?:true|really|quite))\b|\b(?:you['’]?re|you\s+are|that['’]?s|that\s+is)\s+wrong\b"

@@ -100,9 +100,9 @@ def test_a_scoped_rooms_mention_entries_come_from_its_own_roots_only(tmp_path):
     def named(room: str) -> list[str]:
         return [e["text"] for e in y.recall_for(room, ask)[0] if str(tmp_path) in e["cite"]]
     frozen, live, every = named("frozen-room"), named("live-room"), named("example-room")
-    assert len(frozen) == 3 and all("periwinkle" in t for t in frozen)          # the kettle file's name and bullet, the boat
-    assert len(live) == 3 and all("tangerine" in t for t in live)
-    assert len(every) == 6                                                       # no `also`: both roots' entries, as before
+    assert len(frozen) == 2 and all("periwinkle" in t for t in frozen)          # the kettle file (its name and bullet, one text), the boat
+    assert len(live) == 2 and all("vermilion" in t for t in live)
+    assert len(every) == 4                                                       # no `also`: both roots' entries, as before
 
 
 def test_an_also_the_install_does_not_index_stops_the_start_with_one_plain_line(tmp_path):

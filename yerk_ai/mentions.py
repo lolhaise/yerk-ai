@@ -1,17 +1,13 @@
-# The key rules (a bullet's leading name run, the possessive fold, sentence-like runs refused,
-# entries carrying a do-not-surface mark dropped) follow the workspace recall-index tool this
-# harness replaces.
+# The key rules began as those of the workspace recall-index tool this harness replaces.
 """Mention recall: when a message names one of your people, places or things, the matching lines of
 front of the model before it starts, with no tool call.
 
-yerk-index builds the index from the fact files (any `facts/*.md` under a memory root) and the
-curated file's headings, again whenever one of those files changes, and writes it as one JSON file
-beside the search index. The daemon loads it when its mtime moves and matches the words of each
-message against its keys. Keys come from a fact file's name (car, dates, appliances), its headings
-and the leading name of each bullet; an entry is the bullet or the start of its section, at most
-ENTRY_CHARS, with the file and line it came from. An entry carrying a do-not-surface mark (⛔,
-"ask-only") never enters, and the private yerkd.toml can keep whole files out
-(`mentions_exclude`).
+Keys come from a fact file's name (car, dates, appliances), its headings and the leading name of each
+bullet, nested or not; a one-word key in a line's first words keys it too ("Ada: ..." gives "Ada Example"
+its first name). An entry is the bullet or the start of its section, at most ENTRY_CHARS, with the file and line it
+came from; yerk-index writes them as one JSON file beside the search index. An entry carrying a
+do-not-surface mark (⛔, "ask-only"), or under a heading or bullet that carries one, never enters, and the
+private yerkd.toml can keep whole files out (`mentions_exclude`).
 """
 from __future__ import annotations
 
@@ -31,7 +27,7 @@ TOKEN = re.compile(r"[a-z0-9][a-z0-9'.\-]*")
 BOLD = re.compile(r"\*\*(.+?)\*\*")
 SPLIT = re.compile(r"\s+[—–-]\s+|\s*[(,:=;]|\s+→\s+")
 HEADING = re.compile(r"^(#{1,4})\s+(.*\S)\s*$")
-BULLET = re.compile(r"^[-*]\s+(.*\S)\s*$")
+BULLET = re.compile(r"^\s*[-*]\s+(.*\S)\s*$")
 SENTENCEY = frozenset("is are was were be he she it they we i you my his her their our this that these "
                       "those has have had do does did will would should can could not no if when".split())
 KEY_STOP = frozenset("the and people home house work money rule rules note notes decisions identity purchases "
@@ -39,10 +35,10 @@ KEY_STOP = frozenset("the and people home house work money rule rules note notes
                      "summary overview history index todo plan plans memory pinned".split())
 
 
-def tokens(s: str) -> list[str]:
-    """Lowercase words, the possessive folded away, so "the kettle's lid" matches the key "kettle"."""
+def tokens(s: str, fold: bool = False) -> list[str]:
+    """Lowercase words, the possessive folded away ("the kettle's lid" meets "kettle"); `fold`, keys and messages only: a plural too."""
     words = (re.sub(r"'s$|'$", "", t).strip(".-") for t in TOKEN.findall(str(s or "").lower().replace("’", "'")))
-    return [t for t in words if t]
+    return [t[:-1] if fold and len(t) > 4 and t.endswith("s") and not t.endswith("ss") else t for t in words if t]
 
 
 def strip_md(s: str) -> str:
@@ -70,21 +66,23 @@ def entries_of(path: Path, cite: str, curated: bool, cls: str = "private", room:
     if lines[:1] == ["---"] and "---" in lines[1:]:
         lines = [""] * (end := lines.index("---", 1) + 1) + lines[end:]
     out: list[dict[str, Any]] = []
-    dropped = 0
+    dropped, marked, up = 0, [False] * len(lines), [(0, False)]      # up: the headings and bullets open above, by depth, and their mark
+    for i, ln in enumerate(lines):                                       # a line's mark: its own, or that of one it sits under
+        d = len(h.group(1)) if (h := HEADING.match(ln)) else 9 + len(ln) - len(ln.lstrip()) if ln.strip() else 999
+        up = [u for u in up if u[0] < d]
+        marked[i] = bool(DROP.search(ln)) or up[-1][1]
+        up.append((d, marked[i]))
 
-    def add(key: str | None, text: str, line: int) -> None:
+    def add(key: str | None, text: str, line: int) -> None:          # no key of its own: the Builder lists it under a name, or drops it
         nonlocal dropped
-        if not key:
-            return
-        if DROP.search(text) or DROP.search(key):
+        if marked[line - 1] or DROP.search(text) or DROP.search(key or ""):
             dropped += 1
             return
         body = re.sub(r"\s+", " ", strip_md(text))
-        out.append({"key": key, "text": body[:ENTRY_CHARS - 1] + "…" if len(body) > ENTRY_CHARS else body, "cite": f"{cite}:{line}",
+        out.append({"key": key or "", "text": body[:ENTRY_CHARS - 1] + "…" if len(body) > ENTRY_CHARS else body, "cite": f"{cite}:{line}",
                     "class": cls, "room": room})
 
     def section(i: int) -> str:
-        """A heading's text and the lines under it up to the next heading, as one run."""
         run = [HEADING.match(lines[i]).group(2)]            # type: ignore[union-attr]
         for ln in lines[i + 1:]:
             if HEADING.match(ln):
@@ -96,9 +94,9 @@ def entries_of(path: Path, cite: str, curated: bool, cls: str = "private", room:
         return " ".join(run)
 
     if not curated:                               # the file's own name, over its first unmarked lines
-        body = [(i, ln.strip()) for i, ln in enumerate(lines) if ln.strip() and not HEADING.match(ln) and not DROP.search(ln)][:6]
-        if body:
-            add(key_of(path.stem.replace("-", " ").replace("_", " ")), " ".join(t for _, t in body), body[0][0] + 1)
+        body = [(i, ln.strip()) for i, ln in enumerate(lines) if ln.strip() and not HEADING.match(ln) and not marked[i]][:6]
+        if body and (name := key_of(path.stem.replace("-", " ").replace("_", " "))):       # a file name that is no key: none
+            add(name, " ".join(t for _, t in body), body[0][0] + 1)
     for i, ln in enumerate(lines):
         if (h := HEADING.match(ln)) and (curated or len(h.group(1)) >= 2):
             add(key_of(h.group(2)), section(i), i + 1)
@@ -131,11 +129,13 @@ class Builder:
 
     def refresh(self, disk: dict[str, tuple[int, int]]) -> tuple[int, int, int] | None:
         from .config import write_private
+        from .memindex import STOP
         from .memory import file_class
         srcs = sorted((p, *st) for p, st in disk.items() if self.is_source(Path(p)))
         if srcs == self.sig and self.out.is_file():
             return None
         entries: list[dict[str, Any]] = []
+        src: list[tuple[str, str]] = []                        # each entry's file, and that file as a key if a fact file ("ada example")
         dropped = 0
         for path in (Path(p) for p, _, _ in srcs):
             try:
@@ -143,11 +143,26 @@ class Builder:
             except OSError:
                 continue
             entries += e
+            src += [(str(path), " ".join(tokens(path.stem.replace("-", " ").replace("_", " "), True)) if path.parent.name == "facts" else "")] * len(e)
             dropped += d
         keys: dict[str, list[int]] = {}
-        for n, entry in enumerate(entries):                    # each n once, so a key never lists it twice
-            if k := " ".join(tokens(entry["key"])):
+        for n, entry in enumerate(entries):
+            if k := " ".join(tokens(entry["key"], True)):
                 keys.setdefault(k, []).append(n)
+        names = {k for k in keys if " " not in k and k not in KEY_STOP | STOP}     # a name: a one-word key, never a stop word
+        for n, entry in enumerate(entries):
+            t = tokens(entry["key"], True)
+            if len(t) != 1:                                    # no key of its own, or a longer one: listed under each name its first words
+                for name in names.intersection(tokens(" ".join(x for x in entry["text"].split()[:KEY_WORDS] if x[:1].isupper()), True)):
+                    keys[name].append(n)                       # write as a name ("Ada lives" under ada, never "Ada's car" under car)
+        at: dict[int, int] = {}                                # an entry's place in the file written: only what a key lists goes in
+        for k, ids in keys.items():                            # the key's own fact file in its order, then lines keyed by it, then file order;
+            kept: list[int] = []                               # within one file, a text that starts another listed one, or starts with it, once
+            for n in sorted(set(ids), key=lambda n: (src[n][1] != k, src[n][1] != k and " ".join(tokens(entries[n]["key"], True)) != k, n)):
+                if not any(src[m][0] == src[n][0] and entries[m]["text"][:len(entries[n]["text"])] == entries[n]["text"][:len(entries[m]["text"])] for m in kept):
+                    kept.append(n)
+            keys[k] = [at.setdefault(n, len(at)) for n in kept]
+        entries = [entries[n] for n in at]
         self.out.parent.mkdir(parents=True, exist_ok=True)
         write_private(self.out, json.dumps({"built": round(time.time(), 3), "sources": len(srcs), "entries": entries, "keys": keys}))
         self.sig = srcs
@@ -182,7 +197,7 @@ class Index:
 
     def match(self, text: str, limit: int = MATCH_MAX, keep: Callable[[dict[str, Any]], bool] | None = None, strict: bool = False) -> list[dict[str, Any]]:
         """Entries for the names in `text`, in the order named, each once; only those `keep` takes, if given; `strict`: a key with none it takes is no match."""
-        words = tokens(text)
+        words = tokens(text, True)
         out: list[dict[str, Any]] = []
         seen: set[int] = set()
         i = 0

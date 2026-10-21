@@ -24,7 +24,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from . import beat, context, deploy, evidence, gates, hooks, jobs, mcp_server, memory, mentions, status, workers
+from . import beat, context, deploy, doctor, evidence, gates, hooks, jobs, mcp_server, memory, mentions, status, workers
 from .accounts import Account, Cooldowns, from_dir, load_accounts, pick
 from .config import (EFFORTS, REPO, budgets, discord_id, flag, load_toml, models, override, people, pinned, private_dir,
                      read_secret, room_id, room_settings, rooms, state_dir, table, write_private)
@@ -125,6 +125,9 @@ class Yerkd:
         context.walls(private, state, self.memory.scope.roots, self.room_confs)
         self.daily = memory.DailyLog(self.memory.daily, self.memory.tz,
                                      {n: (room_id(n, c), memory.room_class(c)) for n, c in self.room_confs.items()})
+        # crash repair before anything reads a day log, assembled log or bound transcript (doctor.py): a hard power-off
+        # zeroes the line a file was writing; a room the crash left with a message waiting is left for the daily run
+        log.info("%s", doctor.start(private, state, self.memory, {str(r["room"]) for r in self.ledger.inbound_open()}))
         # day-log lines written before offsets, ids, authors and classes are rewritten once, here, before any
         # channel opens and under the lock capture holds, so no second writer ever races the rewrite (cold
         # read F3); the originals go beside the private layer, or under the state folder for the example one
@@ -808,35 +811,15 @@ class Yerkd:
             wk, _, wid = str(conf.get("watch", "")).partition(":")     # read as the room's own, never written to
             if kind == "discord" and cid.isdigit():
                 dc.add_room(int(cid), self.add_room(name, dc), int(wid) if wk == "discord" and wid.isdigit() else None, people(name, conf))
-        im = self.imessage_rooms()
-        if not dc.rooms and im is None:
-            raise SystemExit("no room has a discord:<channel id> or an imessage:<chat identifier> in rooms.toml")
+        if not dc.rooms:
+            raise SystemExit("no room has a discord:<channel id> in rooms.toml")
         self.workers.begin(asyncio.get_running_loop())
         dc.after_recover.append(self.workers.reattach)   # their cards are edited, so after the connect
         dc.after_recover.append(self.jobs.reattach)      # a script run that ended with no daemon up: delivered late
         self.write_status("discord")
         self.link = dc
         await asyncio.gather(self.serve_http(), self.reap(min(60.0, self.idle_seconds / 2)),
-                             self.beat.tick(self.listening), dc.start(), *([im.start()] if im else []))
-
-    def imessage_rooms(self) -> Any:
-        """Rooms with channel = "imessage:<chat identifier>", all served by one bridge connection
-        (yerkd.toml [imessage]); the outage lines go to the machine room through its own channel."""
-        named = {n: str(c.get("channel", "")).partition(":")[2] for n, c in self.room_confs.items()
-                 if str(c.get("channel", "")).startswith("imessage:")}
-        if not named:
-            return None
-        from .channels.imessage import IMessageChannel
-        machine = next((n for n, c in self.room_confs.items() if c.get("role") == "machine"), None)
-
-        async def tell(text: str, key: str) -> Any:
-            if machine is None or machine not in self.channels:
-                return None
-            return await self.channels[machine].send_text(machine, text, key=key)
-        im = IMessageChannel(dict(self.conf.get("imessage", {})), self.ledger, state=self.state, capture=self.daily.capture, machine=tell)
-        for name, ident in named.items():
-            im.add_room(ident, self.add_room(name, im))
-        return im
+                             self.beat.tick(self.listening), dc.start())
 
     async def run_console(self, name: str) -> None:
         room = self.add_room(name, ConsoleChannel())

@@ -2,6 +2,7 @@
 on whatever a message names), the room-topic hit, the recall pack and its re-add after compaction, the evidence
 atomically. Every value here is a placeholder."""
 import json
+import shutil
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -77,6 +78,114 @@ def test_the_hook_puts_named_entries_in_before_the_model_and_records_the_cost(tm
     many = [{"key": f"k{i}", "text": "x" * 290, "cite": f"facts/f.md:{i}"} for i in range(9)]
     capped = hooks.render_recall(many, [], 1500)
     assert len(capped) <= 1500 and capped.count("\n- ") == 4          # whole entries, under the cap
+
+
+def named(tmp_path: Path, files: dict[str, str]) -> mentions.Index:
+    """The name index of only these fact files (stem: text), built."""
+    (facts := tmp_path / "private" / "memory" / "facts").mkdir(parents=True)
+    for stem, text in files.items():
+        (facts / f"{stem}.md").write_text(text)
+    return build_names(memory.settings(tmp_path / "private", tmp_path / "state", {"timezone": "UTC"}))
+
+
+def cites(entries: list[dict]) -> list[str]:
+    return [e["cite"] for e in entries]
+
+
+def test_a_nested_bullet_is_an_entry_keyed_as_a_top_level_one(tmp_path):
+    idx = named(tmp_path, {"people": "- Example Sibling: the middle one.\n  - Example Sibling's job: an example firm.\n"
+                                     "    - Example Bike: blue, 2019.\n"})
+    assert cites(idx.match("what is example sibling's job? and the example bike")) == ["facts/people.md:2", "facts/people.md:3"]
+    assert {"Example Sibling's job", "Example Bike"} <= {e["key"] for e in idx.entries}
+
+
+def test_a_known_name_at_the_head_of_a_line_keys_the_line(tmp_path):
+    idx = named(tmp_path, {"examplia": "- Examplia: the eldest.\n",
+                           "people": "- Examplia lives in a townhouse her parents gave her at about 25, on the example street.\n"
+                                     "- CONFIRMED 2026-01-19 17:38 off Examplia's own example profile: an example firm.\n"
+                                     "- CONFIRMED 2026-01-19 17:38 by the example office: nobody here is named.\n"})
+    assert cites(idx.match("where does examplia live?")) == ["facts/examplia.md:1", "facts/people.md:1", "facts/people.md:2"]
+    assert idx.match("confirmed by the example office") == []                    # a non-name head is no name
+    assert not any("nobody here" in e["text"] for e in idx.match("examplia"))      # no name in its first six tokens
+
+
+def test_a_two_word_name_answers_to_both_words_and_a_first_name_to_its_own_line(tmp_path):
+    idx = named(tmp_path, {"people": "- Ada Example: the example office's chief.\n- Black Example: an example show.\n"})
+    assert cites(idx.match("and ada example?")) == ["facts/people.md:1"]
+    assert idx.match("what does ada do?") == idx.match("the black cat") == []           # a first word alone is no key
+    alias = named(tmp_path / "b", {"people": "- Ada Example: the chief.\n- Ada: Ada Example, by her first name.\n"})
+    assert set(cites(alias.match("what does ada do?"))) == {"facts/people.md:1", "facts/people.md:2"}
+
+
+def test_a_keys_own_fact_file_comes_first_and_a_text_is_listed_once(tmp_path):
+    idx = named(tmp_path, {"aaa": "- Examplia: noted in a file that sorts first.\n",
+                           "examplia": "- Examplia: the eldest, in her own file.\n- Examplia: likes the example ladder.\n",
+                           "people": "".join(f"- Examplia: example line {i}.\n" for i in range(8))})
+    assert cites(idx.match("examplia")) == ["facts/examplia.md:1", "facts/examplia.md:2", "facts/aaa.md:1",
+                                            "facts/people.md:1", "facts/people.md:2", "facts/people.md:3"]
+    assert mentions.MATCH_MAX == 6
+    twice = named(tmp_path / "b", {"examplia": "- Examplia: likes tea.\n- Examplia: likes tea. And the example ladder.\n"})
+    assert cites(twice.match("examplia")) == ["facts/examplia.md:1", "facts/examplia.md:2"]    # the name's entry, then line 2
+    assert cites(named(tmp_path / "c", {"x": "- Examplia: likes tea.\n- Examplia: likes tea. And more.\n"}).match("examplia")) == ["facts/x.md:1"]
+
+
+def test_a_line_is_listed_under_a_name_it_writes_as_one_and_a_keys_own_lines_come_first(tmp_path):
+    idx = named(tmp_path, {"car": "- An example hatchback, grey.\n", "aaa": "- ALL EXAMPLE BROTHERS: an example game rank.\n",
+                           "people": "- Examplia's car: an example coupe.\n- Car notes: the example hatchback's tyres.\n"
+                                     "- Brother: two, both older, example names.\n"})
+    assert cites(idx.match("my car")) == ["facts/car.md:1", "facts/people.md:2"]       # another's car is no line about the owner's
+    assert cites(idx.match("what does my brother do?")) == ["facts/people.md:3", "facts/aaa.md:1"]     # the key's own line first
+
+
+def test_a_plural_meets_its_singular_on_keys_and_messages_alike(tmp_path):
+    idx = named(tmp_path, {"brothers": "- Both example brothers are older.\n", "glass": "- The example glass is blue.\n"})
+    assert cites(idx.match("what does my brother do?")) == cites(idx.match("my brothers")) == ["facts/brothers.md:1"]
+    assert [mentions.tokens(w, True) for w in ("brothers", "class", "this", "kettle's")] == [["brother"], ["class"], ["this"], ["kettle"]]
+    assert mentions.tokens("dates") == ["dates"]                  # a fact file's name (memory.remember) keeps its s
+
+
+def test_the_own_file_order_is_the_order_that_survives_the_recall_trim(tmp_path):
+    idx = named(tmp_path, {"aaa": "".join(f"- Examplia: other line {i}, {'y' * 260}\n" for i in range(3)),
+                           "examplia": "".join(f"- Examplia: own line {i}, {'x' * 262}\n" for i in range(3))})
+    text = hooks.render_recall(idx.match("examplia"), [], budgets()["per_message"]["on_hit"]["recall"])
+    assert [ln.rsplit(" (", 1)[1] for ln in text.splitlines()[1:]] == ["facts/examplia.md:1)", "facts/examplia.md:2)",
+                                                                      "facts/examplia.md:3)", "facts/aaa.md:1)"]
+
+
+def test_a_marked_line_still_drops_nested_or_named(tmp_path):
+    idx = named(tmp_path, {"examplia": "- Examplia: the eldest.\n  - ⛔ Examplia's example secret: never raised.\n"
+                                       "- Examplia (ask-only): an example line.\n  - Examplia's example note ⛔\n"})
+    assert cites(idx.match("examplia")) == ["facts/examplia.md:1"] and len(idx.entries) == 1
+
+
+def test_a_line_under_a_marked_bullet_or_heading_never_enters(tmp_path):
+    idx = named(tmp_path, {"examplia": "- Examplia: the eldest. ⛔ never said as fact: an example claim.\n"
+                                       "  - Examplia's example job: an example firm.\n    - Examplia lives on the example street.\n\n"
+                                       "  - Examplia's example bike: blue.\n- Examplia's example car: grey.\n## Ask-only\n"
+                                       "- Examplia's example habit.\n### Examplia's example sub\n- Examplia's example note.\n"
+                                       "## Examplia\n- Examplia's example hobby.\n"})
+    assert {"facts/examplia.md:6", "facts/examplia.md:12"} <= set(cites(idx.match("examplia", limit=20)))
+    assert not {f"facts/examplia.md:{n}" for n in (1, 2, 3, 5, 7, 8, 9, 10)} & set(cites(idx.entries))     # children, a blank line, a section
+    assert not any(w in e["text"] for e in idx.entries for w in ("example job", "example street", "example bike"))
+
+
+def test_a_scoped_room_keeps_its_own_copy_when_another_root_holds_the_same_words(tmp_path):
+    private, state = tmp_path / "private", tmp_path / "state"
+    shutil.copytree(EXAMPLE_PRIVATE, private)
+    state.mkdir()
+    for side in ("live", "snap"):
+        (tmp_path / side / "memory" / "facts").mkdir(parents=True)
+        (tmp_path / side / "memory" / "facts" / "examplia.md").write_text("- Examplia: the same words in both copies.\n")
+    roots = {side: str(tmp_path / side / "memory") for side in ("live", "snap")}
+    (private / "yerkd.toml").write_text(f'[memory]\nroot = "memory"\nalso = {json.dumps(list(roots.values()))}\n')
+    base = (private / "rooms.toml").read_text()
+    block = base.split("[rooms.example-room]\n", 1)[1].split("\n[rooms.", 1)[0]
+    (private / "rooms.toml").write_text(base + f"\n[rooms.frozen-room]\n{block}also = {json.dumps([roots['snap']])}\n")
+    y = Yerkd(private, state)
+    mentions.Builder(y.memory.mentions, y.memory.roots_for_mentions, y.memory.curated, y.memory.mentions_exclude).refresh(y.memory.scope.files())
+    got = {room: [c for c in cites(y.recall_for(room, "what about examplia?")[0]) if str(tmp_path) in c] for room in ("frozen-room", "example-room")}
+    assert got["frozen-room"] == [f"{roots['snap']}/facts/examplia.md:1"]          # the other root's copy never stands in for it
+    assert sorted(got["example-room"]) == sorted(f"{r}/facts/examplia.md:1" for r in roots.values())
 
 
 # 2. the room-topic hit

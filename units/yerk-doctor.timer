@@ -1,0 +1,11 @@
+# Every day at 04:40 local time, after retention's 04:20 sweep and before the 06:30 morning diff that carries its
+# line; a night the box was off runs once when it is back, after retention's own catch-up run.
+[Unit]
+Description=Yerk AI doctor at 04:40
+
+[Timer]
+OnCalendar=*-*-* 04:40:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
