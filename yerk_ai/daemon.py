@@ -368,8 +368,8 @@ class Yerkd:
         p = Path(path).expanduser().resolve()
         if room not in self.rooms or not self.may_send(room, p):
             return {"ok": False, "error": f"{p.name} is outside this room's folders; transcribe reads the files sent to it"}
-        if not (p.is_file() and transcribe.is_audio(p.name)):
-            return {"ok": False, "error": f"{p.name} is not an audio file in this room's folders"}
+        if not p.is_file():                           # not audio: ffmpeg says so before anything is paid
+            return {"ok": False, "error": f"there is no file {p.name} in this room's folders"}
 
         def book(engine: str, usd: float, note: str) -> None:
             try:

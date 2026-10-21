@@ -203,16 +203,15 @@ def test_a_voice_note_never_transcribed_bounces_once_at_stop():
     assert room.stop_check(active=False) is None
 
 
-def test_the_tool_reads_only_audio_in_the_calling_rooms_own_folders(tmp_path):
+def test_the_tool_reads_only_files_in_the_calling_rooms_own_folders(tmp_path):
     y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
     y.add_room("example-room", ConsoleChannel())
     inbox = tmp_path / "rooms" / "example-room" / "work" / "inbox" / "5"
     inbox.mkdir(parents=True)
     (inbox / "voice-message.ogg").write_bytes(b"OggS")
-    (inbox / "notes.txt").write_text("x")
     ask = lambda p: asyncio.run(y.tool_transcribe("example-room", str(p)))   # noqa: E731
     assert "outside this room's folders" in ask(tmp_path / "rooms" / "other" / "a.ogg")["error"]
-    assert "not an audio file" in ask(inbox / "notes.txt")["error"]
+    assert "there is no file gone.ogg" in ask(inbox / "gone.ogg")["error"]
     assert ask(inbox / "voice-message.ogg") == {"ok": False, "error": words.NO_SPEECH_KEY}     # the example layer has no key
 
 
