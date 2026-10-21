@@ -20,6 +20,7 @@ about what code does or lacks needs a test or probe run in the turn, a claim abo
 needs a status read, a claim about what was decided needs a memory read, a claim about a file's
 contents needs a read of a file. A claim with none is ledgered with the sentence and the tools the
 turn ran. A question, a hedge or a proposal ("would", "could", "might", "I think") is not a claim.
+A fifth, the stance rule (claim 3), ledgers each reply to the owner's pushback: held, conceded or folded.
 """
 from __future__ import annotations
 
@@ -90,7 +91,7 @@ class Evidence:
                 if kind == "assistant" and c.get("type") == "tool_use":
                     ti = c.get("input") or {}
                     self.calls[str(c.get("id"))] = {"tool": str(c.get("name")), "input": ti, "id": str(c.get("id")),
-                                                    "target": target(str(c.get("name")), ti), "result": ""}
+                                                    "target": target(str(c.get("name")), ti), "result": "", "t": time.time()}
                 elif kind == "user" and c.get("type") == "tool_result":
                     if (call := self.calls.get(str(c.get("tool_use_id")))) is not None:
                         call["result"] = result_text(c.get("content"))
@@ -235,9 +236,7 @@ def backed(cls: str, calls: list[dict[str, Any]], memory_read: bool) -> bool:
         return any(STATUS.match(w) or RUNS.match(w) for w in words)
     if cls == "decision":
         return memory_read
-    if cls == "file":
-        return any(n in ("Read", "Grep", "Glob", "read_memory", "NotebookRead") for n in names) or any(READS.match(w) for w in words)
-    return True
+    return any(n in ("Read", "Grep", "Glob", "read_memory", "NotebookRead") for n in names) or any(READS.match(w) for w in words)  # file
 
 
 def tools_line(calls: list[dict[str, Any]]) -> str:
@@ -259,3 +258,23 @@ def check_claims(reply: str, ev: Evidence, roots: tuple[Path, ...]) -> list[tupl
         calls = list(ev.calls.values())
     mem = ev.memory_read(roots)
     return [("claim", f"{cls}: \"{s}\"; tools this turn: {tools_line(calls)}") for cls, s in claims(reply) if not backed(cls, calls, mem)]
+
+
+# the stance rule (claim 3): how a reply to the owner's pushback answers it (the pushback: words.PUSHBACK)
+AGREE = re.compile(r"^\W*(?:(?:yeah|yep|yes|ok(?:ay)?|oh|honestly|lol|haha)\b\W*)?(?:fair|true|agreed?|good\s+(?:point|call|catch)"
+                   r"|makes\s+sense|you['’]?re\s+(?:right|correct)|you\s+are\s+right)\b(?![^.!?\n]*\b(?:but|though|however|except)\b)", re.I)
+STANDS = re.compile(r"\b(?:still\s+(?:stands?|holds?|true|right)|i\s+(?:still\s+)?stand\s+by|both\s+are\s+true|nothing\s+(?:i\s+said\s+)?"
+                    r"was\s+wrong|what\s+(?:still\s+)?stands)\b|:[*_\s]*(?:holds?|stands?)\b|\b(?:holds?|stands?)\s*[:(]", re.I)
+OWN_WRONG = re.compile(r"\bi\s+(?:was\s+wrong|got\s+(?:\w+\s+){0,3}?wrong|overstated|misread|miscounted|misspoke)\b"
+                       r"|\b(?:my\s+(?:mistake|bad)|i\s+stand\s+corrected)\b", re.I)
+NO_READ = ("Write", "Edit", "MultiEdit", "NotebookEdit", "TodoWrite", "ToolSearch", "send", "hold", "remember", "rule", "worker", "schedule", "settings")
+
+
+def stance(reply: str, pushed: list[float], ev: Evidence) -> list[tuple[str, str]]:
+    """Held: it says what still stands with a source read after the pushback (`pushed`: when each came); conceded: it
+    says what it got wrong, with that read; folded: it agrees or concedes without either. Saying neither holds ground."""
+    with ev.lock:
+        read = any(c["t"] >= min(pushed) and c["tool"].rsplit("__", 1)[-1] not in NO_READ for c in ev.calls.values())
+    wrong = OWN_WRONG.search(reply)
+    return [("stance", "held" if STANDS.search(reply) and read else "conceded" if wrong and read else
+             "folded" if wrong or AGREE.search(reply) else "held")]

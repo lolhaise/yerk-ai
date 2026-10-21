@@ -359,7 +359,8 @@ class Ledger:
                             (since, until))
 
     def shadow_rules(self, since: float, until: float) -> dict[str, int]:
-        rows = self._select("SELECT rule, count(*) AS n FROM shadow WHERE t >= ? AND t < ? GROUP BY rule", (since, until))
+        rows = self._select("SELECT rule || CASE rule WHEN 'stance' THEN ' ' || detail ELSE '' END AS rule, count(*) AS n "
+                            "FROM shadow WHERE t >= ? AND t < ? GROUP BY 1", (since, until))     # stance by its label
         return {str(r["rule"]): int(r["n"]) for r in rows}
 
     def record(self, **row: Any) -> int:
@@ -433,9 +434,6 @@ class Ledger:
     def health_between(self, account: str, source: str, since: float, until: float) -> list[dict[str, Any]]:
         return self._select("SELECT * FROM health WHERE account = ? AND source = ? AND at >= ? AND at < ? ORDER BY id",
                             (account, source, since, until))
-
-    def health_notes(self, account: str, source: str) -> set[str]:
-        return {str(r["note"]) for r in self._select("SELECT note FROM health WHERE account = ? AND source = ?", (account, source))}
 
     def health_last(self, account: str, source: str | None = None) -> dict[str, Any] | None:
         return self._first(f"SELECT * FROM health WHERE account = ?{'' if source is None else ' AND source = ?'} ORDER BY id DESC "
