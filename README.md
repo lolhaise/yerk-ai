@@ -78,6 +78,7 @@ uv run yerk map example-room --wire          # also the sizes as sent, read from
 uv run yerk setup-room ROOM                  # a Discord room's test webhook; its URL goes to secrets/ (0600), never printed
 uv run yerk room close ROOM                  # the running yerkd closes ROOM's process now (never mid-turn); the session stays
 uv run yerk room add NAME --from discord:ID  # a Discord chat moves in as the room NAME-on-yerk (Moving a chat in, below)
+uv run yerk import discord-guild:ID --dry-run   # every chat on the server, counted; without --dry-run, imported (Importing a chat, below)
 uv run yerk accounts                         # per account: order, token age and days left (warns inside 30), rests, last health call
 uv run yerk accounts cool NAME MINUTES       # rest an account by hand; `clear NAME` lifts it; a running yerkd sees both at its next pick
 uv run yerk accounts mint NAME               # `claude setup-token` for NAME: the browser flow shown, the token stored 0600, never shown
@@ -109,6 +110,12 @@ uv run pytest
 6. Check: the room's context against budgets.toml; the test webhook (yerk-test-sender) found or made in the new channel, its URL in secrets/discord-NAME-webhook.url (0600, never printed); the yerkd.toml `test_senders` line with its id added, printed to apply before the deploy and never written here; and the warm-up line to post through it.
 
 A person room's persona and rulebook start as the other person room's less its own text: fill in OWNER, PERSON and RELATION in the persona's last section, read the rest for anything else of that room's, and write pinned.md, before the person talks there.
+
+## Importing a chat
+
+`yerk import discord:<channel or thread id> [--since YYYY-MM-DD] [--files] [--dry-run]` files a Discord chat's whole history into the day logs with no room made, through the one import `yerk room add` uses (step 4 above): by message id, so a second run only tops up and a message already in the day log is never filed twice. Its lines go under the room id `discord:<id>`, the chat's name as the label, class `private`: an owner room reads them, no person room does. `[import] classes` in yerkd.toml changes that per id: `"shared"` lets every room read them, and `"room:<a room's id>"` files them under that room's id and class, behind its wall, its people's lines as `person`; a person's old channel belongs with her room, `classes = {"<old channel id>" = "room:discord:<her room's channel id>"}`. A message is filed once, under the first room id it gets: a chat imported before its room is made stays under `discord:<id>`, and a later `yerk room add` files none of it under the room, so a chat that will become a person's room waits in `[import] skip` until `yerk room add` has moved it in. A chat a room covers (its `channel` or `watch` in rooms.toml) is filed as that room files it. Attachments are named in their line with their size and not downloaded; `--files` saves each one up to 25 MB into the private folder's attachments/discord-<id>/ (0700, files 0600). `--dry-run` reads and counts, writes nothing, and prints every line it would file.
+
+`yerk import discord-guild:<guild id> --dry-run` is the server's inventory: every text, news, voice and stage channel and every thread under one (active and archived, public, and the private ones the bot may list), one line each: its parent, how many messages (counted by paging them all; for a chat the bot cannot read, Discord's own count where a thread has one, said as such, else unknown), the first and last day, whether a room covers it, and the class it would get. Without `--dry-run` it imports every chat on the list that no room covers and `[import] skip = ["<id>", ...]` leaves in, one after another, each said as it is done; a chat it cannot read is said, the rest go on, and the run ends 1. Discord hands one bot about a hundred messages a second, so a big server takes minutes. Yerk's bot must be able to read a chat (View Channel and Read Message History): one it cannot read is listed with the day it was made and the day of its last message, read from their ids, and its threads are not asked for.
 
 ## Install as a service
 

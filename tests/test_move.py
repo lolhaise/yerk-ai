@@ -296,7 +296,7 @@ def test_the_import_files_with_the_rooms_id_and_class(tmp_path):
     fake = FakeHTTP([message(1, OWNER, "mine"), message(2, COUSIN, "theirs"), message(3, BEN, "the old bot")])
     log = memory.DailyLog(tmp_path / "daily", timezone.utc, {"r": ("discord:9", "room")})
     got = asyncio.run(move.history(fake, log, "r", "30", {str(OWNER): "owner", str(COUSIN): "person"}, tmp_path / "files"))
-    assert got == {"messages": 3, "new": 3, "files": 0, "saved": 0}
+    assert got == {"messages": 3, "new": 3, "files": 0, "saved": 0, "first": 1001, "last": 1003}    # the first and last ids read
     lines = (tmp_path / "daily" / "2026-01-05.md").read_text().splitlines()[2:]
     assert [x.split(" ", 4)[2:4] for x in lines] == [["r#discord:9", "owner@owner-handle:"], ["r#discord:9", "person@cousin-handle:"],
                                                     ["r#discord:9", "other@Ben:"]]

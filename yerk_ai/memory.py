@@ -319,6 +319,7 @@ class DailyLog:
         self.daily, self.tz = daily, tz
         self.rooms = rooms or {}                 # room name -> (stable id, class); unlisted: the name, private
         self.seen: dict[str, set[str]] = {}
+        self.shown: list[str] = []               # with `dry`, the lines a capture would have written (`yerk import`)
         self.lock = threading.Lock()
 
     def _ids(self, day: str) -> set[str]:
@@ -347,6 +348,7 @@ class DailyLog:
             if key in ids:
                 return False
             if dry:
+                self.shown += lines
                 return True
             path = self.daily / f"{day}.md"
             head = "" if path.exists() else f"# {day}\n\n"
@@ -787,7 +789,7 @@ def room_lines(s: Settings, room: str, now: datetime | None = None,
             continue
         lines = f.read_text(errors="replace").splitlines()
         for n, raw in enumerate(lines):
-            ln = parse_line(raw)
+            ln = parse_line(raw) if rid in raw or room in raw else None    # a day log holds every chat's lines: the substring first
             if ln and (ln.of_room(room, rid) if owner else ln.cls in ("room", "shared") and ln.rid == rid):
                 yield day, n, ln, lines
 
