@@ -128,7 +128,17 @@ RELAY_ASK = ("[tell the room the outcome in your own voice, under {cap:,} charac
 WORKERS_OWNER_ONLY = "only the owner's rooms can use workers"       # start, report, list, stop
 JOBS_OWNER_ONLY = "only the owner's rooms can schedule jobs"         # any kind: every job runs as the owner
 RULES_OWNER_ONLY = "only the owner's rooms can file rules"           # remember with a job: a rule reaches every room
-RULE_FILED = "from now on every room does {job} this way"            # the line a filed rule's reply says
+# every remember result's last line (2026-10-21: "Filed." and a canned rule line went out as whole replies)
+FILED_NEXT = ("Only the text after your last tool call reaches the room, and nothing written above this call is shown, "
+              "so the answer goes there, first and whole (the result, the numbers, what you found or decided), and the "
+              "filing is {clause}.")
+FILED_AT_MOST, RULES_OVER = "one clause at its end at most", ", and the shared rules file is over its cap"
+RULE_CLAUSE = "one clause at its end, this one: every room now does {job} this way{over}"
+RULES_CUT, CUT_LINES = "{file} over cap: {size:,} of {cap:,}", "session starts cut lines {first} to {last}"   # machine room
+FILED = re.compile(r"^\W*(?:filed|noted|saved|from now on,? every room)\b", re.I)   # a final reporting a filing (stub)
+STUB = ("Only your final message reaches the room, and yours, \"{head}\", reports the filing, not the answer: the answer "
+        "is above your last tool call, where the room never sees it, or it was never written. Write the whole answer as "
+        "your final message now, first and complete, with the filing one clause at its end at most.")
 WORKER_OWN_ROOM = "a room starts workers for itself only, not for {room}"
 GONE, STRAY, NONE_RUNNING = "gone, no result", "unknown worker {id} running", "workers: none running"
 

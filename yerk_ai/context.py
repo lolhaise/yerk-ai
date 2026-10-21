@@ -113,6 +113,17 @@ def rules_text(room: dict[str, Any], rules: Path | None) -> tuple[str, str]:
     return cited(rules.resolve(), live), str(rules.resolve())
 
 
+def rules_over(room: dict[str, Any], rules: Path, cap: int) -> dict[str, Any] | None:
+    """The rules part past `cap` the way `yerk map` counts it: its size, the cap and the file's line numbers of the live
+    lines a session start sends broken or not at all (truncate's own output); None while it fits."""
+    text, _ = rules_text(room, rules)
+    if chars(text) <= cap:
+        return None
+    live, sent = set(text.split("\n")), truncate(text, "rules", cap)[0]
+    return {"size": chars(text), "cap": cap,
+            "cut": [n for n, x in enumerate(rules.read_text().splitlines(), 1) if x.strip() and x in live and x not in sent]}
+
+
 def session_start(private: Path, room: dict[str, Any], budgets: dict[str, Any], pack: Pack | None = None,
                   rules: Path | None = None) -> list[Part]:
     limits = budgets["session_start"]["appended"]

@@ -6,9 +6,10 @@ and things the message names with their best lines, the best hits of a question 
 the last 14 days on its topic, capped at `recall`); every assembly goes to the room's
 assembled.jsonl. SessionStart `compact` re-adds the recall pack; `startup` or `clear` after another session posts the reset line.
 PreToolUse runs the gates (gates.py), PostToolUse and PostToolUseFailure time each call, ConfigChange
-writes the tamper row, Stop runs the rule-based checks (an unread image or a turn ending with nothing
-visible bounces once; the evidence rules only log). The room comes from the call's token, else from the
-session id through the room-to-session table; an unbound call gets the marker and one loud log line.
+writes the tamper row, Stop runs the rule-based checks (an unread image, a turn ending with nothing
+visible or a final text that only reports a filing bounces once; the evidence rules only log). The room
+comes from the call's token, else from the session id through the room-to-session table; an unbound call
+gets the marker and one loud log line.
 """
 from __future__ import annotations
 

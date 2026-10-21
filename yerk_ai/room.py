@@ -23,7 +23,8 @@ adapter's event loop.
 - Each turn owns one card (card.py), fed from the stream; every outbound part carries the turn's
   key. A turn that was sent an image and never read it is bounced once at Stop, naming the file;
   a working turn answering a person that ends with nothing visible in the room bounces once,
-  naming what is owed (nothing that already landed under the turn's key is sent again).
+  naming what is owed (nothing that already landed under the turn's key is sent again); a final
+  text that only reports a filing (`remember`, `schedule`, `hold`, `settings`) bounces once (stub).
 - A message from the harness itself (sender `yerk`: a worker's relay) runs like any other but is
   not a human message for the clock line or the idle rule; it may cap its reply and name a line the
   reply must carry, and it hears how its turn ended.
@@ -73,6 +74,8 @@ class Inbound:
 
 
 HARNESS = "yerk"                          # the sender of Yerk AI's own messages (a worker's relay)
+FILING = ("remember", "schedule", "hold", "settings")   # Yerk AI's calls that file or set something, answering nothing
+STUB_CHARS = 200                          # the stub rule's size line (Room.stub_check)
 
 
 def fit(text: str, cap: int, must: list[str]) -> str:
@@ -139,6 +142,7 @@ class Room:
         self.images: dict[str, str] = {}          # path -> name: images sent in since the last result
         self.bounced = False                      # the unread-image check bounced this result already
         self.silent_bounced = False               # the silent-ending check bounced this result already
+        self.stub_bounced = False                 # the stub check bounced this result already
         self.evidence = Evidence(on_call=self._ledger_call)   # every tool call of the turn and what it read
         self.answering: set[str] = set()                      # ids of the batch the turn answers
         self.stale = False                        # the settings changed mid-turn: the process closes at its end
@@ -276,11 +280,27 @@ class Room:
         return (f"Your turn is ending with nothing visible in the room, and the room is still waiting on: \"{head}\". "
                 "Reply now with the answer, or one plain line on where it stands.")
 
+    def stub_check(self, active: bool, text: str | None) -> tuple[str, str] | None:
+        """The Stop hook's third rule, no judge (2026-10-21: "Filed." and a canned rule line went out in place of answers):
+        the result's last call is one of FILING and its final text, all the room sees, reports it, the answer above the call
+        (a text block over STUB_CHARS and twice the final's length) or never written (a final under STUB_CHARS opening
+        with words.FILED). It bounces once, quoting the final's start: (the bounce, what was found), or None."""
+        with self.evidence.lock:
+            trail = list(self.evidence.trail)
+        calls = [i for i, (kind, _) in enumerate(trail) if kind == "tool"]
+        if active or not text or self.stub_bounced or not calls or (tool := trail[calls[-1]][1].rsplit("__", 1)[-1]) not in FILING:
+            return None
+        n, above = len(text.strip()), max((len(t.strip()) for kind, t in trail[:calls[-1]] if kind == "text"), default=0)
+        found = (f"{above} characters above the {tool} call, {n} after it" if above > STUB_CHARS and above >= 2 * n else
+                 f"{n} characters after the {tool} call, opening as a filing" if n < STUB_CHARS and words.FILED.match(text) else "")
+        self.stub_bounced = bool(found)
+        return (words.STUB.format(head=" ".join(text.split())[:80]), found) if found else None
+
     def _new_card(self, note: str = "") -> None:
         privacy = str(self.conf.get("privacy", "owner"))
         self.card = Card(thinking=flag(self.conf.get("thinking_panel")) and privacy == "owner")
         self.card.narration = note                # a harness line from the first post, until the model's first words
-        self.turn_key, self.bounced, self.silent_bounced = uuid.uuid4().hex[:12], False, False
+        self.turn_key, self.bounced, self.silent_bounced, self.stub_bounced = uuid.uuid4().hex[:12], False, False, False
         self.channel.open_card(self.name, self.card.render())   # state first from the first post
 
     def meta_for(self, prompt: str) -> tuple[str, float | None]:

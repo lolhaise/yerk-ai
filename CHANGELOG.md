@@ -8,6 +8,24 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-21
 
+### answer-first
+
+- A room's answer comes first and whole: every `remember` result ends with `next`, the shape of the reply that follows
+  the call (the result, the numbers, what was found, then the filing in one clause at most), since only the text after
+  the last tool call reaches the room. A rule's result no longer carries the canned line that went out as a whole reply
+  that day; the clause it asks for ("every room now does X this way") rides inside `next`.
+- A final message that only reports a filing bounces once (`stub`): the result's last call is `remember`, `schedule`,
+  `hold` or `settings`, and the answer sits above that call (a text block over 200 characters and at least twice the
+  final's length) or was never written (a final under 200 characters opening "Filed", "Noted", "Saved" or "From now on
+  every room"). The room is told to write the whole answer as its final message; each bounce is a `stub` row in the
+  shadow ledger, counted in the morning diff. Replayed over the 363 results in the live rooms' transcripts: 3 bounces,
+  all three answers that never reached the room (2026-10-21).
+- A rule that takes the shared rules file past its budget is filed all the same and said: its result carries
+  `over_budget` (size and cap), the room ends its reply with a clause saying the file is over its cap, and the machine
+  room (else `[jobs] ops_room`) gets one line naming the file, its size, the cap and the lines every session start now
+  cuts.
+- **Upgrading:** budgets.toml `[code] lines` moved to the new count. Nothing to do.
+
 ### budgets-voice (#68)
 
 - The taste rules (one line each: a rule and the rated replies that prove it) fit a rulebook: its budget rises from

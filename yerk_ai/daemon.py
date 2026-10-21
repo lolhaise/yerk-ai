@@ -312,13 +312,14 @@ class Yerkd:
 
     async def tool_remember(self, room: str, text: str, about: str, replaces: list[str]) -> dict[str, Any]:
         """The `remember` tool: a room's own note into Yerk's own tree (memory.remember), stamped with
-        the ids of the messages its turn answers."""
+        the ids of the messages its turn answers; a filed one ends with `next`, the answer first and whole."""
         if room not in self.rooms:
             return {"ok": False, "error": "remember is for a room's own session"}
         with self.rooms[room].lock:
             mid = ",".join(m.id for m in self.rooms[room].inflight) or f"x{self.rooms[room].turn_key}"
-        return await asyncio.to_thread(memory.remember, self.scoped.get(room, self.memory), self.daily, room, mid, text, about,
-                                       tuple(replaces), self.reader(room))
+        r = await asyncio.to_thread(memory.remember, self.scoped.get(room, self.memory), self.daily, room, mid, text, about,
+                                    tuple(replaces), self.reader(room))
+        return {**r, "next": words.FILED_NEXT.format(clause=words.FILED_AT_MOST)} if r["ok"] else r
 
     def owner_only(self, room: str, named: str, line: str = words.WORKERS_OWNER_ONLY) -> dict[str, Any] | None:
         """A room's own call that would start or read a worker: the owner's rooms only (a worker runs as
@@ -333,7 +334,8 @@ class Yerkd:
         return None
 
     async def tool_rule(self, room: str, text: str, job: str) -> dict[str, Any]:
-        """`remember` with a `job`: an owner's room files how it is done from now on (memory.rule) for every room."""
+        """`remember` with a `job`: an owner's room files how it is done from now on (memory.rule) for every room; past the
+        rules part's budget it is filed all the same and said (`over_budget`, the reply's clause, one machine-room line)."""
         if room not in self.rooms or not self.owner(room):
             return {"ok": False, "line": words.RULES_OWNER_ONLY}
         if self.reader(room).sealed:        # its teaching stays its own day-log note, the job its label, never the shared rules
@@ -341,7 +343,15 @@ class Yerkd:
         with self.rooms[room].lock:
             mid = ",".join(m.id for m in self.rooms[room].inflight) or f"x{self.rooms[room].turn_key}"
         r = await asyncio.to_thread(memory.rule, self.memory, room, mid, job, text)
-        return {**r, "line": words.RULE_FILED.format(job=r["job"])} if r["ok"] else r
+        if not r["ok"]:
+            return r
+        over = await asyncio.to_thread(context.rules_over, self.room_confs[room], self.memory.root / memory.RULES,
+                                       int(self.budgets["session_start"]["appended"]["rules"]))
+        if over:
+            cut = f"\n{words.CUT_LINES.format(first=over['cut'][0], last=over['cut'][-1])}" if over["cut"] else ""
+            await self.jobs.alert(None, f"{words.WORKING} {words.RULES_CUT.format(file=memory.RULES, **over)}{cut}", 0)
+            r["over_budget"] = {"size": over["size"], "cap": over["cap"]}
+        return {**r, "next": words.FILED_NEXT.format(clause=words.RULE_CLAUSE.format(job=r["job"], over=words.RULES_OVER if over else ""))}
 
     async def tool_worker(self, room: str, req: dict[str, Any]) -> dict[str, Any]:
         """The `worker` tool (rooms only; a worker has no MCP server). `yerk worker` comes through
@@ -626,6 +636,11 @@ class Yerkd:
                     self.ledger.gate(room=name, session_id=sid, turn=room.turn_key, gate="silent", decision="bounce",
                                      tool="", rule="silent-ending", detail=reason[:300])
                     log.info("room %s: Stop bounced once: the turn ended with nothing visible", name)
+                elif (stub := room.stub_check(active, None if said is None else str(said))):
+                    reason, found = stub              # a shadow row so the morning diff counts every bounce
+                    self.ledger.shadow(t=round(time.time(), 3), room=name, session_id=sid, turn=room.turn_key, rule="stub",
+                                       detail=found, reply_chars=len(str(said)))
+                    log.info("room %s: Stop bounced once: the final text only reports a filing (%s)", name, found)
             if room and name:
                 try:
                     await asyncio.to_thread(self.shadow_stop, name, room, str(payload.get("last_assistant_message") or ""), sid)

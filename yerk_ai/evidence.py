@@ -72,6 +72,7 @@ class Evidence:
             self.logged: set[tuple[str, str]] = set()
             self.kept = 0
             self.started = time.time()          # a reply posted before this came from an earlier turn
+            self.trail: list[tuple[str, str]] = []   # this result's ("text", its words) and ("tool", name), in order
 
     def give(self, text: str, recall: bool = False) -> None:
         with self.lock:
@@ -80,18 +81,24 @@ class Evidence:
             self.injected_recall = self.injected_recall or recall
 
     def observe(self, ev: dict[str, Any]) -> None:
-        """The stream's tool_use blocks open a call; its tool_result closes it with the text."""
-        if (kind := ev.get("type")) not in ("assistant", "user"):
+        """The stream's tool_use blocks open a call; its tool_result closes it with the text. The trail keeps the text
+        blocks and calls of the result being written, in order (Room.stub_check reads it at Stop, before the result lands)."""
+        if (kind := ev.get("type")) not in ("assistant", "user", "result"):
             return
         done = []
         with self.lock:
+            if kind == "result":
+                self.trail = []
             for c in (ev.get("message") or {}).get("content") or []:
                 if not isinstance(c, dict):
                     continue
-                if kind == "assistant" and c.get("type") == "tool_use":
+                if kind == "assistant" and c.get("type") == "text":
+                    self.trail.append(("text", str(c.get("text") or "")))
+                elif kind == "assistant" and c.get("type") == "tool_use":
                     ti = c.get("input") or {}
                     self.calls[str(c.get("id"))] = {"tool": str(c.get("name")), "input": ti, "id": str(c.get("id")),
                                                     "target": target(str(c.get("name")), ti), "result": "", "t": time.time()}
+                    self.trail.append(("tool", str(c.get("name"))))
                 elif kind == "user" and c.get("type") == "tool_result":
                     if (call := self.calls.get(str(c.get("tool_use_id")))) is not None:
                         call["result"] = result_text(c.get("content"))
