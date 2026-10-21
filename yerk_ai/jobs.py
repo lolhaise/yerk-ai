@@ -72,6 +72,7 @@ KINDS = ("script", "agent", "watcher", "note")
 WAKES = ("room", "worker")
 DELIVER = ("announce", "silent")
 NO_REPLY = "NO_REPLY"
+WAITING = "undelivered: waiting for the room's turn"       # a told note's run until its turn ends (Jobs.tell)
 OUTPUT_MAX = 4000                 # characters of a script's output posted; the rest stays in the run folder
 ALERT_MAX = 300
 MIN_EVERY = 30                    # seconds; a tighter interval is a watcher's job, not a timer's
@@ -1383,7 +1384,7 @@ class Jobs:
         text = words.NOTE_DUE.format(name=run["job"], message=message, at=words.clock(float(run["planned"])),
                                      cap=self.workers.conf.relay_reply)
         self.ledger.inbound_add(mid, room, "note", HARNESS, len(text))
-        self.ledger.job_run_set(rid, delivery="undelivered: waiting for the room's turn")
+        self.ledger.job_run_set(rid, delivery=WAITING)
 
         def then(state: str, ids: list[str], chars: int) -> None:
             self.ledger.job_run_set(rid, ended=time.time(), exit="done", result="note",
@@ -1505,7 +1506,7 @@ class Jobs:
         except Exception:
             log.exception("jobs: the open watcher events could not be taken")
         for r in self.ledger.job_runs(undelivered=True):
-            if r["kind"] == "note" and float(r["fired"]) < self.started:     # the last process's; this one's is in hand
+            if r["kind"] == "note" and (r["delivery"] != WAITING or float(r["fired"]) < self.started):   # one told here is in hand
                 if (posted := self.ledger.delivered_for(mid := f"note-{r['id']}")):
                     self.ledger.inbound_set(mid, state="answered", reply_ids=",".join(posted), note="found delivered after a restart")
                     self.ledger.job_run_set(int(r["id"]), ended=time.time(), exit="done", result="note", delivery="delivered",

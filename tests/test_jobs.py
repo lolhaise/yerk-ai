@@ -554,6 +554,31 @@ def test_a_note_the_daemon_missed_is_told_at_the_next_start_and_one_already_said
     assert (again["delivery"], again["message_ids"]) == ("delivered", "d1") and len(s.chan.replies) == 1
 
 
+def test_a_note_whose_hand_off_failed_after_the_start_is_told_by_that_start(setup, tmp_path):
+    """Jobs.started is stamped in the daemon's __init__, before /control answers, so a note that fires in between fails
+    its hand-off with a fire time after the start (a reboot fires Persistent timers as the daemon starts). No process
+    has it in hand, so that start's reattach tells it; only a note this process told waits on its own turn."""
+    s = setup
+    j, w, sd, priv, state = manager(setup, tmp_path, {"r": s.room()}, {"r": Rec()})
+    s.ledger.__init__(state / "ledger.sqlite")
+    j.ledger = w.ledger = s.ledger
+    write_jobs(priv / "jobs.toml", '[jobs.water]\nkind = "note"\nevery = "2h"\ntz = "UTC"\nroom = "r"\nmessage = "Water the plants."\n')
+    jobs.sync(priv / "jobs.toml", sd, ENV)
+    j.started = time.time() - 1                                     # the start, before /control answers
+
+    def down(payload):
+        raise OSError("connection refused")
+    assert jobs.run("water", priv, state, units=sd, handoff=down) == 1
+    rid = s.ledger.job_runs(job="water")[0]["id"]
+
+    async def go():
+        w.begin(asyncio.get_running_loop())
+        await j.reattach()
+        return await settled(s.ledger, rid)
+    assert asyncio.run(go())["delivery"] == "delivered"
+    assert s.chan.replies[0][0].startswith("echo: [reminder water due] Water the plants.")
+
+
 # the schedule tool
 def test_the_schedule_tool_round_trips_through_the_file(setup, tmp_path):
     s = setup
