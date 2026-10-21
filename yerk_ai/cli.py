@@ -350,7 +350,7 @@ def cmd_docs(a: argparse.Namespace) -> int:
         return 0
     if a.action == "show":
         path = docs.root(state) / "claude" / f"{a.name}.md"
-        if a.name not in docs.pages(conf) or not path.is_file():
+        if a.name not in docs.pages(conf) or not docs.SLUG.fullmatch(a.name) or not path.is_file():
             print(f"no page {a.name!r} kept; pages: {', '.join(docs.pages(conf))}", file=sys.stderr)
             return 2
         print(path.read_text(), end="")
@@ -359,6 +359,9 @@ def cmd_docs(a: argparse.Namespace) -> int:
         print(shape.rules_text(), end="")
         return 0
     rs, limits = rooms(priv), dict(budgets().get("shape") or {})
+    if a.name and a.name not in rs:
+        print(f"no room {a.name!r} in rooms.toml; rooms: {', '.join(rs)}", file=sys.stderr)
+        return 2
     r = shape.check(priv, memory.settings(priv, state), rs, conf, datetime.now().timestamp())
     for name in [a.name] if a.name else r["rooms"]:
         print(shape.report(name, r, limits, datetime.now().strftime("%Y-%m-%d %H:%M")))

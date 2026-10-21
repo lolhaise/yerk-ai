@@ -130,6 +130,7 @@ def test_yerk_docs_refreshes_lists_shows_and_prints_the_shape_report(site, tmp_p
     assert cli.main(["docs", "show", "nope", *args]) == 2 and "pages: guide" in capsys.readouterr().err
     assert cli.main(["docs", "shape", *args]) == 0 and capsys.readouterr().out.endswith("rule shape: every count is within budgets.toml [shape]\n")
     assert cli.main(["docs", "shape", "--rules", *args]) == 0 and capsys.readouterr().out.startswith("- no why: a line holding never")
+    assert cli.main(["docs", "shape", "no-such-room", *args]) == 2 and "rooms: example-room, example-quiet" in capsys.readouterr().err
 
 
 def test_a_room_asking_how_its_rules_are_written_gets_the_shape_check_and_the_docs_first(tmp_path):
