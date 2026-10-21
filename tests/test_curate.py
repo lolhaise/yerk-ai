@@ -98,6 +98,22 @@ def test_a_card_in_her_rooms_class_gets_nothing_from_his_private_sources(layer):
     assert [x for _, _, x in pk[s.root / "facts" / "pets.md"]] == ["- the vet saw Zed today"] and "back" not in said_as
 
 
+def test_a_curate_log_never_feeds_her_card_whatever_its_class_and_her_recall_never_finds_a_promoted_line(layer, monkeypatch):
+    priv, state, s, log = layer
+    (log.parent / f"{log.name}.class").write_text("shared\n")                 # her recall never reads it: it is outside the scope
+    pk, _ = curate.packs(s, priv, [log.resolve()], [datetime(2026, 10, d).date() for d in (19, 20)])
+    assert not any("Ada IN" in x for _, _, x in pk[s.root / "facts" / "ada-for-her.md"])
+    assert any("Ada IN" in x for _, _, x in pk[s.root / "facts" / "ada.md"])
+    monkeypatch.setattr(curate, "bench", lambda s: {"top_k": 10, "top_1": 5, "at": "now", "seconds": 1.0})
+    monkeypatch.setattr(curate, "taken", lambda s, cards: True)
+    mine = proposals(s)[0]
+    assert curate.run(priv, state, now=NOW, model=fake([mine, f"KEEP {mine}"], []))["landed"] == [mine]
+    (state / "memory").mkdir(exist_ok=True)
+    memindex.Index(s.index_db, s.scope).sync()
+    hits = memory.recall(s, "Example Co new job Monday", reader=memory.Reader(name="her-room", rid=HER)).get("hits", [])
+    assert not any("facts/ada.md" in h.get("cite", "") for h in hits)
+
+
 def fake(answers, calls):
     def model(prompt, tools):
         calls.append((prompt, tools))
@@ -142,6 +158,21 @@ def test_the_promotion_lands_only_what_the_knockdown_passed_and_the_checks_hold(
     assert json.loads((state / "curate.json").read_text())["landed"] == r["landed"]
 
 
+def test_a_night_lands_at_most_its_cap_a_card_and_a_pinned_account_binds(layer, monkeypatch):
+    priv, state, s, log = layer
+    monkeypatch.setattr(curate, "bench", lambda s: {"top_k": 10, "top_1": 5, "at": "now", "seconds": 1.0})
+    monkeypatch.setattr(curate, "taken", lambda s, cards: True)
+    (priv / "yerkd.toml").write_text((priv / "yerkd.toml").read_text() + "per_card = 1\n")
+    lines = [proposals(s)[0], proposals(s)[5].replace("texts.log:2", f"{log}:2")]
+    r = curate.run(priv, state, now=NOW, model=fake(["\n".join(lines), "\n".join(f"KEEP {x}" for x in lines)], []))
+    assert r["landed"] == [lines[0]] and r["checked"] == [f"{lines[1]} | held: over the night's cap, 1 a card and 25 in all"]
+    monkeypatch.setattr(curate, "busy", lambda state: {"two"})
+    with pytest.raises(RuntimeError, match="account two has a worker running"):
+        curate.ask(priv, state, {"account": "two"}, "p", "")              # never the next account behind the owner's back
+    with pytest.raises(RuntimeError, match="not in accounts.toml"):
+        curate.ask(priv, state, {"account": "five"}, "p", "")
+
+
 def test_her_room_never_reads_a_promoted_private_line_and_her_card_takes_none(layer, monkeypatch):
     priv, state, s, log = layer
     monkeypatch.setattr(curate, "bench", lambda s: {"top_k": 10, "top_1": 5, "at": "now", "seconds": 1.0})
@@ -155,6 +186,15 @@ def test_her_room_never_reads_a_promoted_private_line_and_her_card_takes_none(la
     her = memory.Reader(name="her-room", rid=HER)
     assert not memory.read(s, "facts/ada.md", reader=her)["ok"] and memory.read(s, "facts/ada-for-her.md", reader=her)["ok"]
     assert "new job" not in (s.root / "facts" / "ada-for-her.md").read_text()
+
+
+def test_the_code_check_stops_a_code_an_id_and_a_bank_number_and_passes_a_phone_number(layer):
+    priv, state, s, log = layer
+    card, pack = s.root / "facts" / "ada.md", [((s.daily / "2026-10-20.md").resolve(), 3, "x")]
+    for fact, secret in [("the gate code: 4471 at the side door", True), ("her SIN is 123 456 789", True), ("the garage PIN 0420", True),
+                         ("transit 12345, account 1234567", True), ("the hotel, +34 911 222 333", False)]:
+        why = curate.check(s, priv, [], card, f"- Ada's thing: {fact} (src: memory/daily/2026-10-20.md:3)", pack, {"ada's thing"})
+        assert ("secret" in why) == secret and (secret or why == ""), (fact, why)
 
 
 @pytest.mark.parametrize("after, index, why", [({"top_k": 10, "top_1": 4}, True, "the bench fell from 10, 5 to 10, 4"),
@@ -172,13 +212,96 @@ def test_a_bench_that_falls_or_an_index_that_never_takes_the_lines_in_lands_noth
     assert rows[2] == "" and "new job" not in "".join(rows)                  # blanked, so a line filed since keeps its number
 
 
+
+def test_the_proposer_runs_with_no_tools_and_the_knockdown_with_read_grep_and_glob_only(layer, monkeypatch):
+    import subprocess
+    priv, state, s, log = layer
+    seen: list = []
+    monkeypatch.setattr(curate.subprocess, "run", lambda argv, **k: seen.append(argv) or subprocess.CompletedProcess(argv, 0, "ok", ""))
+    assert curate.ask(priv, state, {}, "p", "") == "ok" and curate.ask(priv, state, {}, "p", "Read,Grep,Glob") == "ok"
+    for argv, tools in zip(seen, ("", "Read,Grep,Glob")):
+        assert argv[argv.index("--tools") + 1] == tools and argv[argv.index("--disallowedTools") + 1] == "Agent"
+        assert argv[argv.index("--setting-sources") + 1] == "" and "--strict-mcp-config" in argv and "--allowedTools" not in argv
+
+
+def test_a_knockdown_that_rewrites_a_line_lands_neither_and_no_bench_lands_nothing(layer, monkeypatch):
+    priv, state, s, log = layer
+    monkeypatch.setattr(curate, "taken", lambda s, cards: True)
+    monkeypatch.setattr(curate, "bench", lambda s: {"top_k": 10, "top_1": 5, "at": "now", "seconds": 1.0})
+    card, line = s.root / "facts" / "ada.md", proposals(s)[0]
+    before = card.read_text()
+    r = curate.run(priv, state, now=NOW, model=fake([line, f"KEEP {line.replace('Monday', 'Tuesday')}"], []))
+    assert r["landed"] == [] and r["dropped"] == [f"{line} | the knock-down did not pass it"] and card.read_text() == before
+    monkeypatch.setattr(curate, "bench", lambda s: None)
+    r = curate.run(priv, state, now=NOW, model=fake([line, f"KEEP {line}"], []))
+    assert r["landed"] == [] and r["checked"] == ["nothing landed: no bench to hold the lines to"] and card.read_text() == before
+
+
+def test_a_fall_blanks_only_the_landed_lines_and_a_line_filed_meanwhile_keeps_its_number(layer, monkeypatch):
+    priv, state, s, log = layer
+    runs = iter([{"top_k": 10, "top_1": 5, "at": "a", "seconds": 1.0}, {"top_k": 9, "top_1": 5, "at": "b", "seconds": 1.0}])
+    monkeypatch.setattr(curate, "bench", lambda s: next(runs))
+    card = s.root / "facts" / "ada.md"
+    before = card.read_text().split("\n")[:-1]
+
+    def meanwhile(s, cards):                         # memory.remember files a line while yerk-index takes the new ones in
+        with memory.daily_lock(s.daily):
+            card.write_text(card.read_text() + "- Ada's car: a blue one (owner-room, 2026-10-21 12:00:00+00:00) [m:9]\n")
+        return True
+    monkeypatch.setattr(curate, "taken", meanwhile)
+    lines = [proposals(s)[0], proposals(s)[5].replace("texts.log:2", f"{log}:2")]
+    r = curate.run(priv, state, now=NOW, model=fake(["\n".join(lines), "\n".join(f"KEEP {x}" for x in lines)], []))
+    rows = card.read_text().split("\n")
+    assert r["landed"] == [] and rows[:2] == before and rows[2:4] == ["", ""] and rows[4].startswith("- Ada's car: a blue one")
+
+
+def test_every_card_write_is_a_backed_up_rewrite_under_the_writers_lock(layer, monkeypatch):
+    import contextlib
+    priv, state, s, log = layer
+    held, writes, lock, rewrite = [], [], memory.daily_lock, curate.doctor.rewrite
+
+    @contextlib.contextmanager
+    def locked(daily):
+        with lock(daily):
+            held.append(1)
+            try:
+                yield
+            finally:
+                held.pop()
+    monkeypatch.setattr(curate.memory, "daily_lock", locked)
+    monkeypatch.setattr(curate.doctor, "rewrite", lambda p, b, f, d: writes.append((p.name, bool(held), b.name)) or rewrite(p, b, f, d))
+    runs = iter([{"top_k": 10, "top_1": 5, "at": "a", "seconds": 1.0}, {"top_k": 10, "top_1": 4, "at": "b", "seconds": 1.0}])
+    monkeypatch.setattr(curate, "bench", lambda s: next(runs))
+    monkeypatch.setattr(curate, "taken", lambda s, cards: True)
+    line = proposals(s)[0]
+    curate.run(priv, state, now=NOW, model=fake([line, f"KEEP {line}"], []))
+    assert len(writes) == 6 and all(h for _, h, _ in writes) and {b for *_, b in writes} == {"curate-2026-10-21"}   # 2 cards x 2, land, blank
+
+
+def test_the_also_roots_and_the_logs_are_never_written(layer, monkeypatch):
+    priv, state, s, log = layer
+    box = s.scope.roots[1]
+    (box / "facts").mkdir()
+    (box / "facts" / "ada.md").write_text("# Ada\n- Ada: twice (src: memory/2026-10-20.md:3)\n- Ada: twice (src: memory/2026-10-20.md:3)\n"
+                                          "- Ada: 🔴 SUPERSEDED: old (src: memory/2026-10-20.md:5)\n- Ada: away until 2026-10-01 (src: x.md:1)\n")
+    files = [p for p in box.rglob("*") if p.is_file()] + [log]
+    snap = {p: p.read_bytes() for p in files}
+    monkeypatch.setattr(curate, "bench", lambda s: {"top_k": 10, "top_1": 5, "at": "now", "seconds": 1.0})
+    monkeypatch.setattr(curate, "taken", lambda s, cards: True)
+    line = proposals(s)[0]
+    calls: list = []
+    r = curate.run(priv, state, now=NOW, model=fake([line, f"KEEP {line}"], calls))
+    assert r["landed"] == [line] and {p: p.read_bytes() for p in files} == snap and sorted(p for p in box.rglob("*") if p.is_file()) == sorted(files[:-1])
+    assert not any("twice" in p for p, _ in calls)                          # a root's card is no card of this tree
+
+
 def test_the_sweep_blanks_repeats_superseded_and_past_lines_and_moves_a_cite_only_on_one_exact_match(layer, capsys, monkeypatch):
     priv, state, s, log = layer
     monkeypatch.setattr(curate, "ask", lambda *a: "")
     card = s.root / "facts" / "ada.md"
     day = "memory/daily/2026-10-19.md"
     card.write_text("\n".join(["# Ada", f"- Ada Example: the owner's mom (src: {day}:3)", f"- Ada Example: the owner's mom (src: {day}:3)",
-                               "- Ada's old job: a teacher [superseded by facts/ada.md:7]", f"- Ada's trip: away until 2026-10-01 (src: {day}:3)",
+                               "- Ada's old job: a teacher [superseded by facts/ada.md:7]", f"- Ada's trip: away [until 2026-10-01] (src: {day}:3)",
                                f"- Ada's tea: \"I only drink green tea now\" (src: {day}:3)", f"- Ada's town: Exampleton (src: {day}:9)",
                                f"- Ada's drink: \"only drinks coffee now\" (src: {day}:4)",
                                "- Ada's note: \"the owner's mom\" (src: memory/facts/ada.md:7)",     # a name two roots share
@@ -200,6 +323,32 @@ def test_the_sweep_blanks_repeats_superseded_and_past_lines_and_moves_a_cite_onl
     assert (priv / "backups" / "b" / "facts.ada.md").read_text() == before
 
 
+def test_the_sweep_never_blanks_a_standing_line_and_never_moves_a_cite_onto_a_card_or_a_superseded_section(layer, capsys, monkeypatch):
+    priv, state, s, log = layer
+    monkeypatch.setattr(curate, "ask", lambda *a: "")
+    (s.scope.roots[1] / "2026-10-18.md").write_text("# Oct 18\n## 10:00 the old plan, SUPERSEDED\n- Ada said \"we meet at the north gate at noon\"\n")
+    (s.root / "facts" / "bea.md").write_text("# Bea\n- Bea: line one\n- Bea said \"the spare key is under the blue pot\"\n")
+    day, card = "memory/daily/2026-10-19.md", s.root / "facts" / "ada.md"
+    card.write_text("\n".join(["# Ada", f"- Video rule: 🔴 NOT SUPERSEDED, the Sep 6 order still holds (src: {day}:3)",
+                               f"- Shift: 7:30 to 4 (the old 7:00 to 3:30 is SUPERSEDED) (src: {day}:3)",
+                               f"- Superseded phone: the old number, kept for reference (src: {day}:3)",
+                               f"- Lease: the landlord wrote \"yours until 2026-09-30, then month to month\" (src: {day}:3)",
+                               f"- Old job: worked at Example Co from 2026-01-05 until 2026-09-11 (src: {day}:3)",
+                               f"- Gate: 🔴 SUPERSEDED: the south gate (src: {day}:3)", f"- Trip: away [until 2026-10-01] (src: {day}:3)",
+                               "- Spare key: \"the spare key is under the blue pot\" (src: memory/facts/bea.md:2)",
+                               "- Meeting: Ada said \"we meet at the north gate at noon\" (src: memory/2026-10-18.md:2)",
+                               f"- Car: a 2019 Coupe (src: {day}:3)", f"- Car: a 2019 Coupe. (src: {day}:3)", ""]))
+    before = card.read_text().split("\n")
+    curate.sweep(s, priv, [], priv / "backups" / "b", False, datetime(2026, 10, 21).date())
+    after = card.read_text().split("\n")
+    assert after[1:6] == before[1:6] and after[6:8] == ["", ""] and after[8:] == before[8:]    # only the two true marks blank
+    assert curate.main(priv, state, dry=True) == 1
+    out = capsys.readouterr().out
+    assert "found: ada.md:5 says until a date now past" in out and "found: ada.md:6 says until a date now past" in out
+    assert "found: ada.md:9 cites memory/facts/bea.md:2, another card of this tree" in out and "moved the cites" not in out
+    assert "found: ada.md:10 quotes \"we meet at the north gate at noon\", on 0 lines of the files it cites" in out
+
+
 def test_since_reads_each_day_to_yesterday_and_the_morning_carries_one_curate_line(layer):
     priv, state, s, log = layer
     accounts, cool, led = load_accounts(priv / "accounts.toml"), Cooldowns(state / "cooldowns.json"), Ledger(state / "ledger.sqlite")
@@ -211,3 +360,39 @@ def test_since_reads_each_day_to_yesterday_and_the_morning_carries_one_curate_li
     assert r["found"] == [] and r["changed"] == []
     lines, stamp = morning.build(priv, state, accounts, cool, led, {"started": NOW - 86400, "units": []}, NOW)
     assert words.line(f"{words.NOT_DONE} curate: 1 to read, ada.md:2 - Ada Example: retired (src: x.md:1)") in lines
+
+
+def test_a_run_cut_off_before_its_bench_is_undone_by_the_next_and_said_in_the_morning_and_two_never_overlap(layer, monkeypatch):
+    import os
+    import subprocess
+    priv, state, s, log = layer
+    monkeypatch.setattr(curate, "taken", lambda s, cards: True)
+    runs = iter([{"top_k": 10, "top_1": 5, "at": "a", "seconds": 1.0}])
+    monkeypatch.setattr(curate, "bench", lambda s: next(runs))           # the second bench never comes: the run is cut off
+    card, line = s.root / "facts" / "ada.md", proposals(s)[0]
+    before = card.read_text().split("\n")[:-1]
+    with pytest.raises(StopIteration):
+        curate.run(priv, state, now=NOW, model=fake([line, f"KEEP {line}"], []))
+    assert card.read_text().split("\n")[2] == line.split(": ", 1)[1]               # on the card, on trial, no verdict
+    dead = subprocess.Popen(["true"])
+    dead.wait()
+    run = json.loads((state / curate.RUN).read_text())
+    (state / curate.RUN).write_text(json.dumps({**run, "pid": dead.pid}))
+    assert curate.line(state, NOW + 60)[0] == "curate cut off" and curate.line(state, NOW + 60)[1].endswith("cut off at 08:00, 1 to undo")
+    (state / curate.RUN).write_text(json.dumps({**run, "pid": os.getppid()}))   # a run still on: never undone, never overlapped
+    assert "running since" in curate.line(state, NOW + 60)[1] and curate.main(priv, state) == 2
+    (state / curate.RUN).write_text(json.dumps({**run, "pid": dead.pid}))
+    r = curate.run(priv, state, now=NOW + 3600, model=fake([], []))
+    rows = card.read_text().split("\n")
+    assert rows[:2] == before and rows[2] == "" and r["checked"][0].startswith("nothing landed: the run of ")
+    assert not (state / curate.RUN).exists() and curate.line(state, NOW + 3700)[0] != "curate cut off"
+
+
+def test_a_blind_bench_holds_nothing(layer, monkeypatch):
+    priv, state, s, log = layer
+    s.bench.parent.mkdir(parents=True, exist_ok=True)
+    s.bench.write_text("{}") if not s.bench.is_file() else None
+    monkeypatch.setattr(curate.memory, "bench", lambda s: {"ok": True, "top_k": 10, "top_1": 5, "blind": ["control-1"]})
+    assert curate.bench(s) is None
+    monkeypatch.setattr(curate.memory, "bench", lambda s: {"ok": True, "top_k": 10, "top_1": 5, "blind": []})
+    assert curate.bench(s)["top_k"] == 10

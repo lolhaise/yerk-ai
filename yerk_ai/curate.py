@@ -10,10 +10,12 @@ the morning diff. Each run is kept in <state>/curate.json."""
 from __future__ import annotations
 
 import json
+import os
 import re
 import sqlite3
 import subprocess
 import time
+from contextlib import suppress
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
@@ -23,12 +25,14 @@ from .accounts import account_env, load_accounts
 from .config import load_toml, write_private
 from .engine import claude_bin
 
-LAST, PROMPTS = "curate.json", Path(__file__).with_name("curate.md")
+LAST, RUN, PROMPTS = "curate.json", "curate-run.json", Path(__file__).with_name("curate.md")   # RUN: this run, its lines on trial
 PACK_CHARS, CALL_CHARS = 20_000, 150_000            # a card's pack; one worker call's cards and packs together
 LINE = re.compile(r"- ([^:\n]{2,60}): (.+) \(src: ([^()]+)\)")                  # a card line: `- Key: fact (src: file:line, :line)`
 CITE = re.compile(r"(?:^|,)\s*([^,:]*):(\d+)(?:-(\d+))?\s*(?=,|$)")             # file:line or file:from-to; no file: the one before
 MARK = re.compile(r"⛔|do not state", re.I)                                     # accuracy marks: a heading's covers what it holds
 GONE = re.compile(r"(?i:\[superseded)|SUPERSEDED|(?i:^\W*superseded\b)")         # Yerk's own mark, the word in capitals after anything
+STRUCK = re.compile(r"(?i:\[superseded)|^- [^\w\n]*SUPERSEDED\b|^- [^:\n]{2,60}: [^\w\n]*(?i:superseded)\b")   # a card line the
+# sweep blanks: Yerk's mark, or the word opening its key in capitals or its fact; never "NOT SUPERSEDED" or a line naming an old value
 QUOTE = re.compile(r"[\"“]([^\"”]{20,})[\"”]")                                   # long enough to name one line
 FLAT = str.maketrans({"’": "'", "‘": "'", "“": '"', "”": '"'})
 
@@ -36,21 +40,24 @@ FLAT = str.maketrans({"’": "'", "‘": "'", "“": '"', "”": '"'})
 def flat(text: str) -> str:
     """Curly quotes and apostrophes as straight ones, on both sides of a quote's match."""
     return text.translate(FLAT)
-UNTIL = re.compile(r"\step (\and{4}-\for{2}-\and{2})\note")
+UNTIL = re.compile(r"\[moved (\to{4}-\with{2}-\queue{2})\]")                            # the sample item moved to the next step and the
+SAYS_UNTIL = re.compile(r"\buntil (\d{4}-\d{2}-\d{2})\b")                        # in its words: an expiry or a history, so a finding
 SECRET = re.compile(r"passw(?:or)?d|passcode|one-time code|\b(?:sk|rk)-[\w-]{16,}|\bgh[pousr]_\w{20,}|\bxox[abp]-|\bAKIA[0-9A-Z]{16}|"
                     r"X-Amz-|[?&](?:sig|token|key)=|\b\d(?:[ -]?\d){11,18}\b|\b[A-Za-z0-9+/_-]{40,}\b", re.I)
 KIN = {"mom": "mother", "dad": "father", "grandma": "grandmother", "grandpa": "grandfather"}   # a relation also said as a name
 FIX = re.compile(r"^(\S+?\.md) fix (\d+): (- .+)$", re.M)                       # a proposed correction: card, its line, the new line
+CODES = re.compile(r"\b(?:pin|(?<!area )code|key)\W{0,3}\d{3,}|(?<!\d[ -])\b\d{3}[ -]\d{3}[ -]\d{3}\b(?![ -]?\d)|\b\d{4}[ -]\d{3}[ -]\d{3}\b|"
+                   r"\b(?:account|acct|transit|routing)\b\W{0,12}\d{5,}|\bwi-?fi\b[^.;]*\bkey\b", re.I)   # a code, a SIN or health card, a bank number
 
 
 def kept(rows: list[str]) -> list[bool]:
     """Which lines a pack may hold: none marked, none under a marked heading or bullet (to the next of its level or
-    higher), none superseded."""
+    higher), none superseded or under a superseded heading."""
     out, up = [], [(0, False)]                           # the headings and bullets open above, by depth, and their mark
     for x in rows:
         d = len(h[1]) if (h := re.match(r"(#{1,6}) ", x)) else 9 + len(x) - len(x.lstrip()) if x.strip() else 99
         up = [u for u in up if u[0] < d]
-        up.append((d, bool(MARK.search(x)) or up[-1][1]))
+        up.append((d, bool(MARK.search(x)) or bool(h and GONE.search(x)) or up[-1][1]))
         out.append(not up[-1][1] and not GONE.search(x))
     return out
 
@@ -115,7 +122,7 @@ def cites(src: str) -> list[tuple[str, int, int, re.Match[str]]]:
 
 def sweep(s: memory.Settings, private: Path, logs: list[Path], backup: Path, dry: bool, today: date) -> tuple[list[str], list[str]]:
     """(what changed, what it found) on every card, each card rewritten under the writers' lock."""
-    changed, found, text = [], [], dict[Path, list[str]]()
+    changed, found, text, facts = [], [], dict[Path, list[str]](), (s.root / "facts").resolve()
     for card in sorted((s.root / "facts").glob("*.md")):
         seen: set[str] = set()
 
@@ -123,21 +130,25 @@ def sweep(s: memory.Settings, private: Path, logs: list[Path], backup: Path, dry
             t = x.decode(errors="replace").strip()
             if not t.startswith("- "):
                 return None
-            old = t in seen or bool(GONE.search(t)) or any(d < today.isoformat() for d in UNTIL.findall(t))
+            old = t in seen or bool(STRUCK.search(t)) or any(d < today.isoformat() for d in UNTIL.findall(t))
             seen.add(t)
             return b"\n" if old else None
         moves: dict[str, str] = {}
         for i, x in enumerate(card.read_text(errors="replace").splitlines(), 1):
-            if not (m := LINE.match(x)) or GONE.search(x):
+            if not UNTIL.search(x) and any(d < today.isoformat() for d in SAYS_UNTIL.findall(x)):
+                found.append(f"{card.name}:{i} says until a date now past, in its words: an expiry or a history")
+            if not (m := LINE.match(x)) or STRUCK.search(x):
                 continue
             cs = []                                      # (cite, its file's lines); one list per file, so `is` tells files apart
             for path, lo, hi, c in cites(m[3]):
                 if (f := resolve(s, private, logs, path)) and f not in text:
                     text[f] = [flat(y) for y in f.read_text(errors="replace").splitlines()]
-                cs.append((path, lo, hi, c, text[f] if f and f != card.resolve() else []))     # never its own card
+                card_of_tree = f is not None and f.parent == facts       # never a source: a name another root's folder shares
+                cs.append((path, lo, hi, c, text[f] if f and not card_of_tree else []))
                 if not (rows := cs[-1][4]) or hi > len(rows) or not all(rows[j - 1].strip() for j in (lo, hi)):
-                    found.append(f"{card.name}:{i} cites {path}:{lo}, " + ("its own card" if f and not rows else "not in the memory "
-                                 "scope" if not rows else "a blank or a line past its end"))
+                    found.append(f"{card.name}:{i} cites {path}:{lo}, " + ("its own card" if f == card.resolve() else "another card "
+                                 "of this tree" if card_of_tree else "not in the memory scope" if f is None else "a blank or a line "
+                                 "past its end"))
             mv = {}
             quotes = [flat(q) for q in QUOTE.findall(m[2])]
             held = {k for k, (_, lo, hi, _, rows) in enumerate(cs) if any(q in r for q in quotes for r in rows[lo - 1:hi])}
@@ -159,7 +170,7 @@ def sweep(s: memory.Settings, private: Path, logs: list[Path], backup: Path, dry
             blank = doctor.rewrite(card, backup, gone, dry)
             moved = doctor.rewrite(card, backup, lambda x: (moves[t] + "\n").encode() if (t := x.decode(errors="replace").rstrip("\n")) in moves else None, dry)
         for what, n in (("blanked", blank), ("moved the cites of", moved)):
-            changed += [f"{card.name}: {what} line{'s' if len(n) > 1 else ''} {', '.join(map(str, n[:5]))}"] if n else []
+            changed += [f"{card.name}: {what} line{'s' if len(n) > 1 else ''} {', '.join(map(str, n))}"] if n else []
     return changed, found
 
 
@@ -193,8 +204,8 @@ def packs(s: memory.Settings, private: Path, logs: list[Path], days: list[date])
         had = {(f, j) for m in map(LINE.match, text.splitlines()) if m for path, lo, hi, _ in cites(m[3])
                if (f := resolve(s, private, logs, path)) for j in range(lo, hi + 1)}
         for d, p, rows in src:
-            seen = memory.allowed_text(who, p, p.read_text(errors="replace"), whole=True, daily=s.daily) if who else None
-            if who and seen is None:
+            seen = memory.allowed_text(who, p, p.read_text(errors="replace"), whole=True, daily=s.daily) if who and p not in logs else None
+            if who and seen is None:                         # a [curate] log is the owner's own stream, whatever its class says
                 continue
             vis = seen.split("\n") if seen is not None else []
             for i, x in rows:
@@ -220,7 +231,7 @@ def check(s: memory.Settings, private: Path, logs: list[Path], card: Path, line:
         return "not a card line of at most 300 characters, no em dash, ending in its (src: ...)"
     if len(content(m[1])) < 2 and m[1].strip().lower() not in heads:      # a card's name, a key it has, a name the night says
         return f"its head {m[1]!r} is one common word, a key that would pull the card into any message"
-    if SECRET.search(m[2]):
+    if SECRET.search(m[2]) or CODES.search(f"{m[1]}: {m[2]}"):
         return "it holds what looks like a secret"
     if any(f": {m[2]} (src:" in x for x in card.read_text(errors="replace").splitlines()):
         return "the card has it"
@@ -241,12 +252,15 @@ def busy(state: Path) -> set[str]:
 
 
 def ask(private: Path, state: Path, conf: dict[str, Any], prompt: str, tools: str) -> str:
-    """One headless Claude Code turn with `tools` (none: the prompt is all it reads) on `[curate] account`, else the
-    first account in order, when no worker holds it, else the next free one; its last message."""
+    """One headless Claude Code turn with `tools` (none: the prompt is all it reads) on `[curate] account` alone when it
+    names one (the owner knows what else runs there; the ledger sees only Yerk's workers), else the first account in
+    order that no worker holds; its last message."""
     rows, held = load_accounts(private / "accounts.toml"), busy(state)
-    a = next((x for x in [r for r in rows if r.name == conf.get("account")] + rows if x.name not in held), None)
+    if (pin := conf.get("account")) and pin not in {r.name for r in rows}:
+        raise RuntimeError(f"[curate] account {pin} is not in accounts.toml")
+    a = next((x for x in [r for r in rows if r.name == pin] or rows if x.name not in held), None)
     if a is None:
-        raise RuntimeError("every account has a worker running")
+        raise RuntimeError(f"account {pin} has a worker running" if pin else "every account has a worker running")
     argv = [claude_bin(), "-p", "--output-format", "text", "--model", str(conf.get("model") or "opus"), "--setting-sources", "",
             "--strict-mcp-config", "--tools", tools, "--disallowedTools", "Agent", "--permission-mode", "bypassPermissions"]
     r = subprocess.run(argv, input=prompt, capture_output=True, text=True, env=account_env(a), cwd=state,
@@ -288,21 +302,44 @@ def taken(s: memory.Settings, cards: list[Path]) -> bool:
 
 
 def bench(s: memory.Settings) -> dict[str, Any] | None:
-    """The recall bench's two numbers, stamped with when it ran and how long it took; None with no bench to run."""
+    """The recall bench's two numbers, stamped with when it ran and how long it took; None with no bench to run, or a
+    blind one (a control missed, so its numbers hold nothing)."""
     t = time.time()
     r = memory.bench(s) if s.bench.is_file() else {}
     return {"top_k": r["top_k"], "top_1": r["top_1"], "at": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t)),
-            "seconds": round(time.time() - t, 1)} if r.get("ok") else None
+            "seconds": round(time.time() - t, 1)} if r.get("ok") and not r.get("blind") else None
+
+
+def undo(s: memory.Settings, state: Path, backup: Path) -> list[str]:
+    """The lines on trial of a run that never reached its bench's verdict (killed, or failed mid-landing), blanked, never
+    cut, so a line memory.remember filed since keeps its number; refused while that run is still alive."""
+    try:
+        d = json.loads((state / RUN).read_text())
+    except (OSError, ValueError):
+        return []
+    pid = int(d.get("pid") or 0)
+    with suppress(OSError):                              # another process's run, still alive: never touch its lines
+        if 0 < pid != os.getpid():
+            os.kill(pid, 0)
+            raise RuntimeError(f"curate is already running, since {words.clock(float(d.get('at', 0)))}")
+    rows = [(s.root / "facts" / Path(str(c)).name, str(x)) for c, x in d.get("lines", [])]
+    for c in dict.fromkeys(c for c, _ in rows):
+        ours = {x for k, x in rows if k == c}
+        with memory.daily_lock(s.daily):
+            doctor.rewrite(c, backup, lambda x: b"\n" if x.decode(errors="replace").rstrip("\n") in ours else None, False)
+    (state / RUN).unlink()
+    return [f"nothing landed: the run of {words.clock(float(d.get('at', 0)))} never reached its bench, {len(rows)} lines blanked"] if rows else []
 
 
 def promote(s: memory.Settings, private: Path, state: Path, conf: dict[str, Any], days: list[date], backup: Path, dry: bool,
-            model: Callable[[str, str], str] | None = None) -> dict[str, Any]:
+            model: Callable[[str, str], str] | None = None, at: float = 0.0) -> dict[str, Any]:
     """The proposals, what the knock-down and the checks left, and what landed, each `card: line`, a drop with its why."""
     logs = [(private / Path(str(x)).expanduser()).resolve() for x in conf.get("logs", [])]
     model = model or (lambda p, tools: ask(private, state, conf, p, tools))
     out: dict[str, Any] = {k: [] for k in ("proposed", "dropped", "checked", "landed", "corrections")} | {"bench": None}
     (pk, said_as), land = packs(s, private, logs, days), list[tuple[Path, str]]()
     heads = said_as | {n.lower() for c in (s.root / "facts").glob("*.md") for n in (c.stem.replace("-", " "), title(c, c.read_text(errors="replace")))}
+    per, most = (int(conf.get(k, n)) * max(1, len(days)) for k, n in (("per_card", 3), ("per_night", 25)))   # a day's cap: no card doubles unread
     for batch in batches(s, pk):
         cards = {c: c.read_text(errors="replace") for c in batch}
         body = "".join(f"\n=== pack {c.name}\n{shown(s, pk[c])}\n" for c in batch)
@@ -322,6 +359,8 @@ def promote(s: memory.Settings, private: Path, state: Path, conf: dict[str, Any]
             elif no := check(s, private, logs, by[c], x, pk[by[c]], heads | {k[1].strip().lower() for k in (
                     re.match(r"- ([^:\n]{2,60}):", y) for y in cards[by[c]].splitlines()) if k}):
                 out["checked"].append(f"{c}: {x} | {no}")
+            elif len(land) >= most or sum(k == by[c] for k, _ in land) >= per:
+                out["checked"].append(f"{c}: {x} | held: over the night's cap, {per} a card and {most} in all")
             else:
                 land.append((by[c], x))
     if dry or not land:
@@ -330,7 +369,7 @@ def promote(s: memory.Settings, private: Path, state: Path, conf: dict[str, Any]
     if out["bench"][0] is None:
         out["checked"].append("nothing landed: no bench to hold the lines to")
         return out
-    ours = {x for _, x in land}
+    write_private(state / RUN, json.dumps({"pid": os.getpid(), "at": at, "lines": [[c.name, x] for c, x in land]}))   # on trial
     for c in dict.fromkeys(c for c, _ in land):
         add = "".join(f"{x}\n" for k, x in land if k == c).encode()
         with memory.daily_lock(s.daily):
@@ -342,12 +381,11 @@ def promote(s: memory.Settings, private: Path, state: Path, conf: dict[str, Any]
         time.sleep(1)
     before, after = out["bench"][0], out["bench"][-1] if len(out["bench"]) > 1 else None
     if after is None or after["top_k"] < before["top_k"] or after["top_1"] < before["top_1"]:
-        for c in dict.fromkeys(c for c, _ in land):      # blanked, never cut: a line memory.remember added since keeps its number
-            with memory.daily_lock(s.daily):
-                doctor.rewrite(c, backup, lambda x: b"\n" if x.decode(errors="replace").rstrip("\n") in ours else None, False)
+        undo(s, state, backup)                           # blanked, never cut: a line memory.remember added since keeps its number
         out["checked"].append("nothing landed: " + ("the index did not take the lines in" if after is None else
                               f"the bench fell from {before['top_k']}, {before['top_1']} to {after['top_k']}, {after['top_1']}"))
     else:
+        (state / RUN).unlink()
         out["landed"] = [f"{c.name}: {x}" for c, x in land]
     return out
 
@@ -363,11 +401,16 @@ def run(private: Path, state: Path, since: str = "", dry: bool = False, now: flo
     days = [first + timedelta(days=i) for i in range((today - first).days)]
     backup = private / "backups" / f"curate-{today.isoformat()}"
     logs = [(private / Path(str(x)).expanduser()).resolve() for x in c.get("logs", [])]
+    undone = [] if dry else undo(s, state, backup)       # a run cut off mid-landing: its lines blanked before anything else
+    if not dry:
+        write_private(state / RUN, json.dumps({"pid": os.getpid(), "at": now, "lines": []}))
     changed, found = sweep(s, private, logs, backup, dry, today)
     out = {"at": now, "days": [d.isoformat() for d in days], "changed": changed, "found": found,
-           **promote(s, private, state, c, days, backup, dry, model)}
+           **promote(s, private, state, c, days, backup, dry, model, now)}
+    out["checked"] = undone + out["checked"]
     if not dry:
         write_private(state / LAST, json.dumps(out))
+        (state / RUN).unlink(missing_ok=True)
     return out
 
 
@@ -386,7 +429,15 @@ def main(private: Path, state: Path, since: str = "", dry: bool = False) -> int:
 
 
 def line(state: Path, now: float) -> tuple[str, str]:
-    """The morning diff's one curation line: what landed and was swept, else the count to read and the first."""
+    """The morning diff's one curation line: a run still on or cut off, what landed and was swept, else the count to
+    read and the first."""
+    with suppress(OSError, ValueError, KeyError, TypeError):
+        r = json.loads((state / RUN).read_text())
+        at = words.clock(float(r["at"]), now)
+        with suppress(OSError):
+            os.kill(int(r["pid"]), 0)
+            return "", words.line(f"{words.WORKING} " + words.CURATE_RUNNING.format(at=at))
+        return "curate cut off", words.line(f"{words.NOT_DONE} " + words.CURATE_CUT.format(at=at, n=len(r.get("lines", []))))
     try:
         d = json.loads((state / LAST).read_text())
     except (OSError, ValueError):

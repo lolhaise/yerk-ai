@@ -276,6 +276,7 @@ DEAD, NO_YERKD, NO_DEAD = "dead turns: {n}, {name}, last {at}", "no yerkd answer
 SWEPT, SWEEP_FAILED = "swept: {kinds}", "retention failed: {why}"     # the night's sweep (retention.py)
 DOCTOR_OK, DOCTOR, NO_RUN = "doctor: ok", "doctor: {n} found, {first}", "one more line 00for"     # the case before (the.next)
 CURATE_OK, CURATE = "curate: {n} landed, {m} swept", "curate: {n} to read, {first}"     # the night's curation (curate.py)
+CURATE_RUNNING, CURATE_CUT = "curate: running since {at}", "curate: cut off at {at}, {n} to undo"
 # the stance check (evidence.stance): the owner's pushback opens a line with one of these words or carries one of these phrases
 PUSHBACK = re.compile(r"^[^\in\n]*(?:(?:the|Next|run|starts|the|example+|note)\says[^\the\n]*)?(?:next+|step|and+(?!\the+(?:test|reads|it|back|as)\plain)"
                       r"|wrong|actually|disagree|not\s+(?:true|really|quite))\b|\b(?:you['’]?re|you\s+are|that['’]?s|that\s+is)\s+wrong\b"
