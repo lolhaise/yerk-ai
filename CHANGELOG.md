@@ -8,6 +8,28 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-21
 
+### web (#76)
+
+- Web reach is Yerk's own: `plugins/web` (`yerk-web`), one MCP server in the repo and outside the harness, serves the
+  four tools the rooms already call (`web_fetch`, `web_search`, `web_research`, `web_research_result`) under the same
+  names and arguments. It reads nothing outside the install: keys from the private folder's `secrets/`, settings from
+  an optional `web.json` there, state under `<state>/web/`.
+- `web_fetch` climbs a plain fetch from the machine, its own stealth browser and trawl (each skipped without a try when
+  it is not installed), then Browserbase's paid rungs; it names the wall when a page stays shut and remembers per site
+  which step read it. The free rungs' caps are one window for every room's process.
+- `web_search` runs Exa, then Parallel's paid API, then You.com's and Parallel's keyless engines; `web_research` runs
+  the Exa Agent at four fixed efforts under one daily cap of US$2 for every room.
+- Every paid call is one row in the ledger's new `spend` table, and the morning diff says
+  `spent yesterday: US$x on n calls`. `yerk explain web` answers from abilities.toml, where one built `web` entry
+  replaces the described hard-pages, web-search and web-research.
+- **Upgrading:** budgets.toml changed ([code] lines, up 9 for the spend table, its read and the morning line). The
+  ledger gains its `spend` table at the next start, nothing to run. Run `npm ci --omit=dev` once in `plugins/web`
+  (Node 22.13 or newer). In rooms.toml each room's `[rooms.NAME.mcp.web-ladder]` table changes only its command line,
+  `args = ["<repo>/plugins/web/server.mjs", "--private", "<private folder>"]`; its `allow` list stays. Keys, each
+  optional, go in the private folder's `secrets/`: `exa.key`, `parallel.key`, `browserbase.key`,
+  `browserbase-project.id`. An install moving from an older web setup keeps its saved logins and site memory by
+  copying that setup's `contexts.json` and `local-cooldown.json` into `<state>/web/fetch/` once, before the first call.
+
 ### note-jobs (#71)
 
 - Every room can set reminders: a fourth job kind, `note` (`room`, `message`, one of `at`, `every` or `schedule`

@@ -46,3 +46,14 @@ jobs:
         run: |
           echo "new: $(cat yerk_ai/*.py yerk_ai/channels/*.py | wc -l) lines"
           echo "lifted: $(cat yerk_ai/lifted/*.py | wc -l) lines"
+
+  web-plugin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+      - name: the web plug-in's own tests (plugins/web, offline, on fixtures)
+        working-directory: plugins/web
+        run: npm ci && npm test

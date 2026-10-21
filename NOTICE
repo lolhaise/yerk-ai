@@ -25,6 +25,12 @@ Copyright (c) 2025 Nous Research. MIT License.
 - yerk_ai/memindex.py: the FTS5 capability checks and the orphan shadow-table repair, from
   hermes_state_fts.py (_is_fts5_unavailable_error, _drop_orphan_fts_shadow_tables)
 
+OpenClaw 2026.9.3, https://github.com/openclaw/openclaw
+Copyright (c) 2026 OpenClaw Foundation. MIT License.
+- plugins/web/lib/untrusted.mjs: from src/security/external-content.ts (wrapExternalContent, wrapWebContent,
+  truncateSanitizedExternalContent and the sanitizers they call), packages/normalization-core/src/utf16-slice.ts
+  (sliceUtf16Safe, truncateUtf16Safe) and src/shared/regexp.ts (escapeRegExp)
+
 claude-code-context-map (the author's own MIT tool)
 Copyright (c) 2026 Eric McLaren. MIT License.
 - yerk_ai/lifted/sizemap.py: from context_map/core.py (fmt, label_of, split_sections)
@@ -36,6 +42,9 @@ Copyright (c) 2026 Eric McLaren.
 - yerk_ai/jobs.py Watcher: the shape of tools/mail-watch (stdout lines are wake-ups, diagnostics go
   to the log, the first start primes and absorbs what is already there, the doubling restart backoff)
 - yerk_ai/lifted/expiry.py: from tools/token-expiry-watch
+- plugins/web/lib/fetch/ and plugins/web/lib/search/: the author's fetch-plus and search-plus plug-ins for OpenClaw (the
+  fetch ladder, the search engines and the video leg), their OpenClaw parts removed; plugins/web/server.mjs,
+  lib/tools.mjs, lib/research.mjs and lib/common.mjs: the author's web-ladder MCP bridge and its Exa Agent library
 - yerk_ai/lifted/clock.py: from the author's hook dispatcher in tools/hooks/ (the clock line and
   the room-voice part)
 - yerk_ai/lifted/shellguard.py: from the author's hook dispatcher in tools/hooks/ (the heredoc

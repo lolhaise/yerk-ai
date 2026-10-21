@@ -1,0 +1,265 @@
+// yerk-web's four tools: web_fetch over the fetch ladder (lib/fetch), web_search over the search engines
+// (lib/search), web_research and web_research_result over the Exa Agent (research.mjs). Settings and keys are read on
+// every call from the private folder (common.mjs), so an edit or a new key applies to the next call; state lives under
+// <state>/web; each paid call books one spend row in Yerk's ledger. Keys stay in this process's memory: never written to
+// a file, a log, a tool result or the environment (the search code spawns children for YouTube).
+import path from "node:path";
+import { readKey, readSettings, scrub, section, spend, where } from "./common.mjs";
+import { runFetchPlus } from "./fetch/ladder.js";
+import { closeLocalBrowser } from "./fetch/local.js";
+import { flushPending } from "./fetch/util.js";
+import { formatRun, research, researchResult } from "./research.mjs";
+import { runSearchPlus } from "./search/provider.js";
+import { resolvePluginSettings } from "./search/util.js";
+import { truncateSanitized, wrapWebContent } from "./untrusted.mjs";
+
+export const AT = where();
+
+const RUNG = {
+  F1: "a plain fetch from this machine, free",
+  F2: "this machine's own stealth browser, free",
+  F3: "trawl's browser on this machine, free",
+  L1: "Browserbase Fetch, paid",
+  L2: "Browserbase Fetch with proxies, paid",
+  L3n: "a Browserbase browser session without proxies, paid",
+  L3: "a Browserbase browser session, paid",
+};
+const ENGINE = {
+  exa: "Exa, paid",
+  "parallel-paid": "Parallel's paid Search API",
+  you: "You.com's keyless search, free",
+  parallel: "Parallel's keyless search, free",
+  firecrawl: "Firecrawl keyless, free",
+  duckduckgo: "DuckDuckGo, free",
+};
+
+// List prices for the spend rows, US$ (October 2026: Browserbase's Developer plan, Exa's and Parallel's pricing pages).
+// A call whose answer carries its bill (Exa's costDollars) books the bill. Browserbase's plan includes 1,000 Fetch
+// calls, 100 browser hours and 1 GB of proxy traffic a month, so its rows are list prices, not the month's bill.
+// Parallel's basic mode is not on the page that was read; it books at advanced's price, the dearer.
+export const PRICE = {
+  fetch: 0.001, fetchProxied: 0.004, browserHour: 0.12, proxyGb: 12,
+  exa: 0.007, parallel: { turbo: 0.001, fast: 0.001, basic: 0.005, advanced: 0.005 },
+};
+
+// One row per Browserbase call a read paid for.
+export function fetchRows(paid = []) {
+  return paid.map((r) => {
+    const mb = r.bytes / 1e6;
+    if (r.rung === "L1" || r.rung === "L2") {
+      const usd = r.proxies ? PRICE.fetchProxied + (r.bytes / 1e9) * PRICE.proxyGb : PRICE.fetch;
+      return { engine: `browserbase-${r.rung}`, usd, note: r.proxies ? `fetch with proxies, ${mb.toFixed(2)} MB` : "fetch" };
+    }
+    const usd = (r.seconds / 3600) * PRICE.browserHour + (r.proxies ? (r.bytes / 1e9) * PRICE.proxyGb : 0);
+    return { engine: `browserbase-${r.rung}`, usd, note: `browser ${Math.round(r.seconds)} s${r.proxies ? `, proxies about ${mb.toFixed(1)} MB` : ""}` };
+  });
+}
+
+// One row per keyed engine that answered (an error answer is not billed; a skipped engine sent nothing).
+export function searchRows(attempts = [], mode = "fast") {
+  return attempts.filter((a) => typeof a.n === "number" && (a.engine === "exa" || a.engine === "parallel-paid")).map((a) =>
+    a.engine === "exa"
+      ? { engine: "exa", usd: typeof a.cost_usd === "number" ? a.cost_usd : PRICE.exa, note: typeof a.cost_usd === "number" ? "billed" : "list price" }
+      : { engine: "parallel-paid", usd: PRICE.parallel[mode] ?? PRICE.parallel.fast, note: `mode ${mode}, list price` });
+}
+
+export const TOOLS = [
+  {
+    name: "web_fetch",
+    description:
+      "Read a web page through the fetch ladder: a plain fetch from this machine, then its stealth browser and trawl when installed (all free), then Browserbase (paid) only when a site blocks those. Returns the page as markdown with the rung that read it (F1 to F3 free, L1 to L3 Browserbase), or names the wall when every rung failed (login_required, captcha_unsolved, geo_blocked, http_404 and so on) with each rung tried. A hard site can take up to about two minutes.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        url: { type: "string", description: "A public http or https URL." },
+        max_chars: { type: "integer", minimum: 100, maximum: 100000, description: "Most characters of page text to return (default 20000)." },
+      },
+      required: ["url"],
+      additionalProperties: false,
+    },
+    annotations: { title: "Web fetch", readOnlyHint: true, openWorldHint: true },
+  },
+  {
+    name: "web_search",
+    description:
+      "Search the web in the configured order: Exa first, then Parallel's paid Search API (each with its key), You.com's keyless search and Parallel's keyless search. Returns up to count results (title, URL, date, snippet) and names the engine that answered.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "What to search for." },
+        count: { type: "integer", minimum: 1, maximum: 10, description: "How many results (default 5)." },
+      },
+      required: ["query"],
+      additionalProperties: false,
+    },
+    annotations: { title: "Web search", readOnlyHint: true, openWorldHint: true },
+  },
+  {
+    name: "web_research",
+    description:
+      "Research the web through the Exa Agent: one job on Exa's side runs many searches, reads and checks the pages, and returns a cited answer, as JSON too when a schema is given. Use it for a list, a dig across many pages, or a named thing to verify and enrich, with sources; a single fact or page is web_search or web_fetch. About 10 cents a run at medium, up to 15 minutes; every room shares one US$2 daily cap. A run still going after about 3 minutes comes back as a run id for web_research_result.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "The task in full: what to find, the criteria, what counts and what to leave out." },
+        effort: { type: "string", enum: ["minimal", "low", "medium", "high"], description: "Fixed price a run: minimal US$0.012, low US$0.025, medium US$0.10 (default), high US$0.50." },
+        schema: { type: "object", description: "A JSON Schema for a structured answer; make fields that may not be verifiable nullable." },
+        system: { type: "string", description: "Rules for the run: which sources count, what to refuse, how to mark what it could not verify." },
+      },
+      required: ["query"],
+      additionalProperties: false,
+    },
+    annotations: { title: "Web research", readOnlyHint: true, openWorldHint: true },
+  },
+  {
+    name: "web_research_result",
+    description: "Collect a web_research run that was still going: waits up to about 3 minutes, then returns its answer, sources and cost, or says it is still running.",
+    inputSchema: {
+      type: "object",
+      properties: { run_id: { type: "string", description: "The run id web_research gave." } },
+      required: ["run_id"],
+      additionalProperties: false,
+    },
+    annotations: { title: "Web research result", readOnlyHint: true, openWorldHint: true },
+  },
+];
+
+const refuse = (text) => ({ content: [{ type: "text", text }], isError: true });
+
+const list = (xs) => (xs.length > 2 ? `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}` : xs.join(" and "));
+
+function badArgs(tool, args, allowed) {
+  if (!args || typeof args !== "object" || Array.isArray(args)) return `${tool} refused: its arguments must be an object.`;
+  const extra = Object.keys(args).filter((k) => !allowed.includes(k));
+  return extra.length ? `${tool} refused: unknown argument${extra.length > 1 ? "s" : ""} ${extra.join(", ")}; it takes ${list(allowed)}.` : "";
+}
+
+const firstLine = (err) => String(err?.message || err).split("\n")[0].slice(0, 300);
+
+export async function webFetch(args, { signal, deps = {}, at = AT } = {}) {
+  const bad = badArgs("web_fetch", args, ["url", "max_chars"]);
+  if (bad) return refuse(bad);
+  const url = typeof args.url === "string" ? args.url.trim() : "";
+  if (!url) return refuse("web_fetch refused: url must be a non-empty string.");
+  const maxChars = args.max_chars ?? 20000;
+  if (!Number.isInteger(maxChars) || maxChars < 100 || maxChars > 100000) return refuse("web_fetch refused: max_chars must be a whole number from 100 to 100000.");
+
+  const { conf, note } = readSettings(at);
+  const { browserbaseApiKey, browserbaseProjectId, ...rest } = section(conf, "fetch"); // a key comes from secrets/ only
+  const key = readKey(at, "browserbase");
+  const project = readKey(at, "browserbaseProject");
+  const secrets = [key.value, project.value];
+  const lines = [];
+  if (!key.value) lines.push(`No Browserbase key (${key.why}): only the free rungs on this machine can run.`);
+  if (note) lines.push(note);
+
+  let p;
+  try {
+    p = await runFetchPlus({ url, extractMode: "markdown" }, { config: { ...rest, stateDir: path.join(at.web, "fetch") } }, { signal }, {
+      ...deps,
+      credentials: { apiKey: key.value || undefined, projectId: project.value || undefined },
+    });
+  } catch (err) {
+    return refuse(scrub(`web_fetch could not run: ${firstLine(err)}`, secrets));
+  }
+  await spend(at, "web_fetch", fetchRows(p.paid));
+  const ex = String(p.extractor || "");
+  const wall = ex.startsWith("fetch-plus:failed:") ? ex.slice("fetch-plus:failed:".length) : "";
+  const rung = wall ? "" : ex.replace(/^fetch-plus:/, "");
+  const body = String(p.text ?? "");
+  const cut = truncateSanitized(body, maxChars);
+  const head = wall
+    ? `web_fetch could not read ${url}: wall ${wall}, rungs ${/rungs=(\S+)/.exec(p.warning || "")?.[1] || "none"}.`
+    : `web_fetch read ${p.finalUrl || url} at ${rung} (${RUNG[rung] ?? rung}): HTTP ${p.status}, ${body.length} characters${cut.truncated ? `, the first ${maxChars} below` : ""}.`;
+  if (!wall && p.warning) lines.unshift(p.warning); // the climb, e.g. "fetch-plus read this at F2 after F1:challenge:cloudflare"
+  const inner = [!wall && p.title ? `Title: ${p.title}` : "", cut.text].filter(Boolean).join("\n\n");
+  return { content: [{ type: "text", text: scrub([head, ...lines, "", wrapWebContent(inner, "web_fetch")].join("\n"), secrets) }] };
+}
+
+export async function webSearch(args, { signal, at = AT } = {}) {
+  const bad = badArgs("web_search", args, ["query", "count"]);
+  if (bad) return refuse(bad);
+  const query = typeof args.query === "string" ? args.query.trim() : "";
+  if (!query) return refuse("web_search refused: query must be a non-empty string.");
+  const count = args.count ?? 5;
+  if (!Number.isInteger(count) || count < 1 || count > 10) return refuse("web_search refused: count must be a whole number from 1 to 10.");
+
+  const { conf, note } = readSettings(at);
+  const { parallelApiKey, exaApiKey, ...rest } = section(conf, "search"); // a key comes from secrets/ only
+  const par = readKey(at, "parallel");
+  const exa = readKey(at, "exa");
+  const secrets = [par.value, exa.value];
+  const config = { ...rest, parallelApiKey: par.value, exaApiKey: exa.value, stateDir: path.join(at.web, "search") };
+  const settings = resolvePluginSettings(config);
+  const lines = [];
+  if (!par.value && settings.searchOrder.includes("parallel-paid")) lines.push(`No Parallel key (${par.why}): paid Parallel was skipped.`);
+  if (!exa.value && settings.searchOrder.includes("exa")) lines.push(`No Exa key (${exa.why}): Exa was skipped.`);
+  if (note) lines.push(note);
+
+  let p;
+  try {
+    p = await runSearchPlus({ query, count }, { config, searchConfig: { cacheTtlMinutes: rest.cacheTtlMinutes } }, { signal });
+  } catch (err) {
+    return refuse(scrub(`web_search could not run: ${firstLine(err)}`, secrets));
+  }
+  await spend(at, "web_search", searchRows(p.attempts, settings.paidMode));
+  if (p.error) return refuse(scrub([`web_search could not run: ${p.message}`, ...lines].join("\n"), secrets));
+  const tried = (p.attempts ?? []).map((a) => `${a.engine} ${a.error || `answered ${a.n}`}`).join(", ");
+  const by = p.engine ? ENGINE[p.engine] ?? p.engine : "an engine the call log did not name";
+  const head = p.results.length
+    ? `web_search "${query}": ${p.results.length} results from ${p.cached ? "this process's 15-minute cache" : by}.`
+    : `web_search "${query}": no results${tried ? ` (${tried})` : ""}.`;
+  if ((p.attempts?.length ?? 0) > 1 && p.results.length) lines.unshift(`Engines tried: ${tried}.`);
+  const rows = p.results
+    .map((r, i) => [`${i + 1}. ${r.title || r.url}`, `   ${r.url}${r.published ? ` (${r.published})` : ""}`, ...(r.snippet ? [`   ${String(r.snippet).replace(/\n/g, "\n   ")}`] : [])].join("\n"))
+    .join("\n\n");
+  const text = [head, ...lines, ...(rows ? ["", wrapWebContent(rows, "web_search")] : [])].join("\n");
+  return { content: [{ type: "text", text: scrub(text, secrets) }] };
+}
+
+// A research refusal (effort, key, the daily cap) is one line; a run's answer came off the web, so it is wrapped as
+// web_search's results are.
+const asWeb = (s) => wrapWebContent(s, "web_search");
+
+function researchReply(tool, r, effort) {
+  if (r.refused) return refuse(`${tool} refused: ${r.refused}`);
+  if (r.error) return refuse(`${tool} could not run: ${r.error}`);
+  const text = r.finished
+    ? formatRun(r.run, effort, { wrap: asWeb })
+    : `${tool} is still running: run ${r.run.id}; call web_research_result with that run_id in a minute or two (a run can take up to 15 minutes).`;
+  return { content: [{ type: "text", text: [text, r.note].filter(Boolean).join("\n\n") }] };
+}
+
+export async function webResearch(args, { signal, at = AT, deps = {} } = {}) {
+  const bad = badArgs("web_research", args, ["query", "effort", "schema", "system"]);
+  if (bad) return refuse(bad);
+  const query = typeof args.query === "string" ? args.query.trim() : "";
+  if (!query) return refuse("web_research refused: query must be a non-empty string.");
+  const { effort = "medium", schema, system } = args;
+  if (schema !== undefined && (!schema || typeof schema !== "object" || Array.isArray(schema))) return refuse("web_research refused: schema must be a JSON Schema object.");
+  if (system !== undefined && typeof system !== "string") return refuse("web_research refused: system must be a string.");
+  const conf = section(readSettings(at).conf, "research");
+  const r = await research({ query, effort, schema, system: system?.trim() || undefined }, { signal, at, conf, ...deps });
+  return researchReply("web_research", r, effort);
+}
+
+export async function webResearchResult(args, { signal, at = AT, deps = {} } = {}) {
+  const bad = badArgs("web_research_result", args, ["run_id"]);
+  if (bad) return refuse(bad);
+  const r = await researchResult(typeof args.run_id === "string" ? args.run_id.trim() : "", { signal, at, ...deps });
+  return researchReply("web_research_result", r);
+}
+
+export async function callTool(name, args, opts = {}) {
+  if (name === "web_fetch") return webFetch(args ?? {}, opts);
+  if (name === "web_search") return webSearch(args ?? {}, opts);
+  if (name === "web_research") return webResearch(args ?? {}, opts);
+  if (name === "web_research_result") return webResearchResult(args ?? {}, opts);
+  return refuse(`There is no tool named ${name}; this server has web_fetch, web_search, web_research and web_research_result.`);
+}
+
+// Closes this process's local browser and gives queued meter writes a moment to land.
+export async function shutdown() {
+  await closeLocalBrowser().catch(() => {});
+  await Promise.race([flushPending(), new Promise((r) => setTimeout(r, 3000).unref())]);
+}

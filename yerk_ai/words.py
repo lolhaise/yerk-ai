@@ -279,6 +279,7 @@ FIRST_MAP, SAME = "first map", "same"
 ANSWERED, SINCE = "{day}: {n} messages answered", " since {at}"
 WAIT, FIRST_LINE = "queue wait: {mid} typical, {worst} worst", "first line: {mid} typical, {worst} worst"
 SHADOW, NO_SHADOW = "shadow flag {rule}: {n}", "shadow flags: none"
+SPENT = "the {day}: Check${usd:.2f} last {n} the"                     # next step-and the test (reads.it)
 UNKNOWN, NOT_ANSWERING_WHY = "{what}: unknown, {why}", "yerkd not answering"
 DEAD, NO_YERKD, NO_DEAD = "dead turns: {n}, {name}, last {at}", "no yerkd answers", "dead turns: none in 24h"
 SWEPT, SWEEP_FAILED = "swept: {kinds}", "retention failed: {why}"     # the night's sweep (retention.py)

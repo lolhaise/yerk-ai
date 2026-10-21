@@ -104,6 +104,8 @@ CREATE TABLE IF NOT EXISTS stalls (
 CREATE TABLE IF NOT EXISTS deploys (
   id INTEGER PRIMARY KEY, at REAL, kind TEXT, unit TEXT, before TEXT, after TEXT, outcome TEXT, cut INTEGER,
   proof TEXT, note TEXT);
+CREATE TABLE IF NOT EXISTS spend (
+  id INTEGER PRIMARY KEY, t REAL, room TEXT, tool TEXT, engine TEXT, usd REAL, note TEXT);
 CREATE TABLE IF NOT EXISTS message_links (
   tbl TEXT, row_key TEXT, col TEXT, message_id TEXT, pos INTEGER,
   PRIMARY KEY (tbl, row_key, col, message_id))"""
@@ -371,6 +373,10 @@ class Ledger:
         rows = self._select("SELECT rule || CASE rule WHEN 'stance' THEN ' ' || detail ELSE '' END AS rule, count(*) AS n "
                             "FROM shadow WHERE t >= ? AND t < ? GROUP BY 1", (since, until))     # stance by its label
         return {str(r["rule"]): int(r["n"]) for r in rows}
+
+    def spent(self, since: float, until: float) -> dict[str, Any]:
+        """{n, usd}: the paid calls a plug-in (plugins/web) booked in the window, as billed or at list price (decision 32)."""
+        return self._first("SELECT count(*) AS n, coalesce(sum(usd), 0) AS usd FROM spend WHERE t >= ? AND t < ?", (since, until)) or {}
 
     def record(self, **row: Any) -> int:
         known(row, COLUMNS, "ledger")

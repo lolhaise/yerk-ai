@@ -326,53 +326,6 @@ free_path = "this is the free path"
 why_not = "Not planned for the public harness: few users have the hardware."
 asked_as = ["smart glasses", "camera glasses"]
 
-[abilities.hard-pages]
-state = "described"
-what = "Reads a web page that blocks plain fetches (a bot wall, a captcha, a page drawn by script) through a cloud browser ladder."
-how = [
-  "A ladder: a plain fetch first, then a proxied fetch, then a real cloud browser that can solve a captcha and use saved logins.",
-  "A failure names its wall (login required, captcha unsolved, region blocked) instead of a bare cannot.",
-]
-tier = "paid"
-provider = "a cloud browser service"
-needs = "a cloud browser service key in the private folder"
-price = "the service's monthly plan, paid to the service"
-free_path = "a worker's own fetch, the one Claude Code ships, for pages that do not block it"
-why_not = "After the rooms move; it is a paid provider, so it stays optional."
-asked_as = ["blocked page", "bot wall", "captcha page", "page will not load"]
-
-[abilities.web-search]
-state = "described"
-what = "Searches the web through a paid search API first, with free engines behind it, for more and fresher results than the built-in search."
-how = [
-  "A search API as the first engine, with its key in the private folder.",
-  "Free engines as the fallback, so search works with no key at all.",
-]
-tier = "key"
-provider = "a web search API"
-needs = "a web search API key in the private folder"
-price = "the search API's per-request price, paid to the provider"
-free_path = "a worker's own web search, the one Claude Code ships; free engines behind the API"
-why_not = "After the rooms move."
-asked_as = ["search api", "paid search", "search provider"]
-
-[abilities.web-research]
-state = "described"
-what = "Researches the web as one job, for a list, a dig across many pages, or a named thing to verify and enrich, with sources: a research agent on the provider's side runs many searches, reads and checks the pages, and returns one cited answer, as JSON too when the room gives a shape; a single fact or page is web search or web fetch."
-how = [
-  "A research tool beside web search: one call starts a run and waits about three minutes; a longer run hands back its id and a second tool collects the answer, so no call outlives the tool call limit.",
-  "Fixed efforts only: four flat prices a room can pick, the dearest fixed step behind the owner's yes in words, and the metered modes refused.",
-  "One daily cap: every room and the command line book each run's price against the same day's total before the request goes out; a run past it is refused in one line that points to web search.",
-  "One ledger: a line per finished run (its id, effort, status, cost and a hash of the question, never the question), written once however often the run is fetched, so a spend total counts each run once.",
-]
-tier = "paid"
-provider = "a research agent API, such as Exa's Agent"
-needs = "the research agent API's key in the private folder (the web search key, when one provider sells both)"
-price = "a flat price per run, paid to the provider (Exa's pricing page, October 2026): 1.2 US cents at minimal, 2.5 at low, 10 at medium (the default), 50 at high and one US dollar at xhigh on the owner's yes; a run takes up to 15 minutes; one daily cap of two US dollars across every room and the command line"
-free_path = "a worker's own web search and fetch, the ones Claude Code ships, one call at a time"
-why_not = "Web reach lives outside the harness as a plug-in each room attaches, so the harness gains no code for it; a public install runs on Claude Code's own search and fetch with no keys."
-asked_as = ["deep research", "research agent", "web research", "exa agent", "verify and enrich"]
-
 [abilities.page-watch]
 state = "described"
 what = "Watches a web page and tells the owner when it changes in a way that matters: a new date, a new listing, a price."
@@ -381,7 +334,7 @@ how = [
   "Silence when nothing changed; one line in the room when something did.",
 ]
 tier = "free"
-needs = "the jobs ability, and the hard-pages ability for pages that block plain fetches"
+needs = "the jobs ability, and the web ability for pages that block plain fetches"
 price = "none"
 free_path = "an agent job with the page in its brief, through the schedule tool, works today"
 why_not = "After the rooms move: what is built is the agent job; the kept last copy and the change rules are not."
@@ -1152,3 +1105,13 @@ needs = "nothing; it runs in the daily doctor (units/yerk-doctor.timer)"
 free_path = "this is the free path"
 asked_as = ["rule shape", "are your rules written", "how your rules are written"]
 command = "docs shape"
+
+[abilities.web]
+state = "built"
+what = "Web reach for the rooms that attach it, as one plug-in outside the harness (plugins/web, an MCP server): web_fetch reads a page with a plain read from the machine first, then its own stealth browser and captcha solver when they are installed, then a paid cloud browser, names the wall when a page stays shut (a login, a captcha, a region) and remembers per site which step read it; web_search asks a paid engine first and keyless ones behind it; web_research runs one cited research job at a fixed price; every paid call is a spend row, and the morning diff says the day's total."
+tier = "free"
+needs = "Node 22.13 or newer and `npm ci --omit=dev` once in plugins/web; the room's mcp table naming plugins/web/server.mjs with --private (rooms.toml.example); every key is optional"
+price = "nothing without keys; with them, each provider's own price, paid to it (October 2026): a search about 0.7 US cents on Exa or 0.1 on Parallel, a cloud-browser read inside its plan's included calls and hours, a research run 1.2 to 50 US cents by effort under one daily cap of two US dollars for every room"
+key = "each key in its own file in the private folder's secrets/, 0600: exa.key (search and research), parallel.key (search), browserbase.key and browserbase-project.id (the cloud browser); the next call reads it, no restart"
+free_path = "a plain read and the machine's own browsers for pages, You.com's and Parallel's keyless engines for search; research needs its key"
+asked_as = ["web reach", "blocked page", "bot wall", "captcha page", "page will not load", "search api", "paid search", "search provider", "deep research", "research agent", "web research", "exa agent", "verify and enrich"]
