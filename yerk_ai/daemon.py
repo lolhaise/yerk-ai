@@ -829,8 +829,9 @@ class Yerkd:
                  len(cut), sum(cut))
         with contextlib.suppress(Exception):
             await close()
-        if self.http is not None:
-            self.http.should_exit = True
+        if self.http is not None:                 # and its own end awaited (tasks[0] is serve_http): a cancel mid-serve
+            self.http.should_exit = True          # cut uvicorn's lifespan and logged a CancelledError traceback per stop
+            await asyncio.wait(tasks[:1], timeout=5)
         for t in tasks:
             t.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
