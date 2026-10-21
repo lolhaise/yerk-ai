@@ -4,7 +4,7 @@
 # fails the build when a part or a total passes its number here.
 
 [session_start]
-total = 80000
+total = 84350
 
 # Load order, most stable first, so the cached start of the prompt survives.
 # The first five parts are Claude Code's own (its default prompt, the built-in tools
@@ -24,11 +24,14 @@ skills = 0
 # install's rules file (decision 15), the one part the rooms write as they go, so it comes after the
 # hand-kept files; it was inside the room's rulebook, where a rulebook near its cap pushed rules out.
 # Measured 2026-10-20 with `yerk map` in all six rooms: the largest rulebook is 6,019, so 7,000; the 5,000 freed went to rules.
+# 2026-10-21: the taste rules (one line each, a rule and the rated example replies that prove it; example lines are the
+# strongest voice lever there is) took the largest rulebook to 9,860 and two room voices to 4,999, so 10,850 and 5,500,
+# about 10% over each; `rules` keeps 11,886 and the total rose by the 4,350 (decision 12's 80,000 moves with it).
 [session_start.appended]
 mechanics = 3000
 persona = 12000
-rulebook = 7000
-room_voice = 5000
+rulebook = 10850
+room_voice = 5500
 pinned_memory = 4000
 rules = 11886
 recall_pack = 6000
