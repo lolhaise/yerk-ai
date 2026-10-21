@@ -138,7 +138,7 @@ FILED_NEXT = ("Only the text after your last tool call reaches the room, and not
 FILED_AT_MOST, RULES_OVER = "one clause at its end at most", ", and the shared rules file is over its cap"
 RULE_CLAUSE = "one clause at its end, this one: every room now does {job} this way{over}"
 RULES_CUT, CUT_LINES = "{file} over cap: {size:,} of {cap:,}", "session starts cut lines {first} to {last}"   # machine room
-FILED = re.compile(r"^\W*(?:filed|noted|saved|from now on,? every room)\b", re.I)   # a final reporting a filing (stub)
+FILED = re.compile(r"^\W*(?:filed|saved|from now on,? every room)\b", re.I)   # a final reporting a filing (stub)
 STUB = ("Only your final message reaches the room, and yours, \"{head}\", reports the filing, not the answer: the answer "
         "is above your last tool call, where the room never sees it, or it was never written. Write the whole answer as "
         "your final message now, first and complete, with the filing one clause at its end at most.")

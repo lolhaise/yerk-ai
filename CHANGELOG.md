@@ -16,10 +16,11 @@ with the originals kept under `backups/`; the index chunks every file again when
   that day; the clause it asks for ("every room now does X this way") rides inside `next`.
 - A final message that only reports a filing bounces once (`stub`): the result's last call is `remember`, `schedule`,
   `hold` or `settings`, and the answer sits above that call (a text block over 200 characters and at least twice the
-  final's length) or was never written (a final under 200 characters opening "Filed", "Noted", "Saved" or "From now on
-  every room"). The room is told to write the whole answer as its final message; each bounce is a `stub` row in the
-  shadow ledger, counted in the morning diff. Replayed over the 363 results in the live rooms' transcripts: 3 bounces,
-  all three answers that never reached the room (2026-10-21).
+  final's length) or was never written (a final under 200 characters opening "Filed", "Saved" or "From now on every
+  room"). The room is told to write the whole answer as its final message; each bounce is a `stub` row in the shadow
+  ledger, counted in the morning diff. Replayed over the 593 results in the live rooms' stream logs of the last 7 days:
+  3 bounces, all three answers that never reached the room (all on 2026-10-21). "Noted" is not an
+  opener word: it bounced a whole answer that day.
 - A rule that takes the shared rules file past its budget is filed all the same and said: its result carries
   `over_budget` (size and cap), the room ends its reply with a clause saying the file is over its cap, and the machine
   room (else `[jobs] ops_room`) gets one line naming the file, its size, the cap and the lines every session start now

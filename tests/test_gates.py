@@ -295,7 +295,8 @@ def stream(room, *steps):
 
 def test_a_final_that_only_reports_a_filing_bounces_once_and_so_does_an_answer_left_above_the_call(tmp_path):
     """The stub rule: both turns bounce, each once, each bounce a shadow row `stub` the morning diff counts; a plain
-    short reply after a filing call stands, and so does a final whose result's last call ran something."""
+    short reply after a filing call stands, so does one opening "Noted" (a whole answer, bounced that day while
+    "noted" was an opener word), and so does a final whose result's last call ran something."""
     y, room, ch = setup(tmp_path)
     stop = {"hook_event_name": "Stop", "stop_hook_active": False}
     human_turn(room)
@@ -313,6 +314,8 @@ def test_a_final_that_only_reports_a_filing_bounces_once_and_so_does_an_answer_l
                     f"{len(ANSWER_ABOVE[0][1])} characters above the remember call, {len(RULE_LINE)} after it"]
     assert y.ledger.shadow_rules(0, time.time() + 1)["stub"] == 2             # the morning diff's count
     for steps, final in (([("say", "Checking the calendar."), ("call", "mcp__yerk__remember")], "Got it, 9:30 then."),
+                         ([("say", "Logging that."), ("call", "mcp__yerk__remember")],
+                          "Noted, and that moves the review to Thursday with the same three people on it."),
                          ([("say", "Filing it, then the build."), ("call", "mcp__yerk__remember"), ("call", "Bash")],
                           "Filed, and the build is green.")):
         room._new_card()
