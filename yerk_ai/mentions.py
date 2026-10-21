@@ -95,7 +95,7 @@ def entries_of(path: Path, cite: str, curated: bool, cls: str = "private", room:
 
     if not curated:                               # the file's own name, over its first unmarked lines
         body = [(i, ln.strip()) for i, ln in enumerate(lines) if ln.strip() and not HEADING.match(ln) and not DROP.search(ln)][:6]
-        if body and (name := key_of(path.stem.replace("-", " ").replace("_", " "))):       # a name that is no key: no entry
+        if body and (name := key_of(path.stem.replace("-", " ").replace("_", " "))):       # a file name that is no key: none
             add(name, " ".join(t for _, t in body), body[0][0] + 1)
     for i, ln in enumerate(lines):
         if (h := HEADING.match(ln)) and (curated or len(h.group(1)) >= 2):
