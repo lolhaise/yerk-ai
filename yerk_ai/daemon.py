@@ -807,17 +807,6 @@ class Yerkd:
         """The HTTP port is bound: READY=1 may go out (a start counts only when it can answer)."""
         return self.http is not None and bool(self.http.started)
 
-    def claim(self) -> None:
-        """One daemon per state folder: an exclusive flock on <state>/yerkd.lock, held for the process's life, so a
-        second yerkd started on the same folder stops with one line instead of two answering the same rooms."""
-        fd = os.open(self.state / "yerkd.lock", os.O_RDWR | os.O_CREAT, 0o600)
-        try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            os.close(fd)
-            raise SystemExit(f"another yerkd runs on {self.state} (yerkd.json names its pid); stop it first") from None
-        self.claimed = fd
-
     async def until_stopped(self, tasks: list[asyncio.Task[Any]], close: Callable[[], Awaitable[Any]]) -> None:
         """The daemon runs until one of its tasks ends (the channel's start raising at boot ends it as before: that error
         is the exit) or SIGTERM or SIGINT comes. On a signal: STOPPING=1 to systemd, every room's process ended (a turn
@@ -877,7 +866,6 @@ class Yerkd:
                 dc.add_room(int(cid), self.add_room(name, dc), int(wid) if wk == "discord" and wid.isdigit() else None, people(name, conf))
         if not dc.rooms:
             raise SystemExit("no room has a discord:<channel id> in rooms.toml")
-        self.claim()
         self.workers.begin(asyncio.get_running_loop())
         dc.after_recover.append(self.workers.reattach)   # their cards are edited, so after the connect
         dc.after_recover.append(self.jobs.reattach)      # a script run that ended with no daemon up: delivered late
@@ -889,7 +877,6 @@ class Yerkd:
 
     async def run_console(self, name: str) -> None:
         room = self.add_room(name, ConsoleChannel())
-        self.claim()
         self.workers.begin(asyncio.get_running_loop())
         await self.workers.reattach()
         await self.jobs.reattach()
@@ -918,6 +905,20 @@ class Yerkd:
         await http
 
 
+def claim(state: Path) -> int:
+    """One daemon per state folder: an exclusive flock on <state>/yerkd.lock, held for the process's life (the kernel
+    drops it with the process, so a kill -9 leaves nothing to clear) and taken before the ledger opens, so a second
+    yerkd on the same folder stops with one line before any migration, crash repair or day-log rewrite."""
+    state.mkdir(parents=True, exist_ok=True)
+    fd = os.open(state / "yerkd.lock", os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        os.close(fd)
+        raise SystemExit(f"another yerkd runs on {state} (yerkd.json names its pid); stop it first") from None
+    return fd
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="yerkd", description="The Yerk AI daemon.")
     p.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else the fake example layer)")
@@ -929,6 +930,7 @@ def main(argv: list[str] | None = None) -> int:
     a = p.parse_args(argv)
     logging.basicConfig(level=logging.INFO, stream=sys.stderr, format="%(asctime)s %(name)s %(message)s")
     priv, state = private_dir(a.private), state_dir(a.state)
+    claim(state)                                 # before the ledger opens: a second daemon writes nothing
     y = Yerkd(priv, state, port=a.port, idle_minutes=a.idle_minutes,
               only_account=from_dir(a.config_dir) if a.config_dir else None, log_dir=state / "logs")
     (state / "logs").mkdir(exist_ok=True)

@@ -19,7 +19,7 @@ from yerk_ai import __version__, cli, words
 from yerk_ai.accounts import Account
 from yerk_ai.channels.discord import DiscordChannel
 from yerk_ai.config import EXAMPLE_PRIVATE
-from yerk_ai.daemon import Yerkd
+from yerk_ai.daemon import Yerkd, claim, main as dmain
 from yerk_ai.engine import RoomProcess, RoomSpec
 from yerk_ai.ledger import MIGRATIONS, Ledger
 from yerk_ai.room import Inbound
@@ -180,13 +180,13 @@ def test_a_ledger_newer_than_the_code_is_refused_with_a_line_and_left_as_it_is(t
     assert sqlite3.connect(p).execute("PRAGMA user_version").fetchone()[0] == newer
 
 
-def test_a_second_daemon_on_one_state_folder_is_refused(tmp_path):
-    one = Yerkd(EXAMPLE_PRIVATE, tmp_path, only_account=Account("one", tmp_path / "cfg1"))
-    one.claim()
-    two = Yerkd(EXAMPLE_PRIVATE, tmp_path, only_account=Account("one", tmp_path / "cfg1"))
+def test_a_second_daemon_on_one_state_folder_is_refused_before_it_writes_anything(tmp_path):
+    held = claim(tmp_path)
     with pytest.raises(SystemExit) as e:
-        two.claim()
-    assert "another yerkd runs" in str(e.value)
+        dmain(["--private", str(EXAMPLE_PRIVATE), "--state", str(tmp_path), "--config-dir", str(tmp_path / "cfg1")])
+    assert "another yerkd runs" in str(e.value) and not (tmp_path / "ledger.sqlite").exists()   # refused before the ledger
+    os.close(held)                                     # the lock goes with its holder, as at a kill -9
+    os.close(claim(tmp_path))
 
 
 def test_status_names_the_version_and_the_commit_as_text_and_as_one_json_document(tmp_path, capsys):
