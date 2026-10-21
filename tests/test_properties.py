@@ -11,7 +11,9 @@ from hypothesis import strategies as st
 from yerk_ai.memory import format_line, one_line, parse_line
 
 configuration.set_hypothesis_home_dir(str(Path(tempfile.gettempdir()) / "yerk-hypothesis"))   # never a .hypothesis/ in the tree
-settings.register_profile("yerk", database=None)                                               # (the scrub test walks it)
+settings.register_profile("yerk", database=None, derandomize=True, deadline=None, print_blob=True)   # (the scrub test walks it)
+# the same examples on every run and box: CI=true gives that through hypothesis's own ci profile, which this one
+# would otherwise replace on a box runner or a laptop with no CI variable (random examples, a 200 ms deadline)
 settings.load_profile("yerk")
 
 TOKEN = st.text(alphabet=st.characters(categories=("L", "N"), include_characters="-_."), min_size=1, max_size=16)

@@ -18,7 +18,7 @@ with the originals kept under `backups/`; the index chunks every file again when
 - A message the ledger could not take (the disk full) is read again from the channel a minute later, and again
   until it is taken, instead of waiting for the next restart.
 - A stream log that cannot be written (the disk full, a file-size limit) is dropped for that process; the turn
-  runs. A turn the harness itself crashes is said in the room ("the harness hit an error, it is in the log") and
+  runs. A turn the harness itself crashes is said in the room ("the harness failed; it is in the log") and
   its messages closed, instead of a card left at "working on it".
 - A ledger from a newer version is refused with one line and left as it is. A second yerkd on the same state
   folder is refused with one line.
@@ -31,6 +31,12 @@ with the originals kept under `backups/`; the index chunks every file again when
 **Upgrading**: copy `units/yerkd.service` and `units/yerk-index.service` again (KillMode, TimeoutStopSec,
 NoNewPrivileges, PrivateTmp) and `systemctl --user daemon-reload`; `budgets.toml` `[code] lines` moved to the new
 count; the dev group gained hypothesis, ruff and pip-audit (`pip install -e . pytest mypy hypothesis ruff pip-audit`).
+
+### rail-2 (#59)
+
+- Recall per message reads up to 2,000 characters when it finds something (`[per_message.on_hit]`, the cold read's
+  measurement with the index healthy); the recall hook stays inside its 10 s; a keyword search that did not finish no
+  longer says nothing was found, and when the best 8 chunks hold nothing, 20 are read once before it says so.
 
 ### keys (#60), index-health (#61)
 
