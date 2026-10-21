@@ -87,6 +87,19 @@ def test_a_zeroed_jsonl_line_is_dropped_and_a_line_that_outlived_its_nuls_is_kep
     assert sorted(p.name for p in (state / "trash").glob("*/doctor/*")) == ["example-room.assembled.jsonl", "p.s1.jsonl"]
 
 
+def test_the_line_glued_on_after_a_partly_written_one_is_kept_whole(tree, capsys):
+    """A long write whose first page outlived the rest, then the next append glued on after its NULs (cold read F1):
+    the glued line is whole and is kept, the surviving fragment goes (it is in the backup), in a log and a day log."""
+    priv, state, day, assembled, _ = tree
+    rows = assembled.read_text().splitlines()
+    assembled.write_text("\n".join([rows[0], rows[1][:5] + "\0" * 30 + rows[2], rows[3]]) + "\n")
+    lines = day.read_text().split("\n")
+    day.write_text("\n".join([*lines[:3], lines[3][:20] + "\0" * 40 + lines[4], *lines[5:]]))
+    assert doctor.main(priv, state) == 1
+    assert assembled.read_text().splitlines() == [rows[0], rows[2], rows[3]]
+    assert day.read_text().split("\n") == [*lines[:3], lines[4], *lines[5:]]
+
+
 @pytest.mark.parametrize("how", ["waiting in the ledger", "busy on /status"])
 def test_a_room_with_a_turn_in_flight_or_a_message_waiting_is_never_mended(tree, capsys, monkeypatch, how):
     priv, state, _, assembled, sid = tree
@@ -189,6 +202,30 @@ def test_yerkd_mends_a_zeroed_line_before_any_room_opens_and_logs_the_line(tree,
     assert [r["line"] for r in d["repaired"]] == ["day log 2026-10-20.md: mended line 8", "example-room assembled log: mended line 1"]
     assert "at" not in d                                     # the checks have not run: the morning line says not run yet
     said = [r.getMessage() for r in caplog.records]
+
+
+@pytest.mark.parametrize("how", ["a zeroed sessions.json", "a list in sessions.json", "a backups folder it cannot write",
+                                 "a doctor.json row without its time"])
+def test_yerkd_starts_when_its_crash_repair_cannot_run(tree, caplog, how):
+    """The start hook never stops yerkd (cold read F2): a crash can zero sessions.json itself, which the session table
+    reads as empty; a full disk or a folder it cannot write; a doctor.json another version wrote."""
+    priv, state, day, *_ = tree
+    if how == "a zeroed sessions.json":
+        (state / "sessions.json").write_bytes(b"\0" * 300)
+    elif how == "a list in sessions.json":
+        (state / "sessions.json").write_text("[]")
+    elif how == "a backups folder it cannot write":
+        day.write_bytes(day.read_bytes() + b"\0" * 30)
+        (priv / "backups").mkdir(mode=0o500)
+    else:
+        (state / "doctor.json").write_text(json.dumps({"repaired": [{"line": "x"}]}))
+    caplog.set_level("INFO", logger="yerk.daemon")
+    try:
+        y = Yerkd(priv, state)
+    finally:
+        if (priv / "backups").exists():
+            (priv / "backups").chmod(0o700)
+    assert not y.rooms and any("doctor: crash repair failed, " in r.getMessage() for r in caplog.records)
 
 
 class Seen(dict):

@@ -2,8 +2,8 @@
 units/yerk-doctor.timer, after retention's), quiet when all is well, a plain line per finding, each run kept in
 <state>/doctor.json for the morning diff. A hard power-off zeroes the line a file was writing, so on yerkd's start and
 log, assembled log or bound transcript with a NUL byte is copied first (a day log to backups/doctor-<day>/ beside the private
-beside the private layer, the rest to <state>/trash/<day>/doctor/), then each such line loses its NULs and is kept when
-it still reads, else left blank in a day log (recall cites file:line) or dropped from a JSONL file."""
+layer, the rest to <state>/trash/<day>/doctor/), then each such line keeps what still reads (the line glued on after its NULs, else
+itself without them), else is blank in a day log (recall cites file:line) or dropped."""
 from __future__ import annotations
 
 import json
@@ -23,13 +23,12 @@ DAY, LAST, GROWTH_MB = 86400.0, "doctor.json", 500      # [doctor] growth_mb in 
 
 
 def reads(line: bytes, daylog: bool) -> bool:
-    """A line with its NULs out still says something: a day-log line, its header or an attachment line; a JSON value."""
+    """A line with its NULs out still says something: a day-log line, its header or an attachment line; a JSON object."""
     try:
         text = line.decode()
         if daylog:
             return bool(memory.parse_line(text) or memindex.DAY_HEAD.match(text) or text.startswith("  - attachment: "))
-        json.loads(text)
-        return True
+        return isinstance(json.loads(text), dict)          # a JSONL row is an object; a bare value is a fragment
     except ValueError:                                      # not UTF-8, or not JSON
         return False
 
@@ -46,9 +45,10 @@ def mend(path: Path, daylog: bool, backup: Path, dry: bool) -> list[int]:
         backup.mkdir(parents=True, exist_ok=True)
         dest = backup / f"{path.parent.name}.{path.name}"
         write_private(dest.with_name(f"{dest.name}.{time.time_ns()}") if dest.exists() else dest, data)
-        for i in hit:
-            x = parts[i].rstrip(b"\n").replace(b"\0", b"")
-            parts[i] = x + b"\n" if reads(x, daylog) else b"\n" if daylog else b""
+        for i in hit:                                        # a long write's first page can outlive the rest: the line a
+            x = parts[i].rstrip(b"\n")                       # writer glued on after the NULs first, else the line without them
+            x = next((y for y in (x.rsplit(b"\0", 1)[1], x.replace(b"\0", b"")) if reads(y, daylog)), b"")
+            parts[i] = x + b"\n" if x else b"\n" if daylog else b""
         write_private(path, b"".join(parts), stat.S_IMODE(path.stat().st_mode))
     return [i + 1 for i in hit]
 
@@ -73,9 +73,12 @@ def repair(private: Path, state: Path, m: memory.Settings, flight: set[str], dry
 
 def start(private: Path, state: Path, m: memory.Settings, flight: set[str]) -> str:
     """yerkd's crash repair before any room opens (`flight`: rooms a crash left with a message waiting); the
-    morning line, for its log."""
-    save(state, time.time(), repair(private, state, m, flight))
-    return line(state, time.time())[1]
+    morning line, for its log. A repair that cannot run is its own line and never stops yerkd's start."""
+    try:
+        save(state, time.time(), repair(private, state, m, flight))
+        return line(state, time.time())[1]
+    except Exception as e:                                  # a zeroed sessions.json, a folder it cannot write: the daily run says it
+        return f"doctor: crash repair failed, {type(e).__name__}: {words.no_paths(str(e))[:120]}"
 
 
 def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings, now: float, last: dict[str, Any],
