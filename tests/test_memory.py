@@ -587,3 +587,28 @@ def test_the_stall_line_fires_when_the_loop_is_blocked(caplog, tmp_path):
     with caplog.at_level(logging.WARNING, logger="yerk.beat"):
         asyncio.run(go())
     assert any("stall: the event loop was blocked" in r.getMessage() for r in caplog.records)
+
+
+def test_two_roots_named_memory_get_cites_of_their_own_and_every_old_cite_opens_what_it_opened(tmp_path):
+    """F3 (2026-10-21): a cite named a file by its root's folder name, so of two roots named `memory` the second's files
+    were cited as the first's, and read_memory opened the first root's file of that path. Now a root keeps its folder's
+    name unless an earlier root's cite has it, else as much of its path as tells them apart, given over the install's
+    roots so a file reads the same in every room; a cite that resolved before still opens the same file."""
+    private, a, b = tmp_path / "private", tmp_path / "helper" / "memory", tmp_path / "spare" / "memory"
+    for root, says in ((a, "the example kettle is teal"), (b, "the example kettle is orange")):
+        root.mkdir(parents=True)
+        (root / "2026-01-05.md").write_text(f"# 2026-01-05\n\n- {says}\n")
+    (b / "only-b.md").write_text("# B\n\n- only the second root has this\n")
+    (private / "memory" / "daily").mkdir(parents=True)
+    s = memory.settings(private, tmp_path / "state", {"also": [str(a), str(b)], "timezone": "UTC"})
+    assert dict(s.cites) == {(private / "memory").resolve(): "memory", a: "ben/memory", b: "workbot/memory"}
+    assert memory.cite(s, b / "2026-01-05.md") == "spare/memory/2026-01-05.md" and memory.cite(s, a / "2026-01-05.md") == "helper/memory/2026-01-05.md"
+    assert memory.cite(s, s.daily / "2026-01-05.md") == "memory/daily/2026-01-05.md"           # the install's own tree: as before
+    assert "orange" in memory.read(s, "spare/memory/2026-01-05.md:3")["text"] and "teal" in memory.read(s, "helper/memory/2026-01-05.md:3")["text"]
+    # the old cites: the first root of the name holding the path, exactly as before (card lines carry these)
+    assert "teal" in memory.read(s, "memory/2026-01-05.md:3")["text"] and "second root" in memory.read(s, "memory/only-b.md")["text"]
+    # the same file, the same cite, in a room that reads only the second root; the first stays out of its reach
+    room = s.only(private, "spare-room", [str(b)])
+    assert memory.cite(room, b / "2026-01-05.md") == "spare/memory/2026-01-05.md"
+    assert "orange" in memory.read(room, "spare/memory/2026-01-05.md")["text"] and "orange" in memory.read(room, "memory/2026-01-05.md")["text"]
+    assert not memory.read(room, "helper/memory/2026-01-05.md")["ok"]

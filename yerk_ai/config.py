@@ -5,6 +5,7 @@ import contextlib
 import json
 import logging
 import os
+import subprocess
 import tomllib
 from pathlib import Path
 from typing import Any
@@ -23,6 +24,14 @@ def table(name: str) -> Path:
         if (base / name).is_file():
             return base / name
     raise FileNotFoundError(name)
+
+
+def head(tree: Path) -> str:
+    """The commit checked out in `tree`; "" outside a git checkout. yerkd and yerk-index each keep the one they started on."""
+    try:
+        return subprocess.run(["git", "-C", str(tree), "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return ""
 
 
 def load_toml(path: Path) -> dict[str, Any]:

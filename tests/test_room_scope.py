@@ -135,7 +135,7 @@ def test_a_correction_in_the_live_room_never_shows_in_the_frozen_room(tmp_path):
     y = install(tmp_path)
     r = memory.remember(y.scoped["live-room"], y.daily, "live-room", "m1", "Moved to the crimson hook in the hall", "",
                         ("memory/2026-10-19.md:3 | example shed key",), y.reader("live-room"))
-    assert r["ok"] and r["not_edited"] and "(supersedes memory/2026-10-19.md:3)" in (y.memory.daily.parent / r["cite"].split("/", 1)[1].rpartition(":")[0]).read_text()
+    assert r["ok"] and r["not_edited"] and "(supersedes live/memory/2026-10-19.md:3)" in (y.memory.daily.parent / r["cite"].split("/", 1)[1].rpartition(":")[0]).read_text()   # its own cite since F3
     assert (y.memory.root / memory.LATER).read_text().startswith(f"{tmp_path / 'live' / 'memory' / '2026-10-19.md'}:3\t")
     sync(y)
     q = "where does the example shed key hang, by which door?"
