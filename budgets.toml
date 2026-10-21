@@ -1,6 +1,6 @@
 # Every size limit Yerk AI enforces, in one place.
 # Unit: characters as Claude Code counts them (UTF-16 code units, so one emoji outside
-# the basic plane counts 2), except [code] at the end, which counts lines. The budget test
+# the basic plane counts 2), except [session], in tokens, and [code] at the end, which counts lines. The budget test
 # fails the build when a part or a total passes its number here.
 
 [session_start]
@@ -53,6 +53,17 @@ recall = 1500
 # note says the sample item moved to, the next step and; the test, reads it back as plain text with.
 rules = 1500
 
+[session]
+# The conversation Claude Code keeps before it compacts, in tokens (its own unit here): Yerk AI writes
+# it as `autoCompactWindow` in every room's --settings file. Left to the model it is the whole window,
+# 1,000,000, and a room that rides there re-reads all of it on every message: the prompt cache holds an
+# hour on a subscription, so a room idle longer pays its whole context again on the next message, the
+# first token slows with size, and recall inside the context falls past a few hundred thousand tokens.
+# Nothing searchable is lost at a compaction: every line is in the day log and the recall pack comes
+# back after it. A quarter of the window until a latency bench picks the number. A room's own
+# `compact_window` in rooms.toml overrides it; 0 leaves it to the model.
+compact_window = 250000
+
 [relay]
 # A worker's end, told in its room (DESIGN 6, decision 11): the harness line the room's session
 # gets (the outcome, the report path, the report's start) and the most the relay reply may be.
@@ -65,4 +76,4 @@ reply = 1500
 # only goes down: the budget test fails when the package grows past it and also when it
 # shrinks under it, so a change that cuts lowers this number in the same commit, and a
 # change that adds cuts as much somewhere else. A change that raises it is not merged.
-lines = 13805
+lines = 13807
