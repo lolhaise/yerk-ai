@@ -12,11 +12,12 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { after, beforeEach, test } from "node:test";
 import { KEY_FILES, readKey, spend, takeWindow, where } from "../lib/common.mjs";
+import { wallFromNavError } from "../lib/fetch/l3.js";
 import { _test as local, claimSlot } from "../lib/fetch/local.js";
 import { flushPending } from "../lib/fetch/util.js";
 import { dayStamp } from "../lib/research.mjs";
 import { resetCooldowns } from "../lib/search/provider.js";
-import { TOOLS, callTool, webFetch, webResearch, webResearchResult, webSearch } from "../lib/tools.mjs";
+import { TOOLS, callTool, fetchRows, searchRows, webFetch, webResearch, webResearchResult, webSearch } from "../lib/tools.mjs";
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "yerk-web-test-"));
 const FAKE = { browserbase: "bb_live_FAKEKEY_0123456789abcdef", browserbaseProject: "fake-project-4c1d", parallel: "par_FAKEKEY_9876543210zyxw" };
@@ -202,6 +203,43 @@ test("site memory: a host read at F2 starts at F2 next time, the plain fetch tha
   const memory = JSON.parse(fs.readFileSync(path.join(FETCH, "local-cooldown.json"), "utf8"))["memo.example"];
   assert.equal(memory.start, "F2");
   assert.equal(jsonl(path.join(FETCH, "calls.jsonl")).at(-1).rungs, "F2:ok");
+});
+
+test("trawl's answer ({html, statusCode, url}) reads a page at F3 when the stealth browser met a challenge, free", async () => {
+  const r = rig();
+  const trawl = [];
+  r.deps.trawlFetchImpl = async (url, init) => {
+    trawl.push(JSON.parse(init.body));
+    return json({ html: ARTICLE, statusCode: 200, url: "https://trawl.example/page" });
+  };
+  const t = textOf(await webFetch({ url: "https://trawl.example/page" }, { deps: r.deps, at: WITH }));
+  assert.match(t.split("\n")[0], /^web_fetch read https:\/\/trawl\.example\/page at F3 \(trawl's browser on this machine, free\): HTTP 200/);
+  assert.match(t, /fetch-plus read this at F3 after F1:challenge[^,]*,F2:challenge:fixture/);
+  assert.deepEqual([trawl.length, trawl[0].url, trawl[0].skipHttp, trawl[0].solveEmbeddedCaptchas], [1, "https://trawl.example/page", true, true]);
+  assert.equal(r.seen.bb.length, 0);
+  assert.deepEqual(spendRows(), []);
+});
+
+test("a spend row per paid rung: Fetch, Fetch with proxies, and a browser session with and without proxies, at list price", () => {
+  const rows = fetchRows([
+    { rung: "L1", proxies: false, seconds: 0, bytes: 2048 },
+    { rung: "L2", proxies: true, seconds: 0, bytes: 2_000_000 },
+    { rung: "L3n", proxies: false, seconds: 18, bytes: 0 },
+    { rung: "L3", proxies: true, seconds: 36, bytes: 1_048_576 },
+  ]);
+  assert.deepEqual(rows.map((x) => [x.engine, Math.round(x.usd * 1e6) / 1e6, x.note]), [
+    ["browserbase-L1", 0.001, "fetch"],
+    ["browserbase-L2", 0.028, "fetch with proxies, 2.00 MB"],
+    ["browserbase-L3n", 0.0006, "browser 18 s"],
+    ["browserbase-L3", 0.013783, "browser 36 s, proxies about 1.0 MB"],
+  ]);
+  assert.deepEqual(searchRows([{ engine: "exa", n: 3 }, { engine: "exa", error: "http", status: 402 }, { engine: "you", n: 5 }, { engine: "parallel-paid", n: 0 }], "advanced"),
+    [{ engine: "exa", usd: 0.007, note: "list price" }, { engine: "parallel-paid", usd: 0.005, note: "mode advanced, list price" }]);
+});
+
+test("a browser rung's navigation error is named as its wall", () => {
+  const named = ["net::ERR_TUNNEL_CONNECTION_FAILED", "net::ERR_NAME_NOT_RESOLVED", "net::ERR_CERT_DATE_INVALID", "net::ERR_CONNECTION_RESET", "Timeout 30000ms exceeded", "net::ERR_ABORTED", "something else"].map(wallFromNavError);
+  assert.deepEqual(named, ["proxy_restricted", "dns_error", "tls_error", "connection_failed", "timeout", "nav_aborted", "nav_error"]);
 });
 
 test("the per-host cap is one window for every room's process: past it the free rungs are skipped", async () => {
