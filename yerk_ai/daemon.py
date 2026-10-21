@@ -327,12 +327,12 @@ class Yerkd:
         hid = self.ledger.hold(room, wait_for, reason)
         return {"ok": True, "hold": hid, "next": "End your turn now with one short line; no more tool calls."}
 
-    async def tool_settings(self, room: str, model: str, effort: str, account: str = "") -> dict[str, Any]:
+    async def tool_settings(self, room: str, model: str, effort: str, account: str = "", by_owner: bool = False) -> dict[str, Any]:
         """The `settings` tool: an owner room's model, thinking level and account (tried first, the room's order behind
         it), the daemon's override over rooms.toml (which is never written). The running turn ends as it began; then the
         room's process closes and the next message resumes the same session on the new ones (Room.respec), on another
         account as a hop does; after an account change the line's second line says which (`carried`)."""
-        if not self.owner(room):
+        if not (self.owner(room) or by_owner):      # by_owner: the owner's own slash command, any of their rooms
             return {"ok": False, "line": words.OWNER_ONLY}
         conf, names = self.room_confs[room], {a.name.lower(): a.name for a in self.accounts}
         want, level, acct = model.strip(), effort.strip().lower(), account.strip()

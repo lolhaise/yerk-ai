@@ -103,6 +103,8 @@ BACKUP = ("answered by a backup model", "the next message starts fresh")
 MOVED, COMPACTING = "still on it, moved to account {name}", "shortening the conversation first"
 MOVED_ON = "still on it, trying another way"      # the hop note in a room that is not the owner's: no account name there
 OUT_OF = "on {model}, {pinned} back {until}"      # every account out of the model the room was put on: the room's own one runs it
+EMPTY_AGAIN, NEW_SESSION, AFTER_FAILED = ("empty reply, asking the session again", "starting a new session, with a recap",
+                                          "your message after the failed one")   # an empty reply; a fold run on its own
 
 
 def why(cls: str | None, outcome: str) -> str:

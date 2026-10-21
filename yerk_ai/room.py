@@ -13,7 +13,9 @@ adapter's event loop.
   session; an overflow compacts it and runs the turn again; an auth or quota failure rests the
   account and continues the same turn on the next one, resuming the same session under the same
   card (the ledger row names the hop); a session that cannot be resumed starts fresh with a
-  one-line recap; anything else ends in a visible notice. An empty reply retries once fresh.
+  one-line recap; anything else ends in a visible notice, and a message that folded into the turn
+  after it started runs next as its own turn. An empty reply resumes the same session once more,
+  then starts fresh with the recap.
 - A turn Claude Code answered on a fallback model after a block stands, marked on its card and
   ledger row; the room's next turn starts a fresh session on the room's own model.
 - After `idle_seconds` without a turn the process closes; the next message resumes the session. A new
@@ -35,7 +37,7 @@ import threading
 import time
 import uuid
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Callable, Protocol
 
 from . import words
@@ -66,6 +68,7 @@ class Inbound:
     alone: bool = False                   # a harness turn of its own: never folded into a running turn, never
                                           # batched with another message (a relay, a watcher's event); in a
                                           # closed room it resumes the room's session, as any message does
+    after: bool = False                   # it folded into a turn that failed: it runs next as its own turn, and its card says so
 
 
 HARNESS = "yerk"                          # the sender of Yerk AI's own messages (a worker's relay)
@@ -93,8 +96,8 @@ def fit(text: str, cap: int, must: list[str]) -> str:
     return f"{body}\n{tail}" if tail else body
 
 
-RESUME_RECAP = ("(Yerk AI: the earlier session of this room could not be resumed, so this is a new one. "
-                "The last reply here began: \"{last}\")")
+RESUME_RECAP = ("(Yerk AI: the earlier session of this room could not be resumed, so this is a new one; the day log "
+                "holds what was said. The last reply here began: \"{last}\")")
 REFUSAL_RECAP = ("(Yerk AI: this is a new session. The previous one was moved to another model after a block, "
                  "so its messages are not in this context.)")
 NEW_RECAP = "(Yerk AI: the owner asked for a new session with /new, so this is a new one. The last reply here began: \"{last}\")"
@@ -127,7 +130,6 @@ class Room:
         self.last_active = time.time()
         self.last_human: float | None = ledger.last_received(name)   # survives a daemon restart
         self.seen: dict[str, Inbound] = {}        # by text, for the hook's metadata line
-        self.first_line: str | None = None
         self.answered: set[str] = set()           # sessions with at least one delivered reply
         self.last_reply = ""                      # the first line of the last reply, for a recap
         self.fresh_next: str | None = None        # a recap: the next turn starts a fresh session
@@ -272,9 +274,10 @@ class Room:
         return (f"Your turn is ending with nothing visible in the room, and the room is still waiting on: \"{head}\". "
                 "Reply now with the answer, or one plain line on where it stands.")
 
-    def _new_card(self) -> None:
+    def _new_card(self, note: str = "") -> None:
         privacy = str(self.conf.get("privacy", "owner"))
         self.card = Card(thinking=flag(self.conf.get("thinking_panel")) and privacy == "owner")
+        self.card.narration = note                # a harness line from the first post, until the model's first words
         self.turn_key, self.bounced, self.silent_bounced = uuid.uuid4().hex[:12], False, False
         self.channel.open_card(self.name, self.card.render())   # state first from the first post
 
@@ -410,7 +413,6 @@ class Room:
     def _on_event(self, turn: Turn, ev: dict[str, Any]) -> None:
         """The card from the stream: narration, thinking line, tool rows."""
         if self.card.feed(ev):
-            self.first_line = self.first_line or self.card.narration or "a tool started"
             self.channel.progress(self.name, self.card.render())
 
     def _note(self, line: str) -> None:
@@ -419,7 +421,6 @@ class Room:
         self.channel.progress(self.name, self.card.render())
 
     def _turn(self, batch: list[Inbound]) -> None:
-        self.first_line = None
         with self.lock:
             self.images, self.stopped = {}, False
             self.halt.clear()
@@ -428,11 +429,11 @@ class Room:
         ctx = self.state / "rooms" / self.name / "context.md"
         if ctx.is_file():
             self.evidence.give(ctx.read_text(errors="replace"))     # the session-start file was read too
-        self._new_card()
+        self._new_card(words.AFTER_FAILED if any(m.after for m in batch) else "")
         self.out_of, model = "", str(override(self.state, self.name).get("model") or self.conf.get("model") or "")   # the pinned model
         on, account = self._fall_back(model, a := self._account(model)) or (model, a)   # `on`: the model the turn runs on
         recap = self._take_fresh()                              # a refusal fallback last turn, or /new
-        fresh, retried, compacted, reruns, hops, hop = bool(recap), False, False, 0, 0, None
+        fresh, retried, emptied, compacted, reruns, hops, hop = bool(recap), False, False, False, 0, 0, None
         recap_sid = None                       # the session that already got the recap
         resend = batch
         while True:
@@ -479,9 +480,11 @@ class Room:
             assert turn
             f = turn.failure
             action = f.action if f else None
-            if turn.outcome == "empty" and not retried:
-                log.info("room %s: empty reply, retrying once in a fresh session", self.name)
-                fresh = retried = True
+            if turn.outcome == "empty" and not emptied:   # the same session once more, on a new process: it holds the day's context
+                log.info("room %s: empty reply, resuming the same session once more", self.name)
+                self._note(words.EMPTY_AGAIN)
+                emptied = True
+                self.rp.close()
                 continue
             if action == "rerun" and (wait := self.failures.rerun_wait(reruns)) is not None:
                 log.info("room %s: %s, rerun %d in %.0f s", self.name, f and f.source, reruns + 1, wait)
@@ -492,8 +495,10 @@ class Room:
                 compacted = True
                 self._compact(account)
                 continue
-            if action == "fresh_with_recap" and not retried:
-                log.info("room %s: the session could not be resumed, starting fresh with a recap", self.name)
+            if (action == "fresh_with_recap" or turn.outcome == "empty") and not retried:   # empty twice: fresh, through the recap
+                log.info("room %s: %s, starting fresh with a recap", self.name,
+                         "empty again" if turn.outcome == "empty" else "the session could not be resumed")
+                self._note(words.NEW_SESSION)
                 fresh, retried, recap = True, True, RESUME_RECAP.format(last=self.last_reply or "nothing yet")
                 continue
             if action == "hop_account" and f:
@@ -506,7 +511,7 @@ class Room:
                 if (nxt != account and hops < len(self.accounts) - 1) or on != self.rp.spec.model:   # a model switch, once; hops capped
                     log.info("room %s: %s on %s, continuing on %s", self.name, f.cls, account.name, nxt.name)
                     hop = ",".join(filter(None, [hop, f"{f.cls}:{account.name}"]))
-                    hops, account, self.first_line = hops + 1, nxt, None
+                    hops, account = hops + 1, nxt
                     if on == self.rp.spec.model:              # the hop's own line; a model switch said its line already
                         self._note(words.MOVED.format(name=nxt.name) if str(self.conf.get("privacy", "owner")) == "owner" else words.MOVED_ON)
                     # a session that never answered may have no transcript to resume elsewhere
@@ -517,16 +522,20 @@ class Room:
             return
 
     def _end(self, resend: list[Inbound], plain: str, why: str, state: str = "failed") -> None:
-        """A turn that ends unanswered: its card kept saying what was owed, its messages ledgered `state`."""
-        asked = resend[0].text if resend else ""
+        """A turn that ends unanswered: its card kept saying what was owed, its messages ledgered `state`. A message
+        that folded into a failed turn after it started (seen live: a greeting during a 36-step job) is no part
+        of its failure: it runs next, in order, as its own turn, its card saying so; /stop stops them all."""
+        own = [m for m in resend if m.id in self.answering or state != "failed"] or resend[:1]
+        asked = own[0].text if own else ""
         notice_ids = self.channel.notice(self.name, f"{words.NOT_DONE} {words.NOT_ANSWERED}\n{plain}",
-                                         [m.id for m in resend], card=self.card.owed(plain, asked), key=self.turn_key)
-        for m in resend:
+                                         [m.id for m in own], card=self.card.owed(plain, asked), key=self.turn_key)
+        for m in own:
             self.ledger.inbound_set(m.id, state=state, note=why, reply_ids=",".join(notice_ids))
             self._then(m, "failed", notice_ids, 0)
         with self.lock:
             old, self.rp, self.inflight = self.rp, None, []
             self.pending.clear()
+            self.queue.extendleft(reversed([replace(m, after=True) for m in resend if m not in own]))
         if old:
             old.close()
 
@@ -588,7 +597,7 @@ class Room:
                 if not self.pending or self.fresh_next:
                     self.reading = False          # from here a new message queues for the next turn
                     return ("fresh" if self.pending else "done"), turn
-            started, self.first_line, hop, recapped = time.time(), None, None, False
+            started, hop, recapped = time.time(), None, False
             self._new_card()
 
     def _then(self, m: Inbound, state: str, ids: list[str], chars: int) -> None:

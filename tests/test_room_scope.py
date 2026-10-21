@@ -223,6 +223,7 @@ def test_a_family_room_with_one_person_reads_its_own_lines_and_shared_files_only
     line = asyncio.run(y.tool_read_memory(mom, note["cite"], 1, 1))["text"]
     assert " The#check:While_A second: Entry waits: In the queue [for:its] [turn:and0." in line
     assert asyncio.run(y.tool_settings(mom, "opus", "")) == {"ok": False, "line": words.OWNER_ONLY}
+    assert asyncio.run(y.tool_settings(mom, "", "", by_owner=True))["line"].startswith("this room: ")   # the owner's own slash command
     assert y.owner_only(mom, "") == {"ok": False, "line": words.WORKERS_OWNER_ONLY}
     assert y.owner_only(mom, "", words.JOBS_OWNER_ONLY) == {"ok": False, "line": words.JOBS_OWNER_ONLY}
     assert asyncio.run(y.tool_rule(mom, "steep it longer", "tea")) == {"ok": False, "line": words.RULES_OWNER_ONLY}
