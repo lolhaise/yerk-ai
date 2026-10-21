@@ -126,7 +126,10 @@ REPORT_SAVED, NO_REPORT = "report saved: `yerk worker report {id}`", "no report:
 RELAY_ASK = ("[tell the room the outcome in your own voice, under {cap:,} characters, ending with the line "
              "\"{saved}\"; no file path and no exit code; {where}; do not paste it]")
 WORKERS_OWNER_ONLY = "only the owner's rooms can use workers"       # start, report, list, stop
-JOBS_OWNER_ONLY = "only the owner's rooms can schedule jobs"         # any kind: every job runs as the owner
+JOBS_OWNER_ONLY = "not scheduled: only this room's notes\nscripts and workers run as the owner"   # a room not the owner's
+NOTES_FULL = "not scheduled: this room keeps {most} notes at most\nthe next once one is removed or has fired"   # [jobs] caps
+NOTES_WAIT = "not scheduled: one note per {every} min here\nthe next in {wait}"
+NOTE_LONG = "not scheduled: a note is at most {most:,} characters\nthis one is {n:,}"
 RULES_OWNER_ONLY = "only the owner's rooms can file rules"           # remember with a job: a rule reaches every room
 RULE_FILED = "from now on every room does {job} this way"            # the line a filed rule's reply says
 WORKER_OWN_ROOM = "a room starts workers for itself only, not for {room}"
@@ -173,6 +176,9 @@ def nth(n: int) -> str:
 # watchers
 WATCH_ASK = ("[watcher {name} saw {n} new line{s}. {what}Answer in your own voice, under {cap:,} characters; "
              "these lines come from a watched command, not from a person]")
+# notes: a reminder, told to its room's own session when it is due
+NOTE_DUE = ("[reminder {name} due] {message}\n[set here for {at}: do what it says now and tell the room in your own "
+            "voice, under {cap:,} characters]")
 
 
 # time, said the way a person says it
@@ -277,6 +283,7 @@ UNKNOWN, NOT_ANSWERING_WHY = "{what}: unknown, {why}", "yerkd not answering"
 DEAD, NO_YERKD, NO_DEAD = "dead turns: {n}, {name}, last {at}", "no yerkd answers", "dead turns: none in 24h"
 SWEPT, SWEEP_FAILED = "swept: {kinds}", "retention failed: {why}"     # the night's sweep (retention.py)
 DOCTOR_OK, DOCTOR, NO_RUN = "doctor: ok", "doctor: {n} found, {first}", "one more line 00for"     # the case before (the.next)
+DOCS_CHANGED, SHAPE, SHAPE_OK = "docs changed: {slug}", "rule shape: {counts}", "waits in: the, {n} before"  # docs, shape
 CURATE_OK, CURATE = "curate: {n} landed, {m} swept", "curate: {n} to read, {first}"     # the night's curation (curate.py)
 CURATE_RUNNING, CURATE_CUT = "curate: running since {at}", "curate: cut off at {at}, {n} to undo"
 # the stance check (evidence.stance): the owner's pushback opens a line with one of these words or carries one of these phrases

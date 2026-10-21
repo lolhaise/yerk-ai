@@ -630,10 +630,11 @@ def test_only_the_owners_rooms_use_workers_each_for_itself_and_the_install_keeps
     out = asyncio.run(go())
     for key in ("start", "report", "list"):
         assert out[key] == {"ok": False, "line": W.WORKERS_OWNER_ONLY}, key
-    for key in ("agent job", "default kind", "script"):                # a script job runs as the owner too
+    for key in ("agent job", "script"):                                # a script job runs as the owner too
         assert out[key] == {"ok": False, "line": W.JOBS_OWNER_ONLY}, key
+    assert out["default kind"] == {"ok": True} and jobs == [("family", {**agent, "kind": "note"})]   # no kind here: a note
     assert out["other room"] == out["other job"] == {"ok": False, "line": W.WORKER_OWN_ROOM.format(room="family")}
-    assert out["no unit yet"] == [] and jobs == []
+    assert out["no unit yet"] == []
     assert out["own"]["ok"] and out["own"]["room"] == "example-room"
     assert out["control"]["ok"] and out["control"]["room"] == "family"          # `yerk worker`: any room
     assert [c["unit"] for c in units.calls] == [out["own"]["unit"], out["control"]["unit"]]

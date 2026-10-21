@@ -12,6 +12,8 @@ from yerk_ai import memindex, memory, mentions
 from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai.daemon import Yerkd
 
+from test_jobs import FakeSystemd
+
 
 MOM = 31        # the one person of the family room; a stand-in, since a real id (17 to 20 digits) never goes in this repository
 
@@ -225,7 +227,6 @@ def test_a_family_room_with_one_person_reads_its_own_lines_and_shared_files_only
     assert asyncio.run(y.tool_settings(mom, "opus", "")) == {"ok": False, "line": words.OWNER_ONLY}
     assert asyncio.run(y.tool_settings(mom, "", "", by_owner=True))["line"].startswith("this room: ")   # the owner's own slash command
     assert y.owner_only(mom, "") == {"ok": False, "line": words.WORKERS_OWNER_ONLY}
-    assert y.owner_only(mom, "", words.JOBS_OWNER_ONLY) == {"ok": False, "line": words.JOBS_OWNER_ONLY}
     assert asyncio.run(y.tool_rule(mom, "steep it longer", "tea")) == {"ok": False, "line": words.RULES_OWNER_ONLY}
 
 
@@ -271,7 +272,8 @@ def test_a_family_room_never_learns_what_it_may_not_read(tmp_path):
     the words; a day log is chunked by room id and class, so the room's own line beside them is a chunk of its own and recall
     finds it, as its pack, its topic hits and read_memory do; a private fact file's names never reach its mention recall;
     a private-class line carrying the room's id stays out of its pack and topic hits, as read_memory blanks it;
-    one more line for, the check while a; second entry waits in the queue for; its turn and The Last
+    schedule lists and removes its own notes alone, naming no job of the owner's, and refuses the rest; send posts to the
+    room itself only; and the room's Claude Code
     process refuses file reads outside its working folders in every mode. The owner's room keeps all of it."""
     from yerk_ai import words
     from yerk_ai.daemon import ConsoleChannel
@@ -300,8 +302,12 @@ def test_a_family_room_never_learns_what_it_may_not_read(tmp_path):
     sync(y)                                     # a private fact file's names: nothing for her room, everything for the owner's
     assert not y.recall_for(mom, "what is the example anchor?")[0]
     assert [e for e in y.recall_for("example-room", "what is the example anchor?")[0] if "zanzibar" in e["text"]]
-    for req in ({"action": "list"}, {"action": "remove", "name": "example-heartbeat"}, {"action": "sync"}):
-        assert asyncio.run(y.tool_schedule(mom, req)) == {"ok": False, "line": words.JOBS_OWNER_ONLY}
+    y.jobs.units = FakeSystemd(tmp_path / "units")                 # a list reads the timers back: a fake systemd here
+    listed = asyncio.run(y.tool_schedule(mom, {"action": "list"}))
+    assert listed["ok"] and listed["jobs"] == [] and listed["lines"] == ["jobs: none"]       # its notes alone: none
+    assert asyncio.run(y.tool_schedule(mom, {"action": "remove", "name": "example-heartbeat"}))["error"] == \
+        "no note 'example-heartbeat' in this room; its notes: none"                         # the same words as for no job
+    assert asyncio.run(y.tool_schedule(mom, {"action": "sync"})) == {"ok": False, "line": words.JOBS_OWNER_ONLY}
     y.add_room(mom, ConsoleChannel())
     y.add_room("example-room", ConsoleChannel())
     assert not asyncio.run(y.tool_send("example-room", "a line into the owner's room", "", mom))["ok"]

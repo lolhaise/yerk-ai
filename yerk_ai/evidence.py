@@ -21,6 +21,8 @@ needs a status read, a claim about what was decided needs a memory read, a claim
 contents needs a read of a file. A claim with none is ledgered with the sentence and the tools the
 turn ran. A question, a hedge or a proposal ("would", "could", "might", "I think") is not a claim.
 A fifth, the stance rule (claim 3), ledgers each reply to the owner's pushback: held, conceded or folded.
+A sixth, the sheet rule, ledgers once a turn that sent a document or pasted a block with no claims
+sheet written or named in the turn (check_sheet).
 """
 from __future__ import annotations
 
@@ -278,3 +280,50 @@ def stance(reply: str, pushed: list[float], ev: Evidence) -> list[tuple[str, str
     wrong = OWN_WRONG.search(reply)
     return [("stance", "held" if STANDS.search(reply) and read else "conceded" if wrong and read else
              "folded" if wrong or AGREE.search(reply) else "held")]
+
+
+# the sheet rule: a turn that ships something in the owner's name, a document through the send tool or a pasted block
+# in the reply or in a send's text, with no claims sheet (claim, source line, quote) written or named in the turn.
+# The morning diff counts how often a room sends without checking its claims against source first. Logs only.
+DOCUMENT = (".docx", ".pdf", ".xlsx", ".pptx", ".txt", ".md", ".csv")
+PASTE_TAGS = ("", "text", "plain", "none")              # a fence with one of these opens a paste; a language tag opens code
+SHEET = re.compile(r"claims[\w.-]*\.(?:md|txt|csv)\b", re.I)    # CLAIMS.md, example-report/claims.md, ex905-claims.md
+WRITES = ("Write", "Edit", "NotebookEdit")
+
+
+def pasted(text: str) -> bool:
+    """A fenced block (three backticks) that is a paste, not code: no tag after the fence, or text, plain or none."""
+    inside = False
+    for line in text.splitlines():
+        s = line.strip()
+        if not s.startswith("```"):
+            continue
+        if inside:
+            inside = False
+        elif s[3:].strip().split(" ")[0].lower() in PASTE_TAGS:
+            return True
+        else:
+            inside = True
+    return False
+
+
+def check_sheet(reply: str, ev: Evidence) -> list[tuple[str, str]]:
+    """The sheet rule in shadow: ("sheet", detail) once when the turn sent a document or pasted a block and no call
+    of the turn wrote or named a claims sheet. Logs only."""
+    with ev.lock:
+        calls = list(ev.calls.values())
+    sent: list[str] = []
+    texts = [reply]
+    for c in calls:
+        name, ti = c["tool"].rsplit("__", 1)[-1], c["input"]
+        if name == "send":
+            texts.append(str(ti.get("text") or ""))
+            if (file := str(ti.get("file") or "")) and file.lower().endswith(DOCUMENT):
+                sent.append(Path(file).name)
+        if (name in WRITES and SHEET.search(str(ti.get("file_path") or ""))) or (name == "Bash" and SHEET.search(str(ti.get("command") or ""))):
+            return []
+    paste = any(pasted(t) for t in texts)
+    if not sent and not paste:
+        return []
+    what = " and ".join(x for x in (f"sent {', '.join(sent)}" if sent else "", "pasted a block" if paste else "") if x)
+    return [("sheet", f"{what} with no claims sheet written this turn")]
