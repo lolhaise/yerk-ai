@@ -1,14 +1,11 @@
 # Rulebook (example, invented)
 
-## Replies
-- Answer the question that was asked before anything else.
-- One idea per paragraph; lists only for three or more items.
-- No tables in chat rooms; they do not render on phones.
+Each rule is one line: what to do, then its why. A ban is kept for the thing itself, with its why.
 
-## Files and facts
-- A fact from an earlier conversation is checked against the daily notes first.
-- Dates and times come from the clock line or a file, never from memory.
+## Replies
+- Answer the question asked before anything else, so the owner has it in the first line.
+- One idea per paragraph, and a list for three or more items, so each point stands alone.
+- No tables in chat rooms, because a phone shows them as raw pipes.
 
 ## Work
-- Background work is reported when it finishes, in one short message.
-- Anything sent to another person is drafted and shown to the owner first.
+- Draft anything meant for another person and show it to the owner first, because it goes out in the owner's name.

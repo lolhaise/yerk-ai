@@ -277,6 +277,7 @@ UNKNOWN, NOT_ANSWERING_WHY = "{what}: unknown, {why}", "yerkd not answering"
 DEAD, NO_YERKD, NO_DEAD = "dead turns: {n}, {name}, last {at}", "no yerkd answers", "dead turns: none in 24h"
 SWEPT, SWEEP_FAILED = "swept: {kinds}", "retention failed: {why}"     # the night's sweep (retention.py)
 DOCTOR_OK, DOCTOR, NO_RUN = "doctor: ok", "doctor: {n} found, {first}", "one more line 00for"     # the case before (the.next)
+DOCS_CHANGED, SHAPE, SHAPE_OK = "docs changed: {slug}", "rule shape: {counts}", "waits in: the, {n} before"  # docs, shape
 CURATE_OK, CURATE = "curate: {n} landed, {m} swept", "curate: {n} to read, {first}"     # the night's curation (curate.py)
 CURATE_RUNNING, CURATE_CUT = "curate: running since {at}", "curate: cut off at {at}, {n} to undo"
 # the stance check (evidence.stance): the owner's pushback opens a line with one of these words or carries one of these phrases

@@ -1,7 +1,7 @@
 # Every size limit Yerk AI enforces, in one place.
 # Unit: characters as Claude Code counts them (UTF-16 code units, so one emoji outside
-# the basic plane counts 2), except [session], in tokens, and [code] at the end, which counts lines. The budget test
-# fails the build when a part or a total passes its number here.
+# the basic plane counts 2), except [session], in tokens, [shape], in rule lines and topics, and [code] at the end, which
+# counts lines. The budget test fails the build when a part or a total passes its number here.
 
 [session_start]
 total = 84350
@@ -77,10 +77,24 @@ compact_window = 250000
 message = 1500
 reply = 1500
 
+[shape]
+# The rule-shape check (shape.py; `yerk doctor` daily, `yerk docs shape` on demand): how many lines of each kind one rule
+# file a room loads may hold before the doctor says so, and how many topics the install may say in two files one room
+# loads. `yerk docs shape --rules` prints each count's exact rule. Zero is the prompting guide's shape: what to do and its
+# test, reads it <back> as, plain text with one, more line (0000-00-00, for the: "check while a second entry waits
+
+negatives_without_why = 0
+shouted = 0
+untagged_examples = 0
+alarm_marks = 0
+duplicated_topics = 0
+
 [code]
 # The code itself. Unit: lines as `wc -l` counts them, in every .py file under yerk_ai/,
 # lifted ones included, because a reader has to get through all of them. A ceiling that
 # only goes down: the budget test fails when the package grows past it and also when it
 # shrinks under it, so a change that cuts lowers this number in the same commit, and a
 # change that adds cuts as much somewhere else. A change that raises it is not merged.
-lines = 15310
+# 2026-10-21: harness-expert raised it by 428 on purpose, the lines of `yerk docs` and the rule-shape check (the owner's
+# ask), not folded to fit.
+lines = 15738

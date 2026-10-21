@@ -58,6 +58,7 @@ class Settings:
     recall_chars: int               # one recall's first six snippets together, at most
     scoped: bool = False            # a room's own `also` (only): index hits and names kept to the roots in `scope`
     cites: tuple[tuple[Path, str], ...] = ()    # every root of the install and the name a cite gives it, the same in every room
+    docs: Path | None = None        # <state>/docs (docs.py): the Claude docs and the rooms' shape reports, a root in every room
 
     @property
     def daily(self) -> Path:
@@ -73,7 +74,7 @@ class Settings:
         want = [(private / Path(str(x)).expanduser()).resolve() for x in also]
         for p in (p for p in want if p not in self.scope.roots[1:]):
             raise SystemExit(f"room {room}: also {p} is not one of the [memory] also roots in yerkd.toml")
-        return replace(self, scoped=True, scope=replace(self.scope, roots=tuple(r for r in self.scope.roots if r in (self.root, *want))))
+        return replace(self, scoped=True, scope=replace(self.scope, roots=tuple(r for r in self.scope.roots if r in (self.root, *want, self.docs))))
 
 
 def settings(private: Path, state: Path, conf: dict[str, Any] | None = None) -> Settings:
@@ -91,6 +92,10 @@ def settings(private: Path, state: Path, conf: dict[str, Any] | None = None) -> 
     else:
         root = (private / "memory").resolve()
     tz: tzinfo = ZoneInfo(str(conf.get("timezone") or system_zone()))   # a zone, never one start-time offset (R5)
+    docs = (state / "docs").resolve()          # an `also` root of every install, made here so it is there before a refresh
+    with suppress(OSError):
+        docs.mkdir(mode=0o700, parents=True, exist_ok=True)
+    also = [*also, docs] if docs not in also else also
     cites: dict[Path, str] = {}
     for r in (root, *also):          # its folder's name, else as much of its path as no earlier root's cite has (F3, 2026-10-21)
         names = ["/".join(r.parts[-n:]) for n in range(1, len(r.parts))]
@@ -107,7 +112,7 @@ def settings(private: Path, state: Path, conf: dict[str, Any] | None = None) -> 
                     embeddings_units=str(conf.get("embeddings_units", "both")),
                     embeddings_width=int(conf.get("embeddings_width") or conf.get("embeddings_dim") or 256),
                     index_status=state / "memory" / "index.json",
-                    recall_chars=max(100, int(conf.get("recall_chars", RECALL_CHARS))), cites=tuple(cites.items()))
+                    recall_chars=max(100, int(conf.get("recall_chars", RECALL_CHARS))), cites=tuple(cites.items()), docs=docs)
 
 
 # the embedding settings a user with another model or budget can pick, described from the code (run 5):

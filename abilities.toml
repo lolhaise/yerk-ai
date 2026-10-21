@@ -713,7 +713,7 @@ price = "none"
 free_path = "this is the free path"
 why_not = "After the rooms move."
 asked_as = ["docs mirror", "what changed in the docs"]
-upgrade = "jobs"
+upgrade = "claude-docs"
 
 [abilities.rules-review]
 state = "described"
@@ -729,7 +729,7 @@ price = "none"
 free_path = "this is the free path"
 why_not = "After the rooms move."
 asked_as = ["review your rules", "review your own rules", "stale rules"]
-upgrade = "jobs"
+upgrade = "rule-shape"
 
 [abilities.reply-checks]
 state = "described"
@@ -1125,3 +1125,19 @@ needs = "a systemd user timer (units/yerk-retention.timer) and Linux /proc, whic
 free_path = "this is the free path"
 asked_as = ["how long do you keep", "retention sweep", "your trash folder"]
 layer = 11
+
+[abilities.claude-docs]
+state = "built"
+what = "Knows its own harness from the source: `yerk docs` keeps the Claude docs Yerk runs on (the prompting guide, each model's prompting page, the Claude Code pages on settings, hooks, memory, sandboxing, MCP, the command line and the system prompt flags) in the state folder as a memory root of class shared, so every room recalls them and cites docs/claude/<slug>.md:line. `yerk doctor` refreshes them weekly ([docs] refresh_days in yerkd.toml, 7; [docs] pages replaces the list), and a page whose content changed is a line in the morning diff, since a changed guide means the rules may be stale against it."
+tier = "free"
+needs = "web access for the weekly refresh; the pages are indexed like any memory file"
+free_path = "this is the free path"
+asked_as = ["claude docs", "what the docs say", "the prompting guide"]
+
+[abilities.rule-shape]
+state = "built"
+what = "Checks how its own rules are written: the doctor scores every rule file a room loads (the mechanics, its persona, rulebook and voice, the rules file) against the prompting guide, counting negatives with no why, shouted words, examples outside example tags, alarm marks on an instruction and topics said in two files. A count past budgets.toml [shape] is a finding, a rule filed in the last day that misses the shape is named by its cite, each room's report is docs/shape/<room>.md, the morning diff carries the totals, and `yerk docs shape` prints the report with each count's exact rule."
+tier = "free"
+needs = "nothing; it runs in the daily doctor (units/yerk-doctor.timer)"
+free_path = "this is the free path"
+asked_as = ["rule shape", "are your rules written", "how your rules are written"]

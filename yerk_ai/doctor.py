@@ -15,9 +15,10 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
 
-from . import deploy, hooks, memindex, memory, retention, status, words
+from . import deploy, docs, hooks, memindex, memory, retention, status, words
+from . import shape as rule_shape                      # `shape` is the private folder's check below
 from .accounts import load_accounts, token_info
-from .config import REPO, ROOM_KEYS, load_toml, rooms, write_private
+from .config import REPO, ROOM_KEYS, budgets, load_toml, room_id, rooms, write_private
 from .context import layer_dir
 from .ledger import Ledger
 from .mentions import Builder
@@ -142,8 +143,8 @@ def start(private: Path, state: Path, m: memory.Settings, flight: set[str]) -> s
 
 
 def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings, now: float, last: dict[str, Any],
-           found: list[str]) -> dict[str, Any]:
-    """Every check but the crash repair, each finding a line in `found`; returns the sizes to keep for tomorrow."""
+           found: list[str], dry: bool = False) -> dict[str, Any]:
+    """Every check but the crash repair, each finding a line in `found`; returns the sizes and shape totals to keep."""
     def shape() -> None:
         for name in ("accounts.toml", "rooms.toml"):
             try:
@@ -263,6 +264,19 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
         named = [memory.cite(m, r) for r in m.scope.roots]
         found.extend(f"memory roots: {named.count(n)} share the cite {n}" for n in sorted(set(named)) if named.count(n) > 1)
 
+    shaped: dict[str, int] = {}
+
+    def ruleshape() -> None:                                    # every room's rule files against the prompting guide
+        rs, limits = rooms(private), dict(budgets().get("shape") or {})
+        r = rule_shape.check(private, m, rs, dict(conf.get("docs") or {}), now)
+        found.extend(rule_shape.findings(r, limits))
+        shaped.update(rule_shape.totals(r))
+        at = time.strftime("%Y-%m-%d %H:%M", time.localtime(now))
+        for name in [] if dry else r["rooms"]:                  # each room's own report, of its class: docs/shape/<room>.md
+            (out := docs.root(state) / "shape").mkdir(mode=0o700, parents=True, exist_ok=True)
+            write_private(out / f"{re.sub(r'[^\w.-]', '-', name)}.md",
+                          f"---\nclass: room\nroom: {room_id(name, rs[name])}\n---\n" + rule_shape.report(name, r, limits, at))
+
     def code() -> None:                                         # yerk-index on older code than yerkd (four hours, 2026-10-20)
         ran, ix = ((status.ask(state) or {}) if status.alive(state) else {}).get("commit"), deploy.indexed(state)
         if ran and ix and ran != ix:
@@ -270,13 +284,13 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
 
     for what, check in (("shape", shape), ("classes", classes), ("tokens", tokens), ("index", index), ("hooks", hooked),
                         ("modes", modes), ("secrets", leaks), ("disk", growth), ("memory cap", high), ("backfill", backfill),
-                        ("cites", cites), ("code", code)):
+                        ("cites", cites), ("code", code), ("rule shape", ruleshape)):
         try:
             check()
         except (Exception, SystemExit) as e:                    # a check that cannot run is a line; the others still run
             found.append(f"{what}: not checked, {type(e).__name__}: {words.no_paths(str(e))[:80]}")
     old = (now - float(last.get("sized", 0))) / DAY < 0.75     # tomorrow compares against the run a day before it
-    return {"sizes": last.get("sizes", {}) if old else now_sizes, "sized": last.get("sized", 0) if old else now}
+    return {"sizes": last.get("sizes", {}) if old else now_sizes, "sized": last.get("sized", 0) if old else now, "shape": shaped}
 
 
 def load(state: Path) -> dict[str, Any]:
@@ -294,8 +308,9 @@ def save(state: Path, now: float, repaired: list[str], full: dict[str, Any] | No
 
 
 def run(private: Path, state: Path, dry: bool = False, now: float | None = None, proc: Path = retention.PROC,
-        flight: Callable[[Path, Ledger, list[str]], set[str]] = retention.in_flight) -> list[str]:
-    """One run: the crash repair, then the checks; every line, nothing changed when `dry`, else kept."""
+        flight: Callable[[Path, Ledger, list[str]], set[str]] = retention.in_flight, refresh: bool = False) -> list[str]:
+    """One run: the crash repair, the docs when due (`refresh`: `yerk doctor`, the daily unit), then the checks; every line,
+    nothing changed when `dry`, else kept."""
     now = time.time() if now is None else now
     conf = load_toml(private / "yerkd.toml") if (private / "yerkd.toml").is_file() else {}
     m, found, last = memory.settings(private, state, dict(conf.get("memory", {}))), list[str](), load(state)
@@ -305,16 +320,21 @@ def run(private: Path, state: Path, dry: bool = False, now: float | None = None,
     finally:
         ledger.close()              # before the checks: its -wal and -shm files go with it, never counted as the install's
     fixed = repair(private, state, m, busy, dry, now, proc)
-    kept = checks(private, state, conf, m, now, last, found)
+    if refresh and not dry and docs.due(state, dict(conf.get("docs") or {}), now):     # weekly; a failure tries again tomorrow
+        try:
+            found.extend(docs.failed(docs.refresh(state, dict(conf.get("docs") or {}), now=now)))
+        except Exception as e:                                  # a refresh that cannot run is a line; the checks still run
+            found.append(f"docs: not refreshed, {type(e).__name__}: {words.no_paths(str(e))[:80]}")
+    kept = checks(private, state, conf, m, now, last, found, dry)
     if not dry:
         save(state, now, fixed, {"at": now, "findings": found, **kept})
     return fixed + found
 
 
-def main(private: Path, state: Path, dry: bool = False) -> int:
+def main(private: Path, state: Path, dry: bool = False, refresh: bool = False) -> int:
     """A line per repair and finding, nothing when all is well; exits 1 when there was any, 2 when it could not run."""
     try:
-        out, code = run(private, state, dry), 1
+        out, code = run(private, state, dry, refresh=refresh), 1
     except Exception as e:                                      # yerkd.toml unreadable, the state folder gone
         out, code = [f"doctor failed: {type(e).__name__}: {words.no_paths(str(e))[:120]}"], 2
         if not dry:
@@ -334,3 +354,12 @@ def line(state: Path, now: float) -> tuple[str, str]:
     if not found:
         return "", words.line(f"{words.PLAIN} {words.DOCTOR_OK}")
     return f"doctor {found[0]}", words.line(f"{words.NOT_DONE} " + words.DOCTOR.format(n=len(found), first=found[0]))
+
+
+def shape_line(state: Path, now: float) -> tuple[str, str] | None:
+    """The morning diff's rule-shape line: the last full run's totals, plain when every count is zero; none past a day."""
+    d = load(state)
+    if now - float(d.get("at", 0)) > DAY or not (t := d.get("shape")):
+        return None
+    said = ", ".join(f"{t[k]} {k}" for k in (*rule_shape.COUNTS, "twice") if t.get(k))
+    return "", words.line(f"{words.WORKING} {words.SHAPE.format(counts=said)}" if said else f"{words.PLAIN} {words.SHAPE_OK.format(n=t.get('lines', 0))}")
