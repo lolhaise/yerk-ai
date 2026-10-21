@@ -8,6 +8,27 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-21
 
+### trusted-room (#74)
+
+- A room with people can run the owner rooms' tools: `shell = "trusted"` in its rooms.toml table lets it list Bash,
+  Write, Edit and the rest. Its shell runs inside a wall the daemon builds at each process start from what it knows:
+  every other entry of the private and state folders (the other layers, the memory folder, rooms.toml, imports; every
+  other room's folder, the ledger), every memory root and every other room's layer and `read` folders, `projects/`
+  under each account's folder, and each folder of the home that holds one of those, all denied to the shell for
+  reading and writing. No command runs outside the sandbox and the room does not start without it. Its layer, work
+  folder and attachments stay readable and writable, its outbox read only, the Python user site-packages readable
+  (python-docx); Write and Edit reach its layer and work folder only. Proven on Claude Code 2.1.304 by a scratch probe.
+- A trusted room whose rooms.toml would undo the wall (a sandbox key past `filesystem.denyRead`, `filesystem.denyWrite`
+  and the `network` allowlist, or an `allow` rule for the file tools), a `shell` other than "trusted", or a wall that
+  cannot be built stops the start with one line. `yerk explain trusted` describes it.
+- Workers, jobs past notes, rules and settings changes stay the owner rooms'; the lines a room that is not the
+  owner's hears when it asks for one say what it can do instead and name no person.
+
+**Upgrading**: rooms.toml gained `shell` (unset, nothing changes). For a room with people, `shell = "trusted"` and
+the shell and file tools in `tools`; its own `[rooms.NAME.sandbox]` may add `filesystem.denyRead`,
+`filesystem.denyWrite` and the `network` allowlist, no other key. `budgets.toml` `[code] lines` moved to the new
+count, by 109.
+
 ### note-jobs (#71)
 
 - Every room can set reminders: a fourth job kind, `note` (`room`, `message`, one of `at`, `every` or `schedule`

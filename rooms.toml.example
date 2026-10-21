@@ -22,6 +22,9 @@ open_loops = "memory/open-loops.md"
 # sealed = true               # in Yerk's own tree, its own room's lines only: no other room's lines, notes, facts or rules
 # people = [USER_ID]         # Discord user ids answered in this room besides the owner (sender "person"); unset: the owner only.
 #                             # Needs a privacy other than owner: an owner room reads the owner's whole memory
+# shell = "trusted"          # a room with people that runs the owner rooms' tools, as tools = ["Read", "Grep", "Glob", "Bash", "Write", "Edit"]:
+#                             # its shell inside the daemon's wall (`yerk explain trusted`), Write and Edit on its layer and work folder only;
+#                             # its [rooms.NAME.sandbox] may add filesystem.denyRead, filesystem.denyWrite and the network allowlist, no other key
 thinking_panel = false        # owner-only rooms: a "thinking" line on the card (costs about 5 s a reply)
 
 [rooms.example-quiet]

@@ -125,12 +125,14 @@ DIED = {"exit-code": "it ended with an error", "signal": "it was killed", "core-
 REPORT_SAVED, NO_REPORT = "report saved: `yerk worker report {id}`", "no report: `yerk worker report {id}`"
 RELAY_ASK = ("[tell the room the outcome in your own voice, under {cap:,} characters, ending with the line "
              "\"{saved}\"; no file path and no exit code; {where}; do not paste it]")
-WORKERS_OWNER_ONLY = "only the owner's rooms can use workers"       # start, report, list, stop
-JOBS_OWNER_ONLY = "not scheduled: only this room's notes\nscripts and workers run as the owner"   # a room not the owner's
+# A room whose privacy is not owner hears what it can do instead and no person as the switch (seen live: a room
+# turned the words for the owner's rooms into the owner's name, as the person who has to turn it on)
+WORKERS_OWNER_ONLY = "workers do not run from this room; do the work here, with this room's own tools"   # start, report, list, stop
+JOBS_OWNER_ONLY = "not scheduled: only this room's notes\nscripts and workers do not run from this room"   # they run as the owner
 NOTES_FULL = "not scheduled: this room keeps {most} notes at most\nthe next once one is removed or has fired"   # [jobs] caps
 NOTES_WAIT = "not scheduled: one note per {every} min here\nthe next in {wait}"
 NOTE_LONG = "not scheduled: a note is at most {most:,} characters\nthis one is {n:,}"
-RULES_OWNER_ONLY = "only the owner's rooms can file rules"           # remember with a job: a rule reaches every room
+RULES_OWNER_ONLY = "not filed as a rule, since a rule reaches every room; remember it without a job and it is this room's own note"
 RULE_FILED = "from now on every room does {job} this way"            # the line a filed rule's reply says
 WORKER_OWN_ROOM = "a room starts workers for itself only, not for {room}"
 GONE, STRAY, NONE_RUNNING = "gone, no result", "unknown worker {id} running", "workers: none running"
@@ -357,7 +359,7 @@ def secs(seconds: float) -> str:
 NEXT_REPLY, THIS_ROOM = "next reply: {model}, {effort} thinking{on}", "this room: {model}, {effort} thinking{on}"
 ON, PINNED, NOT_AN_ACCOUNT = ", on account {account}", "{name}: on account {account}", "not an account: {account}\nthe accounts: {accounts}"
 CARRIED, RECAPPED = "the same session goes on", "a new session starts, with a recap\nmemory stays"   # the next message, after a switch
-OWNER_ONLY = "only the owner's rooms can change this"
+OWNER_ONLY = "not changed: this room keeps the model, thinking level and account it has, and answers on them"   # see WORKERS_OWNER_ONLY
 NOT_LISTED, NOT_A_LEVEL = "not on the list: {model}\nthe list: {models}", "not a thinking level: {effort}\nthe levels: {levels}"
 BACK_ON = "{model} not found; back on {usual}"       # a switched-to model no account could run
 USUAL = "the default"                                # a room whose rooms.toml names no model
