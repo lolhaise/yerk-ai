@@ -404,3 +404,66 @@ def test_a_search_carries_the_matched_line_only_when_the_request_asks(tmp_path):
     assert state == "ok" and rows[0]["near"] == line
     server.stop()
     idx.close()
+
+
+class CappedEmbedder(StubEmbedder):
+    """A provider with a cap on a request, counted the worst way the bound allows: a token for every UTF-8 byte (the
+    real tokenizer, byte-level BPE, makes fewer). Past the cap it answers the 400 the real one gave on 2026-10-21."""
+
+    def __init__(self, key_file: Path, cap: int):
+        super().__init__(key_file)
+        self.cap, self.sizes, self.rejected = cap, list[int](), list[frozenset[str]]()
+
+    def embed(self, texts: list[str], timeout: float | None = None, retries: int | None = None) -> np.ndarray:
+        self.sizes.append(size := sum(len(t.encode()) for t in texts))
+        if size > self.cap:
+            self.rejected.append(frozenset(texts))
+            raise embeddings.ProviderError('HTTP 400 from the provider: {\n  "error": {\n    "message": "Invalid \'input\': '
+                                           f'maximum request size is {self.cap} tokens per request.",\n    "type": '
+                                           '"invalid_request_error"\n  }\n}')
+        return super().embed(texts, timeout, retries)
+
+
+def drain(back: embeddings.Backfill) -> None:
+    for _ in range(500):
+        back.step()
+        if not back.pending and not back.dirty.is_set():
+            return
+
+
+# 13. a request is cut by size, so a set of long texts drains; a 400 that names the size halves the next one at once
+def test_a_batch_past_the_providers_cap_splits_by_size_and_a_stuck_set_drains(tmp_path):
+    s = tree(tmp_path)
+    for n in range(40):                       # 40 chunks of about 850 bytes, under the count batch: one request of 34 kB
+        (s.root / "facts" / f"long{n}.md").write_text(f"# Long {n}\n\n" + " ".join(f"teapot{n}x{i}" for i in range(80)) + "\n")
+    stub = CappedEmbedder(s.embeddings_key, cap=8000)
+    store = embeddings.Vectors(stub.dim)
+    back = embeddings.Backfill(s.index_db, memindex.live, store, stub, gap=0.0, units="both")
+    back.cap = 8000                           # the bound at the provider's cap: every request passes, the set drains
+    idx = memindex.Index(s.index_db, s.scope, on_insert=back.note)
+    idx.sync()
+    drain(back)
+    conn = sqlite3.connect(f"file:{memindex.live(s.index_db)}?mode=ro", uri=True)
+    assert stub.rejected == [] and max(stub.sizes) <= 8000 and len(stub.sizes) >= 5 and back.failed == 0
+    assert back.missing(conn, 10**6) == [] and store.n == vectors_in(s) > 80
+    # the premise wrong (a cap of 1 MB against a provider that takes 8 kB): each 400 halves the next request at once,
+    # with no pause and no scan, never the same batch twice, and the set drains
+    stub2 = CappedEmbedder(s.embeddings_key, cap=8000)
+    stub2.model = "stub-2"
+    back2 = embeddings.Backfill(s.index_db, memindex.live, embeddings.Vectors(stub2.dim), stub2, gap=0.0, units="both")
+    back2.cap = 1_000_000
+    drain(back2)
+    assert stub2.rejected and back2.failed == len(stub2.rejected) and back2.paused_until == 0.0 and back2.streak == 0
+    assert all(a != b for a, b in zip(stub2.calls, stub2.calls[1:])) and len(set(stub2.rejected)) == len(stub2.rejected)
+    assert back2.cap <= 8000 and back2.missing(conn, 10**6) == [] and "request size" in back2.last_error
+    assert sum(len(c) for c in stub2.calls) == store.n                       # every text once, nothing twice
+    conn.close()
+    idx.close()
+
+
+# 14. the unit's sizing rule and the doctor's are one rule
+def test_the_index_units_memory_rule_is_the_one_the_doctor_checks():
+    text = (Path(__file__).resolve().parents[1] / "units" / "yerk-index.service").read_text()
+    assert "MemoryHigh = 160M + 8.3M per block of 16,384 vectors" in " ".join(x.lstrip("# ") for x in text.splitlines())
+    assert embeddings.HIGH_BASE == 160 << 20 and embeddings.BLOCK == 16384
+    assert round(embeddings.BLOCK * (2 * 256 + 20) / 2**20, 1) == 8.3

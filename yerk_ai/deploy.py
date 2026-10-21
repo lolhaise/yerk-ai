@@ -9,7 +9,8 @@ new commit and every room served before. A failed proof rolls back the same way.
 ledger row with the commits and the turns cut (never any); the card goes to the machine room, else to the
 terminal. `--unit` moves a systemd-run daemon onto units/yerkd.service under its own name, and a failed proof
 puts the transient unit back. The unit is [deploy] unit, else the user service whose main process is the running
-else nothing is touched. Each row is written before its restart. A fault, Ctrl-C, SIGTERM or SIGHUP from
+yerkd's pid (the card names it), else nothing is touched; yerk-index's unit, found from its pid, restarts after
+it and the proof wants it on the commit too. Each row is written before its restart. A fault, Ctrl-C, SIGTERM or
 SIGHUP from the quiet wait to the proof is never a traceback: once the daemon was stopped or moved it is a
 proof and the rollback runs; before that, a refusal with the daemon as it was."""
 from __future__ import annotations
@@ -29,7 +30,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterator
 
 from . import jobs, status, words
-from .config import REPO, load_toml, rooms
+from .config import REPO, head, load_toml, rooms
 from .ledger import Ledger
 from .workers import systemctl, unit_line
 
@@ -40,14 +41,6 @@ Ask = Callable[[Path], "dict[str, Any] | None"]
 
 def git(tree: Path, *args: str) -> str:
     return subprocess.run(["git", "-C", str(tree), *args], capture_output=True, text=True, check=True).stdout.strip()
-
-
-def head(tree: Path) -> str:
-    """The commit checked out in `tree`; "" outside a git checkout."""
-    try:
-        return git(tree, "rev-parse", "HEAD")
-    except (OSError, subprocess.SubprocessError):
-        return ""
 
 
 def ahead(tree: Path, old: str, new: str) -> bool:
@@ -94,20 +87,21 @@ def unit_text(template: str, argv: list[str], cwd: str, env: list[str]) -> str:
                   + "ExecStart=" + unit_line(*argv), text)
 
 
-def unit_of(state: Path, proc: Path = Path("/proc"), main_pid: Callable[[str], str] | None = None) -> str:
-    """The unit the running yerkd is, from its pid (yerkd.json): the `.service` leaf of its cgroup
-    (/proc/<pid>/cgroup, the unified or name=systemd line) under this user's manager (user@<uid>.service,
-    the one `systemctl --user` talks to), without the suffix, and only when that unit's MainPID is the
-    pid: a yerkd started inside another program's service (a tmux, a gateway) is in its cgroup, and a
-    restart of that unit restarts the other program. "" when no yerkd runs on this state folder, the
+def unit_of(state: Path, proc: Path = Path("/proc"), main_pid: Callable[[str], str] | None = None, of: str = "yerkd.json",
+            progs: tuple[bytes, ...] = (b"yerk_ai.daemon", b"yerkd")) -> str:
+    """The unit the running yerkd is, from its pid (yerkd.json; yerk-index's with `of` its index.json and `progs` its
+    module): the `.service` leaf of its cgroup (/proc/<pid>/cgroup, the unified or name=systemd line) under this
+    user's manager (user@<uid>.service, the one `systemctl --user` talks to), without the suffix, and only when that
+    unit's MainPID is the pid: a yerkd started inside another program's service (a tmux, a gateway) is in its
+    cgroup, and a restart of that unit restarts the other program. "" when no yerkd runs on this state folder, the
     pid is another program's by now, or yerkd is not the main process of a user service."""
     try:
-        pid = int(json.loads((state / "yerkd.json").read_text())["pid"])
+        pid = int(json.loads((state / of).read_text())["pid"])
         argv = (proc / str(pid) / "cmdline").read_bytes().split(b"\0")
         groups = (proc / str(pid) / "cgroup").read_text().splitlines()
     except (OSError, ValueError, KeyError, TypeError):
         return ""
-    if not any(a == b"yerk_ai.daemon" or a == b"yerkd" or a.endswith(b"/yerkd") for a in argv):
+    if not any(a.rpartition(b"/")[2] in progs for a in argv):
         return ""                                       # a pid handed to another program since
     for g in groups:
         ctrl, _, path = g.partition(":")[2].partition(":")
@@ -259,16 +253,27 @@ def quiet(state: Path, ask: Ask, window: float, now: float, blind_ok: bool = Fal
     return True, ""
 
 
+def indexed(state: Path) -> str:
+    """The commit the running yerk-index started on (its index.json says it before the vectors load); "" when none runs."""
+    try:
+        d = json.loads((state / "memory" / "index.json").read_text())
+        os.kill(int(d["pid"]), 0)
+        return str(d.get("commit") or "")
+    except (OSError, ValueError, KeyError, TypeError):
+        return ""
+
+
 def prove(state: Path, sd: Systemd, ask: Ask, served: set[str], want: str, wait: float,
-          sleep: Callable[[float], None], unit_file: str = "") -> tuple[bool, list[str]]:
+          sleep: Callable[[float], None], unit_file: str = "", index: bool = False) -> tuple[bool, list[str]]:
     """Checked until all hold or `wait` seconds pass; a line per check, its colour first. After the move
-    onto `unit_file`, the unit runs from that file as Type=notify (a transient one left loaded fails)."""
+    onto `unit_file`, the unit runs from that file as Type=notify (a transient one left loaded fails). With
+    `index`, the running line wants yerk-index on the commit too."""
     end = time.monotonic() + wait
     while True:
         s = ask(state) if status.alive(state) else None
         got = {r["room"] for r in (s or {}).get("rooms", [])}
         checks = [(sd.active(), words.PROOF_UP), (bool(s and s.get("connected")), words.PROOF_CONNECTED),
-                  (s is not None, words.PROOF_STATUS), (bool(s and s.get("commit") == want),
+                  (s is not None, words.PROOF_STATUS), (bool(s and s.get("commit") == want) and (not index or indexed(state) == want),
                                                         words.PROOF_COMMIT.format(commit=want[:7])),
                   (served <= got, words.PROOF_ROOMS.format(n=len(served & got), of=len(served)))]
         if unit_file:
@@ -296,6 +301,7 @@ def run(private: Path, state: Path, ref: str = "", tests: bool = True, unit_file
     W, ledger = words, Ledger(state / "ledger.sqlite")
     named = str(conf.get("unit") or "")
     found = "" if named or sd else unit_of(state, proc, lambda u: systemd(u).show("MainPID"))
+    ix = unit_of(state, proc, lambda u: systemd(u).show("MainPID"), "memory/index.json", (b"yerk_ai.memindex",))
     was = ask(state) if status.alive(state) else None
     if not (sd or named or found):                    # neither: refused before anything is touched
         reason = W.line(f"{W.PLAIN} {W.NO_UNIT}")
@@ -355,8 +361,10 @@ def run(private: Path, state: Path, ref: str = "", tests: bool = True, unit_file
                     lost = ledgered(kind, before=came_from, after=want, outcome="begun")
                 begun = True
                 restart()
+                if ix:                                  # yerk-index next, on the same code (it ran an older mentions.py for 4 h, 2026-10-20)
+                    systemd(ix).restart()
                 n, counted = cut(ledger, opened, time.time()), True
-                ok, lines = prove(state, sd, ask, served, want, wait, sleep, moved.get("file", "") if kind == "deploy" else "")
+                ok, lines = prove(state, sd, ask, served, want, wait, sleep, moved.get("file", "") if kind == "deploy" else "", bool(ix))
         except BaseException as e:                      # KeyboardInterrupt too: the way back runs, then exit 130
             if not isinstance(e, Exception):
                 stopped.append(e)

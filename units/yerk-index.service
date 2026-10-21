@@ -4,13 +4,15 @@
 # Low CPU and idle IO priority so index work never competes with the daemon serving rooms.
 #
 # Memory is mostly the vectors meaning search keeps here: one float16 matrix grown in blocks of 16,384
-# vectors, 8.3M a block (346,389 vectors, 22 blocks, 183M on 2026-10-19). The interpreter, numpy and
-# SQLite add about 50M, and the searches' scratch about 90M more, which glibc kept one arena per request
-# thread; MALLOC_ARENA_MAX=2 keeps that to about 35M (a copy of the tree after 300 searches, 2026-10-19).
-# That is about 270M; MemoryHigh=300M sat on it, so the unit lived at its cap, reclaiming and swapping
-# (a 19 to 239M swap peak every run). MemoryHigh=450M is the 270M, 25M of file pages and 150M for 18
-# more blocks (about 295,000 vectors): past it the kernel reclaims and slows the unit, and kills nothing.
-# Raise it by 9M per 16,384 vectors past 640,000.
+# vectors, 8.3M a block at 256 dimensions (16,384 x (2 x 256 + 20 hash) bytes = 8,716,288). On 2026-10-21,
+# after five new roots, it held 861,965 vectors in 53 blocks, 441M; beside them about 97M stayed resident
+# (the interpreter, numpy, SQLite and the searches' scratch, which MALLOC_ARENA_MAX=2 keeps to two glibc
+# arenas) and the kernel held 13M for the unit. A 450M cap under that kept the unit reclaiming and
+# swapping (600M in swap; meaning search took 3.5 to 8.2 s, past the recall's 5 s wait, so most recalls
+# were keywords only). The rule: MemoryHigh = 160M + 8.3M per block of 16,384 vectors, the 160M being
+# the 97M, the 13M, 25M of file pages and 25M for searches at once (embeddings.HIGH_BASE); `yerk doctor`
+# says when the vector count passes it. 450M covers 34 blocks (557,056 vectors) for a new install; past
+# MemoryHigh the kernel reclaims and slows the unit, and kills nothing.
 [Unit]
 Description=Yerk AI memory index (FTS5 over the private memory tree)
 
