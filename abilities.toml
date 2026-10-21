@@ -367,18 +367,18 @@ asked_as = ["search api", "paid search", "search provider"]
 
 [abilities.web-research]
 state = "described"
-what = "Researches the web as one job, for a list, a dig across many pages, or a named thing to verify and enrich, with sources: a research agent on the provider's side runs many searches, reads and checks the pages, and returns one cited answer, as JSON too when the room gives a shape; a single fact or page stays with web search or a page read."
+what = "Researches the web as one job, for a list, a dig across many pages, or a named thing to verify and enrich, with sources: a research agent on the provider's side runs many searches, reads and checks the pages, and returns one cited answer, as JSON too when the room gives a shape; a single fact or page is web search or web fetch."
 how = [
   "A research tool beside web search: one call starts a run and waits about three minutes; a longer run hands back its id and a second tool collects the answer, so no call outlives the tool call limit.",
   "Fixed efforts only: four flat prices a room can pick, the dearest fixed step behind the owner's yes in words, and the metered modes refused.",
   "One daily cap: every room and the command line book each run's price against the same day's total before the request goes out; a run past it is refused in one line that points to web search.",
-  "One ledger: a line per finished run (its id, effort, status, cost and a hash of the question, never the question), written once and counted by the money alarm.",
+  "One ledger: a line per finished run (its id, effort, status, cost and a hash of the question, never the question), written once however often the run is fetched, so a spend total counts each run once.",
 ]
 tier = "paid"
 provider = "a research agent API, such as Exa's Agent"
 needs = "the research agent API's key in the private folder (the web search key, when one provider sells both)"
-price = "a flat price per run, paid to the provider: 1.2 US cents at minimal, 2.5 at low, 10 at medium (the default), 50 at high and one US dollar at xhigh; a run takes up to 15 minutes; one daily cap of two US dollars across every room and the command line"
-free_path = "a worker's own web search and page reads, the ones Claude Code ships, one call at a time"
+price = "a flat price per run, paid to the provider (Exa's pricing page, October 2026): 1.2 US cents at minimal, 2.5 at low, 10 at medium (the default), 50 at high and one US dollar at xhigh on the owner's yes; a run takes up to 15 minutes; one daily cap of two US dollars across every room and the command line"
+free_path = "a worker's own web search and fetch, the ones Claude Code ships, one call at a time"
 why_not = "Web reach lives outside the harness as a plug-in each room attaches, so the harness gains no code for it; a public install runs on Claude Code's own search and fetch with no keys."
 asked_as = ["deep research", "research agent", "web research", "exa agent", "verify and enrich"]
 
