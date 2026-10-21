@@ -45,7 +45,7 @@ from . import words
 from .accounts import Account, Cooldowns, pick
 from .card import Card
 from .config import flag, override, pinned, write_private
-from .engine import RoomProcess, RoomSpec, Turn
+from .engine import RoomProcess, RoomSpec, SessionTable, Turn
 from .evidence import Evidence
 from .ledger import Ledger
 from .lifted.classify import Failure, FailureTable
@@ -117,7 +117,7 @@ class Room:
     def __init__(self, name: str, conf: dict[str, Any], spec: Callable[[], RoomSpec], accounts: list[Account],
                  channel: Channel, state: Any, ledger: Ledger, failures: FailureTable, cooldowns: Cooldowns,
                  idle_seconds: float = 1800.0, turn_timeout: float = 900.0, log_dir: Any = None,
-                 meters: Meters | None = None):
+                 meters: Meters | None = None, compact: tuple[int, float, float] = (0, 0.0, 0.0)):
         self.name, self.conf, self.spec, self.accounts, self.channel = name, conf, spec, accounts, channel
         self.state, self.ledger, self.failures, self.cooldowns = state, ledger, failures, cooldowns
         self.idle_seconds, self.turn_timeout, self.log_dir, self.meters = idle_seconds, turn_timeout, log_dir, meters
@@ -147,6 +147,9 @@ class Room:
         self.stopped = False                      # /stop: the running turn ends now and is never run again
         self.halt = threading.Event()             # ... and a rerun's wait ends at once
         self.closing = False                      # the daemon is stopping (shutdown): nothing more starts or is written
+        self.window, self.compact_at, self.compact_after = compact   # the idle compaction's line (idle_compact); a 0 is off
+        self.context = ledger.last_context(str((SessionTable(state / "sessions.json").get(name) or {}).get("session_id") or ""))
+        self.grown = True                         # the session grew since an idle compaction was last tried
 
     def _ledger_call(self, call: dict[str, Any]) -> None:
         self.ledger.evidence(t=round(time.time(), 3), room=self.name, session_id=self.rp.session_id if self.rp else "",
@@ -173,18 +176,53 @@ class Room:
             if self.busy:
                 return "busy"
             self.busy = True
+        t = self._compact_held("asked")
+        return "ok" if t.outcome in ("ok", "empty", "compacted") else t.outcome
+
+    def idle_compact(self, now: float | None = None) -> bool:
+        """`yerk room compact`, by the daemon (its reaper's minute): a room with no turn and nothing queued for `compact_after`
+        seconds, whose session holds `compact_at` of its window or more, compacts in the background, so the next message finds
+        it small instead of waiting minutes in its own turn for Claude Code's compaction. Once per growth: a try, kept or
+        failed, waits for a turn to grow the session again. Never when its next run starts a fresh session. True: started."""
+        now = time.time() if now is None else now
+        fresh = self.fresh_next or (self.state / "rooms" / self.name / "fresh-next").is_file()
+        with self.lock:
+            if (self.busy or self.queue or self.closing or fresh or not self.grown or not self.window or not self.compact_at
+                    or now - self.last_active < self.compact_after or self.context < self.compact_at * self.window):
+                return False
+            self.busy, self.grown = True, False
+        log.info("room %s: idle %.0f min at %d of its %d tokens, compacting", self.name, (now - self.last_active) / 60, self.context, self.window)
+        threading.Thread(target=self._idle_compact, name=f"compact-{self.name}", daemon=True).start()
+        return True
+
+    def _idle_compact(self) -> None:
+        try:
+            if (t := self._compact_held("idle")).compacted is None:     # said once: no retry until a turn grows the session
+                log.warning("room %s: the idle compaction did not compact (%s); not tried again before the next turn", self.name, t.outcome)
+        except Exception as e:
+            log.warning("room %s: the idle compaction failed (%s); not tried again before the next turn", self.name, e)
+
+    def _compact_held(self, why: str) -> Turn:
+        """/compact in the room's session (resumed when its process is gone) while the caller holds the room busy. A message
+        that came in meanwhile was queued: it runs right after, and its wait is logged."""
+        started = time.time()
         try:
             with self.lock:
                 alive = self.rp is not None and self.rp.alive()
             if not alive:
                 self._start(self._account())
-            assert self.rp
-            t = self.rp.ask("/compact", self.turn_timeout)
-            log.info("room %s: compact (asked) ended %s", self.name, t.outcome)
-            return "ok" if t.outcome in ("ok", "empty") else t.outcome     # /compact answers with no text
+            t = self._slash_compact()
+            before, self.context = self.context, t.context or self.context
+            log.info("room %s: compact (%s) ended %s in %.0f s, %d to %d tokens", self.name, why, t.outcome, time.time() - started, before, self.context)
+            return t
         finally:
             with self.lock:
-                self.busy, self.last_active = False, time.time()
+                waiting, self.last_active = list(self.queue), time.time()
+                self.busy = run = bool(waiting) and not self.closing
+            if run:
+                log.info("room %s: %d message(s) waited up to %.0f s for the compaction (%s), running now", self.name, len(waiting),
+                         self.last_active - min(m.received for m in waiting), why)
+                threading.Thread(target=self._run, name=f"room-{self.name}", daemon=True).start()
 
     # called by the channel adapter
     def idle_reason(self, seconds: float, now: float | None = None) -> str:
@@ -581,6 +619,8 @@ class Room:
             if self.stopped:                      # /stop came between two runs: this one ends as it starts
                 self.rp.end_now()
             turn = self.rp.read_turn(started, self.turn_timeout, record=False, on_event=self._on_event)
+            if turn.context:                      # the session's size now: the idle compaction's to read
+                self.context, self.grown = turn.context, True
             if self.stopped and turn.outcome != "ok":
                 turn.outcome, turn.failure = "stopped", None
             with self.lock:
@@ -634,7 +674,13 @@ class Room:
             alive = self.rp is not None and self.rp.alive()
         if not alive:
             self._start(account)
-        assert self.rp
         self._note(words.COMPACTING)
-        t = self.rp.ask("/compact", self.turn_timeout)
-        log.info("room %s: compact ended %s", self.name, t.outcome)
+        log.info("room %s: compact ended %s", self.name, self._slash_compact().outcome)
+
+    def _slash_compact(self) -> Turn:
+        """/compact, both paths' one call: no text comes back, so a row that compacted says so, never a failed turn."""
+        assert self.rp
+        t = self.rp.read_turn(self.rp.send("/compact"), self.turn_timeout, record=False)
+        t.outcome = "compacted" if t.compacted is not None and t.outcome in ("ok", "empty") else t.outcome
+        self.rp.record(t)                         # read by yerk status --json's failed turns
+        return t

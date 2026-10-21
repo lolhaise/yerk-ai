@@ -308,7 +308,7 @@ def test_an_overflow_compacts_then_runs_the_turn_again(env):
     send(room, ledger, "1", "TOO_LONG_ONCE hello")
     wait_idle(room)
     rows = rows_of(ledger)
-    assert [(r["outcome"], r["failure"]) for r in rows] == [("error", "overflow"), ("ok", None), ("ok", None)]
+    assert [(r["outcome"], r["failure"]) for r in rows] == [("error", "overflow"), ("compacted", None), ("ok", None)]
     assert len({r["session_id"] for r in rows}) == 1 and f"{words.WORKING} {words.COMPACTING}" in chan.cards
     assert chan.replies == [("echo: TOO_LONG_ONCE hello", ["1"])]
     room.rp.close()

@@ -38,6 +38,7 @@ from .lifted.classify import Failure, FailureTable
 log = logging.getLogger("yerk.engine")
 STREAM_FLAGS = ["-p", "--input-format", "stream-json", "--output-format", "stream-json",
                 "--verbose", "--include-partial-messages", "--replay-user-messages"]
+CONTEXT = ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")   # a call's usage: the session's size
 
 
 def claude_bin() -> str:
@@ -222,6 +223,8 @@ class Turn:
     errors: list[str] = field(default_factory=list)
     result: dict[str, Any] | None = None
     failure: Failure | None = None
+    context: int = 0                                          # the session's tokens at its last call (0: none said)
+    compacted: dict[str, Any] | None = None                   # a compaction's compact_metadata (pre_tokens, post_tokens)
 
     def observe(self, t: float, ev: dict[str, Any]) -> None:
         kind = ev.get("type")
@@ -236,6 +239,12 @@ class Turn:
             for c in (ev.get("message") or {}).get("content") or []:
                 if c.get("type") == "tool_use":
                     self.tools.append(str(c.get("name")))
+            u = (ev.get("message") or {}).get("usage") or {}       # a subagent's calls (parent_tool_use_id) are not the room's
+            if not ev.get("parent_tool_use_id") and (n := sum(int(u.get(k) or 0) for k in CONTEXT)):
+                self.context = n
+        elif kind == "system" and ev.get("subtype") == "compact_boundary":
+            self.compacted = dict(ev.get("compact_metadata") or {})
+            self.context = int(self.compacted.get("post_tokens") or 0) or self.context
         elif kind == "system" and ev.get("subtype") == "model_refusal_fallback":
             self.fallback_model = ev.get("fallback_model") or "another model"
         elif kind == "system" and ev.get("subtype") == "notification" and str(ev.get("key") or "").endswith("-hook-error"):
@@ -442,7 +451,7 @@ class RoomProcess:
             ended=turn.ended, outcome=turn.outcome, failure=f.cls if f else None,
             action=f.action if f else None, output_chars=len(turn.text), models=",".join(turn.models),
             fallback_model=turn.fallback_model, accepted=len(turn.accepted), model=self.spec.model,
-            inbound=",".join(inbound) if inbound else None, source=f.source if f else None, **extra)
+            inbound=",".join(inbound) if inbound else None, source=f.source if f else None, context=turn.context or None, **extra)
 
     def stderr_tail(self, n: int = 2000) -> str:
         try:

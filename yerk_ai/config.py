@@ -96,9 +96,9 @@ def state_dir(arg: str | None = None) -> Path:
 
 
 # Every key a loader reads from a room in rooms.toml; `yerk doctor` names any other as a typo (test_doctor fails on a read past it).
-ROOM_KEYS = frozenset({"accounts", "allow", "also", "channel", "class", "compact_window", "daily_notes", "effort", "id", "layer", "mcp", "mention_recall",
-                       "model", "open_loops", "people", "persona", "pinned_memory", "privacy", "read", "recall_days", "role", "rulebook",
-                       "sandbox", "sealed", "thinking_panel", "timezone", "tools", "topic_recall", "voice", "watch"})
+ROOM_KEYS = frozenset({"accounts", "allow", "also", "channel", "class", "compact_window", "daily_notes", "effort", "id", "idle_compact_after",
+                       "idle_compact_at", "layer", "mcp", "mention_recall", "model", "open_loops", "people", "persona", "pinned_memory", "privacy",
+                       "read", "recall_days", "role", "rulebook", "sandbox", "sealed", "thinking_panel", "timezone", "tools", "topic_recall", "voice", "watch"})
 
 
 def rooms(private: Path, text: str | None = None) -> dict[str, dict[str, Any]]:
