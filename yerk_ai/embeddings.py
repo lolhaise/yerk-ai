@@ -186,9 +186,7 @@ class Vectors:
         """Every stored vector of the chosen units, a block at a time (never the whole table at once)."""
         cur = conn.execute(f"SELECT v.sha, v.vec FROM vectors v WHERE v.model = ? AND v.dim = ? AND {unit_where(units)}", (model, self.dim))
         fresh = Vectors(self.dim, self.width)
-        while True:
-            if not (rows := cur.fetchmany(LOAD_ROWS)):
-                break
+        while rows := cur.fetchmany(LOAD_ROWS):
             fresh._put([s for s, _ in rows], np.stack([np.frombuffer(v, dtype=np.float16) for _, v in rows]))
         with self.lock:
             self.blocks, self.shas, self.n = fresh.blocks, fresh.shas, fresh.n

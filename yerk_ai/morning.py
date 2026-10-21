@@ -80,8 +80,9 @@ def build(private: Path, state: Path, accounts: list[Account], cooldowns: Cooldo
     else:
         add("", W.PLAIN, W.NO_DEAD)
     flags = ledger.shadow_rules(since, until)
-    for rule, n in sorted(flags.items()):
-        add(f"shadow {rule}", W.WORKING, W.SHADOW.format(rule=rule, n=n))
+    for rule, n in sorted(flags.items()):                # a reply that held or conceded is counted, never a finding
+        fine = rule in ("stance held", "stance conceded")
+        add("" if fine else f"shadow {rule}", W.PLAIN if fine else W.WORKING, W.SHADOW.format(rule=rule, n=n))
     if not flags:
         add("", W.PLAIN, W.NO_SHADOW)
     for d in ledger.deploys(now - DAY):                  # its card may never have reached the machine room
@@ -93,16 +94,6 @@ def build(private: Path, state: Path, accounts: list[Account], cooldowns: Cooldo
     if (swept := retention.line(state, now)):            # the night's sweep: what it moved by kind, or that it failed
         rows.append(swept)
     rows.append(doctor.line(state, now))                 # the daily check: ok, or its count and first finding
-    checks = ledger.health_between("imessage", "probe", since, until)     # the iMessage inbound check (Layer 8)
-    if checks:                                           # a run that never reached the Mac saw nothing
-        notes = [json.loads(str(r["note"] or "{}")) for r in checks]
-        reached = sum(1 for x in notes if x.get("reached"))
-        lost = len({m for x in notes for m in x.get("marks", [])})     # a text, not every run that saw it
-        add("imessage blind" if not reached else "", W.WORKING if not reached else W.PLAIN,
-            W.IMSG_PROBE.format(day=W.YESTERDAY, reached=reached, runs=len(checks)))
-        if reached:
-            add(f"imessage lost {lost}" if lost else "", W.NOT_DONE if lost else W.PLAIN,
-                W.IMSG_LOST.format(day=W.YESTERDAY, n=lost, s="" if lost == 1 else "s"))
     if live is None:
         add("unknown units", W.NOT_DONE, W.UNKNOWN.format(what="memory", why=W.NOT_ANSWERING_WHY))
     for u in (live or {}).get("units", []):

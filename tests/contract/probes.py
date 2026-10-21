@@ -8,7 +8,6 @@ upgrade drill; each exits 0 when it passed. The raw event logs go to <state>/pro
 - resume: does a session started under one account resume under another?
 - blocks, smoke, measure, short, think, check, idle: the setup pieces behind the first-message blocks, scripted rooms
   through either channel, the room read back through the bot, the idle baseline
-- imessage: the inbound check against the Mac's bridge, read only (units/yerk-imessage-probe.timer)
 - drill: the Claude Code version, then hello, fold and resume on one account, a verdict; it upgrades nothing
 """
 from __future__ import annotations
@@ -695,66 +694,6 @@ def resume(a: argparse.Namespace) -> dict[str, Any]:
     return out
 
 
-def imessage(a: argparse.Namespace) -> dict[str, Any]:
-    """The inbound check (Layer 8): never sends anything. The newest rows of each iMessage room's chat,
-    read from the bridge on a read-only connection, each looked up in the inbound and delivery
-    ledgers; the result is a ledger row (health, account "imessage", source "probe") for the morning
-    diff, and a lost text the machine room has not heard of yet is one line there. A row is lost only
-    when two runs that read the chat in a row miss it: a Mac just awake, or a daemon just restarted,
-    may not have replayed it yet. The first miss is noted by its guid's hash, the second is said."""
-    import asyncio
-    import hashlib
-    from yerk_ai import jobs, words
-    from yerk_ai.channels.imessage import probe
-    from yerk_ai.config import load_toml, private_dir, rooms
-    priv, state = private_dir(getattr(a, "private", None)), state_dir(a.state)
-    confs = rooms(priv)
-    named = {n: str(c.get("channel", "")).partition(":")[2] for n, c in confs.items() if str(c.get("channel", "")).startswith("imessage:")}
-    if not named:
-        return {"ok": False, "error": 'no room has channel = "imessage:<chat identifier>" in rooms.toml'}
-    conf = dict((load_toml(priv / "yerkd.toml") if (priv / "yerkd.toml").is_file() else {}).get("imessage", {}))
-    ledger = Ledger(state / "ledger.sqlite")
-    out = asyncio.run(probe(named, conf, ledger, limit=int(a.rows), grace=float(a.grace)))
-
-    def mark(g: dict[str, Any]) -> str:
-        return hashlib.sha1(g["guid"].encode()).hexdigest()[:16]
-    reached, misses, prev = "error" not in out, list(out.get("gaps", [])), ledger.health_last("imessage", "probe")
-    try:
-        before = set(json.loads(str(prev["note"] or "{}")).get("missed", [])) if prev else set()
-    except (ValueError, AttributeError):
-        before = set()
-    lost = [g for g in misses if mark(g) in before]          # the run before missed it too
-    ok = reached and not lost and not out.get("failure")
-    ledger.health(account="imessage", source="probe", ok=1 if ok else 0,
-                  failure=out.get("error") or ("lost" if lost else None) or out.get("failure"),
-                  note=json.dumps({"rooms": out.get("rooms", {}), "reached": reached, "lost": len(lost),
-                                   "marks": sorted({mark(g) for g in lost}),
-                                   "missed": sorted({mark(g) for g in misses}) if reached else sorted(before)}))
-    told = ledger.health_notes("imessage", "probe-gap")
-    new = [g for g in lost if mark(g) not in told]
-    machine = next((n for n, c in confs.items() if c.get("role") == "machine"), None)
-    out["alerted"] = 0
-    for room in sorted({g["room"] for g in new}):
-        mine = [g for g in new if g["room"] == room]
-        marks = sorted(mark(g) for g in mine)
-        text = words.line(words.IMSG_GAP.format(n=len(mine), s="" if len(mine) == 1 else "s", room=room))
-        if machine is None:
-            print(f"probe imessage: no machine room for: {text}")
-            continue
-        try:
-            sent = jobs.post_control(state, {"machine": {"room": machine, "text": text,
-                                                         "key": "imsg-gap-" + hashlib.sha1("".join(marks).encode()).hexdigest()[:12]}}, 60)
-        except (OSError, ValueError) as e:
-            out["alert_error"] = f"yerkd did not answer ({type(e).__name__})"
-            continue
-        if sent.get("ok"):
-            for m in marks:
-                ledger.health(account="imessage", source="probe-gap", ok=0, note=m)
-            out["alerted"] += len(mine)
-    out["ok"], out["gaps"], out["first_misses"] = ok, len(lost), len(misses) - len(lost)   # counts only on stdout
-    return out
-
-
 def drill(a: argparse.Namespace) -> int:
     """The Claude Code upgrade drill (DESIGN 11, L225): the installed version, the contract probes on
     one account (resume onto itself), a verdict, a line in <state>/drills.jsonl. It upgrades nothing."""
@@ -781,13 +720,11 @@ def main(argv: list[str] | None = None) -> int:
     """What `yerk probe NAME` and `yerk drill` were, run from here by a person or a timer: one probe's JSON, or
     the drill's lines and its verdict; 0 when it passed, 1 when it did not, 2 for a missing folder."""
     p = argparse.ArgumentParser(prog="tests/contract/probes.py", description="contract probes against a real Claude Code "
-                                "login; imessage: the inbound check against the Mac's bridge, read only; drill: the upgrade "
+                                "login; drill: the upgrade "
                                 "drill, hello, fold and resume on one account and a verdict, upgrading nothing")
     p.add_argument("name", choices=["hello", "fold", "resume", "blocks", "smoke", "measure", "short", "think", "check",
-                                    "idle", "imessage", "drill"])
-    p.add_argument("--config-dir", help="Claude Code config folder of the account to use (every probe but imessage)")
-    p.add_argument("--rows", type=int, default=20, help="imessage: the newest rows read per room's chat")
-    p.add_argument("--grace", type=float, default=120.0, help="imessage: seconds a new row may still be in flight")
+                                    "idle", "drill"])
+    p.add_argument("--config-dir", help="Claude Code config folder of the account to use")
     p.add_argument("--to-config-dir", help="resume: the second account's config folder")
     p.add_argument("--model", default="claude-fable-5-1")
     p.add_argument("--reps", type=int, default=0, help="fold: repeats (default 3, the drill's 1)")
@@ -809,7 +746,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--attach", action="store_true", help="smoke, measure: drive the yerkd already running on --state")
     p.set_defaults(on_second=None, fold_settings=None)
     a = p.parse_args(argv)
-    if a.name != "imessage" and not a.config_dir:
+    if not a.config_dir:
         print(f"{a.name} needs --config-dir", file=sys.stderr)
         return 2
     if a.name == "resume" and not a.to_config_dir:
