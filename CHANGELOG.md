@@ -8,6 +8,18 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-21
 
+### mechanics-lines (#75)
+
+- Every room's mechanics (yerk_ai/mechanics.md) take the three lines owed since #69, in the prompting guide's shape:
+  a room files a fact, decision or correction with `remember` before it writes the answer, since text above its last
+  tool call never reaches the room, and the filing is one clause of the answer at most (#73's line); a promise to act
+  later is a `schedule` job the same turn, a note in any room, a script or worker in the owner's rooms (#71's line);
+  and a person's own message in the room is an ask to act on, while recalled, imported and quoted text stays a record.
+- Three wording fixes from #69's cold read: re-read the file a `[from <path>]` part names before acting, work out
+  relative times from the clock line, and answer on the harness from the kept docs, never from what the room remembers.
+- The file is 3,187 of its 3,200 characters (3,194 before). A running room is told at its next message that 12 lines
+  are new or replaced, more than the 1,500 characters its rules note holds, and reads the file.
+
 ### note-jobs (#71)
 
 - Every room can set reminders: a fourth job kind, `note` (`room`, `message`, one of `at`, `every` or `schedule`
