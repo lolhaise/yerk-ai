@@ -57,6 +57,7 @@ class Settings:
     index_status: Path              # what yerk-index serves: its port and the embeddings' state
     recall_chars: int               # one recall's first six snippets together, at most
     scoped: bool = False            # a room's own `also` (only): index hits and names kept to the roots in `scope`
+    cites: tuple[tuple[Path, str], ...] = ()    # every root of the install and the name a cite gives it, the same in every room
 
     @property
     def daily(self) -> Path:
@@ -90,6 +91,10 @@ def settings(private: Path, state: Path, conf: dict[str, Any] | None = None) -> 
     else:
         root = (private / "memory").resolve()
     tz: tzinfo = ZoneInfo(str(conf.get("timezone") or system_zone()))   # a zone, never one start-time offset (R5)
+    cites: dict[Path, str] = {}
+    for r in (root, *also):          # its folder's name, else as much of its path as no earlier root's cite has (F3, 2026-10-21)
+        names = ["/".join(r.parts[-n:]) for n in range(1, len(r.parts))]
+        cites.setdefault(r, next((x for x in names if x not in cites.values()), names[-1]))
     return Settings(root=root, scope=memindex.Scope(tuple([root, *also]), tuple(conf.get("exclude", []))),
                     index_db=state / "memory" / "index.sqlite", tz=tz, interval=float(conf.get("interval", 2.0)),
                     bench=(private / Path(str(conf.get("bench", "evals/recall-questions.json")))).resolve(),
@@ -102,7 +107,7 @@ def settings(private: Path, state: Path, conf: dict[str, Any] | None = None) -> 
                     embeddings_units=str(conf.get("embeddings_units", "both")),
                     embeddings_width=int(conf.get("embeddings_width") or conf.get("embeddings_dim") or 256),
                     index_status=state / "memory" / "index.json",
-                    recall_chars=max(100, int(conf.get("recall_chars", RECALL_CHARS))))
+                    recall_chars=max(100, int(conf.get("recall_chars", RECALL_CHARS))), cites=tuple(cites.items()))
 
 
 # the embedding settings a user with another model or budget can pick, described from the code (run 5):
@@ -494,7 +499,7 @@ def live_first(s: Settings, r: dict[str, Any], reader: Reader | None = None) -> 
 
 def read(s: Settings, path: str, start: int = 1, lines: int = READ_LINES, reader: Reader | None = None) -> dict[str, Any]:
     """An exact excerpt of a file in the memory tree. A relative path is taken from the tree's root, else
-    as a cite names it (a root's name, then the path under it); a recall `cite` (file:line) starts at its
+    as a cite names it (a root's name, then its cite name, then the path under it); a recall `cite` (file:line) starts at its
     line unless `start` is past 1. Anything that resolves outside the scope (a `..`, an absolute path
     elsewhere, a link out) is refused.
     `reader` (the asking room) sees only what its class allows: a private file is refused outright, a
@@ -505,7 +510,8 @@ def read(s: Settings, path: str, start: int = 1, lines: int = READ_LINES, reader
     try:            # a NUL, or a name too long (3.12 and 3.13 raise that from exists()), is no such file
         p = Path(path).expanduser()
         if not p.is_absolute():
-            p = next((c for c in (s.root / p, *(r.parent / p for r in s.scope.roots if p.parts[:1] == (r.name,)))
+            p = next((c for c in (s.root / p, *(r.parent / p for r in s.scope.roots if p.parts[:1] == (r.name,)),
+                                  *(r / p.relative_to(n) for r, n in s.cites if "/" in n and p.is_relative_to(n)))
                       if c.exists()), s.root / p)
         real = p.resolve(strict=True)
     except (OSError, RuntimeError, ValueError):
@@ -777,12 +783,13 @@ def _cut(line: str, want: dict[str, float], room: int) -> str:
 
 
 def cite(s: Settings, path: Path) -> str:
-    """The short name a room cites a file by: its root's name and the path under it."""
+    """The short name a room cites a file by: its root's cite name (Settings.cites, one per root) and the path under it."""
+    named = dict(s.cites)
     for root in s.scope.roots:
         if path == root:
-            return root.name
+            return named.get(root, root.name)
         if path.is_relative_to(root):
-            return (Path(root.name) / path.relative_to(root)).as_posix()
+            return (Path(named.get(root, root.name)) / path.relative_to(root)).as_posix()
     return path.name
 
 

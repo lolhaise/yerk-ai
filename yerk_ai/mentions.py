@@ -2,7 +2,7 @@
 """Mention recall: when a message names one of your people, places or things, the matching lines of
 front of the model before it starts, with no tool call.
 
-Keys come from a fact file's name (car, dates, appliances), its headings and the leading name of each
+Keys come from a fact file's name (car, gym, appliances), its headings and the leading name of each
 bullet, nested or not; a one-word key in a line's first words keys it too ("Ada: ..." gives "Ada Example"
 its first name). An entry is the bullet or the start of its section, at most ENTRY_CHARS, with the file and line it
 came from; yerk-index writes them as one JSON file beside the search index. An entry carrying a
@@ -18,6 +18,8 @@ from fnmatch import fnmatch
 from pathlib import Path
 from typing import Any, Callable
 
+from .memindex import STOP
+
 ENTRY_CHARS = 300
 KEY_MIN, KEY_MAX, KEY_WORDS = 3, 44, 6
 MATCH_MAX = 6
@@ -30,9 +32,16 @@ HEADING = re.compile(r"^(#{1,4})\s+(.*\S)\s*$")
 BULLET = re.compile(r"^\s*[-*]\s+(.*\S)\s*$")
 SENTENCEY = frozenset("is are was were be he she it they we i you my his her their our this that these "
                       "those has have had do does did will would should can could not no if when".split())
-KEY_STOP = frozenset("the and people home house work money rule rules note notes decisions identity purchases "
-                     "health family today things misc general other current status open loops daily facts log "
-                     "summary overview history index todo plan plans memory pinned".split())
+KEY_STOP = frozenset((  # a word that names nothing, never a one-word key (with STOP): a file or section label, the calendar,
+    "the and people home house work money rule rules note notes decisions identity purchases health family today things "
+    "misc general other current status open loops daily facts log summary overview history index todo plan plans memory "
+    "pinned january february march april may june july august september october november december jan feb mar apr jun "
+    "jul aug sep sept oct nov dec monday tuesday wednesday thursday friday saturday sunday mon tue tues wed thu thur fri "
+    "sat sun day days week month year date time tonight tomorrow yesterday morning afternoon evening night weekend hour "
+    "ago soon later early late back next last past first still already ever never always maybe really even only well "
+    "away around down off else sure right left new old good bad single whole ask asks call come know like look make "
+    "need run runs say says see sees send show start stop take tell try use uses want watch keep let put give find feel "
+    "leave mean help talk turn play move live read write wait stay buy pay").split())    # and the everyday adverbs and verbs
 
 
 def tokens(s: str, fold: bool = False) -> list[str]:
@@ -54,8 +63,8 @@ def key_of(text: str) -> str | None:
     words = head.split()
     if not KEY_MIN <= len(head) <= KEY_MAX or not words or len(words) > KEY_WORDS:
         return None
-    if any(w.lower().strip(".,'") in SENTENCEY for w in words) or " ".join(tokens(head)) in KEY_STOP:
-        return None
+    if any(w.lower().strip(".,'") in SENTENCEY for w in words) or len(t := tokens(head)) == 1 and {*t, *tokens(head, True)} & (KEY_STOP | STOP):
+        return None                                       # a sentence, or one word that names nothing ("Back", "Who", "August")
     return head if re.search(r"[A-Za-z]", head) else None
 
 
@@ -129,7 +138,6 @@ class Builder:
 
     def refresh(self, disk: dict[str, tuple[int, int]]) -> tuple[int, int, int] | None:
         from .config import write_private
-        from .memindex import STOP
         from .memory import file_class
         srcs = sorted((p, *st) for p, st in disk.items() if self.is_source(Path(p)))
         if srcs == self.sig and self.out.is_file():
@@ -149,7 +157,7 @@ class Builder:
         for n, entry in enumerate(entries):
             if k := " ".join(tokens(entry["key"], True)):
                 keys.setdefault(k, []).append(n)
-        names = {k for k in keys if " " not in k and k not in KEY_STOP | STOP}     # a name: a one-word key, never a stop word
+        names = {k for k in keys if " " not in k}       # a name: a one-word key (key_of lets no word that names nothing be one)
         for n, entry in enumerate(entries):
             t = tokens(entry["key"], True)
             if len(t) != 1:                                    # no key of its own, or a longer one: listed under each name its first words
