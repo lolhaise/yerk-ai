@@ -144,6 +144,21 @@ def test_a_plural_meets_its_singular_on_keys_and_messages_alike(tmp_path):
     assert mentions.tokens("dates") == ["dates"]                  # a fact file's name (memory.remember) keeps its s
 
 
+def test_one_word_that_names_nothing_is_never_a_key_whatever_file_heading_or_line_it_heads(tmp_path):
+    idx = named(tmp_path, {"dates": "- An example date line.\n",
+                           "people": "- Who: Examplia runs it.\n- Back: an example ache, mid left.\n- August: Examplia's birthday, August 1.\n"
+                                     "- Watch: an example watch.\n- Back hurt: an example ache.\n- Next car: an example coupe.\n"
+                                     "- Phone: an example phone.\n- Examplia: the eldest.\n## Next\n- Examplia's example step.\n"})
+    keys = {" ".join(mentions.tokens(e["key"], True)) for e in idx.entries}
+    assert not keys & {"who", "back", "august", "watch", "next", "date"}            # a stop word, the calendar, an everyday word
+    assert idx.match("did they get back to me? who knows, next august, watch this, up to date") == []
+    assert cites(idx.match("where does my back hurt")) == ["facts/people.md:5"]      # a longer key keeps working
+    assert cites(idx.match("the next car")) == ["facts/people.md:6"] and cites(idx.match("my phone")) == ["facts/people.md:7"]
+    assert cites(idx.match("examplia", limit=20)) == ["facts/people.md:8", "facts/people.md:1", "facts/people.md:3",
+                                                      "facts/people.md:9", "facts/people.md:10"]    # under the name it writes
+    assert [mentions.key_of(w) for w in ("Tomorrow", "Lives", "Runs", "Alex")] == [None, None, None, "Alex"]
+
+
 def test_the_own_file_order_is_the_order_that_survives_the_recall_trim(tmp_path):
     idx = named(tmp_path, {"aaa": "".join(f"- Examplia: other line {i}, {'y' * 260}\n" for i in range(3)),
                            "examplia": "".join(f"- Examplia: own line {i}, {'x' * 262}\n" for i in range(3))})
