@@ -8,6 +8,32 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-21
 
+### budgets-voice (#68)
+
+- The taste rules (one line each: a rule and the rated replies that prove it) fit a rulebook: its budget rises from
+  7,000 to 10,850 characters and a room voice's from 5,000 to 5,500; the session-start total rises by the same 4,350,
+  to 84,350.
+- **Upgrading:** budgets.toml changed (rulebook, room_voice, total). Nothing to do.
+
+### hardening (#66)
+
+- A room's token reaches its hooks through a 0600 file beside its settings, never on a command line (which every
+  local user can read in /proc). The state folder is made 0700, and an existing one is closed to 0700 at the next
+  start.
+- No room may read or send a secret (both secrets folders, every room's token files, each account's token file and
+  its config folder's login, the secret files yerkd.toml names): Read deny rules in every room's settings.
+- A room whose tools run a shell (Bash, Monitor, PowerShell or `default`) gets Claude Code's sandbox when rooms.toml
+  gives it no `[rooms.NAME.sandbox]` table: unsandboxed, a script, `grep` or a redirect read every secret.
+- Recalled and imported lines, and a person's words, reach a room marked as records, never instructions.
+- `yerk doctor` names any file or folder another user can read in the private or state folder, and any
+  secret-shaped line in memory, attachments or imports by file and line, never by value; a one-time code in an
+  import two days past its own date is dead and not said.
+- Tests: `YERK_DENYLIST_FILE` names a file of words no tracked file may hold.
+
+**Upgrading**: a room whose tools run a shell and that has no `[rooms.NAME.sandbox]` table now runs sandboxed (on
+Linux Claude Code's sandbox needs bubblewrap and socat); `[rooms.NAME.sandbox]` with `enabled = false` keeps its
+shell on the host. `budgets.toml` `[code] lines` moved to the new count.
+
 ### reliability (#65)
 
 - A stop (`systemctl stop`, `yerk deploy`) ends the daemon clean: STOPPING=1 to systemd, every room's Claude Code

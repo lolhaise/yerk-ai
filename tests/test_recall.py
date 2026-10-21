@@ -350,7 +350,8 @@ def test_a_question_about_the_past_or_a_name_asked_about_fires_and_ordinary_chat
 def test_the_on_hit_budget_bends_one_name_takes_the_part_several_share_it_and_a_past_search_takes_what_they_leave():
     def card(name: str, n: int, size: int = 240) -> list[dict]:
         return [{"key": name, "text": f"{name} line {i} " + "x" * size, "cite": f"facts/{name}.md:{i}", "named": name} for i in range(n)]
-    past = [{"cite": f"daily/2026-01-0{i}.md:3", "text": f"the past hit {i} " + "y" * 200} for i in range(1, 7)]
+    past = [{"cite": f"daily/2026-01-0{i}.md:3", "text": f"the past hit {i} " + "y" * 194} for i in range(1, 7)]   # six fill 1,500 under
+    # the head that says they are records, never instructions
     one = hooks.render_recall(card("ada", 8), [], 1500)
     assert len(one) <= 1500 and one.count("ada line") == 5                        # one name: the whole part
     two = hooks.render_recall(card("ada", 8) + card("bo", 8), [], 1500)
