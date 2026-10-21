@@ -265,10 +265,10 @@ class Yerkd:
             await self.tell_once(room, "embeddings", NO_KEY_LINE)
         return r
 
-    def search(self, room: str, query: str, k: int = 6, chars: int = 0, wait: float = memory.MEANING_WAIT) -> dict[str, Any]:
-        """The recall tool's search, for the tool and the prompt hook alike (which waits less for the meaning search): the room's reader in its own scope."""
+    def search(self, room: str, query: str, k: int = 6, chars: int = 0, wait: float = memory.MEANING_WAIT, deadline: float = 5.0) -> dict[str, Any]:
+        """The recall tool's search, for the tool and the prompt hook alike (which waits less, inside its 10 s): the room's reader in its own scope."""
         rd, s = self.reader(room), self.scoped.get(room, self.memory)
-        return memory.live_first(s, memory.recall(s, query, k, 5.0, rd, chars, wait), rd)
+        return memory.live_first(s, memory.recall(s, query, k, deadline, rd, chars, wait), rd)
 
     async def tell_once(self, room: str, what: str, text: str) -> bool:
         """One plain line to the room about `what`, the first time only (a marker file remembers it)."""
@@ -422,6 +422,7 @@ class Yerkd:
         absent: list[str] = []
         r = self.rooms.get(room)
         mine = r.current_ids() if r else set()            # the messages this turn answers: filed already, never their own answer
+        back = conf.get("topic_recall", True) and words.PAST.search(prompt)     # beside it a card shows its first line: no deep search
         if conf.get("mention_recall", True):
             try:            # a room's own `also`: the entries from its roots only (a cite is relative in Yerk's own tree, which sealed skips)
                 names = self.names.load().match(prompt, keep=lambda e: (rd.owner or memory.may_read(rd, *memory.file_class(s.root / e["cite"].rpartition(":")[0])))
@@ -430,14 +431,14 @@ class Yerkd:
             except (OSError, ValueError, KeyError) as e:
                 log.warning("mention recall skipped: %s", e)
             keyed, cards = list(dict.fromkeys(e["named"] for e in names)), {e["cite"] if e["cite"].startswith("/") else f"{s.root}/{e['cite']}" for e in names}
-            for what in keyed + [a for a in words.asked(prompt) if " ".join(mentions.tokens(a, True)) not in keyed]:
+            for what in ([] if back else keyed) + [a for a in words.asked(prompt) if " ".join(mentions.tokens(a, True)) not in keyed]:
                 got = memory.lines_on(s, what, rd, exclude=mine)
                 deep += [{"key": "", "text": x["text"], "cite": x["cite"], "named": what} for x in got if x["at"] not in cards]
                 absent += [] if got or what in keyed else [what]
         topics = memory.topic_hits(self.memory, room, prompt, mine, rid=room_id(room, conf),
                                    owner=self.owner(room)) if conf.get("topic_recall", True) else []
-        past = [h for h in self.search(room, prompt, PAST_HITS, int(self.budgets["per_message"]["on_hit"]["recall"]), 2.0).get("hits", [])
-                if not any(f"[m:{m}" in h["text"] for m in mine)] if conf.get("topic_recall", True) and words.PAST.search(prompt) else []
+        past = [h for h in self.search(room, prompt, PAST_HITS, int(self.budgets["per_message"]["on_hit"]["recall"]), 2.0, 3.0).get("hits", [])
+                if not any(f"[m:{m}" in h["text"] for m in mine)] if back else []
         return abilities.asked(prompt, self.memory) + names + deep, topics, past, absent     # "can you do voice": the manifest's answer
 
     def rules_news(self, room: str, sid: str = "") -> str:

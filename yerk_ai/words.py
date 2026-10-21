@@ -312,7 +312,7 @@ def asked(text: str) -> list[str]:
     for m in ASKED.finditer(text):
         w = re.split(r"\s+(?:and|or|but|so|if|when|because|cuz|lol|lmao|bro|Alex|man|dude|Alex|fr|tho)\b", (m.group("who") or m.group("what")).strip(), maxsplit=1, flags=re.I)[0].split()
         w = (w[1:] if w and w[0].lower() in ("the", "a", "an", "my", "our") else w)[:4]
-        if w and w[0].lower().strip("'’") not in NOT_ASKED and not w[0].lower().endswith("ing"):
+        if w and re.split(r"['’]", w[0].lower())[0] not in NOT_ASKED and not w[0].lower().endswith("ing"):
             out.append(" ".join(w).strip("'’\""))
     return list(dict.fromkeys(out))
 
