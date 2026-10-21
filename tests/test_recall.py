@@ -147,7 +147,7 @@ def test_a_plural_meets_its_singular_on_keys_and_messages_alike(tmp_path):
 def test_the_own_file_order_is_the_order_that_survives_the_recall_trim(tmp_path):
     idx = named(tmp_path, {"aaa": "".join(f"- Examplia: other line {i}, {'y' * 260}\n" for i in range(3)),
                            "examplia": "".join(f"- Examplia: own line {i}, {'x' * 262}\n" for i in range(3))})
-    text = hooks.render_recall(idx.match("examplia"), [], budgets()["per_message"]["on_hit"]["recall"])
+    text = hooks.render_recall(idx.match("examplia"), [], 1500)        # six lines sized so a 1,500 part keeps four
     assert [ln.rsplit(" (", 1)[1] for ln in text.splitlines()[1:]] == ["facts/examplia.md:1)", "facts/examplia.md:2)",
                                                                       "facts/examplia.md:3)", "facts/aaa.md:1)"]
 
