@@ -165,12 +165,12 @@ def run(audio: Path, openai_key: Path, groq_key: Path, book: Book, owner_yes: bo
                 return {"ok": False, "error": words.OVER_GATE.format(minutes=round(sum(secs) / 60), usd=est)}
 
             def one(job: tuple[str, int]) -> tuple[tuple[str, int], dict[str, Any] | Failed]:
-                (e, i), note = job, f"chunk {job[1] + 1} of {len(parts)}, {secs[job[1]]:.0f} s"
+                e, i = job
                 try:
                     data = post(e, secrets[e], parts[i])
                 except Failed as err:
                     return job, err
-                book(f"{e}/{PASSES[e][1]}", usd[e][i], note)
+                book(f"{e}/{PASSES[e][1]}", usd[e][i], f"chunk {i + 1} of {len(parts)}, {secs[i]:.0f} s")
                 return job, data
             with ThreadPoolExecutor(max_workers=PARALLEL) as ex:
                 got = dict(ex.map(one, [(e, i) for e in engines for i in range(len(parts))]))
