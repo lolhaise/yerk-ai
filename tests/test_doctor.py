@@ -94,7 +94,7 @@ def test_a_secret_shaped_line_in_memory_or_an_import_is_named_by_file_and_line_n
     key, bot = "sk-ant-" + "a" * 24, "M" + "a" * 24 + "." + "b" * 6 + "." + "c" * 27
     said = ["your verification code is 482913", "the example wifi password is Exa-mple9!", "the password is wrong; area code 416"]
     at = datetime(2026, 10, 20, 11, 20).astimezone()
-    planted = {"attachments/discord-1/note.txt": "token: " + "abcd1234" * 3,
+    planted = {"attachments/discord-1/note.txt": "token: " + "abcd1234" * 3, "imports/mail/2026-10.md": "# mail\n\n- api key: " + "q" * 20,
                "memory/facts/example-thing.md": f"# example thing\n\n- the example key {key}\n- the bot's {bot}\n",
                "memory/daily/2026-10-20.md": day.read_text() + "".join(
                    memory.format_line(at, "example-room", "", "owner", "", t, "private", f"s{i}") + "\n" for i, t in enumerate(said))}
@@ -103,9 +103,9 @@ def test_a_secret_shaped_line_in_memory_or_an_import_is_named_by_file_and_line_n
         (priv / rel).write_text(text)
     assert doctor.main(priv, state) == 1
     out = capsys.readouterr().out
-    assert out.splitlines() == ["secret-shaped lines: 5 in 3 files, first attachments/discord-1/note.txt:1 (token line); "
+    assert out.splitlines() == ["secret-shaped lines: 6 in 4 files, first attachments/discord-1/note.txt:1 (token line); "
                                 "scrub by hand, rotate the key"]
-    assert not [v for v in (key, bot, "482913", "Exa-mple9!", "abcd1234") if v in out]
+    assert not [v for v in (key, bot, "482913", "Exa-mple9!", "abcd1234", "q" * 20) if v in out]
     assert {k for k, rx in doctor.SECRETS.items() for t in planted.values() if rx.search(t)} == set(doctor.SECRETS)
 
 

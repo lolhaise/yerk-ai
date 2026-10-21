@@ -193,7 +193,7 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
                              f"{'the folder itself' if seen[0][0] == '.' else seen[0][0]} ({seen[0][1]:o}); chmod 700 it")
 
     def leaks() -> None:             # the day logs, notes and fact files, and the text an import saved: report, never rewrite
-        roots = [m.root] + ([private / "attachments"] if (private / "attachments").is_dir() else [])
+        roots = [m.root] + [private / d for d in ("attachments", "imports") if (private / d).is_dir()]     # an import's files
         hits = [(f, n, kind) for f in sorted(p for r in roots for p in r.rglob("*") if p.suffix in TEXT and p.is_file())
                 for n, line in enumerate(f.read_text(errors="replace").splitlines(), 1)
                 for kind in [next((k for k, rx in SECRETS.items() if rx.search(line)), "")] if kind]
