@@ -519,7 +519,7 @@ class Wake:
 
 def main(argv: list[str] | None = None) -> int:
     from . import mentions
-    from .config import private_dir, state_dir
+    from .config import REPO, head, private_dir, state_dir
     from .memory import settings
     p = argparse.ArgumentParser(prog="yerk-index", description="The memory index: FTS5 over the private "
                                 "memory tree, updated per changed chunk, in its own process.")
@@ -547,6 +547,7 @@ def main(argv: list[str] | None = None) -> int:
     names = mentions.Builder(m.mentions, m.roots_for_mentions, m.curated, m.mentions_exclude)
     server = embeddings.Server(store, embedder, m.index_db, live)
     if not a.once:
+        embeddings.write_status(m.index_status, commit=(commit := head(REPO)))     # the code that runs, before the load (deploy, doctor)
         loaded = store.load(idx.conn, m.embeddings_model, m.embeddings_units)
         port = server.start()
         back.start()
@@ -573,7 +574,7 @@ def main(argv: list[str] | None = None) -> int:
             for gone in sweep(m.index_db):
                 log.info("swept the old generation file %s", gone)
             if not a.once:
-                embeddings.write_status(m.index_status, port=server.port, chunks=chunks, embeddings={
+                embeddings.write_status(m.index_status, port=server.port, chunks=chunks, commit=commit, embeddings={
                     "key": embedder.available(), "model": m.embeddings_model, "dim": m.embeddings_dim, "vectors": store.n,
                     "units": m.embeddings_units, "width": store.width, **back.status(), "requests": embedder.requests,
                     "tokens": embedder.tokens, "rss_kb": embeddings.rss_kb(), "store_bytes": store.bytes()})

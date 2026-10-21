@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import base64
 import contextlib
+import itertools
 import json
 import logging
 import os
@@ -39,13 +40,17 @@ log = logging.getLogger("yerk.embeddings")
 MODEL = "text-embedding-3-small"
 DIM = 256
 URL = "https://api.openai.com/v1/embeddings"
-BATCH = 1024             # texts per request (the provider takes up to 2,048; a line is short, so a batch is one request of ~70k tokens)
+BATCH = 1024             # texts per request at most (the provider takes up to 2,048); BYTES cuts it first when the texts are long
+BYTES = 250_000          # UTF-8 bytes per request at most: the provider caps a request at 300,000 tokens, and its tokenizer (byte-level
+                         # BPE, cl100k_base) never makes more tokens than bytes; the rest is margin (1,015 chunks of texts, 2026-10-21)
+TOO_BIG = re.compile(r"HTTP 400 .*(?:request size|tokens per request)", re.S)     # the provider's 400 for a request past its cap
 TIMEOUT = 30.0           # seconds per backfill request
 QUERY_TIMEOUT = 4.0      # seconds for a query's one vector: a recall waits at most this, no retry
 RETRIES = 3              # the retry budget per backfill request, 1, 2 and 4 s apart
 PAUSE = 60.0             # seconds the backfill rests after a request spends its budget
 GAP = 0.25               # seconds between backfill requests: the provider and the CPU are shared
 BLOCK = 16384            # rows per block of the store, and per step of the scan (float16 rows widened to float32 a block at a time)
+HIGH_BASE = 256 << 20    # bytes yerk-index holds beside its store: its unit's MemoryHigh rule is this and a block per BLOCK vectors
 LOAD_ROWS = 4096         # rows fetched per step of the load: the temporary copies stay small, so the load peak stays near the steady size
 KEY_SHAPE = re.compile(r"sk-[A-Za-z0-9_-]{6,}")
 
@@ -329,7 +334,7 @@ class Backfill:
 
     def __init__(self, db: Path, live: Any, store: Vectors, embedder: Embedder, batch: int = BATCH, gap: float = GAP, units: str = "both"):
         self.db, self.live, self.store, self.embedder, self.batch, self.gap = db, live, store, embedder, batch, gap
-        self.units = units
+        self.units, self.cap = units, BYTES
         unit_where(units)
         self.pending: list[str] = []
         self.lock = threading.Lock()
@@ -337,7 +342,7 @@ class Backfill:
         self.dirty.set()
         self.stop = threading.Event()
         self.paused_until = 0.0
-        self.done = self.failed = 0
+        self.done = self.failed = self.streak = 0       # streak: pauses in a row, none embedded between (the doctor reads it)
         self.last_error = ""
         self.thread: threading.Thread | None = None
         self.conn: sqlite3.Connection | None = None
@@ -387,8 +392,10 @@ class Backfill:
         return list(dict.fromkeys(batch))
 
     def step(self) -> int:
-        """One batch: its texts from the index, one request, one transaction. Chunks already embedded
-        (a hash queued twice) are skipped. Returns the number embedded."""
+        """One batch: its texts from the index, one request of at most `cap` bytes (the rest goes back to the front of
+        the queue), one transaction. Chunks already embedded (a hash queued twice) are skipped. A 400 that names the
+        request size halves `cap` and puts the batch back, so the next request is smaller and never the same one (F2,
+        2026-10-21). Returns the number embedded."""
         conn = self._conn()
         if not (shas := self.take(conn)):
             return 0
@@ -401,7 +408,19 @@ class Backfill:
             texts.setdefault(s, b)
         if not (rows := [(s, b) for s, b in texts.items() if s not in have]):
             return 0
-        vecs = self.embedder.embed([b for _, b in rows])
+        n = max(1, sum(e <= self.cap for e in itertools.accumulate(len(b.encode()) for _, b in rows)))   # the most that fit, one at least
+        rows, rest = rows[:n], rows[n:]
+        try:
+            vecs = self.embedder.embed([b for _, b in rows])
+        except ProviderError as e:
+            if n == 1 or not TOO_BIG.match(str(e)):
+                raise                                   # run() pauses, then scans again
+            self.cap, self.failed, self.last_error, rest = sum(len(b.encode()) for _, b in rows) // 2, self.failed + 1, scrub(e), rows + rest
+            log.warning("backfill: %d texts were one request too large; at most %d bytes a request from now", n, self.cap)
+            return 0
+        finally:
+            with self.lock:
+                self.pending[:0] = [s for s, _ in rest]
         conn.execute("BEGIN IMMEDIATE")
         try:
             conn.executemany("INSERT OR REPLACE INTO vectors(sha, model, dim, vec) VALUES (?, ?, ?, ?)",
@@ -412,7 +431,7 @@ class Backfill:
             conn.execute("ROLLBACK")
             raise
         self.store.add([s for s, _ in rows], vecs)
-        self.done += len(rows)
+        self.done, self.streak = self.done + len(rows), 0
         return len(rows)
 
     def run(self) -> None:
@@ -423,7 +442,7 @@ class Backfill:
             try:
                 n = self.step()
             except ProviderError as e:
-                self.failed += 1
+                self.failed, self.streak = self.failed + 1, self.streak + 1
                 self.last_error = scrub(e)
                 log.warning("backfill paused %.0f s (%s): %s", PAUSE, "timeout" if isinstance(e, ProviderTimeout)
                             else "provider error", self.last_error)
@@ -451,7 +470,7 @@ class Backfill:
     def status(self) -> dict[str, Any]:
         with self.lock:
             pending = len(self.pending)
-        return {"done": self.done, "failed": self.failed, "pending": pending, "scanning": self.dirty.is_set(),
+        return {"done": self.done, "failed": self.failed, "streak": self.streak, "pending": pending, "scanning": self.dirty.is_set(),
                 "paused": time.monotonic() < self.paused_until, "last_error": self.last_error}
 
 

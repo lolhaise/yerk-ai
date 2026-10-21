@@ -1,8 +1,9 @@
 """Claude Code hooks: every event a command hook (curl posting its JSON to the daemon, see settings_for).
 
 UserPromptSubmit adds the per-message parts: the clock line, the metadata line, the rules changed since the session
-last looked (context.news, capped at `rules`) and the recall part (the owner's people and things the message names,
-then this room's lines of the last 14 days on its topic, capped at `recall`); every assembly goes to the room's
+last looked (context.news, capped at `rules`) and the recall part (render_recall: what is not on file, the owner's people
+and things the message names with their best lines, the best hits of a question about the owner's past, then this room's lines of
+the last 14 days on its topic, capped at `recall`); every assembly goes to the room's
 assembled.jsonl. SessionStart `compact` re-adds the recall pack; `startup` or `clear` after another session posts the reset line.
 PreToolUse runs the gates (gates.py), PostToolUse and PostToolUseFailure time each call, ConfigChange
 writes the tamper row, Stop runs the rule-based checks (an unread image or a turn ending with nothing
@@ -19,38 +20,43 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from . import context
+from . import context, memory, words
 from .engine import SessionTable
 
 Meta = Callable[[str, str], tuple[str, float | None]]     # (room, prompt) -> (sender, previous human time)
-Recall = Callable[[str, str], tuple[list[dict[str, Any]], list[dict[str, Any]]]]   # -> (name entries, topic hits)
+Recall = Callable[[str, str], tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], list[str]]]   # -> (names, topics, past, absent)
 RECORD_MAX = 5_000_000                                    # assembled.jsonl rolls to .1 past this
 log = logging.getLogger("yerk.hooks")
 UNBOUND = {"yerk": "unbound"}          # the answer to a hook call no room binding explains (R3)
+HEADS = ("[on file, no lookup needed: the people and things this message names]", "[from memory, on this question about the past]",
+         "[this room, last 14 days, on this topic]")          # the recall part's blocks: a turn given one has its memory read
 
 
-def room_for_session(sessions: SessionTable, session_id: str) -> str | None:
-    return sessions.by_session(session_id)
-
-
-def render_recall(names: list[dict[str, Any]], topics: list[dict[str, Any]], budget: int) -> str:
-    """Names first, then topic lines, each line whole or not at all, under `budget` characters."""
-    blocks = [("[on file, no lookup needed: the people and things this message names]",
-               [f"- {e['text'] if e['text'].startswith(e['key']) else e['key'] + ': ' + e['text']} ({e['cite']})"
-                for e in names]),
-              ("[this room, last 14 days, on this topic]",
-               [f"- {h['day'][5:]} {h['time']} {h['role']}: {h['text'][:280]} ({h['cite']})" for h in topics])]
-    out: list[str] = []
-    used = -1                                   # n lines joined by n - 1 newlines
-    for head, lines in blocks:
-        take, cost = [], context.chars(head) + 1
-        for line in lines:
-            if used + cost + (c := context.chars(line) + 1) <= budget:
-                take.append(line)
-                cost += c
+def render_recall(names: list[dict[str, Any]], topics: list[dict[str, Any]], budget: int,
+                  past: list[dict[str, Any]] | None = None, absent: list[str] | None = None) -> str:
+    """The recall part under `budget` characters, each line whole or not at all: the absence lines first, code's word (claim 3);
+    then the names, the budget bending per hit (decision 42): one name the whole part, several an even share each (a share a
+    name leaves passed on), each its card then its best lines, and beside a past-tense search each its card's first line alone;
+    the past-tense hits take what the names leave, and the room's own lines on the topic what is left after them."""
+    out = [words.ABSENT.format(what=a) for a in absent or []]
+    left = budget + 1 - sum(context.chars(x) + 1 for x in out)          # n lines joined by n - 1 newlines
+    groups: dict[str, list[str]] = {}
+    for e in names:
+        groups.setdefault(e.get("named") or e["key"], []).append(
+            f"- {e['text'] if e['text'].startswith(e['key']) else e['key'] + ': ' + e['text']} ({e['cite']})")
+    for head, runs in ((HEADS[0], list(groups.values())), (HEADS[1], [[f"- {memory.one_line(h['text'])} ({h['cite']})" for h in past or []]]),
+                       (HEADS[2], [[f"- {h['day'][5:]} {h['time']} {h['role']}: {h['text'][:280]} ({h['cite']})" for h in topics]])):
+        take, pool = [], left - context.chars(head) - 1
+        for i, run in enumerate(runs):
+            first = context.chars(run[0]) + 1 if run else 0         # a name's first line comes in whenever it fits
+            allow = pool if head != HEADS[0] else first if past else max(pool // (len(runs) - i), first)
+            for line in run:
+                if (c := context.chars(line) + 1) <= min(allow, pool):
+                    take.append(line)
+                    allow, pool = allow - c, pool - c
         if take:
             out += [head, *take]
-            used += cost
+            left = pool
     return "\n".join(out)
 
 
@@ -69,7 +75,7 @@ def user_prompt_submit(payload: dict[str, Any], state: Path, rooms: dict[str, di
                        budgets: dict[str, Any], now: datetime | None = None,
                        recall: Recall | None = None, room: str | None = None, news: Callable[[str, str], str] | None = None) -> dict[str, Any]:
     sid = str(payload.get("session_id", ""))
-    room = room or room_for_session(SessionTable(state / "sessions.json"), sid)
+    room = room or SessionTable(state / "sessions.json").by_session(sid)
     if room is None or room not in rooms:
         log.warning("hook: UserPromptSubmit for session %s matches no room binding; answered unbound", sid[:8] or "?")
         return dict(UNBOUND)
@@ -82,17 +88,20 @@ def user_prompt_submit(payload: dict[str, Any], state: Path, rooms: dict[str, di
         parts.append(context.Part("rules", told, int(budgets["per_message"]["on_hit"]["rules"]), context.chars(told)))
     names: list[dict[str, Any]] = []
     topics: list[dict[str, Any]] = []
+    past: list[dict[str, Any]] = []
+    absent: list[str] = []
     took = None
     if recall:
         t0 = time.monotonic()
-        names, topics = recall(room, prompt)
+        names, topics, past, absent = recall(room, prompt)
         cap = int(budgets["per_message"].get("on_hit", {}).get("recall", 1500))
-        rtext = render_recall(names, topics, cap)
+        rtext = render_recall(names, topics, cap, past, absent)
         parts.append(context.Part("recall", rtext, cap, context.chars(rtext)))
         took = round((time.monotonic() - t0) * 1000)
     text = "\n".join(p.text for p in parts if p.text)[: int(budgets["hook"]["output_cap"]) - 1]
     record(state, room, "message", sid, {p.name: p.size for p in parts}, text, prompt_chars=context.chars(prompt),
-           names=[e["key"] for e in names], topics=[h["cite"] for h in topics], recall_ms=took)
+           names=[e["key"] for e in names if e["key"]], deep=[e["cite"] for e in names if not e["key"]], topics=[h["cite"] for h in topics],
+           past=[h["cite"] for h in past], absent=absent, recall_ms=took)
     return {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": text}}
 
 
@@ -101,7 +110,7 @@ def session_start(payload: dict[str, Any], state: Path, pack: Callable[[str], st
     if payload.get("source") != "compact":
         return {}
     sid = str(payload.get("session_id", ""))
-    if (room := room or room_for_session(SessionTable(state / "sessions.json"), sid)) is None:
+    if (room := room or SessionTable(state / "sessions.json").by_session(sid)) is None:
         log.warning("hook: SessionStart (compact) for session %s matches no room binding; answered unbound", sid[:8] or "?")
         return dict(UNBOUND)
     text = pack(room)

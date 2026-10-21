@@ -39,6 +39,7 @@ from . import abilities, words   # STYLE.md: what a room reads
 log = logging.getLogger("yerk.daemon")
 YERK_TOOLS = ["mcp__yerk__send", "mcp__yerk__hold", "mcp__yerk__recall", "mcp__yerk__read_memory",
               "mcp__yerk__remember", "mcp__yerk__worker", "mcp__yerk__schedule", "mcp__yerk__settings"]
+PAST_HITS = 6          # a question about the past: the recall tool's own six hits (its default), cut to the prompt hook's part
 NO_KEY_LINE = words.needs("meaning search", "an OpenAI key", "embeddings", "recall matches words only")
 
 
@@ -260,12 +261,16 @@ class Yerkd:
         """Off the loop: the index is yerk-index's file, read here, never built here (L47). The first
         recall in a room while yerk-index runs without a provider key tells the room so, once. A superseded
         line never comes above its replacement (memory.live_first)."""
-        rd, s = self.reader(room), self.scoped.get(room, self.memory)
-        r = await asyncio.to_thread(lambda: memory.live_first(s, memory.recall(s, query, k, 5.0, rd), rd))
+        r = await asyncio.to_thread(self.search, room, query, k)
         log.info("recall: %s, %d hit(s)%s", room or "?", len(r.get("hits", [])), "" if r["ok"] else f", {r['status']}")
         if r["ok"] and room in self.rooms and memory.meaning_state(self.memory) == "no-key":
             await self.tell_once(room, "embeddings", NO_KEY_LINE)
         return r
+
+    def search(self, room: str, query: str, k: int = 6, chars: int = 0, wait: float = memory.MEANING_WAIT, deadline: float = 5.0) -> dict[str, Any]:
+        """The recall tool's search, for the tool and the prompt hook alike (which waits less, inside its 10 s): the room's reader in its own scope."""
+        rd, s = self.reader(room), self.scoped.get(room, self.memory)
+        return memory.live_first(s, memory.recall(s, query, k, deadline, rd, chars, wait), rd)
 
     async def tell_once(self, room: str, what: str, text: str) -> bool:
         """One plain line to the room about `what`, the first time only (a marker file remembers it)."""
@@ -408,10 +413,18 @@ class Yerkd:
         limit = int(self.budgets["session_start"]["appended"]["recall_pack"])
         return context.recall_pack(context.layer_dir(self.private, conf), conf, limit, lambda left: self.room_pack(room, left))[0]
 
-    def recall_for(self, room: str, prompt: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-        """Names on file (every one for an owner room; for any other, those in files it may read now, R2) and the room's own lines on the topic. Off the loop."""
+    def recall_for(self, room: str, prompt: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], list[str]]:
+        """(names, topics, past, absent), each search decided by code (decision 42), read as the room's reader in its scope: names
+        on file (every one for an owner room; for any other, those in files it may read now, R2), each with its best lines from
+        the room's whole scope (memory.lines_on), as each name or topic the message asks about gets (words.asked), or the absence
+        line when it has none; the room's own lines on the topic; a question about the past (words.PAST): the recall tool's own search. Off the loop."""
         conf, s, rd = self.room_confs.get(room, {}), self.scoped.get(room, self.memory), self.reader(room)
         names: list[dict[str, Any]] = []
+        deep: list[dict[str, Any]] = []
+        absent: list[str] = []
+        r = self.rooms.get(room)
+        mine = r.current_ids() if r else set()            # the messages this turn answers: filed already, never their own answer
+        back = conf.get("topic_recall", True) and words.PAST.search(prompt)     # beside it a card shows its first line: no deep search
         if conf.get("mention_recall", True):
             try:            # a room's own `also`: the entries from its roots only (a cite is relative in Yerk's own tree, which sealed skips)
                 names = self.names.load().match(prompt, keep=lambda e: (rd.owner or memory.may_read(rd, *memory.file_class(s.root / e["cite"].rpartition(":")[0])))
@@ -419,10 +432,19 @@ class Yerkd:
                                                      and (Path(e["cite"].rpartition(":")[0]).is_absolute() or not rd.sealed)), strict=not rd.owner)
             except (OSError, ValueError, KeyError) as e:
                 log.warning("mention recall skipped: %s", e)
-        r = self.rooms.get(room)
-        topics = memory.topic_hits(self.memory, room, prompt, r.current_ids() if r else set(), rid=room_id(room, conf),
+            keyed, cards = list(dict.fromkeys(e["named"] for e in names)), {e["cite"] if e["cite"].startswith("/") else f"{s.root}/{e['cite']}" for e in names}
+            for what in ([] if back else keyed) + [a for a in words.asked(prompt) if " ".join(mentions.tokens(a, True)) not in keyed]:
+                try:            # a read that did not finish proves no absence; when eight chunks hold none, twenty are read once
+                    got = memory.lines_on(s, what, rd, exclude=mine) or memory.lines_on(s, what, rd, 20, exclude=mine)
+                except LookupError:
+                    continue
+                deep += [{"key": "", "text": x["text"], "cite": x["cite"], "named": what} for x in got if x["at"] not in cards]
+                absent += [] if got or what in keyed else [what]
+        topics = memory.topic_hits(self.memory, room, prompt, mine, rid=room_id(room, conf),
                                    owner=self.owner(room)) if conf.get("topic_recall", True) else []
-        return abilities.asked(prompt, self.memory) + names, topics      # "can you do voice": the manifest's answer
+        past = [h for h in self.search(room, prompt, PAST_HITS, int(self.budgets["per_message"]["on_hit"]["recall"]), 2.0, 3.0).get("hits", [])
+                if not any(f"[m:{m}" in h["text"] for m in mine)] if back else []
+        return abilities.asked(prompt, self.memory) + names + deep, topics, past, absent     # "can you do voice": the manifest's answer
 
     def rules_news(self, room: str, sid: str = "") -> str:
         """The rules block for session `sid` (context.news), under budgets.toml's `rules`; "" records a process start."""
@@ -454,7 +476,7 @@ class Yerkd:
         own callers, by the payload's session id, else by its cwd (a room's work folder)."""
         if auth and auth.get("kind") == "room" and auth.get("room") in self.rooms:
             return str(auth["room"])
-        name = hooks.room_for_session(self.sessions, str(payload.get("session_id", "")))
+        name = self.sessions.by_session(str(payload.get("session_id", "")))
         if name in self.rooms:
             return name
         cwd = Path(str(payload.get("cwd") or "/nonexistent"))
@@ -618,8 +640,7 @@ class Yerkd:
                         f"\n[approval] {sender} said {self.gates.word}: the held {row['what']} may run once now; "
                         "run the same action again.")
             added = str(out["hookSpecificOutput"]["additionalContext"])
-            self.rooms[name].evidence.give(f"{prompt}\n{added}",
-                                           recall="[on file, no lookup needed" in added or "[this room, last" in added)
+            self.rooms[name].evidence.give(f"{prompt}\n{added}", recall=any(h in added for h in hooks.HEADS))
         return out
 
     def pre_tool(self, name: str, room: Room, sid: str, payload: dict[str, Any]) -> tuple[dict[str, Any], str]:
@@ -668,7 +689,7 @@ class Yerkd:
         session id (the cwd fallback is not enough), and the prompt must be a message the room itself
         wrote into its running turn. /hook has no secret yet (restart test R3), so this binding is what
         keeps a posted "approve" from counting."""
-        if hooks.room_for_session(self.sessions, sid) != name:
+        if self.sessions.by_session(sid) != name:
             return None
         room = self.rooms[name]
         with room.lock:
