@@ -8,7 +8,7 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-21
 
-### idle-compact
+### idle-compact (#72)
 
 - A room compacts between turns, never inside one: idle 25 minutes with its session at 0.7 of its compaction window
   or more, the daemon compacts it in the background as `yerk room compact` does, so the next message finds it small
