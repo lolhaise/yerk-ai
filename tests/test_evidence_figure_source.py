@@ -27,52 +27,52 @@ def figures(reply: str, *lines: str, read: str = "", said: str = "") -> list[str
 
 
 def test_a_line_that_only_shares_the_digits_is_not_the_source() -> None:
-    reply = "Line for the check while: A0 0,000 second entry waits in the 0.00 queue."
-    assert figures(reply, "A second: entry waits in the 0,000 queue.", "Part closes the $000.00, +0.00% case before the.") == []
+    reply = "Sq ft paint by shed: Z8 6,071 and the garden fence rail 2.35 ft."
+    assert figures(reply, "Best seller: a desk lamp with 6,071 reviews.", "The fund closed at $64.20, +2.35% on the day.") == []
 
 
 def test_a_line_about_the_same_thing_is_still_the_source() -> None:
-    found = figures("Says the sample item moved: To0 0,000.", "It: back as plain text 0,000 with.",
-                    "Before the, Next0 run starts 0,000 the.")
-    assert found == ["turn 0,000, and the last part/0000-00-00.closes:0; the case before the next run "
+    found = figures("Sq ft paint by shed: Z8 6,071.", "Unrelated: a desk lamp with 6,071 reviews.",
+                    "Paint count, Z8 came to 6,071 sf.")
+    assert found == ["quoted 6,071, on file at daily/2026-01-01.md:2; no read this turn carries it "
                      "(missing read: recall or read_memory of that file)"]
 
 
 def test_one_shared_everyday_word_is_not_enough() -> None:
-    reply = "Note says the sample 0.0 item moved to the next 0.0 step and the test reads it back."
-    assert figures(reply, "The: test reads it back as plain text 0.0 with one more.") == []
-    assert len(figures(reply, "As plain text with 0.0 one more line for the check.")) == 1
+    reply = "The fence line runs 1.48 ft up the post and 0.73 ft over the top of the gate."
+    assert figures(reply, "Status: the gateway sat near the top at 0.73 load all day.") == []
+    assert len(figures(reply, "The fence post takes 1.48 ft of paint up the side.")) == 1
 
 
 def test_a_different_unit_is_a_different_thing() -> None:
-    reply = "A second entry waits in 0.0 the queue for its turn and the last part closes 0.00 the case."
-    assert figures(reply, "It back as plain text 0.0 with one more line for the check.",
-                   "Waits in: the queue for its turn 0.00% and the last part.") == []
-    assert len(figures(reply, "The queue for its turn: 0.0 and the last.")) == 1
+    reply = "The shed door frame is 3.62 ft on the north wall and the trim edge is 0.27 ft wider."
+    assert figures(reply, "The north wall beat started 3.62 s later on the shed door probe.",
+                   "Fee table: the trim edge fund runs 0.27% wider than the index.") == []
+    assert len(figures(reply, "North wall shed door frame: 3.62 ft as drawn.")) == 1
 
 
 def test_a_dollar_figure_needs_a_dollar_amount_on_file() -> None:
-    reply = "Text with one more $000 line for the check while a second entry."
-    assert figures(reply, "Test reads it back as plain 000 text with one.") == []
-    assert len(figures(reply, "Back as plain text with one: $000 more line.")) == 1
+    reply = "Cap the credits at $250 for the pilot run and stop it there."
+    assert figures(reply, "Licensing for pilot run sites with 250 or more seats.") == []
+    assert len(figures(reply, "Credits cap for the pilot run: $250 a month.")) == 1
 
 
 def test_the_reply_own_record_in_the_day_log_is_not_its_source() -> None:
-    reply = "Check, while a second. Entry waits in the queue for its, turn 0.00 and the last Part0, closes the case."
-    copy = "- 00:00:00-00:00 in#the:0 queue: For, its turn and. / The last part closes the case before, " \
-           "the **0.00 queue** for its Turn0, and the last."
+    reply = "Yes, both still hold. The shelf counts match the photos, just 0.09 sf apart on Z6, so nothing moves."
+    copy = "- 10:00:00-04:00 room#discord:1 yerk: Yes, both still hold. / The shelf counts match the photos, " \
+           "just **0.09 sf** apart on Z6, so nothing moves."
     assert figures(reply, copy) == []
-    assert len(figures(reply, "To the: Next0 step and 0.00 the test reads it back.")) == 1
+    assert len(figures(reply, "Photo check: Z6 shelf counts 0.09 sf apart against the list.")) == 1
 
 
 def test_a_read_of_the_same_number_without_separators_carries_it() -> None:
-    assert figures("Moved to the next 000,000.00 step.", "Text with one more line: 000,000.00 for.",
-                   read="for Its0: 000000.00") == []
-    assert figures("Entry waits in the 000000.00 queue.", "The case before the next: 000000.00 run.",
-                   read="Next step and 000,000.00") == []
+    assert figures("The floor area is 293,477.15 sf.", "Floor area on the sheet: 293,477.15 sf.",
+                   read="cell D4: 293477.15") == []
+    assert figures("The floor area is 293477.15 sf.", "Floor area on the sheet: 293477.15 sf.",
+                   read="Total floor area 293,477.15") == []
 
 
 def test_a_figure_with_no_label_word_beside_it_is_matched_by_its_digits_as_before() -> None:
     assert len(figures("1,321.", "Code size: jobs.py 1,321 lines.")) == 1                  # none in the reply
-    assert len(figures("To The0 next step 0,000 and.", "0,000 with 0,000 one more")) == 1      # sample item moved to
+    assert len(figures("Shed Z8 came to 1,321 sf.", "1,321 and 5,318 here too")) == 1      # none on the line
     assert evidence.Quoted("1,321").about("anything with 1,321 in it")

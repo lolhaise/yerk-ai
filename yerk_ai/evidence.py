@@ -155,7 +155,7 @@ def rounded_near(fig: str, seen: str) -> bool:
 
 def forms(fig: str) -> tuple[str, ...]:
     """The figure, without its dollar sign, and the same number with and without thousands separators: a read that
-    reads 000000.00 it back as 000,000.00."""
+    holds 293477.15 carries a reply's 293,477.15."""
     bare = fig.lstrip("$")
     whole, dot, rest = bare.partition(".")
     plain = whole.replace(",", "")
@@ -165,9 +165,9 @@ def forms(fig: str) -> tuple[str, ...]:
 
 
 # A figure's source on file is a line about the same thing, not any line that shares its digits (the evidence replay of
-# 0000-00-00: 00 moved 00 to the next, step and 0 the-test reads it back as plain, text with 0,000
-# waits in the queue 0,000 for). Its turn and the last part closes the case before the next run (Starts0, the,
-# and) the last part closes the case before: the next run, starts the example note says the (Sample0, Item000, moved0), to the next step
+# 2026-10-21: 13 of 74 accepted replies flagged, and all 4 wrong-fact hits on an unrelated line, a product's 6,071
+# reviews for a shed's 6,071 sf). A line counts when the label words beside the number in the reply (Z8, girth,
+# worksheet) are beside it on the line too: two of them, or one that holds a digit (Z8, J6, v2), or the reply's only
 # one; when its unit agrees (1.4 ft is not 1.4 s, 0.11 ft is not 0.11%); and when it is not the reply itself (the day
 # log records a reply as it is posted, and another lane may quote it: a line holding the reply's own words around the
 # figure is a copy, never its source). A figure with no label word beside it, in the reply or on the line, is matched
@@ -188,7 +188,7 @@ UNIT = re.compile(r" ?(%|ft|feet|sf|sq|inch|inches|s|sec|ms|min|h|hr|hrs|kb|mb|g
 
 def labels(text: str, start: int, end: int) -> frozenset[str]:
     """The label words beside a number at text[start:end]: up to six words before it and four after, on its own line,
-    lower case, a plural or possessive s dropped, function words out (R3 and A611 stay)."""
+    lower case, a plural or possessive s dropped, function words out (Z8 and J6 stay)."""
     lo, hi = text.rfind("\n", 0, start) + 1, text.find("\n", end)
     near = LABEL.findall(text[lo:start])[-6:] + LABEL.findall(text[end:hi if hi >= 0 else len(text)])[:4]
     out = set()

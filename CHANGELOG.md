@@ -11,7 +11,7 @@ with the originals kept under `backups/`; the index chunks every file again when
 ### figure-noise (#85)
 
 - The figure shadow rule counts a line on file as a figure's source only when it is about the same thing, not when it
-  merely shares the digits: the label words beside the number in the reply (R3, girth, worksheet) sit beside it on
+  merely shares the digits: the label words beside the number in the reply (Z8, girth, worksheet) sit beside it on
   the line too (two of them, one holding a digit, or the reply's only one), the unit agrees (1.4 ft is not 1.4 s,
   0.11 ft is not 0.11%), the line is not the reply's own record (its day-log line, or another room quoting it), and a
   dollar figure is looked up with its dollar sign (the bare digits used to find only lines where the number was not
