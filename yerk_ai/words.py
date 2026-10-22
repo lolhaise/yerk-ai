@@ -84,6 +84,7 @@ STEP = {"bash": "running a command", "read": "reading {what}", "read_memory": "r
         "webfetch": "reading {what}", "web_fetch": "reading {what}", "fetch": "reading {what}",
         "websearch": "searching the web for {what}", "web_search": "searching the web for {what}", "send": "sending {what}",
         "remember": "filing a note", "hold": "waiting for {what}", "settings": "switching to {what}", "transcribe": "transcribing {what}",
+        "voice_note": "making a voice note",
         "todowrite": "updating the plan", "task": "handing off {what}", "agent": "handing off {what}", "toolsearch": "loading a tool"}
 WORKER_STEP = {"start": "starting a worker", "list": "listing the workers", "stop": "stopping worker {id}",
                "report": "reading worker {id}'s report"}
@@ -261,6 +262,21 @@ MORE_IN_FILE = "(the rest is in the file: Read it from this line on)"
 NO_SPEECH_KEY = "no OpenAI key in the private folder (secrets/openai.key), so the recording could not be transcribed"
 OVER_GATE = ("not transcribed yet, since {minutes} min of audio is about US${usd:.2f}, past the US$1 a call spends only with the "
              "owner's yes: ask, then call again with owner_yes true once the owner says yes")
+# a voice note made (voice_note.py): what its result says next, why one was not made, and a send that was not a voice message
+VOICE_NEXT = ("Send it now with send, file set to this path and no text, so it goes as a voice message; words of yours go in a "
+              "message of their own. `probe` is its first 20 seconds read back, a check of the note: call it checking, never "
+              "listening, since nothing plays the sound to you.")
+VOICE_EMPTY = "the script has no words to say, so nothing was made"
+VOICE_NO_KEY = "no voice key in the private folder (secrets/minimax.key or secrets/fish.key), so no voice note could be made"
+VOICE_NO_CHECK = ("no OpenAI key in the private folder (secrets/openai.key), so the note could not be checked, and a note is "
+                  "never handed back unchecked")
+VOICE_NO_ENGINE = "neither voice made it, so there is no note: {why}"
+VOICE_PROBE_FAILED = ("the note failed its check, so it was deleted: its first 20 seconds read back as \"{heard}\" where the "
+                      "script opens \"{said}\"; make it once more, or answer in text")
+VOICE_OVER_GATE = ("not made yet, since {chars:,} characters is about US${usd:.2f}, past the US$1 a call spends only with the "
+                   "owner's yes: ask, then call again with owner_yes true once the owner says yes")
+VOICE_AS_FILE = "it went as a plain audio file, not a voice message ({why}), so say so in your reply"
+VOICE_PLAIN = "Discord took it without the voice message flag"
 
 
 def size(n: int) -> str:

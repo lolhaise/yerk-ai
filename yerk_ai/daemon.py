@@ -28,7 +28,8 @@ from types import SimpleNamespace
 from typing import Any, Awaitable, Callable
 from zoneinfo import ZoneInfo
 
-from . import beat, context, deploy, doctor, evidence, gates, hooks, jobs, mcp_server, memory, mentions, status, taste, transcribe, workers
+from . import (beat, context, deploy, doctor, evidence, gates, hooks, jobs, mcp_server, memory, mentions, status, taste, transcribe,
+               voice_note, workers)
 from .accounts import Account, Cooldowns, from_dir, load_accounts, pick
 from .config import (EFFORTS, REPO, SHELLS, budgets, discord_id, flag, load_toml, models, override, people, pinned, private_dir,
                      read_secret, room_id, room_settings, rooms, state_dir, table, trusted, write_private)
@@ -43,7 +44,8 @@ from . import abilities, words   # STYLE.md: what a room reads
 
 log = logging.getLogger("yerk.daemon")
 YERK_TOOLS = ["mcp__yerk__send", "mcp__yerk__hold", "mcp__yerk__recall", "mcp__yerk__read_memory",
-              "mcp__yerk__remember", "mcp__yerk__worker", "mcp__yerk__schedule", "mcp__yerk__settings", "mcp__yerk__transcribe"]
+              "mcp__yerk__remember", "mcp__yerk__worker", "mcp__yerk__schedule", "mcp__yerk__settings", "mcp__yerk__transcribe",
+              "mcp__yerk__voice_note"]
 # A shell room's sandbox when rooms.toml gives it no [rooms.NAME.sandbox] table: unsandboxed, a Read deny stops `cat` and
 # the Read tool, but a script, grep or redirect read every secret (Claude Code 2.1.304, PR 66's cold read, 2026-10-21)
 SANDBOX = {"enabled": True, "autoAllowBashIfSandboxed": True}
@@ -125,6 +127,11 @@ class ConsoleChannel:
         if not path.is_file():
             raise FileNotFoundError(str(path))
         return self._out({"room": room, "file": str(path), "caption": caption})
+
+    async def send_voice(self, room: str, path: Path, meta: dict[str, Any], key: str | None = None, inbound: str = "") -> tuple[list[str], str]:
+        if not path.is_file():
+            raise FileNotFoundError(str(path))
+        return self._out({"room": room, "voice": str(path), "duration": meta["duration"]}), ""
 
     async def worker_card(self, room: str, key: str, text: str, message_id: str | None = None) -> str | None:
         print(f"[{key}] {text}", file=sys.stderr, flush=True)
@@ -373,12 +380,18 @@ class Yerkd:
             turn = src.turn_key if src.busy and src.turn_key else f"x{uuid.uuid4().hex[:11]}"
             inbound = ",".join(m.id for m in src.inflight) if src.busy else ""
         key = f"{turn}-s{self.sends}"                         # and this send's number: unique across restarts
+        voice, why = voice_note.meta(Path(file)) if file else None, ""     # a note voice_note made goes as a voice message
         try:
-            ids = await (ch.send_file(room, Path(file), text, key=key, inbound=inbound) if file else ch.send_text(room, text, key=key))
+            if voice:                                         # Discord takes no words beside one, so they follow it
+                ids, why = await ch.send_voice(room, Path(file), voice, key=key, inbound=inbound)
+                ids += await ch.send_text(room, text, key=f"{key}-t") if text else []
+            else:
+                ids = await (ch.send_file(room, Path(file), text, key=key, inbound=inbound) if file else ch.send_text(room, text, key=key))
         except (OSError, ValueError) as e:
             return {"ok": False, "error": str(e)}
-        log.info("send: %s -> %s, %d message(s)", caller or "?", room, len(ids))
-        return {"ok": True, "message_ids": ids}
+        log.info("send: %s -> %s, %d message(s)%s", caller or "?", room, len(ids), f", the voice note as a plain file: {why}" if why else "")
+        return {"ok": True, "message_ids": ids, **({"voice_message": not why} if voice else {}),
+                **({"note": words.VOICE_AS_FILE.format(why=why)} if why else {})}
 
     async def tool_transcribe(self, room: str, path: str, owner_yes: bool = False) -> dict[str, Any]:
         """The `transcribe` tool: an audio file from the calling room's own folders (may_send's rule; its inbox holds what
@@ -388,15 +401,29 @@ class Yerkd:
             return {"ok": False, "error": f"{p.name} is outside this room's folders; transcribe reads the files sent to it"}
         if not p.is_file():                           # not audio: ffmpeg says so before anything is paid
             return {"ok": False, "error": f"there is no file {p.name} in this room's folders"}
-
-        def book(engine: str, usd: float, note: str) -> None:
-            try:
-                self.ledger.spend(room=room, tool="transcribe", engine=engine, usd=round(usd, 6), note=note)
-            except Exception as e:                    # the ledger never stops a paid call's answer reaching the room
-                log.warning("transcribe: a spend row was not written (%s, US$%.4f): %s", engine, usd, e)
-        r = await asyncio.to_thread(transcribe.run, p, self.memory.embeddings_key, self.private / transcribe.GROQ_KEY, book, owner_yes)
+        r = await asyncio.to_thread(transcribe.run, p, self.memory.embeddings_key, self.private / transcribe.GROQ_KEY,
+                                    self.booker(room, "transcribe"), owner_yes)
         log.info("transcribe: %s, %s", room, f"{r['segments']} segments, {r['uncertain']} uncertain" if r["ok"] else r["error"][:160])
         return r
+
+    async def tool_voice_note(self, room: str, script: str, name: str = "", owner_yes: bool = False) -> dict[str, Any]:
+        """The `voice_note` tool: a script made a voice note off the loop (voice_note.run) in the calling room's own work
+        folder, where `send` takes it from, each paid call a spend row, as transcribe's are."""
+        if room not in self.rooms:
+            return {"ok": False, "error": f"no room {room!r}; rooms: {', '.join(self.rooms)}"}
+        r = await asyncio.to_thread(voice_note.run, script, name, self.state / "rooms" / room / "work" / voice_note.FOLDER, self.private,
+                                    self.memory.embeddings_key, self.booker(room, "voice_note"), owner_yes)
+        log.info("voice_note: %s, %s", room, f"{r['engine']}, {r['duration_s']} s, US${r['usd']:.4f}" if r["ok"] else r["error"][:160])
+        return r
+
+    def booker(self, room: str, tool: str) -> transcribe.Book:
+        """A paid tool's spend writer: one ledger row per paid call (decision 32), the morning diff's day total."""
+        def book(engine: str, usd: float, note: str) -> None:
+            try:
+                self.ledger.spend(room=room, tool=tool, engine=engine, usd=round(usd, 6), note=note)
+            except Exception as e:                    # the ledger never stops a paid call's answer reaching the room
+                log.warning("%s: a spend row was not written (%s, US$%.4f): %s", tool, engine, usd, e)
+        return book
 
     async def tool_recall(self, room: str, query: str, k: int) -> dict[str, Any]:
         """Off the loop: the index is yerk-index's file, read here, never built here (L47). The first

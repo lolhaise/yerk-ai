@@ -4,7 +4,7 @@
 # and [code] at the end, which counts lines. The budget test fails the build when a part or a total passes its number here.
 
 [session_start]
-total = 84350
+total = 84550
 
 # Load order, most stable first, so the cached start of the prompt survives.
 # The first five parts are Claude Code's own (its default prompt, the built-in tools
@@ -29,8 +29,11 @@ skills = 0
 # 2026-10-21: the taste rules (one line each, a rule and the rated example replies that prove it; example lines are the
 # strongest voice lever there is) took the largest rulebook to 9,860 and two room voices to 4,999, so 10,850 and 5,500,
 # about 10% over each; `rules` keeps 11,886 and the total rose by the 4,350 (decision 12's 80,000 moves with it).
+# 2026-10-22: the voice_note line (when a room makes a voice note: only asked, since each one costs) took the mechanics to
+# 3,377, so 3,400; no part could pay, since the six rooms' largest persona measured 11,704, room voice 5,392 and pinned
+# memory 3,854 that day, so the total rose by the 200.
 [session_start.appended]
-mechanics = 3200
+mechanics = 3400
 persona = 11800
 rulebook = 10850
 room_voice = 5500
@@ -139,4 +142,8 @@ duplicated_topics = 0
 # Stop bounce, and the ledger's spend table with its writer, reader and morning line (the same table PR 76 adds; whichever
 # merges second keeps one copy), not folded to fit; its cold read added 6 of the 269 (a Read of a recording is not
 # hearing it, and the room's 10-minute tool timeout that lets a long recording's call finish).
-lines = 16998
+# 2026-10-22: voice_note raised it by 414, the voice_note tool (voice_note.py, 309: the box's recipe, both voices, the
+# assembly, the probe and the waveform), Discord's voice message path in send_file (45), the daemon's tool and the spend
+# the next run starts the (00), example note (00), says The sample (00) item moved to the next (0) (step and
+
+lines = 17412

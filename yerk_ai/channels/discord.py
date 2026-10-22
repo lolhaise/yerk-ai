@@ -44,9 +44,11 @@ import sqlite3
 import time
 import uuid
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Awaitable, Callable, Coroutine, TypeVar
 
 import discord
+from discord.http import handle_message_parameters
 
 from .. import status, transcribe, words
 from ..config import EFFORTS
@@ -69,6 +71,7 @@ FORBIDDEN = {".exe", ".bat", ".cmd", ".com", ".scr", ".msi", ".dll", ".ps1", ".v
 # bytes sent, 20,971,521 refused with 413 / 40005 "Request entity too large". Discord's answer wins
 # over the library's table; a guild the table puts higher (tier 2 and 3) keeps the table's number.
 BOT_UPLOAD = 20 * 1024 * 1024
+VOICE_FLAG = 1 << 13  # IS_VOICE_MESSAGE: one audio attachment, no content (Discord's Message Resource, read 2026-10-22)
 REPLY_MAX = 300
 QUICK = 1.0           # seconds a slash command may take before its answer is deferred (Discord gives three)
 RETRY = 60.0          # seconds before a channel is read again after a message the ledger could not take (disk-full drill b)
@@ -101,6 +104,18 @@ def refusal(e: Any, limit: int) -> str:
     if e.status == 413 or getattr(e, "code", None) == 40005:
         return words.file_why("too large", limit=words.size(limit))
     return words.file_why("refused")
+
+
+class VoiceFile(discord.File):
+    """A voice message's one attachment with the duration_secs and waveform Discord reads beside it (its Message Resource,
+    Voice Messages, read 2026-10-22); discord.py's File carries neither."""
+
+    def __init__(self, path: str, name: str, meta: dict[str, Any]) -> None:
+        super().__init__(path, filename=name)
+        self.meta = meta
+
+    def to_dict(self, index: int) -> dict[str, Any]:
+        return {**super().to_dict(index), "duration_secs": self.meta["duration"], "waveform": self.meta["waveform"]}
 
 
 def safe_name(name: str) -> str:
@@ -787,11 +802,40 @@ class DiscordChannel:
             return words.file_why("size", size=said, limit=cap)
         return words.file_why("empty") if size == 0 else None
 
-    async def send_file(self, room: str, path: Path, caption: str = "", key: str | None = None, inbound: str = "") -> list[str]:
+    async def send_voice(self, room: str, path: Path, meta: dict[str, Any], key: str | None = None,
+                         inbound: str = "") -> tuple[list[str], str]:
+        """A note voice_note.py made, as one Discord voice message: send_file's path with the voice form, and why it went as
+        the plain audio file instead when Discord refused that form or dropped its flag ("" when it went as voice)."""
+        plain: list[str] = []
+        ids = await self.send_file(room, path, key=key or f"v{uuid.uuid4().hex[:12]}", inbound=inbound, voice=(meta, plain))
+        return ids, "; ".join(plain)
+
+    async def _voice(self, ch: Any, path: Path, name: str, meta: dict[str, Any], nonce: str, plain: list[str]) -> Any:
+        """One voice message: flag 8192, no content, the file as audio/ogg with its duration and waveform, through the bot's
+        own HTTP client, since discord.py's send posts a file as application/octet-stream and Discord reads the voice fields
+        only beside an audio/ type. Refused (but for size), it goes as the plain file and `plain` says why."""
+        try:
+            with handle_message_parameters(file=VoiceFile(str(path), name, meta), flags=discord.MessageFlags(voice=True),
+                                           nonce=nonce) as params:
+                for part in params.multipart or []:
+                    if str(part.get("name", "")).startswith("files["):
+                        part["content_type"] = "audio/ogg"
+                data = await self.client.http.send_message(ch.id, params=params)
+        except discord.HTTPException as e:
+            if e.status == 413 or getattr(e, "code", None) == 40005:
+                raise                                 # too large as voice is too large as a file: send_file says so
+            plain.append(refusal(e, upload_limit(ch)))
+            return await ch.send(file=discord.File(str(path), filename=name), nonce=nonce)
+        if not int(data.get("flags") or 0) & VOICE_FLAG:
+            plain.append(words.VOICE_PLAIN)
+        return SimpleNamespace(id=int(data["id"]))
+
+    async def send_file(self, room: str, path: Path, caption: str = "", key: str | None = None, inbound: str = "",
+                        voice: tuple[dict[str, Any], list[str]] | None = None) -> list[str]:
         """The one file path: checked, sent from a snapshot under a new name, its message id
         recorded; any miss is a visible notice in the room and a ValueError for the caller. A file
         the same message already had in the room (a turn a crash cut short, run again) is not sent
-        twice: its message id comes back."""
+        twice: its message id comes back. With `voice` (send_voice's), it is posted as a voice message."""
         key = key or f"f{uuid.uuid4().hex[:12]}"
         ch, name = await self._channel(room), safe_name(path.name)
         size = path.stat().st_size if path.is_file() else None
@@ -815,8 +859,9 @@ class DiscordChannel:
             try:
                 async with self._lock(room):
                     await self._debug_pause("before-post")
-                    m = await ch.send(content=caption[:MAX] or None, file=discord.File(str(snap or path), filename=name),
-                                      nonce=nonce_for(f"{key}:0"))
+                    m = await (self._voice(ch, snap or path, name, voice[0], nonce_for(f"{key}:0"), voice[1]) if voice else
+                               ch.send(content=caption[:MAX] or None, file=discord.File(str(snap or path), filename=name),
+                                       nonce=nonce_for(f"{key}:0")))
                     await self._debug_pause("after-post")
             except discord.HTTPException as e:
                 why = refusal(e, upload_limit(ch))

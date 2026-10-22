@@ -59,6 +59,7 @@ class Settings:
     scoped: bool = False            # a room's own `also` (only): index hits and names kept to the roots in `scope`
     cites: tuple[tuple[Path, str], ...] = ()    # every root of the install and the name a cite gives it, the same in every room
     docs: Path | None = None        # <state>/docs (docs.py): the Claude docs and the rooms' shape reports, a root in every room
+    private: Path | None = None     # the private folder: where an ability's other key files are looked for (abilities.state)
 
     @property
     def daily(self) -> Path:
@@ -112,7 +113,8 @@ def settings(private: Path, state: Path, conf: dict[str, Any] | None = None) -> 
                     embeddings_units=str(conf.get("embeddings_units", "both")),
                     embeddings_width=int(conf.get("embeddings_width") or conf.get("embeddings_dim") or 256),
                     index_status=state / "memory" / "index.json",
-                    recall_chars=max(100, int(conf.get("recall_chars", RECALL_CHARS))), cites=tuple(cites.items()), docs=docs)
+                    recall_chars=max(100, int(conf.get("recall_chars", RECALL_CHARS))), cites=tuple(cites.items()), docs=docs,
+                    private=private)
 
 
 # the embedding settings a user with another model or budget can pick, described from the code (run 5):
