@@ -171,9 +171,9 @@ def forms(fig: str) -> tuple[str, ...]:
 # one; when its unit agrees (1.4 ft is not 1.4 s, 0.11 ft is not 0.11%); and when it is not the reply itself (the day
 # log records a reply as it is posted, and another lane may quote it: a line holding the reply's own words around the
 # figure is a copy, never its source). A figure with no label word beside it, in the reply or on the line, is matched
-# second entry waits, in the. Queue
-# the check while a second entry waits in: the_queue for its turn and the last "$", part closes the case before
-# "$000" as plain text with one more 000 line for the check while.
+# by its digits, as before. A dollar figure is looked up with its sign: has_figure never matches digits right after
+# a "$", so the bare digits of "$500" could only ever be found where 500 was not a dollar amount; and a read carries
+# a figure in either written form, with or without thousands separators (forms, above).
 LABEL = re.compile(r"[A-Za-z][A-Za-z0-9]*(?:'[A-Za-z]+)?")
 PLAIN = frozenset("""a an the and or but nor of to in on at by for with from into onto as than then that this these those
 it its is are was were be been being has have had do does did not no so if vs per via all each every any some one two three
