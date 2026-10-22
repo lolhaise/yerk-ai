@@ -8,6 +8,14 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-22
 
+### test-hygiene (#86)
+
+- The scrub test passes after `ruff check .`: it skips the folders a run leaves in a checkout (`.ruff_cache`,
+  `.hypothesis`, `.tox`, `venv`, `node_modules`), where ruff's cache held absolute home paths. Lint and test in any order.
+- With a private denylist set (`YERK_DENYLIST_FILE`), the tree passes it: the test fixtures, docstrings and comments that
+  named the author's rooms, people and work tickets use example values now. A line that starts with `Copyright (c) YYYY`
+  is the one line the denylist skips, since the license names its holder. Nothing changes for an install.
+
 ### recall-warm (#80)
 
 - `yerk-index` keeps the pages the keyword rank reads (the FTS tables, the `chunks` rows it joins, `meta`) mapped into

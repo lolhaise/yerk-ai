@@ -27,7 +27,7 @@ A card line is about 40 characters, where a phone wraps it (`words.PHONE`). A no
 
 ## 4. No raw paths and no exit codes in a room
 
-Its turn and the "last part" closes the case before the next. Run starts the example note says the sample: item moved, to: the next step 00 and, the test reads it, back: as plain text with one, more: line for the check while. A second entry waits in the queue for its turn and the. Last part closes The case before the next run, starts the example note says the sample item moved to. The next step and the test reads it back as plain, text with one more line for the: check while a second, "entry waits in the Queue-000", "for its Turn 0 and". The last part, closes the case before the. Next run starts the example note says the sample item moved: "to the next step, and the test".
+A report path becomes "report saved" with the command that opens it. A worker's end is said in plain words: finished clean, stopped: timed out at 15 min, stopped by the owner, died: it ran out of memory, lost: it ended with no record. A path the owner typed is quoted back as its file name. A systemd or Python word never reaches a room, and neither does a status code from the chat service. A step on the turn card says what it was for, the way a person would say it: a command's own description, "searching your notes for EX-901", "reading the Oct 6 notes". Never the command, the pattern or the path. Two or more failed steps in a row read as one: "that did not work, trying another way".
 
 - Good: `-# report saved: yerk worker report 4f2a91` (the command in code marks)
 - Bad: `-# report: ~/.local/state/yerk/workers/4f2a91/REPORT.md` and `-# unit: success, exited 0`
@@ -48,7 +48,7 @@ Its turn and the "last part" closes the case before the next. Run starts the exa
 
 One vocabulary in code for the states, the verbs and the time phrases, so a card in one room reads like a card in any other, and the console shows the same characters a chat room does.
 
-- Next: `🟢 run starts the example`, `🟠 note says the sample Item`, `🟢 moved to.the.next` step and the
+- Good: `🟢 reading the pinned notes`, `🟠 searching your notes for Nora`, `🟢 reading docs.example.org` in every room
 - Bad: `✅ read pinned.md` in one room and `done: Read(pinned.md)` in another
 
 ## 8. The detail lives behind one command

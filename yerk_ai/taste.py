@@ -1,6 +1,6 @@
 """Your ratings of a room's replies: a message of yours that praises or faults the room's last reply is kept as one
 row in taste.jsonl, and every message to one of your own rooms carries the rated replies, your words beside what
-the rated replies, his words beside what the room had said (as the owner asked: put as they stand in
+the room had said. The format is the one an earlier setup of the maintainer's used, so replies rated there carry
 the owner's files).
 
 The classifier is the box's, its three lists unchanged: a verdict is a phrase about the reply (praise, its length, a

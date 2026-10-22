@@ -21,7 +21,7 @@ MOM = 31        # the one person of the family room; a stand-in, since a real id
 def install(tmp_path, frozen: object = None, live: object = None, sealed: bool = False, family: bool = False) -> Yerkd:
     """Two read-only roots, each a curated file and a memory folder holding the same file names with their own words:
     `frozen-room` gets `frozen` as its `also` (default the snap pair), `live-room` gets `live` (default the live pair,
-    written relative to the private folder), `example-room` sets none; `family` adds `Alex`, a `privacy = "family"`
+    written relative to the private folder), `example-room` sets none; `family` adds `family-room`, a `privacy = "family"`
     room with one listed person and no `also`. The index and the name index are built."""
     private, state = tmp_path / "private", tmp_path / "state"
     shutil.copytree(EXAMPLE_PRIVATE, private)
@@ -42,7 +42,7 @@ def install(tmp_path, frozen: object = None, live: object = None, sealed: bool =
     mom = block.replace("CHANNEL_ID", "MOM_ID").replace('privacy = "owner"', 'privacy = "family"') + f"people = [{MOM}]\nlayer = \"mom\"\n"
     (private / "rooms.toml").write_text(base + f"\n[rooms.frozen-room]\n{sealing}also = {json.dumps(frozen)}\n"
                                         f"\n[rooms.live-room]\n{block}also = {json.dumps(live)}\n"
-                                        + (f"\n[rooms.example-two]\n{mom}" if family else ""))
+                                        + (f"\n[rooms.family-room]\n{mom}" if family else ""))
     y = Yerkd(private, state)
     s = y.memory
     memindex.Index(s.index_db, s.scope).sync()
@@ -193,7 +193,7 @@ def test_a_family_room_with_one_person_reads_its_own_lines_and_shared_files_only
     from yerk_ai.config import people
     from yerk_ai.daemon import ConsoleChannel
     from yerk_ai.room import Inbound
-    y, mom = install(tmp_path, family=True), "Alex"
+    y, mom = install(tmp_path, family=True), "family-room"
     assert people(mom, y.room_confs[mom]) == frozenset({MOM}) and not y.owner(mom) and y.daily.rooms[mom] == ("discord:MOM_ID", "room")
     y.daily.capture("example-room", "o1", "owner", "the owner's private line about the example kettle")
     y.daily.capture(mom, "p1", "person", "the mother's line about the example kettle", who="mom")
@@ -223,7 +223,7 @@ def test_a_family_room_with_one_person_reads_its_own_lines_and_shared_files_only
     note = asyncio.run(y.tool_remember(mom, "Example dinner: Sunday at six", "example dinner", []))
     assert note["ok"] and note["cite"].startswith("memory/daily/") and not (y.memory.root / "facts" / "example-dinner.md").exists()
     line = asyncio.run(y.tool_read_memory(mom, note["cite"], 1, 1))["text"]
-    assert " The#check:While_A second: Entry waits: In the queue [for:its] [turn:and0." in line
+    assert " family-room#discord:MOM_ID note: Example dinner: Sunday at six [c:room] [m:p2." in line
     assert asyncio.run(y.tool_settings(mom, "opus", "")) == {"ok": False, "line": words.OWNER_ONLY}
     assert asyncio.run(y.tool_settings(mom, "", "", by_owner=True))["line"].startswith("this room: ")   # the owner's own slash command
     assert y.owner_only(mom, "") == {"ok": False, "line": words.WORKERS_OWNER_ONLY}
@@ -235,7 +235,7 @@ def test_a_family_rooms_names_follow_each_files_class_as_it_is_now(tmp_path):
     sidecar edit moves no Markdown file, so the stamp stayed until yerk-index restarted and the family room kept getting the
     names of a file made private, which its recall and read_memory already refused. The daemon reads the class as it is now."""
     y = install(tmp_path, family=True)
-    s, mom, ask = y.memory, "Alex", "as plain text with one?"
+    s, mom, ask = y.memory, "family-room", "when does example club meet?"
     (s.root / "facts").mkdir(exist_ok=True)
     (s.root / "facts" / "example-club.md").write_text("# example club\n\n- Example Club: meets on Tuesdays.\n")
     (s.root / "facts" / "example-club.md.class").write_text("shared\n")
@@ -262,7 +262,7 @@ def test_a_hidden_longer_name_never_takes_the_words_of_a_family_rooms_own(tmp_pa
     (facts / "example-aunt.md").write_text("---\nclass: room\nroom: discord:MOM_ID\n---\n# example aunt\n\n- Example Aunt: knits on Sundays.\n")
     (facts / "example-family.md").write_text("# example family\n\n- Example Aunt Mary: the attic code.\n")
     sync(y)
-    hers, his = ([e["text"] for e in y.recall_for(r, "the next step and the?")[0]] for r in ("Alex", "example-room"))
+    hers, his = ([e["text"] for e in y.recall_for(r, "is example aunt mary coming?")[0]] for r in ("family-room", "example-room"))
     assert [t for t in hers if "knits" in t] and not [t for t in hers if "attic" in t]
     assert [t for t in his if "attic" in t] and not [t for t in his if "knits" in t]       # the owner's room: the longest key, as before
 
@@ -277,7 +277,7 @@ def test_a_family_room_never_learns_what_it_may_not_read(tmp_path):
     process refuses file reads outside its working folders in every mode. The owner's room keeps all of it."""
     from yerk_ai import words
     from yerk_ai.daemon import ConsoleChannel
-    y, mom = install(tmp_path, family=True), "Alex"
+    y, mom = install(tmp_path, family=True), "family-room"
     y.daily.capture("example-room", "o5", "owner", "zanzibar quartz is the owner's private code word")
     y.daily.capture(mom, "p5", "person", "see you at dinner on sunday", who="mom")
     with (y.memory.daily / f"{memory.window(y.memory)[0]}.md").open("a") as f:
@@ -326,7 +326,7 @@ def test_a_room_that_lists_people_needs_a_layer_of_its_own(tmp_path):
         block = "".join(x + "\n" for x in block.replace('privacy = "owner"', 'privacy = "family"').replace("CHANNEL_ID", "MOM_ID").splitlines()
                         if not x.startswith(("persona", "pinned_memory", "open_loops")))
         with (private / "rooms.toml").open("a") as f:
-            f.write(f"\n[last.part-closes]\n{block}as = [{MOM}]\n{extra}")
+            f.write(f"\n[rooms.family-room]\n{block}people = [{MOM}]\n{extra}")
         if i < 4:
             with pytest.raises(SystemExit, match="people needs a `layer` of its own"):
                 Yerkd(private, state)
@@ -339,7 +339,7 @@ def test_no_new_recall_path_brings_a_family_room_an_owner_line_and_a_scoped_room
     room's reader in its own scope (decisions 22, 23, 44): the family room gets its own lines and shared files, never an
     owner line; a name only the owner's files hold is not on file for her; a scoped owner room gets its own `also` root only."""
     from yerk_ai import hooks
-    y, mom = install(tmp_path, family=True), "Alex"
+    y, mom = install(tmp_path, family=True), "family-room"
     y.daily.capture("example-room", "o1", "owner", "we ate at the example diner last friday with Examplia, the owner's private night")
     y.daily.capture(mom, "p1", "person", "we ate at the example diner last friday, the mother's own night", who="mom")
     (y.memory.root / "facts").mkdir(exist_ok=True)

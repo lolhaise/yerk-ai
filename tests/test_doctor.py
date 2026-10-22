@@ -221,8 +221,8 @@ def test_a_stale_index_an_old_mention_index_and_no_meaning_search_are_each_a_lin
     monkeypatch.setattr(memindex, "check", lambda db, scope, *a: {"status": "stale"})
     monkeypatch.setattr(memory, "meaning_state", lambda s: "no-index")
     (priv / "memory" / "facts").mkdir()
-    (priv / "memory" / "facts" / "Alex.md").write_text("# And\n- note says the\n")
-    (state / "memory" / "mentions.json").write_text(json.dumps({"built": time.time() - 3600}))    # the next Run.starts
+    (priv / "memory" / "facts" / "nora.md").write_text("# Nora\n- the club treasurer\n")
+    (state / "memory" / "mentions.json").write_text(json.dumps({"built": time.time() - 3600}))    # older than nora.md
     assert doctor.main(priv, state) == 1
     assert capsys.readouterr().out.splitlines() == ["and the: test", "for the: check while a second entry",
                                                     "as plain: text-with"]
@@ -362,7 +362,7 @@ def test_every_key_a_loader_reads_from_a_room_is_in_room_keys(tmp_path, monkeypa
     for name, conf in y.room_confs.items():
         assert isinstance(conf, Seen)
         y.add_room(name, ConsoleChannel())
-        y.spec_for(name), y.reader(name), y.recall_for(name, "starts the Example note Says")
+        y.spec_for(name), y.reader(name), y.recall_for(name, "lunch with Nora on Monday")
         rules = y.memory.root / memory.RULES
         context.session_start(EXAMPLE_PRIVATE, conf, budgets(), rules=rules)
         context.per_message(name, conf, "owner", datetime.now().astimezone(), None, budgets())

@@ -221,7 +221,7 @@ def test_model_puts_the_room_on_an_account_between_turns_through_the_settings_to
 
 
 def test_the_owners_model_command_works_in_a_family_room_where_the_rooms_own_tool_does_not(y, tmp_path):
-    """0000-00-00 00:00, #the-last: part closes the /case before "the next run starts the example note". Says the sample
+    """Seen live in a people room: the owner's own /model got "only the owner's rooms can change this". The interaction had
     already proven the owner; the settings tool then judged the room (family). The owner's slash command is theirs in any of
     their rooms; a room's own `settings` call from a people room still is not."""
     y.room_confs[ROOM]["privacy"] = "family"

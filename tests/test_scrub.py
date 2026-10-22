@@ -4,7 +4,11 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SKIP_DIRS = {".git", ".venv", "__pycache__", ".mypy_cache", ".pytest_cache", "build", "dist"}
+# What a run leaves in a checkout, never part of the repository: git's own, the venvs (.venv, venv), the caches of python,
+# mypy, pytest, ruff (absolute paths inside, so `ruff check .` before pytest failed this test), hypothesis and tox, node's
+# packages, and the build outputs.
+SKIP_DIRS = {".git", ".venv", "venv", "__pycache__", ".mypy_cache", ".pytest_cache", ".ruff_cache", ".hypothesis", ".tox",
+             "node_modules", "build", "dist"}
 PATTERNS = {
     "email": re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}"),
     "discord-id-shaped number": re.compile(r"(?<![\w-])\d{17,20}(?![\w-])"),
@@ -16,11 +20,12 @@ PATTERNS = {
 }
 HOME = re.compile(r"/home/[a-z_][a-z0-9_-]*|/Users/[A-Za-z][\w.-]*")
 HOME_OK = ("examples/", "tests/")
+COPYRIGHT = re.compile(r"^\W*Copyright \(c\) \d{4} ")    # the MIT notice names its holder; the denylist skips that line only
 
 
-def repo_files():
-    for p in ROOT.rglob("*"):
-        if p.is_file() and not SKIP_DIRS.intersection(p.relative_to(ROOT).parts):
+def repo_files(root: Path = ROOT):
+    for p in root.rglob("*"):
+        if p.is_file() and not SKIP_DIRS.intersection(p.relative_to(root).parts):
             yield p
 
 
@@ -40,7 +45,8 @@ def scan(path: Path, rel: str, deny: tuple[re.Pattern[str], ...] | list[re.Patte
     if not rel.startswith(HOME_OK):
         hits += [f"{rel}: home path: {m.group()}" for m in HOME.finditer(text)]
     lines = text.splitlines()          # a denied word is named by its entry's number, never spelled out in a CI log
-    return hits + [f"{rel}:{n}: denylist entry {i}" for i, rx in enumerate(deny, 1) for n, x in enumerate(lines, 1) if rx.search(x)]
+    return hits + [f"{rel}:{n}: denylist entry {i}" for i, rx in enumerate(deny, 1) for n, x in enumerate(lines, 1)
+                   if rx.search(x) and not COPYRIGHT.match(x)]
 
 
 def test_repository_is_clean():
@@ -61,6 +67,16 @@ def test_the_denylist_fails_a_planted_name_and_is_empty_without_its_file(tmp_pat
     assert scan(bad, "docs/leak.md", denylist()) == ["docs/leak.md:2: denylist entry 1", "docs/leak.md:2: denylist entry 2"]
     bad.write_text("met Examplia Quux and QUUXCORP\n")
     assert scan(bad, "docs/leak.md", denylist()) == ["docs/leak.md:1: denylist entry 1", "docs/leak.md:1: denylist entry 2"]
+    bad.write_text("# Copyright (c) 2026 Examplia Quux. MIT License.\nwritten by Examplia Quux\n")
+    assert scan(bad, "docs/leak.md", denylist()) == ["docs/leak.md:2: denylist entry 1"]
+
+
+def test_what_a_run_leaves_in_the_checkout_is_not_scanned(tmp_path):
+    for d in (".ruff_cache/0.17.1", ".hypothesis/examples", ".tox/py312", "venv/lib", "node_modules/x", "docs"):
+        (tmp_path / d).mkdir(parents=True)
+        (tmp_path / d / "blob").write_text("/home/someone/yerk-ai/tests/test_x.py someone@example.com\n")
+    assert [p.relative_to(tmp_path).as_posix() for p in repo_files(tmp_path)] == ["docs/blob"]
+    assert len(scan(tmp_path / "docs" / "blob", "docs/blob")) == 2
 
 
 def test_the_scrub_catches_what_it_should(tmp_path):
