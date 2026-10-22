@@ -40,6 +40,7 @@ class Part:
     budget: int | None
     raw: int             # size before trimming
     source: str = ""
+    cut: tuple[str, ...] = ()    # the lines a trim sent broken or not at all (the daemon says them in the machine room)
 
     @property
     def size(self) -> int:
@@ -143,8 +144,9 @@ def session_start(private: Path, room: dict[str, Any], budgets: dict[str, Any], 
     for name in APPENDED:
         text, src = raw[name]
         limit = int(limits[name])
-        sent, _ = truncate(text, name, limit, read_path=src or None)
-        parts.append(Part(name, sent, limit, chars(text), src))
+        sent, cut = truncate(text, name, limit, read_path=src or None)
+        kept = set(sent.split("\n")) if cut else set()
+        parts.append(Part(name, sent, limit, chars(text), src, tuple(x for x in text.split("\n") if cut and x.strip() and x not in kept)))
     return parts
 
 

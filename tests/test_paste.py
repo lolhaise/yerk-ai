@@ -8,7 +8,8 @@ import json
 import time
 from datetime import datetime, timedelta
 
-from test_gates import call, human_turn, setup
+import test_gates
+from test_gates import call, human_turn
 from test_observe import NOW, layer
 
 from yerk_ai import memory, morning, status, words
@@ -24,6 +25,15 @@ PLAN = "\n".join(["Here is tomorrow's plan as it stands:", "```text", *BLOCK, "`
 AGAIN = "\n".join(["Morning. The plan again:", "```", "", f"  {BLOCK[0]}", BLOCK[1].replace("  ", "\t"), "",
                    BLOCK[2].replace(" ", "   "), f"{BLOCK[3]}   ", "```"])
 STOP = {"hook_event_name": "Stop", "stop_hook_active": False}
+
+
+def setup(tmp_path):
+    """test_gates' owner room with a claims sheet written in its turn, so the sheet rule (test_sheet_hard.py), which turns
+    back a pasted block with none, stays out of the paste rule's tests."""
+    y, room, ch = test_gates.setup(tmp_path)
+    room.evidence.observe({"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "s0", "name": "Write",
+                                                                         "input": {"file_path": "/w/claims.md"}}]}})
+    return y, room, ch
 
 
 def posted(y, room, text, days_ago, at=(19, 22, 19), mid=None):

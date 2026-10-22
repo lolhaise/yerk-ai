@@ -232,6 +232,7 @@ class Yerkd:
         layer = context.layer_dir(self.private, conf)
         self.rules_news(name)          # first, the look a new session starts with: a rule filed meanwhile is told twice, never lost
         parts = context.session_start(self.private, conf, self.budgets, lambda left: self.room_pack(name, left), self.memory.root / memory.RULES)
+        self.cut_said(name, parts)
         ctx = write_private(rdir / "context.md", context.appended_file(parts))      # the owner's lines: 0600, as every private file
         hooks.record(self.state, name, "session_start", "", {p.name: p.size for p in parts},
                      next((p.text for p in parts if p.name == "recall_pack"), ""), file=str(ctx))
@@ -256,6 +257,41 @@ class Yerkd:
         return RoomSpec(room=name, model=now["model"][0], cwd=work, tools=list(conf.get("tools", [])), settings=settings,
                         context_file=ctx, mcp_config=mcp_server.room_config(f"{self.url}/mcp", name, rdir / "mcp.json", token, conf.get("mcp")),
                         extra_args=extra, token=token, add_dirs=dirs)
+
+    def cut_said(self, name: str, parts: list[context.Part]) -> None:
+        """Each part a session start sent trimmed: one machine-room notice naming the part, the room and the lines it cut (their
+        first six words), once a day per part and its file, said by the first room to start (cut-said.json in the state folder),
+        so no budget cuts in silence (claim 8); `yerk doctor` names every room, red until the part fits. Never stops the start."""
+        mark, today = self.state / "cut-said.json", time.strftime("%Y-%m-%d")
+        try:
+            said = dict(json.loads(mark.read_text()))
+        except (OSError, ValueError, TypeError):
+            said = {}
+        if not (new := [p for p in parts if p.cut and said.get(f"{p.name} {p.source}") != today]):
+            return
+        write_private(mark, json.dumps({**said, **{f"{p.name} {p.source}": today for p in new}}))
+        for p in new:
+            n = len(p.cut)
+            self.to_machine(f"{words.WORKING} " + words.PART_CUT.format(part=p.name, room=name, size=p.raw, cap=p.budget, n=n,
+                                                                       s="s" * (n != 1), heads=words.heads(list(p.cut))))
+
+    def to_machine(self, text: str) -> None:
+        """One line to the machine room (rooms.toml role = "machine") from a room's thread, where a process start runs: on the
+        daemon's loop while it runs, else here (a test); logged, never raised, when it cannot go."""
+        machine = next((n for n, c in self.room_confs.items() if c.get("role") == "machine" and n in self.channels), None)
+        if machine is None:
+            log.warning("no machine room runs here; not said there: %s", text)
+            return
+
+        async def post(to: str) -> None:
+            try:
+                await self.channels[to].notify(to, text)
+            except Exception:
+                log.exception("not said in %s: %s", to, text)
+        if (loop := self.workers.loop) is not None and loop.is_running():
+            asyncio.run_coroutine_threadsafe(post(machine), loop)
+        else:
+            asyncio.run(post(machine))
 
     def walled(self, name: str) -> list[Path]:
         """What a trusted room's shell never reads or writes, from what the daemon knows, at each process start: every entry
@@ -402,6 +438,12 @@ class Yerkd:
             self.ledger.shadow(t=round(time.time(), 3), room=caller, session_id=src.rp.session_id if src.rp else "",
                                turn=src.turn_key, rule="paste", detail=found, reply_chars=len(text))
             log.info("send: %s -> %s turned back once: a fenced block posted on an earlier day (%s)", caller, room, found)
+            return {"ok": False, "error": bounce}
+        if caller in self.rooms and src.busy and (sheet := src.sheet_check(False, text, file)):     # a room's own turn
+            bounce, found = sheet             # the same way: its words, its flag, its shadow row
+            self.ledger.shadow(t=round(time.time(), 3), room=caller, session_id=src.rp.session_id if src.rp else "",
+                               turn=src.turn_key, rule="sheet", detail=found, reply_chars=len(text))
+            log.info("send: %s -> %s turned back once: %s", caller, room, found)
             return {"ok": False, "error": bounce}
         self.sends += 1
         with src.lock:                        # in a turn: its key and the messages it answers
@@ -671,7 +713,7 @@ class Yerkd:
         said = self.ledger.said(name, sid, room.evidence.started)     # its replies posted earlier in this session
         found = evidence.check(reply, room.prompts(), room.evidence, self.memory.scope.roots, figure, known, said)
         found += evidence.check_claims(reply, room.evidence, self.memory.scope.roots)     # decision 25
-        found += evidence.check_sheet(reply, room.evidence)                               # the sheet rule
+        found += [] if room.in_owner_name() else evidence.check_sheet(reply, room.evidence)   # an owner's room refuses instead
         found += evidence.check_person(reply, room.evidence)                              # a claim about a person needs a read
         found += evidence.check_quote(reply, room.evidence, said)                         # a quote needs its source
         with room.lock:                                   # claim 3: the owner pushing back on a reply posted earlier
@@ -831,6 +873,11 @@ class Yerkd:
                     self.ledger.shadow(t=round(time.time(), 3), room=name, session_id=sid, turn=room.turn_key, rule="paste",
                                        detail=found, reply_chars=len(str(said)))
                     log.info("room %s: Stop bounced once: a fenced block posted on an earlier day (%s)", name, found)
+                elif said and (sheet := room.sheet_check(active, str(said), stop=True)):
+                    reason, found = sheet             # the send tool's words and flag: one ask per result in either place
+                    self.ledger.shadow(t=round(time.time(), 3), room=name, session_id=sid, turn=room.turn_key, rule="sheet",
+                                       detail=found, reply_chars=len(str(said)))
+                    log.info("room %s: Stop bounced once: %s", name, found)
             if room and name:
                 try:
                     await asyncio.to_thread(self.shadow_stop, name, room, str(payload.get("last_assistant_message") or ""), sid)

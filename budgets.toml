@@ -4,7 +4,7 @@
 # and [code] at the end, which counts lines. The budget test fails the build when a part or a total passes its number here.
 
 [session_start]
-total = 84750
+total = 88514
 
 # Load order, most stable first, so the cached start of the prompt survives.
 # The first five parts are Claude Code's own (its default prompt, the built-in tools
@@ -34,13 +34,18 @@ skills = 0
 # memory 3,854 that day, so the total rose by the 200.
 # 2026-10-22: the paste line (a fenced block posted on an earlier day is turned back once, PR paste-check) took the
 # mechanics to 3,532, so 3,600; no part could pay on PR 88's three measurements of the day, so the total rose by the 200.
+# 2026-10-22: sheet-hard (W23) found both line-per-rule parts past their lines and cut from the middle at every session
+# start since Oct 21, said to no one: the shared rules file at 12,298 against 11,886 (seven rules gone in every room) and
+# the work room's rulebook at 12,696 against 10,850 (13,518 at 11:1x; fifteen lines gone). `rules` to 12,500 and
+# `rulebook` to 14,000, the total up by the same 614 + 3,150. From here a cut is said in the machine room at session start
+# and `yerk doctor` reads red the day a part passes its line.
 [session_start.appended]
 mechanics = 3600
 persona = 11800
-rulebook = 10850
+rulebook = 14000
 room_voice = 5500
 pinned_memory = 4000
-rules = 11886
+rules = 12500
 recall_pack = 6000
 
 [per_message]
@@ -152,4 +157,9 @@ duplicated_topics = 0
 # room_lines' `first`), the daemon's view kept for the day, its call off the loop, the send refusal and the Stop
 # hook's fifth rule (33), Room.paste_check and its flag (20), the card's row for a refused send (18) and the words (5),
 # not folded to fit.
-lines = 17530
+# 2026-10-22: sheet-hard (W23) raised it by 110: the sheet rule turned from a logger into a refusal in an owner's room,
+# Room.sheet_check and its flag (27), the send refusal, the Stop hook's sixth rule and the session-start cut line said in
+# the machine room (47), the shared sheet test (evidence.py, 11), the refusal's and the cut line's words (14), the
+# doctor's fit check (9) and the cut lines a trim drops (context.py, 2) (a room that does not check
+# gets things wrong), not folded to fit.
+lines = 17640

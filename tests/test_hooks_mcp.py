@@ -126,6 +126,8 @@ def test_a_send_outside_a_turn_has_a_key_of_its_own_across_restarts(tmp_path):
     room.busy, room.turn_key = True, "abc123def456"                   # inside a turn: its key and its messages
     room.inflight = [type("M", (), {"id": "501"})()]
     inside = context.layer_dir(y.private, y.room_confs["example-room"]) / "memory" / "pinned.md"
+    room.evidence.observe({"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "w1", "name": "Write",
+                                                                         "input": {"file_path": "/w/claims.md"}}]}})   # its sheet
     assert asyncio.run(y.tool_send("example-room", "pinned", str(inside), "example-room"))["ok"]
     assert ch.keys[-1] == ("abc123def456-s2", "501")
 

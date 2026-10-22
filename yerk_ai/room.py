@@ -25,7 +25,9 @@ adapter's event loop.
   a working turn answering a person that ends with nothing visible in the room bounces once,
   naming what is owed (nothing that already landed under the turn's key is sent again); a final
   text that only reports a filing (`remember`, `schedule`, `hold`, `settings`) bounces once (stub); a fenced block the
-  room posted on an earlier day is turned back once, in `send` before it posts and in the final text at Stop (paste).
+  room posted on an earlier day is turned back once, in `send` before it posts and in the final text at Stop (paste); a
+  document or a pasted block an owner's room ships with no claims sheet written that turn is turned back once the same
+  way (sheet).
 - A message from the harness itself (sender `yerk`: a worker's relay) runs like any other but is
   not a human message for the clock line or the idle rule; it may cap its reply and name a line the
   reply must carry, and it hears how its turn ended.
@@ -42,6 +44,7 @@ import time
 import uuid
 from collections import deque
 from dataclasses import dataclass, field, replace
+from pathlib import Path
 from typing import Any, Callable, Protocol
 
 from . import memory, transcribe, words
@@ -49,7 +52,7 @@ from .accounts import Account, Cooldowns, pick
 from .card import Card
 from .config import flag, override, pinned, write_private
 from .engine import RoomProcess, RoomSpec, SessionTable, Turn
-from .evidence import Evidence
+from .evidence import DOCUMENT, Evidence, pasted, sheet_written, shipped
 from .ledger import Ledger
 from .lifted.classify import Failure, FailureTable
 from .meters import Meters, rest_until
@@ -147,6 +150,7 @@ class Room:
         self.stub_bounced = False                 # the stub check bounced this result already
         self.board_bounced = False                # the board check bounced this result already
         self.paste_bounced = False                # the paste check turned back a send or a final of this result already
+        self.sheet_bounced = False                # the sheet check turned back a send or a final of this result already
         self.evidence = Evidence(on_call=self._ledger_call)   # every tool call of the turn and what it read
         self.answering: set[str] = set()                      # ids of the batch the turn answers
         self.stale = False                        # the settings changed mid-turn: the process closes at its end
@@ -370,13 +374,36 @@ class Room:
         when, n = f"{calendar.month_abbr[int(day[5:7])]} {int(day[8:10])} at {at[:5]}", hit.count(" / ") + 1
         return words.PASTE.format(when=when), words.PASTE_FOUND.format(n=n, s="s" * (n != 1), when=when)
 
+    def in_owner_name(self) -> bool:
+        """What this room ships goes out in the owner's name: an owner room (rooms.toml privacy, "owner" when unset), no people."""
+        return str(self.conf.get("privacy", "owner")) == "owner" and not self.conf.get("people")
+
+    def sheet_check(self, active: bool, text: str | None, file: str = "", stop: bool = False) -> tuple[str, str] | None:
+        """The sheet rule, no judge, in an owner's room (a person's room keeps the shadow row), in `send` before it posts and
+        at Stop (`stop`), one flag for both (2026-10-22: eight sends in the owner's name in one morning with no claims sheet,
+        each logged, none stopped): a document (evidence.DOCUMENT) or a pasted block (evidence.pasted) with no sheet written
+        this turn (evidence.sheet_written, the shadow rule's test, also looking beside the file, else in the work folder) is
+        turned back once, saying what the sheet is and where it goes: (the refusal, what was found), or None."""
+        doc, paste = [Path(file).name] if file.lower().endswith(DOCUMENT) else [], bool(text) and pasted(str(text))
+        if active or self.sheet_bounced or not self.in_owner_name() or not (doc or paste):
+            return None
+        folder = Path(file).expanduser().resolve().parent if file else (self.state / "rooms" / self.name / "work").resolve()
+        if sheet_written(self.evidence, folder):
+            return None
+        self.sheet_bounced = True
+        done, again, nxt = words.SHEET_STOP if stop else words.SHEET_SEND
+        what = " and ".join([*doc, *([f"the fenced block in {'your final message' if stop else 'this message'}"] if paste else [])])
+        where = f"{folder / (Path(file).stem + '-claims.md')}, beside it" if doc else str(folder / "claims.md")
+        return (words.SHEET.format(done=done, what=what, where=where, thing="document" if doc else "block", again=again, next=nxt),
+                f"{shipped(doc, paste)} with no claims sheet written this turn")
+
     def _new_card(self, note: str = "") -> None:
         privacy = str(self.conf.get("privacy", "owner"))
         self.card = Card(thinking=flag(self.conf.get("thinking_panel")) and privacy == "owner",
                          people=self.name if self.conf.get("people") else "")
         self.card.narration = note                # a harness line from the first post, until the model's first words
         self.turn_key, self.bounced, self.silent_bounced, self.stub_bounced = uuid.uuid4().hex[:12], False, False, False
-        self.board_bounced = self.paste_bounced = False
+        self.board_bounced = self.paste_bounced = self.sheet_bounced = False
         self.channel.open_card(self.name, self.card.render())   # state first from the first post
 
     def meta_for(self, prompt: str) -> tuple[str, float | None]:

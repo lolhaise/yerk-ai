@@ -1104,7 +1104,7 @@ layer = 6
 
 [abilities.sheet]
 state = "built"
-what = "The sheet rule, in shadow: a turn that sends a document through the send tool (.docx, .pdf, .xlsx, .pptx, .txt, .md or .csv) or pastes a block (a fenced block with no language tag, or tagged text, plain or none) in its reply or in a send's text, with no claims sheet written or named in the turn (a Write, Edit or NotebookEdit of a file whose name holds claims and ends in .md, .txt or .csv, or a shell command naming one), is ledgered once and counted in the morning diff; nothing is blocked, it measures how often a room ships something in the owner's name without checking its claims against source first."
+what = "The sheet rule: in an owner's room, a send of a document through the send tool (.docx, .pdf, .xlsx, .pptx, .txt, .md or .csv) or of a text holding a pasted block (a fenced block with no language tag, or tagged text, plain or none), or a final message holding one, with no claims sheet written or named in the turn (a Write, Edit or NotebookEdit of a file whose name holds claims and ends in .md, .txt or .csv, a shell command naming one, or such a file changed this turn beside the document, else in the room's work folder), is turned back once a turn, saying what the sheet is (one row per claim: the claim, its source line, the quote) and where it goes; the next send of the turn goes out as it is. Each refusal is a shadow row the morning diff counts. A person's room is never refused: there the turn is only ledgered, as before."
 tier = "free"
 needs = "nothing beyond the evidence ledger; the document suffixes, the paste tags and the sheet's name are short lists in the code, not a model"
 free_path = "this is the free path"
