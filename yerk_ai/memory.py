@@ -564,24 +564,16 @@ def index_status(s: Settings) -> dict[str, Any]:
     return d if isinstance(d, dict) else {}
 
 
-def index_port(s: Settings) -> int:
-    """yerk-index's port from index.json, when the process it names is alive; 0 when nothing is serving."""
-    st = index_status(s)
-    try:
-        port, pid = int(st.get("port") or 0), int(st.get("pid") or 0)
-        if port <= 0 or pid <= 0:
-            return 0
-        os.kill(pid, 0)
-    except (OSError, ValueError, TypeError):
-        return 0
-    return port
-
-
 def meaning_state(s: Settings) -> str:
     """ok: vectors are served; no-key: yerk-index runs without a provider key; empty: a key but no vector
     yet; no-index: nothing is serving (no status file, or the process behind it is gone)."""
-    emb = index_status(s).get("embeddings") or {}
-    if not index_port(s):
+    st = index_status(s)
+    emb = st.get("embeddings") or {}
+    if not st or not st.get("port"):
+        return "no-index"
+    try:
+        os.kill(int(st.get("pid", 0)), 0)
+    except (OSError, ValueError):
         return "no-index"
     if not emb.get("key"):
         return "no-key"
@@ -595,7 +587,7 @@ def meaning(s: Settings, query: str, pool: int = POOL, deadline_s: float = MEANI
     import urllib.request
     if (state := meaning_state(s)) != "ok":
         return state, []
-    port = index_port(s)
+    port = int(index_status(s)["port"])
     # `near` asks for the line each hit's vector matched; yerk-index adds it only when asked, so an older daemon,
     # whose room filter knows nothing of it, never receives it
     req = urllib.request.Request(f"http://127.0.0.1:{port}/search",
@@ -611,35 +603,6 @@ def meaning(s: Settings, query: str, pool: int = POOL, deadline_s: float = MEANI
     if not isinstance(out, dict) or not out.get("ok"):
         return str((out or {}).get("status", "failure")) if isinstance(out, dict) else "failure", []
     return "ok", list(out.get("hits", []))
-
-
-KEYWORDS_SHARE = 0.5     # the part of a recall's deadline the ask to yerk-index gets; the local read gets what is left of it
-HIT_KEYS = frozenset({"id", "path", "line", "lines", "text", "score"})      # a keyword hit as memindex.search makes one
-
-
-def keywords_from_index(s: Settings, query: str, k: int, pool: int, weights: dict[str, float] | None, skip: Path | None,
-                        deadline_s: float) -> list[dict[str, Any]] | None:
-    """The keyword rank from yerk-index's /keywords: its one long-lived connection, the index's pages pinned in RAM
-    there, the rows and the words' weights as the local read makes them. None when nothing serves, the answer is late,
-    broken or not ok, or the index running is too old to have the path: the caller reads the index file itself then,
-    as it always did, so a room with the index down behaves as before."""
-    import urllib.request
-    if deadline_s <= 0 or not (port := index_port(s)):
-        return None
-    body = {"query": query, "k": k, "pool": pool, "skip": str(skip) if skip else None, "deadline": round(deadline_s, 3)}
-    req = urllib.request.Request(f"http://127.0.0.1:{port}/keywords", data=json.dumps(body).encode(),
-                                 headers={"Content-Type": "application/json"})
-    try:
-        with urllib.request.urlopen(req, timeout=deadline_s) as r:
-            out = json.loads(r.read())
-    except (OSError, ValueError):                   # down, late (a TimeoutError is an OSError), or not JSON
-        return None
-    hits = out.get("hits") if isinstance(out, dict) and out.get("ok") else None
-    if not isinstance(hits, list) or not all(isinstance(h, dict) and HIT_KEYS <= set(h) for h in hits):
-        return None
-    if weights is not None and isinstance(out.get("weights"), dict):
-        weights.update({str(w): float(x) for w, x in out["weights"].items()})
-    return hits
 
 
 def fuse(keywords: list[dict[str, Any]], vectors: list[dict[str, Any]], k: int, keep: int = KEEP) -> list[dict[str, Any]]:
@@ -684,24 +647,21 @@ def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader:
     both: keywords only for this query, logged. `weights` gets the query words' weights. The docs root's hits come after every
     other hit, and with `docs` False there are none: what a room is handed per message, it reads the docs only when it asks."""
     k = max(1, min(int(k), 20))
-    end, skip = time.monotonic() + deadline_s, None if docs else s.docs
-    # twice the pool by bm25, re-ranked by cover down to the pool: the cover re-rank needs
-    # the candidates bm25 alone ranks low (measured on the fixed question set: 2 more top-six hits)
-    keywords = keywords_from_index(s, query, POOL, POOL * 2, weights, skip, deadline_s * KEYWORDS_SHARE)
-    if keywords is None:         # nothing serving, or no answer in its share of the deadline: the file itself, in what is left
+    try:
+        conn = memindex.connect(s.index_db, readonly=True, deadline=time.monotonic() + deadline_s)
         try:
-            conn = memindex.connect(s.index_db, readonly=True, deadline=end)
-            try:
-                keywords = memindex.search(conn, query, POOL, POOL * 2, weights, skip)
-            finally:
-                conn.close()
-        except FileNotFoundError as e:
-            return {"ok": False, "status": "failure", "error": str(e)}
-        except sqlite3.Error as e:
-            if memindex.is_timeout(e):
-                return {"ok": False, "status": "timeout", "error": f"the index was busy for {deadline_s:.0f} s; "
-                        "memory is not down, try once more"}
-            return {"ok": False, "status": "failure", "error": f"the index could not be read: {e}"}
+            # twice the pool by bm25, re-ranked by cover down to the pool: the cover re-rank needs
+            # the candidates bm25 alone ranks low (measured on the fixed question set: 2 more top-six hits)
+            keywords = memindex.search(conn, query, POOL, POOL * 2, weights, None if docs else s.docs)
+        finally:
+            conn.close()
+    except FileNotFoundError as e:
+        return {"ok": False, "status": "failure", "error": str(e)}
+    except sqlite3.Error as e:
+        if memindex.is_timeout(e):
+            return {"ok": False, "status": "timeout", "error": f"the index was busy for {deadline_s:.0f} s; "
+                    "memory is not down, try once more"}
+        return {"ok": False, "status": "failure", "error": f"the index could not be read: {e}"}
     state, vectors = meaning(s, query, deadline_s=wait) if wide else ("off", [])
     if state in ("provider-timeout", "provider-error", "index-timeout", "failure"):
         log.warning("recall: meaning search skipped (%s); keywords only for this query", state)

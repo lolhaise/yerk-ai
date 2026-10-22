@@ -12,11 +12,10 @@
 # after each backfill scan (300M of file pages) took 3.5 to 4.7 s; 1G never reclaimed. The rule: MemoryHigh =
 # 256M + 8.3M per block of 16,384 vectors, the 256M being the 109M, the 86M (a new process holds it resident
 # until reclaimed), the 9M, 25M of file pages and 25M for searches at once (embeddings.HIGH_BASE); `yerk doctor`
-# says when the vector count passes it. Since recall-warm (2026-10-22) the rule adds what the keyword rank holds
-# here, both in index.json: the keyword tables' pages kept mapped against page-cache drops (pin.bytes, 414M at
-# 313,964 chunks) and the keyword connection's page cache (keywords.cache_kib, the FTS tables and a quarter, 181M);
-# the doctor counts them too. 1400M covers 65 blocks (1,064,960 vectors) and 600M of both; past MemoryHigh the
-# kernel reclaims and slows the unit, and kills nothing.
+# says when the vector count passes it. Since recall-warm (2026-10-22) the rule adds the keyword tables' pages this
+# process keeps mapped against page-cache drops (pin.bytes in index.json, 414M at 313,964 chunks); the doctor counts
+# them too. 1400M covers 65 blocks (1,064,960 vectors) and 600M of those pages; past MemoryHigh the kernel reclaims
+# and slows the unit, and kills nothing.
 [Unit]
 Description=Yerk AI memory index (FTS5 over the private memory tree)
 
@@ -34,9 +33,10 @@ Nice=10
 IOSchedulingClass=idle
 MemoryHigh=1400M
 # A stop ends the loop after the pass that runs (SIGTERM is handled); a pass that is a full rebuild can run past the
-# 90 s default, and the WAL keeps the index consistent under the SIGKILL that follows. The daemon's recall asks this
-# process for its keyword half and reads the index file itself when no answer comes, and treats a missing meaning
-# search as keywords only for that query, so a restart here costs the vectors and a warm read, never an answer. No setuid gain and a /tmp of its own (proven on a scratch install under systemd-run).
+# 90 s default, and the WAL keeps the index consistent under the SIGKILL that follows. The daemon's recall reads the
+# index file itself and treats a missing meaning search as keywords only for that query, so a restart here costs the
+# vectors and the pinned pages until the first pass, never an answer. No setuid gain and a /tmp of its own (proven on
+# a scratch install under systemd-run).
 NoNewPrivileges=yes
 PrivateTmp=yes
 

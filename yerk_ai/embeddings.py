@@ -33,7 +33,6 @@ from typing import Any
 
 import numpy as np
 
-from . import memindex
 from .config import write_private
 
 log = logging.getLogger("yerk.embeddings")
@@ -239,60 +238,13 @@ class Server:
     `near: true` the matched line as `near`, which a daemon that does not ask never receives), or
     `ok: false` with a status told apart by kind: no-key, provider-timeout, provider-error, empty.
     GET /status answers the counts. Each request runs on its own thread with its own read-only
-    connection, so a scan never waits on the writer. POST /keywords {"query", "k", "pool", "skip", "deadline"} answers
-    the keyword rank (`keywords` below) on this process's one long-lived connection, one request at a time."""
+    connection, so a scan never waits on the writer."""
 
-    def __init__(self, store: Vectors, embedder: Embedder, db: Path, live: Any, cache_kib: int = 16_000):
+    def __init__(self, store: Vectors, embedder: Embedder, db: Path, live: Any):
         self.store, self.embedder, self.db, self.live = store, embedder, db, live
         self.port = 0
         self.httpd: ThreadingHTTPServer | None = None
-        self.queries = self.keyword_queries = 0
-        self.cache_kib = int(cache_kib)                 # the keyword connection's page cache, sized to the FTS tables by main
-        self.kw: sqlite3.Connection | None = None
-        self.kw_real: Path | None = None
-        self.kw_lock = threading.Lock()
-
-    def _keyword_conn(self) -> sqlite3.Connection:
-        """This process's one long-lived read connection for the keyword rank, its page cache sized to the FTS tables
-        (cache_kib: 16 MB is memindex.connect's own); opened again after a rebuild swapped the link."""
-        real = self.live(self.db)
-        if self.kw is None or real != self.kw_real:
-            if self.kw is not None:
-                self.kw.close()
-            self.kw = memindex.connect(self.db, readonly=True, shared=True)      # each request runs on its own thread
-            self.kw.execute(f"PRAGMA cache_size=-{self.cache_kib}")
-            self.kw_real = real
-        return self.kw
-
-    def keywords(self, query: str, k: int, pool: int, skip: str | None = None, deadline_s: float = 4.0) -> dict[str, Any]:
-        """The keyword rank, memindex.search as the daemon runs it on the index file, on this process's one long-lived
-        connection, one request at a time: the rows in the same shape and order, plus the words' weights (recall's snippet
-        cut reads them). The deadline counts from the request, the wait for the connection included: a request still
-        queued at it, or a statement past it (interrupted), reads as a timeout, told apart from a failure; a statement's
-        timeout or failure closes the connection, so the next request opens a fresh one. The pin (memindex.Pin) is what
-        keeps this fast across the box's page-cache drops: the connection's own cache is dropped by SQLite at the writer's
-        every commit, and the writer commits every pass."""
-        self.keyword_queries += 1
-        end = time.monotonic() + max(0.05, float(deadline_s))
-        if not self.kw_lock.acquire(timeout=max(0.0, end - time.monotonic())):
-            return {"ok": False, "status": "timeout", "error": "the keyword connection was busy past the deadline"}
-        try:
-            conn = self._keyword_conn()
-            conn.set_progress_handler(lambda: 1 if time.monotonic() > end else 0, 2000)
-            try:
-                weights: dict[str, float] = {}
-                hits = memindex.search(conn, query, k, pool, weights, Path(skip) if skip else None)
-            finally:
-                conn.set_progress_handler(None, 0)
-        except (sqlite3.Error, OSError) as e:
-            if self.kw is not None:
-                self.kw.close()
-            self.kw = None
-            return {"ok": False, "status": "timeout" if isinstance(e, sqlite3.Error) and memindex.is_timeout(e) else "failure",
-                    "error": scrub(e)}
-        finally:
-            self.kw_lock.release()
-        return {"ok": True, "status": "ok", "hits": hits, "weights": weights}
+        self.queries = 0
 
     def search(self, query: str, pool: int, near: bool = False) -> dict[str, Any]:
         self.queries += 1
@@ -330,8 +282,7 @@ class Server:
     def status(self) -> dict[str, Any]:
         return {"vectors": self.store.n, "model": self.embedder.model, "dim": self.embedder.dim, "width": self.store.width,
                 "key": self.embedder.available(), "queries": self.queries, "requests": self.embedder.requests,
-                "tokens": self.embedder.tokens, "rss_kb": rss_kb(), "store_bytes": self.store.bytes(),
-                "keyword_queries": self.keyword_queries, "cache_kib": self.cache_kib}
+                "tokens": self.embedder.tokens, "rss_kb": rss_kb(), "store_bytes": self.store.bytes()}
 
     def start(self) -> int:
         srv = self
@@ -352,17 +303,13 @@ class Server:
                 self._send(srv.status() if self.path == "/status" else {"ok": False, "error": "no such path"}, 200)
 
             def do_POST(self) -> None:
-                if self.path not in ("/search", "/keywords"):
+                if self.path != "/search":
                     self._send({"ok": False, "status": "failure", "error": "no such path"}, 404)
                     return
                 try:
                     n = int(self.headers.get("Content-Length", "0"))
                     payload = json.loads(self.rfile.read(n) or b"{}")
-                    if self.path == "/keywords":
-                        out = srv.keywords(str(payload.get("query", "")), int(payload.get("k", 80)), int(payload.get("pool", 160)),
-                                           str(payload["skip"]) if payload.get("skip") else None, float(payload.get("deadline", 4.0)))
-                    else:
-                        out = srv.search(str(payload.get("query", "")), int(payload.get("pool", 80)), payload.get("near") is True)
+                    out = srv.search(str(payload.get("query", "")), int(payload.get("pool", 80)), payload.get("near") is True)
                 except (ValueError, sqlite3.Error, OSError) as e:
                     out = {"ok": False, "status": "failure", "error": scrub(e)}
                 self._send(out)
@@ -377,10 +324,6 @@ class Server:
         if self.httpd:
             self.httpd.shutdown()
             self.httpd.server_close()
-        with self.kw_lock:
-            if self.kw is not None:
-                self.kw.close()
-            self.kw = None
 
 
 class Backfill:

@@ -2,9 +2,9 @@
 changed chunks are embedded (a touch embeds none), a missing key keeps the keyword path and the room hears it
 once, a provider timeout and a provider error each fall back and read apart, fusion ranks a paraphrase above a
 keyword-only near miss, the index stays queryable during a backfill, the bench's output shape is unchanged, and
-show the ability both ways. Recall's keyword half comes from the index's one connection and falls back
-to the file, and the pin maps the keyword tables and keeps every lock the process holds. No provider is
-ever called: a stub stands in. Every value here is a placeholder."""
+show the ability both ways. The pin maps the keyword tables, keeps every lock the process holds, and
+maps a writer pass's new chunks at its next tick. No provider is ever called: a stub stands in. Every
+value here is a placeholder."""
 import asyncio
 import json
 import logging
@@ -471,73 +471,6 @@ def test_the_index_units_memory_rule_is_the_one_the_doctor_checks():
     assert round(embeddings.BLOCK * (2 * 256 + 20) / 2**20, 1) == 8.3
 
 
-# 15. recall's keyword half from yerk-index's one long-lived connection, the same rows the file's own read gives; the file
-# itself whenever the index is down, slow, busy or wrong (recall-warm, 2026-10-22: 3 to 5 s cold after the box's cache drop)
-def test_the_keyword_half_comes_from_the_index_and_falls_back_to_the_file(tmp_path, monkeypatch):
-    s = tree(tmp_path, key=False)
-    stub = StubEmbedder(s.embeddings_key)
-    idx, store, server, back, status = serve(s, stub)
-    q, skip = "What colour is the example kettle in the example room?", tmp_path / "private" / "memory" / "daily"
-    reads: list[Path] = []                                    # the caller's own reads of the file (the server's are `shared`)
-    connect = memindex.connect
-
-    def counted(db, **kw):
-        if not kw.get("shared"):
-            reads.append(db)
-        return connect(db, **kw)
-    monkeypatch.setattr(memindex, "connect", counted)
-    conn = connect(s.index_db, readonly=True)
-    for cut in (None, skip):                                  # the hit shape: the same rows, keys, order and weights
-        w_file: dict[str, float] = {}
-        w_index: dict[str, float] = {}
-        want = memindex.search(conn, q, memory.POOL, memory.POOL * 2, w_file, cut)
-        assert want and memory.keywords_from_index(s, q, memory.POOL, memory.POOL * 2, w_index, cut, 2.0) == want
-        assert w_index == w_file and not any(h["path"].startswith(f"{skip}/") for h in want if cut)
-    conn.close()
-    warm = memory.ranked(s, q)
-    assert warm["ok"] and warm["hits"][0]["path"].endswith("facts/kettle.md") and reads == [] and server.keyword_queries == 3
-    server.stop()                                             # down: index.json still names the port, nothing answers
-    assert memory.ranked(s, q)["hits"] == warm["hits"] and len(reads) == 1
-    s.index_status.unlink()                                   # nothing serving: the file at once
-    assert memory.ranked(s, q)["hits"] == warm["hits"] and len(reads) == 2
-    late = embeddings.Server(store, stub, s.index_db, memindex.live)
-    embeddings.write_status(s.index_status, port=late.start(), chunks=0, embeddings={"key": False, "vectors": 0})
-    monkeypatch.setattr(late, "keywords", lambda *a, **kw: time.sleep(3) or {"ok": True, "status": "ok", "hits": [], "weights": {}})
-    t0 = time.monotonic()                                     # slow: its share of the deadline (1 s of 2), then the file
-    assert memory.ranked(s, q, deadline_s=2.0)["hits"] == warm["hits"] and len(reads) == 3 and time.monotonic() - t0 < 2.0
-    for wrong in ({"ok": False, "status": "failure", "error": "a placeholder"}, {"ok": True, "status": "ok", "hits": [{"id": 1}]}):
-        monkeypatch.setattr(late, "keywords", lambda *a, wrong=wrong, **kw: wrong)
-        assert memory.ranked(s, q)["hits"] == warm["hits"]
-    assert len(reads) == 5
-    late.stop()
-    idx.close()
-
-
-# 16. one request at a time on the keyword connection: one queued past its deadline answers a timeout at once, and the
-# connection carries the page cache main sized to the FTS tables
-def test_the_keyword_connection_is_one_at_a_time_and_carries_its_page_cache(tmp_path):
-    s = tree(tmp_path, key=False)
-    stub = StubEmbedder(s.embeddings_key)
-    idx, store, server, back, status = serve(s, stub)
-    fts = memindex.table_bytes(idx.conn, memindex.FTS_TABLES)
-    assert set(fts) == set(memindex.FTS_TABLES) and all(n > 0 and b >= n * 512 for n, b in fts.values())
-    q = "the example kettle"
-    assert server.keywords(q, 6, 12)["ok"] and server.kw is not None
-    assert server.kw.execute("PRAGMA cache_size").fetchone()[0] == -server.cache_kib == -16_000
-    sized = embeddings.Server(store, stub, s.index_db, memindex.live, cache_kib=123_456)
-    assert sized.keywords(q, 6, 12)["ok"] and sized.kw is not None and sized.kw.execute("PRAGMA cache_size").fetchone()[0] == -123_456
-    sized.stop()
-    assert sized.kw is None
-    server.kw_lock.acquire()
-    t0 = time.monotonic()
-    busy = server.keywords(q, 6, 12, None, 0.2)
-    assert busy["status"] == "timeout" and not busy["ok"] and time.monotonic() - t0 < 1.0
-    server.kw_lock.release()
-    assert server.keywords(q, 6, 12)["ok"]
-    server.stop()
-    idx.close()
-
-
 def shared_lock_held(db: Path) -> bool:
     """Whether a process holds SQLite's shared lock on the file (a read lock on its shared byte range), asked from a child:
     a process's own POSIX locks never conflict with it."""
@@ -554,7 +487,7 @@ def mapped_kib(addr: int) -> int:
     return 0 if at is None else next(int(x.split()[1]) for x in lines[at + 1:] if x.startswith("Rss:"))
 
 
-# 17. the pin maps the keyword tables' pages into this process, which a page-cache drop passes by, and closes no descriptor
+# 15. the pin maps the keyword tables' pages into this process, which a page-cache drop passes by, and closes no descriptor
 # of the file while a connection of this process may hold a lock on it: closing one drops them all, and SQLite never takes
 # its lock again (sqlite.org/howtocorrupt.html 2.2; measured on this box 2026-10-22, PR recall-warm)
 def test_the_pin_maps_the_keyword_tables_and_keeps_every_lock_the_process_holds(tmp_path):
@@ -568,8 +501,8 @@ def test_the_pin_maps_the_keyword_tables_and_keeps_every_lock_the_process_holds(
     assert shared_lock_held(db)
     pin = memindex.Pin(s.index_db)
     st = pin.pass_()
-    want = memindex.table_bytes(reader, memindex.PIN_TABLES)
-    assert st["mode"] == "map" and st["pages"] == sum(n for n, _ in want.values()) and st["bytes"] == sum(b for _, b in want.values())
+    want = [reader.execute("SELECT count(*), coalesce(sum(pgsize), 0) FROM dbstat WHERE name = ?", (t,)).fetchone() for t in memindex.PIN_TABLES]
+    assert st["mode"] == "map" and st["pages"] == sum(n for n, _ in want) and st["bytes"] == sum(b for _, b in want)
     assert mapped_kib(pin.addr) * 1024 == st["bytes"] and shared_lock_held(db)   # the tables' pages, none fault-around added
     fd, first = pin.fd, pin.addr
     (tmp_path / "private" / "memory" / "facts" / "more.md").write_text(
@@ -587,3 +520,24 @@ def test_the_pin_maps_the_keyword_tables_and_keeps_every_lock_the_process_holds(
     idx.close()
     pin.close()
     assert pin.fd == -1 and pin.addr == 0
+
+
+# 16. a writer pass that changed chunks has the pin map their pages at its next tick (5 s), not at the next 10-minute
+# pass, so a page-cache drop in between never leaves the newest lines cold (cold read of PR 80, E4)
+def test_a_pass_asked_for_after_a_write_runs_at_the_pins_next_tick(tmp_path):
+    s = tree(tmp_path, key=False)
+    idx = memindex.Index(s.index_db, s.scope)
+    idx.sync()
+    pin = memindex.Pin(s.index_db)
+    pin.start()
+    end = time.monotonic() + 30
+    while pin.passes < 1 and time.monotonic() < end:
+        time.sleep(0.05)
+    (tmp_path / "private" / "memory" / "facts" / "more.md").write_text("# More\n\n- an example line about the teal kettle\n")
+    assert idx.sync()["inserted"] and pin.passes == 1
+    pin.due.set()                                             # what main does after a writer pass that changed chunks
+    while pin.passes < 2 and time.monotonic() < end:
+        time.sleep(0.05)
+    assert pin.passes == 2 and not pin.due.is_set() and time.monotonic() < end
+    pin.close()
+    idx.close()

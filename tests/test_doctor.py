@@ -394,10 +394,10 @@ def test_the_four_index_checks_each_fire_on_their_case_and_are_quiet_when_all_is
         return [x for x in doctor.run(priv, state, dry=True) if x.startswith(("memory index", "meaning search", "memory roots"))]
     assert index(1 << 30, paused=False, streak=0) == [] and index("max", paused=True, streak=2) == []
     assert index(450 << 20) == ["memory index: memory capped at 450M, under the 696M its unit's rule gives 861,965 vectors"]
-    # recall-warm (2026-10-22): the keyword tables' pages the index holds mapped, and its keyword connection's cache, count too
-    held = {"pin": {"bytes": 414 << 20}, "keywords": {"cache_kib": 186_000}}
-    assert index(1 << 30, held) == ["memory index: memory capped at 1024M, under the 1292M its unit's rule gives 861,965 vectors "
-                                    "and 595M of keyword pages and cache"]
+    # recall-warm (2026-10-22): the keyword tables' pages the index holds mapped count too
+    held = {"pin": {"bytes": 414 << 20}}
+    assert index(1 << 30, held) == ["memory index: memory capped at 1024M, under the 1110M its unit's rule gives 861,965 vectors "
+                                    "and 414M of pinned keyword pages"]
     assert index(1400 << 20, held) == []
     stuck = 'HTTP 400 from the provider: {\n  "error": {\n    "message": "Invalid \'input\': maximum request size is 300000 tokens'
     assert index("max", paused=True, streak=3, failed=9, last_error=stuck) == [
