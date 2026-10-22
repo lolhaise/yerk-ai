@@ -17,6 +17,8 @@ differently from a failure (L54). The daemon only reads the file.
 from __future__ import annotations
 
 import argparse
+import ctypes
+import errno
 import hashlib
 import json
 import logging
@@ -28,6 +30,7 @@ import signal
 import sqlite3
 import struct
 import sys
+import threading
 import time
 import unicodedata
 from dataclasses import dataclass
@@ -43,6 +46,9 @@ TOKENIZER = "porter unicode61 remove_diacritics 2"
 SKIP_DIRS = {"node_modules", "__pycache__", "overwrite-backups"}     # and every dot-folder
 SKIP_NAMES = ("*.tmp", "*.bak", "*.swp", "*~", ".#*", "*.part", "*.pre-*")   # temp and backup copies (L52)
 GRACE = 30.0                           # a change younger than this is pending, not stale
+FTS_TABLES = ("chunks_fts_data", "chunks_fts_idx", "chunks_fts_docsize", "chunks_fts_config")   # what one MATCH reads
+PIN_TABLES = (*FTS_TABLES, "meta", "chunks")   # and what the keyword rank joins: the rows it ranks, the chunk count
+PIN_EVERY = 600.0                      # seconds between pin passes: pages written since the last one are mapped then
 
 SCHEMA = f"""
 CREATE TABLE IF NOT EXISTS files (path TEXT PRIMARY KEY, size INTEGER, mtime_ns INTEGER,
@@ -521,6 +527,157 @@ class Wake:
         return hit
 
 
+def _libc() -> Any:
+    """mmap through libc, not the mmap module: that one keeps a dup of the descriptor and closes it with the map (Pin)."""
+    lib = ctypes.CDLL(None, use_errno=True)
+    lib.mmap.restype = ctypes.c_void_p
+    lib.mmap.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_long]
+    lib.munmap.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
+    lib.madvise.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int]
+    return lib
+
+
+# Linux's own numbers, hard-coded for ctypes (asm-generic/mman-common.h); where madvise answers EINVAL to 22 (a kernel
+# before 5.14) the pin goes off with one log line
+PROT_READ, MAP_SHARED, MAP_FAILED, MADV_DONTNEED = 1, 1, ctypes.c_void_p(-1).value, 4
+MADV_POPULATE_READ = 22                # Linux 5.14: fault a range in and map it, unlocked; a page past the end fails, never SIGBUS
+
+
+class Pin:
+    """The keyword tables' pages, held in RAM from inside this process. A box may drop its page cache on a clock
+    (`echo 1 > /proc/sys/vm/drop_caches`; the trimmer on the author's box does, every 2 minutes), and a keyword rank read
+    off the disk after that took 3.8 to 4.5 s against 0.15 to 0.8 s from RAM (measured 2026-10-22, PR recall-warm). A drop
+    evicts no page a process has mapped. So a pass maps the index file read-only and faults the pages of PIN_TABLES
+    (dbstat) into the mapping, and every reader of the file finds them in RAM from then on, the daemon's recall among
+    them. The writer's commits land in those same page-cache pages, so nothing held goes
+    stale. Mapped, never locked: under real memory pressure the kernel may still take a page, and the next pass maps it
+    again, where a locked page stays charged, unevictable, to whichever unit read it first (a room's, often). A
+    connection's own page cache (PRAGMA cache_size) cannot do this job: SQLite drops it whole whenever another connection
+    has committed, and the writer commits every pass. A pass runs at start, within 5 s of a writer pass that changed
+    chunks (`due`), every PIN_EVERY seconds and after a rebuild; it maps afresh and lets the last mapping go after, so a
+    page that left the tables is let go and none is unmapped in between. The descriptor stays open while this process
+    may hold a connection to the file: closing any descriptor of a file drops every POSIX lock the process holds on it,
+    SQLite's among them (sqlite.org/howtocorrupt.html 2.2). A kernel before 5.14, or a SQLite without dbstat, pins
+    nothing; one log line says which."""
+
+    def __init__(self, db: Path, tables: tuple[str, ...] = PIN_TABLES):
+        self.db, self.tables = db, tables
+        self.real: Path | None = None
+        self.fd = -1                                          # the live generation's, open until close()
+        self.retired: list[int] = []                          # one a rebuild moved off: closed at the next pass
+        self.addr = self.size = 0                             # the last pass's mapping
+        self.mode = "map"                                     # map, or off once a pass found it cannot
+        self.pages = self.bytes = self.passes = 0             # what the last pass mapped
+        self.took = self.at = 0.0
+        self.stop = threading.Event()
+        self.due = threading.Event()                          # main sets it after a writer pass that changed chunks
+        self.thread: threading.Thread | None = None
+        self.lib = _libc()
+
+    def _unmap(self) -> None:
+        if self.addr:
+            self.lib.munmap(self.addr, self.size)
+        self.addr = self.size = 0
+
+    def _off(self, why: str) -> dict[str, Any]:
+        log.warning("pin: nothing pinned, %s", why)
+        self.mode = "off"
+        self._unmap()
+        return self.status()
+
+    def pass_(self) -> dict[str, Any]:
+        """One pass: the tables' page numbers, a fresh mapping of the live generation with those pages faulted in, then
+        the last pass's mapping let go."""
+        t0 = time.monotonic()
+        for fd in self.retired:                  # a generation retired a pass ago: the writer left it within its own pass
+            os.close(fd)
+        self.retired = []
+        if (real := live(self.db)) != self.real:                              # the first pass, or a rebuild swapped the link
+            fd = os.open(real, os.O_RDONLY | os.O_CLOEXEC)                    # first: a failed open retires nothing
+            self.retired += [self.fd] if self.fd >= 0 else []
+            self.fd, self.real = fd, real
+        size = os.fstat(self.fd).st_size
+        conn = connect(real, readonly=True)
+        try:
+            page = int(conn.execute("PRAGMA page_size").fetchone()[0])
+            nos = sorted({int(r[0]) for t in self.tables for r in conn.execute("SELECT pageno FROM dbstat WHERE name = ?", (t,))})
+        except sqlite3.OperationalError as e:
+            if "dbstat" not in str(e):           # busy or unreadable this once: run() logs the skip and a later pass tries again
+                raise
+            return self._off(f"this SQLite has no dbstat ({e})")
+        finally:
+            conn.close()
+        runs: list[tuple[int, int]] = []                                      # (first page, pages): consecutive pages as one
+        for no in nos:
+            if runs and runs[-1][0] + runs[-1][1] == no:
+                runs[-1] = (runs[-1][0], runs[-1][1] + 1)
+            else:
+                runs.append((no, 1))
+        addr = self.lib.mmap(None, size, PROT_READ, MAP_SHARED, self.fd, 0)
+        if not addr or addr == MAP_FAILED:
+            raise OSError(ctypes.get_errno(), f"mmap of {real.name} failed")
+        osp, held, end = os.sysconf("SC_PAGE_SIZE"), 0, 0
+        for first, n in runs:
+            lo, hi = (first - 1) * page, min((first - 1 + n) * page, size)  # a page past the file is still in the WAL
+            lo -= lo % osp                                                    # madvise takes whole pages of the OS's own
+            if hi <= lo:
+                continue
+            if self.lib.madvise(addr + lo, hi - lo, MADV_POPULATE_READ) == 0:
+                held += hi - lo
+            elif ctypes.get_errno() == errno.EINVAL:                          # a kernel before 5.14
+                self.lib.munmap(addr, size)
+                return self._off("this kernel cannot fault a mapping in (MADV_POPULATE_READ, Linux 5.14)")
+        # a fault maps the cached pages around it too (fault-around: the mapping held 648 MB for the tables' 414 on the
+        # author's box), so the gaps between the runs are unmapped again and the mapping holds the tables' pages, no more
+        for first, n in [*runs, (size // page + 1, 0)]:
+            lo = min((first - 1) * page // osp * osp, size)
+            if end < lo:
+                self.lib.madvise(addr + end, lo - end, MADV_DONTNEED)
+            end = max(end, -(-min((first - 1 + n) * page, size) // osp) * osp)
+        self._unmap()                                                         # the last pass's: its pages are mapped here now
+        self.addr, self.size = int(addr), size
+        self.pages, self.bytes, self.passes = held // page, held, self.passes + 1
+        self.took, self.at = time.monotonic() - t0, time.time()
+        return self.status()
+
+    def status(self) -> dict[str, Any]:
+        return {"mode": self.mode, "pages": self.pages, "bytes": self.bytes, "took_s": round(self.took, 2),
+                "at": round(self.at, 3), "passes": self.passes, "tables": list(self.tables)}
+
+    def run(self) -> None:
+        last = -PIN_EVERY
+        while not self.stop.is_set():
+            if self.due.is_set() or time.monotonic() - last >= PIN_EVERY or live(self.db) != self.real:
+                self.due.clear()                                              # a write during the pass sets it again
+                try:
+                    st = self.pass_()
+                    if st["passes"] == 1:                                     # the first; each after is in index.json
+                        log.info("pin: %d pages (%.0f MB) of %s mapped in %.1f s", st["pages"], st["bytes"] / 1e6,
+                                 ", ".join(self.tables), st["took_s"])
+                except (OSError, sqlite3.Error) as e:
+                    log.warning("pin pass skipped: %s", e)
+                last = time.monotonic()
+                if self.mode == "off":
+                    return
+            self.stop.wait(5.0)
+
+    def start(self) -> None:
+        self.thread = threading.Thread(target=self.run, name="yerk-index-pin", daemon=True)
+        self.thread.start()
+
+    def close(self) -> None:
+        """The pass thread stopped, the mapping let go, the descriptors closed: main calls this after the writer and the
+        server are closed, so closing them drops no lock a connection of this process still needs."""
+        self.stop.set()
+        if self.thread is not None:
+            self.thread.join(timeout=30.0)
+        self._unmap()
+        for fd in [*self.retired, self.fd]:
+            if fd >= 0:
+                os.close(fd)
+        self.retired, self.fd, self.real = [], -1, None
+
+
 def main(argv: list[str] | None = None) -> int:
     from . import mentions
     from .config import REPO, head, private_dir, state_dir
@@ -550,10 +707,12 @@ def main(argv: list[str] | None = None) -> int:
     idx = Index(m.index_db, m.scope, on_insert=back.note)
     names = mentions.Builder(m.mentions, m.roots_for_mentions, m.curated, m.mentions_exclude)
     server = embeddings.Server(store, embedder, m.index_db, live)
+    pin = Pin(m.index_db)
     if not a.once:
         embeddings.write_status(m.index_status, commit=(commit := head(REPO)))     # the code that runs, before the load (deploy, doctor)
         loaded = store.load(idx.conn, m.embeddings_model, m.embeddings_units)
         port = server.start()
+        pin.start()
         back.start()
         log.info("meaning search: %s; %d vectors loaded (%s, %d of %d dimensions kept, %.1f MB); serving on 127.0.0.1:%d",
                  "key present" if embedder.available() else "no key, keywords only", loaded, m.embeddings_units,
@@ -569,6 +728,8 @@ def main(argv: list[str] | None = None) -> int:
         try:
             st = idx.sync()
             chunks = st["chunks"]
+            if st.get("inserted") or st.get("deleted"):      # the pin maps the new chunks' pages within 5 s, not 10 min
+                pin.due.set()
         except sqlite3.OperationalError as e:
             log.warning("pass skipped (%s): %s", "timeout" if is_timeout(e) else "failure", e)
             st = {}
@@ -581,7 +742,8 @@ def main(argv: list[str] | None = None) -> int:
                 embeddings.write_status(m.index_status, port=server.port, chunks=chunks, commit=commit, embeddings={
                     "key": embedder.available(), "model": m.embeddings_model, "dim": m.embeddings_dim, "vectors": store.n,
                     "units": m.embeddings_units, "width": store.width, **back.status(), "requests": embedder.requests,
-                    "tokens": embedder.tokens, "rss_kb": embeddings.rss_kb(), "store_bytes": store.bytes()})
+                    "tokens": embedder.tokens, "rss_kb": embeddings.rss_kb(), "store_bytes": store.bytes()},
+                    pin=pin.status())
         except OSError as e:
             log.warning("mention index, sweep or status skipped: %s", e)
         took = time.monotonic() - t0
@@ -599,6 +761,7 @@ def main(argv: list[str] | None = None) -> int:
     back.stop.set()
     server.stop()
     idx.close()
+    pin.close()                                              # last: its descriptors close after the connections (Pin)
     return 0
 
 

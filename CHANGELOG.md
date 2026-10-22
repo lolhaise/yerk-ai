@@ -8,6 +8,22 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-22
 
+### recall-warm (#80)
+
+- `yerk-index` keeps the pages the keyword rank reads (the FTS tables, the `chunks` rows it joins, `meta`) mapped into
+  itself: at start, within 5 s of a writer pass that changed chunks, every 10 minutes and after a rebuild. A box that
+  drops its page cache on a clock never drops a mapped page, so recall, which reads the index file itself as before,
+  finds them in RAM. On the author's box, where a trimmer drops the cache every 2 minutes, recall's keyword read on a
+  pinned copy of the live index took a median of 0.116 s (0.173 at most, 0.116 right after a drop) against 0.494 s
+  (3.604 right after the drop) on the live file unpinned, at the same moments. The meaning search is unchanged.
+- The pages are mapped, never locked: real memory pressure can still take one, and the next pass maps it again. A
+  connection's own page cache cannot do this job: SQLite drops it at every commit of the writer.
+- **Upgrading:** `units/yerk-index.service` MemoryHigh rises from 800M to 1400M: the rule adds the mapped pages
+  (index.json's `pin`, 394M at 314,010 chunks), and `yerk doctor` counts them. A box that set MemoryHigh with
+  `systemctl --user set-property` raises that instead, before the restart that brings this (the author's box: 1G to
+  1536M); below it the kernel takes mapped pages back and part of recall reads cold again. budgets.toml changed
+  ([code] lines, up 165).
+
 ### figure-noise (#85)
 
 - The figure shadow rule counts a line on file as a figure's source only when it is about the same thing, not when it

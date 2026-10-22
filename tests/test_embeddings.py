@@ -2,19 +2,23 @@
 changed chunks are embedded (a touch embeds none), a missing key keeps the keyword path and the room hears it
 once, a provider timeout and a provider error each fall back and read apart, fusion ranks a paraphrase above a
 keyword-only near miss, the index stays queryable during a backfill, the bench's output shape is unchanged, and
-show the ability both ways. No provider is ever called: a stub stands in. Every value here is a
-placeholder."""
+the manifest and `yerk abilities` show the ability both ways. The pin maps the keyword tables, keeps every lock
+a writer pass's new chunks at its next tick, and goes off only where SQLite has no dbstat. No provider
+is ever called: a stub stands in. Every value here is a placeholder."""
 import asyncio
 import json
 import logging
 import os
 import re
 import sqlite3
+import subprocess
+import sys
 import time
 import urllib.request
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from yerk_ai import abilities, cli, embeddings, memindex, memory
 from yerk_ai.config import EXAMPLE_PRIVATE
@@ -466,3 +470,100 @@ def test_the_index_units_memory_rule_is_the_one_the_doctor_checks():
     assert "MemoryHigh = 256M + 8.3M per block of 16,384 vectors" in " ".join(x.lstrip("# ") for x in text.splitlines())
     assert embeddings.HIGH_BASE == 256 << 20 and embeddings.BLOCK == 16384
     assert round(embeddings.BLOCK * (2 * 256 + 20) / 2**20, 1) == 8.3
+
+
+def shared_lock_held(db: Path) -> bool:
+    """Whether a process holds SQLite's shared lock on the file (a read lock on its shared byte range), asked from a child:
+    a process's own POSIX locks never conflict with it."""
+    code = ("import fcntl, os, struct, sys\nfd = os.open(sys.argv[1], os.O_RDONLY)\n"
+            "lk = struct.pack('hhqqixxxx', fcntl.F_WRLCK, 0, 0x40000002, 510, 0)\n"
+            "print(struct.unpack('hhqqixxxx', fcntl.fcntl(fd, fcntl.F_GETLK, lk))[0] != fcntl.F_UNLCK)")
+    return subprocess.run([sys.executable, "-c", code, str(db)], capture_output=True, text=True, check=True).stdout.strip() == "True"
+
+
+def mapped_kib(addr: int) -> int:
+    """The Rss of this process's mapping that starts at `addr` (/proc/self/smaps): the pages it holds mapped there."""
+    lines = Path("/proc/self/smaps").read_text().splitlines()
+    at = next((i for i, x in enumerate(lines) if x.split("-", 1)[0] == f"{addr:x}"), None)
+    return 0 if at is None else next(int(x.split()[1]) for x in lines[at + 1:] if x.startswith("Rss:"))
+
+
+# 15. the pin maps the keyword tables' pages into this process, which a page-cache drop passes by, and closes no descriptor
+# of the file while a connection of this process may hold a lock on it: closing one drops them all, and SQLite never takes
+# its lock again (sqlite.org/howtocorrupt.html 2.2; measured on this box 2026-10-22, PR recall-warm)
+def test_the_pin_maps_the_keyword_tables_and_keeps_every_lock_the_process_holds(tmp_path):
+    s = tree(tmp_path, key=False)
+    idx = memindex.Index(s.index_db, s.scope)
+    idx.sync()
+    idx.conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")       # every page in the file, none left in the WAL
+    db = memindex.live(s.index_db)
+    reader = memindex.connect(s.index_db, readonly=True)
+    reader.execute("SELECT count(*) FROM chunks").fetchone()  # a WAL connection holds SQLite's shared lock from here on
+    assert shared_lock_held(db)
+    pin = memindex.Pin(s.index_db)
+    st = pin.pass_()
+    want = [reader.execute("SELECT count(*), coalesce(sum(pgsize), 0) FROM dbstat WHERE name = ?", (t,)).fetchone() for t in memindex.PIN_TABLES]
+    assert st["mode"] == "map" and st["pages"] == sum(n for n, _ in want) and st["bytes"] == sum(b for _, b in want)
+    assert mapped_kib(pin.addr) * 1024 == st["bytes"] and shared_lock_held(db)   # the tables' pages, none fault-around added
+    fd, first = pin.fd, pin.addr
+    (tmp_path / "private" / "memory" / "facts" / "more.md").write_text(
+        "# More\n\n" + "".join(f"- an example line about the teal kettle, number {i}\n" for i in range(2000)))
+    idx.sync()
+    idx.conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    st2 = pin.pass_()                                         # the file grew: the same descriptor, a fresh mapping, the lock kept
+    assert pin.fd == fd and pin.addr and mapped_kib(first) == 0 and st2["pages"] > st["pages"] and shared_lock_held(db)
+    gen = memindex.rebuild(s.index_db, s.scope)               # a rebuild swaps the link: the next pass maps the new generation
+    pin.pass_()
+    assert pin.real == gen and pin.retired == [fd] and pin.fd != fd
+    pin.pass_()
+    assert pin.retired == [] and pin.passes == 4              # the old generation's descriptor closed a pass later
+    reader.close()
+    idx.close()
+    pin.close()
+    assert pin.fd == -1 and pin.addr == 0
+
+
+# 16. a writer pass that changed chunks has the pin map their pages at its next tick (5 s), not at the next 10-minute
+# pass, so a page-cache drop in between never leaves the newest lines cold (cold read of PR 80, E4)
+def test_a_pass_asked_for_after_a_write_runs_at_the_pins_next_tick(tmp_path):
+    s = tree(tmp_path, key=False)
+    idx = memindex.Index(s.index_db, s.scope)
+    idx.sync()
+    pin = memindex.Pin(s.index_db)
+    pin.start()
+    end = time.monotonic() + 30
+    while pin.passes < 1 and time.monotonic() < end:
+        time.sleep(0.05)
+    (tmp_path / "private" / "memory" / "facts" / "more.md").write_text("# More\n\n- an example line about the teal kettle\n")
+    assert idx.sync()["inserted"] and pin.passes == 1
+    pin.due.set()                                             # what main does after a writer pass that changed chunks
+    while pin.passes < 2 and time.monotonic() < end:
+        time.sleep(0.05)
+    assert pin.passes == 2 and not pin.due.is_set() and time.monotonic() < end
+    pin.close()
+    idx.close()
+
+
+# 17. a dbstat walk that fails for another reason (a busy or unreadable read) skips that pass and leaves the pin on; only a
+# SQLite built without dbstat turns it off (cold read of PR 80, the pin alone)
+def test_a_failed_pin_pass_is_skipped_and_only_a_sqlite_without_dbstat_turns_the_pin_off(tmp_path, monkeypatch):
+    s = tree(tmp_path, key=False)
+    idx = memindex.Index(s.index_db, s.scope)
+    pin = memindex.Pin(s.index_db)
+
+    class Fails:                                              # every statement fails with `msg`
+        msg = "database is locked"
+
+        def execute(self, *a):
+            raise sqlite3.OperationalError(self.msg)
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(memindex, "connect", lambda *a, **k: Fails())
+    with pytest.raises(sqlite3.OperationalError):            # run() logs it as a skipped pass; the next one tries again
+        pin.pass_()
+    Fails.msg = "no such table: dbstat"                      # what a SQLite built without dbstat answers
+    assert pin.mode == "map" and pin.pass_()["mode"] == "off"
+    pin.close()
+    idx.close()

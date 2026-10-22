@@ -132,4 +132,7 @@ duplicated_topics = 0
 
 # 2026-10-22: figure-noise raised it by 90, the figure rule's same-thing test (label words, unit, the reply's own copy, a
 # number's written forms) and its lookup in memory.on_file (the owner's ask), not folded to fit.
-lines = 16564
+# 2026-10-22: recall-warm raised it by 165, the pin that holds the keyword tables' pages mapped against the box's
+# page-cache drops, its pass after a write and the doctor's cap counting them (the owner's ask: recall at 3 s), not
+# folded to fit; its cold read cut the /keywords path the first build had (269).
+lines = 16729
