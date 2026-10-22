@@ -40,7 +40,7 @@ recall_pack = 6000
 
 [per_message]
 typical = 1500
-# 0000-00-00: 0,000 text 0,000, with one more 0,000 line (for the, 00:00: "check while a second entry waits in the queue for
+# 2026-10-21: 4,000 to 5,500, the taste part's 1,500 below (the owner's files carried over as they
 # are, the cap raised where they need it).
 cap = 5500
 
@@ -62,7 +62,7 @@ recall = 2000
 # note says the sample item moved to, the next step and; the test, reads it back as plain text with.
 rules = 1500
 # Paid on every message of an owner room whose layer keeps taste.jsonl: the owner's verdicts on the room's replies,
-# reads it back as plain, text with one more line, for the check while a second (entry.waits). in the, 0000-00-00
+# three praised and two faulted, the owner's words beside the reply, as an earlier setup injected them (taste.py). The owner asked
 # that their thumbs up and thumbs down go in the way their own files hold them, written as they are, and that the cap
 # rise if they need the room.
 taste = 1500
@@ -98,7 +98,7 @@ reply = 1500
 # The rule-shape check (shape.py; `yerk doctor` daily, `yerk docs shape` on demand): how many lines of each kind one rule
 # file a room loads may hold before the doctor says so, and how many topics the install may say in two files one room
 # loads. `yerk docs shape --rules` prints each count's exact rule. Zero is the prompting guide's shape: what to do and its
-# test, reads it <back> as, plain text with one, more line (0000-00-00, for the: "check while a second entry waits
+# why, examples inside <example> tags, each thing said once, calm words (2026-10-21: Yerk an expert on its own harness). A count at or under its number is in the report, not a finding.
 
 negatives_without_why = 0
 shouted = 0

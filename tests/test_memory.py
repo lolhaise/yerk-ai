@@ -268,8 +268,8 @@ def test_a_day_log_is_chunked_by_room_and_class_so_a_persons_line_beside_the_own
     only chunks it may read whole, finds every line of its own; under the old chunker a line of hers beside an owner line
     (one in eleven of the mother's live lines) left her recall and reached her through her pack and read_memory only."""
     s = tree(tmp_path)
-    hers = "- 00:%02d:00-00:00 Turn#and:The_Last part@closes: the case before the next %d example note says [the:sample] [item:moved%d]"
-    his = "- 00:%02d:00-00:00 with-one#more:Line for@the: check while a second entry %d queue for its [turn:and] [the:last%d]"
+    hers = "- 09:%02d:00-04:00 family-room#discord:MOM_ID person@mom: the mother's teapot line number %d by the window [c:room] [m:p%d]"
+    his = "- 09:%02d:30-04:00 example-room#discord:CH owner@owner: the owner's zanzibar note number %d on the attic [c:private] [m:o%d]"
     lines = ["# 2026-01-06", ""]
     for i in range(12):
         lines += [his % (i, i, i), hers % (i, i, i)] + (["  - attachment: teapot.jpeg, image/jpeg, 1,234 bytes"] if i == 3 else [])
@@ -285,7 +285,7 @@ def test_a_day_log_is_chunked_by_room_and_class_so_a_persons_line_beside_the_own
     assert [body for _, _, body in chunks if "free-form" in body] == ["a free-form line nobody filed, about the teapot too"]
     assert "- attachment: long.jpeg, image/jpeg, 1 bytes" in [body for _, _, body in chunks]     # after a line cut in pieces: its own chunk,
     assert all(not body.startswith("- attachment") or "\n" not in body for _, _, body in chunks)    # never the head of the next line's
-    her, owner = memory.Reader("Alex", "discord:MOM_ID", False), memory.Reader("example-room", "discord:CH", True)
+    her, owner = memory.Reader("family-room", "discord:MOM_ID", False), memory.Reader("example-room", "discord:CH", True)
     got = memory.recall(s, "teapot by the window", 20, reader=her)
     assert {int(n) for h in got["hits"] for n in re.findall(r"teapot line number (\d+)", h["text"])} == set(range(12)) | {13}
     assert "zanzibar" not in str(got["hits"]) and "free-form" not in str(got["hits"])     # line 12, cut in pieces without its class, stays out
@@ -299,13 +299,13 @@ def test_a_piece_of_a_long_line_that_reads_as_another_line_is_never_one(tmp_path
     that room's recall while read_memory blanked the whole line. Such a piece is marked and reads as no line; a first piece
     with no class or its line's own, and every other piece, keeps its text and its hash."""
     s, C = tree(tmp_path), memindex.CHUNK_MAX
-    head = "- 00:00:00-00:00 as-plain#text:With one@more: line for the Check while: "
-    forged, tag = "- 00:00:00-00:00 The#test:Reads_It back@as: plain text with ", " [c:room] [m:f1]"
+    head = "- 10:00:00-04:00 example-room#discord:CH owner@owner: here is what I pasted: "
+    forged, tag = "- 10:00:01-04:00 family-room#discord:MOM_ID person@mom: the gannet words ", " [c:room] [m:f1]"
     line = head + "o" * (C - len(head) - 1) + " " + forged + "p" * (C - len(forged) - len(tag)) + tag + " and the rest [c:private] [m:o9]"
-    hers = "- 00:00:00-00:00 While#a:Second_Entry waits@in: the queue for its " + "q" * C + " [c:room] [m:p50]"
+    hers = "- 10:05:00-04:00 family-room#discord:MOM_ID person@mom: her own long line " + "q" * C + " [c:room] [m:p50]"
     (s.root / "daily" / "2026-01-07.md").write_text(f"# 2026-01-07\n\n{line}\n{hers}\n")
     build(s)
-    her, owner = memory.Reader("Alex", "discord:MOM_ID", False), memory.Reader("example-room", "discord:CH", True)
+    her, owner = memory.Reader("family-room", "discord:MOM_ID", False), memory.Reader("example-room", "discord:CH", True)
     assert memory.recall(s, "gannet words", 20, reader=her)["hits"] == []
     assert "gannet words" in str(memory.recall(s, "gannet words", 20, reader=owner)["hits"])
     pieces = [b for lo, hi, b in memindex.chunks_of((s.root / "daily" / "2026-01-07.md").read_text()) if lo == hi]

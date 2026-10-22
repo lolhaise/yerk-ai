@@ -399,7 +399,7 @@ def test_the_claim_rule_through_shadow_stop_is_ledgered_and_never_blocks(tmp_pat
 
 
 def test_a_figure_the_room_posted_earlier_in_its_session_counts_as_read_and_what_the_check_never_read_does_not(tmp_path):
-    """Step and the: test-reads-it back as 0000-00-00 00:00 plain 00.00% text 000,000 with one more 00:00 line, for
+    """The live shape: a room's session posted 99.99% and 148,290 in a reply, and
     its turns repeated 99.99% into the next morning, flagged each time as on file in another notes folder or another room's reply.
     A figure the room posted in a reply earlier in the same session counts as read: the Stop check read that reply. What
     the check never read does not count, so its first saying after is checked: narration written before a tool call (in

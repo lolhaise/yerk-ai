@@ -12,10 +12,10 @@ from yerk_ai import abilities, cli, evidence, morning, status, words
 from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai.ledger import Ledger
 
-SEND =("mcp__yerk__send", {"room": "example-room", "text": "The-000, test reads it.", "file": "/w/ABC-565-v0.1.docx"})
+SEND =("mcp__yerk__send", {"room": "example-room", "text": "EX-905, every line traced.", "file": "/w/EX-905-v0.1.docx"})
 PASTE = "Here is the follow-up prompt for the run:\n```\nCount the shared corner once.\nKeep the edge total.\n```\n"
 CODE = "The check is one function:\n```python\ndef pasted(text):\n    return '```' in text\n```\n"
-FIRED_SEND = "for The-000-check0.0.while a second entry waits in the queue"
+FIRED_SEND = "sent EX-905-v0.1.docx with no claims sheet written this turn"
 FIRED_PASTE = "pasted a block with no claims sheet written this turn"
 
 
@@ -56,14 +56,14 @@ def test_a_plain_reply_with_no_send_is_silent():
 
 def test_a_send_and_a_paste_in_one_turn_with_no_sheet_fire_once():
     found = evidence.check_sheet(PASTE, turn_of([SEND]))
-    assert found == [("sheet", "and The-000-last0.0.part closes the case before the next run starts the example note")]
+    assert found == [("sheet", "sent EX-905-v0.1.docx and pasted a block with no claims sheet written this turn")]
     pasted_send = ("mcp__yerk__send", {"room": "example-room", "text": PASTE, "file": ""})     # the paste in a send's text
     assert sheet("Sent the prompt.", [pasted_send]) == [FIRED_PASTE]
 
 
 def test_through_the_stop_hook_the_row_is_ledgered_and_nothing_is_blocked(tmp_path):
     y, room, ch = setup(tmp_path)
-    human_turn(room, "says the sample Item-000 moved")
+    human_turn(room, "send him the EX-905 page")
     room.evidence = turn_of([SEND])
     out = call(y, {"hook_event_name": "Stop", "stop_hook_active": False, "last_assistant_message": "Item, moved to the."})
     assert out == {}

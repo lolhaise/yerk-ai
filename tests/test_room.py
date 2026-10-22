@@ -537,7 +537,7 @@ def test_a_rate_limit_naming_no_reset_rests_until_the_weekly_reset_on_file_an_ho
 
 
 def test_every_account_out_of_the_pinned_model_runs_the_turn_on_the_rooms_own_model_and_says_so(env, monkeypatch):
-    """item moved, 0000-00-00 00:00: "to the next step and the test reads it back as plain text with one more, line for
+    """The rule the owner asked for: an account with usage left for the pinned model is kept until it runs out, then the
     next one in order, and with none left the turn runs on the room's own model."""
     make, ledger, tmp_path = env
     (tmp_path / "rooms" / "r").mkdir(parents=True)
