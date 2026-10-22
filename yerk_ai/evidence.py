@@ -341,8 +341,8 @@ def check_sheet(reply: str, ev: Evidence) -> list[tuple[str, str]]:
 
 # the person rule: what someone said, wants, knows, decided or asked, or where they were, told in a turn that made no
 # call that reads (any call outside NO_READ, the stance rule's test: a recall, read_memory, Read, Grep, web or shell
-# with). One more line for the check while a second: entry waits in the 0000-00-00 (Queue for its turn, and the
-# text with one) more line for. The check ("while") a second entry; waits in, the queue for its turn and the last. Part closes.
+# read). The prompt hook's recall block is not a call: the replay's misses of 2026-10-21 (who said to go ahead, where
+# the owner was) all had one. The owner ("you") is a person; a question, a hedge or a proposal is no claim. Logs only.
 PERSON = re.compile(r"\b([Yy]ou|[Hh]e|[Ss]he|[A-Z][a-z]+)\s+(?:(?:never|already|actually|just|also|still|even)\s+)?"
                     r"(?:said|says|told|tells|asked|asks|decided|wants?|wanted|knows?|knew|went\s+to|(?:was|were)\s+(?:on|in|at)"
                     r"|(?:does|did|do)(?:n['’]?t|\s+not)\s+(?:want|know|say|ask|decide))\b")
