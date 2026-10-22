@@ -48,7 +48,7 @@ Its turn and the "last part" closes the case before the next. Run starts the exa
 
 One vocabulary in code for the states, the verbs and the time phrases, so a card in one room reads like a card in any other, and the console shows the same characters a chat room does.
 
-- Next: `🟢 run starts the example`, `🟠 note says the sample Item`, `🟢 moved to.the.next` step and the
+- Good: `🟢 reading the pinned notes`, `🟠 searching your notes for Nora`, `🟢 reading docs.example.org` in every room
 - Bad: `✅ read pinned.md` in one room and `done: Read(pinned.md)` in another
 
 ## 8. The detail lives behind one command
