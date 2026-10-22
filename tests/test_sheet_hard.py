@@ -66,7 +66,9 @@ def test_a_pdf_with_no_sheet_is_refused_once_and_goes_out_once_a_sheet_is_beside
     assert send(y, "EX-905, every line traced.", work / DOC)["ok"] and f'"file": "{work / DOC}"' in capsys.readouterr().out
     next_turn(room)
     os.utime(sheet, (room.evidence.started - 60,) * 2)                                  # a sheet of an earlier turn is none
-    assert not send(y, "ABC-565 again.", work / DOC)["ok"]
+    room.evidence.observe({"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "w0", "name": "Write",
+                                                                         "input": {"file_path": str(work / "EX-905-notes.md")}}]}})
+    assert not send(y, "EX-905 again.", work / DOC)["ok"]                               # nor is a file of another name
     next_turn(room)                                                                     # a call of the turn wrote one
     sheet.unlink()
     room.evidence.observe({"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "w1", "name": "Write",
