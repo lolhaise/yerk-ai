@@ -6,6 +6,13 @@ A line that changes a file the install keeps (rooms.toml, yerkd.toml, budgets.to
 newer than the code is refused with one line, never changed); the day logs are rewritten once at the daemon's start
 with the originals kept under `backups/`; the index chunks every file again when its chunker's version changes.
 
+## 2026-10-22
+
+### midnight-test (#83)
+
+- Two deploy tests that read the morning diff a minute after their rows now pin the clock to noon, so a suite that
+  crosses midnight no longer turns the box CI red (PR 79, Oct 21); nothing a person running Yerk AI notices changes.
+
 ## 2026-10-21
 
 ### taste-judge (#79)
