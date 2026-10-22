@@ -24,6 +24,11 @@ with the originals kept under `backups/`; the index chunks every file again when
   1536M); below it the kernel takes mapped pages back and part of recall reads cold again. budgets.toml changed
   ([code] lines, up 162).
 
+### midnight-test (#83)
+
+- Two deploy tests that read the morning diff a minute after their rows now pin the clock to noon, so a suite that
+  crosses midnight no longer turns the box CI red (PR 79, Oct 21); nothing a person running Yerk AI notices changes.
+
 ### person-claim-rule (#81)
 
 - Two more shadow rules in the Stop check, beside figure, file, decide, the claims, stance and sheet. `person`: a

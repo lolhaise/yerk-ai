@@ -31,6 +31,14 @@ def nap(_s):
     time.sleep(NAP)
 
 
+def noon(monkeypatch):
+    """The wall clock pinned: from here on it reads local noon of a fixed day and runs at its real pace, so deploy rows
+    written now and a morning diff read a minute later fall on one day at any hour. Unpinned, a run in a day's last
+    minute had the diff name its row 'Wed 23:59', too wide for the phone, so the line dropped the time the test wants."""
+    off = time.mktime((2026, 10, 21, 12, 0, 0, 0, 0, -1)) - time.time()
+    monkeypatch.setattr(time, "time", lambda real=time.time: real() + off)
+
+
 def repo(tmp_path):
     """Three commits in a row; a bare origin whose main is the second; the tree on main at the first, one
     behind origin/main, as the merge lane leaves the daemon's checkout."""
@@ -481,7 +489,8 @@ def test_a_row_left_open_long_before_the_deploy_is_not_a_turn_it_cut(tmp_path, c
     assert rows(state) == [("deploy", ids[0], ids[1], "proven", 0)]
 
 
-def test_a_failed_rollback_exits_2_and_the_morning_diff_names_every_deploy_not_proven(tmp_path, capsys):
+def test_a_failed_rollback_exits_2_and_the_morning_diff_names_every_deploy_not_proven(tmp_path, capsys, monkeypatch):
+    noon(monkeypatch)                                                  # the diff a minute on stays on the rows' day
     tree, ids = repo(tmp_path)
     priv, state = layer(tmp_path, tree)
     f = Fake(tree, connected=lambda commit: False)                     # neither commit ever connects
@@ -696,7 +705,8 @@ def test_when_the_restart_or_the_cut_count_raised_the_card_says_the_cut_was_not_
     assert rows(state)[-2:] == [("deploy", ids[0], ids[1], "fault", None), ("rollback", ids[1], ids[0], "proven", 0)]
 
 
-def test_the_morning_diff_names_a_proven_deploy_that_cut_a_turn(tmp_path):
+def test_the_morning_diff_names_a_proven_deploy_that_cut_a_turn(tmp_path, monkeypatch):
+    noon(monkeypatch)                                                  # the diff a minute on stays on the rows' day
     priv, state, accounts, cool = dead_layer(tmp_path)
     led = Ledger(state / "ledger.sqlite")
     led.deploy(kind="deploy", unit="u", before="a" * 40, after="b" * 40, outcome="proven", cut=2)   # its card may be lost
