@@ -24,6 +24,34 @@ with the originals kept under `backups/`; the index chunks every file again when
   1536M); below it the kernel takes mapped pages back and part of recall reads cold again. budgets.toml changed
   ([code] lines, up 165).
 
+### figure-noise (#85)
+
+- The figure shadow rule counts a line on file as a figure's source only when it is about the same thing, not when it
+  merely shares the digits: the label words beside the number in the reply (Z8, girth, worksheet) sit beside it on
+  the line too (two of them, one holding a digit, or the reply's only one), the unit agrees (1.4 ft is not 1.4 s,
+  0.11 ft is not 0.11%), the line is not the reply's own record (its day-log line, or another room quoting it), and a
+  dollar figure is looked up with its dollar sign (the bare digits used to find only lines where the number was not
+  dollars). A read of the same number with or without thousands separators carries it. A figure with no label word
+  beside it, in the reply or on the line, is matched by its digits as before. Replayed over the owner's 68 complaint
+  cases and 74 accepted replies: false alarms on accepted replies 13 to 6 of 74 (0.176 to 0.081), wrong-fact hits 4
+  to 1 (none of the 4 was the wrong fact); every other rule's rows unchanged.
+- **Upgrading:** budgets.toml changed ([code] lines, up 90 for the same-thing test). Nothing to do.
+
+### people-card (#84)
+
+- A room with people (`people` in rooms.toml) gets its own turn card: the room's newest holding line (the text it sent
+  itself), else "working on it", and the step count, as "-# step 12"; never a step's words, the earlier-steps line or
+  the model's narration. An owner room's card is byte for byte what it was (a test renders main's card of one long turn).
+- The board rule, the Stop hook's fourth, in a room with people only: a final shaped as the owner rooms' status board
+  (a line opening on ☑, ☐, ⛔, 🟦 or 🟨, the colour key, "unblocks:") bounces once for two or three plain sentences, a
+  `board` row in the shadow ledger the morning diff counts. An owner room's board never bounces.
+- A room that is not the owner's adds 3 notes per 5-minute window, not 1, so a reminder, its follow-up check and a watch
+  go in one turn: on 2026-10-21 one per window refused a person's second note twice and the room put it off to
+  the person's next message. 20 notes at most, as before.
+
+**Upgrading**: yerkd.toml `[jobs] room_note_burst` is new and optional (default 3; 1 keeps one note per window).
+budgets.toml `[code]` rises by 56. Nothing to do.
+
 ### midnight-test (#83)
 
 - Two deploy tests that read the morning diff a minute after their rows now pin the clock to noon, so a suite that

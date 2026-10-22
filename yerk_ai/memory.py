@@ -954,7 +954,7 @@ def migrate_daylogs(daily: Path, tz: tzinfo, rooms: dict[str, tuple[str, str]], 
 
 def on_file(s: Settings, deadline_s: float = 1.5) -> tuple[Any, Any]:
     """(figure lookup, file lookup) for the shadow Stop check, each answering the cite or None."""
-    from .evidence import has_figure
+    from .evidence import Quoted, has_figure
 
     def rows(sql: str, args: tuple[str, ...]) -> list[Any]:
         try:
@@ -968,11 +968,12 @@ def on_file(s: Settings, deadline_s: float = 1.5) -> tuple[Any, Any]:
 
     def figure(fig: str) -> str | None:
         found = []                  # a fact file first, then the install's own tree, then a read-only root
+        about = fig.about if isinstance(fig, Quoted) else None      # a line about the same thing, not just its digits
         for path, lo, body in rows("SELECT c.path, c.lo, c.body FROM chunks_fts JOIN chunks c ON c.id = "
                                    "chunks_fts.rowid WHERE chunks_fts MATCH ? LIMIT 60",
                                    ('"' + " ".join(re.findall(r"\d+", fig)) + '"',)):
             for n, line in enumerate(body.splitlines()):
-                if has_figure(line, fig):
+                if has_figure(line, fig) and (about is None or about(line)):
                     p = Path(path)
                     rank = 0 if p.parent.name == "facts" else 1 if p.is_relative_to(s.root) else 2
                     found.append((rank, str(p.relative_to(s.root)) if p.is_relative_to(s.root) else path, lo + n))

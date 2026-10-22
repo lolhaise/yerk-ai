@@ -143,6 +143,7 @@ class Room:
         self.bounced = False                      # the unread-image check bounced this result already
         self.silent_bounced = False               # the silent-ending check bounced this result already
         self.stub_bounced = False                 # the stub check bounced this result already
+        self.board_bounced = False                # the board check bounced this result already
         self.evidence = Evidence(on_call=self._ledger_call)   # every tool call of the turn and what it read
         self.answering: set[str] = set()                      # ids of the batch the turn answers
         self.stale = False                        # the settings changed mid-turn: the process closes at its end
@@ -334,11 +335,24 @@ class Room:
         self.stub_bounced = bool(found)
         return (words.STUB.format(head=" ".join(text.split())[:80]), found) if found else None
 
+    def board_check(self, active: bool, text: str | None) -> tuple[str, str] | None:
+        """The Stop hook's fourth rule, no judge, in a room with people only (2026-10-21: the owner rooms' status board,
+        its ⛔ 🟨 items, "Unblocks: allow workers here" and ☐ lines, went out in a person's room): a final holding the
+        board's marks (words.BOARD_LINE) bounces once, saying how many lines hold them: (the bounce, what was found), or None."""
+        if active or not text or self.board_bounced or not self.conf.get("people"):
+            return None
+        n = sum(1 for x in text.splitlines() if words.BOARD_LINE.search(x))
+        self.board_bounced = bool(n)
+        found = f"{n} line{'s' * (n != 1)} with a checklist mark, the colour key or what unblocks it"
+        return (words.BOARD.format(found=found), found) if n else None
+
     def _new_card(self, note: str = "") -> None:
         privacy = str(self.conf.get("privacy", "owner"))
-        self.card = Card(thinking=flag(self.conf.get("thinking_panel")) and privacy == "owner")
+        self.card = Card(thinking=flag(self.conf.get("thinking_panel")) and privacy == "owner",
+                         people=self.name if self.conf.get("people") else "")
         self.card.narration = note                # a harness line from the first post, until the model's first words
         self.turn_key, self.bounced, self.silent_bounced, self.stub_bounced = uuid.uuid4().hex[:12], False, False, False
+        self.board_bounced = False
         self.channel.open_card(self.name, self.card.render())   # state first from the first post
 
     def meta_for(self, prompt: str) -> tuple[str, float | None]:
