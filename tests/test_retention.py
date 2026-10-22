@@ -347,7 +347,7 @@ def test_a_busy_month_stays_under_one_fixed_bound_from_day_3_to_day_30(tmp_path)
         for i, h in enumerate((10, 11.5, 13, 14.5, 16)):
             sparse(work / "outbox" / f"day-{k}" / f"render-{i}.pgm", RENDER, day0 + h * 3600)
         for i in range(15 if k == 10 else 0):                             # 900 MB in seven minutes
-            sparse(work / "outbox" / "Alex-pages" / f"page-{i}.pgm", RENDER, day0 + 11.9 * 3600 + i * 28)
+            sparse(work / "outbox" / "spec-pages" / f"page-{i}.pgm", RENDER, day0 + 11.9 * 3600 + i * 28)
         for i, h in enumerate((12, 15)):
             sparse(room / "outbox" / f"{k:02d}{h}0000-k{k}-s{i}-plan.pdf", SEND, day0 + h * 3600)
         sparse(work / "inbox" / f"m{k}" / "drawing.pdf", INBOX, day0 + 9 * 3600)

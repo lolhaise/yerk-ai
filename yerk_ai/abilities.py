@@ -16,6 +16,7 @@ from .config import load_toml, table
 
 log = logging.getLogger("yerk.abilities")
 SELF = "abilities"                  # "what can you do": its answer is every ability's name by state
+HOW = {"built": "How it works:", "described": "How it would be built:"}     # its `how` lines
 
 
 def manifest() -> dict[str, dict[str, Any]]:
@@ -28,7 +29,8 @@ def state(name: str, ab: dict[str, Any], tab: dict[str, dict[str, Any]], s: Any)
     if ab.get("state", "built") == "described":
         return words.ability("described")
     if ab["tier"] in ("key", "paid"):
-        key: Path | None = {"embeddings": getattr(s, "embeddings_key", None)}.get(name)     # the provider key's path
+        key: Path | None = {"embeddings": getattr(s, "embeddings_key", None),     # the provider key's path; the install
+                            "transcribe": getattr(s, "embeddings_key", None)}.get(name)   # has one OpenAI key file
         if key is not None and key.is_file() and key.stat().st_size > 0:
             return words.ability("on")
         return words.ability("needs", provider=ab.get("provider", "a provider key"))
@@ -66,7 +68,7 @@ def explain(name: str, ab: dict[str, Any], tab: dict[str, dict[str, Any]], s: An
     if name == SELF:
         out += ["", *census(tab, s)]
     if ab.get("how"):
-        out += ["", "How it would be built:", *[f"- {x}" for x in ab["how"]]]
+        out += ["", HOW[ab.get("state", "built")], *[f"- {x}" for x in ab["how"]]]
     out += ["", f"Needs: {ab['needs']}"]
     out += [f"{label}: {ab[field]}" for field, label in (("provider", "Provider"), ("model", "Model")) if ab.get(field)]
     out.append(f"Cost: {ab.get('price') or 'nothing, it runs on the box'}")
@@ -93,7 +95,7 @@ def brief(name: str, ab: dict[str, Any], tab: dict[str, dict[str, Any]], s: Any)
                          "`yerk explain NAME` says what any one does, needs and costs."])
     how = "; ".join(str(x).split(":", 1)[0] for x in ab.get("how", []))
     up = built_part(ab, tab)
-    parts = [f"{name}, a Yerk AI ability ({said}): {ab['what']}", f"How it would be built: {how}." if how else "",
+    parts = [f"{name}, a Yerk AI ability ({said}): {ab['what']}", f"{HOW[ab.get('state', 'built')]} {how}." if how else "",
              f"Needs: {ab['needs']}.", f"Cost: {ab.get('price') or 'nothing, it runs on the box'}.",
              f"Free path: {ab['free_path']}.", f"Built part: {up}." if up else "",
              f"Why it is not built: {ab['why_not']}" if ab.get("why_not") else ""]

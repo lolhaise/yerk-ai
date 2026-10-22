@@ -135,4 +135,8 @@ duplicated_topics = 0
 # 2026-10-22: recall-warm raised it by 165, the pin that holds the keyword tables' pages mapped against the box's
 # page-cache drops, its pass after a write and the doctor's cap counting them (the owner's ask: recall at 3 s), not
 # folded to fit; its cold read cut the /keywords path the first build had (269).
-lines = 16729
+# 2026-10-21: transcribe raised it by 269, the transcribe tool (transcribe.py, 198), the voice note's arrival line and its
+# Stop bounce, and the ledger's spend table with its writer, reader and morning line (the same table PR 76 adds; whichever
+# merges second keeps one copy), not folded to fit; its cold read added 6 of the 269 (a Read of a recording is not
+# hearing it, and the room's 10-minute tool timeout that lets a long recording's call finish).
+lines = 16998

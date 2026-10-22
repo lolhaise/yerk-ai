@@ -2,8 +2,9 @@
 # official Python SDK) and the send tool's shape are adapted from Hermes Agent v0.22.2,
 # mcp_serve.py (create_mcp_server, messages_send), https://github.com/NousResearch/hermes-agent
 # Copyright (c) 2025 Nous Research. MIT License. See NOTICE.
-"""Yerk AI's own MCP server: eight tools (send, hold, recall, read_memory, remember, worker, schedule, settings), local-only
-HTTP, preloaded in every room. A worker gets none of it: by default no MCP server at all, and with
+"""Yerk AI's own MCP server: nine tools (send, hold, recall, read_memory, remember, worker, schedule, settings, transcribe),
+local-only HTTP, preloaded in every room; transcribe is here and not a plug-in because the daemon has the network and a
+room's shell has none. A worker gets none of it: by default no MCP server at all, and with
 [workers] yerk_tools its own stdio server (`worker_server`) carrying recall and read_memory only.
 
 Every endpoint (/mcp, /hook, /control) wants the `x-yerk-secret` header (restart test R3). Three
@@ -49,6 +50,7 @@ class Daemon(Protocol):
     async def tool_worker(self, room: str, req: dict[str, Any]) -> dict[str, Any]: ...
     async def tool_schedule(self, room: str, req: dict[str, Any]) -> dict[str, Any]: ...
     async def tool_settings(self, room: str, model: str, effort: str, account: str = "") -> dict[str, Any]: ...
+    async def tool_transcribe(self, room: str, path: str, owner_yes: bool = False) -> dict[str, Any]: ...
 
 
 def caller_room(ctx: Context) -> str:
@@ -181,6 +183,15 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         a new session starts; with none it says what the room runs now. Say its `line`."""
         return json.dumps(await daemon.tool_settings(caller_room(ctx), model, effort, account))
 
+    @mcp.tool()
+    async def transcribe(path: str, owner_yes: bool = False, *, ctx: Context) -> str:
+        """A voice note or recording as text, since you take in sound only this way: `path` is the file's saved path from
+        its [attachment] line, or another audio file in this room's folders. The daemon transcribes it (your shell has no
+        network) and returns the words with a timestamp per segment, saved beside the audio as NAME.transcript.txt. A
+        segment marked (uncertain) has two readings that disagree, so give it as unsure or ask. A recording past US$1
+        comes back refused until the owner says yes; then call again with `owner_yes` true."""
+        return json.dumps(await daemon.tool_transcribe(caller_room(ctx), path, owner_yes))
+
     def route(path: str, handler: Handler) -> None:
         @mcp.custom_route(path, methods=["POST"])
         async def _route(request: Request) -> Response:
@@ -201,9 +212,12 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
 
 def room_config(url: str, room: str, path: Path, token: str = "", servers: dict[str, Any] | None = None) -> Path:
     """The per-room --mcp-config file (0600): this server, preloaded, the process's own token as its secret header
-    (the daemon knows the room by the token's binding), and the room's `mcp` servers from rooms.toml, never as yerk."""
+    (the daemon knows the room by the token's binding), and the room's `mcp` servers from rooms.toml, never as yerk. Its
+    `timeout` (10 min, inside a turn's 15 min of silence) is what lets a transcribe call run past 60 s: without one,
+    Claude Code drops an HTTP tool call that has not answered in 60 s, and this server answers only when the tool is done."""
     from .config import write_private
-    cfg = {"mcpServers": {**dict(servers or {}), "yerk": {"type": "http", "url": url, "headers": {HEADER: token}, "alwaysLoad": True}}}
+    yerk = {"type": "http", "url": url, "headers": {HEADER: token}, "alwaysLoad": True, "timeout": 600_000}
+    cfg = {"mcpServers": {**dict(servers or {}), "yerk": yerk}}
     write_private(path, json.dumps(cfg, indent=1))
     return path
 

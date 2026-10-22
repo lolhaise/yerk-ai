@@ -48,7 +48,7 @@ from typing import Any, Awaitable, Callable, Coroutine, TypeVar
 
 import discord
 
-from .. import status, words
+from .. import status, transcribe, words
 from ..config import EFFORTS
 from ..ledger import Ledger
 from ..lifted.loopguard import LoopGuard
@@ -115,8 +115,8 @@ def file_type(name: str, given: str | None = None) -> str:
 
 def message_text(m: Any, files: list[dict[str, Any]] | None = None, reply: str = "") -> str:
     """The message body (mentions as names), with what it replies to and its files listed (staged
-    path, or why it is missing) so none is dropped unseen. Without `files`, the attachments as
-    Discord lists them."""
+    path, or why it is missing) so none is dropped unseen, a voice note with the line that it is heard only through
+    the transcribe tool. Without `files`, the attachments as Discord lists them."""
     lines = [reply, str(getattr(m, "clean_content", None) or m.content or "")]
     if files is None:
         files = [{"name": a.filename, "size": a.size, "type": file_type(a.filename, getattr(a, "content_type", None)),
@@ -124,6 +124,7 @@ def message_text(m: Any, files: list[dict[str, Any]] | None = None, reply: str =
     for f in files:
         if f.get("ok"):
             lines.append(f"[attachment] {f['name']}, {f['type']}, {f['size']:,} bytes, saved at {f['path']}")
+            lines += [words.VOICE_NOTE.format(name=f["name"])] if transcribe.is_audio(f["name"], f["type"]) else []
         else:
             lines.append(f"[attachment] {f['name']}: could not be fetched ({f.get('error', 'unknown')})")
     return "\n".join(x for x in lines if x).strip()
