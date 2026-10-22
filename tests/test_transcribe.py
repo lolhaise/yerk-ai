@@ -107,9 +107,9 @@ def setup(tmp_path, monkeypatch, sizes, answers, groq: str | None = "gsk_test_gr
 
 
 def test_a_call_runs_both_passes_writes_the_file_and_books_a_spend_row_per_paid_call(tmp_path, monkeypatch):
-    one = {"segments": [seg(0, 4, "For The check while a."), seg(4, 6, "Turn and the!", 0.97, -1.2)]}
+    one = {"segments": [seg(0, 4, "Call Nora about the rollout."), seg(4, 6, "Thanks for watching!", 0.97, -1.2)]}
     two = {"segments": [seg(0, 3, "Then email the vendor"), seg(3, 5, "by Friday.")]}
-    answers = {("openai", 0): one, ("openai", 1): two, ("groq", 0): {"segments": [seg(0, 4, "Entry Waits in the queue.")]},
+    answers = {("openai", 0): one, ("openai", 1): two, ("groq", 0): {"segments": [seg(0, 4, "Call Norah about the rollout.")]},
                ("groq", 1): {"segments": [seg(0, 5, "Ten email a vendor by Friday.")]}}
     audio, keys, rows, calls = setup(tmp_path, monkeypatch, [8000 * 840, 8000 * 5], answers)
     r = transcribe.run(audio, *keys, lambda e, usd, note: rows.append((e, usd, note)))
@@ -120,7 +120,7 @@ def test_a_call_runs_both_passes_writes_the_file_and_books_a_spend_row_per_paid_
     assert Path(r["file"]) == audio.with_name("voice-message.transcript.txt") and Path(r["file"]).stat().st_mode & 0o777 == 0o600
     assert saved.splitlines() == [
         "voice-message.ogg, 14.1 min, checked by a second pass: 1 of 3 segments uncertain",
-        "[00:00:00 -> 00:00:00] For The check while a.",
+        "[00:00:00 -> 00:00:04] Call Nora about the rollout.",
         "[00:14:00 -> 00:14:03] (uncertain) Then email the vendor | second pass: Ten email a vendor",
         "[00:14:03 -> 00:14:05] by Friday."]
     assert r["text"] == "\n".join(saved.splitlines()[1:]) and "sk-test" not in str(r) and "gsk_" not in str(r)
