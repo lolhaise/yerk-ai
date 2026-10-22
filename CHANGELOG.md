@@ -8,6 +8,17 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-21
 
+### taste-judge (#79)
+
+- The taste eval, phase 1: `evals/taste/run.py` scores a judge model against the owner's own complaints about a room's
+  replies, kept as a private case file outside the repository (the cases, at least as many accepted replies as controls,
+  a rubric of the kinds in his words), one `claude -p` call per row with hooks, settings and tools off and the answer
+  forced to JSON; precision, recall and the false-alarm rate on a held-out half, one table, `scores.json` with the cost
+  per call as the binary reports it. The first run, the owner's three rooms Oct 19 to 21: 68 cases and 74 controls;
+  held out, precision 0.71, recall 0.15, false alarms 0.054, about 6 s and 7,600 tokens a call at medium effort. Under
+  the bar on false alarms, short of it on cases (100), and far short on recall. Nothing in the daemon changes; mypy now
+  covers `evals/`.
+
 ### mechanics-lines (#75)
 
 - Every room's mechanics (yerk_ai/mechanics.md) take the three lines owed since #69, in the prompting guide's shape:
