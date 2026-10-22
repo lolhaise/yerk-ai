@@ -522,3 +522,42 @@ def test_hook_overhead_per_turn_is_under_150_ms_at_the_95th_percentile(served):
     per = [ms for _, ms in y.ledger.db.execute("SELECT turn, sum(ms) FROM hook_calls WHERE turn != '' GROUP BY turn ORDER BY 2")]
     assert len(per) == 20 and y.ledger.db.execute("SELECT count(*) FROM hook_calls").fetchone()[0] == 160
     assert p95 < 150 and per[18] < 150, (p95, per)        # the hooks' own time per turn, every event summed
+
+
+# the board rule (2026-10-21: the owner rooms' status board went out in a person's room); a synthetic board, no one's words
+BOARD_FINAL = "\n".join(["Two of the three are set; the third waits on this room.",
+                         "☑ The library reminder is set for Monday at 10am",
+                         "☐ 🟦 The follow-up check goes in on my next turn",
+                         "⛔ 🟨 **Photo album:** this room can't make files yet. Unblocks: allow files here",
+                         "> The prints are saved in your notes",
+                         "-# 🟦 me · 🟨 you"])
+PLAIN_FINAL = ("Two of the three are set: the library reminder comes Monday at 10am, and the follow-up check goes in "
+               "next. The photo album has to wait until this room can make files.")
+
+
+def test_a_status_board_in_a_room_with_people_bounces_once_and_never_in_an_owner_room(tmp_path):
+    """The board rule: a final with the board's marks in a room with people bounces once, as a shadow row `board`; plain
+    sentences stand, and an owner room's board is its own shape and never bounces."""
+    y, room, ch = setup(tmp_path)
+    stop = {"hook_event_name": "Stop", "stop_hook_active": False}
+    human_turn(room)
+    assert call(y, {**stop, "last_assistant_message": BOARD_FINAL}) == {}                       # the owner's room
+    room.conf = {**room.conf, "people": [7]}                    # a person besides the owner
+    room._new_card()
+    assert room.card.people == "example-room"                                 # and the card takes its shape
+    human_turn(room, "is the library one set?", sender="person")
+    out = call(y, {**stop, "last_assistant_message": BOARD_FINAL})
+    assert out["decision"] == "block" and "two or three plain sentences" in out["reason"]
+    assert "4 lines with a checklist mark, the colour key or what unblocks it" in out["reason"]
+    assert call(y, {**stop, "stop_hook_active": True, "last_assistant_message": BOARD_FINAL}) == {}   # Claude Code's guard
+    assert call(y, {**stop, "last_assistant_message": BOARD_FINAL}) == {}                            # and ours: once
+    rows = [r["detail"] for r in reversed(y.ledger.rows(20, "shadow")) if r["rule"] == "board"]
+    assert rows == ["4 lines with a checklist mark, the colour key or what unblocks it"]
+    assert y.ledger.shadow_rules(0, time.time() + 1)["board"] == 1             # the morning diff's count
+    room._new_card()                                                          # the next result
+    human_turn(room, "and the album?", sender="person")
+    assert call(y, {**stop, "last_assistant_message": PLAIN_FINAL}) == {}
+    for line in BOARD_FINAL.splitlines()[1:4] + ["- ☐ a dashed item", "it unblocks: the files"]:
+        assert words.BOARD_LINE.search(line), line
+    for line in ("> The prints are saved in your notes", "Book it in mid-July, about two months ahead.", "A 🟦 blue door"):
+        assert not words.BOARD_LINE.search(line), line
