@@ -6,6 +6,23 @@ A line that changes a file the install keeps (rooms.toml, yerkd.toml, budgets.to
 newer than the code is refused with one line, never changed); the day logs are rewritten once at the daemon's start
 with the originals kept under `backups/`; the index chunks every file again when its chunker's version changes.
 
+## 2026-10-22
+
+### people-card (#83)
+
+- A room with people (`people` in rooms.toml) gets its own turn card: the room's newest holding line (the text it sent
+  itself), else "working on it", and the step count, as "-# step 12"; never a step's words, the earlier-steps line or
+  the model's narration. An owner room's card is byte for byte what it was (a test renders main's card of one long turn).
+- The board rule, the Stop hook's fourth, in a room with people only: a final shaped as the owner rooms' status board
+  (a line opening on ☑, ☐, ⛔, 🟦 or 🟨, the colour key, "unblocks:") bounces once for two or three plain sentences, a
+  `board` row in the shadow ledger the morning diff counts. An owner room's board never bounces.
+- A room that is not the owner's adds 3 notes per 5-minute window, not 1, so a reminder, its follow-up check and a watch
+  go in one turn: on 2026-10-21 one per window refused a person's second note twice and the room put it off to
+  the person's next message. 20 notes at most, as before.
+
+**Upgrading**: yerkd.toml `[jobs] room_note_burst` is new and optional (default 3; 1 keeps one note per window).
+budgets.toml `[code]` rises by 56. Nothing to do.
+
 ## 2026-10-21
 
 ### taste-judge (#79)

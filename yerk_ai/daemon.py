@@ -746,6 +746,11 @@ class Yerkd:
                     self.ledger.shadow(t=round(time.time(), 3), room=name, session_id=sid, turn=room.turn_key, rule="stub",
                                        detail=found, reply_chars=len(str(said)))
                     log.info("room %s: Stop bounced once: the final text only reports a filing (%s)", name, found)
+                elif (board := room.board_check(active, None if said is None else str(said))):
+                    reason, found = board             # counted the same way as a stub
+                    self.ledger.shadow(t=round(time.time(), 3), room=name, session_id=sid, turn=room.turn_key, rule="board",
+                                       detail=found, reply_chars=len(str(said)))
+                    log.info("room %s: Stop bounced once: a status board in a room with people (%s)", name, found)
             if room and name:
                 try:
                     await asyncio.to_thread(self.shadow_stop, name, room, str(payload.get("last_assistant_message") or ""), sid)
