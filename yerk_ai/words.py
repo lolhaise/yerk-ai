@@ -93,6 +93,7 @@ FILES = {"open-loops.md": "your open items", "MEMORY.md": "the pinned notes", "p
 ANOTHER_WAY = "that did not work, trying another way"       # two or more failed steps in a row, as one row
 EARLIER, EARLIER_ROWS, ROOM_NOW = "{n} earlier steps", "{n} earlier rows", "checking what this room runs"
 THINKING, NOT_ANSWERED, YOU_ASKED = "thinking: ", "not answered", 'you asked: "{asked}"'
+STEP_N = "step {n}"                       # a room with people: its card counts the steps and never names one
 WHY = {                                   # a failed turn, in plain words: the failure class, else the outcome
     "auth": "the account's login was refused", "quota": "out of usage on every account",
     "transient": "Claude was busy; ask again", "overflow": "the conversation is too long",
@@ -125,13 +126,29 @@ DIED = {"exit-code": "it ended with an error", "signal": "it was killed", "core-
 REPORT_SAVED, NO_REPORT = "report saved: `yerk worker report {id}`", "no report: `yerk worker report {id}`"
 RELAY_ASK = ("[tell the room the outcome in your own voice, under {cap:,} characters, ending with the line "
              "\"{saved}\"; no file path and no exit code; {where}; do not paste it]")
-WORKERS_OWNER_ONLY = "only the owner's rooms can use workers"       # start, report, list, stop
-JOBS_OWNER_ONLY = "not scheduled: only this room's notes\nscripts and workers run as the owner"   # a room not the owner's
+# A room whose privacy is not owner hears what it can do instead and no person as the switch (seen live: a room
+# turned the words for the owner's rooms into the owner's name, as the person who has to turn it on)
+WORKERS_OWNER_ONLY = "workers do not run from this room; do the work here, with this room's own tools"   # start, report, list, stop
+JOBS_OWNER_ONLY = "not scheduled: only this room's notes\nscripts and workers do not run from this room"   # they run as the owner
 NOTES_FULL = "not scheduled: this room keeps {most} notes at most\nthe next once one is removed or has fired"   # [jobs] caps
-NOTES_WAIT = "not scheduled: one note per {every} min here\nthe next in {wait}"
+NOTES_WAIT = "not scheduled: {what} per {every} min here\nthe next in {wait}"
 NOTE_LONG = "not scheduled: a note is at most {most:,} characters\nthis one is {n:,}"
-RULES_OWNER_ONLY = "only the owner's rooms can file rules"           # remember with a job: a rule reaches every room
-RULE_FILED = "from now on every room does {job} this way"            # the line a filed rule's reply says
+RULES_OWNER_ONLY = "not filed as a rule, since a rule reaches every room; remember it without a job and it is this room's own note"
+# every remember result's last line (2026-10-21: "Filed." and a canned rule line went out as whole replies)
+FILED_NEXT = ("Only the text after your last tool call reaches the room, and nothing written above this call is shown, "
+              "so the answer goes there, first and whole (the result, the numbers, what you found or decided), and the "
+              "filing is {clause}.")
+FILED_AT_MOST, RULES_OVER = "one clause at its end at most", ", and the shared rules file is over its cap"
+RULE_CLAUSE = "one clause at its end, this one: every room now does {job} this way{over}"
+RULES_CUT, CUT_LINES = "{file} over cap: {size:,} of {cap:,}", "session starts cut lines {first} to {last}"   # machine room
+FILED = re.compile(r"^\W*(?:filed|saved|from now on,? every room)\b", re.I)   # a final reporting a filing (stub)
+STUB = ("Only your final message reaches the room, and yours, \"{head}\", reports the filing, not the answer: the answer "
+        "is above your last tool call, where the room never sees it, or it was never written. Write the whole answer as "
+        "your final message now, first and complete, with the filing one clause at its end at most.")
+BOARD_LINE = re.compile(r"^[\s>*-]*(?:☑|☐|⛔|🟦|🟨)|\bunblocks?:|🟦 me|🟨 you", re.I | re.M)   # the board's marks (board rule)
+BOARD = ("This room has people, and your final message is the owner rooms' status board ({found}). Say where things "
+         "stand in two or three plain sentences, with no checklist marks, colour key, quote rails or what unblocks it, "
+         "and write that as your final message now.")
 WORKER_OWN_ROOM = "a room starts workers for itself only, not for {room}"
 GONE, STRAY, NONE_RUNNING = "gone, no result", "unknown worker {id} running", "workers: none running"
 
@@ -358,7 +375,7 @@ def secs(seconds: float) -> str:
 NEXT_REPLY, THIS_ROOM = "next reply: {model}, {effort} thinking{on}", "this room: {model}, {effort} thinking{on}"
 ON, PINNED, NOT_AN_ACCOUNT = ", on account {account}", "{name}: on account {account}", "not an account: {account}\nthe accounts: {accounts}"
 CARRIED, RECAPPED = "the same session goes on", "a new session starts, with a recap\nmemory stays"   # the next message, after a switch
-OWNER_ONLY = "only the owner's rooms can change this"
+OWNER_ONLY = "not changed: this room keeps the model, thinking level and account it has, and answers on them"   # see WORKERS_OWNER_ONLY
 NOT_LISTED, NOT_A_LEVEL = "not on the list: {model}\nthe list: {models}", "not a thinking level: {effort}\nthe levels: {levels}"
 BACK_ON = "{model} not found; back on {usual}"       # a switched-to model no account could run
 USUAL = "the default"                                # a room whose rooms.toml names no model

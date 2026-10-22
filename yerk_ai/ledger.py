@@ -34,9 +34,10 @@ from typing import Any, Callable
 
 COLUMNS = ("room", "account", "config_dir", "session_id", "started", "first_visible", "ended",
            "outcome", "failure", "action", "output_chars", "models", "fallback_model", "accepted", "inbound",
-           "source", "hop", "recap", "turn_key", "model", "out_of")
+           "source", "hop", "recap", "turn_key", "model", "out_of", "context")
 ADDED = {"turns": {"inbound": "TEXT", "source": "TEXT", "hop": "TEXT", "recap": "INTEGER",   # newer than run 1
-                   "turn_key": "TEXT", "model": "TEXT", "out_of": "TEXT"},   # the model asked for; the pinned one every account was out of
+                   "turn_key": "TEXT", "model": "TEXT", "out_of": "TEXT",   # the model asked for; the pinned one every account was out of
+                   "context": "INTEGER"},                   # the session's tokens at the turn's last call (the idle compaction's)
          "outbound": {"body": "TEXT"},                      # a card's text, each post and edit
          "workers": {"job": "TEXT"},                        # the scheduled job a worker runs for (jobs.py)
          "evidence": {"tool_use_id": "TEXT"},               # joins a call to its time (tool_times)
@@ -49,7 +50,7 @@ SCHEMA = """CREATE TABLE IF NOT EXISTS turns (
   started REAL, first_visible REAL, ended REAL,
   outcome TEXT, failure TEXT, action TEXT,
   output_chars INTEGER, models TEXT, fallback_model TEXT, accepted INTEGER, inbound TEXT,
-  source TEXT, hop TEXT, recap INTEGER, turn_key TEXT, model TEXT, out_of TEXT);
+  source TEXT, hop TEXT, recap INTEGER, turn_key TEXT, model TEXT, out_of TEXT, context INTEGER);
 CREATE TABLE IF NOT EXISTS inbound (
   message_id TEXT PRIMARY KEY, room TEXT, channel TEXT, sender TEXT,
   received REAL, chars INTEGER, state TEXT, attempts INTEGER DEFAULT 0,
@@ -256,7 +257,7 @@ class Ledger:
         return self._insert("evidence", row)
 
     def shadow(self, **row: Any) -> int:
-        """One thing the shadow Stop check would have bounced; nothing was blocked."""
+        """One thing the shadow Stop check would have bounced, nothing blocked; or a `stub` bounce, which was."""
         return self._insert("shadow", row)
 
     # the gates (gates.py)
@@ -382,10 +383,15 @@ class Ledger:
         known(row, COLUMNS, "ledger")
         return self._insert("turns", row)
 
+    def last_context(self, session_id: str) -> int:
+        """The session's tokens at its newest turn that said them (0: none), so the idle compaction knows them after a restart."""
+        r = self._first("SELECT context FROM turns WHERE session_id = ? AND context IS NOT NULL ORDER BY id DESC LIMIT 1", (session_id,))
+        return int(r["context"]) if r else 0
+
     def turn_summary(self, since: float) -> tuple[dict[str, float], list[dict[str, Any]]]:
         """(each room's last answered turn's end, the failed turns since `since` by room, outcome and class with a count)."""
         ok = self._select("SELECT room, max(ended) AS ended FROM turns WHERE outcome = 'ok' GROUP BY room", ())
-        failed = self._select("SELECT room, outcome, failure, count(*) AS n FROM turns WHERE started >= ? AND outcome != 'ok' "
+        failed = self._select("SELECT room, outcome, failure, count(*) AS n FROM turns WHERE started >= ? AND outcome NOT IN ('ok', 'compacted') "
                               "GROUP BY room, outcome, failure ORDER BY room", (since,))
         return {str(r["room"]): float(r["ended"]) for r in ok if r["ended"] is not None}, failed
 
@@ -569,6 +575,17 @@ class Ledger:
                 "SELECT message_id FROM deliveries WHERE state = 'sent' AND key LIKE ? AND key NOT LIKE ? "
                 "ORDER BY created, key", (f"{k}:%", f"{k}:%:%"))]
         return out
+
+    def last_reply(self, room: str) -> dict[str, Any] | None:
+        """The room's newest reply as it went out (taste.py): its parts in order, its first part's message id and time."""
+        if (r := self._first("SELECT key FROM deliveries WHERE room = ? AND kind = 'reply' AND state = 'sent' "
+                             "ORDER BY sent DESC LIMIT 1", (room,))) is None:
+            return None
+        base = str(r["key"]).rsplit(":", 1)[0]
+        parts = sorted((p for p in self._select("SELECT key, message_id, body, sent FROM deliveries WHERE key LIKE ? AND "
+                                                 "state = 'sent'", (f"{base}:%",)) if p["key"].rsplit(":", 1)[0] == base),
+                       key=lambda p: int(p["key"].rsplit(":", 1)[1]))
+        return {"id": str(parts[0]["message_id"]), "sent": float(parts[0]["sent"]), "text": "\n".join(str(p["body"]) for p in parts)}
 
     def turn_for_key(self, turn_key: str) -> int | None:
         r = self._select("SELECT id FROM turns WHERE turn_key = ? ORDER BY id DESC LIMIT 1", (turn_key,))

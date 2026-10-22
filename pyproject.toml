@@ -40,7 +40,7 @@ markers = ["live: needs a real Claude Code login; skipped unless YERK_LIVE=1"]
 
 [tool.mypy]
 python_version = "3.12"
-files = ["yerk_ai", "tests/contract"]
+files = ["yerk_ai", "tests/contract", "evals"]
 warn_unused_ignores = true
 
 # The linter: pyflakes and the syntax-level pycodestyle rules, no formatting, no import sorting. The tree passes it as

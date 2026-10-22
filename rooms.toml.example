@@ -17,11 +17,16 @@ recall_days = 2
 open_loops = "memory/open-loops.md"
 # effort = "high"             # passed as --effort; unset: the model's own default
 # compact_window = 250000     # tokens the session keeps before Claude Code compacts; unset: budgets.toml [session]; 0: the model's own
+# idle_compact_at = 0.7       # a session at this share of that window or more is compacted between turns; unset: budgets.toml; 0: never
+# idle_compact_after = 25     # ... once the room has had no turn for this many minutes; unset: budgets.toml [session]
 # allow = ["Bash", "Write"]   # permission rules beyond Read; add the tool to `tools` too. The gates run first
 # also = ["~/notes"]          # only these of yerkd.toml's [memory] also roots reach its recall, read_memory and names; unset: all
 # sealed = true               # in Yerk's own tree, its own room's lines only: no other room's lines, notes, facts or rules
 # people = [USER_ID]         # Discord user ids answered in this room besides the owner (sender "person"); unset: the owner only.
 #                             # Needs a privacy other than owner: an owner room reads the owner's whole memory
+# shell = "trusted"          # a room with people that runs the owner rooms' tools, as tools = ["Read", "Grep", "Glob", "Bash", "Write", "Edit"]:
+#                             # its shell inside the daemon's wall (`yerk explain trusted`), Write and Edit on its layer and work folder only;
+#                             # its [rooms.NAME.sandbox] may add filesystem.denyRead, filesystem.denyWrite and the network allowlist, no other key
 thinking_panel = false        # owner-only rooms: a "thinking" line on the card (costs about 5 s a reply)
 # Web reach (README "Web reach"): the plug-in in plugins/web, run `npm ci --omit=dev` there once. Its keys are files in
 # the private folder's secrets/, each optional; with none it reads pages from this machine and searches keyless engines.

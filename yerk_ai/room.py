@@ -23,7 +23,8 @@ adapter's event loop.
 - Each turn owns one card (card.py), fed from the stream; every outbound part carries the turn's
   key. A turn that was sent an image and never read it is bounced once at Stop, naming the file;
   a working turn answering a person that ends with nothing visible in the room bounces once,
-  naming what is owed (nothing that already landed under the turn's key is sent again).
+  naming what is owed (nothing that already landed under the turn's key is sent again); a final
+  text that only reports a filing (`remember`, `schedule`, `hold`, `settings`) bounces once (stub).
 - A message from the harness itself (sender `yerk`: a worker's relay) runs like any other but is
   not a human message for the clock line or the idle rule; it may cap its reply and name a line the
   reply must carry, and it hears how its turn ended.
@@ -45,7 +46,7 @@ from . import words
 from .accounts import Account, Cooldowns, pick
 from .card import Card
 from .config import flag, override, pinned, write_private
-from .engine import RoomProcess, RoomSpec, Turn
+from .engine import RoomProcess, RoomSpec, SessionTable, Turn
 from .evidence import Evidence
 from .ledger import Ledger
 from .lifted.classify import Failure, FailureTable
@@ -73,6 +74,8 @@ class Inbound:
 
 
 HARNESS = "yerk"                          # the sender of Yerk AI's own messages (a worker's relay)
+FILING = ("remember", "schedule", "hold", "settings")   # Yerk AI's calls that file or set something, answering nothing
+STUB_CHARS = 200                          # the stub rule's size line (Room.stub_check)
 
 
 def fit(text: str, cap: int, must: list[str]) -> str:
@@ -117,7 +120,7 @@ class Room:
     def __init__(self, name: str, conf: dict[str, Any], spec: Callable[[], RoomSpec], accounts: list[Account],
                  channel: Channel, state: Any, ledger: Ledger, failures: FailureTable, cooldowns: Cooldowns,
                  idle_seconds: float = 1800.0, turn_timeout: float = 900.0, log_dir: Any = None,
-                 meters: Meters | None = None):
+                 meters: Meters | None = None, compact: tuple[int, float, float] = (0, 0.0, 0.0)):
         self.name, self.conf, self.spec, self.accounts, self.channel = name, conf, spec, accounts, channel
         self.state, self.ledger, self.failures, self.cooldowns = state, ledger, failures, cooldowns
         self.idle_seconds, self.turn_timeout, self.log_dir, self.meters = idle_seconds, turn_timeout, log_dir, meters
@@ -139,6 +142,8 @@ class Room:
         self.images: dict[str, str] = {}          # path -> name: images sent in since the last result
         self.bounced = False                      # the unread-image check bounced this result already
         self.silent_bounced = False               # the silent-ending check bounced this result already
+        self.stub_bounced = False                 # the stub check bounced this result already
+        self.board_bounced = False                # the board check bounced this result already
         self.evidence = Evidence(on_call=self._ledger_call)   # every tool call of the turn and what it read
         self.answering: set[str] = set()                      # ids of the batch the turn answers
         self.stale = False                        # the settings changed mid-turn: the process closes at its end
@@ -147,6 +152,9 @@ class Room:
         self.stopped = False                      # /stop: the running turn ends now and is never run again
         self.halt = threading.Event()             # ... and a rerun's wait ends at once
         self.closing = False                      # the daemon is stopping (shutdown): nothing more starts or is written
+        self.window, self.compact_at, self.compact_after = compact   # the idle compaction's line (idle_compact); a 0 is off
+        self.context = ledger.last_context(str((SessionTable(state / "sessions.json").get(name) or {}).get("session_id") or ""))
+        self.grown = True                         # the session grew since an idle compaction was last tried
 
     def _ledger_call(self, call: dict[str, Any]) -> None:
         self.ledger.evidence(t=round(time.time(), 3), room=self.name, session_id=self.rp.session_id if self.rp else "",
@@ -173,18 +181,53 @@ class Room:
             if self.busy:
                 return "busy"
             self.busy = True
+        t = self._compact_held("asked")
+        return "ok" if t.outcome in ("ok", "empty", "compacted") else t.outcome
+
+    def idle_compact(self, now: float | None = None) -> bool:
+        """`yerk room compact`, by the daemon (its reaper's minute): a room with no turn and nothing queued for `compact_after`
+        seconds, whose session holds `compact_at` of its window or more, compacts in the background, so the next message finds
+        it small instead of waiting minutes in its own turn for Claude Code's compaction. Once per growth: a try, kept or
+        failed, waits for a turn to grow the session again. Never when its next run starts a fresh session. True: started."""
+        now = time.time() if now is None else now
+        fresh = self.fresh_next or (self.state / "rooms" / self.name / "fresh-next").is_file()
+        with self.lock:
+            if (self.busy or self.queue or self.closing or fresh or not self.grown or not self.window or not self.compact_at
+                    or now - self.last_active < self.compact_after or self.context < self.compact_at * self.window):
+                return False
+            self.busy, self.grown = True, False
+        log.info("room %s: idle %.0f min at %d of its %d tokens, compacting", self.name, (now - self.last_active) / 60, self.context, self.window)
+        threading.Thread(target=self._idle_compact, name=f"compact-{self.name}", daemon=True).start()
+        return True
+
+    def _idle_compact(self) -> None:
+        try:
+            if (t := self._compact_held("idle")).compacted is None:     # said once: no retry until a turn grows the session
+                log.warning("room %s: the idle compaction did not compact (%s); not tried again before the next turn", self.name, t.outcome)
+        except Exception as e:
+            log.warning("room %s: the idle compaction failed (%s); not tried again before the next turn", self.name, e)
+
+    def _compact_held(self, why: str) -> Turn:
+        """/compact in the room's session (resumed when its process is gone) while the caller holds the room busy. A message
+        that came in meanwhile was queued: it runs right after, and its wait is logged."""
+        started = time.time()
         try:
             with self.lock:
                 alive = self.rp is not None and self.rp.alive()
             if not alive:
                 self._start(self._account())
-            assert self.rp
-            t = self.rp.ask("/compact", self.turn_timeout)
-            log.info("room %s: compact (asked) ended %s", self.name, t.outcome)
-            return "ok" if t.outcome in ("ok", "empty") else t.outcome     # /compact answers with no text
+            t = self._slash_compact()
+            before, self.context = self.context, t.context or self.context
+            log.info("room %s: compact (%s) ended %s in %.0f s, %d to %d tokens", self.name, why, t.outcome, time.time() - started, before, self.context)
+            return t
         finally:
             with self.lock:
-                self.busy, self.last_active = False, time.time()
+                waiting, self.last_active = list(self.queue), time.time()
+                self.busy = run = bool(waiting) and not self.closing
+            if run:
+                log.info("room %s: %d message(s) waited up to %.0f s for the compaction (%s), running now", self.name, len(waiting),
+                         self.last_active - min(m.received for m in waiting), why)
+                threading.Thread(target=self._run, name=f"room-{self.name}", daemon=True).start()
 
     # called by the channel adapter
     def idle_reason(self, seconds: float, now: float | None = None) -> str:
@@ -276,11 +319,40 @@ class Room:
         return (f"Your turn is ending with nothing visible in the room, and the room is still waiting on: \"{head}\". "
                 "Reply now with the answer, or one plain line on where it stands.")
 
+    def stub_check(self, active: bool, text: str | None) -> tuple[str, str] | None:
+        """The Stop hook's third rule, no judge (2026-10-21: "Filed." and a canned rule line went out in place of answers):
+        the result's last call is one of FILING and its final text, all the room sees, reports it, the answer above the call
+        (a text block over STUB_CHARS and twice the final's length) or never written (a final under STUB_CHARS opening
+        with words.FILED). It bounces once, quoting the final's start: (the bounce, what was found), or None."""
+        with self.evidence.lock:
+            trail = list(self.evidence.trail)
+        calls = [i for i, (kind, _) in enumerate(trail) if kind == "tool"]
+        if active or not text or self.stub_bounced or not calls or (tool := trail[calls[-1]][1].rsplit("__", 1)[-1]) not in FILING:
+            return None
+        n, above = len(text.strip()), max((len(t.strip()) for kind, t in trail[:calls[-1]] if kind == "text"), default=0)
+        found = (f"{above} characters above the {tool} call, {n} after it" if above > STUB_CHARS and above >= 2 * n else
+                 f"{n} characters after the {tool} call, opening as a filing" if n < STUB_CHARS and words.FILED.match(text) else "")
+        self.stub_bounced = bool(found)
+        return (words.STUB.format(head=" ".join(text.split())[:80]), found) if found else None
+
+    def board_check(self, active: bool, text: str | None) -> tuple[str, str] | None:
+        """The Stop hook's fourth rule, no judge, in a room with people only (2026-10-21: the owner rooms' status board,
+        its ⛔ 🟨 items, "Unblocks: allow workers here" and ☐ lines, went out in a person's room): a final holding the
+        board's marks (words.BOARD_LINE) bounces once, saying how many lines hold them: (the bounce, what was found), or None."""
+        if active or not text or self.board_bounced or not self.conf.get("people"):
+            return None
+        n = sum(1 for x in text.splitlines() if words.BOARD_LINE.search(x))
+        self.board_bounced = bool(n)
+        found = f"{n} line{'s' * (n != 1)} with a checklist mark, the colour key or what unblocks it"
+        return (words.BOARD.format(found=found), found) if n else None
+
     def _new_card(self, note: str = "") -> None:
         privacy = str(self.conf.get("privacy", "owner"))
-        self.card = Card(thinking=flag(self.conf.get("thinking_panel")) and privacy == "owner")
+        self.card = Card(thinking=flag(self.conf.get("thinking_panel")) and privacy == "owner",
+                         people=self.name if self.conf.get("people") else "")
         self.card.narration = note                # a harness line from the first post, until the model's first words
-        self.turn_key, self.bounced, self.silent_bounced = uuid.uuid4().hex[:12], False, False
+        self.turn_key, self.bounced, self.silent_bounced, self.stub_bounced = uuid.uuid4().hex[:12], False, False, False
+        self.board_bounced = False
         self.channel.open_card(self.name, self.card.render())   # state first from the first post
 
     def meta_for(self, prompt: str) -> tuple[str, float | None]:
@@ -581,6 +653,8 @@ class Room:
             if self.stopped:                      # /stop came between two runs: this one ends as it starts
                 self.rp.end_now()
             turn = self.rp.read_turn(started, self.turn_timeout, record=False, on_event=self._on_event)
+            if turn.context:                      # the session's size now: the idle compaction's to read
+                self.context, self.grown = turn.context, True
             if self.stopped and turn.outcome != "ok":
                 turn.outcome, turn.failure = "stopped", None
             with self.lock:
@@ -634,7 +708,13 @@ class Room:
             alive = self.rp is not None and self.rp.alive()
         if not alive:
             self._start(account)
-        assert self.rp
         self._note(words.COMPACTING)
-        t = self.rp.ask("/compact", self.turn_timeout)
-        log.info("room %s: compact ended %s", self.name, t.outcome)
+        log.info("room %s: compact ended %s", self.name, self._slash_compact().outcome)
+
+    def _slash_compact(self) -> Turn:
+        """/compact, both paths' one call: no text comes back, so a row that compacted says so, never a failed turn."""
+        assert self.rp
+        t = self.rp.read_turn(self.rp.send("/compact"), self.turn_timeout, record=False)
+        t.outcome = "compacted" if t.compacted is not None and t.outcome in ("ok", "empty") else t.outcome
+        self.rp.record(t)                         # read by yerk status --json's failed turns
+        return t

@@ -1,7 +1,7 @@
 # Every size limit Yerk AI enforces, in one place.
 # Unit: characters as Claude Code counts them (UTF-16 code units, so one emoji outside
-# the basic plane counts 2), except [session], in tokens, [shape], in rule lines and topics, and [code] at the end, which
-# counts lines. The budget test fails the build when a part or a total passes its number here.
+# the basic plane counts 2), except [session], in tokens (its idle keys say their own), [shape], in rule lines and topics,
+# and [code] at the end, which counts lines. The budget test fails the build when a part or a total passes its number here.
 
 [session_start]
 total = 84350
@@ -40,7 +40,9 @@ recall_pack = 6000
 
 [per_message]
 typical = 1500
-cap = 4000
+# 0000-00-00: 0,000 text 0,000, with one more 0,000 line (for the, 00:00: "check while a second entry waits in the queue for
+# are, the cap raised where they need it).
+cap = 5500
 
 [per_message.parts]
 clock = 200
@@ -54,11 +56,16 @@ output_cap = 10000
 # Paid only when a message hits: the people and things it names, then the room's own lines
 # of the last 14 days on its topic (L19, decision 20). The parts above plus these stay under `cap`.
 # 2,000 from the cold read of Oct 21 (rail-2, index healthy): the twenty episodic questions found 9 of 20
-# at 1,500 and 11 of 20 at 2,000. Clock 200 + metadata 300 + rules 1,500 + recall 2,000 = the cap, 4,000.
+# at 1,500 and 11 of 20 at 2,000. Clock 200 + metadata 300 + rules 1,500 + recall 2,000 + taste 1,500 = the cap, 5,500.
 recall = 2000
 # Its turn and the last part closes the (case 00): before the next run starts the, example note
 # note says the sample item moved to, the next step and; the test, reads it back as plain text with.
 rules = 1500
+# Paid on every message of an owner room whose layer keeps taste.jsonl: the owner's verdicts on the room's replies,
+# reads it back as plain, text with one more line, for the check while a second (entry.waits). in the, 0000-00-00
+# that their thumbs up and thumbs down go in the way their own files hold them, written as they are, and that the cap
+# rise if they need the room.
+taste = 1500
 
 [session]
 # The conversation Claude Code keeps before it compacts, in tokens (its own unit here): Yerk AI writes
@@ -70,6 +77,16 @@ rules = 1500
 # back after it. A quarter of the window until a latency bench picks the number. A room's own
 # `compact_window` in rooms.toml overrides it; 0 leaves it to the model.
 compact_window = 250000
+# A room idle `idle_compact_after` minutes (no turn, nothing queued) whose session holds `idle_compact_at` of its window
+# or more is compacted then by the daemon, as `yerk room compact` does it, so a compaction never lands in a person's turn
+# (2026-10-21: a one-line question waited 5 min 20 s for one). Measured that day: Claude Code compacts at the window less
+# 33,000 (2.1.304: its 20,000 output reserve and 13,000 buffer); the most a room's session grew in one turn was 100,831,
+# and a process start added up to 43,479, so at 0.7 a 700,000 window keeps 177,000 for the next turn and 400,000 keeps
+# 87,000. 25 minutes is under the 30 a room's process stays open, so it compacts warm, inside the hour the prompt cache
+# holds; a message came in while one would run after 12% of the idle stretches that long (9 of 75, the slowest compaction
+# seen: 320 s). A room's own keys in rooms.toml override these; idle_compact_at = 0 turns it off, as a window left to the model does.
+idle_compact_at = 0.7
+idle_compact_after = 25
 
 [relay]
 # A worker's end, told in its room (DESIGN 6, decision 11): the harness line the room's session
@@ -101,6 +118,23 @@ duplicated_topics = 0
 # 2026-10-21: sheet-rule raised it by 50, the sheet shadow rule and its call (the owner's ask), not folded to fit.
 # 2026-10-21: note-jobs raised it by 122, the note kind, its gate, the plain card, its restart replay and its caps (the
 # owner's ask), not folded to fit; its cold read added 1 of the 122 and the caps 30.
+# 2026-10-21: idle-compact raised it by 68, the idle compaction and the session's size in the ledger, not folded to fit
+# (5 of them its cold read's: a compaction's own outcome, so it is never one of the day's failed turns).
+# 2026-10-21: answer-first raised it by 64, the answer-first line, the stub bounce and the rules-file warning, not folded
+# to fit.
+# 2026-10-21: trusted-room raised it by 109, the trusted shell's wall (what it denies, built from what the daemon knows),
+# its start checks and the outbox kept read only (the owner's ask), not folded to fit.
+# 2026-10-21: taste-ledger raised it by 178, an earlier setup's thumbs as they are in its files (the classifier's three lists
+# unchanged, the capture, the reply it rates, the taste part and its map row; the owner's ask), not folded to fit.
+# 2026-10-22: person-claim-rule raised it by 65, the person and quote shadow rules and their call (the owner's ask), not
+# folded to fit.
+# 2026-10-22: people-card raised it by 56, the people room's card, the board bounce and the note burst (the owner asked why it took so long), not folded to fit.
+
+# 2026-10-22: figure-noise raised it by 90, the figure rule's same-thing test (label words, unit, the reply's own copy, a
+# number's written forms) and its lookup in memory.on_file (the owner's ask), not folded to fit.
+# 2026-10-22: recall-warm raised it by 165, the pin that holds the keyword tables' pages mapped against the box's
+# page-cache drops, its pass after a write and the doctor's cap counting them (the owner's ask: recall at 3 s), not
+# folded to fit; its cold read cut the /keywords path the first build had (269).
 # 2026-10-21: web raised it by 9, the ledger's spend table, its read and the morning line, so the morning diff carries the
 # day's spend (decision 32); the web plug-in itself (plugins/web, JavaScript) is outside this count, as every plug-in is.
-lines = 15943
+lines = 16738

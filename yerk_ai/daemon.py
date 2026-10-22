@@ -26,11 +26,12 @@ import uuid
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Awaitable, Callable
+from zoneinfo import ZoneInfo
 
-from . import beat, context, deploy, doctor, evidence, gates, hooks, jobs, mcp_server, memory, mentions, status, workers
+from . import beat, context, deploy, doctor, evidence, gates, hooks, jobs, mcp_server, memory, mentions, status, taste, workers
 from .accounts import Account, Cooldowns, from_dir, load_accounts, pick
 from .config import (EFFORTS, REPO, SHELLS, budgets, discord_id, flag, load_toml, models, override, people, pinned, private_dir,
-                     read_secret, room_id, room_settings, rooms, state_dir, table, write_private)
+                     read_secret, room_id, room_settings, rooms, state_dir, table, trusted, write_private)
 from .engine import RoomSpec, SessionTable
 from .ledger import Ledger
 from .lifted.classify import FailureTable
@@ -46,8 +47,39 @@ YERK_TOOLS = ["mcp__yerk__send", "mcp__yerk__hold", "mcp__yerk__recall", "mcp__y
 # A shell room's sandbox when rooms.toml gives it no [rooms.NAME.sandbox] table: unsandboxed, a Read deny stops `cat` and
 # the Read tool, but a script, grep or redirect read every secret (Claude Code 2.1.304, PR 66's cold read, 2026-10-21)
 SANDBOX = {"enabled": True, "autoAllowBashIfSandboxed": True}
+# A trusted room's (shell = "trusted"): no command retried outside it, no start without it (Claude Code would run unsandboxed)
+WALL = {**SANDBOX, "allowUnsandboxedCommands": False, "failIfUnavailable": True}
 PAST_HITS = 6          # a question about the past: the recall tool's own six hits (its default), cut to the prompt hook's part
 NO_KEY_LINE = words.needs("meaning search", "an OpenAI key", "embeddings", "recall matches words only")
+
+
+def around(root: Path, own: list[Path]) -> list[Path]:
+    """`root` whole when it holds none of `own`, else each of its entries the same way (a link by its target); nothing
+    that is one of `own`, inside one or holding one (Claude Code's sandbox would deny the room its own work folder)."""
+    if any(root.is_relative_to(o) for o in own):
+        return []
+    if not any(o.is_relative_to(root) for o in own):
+        return [root]
+    try:
+        kids = sorted(root.iterdir())
+    except OSError:
+        return []
+    out: list[Path] = []
+    for c in kids:
+        t = c.resolve()
+        if not c.is_symlink():
+            out += around(c, own)
+        elif not any(o.is_relative_to(t) or t.is_relative_to(o) for o in own):
+            out.append(t)
+    return out
+
+
+def site_packages() -> list[Path]:
+    """The owner's Python user site-packages (the libraries installed with pip --user, python-docx among them): a
+    trusted room's shell reads them, since under blockReadsOutsideWorkingDirectories it reads nothing else in the home."""
+    home = Path.home()
+    return sorted({p.resolve() for g in (".local/lib/python3*/site-packages", "Library/Python/3*/lib/python/site-packages")
+                   for p in home.glob(g) if p.is_dir()})
 
 
 def free_port() -> int:
@@ -131,6 +163,8 @@ class Yerkd:
         self.memory = memory.settings(private, state, dict(self.conf.get("memory", {})))
         self.scoped = {n: self.memory.only(private, n, c["also"]) for n, c in self.room_confs.items() if "also" in c}
         context.walls(private, state, self.memory.scope.roots, self.room_confs)
+        for n in (n for n, c in self.room_confs.items() if trusted(c)):
+            self.walled(n)                         # a trusted room's wall that cannot be built stops the start here
         self.daily = memory.DailyLog(self.memory.daily, self.memory.tz,
                                      {n: (room_id(n, c), memory.room_class(c)) for n, c in self.room_confs.items()})
         # crash repair before anything reads a day log, assembled log or bound transcript (doctor.py): a hard power-off
@@ -197,9 +231,14 @@ class Yerkd:
         settings: dict[str, Any] = {"permissions": {"allow": [f"Read(/{layer}/**)", *YERK_TOOLS, *conf.get("allow", [])], "deny": self.never_read()},
                                     "hooks": hooks.settings_for(f"{self.url}/hook", header)}
         shell = conf.get("sandbox", dict(SANDBOX) if SHELLS & set(conf.get("tools") or []) else None)   # Claude Code's own
+        dirs = [layer, *self.read_dirs.get(name, [])]                       # `read`, as F4 judged it
+        if trusted(conf):                    # the daemon's wall; Write and Edit on the room's own folders; its outbox read only
+            shell = self.wall(name)
+            settings["permissions"]["allow"] += [f"Edit(/{p}/**)" for p in (layer, work.resolve())]
+            (outbox := rdir / "outbox").mkdir(parents=True, exist_ok=True)
+            dirs.append(outbox.resolve())
         settings.update({"sandbox": shell} if shell is not None else {})    # shell sandbox: a shell room's is on unless its table says
-        window = int(conf.get("compact_window", self.budgets.get("session", {}).get("compact_window", 0)) or 0)
-        settings.update({"autoCompactWindow": min(max(window, 100000), 1000000)} if window else {})   # Claude Code drops a value outside its range, silently
+        settings.update({"autoCompactWindow": w} if (w := self.window(name)) else {})
         settings["permissions"].update({} if self.owner(name) else {"blockReadsOutsideWorkingDirectories": True})   # file tools, every mode
         now = room_settings(conf, self.state, name, self.models)    # the room's override over rooms.toml
         extra = ["--effort", now["effort"][0]] if now["effort"][0] else []
@@ -207,7 +246,48 @@ class Yerkd:
             extra += ["--thinking-display", "summarized"]      # the panel's text; off: the stream says nothing
         return RoomSpec(room=name, model=now["model"][0], cwd=work, tools=list(conf.get("tools", [])), settings=settings,
                         context_file=ctx, mcp_config=mcp_server.room_config(f"{self.url}/mcp", name, rdir / "mcp.json", token, conf.get("mcp")),
-                        extra_args=extra, token=token, add_dirs=[layer, *self.read_dirs.get(name, [])])   # `read`, as F4 judged it
+                        extra_args=extra, token=token, add_dirs=dirs)
+
+    def walled(self, name: str) -> list[Path]:
+        """What a trusted room's shell never reads or writes, from what the daemon knows, at each process start: every entry
+        of the private and state folders but the room's own (the other layers, the memory folder, rooms.toml, imports and
+        backups; every other room's folder, the ledger, the logs, the index), every memory root, every other room's layer
+        and `read` folders, projects/ under every account's config folder (each room's transcripts), and each folder of the
+        owner's home that holds a memory root, a layer or a `read` folder (on the box, its workspace and its staging).
+        One of those inside the room's own folders stops the start with one line."""
+        conf, home = self.room_confs[name], Path.home().resolve()
+        own = [context.layer_dir(self.private, conf), (self.state / "rooms" / name).resolve()]
+        theirs = [*self.memory.scope.roots, *(context.layer_dir(self.private, c) for m, c in self.room_confs.items() if m != name),
+                  *(p for m, ps in self.read_dirs.items() if m != name for p in ps)]
+        known = [self.private.resolve(), self.state.resolve(), *theirs, *((self.state / "rooms" / m).resolve() for m in self.room_confs if m != name),
+                 *(a.config_dir.expanduser().resolve() / "projects" for a in self.accounts)]
+        if (inside := next((p for p in known if any(p.is_relative_to(o) for o in own)), None)) is not None:
+            raise SystemExit(f'room {name}: shell = "trusted" cannot wall {inside}: it is inside the room\'s own folders')
+        tops = sorted({(home / p.relative_to(home).parts[0]).resolve() for p in theirs if p.is_relative_to(home) and p != home})
+        out: list[Path] = []
+        for p in (q for root in (*known, *tops) for q in around(root, own)):
+            if not any(p.is_relative_to(q) for q in out):
+                out = [q for q in out if not q.is_relative_to(p)] + [p]
+        return out
+
+    def wall(self, name: str) -> dict[str, Any]:
+        """A trusted room's sandbox: the daemon's (WALL), its rooms.toml table adding denies and the network allowlist only
+        (config.unwalled refused the rest). The walled folders are denied the shell for reads and writes, the room's outbox
+        for writes (what went out stays as it went), and the owner's Python libraries re-opened to it read only."""
+        own = dict(self.room_confs[name].get("sandbox") or {})
+        fs = {k: [str(x) for x in v] for k, v in dict(own.get("filesystem") or {}).items()}
+        walled = [str(p) for p in self.walled(name)]
+        outbox = str((self.state / "rooms" / name / "outbox").resolve())
+        fs["denyRead"] = list(dict.fromkeys([*fs.get("denyRead", []), *walled]))
+        fs["denyWrite"] = list(dict.fromkeys([*fs.get("denyWrite", []), *walled, outbox]))
+        fs["allowRead"] = [str(p) for p in site_packages()]
+        return {**own, **WALL, "autoAllowBashIfSandboxed": own.get("autoAllowBashIfSandboxed", True), "filesystem": fs}
+
+    def window(self, name: str) -> int:
+        """The tokens a room's session keeps before Claude Code compacts it: rooms.toml `compact_window`, else budgets.toml
+        [session]'s; 0 leaves it to the model. Clamped to 100,000 to 1,000,000: Claude Code drops a value outside, silently."""
+        w = int(self.room_confs[name].get("compact_window", self.budgets.get("session", {}).get("compact_window", 0)) or 0)
+        return min(max(w, 100000), 1000000) if w else 0
 
     def secrets_at(self) -> tuple[list[Path], list[Path]]:
         """(folders, files) no room reads or sends: both secrets folders; every room's token files, each account's token
@@ -229,6 +309,23 @@ class Yerkd:
         """An owner room (rooms.toml privacy, "owner" when unset); a name that is no room is not one."""
         return room in self.room_confs and str(self.room_confs[room].get("privacy", "owner")) == "owner"
 
+    def taste_heard(self, room: str, text: str) -> None:
+        """The owner's message in a room's own channel: a verdict on the room's last reply joins the layer's taste.jsonl
+        when the room is an owner room whose layer keeps one (taste.py)."""
+        if (conf := self.room_confs.get(room)) is not None and (path := taste.kept(self.private, conf)) is not None:
+            taste.record(path, room, str(conf.get("channel", "")).partition(":")[2], text, self.ledger.last_reply(room),
+                         ZoneInfo(str(conf.get("timezone", "UTC"))))
+
+    def taste_for(self, room: str) -> str:
+        """The taste part of an owner room whose layer keeps taste.jsonl, else ""."""
+        if (conf := self.room_confs.get(room)) is None or (path := taste.kept(self.private, conf)) is None:
+            return ""
+        try:
+            return taste.render(taste.load(path), room, int(self.budgets["per_message"]["on_hit"]["taste"]))
+        except OSError as e:                      # the message goes on without it
+            log.warning("room %s: no taste part, %s could not be read: %s", room, path, e)
+            return ""
+
     def reader(self, room: str) -> memory.Reader:
         """Who a memory read is for: an owner room reads everything, any other room its own lines and
         shared files, a caller that is no room at all shared files only (R2), and a sealed room its own lines in Yerk's tree."""
@@ -244,9 +341,10 @@ class Yerkd:
         # accounts.toml order, so adding or removing an account is one line in accounts.toml
         named = [a for n in conf.get("accounts") or [] for a in self.accounts if a.name == n]
         accts = named + [a for a in self.accounts if a not in named]
+        s = {**self.budgets.get("session", {}), **conf}          # the room's idle compaction keys over the budget's
         room = Room(name, conf, lambda: self.spec_for(name), accts, channel, self.state, self.ledger,
-                    self.failures, self.cooldowns, idle_seconds=self.idle_seconds, log_dir=self.log_dir,
-                    meters=self.meters)
+                    self.failures, self.cooldowns, idle_seconds=self.idle_seconds, log_dir=self.log_dir, meters=self.meters,
+                    compact=(self.window(name), float(s.get("idle_compact_at", 0)), 60 * float(s.get("idle_compact_after", 0))))
         self.rooms[name], self.channels[name] = room, channel
         return room
 
@@ -314,13 +412,14 @@ class Yerkd:
 
     async def tool_remember(self, room: str, text: str, about: str, replaces: list[str]) -> dict[str, Any]:
         """The `remember` tool: a room's own note into Yerk's own tree (memory.remember), stamped with
-        the ids of the messages its turn answers."""
+        the ids of the messages its turn answers; a filed one ends with `next`, the answer first and whole."""
         if room not in self.rooms:
             return {"ok": False, "error": "remember is for a room's own session"}
         with self.rooms[room].lock:
             mid = ",".join(m.id for m in self.rooms[room].inflight) or f"x{self.rooms[room].turn_key}"
-        return await asyncio.to_thread(memory.remember, self.scoped.get(room, self.memory), self.daily, room, mid, text, about,
-                                       tuple(replaces), self.reader(room))
+        r = await asyncio.to_thread(memory.remember, self.scoped.get(room, self.memory), self.daily, room, mid, text, about,
+                                    tuple(replaces), self.reader(room))
+        return {**r, "next": words.FILED_NEXT.format(clause=words.FILED_AT_MOST)} if r["ok"] else r
 
     def owner_only(self, room: str, named: str) -> dict[str, Any] | None:
         """A room's own call that would start or read a worker: the owner's rooms only (a worker runs as
@@ -335,7 +434,8 @@ class Yerkd:
         return None
 
     async def tool_rule(self, room: str, text: str, job: str) -> dict[str, Any]:
-        """`remember` with a `job`: an owner's room files how it is done from now on (memory.rule) for every room."""
+        """`remember` with a `job`: an owner's room files how it is done from now on (memory.rule) for every room; past the
+        rules part's budget it is filed all the same and said (`over_budget`, the reply's clause, one machine-room line)."""
         if room not in self.rooms or not self.owner(room):
             return {"ok": False, "line": words.RULES_OWNER_ONLY}
         if self.reader(room).sealed:        # its teaching stays its own day-log note, the job its label, never the shared rules
@@ -343,7 +443,15 @@ class Yerkd:
         with self.rooms[room].lock:
             mid = ",".join(m.id for m in self.rooms[room].inflight) or f"x{self.rooms[room].turn_key}"
         r = await asyncio.to_thread(memory.rule, self.memory, room, mid, job, text)
-        return {**r, "line": words.RULE_FILED.format(job=r["job"])} if r["ok"] else r
+        if not r["ok"]:
+            return r
+        over = await asyncio.to_thread(context.rules_over, self.room_confs[room], self.memory.root / memory.RULES,
+                                       int(self.budgets["session_start"]["appended"]["rules"]))
+        if over:
+            cut = f"\n{words.CUT_LINES.format(first=over['cut'][0], last=over['cut'][-1])}" if over["cut"] else ""
+            await self.jobs.alert(None, f"{words.WORKING} {words.RULES_CUT.format(file=memory.RULES, **over)}{cut}", 0)
+            r["over_budget"] = {"size": over["size"], "cap": over["cap"]}
+        return {**r, "next": words.FILED_NEXT.format(clause=words.RULE_CLAUSE.format(job=r["job"], over=words.RULES_OVER if over else ""))}
 
     async def tool_worker(self, room: str, req: dict[str, Any]) -> dict[str, Any]:
         """The `worker` tool (rooms only; a worker has no MCP server). `yerk worker` comes through
@@ -491,6 +599,8 @@ class Yerkd:
         found = evidence.check(reply, room.prompts(), room.evidence, self.memory.scope.roots, figure, known, said)
         found += evidence.check_claims(reply, room.evidence, self.memory.scope.roots)     # decision 25
         found += evidence.check_sheet(reply, room.evidence)                               # the sheet rule
+        found += evidence.check_person(reply, room.evidence)                              # a claim about a person needs a read
+        found += evidence.check_quote(reply, room.evidence, said)                         # a quote needs its source
         with room.lock:                                   # claim 3: the owner pushing back on a reply posted earlier
             pushed = [m.received for m in room.inflight if m.sender == "owner" and words.PUSHBACK.search(m.text)]
         found += evidence.stance(reply, pushed, room.evidence) if pushed and said and reply.strip() else []
@@ -633,6 +743,16 @@ class Yerkd:
                     self.ledger.gate(room=name, session_id=sid, turn=room.turn_key, gate="silent", decision="bounce",
                                      tool="", rule="silent-ending", detail=reason[:300])
                     log.info("room %s: Stop bounced once: the turn ended with nothing visible", name)
+                elif (stub := room.stub_check(active, None if said is None else str(said))):
+                    reason, found = stub              # a shadow row so the morning diff counts every bounce
+                    self.ledger.shadow(t=round(time.time(), 3), room=name, session_id=sid, turn=room.turn_key, rule="stub",
+                                       detail=found, reply_chars=len(str(said)))
+                    log.info("room %s: Stop bounced once: the final text only reports a filing (%s)", name, found)
+                elif (board := room.board_check(active, None if said is None else str(said))):
+                    reason, found = board             # counted the same way as a stub
+                    self.ledger.shadow(t=round(time.time(), 3), room=name, session_id=sid, turn=room.turn_key, rule="board",
+                                       detail=found, reply_chars=len(str(said)))
+                    log.info("room %s: Stop bounced once: a status board in a room with people (%s)", name, found)
             if room and name:
                 try:
                     await asyncio.to_thread(self.shadow_stop, name, room, str(payload.get("last_assistant_message") or ""), sid)
@@ -657,7 +777,8 @@ class Yerkd:
         if event != "UserPromptSubmit":
             return {}
         out = await asyncio.to_thread(hooks.user_prompt_submit, payload, self.state, self.room_confs,
-                                      lambda r, p: self.rooms[r].meta_for(p), self.budgets, None, self.recall_for, name, self.rules_news)
+                                      lambda r, p: self.rooms[r].meta_for(p), self.budgets, None, self.recall_for, name, self.rules_news,
+                                      self.taste_for)
         if out and "hookSpecificOutput" in out and name in self.rooms:
             prompt = str(payload.get("prompt", ""))
             said = self.said_in_turn(name, sid, prompt)
@@ -871,6 +992,7 @@ class Yerkd:
         while True:
             await asyncio.sleep(every)
             for room in self.rooms.values():
+                await asyncio.to_thread(room.idle_compact)     # first: a room it starts is busy, so the reap leaves it open
                 await asyncio.to_thread(room.reap_idle)
             try:
                 await self.workers.reconcile()         # the backstop for a missed watch event
@@ -890,7 +1012,7 @@ class Yerkd:
                         else f"a {type(d['owner']).__name__}, not a Discord user id")
         dc = DiscordChannel(token, owner, [int(x) for x in d.get("test_senders", [])], self.ledger,
                             guard=guard, state=self.state, capture=self.daily.capture,
-                            daemon=self if flag(d.get("commands"), True) else None)   # the slash commands
+                            daemon=self if flag(d.get("commands"), True) else None, taste=self.taste_heard)   # the slash commands
         for name, conf in self.room_confs.items():
             kind, _, cid = str(conf.get("channel", "")).partition(":")
             wk, _, wid = str(conf.get("watch", "")).partition(":")     # read as the room's own, never written to

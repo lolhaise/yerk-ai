@@ -699,13 +699,14 @@ def test_a_room_that_is_not_the_owners_keeps_room_notes_at_most_and_adds_one_per
     from test_room_scope import install
     y, mom = install(tmp_path, family=True), "Alex"
     y.jobs.units = FakeSystemd(tmp_path / "units")
+    y.jobs.conf.update(room_note_burst=1)                                            # one per window, as it was
 
     def ask(caller, name, when="2099-01-03 10:00"):
         return asyncio.run(y.tool_schedule(caller, {"action": "add", "kind": "note", "name": name, "when": when,
                                                     "what": "Remind them to call the clinic."}))
     assert not ask(mom, "bad", when="soon")["ok"] and ask(mom, "one")["ok"]          # the refused add did not count
     wait = ask(mom, "two")
-    assert wait == {"ok": False, "line": W.NOTES_WAIT.format(every="5", wait="5 min")}
+    assert wait == {"ok": False, "line": W.NOTES_WAIT.format(what="one note", every="5", wait="5 min")}
     assert wait["line"].splitlines() == ["not scheduled: one note per 5 min here", "the next in 5 min"]
     y.jobs.conf.update(room_notes=2, room_note_minutes=0)
     assert ask(mom, "two")["ok"]
@@ -721,7 +722,33 @@ def test_a_room_that_is_not_the_owners_keeps_room_notes_at_most_and_adds_one_per
     said = out.getvalue()
     assert "keys of [jobs] in the private yerkd.toml:" in said and "  ops_room: " in said
     assert all(f"  {k}: " in said and f"(default {d})" in said for k, d in (("room_notes", 20), ("room_note_minutes", 5),
-                                                                           ("note_chars", 600)))
+                                                                           ("room_note_burst", 3), ("note_chars", 600)))
+
+
+def test_a_room_with_people_adds_a_reminder_its_check_and_a_watch_in_one_turn(tmp_path):
+    """2026-10-21: one note per five minutes refused a person's second note twice (a booking reminder's "is it booked?"
+    check), and the room promised it for the person's next turn. [jobs] room_note_burst (3) notes go in one room_note_minutes
+    window; the fourth waits for the oldest to leave it, a refused add does not count, and the window still bounds a loop."""
+    from test_room_scope import install
+    y, mom = install(tmp_path, family=True), "Alex"
+    y.jobs.units = FakeSystemd(tmp_path / "units")
+
+    def ask(name):
+        return asyncio.run(y.tool_schedule(mom, {"action": "add", "kind": "note", "name": name, "when": "2099-01-03 10:00",
+                                                 "what": "Remind them to book the dinner."}))
+    assert [ask(n)["ok"] for n in ("book", "booked-check", "weekly")] == [True, True, True]
+    wait = ask("fourth")
+    assert wait["line"].splitlines() == ["not scheduled: 3 notes per 5 min here", "the next in 5 min"]
+    assert len(y.jobs.added[mom]) == 3                                                # the refusal did not count
+    y.jobs.added[mom] = [y.jobs.added[mom][0] - 301] + y.jobs.added[mom][1:]          # the oldest leaves the window
+    assert ask("fourth")["ok"] and not ask("fifth")["ok"]
+
+    async def at_once(*adds):                                                         # one turn's calls in parallel
+        return await asyncio.gather(*(y.tool_schedule(mom, {"action": "add", "kind": "note", "name": n, "when": w,
+                                                            "what": "Remind them to book the dinner."}) for n, w in adds))
+    y.jobs.added[mom] = []
+    bad, good = asyncio.run(at_once(("bad", "soon"), ("sixth", "2099-01-03 10:00")))
+    assert not bad["ok"] and good["ok"] and len(y.jobs.added[mom]) == 1              # the refused add gives back its own place only
 
 
 def test_a_notes_message_over_note_chars_is_refused_with_the_cap_and_never_cut(tmp_path):

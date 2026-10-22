@@ -23,6 +23,9 @@ turn ran. A question, a hedge or a proposal ("would", "could", "might", "I think
 A fifth, the stance rule (claim 3), ledgers each reply to the owner's pushback: held, conceded or folded.
 A sixth, the sheet rule, ledgers once a turn that sent a document or pasted a block with no claims
 sheet written or named in the turn (check_sheet).
+A seventh, the person rule, ledgers a sentence telling what someone said, wants, knows, decided or asked, or where they
+were, from a turn with no reading call (check_person); an eighth, the quote rule, a quoted span given as someone's or a
+document's words that nothing the turn read, was given or posted earlier carries (check_quote).
 """
 from __future__ import annotations
 
@@ -74,6 +77,7 @@ class Evidence:
             self.logged: set[tuple[str, str]] = set()
             self.kept = 0
             self.started = time.time()          # a reply posted before this came from an earlier turn
+            self.trail: list[tuple[str, str]] = []   # this result's ("text", its words) and ("tool", name), in order
 
     def give(self, text: str, recall: bool = False) -> None:
         with self.lock:
@@ -82,18 +86,24 @@ class Evidence:
             self.injected_recall = self.injected_recall or recall
 
     def observe(self, ev: dict[str, Any]) -> None:
-        """The stream's tool_use blocks open a call; its tool_result closes it with the text."""
-        if (kind := ev.get("type")) not in ("assistant", "user"):
+        """The stream's tool_use blocks open a call; its tool_result closes it with the text. The trail keeps the text
+        blocks and calls of the result being written, in order (Room.stub_check reads it at Stop, before the result lands)."""
+        if (kind := ev.get("type")) not in ("assistant", "user", "result"):
             return
         done = []
         with self.lock:
+            if kind == "result":
+                self.trail = []
             for c in (ev.get("message") or {}).get("content") or []:
                 if not isinstance(c, dict):
                     continue
-                if kind == "assistant" and c.get("type") == "tool_use":
+                if kind == "assistant" and c.get("type") == "text":
+                    self.trail.append(("text", str(c.get("text") or "")))
+                elif kind == "assistant" and c.get("type") == "tool_use":
                     ti = c.get("input") or {}
                     self.calls[str(c.get("id"))] = {"tool": str(c.get("name")), "input": ti, "id": str(c.get("id")),
                                                     "target": target(str(c.get("name")), ti), "result": "", "t": time.time()}
+                    self.trail.append(("tool", str(c.get("name"))))
                 elif kind == "user" and c.get("type") == "tool_result":
                     if (call := self.calls.get(str(c.get("tool_use_id")))) is not None:
                         call["result"] = result_text(c.get("content"))
@@ -143,22 +153,111 @@ def rounded_near(fig: str, seen: str) -> bool:
     return any(abs(float(n.replace(",", "")) - v) <= NEAR * v for n in NUMBER.findall(seen))
 
 
+def forms(fig: str) -> tuple[str, ...]:
+    """The figure, without its dollar sign, and the same number with and without thousands separators: a read that
+    holds 293477.15 carries a reply's 293,477.15."""
+    bare = fig.lstrip("$")
+    whole, dot, rest = bare.partition(".")
+    plain = whole.replace(",", "")
+    if not plain.isdigit() or (len(plain) > 1 and plain.startswith("0")):
+        return tuple(dict.fromkeys((fig, bare)))
+    return tuple(dict.fromkeys((fig, bare, plain + dot + rest, f"{int(plain):,}" + dot + rest)))
+
+
+# A figure's source on file is a line about the same thing, not any line that shares its digits (the evidence replay of
+# 2026-10-21: 13 of 74 accepted replies flagged, and all 4 wrong-fact hits on an unrelated line, a product's 6,071
+# reviews for a shed's 6,071 sf). A line counts when the label words beside the number in the reply (Z8, girth,
+# worksheet) are beside it on the line too: two of them, or one that holds a digit (Z8, J6, v2), or the reply's only
+# one; when its unit agrees (1.4 ft is not 1.4 s, 0.11 ft is not 0.11%); and when it is not the reply itself (the day
+# log records a reply as it is posted, and another lane may quote it: a line holding the reply's own words around the
+# figure is a copy, never its source). A figure with no label word beside it, in the reply or on the line, is matched
+# by its digits, as before. A dollar figure is looked up with its sign: has_figure never matches digits right after
+# a "$", so the bare digits of "$500" could only ever be found where 500 was not a dollar amount; and a read carries
+# a figure in either written form, with or without thousands separators (forms, above).
+LABEL = re.compile(r"[A-Za-z][A-Za-z0-9]*(?:'[A-Za-z]+)?")
+PLAIN = frozenset("""a an the and or but nor of to in on at by for with from into onto as than then that this these those
+it its is are was were be been being has have had do does did not no so if vs per via all each every any some one two three
+four five six seven eight nine ten about over under above below up down out off more less most least just only also still
+very much many few same other came come comes get got gets put puts you he she we they me him her us them my your his
+our their who what when where which while there here now new old own like way too can could would should will may might
+must""".split())
+DAYLOG = re.compile(r"^- \d\d:\d\d:\d\d[+-]\d\d:\d\d \S+ [^\s:]+: |(?: \[[cm]:[^\]]*\])+$")   # memory.format_line's frame
+UNIT = re.compile(r" ?(%|ft|feet|sf|sq|inch|inches|s|sec|ms|min|h|hr|hrs|kb|mb|gb|tb|m|km|kg|lb|lbs|mm|cm|x)"
+                  r"(?![A-Za-z0-9])", re.I)
+
+
+def labels(text: str, start: int, end: int) -> frozenset[str]:
+    """The label words beside a number at text[start:end]: up to six words before it and four after, on its own line,
+    lower case, a plural or possessive s dropped, function words out (Z8 and J6 stay)."""
+    lo, hi = text.rfind("\n", 0, start) + 1, text.find("\n", end)
+    near = LABEL.findall(text[lo:start])[-6:] + LABEL.findall(text[end:hi if hi >= 0 else len(text)])[:4]
+    out = set()
+    for w in near:
+        w = re.sub(r"'s?$", "", w.lower())
+        w = w[:-1] if len(w) > 3 and w.endswith("s") and not w.endswith("ss") else w
+        if w not in PLAIN and (len(w) > 2 or any(c.isdigit() for c in w)):
+            out.add(w)
+    return frozenset(out)
+
+
+def unit(text: str, end: int) -> str:
+    """The unit right after a number ending at `end` ("%", "ft", "sf", "ms"...), or ""."""
+    return m.group(1).lower() if (m := UNIT.match(text, end)) else ""
+
+
+def squash(text: str) -> str:
+    """Text with a day log's " / " line breaks and runs of white space made one space, markdown stars dropped."""
+    return re.sub(r"\s+", " ", text.replace(" / ", " ").replace("*", "")).strip()
+
+
+class Quoted(str):
+    """A figure to look up on file, carrying from the reply the label words beside it, its unit and its own words
+    around it. memory.on_file asks `about(line)` of each line that holds the figure; a plain str is matched by its
+    digits alone."""
+    words: frozenset[str]
+    unit: str
+    own: str
+
+    def __new__(cls, fig: str, words: frozenset[str] = frozenset(), unit: str = "", own: str = "") -> Quoted:
+        q = super().__new__(cls, fig)
+        q.words, q.unit, q.own = words, unit, own
+        return q
+
+    def about(self, line: str) -> bool:
+        if self.own and self.own in squash(line):
+            return False
+        line = DAYLOG.sub("", line)                  # a day-log line's time, room and author are not its words
+        for m in re.finditer(r"(?<![\w$,.\-])" + re.escape(str(self)) + r"(?![\w,]|\.\d)", line):
+            u = "%" if self.endswith("%") else unit(line, m.end())
+            if (u and self.unit and u != self.unit) or (u == "%") != (self.unit == "%"):
+                continue
+            theirs = labels(line, m.start(), m.end())
+            shared = self.words & theirs
+            if not theirs or len(shared) >= min(2, len(self.words)) or any(c.isdigit() for w in shared for c in w):
+                return True
+        return False
+
+
 def check(reply: str, prompts: list[str], ev: Evidence, roots: tuple[Path, ...], filed: Callable[[str], str | None],
           known: Callable[[str], str | None], said: str = "") -> list[tuple[str, str]]:
     """(rule, detail) for each thing the reply leans on that the turn never read. Logs only. A figure in what the room
     posted in its session's earlier replies, `said` (Ledger.said), counts as read: the check ran on those replies."""
     out: list[tuple[str, str]] = []
     seen = ev.read_text()
-    figures: dict[str, str] = {}                    # each figure once, with the words just before it
+    figures: dict[str, tuple[str, Quoted]] = {}     # each figure once, with the words just before it and as looked up
     for m in FIGURE.finditer(reply):
-        figures.setdefault(m.group(0).replace("$ ", "$"), reply[max(0, m.start() - 24):m.start()])
-    for fig, before in figures.items():
+        fig = m.group(0).replace("$ ", "$")
+        own = squash(reply[max(0, m.start() - 30):m.end() + 30])          # too short to tell a copy: no copy test
+        figures.setdefault(fig, (reply[max(0, m.start() - 24):m.start()], Quoted(
+            fig, labels(reply, m.start(), m.end()), "%" if fig.endswith("%") else unit(reply, m.end()),
+            own if len(own) >= len(fig) + 40 else "")))
+    for fig, (before, quoted) in figures.items():
         bare = fig.lstrip("$")
-        if any(has_figure(text, f) for text in (seen, said) for f in (fig, bare)):
+        if any(has_figure(text, f) for text in (seen, said) for f in forms(fig)):
             continue
         if VERSION.search(before) or APPROX.search(before) or rounded_near(bare, seen):
             continue
-        if where := filed(bare):
+        if where := filed(quoted):
             out.append(("figure", f"quoted {fig}, on file at {where}; no read this turn carries it "
                                   "(missing read: recall or read_memory of that file)"))
     for name in dict.fromkeys(m.group(1) for m in FILE.finditer(reply)):
@@ -327,3 +426,63 @@ def check_sheet(reply: str, ev: Evidence) -> list[tuple[str, str]]:
         return []
     what = " and ".join(x for x in (f"sent {', '.join(sent)}" if sent else "", "pasted a block" if paste else "") if x)
     return [("sheet", f"{what} with no claims sheet written this turn")]
+
+
+# the person rule: what someone said, wants, knows, decided or asked, or where they were, told in a turn that made no
+# call that reads (any call outside NO_READ, the stance rule's test: a recall, read_memory, Read, Grep, web or shell
+# read). The prompt hook's recall block is not a call: the replay's misses of 2026-10-21 (who said to go ahead, where
+# the owner was) all had one. The owner ("you") is a person; a question, a hedge or a proposal is no claim. Logs only.
+PERSON = re.compile(r"\b([Yy]ou|[Hh]e|[Ss]he|[A-Z][a-z]+)\s+(?:(?:never|already|actually|just|also|still|even)\s+)?"
+                    r"(?:said|says|told|tells|asked|asks|decided|wants?|wanted|knows?|knew|went\s+to|(?:was|were)\s+(?:on|in|at)"
+                    r"|(?:does|did|do)(?:n['’]?t|\s+not)\s+(?:want|know|say|ask|decide))\b")
+NOT_PEOPLE = frozenset("the this that these those it its there here what which who whoever nobody everyone everybody someone "
+                       "somebody anyone anybody one each both all most some none nothing something everything anything we they "
+                       "i then so and but or if when once since as yes yeah fair right good ok okay also still just even now".split())
+
+
+def check_person(reply: str, ev: Evidence) -> list[tuple[str, str]]:
+    """The person rule in shadow: ("person", detail) for each such sentence, with the name and the tools line."""
+    with ev.lock:
+        calls = list(ev.calls.values())
+    if any(c["tool"].rsplit("__", 1)[-1] not in NO_READ for c in calls):
+        return []
+    out = []
+    for s in sentences(reply):
+        names = [m.group(1) for m in PERSON.finditer(s) if m.group(1).lower() not in NOT_PEOPLE and not VERSION.search(m.group(1))]
+        if names and not s.endswith("?") and not HEDGE.search(s):
+            out.append(("person", f"{names[0]}: \"{s[:300]}\"; tools this turn: {tools_line(calls)}"))
+    return out
+
+
+# the quote rule: a quoted span of three or more words that its lead-in gives as someone's or a document's words (said,
+# wrote, the note says, her message, the email) and that no read, prompt or earlier reply of the session carries, looked
+# up in the evidence the way `figure` is. The lead-in is the clause before the quote, cut at an earlier quote; its cue
+# ends within three words of the quote, or the clause ends in a colon ("wrote a note right on that detail:"). Logs only.
+QUOTED = re.compile(r"[\"“]([^\"“”\n]{3,400})[\"”]")
+LEAD = re.compile(r"(?:\b(?:[Ss]aid|says|saying|wrote|writes|told|tells|asked|replied|answered|put\s+it|quoted?|reads)"
+                  r"|\b(?:[Hh]er|[Hh]is|[Tt]heir|[Yy]our|[Mm]y|[Oo]ur|[Tt]he|[Tt]hat|[Tt]his|[A-Z][a-z]+['’]s)\s+(?:own\s+)?"
+                  r"(?:note|notes|message|email|e-mail|comment|text|ticket|page|doc|document|post|reply|memo|letter|words))\b")
+INTRO = re.compile(LEAD.pattern + r"\W*(?:\w+\W+){0,3}$")
+SAID_AFTER = re.compile(r"^\W{0,3}(?:you|he|she|they|[A-Z][a-z]+)\s+(?:said|says|wrote|writes|asked|told)\b")
+
+
+def flat(text: str) -> str:
+    """Words only, lower case, apostrophes dropped: the form a quote and the evidence are compared in."""
+    return " " + " ".join(re.findall(r"[\w%$]+", text.lower().replace("'", "").replace("’", ""))) + " "
+
+
+def check_quote(reply: str, ev: Evidence, said: str = "") -> list[tuple[str, str]]:
+    """The quote rule in shadow: ("quote", detail) for each such span with a part (split at an ellipsis) that the turn's
+    reads and prompts and the session's earlier replies, `said`, do not hold; detail: the span and its lead-in."""
+    out, pool = [], ""
+    for m in QUOTED.finditer(reply):
+        span, lead = m.group(1).strip(), re.split(r"[.!?]\s|\n|[\"“”]", reply[max(0, m.start() - 80):m.start()])[-1]
+        after, lead = SAID_AFTER.match(reply[m.end():m.end() + 60]), lead.strip()
+        introduced = INTRO.search(lead) or (LEAD.search(lead) and lead.rstrip(" *_").endswith(":"))
+        if len(re.findall(r"\w+", span)) < 3 or not (introduced or after):
+            continue
+        pool = pool or flat(ev.read_text() + "\n" + said)
+        if any(flat(part) not in pool for part in re.split(r"\.\.\.|…", span) if flat(part).strip()):
+            lead = lead if LEAD.search(lead) else str(after.group(0) if after else "").strip(" ,.")
+            out.append(("quote", f"\"{span[:200]}\" after \"{lead[-80:]}\"; no read, prompt or earlier reply of the session carries it"))
+    return out
