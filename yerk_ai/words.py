@@ -93,6 +93,7 @@ FILES = {"open-loops.md": "your open items", "MEMORY.md": "the pinned notes", "p
 ANOTHER_WAY = "that did not work, trying another way"       # two or more failed steps in a row, as one row
 EARLIER, EARLIER_ROWS, ROOM_NOW = "{n} earlier steps", "{n} earlier rows", "checking what this room runs"
 THINKING, NOT_ANSWERED, YOU_ASKED = "thinking: ", "not answered", 'you asked: "{asked}"'
+STEP_N = "step {n}"                       # a room with people: its card counts the steps and never names one
 WHY = {                                   # a failed turn, in plain words: the failure class, else the outcome
     "auth": "the account's login was refused", "quota": "out of usage on every account",
     "transient": "Claude was busy; ask again", "overflow": "the conversation is too long",
@@ -130,7 +131,7 @@ RELAY_ASK = ("[tell the room the outcome in your own voice, under {cap:,} charac
 WORKERS_OWNER_ONLY = "workers do not run from this room; do the work here, with this room's own tools"   # start, report, list, stop
 JOBS_OWNER_ONLY = "not scheduled: only this room's notes\nscripts and workers do not run from this room"   # they run as the owner
 NOTES_FULL = "not scheduled: this room keeps {most} notes at most\nthe next once one is removed or has fired"   # [jobs] caps
-NOTES_WAIT = "not scheduled: one note per {every} min here\nthe next in {wait}"
+NOTES_WAIT = "not scheduled: {what} per {every} min here\nthe next in {wait}"
 NOTE_LONG = "not scheduled: a note is at most {most:,} characters\nthis one is {n:,}"
 RULES_OWNER_ONLY = "not filed as a rule, since a rule reaches every room; remember it without a job and it is this room's own note"
 # every remember result's last line (2026-10-21: "Filed." and a canned rule line went out as whole replies)
@@ -144,6 +145,10 @@ FILED = re.compile(r"^\W*(?:filed|saved|from now on,? every room)\b", re.I)   # 
 STUB = ("Only your final message reaches the room, and yours, \"{head}\", reports the filing, not the answer: the answer "
         "is above your last tool call, where the room never sees it, or it was never written. Write the whole answer as "
         "your final message now, first and complete, with the filing one clause at its end at most.")
+BOARD_LINE = re.compile(r"^[\s>*-]*(?:☑|☐|⛔|🟦|🟨)|\bunblocks?:|🟦 me|🟨 you", re.I | re.M)   # the board's marks (board rule)
+BOARD = ("This room has people, and your final message is the owner rooms' status board ({found}). Say where things "
+         "stand in two or three plain sentences, with no checklist marks, colour key, quote rails or what unblocks it, "
+         "and write that as your final message now.")
 WORKER_OWN_ROOM = "a room starts workers for itself only, not for {room}"
 GONE, STRAY, NONE_RUNNING = "gone, no result", "unknown worker {id} running", "workers: none running"
 

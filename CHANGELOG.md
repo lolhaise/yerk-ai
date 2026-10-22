@@ -6,7 +6,7 @@ A line that changes a file the install keeps (rooms.toml, yerkd.toml, budgets.to
 newer than the code is refused with one line, never changed); the day logs are rewritten once at the daemon's start
 with the originals kept under `backups/`; the index chunks every file again when its chunker's version changes.
 
-## 2026-10-21
+## 2026-10-22
 
 ### transcribe (#77)
 
@@ -36,6 +36,98 @@ with the originals kept under `backups/`; the index chunks every file again when
 (0600); the OpenAI key is the one the embeddings already read (`secrets/openai.key`, or where `[memory] embeddings_key`
 points). ffmpeg must be on the daemon's PATH. The ledger gains its `spend` table at the next start, and each room's
 settings allow `mcp__yerk__transcribe` from its next process start.
+
+### recall-warm (#80)
+
+- `yerk-index` keeps the pages the keyword rank reads (the FTS tables, the `chunks` rows it joins, `meta`) mapped into
+  itself: at start, within 5 s of a writer pass that changed chunks, every 10 minutes and after a rebuild. A box that
+  drops its page cache on a clock never drops a mapped page, so recall, which reads the index file itself as before,
+  finds them in RAM. On the author's box, where a trimmer drops the cache every 2 minutes, recall's keyword read on a
+  pinned copy of the live index took a median of 0.116 s (0.173 at most, 0.116 right after a drop) against 0.494 s
+  (3.604 right after the drop) on the live file unpinned, at the same moments. The meaning search is unchanged.
+- The pages are mapped, never locked: real memory pressure can still take one, and the next pass maps it again. A
+  connection's own page cache cannot do this job: SQLite drops it at every commit of the writer.
+- **Upgrading:** `units/yerk-index.service` MemoryHigh rises from 800M to 1400M: the rule adds the mapped pages
+  (index.json's `pin`, 394M at 314,010 chunks), and `yerk doctor` counts them. A box that set MemoryHigh with
+  `systemctl --user set-property` raises that instead, before the restart that brings this (the author's box: 1G to
+  1536M); below it the kernel takes mapped pages back and part of recall reads cold again. budgets.toml changed
+  ([code] lines, up 165).
+
+### figure-noise (#85)
+
+- The figure shadow rule counts a line on file as a figure's source only when it is about the same thing, not when it
+  merely shares the digits: the label words beside the number in the reply (Z8, girth, worksheet) sit beside it on
+  the line too (two of them, one holding a digit, or the reply's only one), the unit agrees (1.4 ft is not 1.4 s,
+  0.11 ft is not 0.11%), the line is not the reply's own record (its day-log line, or another room quoting it), and a
+  dollar figure is looked up with its dollar sign (the bare digits used to find only lines where the number was not
+  dollars). A read of the same number with or without thousands separators carries it. A figure with no label word
+  beside it, in the reply or on the line, is matched by its digits as before. Replayed over the owner's 68 complaint
+  cases and 74 accepted replies: false alarms on accepted replies 13 to 6 of 74 (0.176 to 0.081), wrong-fact hits 4
+  to 1 (none of the 4 was the wrong fact); every other rule's rows unchanged.
+- **Upgrading:** budgets.toml changed ([code] lines, up 90 for the same-thing test). Nothing to do.
+
+### people-card (#84)
+
+- A room with people (`people` in rooms.toml) gets its own turn card: the room's newest holding line (the text it sent
+  itself), else "working on it", and the step count, as "-# step 12"; never a step's words, the earlier-steps line or
+  the model's narration. An owner room's card is byte for byte what it was (a test renders main's card of one long turn).
+- The board rule, the Stop hook's fourth, in a room with people only: a final shaped as the owner rooms' status board
+  (a line opening on ☑, ☐, ⛔, 🟦 or 🟨, the colour key, "unblocks:") bounces once for two or three plain sentences, a
+  `board` row in the shadow ledger the morning diff counts. An owner room's board never bounces.
+- A room that is not the owner's adds 3 notes per 5-minute window, not 1, so a reminder, its follow-up check and a watch
+  go in one turn: on 2026-10-21 one per window refused a person's second note twice and the room put it off to
+  the person's next message. 20 notes at most, as before.
+
+**Upgrading**: yerkd.toml `[jobs] room_note_burst` is new and optional (default 3; 1 keeps one note per window).
+budgets.toml `[code]` rises by 56. Nothing to do.
+
+### midnight-test (#83)
+
+- Two deploy tests that read the morning diff a minute after their rows now pin the clock to noon, so a suite that
+  crosses midnight no longer turns the box CI red (PR 79, Oct 21); nothing a person running Yerk AI notices changes.
+
+### person-claim-rule (#81)
+
+- Two more shadow rules in the Stop check, beside figure, file, decide, the claims, stance and sheet. `person`: a
+  sentence telling what someone said, wants, knows, decided or asked, or where they were (the owner, "you", counts),
+  from a turn that made no call that reads (any call but a write, a send or the room's other non-reading tools; the
+  prompt hook's recall block is not a call), ledgered with the name, the sentence and the tools the turn ran. `quote`:
+  a quoted span of three or more words its lead-in gives as someone's or a document's words (said, wrote, the note
+  says, her message, the email) that no read, prompt or earlier reply of the session carries, ledgered with the span
+  and its lead-in. A question, a hedge or a proposal is no claim. The morning diff counts both ("shadow flag person:
+  N", "shadow flag quote: N"); nothing is blocked. Replayed over the owner's complaint cases (68, four of them
+  re-pointed or marked) and 74 accepted replies: together they fire on 10 of the 21 wrong-fact replies (5 on the
+  wrong line itself) and on 5 of the 74 accepted replies (0.068); the older rules' rows are unchanged.
+- **Upgrading:** budgets.toml changed ([code] lines, up 65 for the two rules and their call). Nothing to do.
+
+## 2026-10-21
+
+### taste-judge (#79)
+
+- The taste eval, phase 1: `evals/taste/run.py` scores a judge model against the owner's own complaints about a room's
+  replies, kept as a private case file outside the repository (the cases, at least as many accepted replies as controls,
+  a rubric of the kinds in his words), one `claude -p` call per row with hooks, settings and tools off and the answer
+  forced to JSON; precision, recall and the false-alarm rate on a held-out half, one table, `scores.json` with the cost
+  per call as the binary reports it. The first run, the owner's three rooms Oct 19 to 21: 68 cases and 74 controls;
+  held out, precision 0.71, recall 0.15, false alarms 0.054, about 6 s and 7,600 tokens a call at medium effort. Under
+  the bar on false alarms, short of it on cases (100), and far short on recall. Nothing in the daemon changes; mypy now
+  covers `evals/`.
+
+### taste-ledger (#78)
+
+- An owner room keeps the owner's thumbs on its replies in the format an earlier setup used, in `taste.jsonl` in the room's
+  layer: a message of the owner's in the room's own channel that praises or faults the last reply ("that was good",
+  "too long") is one row on that reply, the owner's words beside its text, one row per
+  reply per sign. The classifier is that setup's, its three lists unchanged: an insult is never a verdict, and a message
+  that is neither rates nothing. A test sender, a person or the harness never rates.
+- Every message in such a room carries the `taste` part after recall, as that setup did: "Rated by him, newest
+  first (his words → what you had said):", then three praised and two faulted replies, the room's own newest first,
+  then the other rooms' newest; each reply is cut 40 shorter, down to 80, until the part fits its 1,500 characters.
+  `yerk map` shows its size. A room with people, or a layer without the file, gets no part and no row.
+
+**Upgrading**: `budgets.toml` gained `[per_message.on_hit] taste = 1500`, and `[per_message] cap` rose by the same
+1,500, from 4,000 to 5,500. `[code] lines` moved to the new count, by 178. To turn it on, put a `taste.jsonl` (the box's
+ledger converted, or an empty file) in an owner room's layer; a layer without one changes nothing.
 
 ### mechanics-lines (#75)
 

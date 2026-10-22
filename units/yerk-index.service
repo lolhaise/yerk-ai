@@ -12,8 +12,10 @@
 # after each backfill scan (300M of file pages) took 3.5 to 4.7 s; 1G never reclaimed. The rule: MemoryHigh =
 # 256M + 8.3M per block of 16,384 vectors, the 256M being the 109M, the 86M (a new process holds it resident
 # until reclaimed), the 9M, 25M of file pages and 25M for searches at once (embeddings.HIGH_BASE); `yerk doctor`
-# says when the vector count passes it. 800M covers 65 blocks (1,064,960 vectors); past MemoryHigh the kernel
-# reclaims and slows the unit, and kills nothing.
+# says when the vector count passes it. Since recall-warm (2026-10-22) the rule adds the keyword tables' pages this
+# process keeps mapped against page-cache drops (pin.bytes in index.json, 394M at 314,010 chunks); the doctor counts
+# them too. 1400M covers 65 blocks (1,064,960 vectors) and 600M of those pages; past MemoryHigh the kernel reclaims
+# and slows the unit, and kills nothing.
 [Unit]
 Description=Yerk AI memory index (FTS5 over the private memory tree)
 
@@ -29,11 +31,12 @@ Restart=on-failure
 RestartSec=10s
 Nice=10
 IOSchedulingClass=idle
-MemoryHigh=800M
+MemoryHigh=1400M
 # A stop ends the loop after the pass that runs (SIGTERM is handled); a pass that is a full rebuild can run past the
 # 90 s default, and the WAL keeps the index consistent under the SIGKILL that follows. The daemon's recall reads the
 # index file itself and treats a missing meaning search as keywords only for that query, so a restart here costs the
-# vectors, never an answer. No setuid gain and a /tmp of its own (proven on a scratch install under systemd-run).
+# vectors and the pinned pages until the first pass, never an answer. No setuid gain and a /tmp of its own (proven on
+# a scratch install under systemd-run).
 NoNewPrivileges=yes
 PrivateTmp=yes
 

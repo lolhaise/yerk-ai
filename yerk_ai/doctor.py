@@ -252,9 +252,11 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
         e, f = (st := memory.index_status(m)).get("embeddings") or {}, retention.PROC / str(st.get("pid")) / "cgroup"
         cg = next((x[3:] for x in f.read_text().splitlines() if x.startswith("0::")), "") if f.is_file() else ""
         got = int(t) if cg and (p := CGROUP / cg.lstrip("/") / "memory.high").is_file() and (t := p.read_text().strip()).isdigit() else 0
+        held = int((st.get("pin") or {}).get("bytes", 0))      # recall-warm: the keyword tables' pages the index holds mapped
         need = embeddings.HIGH_BASE + -(-int(e.get("vectors", 0)) // embeddings.BLOCK) * embeddings.BLOCK * (2 * int(e.get("width", 256)) + 20)
-        found.extend([f"memory index: memory capped at {got >> 20}M, under the {need >> 20}M its unit's rule gives "
-                      f"{int(e.get('vectors', 0)):,} vectors"] if 0 < got < need else [])
+        found.extend([f"memory index: memory capped at {got >> 20}M, under the {(need + held) >> 20}M its unit's rule gives "
+                      f"{int(e.get('vectors', 0)):,} vectors" + (f" and {held >> 20}M of pinned keyword pages" if held else "")]
+                     if 0 < got < need + held else [])
 
     def backfill() -> None:                                     # the meaning backfill failing cycle after cycle (F2)
         e = memory.index_status(m).get("embeddings") or {}

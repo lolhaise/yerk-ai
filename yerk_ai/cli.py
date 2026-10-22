@@ -8,7 +8,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from . import __version__, context, memory
+from . import __version__, context, memory, taste
 from .config import EXAMPLE_PRIVATE, budgets, private_dir, rooms, state_dir
 
 
@@ -22,8 +22,13 @@ def cmd_map(a: argparse.Namespace) -> int:
     start = context.session_start(priv, rs[a.room], b, rules=memory.settings(priv, state_dir(a.state)).root / memory.RULES)
     now = datetime.now(timezone.utc)
     msg = context.per_message(a.room, rs[a.room], "owner", now, now - timedelta(minutes=27), b)
+    hit = []
+    if str(rs[a.room].get("privacy", "owner")) == "owner":         # the taste part: an owner room's, from its layer's file
+        cap, path = int(b["per_message"]["on_hit"]["taste"]), taste.kept(priv, rs[a.room])
+        rated = taste.render(taste.load(path), a.room, cap) if path else ""
+        hit = [context.Part("taste", rated, cap, context.chars(rated), str(path) if path else f"no {taste.FILE} in the layer")]
     label = "the fake example layer" if priv == EXAMPLE_PRIVATE else str(priv)
-    print(context.render(a.room, label, start, msg, b))
+    print(context.render(a.room, label, start, msg, b, hit))
     if rs[a.room].get("watch"):
         print(f"\nWatches {rs[a.room]['watch']}: read as its own channel, never written to; it answers in {rs[a.room].get('channel')}.")
     bad = context.violations(start, msg, b)

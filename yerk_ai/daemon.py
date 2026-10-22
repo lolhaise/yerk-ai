@@ -26,8 +26,9 @@ import uuid
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Awaitable, Callable
+from zoneinfo import ZoneInfo
 
-from . import beat, context, deploy, doctor, evidence, gates, hooks, jobs, mcp_server, memory, mentions, status, transcribe, workers
+from . import beat, context, deploy, doctor, evidence, gates, hooks, jobs, mcp_server, memory, mentions, status, taste, transcribe, workers
 from .accounts import Account, Cooldowns, from_dir, load_accounts, pick
 from .config import (EFFORTS, REPO, SHELLS, budgets, discord_id, flag, load_toml, models, override, people, pinned, private_dir,
                      read_secret, room_id, room_settings, rooms, state_dir, table, trusted, write_private)
@@ -307,6 +308,23 @@ class Yerkd:
     def owner(self, room: str) -> bool:
         """An owner room (rooms.toml privacy, "owner" when unset); a name that is no room is not one."""
         return room in self.room_confs and str(self.room_confs[room].get("privacy", "owner")) == "owner"
+
+    def taste_heard(self, room: str, text: str) -> None:
+        """The owner's message in a room's own channel: a verdict on the room's last reply joins the layer's taste.jsonl
+        when the room is an owner room whose layer keeps one (taste.py)."""
+        if (conf := self.room_confs.get(room)) is not None and (path := taste.kept(self.private, conf)) is not None:
+            taste.record(path, room, str(conf.get("channel", "")).partition(":")[2], text, self.ledger.last_reply(room),
+                         ZoneInfo(str(conf.get("timezone", "UTC"))))
+
+    def taste_for(self, room: str) -> str:
+        """The taste part of an owner room whose layer keeps taste.jsonl, else ""."""
+        if (conf := self.room_confs.get(room)) is None or (path := taste.kept(self.private, conf)) is None:
+            return ""
+        try:
+            return taste.render(taste.load(path), room, int(self.budgets["per_message"]["on_hit"]["taste"]))
+        except OSError as e:                      # the message goes on without it
+            log.warning("room %s: no taste part, %s could not be read: %s", room, path, e)
+            return ""
 
     def reader(self, room: str) -> memory.Reader:
         """Who a memory read is for: an owner room reads everything, any other room its own lines and
@@ -599,6 +617,8 @@ class Yerkd:
         found = evidence.check(reply, room.prompts(), room.evidence, self.memory.scope.roots, figure, known, said)
         found += evidence.check_claims(reply, room.evidence, self.memory.scope.roots)     # decision 25
         found += evidence.check_sheet(reply, room.evidence)                               # the sheet rule
+        found += evidence.check_person(reply, room.evidence)                              # a claim about a person needs a read
+        found += evidence.check_quote(reply, room.evidence, said)                         # a quote needs its source
         with room.lock:                                   # claim 3: the owner pushing back on a reply posted earlier
             pushed = [m.received for m in room.inflight if m.sender == "owner" and words.PUSHBACK.search(m.text)]
         found += evidence.stance(reply, pushed, room.evidence) if pushed and said and reply.strip() else []
@@ -746,6 +766,11 @@ class Yerkd:
                     self.ledger.shadow(t=round(time.time(), 3), room=name, session_id=sid, turn=room.turn_key, rule="stub",
                                        detail=found, reply_chars=len(str(said)))
                     log.info("room %s: Stop bounced once: the final text only reports a filing (%s)", name, found)
+                elif (board := room.board_check(active, None if said is None else str(said))):
+                    reason, found = board             # counted the same way as a stub
+                    self.ledger.shadow(t=round(time.time(), 3), room=name, session_id=sid, turn=room.turn_key, rule="board",
+                                       detail=found, reply_chars=len(str(said)))
+                    log.info("room %s: Stop bounced once: a status board in a room with people (%s)", name, found)
             if room and name:
                 try:
                     await asyncio.to_thread(self.shadow_stop, name, room, str(payload.get("last_assistant_message") or ""), sid)
@@ -770,7 +795,8 @@ class Yerkd:
         if event != "UserPromptSubmit":
             return {}
         out = await asyncio.to_thread(hooks.user_prompt_submit, payload, self.state, self.room_confs,
-                                      lambda r, p: self.rooms[r].meta_for(p), self.budgets, None, self.recall_for, name, self.rules_news)
+                                      lambda r, p: self.rooms[r].meta_for(p), self.budgets, None, self.recall_for, name, self.rules_news,
+                                      self.taste_for)
         if out and "hookSpecificOutput" in out and name in self.rooms:
             prompt = str(payload.get("prompt", ""))
             said = self.said_in_turn(name, sid, prompt)
@@ -1004,7 +1030,7 @@ class Yerkd:
                         else f"a {type(d['owner']).__name__}, not a Discord user id")
         dc = DiscordChannel(token, owner, [int(x) for x in d.get("test_senders", [])], self.ledger,
                             guard=guard, state=self.state, capture=self.daily.capture,
-                            daemon=self if flag(d.get("commands"), True) else None)   # the slash commands
+                            daemon=self if flag(d.get("commands"), True) else None, taste=self.taste_heard)   # the slash commands
         for name, conf in self.room_confs.items():
             kind, _, cid = str(conf.get("channel", "")).partition(":")
             wk, _, wid = str(conf.get("watch", "")).partition(":")     # read as the room's own, never written to

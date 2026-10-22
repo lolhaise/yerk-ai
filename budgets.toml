@@ -40,7 +40,9 @@ recall_pack = 6000
 
 [per_message]
 typical = 1500
-cap = 4000
+# 0000-00-00: 0,000 text 0,000, with one more 0,000 line (for the, 00:00: "check while a second entry waits in the queue for
+# are, the cap raised where they need it).
+cap = 5500
 
 [per_message.parts]
 clock = 200
@@ -54,11 +56,16 @@ output_cap = 10000
 # Paid only when a message hits: the people and things it names, then the room's own lines
 # of the last 14 days on its topic (L19, decision 20). The parts above plus these stay under `cap`.
 # 2,000 from the cold read of Oct 21 (rail-2, index healthy): the twenty episodic questions found 9 of 20
-# at 1,500 and 11 of 20 at 2,000. Clock 200 + metadata 300 + rules 1,500 + recall 2,000 = the cap, 4,000.
+# at 1,500 and 11 of 20 at 2,000. Clock 200 + metadata 300 + rules 1,500 + recall 2,000 + taste 1,500 = the cap, 5,500.
 recall = 2000
 # Its turn and the last part closes the (case 00): before the next run starts the, example note
 # note says the sample item moved to, the next step and; the test, reads it back as plain text with.
 rules = 1500
+# Paid on every message of an owner room whose layer keeps taste.jsonl: the owner's verdicts on the room's replies,
+# reads it back as plain, text with one more line, for the check while a second (entry.waits). in the, 0000-00-00
+# that their thumbs up and thumbs down go in the way their own files hold them, written as they are, and that the cap
+# rise if they need the room.
+taste = 1500
 
 [session]
 # The conversation Claude Code keeps before it compacts, in tokens (its own unit here): Yerk AI writes
@@ -117,7 +124,18 @@ duplicated_topics = 0
 # to fit.
 # 2026-10-21: trusted-room raised it by 109, the trusted shell's wall (what it denies, built from what the daemon knows),
 # its start checks and the outbox kept read only (the owner's ask), not folded to fit.
+# 2026-10-21: taste-ledger raised it by 178, an earlier setup's thumbs as they are in its files (the classifier's three lists
+# unchanged, the capture, the reply it rates, the taste part and its map row; the owner's ask), not folded to fit.
+# 2026-10-22: person-claim-rule raised it by 65, the person and quote shadow rules and their call (the owner's ask), not
+# folded to fit.
+# 2026-10-22: people-card raised it by 56, the people room's card, the board bounce and the note burst (the owner asked why it took so long), not folded to fit.
+
+# 2026-10-22: figure-noise raised it by 90, the figure rule's same-thing test (label words, unit, the reply's own copy, a
+# number's written forms) and its lookup in memory.on_file (the owner's ask), not folded to fit.
+# 2026-10-22: recall-warm raised it by 165, the pin that holds the keyword tables' pages mapped against the box's
+# page-cache drops, its pass after a write and the doctor's cap counting them (the owner's ask: recall at 3 s), not
+# folded to fit; its cold read cut the /keywords path the first build had (269).
 # 0000-00-00: one more line for 000, the check while (a.second, 000), entry waits in the queue for its
 # Stop bounce, and the ledger's spend table with its writer, reader and morning line (the same table PR 76 adds; whichever
 # entry waits in the queue), for its turn and.
-lines = 16438
+lines = 16992

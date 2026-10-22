@@ -224,3 +224,97 @@ def test_rule_8_every_row_holds_to_phone_width_cut_at_a_word():
     q = "run starts The example note says The sample item moved to the Next step and the Test reads"
     [row] = rows(("mcp__yerk__recall", {"query": q, "k": 6}))
     assert row == f"{OK} waits in the queue For its..." and words.width(row) <= words.PHONE
+
+
+# a room with people: its holding line and a step count, never a step (2026-10-21: a person's card listed the steps of a
+# file build); the owner's card stays byte for byte what it was. Synthetic turn: no person's words.
+HOLDING = "Measuring both from the hotel now, links included. Back in about two minutes."
+
+
+def long_turn(room):
+    evs = [se({"type": "content_block_start", "index": 0, "content_block": {"type": "thinking"}}),
+           se({"type": "content_block_delta", "index": 0, "delta": {"type": "thinking_delta", "thinking":
+               "The plan is to rebuild the trip file from the last one and check it page by page before it goes"}}),
+           se({"type": "content_block_stop", "index": 0}),
+           se({"type": "content_block_start", "index": 1, "content_block": {"type": "text", "text": ""}}),
+           se({"type": "content_block_delta", "index": 1, "delta": {"type": "text_delta",
+                                                                     "text": "Running the full chain end to end"}})]
+    calls = [("Bash", {"command": "python3 x.py", "description": "Writing extract script for the trip file"}),
+             ("Read", {"file_path": "/w/notes/trip.md"}), ("Grep", {"pattern": "dinner|fado", "path": "/w/memory/daily"}),
+             ("mcp__web-ladder__web_fetch", {"url": "https://www.example.pt/menu"}),
+             ("mcp__yerk__send", {"room": room, "text": HOLDING}),
+             ("Bash", {"command": "false", "description": "Rebuild the test Word file"}),
+             ("Bash", {"command": "false", "description": "Rebuild the test Word file again"}),
+             ("Write", {"file_path": "/w/work/render.py"}), ("Edit", {"file_path": "/w/work/render.py"}),
+             ("mcp__yerk__schedule", {"action": "add", "name": "check-booked"}), ("Glob", {"pattern": "**/*.pdf"}),
+             ("mcp__yerk__remember", {"text": "a line"}), ("WebSearch", {"query": "fado houses near the hotel"}),
+             ("Bash", {"command": "pdftotext a b", "description": "Pull the rebuilt file into text"}),
+             ("mcp__yerk__send", {"room": room, "file": "/w/outbox/v5.pdf", "text": "The new one"}),
+             ("mcp__yerk__send", {"room": "another-room", "text": "A note for the other room"}),
+             ("Read", {"file_path": "/w/work/2026-10-21.md"})]
+    for n, (name, args) in enumerate(calls):
+        evs += tool(2 + n, f"t{n}", name, args) + [result(f"t{n}", error=n in (5, 6))]
+    return evs
+
+
+OWNER_TODAY = "\n".join([
+    "🟠 Running the full chain end to end",
+    "-# thinking: The plan is to rebuild the",
+    "-# trip file from the last one and...",
+    "-# 4 earlier steps",
+    "🟢 sending a message to family-room",
+    "🔴 that did not work, trying another way",
+    "🟢 writing render",
+    "🟢 editing render",
+    "🟢 scheduling job check-booked",
+    "🟢 looking for pdf files",
+    "🟢 filing a note",
+    "🟢 searching the web for fado houses...",
+    "🟢 pull the rebuilt file into text",
+    "🟢 sending v5.pdf",
+    "🟢 sending a message to another-room",
+    "🟢 reading the Oct 21 notes",
+])
+
+
+def test_an_owner_room_renders_byte_identical_to_main():
+    """OWNER_TODAY is main's own render of this turn (e9d936e, before the people card), every byte."""
+    c = Card(thinking=True)
+    for ev in long_turn("family-room"):
+        c.feed(ev)
+    assert c.render() == OWNER_TODAY
+    assert c.owed("the turn was cut", "which is closest") == OWNER_TODAY.replace(
+        "🟠 Running the full chain end to end", '🔴 not answered\nthe turn was cut\n-# you asked: "which is closest"')
+
+
+def test_a_room_with_people_shows_its_holding_line_and_a_step_count_never_a_step():
+    c, seen = Card(people="family-room"), []
+    assert c.render() == f"{RUNNING} {START}"
+    for ev in long_turn("family-room"):
+        c.feed(ev)
+        seen.append(c.render())
+    assert seen[12] == f"{RUNNING} {START}\n-# step 2"                      # before its holding line: working on it
+    assert c.render() == f"{RUNNING} Measuring both from the hotel now,\nlinks included. Back in about two...\n-# step 17"
+    names = {line[2:] for line in OWNER_TODAY.splitlines()[4:]} | {"Running the full chain", "thinking", "earlier steps",
+                                                                     "A note for the other room", "The new one"}
+    for card in seen:
+        assert not any(n in card for n in names), card
+        assert all(words.width(line) <= words.PHONE for line in card.splitlines())
+    assert c.owed("the turn was cut", "which is closest") == \
+        f'{FAILED} not answered\nthe turn was cut\n-# you asked: "which is closest"\n-# step 17'
+    owner = Card()                                                            # an owner card hears no holding line
+    for ev in long_turn("family-room"):
+        owner.feed(ev)
+    assert owner.holding == "" and Card(people="family-room").people == "family-room"
+
+
+def test_a_harness_line_shows_on_a_people_card_until_its_holding_line():
+    c = Card(people="r")
+    c.narration = "picking up where it left off"
+    for ev in tool(0, "a", "Read", {"file_path": "/w/x.md"}) + [result("a")]:
+        c.feed(ev)
+    c.feed(se({"type": "content_block_delta", "index": 1, "delta": {"type": "text_delta", "text": "Internal plan text"}}))
+    assert c.render() == f"{RUNNING} picking up where it left off\n-# step 1"
+    for ev in tool(2, "b", "mcp__yerk__send", {"room": "r", "text": "\nOn it, back in five."}):
+        c.feed(ev)
+    assert c.render() == f"{RUNNING} On it, back in five.\n-# step 2"
