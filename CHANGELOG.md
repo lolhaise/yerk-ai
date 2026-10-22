@@ -8,7 +8,7 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-22
 
-### figure-noise (stacked on #81)
+### figure-noise (#85)
 
 - The figure shadow rule counts a line on file as a figure's source only when it is about the same thing, not when it
   merely shares the digits: the label words beside the number in the reply (R3, girth, worksheet) sit beside it on
