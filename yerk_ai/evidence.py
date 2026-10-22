@@ -368,7 +368,7 @@ STANDS = re.compile(r"\b(?:still\s+(?:stands?|holds?|true|right)|i\s+(?:still\s+
                     r"was\s+wrong|what\s+(?:still\s+)?stands)\b|:[*_\s]*(?:holds?|stands?)\b|\b(?:holds?|stands?)\s*[:(]", re.I)
 OWN_WRONG = re.compile(r"\bi\s+(?:was\s+wrong|got\s+(?:\w+\s+){0,3}?wrong|overstated|misread|miscounted|misspoke)\b"
                        r"|\b(?:my\s+(?:mistake|bad)|i\s+stand\s+corrected)\b", re.I)
-NO_READ = ("Write", "Edit", "MultiEdit", "NotebookEdit", "TodoWrite", "ToolSearch", "send", "hold", "remember", "rule", "worker", "schedule", "settings")
+NO_READ = ("Write", "Edit", "MultiEdit", "NotebookEdit", "TodoWrite", "ToolSearch", "send", "hold", "remember", "rule", "worker", "schedule", "settings", "voice_note")
 
 
 def stance(reply: str, pushed: list[float], ev: Evidence) -> list[tuple[str, str]]:

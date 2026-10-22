@@ -33,9 +33,13 @@ with the originals kept under `backups/`; the index chunks every file again when
   s2.1-pro-free US$0; whisper-1 for the check; read 2026-10-22), so the morning diff counts it, and a note estimated
   past US$1 (about 10,000 characters) is refused until the owner says yes (decision 32).
 - Measured once, live, on the real keys and outside any room: a two-sentence note of 165 characters on MiniMax, 6.9 s
-  of opus, read back word for word, 1.72 US cents in two spend rows, 5.4 s end to end.
+  of opus, read back word for word, 1.72 US cents in two spend rows, 5.4 s end to end. Then once into a test room
+  through `send`: Discord took the voice form, and the message read back from its API carries flag 8192, no content and
+  one audio/ogg attachment with its duration and waveform.
 - `yerk abilities` and `yerk explain voice_note`: the described voice-notes entry is the built voice_note, tier paid,
   on when a voice key and the OpenAI key are there.
+- The evidence rules count a `voice_note` call as no read, as they count `send`: a claim about a person in a turn
+  whose only calls made a note is still ledgered (cold read).
 
 **Upgrading:** put MiniMax's key on the first line of `secrets/minimax.key` and Fish Audio's on the first line of
 `secrets/fish.key` in the private folder (0600; either one makes notes, MiniMax first); the check reads the OpenAI key
