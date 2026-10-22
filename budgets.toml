@@ -147,4 +147,7 @@ drops = [
 # 2026-10-22: recall-warm raised it by 165, the pin that holds the keyword tables' pages mapped against the box's
 # page-cache drops, its pass after a write and the doctor's cap counting them (the owner's ask: recall at 3 s), not
 # folded to fit; its cold read cut the /keywords path the first build had (269).
-lines = 16729
+# 0000-00-00: item-moved to the next 00, step and the test reads it back ([as] plain: text with one 0 more line
+# budget test) and the record weight in the fusion (memory.record, top six 99 to 105 on the same questions), not folded
+# reads it (back as plain: text with one more line for the).
+lines = 16767
