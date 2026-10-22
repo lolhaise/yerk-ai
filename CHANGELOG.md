@@ -10,25 +10,33 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ### recall-warm (#80)
 
-- Recall's keyword half comes from `yerk-index` (POST /keywords) on its one long-lived connection: the same rows in the
-  same order as the index file's own read, with the words' weights. yerk-index keeps the pages that rank reads (the FTS
-  tables, the `chunks` rows it joins, `meta`) mapped into itself, again every 10 minutes and after a rebuild, so a box
-  that drops its page cache on a clock never drops them, for any reader of the file. On the author's box, where a
-  trimmer drops the cache every 2 minutes, the keyword half went from a median of 0.298 s (p90 1.742, 4.5 s right after
-  a drop) to 0.134 s (p90 0.185), and a whole recall from 1.267 s (p90 2.856) to 1.121 s (p90 1.339); straight after a
-  deliberate drop, 0.186 s warm against 2.304 s cold. The rest of a recall is the meaning search, unchanged.
-- A recall asks the index first with half its deadline and reads the file itself with what is left when the index is
-  down, slow, busy or answers wrong: an install without the index, or with an older one, behaves as before. The
-  prompt's per-message recall takes the same path.
-- The pages are mapped, never locked: real memory pressure can still take one, and the next pass maps it again. The
-  keyword connection's own page cache is sized to the FTS tables and a quarter; SQLite drops it at every commit of the
-  writer, so the mapped pages are what keep the rank warm between passes.
+- `yerk-index` keeps the pages the keyword rank reads (the FTS tables, the `chunks` rows it joins, `meta`) mapped into
+  itself: at start, within 5 s of a writer pass that changed chunks, every 10 minutes and after a rebuild. A box that
+  drops its page cache on a clock never drops a mapped page, so recall, which reads the index file itself as before,
+  finds them in RAM. On the author's box, where a trimmer drops the cache every 2 minutes, recall's keyword read on a
+  pinned copy of the live index took a median of 0.116 s (0.173 at most, 0.116 right after a drop) against 0.494 s
+  (3.604 right after the drop) on the live file unpinned, at the same moments. The meaning search is unchanged.
+- The pages are mapped, never locked: real memory pressure can still take one, and the next pass maps it again. A
+  connection's own page cache cannot do this job: SQLite drops it at every commit of the writer.
+- **Upgrading:** `units/yerk-index.service` MemoryHigh rises from 800M to 1400M: the rule adds the mapped pages
+  (index.json's `pin`, 413M at 314,010 chunks), and `yerk doctor` counts them. A box that set MemoryHigh with
+  `systemctl --user set-property` raises that instead, before the restart that brings this (the author's box: 1G to
+  1536M); below it the kernel takes mapped pages back and part of recall reads cold again. budgets.toml changed
+  ([code] lines, up 162).
 
-**Upgrading**: `units/yerk-index.service` MemoryHigh rises from 800M to 1400M: the rule adds the mapped pages and the
-keyword cache, both in index.json (`pin`, `keywords`; 414M and 190M at 313,964 chunks), and `yerk doctor` counts them.
-A box that set MemoryHigh with `systemctl --user set-property` raises that instead, before the restart that brings
-this (the author's box: 1G to 1536M); below it the kernel takes mapped pages back and part of recall reads cold again.
-`[code] lines` moved to the new count, by 269.
+### person-claim-rule (#81)
+
+- Two more shadow rules in the Stop check, beside figure, file, decide, the claims, stance and sheet. `person`: a
+  sentence telling what someone said, wants, knows, decided or asked, or where they were (the owner, "you", counts),
+  from a turn that made no call that reads (any call but a write, a send or the room's other non-reading tools; the
+  prompt hook's recall block is not a call), ledgered with the name, the sentence and the tools the turn ran. `quote`:
+  a quoted span of three or more words its lead-in gives as someone's or a document's words (said, wrote, the note
+  says, her message, the email) that no read, prompt or earlier reply of the session carries, ledgered with the span
+  and its lead-in. A question, a hedge or a proposal is no claim. The morning diff counts both ("shadow flag person:
+  N", "shadow flag quote: N"); nothing is blocked. Replayed over the owner's complaint cases (68, four of them
+  re-pointed or marked) and 74 accepted replies: together they fire on 10 of the 21 wrong-fact replies (5 on the
+  wrong line itself) and on 5 of the 74 accepted replies (0.068); the older rules' rows are unchanged.
+- **Upgrading:** budgets.toml changed ([code] lines, up 65 for the two rules and their call). Nothing to do.
 
 ## 2026-10-21
 
