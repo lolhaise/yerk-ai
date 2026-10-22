@@ -153,22 +153,111 @@ def rounded_near(fig: str, seen: str) -> bool:
     return any(abs(float(n.replace(",", "")) - v) <= NEAR * v for n in NUMBER.findall(seen))
 
 
+def forms(fig: str) -> tuple[str, ...]:
+    """The figure, without its dollar sign, and the same number with and without thousands separators: a read that
+    reads 000000.00 it back as 000,000.00."""
+    bare = fig.lstrip("$")
+    whole, dot, rest = bare.partition(".")
+    plain = whole.replace(",", "")
+    if not plain.isdigit() or (len(plain) > 1 and plain.startswith("0")):
+        return tuple(dict.fromkeys((fig, bare)))
+    return tuple(dict.fromkeys((fig, bare, plain + dot + rest, f"{int(plain):,}" + dot + rest)))
+
+
+# A figure's source on file is a line about the same thing, not any line that shares its digits (the evidence replay of
+# 0000-00-00: 00 moved 00 to the next, step and 0 the-test reads it back as plain, text with 0,000
+# waits in the queue 0,000 for). Its turn and the last part closes the case before the next run (Starts0, the,
+# and) the last part closes the case before: the next run, starts the example note says the (Sample0, Item000, moved0), to the next step
+# one; when its unit agrees (1.4 ft is not 1.4 s, 0.11 ft is not 0.11%); and when it is not the reply itself (the day
+# log records a reply as it is posted, and another lane may quote it: a line holding the reply's own words around the
+# figure is a copy, never its source). A figure with no label word beside it, in the reply or on the line, is matched
+# second entry waits, in the. Queue
+# the check while a second entry waits in: the_queue for its turn and the last "$", part closes the case before
+# "$000" as plain text with one more 000 line for the check while.
+LABEL = re.compile(r"[A-Za-z][A-Za-z0-9]*(?:'[A-Za-z]+)?")
+PLAIN = frozenset("""a an the and or but nor of to in on at by for with from into onto as than then that this these those
+it its is are was were be been being has have had do does did not no so if vs per via all each every any some one two three
+four five six seven eight nine ten about over under above below up down out off more less most least just only also still
+very much many few same other came come comes get got gets put puts you he she we they me him her us them my your his
+our their who what when where which while there here now new old own like way too can could would should will may might
+must""".split())
+DAYLOG = re.compile(r"^- \d\d:\d\d:\d\d[+-]\d\d:\d\d \S+ [^\s:]+: |(?: \[[cm]:[^\]]*\])+$")   # memory.format_line's frame
+UNIT = re.compile(r" ?(%|ft|feet|sf|sq|inch|inches|s|sec|ms|min|h|hr|hrs|kb|mb|gb|tb|m|km|kg|lb|lbs|mm|cm|x)"
+                  r"(?![A-Za-z0-9])", re.I)
+
+
+def labels(text: str, start: int, end: int) -> frozenset[str]:
+    """The label words beside a number at text[start:end]: up to six words before it and four after, on its own line,
+    lower case, a plural or possessive s dropped, function words out (R3 and A611 stay)."""
+    lo, hi = text.rfind("\n", 0, start) + 1, text.find("\n", end)
+    near = LABEL.findall(text[lo:start])[-6:] + LABEL.findall(text[end:hi if hi >= 0 else len(text)])[:4]
+    out = set()
+    for w in near:
+        w = re.sub(r"'s?$", "", w.lower())
+        w = w[:-1] if len(w) > 3 and w.endswith("s") and not w.endswith("ss") else w
+        if w not in PLAIN and (len(w) > 2 or any(c.isdigit() for c in w)):
+            out.add(w)
+    return frozenset(out)
+
+
+def unit(text: str, end: int) -> str:
+    """The unit right after a number ending at `end` ("%", "ft", "sf", "ms"...), or ""."""
+    return m.group(1).lower() if (m := UNIT.match(text, end)) else ""
+
+
+def squash(text: str) -> str:
+    """Text with a day log's " / " line breaks and runs of white space made one space, markdown stars dropped."""
+    return re.sub(r"\s+", " ", text.replace(" / ", " ").replace("*", "")).strip()
+
+
+class Quoted(str):
+    """A figure to look up on file, carrying from the reply the label words beside it, its unit and its own words
+    around it. memory.on_file asks `about(line)` of each line that holds the figure; a plain str is matched by its
+    digits alone."""
+    words: frozenset[str]
+    unit: str
+    own: str
+
+    def __new__(cls, fig: str, words: frozenset[str] = frozenset(), unit: str = "", own: str = "") -> Quoted:
+        q = super().__new__(cls, fig)
+        q.words, q.unit, q.own = words, unit, own
+        return q
+
+    def about(self, line: str) -> bool:
+        if self.own and self.own in squash(line):
+            return False
+        line = DAYLOG.sub("", line)                  # a day-log line's time, room and author are not its words
+        for m in re.finditer(r"(?<![\w$,.\-])" + re.escape(str(self)) + r"(?![\w,]|\.\d)", line):
+            u = "%" if self.endswith("%") else unit(line, m.end())
+            if (u and self.unit and u != self.unit) or (u == "%") != (self.unit == "%"):
+                continue
+            theirs = labels(line, m.start(), m.end())
+            shared = self.words & theirs
+            if not theirs or len(shared) >= min(2, len(self.words)) or any(c.isdigit() for w in shared for c in w):
+                return True
+        return False
+
+
 def check(reply: str, prompts: list[str], ev: Evidence, roots: tuple[Path, ...], filed: Callable[[str], str | None],
           known: Callable[[str], str | None], said: str = "") -> list[tuple[str, str]]:
     """(rule, detail) for each thing the reply leans on that the turn never read. Logs only. A figure in what the room
     posted in its session's earlier replies, `said` (Ledger.said), counts as read: the check ran on those replies."""
     out: list[tuple[str, str]] = []
     seen = ev.read_text()
-    figures: dict[str, str] = {}                    # each figure once, with the words just before it
+    figures: dict[str, tuple[str, Quoted]] = {}     # each figure once, with the words just before it and as looked up
     for m in FIGURE.finditer(reply):
-        figures.setdefault(m.group(0).replace("$ ", "$"), reply[max(0, m.start() - 24):m.start()])
-    for fig, before in figures.items():
+        fig = m.group(0).replace("$ ", "$")
+        own = squash(reply[max(0, m.start() - 30):m.end() + 30])          # too short to tell a copy: no copy test
+        figures.setdefault(fig, (reply[max(0, m.start() - 24):m.start()], Quoted(
+            fig, labels(reply, m.start(), m.end()), "%" if fig.endswith("%") else unit(reply, m.end()),
+            own if len(own) >= len(fig) + 40 else "")))
+    for fig, (before, quoted) in figures.items():
         bare = fig.lstrip("$")
-        if any(has_figure(text, f) for text in (seen, said) for f in (fig, bare)):
+        if any(has_figure(text, f) for text in (seen, said) for f in forms(fig)):
             continue
         if VERSION.search(before) or APPROX.search(before) or rounded_near(bare, seen):
             continue
-        if where := filed(bare):
+        if where := filed(quoted):
             out.append(("figure", f"quoted {fig}, on file at {where}; no read this turn carries it "
                                   "(missing read: recall or read_memory of that file)"))
     for name in dict.fromkeys(m.group(1) for m in FILE.finditer(reply)):

@@ -8,6 +8,19 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-22
 
+### figure-noise (stacked on #81)
+
+- The figure shadow rule counts a line on file as a figure's source only when it is about the same thing, not when it
+  merely shares the digits: the label words beside the number in the reply (R3, girth, worksheet) sit beside it on
+  the line too (two of them, one holding a digit, or the reply's only one), the unit agrees (1.4 ft is not 1.4 s,
+  0.11 ft is not 0.11%), the line is not the reply's own record (its day-log line, or another room quoting it), and a
+  dollar figure is looked up with its dollar sign (the bare digits used to find only lines where the number was not
+  dollars). A read of the same number with or without thousands separators carries it. A figure with no label word
+  beside it, in the reply or on the line, is matched by its digits as before. Replayed over the owner's 68 complaint
+  cases and 74 accepted replies: false alarms on accepted replies 13 to 6 of 74 (0.176 to 0.081), wrong-fact hits 4
+  to 1 (none of the 4 was the wrong fact); every other rule's rows unchanged.
+- **Upgrading:** budgets.toml changed ([code] lines, up 90 for the same-thing test). Nothing to do.
+
 ### person-claim-rule (#81)
 
 - Two more shadow rules in the Stop check, beside figure, file, decide, the claims, stance and sheet. `person`: a
