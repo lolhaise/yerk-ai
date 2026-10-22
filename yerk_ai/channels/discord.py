@@ -132,11 +132,12 @@ def message_text(m: Any, files: list[dict[str, Any]] | None = None, reply: str =
 class DiscordChannel:
     def __init__(self, token: str, owner: int | None, test_senders: list[int], ledger: Ledger,
                  client: Any = None, guard: LoopGuard | None = None, state: Path | None = None,
-                 capture: Callable[..., bool] | None = None, daemon: Any = None):
+                 capture: Callable[..., bool] | None = None, daemon: Any = None, taste: Callable[[str, str], Any] | None = None):
         self.token, self.owner, self.test_senders, self.ledger = token, owner, set(test_senders), ledger
         self.state = state
         self.daemon = daemon                      # the slash commands' methods (daemon.Yerkd), or None: off
         self.capture = capture                    # the day's log (memory.DailyLog.capture), or None
+        self.taste = taste                        # the owner's verdict on a room's last reply (daemon.Yerkd.taste_heard), or None
         self.rooms: dict[int, Room] = {}          # channel id -> room: its own, and the one it watches
         self.names: dict[str, int] = {}           # room name -> its own channel id, where everything goes
         self.cards: dict[str, Any] = {}           # room name -> its open card
@@ -254,6 +255,11 @@ class DiscordChannel:
                 self.retry.add(m.channel.id)
                 asyncio.ensure_future(self._retry(m.channel.id, room))
             return
+        if sender == "owner" and self.taste is not None and m.content and m.channel.id == self.names[room.name]:
+            try:                                  # rated before the turn runs: the room's last reply is the one the owner saw
+                self.taste(room.name, m.content)
+            except Exception:                     # a record, never a reason to hold the message
+                log.exception("room %s: the owner's verdict on message %s was not kept", room.name, m.id)
         await self._typing_begin(room.name, await self._channel(room.name))   # its own channel, never the watched one
         await self._react(m.channel.id, m.id, ACK)
         files = await self.stage(room, m)

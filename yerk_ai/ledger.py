@@ -570,6 +570,17 @@ class Ledger:
                 "ORDER BY created, key", (f"{k}:%", f"{k}:%:%"))]
         return out
 
+    def last_reply(self, room: str) -> dict[str, Any] | None:
+        """The room's newest reply as it went out (taste.py): its parts in order, its first part's message id and time."""
+        if (r := self._first("SELECT key FROM deliveries WHERE room = ? AND kind = 'reply' AND state = 'sent' "
+                             "ORDER BY sent DESC LIMIT 1", (room,))) is None:
+            return None
+        base = str(r["key"]).rsplit(":", 1)[0]
+        parts = sorted((p for p in self._select("SELECT key, message_id, body, sent FROM deliveries WHERE key LIKE ? AND "
+                                                 "state = 'sent'", (f"{base}:%",)) if p["key"].rsplit(":", 1)[0] == base),
+                       key=lambda p: int(p["key"].rsplit(":", 1)[1]))
+        return {"id": str(parts[0]["message_id"]), "sent": float(parts[0]["sent"]), "text": "\n".join(str(p["body"]) for p in parts)}
+
     def turn_for_key(self, turn_key: str) -> int | None:
         r = self._select("SELECT id FROM turns WHERE turn_key = ? ORDER BY id DESC LIMIT 1", (turn_key,))
         return int(r[0]["id"]) if r else None

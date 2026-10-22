@@ -3,8 +3,9 @@
 UserPromptSubmit adds the per-message parts: the clock line, the metadata line, the rules changed since the session
 last looked (context.news, capped at `rules`) and the recall part (render_recall: what is not on file, the owner's people
 and things the message names with their best lines, the best hits of a question about the owner's past, then this room's lines of
-the last 14 days on its topic, capped at `recall`); every assembly goes to the room's
-assembled.jsonl. SessionStart `compact` re-adds the recall pack; `startup` or `clear` after another session posts the reset line.
+the last 14 days on its topic, capped at `recall`), then in an owner room whose layer keeps taste.jsonl the owner's rated
+replies (taste.py, capped at `taste`); every assembly goes to the room's assembled.jsonl.
+SessionStart `compact` re-adds the recall pack; `startup` or `clear` after another session posts the reset line.
 PreToolUse runs the gates (gates.py), PostToolUse and PostToolUseFailure time each call, ConfigChange
 writes the tamper row, Stop runs the rule-based checks (an unread image, a turn ending with nothing
 visible or a final text that only reports a filing bounces once; the evidence rules only log). The room
@@ -76,7 +77,8 @@ def record(state: Path, room: str, event: str, session_id: str, parts: dict[str,
 
 def user_prompt_submit(payload: dict[str, Any], state: Path, rooms: dict[str, dict[str, Any]], meta: Meta,
                        budgets: dict[str, Any], now: datetime | None = None,
-                       recall: Recall | None = None, room: str | None = None, news: Callable[[str, str], str] | None = None) -> dict[str, Any]:
+                       recall: Recall | None = None, room: str | None = None, news: Callable[[str, str], str] | None = None,
+                       taste: Callable[[str], str] | None = None) -> dict[str, Any]:
     sid = str(payload.get("session_id", ""))
     room = room or SessionTable(state / "sessions.json").by_session(sid)
     if room is None or room not in rooms:
@@ -101,6 +103,8 @@ def user_prompt_submit(payload: dict[str, Any], state: Path, rooms: dict[str, di
         rtext = render_recall(names, topics, cap, past, absent)
         parts.append(context.Part("recall", rtext, cap, context.chars(rtext)))
         took = round((time.monotonic() - t0) * 1000)
+    if taste and (rated := taste(room)):                       # room -> its taste part, or ""
+        parts.append(context.Part("taste", rated, int(budgets["per_message"]["on_hit"]["taste"]), context.chars(rated)))
     text = "\n".join(p.text for p in parts if p.text)[: int(budgets["hook"]["output_cap"]) - 1]
     record(state, room, "message", sid, {p.name: p.size for p in parts}, text, prompt_chars=context.chars(prompt),
            names=[e["key"] for e in names if e["key"]], deep=[e["cite"] for e in names if not e["key"]], topics=[h["cite"] for h in topics],

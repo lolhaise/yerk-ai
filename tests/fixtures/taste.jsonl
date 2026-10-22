@@ -1,0 +1,9 @@
+{"ts": "2026-01-05T09:00:00", "channel": "CHANNEL_ID", "verdict": "pos", "signal": "that was good", "reply_id": "r1", "reply_at": "08:59", "reply": "First answer.", "room": "example-room"}
+{"ts": "2026-01-05T10:00:00", "channel": "OLD_ID", "verdict": "neg", "signal": "too long", "reply_id": "b1", "reply_at": "09:58", "reply": "An old answer from the box.", "room": "box:#example-old"}
+{"ts": "2026-01-05T11:00:00", "channel": "CHANNEL_ID", "verdict": "pos", "signal": "lmao", "reply_id": "q1", "reply_at": "10:59", "reply": "Quiet room answer.", "room": "example-quiet"}
+{"ts": "2026-01-05T12:00:00", "channel": "CHANNEL_ID", "verdict": "neg", "signal": "you keep   saying that", "reply_id": "r2", "reply_at": "11:59", "reply": "Second\nanswer.", "room": "example-room"}
+{"ts": "2026-01-05T13:00:00", "channel": "CHANNEL_ID", "verdict": "pos", "signal": "way better", "reply_id": "r3", "reply_at": "12:59", "reply": "Third answer.", "room": "example-room"}
+{"ts": "2026-01-05T13:01:00", "channel": "CHANNEL_ID", "verdict": "pos", "signal": "way better, again", "reply_id": "r3", "reply_at": "12:59", "reply": "Third answer.", "room": "example-room"}
+{"ts": "2026-01-05T14:00:00", "channel": "OLD_ID", "verdict": "pos", "signal": "big w", "reply_id": "b2", "reply_at": "13:58", "reply": "Box answer.", "room": "box:#example-old"}
+{"ts": "2026-01-05T15:00:00", "channel": "CHANNEL_ID", "verdict": "neg", "signal": "shorter", "reply_id": "q2", "reply_at": "14:59", "reply": "Quiet long answer.", "room": "example-quiet"}
+not a row
