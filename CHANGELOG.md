@@ -14,18 +14,19 @@ with the originals kept under `backups/`; the index chunks every file again when
   line under its `[attachment]` line: the room takes in the sound only through the new `transcribe` tool, so it calls
   the tool on the saved path before it answers, opens its reply with what the note says or that it could not be
   transcribed, and calls that step transcribing, never listening. A turn that ends without calling it bounces once, as
-  an unopened image does, and the card's row reads "transcribing voice-message".
+  an unopened image does (a Read of the file does not count), and the card's row reads "transcribing voice-message".
 - `transcribe`, on Yerk's own MCP server in every room (the daemon runs it, since a room's shell has no network):
   ffmpeg cuts the audio into 14-minute mono mp3 chunks; pass 1 is OpenAI whisper-1 on each chunk in parallel, a segment
   both near silence and low in confidence dropped (no_speech_prob over 0.9 and avg_logprob under -1.0); with a Groq
   key, pass 2 is Groq whisper-large-v3-turbo on the same chunks, the two aligned word by word, and a segment where they
   differ on more than 3 words in 10 (fillers such as "um" aside) is marked `(uncertain)` with both readings. The text,
   a timestamp per segment, is returned and saved beside the audio as NAME.transcript.txt (0600), its first line saying
-  whether a second pass checked it.
+  whether a second pass checked it. Each room's entry for Yerk's server carries a 10-minute tool timeout: without one,
+  Claude Code drops an HTTP tool call at 60 s, and a long recording's call runs past that.
 - Every paid call is a row in the ledger's `spend` table at list price (US$0.006 a minute on OpenAI; US$0.04 an hour
   on Groq, 10 s billed at least; both read 2026-10-21), and the morning diff says "spent yesterday: US$X on N calls";
-  the table, its reader and the morning line are the ones #76 adds. A recording estimated past US$1 is refused until
-  the owner says yes (decision 32).
+  the table, its reader and the morning line are new here (#76 carries the same ones). A recording estimated past US$1
+  is refused until the owner says yes (decision 32).
 - Measured on a 6:39 voice note: 16.1 s end to end (whisper-1 15.3 s, Groq 1.3 s, one chunk), 99 segments, 6 marked
   uncertain, US$0.0443 in two spend rows. A wait that long is why the room calls the tool instead of the daemon
   transcribing before the turn starts: the turn would start 16 s late with no card to show for it.

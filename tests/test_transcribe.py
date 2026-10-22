@@ -6,7 +6,9 @@ from __future__ import annotations
 
 import asyncio
 import io
+import json
 import os
+import queue
 import shutil
 import subprocess
 import threading
@@ -20,6 +22,7 @@ import pytest
 from yerk_ai import shape, transcribe, words
 from yerk_ai.channels.discord import message_text
 from yerk_ai.daemon import ConsoleChannel, Yerkd
+from yerk_ai.engine import RoomProcess
 from yerk_ai.ledger import Ledger
 from yerk_ai.room import Room
 
@@ -201,6 +204,17 @@ def test_a_voice_note_never_transcribed_bounces_once_at_stop():
     room.bounced = False
     room.rp.read_paths.add("/in/9/voice-message.ogg")                 # the engine adds a transcribe call's path
     assert room.stop_check(active=False) is None
+
+
+def test_only_a_transcribe_call_counts_as_hearing_a_recording(monkeypatch):
+    rp = RoomProcess.__new__(RoomProcess)
+    calls = [("Read", {"file_path": "/in/9/voice-message.ogg"}), ("Read", {"file_path": "/in/9/photo.png"}),
+             ("mcp__yerk__transcribe", {"path": "/in/9/memo.m4a"})]
+    ev = {"type": "assistant", "message": {"content": [{"type": "tool_use", "name": n, "input": i} for n, i in calls]}}
+    rp.proc, rp.read_paths, rp.evidence, rp.events = NS(stdout=[json.dumps(ev).encode()]), set(), None, queue.Queue()
+    monkeypatch.setattr(rp, "_note", lambda obj: None)
+    rp._read()
+    assert rp.read_paths == {"/in/9/photo.png", "/in/9/memo.m4a"}     # a Read of a recording opens nothing, so it still bounces
 
 
 def test_the_tool_reads_only_files_in_the_calling_rooms_own_folders(tmp_path):

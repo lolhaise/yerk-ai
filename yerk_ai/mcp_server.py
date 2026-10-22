@@ -212,9 +212,12 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
 
 def room_config(url: str, room: str, path: Path, token: str = "", servers: dict[str, Any] | None = None) -> Path:
     """The per-room --mcp-config file (0600): this server, preloaded, the process's own token as its secret header
-    (the daemon knows the room by the token's binding), and the room's `mcp` servers from rooms.toml, never as yerk."""
+    (the daemon knows the room by the token's binding), and the room's `mcp` servers from rooms.toml, never as yerk. Its
+    `timeout` (10 min, inside a turn's 15 min of silence) is what lets a transcribe call run past 60 s: without one,
+    Claude Code drops an HTTP tool call that has not answered in 60 s, and this server answers only when the tool is done."""
     from .config import write_private
-    cfg = {"mcpServers": {**dict(servers or {}), "yerk": {"type": "http", "url": url, "headers": {HEADER: token}, "alwaysLoad": True}}}
+    yerk = {"type": "http", "url": url, "headers": {HEADER: token}, "alwaysLoad": True, "timeout": 600_000}
+    cfg = {"mcpServers": {**dict(servers or {}), "yerk": yerk}}
     write_private(path, json.dumps(cfg, indent=1))
     return path
 
