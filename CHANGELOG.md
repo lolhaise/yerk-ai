@@ -6,6 +6,30 @@ A line that changes a file the install keeps (rooms.toml, yerkd.toml, budgets.to
 newer than the code is refused with one line, never changed); the day logs are rewritten once at the daemon's start
 with the originals kept under `backups/`; the index chunks every file again when its chunker's version changes.
 
+## 2026-10-22
+
+### recall-warm (#80)
+
+- Recall's keyword half comes from `yerk-index` (POST /keywords) on its one long-lived connection: the same rows in the
+  same order as the index file's own read, with the words' weights. yerk-index keeps the pages that rank reads (the FTS
+  tables, the `chunks` rows it joins, `meta`) mapped into itself, again every 10 minutes and after a rebuild, so a box
+  that drops its page cache on a clock never drops them, for any reader of the file. On the author's box, where a
+  trimmer drops the cache every 2 minutes, the keyword half went from a median of 0.298 s (p90 1.742, 4.5 s right after
+  a drop) to 0.134 s (p90 0.185), and a whole recall from 1.267 s (p90 2.856) to 1.121 s (p90 1.339); straight after a
+  deliberate drop, 0.186 s warm against 2.304 s cold. The rest of a recall is the meaning search, unchanged.
+- A recall asks the index first with half its deadline and reads the file itself with what is left when the index is
+  down, slow, busy or answers wrong: an install without the index, or with an older one, behaves as before. The
+  prompt's per-message recall takes the same path.
+- The pages are mapped, never locked: real memory pressure can still take one, and the next pass maps it again. The
+  keyword connection's own page cache is sized to the FTS tables and a quarter; SQLite drops it at every commit of the
+  writer, so the mapped pages are what keep the rank warm between passes.
+
+**Upgrading**: `units/yerk-index.service` MemoryHigh rises from 800M to 1400M: the rule adds the mapped pages and the
+keyword cache, both in index.json (`pin`, `keywords`; 414M and 190M at 313,964 chunks), and `yerk doctor` counts them.
+A box that set MemoryHigh with `systemctl --user set-property` raises that instead, before the restart that brings
+this (the author's box: 1G to 1536M); below it the kernel takes mapped pages back and part of recall reads cold again.
+`[code] lines` moved to the new count, by 269.
+
 ## 2026-10-21
 
 ### taste-judge (#79)

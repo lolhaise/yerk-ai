@@ -126,4 +126,7 @@ duplicated_topics = 0
 # its start checks and the outbox kept read only (the owner's ask), not folded to fit.
 # 2026-10-21: taste-ledger raised it by 178, an earlier setup's thumbs as they are in its files (the classifier's three lists
 # unchanged, the capture, the reply it rates, the taste part and its map row; the owner's ask), not folded to fit.
-lines = 16353
+# 2026-10-22: recall-warm raised it by 269, the keyword rank served from yerk-index's one long-lived connection, recall's
+# fall back to the file, the pin that holds the keyword tables' pages mapped against the box's page-cache drops and the
+# doctor's cap counting them (the owner's ask: recall at 3 s), not folded to fit.
+lines = 16622

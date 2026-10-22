@@ -2,8 +2,9 @@
 changed chunks are embedded (a touch embeds none), a missing key keeps the keyword path and the room hears it
 once, a provider timeout and a provider error each fall back and read apart, fusion ranks a paraphrase above a
 keyword-only near miss, the index stays queryable during a backfill, the bench's output shape is unchanged, and
-show the ability both ways. No provider is ever called: a stub stands in. Every value here is a
-placeholder."""
+show the ability both ways. Recall's keyword half comes from the index's one connection and falls back
+to the file, and the pin maps the keyword tables and keeps every lock the process holds. No provider is
+ever called: a stub stands in. Every value here is a placeholder."""
 import asyncio
 import json
 import logging
@@ -569,7 +570,7 @@ def test_the_pin_maps_the_keyword_tables_and_keeps_every_lock_the_process_holds(
     st = pin.pass_()
     want = memindex.table_bytes(reader, memindex.PIN_TABLES)
     assert st["mode"] == "map" and st["pages"] == sum(n for n, _ in want.values()) and st["bytes"] == sum(b for _, b in want.values())
-    assert mapped_kib(pin.addr) * 1024 >= st["bytes"] and shared_lock_held(db)
+    assert mapped_kib(pin.addr) * 1024 == st["bytes"] and shared_lock_held(db)   # the tables' pages, none fault-around added
     fd, first = pin.fd, pin.addr
     (tmp_path / "private" / "memory" / "facts" / "more.md").write_text(
         "# More\n\n" + "".join(f"- an example line about the teal kettle, number {i}\n" for i in range(2000)))

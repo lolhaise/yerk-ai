@@ -551,7 +551,7 @@ def _libc() -> Any:
     return lib
 
 
-PROT_READ, MAP_SHARED, MAP_FAILED = 1, 1, ctypes.c_void_p(-1).value
+PROT_READ, MAP_SHARED, MAP_FAILED, MADV_DONTNEED = 1, 1, ctypes.c_void_p(-1).value, 4
 MADV_POPULATE_READ = 22                # Linux 5.14: fault a range in and map it, unlocked; a page past the end fails, never SIGBUS
 
 
@@ -603,8 +603,9 @@ class Pin:
             os.close(fd)
         self.retired = []
         if (real := live(self.db)) != self.real:                              # the first pass, or a rebuild swapped the link
+            fd = os.open(real, os.O_RDONLY | os.O_CLOEXEC)                    # first: a failed open retires nothing
             self.retired += [self.fd] if self.fd >= 0 else []
-            self.fd, self.real = os.open(real, os.O_RDONLY | os.O_CLOEXEC), real
+            self.fd, self.real = fd, real
         size = os.fstat(self.fd).st_size
         conn = connect(real, readonly=True)
         try:
@@ -623,7 +624,7 @@ class Pin:
         addr = self.lib.mmap(None, size, PROT_READ, MAP_SHARED, self.fd, 0)
         if not addr or addr == MAP_FAILED:
             raise OSError(ctypes.get_errno(), f"mmap of {real.name} failed")
-        osp, held = os.sysconf("SC_PAGE_SIZE"), 0
+        osp, held, end = os.sysconf("SC_PAGE_SIZE"), 0, 0
         for first, n in runs:
             lo, hi = (first - 1) * page, min((first - 1 + n) * page, size)  # a page past the file is still in the WAL
             lo -= lo % osp                                                    # madvise takes whole pages of the OS's own
@@ -634,6 +635,13 @@ class Pin:
             elif ctypes.get_errno() == errno.EINVAL:                          # a kernel before 5.14
                 self.lib.munmap(addr, size)
                 return self._off("this kernel cannot fault a mapping in (MADV_POPULATE_READ, Linux 5.14)")
+        # a fault maps the cached pages around it too (fault-around: the mapping held 648 MB for the tables' 414 on the
+        # author's box), so the gaps between the runs are unmapped again and the mapping holds the tables' pages, no more
+        for first, n in [*runs, (size // page + 1, 0)]:
+            lo = min((first - 1) * page // osp * osp, size)
+            if end < lo:
+                self.lib.madvise(addr + end, lo - end, MADV_DONTNEED)
+            end = max(end, -(-min((first - 1 + n) * page, size) // osp) * osp)
         self._unmap()                                                         # the last pass's: its pages are mapped here now
         self.addr, self.size = int(addr), size
         self.pages, self.bytes, self.passes = held // page, held, self.passes + 1
