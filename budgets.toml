@@ -130,4 +130,6 @@ duplicated_topics = 0
 # folded to fit.
 # 2026-10-22: people-card raised it by 56, the people room's card, the board bounce and the note burst (the owner asked why it took so long), not folded to fit.
 
-lines = 16474
+# 2026-10-22: figure-noise raised it by 90, the figure rule's same-thing test (label words, unit, the reply's own copy, a
+# number's written forms) and its lookup in memory.on_file (the owner's ask), not folded to fit.
+lines = 16564
