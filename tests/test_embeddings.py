@@ -15,6 +15,7 @@ import subprocess
 import sys
 import time
 import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -301,6 +302,21 @@ def test_the_merge_keeps_each_searchs_own_top_three():
     assert two[0] == 1 and set(two) == {1, 2, 3, 102, 103, 50}
     # without vectors, the keyword list as it is
     assert [h["id"] for h in memory.fuse(keywords, [], 6, keep=3)] == [1, 2, 3, 50, 51, 52]
+
+
+# 9b. a stored message counts RECORD beside a note: an import's line, a day of the install's own log past the window
+def test_a_stored_message_ranks_after_a_note_on_the_same_ranks(tmp_path):
+    s = memory.settings(tmp_path / "private", tmp_path / "state", {"timezone": "UTC"})
+    weight = memory.record(s, datetime(2026, 10, 22, 12, tzinfo=timezone.utc))
+
+    def hit(cid: int, path: Path) -> dict:
+        return {"id": cid, "path": str(path), "line": 1, "lines": "1-1", "text": f"t{cid}", "score": 0.9}
+    old, recent = s.daily / "2026-10-01.md", s.daily / "2026-10-20.md"
+    mail, note = tmp_path / "private" / "imports" / "mail" / "2026-01.md", s.root / "facts" / "kettle.md"
+    assert [weight(hit(1, p)) for p in (old, mail, recent, note)] == [memory.RECORD, memory.RECORD, 1.0, 1.0]
+    both = [hit(1, old), hit(2, note)]                                      # the old day first in both lists, the note second
+    assert [h["id"] for h in memory.fuse(both, both, 6, keep=0)] == [1, 2]
+    assert [h["id"] for h in memory.fuse(both, both, 6, keep=0, weight=weight)] == [2, 1]     # the note leads; the day is kept
 
 
 # 10. the manifest's embeddings entry records the fit choice: the dimensions, the units, the width
