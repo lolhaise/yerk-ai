@@ -23,6 +23,25 @@ with the originals kept under `backups/`; the index chunks every file again when
 **Upgrading**: yerkd.toml `[jobs] room_note_burst` is new and optional (default 3; 1 keeps one note per window).
 budgets.toml `[code]` rises by 56. Nothing to do.
 
+### midnight-test (#83)
+
+- Two deploy tests that read the morning diff a minute after their rows now pin the clock to noon, so a suite that
+  crosses midnight no longer turns the box CI red (PR 79, Oct 21); nothing a person running Yerk AI notices changes.
+
+### person-claim-rule (#81)
+
+- Two more shadow rules in the Stop check, beside figure, file, decide, the claims, stance and sheet. `person`: a
+  sentence telling what someone said, wants, knows, decided or asked, or where they were (the owner, "you", counts),
+  from a turn that made no call that reads (any call but a write, a send or the room's other non-reading tools; the
+  prompt hook's recall block is not a call), ledgered with the name, the sentence and the tools the turn ran. `quote`:
+  a quoted span of three or more words its lead-in gives as someone's or a document's words (said, wrote, the note
+  says, her message, the email) that no read, prompt or earlier reply of the session carries, ledgered with the span
+  and its lead-in. A question, a hedge or a proposal is no claim. The morning diff counts both ("shadow flag person:
+  N", "shadow flag quote: N"); nothing is blocked. Replayed over the owner's complaint cases (68, four of them
+  re-pointed or marked) and 74 accepted replies: together they fire on 10 of the 21 wrong-fact replies (5 on the
+  wrong line itself) and on 5 of the 74 accepted replies (0.068); the older rules' rows are unchanged.
+- **Upgrading:** budgets.toml changed ([code] lines, up 65 for the two rules and their call). Nothing to do.
+
 ## 2026-10-21
 
 ### taste-judge (#79)
