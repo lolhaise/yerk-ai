@@ -8,7 +8,7 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-22
 
-### people-card (#83)
+### people-card (#84)
 
 - A room with people (`people` in rooms.toml) gets its own turn card: the room's newest holding line (the text it sent
   itself), else "working on it", and the step count, as "-# step 12"; never a step's words, the earlier-steps line or
