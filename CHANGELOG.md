@@ -23,13 +23,13 @@ with the originals kept under `backups/`; the index chunks every file again when
   folder. Each refusal is one `sheet` shadow row, so the morning diff counts refusals as it counts stubs and pastes. A
   person's room (people set) is never refused and still only ledgers, as before.
 - A cut is said: a session start that sends a part trimmed posts one line in the machine room naming the part, the room
-  and the lines it cut (their first six words, twelve at most, then how many more), once per room and part a day. `yerk
-  doctor` has a fit check: a part past its line is a finding with the overflow in characters and the rooms it is cut
+  and the lines it cut (their first six words, one a line, twelve at most, then how many more), once a day per part and
+  its file, so a file every room shares is said once, by the first room to start. `yerk doctor` has a fit check: a part past its line is a finding with the overflow in characters and the rooms it is cut
   in, so the doctor and the morning diff read red the same day.
 
 **Upgrading:** budgets.toml `rules` 11,886 to 12,500, `rulebook` 10,850 to 14,000 and the session-start total 84,750 to
 88,514 (the same 614 + 3,150), [code] lines 17,640; nothing to do. Each room's next process start says in the machine
-room any part it still trims (the room's `cut-said.json` in the state folder keeps the day).
+room any part it still trims (`cut-said.json` in the state folder keeps the day).
 
 ### paste-check (#89)
 

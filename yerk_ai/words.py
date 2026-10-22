@@ -142,8 +142,8 @@ FILED_NEXT = ("Only the text after your last tool call reaches the room, and not
 FILED_AT_MOST, RULES_OVER = "one clause at its end at most", ", and the shared rules file is over its cap"
 RULE_CLAUSE = "one clause at its end, this one: every room now does {job} this way{over}"
 RULES_CUT, CUT_LINES = "{file} over cap: {size:,} of {cap:,}", "session starts cut lines {first} to {last}"   # machine room
-PART_CUT = "session start cut {part} in {room}: {size:,} of {cap:,} characters, {n} line{s} sent broken or not at all: {heads}"
-FILED =re.compile(r"^\W*(?:filed|saved|from now on,? every room)\b", re.I)   # a final reporting a filing (stub)
+PART_CUT = "session start cut {part}\n{size:,} of {cap:,} in {room}\n{n} line{s} sent broken or not at all:\n{heads}"
+FILED = re.compile(r"^\W*(?:filed|saved|from now on,? every room)\b", re.I)   # a final reporting a filing (stub)
 STUB = ("Only your final message reaches the room, and yours, \"{head}\", reports the filing, not the answer: the answer "
         "is above your last tool call, where the room never sees it, or it was never written. Write the whole answer as "
         "your final message now, first and complete, with the filing one clause at its end at most.")
@@ -174,9 +174,9 @@ def outcome(state: str, **say: Any) -> tuple[str, str]:
 
 
 def heads(lines: list[str], most: int = 12) -> str:
-    """Each line's first six words in quotes, `most` of them at the most, then how many more (PART_CUT's list)."""
-    said = "; ".join('"' + " ".join(x.lstrip("-*#> ").split()[:6]) + '"' for x in lines[:most])
-    return said + (f"; and {len(lines) - most} more" if len(lines) > most else "")
+    """Each line's first six words in quotes, one a line held to a phone's width, `most` at the most, then how many more."""
+    said = ['"' + line(" ".join(x.lstrip("-*#> ").split()[:6]), PHONE - 2) + '"' for x in lines[:most]]
+    return "\n".join(said + ([f"and {len(lines) - most} more"] if len(lines) > most else []))
 
 
 def died(result: str) -> str:

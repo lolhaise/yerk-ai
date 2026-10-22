@@ -162,14 +162,15 @@ def test_a_part_over_its_line_at_session_start_is_said_once_a_day_in_the_machine
     part = next(p for p in context.session_start(y.private, y.room_confs["example-room"], y.budgets, rules=rules) if p.name == "rules")
     cut, cap = list(part.cut), y.budgets["session_start"]["appended"]["rules"]
     assert part.raw > cap and len(cut) > 12 and all(x not in part.text.split("\n") for x in cut)
-    assert machine_said(capsys) == [f"{words.WORKING} session start cut rules in example-room: {part.raw:,} of {cap:,} characters, "
-                                    f"{len(cut)} lines sent broken or not at all: {words.heads(cut)}"]
+    assert machine_said(capsys) == [f"{words.WORKING} session start cut rules\n{part.raw:,} of {cap:,} in example-room\n"
+                                    f"{len(cut)} lines sent broken or not at all:\n{words.heads(cut)}"]
     said = re.findall(r'"([^"]+)"', words.heads(cut))                                   # twelve rules, six words each
-    assert len(said) == 12 and words.heads(cut).endswith(f"; and {len(cut) - 12} more")
+    assert len(said) == 12 and words.heads(cut).endswith(f"\nand {len(cut) - 12} more")
     assert all(re.fullmatch(r"example job \d+: done the example", s) for s in said)
     y.spec_for("example-room")
-    assert machine_said(capsys) == []                                                   # once a day
-    (mark := state / "rooms" / "example-room" / "cut-said.json").write_text(json.dumps({"rules": "2026-01-01"}))   # a new day
+    y.spec_for("example-machine")                                                       # the same file, another room
+    assert machine_said(capsys) == []                                                   # once a day per part and file
+    (mark := state / "cut-said.json").write_text(json.dumps({f"rules {part.source}": "2026-01-01"}))   # a new day
     y.workers.loop = loop = asyncio.new_event_loop()                                    # and the daemon's loop running, as live
     (t := threading.Thread(target=loop.run_forever)).start()
     try:
@@ -182,4 +183,4 @@ def test_a_part_over_its_line_at_session_start_is_said_once_a_day_in_the_machine
         loop.call_soon_threadsafe(loop.stop)
         t.join()
         loop.close()
-    assert len(got) == 1 and json.loads(mark.read_text()) == {"rules": time.strftime("%Y-%m-%d")}
+    assert len(got) == 1 and json.loads(mark.read_text()) == {f"rules {part.source}": time.strftime("%Y-%m-%d")}

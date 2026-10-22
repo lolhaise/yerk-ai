@@ -259,17 +259,17 @@ class Yerkd:
                         extra_args=extra, token=token, add_dirs=dirs)
 
     def cut_said(self, name: str, parts: list[context.Part]) -> None:
-        """Each part a session start sent trimmed: one machine-room line naming the part, the room and the lines it cut (their
-        first six words), once per room and part a day (cut-said.json in the room's folder), so no budget cuts in silence
-        (claim 8); `yerk doctor` reads red until the part fits its line. Never stops the start."""
-        mark, today = self.state / "rooms" / name / "cut-said.json", time.strftime("%Y-%m-%d")
+        """Each part a session start sent trimmed: one machine-room notice naming the part, the room and the lines it cut (their
+        first six words), once a day per part and its file, said by the first room to start (cut-said.json in the state folder),
+        so no budget cuts in silence (claim 8); `yerk doctor` names every room, red until the part fits. Never stops the start."""
+        mark, today = self.state / "cut-said.json", time.strftime("%Y-%m-%d")
         try:
             said = dict(json.loads(mark.read_text()))
         except (OSError, ValueError, TypeError):
             said = {}
-        if not (new := [p for p in parts if p.cut and said.get(p.name) != today]):
+        if not (new := [p for p in parts if p.cut and said.get(f"{p.name} {p.source}") != today]):
             return
-        write_private(mark, json.dumps({**said, **{p.name: today for p in new}}))
+        write_private(mark, json.dumps({**said, **{f"{p.name} {p.source}": today for p in new}}))
         for p in new:
             n = len(p.cut)
             self.to_machine(f"{words.WORKING} " + words.PART_CUT.format(part=p.name, room=name, size=p.raw, cap=p.budget, n=n,
