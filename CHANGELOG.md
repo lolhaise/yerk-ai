@@ -19,6 +19,22 @@ with the originals kept under `backups/`; the index chunks every file again when
   the bar on false alarms, short of it on cases (100), and far short on recall. Nothing in the daemon changes; mypy now
   covers `evals/`.
 
+### taste-ledger (#78)
+
+- An owner room keeps the owner's thumbs on its replies in the format an earlier setup used, in `taste.jsonl` in the room's
+  layer: a message of the owner's in the room's own channel that praises or faults the last reply ("that was good",
+  "too long") is one row on that reply, the owner's words beside its text, one row per
+  reply per sign. The classifier is that setup's, its three lists unchanged: an insult is never a verdict, and a message
+  that is neither rates nothing. A test sender, a person or the harness never rates.
+- Every message in such a room carries the `taste` part after recall, as that setup did: "Rated by him, newest
+  first (his words → what you had said):", then three praised and two faulted replies, the room's own newest first,
+  then the other rooms' newest; each reply is cut 40 shorter, down to 80, until the part fits its 1,500 characters.
+  `yerk map` shows its size. A room with people, or a layer without the file, gets no part and no row.
+
+**Upgrading**: `budgets.toml` gained `[per_message.on_hit] taste = 1500`, and `[per_message] cap` rose by the same
+1,500, from 4,000 to 5,500. `[code] lines` moved to the new count, by 178. To turn it on, put a `taste.jsonl` (the box's
+ledger converted, or an empty file) in an owner room's layer; a layer without one changes nothing.
+
 ### mechanics-lines (#75)
 
 - Every room's mechanics (yerk_ai/mechanics.md) take the three lines owed since #69, in the prompting guide's shape:

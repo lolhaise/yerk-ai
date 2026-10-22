@@ -296,7 +296,8 @@ def render_wire(room_name: str, w: dict[str, Any], appended: int, budgets: dict[
     return "\n".join(L)
 
 
-def render(room_name: str, private_label: str, start: list[Part], msg: list[Part], budgets: dict[str, Any]) -> str:
+def render(room_name: str, private_label: str, start: list[Part], msg: list[Part], budgets: dict[str, Any],
+           hit: list[Part] | None = None) -> str:
     row = "  {:<30}{:>9}{:>9}  {}"
     L = [f"yerk map {room_name}  (private folder: {private_label})",
          "Characters as Claude Code counts them. Untrimmed sizes; an over-budget file is sent trimmed.", "",
@@ -316,4 +317,6 @@ def render(room_name: str, private_label: str, start: list[Part], msg: list[Part
     L += [row.format(p.name, fmt(p.raw), fmt(p.budget or 0), "OVER" if p.over else "ok") for p in msg]
     every, pm = sum(p.raw for p in msg), budgets["per_message"]
     L.append(row.format("total", fmt(every), fmt(pm["typical"]), f"{'ok' if every <= pm['typical'] else 'OVER'} (cap {fmt(pm['cap'])})"))
+    L += [row.format(p.name, fmt(p.raw), fmt(p.budget or 0), f"{'OVER' if p.over else 'ok' if p.raw else 'empty'}, on hit, under the cap"
+                     + (f"  [{p.source}]" if p.source else "")) for p in hit or []]
     return "\n".join(L)
