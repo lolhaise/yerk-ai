@@ -8,6 +8,43 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-22
 
+### voice-note (#88)
+
+- A room answers with a voice note. When the owner asks for one or to say something out loud (a new mechanics line:
+  only asked, since each one costs), the room writes the script, calls the new `voice_note` tool on Yerk's own MCP
+  server (the daemon runs it, since a room's shell has no network) and `send`s the file with no text, and it lands as a
+  Discord voice message: flag 8192, its duration and waveform, the file posted as audio/ogg through the bot's own HTTP
+  client (discord.py posts a file as application/octet-stream, and Discord reads the voice fields only beside an audio
+  type). Words for the room go in a message of their own after it. When Discord refuses the voice form, or takes it
+  without the flag, the note goes as the plain audio file and the send's result says why, so the room says so; a note a
+  crash cut short goes again as the plain file from its snapshot.
+- The tool is the box's tools/voice-note recipe: `[[pause]]` alone on a line between sections (each its own call,
+  joined by 0.5 s of silence; one over 4,000 characters split again at its paragraphs; one under 50 characters joined to
+  the next with a `(break)`, since a voice glues a stray syllable to a short section), `(break)` a short pause, `[mood]`
+  tags dropped for MiniMax and passed to Fish. MiniMax speech-2.8-hd first (English_FriendlyPerson, speed 1.18, pitch
+  -1, language_boost English, the private folder's optional voice/pronounce.txt as its pronunciation rules); on any
+  MiniMax failure the whole note again on Fish Audio s2.1-pro-free, so a note never changes voice mid-way. Then
+  loudnorm I=-14:TP=-1.0:LRA=11 and opus 48 kHz mono in ogg under the room's work/voice/, beside a NAME.voice.json
+  (duration, waveform, size): `send` takes the file as a voice note only while it is unchanged.
+- A note is checked before it is handed back: its first 20 seconds are read back by whisper-1 (transcribe's pass-1
+  call), and one whose words do not line up with the script's opening (fewer than 3 in 4), or with a word glued in
+  between two matching runs, is deleted and the room told. English only, and its explain lines say so.
+- Every paid call is a `spend` row at list price (MiniMax US$100 a million characters, by its own billed count; Fish
+  s2.1-pro-free US$0; whisper-1 for the check; read 2026-10-22), so the morning diff counts it, and a note estimated
+  past US$1 (about 10,000 characters) is refused until the owner says yes (decision 32).
+- Measured once, live, on the real keys and outside any room: a two-sentence note of 165 characters on MiniMax, 6.9 s
+  of opus, read back word for word, 1.72 US cents in two spend rows, 5.4 s end to end.
+- `yerk abilities` and `yerk explain voice_note`: the described voice-notes entry is the built voice_note, tier paid,
+  on when a voice key and the OpenAI key are there.
+
+**Upgrading:** put MiniMax's key on the first line of `secrets/minimax.key` and Fish Audio's on the first line of
+`secrets/fish.key` in the private folder (0600; either one makes notes, MiniMax first); the check reads the OpenAI key
+the embeddings read. ffmpeg must be on the daemon's PATH. Optional: MiniMax pronunciation rules in `voice/pronounce.txt`
+there, one `word/say-it` a line. budgets.toml: mechanics 3,200 to 3,400 for the new line and the session-start total
+84,350 to 84,550 (no part could pay: today the largest persona measured 11,704, room voice 5,392, pinned memory
+3,854), [code] lines 17,412; nothing to do. Each room's settings allow `mcp__yerk__voice_note` from its next process
+start.
+
 ### transcribe (#77)
 
 - A room hears a voice note. A Discord voice message or another audio file (ogg, m4a, mp3, wav, webm) arrives with a

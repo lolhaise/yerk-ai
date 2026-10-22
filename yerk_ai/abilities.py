@@ -11,7 +11,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from . import words
+from . import voice_note, words
 from .config import load_toml, table
 
 log = logging.getLogger("yerk.abilities")
@@ -23,17 +23,21 @@ def manifest() -> dict[str, dict[str, Any]]:
     return dict(load_toml(table("abilities.toml"))["abilities"])
 
 
+def has(key: Path | None) -> bool:
+    """A key file is there and not empty: looked at, never read."""
+    return key is not None and key.is_file() and key.stat().st_size > 0
+
+
 def state(name: str, ab: dict[str, Any], tab: dict[str, dict[str, Any]], s: Any) -> tuple[str, str]:
     """(mark, words): on; needs <provider>; runs on the free path (the ability that lifts it is
     off); known, not built (described only, decision 26). The key file is looked at, never read."""
     if ab.get("state", "built") == "described":
         return words.ability("described")
     if ab["tier"] in ("key", "paid"):
-        key: Path | None = {"embeddings": getattr(s, "embeddings_key", None),     # the provider key's path; the install
-                            "transcribe": getattr(s, "embeddings_key", None)}.get(name)   # has one OpenAI key file
-        if key is not None and key.is_file() and key.stat().st_size > 0:
-            return words.ability("on")
-        return words.ability("needs", provider=ab.get("provider", "a provider key"))
+        openai, private = getattr(s, "embeddings_key", None), getattr(s, "private", None)   # the install has one OpenAI key file
+        ready = {"embeddings": has(openai), "transcribe": has(openai),     # voice_note: a voice key and the check's OpenAI key
+                 "voice_note": has(openai) and private is not None and any(has(private / k) for k in voice_note.KEYS.values())}
+        return words.ability("on") if ready.get(name) else words.ability("needs", provider=ab.get("provider", "a provider key"))
     if (up := str(ab.get("upgrade", ""))) and up in tab and state(up, tab[up], tab, s)[0] != words.DONE:
         return words.ability("free")
     return words.ability("on")
