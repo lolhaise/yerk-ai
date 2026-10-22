@@ -262,6 +262,24 @@ def test_the_bench_shape_is_unchanged_and_the_example_set_has_the_room_kinds(tmp
         "at", "blind", "controls", "k", "kept", "lost", "misses", "questions", "top_1", "top_1_rate", "top_k", "top_k_rate"]
 
 
+# 6b. the bench is a ratchet: a planted drop exits 4 and says so; a dated note in budgets.toml naming it lets the run pass
+def test_a_planted_drop_fails_the_bench_unless_a_dated_note_names_it(tmp_path, capsys, monkeypatch):
+    s = memory.settings(EXAMPLE_PRIVATE, tmp_path / "state", {"timezone": "UTC"})
+    memindex.Index(s.index_db, s.scope).sync()
+    args = ["recall-bench", "--private", str(EXAMPLE_PRIVATE), "--state", str(tmp_path / "state"),
+            "--questions", str(EXAMPLE_PRIVATE / "evals" / "recall-questions.json")]
+    assert cli.main(args) == 0
+    series = tmp_path / "state" / "memory" / "recall-bench.jsonl"
+    row = json.loads(series.read_text().splitlines()[-1])
+    best = row["top_k"] + 2                                                 # four runs before, each two over this one
+    series.write_text("".join(json.dumps({**row, "top_k": best}) + "\n" for _ in range(4)))
+    capsys.readouterr()
+    assert cli.main(args) == 4
+    assert f"RATCHET: top 6 fell to {row['top_k']} of {row['questions']} from {best} in the 4 runs before" in capsys.readouterr().err
+    monkeypatch.setattr(cli, "budgets", lambda: {"recall": {"slack": 1, "drops": [f"2026-10-22: {best} to {row['top_k']}, planted"]}})
+    assert cli.main(args) == 0 and "RATCHET" not in capsys.readouterr().err
+
+
 # 7. the manifest, and `yerk abilities` and `yerk explain` both ways
 def test_the_manifest_and_the_abilities_command_show_the_key_tier_both_ways(tmp_path, capsys):
     ab = abilities.manifest()

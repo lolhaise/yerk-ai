@@ -1038,3 +1038,19 @@ def bench(s: Settings, questions: Path | None = None, k: int = 6) -> dict[str, A
             "top_k": top_k, "top_1": top_1, "k": k, "top_k_rate": round(top_k / n, 3), "top_1_rate": round(top_1 / n, 3),
             "kept": sum(1 for r in scored if r["kept"]), "lost": [r["id"] for r in scored if r["rank"] and not r["kept"]],
             "rows": rows, "file": str(qfile)}
+
+
+def ratchet(rows: list[dict[str, Any]], drops: list[str], slack: int = 1) -> str | None:
+    """The bench as a ratchet (budgets.toml [recall]): the newest row's top k more than `slack` under the best of the four
+    rows before it, on the same questions and k, is a drop, unless a dated note in `drops` names it, "YYYY-MM-DD: BEST to
+    NEW, why"; a row at NEW less the slack or more then passes while BEST is in the window. None, or the line saying why not."""
+    new = rows[-1] if rows else {}
+    before = [r for r in rows[:-1] if (r.get("questions"), r.get("k")) == (new.get("questions"), new.get("k"))][-4:]
+    best = max((int(r["top_k"]) for r in before), default=0)
+    if not before or int(new["top_k"]) >= best - slack:
+        return None
+    for note in drops:
+        if (m := re.match(r"\d{4}-\d\d-\d\d: (\d+) to (\d+)\b", note)) and int(m[1]) == best and int(new["top_k"]) >= int(m[2]) - slack:
+            return None
+    return (f"top {new['k']} fell to {new['top_k']} of {new['questions']} from {best} in the {len(before)} runs before, and no "
+            "dated note in budgets.toml [recall] drops names it")

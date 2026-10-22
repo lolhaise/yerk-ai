@@ -393,7 +393,7 @@ def cmd_deploy(a: argparse.Namespace) -> int:
 def cmd_recall_bench(a: argparse.Namespace) -> int:
     """The fixed question set against the memory index (L63). Prints ids, ranks and rates, never a
     question's text or a snippet (the questions are about the owner's life); one JSON line per run
-    goes to <state>/memory/recall-bench.jsonl, the weekly series."""
+    goes to <state>/memory/recall-bench.jsonl, the weekly series, and the run is held to it (memory.ratchet)."""
     from pathlib import Path
 
     from . import memory
@@ -415,6 +415,9 @@ def cmd_recall_bench(a: argparse.Namespace) -> int:
     (state / "memory").mkdir(parents=True, exist_ok=True)
     with open(state / "memory" / "recall-bench.jsonl", "a") as f:
         f.write(json.dumps(row) + "\n")
+    rec = budgets().get("recall") or {}
+    series = [json.loads(x) for x in (state / "memory" / "recall-bench.jsonl").read_text().splitlines() if x.strip()]
+    drop = memory.ratchet(series, list(rec.get("drops", [])), int(rec.get("slack", 1)))
     if a.json:
         print(json.dumps({**row, "rows": r["rows"]}, indent=1))
     else:
@@ -424,7 +427,9 @@ def cmd_recall_bench(a: argparse.Namespace) -> int:
         print("misses: " + (" ".join(row["misses"]) or "none"))
         if r["blind"]:
             print(f"BLIND: control question(s) missed: {', '.join(r['blind'])}", file=sys.stderr)
-    return 2 if r["blind"] else 0
+    if drop:
+        print(f"RATCHET: {drop}", file=sys.stderr)
+    return 2 if r["blind"] else 4 if drop else 0
 
 
 def cmd_abilities(a: argparse.Namespace) -> int:
@@ -618,7 +623,7 @@ def main(argv: list[str] | None = None) -> int:
     sc.add_argument("--account", help="add: agent jobs, the account to run on")
     sc.add_argument("--json", action="store_true")
     rb = sub.add_parser("recall-bench", help="the fixed question set against the memory index: top six and top one "
-                        "hit rates (exit 2 when a control misses, 1 failure, 3 timeout)")
+                        "hit rates (exit 2 when a control misses, 1 failure, 3 timeout, 4 a drop budgets.toml [recall] does not name)")
     rb.add_argument("--questions", help="question file (default: [memory] bench, else <private>/evals/recall-questions.json)")
     rb.add_argument("-k", type=int, default=6, help="results per question (default 6, the recall tool's default)")
     rb.add_argument("--json", action="store_true", help="the run as JSON, per-question ranks included")
