@@ -285,7 +285,7 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
         if ran and ix and ran != ix:
             found.append(f"memory index: runs {ix[:7]}, yerkd {str(ran)[:7]}: restart yerk-index")
 
-    def fits() -> None:                                         # a part past its line goes out cut from the middle (2026-10-22)
+    def fits() -> None:                                         # a part past its line goes out cut (2026-10-22), a held rule not at all
         over: dict[tuple[str, str], tuple[int, int, list[str]]] = {}      # (part, its file) -> its size, its line, the rooms
         for n, c in rooms(private).items():
             for p in (p for p in session_start(private, c, budgets(), rules=m.root / memory.RULES) if p.over):
@@ -293,6 +293,9 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
         for (part, src), (raw, cap, names) in over.items():
             found.append(f"{Path(src).name or part}: {part} over its line by {raw - cap:,} characters ({raw:,} of {cap:,}), cut "
                          f"at every session start in {', '.join(names)}; raise its line in budgets.toml or trim the file")
+        held = [x for x in ((m.root / memory.OVERFLOW).read_text().splitlines() if (m.root / memory.OVERFLOW).is_file() else []) if x.startswith("- ")]
+        found.extend([f"{words.WORKING} {memory.OVERFLOW}: {len(held)} rule{'s' * (len(held) != 1)} held, in no room: {memory.RULES} is full "
+                      f"at its cap of {budgets()['session_start']['appended']['rules']:,}; move each in by hand once it has room"] if held else [])
 
     for what, check in (("layout", layout), ("classes", classes), ("tokens", tokens), ("index", index), ("hooks", hooked),
                         ("modes", modes), ("secrets", leaks), ("disk", growth), ("memory cap", high), ("backfill", backfill),

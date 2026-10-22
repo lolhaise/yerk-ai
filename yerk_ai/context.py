@@ -19,11 +19,12 @@ from .config import flag, write_private
 from .lifted.clock import clock_line, room_voice
 from .lifted.sizemap import fmt, split_sections
 from .lifted.trim import truncate
-from .memory import FRONT
+from .memory import FRONT, rules_part
 from .mentions import OLD
 
 MECHANICS = Path(__file__).with_name("mechanics.md")
 APPENDED = ("mechanics", "persona", "rulebook", "room_voice", "pinned_memory", "rules", "recall_pack")
+TAIL = ("rulebook", "rules")       # one rule a line, the newest last: past its size the newest lines go, never a middle one
 SEP = "\n\n"
 NEWS = "Rules changed since you last looked:"
 
@@ -110,19 +111,7 @@ def rules_text(room: dict[str, Any], rules: Path | None) -> tuple[str, str]:
     """The install's rules file's live lines (memory.rule), a part of its own: no front matter or superseded line."""
     if not rules or not rules.is_file() or flag(room.get("sealed")):      # sealed: its own rulebook, no other room's rule
         return "", ""
-    live = "\n".join(x for x in FRONT.sub("", rules.read_text()).strip().splitlines() if OLD not in x)
-    return cited(rules.resolve(), live), str(rules.resolve())
-
-
-def rules_over(room: dict[str, Any], rules: Path, cap: int) -> dict[str, Any] | None:
-    """The rules part past `cap` the way `yerk map` counts it: its size, the cap and the file's line numbers of the live
-    lines a session start sends broken or not at all (truncate's own output); None while it fits."""
-    text, _ = rules_text(room, rules)
-    if chars(text) <= cap:
-        return None
-    live, sent = set(text.split("\n")), truncate(text, "rules", cap)[0]
-    return {"size": chars(text), "cap": cap,
-            "cut": [n for n, x in enumerate(rules.read_text().splitlines(), 1) if x.strip() and x in live and x not in sent]}
+    return rules_part(rules, rules.read_text()), str(rules.resolve())
 
 
 def session_start(private: Path, room: dict[str, Any], budgets: dict[str, Any], pack: Pack | None = None,
@@ -144,7 +133,7 @@ def session_start(private: Path, room: dict[str, Any], budgets: dict[str, Any], 
     for name in APPENDED:
         text, src = raw[name]
         limit = int(limits[name])
-        sent, cut = truncate(text, name, limit, read_path=src or None)
+        sent, cut = truncate(text, name, limit, read_path=src or None, mode="tail" if name in TAIL else "middle")
         kept = set(sent.split("\n")) if cut else set()
         parts.append(Part(name, sent, limit, chars(text), src, tuple(x for x in text.split("\n") if cut and x.strip() and x not in kept)))
     return parts

@@ -139,9 +139,13 @@ RULES_OWNER_ONLY = "not filed as a rule, since a rule reaches every room; rememb
 FILED_NEXT = ("Only the text after your last tool call reaches the room, and nothing written above this call is shown, "
               "so the answer goes there, first and whole (the result, the numbers, what you found or decided), and the "
               "filing is {clause}.")
-FILED_AT_MOST, RULES_OVER = "one clause at its end at most", ", and the shared rules file is over its cap"
-RULE_CLAUSE = "one clause at its end, this one: every room now does {job} this way{over}"
-RULES_CUT, CUT_LINES = "{file} over cap: {size:,} of {cap:,}", "session starts cut lines {first} to {last}"   # machine room
+FILED_AT_MOST = "one clause at its end at most"
+RULE_CLAUSE = "one clause at its end, this one: every room now does {job} this way"
+HELD_CLAUSE = "one clause at its end, this one: the rule is held for now, since the shared rules file is full"
+# a filing fitted under the rules file's cap (memory.rule): each strip and a hold in the room's day log, a hold in the machine room
+RULE_STRIPPED = "the example in rule \"{job}\" taken out so rules.md fits its cap of {cap:,}"
+RULE_HELD_LOG = "rule \"{job}\" held in {file}: rules.md is full at its cap of {cap:,}, even with no examples"
+RULE_HELD = "rule held in {file}\n\"{job}\"\nfrom {room}\nrules.md is full at its cap of {cap:,}"
 PART_CUT = "session start cut {part}\n{size:,} of {cap:,} in {room}\n{n} line{s} sent broken or not at all:\n{heads}"
 FILED = re.compile(r"^\W*(?:filed|saved|from now on,? every room)\b", re.I)   # a final reporting a filing (stub)
 STUB = ("Only your final message reaches the room, and yours, \"{head}\", reports the filing, not the answer: the answer "
@@ -173,9 +177,9 @@ def outcome(state: str, **say: Any) -> tuple[str, str]:
     return mark, text.format(**say)
 
 
-def heads(lines: list[str], most: int = 12) -> str:
-    """Each line's first six words in quotes, one a line held to a phone's width, `most` at the most, then how many more."""
-    said = ['"' + line(" ".join(x.lstrip("-*#> ").split()[:6]), PHONE - 2) + '"' for x in lines[:most]]
+def heads(lines: list[str], most: int = 12, n: int = 6) -> str:
+    """Each line's first `n` words in quotes, one a line held to a phone's width, `most` at the most, then how many more."""
+    said = ['"' + line(" ".join(x.lstrip("-*#> ").split()[:n]), PHONE - 2) + '"' for x in lines[:most]]
     return "\n".join(said + ([f"and {len(lines) - most} more"] if len(lines) > most else []))
 
 

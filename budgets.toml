@@ -162,4 +162,10 @@ duplicated_topics = 0
 # the machine room (47), the shared sheet test (evidence.py, 11), the refusal's and the cut line's words (14), the
 # doctor's fit check (9) and the cut lines a trim drops (context.py, 2) (a room that does not check
 # gets things wrong), not folded to fit.
-lines = 17640
+# 2026-10-22: rules-fit raised it by 56: a rule filing fitted under the rules file's cap before it is written (memory.py,
+# 49: the examples out newest first and its own first, to 150 under the cap, else the rule held in rules-overflow.md, a
+# day-log line for each, a retried hold said once), the tail cut for the rules and rulebook parts (lifted/trim.py, 10), the strip and hold words
+# (words.py, 4), the doctor's held count (3) and the held notice (daemon.py, 1), less the filing-time over-cap line and
+# rules_over it replaces (context.py, 11 fewer) (seen that day: one rule's example pushed seven proven rules out of
+# turn and the), last part closes the.
+lines = 17696

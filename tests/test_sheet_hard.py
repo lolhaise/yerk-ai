@@ -164,11 +164,12 @@ def test_a_part_over_its_line_at_session_start_is_said_once_a_day_in_the_machine
     part = next(p for p in context.session_start(y.private, y.room_confs["example-room"], y.budgets, rules=rules) if p.name == "rules")
     cut, cap = list(part.cut), y.budgets["session_start"]["appended"]["rules"]
     assert part.raw > cap and len(cut) > 12 and all(x not in part.text.split("\n") for x in cut)
+    heads = words.heads([memory.topic(x) for x in cut], n=12)                         # a rule file's lines by their job
     assert machine_said(capsys) == [f"{words.WORKING} session start cut rules\n{part.raw:,} of {cap:,} in example-room\n"
-                                    f"{len(cut)} lines sent broken or not at all:\n{words.heads(cut)}"]
-    said = re.findall(r'"([^"]+)"', words.heads(cut))                                   # twelve rules, six words each
-    assert len(said) == 12 and words.heads(cut).endswith(f"\nand {len(cut) - 12} more")
-    assert all(re.fullmatch(r"example job \d+: done the example", s) for s in said)
+                                    f"{len(cut)} lines sent broken or not at all:\n{heads}"]
+    said = re.findall(r'"([^"]+)"', heads)                                              # twelve rules, by their job
+    assert len(said) == 12 and heads.endswith(f"\nand {len(cut) - 12} more")
+    assert said == [f"example job {i}" for i in range(300 - len(cut), 312 - len(cut))]  # the newest go, never a middle one
     y.spec_for("example-room")
     y.spec_for("example-machine")                                                       # the same file, another room
     assert machine_said(capsys) == []                                                   # once a day per part and file
