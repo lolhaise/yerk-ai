@@ -22,7 +22,7 @@ contents needs a read of a file. A claim with none is ledgered with the sentence
 turn ran. A question, a hedge or a proposal ("would", "could", "might", "I think") is not a claim.
 A fifth, the stance rule (claim 3), ledgers each reply to the owner's pushback: held, conceded or folded.
 A sixth, the sheet rule, ledgers once a turn that sent a document or pasted a block with no claims
-sheet written or named in the turn (check_sheet).
+sheet written or named in the turn (check_sheet), in a person's room; an owner's room is refused once instead.
 A seventh, the person rule, ledgers a sentence telling what someone said, wants, knows, decided or asked, or where they
 were, from a turn with no reading call (check_person); an eighth, the quote rule, a quoted span given as someone's or a
 document's words that nothing the turn read, was given or posted earlier carries (check_quote).
@@ -383,7 +383,8 @@ def stance(reply: str, pushed: list[float], ev: Evidence) -> list[tuple[str, str
 
 # the sheet rule: a turn that ships something in the owner's name, a document through the send tool or a pasted block
 # in the reply or in a send's text, with no claims sheet (claim, source line, quote) written or named in the turn.
-# The morning diff counts how often a room sends without checking its claims against source first. Logs only.
+# The morning diff counts how often a room sends without checking its claims against source first. Since 2026-10-22 an
+# owner's room is refused once a turn instead (Room.sheet_check, a shadow row per refusal); a person's room still logs.
 DOCUMENT = (".docx", ".pdf", ".xlsx", ".pptx", ".txt", ".md", ".csv")
 PASTE_TAGS = ("", "text", "plain", "none")              # a fence with one of these opens a paste; a language tag opens code
 SHEET = re.compile(r"claims[\w.-]*\.(?:md|txt|csv)\b", re.I)    # CLAIMS.md, example-report/claims.md, ex905-claims.md
@@ -406,26 +407,36 @@ def pasted(text: str) -> bool:
     return False
 
 
-def check_sheet(reply: str, ev: Evidence) -> list[tuple[str, str]]:
-    """The sheet rule in shadow: ("sheet", detail) once when the turn sent a document or pasted a block and no call
-    of the turn wrote or named a claims sheet. Logs only."""
+def sheet_written(ev: Evidence, beside: Path | None = None) -> bool:
+    """A claims sheet written or named this turn, the shadow rule's test and the refusal's alike: a call of the turn that
+    writes a file whose name holds claims (SHEET), or a shell command naming one; or, given `beside`, such a file in that
+    folder changed since the turn began (a sheet a call wrote counts before its stream line is read)."""
     with ev.lock:
-        calls = list(ev.calls.values())
-    sent: list[str] = []
-    texts = [reply]
-    for c in calls:
-        name, ti = c["tool"].rsplit("__", 1)[-1], c["input"]
-        if name == "send":
-            texts.append(str(ti.get("text") or ""))
-            if (file := str(ti.get("file") or "")) and file.lower().endswith(DOCUMENT):
-                sent.append(Path(file).name)
-        if (name in WRITES and SHEET.search(str(ti.get("file_path") or ""))) or (name == "Bash" and SHEET.search(str(ti.get("command") or ""))):
-            return []
-    paste = any(pasted(t) for t in texts)
-    if not sent and not paste:
+        calls, began = [(c["tool"].rsplit("__", 1)[-1], c["input"]) for c in ev.calls.values()], ev.started
+    if any(SHEET.search(str(ti.get("file_path") or "")) if name in WRITES else name == "Bash" and SHEET.search(str(ti.get("command") or ""))
+           for name, ti in calls):
+        return True
+    try:
+        return beside is not None and any(SHEET.search(p.name) and p.stat().st_mtime >= began for p in beside.iterdir() if p.is_file())
+    except OSError:
+        return False
+
+
+def shipped(sent: list[str], paste: bool) -> str:
+    """What a turn ships in the owner's name, as the sheet rows say it: "sent a.pdf", "pasted a block" or both."""
+    return " and ".join(x for x in (f"sent {', '.join(sent)}" if sent else "", "pasted a block" if paste else "") if x)
+
+
+def check_sheet(reply: str, ev: Evidence) -> list[tuple[str, str]]:
+    """The sheet rule in shadow, a person's room's (an owner's room refuses instead, Room.sheet_check): ("sheet", detail)
+    once when the turn sent a document or pasted a block and no call of the turn wrote or named a claims sheet. Logs only."""
+    with ev.lock:
+        sends = [c["input"] for c in ev.calls.values() if c["tool"].rsplit("__", 1)[-1] == "send"]
+    sent = [Path(f).name for ti in sends if (f := str(ti.get("file") or "")).lower().endswith(DOCUMENT)]
+    paste = any(pasted(t) for t in [reply, *(str(ti.get("text") or "") for ti in sends)])
+    if not sent and not paste or sheet_written(ev):
         return []
-    what = " and ".join(x for x in (f"sent {', '.join(sent)}" if sent else "", "pasted a block" if paste else "") if x)
-    return [("sheet", f"{what} with no claims sheet written this turn")]
+    return [("sheet", f"{shipped(sent, paste)} with no claims sheet written this turn")]
 
 
 # the person rule: what someone said, wants, knows, decided or asked, or where they were, told in a turn that made no

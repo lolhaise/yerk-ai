@@ -8,6 +8,29 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-22
 
+### sheet-hard (#90)
+
+- Rules were being cut from the middle of every session start, said to no one, and no longer are: the shared rules file
+  sat at 12,298 against its 11,886 (seven rules gone in every room) and one room's rulebook at 12,696 against 10,850.
+- An owner's room no longer ships a document or a paste in the owner's name without a claims sheet. A `send` of a
+  document (.docx, .pdf, .xlsx, .pptx, .txt, .md or .csv) or of a text holding a pasted block (a fence with no language
+  tag, or text, plain or none) with no claims sheet written that turn is turned back once, `{"ok": false, "error": ...}`,
+  the error saying what the sheet is (a file whose name holds claims, one row per claim: the claim, its source line, the
+  quote from that line) and where to write it (beside the document, else in the room's work folder); the next send of
+  the turn goes out as it is. A final message holding a pasted block bounces once at Stop the same way, the Stop hook's
+  sixth rule, one ask per turn between the two. Written this turn is the shadow rule's own test (a Write, Edit or
+  NotebookEdit of such a file, or a shell command naming one), or such a file changed since the turn began in that
+  folder. Each refusal is one `sheet` shadow row, so the morning diff counts refusals as it counts stubs and pastes. A
+  person's room (people set) is never refused and still only ledgers, as before.
+- A cut is said: a session start that sends a part trimmed posts one line in the machine room naming the part, the room
+  and the lines it cut (their first six words, twelve at most, then how many more), once per room and part a day. `yerk
+  doctor` has a fit check: a part past its line is a finding with the overflow in characters and the rooms it is cut
+  in, so the doctor and the morning diff read red the same day.
+
+**Upgrading:** budgets.toml `rules` 11,886 to 12,500, `rulebook` 10,850 to 14,000 and the session-start total 84,750 to
+88,514 (the same 614 + 3,150), [code] lines 17,640; nothing to do. Each room's next process start says in the machine
+room any part it still trims (the room's `cut-said.json` in the state folder keeps the day).
+
 ### paste-check (#89)
 
 - A room no longer posts yesterday's block as today's: on 2026-10-22 a room sent again, through `send` and word for

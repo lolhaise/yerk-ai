@@ -142,7 +142,8 @@ FILED_NEXT = ("Only the text after your last tool call reaches the room, and not
 FILED_AT_MOST, RULES_OVER = "one clause at its end at most", ", and the shared rules file is over its cap"
 RULE_CLAUSE = "one clause at its end, this one: every room now does {job} this way{over}"
 RULES_CUT, CUT_LINES = "{file} over cap: {size:,} of {cap:,}", "session starts cut lines {first} to {last}"   # machine room
-FILED = re.compile(r"^\W*(?:filed|saved|from now on,? every room)\b", re.I)   # a final reporting a filing (stub)
+PART_CUT = "session start cut {part} in {room}: {size:,} of {cap:,} characters, {n} line{s} sent broken or not at all: {heads}"
+FILED =re.compile(r"^\W*(?:filed|saved|from now on,? every room)\b", re.I)   # a final reporting a filing (stub)
 STUB = ("Only your final message reaches the room, and yours, \"{head}\", reports the filing, not the answer: the answer "
         "is above your last tool call, where the room never sees it, or it was never written. Write the whole answer as "
         "your final message now, first and complete, with the filing one clause at its end at most.")
@@ -155,6 +156,13 @@ PASTE = ("Not posted: your message holds a fenced block this room already posted
          "times and plans were that day's. Re-read it line by line against today (relative dates, clock times, who meets "
          "whom and when) and write it as it stands now, or say in one plain line why nothing in it changed.")
 PASTE_FOUND = "a block of {n} line{s} first posted {when}"     # the shadow row's detail: never the block itself
+# the sheet rule in an owner's room, in `send` and at Stop alike (2026-10-22: two PDFs, a crib file and pasted blocks went
+# out in the owner's name in one morning with no claims sheet, each one logged and none stopped)
+SHEET = ("Not {done}: {what} goes out in the owner's name, and no claims sheet was written this turn. A claims sheet is a "
+         "file whose name holds claims, here {where}, with one row per claim the {thing} makes: the claim, its source line "
+         "(file and line number) and the quote from that line, word for word. Write it, fix any claim it cannot source, then "
+         "{again}. This is asked once a turn: the next {next} goes out as it is.")
+SHEET_SEND, SHEET_STOP = ("sent", "send again", "send"), ("posted", "write your final message again", "final message")
 WORKER_OWN_ROOM = "a room starts workers for itself only, not for {room}"
 GONE, STRAY, NONE_RUNNING = "gone, no result", "unknown worker {id} running", "workers: none running"
 
@@ -163,6 +171,12 @@ def outcome(state: str, **say: Any) -> tuple[str, str]:
     """(mark, words) for a worker state; `say` fills the words' blanks (cap, why, ticked, rows)."""
     mark, text = OUTCOME.get(state, (NOT_DONE, state))
     return mark, text.format(**say)
+
+
+def heads(lines: list[str], most: int = 12) -> str:
+    """Each line's first six words in quotes, `most` of them at the most, then how many more (PART_CUT's list)."""
+    said = "; ".join('"' + " ".join(x.lstrip("-*#> ").split()[:6]) + '"' for x in lines[:most])
+    return said + (f"; and {len(lines) - most} more" if len(lines) > most else "")
 
 
 def died(result: str) -> str:

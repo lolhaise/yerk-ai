@@ -20,7 +20,7 @@ from . import deploy, docs, hooks, memindex, memory, retention, status, words
 from . import shape as rule_shape                      # the check named "rule shape"; "layout" is the private folder's
 from .accounts import load_accounts, token_info
 from .config import REPO, ROOM_KEYS, budgets, load_toml, room_id, rooms, write_private
-from .context import layer_dir
+from .context import layer_dir, session_start
 from .ledger import Ledger
 from .mentions import Builder
 
@@ -285,9 +285,18 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
         if ran and ix and ran != ix:
             found.append(f"memory index: runs {ix[:7]}, yerkd {str(ran)[:7]}: restart yerk-index")
 
+    def fits() -> None:                                         # a part past its line goes out cut from the middle (2026-10-22)
+        over: dict[tuple[str, str], tuple[int, int, list[str]]] = {}      # (part, its file) -> its size, its line, the rooms
+        for n, c in rooms(private).items():
+            for p in (p for p in session_start(private, c, budgets(), rules=m.root / memory.RULES) if p.over):
+                over.setdefault((p.name, p.source), (p.raw, int(p.budget or 0), []))[2].append(n)
+        for (part, src), (raw, cap, names) in over.items():
+            found.append(f"{Path(src).name or part}: {part} over its line by {raw - cap:,} characters ({raw:,} of {cap:,}), cut "
+                         f"at every session start in {', '.join(names)}; raise its line in budgets.toml or trim the file")
+
     for what, check in (("layout", layout), ("classes", classes), ("tokens", tokens), ("index", index), ("hooks", hooked),
                         ("modes", modes), ("secrets", leaks), ("disk", growth), ("memory cap", high), ("backfill", backfill),
-                        ("cites", cites), ("code", code), ("rule shape", ruleshape)):
+                        ("cites", cites), ("code", code), ("rule shape", ruleshape), ("fit", fits)):
         try:
             check()
         except (Exception, SystemExit) as e:                    # a check that cannot run is a line; the others still run
