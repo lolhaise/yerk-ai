@@ -19,10 +19,10 @@ with the originals kept under `backups/`; the index chunks every file again when
 - The pages are mapped, never locked: real memory pressure can still take one, and the next pass maps it again. A
   connection's own page cache cannot do this job: SQLite drops it at every commit of the writer.
 - **Upgrading:** `units/yerk-index.service` MemoryHigh rises from 800M to 1400M: the rule adds the mapped pages
-  (index.json's `pin`, 413M at 314,010 chunks), and `yerk doctor` counts them. A box that set MemoryHigh with
+  (index.json's `pin`, 394M at 314,010 chunks), and `yerk doctor` counts them. A box that set MemoryHigh with
   `systemctl --user set-property` raises that instead, before the restart that brings this (the author's box: 1G to
   1536M); below it the kernel takes mapped pages back and part of recall reads cold again. budgets.toml changed
-  ([code] lines, up 162).
+  ([code] lines, up 165).
 
 ### midnight-test (#83)
 

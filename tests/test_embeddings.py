@@ -2,9 +2,9 @@
 changed chunks are embedded (a touch embeds none), a missing key keeps the keyword path and the room hears it
 once, a provider timeout and a provider error each fall back and read apart, fusion ranks a paraphrase above a
 keyword-only near miss, the index stays queryable during a backfill, the bench's output shape is unchanged, and
-show the ability both ways. The pin maps the keyword tables, keeps every lock the process holds, and
-maps a writer pass's new chunks at its next tick. No provider is ever called: a stub stands in. Every
-value here is a placeholder."""
+the manifest and `yerk abilities` show the ability both ways. The pin maps the keyword tables, keeps every lock
+a writer pass's new chunks at its next tick, and goes off only where SQLite has no dbstat. No provider
+is ever called: a stub stands in. Every value here is a placeholder."""
 import asyncio
 import json
 import logging
@@ -18,6 +18,7 @@ import urllib.request
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from yerk_ai import abilities, cli, embeddings, memindex, memory
 from yerk_ai.config import EXAMPLE_PRIVATE
@@ -539,5 +540,30 @@ def test_a_pass_asked_for_after_a_write_runs_at_the_pins_next_tick(tmp_path):
     while pin.passes < 2 and time.monotonic() < end:
         time.sleep(0.05)
     assert pin.passes == 2 and not pin.due.is_set() and time.monotonic() < end
+    pin.close()
+    idx.close()
+
+
+# 17. a dbstat walk that fails for another reason (a busy or unreadable read) skips that pass and leaves the pin on; only a
+# SQLite built without dbstat turns it off (cold read of PR 80, the pin alone)
+def test_a_failed_pin_pass_is_skipped_and_only_a_sqlite_without_dbstat_turns_the_pin_off(tmp_path, monkeypatch):
+    s = tree(tmp_path, key=False)
+    idx = memindex.Index(s.index_db, s.scope)
+    pin = memindex.Pin(s.index_db)
+
+    class Fails:                                              # every statement fails with `msg`
+        msg = "database is locked"
+
+        def execute(self, *a):
+            raise sqlite3.OperationalError(self.msg)
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(memindex, "connect", lambda *a, **k: Fails())
+    with pytest.raises(sqlite3.OperationalError):            # run() logs it as a skipped pass; the next one tries again
+        pin.pass_()
+    Fails.msg = "no such table: dbstat"                      # what a SQLite built without dbstat answers
+    assert pin.mode == "map" and pin.pass_()["mode"] == "off"
     pin.close()
     idx.close()

@@ -549,7 +549,8 @@ class Pin:
     off the disk after that took 3.8 to 4.5 s against 0.15 to 0.8 s from RAM (measured 2026-10-22, PR recall-warm). A drop
     evicts no page a process has mapped. So a pass maps the index file read-only and faults the pages of PIN_TABLES
     (dbstat) into the mapping, and every reader of the file finds them in RAM from then on, the daemon's recall among
-    them. The writer's commits land in those same page-cache pages, so nothing held goes stale. Mapped, never locked: under real memory pressure the kernel may still take a page, and the next pass maps it
+    them. The writer's commits land in those same page-cache pages, so nothing held goes
+    stale. Mapped, never locked: under real memory pressure the kernel may still take a page, and the next pass maps it
     again, where a locked page stays charged, unevictable, to whichever unit read it first (a room's, often). A
     connection's own page cache (PRAGMA cache_size) cannot do this job: SQLite drops it whole whenever another connection
     has committed, and the writer commits every pass. A pass runs at start, within 5 s of a writer pass that changed
@@ -601,6 +602,8 @@ class Pin:
             page = int(conn.execute("PRAGMA page_size").fetchone()[0])
             nos = sorted({int(r[0]) for t in self.tables for r in conn.execute("SELECT pageno FROM dbstat WHERE name = ?", (t,))})
         except sqlite3.OperationalError as e:
+            if "dbstat" not in str(e):           # busy or unreadable this once: run() logs the skip and a later pass tries again
+                raise
             return self._off(f"this SQLite has no dbstat ({e})")
         finally:
             conn.close()
