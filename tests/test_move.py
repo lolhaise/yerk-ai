@@ -157,55 +157,55 @@ def day_lines(priv):
 def test_a_dry_run_reads_and_prints_and_writes_and_sends_nothing(layer, capsys):
     priv, state, fake = layer
     before = tree(priv)
-    assert run(priv, state, "gym", "--from", f"discord:{OLD}", "--dry-run") == 0
+    assert run(priv, state, "sports", "--from", f"discord:{OLD}", "--dry-run") == 0
     out = capsys.readouterr().out
     lock = priv / "memory" / ".daily.lock"                   # the day logs' writers' lock (memory.daily_lock): the one file a dry run may make
     assert fake.sent() == [] and {p: b for p, b in tree(priv).items() if p != lock} == before
-    assert f"says the #sample-item: Moved /to/{GUILD}/back " in out and str(HOME_OWS).replace("'", '"') in out
-    block = tomllib.loads(out.split("in backups/:\n", 1)[1].split("\nhistory:", 1)[0])["rooms"]["Alex"]
+    assert f"would make #sports-on-yerk: POST /guilds/{GUILD}/channels " in out and str(HOME_OWS).replace("'", '"') in out
+    block = tomllib.loads(out.split("in backups/:\n", 1)[1].split("\nhistory:", 1)[0])["rooms"]["sports-on-yerk"]
     home = rooms(priv)["home"]
-    assert block == {**home, "channel": "discord:NEW", "voice": "rooms/club.md"} and list(block) == list(home)
+    assert block == {**home, "channel": "discord:NEW", "voice": "rooms/sports.md"} and list(block) == list(home)
     assert "history: 140 messages from discord:30, 140 to file, 0 there already; 2 files up to 25 MB, 2 to save" in out
-    assert "the/example.note: says the" in out and "+ the_test = [0, \"Check\"]" in out and "the check while a" in out
+    assert "rooms/sports.md: would write" in out and "+ test_senders = [9, \"NEW\"]" in out and "setsid nohup yerk deploy" in out
 
 
 def test_an_owner_room_moves_in_and_a_second_run_only_tops_up(layer, capsys, tmp_path):
     priv, state, fake = layer
     voice = tmp_path / "voice.md"
-    voice.write_text("# plain: text, with one\n")
+    voice.write_text("# sports: short, numbers first\n")
     old_text = (priv / "rooms.toml").read_text()
-    assert run(priv, state, "gym", "--from", f"discord:{OLD}", "--voice", str(voice)) == 0
+    assert run(priv, state, "sports", "--from", f"discord:{OLD}", "--voice", str(voice)) == 0
     out = capsys.readouterr().out
     made = [c for c in fake.sent() if c[0] == "create_channel"]
-    assert made == [("create_channel", GUILD, 0, {"name": "Alex", "permission_overwrites": HOME_OWS})]
+    assert made == [("create_channel", GUILD, 0, {"name": "sports-on-yerk", "permission_overwrites": HOME_OWS})]
     rs = rooms(priv)
-    assert rs["Alex"] == {**rs["home"], "channel": "discord:77", "voice": "rooms/club.md"}
-    backups = list((priv / "backups").glob("rooms.toml.pre-gym-*"))
+    assert rs["sports-on-yerk"] == {**rs["home"], "channel": "discord:77", "voice": "rooms/sports.md"}
+    backups = list((priv / "backups").glob("rooms.toml.pre-sports-*"))
     assert len(backups) == 1 and backups[0].read_text() == old_text and (priv / "rooms.toml").read_text().startswith(old_text)
-    v = priv / "ben" / "rooms" / "gym.md"
+    v = priv / "desk" / "rooms" / "sports.md"
     assert v.read_text() == voice.read_text() and v.stat().st_mode & 0o777 == 0o600
     lines = day_lines(priv)
-    assert len(lines) == 140 and all(" Alex#discord:77 " in x for x in lines)
+    assert len(lines) == 140 and all(" sports-on-yerk#discord:77 " in x for x in lines)
     assert sum("owner@owner-handle:" in x for x in lines) == 69 and sum(" other@Ben:" in x for x in lines) == 70
     assert any("other@cousin-handle: hi from the cousin" in x for x in lines)
     assert any('[a reply to The Owner\'s message: "photos"] / nice' in x for x in lines)
-    files = priv / "ben" / "gym-attachments"
+    files = priv / "desk" / "sports-attachments"
     assert files.stat().st_mode & 0o777 == 0o700 and sorted(p.name for p in files.iterdir()) == ["1003-1-image.png", "1003-image.png"]
     assert all(p.stat().st_mode & 0o777 == 0o600 for p in files.iterdir())
     text = (priv / "memory" / "daily" / "2026-01-05.md").read_text()
     assert f"image.png (saved at {files / '1003-1-image.png'})" in text and "big.mov, image/png, 30,000,000 bytes" in text
-    url = priv / "secrets" / "discord-gym-webhook.url"
+    url = priv / "secrets" / "discord-sports-webhook.url"
     assert url.read_text() == "https://discord.com/api/webhooks/88/tok\n" and url.stat().st_mode & 0o777 == 0o600
     assert "+ test_senders = [9, 88]" in out and "history: 140 messages from discord:30, 140 filed" in out
     fake.msgs += [message(200, OWNER, "a new one"), message(201, BEN, "and its answer")]
     cdn = sum(c[0] == "cdn" for c in fake.calls)
-    assert run(priv, state, "gym", "--from", f"discord:{OLD}") == 0
+    assert run(priv, state, "sports", "--from", f"discord:{OLD}") == 0
     again = capsys.readouterr().out
     assert len([c for c in fake.sent() if c[0] == "create_channel"]) == 1 and len(fake.hooks) == 1
     assert sum(c[0] == "cdn" for c in fake.calls) == cdn and len(day_lines(priv)) == 142
-    assert "#next-step 00 and the, test reads it back" in again and "more.line: For the check, while a second entry" in again
+    assert "#sports-on-yerk 77 is there, kept as it is" in again and "rooms.toml: sports-on-yerk is there, kept as it is" in again
     assert "142 messages from discord:30, 2 filed, 140 there already" in again and "test webhook 88 already" not in again
-    assert v.read_text() == voice.read_text() and "for/the.check: while, a second entry waits" in again       # one --more line: for
+    assert v.read_text() == voice.read_text() and "rooms/sports.md: there, kept as it is" in again       # no --voice now: kept
 
 
 def test_a_person_room_gets_a_layer_of_its_own_behind_the_wall(layer, capsys):
@@ -257,14 +257,14 @@ def test_a_channel_the_bot_cannot_read_is_said_in_one_line_and_nothing_is_made(l
     before = tree(priv)
     for dry in (["--dry-run"], []):
         with pytest.raises(SystemExit, match="Yerk's bot cannot read discord:30 or may not act here; let it in and run this again"):
-            run(priv, state, "gym", "--from", f"discord:{OLD}", *dry)
+            run(priv, state, "sports", "--from", f"discord:{OLD}", *dry)
     assert fake.sent() == [] and tree(priv) == before and fake.calls == [("logs", str(OLD), None)] * 2   # read first, then nothing
 
 
 def test_since_keeps_the_days_from_then(layer, capsys):
     priv, state, fake = layer
     fake.msgs[:] = [message(i, OWNER, f"day {i}", at=datetime(2026, 1, 1 + i, 12, tzinfo=timezone.utc)) for i in range(5)]
-    assert run(priv, state, "gym", "--from", f"discord:{OLD}", "--since", "2026-01-03", "--dry-run") == 0
+    assert run(priv, state, "sports", "--from", f"discord:{OLD}", "--since", "2026-01-03", "--dry-run") == 0
     assert "history: 3 messages from discord:30, 3 to file" in capsys.readouterr().out
 
 

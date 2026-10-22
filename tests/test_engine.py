@@ -87,7 +87,7 @@ def test_a_plug_in_server_sees_none_of_the_daemons_environment(tmp_path, monkeyp
 
 def test_the_room_reads_its_own_sessions_folder_where_a_big_tool_output_is_saved(make, tmp_path):
     """Claude Code saves a tool output too big to return under <config dir>/projects/<the cwd as it names it>/<session>/
-    tool-results/ and refuses a Read there, outside the working folders (the #Example note says, the0). Sample item moved
+    tool-results/ and refuses a Read there, outside the working folders (the work room copy's eval, q5). The room's process
     gets that one folder as one more --add-dir, never the whole projects folder, and it exists 0700 before the start:
     Claude Code drops an --add-dir that is missing when it starts."""
     with make() as rp:
@@ -103,7 +103,7 @@ def test_the_sessions_folder_is_named_as_claude_code_names_it():
     folder it made, run live, for a working directory past 200 characters with an accent and an emoji: each UTF-16 unit
     outside [a-zA-Z0-9] a "-" (the emoji is two), the first 200, then "-" and a hash of the whole path."""
     from yerk_ai.engine import project_dir
-    assert project_dir(Path("/home/u/state-q5/rooms/example-on-yerk/work")) == "-home-u-state-q5-rooms-example-on-yerk-work"
+    assert project_dir(Path("/home/u/state-q5/rooms/work-room/work")) == "-home-u-state-q5-rooms-work-room-work"
     assert project_dir(Path("/tmp/" + "x" * 195)) == "-tmp-" + "x" * 195                       # 200: no hash yet
     long = Path("/tmp/yerk-long-cwd/café-\U0001F600/" + "z" * 230)
     assert project_dir(long) == "-tmp-yerk-long-cwd-caf-----" + "z" * 173 + "-gkig5r"
@@ -294,7 +294,7 @@ def test_the_hook_error_flag_drops_claude_codes_key_hint():
 
 
 def test_a_turn_ends_on_silence_never_on_length(make):
-    """a second, 0000-00-00 00:00, entry waits in #the-queue-for its turn and the 00 last: "part closes the case before 00 the
+    """A working turn was once cut at 15 minutes, and the owner wanted no such limit on a turn that
     is still working. The timeout is a silence window: a turn still streaming runs past it; a silent one ends."""
     with make() as rp:
         rp.start()

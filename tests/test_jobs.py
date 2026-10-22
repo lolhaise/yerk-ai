@@ -658,7 +658,7 @@ def test_a_room_with_people_keeps_its_own_notes_and_every_other_job_stays_the_ow
     one more line for, the check while a second entry, waits in the queue for its turn and the last; part closes
     rooms and `yerk schedule` keep every form."""
     from test_room_scope import install
-    y, mom = install(tmp_path, family=True), "Alex"
+    y, mom = install(tmp_path, family=True), "family-room"
     y.jobs.units = sd = FakeSystemd(tmp_path / "units")
     path = y.jobs.path
 
@@ -697,7 +697,7 @@ def test_a_room_that_is_not_the_owners_keeps_room_notes_at_most_and_adds_one_per
     model turn on the owner's account and a post in her channel. [jobs] room_notes (20) and room_note_minutes (5) cap
     it; the refusal says the cap and when the next one fits; a refused add does not count; the owner's rooms have none."""
     from test_room_scope import install
-    y, mom = install(tmp_path, family=True), "Alex"
+    y, mom = install(tmp_path, family=True), "family-room"
     y.jobs.units = FakeSystemd(tmp_path / "units")
     y.jobs.conf.update(room_note_burst=1)                                            # one per window, as it was
 
@@ -730,7 +730,7 @@ def test_a_room_with_people_adds_a_reminder_its_check_and_a_watch_in_one_turn(tm
     check), and the room promised it for the person's next turn. [jobs] room_note_burst (3) notes go in one room_note_minutes
     window; the fourth waits for the oldest to leave it, a refused add does not count, and the window still bounds a loop."""
     from test_room_scope import install
-    y, mom = install(tmp_path, family=True), "Alex"
+    y, mom = install(tmp_path, family=True), "family-room"
     y.jobs.units = FakeSystemd(tmp_path / "units")
 
     def ask(name):
@@ -756,7 +756,7 @@ def test_a_notes_message_over_note_chars_is_refused_with_the_cap_and_never_cut(t
     [jobs] note_chars (600) characters in every room and from `yerk schedule`; a longer one is refused with the cap in
     the line and nothing is written."""
     from test_room_scope import install
-    y, mom = install(tmp_path, family=True), "Alex"
+    y, mom = install(tmp_path, family=True), "family-room"
     y.jobs.units = sd = FakeSystemd(tmp_path / "units")
     note = {"action": "add", "kind": "note", "when": "2099-01-03 10:00"}
     long = asyncio.run(y.tool_schedule(mom, {**note, "name": "long", "what": "x" * 601}))
@@ -785,7 +785,7 @@ def test_the_schedule_tool_sets_a_note_by_default_in_a_room_that_is_not_the_owne
     from test_room_scope import install
 
     from yerk_ai import mcp_server
-    y, mom = install(tmp_path, family=True), "Alex"
+    y, mom = install(tmp_path, family=True), "family-room"
     y.jobs.units = FakeSystemd(tmp_path / "units")
     server = mcp_server.build(y, y.port, y.hook)
     for room, kind in ((mom, "note"), ("example-room", "agent")):

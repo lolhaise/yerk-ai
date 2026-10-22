@@ -157,7 +157,7 @@ def test_a_reply_says_which_message_it_answers(env):
 
 
 def test_a_reply_in_a_watched_channel_keeps_that_it_is_one_and_drops_the_other_sides_words(tmp_path):
-    """In the queue, for its: turn and the last (#part-closes, the Case Before the next) run starts
+    """The blind shadow, for replies: in the watched channel (#work, where another assistant answers too) the owner's
     reply to the other side's message says it is a reply and never quotes it, in the turn, in its edit and in the
     day's log; a reply there to the owner's own message or a test sender's still quotes it, and the room's own
     channel quotes whoever it answers, as before."""

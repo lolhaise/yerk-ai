@@ -321,8 +321,8 @@ def on_disk(*roots, skip=()):
 
 
 def test_a_busy_month_stays_under_one_fixed_bound_from_day_3_to_day_30(tmp_path):
-    """back as plain text (0000-00-00 00:00: "with one more line for the check while a second entry waits in the queue for its turn
-    the 0"): 00 sample item moved to the next step and the, test reads #it-back-as plain text with one more line, for
+    """The owner's pass mark (a room should run every day for a month and be as clean as it was on
+    day 1): 30 days of a busy room at the shipped defaults, the shape a work room had that day at full size, in
     step and: 0 the test reads 00 It back as plain text with one, 000 More line for the check while a 00 (second Entry
     page cuts), 2 sends of 10.6 MB, 40 MB of the person's attachments, 40 KB of stream log and 4 KB assembled, a 10 MB
     transcript of a new session each day, a finished worker every third day, 1,610 ledger rows; the sweep at 04:20 the
