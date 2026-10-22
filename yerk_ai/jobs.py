@@ -1246,11 +1246,11 @@ class Jobs:
                 what = "one note" if burst == 1 else f"{burst} notes"
                 wait = recent[len(recent) - burst] + every * 60 - now
                 return {"ok": False, "line": words.NOTES_WAIT.format(what=what, every=f"{every:g}", wait=words.span(wait))}
-            self.added[room] = recent + [now]           # taken while the add runs, so two at once cannot both pass
+            self.added[room] = recent + [now]           # taken while the add runs, so two at once cannot both take the last place
         if action == "remove" or add:
             out = await self.handle(room, {**req, "name": name, "kind": kind})
             if add and not out.get("ok"):
-                self.added[room] = last                 # a refused add does not count
+                self.added[room] = [t for t in self.added[room] if t != now]   # a refused add gives back its own place only
             return {k: v for k, v in out.items() if k != "diff"}
         log.warning("jobs: room %s is not an owner room; its %s call was refused (its own notes only)", room, action)
         return {"ok": False, "line": words.JOBS_OWNER_ONLY}

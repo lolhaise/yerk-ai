@@ -743,6 +743,13 @@ def test_a_room_with_people_adds_a_reminder_its_check_and_a_watch_in_one_turn(tm
     y.jobs.added[mom] = [y.jobs.added[mom][0] - 301] + y.jobs.added[mom][1:]          # the oldest leaves the window
     assert ask("fourth")["ok"] and not ask("fifth")["ok"]
 
+    async def at_once(*adds):                                                         # one turn's calls in parallel
+        return await asyncio.gather(*(y.tool_schedule(mom, {"action": "add", "kind": "note", "name": n, "when": w,
+                                                            "what": "Remind them to book the dinner."}) for n, w in adds))
+    y.jobs.added[mom] = []
+    bad, good = asyncio.run(at_once(("bad", "soon"), ("sixth", "2099-01-03 10:00")))
+    assert not bad["ok"] and good["ok"] and len(y.jobs.added[mom]) == 1              # the refused add gives back its own place only
+
 
 def test_a_notes_message_over_note_chars_is_refused_with_the_cap_and_never_cut(tmp_path):
     """Cold read A2: a note's text had no ceiling anywhere, and the tell cuts nothing. A note's message is at most
