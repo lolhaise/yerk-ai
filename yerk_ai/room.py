@@ -24,13 +24,15 @@ adapter's event loop.
   key. A turn that was sent an image and never read it is bounced once at Stop, naming the file;
   a working turn answering a person that ends with nothing visible in the room bounces once,
   naming what is owed (nothing that already landed under the turn's key is sent again); a final
-  text that only reports a filing (`remember`, `schedule`, `hold`, `settings`) bounces once (stub).
+  text that only reports a filing (`remember`, `schedule`, `hold`, `settings`) bounces once (stub); a fenced block the
+  room posted on an earlier day is turned back once, in `send` before it posts and in the final text at Stop (paste).
 - A message from the harness itself (sender `yerk`: a worker's relay) runs like any other but is
   not a human message for the clock line or the idle rule; it may cap its reply and name a line the
   reply must carry, and it hears how its turn ended.
 """
 from __future__ import annotations
 
+import calendar
 import contextlib
 import json
 import logging
@@ -42,7 +44,7 @@ from collections import deque
 from dataclasses import dataclass, field, replace
 from typing import Any, Callable, Protocol
 
-from . import transcribe, words
+from . import memory, transcribe, words
 from .accounts import Account, Cooldowns, pick
 from .card import Card
 from .config import flag, override, pinned, write_private
@@ -144,6 +146,7 @@ class Room:
         self.silent_bounced = False               # the silent-ending check bounced this result already
         self.stub_bounced = False                 # the stub check bounced this result already
         self.board_bounced = False                # the board check bounced this result already
+        self.paste_bounced = False                # the paste check turned back a send or a final of this result already
         self.evidence = Evidence(on_call=self._ledger_call)   # every tool call of the turn and what it read
         self.answering: set[str] = set()                      # ids of the batch the turn answers
         self.stale = False                        # the settings changed mid-turn: the process closes at its end
@@ -350,13 +353,30 @@ class Room:
         found = f"{n} line{'s' * (n != 1)} with a checklist mark, the colour key or what unblocks it"
         return (words.BOARD.format(found=found), found) if n else None
 
+    def paste_check(self, active: bool, text: str | None,
+                    earlier: Callable[[], dict[str, tuple[str, str]]]) -> tuple[str, str] | None:
+        """The paste rule, no judge, in the `send` tool before it posts and as the Stop hook's fifth rule, one flag for both
+        (2026-10-22: a block posted the evening before went out again through `send`, word for word, its "tomorrow" and its
+        times that day's): a fenced block that memory.fenced() makes equal to one `earlier` holds (the daemon's view of the
+        room's earlier days, asked for only when the text holds three backticks) is turned back once, naming when it first
+        went out: (the bounce, what was found), or None."""
+        if active or not text or self.paste_bounced or memory.FENCE not in text:
+            return None
+        view = earlier()
+        if (hit := next((b for b in memory.fenced(text) if b in view), None)) is None:
+            return None
+        self.paste_bounced = True
+        day, at = view[hit]
+        when, n = f"{calendar.month_abbr[int(day[5:7])]} {int(day[8:10])} at {at[:5]}", hit.count(" / ") + 1
+        return words.PASTE.format(when=when), words.PASTE_FOUND.format(n=n, s="s" * (n != 1), when=when)
+
     def _new_card(self, note: str = "") -> None:
         privacy = str(self.conf.get("privacy", "owner"))
         self.card = Card(thinking=flag(self.conf.get("thinking_panel")) and privacy == "owner",
                          people=self.name if self.conf.get("people") else "")
         self.card.narration = note                # a harness line from the first post, until the model's first words
         self.turn_key, self.bounced, self.silent_bounced, self.stub_bounced = uuid.uuid4().hex[:12], False, False, False
-        self.board_bounced = False
+        self.board_bounced = self.paste_bounced = False
         self.channel.open_card(self.name, self.card.render())   # state first from the first post
 
     def meta_for(self, prompt: str) -> tuple[str, float | None]:

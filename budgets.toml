@@ -4,7 +4,7 @@
 # and [code] at the end, which counts lines. The budget test fails the build when a part or a total passes its number here.
 
 [session_start]
-total = 84550
+total = 84750
 
 # Load order, most stable first, so the cached start of the prompt survives.
 # The first five parts are Claude Code's own (its default prompt, the built-in tools
@@ -32,8 +32,10 @@ skills = 0
 # 2026-10-22: the voice_note line (when a room makes a voice note: only asked, since each one costs) took the mechanics to
 # 3,377, so 3,400; no part could pay, since the six rooms' largest persona measured 11,704, room voice 5,392 and pinned
 # memory 3,854 that day, so the total rose by the 200.
+# 2026-10-22: the paste line (a fenced block posted on an earlier day is turned back once, PR paste-check) took the
+# mechanics to 3,532, so 3,600; no part could pay on PR 88's three measurements of the day, so the total rose by the 200.
 [session_start.appended]
-mechanics = 3400
+mechanics = 3600
 persona = 11800
 rulebook = 10850
 room_voice = 5500
@@ -146,4 +148,8 @@ duplicated_topics = 0
 # assembly, the probe and the waveform), Discord's voice message path in send_file (45), the daemon's tool and the spend
 # the next run starts the (00), example note (00), says The sample (00) item moved to the next (0) (step and
 
-lines = 17412
+# 2026-10-22: paste-check raised it by 118: the fenced-block view (memory.py, 42: fenced(), earlier_blocks() and
+# room_lines' `first`), the daemon's view kept for the day, its call off the loop, the send refusal and the Stop
+# hook's fifth rule (33), Room.paste_check and its flag (20), the card's row for a refused send (18) and the words (5),
+# not folded to fit.
+lines = 17530

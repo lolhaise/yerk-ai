@@ -8,6 +8,30 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-22
 
+### paste-check (#89)
+
+- A room no longer posts yesterday's block as today's: on 2026-10-22 a room sent again, through `send` and word for
+  word, a fenced plan it had posted the evening before, its "tomorrow" and its times that day's. A fenced block
+  equal to one the same room posted on an earlier day of the last 14 (each line stripped, blank lines dropped, runs of
+  spaces and tabs made one, the fence's language tag left out: the day log's own shape) is turned back once per result,
+  in two places with one set of words and one flag: the `send` tool refuses it before it posts, and the Stop hook bounces
+  a final holding it (its fifth rule). The words name the day and time the block first went out and ask for a
+  line-by-line re-read against today (relative dates, clock times, who meets whom and when) or one plain line on why
+  nothing changed; the room's next send in that result goes out whatever it holds. A block posted again the same day
+  never bounces, and a send to another room is compared with that room's posts, where it is filed.
+- Each bounce is a `paste` row in the shadow ledger, counted in the morning diff as `stub` and `board` are; the row says
+  how many lines the block has and when it first went out, never the block. The card's row for a refused send reads
+  not done (a send's result that says `"ok": false` read done before, since Claude Code never marks an MCP answer an error).
+- What it costs: a text with no three backticks costs one substring check. The first fenced text of the day in a room
+  reads that room's day files of the 13 days before today, off the event loop, and the view is kept until the date
+  changes; a restart builds it again from the logs. Replayed over the live day logs of the last 14 days: 62 fenced
+  posts by the rooms, 1 turned back, that morning's, naming the post of the evening before.
+- A block over about 1,950 characters is posted, and so filed, in parts, so it is compared part by part: one re-sent
+  whole is not matched.
+
+**Upgrading:** budgets.toml: mechanics 3,400 to 3,600 for the new line and the session-start total 84,550 to 84,750
+(no part could pay, on #88's measurements of the day), [code] lines 17,530; nothing to do.
+
 ### voice-note (#88)
 
 - A room answers with a voice note. When the owner asks for one or to say something out loud (a new mechanics line:

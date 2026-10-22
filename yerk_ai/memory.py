@@ -819,16 +819,16 @@ def window(s: Settings, now: datetime | None = None, days: int = WINDOW_DAYS) ->
 
 
 def room_lines(s: Settings, room: str, now: datetime | None = None,
-               rid: str | None = None, owner: bool = True) -> Iterator[tuple[str, int, Line, list[str]]]:
+               rid: str | None = None, owner: bool = True, first: int = 0) -> Iterator[tuple[str, int, Line, list[str]]]:
     """(day, line number, the parsed line, the lines of its file) for this room's lines of the last
-    14 days, newest day first: by the room's stable id (`rid`, default its name), and, for an owner
+    14 days from `first` days back (1: yesterday on), newest day first: by the room's stable id (`rid`, default its name), and, for an owner
     room (`owner`, the view every caller but the daemon's non-owner rooms has), by name on a line
     written before ids. A room that is not an owner room gets only its id's lines of class room or
     shared, as read_memory shows them: a former room's name is not its history (R2). The room's own day
     files are small, so they are read straight from disk: fresher than the index (which trails by a
     pass) and a few milliseconds per message."""
     rid = rid or room
-    for day in window(s, now):
+    for day in window(s, now)[first:]:
         f = s.daily / f"{day}.md"
         if not f.is_file():
             continue
@@ -908,6 +908,48 @@ def room_pack(s: Settings, room: str, budget: int = 6000, now: datetime | None =
     if shown < len(items):
         out.append(f"({len(items) - shown} older items not shown; recall or read_memory reaches them)")
     return ("\n".join(out), shown) if items else ("", 0)
+
+
+# the paste rule (Room.paste_check; 2026-10-22: a block posted the evening before went out again word for word, its dates
+# and times that day's): a room's fenced blocks in the day log's own shape, and the ones it posted on an earlier day
+FENCE = "```"
+TAG = re.compile(r"[\w+#.-]*")             # a fence's language tag ("py", "c++"), left out of the block
+
+
+def fenced(text: str) -> list[str]:
+    """The fenced blocks of a message or of its day-log line alike, as one_line files them (each line stripped, blank lines
+    dropped, joined with " / "), each line's runs of spaces and tabs made one and the fence's language tag left out. A line
+    opening with three backticks opens a block; one opening or ending with them closes it; an unclosed block runs to the end."""
+    if FENCE not in text:
+        return []
+    out: list[str] = []
+    block: list[str] | None = None
+    for seg in (" ".join(x.split()) for x in one_line(text).split(" / ")):
+        if block is None and seg.startswith(FENCE):
+            rest = seg[3:].strip()
+            if rest.endswith(FENCE) and rest[:-3].strip():         # ```a one-line block```
+                out.append(rest[:-3].strip())
+            elif not rest.endswith(FENCE):
+                block = [] if TAG.fullmatch(rest) else [rest]
+        elif block is not None and (seg.startswith(FENCE) or seg.endswith(FENCE)):
+            block += [seg[:-3].strip()] if seg.endswith(FENCE) and seg[:-3].strip() and not seg.startswith(FENCE) else []
+            out, block = out + ([" / ".join(block)] if block else []), None
+        elif block is not None and seg:
+            block.append(seg)
+    return out + ([" / ".join(block)] if block else [])
+
+
+def earlier_blocks(s: Settings, room: str, now: datetime | None = None, rid: str | None = None,
+                   owner: bool = True) -> dict[str, tuple[str, str]]:
+    """The paste rule's view of a room: each fenced block the room itself posted (a `yerk` line: a `send`, a final, a
+    caption) on an earlier day of the last WINDOW_DAYS, by fenced()'s shape, with the day and time it first went out.
+    Today's file is never read, since a block posted again the same day is not a stale paste."""
+    seen: dict[str, tuple[str, str]] = {}
+    for day, _, ln, _ in room_lines(s, room, now, rid, owner, first=1):
+        for b in fenced(ln.body) if ln.role == "yerk" else []:
+            if b not in seen or (day, ln.time) < seen[b]:
+                seen[b] = (day, ln.time)
+    return seen
 
 
 def migrate_daylogs(daily: Path, tz: tzinfo, rooms: dict[str, tuple[str, str]], backup: Path) -> dict[str, Any]:

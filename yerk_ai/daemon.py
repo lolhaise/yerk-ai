@@ -198,6 +198,8 @@ class Yerkd:
         self.channels: dict[str, Any] = {}       # room -> its channel adapter
         self.http: Any = None
         self.sends = 0
+        self.pastes: dict[str, tuple[str, dict[str, tuple[str, str]]]] = {}   # room -> (today, its earlier days' blocks)
+        self.paste_lock = threading.Lock()
         # a worker's unit never sees the install's secret or any room's folder (each room's token, settings
         # and override): both exist before the first unit, since a hidden path that is missing fails its start
         (state / "rooms").mkdir(parents=True, exist_ok=True)
@@ -363,6 +365,26 @@ class Yerkd:
         roots = [context.layer_dir(self.private, self.room_confs[room]), (self.state / "rooms" / room / "work").resolve()]
         return any(p.is_relative_to(r) for r in roots) and not any(p.is_relative_to(d) for d in folders) and p not in files
 
+    def earlier_blocks(self, room: str) -> dict[str, tuple[str, str]]:
+        """The paste rule's view of `room` (memory.earlier_blocks, read as the room's own lines are for its recall pack): built on
+        the first fenced text that asks for it each day and kept until the date changes, since a block posted today never
+        enters it; a restart builds it again from the day logs. Called off the loop."""
+        today = memory.window(self.memory, days=1)[0]
+        with self.paste_lock:
+            if (kept := self.pastes.get(room)) and kept[0] == today:
+                return kept[1]
+        view = memory.earlier_blocks(self.memory, room, rid=room_id(room, self.room_confs.get(room, {})), owner=self.owner(room))
+        with self.paste_lock:
+            self.pastes[room] = (today, view)
+        return view
+
+    async def paste(self, room: Room, text: str, active: bool, at: str) -> tuple[str, str] | None:
+        """The paste rule for a room's text bound for `at` (Room.paste_check), off the loop since its first call of the day reads
+        the day logs; a text with no three backticks never leaves this line."""
+        if memory.FENCE not in text:
+            return None
+        return await asyncio.to_thread(room.paste_check, active, text, lambda: self.earlier_blocks(at))
+
     async def tool_send(self, room: str, text: str, file: str, caller: str) -> dict[str, Any]:
         if caller in self.rooms and not self.owner(caller) and room != caller:     # a room that is not the owner's posts to itself only
             return {"ok": False, "error": f"room {caller} posts to itself only; it is not one of the owner's rooms"}
@@ -375,6 +397,12 @@ class Yerkd:
             await ch.notify(room, f"{words.NOT_DONE} {words.NOT_SENT.format(name=Path(file).name, why=words.file_why('outside'))}")
             return {"ok": False, "error": f"{file} is outside this room's folders; only files from them can be sent; " "the room was told"}
         src = self.rooms.get(caller) or self.rooms[room]
+        if caller in self.rooms and text and (stale := await self.paste(src, text, False, room)):   # filed under `room`
+            bounce, found = stale             # the Stop rule's words, flag and shadow row: the room's next send goes out
+            self.ledger.shadow(t=round(time.time(), 3), room=caller, session_id=src.rp.session_id if src.rp else "",
+                               turn=src.turn_key, rule="paste", detail=found, reply_chars=len(text))
+            log.info("send: %s -> %s turned back once: a fenced block posted on an earlier day (%s)", caller, room, found)
+            return {"ok": False, "error": bounce}
         self.sends += 1
         with src.lock:                        # in a turn: its key and the messages it answers
             turn = src.turn_key if src.busy and src.turn_key else f"x{uuid.uuid4().hex[:11]}"
@@ -798,6 +826,11 @@ class Yerkd:
                     self.ledger.shadow(t=round(time.time(), 3), room=name, session_id=sid, turn=room.turn_key, rule="board",
                                        detail=found, reply_chars=len(str(said)))
                     log.info("room %s: Stop bounced once: a status board in a room with people (%s)", name, found)
+                elif said and (paste := await self.paste(room, str(said), active, name)):
+                    reason, found = paste             # the send tool's words and flag: one bounce per result in either place
+                    self.ledger.shadow(t=round(time.time(), 3), room=name, session_id=sid, turn=room.turn_key, rule="paste",
+                                       detail=found, reply_chars=len(str(said)))
+                    log.info("room %s: Stop bounced once: a fenced block posted on an earlier day (%s)", name, found)
             if room and name:
                 try:
                     await asyncio.to_thread(self.shadow_stop, name, room, str(payload.get("last_assistant_message") or ""), sid)

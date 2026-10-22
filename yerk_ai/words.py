@@ -150,6 +150,11 @@ BOARD_LINE = re.compile(r"^[\s>*-]*(?:☑|☐|⛔|🟦|🟨)|\bunblocks?:|🟦 m
 BOARD = ("This room has people, and your final message is the owner rooms' status board ({found}). Say where things "
          "stand in two or three plain sentences, with no checklist marks, colour key, quote rails or what unblocks it, "
          "and write that as your final message now.")
+# the paste rule, in `send` and at Stop alike (2026-10-22: a block posted the evening before went out again word for word)
+PASTE = ("Not posted: your message holds a fenced block this room already posted on {when}, word for word, and its dates, "
+         "times and plans were that day's. Re-read it line by line against today (relative dates, clock times, who meets "
+         "whom and when) and write it as it stands now, or say in one plain line why nothing in it changed.")
+PASTE_FOUND = "a block of {n} line{s} first posted {when}"     # the shadow row's detail: never the block itself
 WORKER_OWN_ROOM = "a room starts workers for itself only, not for {room}"
 GONE, STRAY, NONE_RUNNING = "gone, no result", "unknown worker {id} running", "workers: none running"
 
