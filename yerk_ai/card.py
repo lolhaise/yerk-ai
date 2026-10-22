@@ -4,6 +4,9 @@ start of the summary, then "..."), then one row per tool call saying what the st
 (words.STEP), marked done or not done by its result, two or more failures in a row folded into one. Every
 line holds to phone width (words.PHONE); the newest rows win. The room swaps the card for the reply at the
 end, or edits it to say what was owed when a turn ends with nothing to show. (Ideas from OpenClaw's cards.)
+Waits in the queue for its turn and: the last part closes the (case before the next run starts) the example note
+count, never a step'the example, note says-the sample item moved to's narration (2026-10-21: a person's card listed
+the steps of a file build; the owner: "The test reads it back as").
 """
 from __future__ import annotations
 
@@ -99,8 +102,10 @@ class Row:
 
 
 class Card:
-    def __init__(self, kind: str = "turn", thinking: bool = False):
+    def __init__(self, kind: str = "turn", thinking: bool = False, people: str = ""):
         self.kind, self.thinking_on = kind, thinking
+        self.people = people                  # a room with people: its name, and the card's shape is _people()
+        self.holding = ""                     # that room's newest holding line
         self.narration = ""
         self.text = ""                        # the text block streaming now
         self.thinking = ""
@@ -120,6 +125,7 @@ class Card:
                 if c.get("type") == "tool_use":
                     row = self._row(str(c.get("id")), str(c.get("name")))
                     row.text = step(row.name, c.get("input") or {}) or row.text
+                    self._said(row.name, c.get("input") or {})
         elif kind == "user":
             content = (ev.get("message") or {}).get("content")
             for c in content if isinstance(content, list) else []:
@@ -148,7 +154,7 @@ class Card:
             self.partial[i] = ""
         elif t == "content_block_delta" and delta.get("type") == "text_delta":
             self.text += str(delta.get("text") or "")
-            if (line := next((x for x in self.text.splitlines() if x.strip()), "")):
+            if not self.people and (line := next((x for x in self.text.splitlines() if x.strip()), "")):
                 self.narration = line
         elif t == "content_block_delta" and delta.get("type") == "thinking_delta":
             self.thinking += str(delta.get("thinking") or "")
@@ -162,8 +168,18 @@ class Card:
                 args = {}
             if isinstance(args, dict) and not row.text:
                 row.text = step(row.name, args)
+            if isinstance(args, dict):
+                self._said(row.name, args)
+
+    def _said(self, name: str, args: dict[str, Any]) -> None:
+        """A room with people: a text send to itself (a room with people posts to itself only) is its holding line."""
+        if self.people and tool_name(name) == "send" and str(args.get("room") or "") == self.people and not args.get("file"):
+            if said := next((x for x in str(args.get("text") or "").splitlines() if x.strip()), ""):
+                self.holding = said
 
     def render(self, head: str | None = None) -> str:
+        if self.people:
+            return self._people(head)
         lines = [head or words.line(f"{RUNNING} {self.narration or START}")]
         whole = self.thinking_at is None or len(self.thinking) >= THINKING_MAX   # never a fragment of a summary
         if self.thinking_on and self.thinking.strip() and whole:
@@ -184,6 +200,15 @@ class Card:
             lines.append(words.SUB + words.EARLIER.format(n=len(rows) - ROWS_SHOWN))
         fold = words.line(f"{FAILED} {words.ANOTHER_WAY}", ROW_MAX)
         return "\n".join(lines + [r.line() if r else fold for r in rows[-ROWS_SHOWN:]])
+
+    def _people(self, head: str | None) -> str:
+        """A room with people: its newest holding line, else the harness line or "working on it", in two phone lines at
+        most, then the step count once a step has run (or `head`, an owed card's, then the count)."""
+        said = " ".join((self.holding or self.narration or START).split())
+        cut = said.rfind(" ", 0, words.PHONE - 2) if words.width(f"{RUNNING} {said}") > words.PHONE else -1
+        first, rest = (said[:cut], said[cut + 1:]) if cut > 0 else (said, "")
+        lines = [head] if head else [words.line(f"{RUNNING} {first}")] + ([words.line(rest)] if rest else [])
+        return "\n".join(lines + ([words.SUB + words.STEP_N.format(n=len(self.rows))] if self.rows else []))
 
     def owed(self, why: str, asked: str) -> str:
         """The card of a turn that ends with nothing visible: not answered, why in plain words, what
