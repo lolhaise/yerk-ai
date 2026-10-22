@@ -23,6 +23,9 @@ turn ran. A question, a hedge or a proposal ("would", "could", "might", "I think
 A fifth, the stance rule (claim 3), ledgers each reply to the owner's pushback: held, conceded or folded.
 A sixth, the sheet rule, ledgers once a turn that sent a document or pasted a block with no claims
 sheet written or named in the turn (check_sheet).
+A seventh, the person rule, ledgers a sentence telling what someone said, wants, knows, decided or asked, or where they
+were, from a turn with no reading call (check_person); an eighth, the quote rule, a quoted span given as someone's or a
+document's words that nothing the turn read, was given or posted earlier carries (check_quote).
 """
 from __future__ import annotations
 
@@ -334,3 +337,63 @@ def check_sheet(reply: str, ev: Evidence) -> list[tuple[str, str]]:
         return []
     what = " and ".join(x for x in (f"sent {', '.join(sent)}" if sent else "", "pasted a block" if paste else "") if x)
     return [("sheet", f"{what} with no claims sheet written this turn")]
+
+
+# the person rule: what someone said, wants, knows, decided or asked, or where they were, told in a turn that made no
+# call that reads (any call outside NO_READ, the stance rule's test: a recall, read_memory, Read, Grep, web or shell
+# read). The prompt hook's recall block is not a call: the replay's misses of 2026-10-21 (who said to go ahead, where
+# the owner was) all had one. The owner ("you") is a person; a question, a hedge or a proposal is no claim. Logs only.
+PERSON = re.compile(r"\b([Yy]ou|[Hh]e|[Ss]he|[A-Z][a-z]+)\s+(?:(?:never|already|actually|just|also|still|even)\s+)?"
+                    r"(?:said|says|told|tells|asked|asks|decided|wants?|wanted|knows?|knew|went\s+to|(?:was|were)\s+(?:on|in|at)"
+                    r"|(?:does|did|do)(?:n['’]?t|\s+not)\s+(?:want|know|say|ask|decide))\b")
+NOT_PEOPLE = frozenset("the this that these those it its there here what which who whoever nobody everyone everybody someone "
+                       "somebody anyone anybody one each both all most some none nothing something everything anything we they "
+                       "i then so and but or if when once since as yes yeah fair right good ok okay also still just even now".split())
+
+
+def check_person(reply: str, ev: Evidence) -> list[tuple[str, str]]:
+    """The person rule in shadow: ("person", detail) for each such sentence, with the name and the tools line."""
+    with ev.lock:
+        calls = list(ev.calls.values())
+    if any(c["tool"].rsplit("__", 1)[-1] not in NO_READ for c in calls):
+        return []
+    out = []
+    for s in sentences(reply):
+        names = [m.group(1) for m in PERSON.finditer(s) if m.group(1).lower() not in NOT_PEOPLE and not VERSION.search(m.group(1))]
+        if names and not s.endswith("?") and not HEDGE.search(s):
+            out.append(("person", f"{names[0]}: \"{s[:300]}\"; tools this turn: {tools_line(calls)}"))
+    return out
+
+
+# the quote rule: a quoted span of three or more words that its lead-in gives as someone's or a document's words (said,
+# wrote, the note says, her message, the email) and that no read, prompt or earlier reply of the session carries, looked
+# up in the evidence the way `figure` is. The lead-in is the clause before the quote, cut at an earlier quote; its cue
+# ends within three words of the quote, or the clause ends in a colon ("wrote a note right on that detail:"). Logs only.
+QUOTED = re.compile(r"[\"“]([^\"“”\n]{3,400})[\"”]")
+LEAD = re.compile(r"(?:\b(?:[Ss]aid|says|saying|wrote|writes|told|tells|asked|replied|answered|put\s+it|quoted?|reads)"
+                  r"|\b(?:[Hh]er|[Hh]is|[Tt]heir|[Yy]our|[Mm]y|[Oo]ur|[Tt]he|[Tt]hat|[Tt]his|[A-Z][a-z]+['’]s)\s+(?:own\s+)?"
+                  r"(?:note|notes|message|email|e-mail|comment|text|ticket|page|doc|document|post|reply|memo|letter|words))\b")
+INTRO = re.compile(LEAD.pattern + r"\W*(?:\w+\W+){0,3}$")
+SAID_AFTER = re.compile(r"^\W{0,3}(?:you|he|she|they|[A-Z][a-z]+)\s+(?:said|says|wrote|writes|asked|told)\b")
+
+
+def flat(text: str) -> str:
+    """Words only, lower case, apostrophes dropped: the form a quote and the evidence are compared in."""
+    return " " + " ".join(re.findall(r"[\w%$]+", text.lower().replace("'", "").replace("’", ""))) + " "
+
+
+def check_quote(reply: str, ev: Evidence, said: str = "") -> list[tuple[str, str]]:
+    """The quote rule in shadow: ("quote", detail) for each such span with a part (split at an ellipsis) that the turn's
+    reads and prompts and the session's earlier replies, `said`, do not hold; detail: the span and its lead-in."""
+    out, pool = [], ""
+    for m in QUOTED.finditer(reply):
+        span, lead = m.group(1).strip(), re.split(r"[.!?]\s|\n|[\"“”]", reply[max(0, m.start() - 80):m.start()])[-1]
+        after, lead = SAID_AFTER.match(reply[m.end():m.end() + 60]), lead.strip()
+        introduced = INTRO.search(lead) or (LEAD.search(lead) and lead.rstrip(" *_").endswith(":"))
+        if len(re.findall(r"\w+", span)) < 3 or not (introduced or after):
+            continue
+        pool = pool or flat(ev.read_text() + "\n" + said)
+        if any(flat(part) not in pool for part in re.split(r"\.\.\.|…", span) if flat(part).strip()):
+            lead = lead if LEAD.search(lead) else str(after.group(0) if after else "").strip(" ,.")
+            out.append(("quote", f"\"{span[:200]}\" after \"{lead[-80:]}\"; no read, prompt or earlier reply of the session carries it"))
+    return out
