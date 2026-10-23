@@ -21,7 +21,11 @@ def cmd_map(a: argparse.Namespace) -> int:
     b = budgets()
     start = context.session_start(priv, rs[a.room], b, rules=memory.settings(priv, state_dir(a.state)).root / memory.RULES)
     now = datetime.now(timezone.utc)
-    msg = context.per_message(a.room, rs[a.room], "owner", now, now - timedelta(minutes=27), b)
+    from . import location
+    from .config import load_toml
+    conf = load_toml(priv / "yerkd.toml") if (priv / "yerkd.toml").is_file() else {}
+    msg = context.per_message(a.room, rs[a.room], "owner", now, now - timedelta(minutes=27), b,
+                              location.part(location.settings(conf.get("location"), priv), rs[a.room], now))
     hit = []
     if str(rs[a.room].get("privacy", "owner")) == "owner":         # the taste part: an owner room's, from its layer's file
         cap, path = int(b["per_message"]["on_hit"]["taste"]), taste.kept(priv, rs[a.room])
@@ -382,6 +386,28 @@ def cmd_retention(a: argparse.Namespace) -> int:
     return retention.main(private_dir(a.private), state_dir(a.state), a.dry_run)
 
 
+def cmd_location(a: argparse.Namespace) -> int:
+    """`yerk location day [DATE]`: the day's places as one line in its day log (location.py), an earlier run's line replaced;
+    prints the line, or why there is none; exit 1 with no [location] table, no located place in its places table or no readable fixes file."""
+    from datetime import date
+    from . import location
+    from .config import load_toml
+    priv, state = private_dir(a.private), state_dir(a.state)
+    conf = load_toml(priv / "yerkd.toml") if (priv / "yerkd.toml").is_file() else {}
+    if (loc := location.settings(conf.get("location"), priv)) is None or not location.places(loc.places):     # a silent night is a failure
+        print("not written: yerkd.toml has no [location] table with a file and a places table that names a place", file=sys.stderr)
+        return 1
+    s = memory.settings(priv, state, dict(conf.get("memory", {})))
+    on = date.fromisoformat(a.date) if a.date else datetime.now(s.tz).date()
+    try:
+        line = location.day(loc, s.daily, s.tz, on, a.dry_run)
+    except OSError as e:
+        print(f"not written: {loc.file.name} could not be read: {e.strerror}", file=sys.stderr)
+        return 1
+    print(line or f"nothing written: no fix at a named place on {on}")
+    return 0
+
+
 def cmd_doctor(a: argparse.Namespace) -> int:
     """The daily check and the crash repair (doctor.py): a line per finding, none when all is well; --dry-run changes nothing."""
     from . import doctor
@@ -486,6 +512,27 @@ def cmd_recall_bench(a: argparse.Namespace) -> int:
     if drop:
         print(f"RATCHET: {drop}", file=sys.stderr)
     return 2 if r["blind"] else 4 if drop else 0
+
+
+def cmd_eval(a: argparse.Namespace) -> int:
+    """`yerk eval taste` (taste_eval.py): the taste judge over the owner's complaints and the replies they accepted, phase 2
+    beside phase 1; the bar printed, never enforced (exit 0 whatever the numbers; 2 when the case file is missing)."""
+    from pathlib import Path
+
+    from . import evidence, taste_eval
+    here = private_dir(a.private) / "evals" / "taste"
+    cases, controls = (Path(x).expanduser() if x else here / name for x, name in ((a.cases, "cases.jsonl"), (a.controls, "controls.jsonl")))
+    rubric = Path(a.rubric).expanduser() if a.rubric else here / "rubric.md" if (here / "rubric.md").is_file() else evidence.TASTE_RUBRIC
+    for f in (cases, controls, rubric):
+        if not f.is_file():
+            print(f"no file at {f} (--cases, --controls and --rubric name them; else <private>/evals/taste/)", file=sys.stderr)
+            return 2
+    out = Path(a.out).expanduser() if a.out else cases.with_name("scores-taste.json")
+    lines, _ = taste_eval.run(cases, controls, rubric, Path(a.ledger).expanduser() if a.ledger else state_dir(a.state) / "ledger.sqlite",
+                              out, a.model, a.effort, a.jobs, a.cap, a.sample)
+    print("\n".join(lines))
+    print(f"every row: {out}")
+    return 0
 
 
 def cmd_abilities(a: argparse.Namespace) -> int:
@@ -696,9 +743,27 @@ def main(argv: list[str] | None = None) -> int:
     rb.add_argument("--questions", help="question file (default: [memory] bench, else <private>/evals/recall-questions.json)")
     rb.add_argument("-k", type=int, default=6, help="results per question (default 6, the recall tool's default)")
     rb.add_argument("--json", action="store_true", help="the run as JSON, per-question ranks included")
+    ev = sub.add_parser("eval", help="taste: the taste judge replayed over the owner's complaints and the replies they accepted, "
+                        "with what each turn read; precision, recall, false alarms per verdict, phase 1 beside (the bar printed, not enforced)")
+    ev.add_argument("what", choices=["taste"])
+    ev.add_argument("--cases", help="the complaints (default: <private>/evals/taste/cases.jsonl)")
+    ev.add_argument("--controls", help="the accepted replies (default: <private>/evals/taste/controls.jsonl)")
+    ev.add_argument("--rubric", help="the judge's system prompt (default: <private>/evals/taste/rubric.md, else the package's)")
+    ev.add_argument("--ledger", help="where each turn's reads come from, read only (default: <state>/ledger.sqlite)")
+    ev.add_argument("--out", help="every row and the numbers as JSON (default: scores-taste.json beside the cases)")
+    ev.add_argument("--model", default="", help="the judge's model (default: the claude binary's own)")
+    ev.add_argument("--effort", default="medium", help="the judge's effort (default: medium)")
+    ev.add_argument("--jobs", type=int, default=4, help="judge calls in flight at once")
+    ev.add_argument("--cap", type=float, default=20.0, help="seconds a judge call may take (default 20)")
+    ev.add_argument("--sample", type=int, default=0, help="a stratified N cases (by verdict) and N controls (by room), not all")
     ab = sub.add_parser("abilities", help="every ability and its state on this install, one line each")
     ex = sub.add_parser("explain", help="one ability (what it does, needs and costs, its free path, its state here) or one setting")
     ex.add_argument("ability")
+    lc = sub.add_parser("location", help="day: the day's places (yerkd.toml [location]) as one line in its day log, place by "
+                        "place with the first and last fix at each, an earlier run's line replaced; the nightly script job")
+    lc.add_argument("action", choices=["day"])
+    lc.add_argument("date", nargs="?", default="", help="the day, YYYY-MM-DD (default: today in [memory] timezone)")
+    lc.add_argument("--dry-run", action="store_true", help="print the line, write nothing")
     rt = sub.add_parser("retention", help="the daily sweep: logs, transcripts, timing rows, finished workers and rooms' scratch "
                         "past their days ([retention] in yerkd.toml) into the trash, and the trash past its days deleted")
     rt.add_argument("--dry-run", action="store_true", help="say what would move and how much, move nothing")
@@ -736,15 +801,16 @@ def main(argv: list[str] | None = None) -> int:
     dp.add_argument("ref", nargs="?", help="the commit (default: the daemon's tree's HEAD)")
     dp.add_argument("--no-tests", action="store_true", help="skip the fast tests (the card says so)")
     dp.add_argument("--unit", action="store_true", help="also move a systemd-run daemon onto units/yerkd.service")
-    for x in (ac, st, mo, rb, ab, ex, jb, sc, rt, dc, dk, cu, mm, dp, pc, fl):
+    for x in (ac, st, mo, rb, ev, ab, ex, jb, sc, lc, rt, dc, dk, cu, mm, dp, pc, fl):
         x.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else "
                        + ("the running yerkd's own, from its unit)" if x is dp else "the fake example layer)"))
         x.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
     a = p.parse_args(argv)
     return int({"map": cmd_map, "setup-room": cmd_setup_room, "room": cmd_room, "import": cmd_room, "worker": cmd_worker, "pictures": cmd_pictures, "files": cmd_files,
                 "jobs": cmd_jobs, "schedule": cmd_schedule, "accounts": cmd_accounts, "status": cmd_status, "morning": cmd_morning,
-                "recall-bench": cmd_recall_bench, "abilities": cmd_abilities, "explain": cmd_explain, "config": cmd_config,
-                "memory": cmd_memory, "deploy": cmd_deploy, "retention": cmd_retention, "doctor": cmd_doctor, "docs": cmd_docs,
+                "recall-bench": cmd_recall_bench, "eval": cmd_eval, "abilities": cmd_abilities, "explain": cmd_explain, "config": cmd_config,
+                "memory": cmd_memory, "deploy": cmd_deploy, "retention": cmd_retention, "location": cmd_location, "doctor": cmd_doctor,
+                "docs": cmd_docs,
                 "curate": cmd_curate}[a.cmd](a))
 
 

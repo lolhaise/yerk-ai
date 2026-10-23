@@ -23,13 +23,14 @@ import sys
 import threading
 import time
 import uuid
+from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Awaitable, Callable
 from zoneinfo import ZoneInfo
 
-from . import (beat, context, deploy, doctor, evidence, gates, hooks, jobs, mcp_server, memory, mentions, pictures, status, taste,
-               transcribe, voice_note, workers)
+from . import (beat, context, deploy, doctor, evidence, gates, hooks, jobs, location, mcp_server, memory, mentions, pictures, status,
+               taste, transcribe, voice_note, workers)
 from .accounts import Account, Cooldowns, from_dir, load_accounts, pick
 from .config import (EFFORTS, REPO, SHELLS, account_and_model, account_named, assistants, budgets, discord_id, flag, load_toml, models,
                      override, people, pinned, private_dir, read_secret, room_id, room_settings, rooms, state_dir, table, trusted, write_private)
@@ -168,6 +169,7 @@ class Yerkd:
         self.cooldowns = Cooldowns(state / "cooldowns.json")
         self.meters = Meters(state / "meters.json")
         self.memory = memory.settings(private, state, dict(self.conf.get("memory", {})))
+        self.location = location.settings(self.conf.get("location"), private)     # None: no room gets a place part
         me = str(self.conf.get("import", {}).get("me") or "")       # the name the owner's own words go by (decision 22: never in code)
         self.owner_names = (me,) if me and me != "me" else ()
         self.scoped = {n: self.memory.only(private, n, c["also"]) for n, c in self.room_confs.items() if "also" in c}
@@ -262,10 +264,11 @@ class Yerkd:
                         extra_args=extra, token=token, add_dirs=dirs)
 
     def cut_said(self, name: str, parts: list[context.Part]) -> None:
-        """Each part a session start sent trimmed: one machine-room notice naming the part, the room and the lines it cut (their
-        first six words; a rule file's by their job), once a day per part and its file, said by the first room to start
-        (cut-said.json in the state folder), so no budget cuts in silence (claim 8); `yerk doctor` names every room, red until
-        the part fits. Never stops the start."""
+        """Each part a session start sent with lines of its own dropped to fit its key (whole lines, never a blank, a `[from`
+        line or the pack's own oldest items, which it leaves out by construction): one machine-room notice, the part and how many,
+        then the key and the room, once a day per part and its file, said by the first room to start (cut-said.json in the state
+        folder), so no budget cuts in silence (claim 8); `yerk doctor` names every room, red until the part fits. Never stops
+        the start."""
         mark, today = self.state / "cut-said.json", time.strftime("%Y-%m-%d")
         try:
             said = dict(json.loads(mark.read_text()))
@@ -275,10 +278,8 @@ class Yerkd:
             return
         write_private(mark, json.dumps({**said, **{f"{p.name} {p.source}": today for p in new}}))
         for p in new:
-            n = len(p.cut)
-            heads = words.heads([memory.topic(x) for x in p.cut], n=12) if p.name in context.TAIL else words.heads(list(p.cut))
-            self.to_machine(f"{words.WORKING} " + words.PART_CUT.format(part=p.name, room=name, size=p.raw, cap=p.budget, n=n,
-                                                                       s="s" * (n != 1), heads=heads))
+            self.to_machine(f"{words.WORKING} " + words.PART_CUT.format(n=len(p.cut), s="s" * (len(p.cut) != 1), part=p.name, room=name,
+                                                                       cap=p.budget))
 
     def to_machine(self, text: str) -> None:
         """One line to the machine room (rooms.toml role = "machine") from a room's thread, where a process start runs: on the
@@ -376,6 +377,10 @@ class Yerkd:
         except OSError as e:                      # the message goes on without it
             log.warning("room %s: no taste part, %s could not be read: %s", room, path, e)
             return ""
+
+    def place_for(self, room: str, now: datetime) -> str:
+        """The place part of an owner room's message (location.py), else ""; a name that is no room gets none."""
+        return location.part(self.location, conf, now) if (conf := self.room_confs.get(room)) is not None else ""
 
     def reader(self, room: str) -> memory.Reader:
         """Who a memory read is for: an owner room reads everything, any other room its own lines and
@@ -784,10 +789,11 @@ class Yerkd:
         return text, str(self.memory.daily)
 
     def compact_pack(self, room: str) -> str:
-        """The recall pack as session start builds it, for the re-add after a compaction."""
+        """The recall pack as session start builds and fits it, for the re-add after a compaction."""
         conf = self.room_confs[room]
         limit = int(self.budgets["session_start"]["appended"]["recall_pack"])
-        return context.recall_pack(context.layer_dir(self.private, conf), conf, limit, lambda left: self.room_pack(room, left))[0]
+        text, src = context.recall_pack(context.layer_dir(self.private, conf), conf, limit, lambda left: self.room_pack(room, left))
+        return context.fit("recall_pack", text, limit, src)[0]
 
     def recall_for(self, room: str, prompt: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], list[str]]:
         """(names, topics, past, absent), each search decided by code (decision 42), read as the room's reader in its scope: names
@@ -1034,7 +1040,7 @@ class Yerkd:
             return {}
         out = await asyncio.to_thread(hooks.user_prompt_submit, payload, self.state, self.room_confs,
                                       lambda r, p: self.rooms[r].meta_for(p), self.budgets, None, self.recall_for, name, self.rules_news,
-                                      self.taste_for)
+                                      self.taste_for, self.place_for)
         if out and "hookSpecificOutput" in out and name in self.rooms:
             prompt = str(payload.get("prompt", ""))
             said = self.said_in_turn(name, sid, prompt)
