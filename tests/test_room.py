@@ -197,6 +197,53 @@ def test_the_account_the_room_is_put_on_starts_first_and_a_failure_on_it_still_h
     room.rp.close()
 
 
+def test_a_pinned_account_resting_for_the_model_falls_through_in_order_and_is_tried_first_again(env, monkeypatch):
+    """A pin holds the room to the account the owner set, and when that account has no usage left the room does what it
+    did before the pin. Put on three of one, two, three: three out of the model goes to one, then two, in accounts.toml's
+    order; the pin stays, so once its rest ends the next turn is on three again."""
+    make, ledger, tmp_path = env
+    f = tmp_path / "rooms" / "r" / "override.json"
+    f.parent.mkdir(parents=True)
+    f.write_text(json.dumps({"account": "three", "model": "m"}))                            # /model three m
+    monkeypatch.setenv("FAKE_CLAUDE_FAIL_DIRS", f"{tmp_path / 'cfg3'},{tmp_path / 'cfg1'}")
+    monkeypatch.setenv("FAKE_CLAUDE_RESETS", str(int(time.time()) + 3600))
+    chan = Chan()
+    room = make(chan)
+    room.accounts.append(Account("three", tmp_path / "cfg3"))
+    send(room, ledger, "1", "hello")
+    wait_idle(room)
+    assert [(r["account"], r["outcome"], r["hop"]) for r in rows_of(ledger)] == [
+        ("three", "error", None), ("one", "error", "quota:three"), ("two", "ok", "quota:three,quota:one")]
+    assert chan.replies == [("echo: hello", ["1"])] and json.loads(f.read_text()) == {"account": "three", "model": "m"}
+    room.rp.close()
+    monkeypatch.delenv("FAKE_CLAUDE_FAIL_DIRS")
+    Cooldowns(tmp_path / "cooldowns.json").clear("three")                                    # its rest is over
+    send(room, ledger, "2", "back?")
+    wait_idle(room)
+    assert argvs(tmp_path)[-1]["config_dir"] == str(tmp_path / "cfg3") and chan.replies[-1] == ("echo: back?", ["2"])
+    room.rp.close()
+
+
+def test_every_account_out_of_the_pinned_model_runs_on_the_rooms_own_on_the_pinned_account_and_both_pins_stay(env, monkeypatch):
+    make, ledger, tmp_path = env
+    f = tmp_path / "rooms" / "r" / "override.json"
+    f.parent.mkdir(parents=True)
+    f.write_text(json.dumps({"model": "m", "account": "two"}))                              # /model two m
+    monkeypatch.setenv("FAKE_CLAUDE_FAIL_DIRS", f"{tmp_path / 'cfg1'},{tmp_path / 'cfg2'}")
+    monkeypatch.setenv("FAKE_CLAUDE_FAIL_MODEL", "m")                                        # both out of m; usual answers
+    reset = int(time.time()) + 3600
+    monkeypatch.setenv("FAKE_CLAUDE_RESETS", str(reset))
+    chan = Chan()
+    room = make(chan, conf={"model": "usual"})
+    send(room, ledger, "1", "hello")
+    wait_idle(room)
+    assert [(r["account"], r["outcome"], r["model"], r["out_of"]) for r in rows_of(ledger)] == [
+        ("two", "error", "m", None), ("one", "error", "m", None), ("two", "ok", "usual", "m")]
+    assert chan.replies == [("echo: hello", ["1"])] and f"{words.WORKING} on usual, m back {words.clock(reset)}" in chan.cards
+    assert json.loads(f.read_text()) == {"model": "m", "account": "two"}                    # no fallback drops a pin
+    room.rp.close()
+
+
 def test_an_empty_reply_resumes_the_same_session_once_more(env):
     """The bound session holds the day's context and a second resume costs seconds (seen live: the empty reply
     went straight to a new session)."""
