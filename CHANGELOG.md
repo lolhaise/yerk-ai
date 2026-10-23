@@ -23,7 +23,7 @@ with the originals kept under `backups/`; the index chunks every file again when
 - Left out of PR 93: the judge call after every reply to the owner (a `claude -p` call on the room's account, in a
   thread after the Stop hook), its `shadow` rows, the `taste_judge` room key and the morning diff's count of taste rows.
   No reply is judged as it is posted, so no reply costs a second model call.
-- **Upgrading:** budgets.toml [code] lines goes to 19054. rooms.toml takes no new key.
+- **Upgrading:** budgets.toml [code] lines goes to 19055. rooms.toml takes no new key.
 
 ### person-room-parity (#101)
 

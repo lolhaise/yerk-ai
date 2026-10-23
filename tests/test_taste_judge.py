@@ -112,6 +112,8 @@ def test_the_prompt_carries_each_read_with_its_first_words_and_the_recall_never_
     assert "- nothing: the turn made no call" in evidence.taste_prompt({**row, "reads": []})
     alone = evidence.taste_prompt({**row, "reads": None})                  # no ledger: the chat alone, never told it read nothing
     assert "What the turn read" not in alone and "was not checked" not in alone
+    sent = evidence.taste_prompt({**row, "reply_at": "09:01", "reply_attachments": ["plan.pdf"]})    # the reply is not in `before`
+    assert "[room 09:01]  <-- THE REPLY UNDER JUDGMENT The slab is 4,015 sf. [attachments: plan.pdf]" in sent
 
 
 def test_the_eval_arithmetic_on_the_example_fixture_and_the_chat_only_mutation_goes_red(tmp_path):

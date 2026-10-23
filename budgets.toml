@@ -260,5 +260,6 @@ drops = [
 # and the command (cli.py, 34). Left out, 59 of PR 93's 346: the call after every reply to the owner on the room's account
 # (daemon.py, 33), its recall pack, a read's first words and the shadow row (evidence.py, 24), the taste_judge room key
 # (example.note, 0) says the sample item moved to (the.next, 0), step and the test reads it back. As plain text with (one
-# queue for Its 00, Turn 00 00:00: "and the last part closes the case").
-lines = 19054
+
+# outside `before` shows its own attachments to the judge, as phase 1's prompt does (evidence.py).
+lines = 19055

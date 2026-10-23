@@ -575,8 +575,9 @@ def taste_prompt(row: dict[str, Any]) -> str:
         mark = MARK if rid and b.get("message_id") == rid else ""
         marked, atts = marked or bool(mark), f" [attachments: {', '.join(b['attachments'])}]" if b.get("attachments") else ""
         out.append(f"[{'owner' if b.get('author') == 'owner' else 'room'} {b.get('at', '')}]{mark} {b.get('text', '')}{atts}")
-    if not marked:
-        out.append(f"[room {row.get('reply_at', '')}]{MARK} {row.get('reply', '')}")
+    if not marked:                                  # a reply outside `before` keeps its own files, as phase 1 shows them
+        atts = f" [attachments: {', '.join(row['reply_attachments'])}]" if row.get("reply_attachments") else ""
+        out.append(f"[room {row.get('reply_at', '')}]{MARK} {row.get('reply', '')}{atts}")
     if (reads := row.get("reads")) is not None:
         out += ["", "What the turn read before it replied, in order (tool, what it read, characters back, the first words of a read):"]
         out += [f"- {r['tool']} {r['target']} ({r['chars']} chars)" + (f": {r['head']}" if r.get("head") else "") for r in reads]
