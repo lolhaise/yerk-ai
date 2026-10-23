@@ -130,6 +130,7 @@ def drop_orphan_shadow_tables(cur: sqlite3.Cursor, families: list[str]) -> list[
 
 
 UPLOADS = (".md", ".txt", ".csv", ".json", ".vtt", ".srt")    # a room inbox's text kinds: the transcribe tool's NAME.transcript.txt too
+SEEN = ".seen.txt"           # and a picture's NAME.seen.txt, what the room read on it (pictures.py): a text kind by its .txt
 
 
 def kinds(root: Path) -> tuple[str, ...]:

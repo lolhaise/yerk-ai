@@ -84,7 +84,7 @@ STEP = {"bash": "running a command", "read": "reading {what}", "read_memory": "r
         "webfetch": "reading {what}", "web_fetch": "reading {what}", "fetch": "reading {what}",
         "websearch": "searching the web for {what}", "web_search": "searching the web for {what}", "send": "sending {what}",
         "remember": "filing a note", "hold": "waiting for {what}", "settings": "switching to {what}", "transcribe": "transcribing {what}",
-        "voice_note": "making a voice note",
+        "voice_note": "making a voice note", "seen": "filing a picture",
         "todowrite": "updating the plan", "task": "handing off {what}", "agent": "handing off {what}", "toolsearch": "loading a tool"}
 WORKER_STEP = {"start": "starting a worker", "list": "listing the workers", "stop": "stopping worker {id}",
                "report": "reading worker {id}'s report"}
@@ -282,6 +282,16 @@ VOICE_NOTE = ("[voice note] {name} is a recording. You take in sound only as the
 TRANSCRIBED_NEXT = ("Open your reply with what the recording says, in your own words. A segment marked (uncertain) has two "
                     "readings that disagree, so give that part as unsure or ask about it, since either reading may be wrong.")
 TRANSCRIPT_HEAD, UNCERTAIN, NO_WORDS = "{name}, {minutes} min, {how}", "(uncertain) {first} | second pass: {second}", "(no words)"
+SEEN_OWNER_ONLY = "seen files a picture in the owner's rooms only; a picture sent here is not filed, so answer without it"
+SEEN_NOT_HERE = "{name} is not a picture sent to this room; seen files a picture from its [attachment] line"
+SEEN_NO_SHOWS = "seen needs `shows`: one or two lines of what the picture shows"
+UNSEEN = ("You read {names} in an owner's room and did not file what it shows. Call seen on {paths} with its words and a line "
+          "of what it shows, then give your answer again, since only the text after your last tool call reaches the room.")
+PICTURES_PERSON = "{room} is not an owner room: a picture sent there is never filed or indexed"
+PICTURES_NONE = "{room}: every picture in its inbox has its sidecar; nothing to start"
+PICTURES_RUNNING = "{room}: a backfill runs already, one batch after another; its lines are in the machine room"
+PICTURES_BATCH = "pictures backfill {room}: batch {n} of {of} {how}, {filed} of {count} filed{then}"
+PICTURES_NEXT, PICTURES_STOP, PICTURES_DONE = "; batch {n} started", "; stopped, {left} left: run it again", "; done"
 CHECKED = "checked by a second pass: {n} of {of} segments uncertain"
 PART_CHECKED = "checked by a second pass but for chunk {chunks}, where it failed: {n} of {of} segments uncertain"
 UNCHECKED = "one pass only, so nothing in it was checked: a second pass needs a Groq key at secrets/groq.key"

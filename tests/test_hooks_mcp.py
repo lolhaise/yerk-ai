@@ -51,12 +51,13 @@ def test_the_hook_endpoint_answers_over_http(tmp_path):
     assert other.json() == {}
 
 
-def test_ten_preloaded_tools_with_slim_schemas(tmp_path):
+def test_eleven_preloaded_tools_with_slim_schemas(tmp_path):
     y = daemon(tmp_path)
     tools = {t.name: t for t in asyncio.run(mcp_server.build(y, y.port, y.hook).list_tools())}
     assert set(tools) == {"send", "hold", "recall", "read_memory", "remember", "worker", "schedule", "settings", "transcribe",
-                          "voice_note"}
+                          "voice_note", "seen"}
     assert list(tools["transcribe"].inputSchema["properties"]) == ["path", "owner_yes"]
+    assert list(tools["seen"].inputSchema["properties"]) == ["path", "text", "shows"] and "`seen`" in context.MECHANICS.read_text()
     assert list(tools["voice_note"].inputSchema["properties"]) == ["script", "name", "owner_yes"]
     assert list(tools["remember"].inputSchema["properties"]) == ["text", "about", "replaces", "job", "said", "source"]
     assert {f"mcp__yerk__{t}" for t in tools} == set(YERK_TOOLS) and "`remember`" in context.MECHANICS.read_text()

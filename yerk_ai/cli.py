@@ -124,6 +124,25 @@ def cmd_worker(a: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_pictures(a: argparse.Namespace) -> int:
+    """backfill: an owner room's pictures with no sidecar get one through Yerk workers the running yerkd starts, a batch at a
+    time; --dry-run lists them (each sidecar it would write) and starts nothing."""
+    from . import pictures, words
+    if (conf := rooms(private_dir(a.private)).get(a.room)) is None or str(conf.get("privacy", "owner")) != "owner":
+        print(words.PICTURES_PERSON.format(room=a.room) if conf is not None else f"no room {a.room!r} in rooms.toml", file=sys.stderr)
+        return 2
+    todo = pictures.pending(state_dir(a.state) / "rooms" / a.room / "work" / "inbox")[:a.limit or None]
+    if a.dry_run:
+        for p in todo:
+            print(pictures.sidecar(p))
+        print(f"{len(todo)} picture(s) in {a.room} with no sidecar, {-(-len(todo) // pictures.BATCH)} batch(es) of "
+              f"{pictures.BATCH}; nothing started (--dry-run)")
+        return 0
+    out = _control(a.state, {"pictures": {"room": a.room, "limit": a.limit}}, 120)
+    print(json.dumps(out))
+    return 0 if out.get("ok") else 1
+
+
 def cmd_jobs(a: argparse.Namespace) -> int:
     """sync: the jobs file to one timer and service per job (idempotent), the diff, then every next
     fire read back from systemd; list: the read-back alone. Both work with the daemon down."""
@@ -608,6 +627,12 @@ def main(argv: list[str] | None = None) -> int:
     wk.add_argument("--limit", type=int, default=20, help="list: how many")
     wk.add_argument("--json", action="store_true")
     wk.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
+    pc = sub.add_parser("pictures", help="backfill: every picture in an owner room's inbox with no NAME.seen.txt gets one, read by "
+                        "Yerk workers on the room's own account, 20 a batch, a line to the machine room per batch (needs a running yerkd)")
+    pc.add_argument("action", choices=["backfill"])
+    pc.add_argument("room", help="the owner room")
+    pc.add_argument("--limit", type=int, default=0, help="at most this many pictures, oldest first (default: all)")
+    pc.add_argument("--dry-run", action="store_true", help="list each sidecar it would write; start nothing")
     jb = sub.add_parser("jobs", help="scheduled jobs from the private jobs.toml: sync (one systemd user timer and "
                         "service per job, the diff, then every next fire time read back) or list (the read-back)")
     jb.add_argument("action", choices=["sync", "list"])
@@ -672,11 +697,11 @@ def main(argv: list[str] | None = None) -> int:
     dp.add_argument("ref", nargs="?", help="the commit (default: the daemon's tree's HEAD)")
     dp.add_argument("--no-tests", action="store_true", help="skip the fast tests (the card says so)")
     dp.add_argument("--unit", action="store_true", help="also move a systemd-run daemon onto units/yerkd.service")
-    for x in (ac, st, mo, rb, ab, ex, jb, sc, rt, dc, dk, cu, mm, dp):
+    for x in (ac, st, mo, rb, ab, ex, jb, sc, rt, dc, dk, cu, mm, dp, pc):
         x.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else the fake example layer)")
         x.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
     a = p.parse_args(argv)
-    return int({"map": cmd_map, "setup-room": cmd_setup_room, "room": cmd_room, "import": cmd_room, "worker": cmd_worker,
+    return int({"map": cmd_map, "setup-room": cmd_setup_room, "room": cmd_room, "import": cmd_room, "worker": cmd_worker, "pictures": cmd_pictures,
                 "jobs": cmd_jobs, "schedule": cmd_schedule, "accounts": cmd_accounts, "status": cmd_status, "morning": cmd_morning,
                 "recall-bench": cmd_recall_bench, "abilities": cmd_abilities, "explain": cmd_explain, "config": cmd_config,
                 "memory": cmd_memory, "deploy": cmd_deploy, "retention": cmd_retention, "doctor": cmd_doctor, "docs": cmd_docs,

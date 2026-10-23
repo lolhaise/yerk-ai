@@ -382,6 +382,7 @@ class DailyLog:
 NOTE = "note"                # the role of a day-log line a room files with `remember` (DESIGN 5; L58)
 SAID = "said"                # a person's words a room files with `remember` `said` and their `source`, word for word
 MARKS = {NOTE: "[the room's note, not their words]", SAID: "[their words]"}     # how a room is shown each (said-or-noted)
+SEEN_MARK = "[text on a picture he sent, as the room read it]"      # every line of a picture's sidecar (pictures.py), the same way
 FILED = re.compile(r"^- .+ \([\w.-]+(?:#\S+)?, \d{4}-\d\d-\d\d \d\d:\d\d:\d\d[+-]\d\d:\d\d\) \[m:[^\]\s]+\]$")   # a fact file's filed note
 BY = re.compile(re.escape(mentions.OLD) + r" by (\S+?:\d+)\]")     # a mark naming its replacement; `[superseded]` names none
 LATER = "superseded.tsv"     # in the tree, `old cite<TAB>new cite`: a line a correction named but could not mark with its cite
@@ -396,9 +397,18 @@ def shown(ln: Line) -> str:
     return f"{MARKS[ln.role]} {ln.body}" if ln.role in MARKS else ln.body
 
 
-def marked(raw: str, fact: bool = False) -> str:
+def is_seen(path: str | Path) -> bool:
+    """A picture's sidecar in a room's inbox: <room>/work/inbox/<message id>/NAME.seen.txt."""
+    p = Path(path)
+    return p.name.endswith(memindex.SEEN) and p.parts[-4:-2] == ("work", "inbox")
+
+
+def marked(raw: str, fact: bool = False, seen: bool = False) -> str:
     """A raw line as read_memory and recall show it: a note or said line of a day log, and in a fact file (`fact`) a note a
-    room filed there (FILED; a rule in rules.md has its shape and is no note), behind its mark (MARKS); else as it is."""
+    room filed there (FILED; a rule in rules.md has its shape and is no note), behind its mark (MARKS); a line of a picture's
+    sidecar (`seen`) behind SEEN_MARK, never as anyone's words; else as it is."""
+    if seen:
+        return f"{SEEN_MARK} {raw}" if raw.strip() else raw
     if (ln := parse_line(raw)) and ln.role in MARKS:
         return raw.replace(f": {ln.body}", f": {shown(ln)}", 1)
     return raw.replace("- ", f"- {MARKS[NOTE]} ", 1) if fact and FILED.match(raw) else raw
@@ -613,7 +623,7 @@ def read(s: Settings, path: str, start: int = 1, lines: int = READ_LINES, reader
     with real.open(encoding="utf-8", errors="replace") as f:
         for total, line in enumerate(f, 1):
             if start <= total < start + lines:
-                out.append(marked(line.rstrip("\n"), real.parent.name == "facts"))
+                out.append(marked(line.rstrip("\n"), real.parent.name == "facts", is_seen(real)))
     text = "\n".join(out)
     if reader and (not reader.owner or reader.sealed) and daylog:
         text = allowed_text(reader, real, text, blank="(a line of another room)", whole=True, daily=s.daily) or ""
@@ -805,7 +815,8 @@ def lines_on(s: Settings, what: str, reader: Reader | None = None, k: int = 8, e
                     ln and ln.mid.split(".e")[0] in (exclude or set())):
                 continue
             fact = Path(h["path"]).parent.name == "facts"
-            text = (f"{day[5:]} " if day else "") + (f"{ln.time[:5]} {ln.role}: {shown(ln)}" if ln else marked(raw.strip(), fact).removeprefix("- "))
+            text = (f"{day[5:]} " if day else "") + (f"{ln.time[:5]} {ln.role}: {shown(ln)}" if ln else
+                                                     marked(raw.strip(), fact, is_seen(h["path"])).removeprefix("- "))
             out.append({"cite": f"{h['cite'].rpartition(':')[0]}:{h['line'] + i}", "at": f"{h['path']}:{h['line'] + i}", "day": day, "n": h["line"] + i,
                         "text": text if len(text) <= ITEM_CHARS else _cut(text, {_root(t): 1.0 for t in want}, ITEM_CHARS - 2)})
     out = [x for n, x in enumerate(out) if x["text"] not in {y["text"] for y in out[:n]}][:best]     # a snapshot's copy of a line: once
@@ -821,8 +832,9 @@ def snippets(hits: list[dict[str, Any]], weights: dict[str, float], budget: int)
     shared = min(len(hits), RECALL_HITS)
     for n, h in enumerate(hits):
         fact = Path(str(h.get("path", ""))).parent.name == "facts"          # a note never reads as anyone's words
-        lines = "\n".join(marked(x, fact) for x in str(h.get("text", "")).split("\n"))
-        near = marked(str(h["near"]), fact) if h.get("near") else None
+        seen = is_seen(str(h.get("path", "")))                              # nor what a room read on a picture
+        lines = "\n".join(marked(x, fact, seen) for x in str(h.get("text", "")).split("\n"))
+        near = marked(str(h["near"]), fact, seen) if h.get("near") else None
         if n < shared:
             first, text = snippet(lines, int(h["line"]), weights, near, min(SNIPPET, budget // (shared - n)))
             budget -= len(text)

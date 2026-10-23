@@ -47,7 +47,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Callable, Protocol
 
-from . import memory, transcribe, words
+from . import memory, pictures, transcribe, words
 from .accounts import Account, Cooldowns, pick
 from .card import Card
 from .config import flag, override, pinned, write_private
@@ -300,11 +300,19 @@ class Room:
             read = self.rp.read_paths if self.rp else set()
             return [(n, p) for p, n in self.to_open.items() if p not in read]
 
+    def unfiled(self) -> list[tuple[str, str]]:
+        """(name, path) of the pictures sent to an owner room in this result that it Read and did not file with `seen`."""
+        with self.lock:
+            read = self.rp.read_paths if self.rp else set()
+            out = [(n, p) for p, n in self.to_open.items() if p in read and pictures.is_picture(Path(p))
+                   and not pictures.sidecar(Path(p)).exists()]
+        return out if out and str(self.conf.get("privacy", "owner")) == "owner" else []
+
     def stop_check(self, active: bool) -> str | None:
         """The Stop hook's rule, no judge: an image sent in and never read, or a voice note never transcribed, bounces once,
-        naming it, so a room never answers a note it did not hear."""
-        unread = self.unopened()
-        if not unread or active or self.bounced:
+        naming it, so a room never answers a note it did not hear; in an owner room, so does a picture read and not filed."""
+        unread, unfiled = self.unopened(), self.unfiled()
+        if not (unread or unfiled) or active or self.bounced:
             return None
         self.bounced = True
         heard = [x for x in unread if transcribe.is_audio(x[0])]
@@ -312,7 +320,9 @@ class Room:
         return " ".join(([f"You were sent {', '.join(n for n, _ in seen)} and have not opened it. Read {' '.join(p for _, p in seen)} "
                           "with the Read tool, then answer with what it shows."] if seen else []) +
                         ([f"You were sent {', '.join(n for n, _ in heard)}, a recording, and have not transcribed it. Call transcribe "
-                          f"on {' '.join(p for _, p in heard)}, then open your answer with what it says."] if heard else []))
+                          f"on {' '.join(p for _, p in heard)}, then open your answer with what it says."] if heard else []) +
+                        ([words.UNSEEN.format(names=", ".join(n for n, _ in unfiled), paths=" ".join(p for _, p in unfiled))]
+                         if unfiled else []))
 
     def silent_check(self, active: bool, text: str | None, landed: int) -> str | None:
         """The Stop hook's second rule, no judge: a turn that ran tools for a person and ends with
