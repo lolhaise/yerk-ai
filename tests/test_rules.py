@@ -171,9 +171,10 @@ def test_then_the_newest_older_rules_example_goes_and_never_an_older_ones_first(
     assert fitted(y) == [words.RULE_STRIPPED.format(job=j, cap=cap) for j in ("example new", "example older b")]
 
 
-def test_a_rule_with_no_room_even_with_no_examples_is_held_in_the_overflow_file_and_said_once(tmp_path, capsys):
-    """A rule that would take the rules file past its cap with every example taken out is never filed there: the file stays
-    as it was, the rule goes to rules-overflow.md (0600) whole, the machine room gets one notice and the room a clause."""
+def test_a_rule_with_no_room_even_with_no_examples_is_filed_as_a_topic_rule_and_said_once(tmp_path, capsys):
+    """A rule that would take the rules file past its cap with every example taken out is never filed there and never held
+    (rules-on-demand): the file stays as it was, the rule goes to rules-topics.md (0600) whole, for every room here (both
+    example rooms read one rulebook), the machine room gets one notice naming the words it loads on, and the room a clause."""
     y = daemon(tmp_path)
     y.room_confs["example-machine"] = {**y.room_confs[A], "role": "machine", "id": "example-machine-id"}
     y.add_room("example-machine", ConsoleChannel())
@@ -181,19 +182,22 @@ def test_a_rule_with_no_room_even_with_no_examples_is_held_in_the_overflow_file_
     before = (path := fill(y, cap - 50)).read_bytes()
     start(y, B, "sid-b")
     r = rule(y, A, "Example job last is done the example way." + EX, "example job last")
-    assert r == {"ok": True, "job": "example job last", "cite": "tree/rules-overflow.md:3", "replaced": [], "held": True,
-                 "next": words.FILED_NEXT.format(clause=words.HELD_CLAUSE)}
-    held = y.memory.root / memory.OVERFLOW
-    assert path.read_bytes() == before and held.stat().st_mode & 0o777 == 0o600
-    assert held.read_text().splitlines()[-1].startswith(f"- example job last: Example job last is done the example way.{EX} ({A}, ")
+    on = "last, job or example"                                         # its own job word first: no other rule says "last"
+    assert r == {"ok": True, "job": "example job last", "cite": "tree/rules-topics.md:3", "replaced": [], "topic": True,
+                 "triggers": ["last", "job", "example"], "rooms": [], "next": words.FILED_NEXT.format(clause=words.TOPIC_CLAUSE.format(triggers=on))}
+    assert r["next"].endswith("this one: the rule loads when last, job or example come up, since the shared rules file is full.")
+    tier = y.memory.root / memory.TOPIC_RULES
+    assert path.read_bytes() == before and tier.stat().st_mode & 0o777 == 0o600 and not (y.memory.root / memory.OVERFLOW).exists()
+    assert tier.read_text().splitlines()[-1].startswith(f"- example job last: Example job last is done the example way.{EX} ({A}, ")
     posts = [json.loads(x) for x in capsys.readouterr().out.splitlines() if x.startswith("{")]
-    assert [p["notice"] for p in posts if p["room"] == "example-machine"] == [
-        f"{words.WORKING} " + words.RULE_HELD.format(file="rules-overflow.md", job="example job last", room=A, cap=cap)]
+    notice = (f"{words.DONE} filed as a topic rule: loads when\nlast, job or example come up\n\"example job last\"\nfrom {A}\nfor every room\n"
+              f"rules.md is full at its cap of {cap:,}")
+    assert [p["notice"] for p in posts if p["room"] == "example-machine"] == [notice] and "held" not in notice
     assert [p for p in posts if p["room"] == A] == []                  # the room says it in its reply
-    assert fitted(y) == [words.RULE_HELD_LOG.format(job="example job last", file="rules-overflow.md", cap=cap)]
-    assert context.NEWS not in told(y, "sid-b")                         # no room has it
+    assert fitted(y) == [words.RULE_TOPIC_LOG.format(job="example job last", file="rules-topics.md", cap=cap, triggers=on)]
+    assert context.NEWS not in told(y, "sid-b")                         # the rules file never changed
     assert rule(y, A, "Example job last is done the example way." + EX, "example job last") == r      # a retried call
-    assert held.read_text().count("- example job last: ") == 1 and len(fitted(y)) == 1 and "notice" not in capsys.readouterr().out
+    assert tier.read_text().count("- example job last: ") == 1 and len(fitted(y)) == 1 and "notice" not in capsys.readouterr().out
 
 
 def test_a_rule_file_past_its_size_at_session_start_loses_its_newest_lines_never_a_middle_one(tmp_path):

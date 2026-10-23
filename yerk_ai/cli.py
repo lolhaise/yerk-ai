@@ -18,8 +18,8 @@ def cmd_map(a: argparse.Namespace) -> int:
     if a.room not in rs:
         print(f"no room {a.room!r} in {priv / 'rooms.toml'}; rooms: {', '.join(rs) or 'none'}", file=sys.stderr)
         return 2
-    b = budgets()
-    start = context.session_start(priv, rs[a.room], b, rules=memory.settings(priv, state_dir(a.state)).root / memory.RULES)
+    b, root = budgets(), memory.settings(priv, state_dir(a.state)).root
+    start = context.session_start(priv, rs[a.room], b, rules=root / memory.RULES)
     now = datetime.now(timezone.utc)
     from . import location
     from .config import load_toml
@@ -33,6 +33,11 @@ def cmd_map(a: argparse.Namespace) -> int:
         hit = [context.Part("taste", rated, cap, context.chars(rated), str(path) if path else f"no {taste.FILE} in the layer")]
     label = "the fake example layer" if priv == EXAMPLE_PRIVATE else str(priv)
     print(context.render(a.room, label, start, msg, b, hit))
+    tier = memory.live_rules(root / memory.TOPIC_RULES)
+    mine, (seen, jobs) = [x for x in tier if (sc := memory.scope(x)) is None or a.room in sc], context.rode(state_dir(a.state), a.room)
+    print(f"\nTopic rules ({memory.TOPIC_RULES}): {len(tier)}, {sum(context.chars(x) + 1 for x in tier):,} characters, {len(mine)} of them "
+          f"this room's; each rides in a message's `rules` part when the message names its topic, never at session start")
+    print(f"  on its last {seen} messages: " + (", ".join(f"{j} ({k})" for j, k in sorted(jobs.items(), key=lambda kv: -kv[1])) or "none rode"))
     if rs[a.room].get("watch"):
         print(f"\nWatches {rs[a.room]['watch']}: read as its own channel, never written to; it answers in {rs[a.room].get('channel')}.")
     bad = context.violations(start, msg, b)

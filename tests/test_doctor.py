@@ -277,17 +277,25 @@ def test_a_part_past_its_line_reads_red_with_the_overflow_and_one_that_fits_read
     assert doctor.main(priv, state) == 0 and capsys.readouterr().out == ""
 
 
-def test_a_rule_held_in_the_overflow_file_reads_orange_with_the_count(tree, capsys):
-    """A rule the rules file had no room for is held in rules-overflow.md and reaches no room; the fit check counts the held
-    rules, orange, until each is moved in by hand."""
+def test_the_fit_check_reads_the_topic_rules_and_an_overflow_not_moved_yet(tree, capsys):
+    """rules-on-demand: the fit check reads rules-topics.md where it read the overflow. A topic rule longer than the per-message
+    rules part, or kept to no room on file, never loads: orange, with the count and the first; an overflow yerkd has not moved
+    yet: orange, until its next start moves it."""
     priv, state, *_ = tree
-    held, cap = priv / "memory" / memory.OVERFLOW, budgets()["session_start"]["appended"]["rules"]
-    held.write_text("# Rules held: past the rules file's cap, in no room\n\n" + "".join(
-        f"- example job {i}: done the example way. (example-room, 2026-10-22 16:54:00-04:00) [m:m-{i}]\n" for i in range(2)))
+    tier, most = priv / "memory" / memory.TOPIC_RULES, budgets()["per_message"]["on_hit"]["rules"]
+    fine, at = "- example job 1: done the example way. (example-room, 2026-10-22 16:54:00-04:00) [m:m-1]", "(example-room, 2026-10-22 16:54:00-04:00)"
+    tier.write_text("\n".join([*memory.TOPIC_HEAD, fine, f"- example job 2: done the example way. [rooms: example-gone] {at} [m:m-2]",
+                               f"- example job 3: done the {'example ' * (most // 8)}way. {at} [m:m-3]"]) + "\n")
     assert doctor.main(priv, state) == 1
-    assert capsys.readouterr().out.splitlines() == [f"{words.WORKING} rules-overflow.md: 2 rules held, in no room: rules.md is "
-                                                    f"full at its cap of {cap:,}; move each in by hand once it has room"]
-    held.write_text("# Rules held: past the rules file's cap, in no room\n\n")
+    assert capsys.readouterr().out.splitlines() == [f"{words.WORKING} rules-topics.md: 2 topic rules never load, first \"example job 2\": "
+                                                    f"longer than the per-message rules part's {most:,} or kept to no room in rooms.toml; "
+                                                    "shorten it or fix its [rooms: ...]"]
+    tier.write_text("\n".join([*memory.TOPIC_HEAD, fine]) + "\n")
+    (held := priv / "memory" / memory.OVERFLOW).write_text(f"# Rules held: past the rules file's cap, in no room\n\n{fine}\n")
+    assert doctor.main(priv, state) == 1
+    assert capsys.readouterr().out.splitlines() == [f"{words.WORKING} rules-overflow.md: 1 rule in no room yet; yerkd moves it to "
+                                                    "rules-topics.md at its next start"]
+    held.unlink()
     assert doctor.main(priv, state) == 0 and capsys.readouterr().out == ""
 
 

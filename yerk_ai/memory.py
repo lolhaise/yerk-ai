@@ -8,6 +8,7 @@ roots the index reads but nothing here writes. The index itself is yerk-index (m
 from __future__ import annotations
 
 import fcntl
+import functools
 import hashlib
 import json
 import logging
@@ -402,9 +403,16 @@ FILED = re.compile(r"^- .+ \([\w.-]+(?:#\S+)?, \d{4}-\d\d-\d\d \d\d:\d\d:\d\d[+-
 BY = re.compile(re.escape(mentions.OLD) + r" by (\S+?:\d+)\]")     # a mark naming its replacement; `[superseded]` names none
 LATER = "superseded.tsv"     # in the tree, `old cite<TAB>new cite`: a line a correction named but could not mark with its cite
 RULES = "rules.md"           # in the tree: the install's one rules file, how each job is done in every room (decision 15)
-OVERFLOW = "rules-overflow.md"     # beside it (private): a rule RULES has no room for under its cap, even with no examples
+OVERFLOW = "rules-overflow.md"     # beside it: where a rule RULES had no room for waited, in no room, before rules-on-demand
+TOPIC_RULES = "rules-topics.md"    # beside it (private): a rule RULES has no room for, loaded when a message names its topic
+TOPIC_HEAD = ["# Topic rules: each loads on a message that names its topic, in the rooms its [rooms: ...] names, else in every room", ""]
 HEADROOM = 150               # a filing fitted under RULES's cap leaves this much of it free
 EXAMPLE = re.compile(r"\s*<example(?:\s[^>]*)?>.*?</example>", re.I)    # an example in a rule line, as shape.py reads the tags
+TRAILER = re.compile(r" \(([^()]*\d{4}-\d{2}-\d{2} \d{2}:\d{2}[^()]*)\)( \[m:[^\]\s]+\])?$")   # a filing's room, time, message
+SCOPE = re.compile(r" \[rooms: ([^\]]+)\]")        # a topic rule kept to the rooms it names, the mark before its trailer
+NAMED = re.compile(r"#[\w-]+|`[^`]+`|[\w.-]+\.(?:md|txt|jsonl?|toml|py|pdf|docx|xlsx|csv)\b|(?<=[\w,;:)] )[A-Z][\w'’-]*")
+QUOTE = re.compile(r"[\"“][^\"”]*[\"”]")           # NAMED: a channel, code, a file, a capitalised word mid-sentence; quotes out
+RIDE = 0.75                  # a topic rule rides on a message whose words it names weigh this share of a word only it says
 
 
 def shown(ln: Line) -> str:
@@ -454,6 +462,96 @@ def topic(line: str) -> str:
     """A rule line's job, its words before the first colon (a line with none: its first six words)."""
     head, colon, _ = line.lstrip("-*#> ").partition(": ")
     return head if colon else " ".join(head.split()[:6])
+
+
+def live_rules(path: Path) -> list[str]:
+    """A rule file's live rules: its bullets, none superseded."""
+    return [x for x in path.read_text(errors="replace").splitlines() if x.startswith("- ") and mentions.OLD not in x] if path.is_file() else []
+
+
+@functools.lru_cache(maxsize=1024)
+def triggers(line: str) -> dict[str, str]:
+    """A rule's triggers, stem -> the word said: its job's words, then what its own words name (NAMED: a #channel, code, a file, a
+    capitalised word mid-sentence, a product, a person or a title), no calendar or everyday word; its examples, quotes and trailer out."""
+    _, colon, said = line.lstrip("-*#> ").partition(": ")
+    out = {w[:5]: w for w in memindex.terms(topic(line))}
+    for m in NAMED.finditer(QUOTE.sub(" ", SCOPE.sub("", TRAILER.sub("", EXAMPLE.sub("", said)))) if colon else ""):
+        out |= {w[:5]: w for w in memindex.terms(re.sub(r"\.\w+$", "", m[0])) if len(w) > 2 and w not in mentions.KEY_STOP and w[:5] not in out}
+    return out
+
+
+def rarities(corpus: list[str]) -> tuple[dict[str, float], float]:
+    """Each stem's weight among the rules `corpus` (memindex.rarity, recall's: in how many rules' own words), and a stem's said by one."""
+    df: dict[str, int] = {}
+    for x in corpus:
+        for t in memindex.stems(SCOPE.sub("", TRAILER.sub("", x)), True):
+            df[t] = df.get(t, 0) + 1
+    return {t: memindex.rarity(len(corpus), n) for t, n in df.items()}, memindex.rarity(max(1, len(corpus)), 1)
+
+
+def on_topic(text: str, rules: list[str], corpus: list[str],
+             weights: tuple[dict[str, float], float] | None = None) -> list[tuple[float, str]]:
+    """The rules among `rules` that `text` (a message, its attachments' names) names, (weight, line), best first: the weight of the
+    rule's triggers the text holds, each by its rarity among `corpus` (every live rule; `weights` its rarities, given once for
+    many texts), at least RIDE of a word only one rule says."""
+    weight, one = weights or rarities(corpus)
+    said = memindex.stems(text, True)
+    hits = [(round(sum(weight.get(t, one) for t in triggers(x) if t in said), 2), x) for x in rules]
+    return sorted((h for h in hits if h[0] >= RIDE * one), key=lambda h: -h[0])
+
+
+def scope(line: str) -> set[str] | None:
+    """The rooms a topic rule is kept to ([rooms: a,b]); None: every room that loads the rules."""
+    return {r.strip() for r in m[1].split(",") if r.strip()} if (m := SCOPE.search(line)) else None
+
+
+def scoped(line: str, room: str, books: dict[str, str], corpus: list[str]) -> list[str]:
+    """The rooms a rule filed in `room` is kept to: each room reading `room`'s rulebook, when the heaviest of its triggers that any
+    rulebook says is said by that one alone (its topic is that room's own: "teams" over "message", which every room's says); none,
+    so every room, otherwise or when every room reads that rulebook. `books`: room -> its rulebook's text."""
+    if not (mine := books.get(room)) or all(t == mine for t in books.values()):
+        return []
+    weight, one = rarities(corpus)
+    said = set[str]().union(*(memindex.stems(t, True) for t in books.values() if t != mine))
+    w, own = {t: weight.get(t, one) for t in triggers(line)}, memindex.stems(mine, True) - said
+    return sorted(r for r, t in books.items() if t == mine) if max((v for t, v in w.items() if t in own), default=0.0) > max(
+        (v for t, v in w.items() if t in said), default=0.0) else []
+
+
+def placed(line: str, rooms: list[str]) -> str:
+    """A rule line with its scope mark before its trailer, or with none: every room."""
+    m, at = TRAILER.search(line := SCOPE.sub("", line)), f" [rooms: {','.join(rooms)}]" if rooms else ""
+    return f"{line[:m.start()]}{at}{m[0]}" if m else f"{line}{at}"
+
+
+def cue(line: str, corpus: list[str], n: int = 3) -> list[str]:
+    """A rule's `n` heaviest triggers as said: what a notice names it by."""
+    weight, one = rarities(corpus)
+    return [w for t, w in sorted(triggers(line).items(), key=lambda kv: -weight.get(kv[0], one))][:n]
+
+
+def move_held(s: Settings, books: dict[str, str]) -> int:
+    """Once, at yerkd's first start with rules-on-demand: OVERFLOW's rules appended to TOPIC_RULES in their order (one there already
+    by its job and message, from a start cut off, not twice), each marking its job's line before it superseded, each kept to the rooms
+    a [rooms: ...] mark already on its line names (the owner's hand edit before the move), else to those `scoped` gives the room that
+    filed it; then OVERFLOW renamed to OVERFLOW.moved beside it, the backup, so no later start finds one, and one log line. The count."""
+    held, path = s.root / OVERFLOW, s.root / TOPIC_RULES
+    if not held.is_file():
+        return 0
+    with daily_lock(s.daily):
+        rows, out = live_rules(held), path.read_text().splitlines() if path.is_file() else [*TOPIC_HEAD]
+        corpus, there = [*live_rules(s.root / RULES), *live_rules(path), *rows], {(topic(x), m[1]) for x in out if (m := MARK.search(x))}
+        for x in rows:
+            if (m := MARK.search(x)) and (topic(x), m[1]) in there:
+                continue
+            at, job, tm = f"{cite(s, path)}:{len(out) + 1}", f"- {topic(x)}: ", TRAILER.search(x)
+            out = [mark(y, at) if y.startswith(job) and mentions.OLD not in y else y for y in out]
+            out.append(placed(x, sorted(sc) if (sc := scope(x)) else scoped(x, tm[1].split(",")[0], books, corpus) if tm else []))
+        write_private(path, "\n".join(out) + "\n")
+        os.replace(held, held.with_name(OVERFLOW + ".moved"))
+    log.info("rules: %d rule(s) moved from %s to %s, each loading when its topic comes up; the old file kept as %s.moved",
+             len(rows), OVERFLOW, TOPIC_RULES, OVERFLOW)
+    return len(rows)
 
 
 def later(s: Settings) -> dict[str, str]:
@@ -540,21 +638,24 @@ def mark(line: str, by: str = "") -> str:
                   line, count=1)
 
 
-def rule(s: Settings, room: str, mid: str, job: str, text: str, cap: int = 0, log: DailyLog | None = None) -> dict[str, Any]:
+def rule(s: Settings, room: str, mid: str, job: str, text: str, cap: int = 0, log: DailyLog | None = None,
+         books: dict[str, str] | None = None) -> dict[str, Any]:
     """How a job is done from now on, from an owner's room, into RULES: the one file every room starts with and hears
     from on its next message when it changes (context.news), shared so read_memory reads it anywhere. One line with its
-    room, message and time; the job's live line before it is marked superseded by the new one, never deleted. A filing
-    that would take the rules part past `cap` takes the examples out of its lines, newest first and its own first, until
-    the part is HEADROOM under it (`stripped`); with no room even then, RULES stays as it was and the line is held in
-    OVERFLOW (`held`), so a new rule never pushes a proven one out of a session start. A rule's own words are never cut.
-    Each strip and the hold is a line in the room's day log (`log`)."""
+    room, message and time; the job's live line before it, in RULES or TOPIC_RULES, is marked superseded by the new one, never
+    deleted. A filing that would take the rules part past `cap` takes the examples out of its lines, newest first and its own
+    first, until the part is HEADROOM under it (`stripped`); with no room even then, the line goes to TOPIC_RULES (`topic`), loaded on a
+    message naming its topic (context.topics) in the rooms `scoped` keeps it to (`books`: room -> its rulebook's text), and RULES changes
+    only by its job's older line marked, so a new rule never pushes a proven one out of a session start. A rule's own words are never cut.
+    Each strip and the topic filing is a line in the room's day log (`log`)."""
     job, body = one_line(job).strip(" :").lower(), one_line(text)
     if not job or not body:
         return {"ok": False, "error": "a rule needs the job's short name and how it is done, both as text"}
     path, head, at = s.root / RULES, f"- {job}: ", datetime.now(timezone.utc).astimezone(s.tz)
-    new, held, stripped, k = f"{head}{body} ({room}, {at:%Y-%m-%d %H:%M:%S%:z}) [m:{mid}]", s.root / OVERFLOW, list[str](), 0
+    new, tier, stripped, k, rooms, cues = f"{head}{body} ({room}, {at:%Y-%m-%d %H:%M:%S%:z}) [m:{mid}]", s.root / TOPIC_RULES, list[str](), 0, list[str](), list[str]()
     with daily_lock(s.daily):                  # the one writers' lock
         lines = path.read_text().splitlines() if path.is_file() else ["---", "class: shared", "---", "# Rules: one live line per job, in every room", ""]
+        have = tier.read_text().splitlines() if tier.is_file() else [*TOPIC_HEAD]
         live = [i for i, x in enumerate(lines) if x.startswith(head) and mentions.OLD not in x]
         n = next((i + 1 for i in live if lines[i].startswith((f"{head}{body} (", f"{head}{EXAMPLE.sub('', body)} ("))), 0)  # a retried call
         gone = [] if n else live
@@ -571,24 +672,33 @@ def rule(s: Settings, room: str, mid: str, job: str, text: str, cap: int = 0, lo
                 if mentions.OLD not in lines[i] and EXAMPLE.search(lines[i]):
                     stripped.append(topic(lines[i]))
                     lines[i] = EXAMPLE.sub("", lines[i])
-            if over and size() > cap - HEADROOM:      # no room even so: nothing in RULES changes, the rule is held
+            if over and size() > cap - HEADROOM:      # no room even so: the rule loads on demand, RULES keeps all but its job's line
                 stripped.clear()
-                have = held.read_text().splitlines() if held.is_file() else ["# Rules held: past the rules file's cap, in no room", ""]
-                k = next((i + 1 for i, x in enumerate(have) if x.startswith(f"{head}{body} (")), 0)      # a retried call
-                again = bool(k)                        # held and said already
+                k = next((i + 1 for i, x in enumerate(have) if x.startswith((f"{head}{body} (", f"{head}{body} [rooms: "))
+                          and mentions.OLD not in x), 0)      # a retried call
+                corpus = [*live_rules(path), *live_rules(tier), new]
+                again, rooms, cues = bool(k), scoped(new, room, books or {}, corpus), cue(new, corpus)    # filed and said already
                 if not k:
-                    write_private(held, "\n".join(have := [*have, new]) + "\n")
+                    have = [mark(x, f"{cite(s, tier)}:{len(have) + 1}") if x.startswith(head) and mentions.OLD not in x else x for x in have]
+                    write_private(tier, "\n".join(have := [*have, placed(new, rooms)]) + "\n")
                     k = len(have)
+                    if gone:                           # its job's older line in RULES, superseded by this one: no session start sends it
+                        old = path.read_text().splitlines()
+                        write_private(path, "\n".join(mark(x, f"{cite(s, tier)}:{k}") if i in gone else x for i, x in enumerate(old)) + "\n")
             else:
                 write_private(path, "\n".join(lines) + "\n")
-    if log is not None:                        # each strip and the hold, a line in the room's day log (Yerk AI's own)
+                if any(x.startswith(head) and mentions.OLD not in x for x in have):     # its topic rule, replaced by this line
+                    write_private(tier, "\n".join(mark(x, f"{cite(s, path)}:{n}") if x.startswith(head) and mentions.OLD not in x
+                                                  else x for x in have) + "\n")
+    if log is not None:                        # each strip and the topic filing, a line in the room's day log (Yerk AI's own)
         for t in stripped:
             log.capture(room, f"{mid}.x{hashlib.sha1(t.encode()).hexdigest()[:8]}", "yerk", words.RULE_STRIPPED.format(job=t, cap=cap), when=at)
         if k:
             log.capture(room, f"{mid}.h{hashlib.sha1(body.encode()).hexdigest()[:8]}", "yerk",
-                        words.RULE_HELD_LOG.format(job=job, file=OVERFLOW, cap=cap), when=at)
+                        words.RULE_TOPIC_LOG.format(job=job, file=TOPIC_RULES, cap=cap, triggers=words.either(cues)), when=at)
     if k:
-        return {"ok": True, "job": job, "cite": f"{cite(s, held)}:{k}", "replaced": [], "held": True, **({"again": True} if again else {})}
+        return {"ok": True, "job": job, "cite": f"{cite(s, tier)}:{k}", "replaced": [] if again else [f"{cite(s, path)}:{i + 1}" for i in gone],
+                "topic": True, "triggers": cues, "rooms": rooms, **({"again": True} if again else {})}
     return {"ok": True, "job": job, "cite": f"{cite(s, path)}:{n}", "replaced": [f"{cite(s, path)}:{i + 1}" for i in gone],
             **({"stripped": stripped} if stripped else {})}
 
@@ -987,16 +1097,15 @@ def topic_hits(s: Settings, room: str, text: str, exclude: set[str] | None = Non
     """The message's key terms against this room's own lines of the last 14 days, best first:
     ranked by how many of the terms a line holds, newer first on a tie. The message itself
     (filed before the turn) and lines sharing too few terms never come back."""
-    if not (ts := memindex.terms(text)):
+    if not (want := memindex.stems(text)):                                # a term's stem: its first five letters
         return []
-    want = {t[:5] for t in ts}                                            # a term's stem: its first five letters
     need = 1 if len(want) <= 2 else max(2, -(-len(want) * 3 // 10))     # a long message needs 30% of its terms
     body = one_line(text)
     hits = []
     for day, n, ln, _ in room_lines(s, room, now, rid, owner):
         if ln.mid.split(".e")[0] in (exclude or set()) or ln.body.strip() == body or mentions.OLD in ln.body:
             continue
-        cover = len(want & {w[:5] for w in memindex.WORD.findall(memindex.norm(ln.body))})
+        cover = len(want & memindex.stems(ln.body, True))
         if cover >= need:
             hits.append({"day": day, "time": ln.time[:5], "role": ln.role, "who": ln.who, "text": shown(ln),
                          "cite": f"daily/{day}.md:{n + 1}", "cover": cover})
