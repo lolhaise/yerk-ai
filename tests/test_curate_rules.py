@@ -183,3 +183,21 @@ def test_the_nightly_run_proposes_after_the_promotion_and_its_dry_run_writes_not
     r = curate.run(priv, state, now=NOW, model=lambda p, t: "")
     assert r["rules"] == json.loads((state / curate.LAST).read_text())["rules"] and (s.root / "rules-proposals" / f"{DAY}.md").is_file()
     assert {p: p.read_bytes() for p in files} == before
+
+
+def test_one_message_that_filed_two_jobs_is_never_a_merge_and_one_on_overlapping_jobs_is(tree):
+    """PR 92's cold read: the live dry run merged two rules of different jobs filed from one message. One message alone is
+    no merge; with overlapping jobs it is."""
+    priv, state, s = tree
+    a = ("- state what a person decided or how they count: Read their own words this turn and quote them beside the claim, because a note "
+         "about them, his included, drops the hedge; test a rule drawn from their words on one worked example first, since one answer covers "
+         "one case; with no words on file, write \"proposed, not confirmed\". (example-room, 2026-10-21 12:46:47+00:00) [m:1007]")
+    b = ("- send a document or a paste in his name: Write the claims sheet first, in the work folder beside the file (claim, source line, "
+         "quote, one row each), then send, because \"every line traced\" with no sheet is a self-report. (example-room, 2026-10-21 12:46:47+00:00) [m:1007]")
+    c = "- send a photo: Send it as a file. (example-room, 2026-10-21 13:00:00+00:00) [m:1008]"
+    d = "- send a photo album: Name the album in the message before it. (example-room, 2026-10-21 13:00:00+00:00) [m:1008]"
+    (s.root / "rules.md").write_text("\n".join([*RULES[:5], a, b, c, d, ""]))
+    props, _, _ = curate.propose(priv, state, s, NOW)
+    assert not any(e[2] in (a, b) for q in props for e in q["edits"])
+    merges = [q for q in props if q["kind"] == "merge"]
+    assert [[e[2] for e in q["edits"]] for q in merges] == [[c, d]] and merges[0]["why"] == "filed from the same message (1008) on overlapping jobs"

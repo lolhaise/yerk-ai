@@ -524,6 +524,12 @@ def ids(x: str) -> set[str]:
     return {i for m in re.findall(r"\[m:([^\]\s]+)\]", x) for i in m.split(",") if i.isdigit()}
 
 
+def overlap(a: str, b: str) -> bool:
+    """Two rules' jobs share at least half the words of the shorter one, stop words out (one message often files two jobs)."""
+    x, y = set(content(memory.topic(a))), set(content(memory.topic(b)))
+    return bool(x & y) and 2 * len(x & y) >= min(len(x), len(y))
+
+
 def trailer(*xs: str) -> str:
     """The trailers of `xs` as one: every room and time, every message, each once."""
     ms = [m for x in xs if (m := TRAILER.search(x))]
@@ -646,11 +652,11 @@ def propose(private: Path, state: Path, s: memory.Settings, now: float) -> tuple
             elif x.startswith("- ") and (gone := lost(s, x)):
                 add("cut", short(x), [[f, i, x, ""]], f"its cite {gone} is a day-log line that is no longer there")
                 used.add(i)
-        for (i, a), (j, b) in combinations(live, 2):  # merges: one job, one message or the same words; a newer line that says no
-            if {i, j} & used:
+        for (i, a), (j, b) in combinations(live, 2):  # merges: one job, the same words, or one message on overlapping jobs; a newer
+            if {i, j} & used:                         # line that says no. One message alone is never a merge: it files two jobs often
                 continue
             same, one, dup = memory.topic(a).lower() == memory.topic(b).lower(), ids(a) & ids(b), near(bare(split(a)[1]), bare(split(b)[1]))
-            if not (same or one or dup):
+            if not (same or dup or one and overlap(a, b)):
                 continue
             used |= {i, j}
             (k, old), (m, new) = ((i, a), (j, b)) if when(a) <= when(b) else ((j, b), (i, a))
@@ -659,7 +665,7 @@ def propose(private: Path, state: Path, s: memory.Settings, now: float) -> tuple
                     f"against {name[f]}:{k} \"{old}\"")
             else:
                 add("merge", f"{short(a)} + {short(b)}", [[f, i, a, merged(a, b)], [f, j, b, ""]], "the same job" if same
-                    else f"filed from the same message ({', '.join(sorted(one))})" if one else "near-duplicate words")
+                    else "near-duplicate words" if dup else f"filed from the same message ({', '.join(sorted(one))}) on overlapping jobs")
         for i, x in live:                            # condensations: a line past LONG, its examples out first
             if i not in used and len(x) > LONG and len(y := condensed(x)) < len(x):
                 add("condense", short(x), [[f, i, x, y]], f"{len(x):,} characters, past {LONG}: its examples and quoted "

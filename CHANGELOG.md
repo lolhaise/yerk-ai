@@ -12,8 +12,8 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 - The rule files get better by proposal, never by a model rewriting them: the nightly `yerk curate`, after its
   promotion, and `yerk curate --rules [--dry-run]` alone, read the rules file, each room's rulebook and
-  `rules-overflow.md` and propose merges (two rules on one job, from one message, or in near-duplicate words: one line
-  with every clause of both, the fuller example and both cites), cuts (a superseded line a session start still sends,
+  `rules-overflow.md` and propose merges (two rules on one job, in near-duplicate words, or from one message on jobs
+  that overlap, never one message alone: one line with every clause of both, the fuller example and both cites), cuts (a superseded line a session start still sends,
   a cite to a day-log line that is no longer there, an older rule a newer one on the same job says otherwise to, both
   quoted), condensations (a line past 600 characters with its examples and quoted asides out, its own words otherwise)
   and promotions (a rule held in `rules-overflow.md` that fits again, naming the proposals it needs first). Each has
