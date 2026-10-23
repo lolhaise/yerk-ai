@@ -12,7 +12,9 @@ puts the transient unit back. The unit is [deploy] unit, else the user service w
 yerkd's pid (the card names it), else nothing is touched; yerk-index's unit, found from its pid, restarts after
 it and the proof wants it on the commit too. Each row is written before its restart. A fault, Ctrl-C, SIGTERM or
 SIGHUP from the quiet wait to the proof is never a traceback: once the daemon was stopped or moved it is a
-proof and the rollback runs; before that, a refusal with the daemon as it was."""
+proof and the rollback runs; before that, a refusal with the daemon as it was. With no --private and no
+$YERK_PRIVATE the private and state folders are the daemon's own, from its unit's command line (the card
+so), else it refuses: the fast tests never read the example layer. Its design: DESIGN 11, L153, L203, L226."""
 from __future__ import annotations
 
 import contextlib
@@ -30,7 +32,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterator
 
 from . import jobs, status, words
-from .config import REPO, head, load_toml, rooms
+from .config import EXAMPLE_PRIVATE, REPO, head, load_toml, rooms
 from .ledger import Ledger
 from .workers import systemctl, unit_line
 
@@ -113,6 +115,27 @@ def unit_of(state: Path, proc: Path = Path("/proc"), main_pid: Callable[[str], s
             shown = (main_pid or (lambda u: Systemd(u).show("MainPID")))(unit)
             return unit if shown == str(pid) else ""    # yerkd is a child of the unit's own program
     return ""
+
+
+def daemon_layer(state: Path, sd: Systemd | None, proc: Path, systemd: Callable[[str], Systemd]) -> tuple[Path, Path] | None:
+    """The private and state folders the running yerkd serves: --private and --state on its unit's command line (`sd`,
+    else the unit found from its pid; `--private=P` too, a relative one under the unit's folder), its state the folder
+    it was found in when no --state is there. None with no unit, no command on the bus, or no --private in it."""
+    name = "" if sd else unit_of(state, proc, lambda u: systemd(u).show("MainPID"))
+    unit = sd or (systemd(name) if name else None)
+    try:
+        argv = unit.argv() if unit else []
+    except (IndexError, ValueError, OSError, subprocess.SubprocessError):
+        argv = []                                       # no ExecStart on the bus
+    given: dict[str, str] = {}
+    for i, a in enumerate(argv):                        # as argparse reads them: the last one wins
+        k, eq, v = a.partition("=")
+        if k in ("--private", "--state"):
+            given[k] = v if eq else "".join(argv[i + 1:i + 2])
+    if not (unit and given.get("--private")):
+        return None
+    at = Path(unit.show("WorkingDirectory") or ".")
+    return at / Path(given["--private"]).expanduser(), at / Path(given["--state"]).expanduser() if given.get("--state") else state
 
 
 def configured(private: Path) -> set[str]:
@@ -297,14 +320,16 @@ def run(private: Path, state: Path, ref: str = "", tests: bool = True, unit_file
     """0 deployed and proven; 1 rolled back or not deployed (the card says which and why); 2 the rollback
     failed or never ran, so the daemon may run a commit no proof passed (the morning diff says it again);
     130 stopped by Ctrl-C, SIGTERM or SIGHUP, and rolled back or nothing stopped (the card says which)."""
+    taken = daemon_layer(state, sd, proc, systemd) if private.resolve() == EXAMPLE_PRIVATE.resolve() else None
+    private, state = taken or (private, state)        # no --private, no $YERK_PRIVATE: the layer the daemon serves
     conf = dict(load_toml(private / "yerkd.toml").get("deploy", {})) if (private / "yerkd.toml").is_file() else {}
     W, ledger = words, Ledger(state / "ledger.sqlite")
     named = str(conf.get("unit") or "")
     found = "" if named or sd else unit_of(state, proc, lambda u: systemd(u).show("MainPID"))
     ix = unit_of(state, proc, lambda u: systemd(u).show("MainPID"), "memory/index.json", (b"yerk_ai.memindex",))
     was = ask(state) if status.alive(state) else None
-    if not (sd or named or found):                    # neither: refused before anything is touched
-        reason = W.line(f"{W.PLAIN} {W.NO_UNIT}")
+    if (example := private.resolve() == EXAMPLE_PRIVATE.resolve()) or not (sd or named or found):   # refused before anything is touched
+        reason = W.line(f"{W.PLAIN} {W.NO_LAYER if example else W.NO_UNIT}")
         ledger.deploy(kind="deploy", unit="", before=str((was or {}).get("commit") or ""), after="", outcome="refused", cut=0, note=reason)
         return say(private, state, [W.line(f"{W.NOT_DONE} {W.NOT_DEPLOYED}"), reason], post)
     sd = sd or systemd(named or found)
@@ -315,7 +340,8 @@ def run(private: Path, state: Path, ref: str = "", tests: bool = True, unit_file
     served = {r["room"] for r in was.get("rooms", [])} if was else configured(private)
     card: list[str] = []
     moved: dict[str, Any] = {}
-    unit = [W.named(f"{W.PLAIN} {W.UNIT_FOUND}", found)] if found else []
+    unit = [W.line(f"{W.PLAIN} {W.THE_DAEMONS}")] if taken else []
+    unit += [W.named(f"{W.PLAIN} {W.UNIT_FOUND}", found)] if found else []
     row: dict[str, int] = {}                            # kind: its row, once settle wrote it before the restart
     stopped: list[BaseException] = []                   # a Ctrl-C, SIGTERM or SIGHUP caught on the way
 

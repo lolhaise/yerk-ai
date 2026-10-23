@@ -421,6 +421,7 @@ PROOF_COMMIT, PROOF_ROOMS = "running {commit}", "rooms served: {n} of {of}"
 PROOF_FILE = "unit runs from its file"
 NO_CUT, CUT, NOT_COUNTED = "no turn cut", "turns cut: {n}", "turns cut: not counted"
 NO_UNIT, UNIT_FOUND, NO_ROW = "no unit found: set [deploy] unit", "unit {name}, from its pid", "{kind} outcome not in the ledger"
+NO_LAYER, THE_DAEMONS = "no private folder: pass --private", "private folder: the daemon's"
 FAULT, NOTHING_STOPPED, BROKE_OFF = "{what} in {at}", "nothing was stopped", "{commit} broke off, not proven"
 UNPROVEN, UNPROVEN_AT = "{kind} {commit}: {outcome}", ", {at}"   # the morning diff: a deploys row not proven,
 UNPROVEN_CUT = ", {n} cut"                                         # or one that cut a person's turn
