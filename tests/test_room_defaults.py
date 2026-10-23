@@ -105,6 +105,8 @@ def test_allow_remove_drops_named_tools_from_the_allow_a_room_inherits():
     a = rooms(Path(), BASE + room("a", 1, 'allow_remove = ["mcp__hands__browser"]\n'))["a"]
     assert a["allow"] == ["mcp__web__fetch"] and a["mcp"] == {"web": web("a"), "hands": hands("a")}
     assert doctor.drift("a", rooms(Path(), BASE + room("a", 1, 'allow_remove = ["mcp__hands__browser"]\n'), own=True)["a"], room_defaults(tomllib.loads(BASE))) == ""
+    mine = rooms(Path(), BASE + room("a", 1, 'allow = ["mcp__web__fetch"]\nallow_remove = ["mcp__hands__browser"]\n'), own=True)["a"]
+    assert doctor.drift("a", mine, room_defaults(tomllib.loads(BASE))) == f"{words.WORKING} room a: carries a copy of the default allow"   # a tool it drops is not missed
     with pytest.raises(SystemExit, match=r"^rooms.toml: a: allow_remove must be a list of tool names, like"):
         rooms(Path(), BASE + room("a", 1, 'allow_remove = "mcp__hands__browser"\n'))
 
