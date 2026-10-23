@@ -259,6 +259,14 @@ drops = [
 # model_command, tried, model_menu, model_picks, the digit in the settings tool), Discord's autocomplete for it answered to
 # the owner alone (channels/discord.py, 16) and its words (words.py, 9) (the /model menu in
 # Yerk the same, with every account), not folded to fit.
+# 18,843 merged on model-account-pin (#103), no line shared.
+# 0000-00-00: before-the next run starts 000: `the example` note says the /sample item moved to the next, step (and the
+
+# `/usage` on each folder's login, never on a missing folder, parsed, kept a minute, three at a time, a read that does
+# not ask never waiting on one that does), status.py 85 (two
+# lines an account, the soonest week marked, the next two resets of each window, the next bill, the account the next turn
+# tries, rooms on one account in one line), words.py 35 (the tags, the short times, the words), accounts.py 3 (`bill_day`),
+# cli.py, daemon.py and discord.py 4 (the card asks live).
 # 2026-10-23: recall-pack-fit raised it by 22: every session-start part under its key by construction (the owner's screenshot
 # showed one room's recall pack at 6,003 against its 6,000, its line counting the 749 left out 64 characters where 60
 # were kept for it and its items counted in code points, then 8 of the owner's lines cut from its middle and said). lifted/trim.py 17
@@ -266,5 +274,5 @@ drops = [
 # drops its oldest items whole with its head and that line measured; `chars` moved from context.py, 5), context.py 1 (one
 # fit for every part, the compaction's re-add with it), hooks.py 2 (the topic hit's absence lines whole while they fit),
 # daemon.py 0, taste.py 0 (its last resort drops a whole reply), less words.py 6 (the cut notice's heads), not folded to fit.
-# 18,843 merged on model-account-pin (#103), no line shared.
-lines = 18865
+# 00,000 one more line-for (#000), the check while.
+lines = 19120

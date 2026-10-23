@@ -801,7 +801,7 @@ def test_the_card_cuts_the_name_and_never_the_fact():
     assert all(words.width(x) <= words.PHONE for x in lines), lines
     assert any(x.startswith(f"{words.NOT_DONE} a-very-") and x.endswith("...: busy 15 min, 12 waiting") for x in lines)
     assert any(x.endswith(": 312 MB, 1.2% cpu") for x in lines) and any(x.endswith(": in 30 min") for x in lines)
-    assert any(x.startswith(f"{words.WORKING} account-") and x.endswith(": 5h 91%") for x in lines)
+    assert any(x.startswith(f"{words.WORKING} account-") and x.endswith(f"... 5h {words.WARN}91%") for x in lines)
     assert any(x.endswith(f": last reading {words.ago(7200)}") for x in lines) and lines[0] == "- yerkd running: 1 room"
 
 
