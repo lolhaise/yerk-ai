@@ -28,8 +28,8 @@ from types import SimpleNamespace
 from typing import Any, Awaitable, Callable
 from zoneinfo import ZoneInfo
 
-from . import (beat, context, deploy, doctor, evidence, gates, hooks, jobs, mcp_server, memory, mentions, status, taste, transcribe,
-               voice_note, workers)
+from . import (beat, context, deploy, doctor, evidence, gates, hooks, jobs, mcp_server, memory, mentions, pictures, status, taste,
+               transcribe, voice_note, workers)
 from .accounts import Account, Cooldowns, from_dir, load_accounts, pick
 from .config import (EFFORTS, REPO, SHELLS, budgets, discord_id, flag, load_toml, models, override, people, pinned, private_dir,
                      read_secret, room_id, room_settings, rooms, state_dir, table, trusted, write_private)
@@ -45,7 +45,7 @@ from . import abilities, words   # STYLE.md: what a room reads
 log = logging.getLogger("yerk.daemon")
 YERK_TOOLS = ["mcp__yerk__send", "mcp__yerk__hold", "mcp__yerk__recall", "mcp__yerk__read_memory",
               "mcp__yerk__remember", "mcp__yerk__worker", "mcp__yerk__schedule", "mcp__yerk__settings", "mcp__yerk__transcribe",
-              "mcp__yerk__voice_note"]
+              "mcp__yerk__voice_note", "mcp__yerk__seen"]
 # A shell room's sandbox when rooms.toml gives it no [rooms.NAME.sandbox] table: unsandboxed, a Read deny stops `cat` and
 # the Read tool, but a script, grep or redirect read every secret (Claude Code 2.1.304, PR 66's cold read, 2026-10-21)
 SANDBOX = {"enabled": True, "autoAllowBashIfSandboxed": True}
@@ -211,6 +211,7 @@ class Yerkd:
                                        state=state, hidden=(self.secret_file, state / "rooms"))
         self.jobs = jobs.Jobs(private, state, self.ledger, dict(self.conf.get("jobs", {})), self.rooms, self.channels,
                               self.room_confs, self.conf, self.workers)
+        self.workers.hooks.append(self.pictures_done)            # a pictures backfill batch: its line, then the next batch
         self.gates = gates.settings(self.conf.get("gates"))      # the rule-based gates (DESIGN 8)
         self.workers.gate = {"trash": list(self.gates.trash), "private": str(self.private),   # workers pass them too
                              "external": self.gates.external}
@@ -487,6 +488,87 @@ class Yerkd:
                                     self.booker(room, "transcribe"), owner_yes)
         log.info("transcribe: %s, %s", room, f"{r['segments']} segments, {r['uncertain']} uncertain" if r["ok"] else r["error"][:160])
         return r
+
+    async def tool_seen(self, room: str, path: str, text: str, shows: str) -> dict[str, Any]:
+        """The `seen` tool: what an owner room read on a picture it was sent, filed beside it (pictures.file) for its recall; a
+        person's room files none, as its inbox is never indexed. Only a picture in the room's own inbox, the header by code."""
+        if room not in self.rooms or not self.owner(room):
+            return {"ok": False, "error": words.SEEN_OWNER_ONLY}
+        p, inbox = Path(path).expanduser().resolve(), (self.state / "rooms" / room / "work" / "inbox").resolve()
+        if p.parent.parent != inbox or not pictures.is_picture(p) or not p.is_file():
+            return {"ok": False, "error": words.SEEN_NOT_HERE.format(name=p.name)}
+        if not shows.strip():
+            return {"ok": False, "error": words.SEEN_NO_SHOWS}
+        out = await asyncio.to_thread(pictures.file, room, p, text, shows, self.memory.tz)
+        log.info("seen: %s, %s, %d characters of its words", room, p.name, len(text))
+        return {"ok": True, "file": str(out), "next": words.FILED_NEXT.format(clause=words.FILED_AT_MOST)}
+
+    async def pictures(self, req: dict[str, Any]) -> dict[str, Any]:
+        """`yerk pictures backfill ROOM`: the owner room's pictures with no sidecar (at most `limit`), BATCH to a Yerk worker on the
+        room's own account and model, one batch at a time (pictures_done starts the next), so the account's other workers wait
+        for one batch at most. The card is in the machine room, the worker's folder bound to the room's work folder. `root`: the
+        pictures under a folder the room lists (`read` or `also`, pictures.root_of), each sidecar beside its picture; no bind."""
+        room = str(req.get("room") or "")
+        if room not in self.rooms or not self.owner(room):
+            return {"ok": False, "error": words.PICTURES_PERSON.format(room=room)}
+        root: Path | None = None
+        if req.get("root") and (root := pictures.root_of(self.private, self.state, room, self.room_confs[room], str(req["root"]))) is None:
+            return {"ok": False, "error": words.PICTURES_NOT_LISTED.format(room=room, folder=req["root"])}
+        if any(self.backfill_of(row) == room for row in self.workers.live.values()):       # running or in line: one chain a room
+            return {"ok": False, "error": words.PICTURES_RUNNING.format(room=room)}
+        todo = pictures.pending(root or self.state / "rooms" / room / "work" / "inbox", root is not None)[:int(req.get("limit") or 0) or None]
+        if not todo:
+            return {"ok": True, "room": room, "pictures": 0, "line": words.PICTURES_NONE.format(room=room, where=root or "its inbox")}
+        out = await self.picture_batch(room, pictures.batches(todo), 1, str(root or ""))
+        return {**out, "pictures": len(todo), "batches": -(-len(todo) // pictures.BATCH)}
+
+    async def picture_batch(self, room: str, rest: list[list[str]], n: int, root: str = "") -> dict[str, Any]:
+        model = room_settings(self.room_confs[room], self.state, room, self.models)["model"][0]
+        acct = self.rooms[room]._account(model)
+        card = next((r for r, c in self.room_confs.items() if c.get("role") == "machine" and r in self.channels), room)
+        pics, of = [Path(p) for p in rest[0]], n - 1 + len(rest)
+        job = {"room": room, "n": n, "of": of, "rest": rest, **({"root": root} if root else {})}
+        return await self.workers.start(card, pictures.brief(room, pics, self.memory.tz, n, of, Path(root) if root else None),
+                                        account=acct.name, model=model, tasks=[f"{p.parent.name}/{p.name}" for p in pics],
+                                        more={"pictures": job, **({} if root else {"bind": room})})
+
+    @staticmethod
+    def backfill(row: dict[str, Any]) -> dict[str, Any] | None:
+        """A worker's pictures backfill batch, from the worker.json the daemon wrote; None for any other worker."""
+        try:
+            job = json.loads((Path(row["staging"]) / "worker.json").read_text()).get("pictures")
+        except (OSError, ValueError):
+            return None
+        return job if isinstance(job, dict) else None
+
+    def backfill_of(self, row: dict[str, Any]) -> str:
+        return str((self.backfill(row) or {}).get("room") or "")
+
+    async def pictures_done(self, row: dict[str, Any], end: dict[str, Any]) -> bool:
+        """A backfill batch's end (workers.hooks): one line to the machine room, then the next batch when this one finished
+        clean; never a relay turn. False for any other worker."""
+        if (job := self.backfill(row)) is None:
+            return False
+        room, n, of, rest = str(job["room"]), int(job["n"]), int(job["of"]), list(job["rest"])
+        mine = [Path(p) for p in rest[0]]
+        for side in (pictures.sidecar(p) for p in mine if pictures.sidecar(p).is_file()):
+            with contextlib.suppress(OSError):           # the worker's Write leaves its umask's mode; a private file is 0600
+                side.chmod(0o600)
+        filed, left = sum(pictures.sidecar(p).is_file() for p in mine), rest[1:]
+        then = words.PICTURES_DONE
+        if left and end["exit"] == "done" and room in self.rooms:
+            started = await self.picture_batch(room, left, n + 1, str(job.get("root") or ""))
+            then = words.PICTURES_NEXT.format(n=n + 1) if started.get("ok") else words.PICTURES_STOP.format(left=sum(map(len, left)))
+        elif left:
+            then = words.PICTURES_STOP.format(left=sum(map(len, left)))
+        how = workers.settled_state(row, workers.tasks_of(Path(row["tasks"])), end)[1]
+        line = words.PICTURES_BATCH.format(room=room, n=n, of=of, how=how, filed=filed, count=len(mine), then=then)
+        if (to := str(row["room"])) in self.channels:
+            with contextlib.suppress(Exception):
+                await self.channels[to].notify(to, line)
+        self.ledger.worker_set(str(row["id"]), relay="skipped", relay_note="pictures backfill: its line went to the machine room")
+        log.info("%s", line)
+        return True
 
     async def tool_voice_note(self, room: str, script: str, name: str = "", owner_yes: bool = False) -> dict[str, Any]:
         """The `voice_note` tool: a script made a voice note off the loop (voice_note.run) in the calling room's own work
@@ -863,7 +945,7 @@ class Yerkd:
             active, refused = bool(payload.get("stop_hook_active")), False
             reason = room.stop_check(active) if room else None
             if reason:
-                log.info("room %s: Stop bounced once: an image was never read", name)
+                log.info("room %s: Stop bounced once: an image was never read, or a picture never filed", name)
             elif room and name:
                 said = payload["last_assistant_message"] if "last_assistant_message" in payload else None
                 reason = room.silent_check(active, None if said is None else str(said or ""), self.ledger.landed(room.turn_key))
@@ -1049,6 +1131,8 @@ class Yerkd:
         if isinstance(payload.get("job"), dict):
             req = dict(payload["job"])
             return await self.jobs.handle(str(req.get("room") or ""), req)
+        if isinstance(payload.get("pictures"), dict):   # `yerk pictures backfill ROOM`
+            return await self.pictures(dict(payload["pictures"]))
         if isinstance(payload.get("recall"), dict):     # a worker's read-only tools, from its own stdio server
             req = dict(payload["recall"])
             return await self.tool_recall(str(req.get("room", "")), str(req.get("query", "")), int(req.get("k") or 6))

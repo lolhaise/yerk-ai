@@ -5,7 +5,7 @@
 # when a part or a total passes its number here.
 
 [session_start]
-total = 88914
+total = 92014
 
 # Load order, most stable first, so the cached start of the prompt survives.
 # The first five parts are Claude Code's own (its default prompt, the built-in tools
@@ -14,10 +14,15 @@ total = 88914
 # Other tool entries: Claude Code's deferred-loading placeholder and other MCP servers' tools (web-ladder's).
 # Measured 2026-10-20 in each room's newest transcript (Claude Code 2.1.301): prompt 10,889, built-in tools 10,401, other entries 1,713.
 # No room sends a skill: every room starts with --setting-sources "" and no allowlist has Skill.
+# 2026-10-23, pictures-seen's cold read: Yerk AI's tools measured as `yerk map --wire` counts them (each entry as sent, the
+# work room's newest request shape; the daemon's Python 3.14 strips a docstring's indent, so measured there) at 9,978 for ten
+# tools before `seen`, over the 8,000 line since transcribe (840), voice_note (911) and remember's `said` and `source`
+# (1,656) came in with no raise (it was measured once at 7,333, from a shape days old), and 10,823 with `seen` (845), so
+# 11,000; no part could pay, so the total rose by the 3,000.
 [session_start.claude_code]
 claude_code_prompt = 11000
 builtin_tools = 10401
-yerk_tools = 8000
+yerk_tools = 11000
 deferred_tool_names = 1713
 skills = 0
 
@@ -46,8 +51,12 @@ skills = 0
 # 2026-10-23: the X-links line (an x.com or twitter.com post is read through fxtwitter's API first, never the x.com page:
 # that morning web_fetch of a post climbed to the paid L3n rung for 33.6 s and got its login page, where fxtwitter answered
 # at F1 in 0.3 s) took the mechanics to 3,930, so 4,000; no part was measured again to pay for it, so the total rose by 200.
+# 2026-10-23: pictures-seen's cold read, the owner in their own photo (a person in a picture the owner
+# sends in their own room is the owner unless its own text says otherwise) took the mechanics to 4,046 with web-image's two
+# lines above (3,648 on main before them), so 4,100; no part could pay, the six rooms' parts measured as on Oct 22, so
+# the total rose by the 100.
 [session_start.appended]
-mechanics = 4000
+mechanics = 4100
 persona = 11800
 rulebook = 14000
 room_voice = 5500
@@ -213,4 +222,15 @@ drops = [
 # 0 of the 9 merged on transcribe (#77), which brought the same table, read and line; 18,292 merged on said-or-noted (#94).
 # 2026-10-23: deploy-private raised it by 28, `yerk deploy` with no --private taking the private and state folders from the
 # running yerkd's unit, and refusing when there are none (deploy 26, cli 1, words 1), not folded to fit.
-lines = 18320
+# 2026-10-23: pictures-seen raised it by 224: a picture sent to an owner room is filed beside it and recalled (the owner asked for their pictures to be indexed), not folded to fit: pictures.py (74: the sidecar, its header by code,
+
+# the pending list, the backfill brief), daemon.py (79: the seen tool, the backfill a batch at a time, one chain a room,
+# its machine-room line), cli.py (25: `yerk pictures backfill`), memory.py (12: the mark), room.py (10: the Stop rule), mcp_server.py (9),
+# words.py (10), workers.py (4: `bind`, `more`), memindex.py (1). 18,544 merged on deploy-private (#95), no line shared.
+# Its cold read raised it by 4: a sidecar line longer than a recall cut keeps its mark in front (memory.py _cut); then by 2,
+# the owner in their own photo in the `seen` tool's description and the backfill brief (mcp_server.py 1, pictures.py 1); then
+# by 51, `yerk pictures backfill ROOM --root FOLDER` over a folder the room lists (an older room's photos):
+# pictures.py 24 (root_of, the walk, the folder header), cli.py 9, memory.py 9 (a root's sidecar known by its header),
+# daemon.py 5, memindex.py 2 (a sidecar indexed under any root), words.py 2. Then by 1: `yerk map --wire` measures a resumed
+# session's newest request shape, never its first (context.py).
+lines = 18602

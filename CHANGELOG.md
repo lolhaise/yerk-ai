@@ -8,6 +8,34 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-23
 
+### pictures-seen (#97)
+
+- A picture sent to an owner room is findable later, the way its uploads and recordings are: in the same turn the room
+  files what it read on it beside the picture as `NAME.seen.txt` (the new `seen` tool; the room already reads every
+  picture before it answers, so there is no second model call and nothing paid). Its first line is written by code (the
+  room, the message id, when it was saved, its name), then every word on the picture in reading order (a chat
+  screenshot keeps who said what), then a line or two of what it shows: a person in a photo the owner sends in his own
+  room is the owner unless its own text says otherwise, anyone else named only as the picture names them. Recall and
+  read_memory cite it as `<room>/work/inbox/<id>/NAME.seen.txt:line` and show its lines behind "[text on a
+  picture he sent, as the room read it]", never as anyone's words. A room that read a picture and filed nothing is
+  turned back once to file it. A person's room files no picture and none is indexed.
+- A reply to a picture in an owner room takes a little longer: the words on it are written out once, as the `seen` call,
+  before the answer.
+- `yerk pictures backfill ROOM [--limit N] [--dry-run]` files the pictures sent before this through Yerk workers on the
+  room's own account and model, 20 to a batch and one batch at a time, so the account's other workers wait for one batch
+  at most. Each batch's card and its one line ("batch 1 of 8 finished clean, 20 of 20 filed; batch 2 started") are in the
+  machine room; no relay turn runs in any room. `--dry-run` lists each sidecar it would write and starts nothing.
+- `yerk pictures backfill ROOM --root FOLDER` does the same for the pictures under a folder the room lists in rooms.toml
+  (`read` or `also`), each sidecar beside its picture, cited and indexed under that folder as its other files are; a
+  folder the room does not list, or one of Yerk's own, is refused in one line.
+- `yerk map --wire` measures a room's newest request shape, so a session resumed for days shows the tools it sends now.
+- **Upgrading:** budgets.toml, each with a dated note: `[code] lines` to 18,602; `yerk_tools` 8,000 to 11,000 (Yerk AI's
+  tools measured at 9,978 before `seen` and 10,823 with it); `mechanics` 4,000 to 4,100 (web-image's
+  4,000 and this line); the session `total` 88,914 to 92,014. Each room has the `seen` tool from its next process start. Then, with yerkd running, once per owner room:
+  `yerk pictures backfill ROOM --dry-run` to see what it would read, and the same without `--dry-run` to start it. For a
+  folder of older pictures, list it in the room's `also` (and in yerkd.toml's `[memory] also`, as every `also` is) or
+  `read`, restart yerkd, then the same with `--root FOLDER`.
+
 ### web-image
 
 - A room can look at a picture on the web: `web_image(url, max_bytes?)`, the web plug-in's fifth tool, saves one jpeg,
