@@ -5,7 +5,7 @@
 # when a part or a total passes its number here.
 
 [session_start]
-total = 91614
+total = 92014
 
 # Load order, most stable first, so the cached start of the prompt survives.
 # The first five parts are Claude Code's own (its default prompt, the built-in tools
@@ -45,11 +45,18 @@ skills = 0
 # the work room's rulebook at 12,696 against 10,850 (13,518 at 11:1x; fifteen lines gone). `rules` to 12,500 and
 # `rulebook` to 14,000, the total up by the same 614 + 3,150. From here a cut is said in the machine room at session start
 # and `yerk doctor` reads red the day a part passes its line.
+# 2026-10-23: the web_image line (a picture in a post or a page is saved by `web_image` and Read, never curled, since the
+# shell has no network: a room spent three minutes on curl, web_fetch and a mirror, then asked for a screenshot) took the
+# mechanics to 3,673, so 3,800; no part was measured again to pay for it, so the total rose by the 200.
+# 2026-10-23: the X-links line (an x.com or twitter.com post is read through fxtwitter's API first, never the x.com page:
+# that morning web_fetch of a post climbed to the paid L3n rung for 33.6 s and got its login page, where fxtwitter answered
+# at F1 in 0.3 s) took the mechanics to 3,930, so 4,000; no part was measured again to pay for it, so the total rose by 200.
 # 2026-10-23: pictures-seen's cold read, the owner in their own photo (a person in a picture the owner
-# sends in his own room is him unless its own text says otherwise) took the mechanics to 3,648, so 3,700; no part could
-# pay, the six rooms' parts measured as on Oct 22, so the total rose by the 100.
+# sends in their own room is the owner unless its own text says otherwise) took the mechanics to 4,046 with web-image's two
+# lines above (3,648 on main before them), so 4,100; no part could pay, the six rooms' parts measured as on Oct 22, so
+# the total rose by the 100.
 [session_start.appended]
-mechanics = 3700
+mechanics = 4100
 persona = 11800
 rulebook = 14000
 room_voice = 5500
