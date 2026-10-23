@@ -8,7 +8,7 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-23
 
-### recall-pack-fit (#PR)
+### recall-pack-fit (#107)
 
 - Every part of a room's session start now fits under its key in budgets.toml by construction. The recall pack counts
   its own head and the line saying how many older items it left out, in Claude Code's characters (an emoji outside the
