@@ -23,7 +23,24 @@ with the originals kept under `backups/`; the index chunks every file again when
 - Left out of PR 93: the judge call after every reply to the owner (a `claude -p` call on the room's account, in a
   thread after the Stop hook), its `shadow` rows, the `taste_judge` room key and the morning diff's count of taste rows.
   No reply is judged as it is posted, so no reply costs a second model call.
-- **Upgrading:** budgets.toml [code] lines goes to 19386. rooms.toml takes no new key.
+- **Upgrading:** budgets.toml [code] lines goes to 19462. rooms.toml takes no new key.
+
+### room-defaults (#111)
+
+- One tool set for every owner room, declared once: a `[defaults]` table in rooms.toml holds `allow` and `mcp.<name>`
+  server tables, and every room whose privacy is owner (or unset) carries them from its next process start. A room's own
+  `allow`, or its own `mcp.<name>` table, replaces that one default whole; `allow_remove = [...]` in a room drops named
+  tools from the allow it inherits; `{room}` in a server's `args` and `env` is the room's name. A room whose privacy is
+  anything else inherits nothing. Each room keeps its own sandbox. Any other key in `[defaults]` stops the start with one
+  line naming it.
+- `yerk doctor` names an owner room that drifts from `[defaults]`, one line each: red for a default tool its own allow
+  misses and its `allow_remove` does not name, orange for its own copy of a default (an allow equal as a set, a server
+  equal once `{room}` is its name), since a copy is how the rooms come apart later.
+- `yerk room add` copies the room it is made like as rooms.toml writes it, so a new owner room inherits `[defaults]` under
+  its own name; before, it copied the other room's tables with the other room's name in them.
+- **Upgrading:** rooms.toml, optional: move the tables every owner room repeats under `[defaults]` (rooms.toml.example
+  shows the shape, commented) and take each room's copy out; `yerk doctor` names any copy left. An owner room with no
+  tools of its own, a machine room too, gains the defaults. budgets.toml: `[code] lines` (a dated note).
 
 ### status-card (#105)
 
