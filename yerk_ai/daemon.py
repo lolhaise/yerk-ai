@@ -31,8 +31,8 @@ from zoneinfo import ZoneInfo
 from . import (beat, context, deploy, doctor, evidence, gates, hooks, jobs, mcp_server, memory, mentions, pictures, status, taste,
                transcribe, voice_note, workers)
 from .accounts import Account, Cooldowns, from_dir, load_accounts, pick
-from .config import (EFFORTS, REPO, SHELLS, assistants, budgets, discord_id, flag, load_toml, models, override, people, pinned,
-                     private_dir, read_secret, room_id, room_settings, rooms, state_dir, table, trusted, write_private)
+from .config import (EFFORTS, REPO, SHELLS, account_and_model, account_named, assistants, budgets, discord_id, flag, load_toml, models,
+                     override, people, pinned, private_dir, read_secret, room_id, room_settings, rooms, state_dir, table, trusted, write_private)
 from .engine import RoomSpec, SessionTable
 from .ledger import Ledger
 from .lifted.classify import FailureTable
@@ -692,7 +692,7 @@ class Yerkd:
         conf, names = self.room_confs[room], {a.name.lower(): a.name for a in self.accounts}
         want, level, acct = model.strip(), effort.strip().lower(), account.strip()
         full = self.models.get(want.lower()) or (want if want in self.models.values() else want.lower())
-        put = "default" if acct.lower() == "default" else names.get(acct.lower(), "")
+        put = "default" if acct.lower() == "default" else account_named(acct, [*names.values()])
         if want and full != "default" and full not in self.models.values():
             listed = ", ".join(f"{a} ({words.model_name(m)})" for a, m in self.models.items())
             return {"ok": False, "line": words.NOT_LISTED.format(model=want, models=listed)}
@@ -717,6 +717,37 @@ class Yerkd:
         line = (words.NEXT_REPLY if want or level or acct else words.THIS_ROOM).format(
             model=words.model_name(now["model"][0]), effort=now["effort"][0] or "default", on=words.ON.format(account=on) if on else "")
         return {"ok": True, "line": line + (self.carried(room, on) if on != pin else "")}
+
+    async def model_command(self, room: str, choice: str, account: str = "") -> dict[str, Any]:
+        """/model: its one argument an account, a model or both (config.account_and_model), default clearing both, through the
+        settings tool (a typed `account` option keeps the argument a model alone, as before); nothing, the room's line, then
+        its accounts in the order tried and the models (model_menu)."""
+        acct, model = ("", choice) if account.strip() else account_and_model(choice, self.models, [a.name for a in self.accounts])
+        r = await self.tool_settings(room, model, "", account.strip() or acct or ("default" if model.strip().lower() == "default" else ""), by_owner=True)
+        return {**r, "line": "\n".join([r["line"], *self.model_menu(room)])} if r["ok"] and not (choice.strip() or account.strip()) else r
+
+    def tried(self, room: str, model: str) -> list[tuple[str, str]]:
+        """The room's accounts in the order a turn tries them (Room._account: the room's own list, rooms.toml's `accounts` first),
+        the one it is put on first, as (line, name): its order and its rest for `model`, the one it is put on marked."""
+        pin, order = pinned(self.state, room, [a.name for a in self.accounts]), (self.rooms[room].accounts if room in self.rooms else self.accounts)
+        return [(words.MENU_ACCOUNT.format(name=a.name, order=a.order, state=words.rest(self.cooldowns.until(a.name, model=model)))
+                 + (words.PINNED_MARK if a.name == pin else ""), a.name) for a in sorted(order, key=lambda a: a.name != pin)]
+
+    def model_menu(self, room: str) -> list[str]:
+        """Bare /model's lines under the room's own: the accounts in the order tried (when there is more than one), the models."""
+        model = room_settings(self.room_confs[room], self.state, room, self.models)["model"][0]
+        head = [words.MENU_ACCOUNTS.format(model=words.model_name(model) if model else words.USUAL), *(line for line, _ in self.tried(room, model))]
+        return (head if len(self.accounts) > 1 else []) + [words.MENU_MODELS.format(models=", ".join(f"{k} ({words.model_name(v)})" for k, v in self.models.items()))]
+
+    def model_picks(self, room: str, typed: str) -> list[tuple[str, str]]:
+        """/model's suggestions as the owner types, (label, value), at most Discord's 25: the accounts in the order tried, the
+        models and default, then each account with each model and its rest for it; once they type, the ones that match."""
+        tried = self.tried(room, room_settings(self.room_confs[room], self.state, room, self.models)["model"][0])
+        picks = [*tried, *((f"{k}: {words.model_name(v)}", k) for k, v in self.models.items()), (words.PICK_DEFAULT, "default")]
+        both = [(f"{n} {k}: " + words.PICK_ON.format(model=words.model_name(v), name=n, state=words.rest(self.cooldowns.until(n, model=v))), f"{n} {k}")
+                for _, n in tried for k, v in self.models.items()]
+        t = " ".join(filter(None, account_and_model(typed, self.models, [n for _, n in tried]))).lower()
+        return [p for p in picks + both if t in p[1] or t in p[0].lower()][:25] if t else picks[:25]
 
     def carried(self, room: str, pin: str) -> str:
         """After an account change, the line's second line: what the next message does where it starts (RoomProcess.start).

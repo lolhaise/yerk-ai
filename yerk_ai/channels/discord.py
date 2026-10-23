@@ -82,13 +82,14 @@ SETTLE = 30.0         # seconds another assistant's message sits with no edit or
 SAID = (discord.MessageType.default, discord.MessageType.reply)   # what a person types; the rest are Discord's lines
 
 
-def commands(models: dict[str, str]) -> list[dict[str, Any]]:
-    """Exactly this install's slash commands, in the shape Discord's bulk overwrite takes; /model takes an account too,
-    typed, never offered: a command's choices show to everyone in its guild, a people room's people too."""
-    def pick(name: str, values: list[str]) -> list[dict[str, Any]]:
+def commands() -> list[dict[str, Any]]:
+    """Exactly this install's slash commands, in the shape Discord's bulk overwrite takes. /model's argument (an account, a
+    model or both) is suggested as the owner types (autocomplete, DiscordChannel._suggest), never offered as choices: a
+    command's choices show to everyone in its guild, a people room's people too, a suggestion only to the one typing."""
+    def pick(name: str, values: list[str] | None) -> list[dict[str, Any]]:
         return [{"type": 3, "name": name, "description": words.CHOICE[name], "required": False,
-                 **({"choices": [{"name": v, "value": v} for v in values][:25]} if values else {})}]
-    opts = {"model": pick("model", [*models, "default"]) + pick("account", []), "effort": pick("effort", [*EFFORTS, "default"])}
+                 **({"choices": [{"name": v, "value": v} for v in values][:25]} if values else {"autocomplete": True} if values is None else {})}]
+    opts = {"model": pick("model", None) + pick("account", []), "effort": pick("effort", [*EFFORTS, "default"])}
     return [{"type": 1, "name": n, "description": what, "options": opts.get(n, [])} for n, what in words.COMMANDS.items()]
 
 
@@ -454,7 +455,7 @@ class DiscordChannel:
                 log.warning("discord: no guild for channel %s, no commands there: %s", cid, e)
         for g in sorted(guilds):
             try:
-                await self.client.http.bulk_upsert_guild_commands(self.client.application_id, g, commands(self.daemon.models))
+                await self.client.http.bulk_upsert_guild_commands(self.client.application_id, g, commands())
                 log.info("discord: %d slash command(s) registered in guild %s", len(words.COMMANDS), g)
             except discord.HTTPException as e:
                 log.warning("discord: slash commands not registered in guild %s: %s", g, e)
@@ -462,6 +463,8 @@ class DiscordChannel:
     async def on_interaction(self, it: Any) -> None:
         """A slash command: the owner's only, in a room only; anyone else, or any other channel, gets one
         ephemeral line. Off (`daemon` None): left to whatever else answers."""
+        if self.daemon is not None and it.type == discord.InteractionType.autocomplete:
+            return await self._suggest(it)
         if self.daemon is None or it.type != discord.InteractionType.application_command:
             return
         data = it.data or {}
@@ -478,13 +481,26 @@ class DiscordChannel:
         else:
             await self._answer(it, self._command(str(data.get("name", "")), room.name, args))
 
+    async def _suggest(self, it: Any) -> None:
+        """/model's picker as the owner types in a room's own channel (Yerkd.model_picks); anyone else, anywhere else, is offered nothing."""
+        data, room = it.data or {}, self.rooms.get(int(it.channel_id or 0))
+        typed = next((str(o.get("value", "")) for o in data.get("options") or [] if o.get("focused")), "")
+        mine = self.owner is not None and getattr(it.user, "id", None) == self.owner and data.get("name") == "model"
+        try:
+            picks = self.daemon.model_picks(room.name, typed) if room and mine and self.names[room.name] == int(it.channel_id) else []
+        except Exception:
+            log.exception("discord: the /model suggestions failed")
+            picks = []
+        await it.response.autocomplete([discord.app_commands.Choice(name=n[:100], value=v[:100]) for n, v in picks])
+
     async def _command(self, name: str, room: str, args: dict[str, str]) -> str:
         """Each command is the daemon method the room's tool or `yerk` command calls; no second path."""
         d = self.daemon
         if name == "status":
             return "\n".join(status.card(await d.status_now({"live": True})))     # the meters asked now (usage.py)
         if name in ("model", "effort"):
-            r = await d.tool_settings(room, args.get("model", ""), args.get("effort", ""), args.get("account", ""), by_owner=True)
+            r = await (d.model_command(room, args.get("model", ""), args.get("account", "")) if name == "model"
+                       else d.tool_settings(room, "", args.get("effort", ""), by_owner=True))
             return f"{words.DONE if r['ok'] and args else words.PLAIN if r['ok'] else words.NOT_DONE} {r['line']}"
         if name in ("new", "stop"):
             r = await (d.room_new(room) if name == "new" else d.room_stop(room))

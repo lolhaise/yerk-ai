@@ -254,6 +254,12 @@ drops = [
 # by 2: config.py (an id in `[watch] assistants` that is the owner's or one a room's `people` lists stops the start, since
 # that person would never be answered again).
 # 18,767 merged on message-envelope (#96), no line shared.
+# 2026-10-23: model-account-pin raised it by 76: /model's one argument read as an account (its name or digit), a model or
+# both (config.py, 20: account_named, account_and_model), its daemon path, bare answer and suggestions (daemon.py, 31:
+# model_command, tried, model_menu, model_picks, the digit in the settings tool), Discord's autocomplete for it answered to
+# the owner alone (channels/discord.py, 16) and its words (words.py, 9) (the /model menu in
+# Yerk the same, with every account), not folded to fit.
+# 18,843 merged on model-account-pin (#103), no line shared.
 # 0000-00-00: before-the next run starts 000: `the example` note says the /sample item moved to the next, step (and the
 
 # `/usage` on each folder's login, never on a missing folder, parsed, kept a minute, three at a time, a read that does
@@ -261,4 +267,4 @@ drops = [
 # lines an account, the soonest week marked, the next two resets of each window, the next bill, the account the next turn
 # tries, rooms on one account in one line), words.py 35 (the tags, the short times, the words), accounts.py 3 (`bill_day`),
 # cli.py, daemon.py and discord.py 4 (the card asks live).
-lines = 19022
+lines = 19098
