@@ -39,6 +39,9 @@ message and a success result echoing the text. Variations:
 - `claude auth status`: JSON with authMethod (oauth_token when CLAUDE_CODE_OAUTH_TOKEN is set)
   and an email made from the config folder's name; exit 1 for an FAKE_CLAUDE_AUTH_DIRS folder
 - `claude -p PROMPT` without --input-format: one answer, then exit (the health call)
+- `claude -p /usage`: a result whose text is FAKE_CLAUDE_USAGE_DIR/<config folder's name>.txt, the meters as Claude
+  Code prints them on the folder's own login; under CLAUDE_CODE_OAUTH_TOKEN, or with no such file, the session's cost
+  instead (no meters), as the real one prints under a one-year token. FAKE_CLAUDE_USAGE_SLOW=S waits S seconds first
 Turn and, the last part closes the case before (the next) run Starts_The_Example.
 """
 import json
@@ -78,6 +81,14 @@ if argv[:2] == ["auth", "status"]:
     print(json.dumps({"loggedIn": not no_login, "authMethod": method,
                       **({} if no_login else {"email": "@".join([user, "example.test"])})}))
     sys.exit(1 if no_login else 0)
+if argv[argv.index("-p") + 1:argv.index("-p") + 2] == ["/usage"] if "-p" in argv else False:
+    time.sleep(float(os.environ.get("FAKE_CLAUDE_USAGE_SLOW") or 0))
+    usage = Path(os.environ.get("FAKE_CLAUDE_USAGE_DIR") or "/nonexistent") / f"{Path(cfg).name}.txt"
+    text = usage.read_text() if usage.is_file() and not os.environ.get("CLAUDE_CODE_OAUTH_TOKEN") else \
+        "Total cost:            $0.0000\nTotal duration (API):  0s\n"
+    print(json.dumps({"type": "result", "subtype": "success", "is_error": False, "num_turns": 0, "total_cost_usd": 0,
+                      "result": text}))
+    sys.exit(0)
 if "--resume" in argv and os.environ.get("FAKE_CLAUDE_MISSING") == "1":
     sys.stderr.write(f"No conversation found with session ID: {argv[argv.index('--resume') + 1]}\n")
     sys.exit(1)

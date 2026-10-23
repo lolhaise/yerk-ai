@@ -268,10 +268,18 @@ drops = [
 # model_command, tried, model_menu, model_picks, the digit in the settings tool), Discord's autocomplete for it answered to
 # the owner alone (channels/discord.py, 16) and its words (words.py, 9) (the /model menu in
 # Yerk the same, with every account), not folded to fit.
+# 18,843 merged on model-account-pin (#103), no line shared.
+# 0000-00-00: before-the next run starts 000: `the example` note says the /sample item moved to the next, step (and the
+
+# `/usage` on each folder's login, never on a missing folder, parsed, kept a minute, three at a time, a read that does
+# not ask never waiting on one that does), status.py 85 (two
+# lines an account, the soonest week marked, the next two resets of each window, the next bill, the account the next turn
+# tries, rooms on one account in one line), words.py 35 (the tags, the short times, the words), accounts.py 3 (`bill_day`),
+# cli.py, daemon.py and discord.py 4 (the card asks live).
 # 2026-10-23: location raised it by 184: where the owner is, from the phone's fixes in yerkd.toml [location] (a line used only when asked went unused): location.py (140: the settings, the tail read, the place named by the
 
 # places table's nearest radius as the watcher names it, the `place` part, the day's stays and their one day-log line
 # replaced where it stands), cli.py (32: `yerk location day` and `yerk map` showing the part), daemon.py (6: the table read
 # at start, place_for, its import), words.py (3), context.py (2: the part and its head), hooks.py (1), not folded to fit.
-# 00,000 and the last-part-closes (#000), the case before.
-lines = 19027
+# 00,000 second entry waits-in (#000), the queue for.
+lines = 19282

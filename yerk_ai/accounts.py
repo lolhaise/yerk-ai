@@ -27,14 +27,17 @@ class Account:
     config_dir: Path
     order: int = 0
     token_file: Path | None = None
+    bill_day: int | None = None       # the day of the month the plan bills (`yerk status` shows the next one)
 
 
 def load_accounts(path: Path) -> list[Account]:
-    """[accounts] name = { config_dir, order, token }; tried in ascending order, then file order.
-    `token` is relative to the file's folder; it defaults to secrets/claude-<name>.token."""
+    """[accounts] name = { config_dir, order, token, bill_day }; tried in ascending order, then file order.
+    `token` is relative to the file's folder; it defaults to secrets/claude-<name>.token. `bill_day`, optional,
+    is a day of the month, 1 to 31; any other value is left out."""
     rows = load_toml(path).get("accounts", {})
     out = [Account(name, Path(r["config_dir"]).expanduser(), int(r.get("order", i)),
-                   path.parent / str(r.get("token", f"secrets/claude-{name}.token")))
+                   path.parent / str(r.get("token", f"secrets/claude-{name}.token")),
+                   d if type(d := r.get("bill_day")) is int and 1 <= d <= 31 else None)
            for i, (name, r) in enumerate(rows.items())]
     return sorted(out, key=lambda a: a.order)
 
