@@ -27,6 +27,42 @@ with the originals kept under `backups/`; the index chunks every file again when
   `[code] lines` (dated notes). jobs.toml, optional: the `location-day` script job in README. Each room has the new
   mechanics line from its next process start.
 
+### recall-pack-fit (#107)
+
+- Every part of a room's session start now fits under its key in budgets.toml by construction. The recall pack counts
+  its own head and the line saying how many older items it left out, in Claude Code's characters (an emoji outside the
+  basic plane counts 2), and leaves its oldest items out whole. That morning one room's pack came out at
+  6,003 against its 6,000 (that line is 64 characters once the count has three digits, where 60 were kept for it, and two
+  emoji were counted once each), and the session start then cut 8 of the owner's items from the middle of the pack, two
+  of them mid-line.
+- A part still over its key (a file past it, or the open commitments alone past the pack's) loses whole lines, its
+  marker counted inside the key. Nothing is cut mid-line any more.
+- The machine room hears of a cut only when lines of a part's own file went, in one notice of two short lines: the part
+  and how many lines, then its key and the room (`🟠 rules: 3 lines dropped`, `to fit its 16,000 in example-room`). The
+  pack leaving its oldest items out is its normal shape and is never said; its own last line tells the room how many.
+- After a compaction the re-added recall pack is fitted the same way. The per-message recall part keeps its "nothing on
+  file" lines whole while they fit its key, and the taste part, still over with every reply at 80 characters, drops its
+  last reply whole.
+- **Upgrading:** budgets.toml: `[code] lines` (a dated note); no key changes. Each room sends the fitted parts from its
+  next process start.
+
+### taste-eval (#106)
+
+- PR 93 (judge-2) cut to its eval half; PR 93 is closed in favour of this one. `yerk eval taste [--cases P --controls P
+  --rubric P --ledger P --sample N --cap S]` replays the taste judge over the owner's complaints and the replies he
+  accepted, each with what its turn read, joined from the ledger read only and cut at the reply's time (a row the
+  ledger has no turn for is judged on the chat alone, never told that a claim no read carries was not checked). It
+  prints precision, recall, the false alarms per verdict (missed-the-ask, unchecked-claim, not-his-voice,
+  slow-or-no-answer) and the median judge seconds beside phase 1's, and the bar a gate would need (recall at least 5 of
+  7, false alarms under 1 in 10), never enforced: exit 0 whatever the numbers, 2 when the case file is missing. A call
+  that ends in an error (an account out of a model) is left out of the scores and counted, and a run where every call
+  failed says so instead of printing a recall of 0. The rubric is the private layer's `evals/taste/rubric.md`, else the
+  package's `taste-rubric.md`; the case file stays private and `tests/fixtures/taste-judge-*.jsonl` are example values.
+- Left out of PR 93: the judge call after every reply to the owner (a `claude -p` call on the room's account, in a
+  thread after the Stop hook), its `shadow` rows, the `taste_judge` room key and the morning diff's count of taste rows.
+  No reply is judged as it is posted, so no reply costs a second model call.
+- **Upgrading:** budgets.toml [code] lines goes to 19462. rooms.toml takes no new key.
+
 ### room-defaults (#111)
 
 - One tool set for every owner room, declared once: a `[defaults]` table in rooms.toml holds `allow` and `mcp.<name>`
