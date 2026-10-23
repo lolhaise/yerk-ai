@@ -1,13 +1,14 @@
 """Checks where the web plug-in (plugins/web, the add-on that ships here) meets the harness. Its spend rows reach the
-answers from the abilities file, and the rooms template attaches it by its command line. The plug-in itself
-(plugins/web, JavaScript, outside the code count) has its own tests: `npm test` in its folder."""
+morning diff (the daily 06:30 report), `yerk explain web` answers from the abilities file, the rooms template attaches it
+by its command line, and the shipped mechanics send a picture on the web to its web_image. The spend rows follow
+tests: `npm test` in its folder."""
 import tomllib
 from pathlib import Path
 
 from test_observe import NOW, layer
 
-from yerk_ai import abilities, cli, morning, status, words
-from yerk_ai.config import EXAMPLE_PRIVATE
+from yerk_ai import abilities, cli, context, morning, status, words
+from yerk_ai.config import EXAMPLE_PRIVATE, budgets
 from yerk_ai.ledger import Ledger
 
 REPO = Path(__file__).resolve().parents[1]
@@ -31,6 +32,7 @@ def test_yerk_explain_web_answers_from_the_abilities_file(tmp_path, capsys):
     assert cli.main(["explain", "web", "--private", str(EXAMPLE_PRIVATE), "--state", str(tmp_path)]) == 0
     lines = capsys.readouterr().out.splitlines()
     assert lines[:2] == [f"{words.DONE} web: {words.ability('on')[1]}", abilities.manifest()["web"]["what"]]
+    assert "web_image saves one picture" in lines[1]
     assert any(x.startswith("How to add the key: ") and "secrets/" in x and "exa.key" in x and "browserbase.key" in x for x in lines)
 
 
@@ -40,6 +42,23 @@ def test_the_rooms_template_attaches_the_plug_in_by_its_command_line_under_the_n
     server = tomllib.loads("\n".join(lines[at:at + 6]))["rooms"]["example-room"]["mcp"]["web-ladder"]
     assert server["args"][0].endswith("plugins/web/server.mjs") and server["args"][1] == "--private" and server["type"] == "stdio"
     assert (REPO / "plugins" / "web" / "server.mjs").is_file()
-    tools = ("web_fetch", "web_search", "web_research", "web_research_result")
+    tools = ("web_fetch", "web_search", "web_research", "web_research_result", "web_image")
     assert tomllib.loads(next(x for x in lines if x.startswith('allow = ["mcp__web-ladder__')))["allow"] == [f"mcp__web-ladder__{t}" for t in tools]
     assert all(f'name: "{t}"' in (REPO / "plugins" / "web" / "lib" / "tools.mjs").read_text() for t in tools)
+
+
+def test_the_mechanics_send_a_picture_on_the_web_to_web_image_and_read_never_to_the_shell():
+    """Seen live: a room had an X post's picture URL and spent three minutes on curl in its shell (no
+    network), web_fetch (pages, never bytes) and a mirror, then asked the owner for a screenshot."""
+    text = context.MECHANICS.read_text().strip()
+    line = next(x for x in text.splitlines() if "`web_image`" in x)
+    assert "picture" in line and "Read" in line and "never curl" in line and "no network" in line
+    assert context.chars(text) < budgets()["session_start"]["appended"]["mechanics"]
+
+
+def test_the_mechanics_read_an_x_post_through_fxtwitter_first_never_the_x_com_page():
+    """Seen live: web_fetch of the post's x.com link climbed to the paid L3n rung for 33.6 s and got its login page;
+    fxtwitter's API answered at F1 in 0.3 s with the text and the picture's URL."""
+    line = next(x for x in context.MECHANICS.read_text().splitlines() if "api.fxtwitter.com" in x)
+    assert all(w in line for w in ("x.com or twitter.com", "`web_fetch` `https://api.fxtwitter.com/<user>/status/<id>` first",
+                                   "never the x.com page, since", "`web_image`"))
