@@ -25,9 +25,9 @@ with the originals kept under `backups/`; the index chunks every file again when
   that read nothing, as an owner room does; the refusal points at the room's own lines (its day log, a file sent there, a
   recording's transcript), never at a file outside its folder. There the owner is a third person too, so his words need a
   read. The second try goes out as it is.
-- **Upgrading:** yerkd.toml, optional: `[watch] assistants`, a list of Discord user ids (anything else stops the start
-  with one line). budgets.toml: `[code] lines` (a dated note). Each room has the new `seen` description and mechanics line
-  from its next process start.
+- **Upgrading:** yerkd.toml, optional: `[watch] assistants`, a list of Discord user ids (anything else, or the owner's id
+  or one a room's `people` lists, stops the start with one line). budgets.toml: `[code] lines` (a dated note). Each room
+  has the new `seen` description and mechanics line from its next process start.
 
 ### pictures-seen (#97)
 

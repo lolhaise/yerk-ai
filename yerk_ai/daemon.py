@@ -1240,7 +1240,7 @@ class Yerkd:
         dc = DiscordChannel(token, owner, [int(x) for x in d.get("test_senders", [])], self.ledger,
                             guard=guard, state=self.state, capture=self.daily.capture,
                             daemon=self if flag(d.get("commands"), True) else None, taste=self.taste_heard,   # the slash commands
-                            assistants=assistants(self.conf))
+                            assistants=assistants(self.conf, frozenset({owner, *(i for n, c in self.room_confs.items() for i in people(n, c))})))
         for name, conf in self.room_confs.items():
             kind, _, cid = str(conf.get("channel", "")).partition(":")
             wk, _, wid = str(conf.get("watch", "")).partition(":")     # read as the room's own, never written to

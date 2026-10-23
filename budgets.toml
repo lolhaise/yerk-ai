@@ -238,5 +238,7 @@ drops = [
 # the other answer). discord.py 29 (`[watch] assistants` filed once settled, a card never, never answered), config.py 10 (the
 # setting, ids only), memory.py 9 (the role and its mark, kept out of the pack; every room's inbox a root, its class the
 # room's), words.py 2 (the refusal pointing at a person room's own lines), room.py 2, pictures.py 1, daemon.py 0 (the seen
-# for the check while, a second entry waits in: the queue for its turn and the last part closes).
-lines = 18655
+# check one line shorter, the shell wall one longer: a room's own inbox is a memory root it reads). Its cold read raised it
+# by 2: config.py (an id in `[watch] assistants` that is the owner's or one a room's `people` lists stops the start, since
+# that person would never be answered again).
+lines = 18657

@@ -252,6 +252,27 @@ def test_an_assistants_lines_never_fill_the_recall_pack_and_the_setting_takes_id
     for bad in ("5555", ["Ben"], [5.5]):
         with pytest.raises(SystemExit, match=r"\[watch\] assistants must be a list of Discord user ids"):
             config.assistants({"watch": {"assistants": bad}})
+    assert config.assistants({"watch": {"assistants": [5555]}}, frozenset({OWNER, 1001, None})) == {5555}   # not a human's id
+
+
+def test_the_owners_or_a_persons_id_listed_as_another_assistant_stops_the_start(tmp_path):
+    """Cold read (2026-10-23): an id in `[watch] assistants` is never answered, so the owner's id there, or one a room's
+    `people` lists (the person's id pasted where the bot's goes), would leave that person unanswered in every room: the start
+    stops with one line instead, before Discord is reached."""
+    from test_person_wall import PERSON
+    priv = layer(tmp_path)
+    (lay := priv / "layers" / "her-room").mkdir(parents=True)
+    for f in ("persona.md", "rulebook.md"):
+        shutil.copy(priv / f, lay / f)
+    with (priv / "rooms.toml").open("a") as f:
+        f.write(PERSON.format(name="her-room", who=1001, extra=""))
+    base = (priv / "yerkd.toml").read_text()
+    for listed in (OWNER, 1001):
+        (priv / "yerkd.toml").write_text(base + f'\n[watch]\nassistants = ["5555", "{listed}"]\n')
+        (state := tmp_path / f"state-{listed}").mkdir()
+        d = Yerkd(priv, state, only_account=Account("one", tmp_path / "cfg1"))
+        with pytest.raises(SystemExit, match=f"assistants lists {listed}, the owner or a person a room answers"):
+            asyncio.run(d.run_discord())
 
 
 def test_the_other_assistants_wait_is_thirty_seconds_from_its_own_last_edit_and_none_from_history(tmp_path):

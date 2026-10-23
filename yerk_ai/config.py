@@ -165,13 +165,15 @@ def people(name: str, conf: dict[str, Any]) -> frozenset[int]:
     return frozenset(i for i in ids if i)
 
 
-def assistants(conf: dict[str, Any]) -> frozenset[int]:
+def assistants(conf: dict[str, Any], humans: frozenset[int | None] = frozenset()) -> frozenset[int]:
     """Other assistants' Discord user ids (`[watch] assistants` in yerkd.toml): in a channel a room watches, their messages
-    are filed as theirs and never answered; unset, none. Anything but a list of ids stops the start with one line."""
+    are filed as theirs and never answered; unset, none. Anything but a list of ids, or one of `humans`, stops the start."""
     raw = dict(conf.get("watch") or {}).get("assistants", [])
     ids = [discord_id(x) for x in raw] if isinstance(raw, list) else [None]
     if None in ids:
         raise SystemExit(f'yerkd.toml: [watch] assistants must be a list of Discord user ids, like assistants = ["<user id>"], not {raw!r}')
+    if both := humans.intersection(ids):
+        raise SystemExit(f"yerkd.toml: [watch] assistants lists {min(i for i in both if i)}, the owner or a person a room answers, who would never be answered")
     return frozenset(i for i in ids if i is not None)
 
 
