@@ -8,6 +8,29 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-22
 
+### rules-fit (#91)
+
+- A new rule no longer pushes proven rules out of every session start: a room filed a rule with a 190-character
+  example, the shared rules file went from about 12,230 to 12,825 against its 12,500, and the middle cut dropped seven
+  established rules in every room. A rule filed with `remember` and `job` that would take the rules file past its cap is
+  fitted before it is written: the `<example>` blocks come out of the rules, newest first and the new rule's own first,
+  until the file is at least 150 characters under the cap. A rule's own words are never cut, only its example. Each
+  strip is one line in the filing room's day log.
+- A rule with no room even with every example out is not written to rules.md: the file stays as it was, the rule goes
+  whole to `rules-overflow.md` beside it (0600, private, read by no session start), the machine room gets one notice
+  (the rule's job, the room it came from, the file it is held in and the cap), the hold is a line in the day log, and
+  the room ends its reply saying the rule is held. The filing-time "over cap" line and the `over_budget` result are
+  gone, since a filing can no longer take the file past its cap.
+- A rule file still past its size at session start (a hand edit can do that) keeps its first lines whole and drops the
+  newest, the last ones, never a line from the middle: the rules part and each rulebook, by `truncate(..., mode="tail")`.
+  An `<example>` a hand-kept rulebook spreads over several lines goes whole or not at all, never cut inside.
+  The mechanics, persona, room voice, pinned memory and recall pack keep the head and tail trim. The once-a-day
+  machine-room notice names a rule file's dropped lines by their job.
+- `yerk doctor`'s fit check reads a non-empty `rules-overflow.md` as an orange finding with the count of held rules, until
+  each is moved into rules.md by hand.
+
+**Upgrading:** budgets.toml [code] lines 17,701; nothing to do. No cap moves.
+
 ### sheet-hard (#90)
 
 - Rules were being cut from the middle of every session start, said to no one, and no longer are: the shared rules file

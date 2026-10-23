@@ -260,8 +260,9 @@ class Yerkd:
 
     def cut_said(self, name: str, parts: list[context.Part]) -> None:
         """Each part a session start sent trimmed: one machine-room notice naming the part, the room and the lines it cut (their
-        first six words), once a day per part and its file, said by the first room to start (cut-said.json in the state folder),
-        so no budget cuts in silence (claim 8); `yerk doctor` names every room, red until the part fits. Never stops the start."""
+        first six words; a rule file's by their job), once a day per part and its file, said by the first room to start
+        (cut-said.json in the state folder), so no budget cuts in silence (claim 8); `yerk doctor` names every room, red until
+        the part fits. Never stops the start."""
         mark, today = self.state / "cut-said.json", time.strftime("%Y-%m-%d")
         try:
             said = dict(json.loads(mark.read_text()))
@@ -272,8 +273,9 @@ class Yerkd:
         write_private(mark, json.dumps({**said, **{f"{p.name} {p.source}": today for p in new}}))
         for p in new:
             n = len(p.cut)
+            heads = words.heads([memory.topic(x) for x in p.cut], n=12) if p.name in context.TAIL else words.heads(list(p.cut))
             self.to_machine(f"{words.WORKING} " + words.PART_CUT.format(part=p.name, room=name, size=p.raw, cap=p.budget, n=n,
-                                                                       s="s" * (n != 1), heads=words.heads(list(p.cut))))
+                                                                       s="s" * (n != 1), heads=heads))
 
     def to_machine(self, text: str) -> None:
         """One line to the machine room (rooms.toml role = "machine") from a room's thread, where a process start runs: on the
@@ -549,24 +551,23 @@ class Yerkd:
         return None
 
     async def tool_rule(self, room: str, text: str, job: str) -> dict[str, Any]:
-        """`remember` with a `job`: an owner's room files how it is done from now on (memory.rule) for every room; past the
-        rules part's budget it is filed all the same and said (`over_budget`, the reply's clause, one machine-room line)."""
+        """`remember` with a `job`: an owner's room files how it is done from now on (memory.rule) for every room, fitted under
+        the rules part's budget; one with no room even with no examples is held in rules-overflow.md and said (`held`, the
+        reply's clause, one machine-room notice)."""
         if room not in self.rooms or not self.owner(room):
             return {"ok": False, "line": words.RULES_OWNER_ONLY}
         if self.reader(room).sealed:        # its teaching stays its own day-log note, the job its label, never the shared rules
             return await self.tool_remember(room, text, job.strip(" :"), [])
         with self.rooms[room].lock:
             mid = ",".join(m.id for m in self.rooms[room].inflight) or f"x{self.rooms[room].turn_key}"
-        r = await asyncio.to_thread(memory.rule, self.memory, room, mid, job, text)
+        cap = int(self.budgets["session_start"]["appended"]["rules"])
+        r = await asyncio.to_thread(memory.rule, self.memory, room, mid, job, text, cap, self.daily)
         if not r["ok"]:
             return r
-        over = await asyncio.to_thread(context.rules_over, self.room_confs[room], self.memory.root / memory.RULES,
-                                       int(self.budgets["session_start"]["appended"]["rules"]))
-        if over:
-            cut = f"\n{words.CUT_LINES.format(first=over['cut'][0], last=over['cut'][-1])}" if over["cut"] else ""
-            await self.jobs.alert(None, f"{words.WORKING} {words.RULES_CUT.format(file=memory.RULES, **over)}{cut}", 0)
-            r["over_budget"] = {"size": over["size"], "cap": over["cap"]}
-        return {**r, "next": words.FILED_NEXT.format(clause=words.RULE_CLAUSE.format(job=r["job"], over=words.RULES_OVER if over else ""))}
+        if r.get("held") and not r.pop("again", False):       # a retried call: held and said already
+            await self.jobs.alert(None, f"{words.WORKING} " + words.RULE_HELD.format(file=memory.OVERFLOW, job=words.line(
+                r["job"], words.PHONE - 2), room=room, cap=cap), 0)
+        return {**r, "next": words.FILED_NEXT.format(clause=words.HELD_CLAUSE if r.get("held") else words.RULE_CLAUSE.format(job=r["job"]))}
 
     async def tool_worker(self, room: str, req: dict[str, Any]) -> dict[str, Any]:
         """The `worker` tool (rooms only; a worker has no MCP server). `yerk worker` comes through

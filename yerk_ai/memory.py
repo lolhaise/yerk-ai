@@ -375,6 +375,22 @@ NOTE = "note"                # the role of a day-log line a room files with `rem
 BY = re.compile(re.escape(mentions.OLD) + r" by (\S+?:\d+)\]")     # a mark naming its replacement; `[superseded]` names none
 LATER = "superseded.tsv"     # in the tree, `old cite<TAB>new cite`: a line a correction named but could not mark with its cite
 RULES = "rules.md"           # in the tree: the install's one rules file, how each job is done in every room (decision 15)
+OVERFLOW = "rules-overflow.md"     # beside it (private): a rule RULES has no room for under its cap, even with no examples
+HEADROOM = 150               # a filing fitted under RULES's cap leaves this much of it free
+EXAMPLE = re.compile(r"\s*<example(?:\s[^>]*)?>.*?</example>", re.I)    # an example in a rule line, as shape.py reads the tags
+
+
+def rules_part(path: Path, text: str) -> str:
+    """The rules file `path` holding `text` as a session start sends it (context.rules_text): its live lines, no front
+    matter or superseded line, under the path it came from."""
+    live = "\n".join(x for x in FRONT.sub("", text).strip().splitlines() if mentions.OLD not in x)
+    return f"[from {path.resolve()}]\n{live}" if live else ""
+
+
+def topic(line: str) -> str:
+    """A rule line's job, its words before the first colon (a line with none: its first six words)."""
+    head, colon, _ = line.lstrip("-*#> ").partition(": ")
+    return head if colon else " ".join(head.split()[:6])
 
 
 def later(s: Settings) -> dict[str, str]:
@@ -457,24 +473,57 @@ def mark(line: str, by: str = "") -> str:
                   line, count=1)
 
 
-def rule(s: Settings, room: str, mid: str, job: str, text: str) -> dict[str, Any]:
+def rule(s: Settings, room: str, mid: str, job: str, text: str, cap: int = 0, log: DailyLog | None = None) -> dict[str, Any]:
     """How a job is done from now on, from an owner's room, into RULES: the one file every room starts with and hears
     from on its next message when it changes (context.news), shared so read_memory reads it anywhere. One line with its
-    room, message and time; the job's live line before it is marked superseded by the new one, never deleted."""
+    room, message and time; the job's live line before it is marked superseded by the new one, never deleted. A filing
+    that would take the rules part past `cap` takes the examples out of its lines, newest first and its own first, until
+    the part is HEADROOM under it (`stripped`); with no room even then, RULES stays as it was and the line is held in
+    OVERFLOW (`held`), so a new rule never pushes a proven one out of a session start. A rule's own words are never cut.
+    Each strip and the hold is a line in the room's day log (`log`)."""
     job, body = one_line(job).strip(" :").lower(), one_line(text)
     if not job or not body:
         return {"ok": False, "error": "a rule needs the job's short name and how it is done, both as text"}
     path, head, at = s.root / RULES, f"- {job}: ", datetime.now(timezone.utc).astimezone(s.tz)
+    new, held, stripped, k = f"{head}{body} ({room}, {at:%Y-%m-%d %H:%M:%S%:z}) [m:{mid}]", s.root / OVERFLOW, list[str](), 0
     with daily_lock(s.daily):                  # the one writers' lock
         lines = path.read_text().splitlines() if path.is_file() else ["---", "class: shared", "---", "# Rules: one live line per job, in every room", ""]
         live = [i for i, x in enumerate(lines) if x.startswith(head) and mentions.OLD not in x]
-        n = next((i + 1 for i in live if lines[i].startswith(f"{head}{body} (")), 0)       # a retried call
+        n = next((i + 1 for i in live if lines[i].startswith((f"{head}{body} (", f"{head}{EXAMPLE.sub('', body)} ("))), 0)  # a retried call
         gone = [] if n else live
         if not n:
             n = len(lines) + 1
-            lines = [mark(x, f"{cite(s, path)}:{n}") if i in gone else x for i, x in enumerate(lines)]
-            write_private(path, "\n".join([*lines, f"{head}{body} ({room}, {at:%Y-%m-%d %H:%M:%S%:z}) [m:{mid}]"]) + "\n")
-    return {"ok": True, "job": job, "cite": f"{cite(s, path)}:{n}", "replaced": [f"{cite(s, path)}:{i + 1}" for i in gone]}
+            lines = [mark(x, f"{cite(s, path)}:{n}") if i in gone else x for i, x in enumerate(lines)] + [new]
+
+            def size() -> int:                 # the rules part as a session start counts it (context.chars)
+                return len(rules_part(path, "\n".join(lines)).encode("utf-16-le")) // 2
+            over = bool(cap) and size() > cap
+            for i in reversed(range(n if over else 0)):       # newest first, the new rule's own first
+                if size() <= cap - HEADROOM:
+                    break
+                if mentions.OLD not in lines[i] and EXAMPLE.search(lines[i]):
+                    stripped.append(topic(lines[i]))
+                    lines[i] = EXAMPLE.sub("", lines[i])
+            if over and size() > cap - HEADROOM:      # no room even so: nothing in RULES changes, the rule is held
+                stripped.clear()
+                have = held.read_text().splitlines() if held.is_file() else ["# Rules held: past the rules file's cap, in no room", ""]
+                k = next((i + 1 for i, x in enumerate(have) if x.startswith(f"{head}{body} (")), 0)      # a retried call
+                again = bool(k)                        # held and said already
+                if not k:
+                    write_private(held, "\n".join(have := [*have, new]) + "\n")
+                    k = len(have)
+            else:
+                write_private(path, "\n".join(lines) + "\n")
+    if log is not None:                        # each strip and the hold, a line in the room's day log (Yerk AI's own)
+        for t in stripped:
+            log.capture(room, f"{mid}.x{hashlib.sha1(t.encode()).hexdigest()[:8]}", "yerk", words.RULE_STRIPPED.format(job=t, cap=cap), when=at)
+        if k:
+            log.capture(room, f"{mid}.h{hashlib.sha1(body.encode()).hexdigest()[:8]}", "yerk",
+                        words.RULE_HELD_LOG.format(job=job, file=OVERFLOW, cap=cap), when=at)
+    if k:
+        return {"ok": True, "job": job, "cite": f"{cite(s, held)}:{k}", "replaced": [], "held": True, **({"again": True} if again else {})}
+    return {"ok": True, "job": job, "cite": f"{cite(s, path)}:{n}", "replaced": [f"{cite(s, path)}:{i + 1}" for i in gone],
+            **({"stripped": stripped} if stripped else {})}
 
 
 def live_first(s: Settings, r: dict[str, Any], reader: Reader | None = None) -> dict[str, Any]:

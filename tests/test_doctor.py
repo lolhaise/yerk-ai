@@ -277,6 +277,20 @@ def test_a_part_past_its_line_reads_red_with_the_overflow_and_one_that_fits_read
     assert doctor.main(priv, state) == 0 and capsys.readouterr().out == ""
 
 
+def test_a_rule_held_in_the_overflow_file_reads_orange_with_the_count(tree, capsys):
+    """A rule the rules file had no room for is held in rules-overflow.md and reaches no room; the fit check counts the held
+    rules, orange, until each is moved in by hand."""
+    priv, state, *_ = tree
+    held, cap = priv / "memory" / memory.OVERFLOW, budgets()["session_start"]["appended"]["rules"]
+    held.write_text("# Rules held: past the rules file's cap, in no room\n\n" + "".join(
+        f"- example job {i}: done the example way. (example-room, 2026-10-22 16:54:00-04:00) [m:m-{i}]\n" for i in range(2)))
+    assert doctor.main(priv, state) == 1
+    assert capsys.readouterr().out.splitlines() == [f"{words.WORKING} rules-overflow.md: 2 rules held, in no room: rules.md is "
+                                                    f"full at its cap of {cap:,}; move each in by hand once it has room"]
+    held.write_text("# Rules held: past the rules file's cap, in no room\n\n")
+    assert doctor.main(priv, state) == 0 and capsys.readouterr().out == ""
+
+
 def test_a_dry_run_says_what_it_would_mend_and_changes_nothing(tree, capsys):
     priv, state, day, assembled, sid = tree
     day.write_bytes(day.read_bytes() + b"\0" * 64)
