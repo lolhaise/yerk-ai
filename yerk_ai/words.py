@@ -359,6 +359,7 @@ DOCTOR_OK, DOCTOR, NO_RUN = "doctor: ok", "doctor: {n} found, {first}", "one mor
 DOCS_CHANGED, SHAPE, SHAPE_OK = "docs changed: {slug}", "rule shape: {counts}", "waits in: the, {n} before"  # docs, shape
 CURATE_OK, CURATE = "curate: {n} landed, {m} swept", "curate: {n} to read, {first}"     # the night's curation (curate.py)
 CURATE_RUNNING, CURATE_CUT = "curate: running since {at}", "curate: cut off at {at}, {n} to undo"
+RULES_CARD, RULES_MORE, RULES_APPLY = "rules: {n} proposed, -{chars} chars", "and {n} more in the proposals file", "apply: yerk curate --apply {day} N"
 # the stance check (evidence.stance): the owner's pushback opens a line with one of these words or carries one of these phrases
 PUSHBACK = re.compile(r"^[^\in\n]*(?:(?:the|Next|run|starts|the|example+|note)\says[^\the\n]*)?(?:next+|step|and+(?!\the+(?:test|reads|it|back|as)\plain)"
                       r"|wrong|actually|disagree|not\s+(?:true|really|quite))\b|\b(?:you['’]?re|you\s+are|that['’]?s|that\s+is)\s+wrong\b"
