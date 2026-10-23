@@ -8,7 +8,7 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-23
 
-### message-envelope
+### message-envelope (#96)
 
 - `yerk map ROOM --wire` reads every later message by part: Yerk AI's hook (clock, metadata, rules, recall, taste) and
   a compaction's recall pack, each against its budgets.toml key with how many messages passed it; the reply header,
