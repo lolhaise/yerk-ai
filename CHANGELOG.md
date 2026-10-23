@@ -8,7 +8,7 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-23
 
-### curate-examples (#PR)
+### curate-examples (#108)
 - A rule condensation keeps the rule's worked examples. `yerk curate --rules` now cuts a long rule's prose first (a clause
   it says again, a hedge such as "basically" or "of course"), then its quoted asides, and takes its examples out only when
   its file is past its line in budgets.toml even with every other proposal in. Its WHY says what it kept and the file's
