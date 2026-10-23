@@ -17,12 +17,12 @@ with the originals kept under `backups/`; the index chunks every file again when
   `[attachment]` line names the text file so the room can read it in the same turn.
 - A scanned PDF (no text on any page) gets one line naming it, its pages and "no text layer, not read"; there is no OCR.
   A file that does not open gets one line saying so. Past 200,000 characters the text is cut, its last line saying how
-  many characters were not kept. A person's room's files are never read this way.
+  many characters were not kept; a file still being read after 60 s stops there and says so. A person's room's files are never read this way.
 - `yerk files backfill ROOM [--dry-run]` writes the text of the workbooks and PDFs already in the room's inbox, and of any
   whose text is older than the file, in that process (no yerkd, no model); `--root FOLDER` does it under a folder the room
   lists in rooms.toml (`read` or `also`).
 - **Upgrading:** two new libraries, openpyxl and pypdf (`uv sync`). budgets.toml: the new `[files] chars` (200,000) and
-  `[code] lines` (a dated note). Nothing to set; run `yerk files backfill ROOM` once per owner room for the files sent
+  `secs` (60), and `[code] lines` (a dated note). Nothing to set; run `yerk files backfill ROOM` once per owner room for the files sent
   before this.
 
 ### person-room-parity (#101)

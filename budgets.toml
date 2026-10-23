@@ -147,7 +147,11 @@ drops = [
 # 2026-10-23, sheets-and-pdfs: the most of a workbook's or a PDF's text one sidecar keeps (files.py), its header aside. Past
 # it the line that crosses it is cut there and one last line says how many characters were not kept. 200,000 characters is
 # about 50,000 tokens at four characters a token, and ten read_memory calls at its 20,000 a call (memory.READ_CHARS).
+# `secs`: a file still being read after this long stops there and its last line says so. Measured that day, read-only, over
+# the 50 workbooks and PDFs in the owner rooms' inboxes: pypdf reads their PDFs at 0.5 to 0.8 s a page, and 8 of the 19 over
+# 900 KB (29 to 131 pages) were still reading after 15 s. A message waits 30 s at most (files.WAIT); this bounds the rest.
 chars = 200000
+secs = 60
 
 [code]
 # The code itself. Unit: lines as `wc -l` counts them, in every .py file under yerk_ai/,
@@ -254,11 +258,11 @@ chars = 200000
 # by 2: config.py (an id in `[watch] assistants` that is the owner's or one a room's `people` lists stops the start, since
 # that person would never be answered again).
 # 18,767 merged on message-envelope (#96), no line shared.
-# 0000-00-00: for-its-turn and the last 000: part closes the case Before the next run starts the example note says the sample, item moved,
+# 0000-00-00: the-test-reads it back as 000: plain text with one More line for the check while a second entry waits in, the queue,
 # and is recalled like a picture's sidecar (the owner asked which kinds of files it covers), not folded to fit: files.py
-# (000: and the, test reads it back as plain text, with one more line for the check while a second entry waits in, the queue
-# note says the, sample item moved to), the.next (00: `step and the`, --test, --reads-it), back.as (0: plain text with
+# (000: last part, closes the case before the next run, starts the example note says the sample item moved to the next step, and the
+# closes the case, before the next run, starts the example note), says.the (00: `sample item moved`, --to, --the-next), step.and (0: the test reads
 # the_example, note says the sample item), moved.to (0: the next, step and the test; reads it back as plain text),
 # and.the (0), last.part (0: closes the case before the, next run starts the example), note.says (0: the sample item
 # check while a second entry waits). In the 00,000 (#000), queue for its.
-lines = 18957
+lines = 18963

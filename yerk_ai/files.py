@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import time
 from datetime import datetime, tzinfo
 from pathlib import Path
 from typing import Any, Iterable, Iterator
@@ -30,7 +31,8 @@ WAIT = 30.0                          # the most a message waits on its file's te
 NO_TEXT = "(no text on this page)"
 NO_LAYER = "no text layer, not read"
 NOT_OPEN = "not read: it did not open as a {kind}"
-CUT = "[cut at {cap:,} characters: {left:,} more not kept]"
+CUT = "[cut at {cap:,} characters: {left} more not kept]"
+SLOW = "[stopped after {secs:g} s of reading: the rest not read]"
 
 
 def kind(path: Path) -> str:
@@ -105,11 +107,15 @@ def pdf(path: Path) -> tuple[str, Iterator[str]]:
     return f"{n} page{'s' * (n != 1)}", lines()
 
 
-def fit(lines: Iterable[str], cap: int) -> list[str]:
-    """The lines in at most `cap` characters, the one that crosses it cut there, then CUT with how many were not kept."""
+def fit(lines: Iterable[str], cap: int, secs: float = 0) -> list[str]:
+    """The lines in at most `cap` characters, the one that crosses it cut there, then CUT with how many were not kept; a file
+    still being read after `secs` s (budgets.toml [files]) stops there, its last line SLOW, or CUT's "at least" once cut."""
     kept: list[str] = []
     used = left = 0
+    end = time.monotonic() + secs if secs else float("inf")
     for x in lines:
+        if time.monotonic() > end:
+            return kept + [CUT.format(cap=cap, left=f"at least {left:,}") if left else SLOW.format(secs=secs)]
         room = cap - used - 1 if not left else -1
         if len(x) <= room:
             kept.append(x)
@@ -118,16 +124,16 @@ def fit(lines: Iterable[str], cap: int) -> list[str]:
         if room > 0:
             kept.append(x[:room])
         left += len(x) + 1 - max(room, 0)
-    return kept + [CUT.format(cap=cap, left=left)] if left else kept
+    return kept + [CUT.format(cap=cap, left=f"{left:,}")] if left else kept
 
 
 def write(room: str, path: Path, tz: tzinfo, cap: int = 0) -> Path:
     """The text beside a workbook or a PDF: its header (pictures.header from FILE_HEAD, then what it holds), then its lines
-    cut at `cap` (budgets.toml [files]); a PDF with no text on any page, or a file that does not open, its header alone."""
-    sort, cap = kind(path), cap or int(budgets()["files"]["chars"])
+    cut at `cap` and `secs` (budgets.toml [files]); a PDF with no text on any page, or a file that does not open, its header alone."""
+    sort, conf = kind(path), budgets()["files"]
     try:
         what, lines = (workbook if sort == "workbook" else pdf)(path)
-        body = fit(lines, cap)
+        body = fit(lines, cap or int(conf["chars"]), float(conf["secs"]))
     except Exception as e:                       # whatever a damaged or locked file raises: said in its header, never a stop
         log.warning("files: %s not read: %s", path.name, type(e).__name__)
         what, body = NOT_OPEN.format(kind=sort), []

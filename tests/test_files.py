@@ -165,8 +165,8 @@ def test_a_pdf_is_a_section_a_page_a_scan_is_named_and_not_read_and_a_file_that_
 
 def test_past_the_cap_in_budgets_toml_the_text_is_cut_and_its_last_line_says_how_much(tmp_path, monkeypatch):
     from yerk_ai.config import budgets
-    assert budgets()["files"]["chars"] == 200_000
-    monkeypatch.setattr(files, "budgets", lambda: {"files": {"chars": 60}})
+    assert budgets()["files"] == {"chars": 200_000, "secs": 60}
+    monkeypatch.setattr(files, "budgets", lambda: {"files": {"chars": 60, "secs": 60}})
     lines = files.write("own-room", sent(tmp_path, "own-room", "m-1", "report.pdf", pdf_bytes(REPORT)), TZ).read_text().splitlines()
     whole = ["## page 1", "Quarterly example report", "Revenue was flat", "## page 2", "The exquux clause renews in March",
              "Signed by Pat", "## page 3", files.NO_TEXT]
@@ -175,6 +175,22 @@ def test_past_the_cap_in_budgets_toml_the_text_is_cut_and_its_last_line_says_how
     assert lines[-1] == f"[cut at 60 characters: {len(chr(10).join(whole)) + 1 - (len(kept) - 1)} more not kept]"   # the rest, to the character
     assert files.fit(["abcdef", "ghij", "klmnop"], 9) == ["abcdef", "g", "[cut at 9 characters: 11 more not kept]"]
     assert files.fit(["abc", "def"], 99) == ["abc", "def"]
+
+
+def test_a_file_still_being_read_past_its_seconds_stops_there_and_its_last_line_says_so():
+    """Measured 2026-10-23 on the owner rooms' real PDFs: 0.5 to 0.8 s a page, a 131-page one minutes long. The read stops
+    at budgets.toml [files] secs; past the cap the count of what was not kept becomes "at least"."""
+    def slow(*lines: str):
+        for x in lines:
+            if x == "...":
+                time.sleep(0.15)
+                continue
+            yield x
+    assert files.fit(slow("## page 1", "a line", "...", "## page 2", "more"), 1000, 0.05) == [
+        "## page 1", "a line", files.SLOW.format(secs=0.05)]
+    assert files.SLOW.format(secs=60) == "[stopped after 60 s of reading: the rest not read]"
+    assert files.fit(slow("abcdef", "ghij", "...", "klm"), 9, 0.05) == ["abcdef", "g", "[cut at 9 characters: at least 4 more not kept]"]
+    assert files.fit(slow("abcdef", "ghij", "klm"), 9, 0.05) == ["abcdef", "g", "[cut at 9 characters: 8 more not kept]"]
 
 
 def test_backfill_writes_only_a_missing_or_stale_text_and_a_dry_run_writes_nothing(tmp_path, capsys):
