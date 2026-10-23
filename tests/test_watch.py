@@ -5,7 +5,7 @@ lines from the watched channel), the config refusal, and the `yerk map` and `yer
 import asyncio
 import shutil
 import threading
-from datetime import timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace as NS
 
@@ -13,7 +13,7 @@ import discord
 import pytest
 
 import yerk_ai.channels.discord as dmod
-from yerk_ai import cli, status, words
+from yerk_ai import cli, config, memory, status, words
 from yerk_ai.accounts import Account, Cooldowns
 from yerk_ai.channels.discord import DiscordChannel
 from yerk_ai.config import EXAMPLE_PRIVATE, rooms
@@ -195,6 +195,110 @@ def test_a_watched_channel_files_only_the_owners_lines_so_the_room_never_reads_t
                     "other: someone else here", "owner: (edited) squats felt heavier",
                     "other: (edited) someone else here, edited"]
 
+
+def test_another_assistant_where_a_room_watches_is_filed_as_its_own_once_settled_and_never_answered(tmp_path, monkeypatch):
+    """person-room-parity: `[watch] assistants` in yerkd.toml names the other assistant (its bot's user id); its message in the
+    watched channel goes in the day log under its own role and handle once it has sat with no edit or delete, so the room can
+    read what was already said there; a card it edits and then deletes never does; none is ever run. Its id in the room's
+    own channel, and any other bot in the watched one, stay as they were."""
+    monkeypatch.setattr(dmod, "SETTLE", 0.05)
+    other, ben = 4321, 5555                                # example ids
+    log = DailyLog(tmp_path / "daily", timezone.utc, {ROOM: ("room-id", "room")})
+    own, watched = Spy(OWN), Spy(WATCHED)
+    room = Room(tmp_path)
+    room.name = ROOM
+    dc = DiscordChannel("token", OWNER, [HOOK], Ledger(tmp_path / "l.sqlite"), client=Bot(own, watched), state=tmp_path,
+                        capture=log.capture, assistants=frozenset({ben}))
+    dc.add_room(OWN, room, watch=WATCHED)
+
+    async def run():
+        dc.loop = asyncio.get_running_loop()
+        reply, card = (Msg(watched, mid, text, author=ben, name="Ben") for mid, text in ((901, "Three blocks, ending on the angle."),
+                                                                                       (902, "Reading the page")))
+        reply.created_at = card.created_at = datetime.now(timezone.utc)
+        await dc.on_message(Msg(watched, 900, "explain this very briefly"))
+        await dc.on_message(reply)
+        await dc.on_message(card)
+        card.content, card.edited_at = "Reading the page, then the figures", datetime.now(timezone.utc)
+        await dc.on_raw_message_edit(NS(channel_id=WATCHED, message=card))       # it streams by editing, then deletes
+        await dc.on_raw_message_delete(NS(channel_id=WATCHED, message_id=902))
+        await dc.on_message(Msg(watched, 903, "a bot's take", author=other))
+        await dc.on_message(Msg(own, 904, "here too", author=ben, name="Ben"))
+        assert "Three blocks" not in "".join(p.read_text() for p in (tmp_path / "daily").glob("*.md"))   # not yet settled
+        await asyncio.sleep(0.3)
+    asyncio.run(run())
+    text = "".join(p.read_text() for p in (tmp_path / "daily").glob("*.md"))
+    said = [x.split(" ", 3)[3].rsplit(" [c:", 1)[0] for x in text.splitlines() if x.startswith("- ")]
+    assert said == ["owner: explain this very briefly", "other@Ben: here too", "assistant@Ben: Three blocks, ending on the angle."]
+    assert "Reading the page" not in text and "a bot's take" not in text and dc.settling == {}
+    assert [g.text for g in room.got] == ["explain this very briefly"]                    # the assistant's: never run
+    assert dc.sender_of(Msg(watched, 905, "x", author=ben)) is None
+    raw = next(x for x in text.splitlines() if " assistant@Ben: " in x)
+    assert memory.marked(raw).split(" assistant@Ben: ", 1)[1].startswith(f"{memory.MARKS[memory.ASSISTANT]} Three blocks")
+
+
+def test_an_assistants_lines_never_fill_the_recall_pack_and_the_setting_takes_ids_only(tmp_path):
+    (priv := tmp_path / "private").mkdir()
+    (priv / "yerkd.toml").write_text('[memory]\nroot = "memory"\n')
+    s = memory.settings(priv, tmp_path / "state")
+    at = datetime(2026, 1, 5, 9, 0, tzinfo=timezone.utc)
+    s.daily.mkdir(parents=True)
+    (s.daily / "2026-01-05.md").write_text("# 2026-01-05\n\n" + "\n".join(
+        memory.format_line(at, ROOM, ROOM, role, who, body, "private", mid) for role, who, body, mid in (
+            ("owner", "", "explain this very briefly", "1"), (memory.ASSISTANT, "Ben", "We decided: go with option 3.", "2"))) + "\n")
+    items = memory.room_items(s, ROOM, now=at)
+    assert [i["role"] for i in items] == ["owner"]                                        # a decision of its: still not the owner's
+    assert config.assistants({}) == frozenset() and config.assistants({"watch": {"assistants": ["5555", 6666]}}) == {5555, 6666}
+    for bad in ("5555", ["Ben"], [5.5]):
+        with pytest.raises(SystemExit, match=r"\[watch\] assistants must be a list of Discord user ids"):
+            config.assistants({"watch": {"assistants": bad}})
+    assert config.assistants({"watch": {"assistants": [5555]}}, frozenset({OWNER, 1001, None})) == {5555}   # not a human's id
+
+
+def test_the_owners_or_a_persons_id_listed_as_another_assistant_stops_the_start(tmp_path):
+    """Cold read (2026-10-23): an id in `[watch] assistants` is never answered, so the owner's id there, or one a room's
+    `people` lists (the person's id pasted where the bot's goes), would leave that person unanswered in every room: the start
+    stops with one line instead, before Discord is reached."""
+    from test_person_wall import PERSON
+    priv = layer(tmp_path)
+    (lay := priv / "layers" / "her-room").mkdir(parents=True)
+    for f in ("persona.md", "rulebook.md"):
+        shutil.copy(priv / f, lay / f)
+    with (priv / "rooms.toml").open("a") as f:
+        f.write(PERSON.format(name="her-room", who=1001, extra=""))
+    base = (priv / "yerkd.toml").read_text()
+    for listed in (OWNER, 1001):
+        (priv / "yerkd.toml").write_text(base + f'\n[watch]\nassistants = ["5555", "{listed}"]\n')
+        (state := tmp_path / f"state-{listed}").mkdir()
+        d = Yerkd(priv, state, only_account=Account("one", tmp_path / "cfg1"))
+        with pytest.raises(SystemExit, match=f"assistants lists {listed}, the owner or a person a room answers"):
+            asyncio.run(d.run_discord())
+
+
+def test_the_other_assistants_wait_is_thirty_seconds_from_its_own_last_edit_and_none_from_history(tmp_path):
+    """Cold read (2026-10-23): the wait is SETTLE, 30 s, counted from the message's own time (its last edit, else its post), so a
+    reply left alone is filed 30 s after it went up, one edited 10 s ago waits 20 s more, and one already older than 30 s (read
+    from history after a restart) is filed at once. The test above shrinks SETTLE to run fast; this one keeps it."""
+    assert dmod.SETTLE == 30.0
+    log = DailyLog(tmp_path / "daily", timezone.utc, {ROOM: ("room-id", "room")})
+    own, watched = Spy(OWN), Spy(WATCHED)
+    room = Room(tmp_path)
+    room.name = ROOM
+    dc = DiscordChannel("token", OWNER, [HOOK], Ledger(tmp_path / "l.sqlite"), client=Bot(own, watched), state=tmp_path,
+                        capture=log.capture, assistants=frozenset({5555}))       # an example id
+    dc.add_room(OWN, room, watch=WATCHED)
+    waits: list[tuple[int, int]] = []
+    dc.loop = NS(call_later=lambda delay, fn, *a: waits.append((a[1].id, round(delay))) or NS(cancel=lambda: None))
+    now = datetime.now(timezone.utc)
+    fresh, edited, old = (Msg(watched, mid, f"reply {mid}", author=5555, name="helper-bot") for mid in (911, 912, 913))
+    fresh.created_at = now
+    edited.created_at, edited.edited_at = now - timedelta(seconds=120), now - timedelta(seconds=10)
+    old.created_at = now - timedelta(seconds=31)
+    for m in (fresh, edited, old):
+        dc.file(ROOM, m)
+    assert waits == [(911, 30), (912, 20)] and set(dc.settling) == {"911", "912"}
+    text = "".join(p.read_text() for p in (tmp_path / "daily").glob("*.md"))
+    assert "reply 913" in text and "reply 911" not in text and "reply 912" not in text
 
 def test_a_thread_started_in_the_watched_channel_never_brings_the_other_sides_words(tmp_path):
     """Cold read 33 W2: in discord.py 2.6.4 a thread_created line is in the name of whoever started the thread and its
