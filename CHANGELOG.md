@@ -23,7 +23,168 @@ with the originals kept under `backups/`; the index chunks every file again when
   author's 164 questions against the grown index: top six 99 to 105, top one 56 to 60, no question lost (one answer
   moves from first to second).
 - **Upgrading:** budgets.toml gains `[recall]` (`slack = 1` and `drops`, with the author's Oct 22 note) and [code]
-  lines, up 38. An install whose bench fell before this change adds its own dated note, or its next run exits 4.
+  lines, up 37. An install whose bench fell before this change adds its own dated note, or its next run exits 4.
+
+### curate-rules
+
+- The rule files get better by proposal, never by a model rewriting them: the nightly `yerk curate`, after its
+  promotion, and `yerk curate --rules [--dry-run]` alone, read the rules file, each room's rulebook and
+  `rules-overflow.md` and propose merges (two rules on one job, in near-duplicate words, or from one message on jobs
+  that overlap, never one message alone: one line with every clause of both, the fuller example and both cites), cuts (a superseded line a session start still sends,
+  a cite to a day-log line that is no longer there, an older rule a newer one on the same job says otherwise to, both
+  quoted), condensations (a line past 600 characters with its examples and quoted asides out, never a reason or an aside's own
+  clause, its own words otherwise)
+  and promotions (a rule held in `rules-overflow.md` that fits again, naming the proposals it needs first). Each has
+  its evidence of the week: the shadow bounces, rated replies and `yerk` day-log lines that touch it, with cites.
+- They go numbered to `memory/rules-proposals/<day>.md` (0600: BEFORE, AFTER, WHY, EVIDENCE, and each rule file's size
+  now and with every proposal in), and one card to the machine room lists the ten that save the most, at most once a
+  day and never when there are none.
+- `yerk curate --apply DAY N[,N...]` is the owner's word: those proposals written, every file backed up first by the
+  curate backup, refused whole when a proposed line changed since or a file would pass its line in `budgets.toml`, a
+  line blanked rather than cut so every cite keeps its number, an apply cut off mid-write put back by the next curate.
+  `yerk curate --apply DAY undo` puts the last apply back byte for byte, unless a rule was filed into the file since.
+  No room can apply one: the CLI, run on the owner's word.
+
+### rules-fit (#91)
+
+- A new rule no longer pushes proven rules out of every session start: a room filed a rule with a 190-character
+  example, the shared rules file went from about 12,230 to 12,825 against its 12,500, and the middle cut dropped seven
+  established rules in every room. A rule filed with `remember` and `job` that would take the rules file past its cap is
+  fitted before it is written: the `<example>` blocks come out of the rules, newest first and the new rule's own first,
+  until the file is at least 150 characters under the cap. A rule's own words are never cut, only its example. Each
+  strip is one line in the filing room's day log.
+- A rule with no room even with every example out is not written to rules.md: the file stays as it was, the rule goes
+  whole to `rules-overflow.md` beside it (0600, private, read by no session start), the machine room gets one notice
+  (the rule's job, the room it came from, the file it is held in and the cap), the hold is a line in the day log, and
+  the room ends its reply saying the rule is held. The filing-time "over cap" line and the `over_budget` result are
+  gone, since a filing can no longer take the file past its cap.
+- A rule file still past its size at session start (a hand edit can do that) keeps its first lines whole and drops the
+  newest, the last ones, never a line from the middle: the rules part and each rulebook, by `truncate(..., mode="tail")`.
+  An `<example>` a hand-kept rulebook spreads over several lines goes whole or not at all, never cut inside.
+  The mechanics, persona, room voice, pinned memory and recall pack keep the head and tail trim. The once-a-day
+  machine-room notice names a rule file's dropped lines by their job.
+- `yerk doctor`'s fit check reads a non-empty `rules-overflow.md` as an orange finding with the count of held rules, until
+  each is moved into rules.md by hand.
+
+**Upgrading:** budgets.toml [code] lines 17,701; nothing to do. No cap moves.
+
+### sheet-hard (#90)
+
+- Rules were being cut from the middle of every session start, said to no one, and no longer are: the shared rules file
+  sat at 12,298 against its 11,886 (seven rules gone in every room) and one room's rulebook at 12,696 against 10,850.
+- An owner's room no longer ships a document or a paste in the owner's name without a claims sheet. A `send` of a
+  document (.docx, .pdf, .xlsx, .pptx, .txt, .md or .csv) or of a text holding a pasted block (a fence with no language
+  tag, or text, plain or none) with no claims sheet written that turn is turned back once, `{"ok": false, "error": ...}`,
+  the error saying what the sheet is (a file whose name holds claims, one row per claim: the claim, its source line, the
+  quote from that line) and where to write it (beside the document, else in the room's work folder); the next send of
+  the turn goes out as it is. A final message holding a pasted block bounces once at Stop the same way, the Stop hook's
+  sixth rule, one ask per turn between the two. Written this turn is the shadow rule's own test (a Write, Edit or
+  NotebookEdit of such a file, or a shell command naming one), or such a file changed since the turn began in that
+  folder. Each refusal is one `sheet` shadow row, so the morning diff counts refusals as it counts stubs and pastes. A
+  person's room (people set) is never refused and still only ledgers, as before.
+- A cut is said: a session start that sends a part trimmed posts one line in the machine room naming the part, the room
+  and the lines it cut (their first six words, one a line, twelve at most, then how many more), once a day per part and
+  its file, so a file every room shares is said once, by the first room to start. `yerk doctor` has a fit check: a part past its line is a finding with the overflow in characters and the rooms it is cut
+  in, so the doctor and the morning diff read red the same day.
+
+**Upgrading:** budgets.toml `rules` 11,886 to 12,500, `rulebook` 10,850 to 14,000 and the session-start total 84,750 to
+88,514 (the same 614 + 3,150), [code] lines 17,640; nothing to do. Each room's next process start says in the machine
+room any part it still trims (`cut-said.json` in the state folder keeps the day).
+
+### paste-check (#89)
+
+- A room no longer posts yesterday's block as today's: on 2026-10-22 a room sent again, through `send` and word for
+  word, a fenced plan it had posted the evening before, its "tomorrow" and its times that day's. A fenced block
+  equal to one the same room posted on an earlier day of the last 14 (each line stripped, blank lines dropped, runs of
+  spaces and tabs made one, the fence's language tag left out: the day log's own shape) is turned back once per result,
+  in two places with one set of words and one flag: the `send` tool refuses it before it posts, and the Stop hook bounces
+  a final holding it (its fifth rule). The words name the day and time the block first went out and ask for a
+  line-by-line re-read against today (relative dates, clock times, who meets whom and when) or one plain line on why
+  nothing changed; the room's next send in that result goes out whatever it holds. A block posted again the same day
+  never bounces, and a send to another room is compared with that room's posts, where it is filed.
+- Each bounce is a `paste` row in the shadow ledger, counted in the morning diff as `stub` and `board` are; the row says
+  how many lines the block has and when it first went out, never the block. The card's row for a refused send reads
+  not done (a send's result that says `"ok": false` read done before, since Claude Code never marks an MCP answer an error).
+- What it costs: a text with no three backticks costs one substring check. The first fenced text of the day in a room
+  reads that room's day files of the 13 days before today, off the event loop, and the view is kept until the date
+  changes; a restart builds it again from the logs. Replayed over the live day logs of the last 14 days: 62 fenced
+  posts by the rooms, 1 turned back, that morning's, naming the post of the evening before.
+- A block over about 1,950 characters is posted, and so filed, in parts, so it is compared part by part: one re-sent
+  whole is not matched.
+
+**Upgrading:** budgets.toml: mechanics 3,400 to 3,600 for the new line and the session-start total 84,550 to 84,750
+(no part could pay, on #88's measurements of the day), [code] lines 17,530; nothing to do.
+
+### voice-note (#88)
+
+- A room answers with a voice note. When the owner asks for one or to say something out loud (a new mechanics line:
+  only asked, since each one costs), the room writes the script, calls the new `voice_note` tool on Yerk's own MCP
+  server (the daemon runs it, since a room's shell has no network) and `send`s the file with no text, and it lands as a
+  Discord voice message: flag 8192, its duration and waveform, the file posted as audio/ogg through the bot's own HTTP
+  client (discord.py posts a file as application/octet-stream, and Discord reads the voice fields only beside an audio
+  type). Words for the room go in a message of their own after it. When Discord refuses the voice form, or takes it
+  without the flag, the note goes as the plain audio file and the send's result says why, so the room says so; a note a
+  crash cut short goes again as the plain file from its snapshot.
+- The tool is the box's tools/voice-note recipe: `[[pause]]` alone on a line between sections (each its own call,
+  joined by 0.5 s of silence; one over 4,000 characters split again at its paragraphs; one under 50 characters joined to
+  the next with a `(break)`, since a voice glues a stray syllable to a short section), `(break)` a short pause, `[mood]`
+  tags dropped for MiniMax and passed to Fish. MiniMax speech-2.8-hd first (English_FriendlyPerson, speed 1.18, pitch
+  -1, language_boost English, the private folder's optional voice/pronounce.txt as its pronunciation rules); on any
+  MiniMax failure the whole note again on Fish Audio s2.1-pro-free, so a note never changes voice mid-way. Then
+  loudnorm I=-14:TP=-1.0:LRA=11 and opus 48 kHz mono in ogg under the room's work/voice/, beside a NAME.voice.json
+  (duration, waveform, size): `send` takes the file as a voice note only while it is unchanged.
+- A note is checked before it is handed back: its first 20 seconds are read back by whisper-1 (transcribe's pass-1
+  call), and one whose words do not line up with the script's opening (fewer than 3 in 4), or with a word glued in
+  between two matching runs, is deleted and the room told. English only, and its explain lines say so.
+- Every paid call is a `spend` row at list price (MiniMax US$100 a million characters, by its own billed count; Fish
+  s2.1-pro-free US$0; whisper-1 for the check; read 2026-10-22), so the morning diff counts it, and a note estimated
+  past US$1 (about 10,000 characters) is refused until the owner says yes (decision 32).
+- Measured once, live, on the real keys and outside any room: a two-sentence note of 165 characters on MiniMax, 6.9 s
+  of opus, read back word for word, 1.72 US cents in two spend rows, 5.4 s end to end. Then once into a test room
+  through `send`: Discord took the voice form, and the message read back from its API carries flag 8192, no content and
+  one audio/ogg attachment with its duration and waveform.
+- `yerk abilities` and `yerk explain voice_note`: the described voice-notes entry is the built voice_note, tier paid,
+  on when a voice key and the OpenAI key are there.
+- The evidence rules count a `voice_note` call as no read, as they count `send`: a claim about a person in a turn
+  whose only calls made a note is still ledgered (cold read).
+
+**Upgrading:** put MiniMax's key on the first line of `secrets/minimax.key` and Fish Audio's on the first line of
+`secrets/fish.key` in the private folder (0600; either one makes notes, MiniMax first); the check reads the OpenAI key
+the embeddings read. ffmpeg must be on the daemon's PATH. Optional: MiniMax pronunciation rules in `voice/pronounce.txt`
+there, one `word/say-it` a line. budgets.toml: mechanics 3,200 to 3,400 for the new line and the session-start total
+84,350 to 84,550 (no part could pay: today the largest persona measured 11,704, room voice 5,392, pinned memory
+3,854), [code] lines 17,412; nothing to do. Each room's settings allow `mcp__yerk__voice_note` from its next process
+start.
+
+### transcribe (#77)
+
+- A room hears a voice note. A Discord voice message or another audio file (ogg, m4a, mp3, wav, webm) arrives with a
+  line under its `[attachment]` line: the room takes in the sound only through the new `transcribe` tool, so it calls
+  the tool on the saved path before it answers, opens its reply with what the note says or that it could not be
+  transcribed, and calls that step transcribing, never listening. A turn that ends without calling it bounces once, as
+  an unopened image does (a Read of the file does not count), and the card's row reads "transcribing voice-message".
+- `transcribe`, on Yerk's own MCP server in every room (the daemon runs it, since a room's shell has no network):
+  ffmpeg cuts the audio into 14-minute mono mp3 chunks; pass 1 is OpenAI whisper-1 on each chunk in parallel, a segment
+  both near silence and low in confidence dropped (no_speech_prob over 0.9 and avg_logprob under -1.0); with a Groq
+  key, pass 2 is Groq whisper-large-v3-turbo on the same chunks, the two aligned word by word, and a segment where they
+  differ on more than 3 words in 10 (fillers such as "um" aside) is marked `(uncertain)` with both readings. The text,
+  a timestamp per segment, is returned and saved beside the audio as NAME.transcript.txt (0600), its first line saying
+  whether a second pass checked it. Each room's entry for Yerk's server carries a 10-minute tool timeout: without one,
+  Claude Code drops an HTTP tool call at 60 s, and a long recording's call runs past that.
+- Every paid call is a row in the ledger's `spend` table at list price (US$0.006 a minute on OpenAI; US$0.04 an hour
+  on Groq, 10 s billed at least; both read 2026-10-21), and the morning diff says "spent yesterday: US$X on N calls";
+  the table, its reader and the morning line are new here (#76 carries the same ones). A recording estimated past US$1
+  is refused until the owner says yes (decision 32).
+- Measured on a 6:39 voice note: 16.1 s end to end (whisper-1 15.3 s, Groq 1.3 s, one chunk), 99 segments, 6 marked
+  uncertain, US$0.0443 in two spend rows. A wait that long is why the room calls the tool instead of the daemon
+  transcribing before the turn starts: the turn would start 16 s late with no card to show for it.
+- `yerk abilities` and `yerk explain transcribe`: transcribe is built, on when the OpenAI key is there; a built
+  ability's `how` lines are headed "How it works".
+
+**Upgrading:** for the second pass, put Groq's key on the first line of `secrets/groq.key` in the private folder
+(0600); the OpenAI key is the one the embeddings already read (`secrets/openai.key`, or where `[memory] embeddings_key`
+points). ffmpeg must be on the daemon's PATH. The ledger gains its `spend` table at the next start, and each room's
+settings allow `mcp__yerk__transcribe` from its next process start.
 
 ### test-hygiene (#86)
 

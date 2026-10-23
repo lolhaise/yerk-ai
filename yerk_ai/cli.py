@@ -377,8 +377,13 @@ def cmd_docs(a: argparse.Namespace) -> int:
 
 def cmd_curate(a: argparse.Namespace) -> int:
     """The night's card curation (curate.py): the sweep, then yesterday's facts, or each day from --since, proposed,
-    knocked down, checked and landed past the bench; --dry-run changes nothing."""
+    knocked down, checked and landed past the bench, then the rule files' proposals; --dry-run changes nothing. --rules:
+    the proposals alone; --apply DAY N[,N...]: the owner's word, those proposals written (or `undo`, the last apply back)."""
     from . import curate
+    if a.apply:
+        return curate.apply_main(private_dir(a.private), state_dir(a.state), *a.apply)
+    if a.rules:
+        return curate.rules_main(private_dir(a.private), state_dir(a.state), a.dry_run)
     return curate.main(private_dir(a.private), state_dir(a.state), a.since, a.dry_run)
 
 
@@ -647,6 +652,10 @@ def main(argv: list[str] | None = None) -> int:
                         "drift), then the day's facts proposed, knocked down, checked and landed only if the bench holds")
     cu.add_argument("--since", default="", help="each day from this date (YYYY-MM-DD) to yesterday, for a backfill")
     cu.add_argument("--dry-run", action="store_true", help="say what it would change and propose, change nothing")
+    cu.add_argument("--rules", action="store_true", help="the rule files alone: merges, cuts, condensations and promotions "
+                    "proposed into <memory>/rules-proposals/<day>.md, never applied")
+    cu.add_argument("--apply", nargs=2, metavar=("DAY", "N"), help="the owner's word: proposals N[,N...] of DAY written, backed "
+                    "back as plain text with one more, line `for`: the check while a second")
     mm = sub.add_parser("memory", help="the memory tree's one-time migrations: migrate-daylogs (offsets, room ids, "
                         "authors and classes on every day-log line written before them; files copied to backups/ first)")
     mm.add_argument("action", choices=["migrate-daylogs"])

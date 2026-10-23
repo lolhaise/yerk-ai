@@ -59,6 +59,7 @@ class Settings:
     scoped: bool = False            # a room's own `also` (only): index hits and names kept to the roots in `scope`
     cites: tuple[tuple[Path, str], ...] = ()    # every root of the install and the name a cite gives it, the same in every room
     docs: Path | None = None        # <state>/docs (docs.py): the Claude docs and the rooms' shape reports, a root in every room
+    private: Path | None = None     # the private folder: where an ability's other key files are looked for (abilities.state)
     imports: Path | None = None     # <private>/imports: what `yerk import` stores, texts and mail, a message a line (sources.py)
 
     @property
@@ -114,7 +115,7 @@ def settings(private: Path, state: Path, conf: dict[str, Any] | None = None) -> 
                     embeddings_width=int(conf.get("embeddings_width") or conf.get("embeddings_dim") or 256),
                     index_status=state / "memory" / "index.json",
                     recall_chars=max(100, int(conf.get("recall_chars", RECALL_CHARS))), cites=tuple(cites.items()), docs=docs,
-                    imports=(private / "imports").resolve())
+                    private=private, imports=(private / "imports").resolve())
 
 
 # the embedding settings a user with another model or budget can pick, described from the code (run 5):
@@ -375,6 +376,22 @@ NOTE = "note"                # the role of a day-log line a room files with `rem
 BY = re.compile(re.escape(mentions.OLD) + r" by (\S+?:\d+)\]")     # a mark naming its replacement; `[superseded]` names none
 LATER = "superseded.tsv"     # in the tree, `old cite<TAB>new cite`: a line a correction named but could not mark with its cite
 RULES = "rules.md"           # in the tree: the install's one rules file, how each job is done in every room (decision 15)
+OVERFLOW = "rules-overflow.md"     # beside it (private): a rule RULES has no room for under its cap, even with no examples
+HEADROOM = 150               # a filing fitted under RULES's cap leaves this much of it free
+EXAMPLE = re.compile(r"\s*<example(?:\s[^>]*)?>.*?</example>", re.I)    # an example in a rule line, as shape.py reads the tags
+
+
+def rules_part(path: Path, text: str) -> str:
+    """The rules file `path` holding `text` as a session start sends it (context.rules_text): its live lines, no front
+    matter or superseded line, under the path it came from."""
+    live = "\n".join(x for x in FRONT.sub("", text).strip().splitlines() if mentions.OLD not in x)
+    return f"[from {path.resolve()}]\n{live}" if live else ""
+
+
+def topic(line: str) -> str:
+    """A rule line's job, its words before the first colon (a line with none: its first six words)."""
+    head, colon, _ = line.lstrip("-*#> ").partition(": ")
+    return head if colon else " ".join(head.split()[:6])
 
 
 def later(s: Settings) -> dict[str, str]:
@@ -457,24 +474,57 @@ def mark(line: str, by: str = "") -> str:
                   line, count=1)
 
 
-def rule(s: Settings, room: str, mid: str, job: str, text: str) -> dict[str, Any]:
+def rule(s: Settings, room: str, mid: str, job: str, text: str, cap: int = 0, log: DailyLog | None = None) -> dict[str, Any]:
     """How a job is done from now on, from an owner's room, into RULES: the one file every room starts with and hears
     from on its next message when it changes (context.news), shared so read_memory reads it anywhere. One line with its
-    room, message and time; the job's live line before it is marked superseded by the new one, never deleted."""
+    room, message and time; the job's live line before it is marked superseded by the new one, never deleted. A filing
+    that would take the rules part past `cap` takes the examples out of its lines, newest first and its own first, until
+    the part is HEADROOM under it (`stripped`); with no room even then, RULES stays as it was and the line is held in
+    OVERFLOW (`held`), so a new rule never pushes a proven one out of a session start. A rule's own words are never cut.
+    Each strip and the hold is a line in the room's day log (`log`)."""
     job, body = one_line(job).strip(" :").lower(), one_line(text)
     if not job or not body:
         return {"ok": False, "error": "a rule needs the job's short name and how it is done, both as text"}
     path, head, at = s.root / RULES, f"- {job}: ", datetime.now(timezone.utc).astimezone(s.tz)
+    new, held, stripped, k = f"{head}{body} ({room}, {at:%Y-%m-%d %H:%M:%S%:z}) [m:{mid}]", s.root / OVERFLOW, list[str](), 0
     with daily_lock(s.daily):                  # the one writers' lock
         lines = path.read_text().splitlines() if path.is_file() else ["---", "class: shared", "---", "# Rules: one live line per job, in every room", ""]
         live = [i for i, x in enumerate(lines) if x.startswith(head) and mentions.OLD not in x]
-        n = next((i + 1 for i in live if lines[i].startswith(f"{head}{body} (")), 0)       # a retried call
+        n = next((i + 1 for i in live if lines[i].startswith((f"{head}{body} (", f"{head}{EXAMPLE.sub('', body)} ("))), 0)  # a retried call
         gone = [] if n else live
         if not n:
             n = len(lines) + 1
-            lines = [mark(x, f"{cite(s, path)}:{n}") if i in gone else x for i, x in enumerate(lines)]
-            write_private(path, "\n".join([*lines, f"{head}{body} ({room}, {at:%Y-%m-%d %H:%M:%S%:z}) [m:{mid}]"]) + "\n")
-    return {"ok": True, "job": job, "cite": f"{cite(s, path)}:{n}", "replaced": [f"{cite(s, path)}:{i + 1}" for i in gone]}
+            lines = [mark(x, f"{cite(s, path)}:{n}") if i in gone else x for i, x in enumerate(lines)] + [new]
+
+            def size() -> int:                 # the rules part as a session start counts it (context.chars)
+                return len(rules_part(path, "\n".join(lines)).encode("utf-16-le")) // 2
+            over = bool(cap) and size() > cap
+            for i in reversed(range(n if over else 0)):       # newest first, the new rule's own first
+                if size() <= cap - HEADROOM:
+                    break
+                if mentions.OLD not in lines[i] and EXAMPLE.search(lines[i]):
+                    stripped.append(topic(lines[i]))
+                    lines[i] = EXAMPLE.sub("", lines[i])
+            if over and size() > cap - HEADROOM:      # no room even so: nothing in RULES changes, the rule is held
+                stripped.clear()
+                have = held.read_text().splitlines() if held.is_file() else ["# Rules held: past the rules file's cap, in no room", ""]
+                k = next((i + 1 for i, x in enumerate(have) if x.startswith(f"{head}{body} (")), 0)      # a retried call
+                again = bool(k)                        # held and said already
+                if not k:
+                    write_private(held, "\n".join(have := [*have, new]) + "\n")
+                    k = len(have)
+            else:
+                write_private(path, "\n".join(lines) + "\n")
+    if log is not None:                        # each strip and the hold, a line in the room's day log (Yerk AI's own)
+        for t in stripped:
+            log.capture(room, f"{mid}.x{hashlib.sha1(t.encode()).hexdigest()[:8]}", "yerk", words.RULE_STRIPPED.format(job=t, cap=cap), when=at)
+        if k:
+            log.capture(room, f"{mid}.h{hashlib.sha1(body.encode()).hexdigest()[:8]}", "yerk",
+                        words.RULE_HELD_LOG.format(job=job, file=OVERFLOW, cap=cap), when=at)
+    if k:
+        return {"ok": True, "job": job, "cite": f"{cite(s, held)}:{k}", "replaced": [], "held": True, **({"again": True} if again else {})}
+    return {"ok": True, "job": job, "cite": f"{cite(s, path)}:{n}", "replaced": [f"{cite(s, path)}:{i + 1}" for i in gone],
+            **({"stripped": stripped} if stripped else {})}
 
 
 def live_first(s: Settings, r: dict[str, Any], reader: Reader | None = None) -> dict[str, Any]:
@@ -834,16 +884,16 @@ def window(s: Settings, now: datetime | None = None, days: int = WINDOW_DAYS) ->
 
 
 def room_lines(s: Settings, room: str, now: datetime | None = None,
-               rid: str | None = None, owner: bool = True) -> Iterator[tuple[str, int, Line, list[str]]]:
+               rid: str | None = None, owner: bool = True, first: int = 0) -> Iterator[tuple[str, int, Line, list[str]]]:
     """(day, line number, the parsed line, the lines of its file) for this room's lines of the last
-    14 days, newest day first: by the room's stable id (`rid`, default its name), and, for an owner
+    14 days from `first` days back (1: yesterday on), newest day first: by the room's stable id (`rid`, default its name), and, for an owner
     room (`owner`, the view every caller but the daemon's non-owner rooms has), by name on a line
     written before ids. A room that is not an owner room gets only its id's lines of class room or
     shared, as read_memory shows them: a former room's name is not its history (R2). The room's own day
     files are small, so they are read straight from disk: fresher than the index (which trails by a
     pass) and a few milliseconds per message."""
     rid = rid or room
-    for day in window(s, now):
+    for day in window(s, now)[first:]:
         f = s.daily / f"{day}.md"
         if not f.is_file():
             continue
@@ -923,6 +973,48 @@ def room_pack(s: Settings, room: str, budget: int = 6000, now: datetime | None =
     if shown < len(items):
         out.append(f"({len(items) - shown} older items not shown; recall or read_memory reaches them)")
     return ("\n".join(out), shown) if items else ("", 0)
+
+
+# the paste rule (Room.paste_check; 2026-10-22: a block posted the evening before went out again word for word, its dates
+# and times that day's): a room's fenced blocks in the day log's own shape, and the ones it posted on an earlier day
+FENCE = "```"
+TAG = re.compile(r"[\w+#.-]*")             # a fence's language tag ("py", "c++"), left out of the block
+
+
+def fenced(text: str) -> list[str]:
+    """The fenced blocks of a message or of its day-log line alike, as one_line files them (each line stripped, blank lines
+    dropped, joined with " / "), each line's runs of spaces and tabs made one and the fence's language tag left out. A line
+    opening with three backticks opens a block; one opening or ending with them closes it; an unclosed block runs to the end."""
+    if FENCE not in text:
+        return []
+    out: list[str] = []
+    block: list[str] | None = None
+    for seg in (" ".join(x.split()) for x in one_line(text).split(" / ")):
+        if block is None and seg.startswith(FENCE):
+            rest = seg[3:].strip()
+            if rest.endswith(FENCE) and rest[:-3].strip():         # ```a one-line block```
+                out.append(rest[:-3].strip())
+            elif not rest.endswith(FENCE):
+                block = [] if TAG.fullmatch(rest) else [rest]
+        elif block is not None and (seg.startswith(FENCE) or seg.endswith(FENCE)):
+            block += [seg[:-3].strip()] if seg.endswith(FENCE) and seg[:-3].strip() and not seg.startswith(FENCE) else []
+            out, block = out + ([" / ".join(block)] if block else []), None
+        elif block is not None and seg:
+            block.append(seg)
+    return out + ([" / ".join(block)] if block else [])
+
+
+def earlier_blocks(s: Settings, room: str, now: datetime | None = None, rid: str | None = None,
+                   owner: bool = True) -> dict[str, tuple[str, str]]:
+    """The paste rule's view of a room: each fenced block the room itself posted (a `yerk` line: a `send`, a final, a
+    caption) on an earlier day of the last WINDOW_DAYS, by fenced()'s shape, with the day and time it first went out.
+    Today's file is never read, since a block posted again the same day is not a stale paste."""
+    seen: dict[str, tuple[str, str]] = {}
+    for day, _, ln, _ in room_lines(s, room, now, rid, owner, first=1):
+        for b in fenced(ln.body) if ln.role == "yerk" else []:
+            if b not in seen or (day, ln.time) < seen[b]:
+                seen[b] = (day, ln.time)
+    return seen
 
 
 def migrate_daylogs(daily: Path, tz: tzinfo, rooms: dict[str, tuple[str, str]], backup: Path) -> dict[str, Any]:

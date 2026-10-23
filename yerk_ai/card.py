@@ -39,6 +39,24 @@ def tool_name(name: str) -> str:
     return (name.split("__")[-1] if name.startswith("mcp__") else name).lower()
 
 
+def refused(content: Any) -> bool:
+    """A Yerk tool's result that says it did nothing (`"ok": false`: a send the paste rule turned back, a file from outside
+    the room's folders). Claude Code hands an MCP tool's answer over as `{"result": "<its JSON>"}`, never as an error."""
+    text = content if isinstance(content, str) else "".join(
+        str(b.get("text") or "") for b in content if isinstance(b, dict)) if isinstance(content, list) else ""
+    for _ in range(2):
+        try:
+            got = json.loads(text)
+        except (TypeError, ValueError):
+            return False
+        if not isinstance(got, dict):
+            return False
+        if not isinstance(got.get("result"), str):
+            return got.get("ok") is False
+        text = got["result"]
+    return False
+
+
 def plain(path: str) -> str:
     """A file as a person names it (STYLE.md rule 4): a day log "the Oct 6 notes", open-loops.md "your open items",
     MEMORY.md "the pinned notes", rules.md "the rules", facts/<name>.md "<name>'s file", else its bare name."""
@@ -130,7 +148,7 @@ class Card:
             content = (ev.get("message") or {}).get("content")
             for c in content if isinstance(content, list) else []:
                 if c.get("type") == "tool_result" and (hit := self.by_id.get(str(c.get("tool_use_id")))):
-                    hit.state = FAILED if c.get("is_error") else OK
+                    hit.state = FAILED if c.get("is_error") or tool_name(hit.name) == "send" and refused(c.get("content")) else OK
         return self.render() != before
 
     def _row(self, rid: str, name: str) -> Row:

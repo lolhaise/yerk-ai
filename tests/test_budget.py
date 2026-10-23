@@ -91,10 +91,10 @@ def test_the_real_layer_test_counts_the_rules_file(tmp_path, monkeypatch):
     without the rules file, as it was, the test passed such a room."""
     private = tmp_path / "private"
     shutil.copytree(EXAMPLE_PRIVATE, private)
-    (private / "memory" / memory.RULES).write_text("- a job: done this way.\n" + "- another job: " + "x" * 12000 + "\n")
+    (private / "memory" / memory.RULES).write_text("- a job: done this way.\n" + "- another job: " + "x" * 13000 + "\n")
     monkeypatch.setenv("YERK_PRIVATE", str(private))
     monkeypatch.setenv("YERK_STATE", str(tmp_path / "state"))
-    with pytest.raises(AssertionError, match=rf"^example-room rules: 12,\d{{3}} > {budgets()['session_start']['appended']['rules']:,} \("):
+    with pytest.raises(AssertionError, match=rf"^example-room rules: 13,\d{{3}} > {budgets()['session_start']['appended']['rules']:,} \("):
         test_real_private_layer_fits()
 
 
@@ -155,11 +155,12 @@ def test_claude_codes_parts_as_the_rooms_send_them_fit_their_lines_and_what_is_l
     assert all(sent <= line for sent, line in rows.values()), out
     assert all(line <= sent * 1.02 for name, (sent, line) in rows.items() if name != "Yerk AI's tools"), rows
     s = b["session_start"]
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 84350
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 88514
 
 
-# The largest room rulebook, the room's own text only since PR 47, across the six rooms (`yerk map`, 2026-10-21, with the taste rules).
-LIVE_RULEBOOK = 9860
+# The largest room rulebook, the room's own text only since PR 47, across the six rooms: the work room's, read as session
+# start builds it (13,518 before a hand edit took two blocks out of it).
+LIVE_RULEBOOK = 12696
 
 
 def test_the_rulebook_line_keeps_about_1000_over_the_largest_room_text_and_what_it_freed_went_to_the_rules(tmp_path):
@@ -167,10 +168,14 @@ def test_the_rulebook_line_keeps_about_1000_over_the_largest_room_text_and_what_
     1,000 over that now and every character it freed went to `rules`: a rulebook of that size and a rules file of about
     11,000 both go out whole, where `rules` at 6,886 trimmed that file, the total holding at 80,000 (decision 12). On
     2026-10-21 the taste rules took the largest room text to 9,860: the line followed it, `rules` kept its 11,886, and the
-    total rose by the rulebook's 3,850 and room_voice's 500 to 84,350."""
+    total rose by the rulebook's 3,850 and room_voice's 500 to 84,350; on 2026-10-22 by the mechanics' 200 (the voice_note
+    line) to 84,550, then by the mechanics' 200 again (the paste line) to 84,750. That day both line-per-rule parts were
+    found cut from the middle at every start since Oct 21: the work room's rulebook (13,518, then 12,696) went to 14,000,
+    about 10% over it, `rules` to 12,500 for the shared file's 12,298, and the total rose by the 3,764 to 88,514; the
+    doctor's fit check reads red the day a part passes its line."""
     s = budgets()["session_start"]
-    assert 900 <= s["appended"]["rulebook"] - LIVE_RULEBOOK <= 1100 and s["appended"]["rules"] == 11886
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 84350
+    assert 900 <= s["appended"]["rulebook"] - LIVE_RULEBOOK <= 1400 and s["appended"]["rules"] == 12500
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 88514
     private = tmp_path / "private"
     shutil.copytree(EXAMPLE_PRIVATE, private)
     (private / "rulebook.md").write_text("r" * (LIVE_RULEBOOK - 1) + "\n")

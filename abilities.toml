@@ -428,34 +428,43 @@ why_not = "Not planned for the public harness: it is a business product, not a p
 asked_as = ["website chatbot", "chat widget", "chatbot for my business"]
 
 [abilities.transcribe]
-state = "described"
-what = "Transcribes a voice note or recording in two passes: the words, then the tone, then a check for made-up words."
+state = "built"
+what = "The transcribe tool on Yerk's own MCP server: a voice note or recording in a room's own folders becomes text with a timestamp per segment, saved beside the audio as NAME.transcript.txt and returned to the room; a voice note's arrival line tells the room it hears the note only through this tool. The daemon runs it, since a room's shell has no network."
 how = [
-  "A speech-to-text vendor for the words, never slow local transcription by default.",
-  "A second pass that reads the tone and flags any word the first pass may have invented.",
+  "Chunks: ffmpeg cuts the audio into 14-minute mono mp3s, under both providers' 25 MB upload cap, sent in parallel.",
+  "Pass 1: OpenAI whisper-1 on every chunk; a segment both near silence and low in confidence is dropped, the made-up line whisper writes over quiet.",
+  "Pass 2: with a Groq key, Groq whisper-large-v3-turbo on the same chunks, the two aligned word by word; a segment where they differ on more than 3 words in 10 is marked uncertain with both readings, so a room gives it as unsure.",
+  "Spend: every paid call is a spend row in the ledger, the morning diff says the day's total, and a recording past US$1 waits for the owner's yes.",
 ]
 tier = "key"
-provider = "a speech-to-text vendor"
-needs = "a speech-to-text vendor key in the private folder"
-price = "the vendor's per-minute price, paid to the vendor"
-free_path = "local transcription on the box, slower"
-why_not = "After the rooms move."
+provider = "OpenAI, and Groq for the second pass"
+model = "whisper-1, then whisper-large-v3-turbo"
+needs = "ffmpeg on the machine; the install's OpenAI key (secrets/openai.key in the private folder, the one embeddings use); a Groq key at secrets/groq.key for the second pass, optional"
+price = "US$0.006 a minute on OpenAI (its pricing page) and US$0.04 an hour on Groq, 10 s billed at least per call (its speech-to-text page), both read 2026-10-21: a 7-minute voice note is about 4.7 US cents with both passes"
+key = "put each key on the first line of its own file in the private folder's secrets/, 0600: openai.key and groq.key; the next call reads it, no restart"
+free_path = "none: without the OpenAI key the room says the note could not be transcribed and answers from the message text"
 asked_as = ["transcribe", "transcription", "transcribe this", "what does this recording say"]
 
-[abilities.voice-notes]
-state = "described"
-what = "Sends a spoken voice note in a chosen voice, one path for every voice note."
+[abilities.voice_note]
+state = "built"
+what = "The voice_note tool on Yerk's own MCP server: a script the room writes, when the owner asks for a voice note or to say it out loud, becomes a spoken note in the room's own work folder, checked before it is handed back, which `send` posts as a Discord voice message. The daemon runs it, since a room's shell has no network."
 how = [
-  "A text-to-speech vendor for the voice, with its key in the private folder.",
-  "One send path, so every voice note has the same voice and the same checks.",
+  "Script: `[[pause]]` alone on a line is a section break, each section its own call joined by half a second of silence, a section over 4,000 characters split again at its paragraphs; `(break)` is a short pause; a section under 50 characters joins the next with a `(break)`, since a voice glues a stray syllable to a short one.",
+  "Voice: MiniMax speech-2.8-hd (English_FriendlyPerson, speed 1.18) first, with the private folder's pronunciation rules; on any MiniMax failure the whole note goes to Fish Audio s2.1-pro-free, so a note never changes voice mid-way. Mood tags in brackets are dropped for MiniMax and passed to Fish.",
+  "Sound: loudness to -14 LUFS, then opus at 48 kHz in an ogg file, what Discord plays as a voice message.",
+  "Check: the first 20 seconds are read back by whisper-1 and must match the script's opening; a note that does not is deleted and the room told, so a note is never handed back unheard.",
+  "Send: `send` posts it with no text as a voice message (flag 8192, its duration and waveform); one Discord refuses goes as the plain audio file, and the room says so.",
+  "Spend: every paid call is a spend row in the ledger, the morning diff says the day's total, and a note past US$1 waits for the owner's yes.",
+  "English only: both voices and the check are English; another language needs other voices and another check.",
 ]
-tier = "key"
-provider = "a text-to-speech vendor"
-needs = "a text-to-speech vendor key in the private folder"
-price = "the vendor's per-character price, paid to the vendor"
+tier = "paid"
+provider = "MiniMax, and Fish Audio when MiniMax fails"
+model = "speech-2.8-hd, then s2.1-pro-free; whisper-1 for the check"
+needs = "ffmpeg on the machine; a MiniMax key at secrets/minimax.key and a Fish Audio key at secrets/fish.key in the private folder (either one makes notes, MiniMax first); the install's OpenAI key (secrets/openai.key) for the check; pronunciation rules in voice/pronounce.txt there, one word/say-it a line, optional"
+price = "US$100 a million characters on MiniMax speech-2.8-hd (its pay-as-you-go pricing page) and US$0 on Fish Audio s2.1-pro-free (its pricing page), both read 2026-10-22, plus US$0.002 for the 20-second check on whisper-1: a 1,000-character note is about 10 US cents"
+key = "put each key on the first line of its own file in the private folder's secrets/, 0600: minimax.key and fish.key; the next call reads it, no restart"
 free_path = "a text reply"
-why_not = "After the rooms move."
-asked_as = ["voice note", "voice message", "send me audio"]
+asked_as = ["voice note", "voice message", "send me audio", "say it out loud"]
 
 [abilities.video-read]
 state = "described"
@@ -1095,7 +1104,7 @@ layer = 6
 
 [abilities.sheet]
 state = "built"
-what = "The sheet rule, in shadow: a turn that sends a document through the send tool (.docx, .pdf, .xlsx, .pptx, .txt, .md or .csv) or pastes a block (a fenced block with no language tag, or tagged text, plain or none) in its reply or in a send's text, with no claims sheet written or named in the turn (a Write, Edit or NotebookEdit of a file whose name holds claims and ends in .md, .txt or .csv, or a shell command naming one), is ledgered once and counted in the morning diff; nothing is blocked, it measures how often a room ships something in the owner's name without checking its claims against source first."
+what = "The sheet rule: in an owner's room, a send of a document through the send tool (.docx, .pdf, .xlsx, .pptx, .txt, .md or .csv) or of a text holding a pasted block (a fenced block with no language tag, or tagged text, plain or none), or a final message holding one, with no claims sheet written or named in the turn (a Write, Edit or NotebookEdit of a file whose name holds claims and ends in .md, .txt or .csv, a shell command naming one, or such a file changed this turn beside the document, else in the room's work folder), is turned back once a turn, saying what the sheet is (one row per claim: the claim, its source line, the quote) and where it goes; the next send of the turn goes out as it is. Each refusal is a shadow row the morning diff counts. A person's room is never refused: there the turn is only ledgered, as before."
 tier = "free"
 needs = "nothing beyond the evidence ledger; the document suffixes, the paste tags and the sheet's name are short lists in the code, not a model"
 free_path = "this is the free path"

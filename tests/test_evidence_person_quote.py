@@ -13,6 +13,7 @@ from yerk_ai import evidence, morning, status, words
 from yerk_ai.ledger import Ledger
 
 REMEMBER = ("mcp__yerk__remember", {"room": "example-room", "text": "Sam: the seating plan stays on paper", "about": "Sam"})
+VOICE = ("mcp__yerk__voice_note", {"script": "Sam wants the seating plan kept on paper.", "name": "", "owner_yes": False})
 CASES = {
     "Sam": "Sam wants the seating plan kept on paper.",
     "Dana": 'Dana said "go ahead" on the 19th, got the results on the 20th with all three cakes named on the list.',
@@ -45,6 +46,7 @@ def test_the_five_live_claims_about_a_person_fire_from_a_turn_that_read_nothing(
     for name, s in CASES.items():
         assert person(s, [REMEMBER]) == [f'{name.strip()}: "{s}"; tools this turn: mcp__yerk__remember x1'], s
     assert person(CASES["You"]) == [f'Queue: "{CASES["You"]}"; run starts the: example']
+    assert person(CASES["Sam"], [VOICE]) == [f'Sam: "{CASES["Sam"]}"; tools this turn: mcp__yerk__voice_note x1']   # it reads nothing
 
 
 def test_three_accepted_replies_fire_too_and_are_known_false_alarms():

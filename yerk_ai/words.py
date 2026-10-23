@@ -83,7 +83,8 @@ STEP = {"bash": "running a command", "read": "reading {what}", "read_memory": "r
         "grep": "searching {where} for {what}", "glob": "looking for {what} files", "recall": "looking up {what}",
         "webfetch": "reading {what}", "web_fetch": "reading {what}", "fetch": "reading {what}",
         "websearch": "searching the web for {what}", "web_search": "searching the web for {what}", "send": "sending {what}",
-        "remember": "filing a note", "hold": "waiting for {what}", "settings": "switching to {what}",
+        "remember": "filing a note", "hold": "waiting for {what}", "settings": "switching to {what}", "transcribe": "transcribing {what}",
+        "voice_note": "making a voice note",
         "todowrite": "updating the plan", "task": "handing off {what}", "agent": "handing off {what}", "toolsearch": "loading a tool"}
 WORKER_STEP = {"start": "starting a worker", "list": "listing the workers", "stop": "stopping worker {id}",
                "report": "reading worker {id}'s report"}
@@ -138,9 +139,14 @@ RULES_OWNER_ONLY = "not filed as a rule, since a rule reaches every room; rememb
 FILED_NEXT = ("Only the text after your last tool call reaches the room, and nothing written above this call is shown, "
               "so the answer goes there, first and whole (the result, the numbers, what you found or decided), and the "
               "filing is {clause}.")
-FILED_AT_MOST, RULES_OVER = "one clause at its end at most", ", and the shared rules file is over its cap"
-RULE_CLAUSE = "one clause at its end, this one: every room now does {job} this way{over}"
-RULES_CUT, CUT_LINES = "{file} over cap: {size:,} of {cap:,}", "session starts cut lines {first} to {last}"   # machine room
+FILED_AT_MOST = "one clause at its end at most"
+RULE_CLAUSE = "one clause at its end, this one: every room now does {job} this way"
+HELD_CLAUSE = "one clause at its end, this one: the rule is held for now, since the shared rules file is full"
+# a filing fitted under the rules file's cap (memory.rule): each strip and a hold in the room's day log, a hold in the machine room
+RULE_STRIPPED = "the example in rule \"{job}\" taken out so rules.md fits its cap of {cap:,}"
+RULE_HELD_LOG = "rule \"{job}\" held in {file}: rules.md is full at its cap of {cap:,}, even with no examples"
+RULE_HELD = "rule held in {file}\n\"{job}\"\nfrom {room}\nrules.md is full at its cap of {cap:,}"
+PART_CUT = "session start cut {part}\n{size:,} of {cap:,} in {room}\n{n} line{s} sent broken or not at all:\n{heads}"
 FILED = re.compile(r"^\W*(?:filed|saved|from now on,? every room)\b", re.I)   # a final reporting a filing (stub)
 STUB = ("Only your final message reaches the room, and yours, \"{head}\", reports the filing, not the answer: the answer "
         "is above your last tool call, where the room never sees it, or it was never written. Write the whole answer as "
@@ -149,6 +155,18 @@ BOARD_LINE = re.compile(r"^[\s>*-]*(?:☑|☐|⛔|🟦|🟨)|\bunblocks?:|🟦 m
 BOARD = ("This room has people, and your final message is the owner rooms' status board ({found}). Say where things "
          "stand in two or three plain sentences, with no checklist marks, colour key, quote rails or what unblocks it, "
          "and write that as your final message now.")
+# the paste rule, in `send` and at Stop alike (2026-10-22: a block posted the evening before went out again word for word)
+PASTE = ("Not posted: your message holds a fenced block this room already posted on {when}, word for word, and its dates, "
+         "times and plans were that day's. Re-read it line by line against today (relative dates, clock times, who meets "
+         "whom and when) and write it as it stands now, or say in one plain line why nothing in it changed.")
+PASTE_FOUND = "a block of {n} line{s} first posted {when}"     # the shadow row's detail: never the block itself
+# the sheet rule in an owner's room, in `send` and at Stop alike (2026-10-22: two PDFs, a crib file and pasted blocks went
+# out in the owner's name in one morning with no claims sheet, each one logged and none stopped)
+SHEET = ("Not {done}: {what} goes out in the owner's name, and no claims sheet was written this turn. A claims sheet is a "
+         "file whose name holds claims, here {where}, with one row per claim the {thing} makes: the claim, its source line "
+         "(file and line number) and the quote from that line, word for word. Write it, fix any claim it cannot source, then "
+         "{again}. This is asked once a turn: the next {next} goes out as it is.")
+SHEET_SEND, SHEET_STOP = ("sent", "send again", "send"), ("posted", "write your final message again", "final message")
 WORKER_OWN_ROOM = "a room starts workers for itself only, not for {room}"
 GONE, STRAY, NONE_RUNNING = "gone, no result", "unknown worker {id} running", "workers: none running"
 
@@ -157,6 +175,12 @@ def outcome(state: str, **say: Any) -> tuple[str, str]:
     """(mark, words) for a worker state; `say` fills the words' blanks (cap, why, ticked, rows)."""
     mark, text = OUTCOME.get(state, (NOT_DONE, state))
     return mark, text.format(**say)
+
+
+def heads(lines: list[str], most: int = 12, n: int = 6) -> str:
+    """Each line's first `n` words in quotes, one a line held to a phone's width, `most` at the most, then how many more."""
+    said = ['"' + line(" ".join(x.lstrip("-*#> ").split()[:n]), PHONE - 2) + '"' for x in lines[:most]]
+    return "\n".join(said + ([f"and {len(lines) - most} more"] if len(lines) > most else []))
 
 
 def died(result: str) -> str:
@@ -247,6 +271,37 @@ def file_why(kind: str, **say: Any) -> str:
     return FILE_WHY[kind].format(**say)
 
 
+# a voice note (transcribe.py): the line under its [attachment] line, then what the tool's result and file say
+VOICE_NOTE = ("[voice note] {name} is a recording. You take in sound only as the text the transcribe tool returns, so call "
+              "transcribe on the path above before you answer, then open your reply with what it says, or with the fact that it "
+              "could not be transcribed. Call that step transcribing, never listening, since nothing plays the sound to you.")
+TRANSCRIBED_NEXT = ("Open your reply with what the recording says, in your own words. A segment marked (uncertain) has two "
+                    "readings that disagree, so give that part as unsure or ask about it, since either reading may be wrong.")
+TRANSCRIPT_HEAD, UNCERTAIN, NO_WORDS = "{name}, {minutes} min, {how}", "(uncertain) {first} | second pass: {second}", "(no words)"
+CHECKED = "checked by a second pass: {n} of {of} segments uncertain"
+PART_CHECKED = "checked by a second pass but for chunk {chunks}, where it failed: {n} of {of} segments uncertain"
+UNCHECKED = "one pass only, so nothing in it was checked: a second pass needs a Groq key at secrets/groq.key"
+MORE_IN_FILE = "(the rest is in the file: Read it from this line on)"
+NO_SPEECH_KEY = "no OpenAI key in the private folder (secrets/openai.key), so the recording could not be transcribed"
+OVER_GATE = ("not transcribed yet, since {minutes} min of audio is about US${usd:.2f}, past the US$1 a call spends only with the "
+             "owner's yes: ask, then call again with owner_yes true once the owner says yes")
+# a voice note made (voice_note.py): what its result says next, why one was not made, and a send that was not a voice message
+VOICE_NEXT = ("Send it now with send, file set to this path and no text, so it goes as a voice message; words of yours go in a "
+              "message of their own. `probe` is its first 20 seconds read back, a check of the note: call it checking, never "
+              "listening, since nothing plays the sound to you.")
+VOICE_EMPTY = "the script has no words to say, so nothing was made"
+VOICE_NO_KEY = "no voice key in the private folder (secrets/minimax.key or secrets/fish.key), so no voice note could be made"
+VOICE_NO_CHECK = ("no OpenAI key in the private folder (secrets/openai.key), so the note could not be checked, and a note is "
+                  "never handed back unchecked")
+VOICE_NO_ENGINE = "neither voice made it, so there is no note: {why}"
+VOICE_PROBE_FAILED = ("the note failed its check, so it was deleted: its first 20 seconds read back as \"{heard}\" where the "
+                      "script opens \"{said}\"; make it once more, or answer in text")
+VOICE_OVER_GATE = ("not made yet, since {chars:,} characters is about US${usd:.2f}, past the US$1 a call spends only with the "
+                   "owner's yes: ask, then call again with owner_yes true once the owner says yes")
+VOICE_AS_FILE = "it went as a plain audio file, not a voice message ({why}), so say so in your reply"
+VOICE_PLAIN = "Discord took it without the voice message flag"
+
+
 def size(n: int) -> str:
     """'25 MB', '900 KB', '12 bytes'."""
     if n >= 1024 * 1024:
@@ -296,6 +351,7 @@ FIRST_MAP, SAME = "first map", "same"
 ANSWERED, SINCE = "{day}: {n} messages answered", " since {at}"
 WAIT, FIRST_LINE = "queue wait: {mid} typical, {worst} worst", "first line: {mid} typical, {worst} worst"
 SHADOW, NO_SHADOW = "shadow flag {rule}: {n}", "shadow flags: none"
+SPENT = "spent {day}: US${usd:.2f} on {n} calls"                     # the spend rows, one per paid call (ledger.spent)
 UNKNOWN, NOT_ANSWERING_WHY = "{what}: unknown, {why}", "yerkd not answering"
 DEAD, NO_YERKD, NO_DEAD = "dead turns: {n}, {name}, last {at}", "no yerkd answers", "dead turns: none in 24h"
 SWEPT, SWEEP_FAILED = "swept: {kinds}", "retention failed: {why}"     # the night's sweep (retention.py)
@@ -303,6 +359,7 @@ DOCTOR_OK, DOCTOR, NO_RUN = "doctor: ok", "doctor: {n} found, {first}", "one mor
 DOCS_CHANGED, SHAPE, SHAPE_OK = "docs changed: {slug}", "rule shape: {counts}", "waits in: the, {n} before"  # docs, shape
 CURATE_OK, CURATE = "curate: {n} landed, {m} swept", "curate: {n} to read, {first}"     # the night's curation (curate.py)
 CURATE_RUNNING, CURATE_CUT = "curate: running since {at}", "curate: cut off at {at}, {n} to undo"
+RULES_CARD, RULES_MORE, RULES_APPLY = "rules: {n} proposed, -{chars} chars", "and {n} more in the proposals file", "apply: yerk curate --apply {day} N"
 # the stance check (evidence.stance): the owner's pushback opens a line with one of these words or carries one of these phrases
 PUSHBACK = re.compile(r"^[^\in\n]*(?:(?:the|Next|run|starts|the|example+|note)\says[^\the\n]*)?(?:next+|step|and+(?!\the+(?:test|reads|it|back|as)\plain)"
                       r"|wrong|actually|disagree|not\s+(?:true|really|quite))\b|\b(?:you['’]?re|you\s+are|that['’]?s|that\s+is)\s+wrong\b"

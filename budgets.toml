@@ -5,7 +5,7 @@
 # when a part or a total passes its number here.
 
 [session_start]
-total = 84350
+total = 88514
 
 # Load order, most stable first, so the cached start of the prompt survives.
 # The first five parts are Claude Code's own (its default prompt, the built-in tools
@@ -30,13 +30,23 @@ skills = 0
 # 2026-10-21: the taste rules (one line each, a rule and the rated example replies that prove it; example lines are the
 # strongest voice lever there is) took the largest rulebook to 9,860 and two room voices to 4,999, so 10,850 and 5,500,
 # about 10% over each; `rules` keeps 11,886 and the total rose by the 4,350 (decision 12's 80,000 moves with it).
+# 2026-10-22: the voice_note line (when a room makes a voice note: only asked, since each one costs) took the mechanics to
+# 3,377, so 3,400; no part could pay, since the six rooms' largest persona measured 11,704, room voice 5,392 and pinned
+# memory 3,854 that day, so the total rose by the 200.
+# 2026-10-22: the paste line (a fenced block posted on an earlier day is turned back once, PR paste-check) took the
+# mechanics to 3,532, so 3,600; no part could pay on PR 88's three measurements of the day, so the total rose by the 200.
+# 2026-10-22: sheet-hard (W23) found both line-per-rule parts past their lines and cut from the middle at every session
+# start since Oct 21, said to no one: the shared rules file at 12,298 against 11,886 (seven rules gone in every room) and
+# the work room's rulebook at 12,696 against 10,850 (13,518 at 11:1x; fifteen lines gone). `rules` to 12,500 and
+# `rulebook` to 14,000, the total up by the same 614 + 3,150. From here a cut is said in the machine room at session start
+# and `yerk doctor` reads red the day a part passes its line.
 [session_start.appended]
-mechanics = 3200
+mechanics = 3600
 persona = 11800
-rulebook = 10850
+rulebook = 14000
 room_voice = 5500
 pinned_memory = 4000
-rules = 11886
+rules = 12500
 recall_pack = 6000
 
 [per_message]
@@ -147,7 +157,39 @@ drops = [
 # 2026-10-22: recall-warm raised it by 165, the pin that holds the keyword tables' pages mapped against the box's
 # page-cache drops, its pass after a write and the doctor's cap counting them (the owner's ask: recall at 3 s), not
 # folded to fit; its cold read cut the /keywords path the first build had (269).
-# 0000-00-00: item-moved to the next 00, step and the test reads it back ([as] plain: text with one 0 more line
+# 2026-10-21: transcribe raised it by 269, the transcribe tool (transcribe.py, 198), the voice note's arrival line and its
+# Stop bounce, and the ledger's spend table with its writer, reader and morning line (the same table PR 76 adds; whichever
+# merges second keeps one copy), not folded to fit; its cold read added 6 of the 269 (a Read of a recording is not
+# hearing it, and the room's 10-minute tool timeout that lets a long recording's call finish).
+# 2026-10-22: voice_note raised it by 414, the voice_note tool (voice_note.py, 309: the box's recipe, both voices, the
+# assembly, the probe and the waveform), Discord's voice message path in send_file (45), the daemon's tool and the spend
+# the next run starts the (00), example note (00), says The sample (00) item moved to the next (0) (step and
+
+# 2026-10-22: paste-check raised it by 118: the fenced-block view (memory.py, 42: fenced(), earlier_blocks() and
+# room_lines' `first`), the daemon's view kept for the day, its call off the loop, the send refusal and the Stop
+# hook's fifth rule (33), Room.paste_check and its flag (20), the card's row for a refused send (18) and the words (5),
+# not folded to fit.
+# 2026-10-22: sheet-hard (W23) raised it by 110: the sheet rule turned from a logger into a refusal in an owner's room,
+# Room.sheet_check and its flag (27), the send refusal, the Stop hook's sixth rule and the session-start cut line said in
+# the machine room (47), the shared sheet test (evidence.py, 11), the refusal's and the cut line's words (14), the
+# doctor's fit check (9) and the cut lines a trim drops (context.py, 2) (a room that does not check
+# gets things wrong), not folded to fit.
+# 2026-10-22: rules-fit raised it by 56: a rule filing fitted under the rules file's cap before it is written (memory.py,
+# 49: the examples out newest first and its own first, to 150 under the cap, else the rule held in rules-overflow.md, a
+# day-log line for each, a retried hold said once), the tail cut for the rules and rulebook parts (lifted/trim.py, 10), the strip and hold words
+# (words.py, 4), the doctor's held count (3) and the held notice (daemon.py, 1), less the filing-time over-cap line and
+# rules_over it replaces (context.py, 11 fewer) (seen that day: one rule's example pushed seven proven rules out of
+# every session start), not folded to fit. Its cold read raised it by 5 more: the tail cut never ends inside an example
+# that spans lines, a hand-kept rulebook's (lifted/trim.py, 5).
+# 2026-10-22: curate-rules raised it by 418: the rule files' proposals (curate.py, 408: the files every room loads, the
+# merge, cut, condensation and promotion finders on the existing flat() and difflib, the week's shadow, taste and `yerk`
+# evidence, the numbered proposals file, the machine-room card, the owner's --apply with its fit check, backup, on-trial
+# record and byte-identical undo, and the nightly phase after the promotion), the --rules and --apply flags (cli.py, 9)
+# and the card's words (1) (all of it, on the owner's word), not folded to fit. Its cold read raised it by
+# 9 more: one message alone is no merge, the two jobs must overlap (curate.py overlap, 6), and a condensation never
+# takes out an aside that holds a reason or a clause of the rule's own (REASON and its keep, 3).
+# 2026-10-22: recall-ratchet raised it by 37, the bench held to its own series ([recall] above: the run's exit 4 and the
 # budget test) and the record weight in the fusion (memory.record, top six 99 to 105 on the same questions), not folded
-# reads it (back as plain: text with one more line for the).
-lines = 16767
+# to fit (the owner's rule: memory changes land only through the bench); 38 on its first base, one fewer merged, since
+# its settings() keyword shares the line main's `private` added.
+lines = 18165
