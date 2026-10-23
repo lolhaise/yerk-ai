@@ -156,6 +156,27 @@ def cmd_pictures(a: argparse.Namespace) -> int:
     return 0 if out.get("ok") else 1
 
 
+def cmd_files(a: argparse.Namespace) -> int:
+    """backfill: the text beside each workbook and PDF in an owner room's inbox with none, or an older one, written here by
+    code (files.write), no model and no yerkd; --dry-run lists each it would write; --root: those under a folder the room
+    lists in rooms.toml (`read` or `also`) in place of its inbox. A person room's files are never read: refused."""
+    from . import files, memory, pictures, words
+    priv, state = private_dir(a.private), state_dir(a.state)
+    if (conf := rooms(priv).get(a.room)) is None or str(conf.get("privacy", "owner")) != "owner":
+        print(words.FILES_PERSON.format(room=a.room) if conf is not None else f"no room {a.room!r} in rooms.toml", file=sys.stderr)
+        return 2
+    root = pictures.root_of(priv, state, a.room, conf, a.root) if a.root else None
+    if a.root and root is None:
+        print(words.PICTURES_NOT_LISTED.format(room=a.room, folder=a.root), file=sys.stderr)
+        return 2
+    todo = files.pending(root or state / "rooms" / a.room / "work" / "inbox", root is not None)
+    tz = None if a.dry_run or not todo else memory.settings(priv, state).tz     # the zone the daemon writes a header in
+    for p in todo:
+        print(files.sidecar(p) if tz is None else files.write(a.room, p, tz))
+    print(words.FILES_BACKFILL.format(n=len(todo), where=root or a.room, done=words.FILES_DRY if a.dry_run else words.FILES_WRITTEN))
+    return 0
+
+
 def cmd_jobs(a: argparse.Namespace) -> int:
     """sync: the jobs file to one timer and service per job (idempotent), the diff, then every next
     fire read back from systemd; list: the read-back alone. Both work with the daemon down."""
@@ -692,6 +713,12 @@ def main(argv: list[str] | None = None) -> int:
     pc.add_argument("--limit", type=int, default=0, help="at most this many pictures, oldest first (default: all)")
     pc.add_argument("--dry-run", action="store_true", help="list each sidecar it would write; start nothing")
     pc.add_argument("--root", help="a folder the room lists in rooms.toml (read or also): its pictures in place of the inbox's")
+    fl = sub.add_parser("files", help="backfill: every workbook and PDF in an owner room's inbox with no text beside it (NAME.sheet.txt, "
+                        "NAME.pdf.txt), or an older one, gets it now, by code in this process, no model and no yerkd")
+    fl.add_argument("action", choices=["backfill"])
+    fl.add_argument("room", help="the owner room")
+    fl.add_argument("--dry-run", action="store_true", help="list each text file it would write; write nothing")
+    fl.add_argument("--root", help="a folder the room lists in rooms.toml (read or also): its files in place of the inbox's")
     jb = sub.add_parser("jobs", help="scheduled jobs from the private jobs.toml: sync (one systemd user timer and "
                         "service per job, the diff, then every next fire time read back) or list (the read-back)")
     jb.add_argument("action", choices=["sync", "list"])
@@ -774,12 +801,12 @@ def main(argv: list[str] | None = None) -> int:
     dp.add_argument("ref", nargs="?", help="the commit (default: the daemon's tree's HEAD)")
     dp.add_argument("--no-tests", action="store_true", help="skip the fast tests (the card says so)")
     dp.add_argument("--unit", action="store_true", help="also move a systemd-run daemon onto units/yerkd.service")
-    for x in (ac, st, mo, rb, ev, ab, ex, jb, sc, lc, rt, dc, dk, cu, mm, dp, pc):
+    for x in (ac, st, mo, rb, ev, ab, ex, jb, sc, lc, rt, dc, dk, cu, mm, dp, pc, fl):
         x.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else "
                        + ("the running yerkd's own, from its unit)" if x is dp else "the fake example layer)"))
         x.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
     a = p.parse_args(argv)
-    return int({"map": cmd_map, "setup-room": cmd_setup_room, "room": cmd_room, "import": cmd_room, "worker": cmd_worker, "pictures": cmd_pictures,
+    return int({"map": cmd_map, "setup-room": cmd_setup_room, "room": cmd_room, "import": cmd_room, "worker": cmd_worker, "pictures": cmd_pictures, "files": cmd_files,
                 "jobs": cmd_jobs, "schedule": cmd_schedule, "accounts": cmd_accounts, "status": cmd_status, "morning": cmd_morning,
                 "recall-bench": cmd_recall_bench, "eval": cmd_eval, "abilities": cmd_abilities, "explain": cmd_explain, "config": cmd_config,
                 "memory": cmd_memory, "deploy": cmd_deploy, "retention": cmd_retention, "location": cmd_location, "doctor": cmd_doctor,
