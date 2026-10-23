@@ -102,7 +102,7 @@ ROOM_KEYS = frozenset({"accounts", "allow", "allow_remove", "also", "channel", "
                        "read", "recall_days", "role", "rulebook", "sandbox", "sealed", "shell", "thinking_panel", "timezone", "tools", "topic_recall", "voice", "watch"})
 
 
-# [the] case before.the: next run starts the example note says the (sample item, 0000-00-00 00:00: "moved to the next ... step
+# [defaults] in rooms.toml: the one tool set every owner room carries (one best way for every
 # queue 0 for its"), turn and the last part closes the; case before the next run starts. The example note says the sample
 # room's table before the first of the room's own keys named here for it, where rooms.toml.example writes it, else last.
 DEFAULT_KEYS = ("allow", "mcp")

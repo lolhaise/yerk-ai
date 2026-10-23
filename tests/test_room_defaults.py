@@ -1,4 +1,4 @@
-"""[example] note says.the (0000-00-00, sample item 00:00: "moved to the next step and the test 0 reads it back as plain ...
+"""Checks the [defaults] table in rooms.toml, where the allowed tools and the MCP servers are declared once and
 carried by every one of your own rooms (an owner room), so no room needs a hand edit. A room's own allow or
 own mcp.<name> table replaces that default whole, allow_remove drops named tools from the allow it inherits, {room} is the
 room's name in a server's args and env, a room whose privacy is not owner inherits nothing, and any other key in
@@ -49,26 +49,30 @@ def hands(name: str) -> dict:
 
 
 def proof(before: str, after: str) -> None:
-    """Before the next run starts the example note, says the sample (item.moved to the_next): Step, and, the test
-    Says the sample item; moved-to the next-step and the test reads it back as."""
+    """Each room's whole loaded table before and after, in key order (json.dumps without sort_keys): every room but yerk-test
+    and yerk-ops byte for byte, the person's room among them; yerk-test and yerk-ops by their exact change and nothing else.
+    The other rooms are read from the files, so the box's own run names none of them here."""
     was, now, base = rooms(Path(), before), rooms(Path(), after), tomllib.loads(after)["defaults"]
-    assert list(now) == list(was) == ["yerk-test", "yerk-ops", "example-on-yerk", "Alex", "Alex", "Alex"]
-    for n in ("example-on-yerk", "Alex", "Alex", "Alex"):
+    kept = [n for n in was if n not in ("yerk-test", "yerk-ops")]
+    owners = [n for n in kept if was[n].get("privacy", "owner") == "owner"]
+    assert list(now) == list(was) and {"yerk-test", "yerk-ops"} <= set(was) and owners and len(owners) < len(kept)
+    for n in kept:
         assert json.dumps(now[n]) == json.dumps(was[n]), n
-    assert all(was[n]["allow"] == base["allow"] for n in ("example-on-yerk", "Alex", "Alex"))   # second, entry waits in
-    assert "mcp__hands__browser" not in now["Alex"]["allow"] and now["Alex"]["mcp"]["web-ladder"]["timeout"] == 60000
+    assert all(was[n]["allow"] == base["allow"] for n in owners)          # theirs, in their order
+    assert all("mcp__hands__browser" not in now[n]["allow"] and now[n]["mcp"]["web-ladder"]["timeout"] == 60000 for n in kept if n not in owners)
     t = was["yerk-test"]
     assert set(t["allow"]) == set(base["allow"]) and t["allow"] != base["allow"] and list(t["mcp"]) == ["hands", "web-ladder"]
     want = {**t, "allow": base["allow"], "mcp": {"web-ladder": t["mcp"]["web-ladder"], "hands": t["mcp"]["hands"]}}
     assert json.dumps(now["yerk-test"]) == json.dumps(want)          # the same tools and servers, in the defaults' order
     ops = was["yerk-ops"]
     assert "allow" not in ops and "mcp" not in ops and ops["role"] == "machine"
-    servers = json.loads(json.dumps(was["Alex"]["mcp"]).replace('"example-two"', '"yerk-ops"'))
+    servers = json.loads(json.dumps(was[owners[0]]["mcp"]).replace(f'"{owners[0]}"', '"yerk-ops"'))
     assert json.dumps(now["yerk-ops"]) == json.dumps({**ops, "allow": base["allow"], "mcp": servers})   # the other rooms' set, its own name
     assert now["yerk-ops"]["mcp"]["web-ladder"]["args"][-2:] == ["--room", "yerk-ops"] and now["yerk-ops"]["mcp"]["hands"]["env"] == {"YERK_ROOM": "yerk-ops"}
 
 
 def test_the_box_rooms_moved_under_defaults_load_the_same_but_for_the_two_changes_decided():
+    assert list(rooms(Path(), BEFORE)) == ["yerk-test", "yerk-ops", "work-on-yerk", "chat-on-yerk", "family-on-yerk", "fitness-on-yerk"]
     proof(BEFORE, AFTER)
 
 
@@ -133,7 +137,7 @@ def test_doctor_reads_todays_rooms_under_the_defaults_as_four_copies_and_the_mov
     def said(text: str) -> list[str]:
         return [x for n, c in rooms(Path(), text, own=True).items() if c.get("privacy", "owner") == "owner" and (x := doctor.drift(n, c, base))]
     assert said(BEFORE) == [f"{words.WORKING} closes {n}: item moved to the next step and, the.test-reads it back.as"
-                            for n in ("yerk-test", "example-on-yerk", "Alex", "Alex")]       # check-while a: second entry waits in
+                            for n in ("yerk-test", "work-on-yerk", "chat-on-yerk", "fitness-on-yerk")]      # yerk-test's allow: equal as a set
     assert said(AFTER) == []
 
 

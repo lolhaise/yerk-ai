@@ -53,7 +53,7 @@ recall_days = 2
 open_loops = "memory/open-loops.md"
 role = "machine"
 
-[rooms.example-on-yerk]
+[rooms.work-on-yerk]
 channel = "discord:103"
 layer = "/srv/yerk-private/ben"
 model = "claude-opus-5-5"
@@ -63,27 +63,27 @@ tools = ["Read", "Grep", "Glob", "Bash"]
 privacy = "owner"
 timezone = "America/Toronto"
 persona = "persona.md"
-rulebook = "rulebook-example-two.md"
-voice = "rooms/example-two.md"
-pinned_memory = "memory/pinned-example-two.md"
+rulebook = "rulebook-work.md"
+voice = "rooms/work.md"
+pinned_memory = "memory/pinned-work.md"
 read = ["/srv/box/memory", "/srv/staging/work-1", "/srv/staging/work-2"]
 also = ["/srv/box/MEMORY.md", "/srv/box/memory", "/srv/yerk-private/imports/texts"]
 
-[rooms.example-on-yerk.sandbox]
+[rooms.work-on-yerk.sandbox]
 enabled = true
 autoAllowBashIfSandboxed = true
 
-[rooms.example-on-yerk.sandbox.filesystem]
+[rooms.work-on-yerk.sandbox.filesystem]
 denyWrite = ["//srv/box/memory", "//srv/staging/work-1", "//srv/staging/work-2", "//srv/yerk-private/ben", "//srv/box", "//srv/staging", "//srv/yerk-private"]
 denyRead = ["//srv/box", "//srv/staging", "//srv/yerk-private/memory", "//srv/state/yerk/memory"]
 
-[rooms.example-on-yerk.sandbox.network]
+[rooms.work-on-yerk.sandbox.network]
 strictAllowlist = true
 allowedDomains = []
 
-# The #example note (says the sample item moved to the next Step and the, test reads it)
+# The chat room's copy (in the live file this comment sits above work's hands table, which came later)
 
-[rooms.example-two]
+[rooms.chat-on-yerk]
 channel = "discord:104"
 layer = "/srv/yerk-private/ben"
 model = "claude-opus-5-5"
@@ -94,26 +94,26 @@ privacy = "owner"
 timezone = "America/Toronto"
 persona = "persona.md"
 rulebook = "rulebook.md"
-voice = "rooms/main.md"
+voice = "rooms/chat.md"
 read = ["/srv/box/memory"]
 also = ["/srv/box/MEMORY.md", "/srv/box/memory"]
 
-[rooms.example-two.sandbox]
+[rooms.chat-on-yerk.sandbox]
 enabled = true
 autoAllowBashIfSandboxed = true
 
-[rooms.example-two.sandbox.filesystem]
+[rooms.chat-on-yerk.sandbox.filesystem]
 denyWrite = ["//srv/box/memory", "//srv/yerk-private/ben", "//srv/box", "//srv/staging", "//srv/yerk-private"]
-[rooms.example-two.sandbox.network]
+[rooms.chat-on-yerk.sandbox.network]
 strictAllowlist = true
 allowedDomains = []
 
-# Back as plain (text with one more line for the check while a second)
+# The family room (in the live file this comment sits above chat's hands table)
 
-[rooms.example-two]
+[rooms.family-on-yerk]
 channel = "discord:105"
 watch = "discord:106"
-layer = "/srv/yerk-private/mom"
+layer = "/srv/yerk-private/family"
 model = "claude-opus-5-5"
 compact_window = 400000
 effort = "max"
@@ -129,20 +129,20 @@ pinned_memory = "pinned.md"
 open_loops = "open-loops.md"
 allow = ["mcp__web-ladder__web_fetch", "mcp__web-ladder__web_search", "mcp__web-ladder__web_research", "mcp__web-ladder__web_research_result", "mcp__web-ladder__web_image"]
 
-[rooms.example-two.mcp.web-ladder]
+[rooms.family-on-yerk.mcp.web-ladder]
 type = "stdio"
 command = "/usr/bin/node"
-args = ["/srv/yerk-ai/plugins/web/server.mjs", "--private", "/srv/yerk-private", "--state", "/srv/state/yerk", "--room", "Alex"]
+args = ["/srv/yerk-ai/plugins/web/server.mjs", "--private", "/srv/yerk-private", "--state", "/srv/state/yerk", "--room", "family-on-yerk"]
 timeout = 60000
 alwaysLoad = true
 
-# The queue for (its turn and the last part closes the case before the)
+# The fitness room (in the live file this comment sits above family's sandbox table)
 
-[rooms.example-two.sandbox.network]
+[rooms.family-on-yerk.sandbox.network]
 strictAllowlist = true
 allowedDomains = []
 
-[rooms.example-two]
+[rooms.fitness-on-yerk]
 channel = "discord:107"
 layer = "/srv/yerk-private/ben"
 model = "claude-opus-5-5"
@@ -153,16 +153,16 @@ privacy = "owner"
 timezone = "America/Toronto"
 persona = "persona.md"
 rulebook = "rulebook.md"
-voice = "rooms/club.md"
+voice = "rooms/fitness.md"
 read = ["/srv/box/memory"]
-also = ["/srv/box/MEMORY.md", "/srv/box/memory", "/srv/box/media/club"]
+also = ["/srv/box/MEMORY.md", "/srv/box/memory", "/srv/box/media/fitness"]
 
-[rooms.example-two.sandbox]
+[rooms.fitness-on-yerk.sandbox]
 enabled = true
 autoAllowBashIfSandboxed = true
 
-[rooms.example-two.sandbox.filesystem]
+[rooms.fitness-on-yerk.sandbox.filesystem]
 denyWrite = ["//srv/box/memory", "//srv/yerk-private/ben", "//srv/box", "//srv/staging", "//srv/yerk-private"]
-[rooms.example-two.sandbox.network]
+[rooms.fitness-on-yerk.sandbox.network]
 strictAllowlist = true
 allowedDomains = []
