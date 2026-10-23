@@ -105,10 +105,10 @@ def test_the_real_layer_test_counts_the_rules_file(tmp_path, monkeypatch):
     without the rules file, as it was, the test passed such a room."""
     private = tmp_path / "private"
     shutil.copytree(EXAMPLE_PRIVATE, private)
-    (private / "memory" / memory.RULES).write_text("- a job: done this way.\n" + "- another job: " + "x" * 16000 + "\n")
+    (private / "memory" / memory.RULES).write_text("- a job: done this way.\n" + "- another job: " + "x" * 17000 + "\n")
     monkeypatch.setenv("YERK_PRIVATE", str(private))
     monkeypatch.setenv("YERK_STATE", str(tmp_path / "state"))
-    with pytest.raises(AssertionError, match=rf"^example-room rules: 16,\d{{3}} > {budgets()['session_start']['appended']['rules']:,} \("):
+    with pytest.raises(AssertionError, match=rf"^example-room rules: 17,\d{{3}} > {budgets()['session_start']['appended']['rules']:,} \("):
         test_real_private_layer_fits()
 
 
@@ -172,7 +172,7 @@ def test_claude_codes_parts_as_the_rooms_send_them_fit_their_lines_and_what_is_l
     assert all(sent <= line for sent, line in rows.values()), out
     assert all(line <= sent * 1.02 for name, (sent, line) in rows.items() if name != "Yerk AI's tools"), rows
     s = b["session_start"]
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 94514
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 95514
 
 
 # The largest room rulebook, the room's own text only since PR 47, across the six rooms: the work room's, read as session
@@ -192,10 +192,10 @@ def test_the_rulebook_line_keeps_about_1000_over_the_largest_room_text_and_what_
     doctor's fit check reads red the day a part passes its line. On 2026-10-23 the mechanics' 200 (the web_image line)
     took it to 88,714, and the mechanics' 200 again (the X-links line) to 88,914. Later that day two rules sat held in
     rules-overflow.md with the shared file at 12,923 against 12,500 and curate proposing nothing to cut, so a lesson from
-    two misses in one morning loaded in no room: `rules` to 15,000 and the total by the same 2,500 to 94,514."""
+    two misses in one morning loaded in no room: `rules` to 15,000 and the total by the same 2,500 to 94,514; within hours four were held, so 16,000 and 95,514."""
     s = budgets()["session_start"]
-    assert 900 <= s["appended"]["rulebook"] - LIVE_RULEBOOK <= 1400 and s["appended"]["rules"] == 15000
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 94514
+    assert 900 <= s["appended"]["rulebook"] - LIVE_RULEBOOK <= 1400 and s["appended"]["rules"] == 16000
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 95514
     private = tmp_path / "private"
     shutil.copytree(EXAMPLE_PRIVATE, private)
     (private / "rulebook.md").write_text("r" * (LIVE_RULEBOOK - 1) + "\n")
