@@ -16,3 +16,9 @@ assistants = ["<the other assistant's bot user id>"]
 file = "<the fixes file: one JSON fix a line, ts_iso, lat, lon, speed_mps>"
 places = "<the named places: {\"places\": [{\"label\", \"lat\", \"lon\", \"radius_m\"}]}>"
 stale_after = "3h"                       # no part when the newest fix is older than this
+
+[needs]
+# What a room could not do, filed with its `need` tool, is built by `yerk needs build DAY N`: a builder worker with the
+# need as its brief, its card in the machine room. Every key is optional.
+account = "<an account name from accounts.toml>"   # the account builders run on; default: [curate] account, else the workers' pick
+cap_minutes = 60                                  # a builder's minutes before it is stopped

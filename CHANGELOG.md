@@ -8,6 +8,25 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-23
 
+### missing-ability (#110)
+
+- A room that hits a wall (no tool, a refused tool, a page that will not open) now files what it needed with the new
+  `need` tool, in place of building a way of its own: one line with what was asked, what it tried and what it needed,
+  plus what it did anyway behind a `[shadow]` mark. The machine room gets one line, "need N from ROOM: ABILITY", with
+  the command that builds it. The same ability filed again from any room is counted on the open need, never a second one.
+- Each need sits on the day's rule proposals page (`<memory>/rules-proposals/<day>.md`) as `N. need: ABILITY`, in the
+  same numbering as curate's proposals; curate's own proposals take the numbers the needs leave, and its nightly rewrite
+  of the page keeps every need.
+- `yerk needs build DAY N` starts a builder worker with a brief made from the need (every ask, the repository, and the
+  shape of done: the ability built once in Yerk with tests, committed on its own branch, never merged, pushed or
+  deployed by the worker), its card in the machine room. When it ends, the machine room hears "need N built, PR N" (or
+  the branch, or that it ended with no branch and is filed again). `yerk needs list` shows every need and its state;
+  `yerk needs done DAY N PR` marks one merged.
+- A person's room may file a need about its own files only; one naming another room's folder is refused with one line.
+- **Upgrading:** yerkd.toml, optional: `[needs] account` (the account builders run on; default `[curate] account`) and
+  `[needs] cap_minutes` (default 60). budgets.toml: `yerk_tools` 11,700, `mechanics` 4,500 and `total` 96,614 (on main's
+  location line) and `[code] lines`, each with a dated note. Each room has the `need` tool and its mechanics line from its next process start.
+
 ### sheets-and-pdfs (#104)
 
 - A workbook (.xlsx, .xlsm) or a PDF sent to an owner room gets its text written beside it as it is staged, by code with

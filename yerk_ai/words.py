@@ -84,7 +84,7 @@ STEP = {"bash": "running a command", "read": "reading {what}", "read_memory": "r
         "webfetch": "reading {what}", "web_fetch": "reading {what}", "fetch": "reading {what}",
         "websearch": "searching the web for {what}", "web_search": "searching the web for {what}", "send": "sending {what}",
         "remember": "filing a note", "hold": "waiting for {what}", "settings": "switching to {what}", "transcribe": "transcribing {what}",
-        "voice_note": "making a voice note", "seen": "filing a picture",
+        "voice_note": "making a voice note", "seen": "filing a picture", "need": "filing what it needs",
         "todowrite": "updating the plan", "task": "handing off {what}", "agent": "handing off {what}", "toolsearch": "loading a tool"}
 WORKER_STEP = {"start": "starting a worker", "list": "listing the workers", "stop": "stopping worker {id}",
                "report": "reading worker {id}'s report"}
@@ -302,6 +302,15 @@ FILE_TEXT = "[its text, extracted by code] saved at {path}"     # under a workbo
 FILES_PERSON = "{room} is not an owner room: a workbook or a PDF sent there is never read"
 FILES_BACKFILL = "{n} workbook(s) and PDF(s) in {where} with no text beside them or an older one; {done}"
 FILES_WRITTEN, FILES_DRY = "written", "nothing written (--dry-run)"
+# missing-ability (needs.py): a room's need in the machine room, its build and its end there, and the refusals
+NEED_FILED = WORKING + " need {n} from {room}: {ability}; `yerk needs build {day} {n}`"
+NEED_AGAIN = WORKING + " need {n} asked again from {room}, {count} times now: {ability}"
+NEED_PR, NEED_BRANCH = DONE + " need {n} built, PR {pr}: {ability}", WORKING + " need {n} built on {branch}, no PR seen: {ability}"
+NEED_FAILED = NOT_DONE + " need {n}: its builder {how}, no branch; filed again: {ability}"
+NEED_CLAUSE = "one clause at its end, this one: what you needed is filed for the owner to build for every room"
+NEED_NOT_YOURS = "not filed: a need from this room names only its own files, and {path} is not one"
+NEED_NONE = "no need {n} of {day}; `yerk needs list` shows them"
+NEED_BUSY = "need {n} is {state}: one builder a need, so nothing started"
 CHECKED = "checked by a second pass: {n} of {of} segments uncertain"
 PART_CHECKED = "checked by a second pass but for chunk {chunks}, where it failed: {n} of {of} segments uncertain"
 UNCHECKED = "one pass only, so nothing in it was checked: a second pass needs a Groq key at secrets/groq.key"
