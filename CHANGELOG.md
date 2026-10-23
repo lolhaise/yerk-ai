@@ -29,6 +29,25 @@ with the originals kept under `backups/`; the index chunks every file again when
   or one a room's `people` lists, stops the start with one line). budgets.toml: `[code] lines` (a dated note). Each room
   has the new `seen` description and mechanics line from its next process start.
 
+### message-envelope (#96)
+
+- `yerk map ROOM --wire` reads every later message by part: Yerk AI's hook (clock, metadata, rules, recall, taste) and
+  a compaction's recall pack, each against its budgets.toml key with how many messages passed it; the reply header,
+  attachment lines and the message's own text, reported and never cut; and Claude Code's own blocks by name (sandbox
+  instructions, files re-read after a compaction, notes on changed files, environment, token count, other reminders).
+  Then the five largest messages of the last 7 days, in the room's time zone, each with the part that made it large.
+- The median row's OVER now reads against the parts' keys. `typical` (1,500) is a total that parts each under their own
+  key pass on most messages, since recall rides on nearly every one and taste on every owner message; the row says so.
+  Measured in one room on 2026-10-23: median 2,192 over 303 messages, no part past its key, Yerk AI's hook parts
+  together at most 4,481 of the 5,500 cap. Its largest message, 60,927, was Claude Code's restore after an idle
+  compaction (five files re-read whole, 27,458; sandbox instructions, 19,600; environment, 2,641) beside Yerk AI's
+  recall pack (5,938) and hook parts (4,140), each under its key.
+- Two counting fixes in the same measure: the hook text Claude Code merges into its own block at a process start or a
+  compaction's restore was counted twice (34 of 326 messages in that room; the largest read 65,164 for 60,927), and
+  a compaction's summary, Claude Code's image notes and the Stop hook's feedback were counted as messages (23 of 326).
+- Nothing is cut: no Yerk AI part passed its key in any room's 640 assemblies from Oct 18 to Oct 23.
+- **Upgrading:** budgets.toml: [code] lines to 18,712 with its dated note; no budget changes.
+
 ### pictures-seen (#97)
 
 - A picture sent to an owner room is findable later, the way its uploads and recordings are: in the same turn the room
