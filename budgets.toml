@@ -259,6 +259,14 @@ drops = [
 # model_command, tried, model_menu, model_picks, the digit in the settings tool), Discord's autocomplete for it answered to
 # the owner alone (channels/discord.py, 16) and its words (words.py, 9) (the /model menu in
 # Yerk the same, with every account), not folded to fit.
+# 18,843 merged on model-account-pin (#103), no line shared.
+# 0000-00-00: before-the next run starts 000: `the example` note says the /sample item moved to the next, step (and the
+
+# `/usage` on each folder's login, never on a missing folder, parsed, kept a minute, three at a time, a read that does
+# not ask never waiting on one that does), status.py 85 (two
+# lines an account, the soonest week marked, the next two resets of each window, the next bill, the account the next turn
+# tries, rooms on one account in one line), words.py 35 (the tags, the short times, the words), accounts.py 3 (`bill_day`),
+# cli.py, daemon.py and discord.py 4 (the card asks live).
 # 2026-10-23: curate-examples raised it by 92: a rule condensation keeps the rule's worked examples (the owner's ask: the
 # day's rules pass proposed three condensations that took a rulebook's examples out with the file 3,451 under its line,
 # all three declined). curate.py 87 (the staged cut: a clause said again or a hedge, then quoted asides, the examples last
@@ -266,4 +274,5 @@ drops = [
 # number), jobs.py 3 (a `yerk` line in a script job runs on the unit's folders, never the fake example layer), morning.py 1,
 # words.py 1.
 # 18,935 merged on model-account-pin (#103), no line shared.
-lines = 18935
+# 19,190 merged on status-card (#105), no line shared.
+lines = 19190
