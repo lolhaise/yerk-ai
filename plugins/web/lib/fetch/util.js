@@ -398,6 +398,9 @@ export function isPrivateHost(hostname) {
     const [a, b] = [Number(m[1]), Number(m[2])];
     return a === 10 || a === 127 || a === 0 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127);
   }
+  // An IPv4-mapped address (::ffff:127.0.0.1, which a URL writes as ::ffff:7f00:1) connects to its IPv4 one: judged as that.
+  const v4 = /^(?:::|(?:0{1,4}:){5})ffff:(?:(\d{1,3}(?:\.\d{1,3}){3})|([0-9a-f]{1,4}):([0-9a-f]{1,4}))$/.exec(h);
+  if (v4) return isPrivateHost(v4[1] ?? [v4[2], v4[3]].flatMap((g) => [parseInt(g, 16) >> 8, parseInt(g, 16) & 255]).join("."));
   if (h.includes(":")) return h === "::1" || h.startsWith("fc") || h.startsWith("fd") || h.startsWith("fe80") || h === "::";
   return false;
 }

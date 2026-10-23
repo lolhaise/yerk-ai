@@ -17,6 +17,9 @@ with the originals kept under `backups/`; the index chunks every file again when
   with proxies only when a site refuses that (each paid call a spend row, as web_fetch's are), never by a browser rung.
   Another picture type (avif, svg), a page or any other file is refused where it stands, a private host is refused as
   web_fetch refuses it, and the same URL within a day is the saved copy, nothing fetched.
+- A private host written as an IPv4-mapped IPv6 address (`http://[::ffff:127.0.0.1]/`, which a URL writes
+  `[::ffff:7f00:1]`) is refused by web_fetch and web_image alike; before, both reached a server listening on 127.0.0.1
+  only (web_fetch since #76).
 - web_fetch's wall for a picture says `It is an image: use web_image(url), then Read the file it saves.`, and its next
   move no longer says to download the file, which sent a room to curl in a shell with no network.
 - The mechanics say it in one line: a picture in a post or a page is saved by `web_image`, then Read; never curl.

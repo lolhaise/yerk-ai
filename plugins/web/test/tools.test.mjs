@@ -707,6 +707,7 @@ test("a non-image content type is refused where it stands, nothing climbs and no
     "api.example": () => json({ id: 7 }),
     "next.example": () => picture(AVIF, "image/avif"),
     "cdn.example": () => picture(AVIF, "image/jpeg"), // a CDN that answers avif under a jpeg header
+    "bucket.example": () => picture(jpeg(40, 30), "application/octet-stream"), // a whole jpeg, but not served as image/*
   });
   const page = textOf(await webImage({ url: "https://page.example/post/1" }, { deps: r.deps, at: ROOM }));
   assert.equal(page.split("\n")[0], "web_image could not save https://page.example/post/1: wall not_image, rungs F1:type:text/html.");
@@ -717,7 +718,8 @@ test("a non-image content type is refused where it stands, nothing climbs and no
     assert.match(t, /wall not_viewable, rungs F1:type:image\/avif\./);
     assert.match(t, /What stopped it: The URL serves a image\/avif picture, and a model is shown only jpeg, png, gif and webp\./);
   }
-  assert.equal(r.seen.local.length, 4);
+  assert.match(textOf(await webImage({ url: "https://bucket.example/p.jpg" }, { deps: r.deps, at: ROOM })), /wall not_image, rungs F1:type:application\/octet-stream\./);
+  assert.equal(r.seen.local.length, 5);
   assert.equal(r.seen.bb.length, 0);
   assert.deepEqual(savedFiles(), []);
   assert.deepEqual(spendRows(), []);
@@ -745,14 +747,28 @@ test("the cap: 15 MB, or a lower max_bytes; past it by its content-length or by 
 
 test("a private host is refused before any fetch as web_fetch refuses it, and so is a public picture that redirects to one", async () => {
   const r = imageRig({ "hop.example": () => new Response(null, { status: 302, headers: { location: "http://192.168.1.20/cam.jpg" } }) });
-  for (const url of ["http://127.0.0.1:8765/x.png", "http://printer.local/scan.jpg", "file:///etc/passwd"]) {
+  // 127.0.0.1 written as an IPv4-mapped IPv6 address reaches 127.0.0.1 too (cold read, 2026-10-23: both tools read a local server so).
+  for (const url of ["http://127.0.0.1:8765/x.png", "http://[::ffff:127.0.0.1]:8765/x.png", "http://printer.local/scan.jpg", "file:///etc/passwd"]) {
     assert.equal(textOf(await webImage({ url }, { deps: r.deps, at: ROOM })).split("\n")[0], `web_image could not save ${url}: wall invalid_url, rungs none.`);
   }
+  assert.match(textOf(await webFetch({ url: "http://[::ffff:7f00:1]:8765/admin" }, { deps: r.deps, at: ROOM })), /^web_fetch could not read \S+: wall invalid_url, rungs none\./);
   assert.equal(r.seen.local.length, 0);
   const hop = textOf(await webImage({ url: "https://hop.example/cam.jpg" }, { deps: r.deps, at: ROOM }));
   assert.match(hop, /wall invalid_url, rungs F1:net:invalid_url\.\n/);
   assert.match(hop, /What stopped it: The URL is not a public http\(s\) address\./);
   assert.deepEqual([r.seen.local, r.seen.bb.length, savedFiles()], [["https://hop.example/cam.jpg"], 0, []]);
+});
+
+test("a site that refuses every rung: F1, then L1 and L2 once each with both paid calls booked, never a browser rung, and the site memory left alone", async () => {
+  const r = imageRig({}); // this machine and Browserbase both answer a 403 challenge page
+  const url = "https://wall.example/p.jpg";
+  const t = textOf(await webImage({ url }, { deps: r.deps, at: ROOM }));
+  await flushPending();
+  assert.equal(t.split("\n")[0], `web_image could not save ${url}: wall http_403, rungs F1:blocked:http_403,L1:blocked:http_403,L2:blocked:http_403.`);
+  assert.deepEqual([r.seen.local.length, r.seen.f2, r.seen.bb.filter((u) => u.endsWith("/v1/fetch")).length, r.seen.bb.some((u) => u.includes("/v1/sessions"))], [1, 0, 2, false]);
+  assert.deepEqual(spendRows().map((x) => [x.tool, x.engine]), [["web_image", "browserbase-L1"], ["web_image", "browserbase-L2"]]);
+  assert.ok(!fs.existsSync(path.join(FETCH, "local-cooldown.json"))); // a refused picture never rests its host from the free rungs
+  assert.deepEqual(savedFiles(), []);
 });
 
 test("the day cache: the same url within a day is the saved copy with nothing fetched; past a day it is read again", async () => {
