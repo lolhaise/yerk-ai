@@ -167,5 +167,6 @@ duplicated_topics = 0
 # day-log line for each, a retried hold said once), the tail cut for the rules and rulebook parts (lifted/trim.py, 10), the strip and hold words
 # (words.py, 4), the doctor's held count (3) and the held notice (daemon.py, 1), less the filing-time over-cap line and
 # rules_over it replaces (context.py, 11 fewer) (seen that day: one rule's example pushed seven proven rules out of
-# turn and the), last part closes the.
-lines = 17696
+# every session start), not folded to fit. Its cold read raised it by 5 more: the tail cut never ends inside an example
+# that spans lines, a hand-kept rulebook's (lifted/trim.py, 5).
+lines = 17701

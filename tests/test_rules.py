@@ -10,6 +10,7 @@ from pathlib import Path
 from yerk_ai import context, memory, words
 from yerk_ai.config import EXAMPLE_PRIVATE, budgets
 from yerk_ai.daemon import ConsoleChannel, Yerkd
+from yerk_ai.lifted.trim import truncate
 from yerk_ai.room import Inbound
 
 A, B, FAMILY = "example-room", "example-quiet", "family-room"
@@ -211,6 +212,19 @@ def test_a_rule_file_past_its_size_at_session_start_loses_its_newest_lines_never
         assert list(p.cut) == lines[k:] and p.text.split("\n\n[...trimmed ")[0].split("\n")[1:] == lines[:k], name   # the tail only, at a line's end
         assert p.text.endswith(f"Its last lines, the newest, are omitted. The full file stays readable with the Read tool: {path.resolve()}]")
     assert parts["persona"].over and "The middle is omitted." in parts["persona"].text
+
+
+def test_a_tail_cut_never_ends_inside_an_example_that_spans_lines():
+    """A rulebook kept by hand can hold an <example> over several lines under its rule: the cut keeps the rule's line and
+    drops the example whole, so no session start ends inside one."""
+    block = "- example habit {i}: kept the example way, step by step.\n<example>\n" + "Asked the example question, it gave the example answer.\n" * 3 + "</example>\n"
+    text = "".join(block.format(i=i) for i in range(40))
+    plain = text.rfind("\n", 0, 900 + 1)                                  # a line cut at 90% of 1,000 lands inside an example
+    assert text[:plain].count("<example>") == text[:plain].count("</example>") + 1
+    sent, cut = truncate(text, "rulebook", 1000, mode="tail")
+    body = sent.split("\n\n[...trimmed ")[0]
+    assert text.startswith(body + "\n") and cut == len(text) - len(body) and body.endswith("- example habit 3: kept the example way, step by step.")
+    assert body.count("<example>") == body.count("</example>") == 3
 
 
 def test_a_session_started_after_the_change_has_the_rules_at_start_and_no_block(tmp_path):

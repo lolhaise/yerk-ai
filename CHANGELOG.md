@@ -23,12 +23,13 @@ with the originals kept under `backups/`; the index chunks every file again when
   gone, since a filing can no longer take the file past its cap.
 - A rule file still past its size at session start (a hand edit can do that) keeps its first lines whole and drops the
   newest, the last ones, never a line from the middle: the rules part and each rulebook, by `truncate(..., mode="tail")`.
+  An `<example>` a hand-kept rulebook spreads over several lines goes whole or not at all, never cut inside.
   The mechanics, persona, room voice, pinned memory and recall pack keep the head and tail trim. The once-a-day
   machine-room notice names a rule file's dropped lines by their job.
 - `yerk doctor`'s fit check reads a non-empty `rules-overflow.md` as an orange finding with the count of held rules, until
   each is moved into rules.md by hand.
 
-**Upgrading:** budgets.toml [code] lines 17,696; nothing to do. No cap moves.
+**Upgrading:** budgets.toml [code] lines 17,701; nothing to do. No cap moves.
 
 ### sheet-hard (#90)
 

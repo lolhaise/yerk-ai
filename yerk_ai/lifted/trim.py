@@ -10,6 +10,7 @@ import re
 
 HEAD_RATIO = 0.7
 TAIL_RATIO = 0.2
+EXAMPLE = re.compile(r"<(/?)example(?:\s[^>]*)?>", re.I)      # a rule's example tags, as memory.EXAMPLE reads them
 
 
 def omitted_headings(content: str, start: int, end: int, limit: int = 15) -> list[str]:
@@ -37,6 +38,10 @@ def truncate(content: str, name: str, max_chars: int, read_path: str | None = No
     tail_chars = int(max_chars * TAIL_RATIO)
     if mode == "tail":
         keep = content.rfind("\n", 0, head_chars + tail_chars + 1)
+        tags = list(EXAMPLE.finditer(content))
+        for a, b in reversed(list(zip(tags, tags[1:]))):     # an example over several lines open across the cut: it goes whole
+            if not a.group(1) and b.group(1) and a.start() < keep < b.end():
+                keep = content.rfind("\n", 0, a.start())
         keep = keep if keep > 0 else head_chars + tail_chars
         omitted = omitted_headings(content, keep, len(content))
         sections = f" Omitted sections: {'; '.join(omitted)}." if omitted else ""
