@@ -365,14 +365,14 @@ def cmd_retention(a: argparse.Namespace) -> int:
 
 def cmd_location(a: argparse.Namespace) -> int:
     """`yerk location day [DATE]`: the day's places as one line in its day log (location.py), an earlier run's line replaced;
-    prints the line, or why there is none; exit 1 with no [location] table or no readable fixes file."""
+    prints the line, or why there is none; exit 1 with no [location] table, no located place in its places table or no readable fixes file."""
     from datetime import date
     from . import location
     from .config import load_toml
     priv, state = private_dir(a.private), state_dir(a.state)
     conf = load_toml(priv / "yerkd.toml") if (priv / "yerkd.toml").is_file() else {}
-    if (loc := location.settings(conf.get("location"), priv)) is None:
-        print("not written: yerkd.toml has no [location] table with a file", file=sys.stderr)
+    if (loc := location.settings(conf.get("location"), priv)) is None or not location.places(loc.places):     # a silent night is a failure
+        print("not written: yerkd.toml has no [location] table with a file and a places table that names a place", file=sys.stderr)
         return 1
     s = memory.settings(priv, state, dict(conf.get("memory", {})))
     on = date.fromisoformat(a.date) if a.date else datetime.now(s.tz).date()

@@ -157,3 +157,6 @@ def test_a_dry_run_writes_nothing_and_no_table_or_no_named_place_writes_nothing(
     install(tmp_path / "bare")
     rc = cli.main(["location", "day", "2026-10-22", "--private", str(tmp_path / "bare" / "private"), "--state", str(tmp_path / "bare" / "state")])
     assert rc == 1 and "no [location] table" in capsys.readouterr().err
+    (tmp_path / "private" / "yerkd.toml").write_text('[memory]\ntimezone = "America/Toronto"\n' + TABLE.replace(str(PLACES), str(tmp_path / "gone.json")))
+    rc, out = run(tmp_path, capsys)                     # a places table that names nothing: the nightly job alerts, never a silent night
+    assert rc == 1 and "names a place" in out.err and not day_log(tmp_path).exists()
