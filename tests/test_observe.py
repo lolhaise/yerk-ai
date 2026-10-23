@@ -537,3 +537,15 @@ def test_the_unit_example_runs_yerkd_under_notify_with_a_watchdog_and_says_why()
     unit = (REPO / "units" / "yerkd.service").read_text()
     assert "Type=notify" in unit and "WatchdogSec=30" in unit and "Without them" in unit
     assert "OnCalendar=*-*-* 06:30:00" in (REPO / "units" / "yerk-morning.timer").read_text()
+
+
+def test_the_nightly_rules_pass_is_an_example_job_that_parses_and_the_status_card_lists_when_due(tmp_path):
+    """`yerk curate --rules` as a jobs.toml job (examples/private/jobs.toml): a script at 04:30, silent, no account (the pass is
+    code); due within the hour, `yerk status` names it like any job."""
+    found, bad = jobs.load(EXAMPLE_PRIVATE / jobs.FILE, NOW)
+    job = found["example-curate-rules"]
+    assert "example-curate-rules" not in bad and (job.kind, job.when, job.spec, job.deliver, job.account) == ("script", "cron", "30 4 * * *", "silent", "")
+    assert job.payload.startswith("yerk curate --rules")
+    s = status.collect(EXAMPLE_PRIVATE, tmp_path, [], Cooldowns(tmp_path / "c.json"), Ledger(tmp_path / "l.sqlite"), now=NOW, units=set,
+                       timers=Timers({f"{jobs.UNIT}example-curate-rules.timer": {"next": NOW + 1200, "last": None}}))
+    assert "- job example-curate-rules: in 20 min" in status.card(json.loads(json.dumps(s)), NOW)

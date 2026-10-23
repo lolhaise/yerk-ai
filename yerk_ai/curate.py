@@ -22,7 +22,7 @@ import subprocess
 import time
 from contextlib import nullcontext, suppress
 from datetime import date, datetime, timedelta
-from itertools import combinations
+from itertools import combinations, groupby
 from pathlib import Path
 from typing import Any, Callable
 
@@ -477,6 +477,8 @@ REASON = re.compile(r"\b(?:because|since|so that)\b", re.I)                    #
 DAYCITE, DATED = re.compile(r"\bdaily/(\d{4}-\d{2}-\d{2})\.md:(\d+)"), re.compile(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}")
 NO = re.compile(r"\b(?:never|not|no longer|instead of|rather than|stop|don'?t)\b", re.I)    # a newer line that says otherwise
 CLAUSE = re.compile(r"(?<=[.;])\s+")
+HEDGE = re.compile(r"(?:,\s*|\s+|^)(?:basically|needless to say|so to speak|as it were)\b,?|,\s*of course\b,?|(?:^|(?<=[.;]))\s*of course,", re.I)  # set off
+SPAN, HELD, EXM, QM = re.compile(r"\"[^\"]*\"|“[^”]*”"), re.compile("[\x00\x01]\\d+[\x00\x01]"), "\x00", "\x01"   # a quote; held aside
 
 
 def rule_files(private: Path, s: memory.Settings) -> dict[Path, tuple[str, int]]:
@@ -550,12 +552,69 @@ def merged(a: str, b: str) -> str:
     return f"- {head}{body}{' ' + ex if ex else ''}{trailer(a, b)}"
 
 
-def condensed(x: str) -> str:
-    """A long line with its examples out, then its quotes in parentheses, never one that holds a reason: only its own words,
-    its trailer whole."""
+def hold(pattern: re.Pattern[str], text: str, mark: str) -> tuple[str, list[str]]:
+    """`text` with each match of `pattern` held aside as `mark`N`mark`, and the matches in order."""
+    held: list[str] = []
+
+    def put(m: re.Match[str]) -> str:
+        held.append(m[0])
+        return f"{mark}{len(held) - 1}{mark}"
+    return pattern.sub(put, text), held
+
+
+def back(text: str, held: list[str], mark: str, keep: bool = True) -> str:
+    """What `hold` held aside, put back in its place, or left out."""
+    return re.sub(f"{mark}(\\d+){mark}", lambda m: held[int(m[1])] if keep else "", text)
+
+
+def said_in(c: str, h: str) -> bool:
+    """Three or more words, clause `c` word for word one or more whole comma-parts of clause `h` in a row: `c` says nothing `h`
+    does not (a reason, a no, a name) and drops no word that narrows it ("never call before nine" is not "... on weekends")."""
+    want, *parts = (re.findall(r"[\w']+", flat(HELD.sub("", t)).lower()) for t in (c, *h.split(",")))
+    return len(want) > 2 and any(want == sum(parts[i:j], []) for i in range(len(parts)) for j in range(i + 1, len(parts) + 1))
+
+
+def prose(said: str) -> str:
+    """A rule's words with its prose cut, its quotes and what is held aside kept as they are: a clause said again (whole comma-parts
+    of an earlier clause, word for word; one holding a quote never), its examples left where it stood; then a hedge set off."""
+    text, quotes = hold(SPAN, said, QM)
+    have: list[str] = []
+    for c in CLAUSE.split(text):
+        if QM not in c and any(said_in(c, h) for h in have):
+            c = "".join(re.findall(f"{EXM}\\d+{EXM}", c))
+        have.append(c)
+    return back(HEDGE.sub("", " ".join(have)), quotes, QM)
+
+
+def stages(x: str) -> tuple[str, str, str]:
+    """A long line cut in order, only its own words and never a reason, its trailer whole: its prose, then its quotes in
+    parentheses, then its examples."""
     head, said, trail = split(x)
-    said = ASIDE.sub(lambda m: m[0] if REASON.search(m[0]) else "", memory.EXAMPLE.sub("", said))
-    return f"- {head}{' '.join(said.split())}{trail}"
+    text, ex = hold(memory.EXAMPLE, said, EXM)
+    a = prose(text)
+    b = ASIDE.sub(lambda m: m[0] if REASON.search(m[0]) else "", a)
+
+    def whole(t: str, keep: bool) -> str:
+        return f"- {head}{' '.join(back(t, ex, EXM, keep).split())}{trail}"
+    return whole(a, True), whole(b, True), whole(b, False)
+
+
+def condensed(x: str, examples: bool = False) -> str:
+    """A long line with its prose and its quotes in parentheses out, and its examples too only with `examples` (its file past
+    its line even without the rest): the worked examples are a rule's strongest words (2026-08-28)."""
+    return stages(x)[2 if examples else 1]
+
+
+def why_condensed(x: str, y: str, size: int, cap: int, label: str) -> str:
+    """A condensation's why: what it takes out, then what it keeps, and the file's part with every other cut against its line."""
+    a, b, _ = stages(x)
+    n = len(memory.EXAMPLE.findall(split(x)[1]))
+    ex = f"its {n} example{'s' * (n != 1)}"
+    took = [w for w, cut in (("its prose said twice or hedged", a.split() != x.split()), ("its quoted asides", b != a), (ex, y != b)) if cut]
+    return (f"{len(x):,} characters, past {LONG}: {' and '.join(took) or 'its spacing'} out, {len(y):,} left" + (
+        f", since {label} is past its line even without the rest ({size:,} of {cap:,})" if y != b else
+        f"; kept: {ex}, since {label} has " + (f"room ({size:,} of {cap:,} with every other cut)" if cap else "no line") if n else "")
+        + ", every other word its own")
 
 
 def lost(s: memory.Settings, x: str) -> str:
@@ -669,10 +728,13 @@ def propose(private: Path, state: Path, s: memory.Settings, now: float) -> tuple
             else:
                 add("merge", f"{short(a)} + {short(b)}", [[f, i, a, merged(a, b)], [f, j, b, ""]], "the same job" if same
                     else "near-duplicate words" if dup else f"filed from the same message ({', '.join(sorted(one))}) on overlapping jobs")
-        for i, x in live:                            # condensations: a line past LONG, its examples out first
-            if i not in used and len(x) > LONG and len(y := condensed(x)) < len(x):
-                add("condense", short(x), [[f, i, x, y]], f"{len(x):,} characters, past {LONG}: its examples and quoted "
-                    f"asides out, {len(y):,} left, every other word its own")
+        long = [(i, x) for i, x in live if i not in used and len(x) > LONG]    # condensations: a line past LONG, its prose out
+        t = {k: list(v) for k, v in rows.items()}                             # first, then its quoted asides; its examples last,
+        edited(t, [e for q in out if q["edits"][0][0] == f for e in q["edits"]] + [[f, i, x, condensed(x)] for i, x in long], s)
+        over = (n := size(t, f)) > (cap := files[p][1]) > 0                    # and only with the file past its line without them
+        for i, x in long:
+            if len(y := condensed(x, over)) < len(x):
+                add("condense", short(x), [[f, i, x, y]], why_condensed(x, y, n, cap, name[f]))
     out.sort(key=lambda q: (-q["saved"], -q["rows"]))
     for n, q in enumerate(out, 1):
         q["n"] = n
@@ -726,6 +788,31 @@ def card(day: str, props: list[dict[str, Any]]) -> list[str]:
         out.append(head + words.line(q["label"], max(8, words.PHONE - len(head) - len(tail))) + tail)
     return out + [words.line(words.RULES_MORE.format(n=len(props) - CARD_MOST))] * (len(props) > CARD_MOST) + [
         words.line(words.RULES_APPLY.format(day=day))]
+
+
+def spans(ns: list[int]) -> str:
+    """Numbers as their runs: 1-3, 5, 8, 9."""
+    runs = [[n for _, n in g] for _, g in groupby(enumerate(sorted(ns)), lambda x: x[1] - x[0])]
+    return ", ".join(f"{r[0]}-{r[-1]}" if len(r) > 2 else ", ".join(map(str, r)) for r in runs)
+
+
+def rules_lines(state: Path, now: float) -> list[tuple[str, str]]:
+    """The morning diff's rule proposals of the last day (the nightly `yerk curate --rules` job, or curate's own phase): a head,
+    each kind's numbers and how to apply them, so the owner names them to `--apply`; one line at none, nothing past a day."""
+    try:
+        d = dict(json.loads((state / PROPOSED).read_text()))
+    except (OSError, ValueError, TypeError):
+        return []
+    if now - float(d.get("at", 0)) > doctor.DAY:
+        return []
+    props, day, by = list(d.get("proposals", [])), str(d.get("date", "")), dict[str, list[int]]()
+    if not props:
+        return [("", words.line(f"{words.PLAIN} " + words.RULES_NONE.format(day=day)))]
+    for q in sorted(props, key=lambda q: int(q["n"])):
+        by.setdefault(str(q["kind"]), []).append(int(q["n"]))
+    head = words.RULES_CARD.format(n=len(props), chars=f"{sum(max(0, int(q['saved'])) for q in props):,}")
+    return [("", words.line(f"{words.WORKING} {head}")), *[("", words.line(words.RULES_KIND.format(kind=k, numbers=spans(ns))))
+                                                          for k, ns in by.items()], ("", words.line(words.RULES_APPLY.format(day=day)))]
 
 
 def say(private: Path, state: Path, day: str, lines: list[str], post: Callable[[dict[str, Any]], dict[str, Any]] | None) -> bool:

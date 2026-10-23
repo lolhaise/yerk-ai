@@ -99,6 +99,7 @@ def build(private: Path, state: Path, accounts: list[Account], cooldowns: Cooldo
     rows += [x for x in [doctor.shape_line(state, now)] if x]           # the rule files' shape totals (shape.py)
     rows += docs.changed(state, float(last.get("at") or now - DAY))    # a docs page whose hash moved since the last diff
     rows.append(curate.line(state, now))                 # the night's curation: what landed, else what to read and the first
+    rows += curate.rules_lines(state, now)               # the night's rule proposals by kind and number, for --apply DAY N
     if live is None:
         add("unknown units", W.NOT_DONE, W.UNKNOWN.format(what="memory", why=W.NOT_ANSWERING_WHY))
     for u in (live or {}).get("units", []):

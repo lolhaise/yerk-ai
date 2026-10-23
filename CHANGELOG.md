@@ -8,6 +8,21 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-23
 
+### curate-examples (#108)
+- A rule condensation keeps the rule's worked examples. `yerk curate --rules` now cuts a long rule's prose first (a clause
+  it says again, a hedge such as "basically" or "of course"), then its quoted asides, and takes its examples out only when
+  its file is past its line in budgets.toml even with every other proposal in. Its WHY says what it kept and the file's
+  size against its line. A long rule with nothing but examples to cut is no proposal at all: the three condensations of
+  a live rulebook proposed on 2026-10-23, each taking its examples out with the file 3,451 characters under its line, are
+  not proposed again.
+- The morning diff lists the last day's rule proposals by kind with their numbers ("condense: 1-3", "promote: 4, 5")
+  and the `yerk curate --apply DAY N` line.
+- A script job's command now gets the unit's YERK_PRIVATE and YERK_STATE and this install's `yerk` first on PATH, so a
+  `yerk` line in a job runs on the install's folders; before, it fell back to the fake example layer, or found no `yerk`.
+  Still no account token.
+- **Upgrading:** to run the rules pass nightly without units/yerk-curate.timer, copy `example-curate-rules` from
+  examples/private/jobs.toml into the private jobs.toml (its room, its zone) and run `yerk jobs sync`.
+
 ### missing-ability (#110)
 
 - A room that hits a wall (no tool, a refused tool, a page that will not open) now files what it needed with the new

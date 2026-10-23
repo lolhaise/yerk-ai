@@ -108,8 +108,9 @@ KEYS: dict[str, str] = {        # every key of a [jobs.NAME] table, in plain wor
     "deliver": '"announce" (default): the output or the relay goes to the room; "silent": the run and its ledger '
                "row happen, nothing is posted, a failure still alerts the ops room",
     "command": "script jobs: the shell line to run (/bin/sh -c), with an account-free environment, TZ set to the "
-               "job's zone, YERK_JOB and YERK_JOB_DIR set; exit 0 with output posts it, exit 0 with nothing posts "
-               "nothing, anything else alerts",
+               "job's zone, YERK_JOB and YERK_JOB_DIR set, YERK_PRIVATE and YERK_STATE as the unit has them and this "
+               "install's `yerk` first on PATH, so a `yerk` line runs on this install's folders; exit 0 with output posts "
+               "it, exit 0 with nothing posts nothing, anything else alerts",
     "message": "agent jobs: the brief the worker gets, written as the whole job; its last message is what the room "
                "hears, and exactly NO_REPLY means nothing is posted. Notes: the text the room is told when it is due. "
                "Watchers, optional: what to do with the lines",
@@ -873,9 +874,11 @@ def last_trigger(units: Systemd, job: Job) -> float | None:
 
 def run_script(job: Job, folder: Path) -> dict[str, Any]:
     """The command under /bin/sh with an account-free environment, the job's cap, stdout and stderr
-    to files in the run folder. Returns exit, timed_out, output and the stderr tail."""
-    env = {k: v for k, v in os.environ.items() if k in ENV_KEEP}
-    env.update(TZ=job.tz or "UTC", YERK_JOB=job.name, YERK_JOB_DIR=str(folder), YERK_ROOM=job.room)
+    to files in the run folder. Returns exit, timed_out, output and the stderr tail. A `yerk` line in it is this install's
+    on this install's folders (the unit's YERK_PRIVATE and YERK_STATE), never the fake example layer it falls back to."""
+    env = {k: v for k, v in os.environ.items() if k in ENV_KEEP or k in ("YERK_PRIVATE", "YERK_STATE")}
+    env.update(TZ=job.tz or "UTC", YERK_JOB=job.name, YERK_JOB_DIR=str(folder), YERK_ROOM=job.room,
+               PATH=os.pathsep.join([str(Path(sys.executable).parent), *filter(None, [env.get("PATH")])]))
     t0 = time.time()
     with open(folder / "stdout", "wb") as out, open(folder / "stderr", "wb") as err:
         p = subprocess.Popen(["/bin/sh", "-c", job.payload], cwd=folder, env=env, stdout=out, stderr=err,

@@ -341,4 +341,13 @@ secs = 60
 # nothing whatever PR it mentions (2), the builder told that every name in a test or a doc is a placeholder (1).
 # 20,215 merged on room-defaults (#111), taste-eval (#106), recall-pack-fit (#107), location (#109) and
 # sheets-and-pdfs (#104); lines in cli.py, daemon.py and words.py shared with #104, #106 and #109, both sides kept.
-lines = 20215
+# 2026-10-23: curate-examples raised it by 92: a rule condensation keeps the rule's worked examples (the owner's ask: the
+# day's rules pass proposed three condensations that took a rulebook's examples out with the file 3,451 under its line,
+# all three declined). curate.py 87 (the staged cut: a clause said again or a hedge, then quoted asides, the examples last
+# and only past the file's line; its WHY naming what it kept; the morning's list of the night's proposals by kind and
+# number), jobs.py 3 (a `yerk` line in a script job runs on the unit's folders, never the fake example layer), morning.py 1,
+# words.py 1.
+# 18,935 merged on model-account-pin (#103), no line shared.
+# 19,190 merged on status-card (#105), no line shared.
+# 20,307 merged on missing-ability (#110), no line shared.
+lines = 20307
