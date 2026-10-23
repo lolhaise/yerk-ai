@@ -211,5 +211,6 @@ drops = [
 
 # the pending list, the backfill brief), daemon.py (79: the seen tool, the backfill a batch at a time, one chain a room,
 # its machine-room line), cli.py (25: `yerk pictures backfill`), memory.py (12: the mark), room.py (10: the Stop rule), mcp_server.py (9),
-# case.before (00), the.next (0: `run`, `starts`), the.example (0).
-lines = 18544
+# words.py (10), workers.py (4: `bind`, `more`), memindex.py (1). 18,544 merged on deploy-private (#95), no line shared.
+# Back as plain text with one 0: more line for the check while a second entry waits in the queue (for.its _turn).
+lines = 18548

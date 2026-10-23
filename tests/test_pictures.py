@@ -142,6 +142,27 @@ def test_recall_and_read_memory_show_a_sidecar_line_behind_its_mark_never_as_any
     assert memory.is_seen(side) and not memory.is_seen(talk) and not memory.is_seen(tmp_path / "work" / "x.seen.txt")
 
 
+def test_a_long_sidecar_line_keeps_its_mark_when_recall_or_deep_recall_cuts_it(tmp_path):
+    """Cold read, 2026-10-23: the five real sidecars of the backfill proof each hold a "what it shows:" line of 249 to 410
+    characters, over deep recall's 280 with the mark; _cut kept the window around the match and dropped the mark in front."""
+    from yerk_ai import memindex
+    (priv := tmp_path / "private").mkdir()
+    (priv / "yerkd.toml").write_text('[memory]\nroot = "memory"\n')
+    (priv / "rooms.toml").write_text('[rooms.own-room]\nchannel = "console:own"\n')
+    state = tmp_path / "state"
+    s = memory.settings(priv, state)
+    shows = "a screenshot of an example sheet, " + "four columns of example figures, " * 8 + "the example label exquux at the end"
+    side = pictures.file("own-room", picture(state, "own-room", "m-1"), WORDS, shows, s.tz)
+    memindex.Index(s.index_db, s.scope).sync()
+    deep = memory.lines_on(s, "exquux")
+    assert [x["cite"] for x in deep] == ["own-room/work/inbox/m-1/photo.seen.txt:5"] and "exquux" in deep[0]["text"]
+    assert deep[0]["text"].startswith(f"{memory.SEEN_MARK} …") and len(deep[0]["text"]) <= memory.ITEM_CHARS
+    hit = {"cite": "own-room/work/inbox/m-1/photo.seen.txt:1", "path": str(side), "line": 1, "text": side.read_text()}
+    pad = [{"cite": f"x{i}.md:1", "path": f"/x/x{i}.md", "line": 1, "text": "exquux example"} for i in range(memory.RECALL_HITS)]
+    for got in (memory.snippets(pad + [hit], {"exquux": 1.0}, 4500)[-1]["text"], memory.snippets([hit], {"exquux": 1.0}, 300)[0]["text"]):
+        assert got and all(x.startswith(memory.SEEN_MARK) for x in got.splitlines() if x.strip() and x != "…"), got
+
+
 def test_backfill_skips_a_picture_that_has_one_and_dry_run_starts_nothing(tmp_path, monkeypatch, capsys):
     (priv := tmp_path / "private").mkdir()
     (priv / "rooms.toml").write_text('[rooms.own-room]\nchannel = "console:own"\n\n'

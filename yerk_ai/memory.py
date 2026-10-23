@@ -888,7 +888,11 @@ def snippet(text: str, lo: int, weights: dict[str, float], near: str | None = No
 
 
 def _cut(line: str, want: dict[str, float], room: int) -> str:
-    """The `room` characters of a long line that hold the most query weight, cut at spaces, marked with …."""
+    """The `room` characters of a long line that hold the most query weight, cut at spaces, marked with …; a picture's sidecar
+    line keeps SEEN_MARK in front and only the rest is cut, so a cut never shows it as anyone's words."""
+    if line.startswith(f"{SEEN_MARK} "):
+        rest = room - len(SEEN_MARK) - 1
+        return f"{SEEN_MARK} " + (_cut(line[len(SEEN_MARK) + 1:], want, rest) if rest >= 40 else "…")
     at = [(m.start(), r, w) for r, w in want.items() for m in re.finditer(r"(?<!\w)" + re.escape(r), line, re.I)]
     starts = sorted({max(0, min(p - room // 4, len(line) - room)) for p, _, _ in at}) or [0]
     a = max(starts, key=lambda a0: (sum({r: w for p, r, w in at if a0 <= p < a0 + room - len(r)}.values()), -a0))
