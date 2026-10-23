@@ -254,4 +254,9 @@ drops = [
 # by 2: config.py (an id in `[watch] assistants` that is the owner's or one a room's `people` lists stops the start, since
 # that person would never be answered again).
 # 18,767 merged on message-envelope (#96), no line shared.
-lines = 18767
+# 2026-10-23: room-defaults raised it by 76: one tool set for every owner room, declared once in rooms.toml's [defaults]
+# (item moved, 00:00: "to the next step ... and the 0 test reads ... it back as"; plain text with one more line for
+# rooms and hands to three by hand, a table at a time), not folded to fit. config.py 57 (the [defaults] reader and its
+# refusals, {room} in a server's args and env, the inheritance with allow_remove, a room's tables as written), doctor.py 18
+# (the drift line: a default tool missed, a copy of a default), move.py 1 (`yerk room add` copies a room as written).
+lines = 18843

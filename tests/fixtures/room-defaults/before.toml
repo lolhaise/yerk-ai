@@ -1,0 +1,212 @@
+# The box's rooms.toml as it stood on 2026-10-23 (11:13), in shape: its six rooms, each key and table in the live file's
+# order, the same allow lists in the same orders and the same mcp tables. Ids, paths and comments are stand-ins.
+[rooms.yerk-test]
+channel = "discord:101"
+layer = "/srv/yerk-ai/examples/private"
+model = "claude-opus-5-5"
+effort = "max"
+tools = ["Read", "Grep", "Glob"]
+privacy = "owner"
+timezone = "America/Toronto"
+persona = "persona.md"
+rulebook = "rulebook.md"
+voice = "rooms/example-room.md"
+pinned_memory = "memory/pinned.md"
+daily_notes = "memory/daily"
+recall_days = 2
+open_loops = "memory/open-loops.md"
+allow = ["mcp__hands__browser", "mcp__hands__desktop", "mcp__hands__mac", "mcp__hands__mail", "mcp__hands__discord", "mcp__web-ladder__web_fetch", "mcp__web-ladder__web_search", "mcp__web-ladder__web_research", "mcp__web-ladder__web_research_result", "mcp__web-ladder__web_image"]
+
+[rooms.yerk-test.mcp.hands]
+type = "stdio"
+command = "/usr/bin/node"
+args = ["/srv/hands-mcp/server.mjs"]
+env = { YERK_ROOM = "yerk-test" }
+timeout = 120000
+alwaysLoad = true
+
+[rooms.yerk-test.mcp.web-ladder]
+type = "stdio"
+command = "/usr/bin/node"
+args = ["/srv/yerk-ai/plugins/web/server.mjs", "--private", "/srv/yerk-private", "--state", "/srv/state/yerk", "--room", "yerk-test"]
+timeout = 180000
+alwaysLoad = true
+
+[rooms.yerk-ops]
+channel = "discord:102"
+layer = "/srv/yerk-ai/examples/private"
+model = "claude-opus-5-5"
+effort = "max"
+tools = ["Read", "Grep", "Glob"]
+privacy = "owner"
+timezone = "America/Toronto"
+persona = "persona.md"
+rulebook = "rulebook.md"
+voice = "rooms/example-room.md"
+pinned_memory = "memory/pinned.md"
+daily_notes = "memory/daily"
+recall_days = 2
+open_loops = "memory/open-loops.md"
+role = "machine"
+
+[rooms.example-on-yerk]
+channel = "discord:103"
+layer = "/srv/yerk-private/ben"
+model = "claude-opus-5-5"
+compact_window = 700000
+effort = "max"
+tools = ["Read", "Grep", "Glob", "Bash"]
+privacy = "owner"
+timezone = "America/Toronto"
+persona = "persona.md"
+rulebook = "rulebook-example-two.md"
+voice = "rooms/example-two.md"
+pinned_memory = "memory/pinned-example-two.md"
+read = ["/srv/box/memory", "/srv/staging/work-1", "/srv/staging/work-2"]
+allow = ["mcp__web-ladder__web_fetch", "mcp__web-ladder__web_search", "mcp__web-ladder__web_research", "mcp__web-ladder__web_research_result", "mcp__hands__browser", "mcp__hands__desktop", "mcp__hands__mac", "mcp__hands__mail", "mcp__hands__discord", "mcp__web-ladder__web_image"]
+also = ["/srv/box/MEMORY.md", "/srv/box/memory", "/srv/yerk-private/imports/texts"]
+
+[rooms.example-on-yerk.mcp.web-ladder]
+type = "stdio"
+command = "/usr/bin/node"
+args = ["/srv/yerk-ai/plugins/web/server.mjs", "--private", "/srv/yerk-private", "--state", "/srv/state/yerk", "--room", "example-on-yerk"]
+timeout = 180000
+alwaysLoad = true
+
+[rooms.example-on-yerk.sandbox]
+enabled = true
+autoAllowBashIfSandboxed = true
+
+[rooms.example-on-yerk.sandbox.filesystem]
+denyWrite = ["//srv/box/memory", "//srv/staging/work-1", "//srv/staging/work-2", "//srv/yerk-private/ben", "//srv/box", "//srv/staging", "//srv/yerk-private"]
+denyRead = ["//srv/box", "//srv/staging", "//srv/yerk-private/memory", "//srv/state/yerk/memory"]
+
+[rooms.example-on-yerk.sandbox.network]
+strictAllowlist = true
+allowedDomains = []
+
+# The #example note (says the sample item moved to the next Step and the, test reads it)
+
+[rooms.example-on-yerk.mcp.hands]
+type = "stdio"
+command = "/usr/bin/node"
+args = ["/srv/hands-mcp/server.mjs"]
+env = { YERK_ROOM = "example-on-yerk" }
+timeout = 120000
+alwaysLoad = true
+
+[rooms.example-two]
+channel = "discord:104"
+layer = "/srv/yerk-private/ben"
+model = "claude-opus-5-5"
+compact_window = 400000
+effort = "max"
+tools = ["Read", "Grep", "Glob", "Bash"]
+privacy = "owner"
+timezone = "America/Toronto"
+persona = "persona.md"
+rulebook = "rulebook.md"
+voice = "rooms/main.md"
+read = ["/srv/box/memory"]
+allow = ["mcp__web-ladder__web_fetch", "mcp__web-ladder__web_search", "mcp__web-ladder__web_research", "mcp__web-ladder__web_research_result", "mcp__hands__browser", "mcp__hands__desktop", "mcp__hands__mac", "mcp__hands__mail", "mcp__hands__discord", "mcp__web-ladder__web_image"]
+also = ["/srv/box/MEMORY.md", "/srv/box/memory"]
+
+[rooms.example-two.mcp.web-ladder]
+type = "stdio"
+command = "/usr/bin/node"
+args = ["/srv/yerk-ai/plugins/web/server.mjs", "--private", "/srv/yerk-private", "--state", "/srv/state/yerk", "--room", "Alex"]
+timeout = 180000
+alwaysLoad = true
+
+[rooms.example-two.sandbox]
+enabled = true
+autoAllowBashIfSandboxed = true
+
+[rooms.example-two.sandbox.filesystem]
+denyWrite = ["//srv/box/memory", "//srv/yerk-private/ben", "//srv/box", "//srv/staging", "//srv/yerk-private"]
+[rooms.example-two.sandbox.network]
+strictAllowlist = true
+allowedDomains = []
+
+# Back as plain (text with one more line for the check while a second)
+
+[rooms.example-two.mcp.hands]
+type = "stdio"
+command = "/usr/bin/node"
+args = ["/srv/hands-mcp/server.mjs"]
+env = { YERK_ROOM = "Alex" }
+timeout = 120000
+alwaysLoad = true
+
+[rooms.example-two]
+channel = "discord:105"
+watch = "discord:106"
+layer = "/srv/yerk-private/mom"
+model = "claude-opus-5-5"
+compact_window = 400000
+effort = "max"
+tools = ["Read", "Grep", "Glob", "Bash", "Write", "Edit"]
+shell = "trusted"
+privacy = "family"
+people = [31]
+timezone = "America/Toronto"
+persona = "persona.md"
+rulebook = "rulebook.md"
+voice = "rooms/family.md"
+pinned_memory = "pinned.md"
+open_loops = "open-loops.md"
+allow = ["mcp__web-ladder__web_fetch", "mcp__web-ladder__web_search", "mcp__web-ladder__web_research", "mcp__web-ladder__web_research_result", "mcp__web-ladder__web_image"]
+
+[rooms.example-two.mcp.web-ladder]
+type = "stdio"
+command = "/usr/bin/node"
+args = ["/srv/yerk-ai/plugins/web/server.mjs", "--private", "/srv/yerk-private", "--state", "/srv/state/yerk", "--room", "Alex"]
+timeout = 60000
+alwaysLoad = true
+
+# The queue for (its turn and the last part closes the case before the)
+
+[rooms.example-two.sandbox.network]
+strictAllowlist = true
+allowedDomains = []
+
+[rooms.example-two]
+channel = "discord:107"
+layer = "/srv/yerk-private/ben"
+model = "claude-opus-5-5"
+compact_window = 400000
+effort = "max"
+tools = ["Read", "Grep", "Glob", "Bash"]
+privacy = "owner"
+timezone = "America/Toronto"
+persona = "persona.md"
+rulebook = "rulebook.md"
+voice = "rooms/club.md"
+read = ["/srv/box/memory"]
+allow = ["mcp__web-ladder__web_fetch", "mcp__web-ladder__web_search", "mcp__web-ladder__web_research", "mcp__web-ladder__web_research_result", "mcp__hands__browser", "mcp__hands__desktop", "mcp__hands__mac", "mcp__hands__mail", "mcp__hands__discord", "mcp__web-ladder__web_image"]
+also = ["/srv/box/MEMORY.md", "/srv/box/memory", "/srv/box/media/club"]
+
+[rooms.example-two.mcp.web-ladder]
+type = "stdio"
+command = "/usr/bin/node"
+args = ["/srv/yerk-ai/plugins/web/server.mjs", "--private", "/srv/yerk-private", "--state", "/srv/state/yerk", "--room", "Alex"]
+timeout = 180000
+alwaysLoad = true
+
+[rooms.example-two.sandbox]
+enabled = true
+autoAllowBashIfSandboxed = true
+
+[rooms.example-two.sandbox.filesystem]
+denyWrite = ["//srv/box/memory", "//srv/yerk-private/ben", "//srv/box", "//srv/staging", "//srv/yerk-private"]
+[rooms.example-two.sandbox.network]
+strictAllowlist = true
+allowedDomains = []
+
+[rooms.example-two.mcp.hands]
+type = "stdio"
+command = "/usr/bin/node"
+args = ["/srv/hands-mcp/server.mjs"]
+env = { YERK_ROOM = "Alex" }
+timeout = 120000
+alwaysLoad = true
