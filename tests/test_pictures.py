@@ -105,6 +105,31 @@ def test_a_picture_read_and_not_filed_bounces_once_in_an_owner_room_only(tmp_pat
     assert own.stop_check(active=False) is None                              # filed: nothing to say
 
 
+def test_a_picture_read_outside_what_was_sent_never_bounces_the_hands_screenshots_included(tmp_path):
+    """Cold read, 2026-10-23: an owner room Read eleven of the hands plug-in's desktop screenshots under work/hands-shots/
+    in one turn. The rule counts only a picture sent to the room in this result (to_open: the inbox, from the message's
+    staged files), so a Read of any other picture, filed or not, never bounces it."""
+    y = daemon(tmp_path, "example-room", "her-room")
+    work = tmp_path / "rooms" / "example-room" / "work"
+    (shots := work / "hands-shots").mkdir(parents=True)
+    hands = [shots / f"desktop-20261023-1329{i:02}.png" for i in range(11)]
+    for p in [*hands, work / "loose.png", tmp_path / "elsewhere.jpg"]:
+        p.write_bytes(PNG)
+    older = picture(tmp_path, "example-room", "m-0")                          # an earlier message's picture, read again
+    others = [str(p.resolve()) for p in [*hands, work / "loose.png", tmp_path / "elsewhere.jpg", older]]
+    own = y.rooms["example-room"]
+    own.to_open, own.rp, own.bounced = {}, NS(read_paths=set(others)), False
+    assert own.unfiled() == [] and own.stop_check(active=False) is None and not own.bounced
+    sent = str(picture(tmp_path, "example-room", "m-1"))                      # with a picture the owner sent in the same result
+    own.to_open, own.rp = {sent: "photo.png"}, NS(read_paths={*others, sent})
+    assert own.unfiled() == [("photo.png", sent)]
+    reason = own.stop_check(active=False)
+    assert reason and sent in reason and not any(p in reason for p in others)
+    own.bounced = False
+    pictures.file("example-room", Path(sent), WORDS, "a chat", y.memory.tz)
+    assert own.stop_check(active=False) is None and not any(pictures.sidecar(Path(p)).exists() for p in others)
+
+
 def test_the_index_takes_a_sidecar_as_an_owner_inbox_text_kind_class_private_and_a_persons_never(tmp_path):
     (priv := tmp_path / "private").mkdir()
     (priv / "yerkd.toml").write_text('[memory]\nroot = "memory"\n')
