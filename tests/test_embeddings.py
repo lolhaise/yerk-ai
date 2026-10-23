@@ -15,6 +15,7 @@ import subprocess
 import sys
 import time
 import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -261,6 +262,24 @@ def test_the_bench_shape_is_unchanged_and_the_example_set_has_the_room_kinds(tmp
         "at", "blind", "controls", "k", "kept", "lost", "misses", "questions", "top_1", "top_1_rate", "top_k", "top_k_rate"]
 
 
+# 6b. the bench is a ratchet: a planted drop exits 4 and says so; a dated note in budgets.toml naming it lets the run pass
+def test_a_planted_drop_fails_the_bench_unless_a_dated_note_names_it(tmp_path, capsys, monkeypatch):
+    s = memory.settings(EXAMPLE_PRIVATE, tmp_path / "state", {"timezone": "UTC"})
+    memindex.Index(s.index_db, s.scope).sync()
+    args = ["recall-bench", "--private", str(EXAMPLE_PRIVATE), "--state", str(tmp_path / "state"),
+            "--questions", str(EXAMPLE_PRIVATE / "evals" / "recall-questions.json")]
+    assert cli.main(args) == 0
+    series = tmp_path / "state" / "memory" / "recall-bench.jsonl"
+    row = json.loads(series.read_text().splitlines()[-1])
+    best = row["top_k"] + 2                                                 # four runs before, each two over this one
+    series.write_text("".join(json.dumps({**row, "top_k": best}) + "\n" for _ in range(4)))
+    capsys.readouterr()
+    assert cli.main(args) == 4
+    assert f"RATCHET: top 6 fell to {row['top_k']} of {row['questions']} from {best} in the 4 runs before" in capsys.readouterr().err
+    monkeypatch.setattr(cli, "budgets", lambda: {"recall": {"slack": 1, "drops": [f"2026-10-22: {best} to {row['top_k']}, planted"]}})
+    assert cli.main(args) == 0 and "RATCHET" not in capsys.readouterr().err
+
+
 # 7. the manifest, and `yerk abilities` and `yerk explain` both ways
 def test_the_manifest_and_the_abilities_command_show_the_key_tier_both_ways(tmp_path, capsys):
     ab = abilities.manifest()
@@ -301,6 +320,21 @@ def test_the_merge_keeps_each_searchs_own_top_three():
     assert two[0] == 1 and set(two) == {1, 2, 3, 102, 103, 50}
     # without vectors, the keyword list as it is
     assert [h["id"] for h in memory.fuse(keywords, [], 6, keep=3)] == [1, 2, 3, 50, 51, 52]
+
+
+# 9b. a stored message counts RECORD beside a note: an import's line, a day of the install's own log past the window
+def test_a_stored_message_ranks_after_a_note_on_the_same_ranks(tmp_path):
+    s = memory.settings(tmp_path / "private", tmp_path / "state", {"timezone": "UTC"})
+    weight = memory.record(s, datetime(2026, 10, 22, 12, tzinfo=timezone.utc))
+
+    def hit(cid: int, path: Path) -> dict:
+        return {"id": cid, "path": str(path), "line": 1, "lines": "1-1", "text": f"t{cid}", "score": 0.9}
+    old, recent = s.daily / "2026-10-01.md", s.daily / "2026-10-20.md"
+    mail, note = tmp_path / "private" / "imports" / "mail" / "2026-01.md", s.root / "facts" / "kettle.md"
+    assert [weight(hit(1, p)) for p in (old, mail, recent, note)] == [memory.RECORD, memory.RECORD, 1.0, 1.0]
+    both = [hit(1, old), hit(2, note)]                                      # the old day first in both lists, the note second
+    assert [h["id"] for h in memory.fuse(both, both, 6, keep=0)] == [1, 2]
+    assert [h["id"] for h in memory.fuse(both, both, 6, keep=0, weight=weight)] == [2, 1]     # the note leads; the day is kept
 
 
 # 10. the manifest's embeddings entry records the fit choice: the dimensions, the units, the width

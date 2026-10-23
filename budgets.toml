@@ -1,7 +1,8 @@
 # Every size limit Yerk AI enforces, in one place.
 # Unit: characters as Claude Code counts them (UTF-16 code units, so one emoji outside
 # the basic plane counts 2), except [session], in tokens (its idle keys say their own), [shape], in rule lines and topics,
-# and [code] at the end, which counts lines. The budget test fails the build when a part or a total passes its number here.
+# [recall], in questions of the recall bench, and [code] at the end, which counts lines. The budget test fails the build
+# when a part or a total passes its number here.
 
 [session_start]
 total = 88514
@@ -116,6 +117,17 @@ untagged_examples = 0
 alarm_marks = 0
 duplicated_topics = 0
 
+[recall]
+# The recall bench as a ratchet (memory.ratchet): every `yerk recall-bench` run adds its row to <state>/memory/recall-bench.jsonl
+# and exits 4, and the budget test fails where the install's index is (it runs the bench, `yerk deploy`'s fast tests among them),
+# when the top six is more than `slack` questions under the best of the four runs before it on the same questions, unless a
+# note in `drops` names that drop: "YYYY-MM-DD: BEST to NEW, why". A run at NEW less the slack or more passes while BEST is in
+# the window; it leaves after four runs.
+slack = 1
+drops = [
+    "2026-10-22: 116 to 98, the index grew under the bench from Oct 19 to Oct 21 (the import put 259 days of old chats in the day logs, 126,415 chunks; the texts, mail, wiki and Workbot roots and five more): 18 answers crowded out of the top six, every one still whole in one chunk; Oct 19's code scores today's index the same 99 of 164 as today's; the record weight gives 6 back",
+]
+
 [code]
 # The code itself. Unit: lines as `wc -l` counts them, in every .py file under yerk_ai/,
 # lifted ones included, because a reader has to get through all of them. A ceiling that
@@ -176,4 +188,8 @@ duplicated_topics = 0
 # and the card's words (1) (all of it, on the owner's word), not folded to fit. Its cold read raised it by
 # 9 more: one message alone is no merge, the two jobs must overlap (curate.py overlap, 6), and a condensation never
 # takes out an aside that holds a reason or a clause of the rule's own (REASON and its keep, 3).
-lines = 18128
+# 2026-10-22: recall-ratchet raised it by 37, the bench held to its own series ([recall] above: the run's exit 4 and the
+# budget test) and the record weight in the fusion (memory.record, top six 99 to 105 on the same questions), not folded
+# to fit (the owner's rule: memory changes land only through the bench); 38 on its first base, one fewer merged, since
+# its settings() keyword shares the line main's `private` added.
+lines = 18165
