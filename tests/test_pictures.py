@@ -1,6 +1,6 @@
 """Checks that a picture sent to a room gets a text file beside it in the same turn, NAME.seen.txt, with the words on it and what it shows, so it can
-tool: the room's own read is the engine, the header and path are code), and a person's room files none; the index takes the
-sidecar as an inbox text kind, class private, and recall and read_memory show its lines behind their mark, never as anyone's
+be found later. The room writes it with the `seen` tool (the room's own read is the engine, the header and path are code); a person's room files its
+own (person-room-parity); the index takes the sidecar as an inbox text kind in its room's class, and recall and read_memory show its lines behind
 their mark, never as anyone's words; `yerk pictures backfill` files the older ones through Yerk workers, a batch of 20 at a time (pictures-seen,
 placeholder (decision 22)."""
 from __future__ import annotations
@@ -66,7 +66,7 @@ def picture(state: Path, room: str, mid: str, name: str = "photo.png", at: float
     return p.resolve()
 
 
-def test_an_owner_room_files_a_picture_it_was_sent_and_a_persons_room_files_none(tmp_path):
+def test_a_room_files_a_picture_it_was_sent_a_persons_room_too_each_from_its_own_inbox_only(tmp_path):
     y = daemon(tmp_path, "example-room", "her-room")
     mine, hers = picture(tmp_path, "example-room", "m-1"), picture(tmp_path, "her-room", "m-2")
     r = asyncio.run(y.tool_seen("example-room", str(mine), WORDS, "a screenshot of a chat between Pat and Riley\n"))
@@ -78,8 +78,10 @@ def test_an_owner_room_files_a_picture_it_was_sent_and_a_persons_room_files_none
     assert lines[4:] == ["what it shows: a screenshot of a chat between Pat and Riley"] and side.stat().st_mode & 0o777 == 0o600
     assert asyncio.run(y.tool_seen("example-room", str(mine), "", "a blank page"))["ok"]         # read again: the new reading
     assert mine.with_name("photo.seen.txt").read_text().splitlines()[1:] == [pictures.NONE, "what it shows: a blank page"]
-    assert asyncio.run(y.tool_seen("her-room", str(hers), WORDS, "a chat")) == {"ok": False, "error": words.SEEN_OWNER_ONLY}
-    assert not hers.with_name("photo.seen.txt").exists()                                     # a person's room: never filed
+    assert asyncio.run(y.tool_seen("her-room", str(hers), WORDS, "a chat"))["ok"]              # person-room-parity: hers, filed
+    assert hers.with_name("photo.seen.txt").read_text().startswith("seen in her-room, message m-2, ")
+    assert asyncio.run(y.tool_seen("her-room", str(mine), WORDS, "a chat")) == {               # its own inbox only
+        "ok": False, "error": words.SEEN_NOT_HERE.format(name=mine.name)}
     (notes := mine.with_name("notes.txt")).write_text("example\n")
     loose = tmp_path / "rooms" / "example-room" / "work" / "loose.png"
     loose.write_bytes(PNG)
@@ -96,18 +98,20 @@ def test_a_person_in_a_photo_the_owner_sends_in_his_own_room_is_the_owner_and_no
     One mechanics line where `seen` is, the tool's own description and the backfill brief say the same."""
     text = context.MECHANICS.read_text().strip()
     line = next(x for x in text.splitlines() if "`seen`" in x)
-    assert "in an owner room `seen` a picture, its `shows` calling a person in it the owner unless its own text says otherwise" in line
+    assert ("`seen` a picture, its `shows` calling a person in it the owner (in a person's room, the sender) unless its own text "
+            "says otherwise") in line
     assert shape.offenses(line) == [] and context.chars(text) < budgets()["session_start"]["appended"]["mechanics"]
     y = daemon(tmp_path)
     tools = {t.name: t for t in asyncio.run(mcp_server.build(y, y.port, y.hook).list_tools())}
     said = " ".join(str(tools["seen"].description).split())
-    assert 'a person in it "the owner" unless its own text says otherwise, anyone else named only by that text, else "a man"' in said
+    assert ('a person in it "the owner" (in a person\'s room "the sender") unless its own text says otherwise, anyone else named '
+            'only by that text, else "a man"') in said
     brief = " ".join(pictures.brief("example-room", [], ZoneInfo("UTC"), 1, 1).split())
     assert ('A person in it is "the owner", since they sent it, unless the picture\'s own text says otherwise; anyone else is named '
             "only by a name the picture's own text gives them" in brief and "Never guess." in brief)
 
 
-def test_a_picture_read_and_not_filed_bounces_once_in_an_owner_room_only(tmp_path):
+def test_a_picture_read_and_not_filed_bounces_once_in_every_room(tmp_path):
     y = daemon(tmp_path, "example-room", "her-room")
     for name, mid in (("example-room", "m-1"), ("her-room", "m-2")):
         p = str(picture(tmp_path, name, mid))
@@ -117,7 +121,9 @@ def test_a_picture_read_and_not_filed_bounces_once_in_an_owner_room_only(tmp_pat
     reason = own.stop_check(active=False)
     assert reason and "photo.png" in reason and "Call seen on " in reason and "give your answer again" in reason
     assert own.stop_check(active=False) is None                              # once per result
-    assert hers.stop_check(active=False) is None                             # a person's room files no picture
+    said = hers.stop_check(active=False) or ""
+    assert "photo.png" in said and "Call seen on " in said and "owner" not in said             # a person's room too
+    assert hers.stop_check(active=False) is None
     own.bounced = False
     pictures.file("example-room", Path(next(iter(own.to_open))), WORDS, "a chat", y.memory.tz)
     assert own.stop_check(active=False) is None                              # filed: nothing to say
@@ -148,7 +154,7 @@ def test_a_picture_read_outside_what_was_sent_never_bounces_the_hands_screenshot
     assert own.stop_check(active=False) is None and not any(pictures.sidecar(Path(p)).exists() for p in others)
 
 
-def test_the_index_takes_a_sidecar_as_an_owner_inbox_text_kind_class_private_and_a_persons_never(tmp_path):
+def test_the_index_takes_a_sidecar_as_an_inbox_text_kind_an_owner_rooms_private_a_persons_class_room_hers(tmp_path):
     (priv := tmp_path / "private").mkdir()
     (priv / "yerkd.toml").write_text('[memory]\nroot = "memory"\n')
     (priv / "rooms.toml").write_text('[rooms.own-room]\nchannel = "console:own"\n\n'
@@ -157,14 +163,16 @@ def test_the_index_takes_a_sidecar_as_an_owner_inbox_text_kind_class_private_and
     own, hers = picture(state, "own-room", "m-1"), picture(state, "her-room", "m-2")
     s = memory.settings(priv, state)
     side = pictures.file("own-room", own, "---\nclass: shared\n---\nEX-42", "a page", s.tz)     # front matter on a picture
-    (hers.with_name("photo.seen.txt")).write_text("example of hers\n")                           # never filed, never indexed
-    files = {p.rsplit("/", 1)[-1] for p in s.scope.files() if "/work/inbox/" in p}
-    assert files == {"photo.seen.txt"} and s.scope.contains(side) and not s.scope.contains(hers.with_name("photo.seen.txt"))
+    (theirs := hers.with_name("photo.seen.txt")).write_text("example of hers\n")
+    files = sorted(p.split("/work/inbox/")[1] for p in s.scope.files() if "/work/inbox/" in p)
+    assert files == ["m-1/photo.seen.txt", "m-2/photo.seen.txt"] and s.scope.contains(side) and s.scope.contains(theirs)
+    assert memory.cite(s, theirs) == "her-room/work/inbox/m-2/photo.seen.txt" and memory.file_class(theirs) == ("room", "console:her")
     assert memory.cite(s, side) == "own-room/work/inbox/m-1/photo.seen.txt"
     assert memory.file_class(side) == ("private", "")          # its header comes first: no front matter can make it shared
-    her = memory.Reader(name="her-room", rid="her-room", owner=False)
+    her = memory.Reader(name="her-room", rid="console:her", owner=False)
     assert not memory.read(s, "own-room/work/inbox/m-1/photo.seen.txt", reader=her)["ok"]
-    assert not memory.read(s, str(hers.with_name("photo.seen.txt")))["ok"]
+    assert memory.read(s, "her-room/work/inbox/m-2/photo.seen.txt", reader=her)["ok"]                # hers, in her room
+    assert memory.read(s, str(theirs), reader=memory.Reader(name="own-room", rid="console:own", owner=True))["ok"]   # decision 44
 
 
 def test_recall_and_read_memory_show_a_sidecar_line_behind_its_mark_never_as_anyones_words(tmp_path):

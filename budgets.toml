@@ -233,4 +233,10 @@ drops = [
 # pictures.py 24 (root_of, the walk, the folder header), cli.py 9, memory.py 9 (a root's sidecar known by its header),
 # daemon.py 5, memindex.py 2 (a sidecar indexed under any root), words.py 2. Then by 1: `yerk map --wire` measures a resumed
 # session's newest request shape, never its first (context.py).
-lines = 18602
+# 2026-10-23: person-room-parity raised it by 53: a person's room reads what the other assistant told them where it watches and
+# keeps what is sent to it as its own (a person's room, within nine minutes: the same article to both rooms, and the room could not see
+# the other answer). discord.py 29 (`[watch] assistants` filed once settled, a card never, never answered), config.py 10 (the
+# setting, ids only), memory.py 9 (the role and its mark, kept out of the pack; every room's inbox a root, its class the
+# room's), words.py 2 (the refusal pointing at a person room's own lines), room.py 2, pictures.py 1, daemon.py 0 (the seen
+# for the check while, a second entry waits in: the queue for its turn and the last part closes).
+lines = 18655

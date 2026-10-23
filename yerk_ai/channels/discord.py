@@ -2,7 +2,9 @@
 
 - Every other channel is ignored before anything is read: no reply, no reaction, no history.
 - A room's `watch` channel is read as its own and never written to: what it sends, its card, its typing
-  signal and its reactions go to its own channel only; a slash command there gets one ephemeral line.
+  signal and its reactions go to its own channel only; a slash command there gets one ephemeral line. Another
+  assistant's message there (`[watch] assistants` in yerkd.toml) is filed under its own role once it has settled
+  (SETTLE), so the room can read what was said there, and never answered.
 - Only the owner, the people a room lists (`people` in rooms.toml), and in test mode the listed webhooks,
   are answered. Webhook senders pass a loop guard (lifted/loopguard.py) so a runaway script cannot run the room.
 - A message is ledgered by its Discord id before anything runs, then acked with a reaction. Its
@@ -55,6 +57,7 @@ from ..config import EFFORTS
 from ..ledger import Ledger
 from ..lifted.loopguard import LoopGuard
 from ..lifted.split import split_message
+from ..memory import ASSISTANT
 from ..room import Inbound, Room
 
 log = logging.getLogger("yerk.discord")
@@ -75,6 +78,7 @@ VOICE_FLAG = 1 << 13  # IS_VOICE_MESSAGE: one audio attachment, no content (Disc
 REPLY_MAX = 300
 QUICK = 1.0           # seconds a slash command may take before its answer is deferred (Discord gives three)
 RETRY = 60.0          # seconds before a channel is read again after a message the ledger could not take (disk-full drill b)
+SETTLE = 30.0         # seconds another assistant's message sits with no edit or delete before it is filed (its card never is)
 SAID = (discord.MessageType.default, discord.MessageType.reply)   # what a person types; the rest are Discord's lines
 
 
@@ -148,8 +152,11 @@ def message_text(m: Any, files: list[dict[str, Any]] | None = None, reply: str =
 class DiscordChannel:
     def __init__(self, token: str, owner: int | None, test_senders: list[int], ledger: Ledger,
                  client: Any = None, guard: LoopGuard | None = None, state: Path | None = None,
-                 capture: Callable[..., bool] | None = None, daemon: Any = None, taste: Callable[[str, str], Any] | None = None):
+                 capture: Callable[..., bool] | None = None, daemon: Any = None, taste: Callable[[str, str], Any] | None = None,
+                 assistants: frozenset[int] = frozenset()):
         self.token, self.owner, self.test_senders, self.ledger = token, owner, set(test_senders), ledger
+        self.assistants = assistants              # other assistants' user ids: filed where a room watches, never answered
+        self.settling: dict[str, asyncio.TimerHandle] = {}   # message id -> an assistant's message waiting to settle
         self.state = state
         self.daemon = daemon                      # the slash commands' methods (daemon.Yerkd), or None: off
         self.capture = capture                    # the day's log (memory.DailyLog.capture), or None
@@ -203,7 +210,7 @@ class DiscordChannel:
             return None                           # watched: a system line (a thread's name) is not the owner's words
         if getattr(m, "webhook_id", None):
             return "test-webhook" if m.webhook_id in self.test_senders else None
-        if self.client.user is not None and m.author.id == self.client.user.id:
+        if self.client.user is not None and m.author.id == self.client.user.id or m.author.id in self.assistants:
             return None
         if self.owner is not None and m.author.id == self.owner:
             return "owner"
@@ -232,8 +239,11 @@ class DiscordChannel:
 
     def file(self, room: str, m: Any, edited: bool = False) -> None:
         """Every message in a room's own channel into the day's log as it lands (L55), whoever sent it, taken or not;
-        in a watched one, the owner's only. Yerk AI's own posts are filed where they are sent; cards never."""
-        role = self.sender_of(m)              # watched: blind to the other side, so recall never shows its answers
+        in a watched one, the owner's and its people's, and another assistant's once settled. Yerk AI's own posts are filed
+        where they are sent; cards never."""
+        if m.author.id in self.assistants and m.channel.id != self.names[room]:
+            return self._assistant(room, m)
+        role = self.sender_of(m)              # watched: blind to anyone else there, so recall never shows their words
         if self.capture is None or m.author.id == self._me() or (role is None and m.channel.id != self.names[room]):
             return
         role = role or ("webhook" if getattr(m, "webhook_id", None) else "other")
@@ -242,6 +252,22 @@ class DiscordChannel:
                  for a in getattr(m, "attachments", []) or []]
         who = str(getattr(getattr(m, "author", None), "name", "") or "")      # the handle, beside the role
         self._file(room, str(m.id), role, text, files, getattr(m, "created_at", None), edited, who)
+
+    def _assistant(self, room: str, m: Any, settled: bool = False) -> None:
+        """Another assistant's message where `room` watches, filed under ASSISTANT with its handle once it has gone SETTLE
+        seconds with no edit and no delete: an edit starts the wait again, a delete ends it (on_raw_message_delete), so a card
+        it edits and deletes is never filed. Filed once by its id, an edit after that is not; read from history, at once."""
+        mid, at = str(m.id), getattr(m, "edited_at", None) or getattr(m, "created_at", None)
+        if (old := self.settling.pop(mid, None)) is not None:
+            old.cancel()
+        left = SETTLE - (time.time() - at.timestamp()) if at is not None and hasattr(at, "timestamp") else 0.0
+        if not settled and left > 0 and self.loop is not None:
+            self.settling[mid] = self.loop.call_later(left, self._assistant, room, m, True)
+            return
+        text = "\n".join(x for x in (self.reply_line(room, m), str(getattr(m, "clean_content", None) or m.content or "")) if x)
+        files = [(a.filename, file_type(a.filename, getattr(a, "content_type", None)), int(a.size or 0))
+                 for a in getattr(m, "attachments", []) or []]
+        self._file(room, mid, ASSISTANT, text, files, getattr(m, "created_at", None), False, str(getattr(m.author, "name", "") or ""))
 
     def _file(self, room: str, mid: str, role: str, text: str, files: list[tuple[str, str, int]] | None = None,
               when: Any = None, edited: bool = False, who: str = "") -> None:
@@ -338,8 +364,11 @@ class DiscordChannel:
         room.submit(Inbound(mid, sender, f"[an earlier message was edited; it now reads:]\n{text}", files=files))
 
     async def on_raw_message_delete(self, p: Any) -> None:
-        """A message deleted while it still waits never runs; one already run keeps its answer."""
+        """A message deleted while it still waits never runs; one already run keeps its answer; another assistant's, still
+        settling, is never filed."""
         room, mid = self.rooms.get(int(p.channel_id)), str(p.message_id)
+        if (wait := self.settling.pop(mid, None)) is not None:
+            wait.cancel()
         row = self.ledger.inbound_get(mid) if room else None
         if room is None or row is None:
             return

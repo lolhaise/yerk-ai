@@ -31,8 +31,8 @@ from zoneinfo import ZoneInfo
 from . import (beat, context, deploy, doctor, evidence, gates, hooks, jobs, mcp_server, memory, mentions, pictures, status, taste,
                transcribe, voice_note, workers)
 from .accounts import Account, Cooldowns, from_dir, load_accounts, pick
-from .config import (EFFORTS, REPO, SHELLS, budgets, discord_id, flag, load_toml, models, override, people, pinned, private_dir,
-                     read_secret, room_id, room_settings, rooms, state_dir, table, trusted, write_private)
+from .config import (EFFORTS, REPO, SHELLS, assistants, budgets, discord_id, flag, load_toml, models, override, people, pinned,
+                     private_dir, read_secret, room_id, room_settings, rooms, state_dir, table, trusted, write_private)
 from .engine import RoomSpec, SessionTable
 from .ledger import Ledger
 from .lifted.classify import FailureTable
@@ -307,7 +307,8 @@ class Yerkd:
         One of those inside the room's own folders stops the start with one line."""
         conf, home = self.room_confs[name], Path.home().resolve()
         own = [context.layer_dir(self.private, conf), (self.state / "rooms" / name).resolve()]
-        theirs = [*self.memory.scope.roots, *(context.layer_dir(self.private, c) for m, c in self.room_confs.items() if m != name),
+        inbox = (self.state / "rooms" / name / "work" / "inbox").resolve()     # its own uploads, a memory root of its own
+        theirs = [*(r for r in self.memory.scope.roots if r != inbox), *(context.layer_dir(self.private, c) for m, c in self.room_confs.items() if m != name),
                   *(p for m, ps in self.read_dirs.items() if m != name for p in ps)]
         known = [self.private.resolve(), self.state.resolve(), *theirs, *((self.state / "rooms" / m).resolve() for m in self.room_confs if m != name),
                  *(a.config_dir.expanduser().resolve() / "projects" for a in self.accounts)]
@@ -490,12 +491,10 @@ class Yerkd:
         return r
 
     async def tool_seen(self, room: str, path: str, text: str, shows: str) -> dict[str, Any]:
-        """The `seen` tool: what an owner room read on a picture it was sent, filed beside it (pictures.file) for its recall; a
-        person's room files none, as its inbox is never indexed. Only a picture in the room's own inbox, the header by code."""
-        if room not in self.rooms or not self.owner(room):
-            return {"ok": False, "error": words.SEEN_OWNER_ONLY}
+        """The `seen` tool: what a room read on a picture it was sent, filed beside it (pictures.file) for its recall, in any
+        room (a person's: class room, memory.INBOXES). Only a picture in the calling room's own inbox, the header by code."""
         p, inbox = Path(path).expanduser().resolve(), (self.state / "rooms" / room / "work" / "inbox").resolve()
-        if p.parent.parent != inbox or not pictures.is_picture(p) or not p.is_file():
+        if room not in self.rooms or p.parent.parent != inbox or not pictures.is_picture(p) or not p.is_file():
             return {"ok": False, "error": words.SEEN_NOT_HERE.format(name=p.name)}
         if not shows.strip():
             return {"ok": False, "error": words.SEEN_NO_SHOWS}
@@ -1240,7 +1239,8 @@ class Yerkd:
                         else f"a {type(d['owner']).__name__}, not a Discord user id")
         dc = DiscordChannel(token, owner, [int(x) for x in d.get("test_senders", [])], self.ledger,
                             guard=guard, state=self.state, capture=self.daily.capture,
-                            daemon=self if flag(d.get("commands"), True) else None, taste=self.taste_heard)   # the slash commands
+                            daemon=self if flag(d.get("commands"), True) else None, taste=self.taste_heard,   # the slash commands
+                            assistants=assistants(self.conf))
         for name, conf in self.room_confs.items():
             kind, _, cid = str(conf.get("channel", "")).partition(":")
             wk, _, wid = str(conf.get("watch", "")).partition(":")     # read as the room's own, never written to

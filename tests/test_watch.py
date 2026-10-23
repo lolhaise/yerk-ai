@@ -5,7 +5,7 @@ lines from the watched channel), the config refusal, and the `yerk map` and `yer
 import asyncio
 import shutil
 import threading
-from datetime import timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace as NS
 
@@ -13,7 +13,7 @@ import discord
 import pytest
 
 import yerk_ai.channels.discord as dmod
-from yerk_ai import cli, status, words
+from yerk_ai import cli, config, memory, status, words
 from yerk_ai.accounts import Account, Cooldowns
 from yerk_ai.channels.discord import DiscordChannel
 from yerk_ai.config import EXAMPLE_PRIVATE, rooms
@@ -194,6 +194,64 @@ def test_a_watched_channel_files_only_the_owners_lines_so_the_room_never_reads_t
     assert said == ["owner: squats felt heavy", "test-webhook: a test sender", "owner: the owner here",
                     "other: someone else here", "owner: (edited) squats felt heavier",
                     "other: (edited) someone else here, edited"]
+
+
+def test_another_assistant_where_a_room_watches_is_filed_as_its_own_once_settled_and_never_answered(tmp_path, monkeypatch):
+    """person-room-parity: `[watch] assistants` in yerkd.toml names the other assistant (its bot's user id); its message in the
+    watched channel goes in the day log under its own role and handle once it has sat with no edit or delete, so the room can
+    read what was already said there; a card it edits and then deletes never does; none is ever run. Its id in the room's
+    own channel, and any other bot in the watched one, stay as they were."""
+    monkeypatch.setattr(dmod, "SETTLE", 0.05)
+    other, ben = 4321, 5555                                # example ids
+    log = DailyLog(tmp_path / "daily", timezone.utc, {ROOM: ("room-id", "room")})
+    own, watched = Spy(OWN), Spy(WATCHED)
+    room = Room(tmp_path)
+    room.name = ROOM
+    dc = DiscordChannel("token", OWNER, [HOOK], Ledger(tmp_path / "l.sqlite"), client=Bot(own, watched), state=tmp_path,
+                        capture=log.capture, assistants=frozenset({ben}))
+    dc.add_room(OWN, room, watch=WATCHED)
+
+    async def run():
+        dc.loop = asyncio.get_running_loop()
+        reply, card = (Msg(watched, mid, text, author=ben, name="Ben") for mid, text in ((901, "Three blocks, ending on the angle."),
+                                                                                       (902, "Reading the page")))
+        reply.created_at = card.created_at = datetime.now(timezone.utc)
+        await dc.on_message(Msg(watched, 900, "explain this very briefly"))
+        await dc.on_message(reply)
+        await dc.on_message(card)
+        card.content, card.edited_at = "Reading the page, then the figures", datetime.now(timezone.utc)
+        await dc.on_raw_message_edit(NS(channel_id=WATCHED, message=card))       # it streams by editing, then deletes
+        await dc.on_raw_message_delete(NS(channel_id=WATCHED, message_id=902))
+        await dc.on_message(Msg(watched, 903, "a bot's take", author=other))
+        await dc.on_message(Msg(own, 904, "here too", author=ben, name="Ben"))
+        assert "Three blocks" not in "".join(p.read_text() for p in (tmp_path / "daily").glob("*.md"))   # not yet settled
+        await asyncio.sleep(0.3)
+    asyncio.run(run())
+    text = "".join(p.read_text() for p in (tmp_path / "daily").glob("*.md"))
+    said = [x.split(" ", 3)[3].rsplit(" [c:", 1)[0] for x in text.splitlines() if x.startswith("- ")]
+    assert said == ["owner: explain this very briefly", "other@Ben: here too", "assistant@Ben: Three blocks, ending on the angle."]
+    assert "Reading the page" not in text and "a bot's take" not in text and dc.settling == {}
+    assert [g.text for g in room.got] == ["explain this very briefly"]                    # the assistant's: never run
+    assert dc.sender_of(Msg(watched, 905, "x", author=ben)) is None
+    raw = next(x for x in text.splitlines() if " assistant@Ben: " in x)
+    assert memory.marked(raw).split(" assistant@Ben: ", 1)[1].startswith(f"{memory.MARKS[memory.ASSISTANT]} Three blocks")
+
+
+def test_an_assistants_lines_never_fill_the_recall_pack_and_the_setting_takes_ids_only(tmp_path):
+    (priv := tmp_path / "private").mkdir()
+    (priv / "yerkd.toml").write_text('[memory]\nroot = "memory"\n')
+    s = memory.settings(priv, tmp_path / "state")
+    at = datetime(2026, 1, 5, 9, 0, tzinfo=timezone.utc)
+    s.daily.mkdir(parents=True)
+    (s.daily / "2026-01-05.md").write_text("# 2026-01-05\n\n" + "\n".join(
+        memory.format_line(at, ROOM, ROOM, role, who, body, "private", mid) for role, who, body, mid in (
+            ("owner", "", "explain this very briefly", "1"), (memory.ASSISTANT, "Ben", "We decided: go with option 3.", "2"))) + "\n")
+    items = memory.room_items(s, ROOM, now=at)
+    assert [i["role"] for i in items] == ["owner"]                                        # a decision of its: still not the owner's
+    assert config.assistants({}) == frozenset() and config.assistants({"watch": {"assistants": ["5555", 6666]}}) == {5555, 6666}
+    for bad in ("5555", ["Ben"], [5.5]):
+        with pytest.raises(SystemExit, match=r"\[watch\] assistants must be a list of Discord user ids"):
+            config.assistants({"watch": {"assistants": bad}})
 
 
 def test_a_thread_started_in_the_watched_channel_never_brings_the_other_sides_words(tmp_path):

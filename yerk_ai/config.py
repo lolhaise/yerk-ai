@@ -165,6 +165,16 @@ def people(name: str, conf: dict[str, Any]) -> frozenset[int]:
     return frozenset(i for i in ids if i)
 
 
+def assistants(conf: dict[str, Any]) -> frozenset[int]:
+    """Other assistants' Discord user ids (`[watch] assistants` in yerkd.toml): in a channel a room watches, their messages
+    are filed as theirs and never answered; unset, none. Anything but a list of ids stops the start with one line."""
+    raw = dict(conf.get("watch") or {}).get("assistants", [])
+    ids = [discord_id(x) for x in raw] if isinstance(raw, list) else [None]
+    if None in ids:
+        raise SystemExit(f'yerkd.toml: [watch] assistants must be a list of Discord user ids, like assistants = ["<user id>"], not {raw!r}')
+    return frozenset(i for i in ids if i is not None)
+
+
 def room_id(name: str, conf: dict[str, Any]) -> str:
     """A room's stable id in the day log: `id` in rooms.toml, else its channel (a Discord channel id
     survives a rename), else its name. The name stays on every line as a label."""
