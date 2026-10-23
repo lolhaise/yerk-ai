@@ -90,7 +90,7 @@ def test_the_part_fits_its_budget_in_claude_codes_characters_by_cutting_each_rep
 
 def test_the_per_message_cap_rose_by_the_taste_part():
     pm = budgets()["per_message"]
-    assert pm["on_hit"]["taste"] == 1500 and pm["cap"] == 5500
+    assert pm["on_hit"]["taste"] == 1500 and pm["cap"] == 5500 + pm["parts"]["place"]      # and by the place part (location.py)
     assert sum(pm["parts"].values()) + sum(pm["on_hit"].values()) == pm["cap"]
 
 

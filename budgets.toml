@@ -5,7 +5,7 @@
 # when a part or a total passes its number here.
 
 [session_start]
-total = 95514
+total = 95714
 
 # Load order, most stable first, so the cached start of the prompt survives.
 # The first five parts are Claude Code's own (its default prompt, the built-in tools
@@ -61,8 +61,11 @@ skills = 0
 # the file at 12,923, so `rules` to 16,000 and the total up by the same 3,500 to 95,514 until rules-on-demand moves the
 # topic rules out of the always-on file; the curate swap
 # (propose the least-evidenced rule for the overflow when one is held) follows in its own PR.
+# 2026-10-23: the place line (an owner room's `[place]` line used unasked where it bears: a gym, work hours and the commute,
+# short replies on the move; a line used only when asked went unused) took the mechanics to 4,265, so
+# 4,300; no part was measured again to pay for it, so the total rose by the 200.
 [session_start.appended]
-mechanics = 4100
+mechanics = 4300
 persona = 11800
 rulebook = 14000
 room_voice = 5500
@@ -74,11 +77,17 @@ recall_pack = 6000
 typical = 1500
 # 2026-10-21: 4,000 to 5,500, the taste part's 1,500 below (the owner's files carried over as they
 # are, the cap raised where they need it).
-cap = 5500
+# 2026-10-23: 5,500 to 5,650, the place part's 150 below.
+cap = 5650
 
 [per_message.parts]
 clock = 200
 metadata = 300
+# 2026-10-23: an owner room's `[place]` line, where the owner's phone last was (location.py, yerkd.toml [location]): one
+# short line, "[place] near <a label of the places table>, 7 min ago, stationary", none when the newest fix is past
+# `stale_after` or at no named place, and never in a person's room or on a person's message. The owner's longest label
+# makes it 90; 150 leaves a longer label room (a place line used only when asked went unused).
+place = 150
 
 [hook]
 # Claude Code moves a hook output longer than this into a file.
@@ -290,4 +299,10 @@ drops = [
 # fit for every part, the compaction's re-add with it), hooks.py 2 (the topic hit's absence lines whole while they fit),
 # daemon.py 0, taste.py 0 (its last resort drops a whole reply), less words.py 6 (the cut notice's heads), not folded to fit.
 # 19,462 merged on taste-eval (#106), no line shared.
-lines = 19484
+# 2026-10-23: location raised it by 184: where the owner is, from the phone's fixes in yerkd.toml [location] (a line used only when asked went unused): location.py (140: the settings, the tail read, the place named by the
+
+# places table's nearest radius as the watcher names it, the `place` part, the day's stays and their one day-log line
+# replaced where it stands), cli.py (32: `yerk location day` and `yerk map` showing the part), daemon.py (6: the table read
+# at start, place_for, its import), words.py (3), context.py (2: the part and its head), hooks.py (1), not folded to fit.
+# 19,668 merged on taste-eval (#106) and recall-pack-fit (#107); cli.py's two command lines shared with #106, both kept.
+lines = 19668
