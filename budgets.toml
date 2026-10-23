@@ -205,9 +205,11 @@ drops = [
 # 2026-10-21: web raised it by 9, the ledger's spend table, its read and the morning line, so the morning diff carries the
 # day's spend (decision 32); the web plug-in itself (plugins/web, JavaScript) is outside this count, as every plug-in is.
 # 0 of the 9 merged on transcribe (#77), which brought the same table, read and line; 18,292 merged on said-or-noted (#94).
+# 2026-10-23: deploy-private raised it by 28, `yerk deploy` with no --private taking the private and state folders from the
+# running yerkd's unit, and refusing when there are none (deploy 26, cli 1, words 1), not folded to fit.
 # 2026-10-23: pictures-seen raised it by 224: a picture sent to an owner room is filed beside it and recalled (the owner asked for their pictures to be indexed), not folded to fit: pictures.py (74: the sidecar, its header by code,
 
 # the pending list, the backfill brief), daemon.py (79: the seen tool, the backfill a batch at a time, one chain a room,
 # its machine-room line), cli.py (25: `yerk pictures backfill`), memory.py (12: the mark), room.py (10: the Stop rule), mcp_server.py (9),
 # case.before (00), the.next (0: `run`, `starts`), the.example (0).
-lines = 18516
+lines = 18544

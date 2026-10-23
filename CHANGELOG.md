@@ -28,6 +28,16 @@ with the originals kept under `backups/`; the index chunks every file again when
   `seen` tool from its next process start. Then, with yerkd running, once per owner room: `yerk pictures backfill ROOM
   --dry-run` to see what it would read, and the same without `--dry-run` to start it.
 
+### deploy-private
+
+- `yerk deploy` with no `--private` and no `YERK_PRIVATE` no longer runs its fast tests on the fake example layer: it
+  takes the private and state folders from the running yerkd's own command line (`--private` and `--state` in its
+  unit's ExecStart), so the budget test and the live index test read the layer the daemon serves, and the card's
+  second line says `private layer: the daemon's`. With no unit found, or no `--private` on its command line, it refuses
+  in one line, `no private layer: pass --private`, before anything is touched. A `--private` given always wins.
+- **Upgrading:** budgets.toml [code] lines goes to 18320. A unit installed from `units/yerkd.service` sets its layer in
+  `Environment=`, not on its command line: pass `--private` to `yerk deploy` there.
+
 ### web (#76)
 
 - Web reach is Yerk's own: `plugins/web` (`yerk-web`), one MCP server in the repo and outside the harness, serves the
