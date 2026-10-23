@@ -38,7 +38,9 @@ _lock = threading.Lock()
 
 
 def reset_at(text: str, now: float) -> float | None:
-    """'Oct 23, 5:10pm (America/Toronto)', or '5:10pm' alone, as epoch seconds: that time next from `now`."""
+    """'Oct 23, 5:10pm (America/Toronto)', or '5:10pm' alone, as epoch seconds: that time next from `now`. Every reset
+    seen sits on a 10-minute mark, and Claude Code drops the seconds, so one a moment before its mark prints a minute
+    early ('2:59am' at 13:45 read '3am'): a minute ending in 9 is read as the next."""
     m = WHEN.match(text.strip())
     if not m:
         return None
@@ -60,7 +62,7 @@ def reset_at(text: str, now: float) -> float | None:
             t += timedelta(days=1) if t.timestamp() < now - 60 else timedelta(0)
     except ValueError:
         return None
-    return t.timestamp()
+    return t.timestamp() + (60 if int(minute or 0) % 10 == 9 else 0)
 
 
 def parse(text: str, now: float) -> dict[str, Any]:

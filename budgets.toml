@@ -248,9 +248,9 @@ drops = [
 # by 2: config.py (an id in `[watch] assistants` that is the owner's or one a room's `people` lists stops the start, since
 # that person would never be answered again).
 # 18,767 merged on message-envelope (#96), no line shared.
-# 2026-10-23: status-card raised it by 250: `yerk status` and the room's /status in the box card's shape, live (the owner's ask and the reset after the next one), not folded to fit. usage.py 123 (Claude Code's own
+# 2026-10-23: status-card raised it by 252: `yerk status` and the room's /status in the box card's shape, live (the owner's ask and the reset after the next one), not folded to fit. usage.py 125 (Claude Code's own
 # `/usage` on each folder's login, never on a missing folder, parsed, kept a minute, three at a time), status.py 85 (two
 # lines an account, the soonest week marked, the next two resets of each window, the next bill, the account the next turn
 # tries, rooms on one account in one line), words.py 35 (the tags, the short times, the words), accounts.py 3 (`bill_day`),
 # cli.py, daemon.py and discord.py 4 (the card asks live).
-lines = 19017
+lines = 19019

@@ -218,7 +218,7 @@ def said(epoch):
 
 
 def test_claude_codes_own_usage_on_the_folders_login_is_read_never_the_token(tmp_path, monkeypatch):
-    soon, week = (time.time() // 60) * 60 + 3 * H, (time.time() // 3600) * 3600 + 80 * H
+    soon, week = (time.time() // 600) * 600 + 3 * H, (time.time() // 3600) * 3600 + 80 * H      # resets sit on 10-minute marks
     (tmp_path / "usage").mkdir()
     (tmp_path / "usage" / "cfg-a.txt").write_text(
         "You are currently using your subscription to power your Claude Code usage\n\n"
@@ -259,6 +259,7 @@ def test_a_reset_is_read_in_its_zone_and_rolls_into_the_next_year_and_a_bill_day
     assert usage.reset_at("Jan 2, 3am (America/Toronto)", eve) == datetime(2027, 1, 2, 3, tzinfo=ZoneInfo("America/Toronto")).timestamp()
     assert usage.reset_at("5:10pm (America/Toronto)", eve) == datetime(2026, 12, 30, 17, 10, tzinfo=ZoneInfo("America/Toronto")).timestamp()
     assert usage.reset_at("11am (America/Toronto)", eve) == datetime(2026, 12, 31, 11, tzinfo=ZoneInfo("America/Toronto")).timestamp()
+    assert usage.reset_at("11:59pm (America/Toronto)", eve) == datetime(2026, 12, 31, tzinfo=ZoneInfo("America/Toronto")).timestamp()
     assert usage.reset_at("soon", eve) is None and usage.parse("Total cost: $0.0000\n", eve) == {}
     day = lambda *t: datetime(*t).timestamp()                                  # noqa: E731
     assert status.next_bill(8, day(2026, 11, 8, 15)) == day(2026, 11, 8)        # the day itself: today
