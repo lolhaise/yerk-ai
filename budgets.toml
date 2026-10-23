@@ -5,7 +5,7 @@
 # when a part or a total passes its number here.
 
 [session_start]
-total = 88914
+total = 91414
 
 # Load order, most stable first, so the cached start of the prompt survives.
 # The first five parts are Claude Code's own (its default prompt, the built-in tools
@@ -46,13 +46,17 @@ skills = 0
 # 2026-10-23: the X-links line (an x.com or twitter.com post is read through fxtwitter's API first, never the x.com page:
 # that morning web_fetch of a post climbed to the paid L3n rung for 33.6 s and got its login page, where fxtwitter answered
 # at F1 in 0.3 s) took the mechanics to 3,930, so 4,000; no part was measured again to pay for it, so the total rose by 200.
+# 2026-10-23: two rules held in rules-overflow.md (answer what's tomorrow, say what is pending) with the shared rules file
+# at 12,923 against 12,500 and `yerk curate --rules` proposing nothing it could cut there, so a lesson learned from two
+# misses in one morning loaded in no room. `rules` to 15,000 and the total up by the same 2,500; the curate swap
+# (propose the least-evidenced rule for the overflow when one is held) follows in its own PR.
 [session_start.appended]
 mechanics = 4000
 persona = 11800
 rulebook = 14000
 room_voice = 5500
 pinned_memory = 4000
-rules = 12500
+rules = 15000
 recall_pack = 6000
 
 [per_message]
