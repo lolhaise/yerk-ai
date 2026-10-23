@@ -468,7 +468,7 @@ def remember(s: Settings, log: DailyLog, room: str, mid: str, text: str, about: 
                 write_private(path, "\n".join(have := have + [f"- {note} ({src}) [m:{mid}]"]) + "\n")
                 n = len(have)
     else:
-        line = f'{who}: "{note}" (from {source})' if who else f"{about}: {note}" if about and not note.lower().startswith(about.lower()) else note
+        line = f'{who}: "{body}" (from {source}){note[len(body):]}' if who else f"{about}: {note}" if about and not note.lower().startswith(about.lower()) else note
         key = f"{mid}.n{hashlib.sha1((line if who else note).encode()).hexdigest()[:8]}"     # one line per note, a retry once
         log.capture(room, key, SAID if who else NOTE, line, when=at)
         path = s.daily / f"{at:%Y-%m-%d}.md"

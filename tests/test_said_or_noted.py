@@ -132,7 +132,7 @@ def test_the_morning_diff_counts_each_refusal(tmp_path):
 
 def test_a_note_is_never_shown_as_their_words_and_a_said_line_is(tmp_path):
     y = daemon(tmp_path)
-    assert remember(y, "example-room", "Dana set the day 60 rule.")["ok"]           # a note about a person, no `said`
+    assert (first := remember(y, "example-room", "Dana set the day 60 rule."))["ok"]  # a note about a person, no `said`
     r = asyncio.run(y.tool_remember("example-room", "we would not decide that without review", "", [], "Dana", "message m-9"))
     day = y.memory.daily / f"{datetime.now(timezone.utc).astimezone(y.memory.tz):%Y-%m-%d}.md"
     raw = day.read_text().splitlines()
@@ -147,6 +147,9 @@ def test_a_note_is_never_shown_as_their_words_and_a_said_line_is(tmp_path):
     assert asyncio.run(y.tool_remember("example-room", "we would not", "", [], "Dana", " "))["ok"] is False   # said needs source
     again = asyncio.run(y.tool_remember("example-room", "send it Friday", "", ["tree/daily/none.md:1 | old words"], "Riley", "m-7"))
     assert again["ok"] and ' said: Riley: "send it Friday" (from m-7) [c:' in day.read_text()   # a correction's words never rename them
+    fixed = asyncio.run(y.tool_remember("example-room", "no day 60 rule", "", [f"{first['cite']} | day 60 rule"], "Dana", "m-9"))
+    assert fixed["superseded"] == [first["cite"]]                                  # their words correct the note: the mark goes after the source
+    assert f' said: Dana: "no day 60 rule" (from m-9) (supersedes {first["cite"]}) [c:' in day.read_text()
     fact = y.memory.root / "facts" / "example-kettle.md"
     assert remember(y, "example-room", "Example kettle: Dana says it is teal.", "example kettle")["ok"] and fact.is_file()
     assert "- [the room's note, not their words] Example kettle: Dana says it is teal. (example-room" in memory.read(
