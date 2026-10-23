@@ -113,7 +113,7 @@ def test_the_overflow_moves_to_the_topic_rules_once_with_its_backup_and_one_log_
 
 
 def test_a_rooms_mark_typed_on_a_held_rule_is_kept_through_the_move(tmp_path):
-    """Second entry waits in the queue for its turn and the last (part closes: "the case before the", next-run-starts the): example
+    """The owner's word on a held rule whose words are every room's (cold read: a work room's rule kept out of a family room): a
     [rooms: ...] mark typed on its line in rules-overflow.md before yerkd's first start is the scope the move gives it, put before
     its trailer, where `scoped` would make it every room's; a line with no mark still gets `scoped`'s."""
     y = daemon(tmp_path)
