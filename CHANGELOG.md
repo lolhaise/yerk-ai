@@ -8,7 +8,7 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-23
 
-### location (#PR)
+### location (#109)
 
 - An owner room's messages carry where the owner's phone last was, one short line after the metadata line:
   `[place] near the office (Example City), 7 min ago, stationary`. It comes from yerkd.toml `[location]`: `file`, the
