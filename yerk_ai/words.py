@@ -227,6 +227,9 @@ WATCH_ASK = ("[watcher {name} saw {n} new line{s}. {what}Answer in your own voic
 # notes: a reminder, told to its room's own session when it is due
 NOTE_DUE = ("[reminder {name} due] {message}\n[set here for {at}: do what it says now and tell the room in your own "
             "voice, under {cap:,} characters]")
+# where the owner is (location.py): an owner room's per-message line, and the day's places as one day-log line
+PLACE = "[place] near {place}, {ago}, {state}"
+PLACES_DAY = "the owner's places from the phone, first and last fix at each: {stays}"
 
 
 # time, said the way a person says it

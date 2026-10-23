@@ -1,7 +1,7 @@
 """Claude Code hooks: every event a command hook (curl posting its JSON to the daemon, see settings_for).
 
-UserPromptSubmit adds the per-message parts: the clock line, the metadata line, the rules changed since the session
-last looked (context.news, capped at `rules`) and the recall part (render_recall: what is not on file, the owner's people
+UserPromptSubmit adds the per-message parts: the clock line, the metadata line, in an owner room where the owner's phone
+last was (location.py, capped at `place`; never on a person's message), the rules changed since the session last looked (context.news, capped at `rules`) and the recall part (render_recall: what is not on file, the owner's people
 and things the message names with their best lines, the best hits of a question about the owner's past, then this room's lines of
 the last 14 days on its topic, capped at `recall`), then in an owner room whose layer keeps taste.jsonl the owner's rated
 replies (taste.py, capped at `taste`); every assembly goes to the room's assembled.jsonl.
@@ -78,7 +78,7 @@ def record(state: Path, room: str, event: str, session_id: str, parts: dict[str,
 def user_prompt_submit(payload: dict[str, Any], state: Path, rooms: dict[str, dict[str, Any]], meta: Meta,
                        budgets: dict[str, Any], now: datetime | None = None,
                        recall: Recall | None = None, room: str | None = None, news: Callable[[str, str], str] | None = None,
-                       taste: Callable[[str], str] | None = None) -> dict[str, Any]:
+                       taste: Callable[[str], str] | None = None, place: Callable[[str, datetime], str] | None = None) -> dict[str, Any]:
     sid = str(payload.get("session_id", ""))
     room = room or SessionTable(state / "sessions.json").by_session(sid)
     if room is None or room not in rooms:
@@ -88,7 +88,8 @@ def user_prompt_submit(payload: dict[str, Any], state: Path, rooms: dict[str, di
     sender, prev = meta(room, prompt)
     now = now or datetime.now(timezone.utc)
     last = datetime.fromtimestamp(prev, timezone.utc) if prev else None
-    parts = context.per_message(room, rooms[room], sender, now, last, budgets)
+    parts = context.per_message(room, rooms[room], sender, now, last, budgets,      # (room, now) -> the place line, or ""
+                                place(room, now) if place and sender != "person" else "")    # never on a person's message
     if news and (told := news(room, sid)):                     # (room, session) -> the rules block, or ""
         parts.append(context.Part("rules", told, int(budgets["per_message"]["on_hit"]["rules"]), context.chars(told)))
     names: list[dict[str, Any]] = []

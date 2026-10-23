@@ -21,7 +21,11 @@ def cmd_map(a: argparse.Namespace) -> int:
     b = budgets()
     start = context.session_start(priv, rs[a.room], b, rules=memory.settings(priv, state_dir(a.state)).root / memory.RULES)
     now = datetime.now(timezone.utc)
-    msg = context.per_message(a.room, rs[a.room], "owner", now, now - timedelta(minutes=27), b)
+    from . import location
+    from .config import load_toml
+    conf = load_toml(priv / "yerkd.toml") if (priv / "yerkd.toml").is_file() else {}
+    msg = context.per_message(a.room, rs[a.room], "owner", now, now - timedelta(minutes=27), b,
+                              location.part(location.settings(conf.get("location"), priv), rs[a.room], now))
     hit = []
     if str(rs[a.room].get("privacy", "owner")) == "owner":         # the taste part: an owner room's, from its layer's file
         cap, path = int(b["per_message"]["on_hit"]["taste"]), taste.kept(priv, rs[a.room])
@@ -359,6 +363,28 @@ def cmd_retention(a: argparse.Namespace) -> int:
     return retention.main(private_dir(a.private), state_dir(a.state), a.dry_run)
 
 
+def cmd_location(a: argparse.Namespace) -> int:
+    """`yerk location day [DATE]`: the day's places as one line in its day log (location.py), an earlier run's line replaced;
+    prints the line, or why there is none; exit 1 with no [location] table or no readable fixes file."""
+    from datetime import date
+    from . import location
+    from .config import load_toml
+    priv, state = private_dir(a.private), state_dir(a.state)
+    conf = load_toml(priv / "yerkd.toml") if (priv / "yerkd.toml").is_file() else {}
+    if (loc := location.settings(conf.get("location"), priv)) is None:
+        print("not written: yerkd.toml has no [location] table with a file", file=sys.stderr)
+        return 1
+    s = memory.settings(priv, state, dict(conf.get("memory", {})))
+    on = date.fromisoformat(a.date) if a.date else datetime.now(s.tz).date()
+    try:
+        line = location.day(loc, s.daily, s.tz, on, a.dry_run)
+    except OSError as e:
+        print(f"not written: {loc.file.name} could not be read: {e.strerror}", file=sys.stderr)
+        return 1
+    print(line or f"nothing written: no fix at a named place on {on}")
+    return 0
+
+
 def cmd_doctor(a: argparse.Namespace) -> int:
     """The daily check and the crash repair (doctor.py): a line per finding, none when all is well; --dry-run changes nothing."""
     from . import doctor
@@ -670,6 +696,11 @@ def main(argv: list[str] | None = None) -> int:
     ab = sub.add_parser("abilities", help="every ability and its state on this install, one line each")
     ex = sub.add_parser("explain", help="one ability (what it does, needs and costs, its free path, its state here) or one setting")
     ex.add_argument("ability")
+    lc = sub.add_parser("location", help="day: the day's places (yerkd.toml [location]) as one line in its day log, place by "
+                        "place with the first and last fix at each, an earlier run's line replaced; the nightly script job")
+    lc.add_argument("action", choices=["day"])
+    lc.add_argument("date", nargs="?", default="", help="the day, YYYY-MM-DD (default: today in [memory] timezone)")
+    lc.add_argument("--dry-run", action="store_true", help="print the line, write nothing")
     rt = sub.add_parser("retention", help="the daily sweep: logs, transcripts, timing rows, finished workers and rooms' scratch "
                         "past their days ([retention] in yerkd.toml) into the trash, and the trash past its days deleted")
     rt.add_argument("--dry-run", action="store_true", help="say what would move and how much, move nothing")
@@ -707,7 +738,7 @@ def main(argv: list[str] | None = None) -> int:
     dp.add_argument("ref", nargs="?", help="the commit (default: the daemon's tree's HEAD)")
     dp.add_argument("--no-tests", action="store_true", help="skip the fast tests (the card says so)")
     dp.add_argument("--unit", action="store_true", help="also move a systemd-run daemon onto units/yerkd.service")
-    for x in (ac, st, mo, rb, ab, ex, jb, sc, rt, dc, dk, cu, mm, dp, pc):
+    for x in (ac, st, mo, rb, ab, ex, jb, sc, lc, rt, dc, dk, cu, mm, dp, pc):
         x.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else "
                        + ("the running yerkd's own, from its unit)" if x is dp else "the fake example layer)"))
         x.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
@@ -715,7 +746,8 @@ def main(argv: list[str] | None = None) -> int:
     return int({"map": cmd_map, "setup-room": cmd_setup_room, "room": cmd_room, "import": cmd_room, "worker": cmd_worker, "pictures": cmd_pictures,
                 "jobs": cmd_jobs, "schedule": cmd_schedule, "accounts": cmd_accounts, "status": cmd_status, "morning": cmd_morning,
                 "recall-bench": cmd_recall_bench, "abilities": cmd_abilities, "explain": cmd_explain, "config": cmd_config,
-                "memory": cmd_memory, "deploy": cmd_deploy, "retention": cmd_retention, "doctor": cmd_doctor, "docs": cmd_docs,
+                "memory": cmd_memory, "deploy": cmd_deploy, "retention": cmd_retention, "location": cmd_location, "doctor": cmd_doctor,
+                "docs": cmd_docs,
                 "curate": cmd_curate}[a.cmd](a))
 
 

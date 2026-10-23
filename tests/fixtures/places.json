@@ -1,0 +1,25 @@
+{
+ "_readme": "the watcher's table, with made-up places",
+ "version": 1,
+ "places": [
+  {
+   "key": "home",
+   "label": "home (Example Town)",
+   "lat": 43.8,
+   "lon": -40.3,
+   "radius_m": 120
+  },
+  {
+   "key": "office",
+   "label": "the office (Example City)",
+   "lat": 43.7,
+   "lon": -40.6,
+   "radius_m": 250
+  },
+  {
+   "key": "cabin",
+   "label": "the cabin",
+   "todo": true
+  }
+ ]
+}

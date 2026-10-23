@@ -8,6 +8,25 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-23
 
+### location (#PR)
+
+- An owner room's messages carry where the owner's phone last was, one short line after the metadata line:
+  `[place] near the office (Example City), 7 min ago, stationary`. It comes from yerkd.toml `[location]`: `file`, the
+  fixes a location watcher writes (one JSON fix a line), and `places`, its table of named places, the fix named by the
+  nearest place whose radius holds it; both only read, nothing sent anywhere. No line when the newest fix is older than
+  `stale_after` (3h unset) or at no named place, so no coordinate is ever said; none in a person's room or on a person's
+  message; no table, no line in any room.
+- The mechanics say when to use it unasked: at a gym, log the session there; at work, mind the hours and the commute;
+  moving, keep replies short.
+- `yerk location day [DATE]` writes the day's places into that day's log as one line the owner's rooms recall and no
+  person's room reads: each stay with its first and last fix, `08:40 to 12:00 the office (Example City); 17:40 to 23:40
+  home (Example Town)`. A re-run replaces its own line where it stands; `--dry-run` prints it. README has the nightly
+  script job for jobs.toml.
+- **Upgrading:** yerkd.toml, optional: `[location]` with `file`, `places` and `stale_after`. budgets.toml:
+  `[per_message.parts] place` (150) and `[per_message] cap` 5,650, `mechanics` 4,300 and the session total 95,714,
+  `[code] lines` (dated notes). jobs.toml, optional: the `location-day` script job in README. Each room has the new
+  mechanics line from its next process start.
+
 ### person-room-parity (#101)
 
 - A person's room can read what the other assistant already told them where it watches. List that assistant's Discord
