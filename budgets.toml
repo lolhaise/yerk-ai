@@ -273,6 +273,15 @@ drops = [
 # refusals, {room} in a server's args and env, the inheritance with allow_remove, a room's tables as written), doctor.py 18
 # (the drift line: a default tool missed, a copy of a default), move.py 1 (`yerk room add` copies a room as written).
 # 19,174 merged on status-card (#105), no line shared.
+# 2026-10-23: taste-eval raised it by 287: `yerk eval taste` from PR 93 (judge-2) without its shadow judge. The judge's
+# prompt, its `claude -p` runner and its verdict with a failed call's own reason (evidence.py, 92), the replay
+# (taste_eval.py, 161: the ledger join, the stratified sample, the scores per verdict beside phase 1's, the bar printed)
+# and the command (cli.py, 34). Left out, 59 of PR 93's 346: the call after every reply to the owner on the room's account
+# (daemon.py, 33), its recall pack, a read's first words and the shadow row (evidence.py, 24), the taste_judge room key
+# (example.note, 0) says the sample item moved to (the.next, 0), step and the test reads it back. As plain text with (one
+
+# outside `before` shows its own attachments to the judge, as phase 1's prompt does (evidence.py).
+# 19,462 merged on room-defaults (#111), no line shared.
 # 2026-10-23: recall-pack-fit raised it by 22: every session-start part under its key by construction (the owner's screenshot
 # showed one room's recall pack at 6,003 against its 6,000, its line counting the 749 left out 64 characters where 60
 # were kept for it and its items counted in code points, then 8 of the owner's lines cut from its middle and said). lifted/trim.py 17
@@ -280,5 +289,5 @@ drops = [
 # drops its oldest items whole with its head and that line measured; `chars` moved from context.py, 5), context.py 1 (one
 # fit for every part, the compaction's re-add with it), hooks.py 2 (the topic hit's absence lines whole while they fit),
 # daemon.py 0, taste.py 0 (its last resort drops a whole reply), less words.py 6 (the cut notice's heads), not folded to fit.
-# 00,000 one more line-for (#000), the check while.
-lines = 19196
+# 19,462 merged on taste-eval (#106), no line shared.
+lines = 19484
