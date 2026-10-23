@@ -273,4 +273,13 @@ drops = [
 # refusals, {room} in a server's args and env, the inheritance with allow_remove, a room's tables as written), doctor.py 18
 # (the drift line: a default tool missed, a copy of a default), move.py 1 (`yerk room add` copies a room as written).
 # 19,174 merged on status-card (#105), no line shared.
-lines = 19174
+# 2026-10-23: taste-eval raised it by 287: `yerk eval taste` from PR 93 (judge-2) without its shadow judge. The judge's
+# prompt, its `claude -p` runner and its verdict with a failed call's own reason (evidence.py, 92), the replay
+# (taste_eval.py, 161: the ledger join, the stratified sample, the scores per verdict beside phase 1's, the bar printed)
+# and the command (cli.py, 34). Left out, 59 of PR 93's 346: the call after every reply to the owner on the room's account
+# (daemon.py, 33), its recall pack, a read's first words and the shadow row (evidence.py, 24), the taste_judge room key
+# (example.note, 0) says the sample item moved to (the.next, 0), step and the test reads it back. As plain text with (one
+
+# outside `before` shows its own attachments to the judge, as phase 1's prompt does (evidence.py).
+# 19,462 merged on room-defaults (#111), no line shared.
+lines = 19462

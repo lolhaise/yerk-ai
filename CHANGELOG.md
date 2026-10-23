@@ -8,6 +8,23 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-23
 
+### taste-eval (#106)
+
+- PR 93 (judge-2) cut to its eval half; PR 93 is closed in favour of this one. `yerk eval taste [--cases P --controls P
+  --rubric P --ledger P --sample N --cap S]` replays the taste judge over the owner's complaints and the replies he
+  accepted, each with what its turn read, joined from the ledger read only and cut at the reply's time (a row the
+  ledger has no turn for is judged on the chat alone, never told that a claim no read carries was not checked). It
+  prints precision, recall, the false alarms per verdict (missed-the-ask, unchecked-claim, not-his-voice,
+  slow-or-no-answer) and the median judge seconds beside phase 1's, and the bar a gate would need (recall at least 5 of
+  7, false alarms under 1 in 10), never enforced: exit 0 whatever the numbers, 2 when the case file is missing. A call
+  that ends in an error (an account out of a model) is left out of the scores and counted, and a run where every call
+  failed says so instead of printing a recall of 0. The rubric is the private layer's `evals/taste/rubric.md`, else the
+  package's `taste-rubric.md`; the case file stays private and `tests/fixtures/taste-judge-*.jsonl` are example values.
+- Left out of PR 93: the judge call after every reply to the owner (a `claude -p` call on the room's account, in a
+  thread after the Stop hook), its `shadow` rows, the `taste_judge` room key and the morning diff's count of taste rows.
+  No reply is judged as it is posted, so no reply costs a second model call.
+- **Upgrading:** budgets.toml [code] lines goes to 19462. rooms.toml takes no new key.
+
 ### room-defaults (#111)
 
 - One tool set for every owner room, declared once: a `[defaults]` table in rooms.toml holds `allow` and `mcp.<name>`
