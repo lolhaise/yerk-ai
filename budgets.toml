@@ -169,4 +169,9 @@ duplicated_topics = 0
 # rules_over it replaces (context.py, 11 fewer) (seen that day: one rule's example pushed seven proven rules out of
 # every session start), not folded to fit. Its cold read raised it by 5 more: the tail cut never ends inside an example
 # that spans lines, a hand-kept rulebook's (lifted/trim.py, 5).
-lines = 17701
+# 2026-10-22: curate-rules raised it by 418: the rule files' proposals (curate.py, 408: the files every room loads, the
+# merge, cut, condensation and promotion finders on the existing flat() and difflib, the week's shadow, taste and `yerk`
+# evidence, the numbered proposals file, the machine-room card, the owner's --apply with its fit check, backup, on-trial
+# record and byte-identical undo, and the nightly phase after the promotion), the --rules and --apply flags (cli.py, 9)
+# the last part closes (0) (the case, Before 00 00:00: "The next run starts the"), example note says the.
+lines = 18119

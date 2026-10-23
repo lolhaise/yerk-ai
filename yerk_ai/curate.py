@@ -6,23 +6,29 @@ a cite whose quoted words left its line moves only when they sit on exactly one 
 never a guess. The promotion: a pack per card from each day's sources as the card's reader may read them; a worker that sees the
 pack alone proposes lines, a second knocks them down (curate.md), code checks shape, head, secrets and that each cite is a line
 of the pack, and the lines land, appended with a backup, only when the bench does not fall. A correction to a line on file is
-the morning diff. Each run is kept in <state>/curate.json."""
+the morning diff. Each run is kept in <state>/curate.json. Then the rule files (`--rules`): merges, cuts, condensations
+and promotions proposed, numbered, into <memory>/rules-proposals/<day>.md; a rule file changes only by the owner's
+`--apply DAY N[,N...]`, backed up first and fitted to its line in budgets.toml, its lines blanked rather than cut."""
 from __future__ import annotations
 
+import difflib
+import hashlib
 import json
 import os
 import re
 import sqlite3
+import stat
 import subprocess
 import time
 from contextlib import suppress
 from datetime import date, datetime, timedelta
+from itertools import combinations
 from pathlib import Path
 from typing import Any, Callable
 
-from . import doctor, memindex, memory, mentions, words
+from . import context, doctor, memindex, memory, mentions, shape, taste, words
 from .accounts import account_env, load_accounts
-from .config import load_toml, write_private
+from .config import budgets, load_toml, rooms, write_private
 from .engine import claude_bin
 
 LAST, RUN, PROMPTS = "curate.json", "curate-run.json", Path(__file__).with_name("curate.md")   # RUN: this run, its lines on trial
@@ -332,8 +338,10 @@ def undo(s: memory.Settings, state: Path, backup: Path) -> list[str]:
         ours = {x for k, x in rows if k == c}
         with memory.daily_lock(s.daily):
             doctor.rewrite(c, backup, lambda x: b"\n" if x.decode(errors="replace").rstrip("\n") in ours else None, False)
+    put = restore(d.get("files", []))                    # an apply cut off mid-write: each file it wrote, back from its copy
     (state / RUN).unlink()
-    return [f"nothing landed: the run of {words.clock(float(d.get('at', 0)))} never reached its bench, {len(rows)} lines blanked"] if rows else []
+    return ([f"nothing landed: the run of {words.clock(float(d.get('at', 0)))} never reached its bench, {len(rows)} lines blanked"] if rows
+            else []) + [f"nothing applied: the apply of {words.clock(float(d.get('at', 0)))} was cut off; {x}" for x in put]
 
 
 def promote(s: memory.Settings, private: Path, state: Path, conf: dict[str, Any], days: list[date], backup: Path, dry: bool,
@@ -413,6 +421,10 @@ def run(private: Path, state: Path, since: str = "", dry: bool = False, now: flo
     out = {"at": now, "days": [d.isoformat() for d in days], "changed": changed, "found": found,
            **promote(s, private, state, c, days, backup, dry, model, now)}
     out["checked"] = undone + out["checked"]
+    try:                                                 # then the rule files: proposed, never applied (PR curate-rules)
+        out["rules"] = rules(private, state, s, dry, now)["card"]
+    except (Exception, SystemExit) as e:                 # rooms.toml or budgets.toml unreadable: the morning says it
+        out["rules"], out["checked"] = [], out["checked"] + [f"rules: not proposed, {type(e).__name__}: {words.no_paths(str(e))[:80]}"]
     if not dry:
         write_private(state / LAST, json.dumps(out))
         (state / RUN).unlink(missing_ok=True)
@@ -430,6 +442,7 @@ def main(private: Path, state: Path, since: str = "", dry: bool = False) -> int:
     for k in ("changed", "found", "landed", "corrections", "checked", "dropped") + (("proposed",) if dry else ()):
         print("".join(f"{k}: {x}\n" for x in r[k]), end="")
     print("".join(f"bench: top {b['top_k']}, first {b['top_1']}, at {b['at']} in {b['seconds']} s\n" for b in r["bench"] or [] if b), end="")
+    print("".join(f"rules: {x}\n" for x in r.get("rules", [])), end="")
     return 1 if r["found"] or r["corrections"] or r["checked"] else 0
 
 
@@ -453,3 +466,398 @@ def line(state: Path, now: float) -> tuple[str, str]:
     if not read:
         return "", words.line(f"{words.PLAIN} " + words.CURATE_OK.format(n=len(d.get("landed", [])), m=len(d.get("changed", []))))
     return f"curate {read[0]}", words.line(f"{words.NOT_DONE} " + words.CURATE.format(n=len(read), first=read[0]))
+
+
+# The rule files (PR curate-rules; decisions 30 and 42): the line-per-rule parts every room loads, read whole, and merges,
+# cuts, condensations and promotions PROPOSED; only the owner's `--apply` writes one, and a line is blanked, never cut.
+PROPOSED, PROPOSALS, NEAR, LONG, CARD_MOST, WEEK = "curate-rules.json", "rules-proposals", 0.75, 600, 10, 7 * 86400
+TRAILER = re.compile(r" \(([^()]*\d{4}-\d{2}-\d{2} \d{2}:\d{2}[^()]*)\)( \[m:[^\]\s]+\])?$")   # a filing's room, time, message
+ASIDE = re.compile(r" ?\((?:[^()\"]{0,60}: )?\"[^\"]{8,}\"[^()]*\)")         # a quote in parentheses: an example, in its words
+DAYCITE, DATED = re.compile(r"\bdaily/(\d{4}-\d{2}-\d{2})\.md:(\d+)"), re.compile(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}")
+NO = re.compile(r"\b(?:never|not|no longer|instead of|rather than|stop|don'?t)\b", re.I)    # a newer line that says otherwise
+CLAUSE = re.compile(r"(?<=[.;])\s+")
+
+
+def rule_files(private: Path, s: memory.Settings) -> dict[Path, tuple[str, int]]:
+    """Each line-per-rule file a room loads, once (the rules file, each rulebook), its kind and its line in budgets.toml;
+    then OVERFLOW, in no room, with no line."""
+    caps, out = budgets()["session_start"]["appended"], dict[Path, tuple[str, int]]()
+    for room in rooms(private).values():
+        for k, p in shape.files(private, room, s.root / memory.RULES):
+            if k in context.TAIL:
+                out.setdefault(p.resolve(), (k, int(caps[k])))
+    if (o := s.root / memory.OVERFLOW).is_file():
+        out[o.resolve()] = ("overflow", 0)
+    return out
+
+
+def part(kind: str, path: Path, text: str) -> int:
+    """A rule file as a session start counts it (context.session_start): the rules file's live lines, any other whole."""
+    return context.chars(memory.rules_part(path, text) if kind == "rules" else context.cited(path, text.strip()))
+
+
+def split(x: str) -> tuple[str, str, str]:
+    """A rule line as its `job: ` ("" on a hand-kept bullet), its words, and its filing's trailer, kept whole."""
+    t, m = memory.topic(x), TRAILER.search(x)
+    said = (x[:m.start()] if m else x)[2:]
+    head = f"{t}: " if said.startswith(f"{t}: ") else ""
+    return head, said[len(head):], m[0] if m else ""
+
+
+def short(x: str) -> str:
+    """A rule's name on the card and in its evidence: its job, or a hand-kept bullet's first six words."""
+    return t if len(t := memory.topic(x)) <= 60 else " ".join(t.split()[:6])
+
+
+def bare(said: str) -> str:
+    return " ".join(memory.EXAMPLE.sub("", said).split())
+
+
+def near(a: str, b: str) -> bool:
+    """Near-duplicate words: the same in nearly the same order, curly quotes read straight."""
+    m = difflib.SequenceMatcher(None, flat(a).lower(), flat(b).lower(), autojunk=False)
+    return m.real_quick_ratio() >= NEAR and m.quick_ratio() >= NEAR and m.ratio() >= NEAR
+
+
+def ids(x: str) -> set[str]:
+    """The messages a line was filed from (a seeded line's `seed` is none)."""
+    return {i for m in re.findall(r"\[m:([^\]\s]+)\]", x) for i in m.split(",") if i.isdigit()}
+
+
+def trailer(*xs: str) -> str:
+    """The trailers of `xs` as one: every room and time, every message, each once."""
+    ms = [m for x in xs if (m := TRAILER.search(x))]
+    said = dict.fromkeys(p.strip() for m in ms for p in m[1].split(";"))
+    msgs = dict.fromkeys(i for m in ms if m[2] for i in m[2].strip()[3:-1].split(","))
+    return (f" ({'; '.join(said)})" if said else "") + (f" [m:{','.join(msgs)}]" if msgs else "")
+
+
+def merged(a: str, b: str) -> str:
+    """One line for two: a's words, then each clause of b's that a does not say yet, the fuller example of the two, and both
+    trailers; the rules' own words, never a paraphrase."""
+    (ha, sa, _), (hb, sb, _) = split(a), split(b)
+    have = [c for c in CLAUSE.split(bare(sa)) if c]
+    body = " ".join(have + [c for c in CLAUSE.split(bare(sb)) if c and not any(near(c, h) for h in have)])
+    ex = max((e.strip() for e in memory.EXAMPLE.findall(sa) + memory.EXAMPLE.findall(sb)), key=len, default="")
+    head = ha if hb.lower() in ("", ha.lower()) else f"{ha[:-2]} and {hb}" if ha else hb
+    return f"- {head}{body}{' ' + ex if ex else ''}{trailer(a, b)}"
+
+
+def condensed(x: str) -> str:
+    """A long line with its examples out, then its quotes in parentheses: only its own words, its trailer whole."""
+    head, said, trail = split(x)
+    return f"- {head}{' '.join(ASIDE.sub('', memory.EXAMPLE.sub('', said)).split())}{trail}"
+
+
+def lost(s: memory.Settings, x: str) -> str:
+    """The first day-log line `x` cites that is no longer there (past its file's end, blank, or its file gone), else ""."""
+    for d, n in DAYCITE.findall(x):
+        f = s.daily / f"{d}.md"
+        rows = f.read_text(errors="replace").splitlines() if f.is_file() else []
+        if int(n) > len(rows) or not rows[int(n) - 1].strip():
+            return f"daily/{d}.md:{n}"
+    return ""
+
+
+def when(x: str) -> str:
+    """The newest time in a line's trailer, "" when it has none."""
+    return max(DATED.findall(m[1]), default="") if (m := TRAILER.search(x)) else ""
+
+
+def edited(rows: dict[str, list[str]], edits: list[list[Any]], s: memory.Settings) -> None:
+    """`edits` ([file, line, its text now, the new text]; line 0 appends, a new text of None marks the line superseded by
+    the line appended before it) made on `rows`, each file read on first use; a line that no longer holds its text refuses."""
+    last = ""
+    for f, i, was, new in edits:
+        r = rows.setdefault(f, Path(f).read_text(errors="replace").split("\n"))
+        if not i:
+            r.insert(len(r) - (r[-1] == ""), new)
+            last = f"{memory.cite(s, Path(f))}:{len(r) - (r[-1] == '')}"
+        elif i > len(r) or r[i - 1] != was:
+            raise RuntimeError(f"{Path(f).name}:{i} changed since it was proposed")
+        else:
+            r[i - 1] = memory.mark(was, last) if new is None else new
+
+
+def week(private: Path, state: Path, s: memory.Settings, now: float) -> tuple[list[dict[str, Any]], list[tuple[str, int, dict[str, Any]]],
+                                                                             list[tuple[str, str]]]:
+    """The week's evidence: the ledger's shadow rows and each owner room's rated replies (taste.jsonl), newest first, and the
+    day logs' `yerk` lines (a rule's example taken out, a rule held), each with its cite."""
+    since, tastes, said = now - WEEK, list[tuple[str, int, dict[str, Any]]](), list[tuple[str, str]]()
+    try:
+        with sqlite3.connect(f"file:{state / 'ledger.sqlite'}?mode=ro", uri=True) as c:
+            c.row_factory = sqlite3.Row
+            shadows = [dict(r) for r in c.execute("SELECT id, t, room, turn, rule, detail FROM shadow WHERE t >= ? ORDER BY t DESC", (since,))]
+    except sqlite3.Error:
+        shadows = []
+    cut, kept_ = datetime.fromtimestamp(since, s.tz).strftime("%Y-%m-%dT%H:%M:%S"), [taste.kept(private, c) for c in rooms(private).values()]
+    for p in dict.fromkeys(p for p in kept_ if p is not None):
+        for i, x in reversed(list(enumerate(p.read_text(encoding="utf-8", errors="replace").splitlines(), 1))):
+            with suppress(ValueError):
+                if isinstance(t := json.loads(x), dict) and str(t.get("ts", "")) >= cut:
+                    tastes.append((shape.label(private, s, "taste", p), i, t))
+    for d in sorted({datetime.fromtimestamp(since + k * 86400, s.tz).date() for k in range(8)}, reverse=True):
+        if (f := s.daily / f"{d.isoformat()}.md").is_file():
+            said += [(f"{memory.cite(s, f)}:{i}" + (f" [m:{ln.mid}]" if ln.mid else ""), ln.body) for i, x in
+                     enumerate(f.read_text(errors="replace").splitlines(), 1) if (ln := memory.parse_line(x)) and ln.role == "yerk"]
+    return shadows, tastes, said
+
+
+def evidence(x: str, shadows: list[dict[str, Any]], tastes: list[tuple[str, int, dict[str, Any]]], said: list[tuple[str, str]]) -> tuple[int, str]:
+    """(rows, one line): the week's shadow bounces of a check this rule names, its rated replies that hold two of its job's
+    words, its `yerk` lines that quote its job, and the first three of them with their cites."""
+    low, job = flat(x).lower(), short(x)
+    keys = set(content(job))
+    hits = [f"shadow #{r['id']} {r['rule']}, {r['room']} turn {r['turn']}: {words.line(str(r['detail'] or ''), 50)}"
+            for r in shadows if re.search(rf"\b{re.escape(str(r['rule']))}s?\b", low)]
+    tasted = [f"{f}:{i} {t.get('verdict')} \"{words.line(str(t.get('signal') or ''), 40)}\" on {t.get('reply_id')}" for f, i, t in tastes
+              if keys and len(keys & set(mentions.tokens(f"{t.get('signal') or ''} {str(t.get('reply') or '')[:600]}"))) >= min(2, len(keys))]
+    yerk = [c for c, body in said if f'"{job.lower()}"' in body.lower()]
+    n = len(hits) + len(tasted) + len(yerk)
+    return n, f"{n} in 7 days (shadow {len(hits)}, taste {len(tasted)}, yerk {len(yerk)})" + "".join(f"; {h}" for h in (hits + tasted + yerk)[:3])
+
+
+def propose(private: Path, state: Path, s: memory.Settings, now: float) -> tuple[list[dict[str, Any]], list[list[Any]], dict[str, str]]:
+    """The proposals, numbered, the most characters saved first and then the most evidence (a promotion last, with what it
+    needs); per rule file its name, kind, line, its part now and with every proposal applied; and each file's name."""
+    files, ev = rule_files(private, s), week(private, state, s, now)
+    rows = {str(p): p.read_text(errors="replace").split("\n") for p in files}
+    name = {str(p): shape.label(private, s, k, p) for p, (k, _) in files.items()}
+    out: list[dict[str, Any]] = []
+
+    def size(r: dict[str, list[str]], f: str) -> int:
+        return part(files[Path(f)][0], Path(f), "\n".join(r[f]))
+
+    def add(kind: str, label: str, edits: list[list[Any]], why: str) -> None:
+        after = {f: list(r) for f, r in rows.items()}
+        edited(after, edits, s)
+        n, line = evidence(" ".join(str(e[2] or e[3]) for e in edits), *ev)
+        out.append({"kind": kind, "label": label, "edits": edits, "why": why, "rows": n, "evidence": line, "saved": sum(
+            size(rows, f) - size(after, f) for f in dict.fromkeys(e[0] for e in edits) if files[Path(f)][1])})   # OVERFLOW: in no room
+    for p, (kind, _) in files.items():
+        if kind == "overflow":
+            continue
+        f, used = str(p), set[int]()
+        live = [(i, x) for i, x in enumerate(rows[f], 1) if x.startswith("- ") and mentions.OLD not in x]
+        for i, x in enumerate(rows[f], 1):           # cuts: a superseded line the session start still sends, a lost cite
+            if x.startswith("- ") and GONE.search(x) and part(kind, p, "\n".join(rows[f][:i - 1] + [""] + rows[f][i:])) < size(rows, f):
+                add("cut", short(x), [[f, i, x, ""]], "it is marked superseded, and every session start still sends it")
+                used.add(i)
+            elif x.startswith("- ") and (gone := lost(s, x)):
+                add("cut", short(x), [[f, i, x, ""]], f"its cite {gone} is a day-log line that is no longer there")
+                used.add(i)
+        for (i, a), (j, b) in combinations(live, 2):  # merges: one job, one message or the same words; a newer line that says no
+            if {i, j} & used:
+                continue
+            same, one, dup = memory.topic(a).lower() == memory.topic(b).lower(), ids(a) & ids(b), near(bare(split(a)[1]), bare(split(b)[1]))
+            if not (same or one or dup):
+                continue
+            used |= {i, j}
+            (k, old), (m, new) = ((i, a), (j, b)) if when(a) <= when(b) else ((j, b), (i, a))
+            if same and not dup and when(old) and when(new) > when(old) and NO.search(split(new)[1]):
+                add("cut", short(old), [[f, k, old, ""]], f"a newer rule on the same job says otherwise: {name[f]}:{m} \"{new}\" "
+                    f"against {name[f]}:{k} \"{old}\"")
+            else:
+                add("merge", f"{short(a)} + {short(b)}", [[f, i, a, merged(a, b)], [f, j, b, ""]], "the same job" if same
+                    else f"filed from the same message ({', '.join(sorted(one))})" if one else "near-duplicate words")
+        for i, x in live:                            # condensations: a line past LONG, its examples out first
+            if i not in used and len(x) > LONG and len(y := condensed(x)) < len(x):
+                add("condense", short(x), [[f, i, x, y]], f"{len(x):,} characters, past {LONG}: its examples and quoted "
+                    f"asides out, {len(y):,} left, every other word its own")
+    out.sort(key=lambda q: (-q["saved"], -q["rows"]))
+    for n, q in enumerate(out, 1):
+        q["n"] = n
+    held = next((p for p, (k, _) in files.items() if k == "overflow"), None)
+    if (r := next((p for p, (k, _) in files.items() if k == "rules"), None)) and held:   # promotions: held, and now it fits
+        f, cap, mine = str(r), files[r][1], [q for q in out if all(e[0] == str(r) for e in q["edits"])]
+        for j, h in enumerate(rows[str(held)], 1):
+            if not h.startswith("- ") or mentions.OLD in h:
+                continue
+            marks = [[f, k, x, None] for k, x in enumerate(rows[f], 1) if x.startswith(f"- {memory.topic(h)}: ") and mentions.OLD not in x]
+            for y, need in [(y, mine[:k]) for y in dict.fromkeys((h, memory.EXAMPLE.sub("", h))) for k in range(len(mine) + 1)]:
+                t = {k: list(v) for k, v in rows.items()}       # as held, with the fewest of the rest in; then examples out
+                edited(t, [e for q in need for e in q["edits"]] + [[f, 0, "", y], *marks], s)
+                if size(t, f) <= cap - memory.HEADROOM:
+                    add("promote", short(h), [[f, 0, "", y], *marks, [str(held), j, h, ""]], f"held in {memory.OVERFLOW}; it fits "
+                        f"{memory.RULES} under its line" + (" with its examples out" if y != h else "") +
+                        (f" once {', '.join(str(q['n']) for q in need)} are applied" if need else ""))
+                    out[-1] |= {"n": len(out), "needs": [q["n"] for q in need]}
+                    break
+    every = {f: list(v) for f, v in rows.items()}
+    for q in out:
+        with suppress(RuntimeError):
+            edited(every, q["edits"], s)
+    return out, [[name[str(p)], k, cap, size(rows, str(p)), size(every, str(p))] for p, (k, cap) in files.items()], name
+
+
+def page(day: str, props: list[dict[str, Any]], sizes: list[list[Any]], name: dict[str, str]) -> str:
+    """The proposals file: each rule file's part now and with every proposal applied, then a numbered block a proposal."""
+    def at(f: str, i: int) -> str:
+        return f"{name.get(f, Path(f).name)}:{i}" if i else f"{name.get(f, Path(f).name)}, appended"
+    head = (f"---\nclass: private\n---\n# Rule proposals, {day}\n\nProposed by `yerk curate --rules`, never applied: `yerk curate --apply "
+            f"{day} N[,N...]` writes the numbers named (backed up first, refused past a file's line), `yerk curate --apply {day} undo` "
+            "puts the last apply back.\n\n" + "".join(f"- {n}: {a:,} characters now, {b:,} with every proposal applied"
+                                                      + (f", its line {c:,}" if c else ", in no room") + "\n" for n, _, c, a, b in sizes))
+    return head + "".join(
+        f"\n## {q['n']}. {q['kind']}: {q['label']} ({-q['saved']:+,} chars)\n\nBEFORE\n"
+        + "".join(f"{at(f, i)}: {was}\n" for f, i, was, _ in q["edits"] if i)
+        + "\nAFTER\n" + "".join(f"{at(f, i)}: " + ("(blank)" if new == "" else "(marked superseded by the line appended)" if new is None else new)
+                                + "\n" for f, i, _, new in q["edits"])
+        + f"\nWHY: {q['why']}\n\nEVIDENCE: {q['evidence']}\n" for q in props)
+
+
+def card(day: str, props: list[dict[str, Any]]) -> list[str]:
+    """The machine room's card: a head, a line for each of the CARD_MOST that save the most (then with the most evidence),
+    the rest only in the file, and how to apply; nothing at all with no proposal."""
+    if not props:
+        return []
+    out = [words.line(f"{words.WORKING} " + words.RULES_CARD.format(n=len(props), chars=f"{sum(max(0, q['saved']) for q in props):,}"))]
+    for q in sorted(props, key=lambda q: (-q["saved"], -q["rows"]))[:CARD_MOST]:
+        head, tail = f"{q['n']}. {q['kind']}: ", f" ({-q['saved']:+,} chars)"
+        out.append(head + words.line(q["label"], max(8, words.PHONE - len(head) - len(tail))) + tail)
+    return out + [words.line(words.RULES_MORE.format(n=len(props) - CARD_MOST))] * (len(props) > CARD_MOST) + [
+        words.line(words.RULES_APPLY.format(day=day))]
+
+
+def say(private: Path, state: Path, day: str, lines: list[str], post: Callable[[dict[str, Any]], dict[str, Any]] | None) -> bool:
+    """The card to the machine room through the running yerkd, as deploy's and the morning's go; False when it did not go."""
+    from . import jobs
+    if not lines or not (machine := [n for n, c in rooms(private).items() if c.get("role") == "machine"]):
+        return False
+    try:
+        out = (post or (lambda p: jobs.post_control(state, p, 60)))(
+            {"machine": {"room": machine[0], "text": "\n".join(lines), "key": f"curate-rules-{day}"}})
+    except (OSError, ValueError):
+        return False
+    return bool(out.get("ok"))
+
+
+def rules(private: Path, state: Path, s: memory.Settings, dry: bool, now: float,
+          post: Callable[[dict[str, Any]], dict[str, Any]] | None = None) -> dict[str, Any]:
+    """The rules phase: the proposals, kept in <memory>/rules-proposals/<day>.md (0600) and <state>/curate-rules.json unless
+    `dry` (the applies on file kept for undo), and the card said in the machine room at most once a day, never with none."""
+    day = datetime.fromtimestamp(now, s.tz).date().isoformat()
+    props, sizes, name = propose(private, state, s, now)
+    out: dict[str, Any] = {"day": day, "proposals": props, "sizes": sizes, "card": card(day, props), "file": ""}
+    if dry:
+        return out
+    try:
+        old = dict(json.loads((state / PROPOSED).read_text()))
+    except (OSError, ValueError, TypeError):
+        old = {}
+    if props:
+        (folder := s.root / PROPOSALS).mkdir(mode=0o700, parents=True, exist_ok=True)
+        out["file"] = str(write_private(folder / f"{day}.md", page(day, props, sizes, name)))
+    said = str(old.get("said", ""))
+    if out["card"] and said != day and say(private, state, day, out["card"], post):
+        said = day
+    write_private(state / PROPOSED, json.dumps({"date": day, "at": now, "proposals": props, "said": said, "applied": old.get("applied", [])}))
+    return out
+
+
+def sha(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def restore(files: list[list[str]]) -> list[str]:
+    """Each [file, its sha256 before an apply, after it, the backup folder] put back byte-identical from its copy there when
+    it still holds what the apply wrote; one that changed since (a rule filed meanwhile) is said and kept as it is."""
+    out = []
+    for f, was, wrote, folder in files:
+        p = Path(f)
+        if (cur := sha(p.read_bytes()) if p.is_file() else "") == was:
+            continue                                     # never written, or put back already
+        copy = next((c for c in sorted(Path(folder).glob(f"{p.parent.name}.{p.name}*")) if sha(c.read_bytes()) == was), None)
+        if cur != wrote or copy is None:
+            out.append(f"{p.name}: " + ("changed since the apply, kept as it is" if cur != wrote else "no backup copy, kept as it is"))
+            continue
+        write_private(p, copy.read_bytes(), stat.S_IMODE(p.stat().st_mode))
+        out.append(f"{p.name}: put back as it was")
+    return out
+
+
+def put(path: Path, backup: Path, new: bytes) -> None:
+    """`path` rewritten to `new` by doctor.rewrite (its copy into `backup` first, its mode kept); `new` only ever adds lines at
+    the end, so each line keeps its number."""
+    old = len(path.read_bytes().split(b"\n"))
+    parts = [x + b"\n" for x in new.split(b"\n")]
+    parts[-1] = parts[-1][:-1]
+    at = iter(range(old))
+    doctor.rewrite(path, backup, lambda x: (lambda i: parts[i] if i < old - 1 else b"".join(parts[i:]))(next(at)), False)
+
+
+def apply(private: Path, state: Path, day: str, which: str, now: float | None = None) -> list[str]:
+    """The owner's `--apply DAY N[,N...]`: those proposals of DAY written, each file they touch fitted to its line first (refused
+    whole when one would pass it, or a line changed since), backed up by doctor.rewrite and on trial in RUN while it writes,
+    so the next curate puts a cut-off one back; `undo`, the last apply put back byte-identical. RuntimeError says why not."""
+    now = time.time() if now is None else now
+    conf = load_toml(private / "yerkd.toml") if (private / "yerkd.toml").is_file() else {}
+    s = memory.settings(private, state, dict(conf.get("memory", {})))
+    backup = private / "backups" / f"curate-{datetime.fromtimestamp(now, s.tz).date().isoformat()}"
+    try:
+        rec = dict(json.loads((state / PROPOSED).read_text()))
+    except (OSError, ValueError, TypeError):
+        rec = {}
+    if rec.get("date") != day:
+        raise RuntimeError(f"no proposals of {day} on file" + (f"; the newest are of {rec['date']}" if rec.get("date") else ""))
+    done = undo(s, state, backup)                        # a run or an apply cut off: put back first; refused while one runs
+    if which == "undo":
+        if not rec.get("applied"):
+            raise RuntimeError("no apply to undo")
+        done += restore(rec["applied"].pop())
+        write_private(state / PROPOSED, json.dumps(rec))
+        return done
+    props, want = {int(q["n"]): q for q in rec.get("proposals", [])}, [int(n) for n in which.split(",") if n.strip()]
+    if not want or (bad := [n for n in want if n not in props]):
+        raise RuntimeError(f"no proposal {bad[0] if want and bad else which} of {day}")
+    files, rows = rule_files(private, s), dict[str, list[str]]()
+    with memory.daily_lock(s.daily):                     # the writers' lock: memory.rule files under it too
+        edited(rows, [e for n in want for e in props[n]["edits"]], s)
+        for f, r in rows.items():
+            if (kind_cap := files.get(Path(f))) is None:
+                raise RuntimeError(f"{Path(f).name} is no rule file a room loads now: nothing applied")
+            if kind_cap[1] and (n := part(kind_cap[0], Path(f), "\n".join(r))) > kind_cap[1]:
+                raise RuntimeError(f"{shape.label(private, s, kind_cap[0], Path(f))} would be {n:,} characters, past its line of "
+                                   f"{kind_cap[1]:,}: nothing applied")
+        olds, news = {f: Path(f).read_bytes() for f in rows}, {f: "\n".join(r).encode() for f, r in rows.items()}
+        trial = [[f, sha(olds[f]), sha(news[f]), str(backup)] for f in rows]
+        write_private(state / RUN, json.dumps({"pid": os.getpid(), "at": now, "lines": [], "files": trial}))    # on trial
+        try:
+            for f in rows:
+                put(Path(f), backup, news[f])
+                if not any(c.read_bytes() == olds[f] for c in backup.glob(f"{Path(f).parent.name}.{Path(f).name}*")):
+                    raise RuntimeError(f"{Path(f).name} was written without its backup copy, so it is put back: nothing applied")
+        except Exception:
+            for f in rows:
+                write_private(Path(f), olds[f], stat.S_IMODE(Path(f).stat().st_mode))
+            (state / RUN).unlink(missing_ok=True)
+            raise
+        write_private(state / PROPOSED, json.dumps({**rec, "applied": [*rec.get("applied", []), trial]}))
+        (state / RUN).unlink()
+    return done + [f"{n}. {props[n]['kind']}: {props[n]['label']}, applied" for n in want] + [
+        f"{shape.label(private, s, files[Path(f)][0], Path(f))}: {part(files[Path(f)][0], Path(f), news[f].decode()):,} characters"
+        + (f" of {files[Path(f)][1]:,}" if files[Path(f)][1] else "") for f in rows]
+
+
+def rules_main(private: Path, state: Path, dry: bool = False) -> int:
+    """`yerk curate --rules`: the rules phase alone, a line a proposal; exits 1 with any to read, 2 when it could not run."""
+    try:
+        conf = load_toml(private / "yerkd.toml") if (private / "yerkd.toml").is_file() else {}
+        r = rules(private, state, memory.settings(private, state, dict(conf.get("memory", {}))), dry, time.time())
+    except (Exception, SystemExit) as e:
+        print(f"curate failed: {type(e).__name__}: {words.no_paths(str(e))[:160]}")
+        return 2
+    print("".join(f"{q['n']}. {q['kind']}: {q['label']} ({-q['saved']:+,} chars, evidence {q['rows']}): {q['why']}\n" for q in r["proposals"]), end="")
+    print("".join(f"{n}: {a:,} now, {b:,} with every proposal" + (f", line {c:,}" if c else "") + "\n" for n, _, c, a, b in r["sizes"]), end="")
+    print("dry run: nothing written" if dry else f"proposals: {r['file']}" if r["file"] else "no proposals")
+    return 1 if r["proposals"] else 0
+
+
+def apply_main(private: Path, state: Path, day: str, which: str) -> int:
+    """`yerk curate --apply DAY N[,N...]` or `--apply DAY undo`: what it wrote, a line each; exits 2 refused."""
+    try:
+        print("\n".join(apply(private, state, day, which)))
+    except (OSError, ValueError, RuntimeError) as e:
+        print(f"curate --apply refused: {words.no_paths(str(e))[:200]}")
+        return 2
+    return 0

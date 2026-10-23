@@ -8,6 +8,25 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-22
 
+### curate-rules
+
+- The rule files get better by proposal, never by a model rewriting them: the nightly `yerk curate`, after its
+  promotion, and `yerk curate --rules [--dry-run]` alone, read the rules file, each room's rulebook and
+  `rules-overflow.md` and propose merges (two rules on one job, from one message, or in near-duplicate words: one line
+  with every clause of both, the fuller example and both cites), cuts (a superseded line a session start still sends,
+  a cite to a day-log line that is no longer there, an older rule a newer one on the same job says otherwise to, both
+  quoted), condensations (a line past 600 characters with its examples and quoted asides out, its own words otherwise)
+  and promotions (a rule held in `rules-overflow.md` that fits again, naming the proposals it needs first). Each has
+  its evidence of the week: the shadow bounces, rated replies and `yerk` day-log lines that touch it, with cites.
+- They go numbered to `memory/rules-proposals/<day>.md` (0600: BEFORE, AFTER, WHY, EVIDENCE, and each rule file's size
+  now and with every proposal in), and one card to the machine room lists the ten that save the most, at most once a
+  day and never when there are none.
+- `yerk curate --apply DAY N[,N...]` is the owner's word: those proposals written, every file backed up first by the
+  curate backup, refused whole when a proposed line changed since or a file would pass its line in `budgets.toml`, a
+  line blanked rather than cut so every cite keeps its number, an apply cut off mid-write put back by the next curate.
+  `yerk curate --apply DAY undo` puts the last apply back byte for byte, unless a rule was filed into the file since.
+  No room can apply one: the CLI, run on the owner's word.
+
 ### rules-fit (#91)
 
 - A new rule no longer pushes proven rules out of every session start: a room filed a rule with a 190-character
