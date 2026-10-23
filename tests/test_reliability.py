@@ -189,7 +189,8 @@ def test_a_second_daemon_on_one_state_folder_is_refused_before_it_writes_anythin
     os.close(claim(tmp_path))
 
 
-def test_status_names_the_version_and_the_commit_as_text_and_as_one_json_document(tmp_path, capsys):
+def test_status_names_the_version_and_the_commit_as_text_and_as_one_json_document(tmp_path, capsys, monkeypatch):
+    monkeypatch.setenv("YERK_CLAUDE", os.path.join(os.path.dirname(__file__), "fake_claude.py"))   # the card's /usage, never the real one
     assert cli.main(["status", "--private", str(EXAMPLE_PRIVATE), "--state", str(tmp_path)]) == 0
     assert f"{words.PLAIN} yerk {__version__} at " in capsys.readouterr().out
     assert cli.main(["status", "--json", "--private", str(EXAMPLE_PRIVATE), "--state", str(tmp_path)]) == 0

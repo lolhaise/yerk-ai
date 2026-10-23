@@ -27,6 +27,26 @@ with the originals kept under `backups/`; the index chunks every file again when
   `secs` (60), and `[code] lines` (a dated note). Nothing to set; run `yerk files backfill ROOM` once per owner room for the files sent
   before this.
 
+### status-card (#105)
+
+- `yerk status` and the room's `/status` show each account the way the box's own card does, two lines each, listed in
+  accounts.toml order: `- ① 5h 7% · wk ⚠️93% · Fable ⚠️100%`, then `- ↻ 5h 5p · wk 12a · 💳 Nov 8`. Account one to
+  twenty is ① to ⑳. A number at 80% or more wears ⚠️. The line starts red when the account rests (its second line
+  then says until when) or a 5-hour or weekly window is full, orange when the model's week is full or any window is at
+  90% or more.
+- The meters are live: the card runs Claude Code's own `/usage` on each account's config folder (no model call; Claude
+  Code reads its own login, never the one-year token, which cannot read the meters), at most three at a time, and keeps
+  the answers a minute in `<state>/usage.json`, so a second card within the minute starts nothing. An account whose call
+  fails shows the stream's last reading and how old it is. `yerk status --json` asks nothing new and uses a reading
+  under a minute old when there is one; deploy's proof and the morning diff never ask.
+- The order of resets: the account whose week resets soonest wears 🟢 on its tag, and two lines say the next reset and
+  the one after it for both windows, `- wk next: 🟢① 12a · then ⑤ Sun 3a` and `- 5h next: ④ 2p · then ③ 2:40p`. One
+  more line names the account the next turn tries first (the first in order not resting). A room on an account of its
+  own says it by tag (`on account ④`), and rooms on one account share a line (`- on account ④: 6 rooms`).
+- **Upgrading:** accounts.toml, optional: `bill_day = N` on an account (1 to 31) puts its next bill under it, as a
+  date. budgets.toml: `[code] lines` (a dated note). A cold card for five accounts takes two rounds of Claude Code's
+  start (about 12 s); Discord shows it thinking meanwhile.
+
 ### model-account-pin (#103)
 - `/model` takes an account as well as a model, in one argument: `/model five` (or `/model 5`) puts the room on account
   five, `/model five fable` (or `five/claude-fable-5-1`) on both, `/model fable` on the model as before, and

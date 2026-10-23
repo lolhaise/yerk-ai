@@ -331,8 +331,10 @@ def cmd_status(a: argparse.Namespace) -> int:
         from . import deploy
         from .config import REPO
         ledger = Ledger(state / "ledger.sqlite")
-        s = status.ask(state) if status.alive(state) else None
-        s = s or {**status.collect(priv, state, accounts, cool, ledger), "alive": status.alive(state), "commit": deploy.head(REPO)}
+        live = not getattr(a, "json", False)      # the card asks the meters now; a monitoring tool's poll never does
+        s = status.ask(state, payload={"live": live}) if status.alive(state) else None
+        s = s or {**status.collect(priv, state, accounts, cool, ledger, live=live), "alive": status.alive(state),
+                  "commit": deploy.head(REPO)}
         if getattr(a, "json", False):             # one document for a monitoring tool (status.document)
             print(json.dumps(status.document(priv, state, s, ledger), default=str))
             return 0

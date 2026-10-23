@@ -371,6 +371,41 @@ UNIT_USE, JOB_DUE = "{name}: {mb} MB, {cpu:.1f}% cpu", "job {name}: in {left}"
 NO_JOB_DUE, NO_TIMERS = "jobs: none due within the hour", "jobs: the timer list is unreadable"
 STALLS, NO_STALLS = "stalls {day}: {n}, longest {took}", "stalls {day}: none"
 TODAY, YESTERDAY = "today", "yesterday"
+# each account, two lines: its meters (a warning sign at HOT and over), then when its windows reset and its next bill;
+# the account whose week resets soonest wears the green mark on its tag; then the next two resets of each window
+HOT, WARN = 80, "\N{WARNING SIGN}\N{VARIATION SELECTOR-16}"
+RESETS, BILL = "\N{CLOCKWISE OPEN CIRCLE ARROW} {parts}", "\N{CREDIT CARD} {day}"
+BACK_AT, NEXT, THEN = "resting until {until}", "{label} next: {first}", " · then {tag} {when}"
+FIRST_TRY = "next turn tries {tag} first"         # accounts.pick for a room on no account of its own
+ROOMS_ON = "on account {account}: {rooms}"        # two rooms or more put on one account, one line
+NUMBERS = ("one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen "
+           "seventeen eighteen nineteen twenty").split()
+
+
+def tag(name: str) -> str:
+    """An account on the card: account one (or 1) is ①, up to ⑳; any other name is itself."""
+    n = NUMBERS.index(name.lower()) + 1 if name.lower() in NUMBERS else int(name) if name.isdigit() else 0
+    return chr(0x2460 + n - 1) if 1 <= n <= 20 else name
+
+
+def short_clock(epoch: float) -> str:
+    """'5p', '5:10p', '12a': a time of day the short way."""
+    t = datetime.fromtimestamp(epoch)
+    return f"{t.hour % 12 or 12}{'' if t.minute == 0 else f':{t.minute:02d}'}{'a' if t.hour < 12 else 'p'}"
+
+
+def short_when(epoch: float, now: float | None = None) -> str:
+    """A reset: '5:10p' within a day, 'Wed 2a' within a week, else 'Nov 8'."""
+    ahead = epoch - (time.time() if now is None else now)
+    if ahead < 86400:
+        return short_clock(epoch)
+    return f"{datetime.fromtimestamp(epoch):%a} {short_clock(epoch)}" if ahead < 7 * 86400 else short_day(epoch)
+
+
+def short_day(epoch: float) -> str:
+    """'Nov 8': a date, never a weekday (a bill)."""
+    t = datetime.fromtimestamp(epoch)
+    return f"{t:%b} {t.day}"
 # the morning diff (morning.py), for the machine room
 MORNING_NEW, MORNING_SAME, KNOWN = "morning: {n} new since the last diff", "morning: nothing new", ", {n} known"
 PAYLOAD, PART = "{room}: {size:,} chars, {change}", "{room} {part}: {change} chars"
