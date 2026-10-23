@@ -254,4 +254,11 @@ drops = [
 # by 2: config.py (an id in `[watch] assistants` that is the owner's or one a room's `people` lists stops the start, since
 # that person would never be answered again).
 # 18,767 merged on message-envelope (#96), no line shared.
-lines = 18767
+# 2026-10-23: recall-pack-fit raised it by 22: every session-start part under its key by construction (the owner's screenshot
+# back 00:00: As plain text with 0,000 one more 0,000, line for the check 000 while a 00 second entry 00
+# were kept for it and its items counted in code points, then 8 of the owner's lines cut from its middle and said). lifted/trim.py 17
+# (whole lines only, the marker counted in Claude Code's characters, shrunk until the whole text fits), memory.py 8 (the pack
+# drops its oldest items whole with its head and that line measured; `chars` moved from context.py, 5), context.py 1 (one
+# fit for every part, the compaction's re-add with it), hooks.py 2 (the topic hit's absence lines whole while they fit),
+# daemon.py 0, taste.py 0 (its last resort drops a whole reply), less words.py 6 (the cut notice's heads), not folded to fit.
+lines = 18789

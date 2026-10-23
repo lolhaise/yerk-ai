@@ -146,7 +146,7 @@ HELD_CLAUSE = "one clause at its end, this one: the rule is held for now, since 
 RULE_STRIPPED = "the example in rule \"{job}\" taken out so rules.md fits its cap of {cap:,}"
 RULE_HELD_LOG = "rule \"{job}\" held in {file}: rules.md is full at its cap of {cap:,}, even with no examples"
 RULE_HELD = "rule held in {file}\n\"{job}\"\nfrom {room}\nrules.md is full at its cap of {cap:,}"
-PART_CUT = "session start cut {part}\n{size:,} of {cap:,} in {room}\n{n} line{s} sent broken or not at all:\n{heads}"
+PART_CUT = "{part}: {n} line{s} dropped\nto fit its {cap:,} in {room}"     # at session start: whole lines of its own, no framing
 FILED = re.compile(r"^\W*(?:filed|saved|from now on,? every room)\b", re.I)   # a final reporting a filing (stub)
 STUB = ("Only your final message reaches the room, and yours, \"{head}\", reports the filing, not the answer: the answer "
         "is above your last tool call, where the room never sees it, or it was never written. Write the whole answer as "
@@ -182,12 +182,6 @@ def outcome(state: str, **say: Any) -> tuple[str, str]:
     """(mark, words) for a worker state; `say` fills the words' blanks (cap, why, ticked, rows)."""
     mark, text = OUTCOME.get(state, (NOT_DONE, state))
     return mark, text.format(**say)
-
-
-def heads(lines: list[str], most: int = 12, n: int = 6) -> str:
-    """Each line's first `n` words in quotes, one a line held to a phone's width, `most` at the most, then how many more."""
-    said = ['"' + line(" ".join(x.lstrip("-*#> ").split()[:n]), PHONE - 2) + '"' for x in lines[:most]]
-    return "\n".join(said + ([f"and {len(lines) - most} more"] if len(lines) > most else []))
 
 
 def died(result: str) -> str:

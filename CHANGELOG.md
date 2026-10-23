@@ -8,6 +8,25 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-23
 
+### recall-pack-fit (#PR)
+
+- Every part of a room's session start now fits under its key in budgets.toml by construction. The recall pack counts
+  its own head and the line saying how many older items it left out, in Claude Code's characters (an emoji outside the
+  example note says 0), the sample item moved to the next. Step 00:00 and the Test reads it back as
+  6,003 against its 6,000 (that line is 64 characters once the count has three digits, where 60 were kept for it, and two
+  emoji were counted once each), and the session start then cut 8 of the owner's items from the middle of the pack, two
+  of them mid-line.
+- A part still over its key (a file past it, or the open commitments alone past the pack's) loses whole lines, its
+  marker counted inside the key. Nothing is cut mid-line any more.
+- The machine room hears of a cut only when lines of a part's own file went, in one notice of two short lines: the part
+  and how many lines, then its key and the room (`🟠 rules: 3 lines dropped`, `to fit its 16,000 in example-room`). The
+  pack leaving its oldest items out is its normal shape and is never said; its own last line tells the room how many.
+- After a compaction the re-added recall pack is fitted the same way. The per-message recall part keeps its "nothing on
+  file" lines whole while they fit its key, and the taste part, still over with every reply at 80 characters, drops its
+  last reply whole.
+- **Upgrading:** budgets.toml: `[code] lines` (a dated note); no key changes. Each room sends the fitted parts from its
+  next process start.
+
 ### person-room-parity (#101)
 
 - A person's room can read what the other assistant already told them where it watches. List that assistant's Discord

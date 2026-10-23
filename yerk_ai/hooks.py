@@ -20,6 +20,7 @@ import os
 import shlex
 import time
 from datetime import datetime, timezone
+from itertools import accumulate
 from pathlib import Path
 from typing import Any, Callable
 
@@ -42,7 +43,8 @@ def render_recall(names: list[dict[str, Any]], topics: list[dict[str, Any]], bud
     then the names, the budget bending per hit (decision 42): one name the whole part, several an even share each (a share a
     name leaves passed on), each its card then its best lines, and beside a past-tense search each its card's first line alone;
     the past-tense hits take what the names leave, and the room's own lines on the topic what is left after them."""
-    out = [words.ABSENT.format(what=a) for a in absent or []]
+    said = [words.ABSENT.format(what=a) for a in absent or []]
+    out = [x for x, n in zip(said, accumulate(context.chars(x) + 1 for x in said)) if n <= budget + 1]   # whole, while they fit
     left = budget + 1 - sum(context.chars(x) + 1 for x in out)          # n lines joined by n - 1 newlines
     groups: dict[str, list[str]] = {}
     for e in names:

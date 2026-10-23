@@ -125,6 +125,6 @@ def render(rows: list[dict[str, Any]], room: str, budget: int, pos_n: int = 3, n
     while chars(out) > budget and each > 80:
         each -= 40
         out = text(each)
-    while chars(out) > budget:
-        out = out[: len(out) - (chars(out) - budget + 1) // 2]
+    while chars(out) > budget:                   # still over at 80 each: the last reply goes whole, never part of a line
+        out = out.rpartition("\n")[0]
     return out
