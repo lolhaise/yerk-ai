@@ -59,6 +59,7 @@ class Settings:
     scoped: bool = False            # a room's own `also` (only): index hits and names kept to the roots in `scope`
     cites: tuple[tuple[Path, str], ...] = ()    # every root of the install and the name a cite gives it, the same in every room
     docs: Path | None = None        # <state>/docs (docs.py): the Claude docs and the rooms' shape reports, a root in every room
+    uploads: tuple[Path, ...] = ()  # each owner room's <state>/rooms/<room>/work/inbox, its text files a root (memindex.UPLOADS)
     private: Path | None = None     # the private folder: where an ability's other key files are looked for (abilities.state)
     imports: Path | None = None     # <private>/imports: what `yerk import` stores, texts and mail, a message a line (sources.py)
 
@@ -76,7 +77,8 @@ class Settings:
         want = [(private / Path(str(x)).expanduser()).resolve() for x in also]
         for p in (p for p in want if p not in self.scope.roots[1:]):
             raise SystemExit(f"room {room}: also {p} is not one of the [memory] also roots in yerkd.toml")
-        return replace(self, scoped=True, scope=replace(self.scope, roots=tuple(r for r in self.scope.roots if r in (self.root, *want, self.docs))))
+        own = [u for u in self.uploads if u.parts[-3] == room]      # its own uploads stay in its scope
+        return replace(self, scoped=True, scope=replace(self.scope, roots=tuple(r for r in self.scope.roots if r in (self.root, *want, self.docs, *own))))
 
 
 def settings(private: Path, state: Path, conf: dict[str, Any] | None = None) -> Settings:
@@ -98,10 +100,15 @@ def settings(private: Path, state: Path, conf: dict[str, Any] | None = None) -> 
     with suppress(OSError):
         docs.mkdir(mode=0o700, parents=True, exist_ok=True)
     also = [*also, docs] if docs not in also else also
+    rs: dict[str, Any] = {}
+    with suppress(OSError, ValueError):             # a rooms.toml that does not parse stops the daemon, never this
+        rs = dict(load_toml(private / "rooms.toml").get("rooms", {}))
+    uploads = [(state / "rooms" / n / "work" / "inbox").resolve() for n, c in rs.items() if str(c.get("privacy", "owner")) == "owner"]
+    also += [u for u in uploads if u not in also]      # what was sent to an owner room is recalled there (said-or-noted)
     cites: dict[Path, str] = {}
     for r in (root, *also):          # its folder's name, else as much of its path as no earlier root's cite has (F3, 2026-10-21)
         names = ["/".join(r.parts[-n:]) for n in range(1, len(r.parts))]
-        cites.setdefault(r, next((x for x in names if x not in cites.values()), names[-1]))
+        cites.setdefault(r, names[2] if r in uploads else next((x for x in names if x not in cites.values()), names[-1]))
     return Settings(root=root, scope=memindex.Scope(tuple([root, *also]), tuple(conf.get("exclude", []))),
                     index_db=state / "memory" / "index.sqlite", tz=tz, interval=float(conf.get("interval", 2.0)),
                     bench=(private / Path(str(conf.get("bench", "evals/recall-questions.json")))).resolve(),
@@ -114,7 +121,7 @@ def settings(private: Path, state: Path, conf: dict[str, Any] | None = None) -> 
                     embeddings_units=str(conf.get("embeddings_units", "both")),
                     embeddings_width=int(conf.get("embeddings_width") or conf.get("embeddings_dim") or 256),
                     index_status=state / "memory" / "index.json",
-                    recall_chars=max(100, int(conf.get("recall_chars", RECALL_CHARS))), cites=tuple(cites.items()), docs=docs,
+                    recall_chars=max(100, int(conf.get("recall_chars", RECALL_CHARS))), cites=tuple(cites.items()), docs=docs, uploads=tuple(uploads),
                     private=private, imports=(private / "imports").resolve())
 
 
@@ -373,12 +380,28 @@ class DailyLog:
 
 
 NOTE = "note"                # the role of a day-log line a room files with `remember` (DESIGN 5; L58)
+SAID = "said"                # a person's words a room files with `remember` `said` and their `source`, word for word
+MARKS = {NOTE: "[the room's note, not their words]", SAID: "[their words]"}     # how a room is shown each (said-or-noted)
+FILED = re.compile(r"^- .+ \([\w.-]+(?:#\S+)?, \d{4}-\d\d-\d\d \d\d:\d\d:\d\d[+-]\d\d:\d\d\) \[m:[^\]\s]+\]$")   # a fact file's filed note
 BY = re.compile(re.escape(mentions.OLD) + r" by (\S+?:\d+)\]")     # a mark naming its replacement; `[superseded]` names none
 LATER = "superseded.tsv"     # in the tree, `old cite<TAB>new cite`: a line a correction named but could not mark with its cite
 RULES = "rules.md"           # in the tree: the install's one rules file, how each job is done in every room (decision 15)
 OVERFLOW = "rules-overflow.md"     # beside it (private): a rule RULES has no room for under its cap, even with no examples
 HEADROOM = 150               # a filing fitted under RULES's cap leaves this much of it free
 EXAMPLE = re.compile(r"\s*<example(?:\s[^>]*)?>.*?</example>", re.I)    # an example in a rule line, as shape.py reads the tags
+
+
+def shown(ln: Line) -> str:
+    """A day-log line's words as a room is shown them: a room's note never as anyone's words, a said line as theirs."""
+    return f"{MARKS[ln.role]} {ln.body}" if ln.role in MARKS else ln.body
+
+
+def marked(raw: str, fact: bool = False) -> str:
+    """A raw line as read_memory and recall show it: a note or said line of a day log, and in a fact file (`fact`) a note a
+    room filed there (FILED; a rule in rules.md has its shape and is no note), behind its mark (MARKS); else as it is."""
+    if (ln := parse_line(raw)) and ln.role in MARKS:
+        return raw.replace(f": {ln.body}", f": {shown(ln)}", 1)
+    return raw.replace("- ", f"- {MARKS[NOTE]} ", 1) if fact and FILED.match(raw) else raw
 
 
 def rules_part(path: Path, text: str) -> str:
@@ -400,16 +423,19 @@ def later(s: Settings) -> dict[str, str]:
 
 
 def remember(s: Settings, log: DailyLog, room: str, mid: str, text: str, about: str = "",
-             old: tuple[str, ...] = (), reader: Reader | None = None) -> dict[str, Any]:
+             old: tuple[str, ...] = (), reader: Reader | None = None, who: str = "", source: str = "") -> dict[str, Any]:
     """A fact, decision or correction into the install's own tree, with its room, message and time. An owner
     room's fact goes to facts/<about>.md, named by a key mention recall keys (private); anything else, or a fact
     with no such key or no folder inside the tree, to the room's day log as a `note` line of its class. Each line in
     `old` (`file:line | its words`: the one line holding them, from there through the next 12) it replaces: the
     room's own line in this tree (any, for an owner room) is marked superseded, by the new cite where all its readers
-    may read it, else in LATER as a line it may only read is; a heading or a blank is refused."""
-    body, about = one_line(text), about.strip()
+    may read it, else in LATER as a line it may only read is; a heading or a blank is refused. With `who` (the tool's `said`)
+    and `source` (where their words are), `text` is their words: a `said` line in the day log, word for word, never a fact file's note."""
+    body, about, who, source = one_line(text), about.strip(), one_line(who), one_line(source)
     if not body:
         return {"ok": False, "error": "nothing to remember: give the fact, decision or correction as text"}
+    if who and not source:
+        return {"ok": False, "error": "said needs source: the message id, file path or transcript line holding those words"}
     rid, cls = log.rooms.get(room, (room, "private"))
     owner, refused, olds = reader is None or reader.owner and not reader.sealed, [], {b: list[tuple[Path, int]]() for b in (True, False)}
     for c in old:
@@ -431,7 +457,7 @@ def remember(s: Settings, log: DailyLog, room: str, mid: str, text: str, about: 
     while len("-".join(words)) > mentions.KEY_MAX:          # a name mention recall keys, never too long to file (F7)
         words.pop()
     path = (s.root / "facts" / f"{'-'.join(words)}.md").resolve()       # never through a link out of the tree (F8)
-    if owner and mentions.key_of(" ".join(words)) and path.is_relative_to(s.root) and file_class(path)[0] == "private" and not any(
+    if owner and not who and mentions.key_of(" ".join(words)) and path.is_relative_to(s.root) and file_class(path)[0] == "private" and not any(
             path.is_relative_to(a) and not s.root.is_relative_to(a) for a in s.scope.roots[1:]):
         with daily_lock(s.daily):                  # the one writers' lock, a fact file's too
             have = path.read_text().splitlines() if path.is_file() else [f"# {about}", ""]
@@ -442,8 +468,9 @@ def remember(s: Settings, log: DailyLog, room: str, mid: str, text: str, about: 
                 write_private(path, "\n".join(have := have + [f"- {note} ({src}) [m:{mid}]"]) + "\n")
                 n = len(have)
     else:
-        key = f"{mid}.n{hashlib.sha1(note.encode()).hexdigest()[:8]}"     # one line per note, a retry once
-        log.capture(room, key, NOTE, f"{about}: {note}" if about and not note.lower().startswith(about.lower()) else note, when=at)
+        line = f'{who}: "{body}" (from {source}){note[len(body):]}' if who else f"{about}: {note}" if about and not note.lower().startswith(about.lower()) else note
+        key = f"{mid}.n{hashlib.sha1((line if who else note).encode()).hexdigest()[:8]}"     # one line per note, a retry once
+        log.capture(room, key, SAID if who else NOTE, line, when=at)
         path = s.daily / f"{at:%Y-%m-%d}.md"
         n = next((i + 1 for i, x in enumerate(path.read_text().splitlines()) if x.endswith(f"[m:{key}]")), 0)
     new, nc = f"{cite(s, path)}:{n}", (cls, rid) if path.parent == s.daily else ("private", "")    # the new line's class
@@ -586,7 +613,7 @@ def read(s: Settings, path: str, start: int = 1, lines: int = READ_LINES, reader
     with real.open(encoding="utf-8", errors="replace") as f:
         for total, line in enumerate(f, 1):
             if start <= total < start + lines:
-                out.append(line.rstrip("\n"))
+                out.append(marked(line.rstrip("\n"), real.parent.name == "facts"))
     text = "\n".join(out)
     if reader and (not reader.owner or reader.sealed) and daylog:
         text = allowed_text(reader, real, text, blank="(a line of another room)", whole=True, daily=s.daily) or ""
@@ -777,7 +804,8 @@ def lines_on(s: Settings, what: str, reader: Reader | None = None, k: int = 8, e
             if not want <= set(mentions.tokens(raw, True)) or mentions.OLD in raw or words.ASKED.search(raw) or (
                     ln and ln.mid.split(".e")[0] in (exclude or set())):
                 continue
-            text = (f"{day[5:]} " if day else "") + (f"{ln.time[:5]} {ln.role}: {ln.body}" if ln else raw.strip().removeprefix("- "))
+            fact = Path(h["path"]).parent.name == "facts"
+            text = (f"{day[5:]} " if day else "") + (f"{ln.time[:5]} {ln.role}: {shown(ln)}" if ln else marked(raw.strip(), fact).removeprefix("- "))
             out.append({"cite": f"{h['cite'].rpartition(':')[0]}:{h['line'] + i}", "at": f"{h['path']}:{h['line'] + i}", "day": day, "n": h["line"] + i,
                         "text": text if len(text) <= ITEM_CHARS else _cut(text, {_root(t): 1.0 for t in want}, ITEM_CHARS - 2)})
     out = [x for n, x in enumerate(out) if x["text"] not in {y["text"] for y in out[:n]}][:best]     # a snapshot's copy of a line: once
@@ -792,11 +820,14 @@ def snippets(hits: list[dict[str, Any]], weights: dict[str, float], budget: int)
     out = []
     shared = min(len(hits), RECALL_HITS)
     for n, h in enumerate(hits):
+        fact = Path(str(h.get("path", ""))).parent.name == "facts"          # a note never reads as anyone's words
+        lines = "\n".join(marked(x, fact) for x in str(h.get("text", "")).split("\n"))
+        near = marked(str(h["near"]), fact) if h.get("near") else None
         if n < shared:
-            first, text = snippet(str(h.get("text", "")), int(h["line"]), weights, h.get("near"), min(SNIPPET, budget // (shared - n)))
+            first, text = snippet(lines, int(h["line"]), weights, near, min(SNIPPET, budget // (shared - n)))
             budget -= len(text)
         else:
-            first, text = snippet(str(h.get("text", "")), int(h["line"]), weights, h.get("near"), EXTRA, one=True)
+            first, text = snippet(lines, int(h["line"]), weights, near, EXTRA, one=True)
         out.append({"cite": f"{h['cite'].rpartition(':')[0]}:{first}", "text": text})
     return out
 
@@ -921,7 +952,7 @@ def topic_hits(s: Settings, room: str, text: str, exclude: set[str] | None = Non
             continue
         cover = len(want & {w[:5] for w in memindex.WORD.findall(memindex.norm(ln.body))})
         if cover >= need:
-            hits.append({"day": day, "time": ln.time[:5], "role": ln.role, "who": ln.who, "text": ln.body,
+            hits.append({"day": day, "time": ln.time[:5], "role": ln.role, "who": ln.who, "text": shown(ln),
                          "cite": f"daily/{day}.md:{n + 1}", "cover": cover})
     return sorted(hits, key=lambda h: (h["cover"], h["day"], h["time"]), reverse=True)[:limit]
 
@@ -940,14 +971,14 @@ def room_items(s: Settings, room: str, now: datetime | None = None,
             found, last_day = [], day
         if ln.mid.split(".e")[0] in (exclude or set()):
             continue
-        if (ln.role not in (*PEOPLE_ROLES, NOTE) and not DECIDED.search(ln.body)) or mentions.OLD in ln.body:
+        if (ln.role not in (*PEOPLE_ROLES, *MARKS) and not DECIDED.search(ln.body)) or mentions.OLD in ln.body:
             continue
         files = []
         for nxt in lines[n + 1:]:
             if not nxt.startswith("  - attachment: "):
                 break
             files.append(nxt.strip()[2:])
-        found.append({"day": day, "time": ln.time[:5], "role": ln.role, "who": ln.who, "text": ln.body,
+        found.append({"day": day, "time": ln.time[:5], "role": ln.role, "who": ln.who, "text": shown(ln),
                       "files": files, "cite": f"daily/{day}.md:{n + 1}"})
     items += reversed(found)
     return items

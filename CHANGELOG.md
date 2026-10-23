@@ -6,6 +6,32 @@ A line that changes a file the install keeps (rooms.toml, yerkd.toml, budgets.to
 newer than the code is refused with one line, never changed); the day logs are rewritten once at the daemon's start
 with the originals kept under `backups/`; the index chunks every file again when its chunker's version changes.
 
+## 2026-10-23
+
+### said-or-noted
+
+- In an owner's room a reply or a `send` that tells what a third person said, decided, wants or asked, or quotes their
+  words, from a turn that made no reading call is turned back once, naming them: read where their words are (the day
+  log, the transcript, the mirror message, the file) and cite it, or write it as "from my notes, not their words". The
+  second try of the result goes out as it is. Each refusal is one shadow row, `person-refused` or `quote-refused`, and
+  the morning diff counts them beside sheet and paste. A person's room only logs, as before.
+- A sentence about the owner ("you", or the name `[import] me` in yerkd.toml gives his words) or the room itself is
+  never a claim about a third person, in the shadow rows too: eight of the first day's twelve `person` rows were the
+  owner's own words read back to him. Nor is a bare "told" with only punctuation after it ("286 posted, Sam told,"):
+  that is his own act in the passive, the first day's one false alarm. A sentence that says "from my notes", "not their
+  words" or "proposed, not confirmed" passes.
+- A note a room filed is shown in the recall pack, the topic hits, recall and read_memory behind "[the room's note, not
+  their words]", in the day log and in a fact file alike. `remember` takes `said` (who) and `source` (the message id,
+  file path or transcript line): the text is filed word for word as a `said` line in the day log, shown behind "[their
+  words]"; `said` without `source` is refused.
+- What was sent to an owner room is a recall root there: its `work/inbox` (text, Markdown, csv, json, vtt, srt and the
+  transcribe tool's `NAME.transcript.txt`; never audio, images or other binaries), cited as `<room>/work/inbox/...`, of
+  the private class. A person's room's uploads are never indexed, so they never reach an owner's room.
+
+**Upgrading:** nothing to edit. yerk-index sees the inbox roots at its next start (the scope changes, so one pass
+chunks every file again and writes only the changed chunks; the inbox files are embedded once). With no `[import] me`,
+only "you" and "your" mark the owner.
+
 ## 2026-10-22
 
 ### recall-ratchet (#87)

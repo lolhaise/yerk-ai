@@ -167,6 +167,10 @@ SHEET = ("Not {done}: {what} goes out in the owner's name, and no claims sheet w
          "(file and line number) and the quote from that line, word for word. Write it, fix any claim it cannot source, then "
          "{again}. This is asked once a turn: the next {next} goes out as it is.")
 SHEET_SEND, SHEET_STOP = ("sent", "send again", "send"), ("posted", "write your final message again", "final message")
+# the person and quote rules in an owner's room, in `send` and at Stop alike (seen live: a reply told what a manager said and
+# another quoted a reply, from turns that read nothing; a page for a colleague called a note about the colleague's boss the owner's rule)
+SAID = ("{name} is quoted or paraphrased here and nothing was read this turn. Read where their words are (the day log, the "
+        "transcript, the mirror message, the file) and cite it, or write it as: from my notes, not their words.")
 WORKER_OWN_ROOM = "a room starts workers for itself only, not for {room}"
 GONE, STRAY, NONE_RUNNING = "gone, no result", "unknown worker {id} running", "workers: none running"
 

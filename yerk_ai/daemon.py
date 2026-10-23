@@ -168,6 +168,8 @@ class Yerkd:
         self.cooldowns = Cooldowns(state / "cooldowns.json")
         self.meters = Meters(state / "meters.json")
         self.memory = memory.settings(private, state, dict(self.conf.get("memory", {})))
+        me = str(self.conf.get("import", {}).get("me") or "")       # the name the owner's own words go by (decision 22: never in code)
+        self.owner_names = (me,) if me and me != "me" else ()
         self.scoped = {n: self.memory.only(private, n, c["also"]) for n, c in self.room_confs.items() if "also" in c}
         context.walls(private, state, self.memory.scope.roots, self.room_confs)
         for n in (n for n, c in self.room_confs.items() if trusted(c)):
@@ -447,6 +449,14 @@ class Yerkd:
                                turn=src.turn_key, rule="sheet", detail=found, reply_chars=len(text))
             log.info("send: %s -> %s turned back once: %s", caller, room, found)
             return {"ok": False, "error": bounce}
+        sid = src.rp.session_id if src.rp else ""
+        if caller in self.rooms and src.busy and (hit := src.said_check(False, text, lambda: self.ledger.said(caller, sid, src.evidence.started),
+                                                                         self.owner_names)):
+            bounce, rule, found = hit         # the same way: its words, its flag, its shadow row
+            self.ledger.shadow(t=round(time.time(), 3), room=caller, session_id=sid, turn=src.turn_key, rule=rule, detail=found,
+                               reply_chars=len(text))
+            log.info("send: %s -> %s turned back once: %s", caller, room, found)
+            return {"ok": False, "error": bounce}
         self.sends += 1
         with src.lock:                        # in a turn: its key and the messages it answers
             turn = src.turn_key if src.busy and src.turn_key else f"x{uuid.uuid4().hex[:11]}"
@@ -527,15 +537,15 @@ class Yerkd:
     async def tool_read_memory(self, room: str, path: str, start: int, lines: int) -> dict[str, Any]:
         return await asyncio.to_thread(memory.read, self.scoped.get(room, self.memory), path, start, lines, self.reader(room))
 
-    async def tool_remember(self, room: str, text: str, about: str, replaces: list[str]) -> dict[str, Any]:
+    async def tool_remember(self, room: str, text: str, about: str, replaces: list[str], said: str = "", source: str = "") -> dict[str, Any]:
         """The `remember` tool: a room's own note into Yerk's own tree (memory.remember), stamped with
-        the ids of the messages its turn answers; a filed one ends with `next`, the answer first and whole."""
+        the ids of the messages its turn answers, or with `said` and `source` a person's words; a filed one ends with `next`."""
         if room not in self.rooms:
             return {"ok": False, "error": "remember is for a room's own session"}
         with self.rooms[room].lock:
             mid = ",".join(m.id for m in self.rooms[room].inflight) or f"x{self.rooms[room].turn_key}"
         r = await asyncio.to_thread(memory.remember, self.scoped.get(room, self.memory), self.daily, room, mid, text, about,
-                                    tuple(replaces), self.reader(room))
+                                    tuple(replaces), self.reader(room), said, source)
         return {**r, "next": words.FILED_NEXT.format(clause=words.FILED_AT_MOST)} if r["ok"] else r
 
     def owner_only(self, room: str, named: str) -> dict[str, Any] | None:
@@ -708,15 +718,17 @@ class Yerkd:
         return context.news(self.state / "rooms" / room / "rules-seen.json", sid, self.private, self.room_confs[room],
                             self.memory.root / memory.RULES, int(self.budgets["per_message"]["on_hit"]["rules"]))
 
-    def shadow_stop(self, name: str, room: Room, reply: str, sid: str) -> list[tuple[str, str]]:
-        """The evidence rules after a reply: ledgered and logged, never a block (shadow, DESIGN 8)."""
+    def shadow_stop(self, name: str, room: Room, reply: str, sid: str, refused: bool = False) -> list[tuple[str, str]]:
+        """The evidence rules after a reply: ledgered and logged, never a block (shadow, DESIGN 8). `refused`: the said check
+        turned this reply back, its own row written, so its person and quote rows are not written twice."""
         figure, known = memory.on_file(self.memory)
         said = self.ledger.said(name, sid, room.evidence.started)     # its replies posted earlier in this session
         found = evidence.check(reply, room.prompts(), room.evidence, self.memory.scope.roots, figure, known, said)
         found += evidence.check_claims(reply, room.evidence, self.memory.scope.roots)     # decision 25
         found += [] if room.in_owner_name() else evidence.check_sheet(reply, room.evidence)   # an owner's room refuses instead
-        found += evidence.check_person(reply, room.evidence)                              # a claim about a person needs a read
-        found += evidence.check_quote(reply, room.evidence, said)                         # a quote needs its source
+        if not refused:                                   # a claim about a person needs a read, a quote its source
+            found += evidence.check_person(reply, room.evidence, self.owner_names)
+            found += evidence.check_quote(reply, room.evidence, said, self.owner_names)
         with room.lock:                                   # claim 3: the owner pushing back on a reply posted earlier
             pushed = [m.received for m in room.inflight if m.sender == "owner" and words.PUSHBACK.search(m.text)]
         found += evidence.stance(reply, pushed, room.evidence) if pushed and said and reply.strip() else []
@@ -848,7 +860,7 @@ class Yerkd:
                     self.rewrites.pop(str(payload.get("tool_use_id") or ""), None)
             return {}
         if event == "Stop":
-            active = bool(payload.get("stop_hook_active"))
+            active, refused = bool(payload.get("stop_hook_active")), False
             reason = room.stop_check(active) if room else None
             if reason:
                 log.info("room %s: Stop bounced once: an image was never read", name)
@@ -879,9 +891,15 @@ class Yerkd:
                     self.ledger.shadow(t=round(time.time(), 3), room=name, session_id=sid, turn=room.turn_key, rule="sheet",
                                        detail=found, reply_chars=len(str(said)))
                     log.info("room %s: Stop bounced once: %s", name, found)
+                elif said and (hit := room.said_check(active, str(said), lambda: self.ledger.said(name, sid, room.evidence.started), self.owner_names)):
+                    reason, rule, found = hit         # the send tool's words and flag: one refusal per result in either place
+                    self.ledger.shadow(t=round(time.time(), 3), room=name, session_id=sid, turn=room.turn_key, rule=rule,
+                                       detail=found, reply_chars=len(str(said)))
+                    log.info("room %s: Stop bounced once: %s", name, found)
+                    refused = True
             if room and name:
                 try:
-                    await asyncio.to_thread(self.shadow_stop, name, room, str(payload.get("last_assistant_message") or ""), sid)
+                    await asyncio.to_thread(self.shadow_stop, name, room, str(payload.get("last_assistant_message") or ""), sid, refused)
                 except Exception:
                     log.exception("room %s: the shadow Stop check failed (nothing blocked)", name)
             return {"decision": "block", "reason": reason} if reason else {}

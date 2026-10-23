@@ -129,6 +129,14 @@ def drop_orphan_shadow_tables(cur: sqlite3.Cursor, families: list[str]) -> list[
     return repaired
 
 
+UPLOADS = (".md", ".txt", ".csv", ".json", ".vtt", ".srt")    # a room inbox's text kinds: the transcribe tool's NAME.transcript.txt too
+
+
+def kinds(root: Path) -> tuple[str, ...]:
+    """The file kinds a root is indexed for: Markdown, and in a room's upload inbox (<room>/work/inbox) its text kinds too."""
+    return UPLOADS if root.parts[-2:] == ("work", "inbox") else (".md",)
+
+
 @dataclass(frozen=True)
 class Scope:
     """What the index covers: Markdown files under each root (a root may be one file)."""
@@ -145,13 +153,14 @@ class Scope:
 
     def contains(self, path: Path) -> bool:
         """True for a resolved path inside the scope: under a root, no dot-folder or skipped folder
-        on the way, not a temp or backup name."""
+        on the way, not a temp or backup name; under a room's inbox, one of its text kinds only (UPLOADS)."""
         for root in self.roots:
             if path == root:
                 return not self.skipped(path)
             if root.is_dir() and path.is_relative_to(root):
                 parts = path.relative_to(root).parts[:-1]
-                return not any(p.startswith(".") or p in SKIP_DIRS for p in parts) and not self.skipped(path)
+                return not any(p.startswith(".") or p in SKIP_DIRS for p in parts) and not self.skipped(path) and (
+                    kinds(root) != UPLOADS or path.name.endswith(UPLOADS))
         return False
 
     def files(self, deadline: float | None = None, folders: list[str] | None = None) -> dict[str, tuple[int, int]]:
@@ -173,7 +182,7 @@ class Scope:
                 dirnames[:] = sorted(d for d in dirnames if not d.startswith(".") and d not in SKIP_DIRS)
                 for n in filenames:
                     p = Path(dirpath, n)
-                    if not n.endswith(".md") or self.skipped(p) or p.is_symlink():
+                    if not n.endswith(kinds(root)) or self.skipped(p) or p.is_symlink():
                         continue
                     try:
                         st = p.stat()

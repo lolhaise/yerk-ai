@@ -58,7 +58,7 @@ def test_ten_preloaded_tools_with_slim_schemas(tmp_path):
                           "voice_note"}
     assert list(tools["transcribe"].inputSchema["properties"]) == ["path", "owner_yes"]
     assert list(tools["voice_note"].inputSchema["properties"]) == ["script", "name", "owner_yes"]
-    assert list(tools["remember"].inputSchema["properties"]) == ["text", "about", "replaces", "job"]
+    assert list(tools["remember"].inputSchema["properties"]) == ["text", "about", "replaces", "job", "said", "source"]
     assert {f"mcp__yerk__{t}" for t in tools} == set(YERK_TOOLS) and "`remember`" in context.MECHANICS.read_text()
     assert list(tools["settings"].inputSchema["properties"]) == ["model", "effort", "account"]
     assert "the owner asks to change this room's model or thinking level" in str(tools["settings"].description).lower()

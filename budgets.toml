@@ -192,4 +192,14 @@ drops = [
 # budget test) and the record weight in the fusion (memory.record, top six 99 to 105 on the same questions), not folded
 # to fit (the owner's rule: memory changes land only through the bench); 38 on its first base, one fewer merged, since
 # its settings() keyword shares the line main's `private` added.
-lines = 18165
+# 2026-10-23: said-or-noted raised it by 126: what a third person said, decided, wants or asked, or a quote of their
+# words, turned back once a result in an owner's room from a turn with no reading call (Room.said_check and its flag,
+# room.py, 19; the send refusal, the Stop hook's seventh rule and the owner's name from [import] me, daemon.py, 18; the
+# words, 4), the person and quote rules kept to third persons with the "from my notes" pass (evidence.py, 41: people(),
+# quotes(), speaker(), read_any()), a room's note never shown as anyone's words, a person's words filed with `said` and
+# `source`, and each owner room's upload inbox a recall root (memory.py, 31; memindex.py, 9: its text kinds only; the
+# doctor skips an inbox not made yet), the tool's two fields (mcp_server.py, 4) (never a wrong
+# answer to the owner), not folded to fit; 18,291 merged on recall-ratchet (#87, 37), no line
+# shared (settings() takes its `uploads` and #87's `imports` on the two lines each touched). Its cold read raised it by 1:
+# a bare "told" ("286 posted, Sam told,") is the owner's own act in the passive, never a claim (evidence.py, PERSON).
+lines = 18292

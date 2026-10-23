@@ -45,7 +45,7 @@ class Daemon(Protocol):
     async def tool_hold(self, room: str, wait_for: str, reason: str) -> dict[str, Any]: ...
     async def tool_recall(self, room: str, query: str, k: int) -> dict[str, Any]: ...
     async def tool_read_memory(self, room: str, path: str, start: int, lines: int) -> dict[str, Any]: ...
-    async def tool_remember(self, room: str, text: str, about: str, replaces: list[str]) -> dict[str, Any]: ...
+    async def tool_remember(self, room: str, text: str, about: str, replaces: list[str], said: str = "", source: str = "") -> dict[str, Any]: ...
     async def tool_rule(self, room: str, text: str, job: str) -> dict[str, Any]: ...
     async def tool_worker(self, room: str, req: dict[str, Any]) -> dict[str, Any]: ...
     async def tool_schedule(self, room: str, req: dict[str, Any]) -> dict[str, Any]: ...
@@ -129,7 +129,8 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         return json.dumps(await daemon.tool_read_memory(caller_room(ctx), path, from_line, lines))
 
     @mcp.tool()
-    async def remember(text: str, about: str = "", replaces: list[str] | None = None, job: str = "", *, ctx: Context) -> str:
+    async def remember(text: str, about: str = "", replaces: list[str] | None = None, job: str = "", said: str = "", source: str = "",
+                       *, ctx: Context) -> str:
         """File in memory now, before you write the answer, what you were just told: a new fact, a decision or a
         correction, one line in plain words. `about`: for a fact, the person, place or thing it is about,
         by the name the owner uses (it names the fact file). `replaces`: for a correction, each old line as
@@ -137,9 +138,12 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         next 12 holding those words is marked superseded. Returns the new line's cite. `job`: when the owner
         says how a job is done from now on, or corrects how it was done, the job's short name ("open web pages",
         the rules' own name if it has one): `text` becomes its one rule in every room, the older one marked
-        replaced."""
+        replaced. `said`: when `text` is what a person said or wrote, word for word, their name, with `source`
+        (the message id, file path or transcript line holding those words): it is filed as their words.
+        Anything else about a person (what they decided or want, in your words) is your note, and is shown
+        as your note, never as their words."""
         return json.dumps(await (daemon.tool_rule(caller_room(ctx), text, job) if job else
-                                 daemon.tool_remember(caller_room(ctx), text, about, replaces or [])))
+                                 daemon.tool_remember(caller_room(ctx), text, about, replaces or [], said, source)))
 
     @mcp.tool()
     async def worker(action: str, brief: str = "", id: str = "", room: str = "", tasks: list[str] | None = None,

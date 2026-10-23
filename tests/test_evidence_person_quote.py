@@ -2,8 +2,9 @@
 that nothing the turn read backs up. A sentence telling what someone said, wants, knows, decided or asked, or where they were,
 from a turn that made no call that reads, is ledgered as `person`; a quoted span given as someone's or a document's words that
 nothing the turn read, was given or posted earlier in the session carries is ledgered as `quote`. The sentences have the shapes
-C42, C46, C55, C37) and of three accepted replies the person rule flags anyway (K41, K62, K65): known false alarms,
-as plain text with one more line for the check. While a second entry waits, in the queue for."""
+of live ones that a replay saw no rule catch (C16, C41, C42, C46, C55, C37) and of two accepted
+replies the person rule flags anyway (K41, K65): known false alarms, kept here so a change that stops them is seen (K62, a
+details are placeholders, never the live words."""
 from __future__ import annotations
 
 from test_gates import call, human_turn, setup, turn_of
@@ -18,12 +19,13 @@ CASES = {
     "Sam": "Sam wants the seating plan kept on paper.",
     "Dana": 'Dana said "go ahead" on the 19th, got the results on the 20th with all three cakes named on the list.',
     "Dana ": "That's mine: I gave you a reason that doesn't hold, since Dana already knows.",
+}
+OWNER = {              # the owner as the subject: their own words are the prompt, never a third person's (said-or-noted, 2026-10-23)
     "You": "You said it yourself in June: nobody reads the manual anymore, it's the examples.",
     "you": "Two weeks of it you were on a trip, so it's about three and a half at the club, 17 or so days on the rota.",
 }
-KNOWN_FALSE = {        # the queue (for Its00, Turn00, And00) the last part: closes the case before the next run
+KNOWN_FALSE = {        # accepted replies (controls K41, K65) the rule flags: what it cannot tell from a claim
     "she": "- **Riley:** once she says which other stalls are out of scope, I cut v0.4 to v0.5 and you post it on the list.",
-    "You": "Queue for its turn and the.",
     "she ": "The heads-up only takes away her version of it, the one where she tells Dana you changed the "
             "menu without looping her in.",
 }
@@ -42,14 +44,15 @@ def read_of(*results: str) -> evidence.Evidence:
     return ev
 
 
-def test_the_five_live_claims_about_a_person_fire_from_a_turn_that_read_nothing():
+def test_the_live_claims_about_a_third_person_fire_from_a_turn_that_read_nothing_and_those_about_the_owner_never():
     for name, s in CASES.items():
         assert person(s, [REMEMBER]) == [f'{name.strip()}: "{s}"; tools this turn: mcp__yerk__remember x1'], s
-    assert person(CASES["You"]) == [f'Queue: "{CASES["You"]}"; run starts the: example']
+    assert person(CASES["Sam"]) == [f'Sam: "{CASES["Sam"]}"; tools this turn: none']
+    assert [person(s, [REMEMBER]) for s in [*OWNER.values(), "You know more than you think."]] == [[], [], []]   # was K62's alarm
     assert person(CASES["Sam"], [VOICE]) == [f'Sam: "{CASES["Sam"]}"; tools this turn: mcp__yerk__voice_note x1']   # it reads nothing
 
 
-def test_three_accepted_replies_fire_too_and_are_known_false_alarms():
+def test_two_accepted_replies_fire_too_and_are_known_false_alarms():
     for name, s in KNOWN_FALSE.items():
         assert person(s) == [f'{name.strip()}: "{evidence.sentences(s)[0]}"; tools this turn: none'], s
 
@@ -105,13 +108,15 @@ def test_a_quote_with_no_lead_in_or_under_three_words_or_after_another_quote_is_
     assert [d.split(" after ")[0] for _, d in evidence.check_quote(two, read_of())] == ['"either, doesn\'t matter."']
 
 
-def test_through_the_stop_hook_both_rows_are_ledgered_and_nothing_is_blocked(tmp_path):
+def test_through_the_stop_hook_an_owner_room_refuses_once_then_both_rows_are_ledgered(tmp_path):
     y, room, ch = setup(tmp_path)
     human_turn(room, "does Sam want the export automated?")
     room.evidence = turn_of([REMEMBER])
-    out = call(y, {"hook_event_name": "Stop", "stop_hook_active": False, "last_assistant_message": f"{CASES['Sam']} {NOTE}"})
-    assert out == {}
+    stop = {"hook_event_name": "Stop", "stop_hook_active": False, "last_assistant_message": f"{CASES['Sam']} {NOTE}"}
+    assert call(y, stop) == {"decision": "block", "reason": words.SAID.format(name="Sam")}     # said-or-noted, once a result
+    assert call(y, {**stop, "stop_hook_active": True}) == {}
     rows = {r["rule"]: r["detail"] for r in y.ledger.rows(50, "shadow")}
+    assert rows["person-refused"].startswith('Sam: "Sam wants the seating plan kept on paper."')
     assert rows["person"].startswith('Sam: "Sam wants the seating plan kept on paper."')
     assert rows["quote"].startswith('"glue and clamp')
 

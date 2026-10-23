@@ -159,7 +159,7 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
             found.extend(f"room {n}: rooms.toml key {k} is read by nothing" for k in sorted(set(c) - ROOM_KEYS))
             found.extend([f"room {n}: no layer folder"] if not layer_dir(private, c).is_dir() else [])
         also = {(private / Path(str(x)).expanduser()).resolve() for c in rs.values() if isinstance(c.get("also"), list) for x in c["also"]}
-        found.extend(f"also root {r.name}: missing" for r in sorted(also | set(m.scope.roots[1:])) if not r.exists())
+        found.extend(f"also root {r.name}: missing" for r in sorted(also | set(m.scope.roots[1:]) - set(m.uploads)) if not r.exists())
         named = [v for t in conf.values() if isinstance(t, dict) for k, v in t.items() if k.endswith(("_file", "_key")) and isinstance(v, str)]
         named += [str(r["token"]) for r in (load_toml(private / "accounts.toml").get("accounts") or {}).values() if r.get("token")]
         for p in (private / Path(x).expanduser() for x in named):
