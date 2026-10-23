@@ -282,4 +282,12 @@ drops = [
 
 # outside `before` shows its own attachments to the judge, as phase 1's prompt does (evidence.py).
 # 19,462 merged on room-defaults (#111), no line shared.
-lines = 19462
+# 2026-10-23: recall-pack-fit raised it by 22: every session-start part under its key by construction (the owner's screenshot
+# showed one room's recall pack at 6,003 against its 6,000, its line counting the 749 left out 64 characters where 60
+# were kept for it and its items counted in code points, then 8 of the owner's lines cut from its middle and said). lifted/trim.py 17
+# (whole lines only, the marker counted in Claude Code's characters, shrunk until the whole text fits), memory.py 8 (the pack
+# drops its oldest items whole with its head and that line measured; `chars` moved from context.py, 5), context.py 1 (one
+# fit for every part, the compaction's re-add with it), hooks.py 2 (the topic hit's absence lines whole while they fit),
+# daemon.py 0, taste.py 0 (its last resort drops a whole reply), less words.py 6 (the cut notice's heads), not folded to fit.
+# 19,462 merged on taste-eval (#106), no line shared.
+lines = 19484

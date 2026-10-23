@@ -20,7 +20,7 @@ from .config import flag, write_private
 from .lifted.clock import clock_line, room_voice
 from .lifted.sizemap import fmt, split_sections
 from .lifted.trim import truncate
-from .memory import FRONT, rules_part
+from .memory import FRONT, chars, rules_part
 from .mentions import OLD
 
 MECHANICS = Path(__file__).with_name("mechanics.md")
@@ -28,11 +28,6 @@ APPENDED = ("mechanics", "persona", "rulebook", "room_voice", "pinned_memory", "
 TAIL = ("rulebook", "rules")       # one rule a line, the newest last: past its size the newest lines go, never a middle one
 SEP = "\n\n"
 NEWS = "Rules changed since you last looked:"
-
-
-def chars(s: str) -> int:
-    """Characters as Claude Code counts them: UTF-16 code units."""
-    return len(s.encode("utf-16-le")) // 2
 
 
 @dataclass
@@ -88,11 +83,11 @@ Pack = Callable[[int], tuple[str, str]]       # characters left -> (the room's f
 def recall_pack(base: Path, room: dict[str, Any], limit: int = 6000, pack: Pack | None = None) -> tuple[str, str]:
     """The room's own filed items of the last 14 days, newest first (from the daemon, which reads
     the private day logs; decision 20), else the layer's newest daily notes; then the open
-    commitments, which keep their room inside the limit."""
+    commitments, which keep their room inside the limit: the pack has what they and the line between leave."""
     texts, srcs = [], []
     loops, src = _read(base, room.get("open_loops"))
     if pack is not None:
-        text, psrc = pack(max(0, limit - chars(loops) - chars(SEP)))
+        text, psrc = pack(max(0, limit - chars(loops) - chars(SEP)) if loops else limit)
         if text:
             texts.append(text)
             srcs.append(psrc)
@@ -133,11 +128,17 @@ def session_start(private: Path, room: dict[str, Any], budgets: dict[str, Any], 
     parts = []
     for name in APPENDED:
         text, src = raw[name]
-        limit = int(limits[name])
-        sent, cut = truncate(text, name, limit, read_path=src or None, mode="tail" if name in TAIL else "middle")
-        kept = set(sent.split("\n")) if cut else set()
-        parts.append(Part(name, sent, limit, chars(text), src, tuple(x for x in text.split("\n") if cut and x.strip() and x not in kept)))
+        parts.append(Part(name, *fit(name, text, int(limits[name]), src)))
     return parts
+
+
+def fit(name: str, text: str, limit: int, src: str = "") -> tuple[str, int, int, str, tuple[str, ...]]:
+    """A part under its key by construction: the text as sent, measured whole, at most `limit` as Claude Code counts it
+    (whole lines go, never part of one); the key, the size before, the file, and the lines of the file that went."""
+    sent, cut = truncate(text, name, limit, read_path=src or None, mode="tail" if name in TAIL else "middle", count=chars)
+    kept = set(sent.split("\n"))
+    return sent, limit, chars(text), src, tuple(x for x in text.split("\n") if cut and x.strip() and x not in kept
+                                                    and not x.startswith("[from "))
 
 
 def appended_file(parts: list[Part]) -> str:
