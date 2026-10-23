@@ -204,7 +204,8 @@ def violations(start: list[Part], msg: list[Part], budgets: dict[str, Any]) -> l
 
 def wire(transcript: Path) -> dict[str, Any]:
     """Sizes as sent, from a room's Claude Code transcript (rows of 2.1.301): `api-request-shape`
-    holds the system blocks and tool definitions as sent; `api-request-blob` rows hold each
+    holds the system blocks and tool definitions as sent, the newest of them read (each process start of a resumed session
+    writes its own, so the first is the tool list of days ago); `api-request-blob` rows hold each
     request's new content blocks. A request carrying a new message is that message plus what
     Claude Code and the hook put around it."""
     rows: list[dict[str, Any]] = []
@@ -212,7 +213,7 @@ def wire(transcript: Path) -> dict[str, Any]:
     for line in lines:                     # a line a hard power-off zeroed (NUL bytes) or cut short: skipped, and counted
         with contextlib.suppress(ValueError):
             rows.append(json.loads(line))
-    shape: dict[str, Any] = next((r["shape"] for r in rows if r.get("type") == "api-request-shape"), {})
+    shape: dict[str, Any] = next((r["shape"] for r in reversed(rows) if r.get("type") == "api-request-shape"), {})
     out: dict[str, Any] = {"system": sum(chars(b.get("text", "")) for b in shape.get("system", [])),
                            "tools": {str(t.get("name")): chars(json.dumps(t)) for t in shape.get("tools", [])},
                            "messages": [], "skipped": len(lines) - len(rows)}

@@ -175,9 +175,11 @@ class Systemd:
 
     @staticmethod
     def _room(folder: Path) -> str:
-        """The room the worker belongs to, from the spec Workers.start wrote before the launch."""
+        """The room whose work folder the worker gets, from the spec Workers.start wrote before the launch: its own, or the
+        `bind` the daemon gave it (a pictures backfill: its card in the machine room, the pictures in the owner room's inbox)."""
         try:
-            return str(json.loads((folder / "worker.json").read_text()).get("room") or "")
+            spec = json.loads((folder / "worker.json").read_text())
+            return str(spec.get("bind") or spec.get("room") or "")
         except (OSError, ValueError):
             return ""
 
@@ -485,7 +487,8 @@ class Workers:
 
     async def start(self, room: str, brief: str = "", brief_file: str = "", account: str = "", model: str = "",
                     cap_minutes: float = 0.0, tasks: list[str] | None = None, job: str = "",
-                    watch: int = 0) -> dict[str, Any]:
+                    watch: int = 0, more: dict[str, Any] | None = None) -> dict[str, Any]:
+        """`more`: keys the daemon's own callers add to worker.json (never the tool's or the command line's), none replacing one."""
         if room not in self.rooms:
             return {"ok": False, "error": f"no room {room!r}; rooms: {', '.join(self.rooms)}"}
         if brief_file and not brief:
@@ -528,6 +531,7 @@ class Workers:
                 "claude": shutil.which(claude_bin()) or claude_bin(), "tools": self.conf.tools,
                 "permission_mode": self.conf.permission_mode, "prompt": str(prompt), "report": str(report),
                 "tasks": str(tasks_md), "cap": cap, "gate": self.gate, "settings": str(gate_settings(d))}
+        spec.update({k: v for k, v in (more or {}).items() if k not in spec})
         if self.conf.yerk_tools:
             spec["yerk_tools"] = list(self.conf.yerk_tools)
             spec["mcp_config"] = str(mcp_config(self.state, room, self.conf.yerk_tools, d / "mcp.json"))
