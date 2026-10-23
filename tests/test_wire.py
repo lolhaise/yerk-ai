@@ -35,6 +35,17 @@ def test_a_line_a_crash_zeroed_or_cut_is_skipped_and_counted(tmp_path):
     assert "skipped" not in context.render_wire("r", context.wire(FIXTURE), 40, budgets())
 
 
+def test_a_resumed_sessions_newest_request_shape_is_the_one_measured(tmp_path):
+    """2026-10-23, PR 97's cold read: the work room's session held five shapes, the first from before two tools were added
+    (8 Yerk tools, 7,121 characters) and the newest with ten (9,978); `yerk map --wire` read the first."""
+    import json
+    old = {"system": [{"type": "text", "text": "p"}], "tools": [{"name": "mcp__yerk__send", "description": ""}]}
+    new = {"system": [{"type": "text", "text": "pp"}], "tools": [*old["tools"], {"name": "mcp__yerk__seen", "description": ""}]}
+    (t := tmp_path / "sid.jsonl").write_text("".join(json.dumps({"type": "api-request-shape", "shape": s}) + "\n" for s in (old, new)))
+    w = context.wire(t)
+    assert w["system"] == 2 and list(w["tools"]) == ["mcp__yerk__send", "mcp__yerk__seen"]
+
+
 def test_render_wire_puts_the_parts_against_their_budgets():
     from yerk_ai.config import budgets
     out = context.render_wire("r", context.wire(FIXTURE), 40, budgets())

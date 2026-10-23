@@ -10,7 +10,9 @@ import path from "node:path";
 // ---- where the install lives ------------------------------------------------------------------
 // --private names the private folder (its secrets/ and web.json), else YERK_PRIVATE. --state, else YERK_STATE, else
 // $XDG_STATE_HOME/yerk, else ~/.local/state/yerk, as yerk_ai/config.py finds it. --room, else YERK_ROOM, else the room
-// whose work folder this process runs in (Claude Code starts a room's servers in <state>/rooms/<room>/work).
+// whose work folder this process runs in (Claude Code starts a room's servers in <state>/rooms/<room>/work). `work`, where
+// web_image saves a picture for the room's Read: the folder this process runs in when it is that room's work folder, else
+// <state>/rooms/<room>/work; with no room, the folder it runs in.
 export function where(argv = process.argv.slice(2), env = process.env, cwd = process.cwd()) {
   const arg = (name) => {
     const i = argv.indexOf(`--${name}`);
@@ -19,8 +21,11 @@ export function where(argv = process.argv.slice(2), env = process.env, cwd = pro
   const home = (p) => (p === "~" ? os.homedir() : p?.startsWith("~/") ? path.join(os.homedir(), p.slice(2)) : p);
   const priv = home(arg("private") ?? env.YERK_PRIVATE);
   const state = path.resolve(home(arg("state") ?? env.YERK_STATE ?? path.join(env.XDG_STATE_HOME || path.join(os.homedir(), ".local/state"), "yerk")));
-  const room = arg("room") ?? env.YERK_ROOM ?? /\/rooms\/([^/]+)\/work\/?$/.exec(env.CLAUDE_PROJECT_DIR || cwd)?.[1];
-  return { private: priv ? path.resolve(priv) : "", state, web: path.join(state, "web"), room: room || null };
+  const base = env.CLAUDE_PROJECT_DIR || cwd;
+  const own = /\/rooms\/([^/]+)\/work\/?$/.exec(base)?.[1];
+  const room = arg("room") ?? env.YERK_ROOM ?? own;
+  const work = path.resolve(room && own !== room ? path.join(state, "rooms", room, "work") : base);
+  return { private: priv ? path.resolve(priv) : "", state, web: path.join(state, "web"), room: room || null, work };
 }
 
 // ---- keys and settings, read on every call --------------------------------------------------------

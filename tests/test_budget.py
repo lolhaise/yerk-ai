@@ -137,10 +137,13 @@ def test_the_rules_file_is_a_part_of_its_own_so_a_full_rulebook_never_pushes_a_r
 
 # Claude Code's parts as the widest live room sends them, the largest of each across the six rooms' newest transcripts
 # (2026-10-20, Claude Code 2.1.301): the prompt of a session started on Fable 5.1 (4,817 on Opus 5.5), each tool entry.
+# Yerk AI's own entries measured again 2026-10-23 (PR 97's cold read): the work room's newest shape, ten tools, plus `seen`
+# as this tree sends it on the daemon's Python 3.14.
 LIVE_PROMPT = 10889
 LIVE_TOOLS = {"Bash": 4248, "Glob": 785, "Grep": 3362, "Read": 2006, "mcp__web-ladder__web_fetch": 878,
               "mcp__web-ladder__web_search": 621, "mcp__yerk__hold": 481, "mcp__yerk__read_memory": 551, "mcp__yerk__recall": 656,
-              "mcp__yerk__remember": 1220, "mcp__yerk__schedule": 1735, "mcp__yerk__send": 520, "mcp__yerk__settings": 878,
+              "mcp__yerk__remember": 1656, "mcp__yerk__schedule": 2149, "mcp__yerk__send": 564, "mcp__yerk__settings": 878,
+              "mcp__yerk__transcribe": 840, "mcp__yerk__voice_note": 911, "mcp__yerk__seen": 845,
               "DeferredToolPlaceholder": 214, "mcp__yerk__worker": 1292}
 
 
@@ -162,14 +165,14 @@ def test_claude_codes_parts_as_the_rooms_send_them_fit_their_lines_and_what_is_l
         r"^  (system prompt: Claude Code's own|built-in tools|Yerk AI's tools|other tool entries)(?: \(.*?\))?\s+([\d,]+)\s+([\d,]+)", out, re.M)}
     assert rows == {"system prompt: Claude Code's own": (LIVE_PROMPT, b["session_start"]["claude_code"]["claude_code_prompt"]),
                     "built-in tools": (10401, b["session_start"]["claude_code"]["builtin_tools"]),
-                    "Yerk AI's tools": (7333, b["session_start"]["claude_code"]["yerk_tools"]),
+                    "Yerk AI's tools": (10823, b["session_start"]["claude_code"]["yerk_tools"]),
                     "other tool entries": (1713, b["session_start"]["claude_code"]["deferred_tool_names"])}
     builtin, other = (next(x for x in out.splitlines() if x.startswith(f"  {k} (")) for k in ("built-in tools", "other tool entries"))
     assert "DeferredToolPlaceholder" in other and "DeferredToolPlaceholder" not in builtin
     assert all(sent <= line for sent, line in rows.values()), out
     assert all(line <= sent * 1.02 for name, (sent, line) in rows.items() if name != "Yerk AI's tools"), rows
     s = b["session_start"]
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 88514
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 92014
 
 
 # The largest room rulebook, the room's own text only since PR 47, across the six rooms: the work room's, read as session
@@ -186,10 +189,11 @@ def test_the_rulebook_line_keeps_about_1000_over_the_largest_room_text_and_what_
     line) to 84,550, then by the mechanics' 200 again (the paste line) to 84,750. That day both line-per-rule parts were
     found cut from the middle at every start since Oct 21: the work room's rulebook (13,518, then 12,696) went to 14,000,
     about 10% over it, `rules` to 12,500 for the shared file's 12,298, and the total rose by the 3,764 to 88,514; the
-    doctor's fit check reads red the day a part passes its line."""
+    doctor's fit check reads red the day a part passes its line. On 2026-10-23 the mechanics' 200 (the web_image line)
+    took it to 88,714, and the mechanics' 200 again (the X-links line) to 88,914."""
     s = budgets()["session_start"]
     assert 900 <= s["appended"]["rulebook"] - LIVE_RULEBOOK <= 1400 and s["appended"]["rules"] == 12500
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 88514
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 92014
     private = tmp_path / "private"
     shutil.copytree(EXAMPLE_PRIVATE, private)
     (private / "rulebook.md").write_text("r" * (LIVE_RULEBOOK - 1) + "\n")

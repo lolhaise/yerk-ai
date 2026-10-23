@@ -34,12 +34,12 @@ const WALL_TEXT = {
   dns_error: ["The hostname does not resolve.", "no", "Check the URL spelling."],
   connection_failed: ["The site refused or dropped the connection.", "yes", "Retry; the site may be down."],
   too_large: ["The page is over Browserbase Fetch's 5 MB limit and the browser rung could not read it either.", "no", "Fetch a smaller page or a specific section."],
-  binary_content: ["The URL returns a binary file, not a web page.", "no", "Download it directly instead of reading it as a page."],
+  binary_content: ["The URL returns a binary file, not a web page.", "no", "An image: use web_image(url), then Read the file it saves; these tools read no other binary file."],
   invalid_url: ["The URL is not a public http(s) address.", "no", "Use a public http or https URL."],
   empty: ["Every rung loaded the page but found no readable text.", "maybe", "The content may be inside an image, a canvas or an app that needs interaction."],
 };
 
-function wallFromBbError(err) {
+export function wallFromBbError(err) {
   if (!(err instanceof BrowserbaseError)) return "bb_unreachable";
   switch (err.kind) {
     case "auth": return "bb_auth";
@@ -68,7 +68,7 @@ function wallFromVerdict(verdict, why, status) {
   }
 }
 
-function describeWall(wall) {
+export function describeWall(wall) {
   if (WALL_TEXT[wall]) return WALL_TEXT[wall];
   const http = /^http_(\d{3})$/.exec(wall);
   if (http) {

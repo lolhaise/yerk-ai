@@ -25,7 +25,67 @@ with the originals kept under `backups/`; the index chunks every file again when
   compaction's restore was counted twice (34 of 326 messages in that room; the largest read 65,164 for 60,927), and
   a compaction's summary, Claude Code's image notes and the Stop hook's feedback were counted as messages (23 of 326).
 - Nothing is cut: no Yerk AI part passed its key in any room's 640 assemblies from Oct 18 to Oct 23.
-- **Upgrading:** budgets.toml: [code] lines to 18,402 with its dated note; no budget changes.
+- **Upgrading:** budgets.toml: [code] lines to 18,712 with its dated note; no budget changes.
+
+### pictures-seen (#97)
+
+- A picture sent to an owner room is findable later, the way its uploads and recordings are: in the same turn the room
+  files what it read on it beside the picture as `NAME.seen.txt` (the new `seen` tool; the room already reads every
+  picture before it answers, so there is no second model call and nothing paid). Its first line is written by code (the
+  room, the message id, when it was saved, its name), then every word on the picture in reading order (a chat
+  screenshot keeps who said what), then a line or two of what it shows: a person in a photo the owner sends in his own
+  room is the owner unless its own text says otherwise, anyone else named only as the picture names them. Recall and
+  read_memory cite it as `<room>/work/inbox/<id>/NAME.seen.txt:line` and show its lines behind "[text on a
+  picture he sent, as the room read it]", never as anyone's words. A room that read a picture and filed nothing is
+  turned back once to file it. A person's room files no picture and none is indexed.
+- A reply to a picture in an owner room takes a little longer: the words on it are written out once, as the `seen` call,
+  before the answer.
+- `yerk pictures backfill ROOM [--limit N] [--dry-run]` files the pictures sent before this through Yerk workers on the
+  room's own account and model, 20 to a batch and one batch at a time, so the account's other workers wait for one batch
+  at most. Each batch's card and its one line ("batch 1 of 8 finished clean, 20 of 20 filed; batch 2 started") are in the
+  machine room; no relay turn runs in any room. `--dry-run` lists each sidecar it would write and starts nothing.
+- `yerk pictures backfill ROOM --root FOLDER` does the same for the pictures under a folder the room lists in rooms.toml
+  (`read` or `also`), each sidecar beside its picture, cited and indexed under that folder as its other files are; a
+  folder the room does not list, or one of Yerk's own, is refused in one line.
+- `yerk map --wire` measures a room's newest request shape, so a session resumed for days shows the tools it sends now.
+- **Upgrading:** budgets.toml, each with a dated note: `[code] lines` to 18,602; `yerk_tools` 8,000 to 11,000 (Yerk AI's
+  tools measured at 9,978 before `seen` and 10,823 with it); `mechanics` 4,000 to 4,100 (web-image's
+  4,000 and this line); the session `total` 88,914 to 92,014. Each room has the `seen` tool from its next process start. Then, with yerkd running, once per owner room:
+  `yerk pictures backfill ROOM --dry-run` to see what it would read, and the same without `--dry-run` to start it. For a
+  folder of older pictures, list it in the room's `also` (and in yerkd.toml's `[memory] also`, as every `also` is) or
+  `read`, restart yerkd, then the same with `--root FOLDER`.
+
+### web-image
+
+- A room can look at a picture on the web: `web_image(url, max_bytes?)`, the web plug-in's fifth tool, saves one jpeg,
+  png, gif or webp of 15 MB at most into the room's work folder as `web/<the URL's sha1, 12 hex>.<ext>`, where the
+  room's own Read shows it, and says its path, bytes, type, width, height and the rung that read it. It is read by a
+  plain fetch from the machine first, asked for as a browser asks for a picture, then by Browserbase Fetch without and
+  with proxies only when a site refuses that (each paid call a spend row, as web_fetch's are), never by a browser rung.
+  Another picture type (avif, svg), a page or any other file is refused where it stands, a private host is refused as
+  web_fetch refuses it, and the same URL within a day is the saved copy, nothing fetched.
+- A private host written as an IPv4-mapped IPv6 address (`http://[::ffff:127.0.0.1]/`, which a URL writes
+  `[::ffff:7f00:1]`) is refused by web_fetch and web_image alike; before, both reached a server listening on 127.0.0.1
+  only (web_fetch since #76).
+- web_fetch's wall for a picture says `It is an image: use web_image(url), then Read the file it saves.`, and its next
+  move no longer says to download the file, which sent a room to curl in a shell with no network.
+- The mechanics say it in one line: a picture in a post or a page is saved by `web_image`, then Read; never curl.
+- And in one more: an x.com or twitter.com post is read through fxtwitter's API first
+  (`https://api.fxtwitter.com/<user>/status/<id>`: the text, counts and picture URLs, free, under a second), never the
+  x.com page, which serves a login page at a paid rung; its picture then through `web_image`.
+- **Upgrading:** budgets.toml: `mechanics` goes to 4000 and `total` to 88914. Each room that attaches the plug-in needs
+  `mcp__web-ladder__web_image` in its `allow` (rooms.toml.example has it); a yerk-web process already running keeps its
+  four tools until its room's session starts it again.
+
+### deploy-private
+
+- `yerk deploy` with no `--private` and no `YERK_PRIVATE` no longer runs its fast tests on the fake example layer: it
+  takes the private and state folders from the running yerkd's own command line (`--private` and `--state` in its
+  unit's ExecStart), so the budget test and the live index test read the layer the daemon serves, and the card's
+  second line says `private layer: the daemon's`. With no unit found, or no `--private` on its command line, it refuses
+  in one line, `no private layer: pass --private`, before anything is touched. A `--private` given always wins.
+- **Upgrading:** budgets.toml [code] lines goes to 18320. A unit installed from `units/yerkd.service` sets its layer in
+  `Environment=`, not on its command line: pass `--private` to `yerk deploy` there.
 
 ### web (#76)
 

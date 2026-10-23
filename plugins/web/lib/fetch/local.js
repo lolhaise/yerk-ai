@@ -36,7 +36,7 @@ const BROWSER_HEADERS = {
 };
 
 // The headers with the machine's language first (settings.localLocale), then US English.
-function browserHeaders(settings) {
+export function browserHeaders(settings) {
   const lang = [settings.localLocale, settings.localLocale !== "en-US" && "en-US;q=0.9", "en;q=0.8"].filter(Boolean).join(",");
   return { ...BROWSER_HEADERS, "accept-language": lang };
 }
@@ -234,7 +234,7 @@ export async function judgeRendered({ p, url, settings, extractMode, rung }) {
 }
 
 // ---- F1: plain local fetch -----------------------------------------------------
-async function readCapped(res, maxBytes) {
+export async function readCapped(res, maxBytes) {
   const reader = res.body?.getReader?.();
   if (!reader) return Buffer.alloc(0);
   const chunks = [];
@@ -263,7 +263,7 @@ function decodeBody(buf, ctype) {
   }
 }
 
-function localNetWall(err) {
+export function localNetWall(err) {
   const code = String(err?.cause?.code || err?.code || "");
   const msg = `${code} ${err?.cause?.message || ""} ${err?.message || ""}`;
   if (err?.name === "TimeoutError" || /UND_ERR_.*TIMEOUT|ETIMEDOUT|aborted due to timeout/i.test(msg)) return "timeout";
@@ -291,7 +291,7 @@ async function isPublicTarget(hostname, checkDns, block) {
   }
 }
 
-async function fetchPublicOnly(url, init, fetchImpl, block, maxHops = 10) {
+export async function fetchPublicOnly(url, init, fetchImpl, block, maxHops = 10) {
   let cur = url;
   for (let hop = 0; hop <= maxHops; hop++) {
     const u = new URL(cur);

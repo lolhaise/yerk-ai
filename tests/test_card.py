@@ -95,6 +95,7 @@ def test_a_card_with_nothing_to_show_says_what_was_owed():
 def test_an_image_never_read_bounces_once_at_stop(tmp_path):
     room = Room.__new__(Room)
     room.lock, room.rp, room.bounced = __import__("threading").Lock(), NS(read_paths=set()), False
+    room.conf = {"privacy": "family"}            # a room that files no picture it reads (test_pictures has an owner's)
     room.to_open = {"/in/5/photo.png": "photo.png"}
     reason = room.stop_check(active=False)
     assert reason and "photo.png" in reason and "/in/5/photo.png" in reason

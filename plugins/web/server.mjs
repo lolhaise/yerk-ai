@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// yerk-web, Yerk AI's web reach as one MCP server over stdio: web_fetch, web_search, web_research and
-// web_research_result (lib/tools.mjs). One process per Claude Code session that attaches it, started as
+// yerk-web, Yerk AI's web reach as one MCP server over stdio: web_fetch, web_search, web_research,
+// web_research_result and web_image (lib/tools.mjs). One process per Claude Code session that attaches it, started as
 //   node plugins/web/server.mjs --private <private folder> [--state <state folder>] [--room <room>]
 // Nothing is written to stdout but the protocol, and nothing secret is ever written to stderr.
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
