@@ -28,6 +28,15 @@ open_loops = "memory/open-loops.md"
 #                             # its shell inside the daemon's wall (`yerk explain trusted`), Write and Edit on its layer and work folder only;
 #                             # its [rooms.NAME.sandbox] may add filesystem.denyRead, filesystem.denyWrite and the network allowlist, no other key
 thinking_panel = false        # owner-only rooms: a "thinking" line on the card (costs about 5 s a reply)
+# Web reach (README "Web reach"): the plug-in in plugins/web, run `npm ci --omit=dev` there once. Its keys are files in
+# the private folder's secrets/, each optional; with none it reads pages from this machine and searches keyless engines.
+# allow = ["mcp__web-ladder__web_fetch", "mcp__web-ladder__web_search", "mcp__web-ladder__web_research", "mcp__web-ladder__web_research_result"]
+# [rooms.example-room.mcp.web-ladder]
+# type = "stdio"
+# command = "node"
+# args = ["/path/to/yerk-ai/plugins/web/server.mjs", "--private", "/path/to/your/private/folder"]
+# timeout = 180000           # ms, a hard limit per call; the fetch ladder stops itself at 140 s
+# alwaysLoad = true          # its tools in the prompt from the start
 
 [rooms.example-quiet]
 channel = "discord:CHANNEL_ID"

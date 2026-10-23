@@ -1,0 +1,20 @@
+{
+  "name": "yerk-web",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Yerk AI's web reach as one MCP server: web_fetch, web_search, web_research and web_research_result",
+  "license": "MIT",
+  "type": "module",
+  "main": "server.mjs",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "@mozilla/readability": "0.6.0",
+    "linkedom": "0.18.13"
+  }
+}

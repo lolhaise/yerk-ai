@@ -8,6 +8,32 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-23
 
+### web (#76)
+
+- Web reach is Yerk's own: `plugins/web` (`yerk-web`), one MCP server in the repo and outside the harness, serves the
+  four tools the rooms already call (`web_fetch`, `web_search`, `web_research`, `web_research_result`) under the same
+  names and arguments. It reads nothing outside the install: keys from the private folder's `secrets/`, settings from
+  an optional `web.json` there, state under `<state>/web/`.
+- `web_fetch` climbs a plain fetch from the machine, its own stealth browser and trawl (each skipped without a try when
+  it is not installed), then Browserbase's paid rungs; it names the wall when a page stays shut and remembers per site
+  and path class which step read it. The free rungs' caps are one window for every room's process.
+- The ladder is the machine's as of 2026-10-22: the stealth browser stops waiting once the text is readable and settled
+  (a page carrying Cloudflare's bot script is no longer taken for a challenge), a page behind a modal dialog reads as
+  the page (a listing's "Translation on" notice gave 135 chars), and two free rungs on the same captcha skip the paid
+  fetch rungs and cap the call at 45 s.
+- `web_search` runs Exa, then Parallel's paid API, then You.com's and Parallel's keyless engines; `web_research` runs
+  the Exa Agent at four fixed efforts under one daily cap of US$2 for every room.
+- Every paid call is one row in the ledger's `spend` table (the one transcribe, #77, brought), and the morning diff says
+  `spent yesterday: US$x on n calls`. `yerk explain web` answers from abilities.toml, where one built `web` entry
+  replaces the described hard-pages, web-search and web-research.
+- **Upgrading:** budgets.toml gains a dated note only, its [code] lines unchanged (the spend table, its read and the
+  morning line came with transcribe, #77). Run `npm ci --omit=dev` once in `plugins/web`
+  (Node 22.13 or newer). In rooms.toml each room's `[rooms.NAME.mcp.web-ladder]` table changes only its command line,
+  `args = ["<repo>/plugins/web/server.mjs", "--private", "<private folder>"]`; its `allow` list stays. Keys, each
+  optional, go in the private folder's `secrets/`: `exa.key`, `parallel.key`, `browserbase.key`,
+  `browserbase-project.id`. An install moving from an older web setup keeps its saved logins and site memory by
+  copying that setup's `contexts.json` and `local-cooldown.json` into `<state>/web/fetch/` once, before the first call.
+
 ### said-or-noted
 
 - In an owner's room a reply or a `send` that tells what a third person said, decided, wants or asked, or quotes their

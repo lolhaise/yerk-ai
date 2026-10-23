@@ -202,4 +202,7 @@ drops = [
 # answer to the owner), not folded to fit; 18,291 merged on recall-ratchet (#87, 37), no line
 # shared (settings() takes its `uploads` and #87's `imports` on the two lines each touched). Its cold read raised it by 1:
 # a bare "told" ("286 posted, Sam told,") is the owner's own act in the passive, never a claim (evidence.py, PERSON).
+# 2026-10-21: web raised it by 9, the ledger's spend table, its read and the morning line, so the morning diff carries the
+# day's spend (decision 32); the web plug-in itself (plugins/web, JavaScript) is outside this count, as every plug-in is.
+# 0 of the 9 merged on transcribe (#77), which brought the same table, read and line; 18,292 merged on said-or-noted (#94).
 lines = 18292
