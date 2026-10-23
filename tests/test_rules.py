@@ -208,7 +208,7 @@ def test_a_rule_file_past_its_size_at_session_start_loses_its_newest_lines_never
         p, lines = parts[name], path.read_text().splitlines()
         k = len(lines) - len(p.cut)
         assert p.over and p.size <= p.budget and 0 < k < len(lines) - 12, name
-        assert list(p.cut) == lines[k:] and set(lines[:k]) <= set(p.text.split("\n")), name     # the tail only, every line whole
+        assert list(p.cut) == lines[k:] and p.text.split("\n\n[...trimmed ")[0].split("\n")[1:] == lines[:k], name   # the tail only, at a line's end
         assert p.text.endswith(f"Its last lines, the newest, are omitted. The full file stays readable with the Read tool: {path.resolve()}]")
     assert parts["persona"].over and "The middle is omitted." in parts["persona"].text
 
