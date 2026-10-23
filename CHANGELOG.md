@@ -14,7 +14,8 @@ with the originals kept under `backups/`; the index chunks every file again when
   no model call: `NAME.sheet.txt` (a `## <sheet name>` section a sheet, a row a line, its cells tab-separated, empty rows
   skipped, a formula as the value saved with it) or `NAME.pdf.txt` (a `## page N` section a page). Recall finds what is
   in it and shows its lines behind "[text of a file sent to the room, as extracted]", never as anyone's words, and the
-  `[attachment]` line names the text file so the room can read it in the same turn.
+  `[attachment]` line names the text file so the room can read it in the same turn. A message waits 30 s at most for
+  its files' text however many it holds, and a message sent after it still reaches the room after it.
 - A scanned PDF (no text on any page) gets one line naming it, its pages and "no text layer, not read"; there is no OCR.
   A file that does not open gets one line saying so. Past 200,000 characters the text is cut, its last line saying how
   many characters were not kept; a file still being read after 60 s stops there and says so. A person's room's files are never read this way.

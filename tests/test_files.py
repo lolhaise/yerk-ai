@@ -5,6 +5,7 @@ recall and read_memory show its lines behind memory.FILE_MARK; `yerk files backf
 never read. Every value here is a placeholder (decision 22)."""
 from __future__ import annotations
 
+import asyncio
 import io
 import os
 import time
@@ -128,6 +129,46 @@ def test_a_file_slower_than_the_wait_goes_in_without_its_text_and_its_text_lands
     assert side.read_text().splitlines()[3] == "exquux widget\t2\t1250\t2500"     # asyncio.run let the thread finish
 
 
+def test_a_message_sent_after_a_file_still_being_read_reaches_the_room_after_it_never_before(tmp_path, monkeypatch):
+    """Each message is its own task and staging waits on a file's text: the question sent a second after its PDF must not
+    overtake it into the room."""
+    real = files.write
+
+    def slow(*a, **k):
+        time.sleep(0.3)
+        return real(*a, **k)
+    monkeypatch.setattr(files, "write", slow)
+    d = DiscordChannel("token", OWNER, [], Ledger(tmp_path / "l.sqlite"), client=(client := Client()), state=tmp_path)
+    d.add_room(ROOM_CH, box := Box(tmp_path, "own-room"))
+    ch = client.chans[ROOM_CH]
+
+    async def both() -> None:
+        await asyncio.gather(d.on_message(Msg(ch, 5, "the report", attachments=[Attachment("report.pdf", pdf_bytes(REPORT))])),
+                             d.on_message(Msg(ch, 6, "what does page two say")))
+    run(both())
+    assert [m.id for m in box.got] == ["5", "6"] and "[its text" in box.got[0].text
+
+
+def test_a_message_with_several_files_waits_once_for_all_of_them_and_each_text_still_lands(tmp_path, monkeypatch):
+    """files.WAIT is the message's whole wait, not each file's: three slow PDFs hold it about WAIT, never three times it."""
+    real = files.write
+
+    def slow(*a, **k):
+        time.sleep(0.5)
+        return real(*a, **k)
+    monkeypatch.setattr(files, "write", slow)
+    monkeypatch.setattr(files, "WAIT", 0.3)
+    d = DiscordChannel("token", OWNER, [], Ledger(tmp_path / "l.sqlite"), client=(client := Client()), state=tmp_path)
+    d.add_room(ROOM_CH, box := Box(tmp_path, "own-room"))
+    at: list[float] = []
+    box.submit = lambda m: (box.got.append(m), at.append(time.monotonic()))[0]     # type: ignore[method-assign]
+    start = time.monotonic()
+    run(d.on_message(Msg(client.chans[ROOM_CH], 5, "the quarter", attachments=[Attachment(f"q{i}.pdf", pdf_bytes(REPORT)) for i in range(3)])))
+    assert len(box.got) == 1 and at[0] - start < 0.6, at[0] - start                # one wait of 0.3 s, not three
+    inbox = tmp_path / "rooms" / "own-room" / "work" / "inbox" / "5"
+    assert all((inbox / f"q{i}.pdf.txt").read_text().splitlines()[1] == "## page 1" for i in range(3))   # each written all the same
+
+
 def test_a_persons_room_never_reads_a_workbook_or_a_pdf_sent_to_it(tmp_path, capsys):
     box = staged(tmp_path, "family", [Attachment("budget.xlsx", sheet_bytes()), Attachment("report.pdf", pdf_bytes(REPORT))])
     [got] = box.got
@@ -196,6 +237,7 @@ def test_a_file_still_being_read_past_its_seconds_stops_there_and_its_last_line_
 def test_backfill_writes_only_a_missing_or_stale_text_and_a_dry_run_writes_nothing(tmp_path, capsys):
     (priv := tmp_path / "private").mkdir()
     (priv / "rooms.toml").write_text('[rooms.own-room]\nchannel = "console:own"\n')
+    (priv / "yerkd.toml").write_text('[memory]\ntimezone = "Asia/Tokyo"\n')         # the daemon's zone, not this box's
     state = tmp_path / "state"
     missing = sent(state, "own-room", "m-1", "budget.xlsx", sheet_bytes(), at=1_760_000_000.0)
     stale = sent(state, "own-room", "m-2", "report.pdf", pdf_bytes(REPORT), at=1_760_000_900.0)
@@ -212,6 +254,7 @@ def test_backfill_writes_only_a_missing_or_stale_text_and_a_dry_run_writes_nothi
     assert cli.main(["files", "backfill", "own-room", *base]) == 0
     assert capsys.readouterr().out.splitlines()[-1] == words.FILES_BACKFILL.format(n=2, where="own-room", done=words.FILES_WRITTEN)
     assert files.sidecar(missing).read_text().splitlines()[3] == "exquux widget\t2\t1250\t2500"
+    assert files.sidecar(missing).read_text().splitlines()[0] == "extracted in own-room, message m-1, 2025-10-09 17:53 JST: budget.xlsx, 2 sheets"
     assert files.sidecar(stale).read_text().splitlines()[1:3] == ["## page 1", "Quarterly example report"]
     assert files.sidecar(fresh).read_text() == "an earlier text\n" and not (missing.parent.parent / "m-4" / "table.sheet.txt").exists()
     assert cli.main(["files", "backfill", "own-room", *base]) == 0
