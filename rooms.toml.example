@@ -1,6 +1,30 @@
 # An example rooms.toml, the file that lists your rooms: one [rooms.NAME] table per room, with its chat, its accounts,
 # Paths are relative to the private folder.
 
+# [defaults]: the one tool set every owner room carries, declared once, so the rooms share one way of doing things. It holds
+# allow and mcp.<name> tables only (each room keeps its own sandbox); any other key stops the start. A room's own allow, or
+# its own mcp.<name> table, replaces that default whole, and allow_remove = [...] in a room drops named tools from the allow
+# it inherits. A room whose privacy is not owner inherits nothing. {room} in a server's args and env is the room's name.
+# `yerk doctor` names an owner room that misses a default tool or carries its own copy of one. The set below is one
+# install's: the web plug-in and hands, a second assistant's reach on the machine over MCP (owner rooms only).
+# Web reach (README "Web reach"): the plug-in in plugins/web, run `npm ci --omit=dev` there once. Its keys are files in
+# the private folder's secrets/, each optional; with none it reads pages from this machine and searches keyless engines.
+# [defaults]
+# allow = ["mcp__web-ladder__web_fetch", "mcp__web-ladder__web_search", "mcp__web-ladder__web_research", "mcp__web-ladder__web_research_result", "mcp__hands__browser", "mcp__hands__desktop", "mcp__hands__mac", "mcp__hands__mail", "mcp__hands__discord", "mcp__web-ladder__web_image"]
+# [defaults.mcp.web-ladder]
+# type = "stdio"
+# command = "node"
+# args = ["/path/to/yerk-ai/plugins/web/server.mjs", "--private", "/path/to/your/private/folder", "--state", "/path/to/your/state/folder", "--room", "{room}"]
+# timeout = 180000           # ms, a hard limit per call; the fetch ladder stops itself at 140 s
+# alwaysLoad = true          # its tools in the prompt from the start
+# [defaults.mcp.hands]
+# type = "stdio"
+# command = "node"
+# args = ["/path/to/hands-mcp/server.mjs"]
+# env = { YERK_ROOM = "{room}" }   # the room the plug-in checks in rooms.toml; owner rooms only, the plug-in refuses any other room
+# timeout = 120000           # ms, a hard limit per call; a browser call lifts and arms the brake, about 15 s
+# alwaysLoad = true
+
 [rooms.example-room]
 channel = "discord:CHANNEL_ID"
 accounts = ["one", "two"]     # tried in this order, then the rest of accounts.toml; the settings tool or /model can put the room on one account first
@@ -28,15 +52,7 @@ open_loops = "memory/open-loops.md"
 #                             # its shell inside the daemon's wall (`yerk explain trusted`), Write and Edit on its layer and work folder only;
 #                             # its [rooms.NAME.sandbox] may add filesystem.denyRead, filesystem.denyWrite and the network allowlist, no other key
 thinking_panel = false        # owner-only rooms: a "thinking" line on the card (costs about 5 s a reply)
-# Web reach (README "Web reach"): the plug-in in plugins/web, run `npm ci --omit=dev` there once. Its keys are files in
-# the private folder's secrets/, each optional; with none it reads pages from this machine and searches keyless engines.
-# allow = ["mcp__web-ladder__web_fetch", "mcp__web-ladder__web_search", "mcp__web-ladder__web_research", "mcp__web-ladder__web_research_result", "mcp__web-ladder__web_image"]
-# [rooms.example-room.mcp.web-ladder]
-# type = "stdio"
-# command = "node"
-# args = ["/path/to/yerk-ai/plugins/web/server.mjs", "--private", "/path/to/your/private/folder"]
-# timeout = 180000           # ms, a hard limit per call; the fetch ladder stops itself at 140 s
-# alwaysLoad = true          # its tools in the prompt from the start
+# allow_remove = ["mcp__hands__mail"]   # tools this room does without, out of the allow it inherits from [defaults]
 
 [rooms.example-quiet]
 channel = "discord:CHANNEL_ID"

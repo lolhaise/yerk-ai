@@ -84,7 +84,7 @@ STEP = {"bash": "running a command", "read": "reading {what}", "read_memory": "r
         "webfetch": "reading {what}", "web_fetch": "reading {what}", "fetch": "reading {what}",
         "websearch": "searching the web for {what}", "web_search": "searching the web for {what}", "send": "sending {what}",
         "remember": "filing a note", "hold": "waiting for {what}", "settings": "switching to {what}", "transcribe": "transcribing {what}",
-        "voice_note": "making a voice note", "seen": "filing a picture",
+        "voice_note": "making a voice note", "seen": "filing a picture", "need": "filing what it needs",
         "todowrite": "updating the plan", "task": "handing off {what}", "agent": "handing off {what}", "toolsearch": "loading a tool"}
 WORKER_STEP = {"start": "starting a worker", "list": "listing the workers", "stop": "stopping worker {id}",
                "report": "reading worker {id}'s report"}
@@ -146,7 +146,7 @@ HELD_CLAUSE = "one clause at its end, this one: the rule is held for now, since 
 RULE_STRIPPED = "the example in rule \"{job}\" taken out so rules.md fits its cap of {cap:,}"
 RULE_HELD_LOG = "rule \"{job}\" held in {file}: rules.md is full at its cap of {cap:,}, even with no examples"
 RULE_HELD = "rule held in {file}\n\"{job}\"\nfrom {room}\nrules.md is full at its cap of {cap:,}"
-PART_CUT = "session start cut {part}\n{size:,} of {cap:,} in {room}\n{n} line{s} sent broken or not at all:\n{heads}"
+PART_CUT = "{part}: {n} line{s} dropped\nto fit its {cap:,} in {room}"     # at session start: whole lines of its own, no framing
 FILED = re.compile(r"^\W*(?:filed|saved|from now on,? every room)\b", re.I)   # a final reporting a filing (stub)
 STUB = ("Only your final message reaches the room, and yours, \"{head}\", reports the filing, not the answer: the answer "
         "is above your last tool call, where the room never sees it, or it was never written. Write the whole answer as "
@@ -182,12 +182,6 @@ def outcome(state: str, **say: Any) -> tuple[str, str]:
     """(mark, words) for a worker state; `say` fills the words' blanks (cap, why, ticked, rows)."""
     mark, text = OUTCOME.get(state, (NOT_DONE, state))
     return mark, text.format(**say)
-
-
-def heads(lines: list[str], most: int = 12, n: int = 6) -> str:
-    """Each line's first `n` words in quotes, one a line held to a phone's width, `most` at the most, then how many more."""
-    said = ['"' + line(" ".join(x.lstrip("-*#> ").split()[:n]), PHONE - 2) + '"' for x in lines[:most]]
-    return "\n".join(said + ([f"and {len(lines) - most} more"] if len(lines) > most else []))
 
 
 def died(result: str) -> str:
@@ -227,6 +221,9 @@ WATCH_ASK = ("[watcher {name} saw {n} new line{s}. {what}Answer in your own voic
 # notes: a reminder, told to its room's own session when it is due
 NOTE_DUE = ("[reminder {name} due] {message}\n[set here for {at}: do what it says now and tell the room in your own "
             "voice, under {cap:,} characters]")
+# where the owner is (location.py): an owner room's per-message line, and the day's places as one day-log line
+PLACE = "[place] near {place}, {ago}, {state}"
+PLACES_DAY = "the owner's places from the phone, first and last fix at each: {stays}"
 
 
 # time, said the way a person says it
@@ -301,6 +298,19 @@ PICTURES_NOT_LISTED = ("{folder} is not a folder {room} lists in rooms.toml (rea
 PICTURES_RUNNING = "{room}: a backfill runs already, one batch after another; its lines are in the machine room"
 PICTURES_BATCH = "pictures backfill {room}: batch {n} of {of} {how}, {filed} of {count} filed{then}"
 PICTURES_NEXT, PICTURES_STOP, PICTURES_DONE = "; batch {n} started", "; stopped, {left} left: run it again", "; done"
+FILE_TEXT = "[its text, extracted by code] saved at {path}"     # under a workbook's or a PDF's [attachment] line (files.py)
+FILES_PERSON = "{room} is not an owner room: a workbook or a PDF sent there is never read"
+FILES_BACKFILL = "{n} workbook(s) and PDF(s) in {where} with no text beside them or an older one; {done}"
+FILES_WRITTEN, FILES_DRY = "written", "nothing written (--dry-run)"
+# missing-ability (needs.py): a room's need in the machine room, its build and its end there, and the refusals
+NEED_FILED = WORKING + " need {n} from {room}: {ability}; `yerk needs build {day} {n}`"
+NEED_AGAIN = WORKING + " need {n} asked again from {room}, {count} times now: {ability}"
+NEED_PR, NEED_BRANCH = DONE + " need {n} built, PR {pr}: {ability}", WORKING + " need {n} built on {branch}, no PR seen: {ability}"
+NEED_FAILED = NOT_DONE + " need {n}: its builder {how}, no branch; filed again: {ability}"
+NEED_CLAUSE = "one clause at its end, this one: what you needed is filed for the owner to build for every room"
+NEED_NOT_YOURS = "not filed: a need from this room names only its own files, and {path} is not one"
+NEED_NONE = "no need {n} of {day}; `yerk needs list` shows them"
+NEED_BUSY = "need {n} is {state}: one builder a need, so nothing started"
 CHECKED = "checked by a second pass: {n} of {of} segments uncertain"
 PART_CHECKED = "checked by a second pass but for chunk {chunks}, where it failed: {n} of {of} segments uncertain"
 UNCHECKED = "one pass only, so nothing in it was checked: a second pass needs a Groq key at secrets/groq.key"
