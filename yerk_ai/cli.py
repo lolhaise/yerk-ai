@@ -673,7 +673,8 @@ def main(argv: list[str] | None = None) -> int:
     dp.add_argument("--no-tests", action="store_true", help="skip the fast tests (the card says so)")
     dp.add_argument("--unit", action="store_true", help="also move a systemd-run daemon onto units/yerkd.service")
     for x in (ac, st, mo, rb, ab, ex, jb, sc, rt, dc, dk, cu, mm, dp):
-        x.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else the fake example layer)")
+        x.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else "
+                       + ("the running yerkd's own, from its unit)" if x is dp else "the fake example layer)"))
         x.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
     a = p.parse_args(argv)
     return int({"map": cmd_map, "setup-room": cmd_setup_room, "room": cmd_room, "import": cmd_room, "worker": cmd_worker,

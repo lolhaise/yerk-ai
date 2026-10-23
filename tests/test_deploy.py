@@ -19,7 +19,7 @@ from types import SimpleNamespace
 
 from yerk_ai import beat, deploy, gates, jobs, morning, status, words
 from yerk_ai.accounts import Cooldowns, load_accounts
-from yerk_ai.config import EXAMPLE_PRIVATE, REPO, budgets
+from yerk_ai.config import EXAMPLE_PRIVATE, REPO, budgets, private_dir
 from yerk_ai.daemon import Yerkd
 from yerk_ai.ledger import Ledger
 
@@ -900,3 +900,69 @@ def test_a_deploy_restarts_yerk_index_after_yerkd_and_the_running_line_wants_bot
     out = capsys.readouterr().out.splitlines()
     assert f"{words.NOT_DONE} running {ids[2][:7]}" in out and f"{words.DONE} rolled back to {ids[1][:7]}" in out
     assert [r[3] for r in rows(state)] == ["proven", "proof failed", "proven"]
+
+
+def test_with_no_private_given_the_fast_tests_read_the_layer_on_the_daemon_s_command_line_and_a_given_one_wins(
+        tmp_path, capsys, monkeypatch):
+    """No --private and no $YERK_PRIVATE was the example layer, so two of the lane's deploys ran its
+    question set against the live index in the fast tests and refused: the private and state folders are now the ones on
+    the command line of the unit the pid is in (`--private P` under its folder, `--state=S`), the card says so and goes
+    to that layer's machine room, and a --private given is never replaced."""
+    monkeypatch.delenv("YERK_PRIVATE", raising=False)
+    tree, ids = repo(tmp_path)
+    (tree / "tests").mkdir()
+    (tree / "tests" / "test_x.py").write_text("def test_x():\n    pass\n")
+    priv, state = layer(tmp_path, tree, tests=["tests/test_x.py"])     # the daemon's: its [deploy] unit, a machine room
+    lane = tmp_path / "lane"                                           # the deploy's own state folder, the daemon's pid file in it
+    lane.mkdir()
+    (lane / "yerkd.json").write_text((state / "yerkd.json").read_text())
+    f, made, posts = Fake(tree), [], []
+    f.show = lambda prop: {"MainPID": str(os.getpid()), "WorkingDirectory": str(tmp_path)}.get(prop, "")
+    f.argv = lambda: made.append("argv") or ["/v/bin/python", "-m", "yerk_ai.daemon", "--private", "private", f"--state={state}"]
+
+    def make(name):
+        made.append(name)
+        f.unit = name
+        return f
+
+    def post(p):
+        posts.append(p["machine"]["room"])
+        return {"ok": True}
+    uid = os.getuid()
+    manager = f"/user.slice/user-{uid}.slice/user" + chr(64) + f"{uid}.service"
+    proc = planted_proc(tmp_path, f"0::{manager}/app.slice/yerkd-test.service\n")
+    envs, run = [], subprocess.run
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: envs.append(k.get("env")) or run(*a, **k))
+    assert deploy.run(private_dir(), lane, ids[1], ask=f.ask, post=post, sleep=nap, proc=proc, systemd=make) == 0
+    out = capsys.readouterr().out.splitlines()
+    assert out[:3] == [f"{words.DONE} deployed {ids[1][:7]}", f"{words.PLAIN} private folder: the daemon's", f"{words.DONE} fast tests passed"]
+    assert [(e["YERK_PRIVATE"], e["YERK_STATE"]) for e in envs if e] == [(str(priv), str(state))]
+    assert made == ["yerkd-test", "yerkd-test", "argv", "yerkd-fake"] and posts == ["example-quiet"]   # its [deploy] unit, its machine room
+    assert rows(state) == [("deploy", ids[0], ids[1], "proven", 0)] and not (lane / "ledger.sqlite").exists()
+    other = tmp_path / "given"                                         # a --private given: the unit's command is never read
+    shutil.copytree(priv, other)
+    envs[:], made[:] = [], []
+    assert deploy.run(other, state, ids[2], ask=f.ask, post=post, sleep=nap, proc=proc, systemd=make) == 0
+    out = capsys.readouterr().out.splitlines()
+    assert [(e["YERK_PRIVATE"], e["YERK_STATE"]) for e in envs if e] == [(str(other), str(state))]
+    assert made == ["yerkd-fake"] and not [x for x in out if "private layer" in x]
+
+
+def test_with_no_private_given_and_none_on_the_unit_s_command_line_the_deploy_refuses_and_touches_nothing(tmp_path, capsys, monkeypatch):
+    """The example layer is for tests and the README, never a deploy: with no --private and no $YERK_PRIVATE, no unit found
+    (a yerkd in a terminal) or a unit whose command carries no --private (units/yerkd.service sets its layer in
+    Environment=) is one line, before the checkout, the tests or systemd are touched, and the card is the terminal's."""
+    monkeypatch.delenv("YERK_PRIVATE", raising=False)
+    tree, ids = repo(tmp_path)
+    _, state = layer(tmp_path, tree)
+    f, posts = Fake(tree), []
+    f.show = lambda prop: str(os.getpid()) if prop == "MainPID" else ""
+    f.argv = lambda: ["/v/bin/yerkd"]
+    uid = os.getuid()
+    manager = f"/user.slice/user-{uid}.slice/user" + chr(64) + f"{uid}.service"
+    for cgroup in ("0::/user.slice/user-1000.slice/session-2.scope\n", f"0::{manager}/app.slice/yerkd-test.service\n"):
+        proc = planted_proc(tmp_path, cgroup)
+        assert deploy.run(private_dir(), state, ids[1], ask=f.ask, post=lambda p: posts.append(p) or {"ok": True}, sleep=nap,
+                          proc=proc, systemd=lambda name: f) == 1
+        assert capsys.readouterr().out.splitlines() == [f"{words.NOT_DONE} not deployed", f"{words.PLAIN} no private folder: pass --private"]
+    assert f.restarts == [] and posts == [] and where(tree) == ("main", ids[0]) and [r[3] for r in rows(state)] == ["refused"] * 2
