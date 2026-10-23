@@ -30,6 +30,16 @@ room = "example-quiet"
 deliver = "silent"                   # runs and is ledgered, posts nothing; a failure still alerts the ops room
 command = "true"
 
+[jobs.example-curate-rules]          # the nightly rules pass: merges, cuts, condensations and promotions of the rule files,
+kind = "script"                      # numbered into <memory>/rules-proposals/<day>.md and never applied; the owner applies
+schedule = "30 4 * * *"              # one with `yerk curate --apply DAY N`. 04:30, a quiet hour: the 06:30 morning diff
+tz = "UTC"                           # lists the night's by kind and number (a real file: the owner's zone)
+room = "example-room"
+cap = 10
+deliver = "silent"                   # the machine room gets its card once a day; a failure still alerts. No account: the
+command = "yerk curate --rules || [ $? -eq 1 ]"   # pass is code; a worker curate starts runs on yerkd.toml [curate]
+                                     # account. Exit 1 is proposals to read, never a failure; 2 (could not run) alerts
+
 [jobs.example-reminder]              # a note: at its time the room's own session is told the message and says it
 kind = "note"                        # no worker, shell, account or cap, so any room adds, lists and removes its own
 at = "2099-01-02 09:00"              # a one-shot, removed from this file after it fires; read in `tz`, unless it has an offset
