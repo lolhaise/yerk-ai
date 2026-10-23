@@ -176,4 +176,12 @@ duplicated_topics = 0
 # and the card's words (1) (all of it, on the owner's word), not folded to fit. Its cold read raised it by
 # 9 more: one message alone is no merge, the two jobs must overlap (curate.py overlap, 6), and a condensation never
 # takes out an aside that holds a reason or a clause of the rule's own (REASON and its keep, 3).
-lines = 18128
+# 2026-10-23: said-or-noted raised it by 126: what a third person said, decided, wants or asked, or a quote of their
+# words, turned back once a result in an owner's room from a turn with no reading call (Room.said_check and its flag,
+# room.py, 19; the send refusal, the Stop hook's seventh rule and the owner's name from [import] me, daemon.py, 18; the
+# words, 4), the person and quote rules kept to third persons with the "from my notes" pass (evidence.py, 41: people(),
+# quotes(), speaker(), read_any()), a room's note never shown as anyone's words, a person's words filed with `said` and
+# `source`, and each owner room's upload inbox a recall root (memory.py, 31; memindex.py, 9: its text kinds only; the
+# doctor skips an inbox not made yet), the tool's two fields (mcp_server.py, 4) (never a wrong
+# turn and the last part closes the"), case before the next.
+lines = 18254

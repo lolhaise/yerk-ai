@@ -52,7 +52,7 @@ from .accounts import Account, Cooldowns, pick
 from .card import Card
 from .config import flag, override, pinned, write_private
 from .engine import RoomProcess, RoomSpec, SessionTable, Turn
-from .evidence import DOCUMENT, Evidence, pasted, sheet_written, shipped
+from .evidence import DOCUMENT, QUOTED, Evidence, pasted, people, quotes, read_any, sheet_written, shipped
 from .ledger import Ledger
 from .lifted.classify import Failure, FailureTable
 from .meters import Meters, rest_until
@@ -151,6 +151,7 @@ class Room:
         self.board_bounced = False                # the board check bounced this result already
         self.paste_bounced = False                # the paste check turned back a send or a final of this result already
         self.sheet_bounced = False                # the sheet check turned back a send or a final of this result already
+        self.said_bounced = False                 # the person and quote check turned back a send or a final of this result already
         self.evidence = Evidence(on_call=self._ledger_call)   # every tool call of the turn and what it read
         self.answering: set[str] = set()                      # ids of the batch the turn answers
         self.stale = False                        # the settings changed mid-turn: the process closes at its end
@@ -397,13 +398,31 @@ class Room:
         return (words.SHEET.format(done=done, what=what, where=where, thing="document" if doc else "block", again=again, next=nxt),
                 f"{shipped(doc, paste)} with no claims sheet written this turn")
 
+    def said_check(self, active: bool, text: str | None, said: Callable[[], str] = str,
+                   owner: tuple[str, ...] = ()) -> tuple[str, str, str] | None:
+        """The person and quote rules, no judge, in an owner's room (a person's room keeps the shadow rows), in `send` before it
+        posts and at Stop, one flag for both (2026-10-22: what a colleague said, decided or wrote went out from turns that read
+        nothing): a third person's words, decision or wants (evidence.people) or a quote no read, prompt or earlier reply holds
+        (evidence.quotes; `said` gives the session's earlier replies, asked for past the guards) from a turn with no reading
+        call (evidence.read_any) is turned back once, naming whose: (the refusal, its shadow rule, what was found), or None.
+        `owner`: the names his words go by."""
+        if active or self.said_bounced or not text or not self.in_owner_name() or read_any(self.evidence):
+            return None
+        found = [(who, "person-refused", d) for who, d in people(text, self.evidence, owner)]
+        found += [(who, "quote-refused", d) for who, d in quotes(text, self.evidence, said() if QUOTED.search(text) else "", owner)]
+        if not found:
+            return None
+        self.said_bounced = True
+        who, rule, detail = found[0]
+        return words.SAID.format(name=who[:1].upper() + who[1:]), rule, detail
+
     def _new_card(self, note: str = "") -> None:
         privacy = str(self.conf.get("privacy", "owner"))
         self.card = Card(thinking=flag(self.conf.get("thinking_panel")) and privacy == "owner",
                          people=self.name if self.conf.get("people") else "")
         self.card.narration = note                # a harness line from the first post, until the model's first words
         self.turn_key, self.bounced, self.silent_bounced, self.stub_bounced = uuid.uuid4().hex[:12], False, False, False
-        self.board_bounced = self.paste_bounced = self.sheet_bounced = False
+        self.board_bounced = self.paste_bounced = self.sheet_bounced = self.said_bounced = False
         self.channel.open_card(self.name, self.card.render())   # state first from the first post
 
     def meta_for(self, prompt: str) -> tuple[str, float | None]:

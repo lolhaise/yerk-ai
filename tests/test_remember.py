@@ -201,7 +201,7 @@ def test_an_owner_correction_of_a_family_line_leaves_no_private_words_on_it(tmp_
                    "example cousins surprise party", (fam["cite"],))
     assert own["superseded"] == [fam["cite"]] and own["cite"] == "tree/facts/example-cousins-surprise-party.md:3"
     seen = memory.read(y.memory, fam["cite"], lines=1, reader=y.reader("family-room"))["text"]
-    assert seen.endswith("note: Example dinner: Sunday at six. [superseded] [c:room] " + seen.rpartition(" ")[2])
+    assert seen.endswith(f"note: {memory.MARKS[memory.NOTE]} Example dinner: Sunday at six. [superseded] [c:room] " + seen.rpartition(" ")[2])
     memindex.Index(y.memory.index_db, y.memory.scope).sync()
     hits = asyncio.run(y.tool_recall("family-room", "example dinner Sunday", 6))["hits"]
     assert hits and not any(w in h["text"] for h in hits for w in ("facts/", "surprise", "Saturday", "cousins"))

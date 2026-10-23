@@ -223,7 +223,7 @@ def test_a_family_room_with_one_person_reads_its_own_lines_and_shared_files_only
     note = asyncio.run(y.tool_remember(mom, "Example dinner: Sunday at six", "example dinner", []))
     assert note["ok"] and note["cite"].startswith("memory/daily/") and not (y.memory.root / "facts" / "example-dinner.md").exists()
     line = asyncio.run(y.tool_read_memory(mom, note["cite"], 1, 1))["text"]
-    assert " family-room#discord:MOM_ID note: Example dinner: Sunday at six [c:room] [m:p2." in line
+    assert f" family-room#discord:MOM_ID note: {memory.MARKS[memory.NOTE]} Example dinner: Sunday at six [c:room] [m:p2." in line
     assert asyncio.run(y.tool_settings(mom, "opus", "")) == {"ok": False, "line": words.OWNER_ONLY}
     assert asyncio.run(y.tool_settings(mom, "", "", by_owner=True))["line"].startswith("this room: ")   # the owner's own slash command
     assert y.owner_only(mom, "") == {"ok": False, "line": words.WORKERS_OWNER_ONLY}

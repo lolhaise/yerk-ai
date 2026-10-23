@@ -442,4 +442,4 @@ def test_the_four_index_checks_each_fire_on_their_case_and_are_quiet_when_all_is
     assert index("max") == []                                            # each its own cite: quiet
     real = memory.settings
     monkeypatch.setattr(memory, "settings", lambda *a, **k: replace(real(*a, **k), cites=()))
-    assert index("max") == ["memory roots: 3 share the cite memory"]
+    assert index("max") == ["memory roots: 2 share the cite inbox", "memory roots: 3 share the cite memory"]   # the owner rooms' inboxes too
