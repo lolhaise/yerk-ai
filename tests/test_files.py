@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import io
 import os
+import time
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -110,6 +111,21 @@ def test_a_workbook_and_a_pdf_sent_to_an_owner_room_get_their_text_beside_them_a
     assert sheet.read_text().splitlines()[0].endswith(": budget.xlsx, 2 sheets")
     assert words.FILE_TEXT.format(path=sheet) in got.text and words.FILE_TEXT.format(path=page) in got.text   # the room is told
     assert [f.get("text") for f in got.files] == [str(sheet), str(page), None]
+
+
+def test_a_file_slower_than_the_wait_goes_in_without_its_text_and_its_text_lands_when_it_is_done(tmp_path, monkeypatch):
+    real = files.write
+
+    def slow(*a, **k):
+        time.sleep(0.4)
+        return real(*a, **k)
+    monkeypatch.setattr(files, "write", slow)
+    monkeypatch.setattr(files, "WAIT", 0.05)
+    box = staged(tmp_path, "owner", [Attachment("budget.xlsx", sheet_bytes())])
+    [got] = box.got
+    assert "[its text" not in got.text and "text" not in got.files[0] and got.files[0]["ok"]       # the message did not wait
+    side = tmp_path / "rooms" / "own-room" / "work" / "inbox" / "5" / "budget.sheet.txt"
+    assert side.read_text().splitlines()[3] == "exquux widget\t2\t1250\t2500"     # asyncio.run let the thread finish
 
 
 def test_a_persons_room_never_reads_a_workbook_or_a_pdf_sent_to_it(tmp_path, capsys):
