@@ -254,10 +254,16 @@ drops = [
 # by 2: config.py (an id in `[watch] assistants` that is the owner's or one a room's `people` lists stops the start, since
 # that person would never be answered again).
 # 18,767 merged on message-envelope (#96), no line shared.
+# 2026-10-23: model-account-pin raised it by 76: /model's one argument read as an account (its name or digit), a model or
+# both (config.py, 20: account_named, account_and_model), its daemon path, bare answer and suggestions (daemon.py, 31:
+# model_command, tried, model_menu, model_picks, the digit in the settings tool), Discord's autocomplete for it answered to
+# the owner alone (channels/discord.py, 16) and its words (words.py, 9) (the /model menu in
+# Yerk the same, with every account), not folded to fit.
 # 2026-10-23: curate-examples raised it by 92: a rule condensation keeps the rule's worked examples (the owner's ask: the
 # day's rules pass proposed three condensations that took a rulebook's examples out with the file 3,451 under its line,
 # all three declined). curate.py 87 (the staged cut: a clause said again or a hedge, then quoted asides, the examples last
 # and only past the file's line; its WHY naming what it kept; the morning's list of the night's proposals by kind and
 # number), jobs.py 3 (a `yerk` line in a script job runs on the unit's folders, never the fake example layer), morning.py 1,
 # words.py 1.
-lines = 18859
+# 18,935 merged on model-account-pin (#103), no line shared.
+lines = 18935
