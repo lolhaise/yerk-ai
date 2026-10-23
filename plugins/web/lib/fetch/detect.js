@@ -50,14 +50,19 @@ const GEO_PHRASES = /(not|isn'?t) available in your (country|region|location)|un
 
 const JS_SHELL_PHRASES = /(need|needs|necessary|required|have|has|must|please)\s+(to\s+)?enable javascript|enable javascript (to|and) |javascript is (required|disabled|not available|not enabled)|javascript (must|needs to) be enabled|this (app|site|page) (requires|needs) javascript|enable js to|doesn'?t work properly without javascript/i;
 
-export function detectChallenge({ html = "", title = "", visibleText = "" }) {
+// visibleLength (2026-10-21): the length of the WHOLE visible text when the caller hands over a cut of
+// it (F2's probe sends the first 4,000 chars). Without it a cut text was always "short", so every real
+// page carrying Cloudflare's bot-management script (/cdn-cgi/challenge-platform/) in its head read as a
+// challenge inside the probe loop, for the full localChallengeWaitMs (apnews, lotterypost: 15 s a read).
+export function detectChallenge({ html = "", title = "", visibleText = "", visibleLength }) {
   const t = String(title || "").trim();
   if (CHALLENGE_TITLE.test(t)) return { kind: "challenge", why: "challenge_title" };
   const head = String(html).slice(0, 400000);
+  const vlen = Number.isFinite(visibleLength) ? visibleLength : visibleText.length;
   for (const [name, re] of STRUCTURAL_CHALLENGE) {
-    if (re.test(head) && visibleText.length < 4000) return { kind: "challenge", why: name };
+    if (re.test(head) && vlen < 4000) return { kind: "challenge", why: name };
   }
-  if (visibleText.length < 3000) {
+  if (vlen < 3000) {
     for (const re of CHALLENGE_PHRASES) if (re.test(visibleText)) return { kind: "challenge", why: "challenge_text" };
     for (const re of BLOCK_PHRASES) if (re.test(visibleText) || re.test(t)) return { kind: "blocked", why: "block_text" };
   }

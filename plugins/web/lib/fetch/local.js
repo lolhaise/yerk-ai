@@ -121,9 +121,34 @@ export function markLocalBlocked(settings, host, why, skip = "all") {
 export const FREE_STEPS = ["F1", "F2", "F3"];
 export const BB_STEPS = ["L1", "L3n", "L3"];
 
-export function siteMemoryPlan(settings, host) {
+// Path-class memory (2026-10-22): one host serves pages that read on different rungs (Airbnb: /stays read at
+// F1 in 0.6 s, /rooms needed F2, /s went to F2), and one entry per host made every page start where the last
+// page needed. Memory is now also kept per host + path class, key "www.airbnb.ca/rooms": the class is the
+// first path segment that reads as a route word (letters, at most one hyphen, 20 chars; the second segment
+// is tried when the first is a place slug or an id, so /6th-arrondissement-paris-france/stays/... is /stays),
+// else "/". The host entry is still written as before and stands in for a class not seen yet; a new class
+// entry starts from it. A class entry with no start or bb is kept while the host entry has one, so a class
+// that reads at the defaults is not sent back to the host's start. Re-probe: siteMemoryRetryHours per class.
+export function pathClass(url) {
+  let segs = [];
+  try {
+    segs = new URL(url).pathname.split("/").filter(Boolean);
+  } catch {
+    return "/";
+  }
+  for (const s of segs.slice(0, 2)) {
+    const w = s.toLowerCase();
+    if (w.length <= 20 && /^[a-z][a-z_]*(-[a-z_]+)?$/.test(w)) return `/${w}`;
+  }
+  return "/";
+}
+
+export const memoryKey = (host, url) => `${host}${pathClass(url)}`;
+
+export function siteMemoryPlan(settings, host, url) {
   if (!settings.siteMemory) return null;
-  const rec = loadCooldowns(settings)[host];
+  const hosts = loadCooldowns(settings);
+  const rec = (url ? hosts[memoryKey(host, url)] : undefined) || hosts[host];
   if (!rec?.start && !rec?.bb) return null;
   const now = nowOf(settings);
   const fi = Math.max(0, FREE_STEPS.indexOf(rec.start));
@@ -134,14 +159,8 @@ export function siteMemoryPlan(settings, host) {
 }
 
 // win: the rung that read the page (F1, F2, F3, L1, L2, L3n, L3) or null when nothing did.
-export function rememberRead(settings, host, { win, plan }) {
-  if (!settings.siteMemory || !host || host === "invalid") return;
-  if (!win && !plan?.probe) return;
-  const hosts = loadCooldowns(settings);
-  const now = nowOf(settings);
-  const iso = new Date(now).toISOString();
-  const rec = { ...(hosts[host] || {}) };
-  const was = JSON.stringify(hosts[host] ?? null);
+function updatedMemory(prev, { win, plan, iso }) {
+  const rec = { ...(prev || {}) };
   const had = Boolean(rec.start || rec.bb);
   if (FREE_STEPS.includes(win)) {
     if (win === "F1") delete rec.start;
@@ -151,8 +170,27 @@ export function rememberRead(settings, host, { win, plan }) {
   if (win) rec.readAt = iso;
   if (plan?.probe || (!had && (rec.start || rec.bb))) rec.probeAt = iso;
   delete rec.src;
+  return rec;
+}
+
+export function rememberRead(settings, host, { win, plan, url }) {
+  if (!settings.siteMemory || !host || host === "invalid") return;
+  if (!win && !plan?.probe) return;
+  const hosts = loadCooldowns(settings);
+  const now = nowOf(settings);
+  const iso = new Date(now).toISOString();
+  const key = url ? memoryKey(host, url) : null;
+  const was = JSON.stringify([hosts[host] ?? null, key ? hosts[key] ?? null : null]);
+  const prevHost = hosts[host];
+  const rec = updatedMemory(prevHost, { win, plan, iso });
   if (rec.start || rec.bb || rec.until) hosts[host] = rec;
   else delete hosts[host];
+  if (key) {
+    const seed = hosts[key] || (prevHost && Object.fromEntries(["start", "bb", "probeAt", "readAt"].filter((k) => prevHost[k]).map((k) => [k, prevHost[k]])));
+    const cls = updatedMemory(seed, { win, plan, iso });
+    if (cls.start || cls.bb || hosts[host]?.start || hosts[host]?.bb) hosts[key] = cls;
+    else delete hosts[key];
+  }
   const cut = now - settings.siteMemoryDays * 86400000;
   let pruned = false;
   for (const h of Object.keys(hosts)) {
@@ -162,7 +200,7 @@ export function rememberRead(settings, host, { win, plan }) {
       pruned = true;
     }
   }
-  if (!pruned && JSON.stringify(hosts[host] ?? null) === was) return; // a host with nothing to remember: no write
+  if (!pruned && JSON.stringify([hosts[host] ?? null, key ? hosts[key] ?? null : null]) === was) return; // a host with nothing to remember: no write
   try {
     writeJsonAtomic(cooldownFile(settings), hosts);
   } catch {
@@ -337,13 +375,35 @@ const EXTRACT_JS = `(() => {
     // and the disconnect after the snapshot lets those paused requests out through the proxy
     // (2026-10-19, measured on the mock). A detached clone's innerText was its textContent anyway.
     const c = document.implementation.createHTMLDocument("").importNode(b, true);
+    // A modal over the page (2026-10-22, extract.js liftModal): its hide-others siblings are un-hidden and
+    // the dialog dropped when they hold 1,000+ chars, or an Airbnb room page reads as "Translation on".
+    const ms = [...c.querySelectorAll('[aria-modal="true"],[role="dialog"],[role="alertdialog"],dialog[open]')];
+    const hid = new Set();
+    for (const m of ms) for (let a = m; a && a !== c && a.parentElement; a = a.parentElement) for (const s of a.parentElement.children) if (s !== a && s.getAttribute("aria-hidden") === "true") hid.add(s);
+    if ([...hid].reduce((n, s) => n + (s.textContent || "").length, 0) >= 1000) {
+      hid.forEach((s) => (s.removeAttribute("aria-hidden"), s.removeAttribute("inert")));
+      ms.forEach((m) => m.remove());
+    }
     c.querySelectorAll("script,style,noscript,template,svg,nav,header,footer,aside,[role=navigation],[aria-hidden=true]").forEach((e) => e.remove());
     text = c.innerText || c.textContent || "";
   }
   return { html: document.documentElement ? document.documentElement.outerHTML : "", title: document.title || "", url: location.href, text };
 })()`;
 
-const PROBE_JS = `(() => ({ title: document.title || "", head: document.documentElement ? document.documentElement.outerHTML.slice(0, 200000) : "", text: document.body ? (document.body.innerText || "").slice(0, 3000) : "" }))()`;
+// The probe (2026-10-21): the title, the first 200 KB of HTML, the first 4,000 chars of the visible text
+// and its whole length (detect.js reads the length; a cut text alone made every real page "short").
+const PROBE_JS = `(() => { const t = document.body ? (document.body.innerText || "") : ""; return { title: document.title || "", head: document.documentElement ? document.documentElement.outerHTML.slice(0, 200000) : "", text: t.slice(0, 4000), len: t.length }; })()`;
+
+// Main-frame requests the readable-stop waits on: a page whose data is still coming reads as its loading
+// skeleton (op.gg: 2,716 visible chars at domcontentloaded, 9,230 five seconds later, 17 fetches in between).
+const INFLIGHT_TYPES = new Set(["document", "script", "xhr", "fetch"]);
+
+// Challenge kinds that clear on their own in a stealth browser (a JavaScript interstitial that sets a cookie
+// and reloads). A recaptcha, hcaptcha, arkose, datadome or perimeterx page needs a human or a solver, and a
+// block page never changes, so the challenge loop does not wait on those (it spent localChallengeWaitMs on each).
+const SELF_CLEARING = new Set(["challenge_title", "cloudflare", "turnstile", "reddit_js_challenge", "aws_waf", "challenge_text"]);
+
+const probeChallenge = (p) => detectChallenge({ html: p.head, title: p.title, visibleText: p.text, visibleLength: p.len });
 
 const local = { context: null, launching: null, engine: null, active: 0, waiters: [], idleTimer: null, launches: 0, pid: null };
 
@@ -491,42 +551,101 @@ function releasePage(settings) {
   }
 }
 
-async function waitOutLocalChallenge({ page, settings, deadline }) {
-  const until = Math.min(deadline - 1500, Date.now() + settings.localChallengeWaitMs);
-  let sawChallenge = false;
-  while (Date.now() < until) {
+// The readable-stop (2026-10-21), after domcontentloaded, in place of a flat networkidle wait: every
+// localReadablePollMs the probe reads the page, and the wait ends on the first of: the page is a challenge
+// (the loop below takes over); the visible text is at least localReadableMinChars, unchanged since the last
+// poll, with no main-frame document, script, xhr or fetch request open at either poll ("readable");
+// Playwright's networkidle; or localNetworkIdleMs, the ceiling (kept at 6,000). A page still UNDER the
+// threshold with main-frame requests in flight is demonstrably still loading, so it may go on past the
+// ceiling up to localReadableWaitMs ("loading" when that runs out): op.gg's summoner data landed 3.5, 5.1
+// and over 6 s after domcontentloaded in three traces, and at the plain ceiling one read took its
+// 3,339-char skeleton for the page. The first probe runs one poll after domcontentloaded, since a page's
+// data fetches start after it.
+async function settleReadable({ page, settings, deadline, inflight }) {
+  const t0 = Date.now();
+  const until = Math.min(deadline - 1500, t0 + settings.localNetworkIdleMs);
+  const untilLoading = Math.min(deadline - 1500, t0 + Math.max(settings.localNetworkIdleMs, settings.localReadableWaitMs));
+  let idle = false;
+  const idleP = page.waitForLoadState("networkidle", { timeout: Math.max(1, untilLoading - t0) }).then(() => (idle = true), () => {});
+  let prev = null;
+  let polls = 0;
+  let len = 0;
+  for (;;) {
+    const loading = len < settings.localReadableMinChars && inflight.size > 0;
+    const left = (loading ? untilLoading : until) - Date.now();
+    const done = idle ? "networkidle" : left <= 0 ? (loading ? "loading" : "ceiling") : null;
+    if (!done) await Promise.race([sleep(Math.min(settings.localReadablePollMs, left)), idleP]); // an idle stop lands at once, not at the next poll
     let p;
     try {
       p = await page.evaluate(PROBE_JS);
     } catch {
-      await sleep(500);
-      continue; // the challenge page navigated away mid-probe; look again
+      if (done) return { stop: done, polls, len };
+      prev = null; // navigating mid-probe (a redirect, a reload): start the two-poll count over
+      continue;
     }
-    if (!detectChallenge({ html: p.head, title: p.title, visibleText: p.text })) {
-      if (sawChallenge) await page.waitForLoadState("networkidle", { timeout: Math.max(1, Math.min(6000, deadline - Date.now() - 1500)) }).catch(() => {});
-      return { sawChallenge };
-    }
-    sawChallenge = true;
-    await sleep(1000);
+    polls++;
+    len = p.len;
+    const seen = probeChallenge(p);
+    if (seen) return { stop: "challenge", polls, len, seen };
+    if (done) return { stop: done, polls, len, inflight: inflight.size };
+    const quiet = inflight.size === 0;
+    if (p.len >= settings.localReadableMinChars && prev?.len === p.len && prev.quiet && quiet) return { stop: "readable", polls, len };
+    prev = { len: p.len, quiet };
   }
-  return { sawChallenge, timedOut: true };
 }
 
+// Runs only after the probe called the page a challenge. Polls every second while the page is a
+// self-clearing kind and clears, up to localChallengeWaitMs; returns at once on a kind that cannot clear.
+async function waitOutLocalChallenge({ page, settings, deadline, seen }) {
+  const until = Math.min(deadline - 1500, Date.now() + settings.localChallengeWaitMs);
+  let why = seen?.why || "challenge";
+  if (!SELF_CLEARING.has(why)) return { sawChallenge: true, why, timedOut: true };
+  while (Date.now() < until) {
+    await sleep(Math.min(1000, Math.max(1, until - Date.now())));
+    let p;
+    try {
+      p = await page.evaluate(PROBE_JS);
+    } catch {
+      continue; // the challenge page navigated away mid-probe; look again
+    }
+    const c = probeChallenge(p);
+    if (!c) return { sawChallenge: true, why };
+    why = c.why;
+    if (!SELF_CLEARING.has(why)) return { sawChallenge: true, why, timedOut: true };
+  }
+  return { sawChallenge: true, why, timedOut: true };
+}
+
+// phases (2026-10-21): the F2 split in ms, carried on the result and into the call log, so the next
+// measurement of this rung reads off the ledger: take (the page slot), launch (cold true when the
+// browser had to start), page, goto (to domcontentloaded), settle (the quiet wait), challenge (the
+// probe loop, 0 when the page was no challenge), extract (the snapshot), judge (extract.js + detect.js).
 export async function localBrowserRung({ url, settings, extractMode, signal, budgetMs }) {
   const t0 = Date.now();
   const deadline = t0 + Math.max(3000, budgetMs);
+  const phases = { take: 0, launch: 0, cold: false, page: 0, goto: 0, settle: 0, challenge: 0, extract: 0, judge: 0 };
+  let lapAt = t0;
+  const lap = (k) => {
+    const n = Date.now();
+    phases[k] = n - lapAt;
+    lapAt = n;
+  };
   if (!(await takePage(settings, Math.min(deadline - 5000, t0 + settings.localQueueWaitMs)))) {
     return { rung: "F2", ok: false, wall: "busy", outcome: "skipped:busy", ms: Date.now() - t0, next: "BB", skipped: true };
   }
+  lap("take");
   let page;
   try {
     let context;
     try {
+      phases.cold = !local.context;
       context = await getLocalContext(settings);
     } catch (err) {
       return { rung: "F2", ok: false, wall: "local_launch", outcome: `launch:${String(err?.message || err).split("\n")[0].slice(0, 60)}`, ms: Date.now() - t0, next: "BB" };
     }
+    lap("launch");
     page = await context.newPage();
+    lap("page");
     const remaining = () => Math.max(1000, deadline - Date.now());
     let status;
     page.on("response", (r) => {
@@ -534,6 +653,14 @@ export async function localBrowserRung({ url, settings, extractMode, signal, bud
         if (r.request().isNavigationRequest() && r.frame() === page.mainFrame()) status = r.status();
       } catch {}
     });
+    const inflight = new Set();
+    page.on("request", (r) => {
+      try {
+        if (INFLIGHT_TYPES.has(r.resourceType()) && r.frame() === page.mainFrame()) inflight.add(r);
+      } catch {}
+    });
+    page.on("requestfinished", (r) => inflight.delete(r));
+    page.on("requestfailed", (r) => inflight.delete(r));
     let navError;
     try {
       const resp = await page.goto(url, { waitUntil: "domcontentloaded", timeout: remaining() });
@@ -541,27 +668,39 @@ export async function localBrowserRung({ url, settings, extractMode, signal, bud
     } catch (err) {
       navError = String(err?.message || err).split("\n")[0].slice(0, 160);
     }
+    lap("goto");
     if (signal?.aborted) throw signal.reason ?? new Error("aborted");
     let challengeWait = {};
     if (!navError) {
-      await page.waitForLoadState("networkidle", { timeout: Math.max(1, Math.min(settings.localNetworkIdleMs, remaining() - 1500)) }).catch(() => {});
-      challengeWait = await waitOutLocalChallenge({ page, settings, deadline });
+      let settled = await settleReadable({ page, settings, deadline, inflight });
+      lap("settle");
+      if (settled.stop === "challenge") {
+        challengeWait = await waitOutLocalChallenge({ page, settings, deadline, seen: settled.seen });
+        phases.kind = challengeWait.why;
+        if (!challengeWait.timedOut) settled = await settleReadable({ page, settings, deadline, inflight });
+      }
+      lap("challenge");
+      phases.stop = settled.stop;
+      phases.polls = settled.polls;
+      phases.len = settled.len;
     }
     const snap = await page.evaluate(EXTRACT_JS).catch(() => null);
+    lap("extract");
     recordUsage(settings, { localBrowserPages: 1, localBrowserSeconds: (Date.now() - t0) / 1000 });
     if (!snap || (navError && !snap.html)) {
-      return { rung: "F2", ok: false, wall: "nav_error", outcome: `nav:${(navError || "no snapshot").slice(0, 60)}`, status, ms: Date.now() - t0, next: "BB" };
+      return { rung: "F2", ok: false, wall: "nav_error", outcome: `nav:${(navError || "no snapshot").slice(0, 60)}`, status, ms: Date.now() - t0, next: "BB", phases };
     }
     // A navigation redirect skips the route handler, so a page that landed on a private address is refused here.
-    if (settings.blockPrivateHosts && privateFinal(snap.url)) return { rung: "F2", ok: false, wall: "invalid_url", outcome: "refused:private_target", status, ms: Date.now() - t0, next: "stop" };
+    if (settings.blockPrivateHosts && privateFinal(snap.url)) return { rung: "F2", ok: false, wall: "invalid_url", outcome: "refused:private_target", status, ms: Date.now() - t0, next: "stop", phases };
     const r = await judgeRendered({ p: { status, finalUrl: snap.url, title: snap.title, html: snap.html, innerText: snap.text, challengeWait }, url, settings, extractMode, rung: "F2" });
+    lap("judge");
     const ms = Date.now() - t0;
-    if (r.ok) return { ...r, ms };
+    if (r.ok) return { ...r, ms, phases };
     const next = r.verdict === "not_found" ? "stop" : "BB";
-    return { ...r, wall: r.verdict === "not_found" ? `http_${status}` : r.wall, ms, next, partial: r.ex?.content && String(r.ex.content).trim() && r.verdict === "thin" ? { status, finalUrl: snap.url, ctype: "text/html", ex: r.ex } : undefined };
+    return { ...r, wall: r.verdict === "not_found" ? `http_${status}` : r.wall, ms, next, phases, partial: r.ex?.content && String(r.ex.content).trim() && r.verdict === "thin" ? { status, finalUrl: snap.url, ctype: "text/html", ex: r.ex } : undefined };
   } catch (err) {
     if (signal?.aborted) throw err;
-    return { rung: "F2", ok: false, wall: "nav_error", outcome: `error:${String(err?.message || err).split("\n")[0].slice(0, 60)}`, ms: Date.now() - t0, next: "BB" };
+    return { rung: "F2", ok: false, wall: "nav_error", outcome: `error:${String(err?.message || err).split("\n")[0].slice(0, 60)}`, ms: Date.now() - t0, next: "BB", phases };
   } finally {
     await page?.close().catch(() => {});
     releasePage(settings);

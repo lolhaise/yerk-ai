@@ -226,7 +226,7 @@ function successPayload({ url, win, attempts, extractMode, startedAt }) {
   };
 }
 
-function failurePayload({ url, wall, attempts, extractMode, startedAt, host, partial }) {
+function failurePayload({ url, wall, attempts, extractMode, startedAt, host, partial, hopeless }) {
   const [what, retry, next] = describeWall(wall);
   const lastStatus = [...attempts].reverse().find((a) => typeof a.status === "number")?.status;
   const lines = [
@@ -236,6 +236,7 @@ function failurePayload({ url, wall, attempts, extractMode, startedAt, host, par
     `Rungs tried: ${attempts.length ? attempts.map((a) => `${rungLabel(a)} -> ${a.outcome}${typeof a.status === "number" ? ` (HTTP ${a.status})` : ""}, ${a.ms} ms`).join("; ") : "none"}.`,
     `Next move: ${next}`,
   ];
+  if (hopeless) lines.push(`Ceiling: two free rungs met the same ${hopeless.kind} wall, so the fetch rungs L1 and L2 were skipped and the call was capped at ${hopeless.seconds} s (hopelessMaxSeconds).`);
   if (partial?.ex?.content) {
     lines.push("", "Partial text from the best rung (short, may be a stub):", "", String(partial.ex.content).slice(0, 4000));
   }
@@ -284,11 +285,22 @@ function isLocalBlock(a) {
 }
 
 // ---- entry -----------------------------------------------------------------------
+// A challenge's kind, for the hopeless rule: Cloudflare's title, script and Turnstile markers are one wall.
+const CHALLENGE_FAMILY = { challenge_title: "cloudflare", turnstile: "cloudflare" };
+
+function challengeKind(a) {
+  if (a?.verdict !== "challenge") return null;
+  const why = String(a.outcome || "").split(":")[1] || "challenge";
+  return CHALLENGE_FAMILY[why] || why;
+}
+
 export async function runFetchPlus(args, ctx, executionContext = {}, deps = {}) {
   const startedAt = Date.now();
   const signal = executionContext?.signal;
   signal?.throwIfAborted?.();
   const settings = resolveSettings(ctx?.config, deps.settingsOverrides);
+  const clock = () => (typeof settings._now === "function" ? settings._now() : Date.now()); // test seam, as local.js nowOf: budgets and the ledger's ms follow it
+  const startedTick = clock();
   const fetchImpl = deps.fetchImpl || fetch;
   const url = typeof args?.url === "string" ? args.url.trim() : "";
   const extractMode = args?.extractMode === "text" ? "text" : "markdown";
@@ -298,6 +310,7 @@ export async function runFetchPlus(args, ctx, executionContext = {}, deps = {}) 
 
   let creds = {};
   let memPlan = null; // site memory's plan for this host: { start, bb, probe, remembered }
+  let hopeless = null; // the challenge kind two free rungs met (2026-10-21): L1 and L2 skipped, the call capped at hopelessMaxSeconds
   const finish = (result, wall) => {
     appendCallLog(settings, {
       host,
@@ -305,16 +318,19 @@ export async function runFetchPlus(args, ctx, executionContext = {}, deps = {}) 
       outcome: result.ok ? "ok" : "fail",
       ...(wall ? { wall } : {}),
       status: typeof result.status === "number" ? result.status : null,
-      ms: Date.now() - startedAt,
+      ms: clock() - startedTick,
       rungs: trail(attempts),
       ...(memPlan ? { mem: `${memPlan.start}/${memPlan.bb}${memPlan.probe ? "/retry" : ""}` } : {}),
+      ...(hopeless ? { hopeless, cap: settings.hopelessMaxSeconds } : {}),
+      // The F2 split in ms (local.js phases, 2026-10-21): numbers only, so the next measurement reads off this log.
+      ...(attempts.find((a) => a.rung === "F2" && a.phases) ? { f2: attempts.find((a) => a.rung === "F2").phases } : {}),
     });
-    rememberRead(settings, host, { win: result.ok ? result.rung : null, plan: memPlan });
+    rememberRead(settings, host, { win: result.ok ? result.rung : null, plan: memPlan, url });
     if (attempts.some((a) => /^L[12]$/.test(a.rung))) syncProjectUsage(settings, creds, fetchImpl);
   };
   const fail = (wall) => {
     finish({ ok: false, status: attempts.at(-1)?.status }, wall);
-    return failurePayload({ url, wall, attempts, extractMode, startedAt, host, partial });
+    return failurePayload({ url, wall, attempts, extractMode, startedAt, host, partial, hopeless: hopeless ? { kind: hopeless, seconds: settings.hopelessMaxSeconds } : null });
   };
 
   let parsed;
@@ -329,8 +345,8 @@ export async function runFetchPlus(args, ctx, executionContext = {}, deps = {}) 
   // The free rungs need no key; a missing key stops the ladder only where Browserbase starts.
   if (!creds.apiKey && !settings.localEnabled) return fail("no_key");
 
-  const total = settings.totalMaxSeconds * 1000;
-  const left = () => total - (Date.now() - startedAt);
+  let total = settings.totalMaxSeconds * 1000;
+  const left = () => total - (clock() - startedTick);
   const common = { url, settings, apiKey: creds.apiKey, extractMode, signal, fetchImpl };
 
   // l3FirstHosts (2026-09-27): sites that serve a JavaScript shell with enough boilerplate to pass every
@@ -348,12 +364,22 @@ export async function runFetchPlus(args, ctx, executionContext = {}, deps = {}) 
   // Site memory (phase 2, local.js): a remembered free step (F2, F3) skips the cheaper free steps,
   // and a remembered Browserbase step (L3n, L3) skips L1 and L2 once Browserbase is reached; L3
   // (proxies needed last time) also skips L3n. The home guards still apply on top.
-  memPlan = siteMemoryPlan(settings, hostLc);
+  memPlan = siteMemoryPlan(settings, hostLc, url); // per host + path class since 2026-10-22 (local.js pathClass)
   const memBb = memPlan?.bb === "L3n" || memPlan?.bb === "L3" ? "L3" : "L1";
   const proxiesNeeded = memPlan?.bb === "L3";
   const memSkipF1 = memPlan?.start === "F2" || memPlan?.start === "F3";
   const memSkipF2 = memPlan?.start === "F3";
   let bbFrom = memBb;
+  // Hopeless (2026-10-21): two free rungs of THIS call met the same challenge kind (F1 and F2, or F2 and F3).
+  // L1 and L2 are fetches: they cannot run a challenge's JavaScript or solve a captcha, so they are skipped,
+  // Browserbase starts at the solver rung, and the whole call is capped at hopelessMaxSeconds from its start.
+  // The home guards (cooldown, rate cap) are untouched, and a call that starts inside a cooldown keeps the
+  // 2026-10-19 ladder from L1 (October's L1 read Etsy and LinkedIn pages the free rungs had missed).
+  const capHopeless = (kind) => {
+    hopeless = kind;
+    bbFrom = "L3";
+    total = Math.min(total, settings.hopelessMaxSeconds * 1000);
+  };
   const cool = settings.localEnabled && !l3First ? localCooldownFor(settings, hostLc) : null;
   if (cool?.skip === "all") bbFrom = settings.bbFetchAfterLocal ? memBb : "L3";
   const capped = settings.localEnabled && !l3First && cool?.skip !== "all" ? takeLocalSlot(settings, hostLc) : "off";
@@ -383,6 +409,7 @@ export async function runFetchPlus(args, ctx, executionContext = {}, deps = {}) 
       partial = f2.partial || partial;
       if (f2.next === "stop") return fail(pickWall(attempts));
       if (!f2.skipped && f2.wall !== "local_launch") bbFrom = settings.bbFetchAfterLocal ? memBb : "L3";
+      if (f1 && challengeKind(f1) && challengeKind(f1) === challengeKind(f2)) capHopeless(challengeKind(f2));
     }
     // F3: a challenge the stealth browser did not pass goes to trawl's Camoufox, which solves
     // captchas on this machine. The idle CloakBrowser closes first: one local browser at a time.
@@ -398,6 +425,7 @@ export async function runFetchPlus(args, ctx, executionContext = {}, deps = {}) 
         return successPayload({ url, win: f3, attempts, extractMode, startedAt });
       }
       partial = f3.partial || partial;
+      if (!hopeless && !f3.skipped && f2 && challengeKind(f2) && challengeKind(f2) === challengeKind(f3)) capHopeless(challengeKind(f3));
     }
     if (f2 && isLocalBlock(f2)) markLocalBlocked(settings, hostLc, f2.outcome, "all");
   }
@@ -467,8 +495,9 @@ export async function runFetchPlus(args, ctx, executionContext = {}, deps = {}) 
     }
   }
   if (signal?.aborted) signal.throwIfAborted();
-  const wall = attempts.length ? pickWall(attempts) : "timeout";
-  if (left() <= 8000 && attempts.every((a) => a.rung !== "L3") && settings.l3Enabled && next === "L3") {
+  const wall = attempts.length ? pickWall(attempts) : hopeless ? "captcha_unsolved" : "timeout";
+  // Under the hopeless cap the site's own wall is the answer, never "timeout".
+  if (!hopeless && left() <= 8000 && attempts.every((a) => a.rung !== "L3") && settings.l3Enabled && next === "L3") {
     return fail("timeout");
   }
   return fail(wall);

@@ -223,7 +223,37 @@ function extractHtmlRegex(htmlStr, extractMode) {
   return { title: titleM ? collapse(titleM[1]) : undefined, content: extractMode === "text" ? text : text, visibleText: text, articleChars: text.length, extractor: "regex", htmlLength: htmlStr.length, scriptCount: (htmlStr.match(/<script\b/gi) || []).length, hasPasswordInput: /<input[^>]+type=["']?password/i.test(htmlStr), noscriptText: "" };
 }
 
-async function extractHtmlDom(rawHtml, { url, extractMode = "markdown" } = {}) {
+// A modal over a page that has loaded (2026-10-22, Airbnb room pages): the site sets aria-hidden="true"
+// on every sibling of the dialog's ancestors (the hide-others pattern, #react-application among them),
+// and Readability and stripChrome both drop aria-hidden subtrees, so F2 and L3n read the dialog alone
+// ("Translation on", 135 chars) off a page whose body held 11,832 chars at the readable-stop, no request
+// pending, the same at 15 s. When the article comes out under LIFT_BELOW chars and those hidden siblings
+// hold at least LIFT_MIN_HIDDEN chars, the extraction runs once more with them un-hidden and the dialog
+// removed, and the longer read is kept. aria-hidden nodes inside the content (icons) stay dropped.
+const LIFT_BELOW = 500; // the ladder's default minVisibleChars
+const LIFT_MIN_HIDDEN = 1000;
+
+function liftModal(document) {
+  const modals = [...document.querySelectorAll('[aria-modal="true"],[role="dialog"],[role="alertdialog"],dialog[open]')];
+  if (!modals.length || !document.body) return null;
+  const hidden = new Set();
+  for (const m of modals) {
+    for (let a = m; a && a !== document.body && a.parentElement; a = a.parentElement) {
+      for (const s of a.parentElement.children) if (s !== a && s.getAttribute("aria-hidden") === "true") hidden.add(s);
+    }
+  }
+  let chars = 0;
+  for (const s of hidden) chars += (s.textContent || "").length;
+  if (chars < LIFT_MIN_HIDDEN) return null;
+  for (const s of hidden) {
+    s.removeAttribute("aria-hidden");
+    s.removeAttribute("inert");
+  }
+  for (const m of modals) m.remove();
+  return document.documentElement.outerHTML;
+}
+
+async function extractHtmlDom(rawHtml, { url, extractMode = "markdown", noLift = false } = {}) {
   const { parseHTML, Readability } = await loadLibs();
   // A bare fragment ("<p>hi</p>") has no <html>/<body>; wrap it so linkedom keeps the text.
   const htmlStr = /<(html|body)[\s>]/i.test(rawHtml) ? rawHtml : `<html><body>${rawHtml}</body></html>`;
@@ -262,6 +292,14 @@ async function extractHtmlDom(rawHtml, { url, extractMode = "markdown" } = {}) {
   }
   const title = collapse(article?.title || "") || docTitle;
   const content = extractMode === "text" ? markdownToText(markdown) : markdown;
+  const chars = markdownToText(markdown).length;
+  if (!noLift && chars < LIFT_BELOW) {
+    const lifted = liftModal(parseHTML(htmlStr).document);
+    if (lifted) {
+      const l = await extractHtmlDom(lifted, { url, extractMode, noLift: true });
+      if (l.articleChars > chars * 2 && l.articleChars >= LIFT_BELOW) return { ...l, title: l.title || title, visibleText, htmlLength: htmlStr.length, scriptCount, hasPasswordInput, noscriptText, extractor: `${l.extractor}+lift` };
+    }
+  }
   return {
     title,
     content,

@@ -61,8 +61,12 @@ export const DEFAULTS = Object.freeze({
   localMaxPages: 2,
   localIdleCloseMs: 120000,
   localQueueWaitMs: 15000,
-  localNetworkIdleMs: 6000,
+  localNetworkIdleMs: 6000, // the ceiling of F2's readable-stop wait (2026-10-21; measured: op.gg's content lands up to 5.1 s after domcontentloaded)
   localChallengeWaitMs: 15000,
+  localReadableMinChars: 3500, // F2 readable-stop (2026-10-21): visible chars before the wait may end early; op.gg's loading skeleton is 2,716 to 3,351, the smallest ready page measured (lotterypost) 4,026
+  localReadablePollMs: 500, // how often F2 probes the page after domcontentloaded
+  localReadableWaitMs: 10000, // a page still under localReadableMinChars with main-frame requests in flight may keep loading this long after domcontentloaded (op.gg's data landed 3.5 to over 6 s after it)
+  hopelessMaxSeconds: 45, // the whole call's cap once two free rungs met the same challenge kind (2026-10-21): L1 and L2 skipped, the solver rung gets what is left
   localBlockPictures: true,
   localCooldownHours: 24,
   localMaxPerHostPerMinute: 6,
@@ -168,6 +172,10 @@ export function resolveSettings(config, overrides = {}) {
     localQueueWaitMs: intIn(m.localQueueWaitMs, 0, 120000, DEFAULTS.localQueueWaitMs),
     localNetworkIdleMs: intIn(m.localNetworkIdleMs, 500, 60000, DEFAULTS.localNetworkIdleMs),
     localChallengeWaitMs: intIn(m.localChallengeWaitMs, 0, 120000, DEFAULTS.localChallengeWaitMs),
+    localReadableMinChars: intIn(m.localReadableMinChars, 0, 100000, DEFAULTS.localReadableMinChars),
+    localReadablePollMs: intIn(m.localReadablePollMs, 100, 5000, DEFAULTS.localReadablePollMs),
+    localReadableWaitMs: intIn(m.localReadableWaitMs, 500, 60000, DEFAULTS.localReadableWaitMs),
+    hopelessMaxSeconds: intIn(m.hopelessMaxSeconds, 10, 600, DEFAULTS.hopelessMaxSeconds),
     localBlockPictures: bool(m.localBlockPictures, DEFAULTS.localBlockPictures),
     localCooldownHours: intIn(m.localCooldownHours, 0, 720, DEFAULTS.localCooldownHours),
     localMaxPerHostPerMinute: intIn(m.localMaxPerHostPerMinute, 0, 600, DEFAULTS.localMaxPerHostPerMinute),

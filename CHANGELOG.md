@@ -16,7 +16,11 @@ with the originals kept under `backups/`; the index chunks every file again when
   an optional `web.json` there, state under `<state>/web/`.
 - `web_fetch` climbs a plain fetch from the machine, its own stealth browser and trawl (each skipped without a try when
   it is not installed), then Browserbase's paid rungs; it names the wall when a page stays shut and remembers per site
-  which step read it. The free rungs' caps are one window for every room's process.
+  and path class which step read it. The free rungs' caps are one window for every room's process.
+- The ladder is the machine's as of 2026-10-22: the stealth browser stops waiting once the text is readable and settled
+  (a page carrying Cloudflare's bot script is no longer taken for a challenge), a page behind a modal dialog reads as
+  the page (a listing's "Translation on" notice gave 135 chars), and two free rungs on the same captcha skip the paid
+  fetch rungs and cap the call at 45 s.
 - `web_search` runs Exa, then Parallel's paid API, then You.com's and Parallel's keyless engines; `web_research` runs
   the Exa Agent at four fixed efforts under one daily cap of US$2 for every room.
 - Every paid call is one row in the ledger's `spend` table (the one transcribe, #77, brought), and the morning diff says
