@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -202,11 +203,78 @@ def violations(start: list[Part], msg: list[Part], budgets: dict[str, Any]) -> l
     return out
 
 
+# What sits around a message, by part (`yerk map --wire`). Claude Code's own blocks by the line each starts with (2.1.30x):
+# a compaction's restore and a process start arrive as one block holding several, the next message's.
+CLAUDE = {"Called the Read tool": "Claude Code: files re-read after compaction", "Note: ": "Claude Code: notes on changed files",
+          "## Bash command sandbox": "Claude Code: sandbox instructions", "# Environment": "Claude Code: environment",
+          "Stop hook blocking error": "Stop hook bounce"}
+HEADS_RE = re.compile("(?m)^(?=" + "|".join(map(re.escape, CLAUDE)) + ")")
+OTHER, TOKENS, OWN = "Claude Code: other reminders, wrappers", "Claude Code: token count", "the message's own text"
+IN_TEXT = (("[a reply to ", "reply header"), ("[attachment] ", "attachment lines"), ("[voice note] ", "attachment lines"))
+
+
+def _add(into: dict[str, int], parts: dict[str, int]) -> dict[str, int]:
+    for name, n in parts.items():
+        into[name] = into.get(name, 0) + n
+    return into
+
+
+def hook_parts(event: str, said: str) -> dict[str, int]:
+    """A hook text of Yerk AI's by part: the UserPromptSubmit one from the line each part starts with (user_prompt_submit
+    joins them a line apart, clock first; the newlines between are wrapper), any other bracketed head the recall part's
+    (its heads, words.ABSENT and hooks.HEADS, have changed wording), a compaction's SessionStart one the recall pack."""
+    if event != "UserPromptSubmit":
+        return {"recall pack" if event == "SessionStart" else f"{event} hook": chars(said)}
+    heads = (("[clock] ", "clock"), ("[message] ", "metadata"), (NEWS, "rules"), ("[taste] ", "taste"), ("[", "recall"))
+    lines: dict[str, list[str]] = {}
+    cur = OTHER
+    for line in said.split("\n"):
+        cur = next((name for h, name in heads if line.startswith(h)), cur)
+        lines.setdefault(cur, []).append(line)
+    out = {name: chars("\n".join(x)) for name, x in lines.items()}
+    return _add(out, {OTHER: chars(said) - sum(out.values())})
+
+
+def envelope(text: str, blocks: list[str], added: list[tuple[str, str, str]], hooked: list[tuple[str, str]]) -> dict[str, int]:
+    """One message's `around` by part, adding up to it: in each block the message's text left out, Yerk AI's hook texts
+    found whole (a compaction's recall pack rides in Claude Code's restore block), the rest by Claude Code's first lines;
+    then the attachments `wire` rebuilt, (kind, Claude Code's prefix, text) each."""
+    out: dict[str, int] = {}
+    for block in blocks:
+        rest = block.replace(text, "", 1) if text else block
+        for event, said in hooked:
+            if said and said in rest:
+                _add(out, hook_parts(event, said))
+                rest = rest.replace(said, "", 1)
+        for seg in HEADS_RE.split(rest):
+            _add(out, {next((n for h, n in CLAUDE.items() if seg.startswith(h)), OTHER): chars(seg)})
+    for kind, prefix, said in added:
+        _add(out, {TOKENS: chars(said)} if kind == TOKENS else hook_parts(kind, said))
+        _add(out, {OTHER: chars(prefix)})
+    _add(out, {OTHER: chars(SEP) * max(len(added) - 1, 0)})
+    return {name: n for name, n in out.items() if n}
+
+
+def _when(r: dict[str, Any]) -> float | None:
+    with contextlib.suppress(TypeError, ValueError):
+        return datetime.fromisoformat(str(r.get("timestamp"))).timestamp()
+    return None
+
+
+def in_text(text: str) -> dict[str, int]:
+    """The message itself by part: the lines Yerk AI writes into it, and the sender's own text, which nothing cuts."""
+    out: dict[str, int] = {}
+    for line in text.split("\n"):
+        if name := next((n for h, n in IN_TEXT if line.startswith(h)), None):
+            _add(out, {name: chars(line)})
+    return {**out, OWN: chars(text) - sum(out.values())}
+
+
 def wire(transcript: Path) -> dict[str, Any]:
     """Sizes as sent, from a room's Claude Code transcript (rows of 2.1.301): `api-request-shape`
     holds the system blocks and tool definitions as sent; `api-request-blob` rows hold each
     request's new content blocks. A request carrying a new message is that message plus what
-    Claude Code and the hook put around it."""
+    Claude Code and the hook put around it, by part (envelope)."""
     rows: list[dict[str, Any]] = []
     lines = list(transcript.open(errors="replace"))     # split on newlines only: a raw U+2028 inside a valid line stays
     for line in lines:                     # a line a hard power-off zeroed (NUL bytes) or cut short: skipped, and counted
@@ -217,19 +285,22 @@ def wire(transcript: Path) -> dict[str, Any]:
                            "tools": {str(t.get("name")): chars(json.dumps(t)) for t in shape.get("tools", [])},
                            "messages": [], "skipped": len(lines) - len(rows)}
     group: list[tuple[str, str]] = []
-    prompt: tuple[str, bool] | None = None          # the newest message not yet sent: (text, folded)
-    added: list[str] = []                           # its attachments, rendered as Claude Code sends them
+    prompt: tuple[str, bool, float | None] | None = None      # the newest message not yet sent: (text, folded, when)
+    added: list[tuple[str, str, str]] = []          # its attachments, rendered as Claude Code sends them: prefix + text
+    hooked: list[tuple[str, str]] = []              # Yerk AI's hook texts since the last request, a compaction's among them
     for r in rows:
         kind, att = r.get("type"), r.get("attachment") or {}
-        if kind == "user" and isinstance((r.get("message") or {}).get("content"), str):
-            prompt, added = (str(r["message"]["content"]), False), []
+        if kind == "user" and isinstance((r.get("message") or {}).get("content"), str) and not r.get("isCompactSummary") \
+                and not r.get("isMeta"):             # a compaction's summary or Claude Code's caveat is nobody's message
+            prompt, added = (str(r["message"]["content"]), False, _when(r)), []
         elif kind == "attachment" and att.get("type") == "queued_command":
-            prompt, added = (str(att.get("prompt", "")), True), []
+            prompt, added = (str(att.get("prompt", "")), True, _when(r)), []
         elif kind == "attachment" and att.get("type") == "total_tokens_reminder":
-            added.append(str(att.get("text", "")))
+            added.append((TOKENS, "", str(att.get("text", ""))))
         elif kind == "attachment" and att.get("type") == "hook_additional_context":
-            added.append(f"{att.get('hookEvent', 'UserPromptSubmit')} hook additional context: "
-                         + "\n".join(map(str, att.get("content") or [])))
+            event, said = str(att.get("hookEvent", "UserPromptSubmit")), "\n".join(map(str, att.get("content") or []))
+            added.append((event, f"{event} hook additional context: ", said))
+            hooked.append((event, said))
         elif kind == "api-request-blob":
             m = r.get("message") or {}
             content = m.get("content")
@@ -237,28 +308,39 @@ def wire(transcript: Path) -> dict[str, Any]:
             group += [(str(m.get("role")), str(b.get("text", ""))) for b in blocks if b.get("type") == "text"]
         elif kind == "api-request":
             if prompt is not None:
-                text, folded = prompt
+                text, folded, at = prompt
                 around = [t for role, t in group if role == "system" or t.startswith("<system-reminder>")]
                 # a folded message is sent inside Claude Code's own system block: count only the wrapper
                 sizes = [chars(t) - (chars(text) if text and text in t else 0) for t in around]
                 if not folded and added:     # a block identical to an earlier one is not stored again
                     sizes = [s for s, t in zip(sizes, around) if not t.startswith("<total_tokens>")]
-                    sizes.append(chars(SEP.join(added)))
-                out["messages"].append({"text": chars(text), "around": sizes, "folded": folded})
-            group, prompt, added = [], None, []
+                    around = [t for t in around if not t.startswith("<total_tokens>")]
+                # rebuilt unless already inside a block counted: a process start or a compaction's restore holds the hook text
+                rebuilt = [a for a in added if not folded and not any(a[2] and a[2] in t for t in around)]
+                if rebuilt:
+                    sizes.append(chars(SEP.join(p + s for _, p, s in rebuilt)))
+                out["messages"].append({"text": chars(text), "around": sizes, "folded": folded, "t": at,
+                                        "parts": envelope(text, around, rebuilt, hooked), "in_text": in_text(text)})
+            group, prompt, added, hooked = [], None, [], []
     return out
 
 
-def render_wire(room_name: str, w: dict[str, Any], appended: int, budgets: dict[str, Any]) -> str:
-    """The measured counterpart of `render`: the first message carries the session-start parts."""
+def render_wire(room_name: str, w: dict[str, Any], appended: int, budgets: dict[str, Any], tz: str = "UTC",
+                now: float | None = None) -> str:
+    """The measured counterpart of `render`: the first message carries the session-start parts; each later one is read
+    by part, Yerk AI's against their keys, and the week's five largest named by the part that made them large."""
     tools, cc, yerk = w["tools"], budgets["session_start"]["claude_code"], ("mcp__yerk__",)
     builtin = sum(n for k, n in tools.items() if not k.startswith(yerk) and k[:1].isupper() and k != "DeferredToolPlaceholder")
     mine = sum(n for k, n in tools.items() if k.startswith(yerk))
     extra = sum(tools.values()) - builtin - mine
     msgs = w["messages"]
     first = sum(msgs[0]["around"]) if msgs else 0
-    later = sorted(sum(m["around"]) for m in msgs[1:] if not m["folded"])
+    late = sorted((m for m in msgs[1:] if not m["folded"]), key=lambda m: sum(m["around"]))
+    later = [sum(m["around"]) for m in late]
     folds = sorted(sum(m["around"]) for m in msgs if m["folded"])
+    pm = budgets["per_message"]
+    keys = {**pm["parts"], **pm["on_hit"], "recall pack": budgets["session_start"]["appended"]["recall_pack"]}
+    over = {n: c for n, k in keys.items() if (c := sum(m["parts"].get(n, 0) > k for m in late))}
     total = w["system"] + sum(tools.values()) + first
     row = "  {:<34}{:>9}{:>9}  {}"
     skipped = f"; damaged lines skipped: {w['skipped']}" if w.get("skipped") else ""      # a crash's zeroed or cut lines
@@ -276,15 +358,42 @@ def render_wire(room_name: str, w: dict[str, Any], appended: int, budgets: dict[
          row.format("total", fmt(total), fmt(budgets["session_start"]["total"]),
                     "ok" if total <= budgets["session_start"]["total"] else "OVER"), "",
          f"{'Every later message, around its text':<36}{'chars':>9}{'budget':>9}"]
-    if later:
-        med, top = later[len(later) // 2], later[-1]
-        typ = budgets["per_message"]["typical"]
-        L.append(row.format(f"median of {len(later)}", fmt(med), fmt(typ), "ok" if med <= typ else "OVER"))
-        L.append(row.format("largest", fmt(top), fmt(budgets["per_message"]["cap"]), ""))
+    if later:              # OVER is a part past its key; `typical` alone is a total the parts each under their keys can pass
+        med, typ = later[len(later) // 2], pm["typical"]
+        L.append(row.format(f"median of {len(later)}", fmt(med), fmt(typ), "OVER: " + ", ".join(f"{n} on {c}" for n, c in over.items())
+                            if over else "ok" if med <= typ else "every part under its key, by part below"))
+        L.append(row.format("largest", fmt(later[-1]), fmt(pm["cap"]), made(late[-1])))
     if folds:
         L.append(row.format(f"mid-turn messages: median of {len(folds)}", fmt(folds[len(folds) // 2]), "",
                             "Claude Code's wrapper for a message that joins a turn"))
+    if not late:
+        return "\n".join(L)
+    prow = "  {:<44}{:>5}{:>9}{:>9}{:>9}  {}"
+    hook = sorted(n for m in late if (n := sum(v for k, v in m["parts"].items() if k in pm["parts"] or k in pm["on_hit"])))
+    L += ["", f"{'By part, on the messages carrying it':<46}{'on':>5}{'median':>9}{'largest':>9}{'budget':>9}",
+          prow.format("Yerk AI's hook, its parts together", len(hook), fmt(hook[len(hook) // 2] if hook else 0), fmt(hook[-1] if hook else 0),
+                      fmt(pm["cap"]), "ok" if not hook or hook[-1] <= pm["cap"] else "OVER")]
+    order = list(keys)
+    for n in sorted({n for m in late for n in m["parts"]}, key=lambda n: (n.startswith("Claude Code"), order.index(n) if n in order else len(order), n)):
+        got = sorted(m["parts"][n] for m in late if n in m["parts"])
+        status = ("ok" if n not in over else f"OVER on {over[n]}") if n in keys else "Claude Code's" if n.startswith("Claude Code") else "no key"
+        L.append(prow.format(n, len(got), fmt(got[len(got) // 2]), fmt(got[-1]), fmt(keys[n]) if n in keys else "", status))
+    for n in ("reply header", "attachment lines", OWN):
+        if got := sorted(m["in_text"][n] for m in late if m["in_text"].get(n)):
+            L.append(prow.format(f"{n}, in the message", len(got), fmt(got[len(got) // 2]), fmt(got[-1]), "",
+                                 "no key" if n == "reply header" else "reported, never cut"))
+    since = (datetime.now().timestamp() if now is None else now) - 7 * 86400
+    if week := [m for m in reversed(late) if (m.get("t") or 0) >= since][:5]:
+        L += ["", f"{'Five largest, last 7 days':<36}{'chars':>9}  made large by"]
+        L += [f"  {datetime.fromtimestamp(m['t'], ZoneInfo(tz)).strftime('%a %Y-%m-%d %H:%M'):<34}{fmt(sum(m['around'])):>9}  {made(m)}"
+              for m in week]
     return "\n".join(L)
+
+
+def made(m: dict[str, Any]) -> str:
+    """The part that made a message large, and its size."""
+    name, n = max(m["parts"].items(), key=lambda kv: kv[1], default=("nothing", 0))
+    return f"{name} {fmt(n)}"
 
 
 def render(room_name: str, private_label: str, start: list[Part], msg: list[Part], budgets: dict[str, Any],

@@ -205,4 +205,9 @@ drops = [
 # 2026-10-21: web raised it by 9, the ledger's spend table, its read and the morning line, so the morning diff carries the
 # day's spend (decision 32); the web plug-in itself (plugins/web, JavaScript) is outside this count, as every plug-in is.
 # 0 of the 9 merged on transcribe (#77), which brought the same table, read and line; 18,292 merged on said-or-noted (#94).
-lines = 18292
+# 2026-10-23: message-envelope raised it by 110: `yerk map --wire` reads each later message by part (context.py, 109: the
+# part names and Claude Code's heads, hook_parts, envelope, in_text and made, render_wire's part table, its OVER read
+# against each part's key and the week's five largest, and 8 in wire: the hook text Claude Code merges into its own block
+# counted once, and a compaction's summary or Claude Code's caveat never a message; cli.py, 1: the room's time zone),
+# not folded to fit. Measured that day in the work room: no Yerk AI part past its key on any of 303 messages.
+lines = 18402

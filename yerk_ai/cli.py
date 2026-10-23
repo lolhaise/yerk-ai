@@ -42,7 +42,8 @@ def cmd_map(a: argparse.Namespace) -> int:
             print(f"no transcript for session {sid} in {', '.join(map(str, dirs))}", file=sys.stderr)
             return 2
         print()
-        print(context.render_wire(a.room, context.wire(found[0]), context.chars(context.appended_file(start)), b))
+        print(context.render_wire(a.room, context.wire(found[0]), context.chars(context.appended_file(start)), b,
+                                  str(rs[a.room].get("timezone", "UTC"))))
     return 1 if bad else 0
 
 
