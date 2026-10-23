@@ -243,6 +243,42 @@ def test_claude_codes_own_usage_on_the_folders_login_is_read_never_the_token(tmp
     assert usage.read(a, tmp_path, timeout=0.5) == {"error": "no answer in 0.5 s"}
 
 
+def test_the_deploys_status_ask_and_json_never_start_claude_code_and_the_card_does(tmp_path, capsys, monkeypatch):
+    started, sent = [], []
+    monkeypatch.setattr(usage, "read", lambda a, cwd, timeout=usage.TIMEOUT: started.append(a.name) or {"error": "x"})
+    monkeypatch.setattr(jobs, "post_control", lambda state, payload, timeout, path="": sent.append((payload, timeout)) or {})
+    status.ask(tmp_path)                                                   # the deploy's proof and its quiet check
+    status.ask(tmp_path, payload={"live": True})                           # the card's
+    assert sent == [({}, 10.0), ({"live": True}, 10.0 + 2 * usage.TIMEOUT)]
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    asyncio.run(y.status_now({}))
+    assert cli.main(["status", "--json", "--private", str(EXAMPLE_PRIVATE), "--state", str(tmp_path)]) == 0
+    assert started == []                                                   # neither started Claude Code
+    asyncio.run(y.status_now({"live": True}))
+    assert sorted(started) == ["one", "two"]
+
+
+def test_a_status_read_that_does_not_ask_never_waits_on_a_card_that_does(tmp_path):
+    accounts, gate, began, got = five_accounts(tmp_path)[:1], threading.Event(), threading.Event(), []
+
+    def slow(a):                                                           # a live card's Claude Code, still running
+        began.set()
+        gate.wait(10)
+        return TANK[a.name]
+    card = threading.Thread(target=usage.readings, args=(accounts, tmp_path, True, NOW, slow))
+    card.start()
+    assert began.wait(5)
+    proof = threading.Thread(target=lambda: got.append(usage.readings(accounts, tmp_path, False, NOW)))
+    proof.start()
+    proof.join(2)
+    waited = proof.is_alive()
+    gate.set()
+    card.join(10)
+    proof.join(10)
+    assert not waited and got == [{}]                                      # answered at once, from the file as it stood
+    assert usage.readings(accounts, tmp_path, False, NOW) == {"five": {**TANK["five"], "at": NOW, "source": "live"}}
+
+
 def test_rooms_put_on_one_account_are_one_line_and_a_lone_room_keeps_its_own():
     def pinned(rooms):
         s = {"at": NOW, "running": True, "units": [], "workers": [], "jobs": [], "accounts": [], "stalls": [],

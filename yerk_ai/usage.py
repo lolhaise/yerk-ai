@@ -9,6 +9,7 @@ and at most AT_ONCE run at a time (each holds about 350 MB for about 5 s, inside
 {"error": why}, kept as long, and the card shows the stream's reading (meters.py) with its age instead."""
 from __future__ import annotations
 
+import contextlib
 import json
 import re
 import subprocess
@@ -107,7 +108,9 @@ def readings(accounts: list[Account], state: Path, refresh: bool = True, now: fl
     (`refresh`) asked again, AT_ONCE at a time. An account with neither is left out."""
     now = time.time() if now is None else now
     path = state / FILE
-    with _lock:                                          # two cards at once: the second reads the first's answers
+    # two cards at once: the second reads the first's answers. A read that does not ask (the deploy's proof, `--json`)
+    # never waits on one that does: the file is only ever replaced whole (write_private)
+    with _lock if refresh else contextlib.nullcontext():
         try:
             kept = {k: v for k, v in json.loads(path.read_text()).items() if isinstance(v, dict)}
         except (OSError, ValueError, AttributeError):
