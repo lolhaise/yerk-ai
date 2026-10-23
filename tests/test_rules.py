@@ -47,7 +47,7 @@ def test_a_rule_filed_in_one_room_reaches_a_running_room_on_its_next_message_onc
     assert context.NEWS not in told(y, "sid-b")                         # nothing changed since its start
     r = rule(y, A, "Open web pages with the example browser, never the example fetcher.", "Open web pages:")
     assert r == {"ok": True, "job": "open web pages", "cite": "tree/rules.md:6", "replaced": [],
-                 "next": words.FILED_NEXT.format(clause=words.RULE_CLAUSE.format(job="open web pages", over=""))}
+                 "next": words.FILED_NEXT.format(clause=words.RULE_CLAUSE.format(job="open web pages"))}
     assert r["next"].endswith("the filing is one clause at its end, this one: every room now does open web pages this way.")
     block = told(y, "sid-b")
     assert block.count(f"{context.NEWS}\nnew in rules.md: open web pages: Open web pages with the example browser, never "
