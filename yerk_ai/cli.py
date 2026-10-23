@@ -126,19 +126,27 @@ def cmd_worker(a: argparse.Namespace) -> int:
 
 def cmd_pictures(a: argparse.Namespace) -> int:
     """backfill: an owner room's pictures with no sidecar get one through Yerk workers the running yerkd starts, a batch at a
-    time; --dry-run lists them (each sidecar it would write) and starts nothing."""
+    time; --dry-run lists them (each sidecar it would write) and starts nothing. --root: the pictures under a folder the room
+    lists in rooms.toml (`read` or `also`) in place of its inbox; any other folder is refused."""
     from . import pictures, words
-    if (conf := rooms(private_dir(a.private)).get(a.room)) is None or str(conf.get("privacy", "owner")) != "owner":
+    priv, state = private_dir(a.private), state_dir(a.state)
+    if (conf := rooms(priv).get(a.room)) is None or str(conf.get("privacy", "owner")) != "owner":
         print(words.PICTURES_PERSON.format(room=a.room) if conf is not None else f"no room {a.room!r} in rooms.toml", file=sys.stderr)
         return 2
-    todo = pictures.pending(state_dir(a.state) / "rooms" / a.room / "work" / "inbox")[:a.limit or None]
+    folder = state / "rooms" / a.room / "work" / "inbox"
+    if a.root:
+        if (root := pictures.root_of(priv, state, a.room, conf, a.root)) is None:
+            print(words.PICTURES_NOT_LISTED.format(room=a.room, folder=a.root), file=sys.stderr)
+            return 2
+        folder = root
+    todo = pictures.pending(folder, bool(a.root))[:a.limit or None]
     if a.dry_run:
         for p in todo:
             print(pictures.sidecar(p))
-        print(f"{len(todo)} picture(s) in {a.room} with no sidecar, {-(-len(todo) // pictures.BATCH)} batch(es) of "
-              f"{pictures.BATCH}; nothing started (--dry-run)")
+        print(f"{len(todo)} picture(s) in {folder if a.root else a.room} with no sidecar, {-(-len(todo) // pictures.BATCH)} "
+              f"batch(es) of {pictures.BATCH}; nothing started (--dry-run)")
         return 0
-    out = _control(a.state, {"pictures": {"room": a.room, "limit": a.limit}}, 120)
+    out = _control(a.state, {"pictures": {"room": a.room, "limit": a.limit, **({"root": str(folder)} if a.root else {})}}, 120)
     print(json.dumps(out))
     return 0 if out.get("ok") else 1
 
@@ -633,6 +641,7 @@ def main(argv: list[str] | None = None) -> int:
     pc.add_argument("room", help="the owner room")
     pc.add_argument("--limit", type=int, default=0, help="at most this many pictures, oldest first (default: all)")
     pc.add_argument("--dry-run", action="store_true", help="list each sidecar it would write; start nothing")
+    pc.add_argument("--root", help="a folder the room lists in rooms.toml (read or also): its pictures in place of the inbox's")
     jb = sub.add_parser("jobs", help="scheduled jobs from the private jobs.toml: sync (one systemd user timer and "
                         "service per job, the diff, then every next fire time read back) or list (the read-back)")
     jb.add_argument("action", choices=["sync", "list"])

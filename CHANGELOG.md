@@ -14,8 +14,9 @@ with the originals kept under `backups/`; the index chunks every file again when
   files what it read on it beside the picture as `NAME.seen.txt` (the new `seen` tool; the room already reads every
   picture before it answers, so there is no second model call and nothing paid). Its first line is written by code (the
   room, the message id, when it was saved, its name), then every word on the picture in reading order (a chat
-  screenshot keeps who said what), then a line or two of what it shows, a person named only as the picture names them.
-  Recall and read_memory cite it as `<room>/work/inbox/<id>/NAME.seen.txt:line` and show its lines behind "[text on a
+  screenshot keeps who said what), then a line or two of what it shows: a person in a photo the owner sends in his own
+  room is the owner unless its own text says otherwise, anyone else named only as the picture names them. Recall and
+  read_memory cite it as `<room>/work/inbox/<id>/NAME.seen.txt:line` and show its lines behind "[text on a
   picture he sent, as the room read it]", never as anyone's words. A room that read a picture and filed nothing is
   turned back once to file it. A person's room files no picture and none is indexed.
 - A reply to a picture in an owner room takes a little longer: the words on it are written out once, as the `seen` call,
@@ -24,6 +25,9 @@ with the originals kept under `backups/`; the index chunks every file again when
   room's own account and model, 20 to a batch and one batch at a time, so the account's other workers wait for one batch
   at most. Each batch's card and its one line ("batch 1 of 8 finished clean, 20 of 20 filed; batch 2 started") are in the
   machine room; no relay turn runs in any room. `--dry-run` lists each sidecar it would write and starts nothing.
+- `yerk pictures backfill ROOM --root FOLDER` does the same for the pictures under a folder the room lists in rooms.toml
+  (`read` or `also`), each sidecar beside its picture, cited and indexed under that folder as its other files are; a
+  folder the room does not list, or one of Yerk's own, is refused in one line.
 - **Upgrading:** budgets.toml `[code] lines` 18,292 to 18,516, with a dated note; nothing else to edit. Each room has the
   `seen` tool from its next process start. Then, with yerkd running, once per owner room: `yerk pictures backfill ROOM
   --dry-run` to see what it would read, and the same without `--dry-run` to start it.

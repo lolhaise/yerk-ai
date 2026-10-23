@@ -275,3 +275,94 @@ def test_backfill_runs_a_batch_at_a_time_on_the_rooms_account_its_card_and_line_
     asyncio.run(y.workers.complete(d2.name))
     assert ops.lines[1] == "pictures backfill example-room: batch 2 of 2 finished clean, 4 of 5 filed; done"
     assert [p.name for p in pictures.pending(tmp_path / "rooms" / "example-room" / "work" / "inbox")] == ["photo.png"]
+
+
+def root_pictures(root: Path) -> list[Path]:
+    """Three pictures under a folder (one in a subfolder), oldest first, beside a dot folder's picture, a film and a link."""
+    (root / "sub").mkdir()
+    (root / ".kept").mkdir()
+    pics = []
+    for i, rel in enumerate(("front.jpg", "flex.PNG", "sub/side.jpeg")):
+        (p := root / rel).write_bytes(PNG)
+        os.utime(p, (1_760_000_000.0 + i, 1_760_000_000.0 + i))
+        pics.append(p.resolve())
+    (root / ".kept" / "old.png").write_bytes(PNG)
+    (root / "clip.mov").write_bytes(b"\0")
+    (root / "link.png").symlink_to(pics[0])
+    return pics
+
+
+def test_backfill_over_a_folder_the_room_lists_is_cited_and_indexed_under_it_and_any_other_folder_is_refused(tmp_path, tmp_path_factory, capsys):
+    """The owner, 2026-10-23: `yerk pictures backfill ROOM --root FOLDER` over a folder the room lists in rooms.toml (`read` or
+    `also`; the case: a room's `also` carrying an older room's photos). --dry-run lists what it
+    would file; a folder it does not list, one inside a listed one, or one of Yerk's own is refused; a sidecar there is cited
+    under that root, indexed with its class (a file with no front matter there is private) and read behind the mark."""
+    root, seen_by_read = tmp_path_factory.mktemp("gym"), tmp_path_factory.mktemp("shots")
+    pics = root_pictures(root)
+    (seen_by_read / "d.png").write_bytes(PNG)
+    assert pictures.pending(root, root=True) == pics                       # no dot folder, film or link; oldest first
+    (priv := tmp_path / "private").mkdir()
+    state = tmp_path / "state"
+    (state / "rooms").mkdir(parents=True)
+    (priv / "rooms.toml").write_text(f'[rooms.own-room]\nchannel = "console:own"\nalso = ["{root}"]\n'
+                                     f'read = ["{seen_by_read}", "{state / "rooms"}"]\n')
+    (priv / "yerkd.toml").write_text(f'[memory]\nroot = "memory"\nalso = ["{root}"]\n')
+    base = ["--private", str(priv), "--state", str(state)]
+    assert cli.main(["pictures", "backfill", "own-room", "--root", str(root), "--dry-run", *base]) == 0
+    assert capsys.readouterr().out.splitlines() == [str(pictures.sidecar(p)) for p in pics] + [
+        f"3 picture(s) in {root} with no sidecar, 1 batch(es) of 20; nothing started (--dry-run)"]
+    assert cli.main(["pictures", "backfill", "own-room", "--root", str(seen_by_read), "--dry-run", *base]) == 0
+    assert capsys.readouterr().out.splitlines()[0] == str(seen_by_read / "d.seen.txt")
+    for bad in (tmp_path_factory.mktemp("unlisted"), root / "sub", state / "rooms"):
+        assert cli.main(["pictures", "backfill", "own-room", "--root", str(bad), "--dry-run", *base]) == 2
+        assert capsys.readouterr().err.strip() == words.PICTURES_NOT_LISTED.format(room="own-room", folder=bad)
+    assert not any(pictures.sidecar(p).exists() for p in pics)
+    s = memory.settings(priv, state)
+    side = pictures.file("own-room", pics[0], "EX-42 TOTAL", "the owner in front of an example mirror", s.tz)
+    assert side.read_text().splitlines()[0] == f"seen in own-room, folder {root}, {pictures.header('own-room', pics[0], s.tz).split(', ', 2)[2]}"
+    from yerk_ai import memindex
+    memindex.Index(s.index_db, s.scope).sync()
+    cite = memory.cite(s, side)
+    assert cite == f"{root.name}/front.seen.txt" and str(side) in s.scope.files() and memory.file_class(side) == ("private", "")
+    assert all(x.startswith(memory.SEEN_MARK) for x in memory.read(s, cite)["text"].splitlines())
+    hit = next(h for h in memory.recall(s, "example mirror", 6)["hits"] if h["cite"].startswith(cite))
+    assert all(x.startswith(memory.SEEN_MARK) for x in hit["text"].splitlines() if x.strip())
+    assert not memory.read(s, cite, reader=memory.Reader(name="her-room", rid="her-room", owner=False))["ok"]
+    (root / "notes.seen.txt").write_text("a note that is no sidecar\n")
+    assert memory.is_seen(side) and not memory.is_seen(root / "notes.seen.txt")
+
+
+def test_backfill_over_a_listed_root_runs_the_same_worker_path_with_no_room_folder_bound(tmp_path, tmp_path_factory):
+    y = daemon(tmp_path, "example-room", "her-room")
+    y.room_confs["ops-room"] = {**y.room_confs["example-room"], "role": "machine", "id": "ops-room-id"}
+    y.daily.rooms["ops-room"] = ("ops-room-id", "private")
+    ops = Rec()
+    y.add_room("ops-room", ops)
+    y.workers.launcher = units = Units()
+    root = tmp_path_factory.mktemp("gym")
+    pics = root_pictures(root)
+    y.room_confs["example-room"]["also"] = [str(root)]
+    other = str(tmp_path_factory.mktemp("unlisted"))
+    assert asyncio.run(y.control({"pictures": {"room": "example-room", "root": other}})) == {
+        "ok": False, "error": words.PICTURES_NOT_LISTED.format(room="example-room", folder=other)}
+    r = asyncio.run(y.control({"pictures": {"room": "example-room", "root": str(root)}}))
+    assert r["ok"] and r["room"] == "ops-room" and (r["pictures"], r["batches"]) == (3, 1) and len(units.calls) == 1
+    d = Path(r["staging"])
+    spec = json.loads((d / "worker.json").read_text())
+    assert spec["pictures"] == {"room": "example-room", "n": 1, "of": 1, "rest": [[str(p) for p in pics]], "root": str(root)}
+    assert "bind" not in spec and spec["account"] == y.rooms["example-room"]._account().name
+    props = workers.Systemd(y.state, (y.state / "rooms",)).sandbox(d, {"CLAUDE_CONFIG_DIR": str(d)})
+    assert not any(p.startswith("BindPaths=") and "example-room" in p for p in props)        # no room folder of the owner's
+    brief = (d / "BRIEF.md").read_text()
+    assert f"3 pictures in {root}, a folder the room reads" in brief and all(
+        f"Read {p}\n   Write {pictures.sidecar(p)}\n   its first line exactly: seen in example-room, folder {p.parent}, " in brief for p in pics)
+    for p in pics:
+        pictures.file("example-room", p, "EX-42", "a page", y.memory.tz).chmod(0o664)          # as a worker's Write leaves it
+    (d / "TASKS.md").write_text((d / "TASKS.md").read_text().replace("- [ ]", "- [x]"))
+    (d / "REPORT.md").write_text("3 of 3 filed\n")
+    (d / "exit.json").write_text(json.dumps({"result": "success", "code": "exited", "status": "0"}))
+    asyncio.run(y.workers.complete(r["id"]))
+    assert ops.lines == ["pictures backfill example-room: batch 1 of 1 finished clean, 3 of 3 filed; done"]
+    assert {pictures.sidecar(p).stat().st_mode & 0o777 for p in pics} == {0o600}
+    assert asyncio.run(y.control({"pictures": {"room": "example-room", "root": str(root)}})) == {
+        "ok": True, "room": "example-room", "pictures": 0, "line": words.PICTURES_NONE.format(room="example-room", where=root)}

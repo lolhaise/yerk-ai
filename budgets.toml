@@ -216,5 +216,8 @@ drops = [
 # its machine-room line), cli.py (25: `yerk pictures backfill`), memory.py (12: the mark), room.py (10: the Stop rule), mcp_server.py (9),
 # words.py (10), workers.py (4: `bind`, `more`), memindex.py (1). 18,544 merged on deploy-private (#95), no line shared.
 # Its cold read raised it by 4: a sidecar line longer than a recall cut keeps its mark in front (memory.py _cut); then by 2,
-# case before the next run starts the example `note` says the sample item moved to (the_next.step 0, and.the 0).
-lines = 18550
+# the owner in their own photo in the `seen` tool's description and the backfill brief (mcp_server.py 1, pictures.py 1); then
+# by 51, `yerk pictures backfill ROOM --root FOLDER` over a folder the room lists (an older room's photos):
+# pictures.py 24 (root_of, the walk, the folder header), cli.py 9, memory.py 9 (a root's sidecar known by its header),
+# before.the 0, next.run 0 (starts the example note says the), sample.item 0.
+lines = 18601

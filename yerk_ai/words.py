@@ -288,7 +288,9 @@ SEEN_NO_SHOWS = "seen needs `shows`: one or two lines of what the picture shows"
 UNSEEN = ("You read {names} in an owner's room and did not file what it shows. Call seen on {paths} with its words and a line "
           "of what it shows, then give your answer again, since only the text after your last tool call reaches the room.")
 PICTURES_PERSON = "{room} is not an owner room: a picture sent there is never filed or indexed"
-PICTURES_NONE = "{room}: every picture in its inbox has its sidecar; nothing to start"
+PICTURES_NONE = "{room}: every picture in {where} has its sidecar; nothing to start"
+PICTURES_NOT_LISTED = ("{folder} is not a folder {room} lists in rooms.toml (read or also) outside Yerk's own folders, so "
+                       "nothing there is filed")
 PICTURES_RUNNING = "{room}: a backfill runs already, one batch after another; its lines are in the machine room"
 PICTURES_BATCH = "pictures backfill {room}: batch {n} of {of} {how}, {filed} of {count} filed{then}"
 PICTURES_NEXT, PICTURES_STOP, PICTURES_DONE = "; batch {n} started", "; stopped, {left} left: run it again", "; done"

@@ -398,9 +398,18 @@ def shown(ln: Line) -> str:
 
 
 def is_seen(path: str | Path) -> bool:
-    """A picture's sidecar in a room's inbox: <room>/work/inbox/<message id>/NAME.seen.txt."""
+    """A picture's sidecar: <room>/work/inbox/<message id>/NAME.seen.txt, or a NAME.seen.txt under a listed root whose first
+    line is a sidecar's header (a `--root` backfill's)."""
     p = Path(path)
-    return p.name.endswith(memindex.SEEN) and p.parts[-4:-2] == ("work", "inbox")
+    if not p.name.endswith(memindex.SEEN):
+        return False
+    if p.parts[-4:-2] == ("work", "inbox"):
+        return True
+    try:
+        with p.open(encoding="utf-8", errors="replace") as f:
+            return f.readline(200).startswith(memindex.SEEN_HEAD)
+    except OSError:
+        return False
 
 
 def marked(raw: str, fact: bool = False, seen: bool = False) -> str:

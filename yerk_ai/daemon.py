@@ -506,26 +506,31 @@ class Yerkd:
     async def pictures(self, req: dict[str, Any]) -> dict[str, Any]:
         """`yerk pictures backfill ROOM`: the owner room's pictures with no sidecar (at most `limit`), BATCH to a Yerk worker on the
         room's own account and model, one batch at a time (pictures_done starts the next), so the account's other workers wait
-        for one batch at most. The card is in the machine room, the worker's folder bound to the room's work folder."""
+        for one batch at most. The card is in the machine room, the worker's folder bound to the room's work folder. `root`: the
+        pictures under a folder the room lists (`read` or `also`, pictures.root_of), each sidecar beside its picture; no bind."""
         room = str(req.get("room") or "")
         if room not in self.rooms or not self.owner(room):
             return {"ok": False, "error": words.PICTURES_PERSON.format(room=room)}
+        root: Path | None = None
+        if req.get("root") and (root := pictures.root_of(self.private, self.state, room, self.room_confs[room], str(req["root"]))) is None:
+            return {"ok": False, "error": words.PICTURES_NOT_LISTED.format(room=room, folder=req["root"])}
         if any(self.backfill_of(row) == room for row in self.workers.live.values()):       # running or in line: one chain a room
             return {"ok": False, "error": words.PICTURES_RUNNING.format(room=room)}
-        todo = pictures.pending(self.state / "rooms" / room / "work" / "inbox")[:int(req.get("limit") or 0) or None]
+        todo = pictures.pending(root or self.state / "rooms" / room / "work" / "inbox", root is not None)[:int(req.get("limit") or 0) or None]
         if not todo:
-            return {"ok": True, "room": room, "pictures": 0, "line": words.PICTURES_NONE.format(room=room)}
-        out = await self.picture_batch(room, pictures.batches(todo), 1)
+            return {"ok": True, "room": room, "pictures": 0, "line": words.PICTURES_NONE.format(room=room, where=root or "its inbox")}
+        out = await self.picture_batch(room, pictures.batches(todo), 1, str(root or ""))
         return {**out, "pictures": len(todo), "batches": -(-len(todo) // pictures.BATCH)}
 
-    async def picture_batch(self, room: str, rest: list[list[str]], n: int) -> dict[str, Any]:
+    async def picture_batch(self, room: str, rest: list[list[str]], n: int, root: str = "") -> dict[str, Any]:
         model = room_settings(self.room_confs[room], self.state, room, self.models)["model"][0]
         acct = self.rooms[room]._account(model)
         card = next((r for r, c in self.room_confs.items() if c.get("role") == "machine" and r in self.channels), room)
         pics, of = [Path(p) for p in rest[0]], n - 1 + len(rest)
-        return await self.workers.start(card, pictures.brief(room, pics, self.memory.tz, n, of), account=acct.name, model=model,
-                                        tasks=[f"{p.parent.name}/{p.name}" for p in pics],
-                                        more={"bind": room, "pictures": {"room": room, "n": n, "of": of, "rest": rest}})
+        job = {"room": room, "n": n, "of": of, "rest": rest, **({"root": root} if root else {})}
+        return await self.workers.start(card, pictures.brief(room, pics, self.memory.tz, n, of, Path(root) if root else None),
+                                        account=acct.name, model=model, tasks=[f"{p.parent.name}/{p.name}" for p in pics],
+                                        more={"pictures": job, **({} if root else {"bind": room})})
 
     @staticmethod
     def backfill(row: dict[str, Any]) -> dict[str, Any] | None:
@@ -552,7 +557,7 @@ class Yerkd:
         filed, left = sum(pictures.sidecar(p).is_file() for p in mine), rest[1:]
         then = words.PICTURES_DONE
         if left and end["exit"] == "done" and room in self.rooms:
-            started = await self.picture_batch(room, left, n + 1)
+            started = await self.picture_batch(room, left, n + 1, str(job.get("root") or ""))
             then = words.PICTURES_NEXT.format(n=n + 1) if started.get("ok") else words.PICTURES_STOP.format(left=sum(map(len, left)))
         elif left:
             then = words.PICTURES_STOP.format(left=sum(map(len, left)))
