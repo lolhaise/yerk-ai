@@ -214,14 +214,14 @@ def test_the_fast_tests_read_the_layer_deployed_for_and_the_card_names_the_room_
     for name in ("pyproject.toml", "yerk_ai", "tests"):
         (tree / name).symlink_to(REPO / name)
     priv, state = layer(tmp_path, tree)
-    (priv / "memory" / "rules.md").write_text("- a job: " + "x" * 13000 + "\n")       # every room's rules part past its budget
+    (priv / "memory" / "rules.md").write_text("- a job: " + "x" * 16000 + "\n")       # every room's rules part past its budget
     envs, run = [], subprocess.run
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: envs.append(k.get("env")) or run(*a, **k))
     f = Fake(tree)
     assert deploy.run(priv, state, ids[1], sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap) == 1
     out = capsys.readouterr().out.splitlines()
     rules = budgets()["session_start"]["appended"]["rules"]
-    assert out[1] == f"{words.PLAIN} the fast tests failed" and re.fullmatch(rf"- example-room rules: 13,\d{{3}} >(?: {rules:,})?\.\.\.", out[2])
+    assert out[1] == f"{words.PLAIN} the fast tests failed" and re.fullmatch(rf"- example-room rules: 16,\d{{3}} >(?: {rules:,})?\.\.\.", out[2])
     assert all(words.width(x) <= words.PHONE for x in out) and f.restarts == [] and deploy.head(tree) == ids[0]
     assert [(e["YERK_PRIVATE"], e["YERK_STATE"]) for e in envs if e] == [(str(priv), str(state))]
     assert rows(state) == [("deploy", ids[0], ids[1], "tests failed", 0)]
