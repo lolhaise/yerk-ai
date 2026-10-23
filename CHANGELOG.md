@@ -33,6 +33,23 @@ only "you" and "your" mark the owner.
 
 ## 2026-10-22
 
+### recall-ratchet (#87)
+
+- The recall bench is a ratchet. `yerk recall-bench` still adds its row to `<state>/memory/recall-bench.jsonl`, then holds
+  it to the four runs before it on the same questions: a top six more than one question under their best exits 4 and
+  says so in one `RATCHET:` line, unless budgets.toml `[recall] drops` holds a dated note naming that drop
+  ("YYYY-MM-DD: BEST to NEW, why"). Where the install's index is, the budget test runs the bench on the code under test
+  (writing nothing) and fails the same way, so `yerk deploy`'s fast tests refuse a deploy that loses recall; a box with
+  no index, and CI, skip it. On the author's box the bench fell from 116 to 98 of 164 between Oct 19 and Oct 21 with
+  nothing in the way: the index grew (an import of old chats into the day logs, five new roots and five more), and Oct
+  19's code scores the grown index exactly as today's does, question for question.
+- Recall ranks a note above a stored message on the same ranks: a line under `<private>/imports` (texts, mail) or a day
+  of the install's own log older than the room window (14 days) counts half in the fusion (`RECORD`, 0.5). On the
+  author's 164 questions against the grown index: top six 99 to 105, top one 56 to 60, no question lost (one answer
+  moves from first to second).
+- **Upgrading:** budgets.toml gains `[recall]` (`slack = 1` and `drops`, with the author's Oct 22 note) and [code]
+  lines, up 37. An install whose bench fell before this change adds its own dated note, or its next run exits 4.
+
 ### curate-rules
 
 - The rule files get better by proposal, never by a model rewriting them: the nightly `yerk curate`, after its

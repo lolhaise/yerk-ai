@@ -20,7 +20,7 @@ from contextlib import contextmanager, suppress
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta, timezone, tzinfo
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Callable, Iterator
 from zoneinfo import ZoneInfo
 
 from . import memindex, mentions, words
@@ -61,6 +61,7 @@ class Settings:
     docs: Path | None = None        # <state>/docs (docs.py): the Claude docs and the rooms' shape reports, a root in every room
     uploads: tuple[Path, ...] = ()  # each owner room's <state>/rooms/<room>/work/inbox, its text files a root (memindex.UPLOADS)
     private: Path | None = None     # the private folder: where an ability's other key files are looked for (abilities.state)
+    imports: Path | None = None     # <private>/imports: what `yerk import` stores, texts and mail, a message a line (sources.py)
 
     @property
     def daily(self) -> Path:
@@ -121,7 +122,7 @@ def settings(private: Path, state: Path, conf: dict[str, Any] | None = None) -> 
                     embeddings_width=int(conf.get("embeddings_width") or conf.get("embeddings_dim") or 256),
                     index_status=state / "memory" / "index.json",
                     recall_chars=max(100, int(conf.get("recall_chars", RECALL_CHARS))), cites=tuple(cites.items()), docs=docs, uploads=tuple(uploads),
-                    private=private)
+                    private=private, imports=(private / "imports").resolve())
 
 
 # the embedding settings a user with another model or budget can pick, described from the code (run 5):
@@ -624,6 +625,8 @@ def read(s: Settings, path: str, start: int = 1, lines: int = READ_LINES, reader
 POOL = 80            # candidates from each search (keywords, meaning) before fusion
 RRF_K = 20           # reciprocal rank fusion's constant: 1 / (RRF_K + rank); 60 before run 4, 20 measured on the 164-question set
 KEEP = 1             # each search's own first KEEP hits stay in the fused top k (measured: 1; 0 was plain fusion)
+RECORD = 0.5         # a stored message's share of the fused score beside a note's: an import's line, a day of the install's own log past
+                     # the window (measured on the 164-question set after the Oct 21 import: top six 99 to 105, top one 56 to 60)
 MEANING_WAIT = 5.0   # seconds a recall waits for yerk-index's meaning search (its own provider wait is shorter)
 DAYLOG = re.compile(r"(^|/)\d{4}-\d{2}-\d{2}\.md$")    # a day log is named by its day
 log = logging.getLogger("yerk.memory")
@@ -683,10 +686,11 @@ def meaning(s: Settings, query: str, pool: int = POOL, deadline_s: float = MEANI
     return "ok", list(out.get("hits", []))
 
 
-def fuse(keywords: list[dict[str, Any]], vectors: list[dict[str, Any]], k: int, keep: int = KEEP) -> list[dict[str, Any]]:
+def fuse(keywords: list[dict[str, Any]], vectors: list[dict[str, Any]], k: int, keep: int = KEEP,
+         weight: Callable[[dict[str, Any]], float] | None = None) -> list[dict[str, Any]]:
     """Reciprocal rank fusion of the two ranked lists: each chunk scores the sum over the lists it is in
-    of 1 / (RRF_K + its rank there); a tie breaks on the cosine. No calibration between a bm25 cover
-    and a cosine is needed, and a chunk both searches put first outranks either search's lone top hit.
+    of 1 / (RRF_K + its rank there), times its `weight` (`record`: a stored message counts RECORD); a tie breaks
+    on the cosine. No calibration between a bm25 cover and a cosine is needed, and a chunk both searches put first outranks either search's lone top hit.
     Vector hits under half the best cosine are noise and leave the fusion first. `keep` holds each
     search's own first `keep` hits in the top k (in fused order), so a lone keyword hit at rank two is
     not pushed out by chunks both searches place low."""
@@ -700,7 +704,7 @@ def fuse(keywords: list[dict[str, Any]], vectors: list[dict[str, Any]], k: int, 
     rows: dict[int, dict[str, Any]] = {}
     for ranked in (keywords, vectors):
         for rank, h in enumerate(ranked, 1):
-            score[h["id"]] = score.get(h["id"], 0.0) + 1.0 / (RRF_K + rank)
+            score[h["id"]] = score.get(h["id"], 0.0) + (weight(h) if weight else 1.0) / (RRF_K + rank)
             rows.setdefault(h["id"], h)
     cos = {h["id"]: float(h["score"]) for h in vectors}
     near = {h["id"]: h["near"] for h in vectors if h.get("near")}       # the line the meaning matched
@@ -715,6 +719,18 @@ def fuse(keywords: list[dict[str, Any]], vectors: list[dict[str, Any]], k: int, 
             h["near"] = near[cid]
         out.append(h)
     return out
+
+
+def record(s: Settings, now: datetime | None = None) -> Callable[[dict[str, Any]], float]:
+    """A hit's weight in the fusion: RECORD for a stored message, a line under <private>/imports or a day of the install's
+    own log older than the room window (an import puts every day of the old chats there), else 1, a note: on the same
+    ranks the note comes first and the message is still found."""
+    oldest = window(s, now)[-1]
+
+    def weight(h: dict[str, Any]) -> float:
+        p = Path(h["path"])
+        return RECORD if (s.imports and p.is_relative_to(s.imports)) or (p.parent == s.daily and p.stem < oldest) else 1.0
+    return weight
 
 
 def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader: Reader | None = None,
@@ -750,7 +766,7 @@ def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader:
     if reader and (not reader.owner or reader.sealed):   # a room that is not an owner room, or is sealed, ranks and gets only chunks it can
         keywords, vectors = ([h for h in x if allowed_text(reader, Path(h["path"]), str(h.get("text", "")), daily=s.daily) == h.get("text")]
                              for x in (keywords, vectors))     # read whole (R2): its own line beside a hidden one reaches it through its pack,
-    hits = fuse(keywords, vectors, k)       # its topic hits and read_memory, never recall: a chunk read in part would rank on words it may not see
+    hits = fuse(keywords, vectors, k, weight=record(s))     # its topic hits and read_memory, never recall: a chunk read in part ranks on words it may not see
     # the owner's notes above the docs: they say how this install's things are, the docs how Claude runs anywhere, in the same words
     hits.sort(key=lambda h: s.docs is not None and Path(h["path"]).is_relative_to(s.docs))
     for h in hits:
@@ -1145,3 +1161,19 @@ def bench(s: Settings, questions: Path | None = None, k: int = 6) -> dict[str, A
             "top_k": top_k, "top_1": top_1, "k": k, "top_k_rate": round(top_k / n, 3), "top_1_rate": round(top_1 / n, 3),
             "kept": sum(1 for r in scored if r["kept"]), "lost": [r["id"] for r in scored if r["rank"] and not r["kept"]],
             "rows": rows, "file": str(qfile)}
+
+
+def ratchet(rows: list[dict[str, Any]], drops: list[str], slack: int = 1) -> str | None:
+    """The bench as a ratchet (budgets.toml [recall]): the newest row's top k more than `slack` under the best of the four
+    rows before it, on the same questions and k, is a drop, unless a dated note in `drops` names it, "YYYY-MM-DD: BEST to
+    NEW, why"; a row at NEW less the slack or more then passes while BEST is in the window. None, or the line saying why not."""
+    new = rows[-1] if rows else {}
+    before = [r for r in rows[:-1] if (r.get("questions"), r.get("k")) == (new.get("questions"), new.get("k"))][-4:]
+    best = max((int(r["top_k"]) for r in before), default=0)
+    if not before or int(new["top_k"]) >= best - slack:
+        return None
+    for note in drops:
+        if (m := re.match(r"\d{4}-\d\d-\d\d: (\d+) to (\d+)\b", note)) and int(m[1]) == best and int(new["top_k"]) >= int(m[2]) - slack:
+            return None
+    return (f"top {new['k']} fell to {new['top_k']} of {new['questions']} from {best} in the {len(before)} runs before, and no "
+            "dated note in budgets.toml [recall] drops names it")
