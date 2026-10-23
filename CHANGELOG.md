@@ -22,7 +22,8 @@ with the originals kept under `backups/`; the index chunks every file again when
 - `yerk files backfill ROOM [--dry-run]` writes the text of the workbooks and PDFs already in the room's inbox, and of any
   whose text is older than the file, in that process (no yerkd, no model); `--root FOLDER` does it under a folder the room
   lists in rooms.toml (`read` or `also`).
-- **Upgrading:** two new libraries, openpyxl and pypdf (`uv sync`). budgets.toml: the new `[files] chars` (200,000) and
+- **Upgrading:** two new libraries, openpyxl and pypdf: `uv sync` in the daemon's checkout before `yerk deploy`, which
+  installs nothing (until then no text is written and the files wait for the backfill). budgets.toml: the new `[files] chars` (200,000) and
   `secs` (60), and `[code] lines` (a dated note). Nothing to set; run `yerk files backfill ROOM` once per owner room for the files sent
   before this.
 

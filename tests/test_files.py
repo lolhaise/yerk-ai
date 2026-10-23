@@ -14,6 +14,7 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import pytest
 from openpyxl import Workbook  # type: ignore[import-untyped]
 from pypdf import PdfWriter
 from test_discord import OWNER, ROOM_CH, Attachment, Client, Msg, Room, run
@@ -202,6 +203,20 @@ def test_a_pdf_is_a_section_a_page_a_scan_is_named_and_not_read_and_a_file_that_
     bad = files.write("own-room", sent(tmp_path, "own-room", "m-3", "old.xlsx", b"not a workbook"), TZ)
     assert bad.read_text().splitlines() == ["extracted in own-room, message m-3, 2025-10-09 08:53 UTC: old.xlsx, "
                                             "not read: it did not open as a workbook"]
+
+
+def test_a_missing_library_writes_nothing_so_the_file_is_still_to_do_once_it_is_installed(tmp_path, monkeypatch):
+    """`yerk deploy` installs nothing: a tree run before `uv sync` must not file every PDF as one that did not open, a copy
+    newer than its file that the backfill would then never write again."""
+    def missing(path: Path) -> None:
+        raise ModuleNotFoundError("No module named 'pypdf'")
+    monkeypatch.setattr(files, "pdf", missing)
+    p = sent(tmp_path, "own-room", "m-1", "report.pdf", pdf_bytes(REPORT))
+    with pytest.raises(ImportError):
+        files.write("own-room", p, TZ)
+    assert not files.sidecar(p).exists() and files.stale(p)
+    box = staged(tmp_path, "owner", [Attachment("q.pdf", pdf_bytes(REPORT))])
+    assert "[its text" not in box.got[0].text and not (tmp_path / "rooms" / "own-room" / "work" / "inbox" / "5" / "q.pdf.txt").exists()
 
 
 def test_past_the_cap_in_budgets_toml_the_text_is_cut_and_its_last_line_says_how_much(tmp_path, monkeypatch):

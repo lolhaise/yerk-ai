@@ -134,6 +134,8 @@ def write(room: str, path: Path, tz: tzinfo, cap: int = 0) -> Path:
     try:
         what, lines = (workbook if sort == "workbook" else pdf)(path)
         body = fit(lines, cap or int(conf["chars"]), float(conf["secs"]))
+    except ImportError:                          # openpyxl or pypdf not installed (`uv sync`): the file is fine, so nothing is
+        raise                                    # written and it stays missing, for the backfill once they are
     except Exception as e:                       # whatever a damaged or locked file raises: said in its header, never a stop
         log.warning("files: %s not read: %s", path.name, type(e).__name__)
         what, body = NOT_OPEN.format(kind=sort), []

@@ -264,12 +264,12 @@ secs = 60
 # by 2: config.py (an id in `[watch] assistants` that is the owner's or one a room's `people` lists stops the start, since
 # that person would never be answered again).
 # 18,767 merged on message-envelope (#96), no line shared.
-# 0000-00-00: before-the-next run starts the 000: example note says the Sample item moved to the next step and the test reads, it back,
+# 2026-10-23: sheets-and-pdfs raised it by 211: a workbook or a PDF sent to an owner room gets its text beside it, by code,
 # and is recalled like a picture's sidecar (the owner asked which kinds of files it covers), not folded to fit: files.py
-# (000: last part, closes the case before the next run, starts the example note says the sample item moved to the next step, and the
-# closes the case, before the next run, starts the example note), says.the (00: `sample item moved`, --to, --the-next), step.and (0: the test reads
+# (154: the extractors, one section a sheet or a page, the scan and the file that does not open named in one line, a
+# missing library writing nothing, the cap and its count, the reading time's stop, the wait on upload), cli.py (27: `yerk files backfill`, --root, --dry-run), memory.py (7: the mark and
 # mark_of, a cut keeping either mark), discord.py (17: on staging, an owner room's only, a message's files read side by
 # side so it waits files.WAIT once; the arrival line names the text; a message taken after one still staging goes in after
 # it, never before), words.py (4), memindex.py (2: the kinds and the header, a sidecar under any root), pictures.py (0:
 # back as plain text with one more line for). The check 00,000 (#000), while a second.
-lines = 18976
+lines = 18978
