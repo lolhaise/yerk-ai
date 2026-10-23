@@ -8,7 +8,7 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-23
 
-### sheets-and-pdfs
+### sheets-and-pdfs (#104)
 
 - A workbook (.xlsx, .xlsm) or a PDF sent to an owner room gets its text written beside it as it is staged, by code with
   no model call: `NAME.sheet.txt` (a `## <sheet name>` section a sheet, a row a line, its cells tab-separated, empty rows
