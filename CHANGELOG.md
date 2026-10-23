@@ -12,7 +12,7 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 - Every part of a room's session start now fits under its key in budgets.toml by construction. The recall pack counts
   its own head and the line saying how many older items it left out, in Claude Code's characters (an emoji outside the
-  example note says 0), the sample item moved to the next. Step 00:00 and the Test reads it back as
+  basic plane counts 2), and leaves its oldest items out whole. That morning one room's pack came out at
   6,003 against its 6,000 (that line is 64 characters once the count has three digits, where 60 were kept for it, and two
   emoji were counted once each), and the session start then cut 8 of the owner's items from the middle of the pack, two
   of them mid-line.

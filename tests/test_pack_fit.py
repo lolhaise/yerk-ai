@@ -1,4 +1,4 @@
-"""Example note-says the sample item moved to the next (0000-00-00, 00:00: Step and the test reads it
+"""Checks that every part a room is handed at its session start, such as the recall pack (the notes filed for that room), the open loops
 and what is due, fits under its size in budgets.toml by construction, cut by whole lines or items and never mid-line. The case behind it
 (seen live): one room's recall pack came out at 6,003 against its 6,000, since the pack kept 60 characters for the line counting
 what it leaves out, which is 64 with its newline once that count has three digits, and measured its items in code points where the key
@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import shutil
 from datetime import datetime
+from pathlib import Path
 
 from test_recall import NOW, day, tree
 from test_sheet_hard import machine_said
@@ -143,6 +144,29 @@ def test_the_machine_room_hears_of_a_real_drop_only_with_its_count_and_key_in_on
     assert part.cut and all(x.startswith("- Example promise ") for x in part.cut)       # the owner's loops, whole
     assert machine_said(capsys) == [f"{words.WORKING} recall_pack: {len(part.cut)} lines dropped\nto fit its {cap:,} in {ROOM}"]
     assert context.chars(y.compact_pack(ROOM)) <= cap                                    # the re-add after a compaction fits alike
+
+
+def test_a_part_is_cut_in_claude_codes_characters_its_marker_too_and_a_cut_never_says_a_from_line_or_keeps_part_of_one():
+    """A part under its key in code points but over it as Claude Code counts (an emoji outside the basic plane counts 2) is
+    cut, whole lines, the marker's numbers in the same characters; a middle that holds another file's `[from` line loses it
+    with that file's lines, and only those lines are said; a rule file whose first line alone is past its room keeps none of
+    that line rather than part of it."""
+    text = "[from /example/pinned.md]\n" + "\n".join(f"- example fact {i} 🤔💀" for i in range(200))
+    key = len(text) + 10                                                                 # 400 emoji: over the key by 390
+    sent, budget, raw, _, cut = context.fit("pinned_memory", text, key, "/example/pinned.md")
+    head, _, rest = sent.partition("\n\n[...trimmed pinned_memory: ")
+    tail = rest.partition("]\n\n")[2]
+    assert context.chars(sent) <= key < raw == context.chars(text) and cut and budget == key
+    assert f"kept {context.chars(head)}+{context.chars(tail)} of {raw} chars" in rest
+    assert all(x in text.split("\n") for x in (head + "\n" + tail).split("\n"))
+    notes = "\n\n".join(context.cited(Path(f"/example/daily/2026-01-0{d}.md"), "\n".join(f"- example note {d}.{i}" for i in range(40)))
+                        for d in (3, 2, 1))
+    sent, _, _, _, cut = context.fit("recall_pack", notes, 600)
+    assert "[from /example/daily/2026-01-02.md]" not in sent and "- example note 2.0" in cut
+    assert all(x.startswith("- example note ") and x not in sent.split("\n") for x in cut)   # the file's lines, never its `[from`
+    rules = "- example rule " + "x" * 400 + "\n" + "\n".join(f"- example rule {i}" for i in range(10))
+    sent, _, _, _, cut = context.fit("rules", rules, 300)
+    assert context.chars(sent) <= 300 and "x" * 10 not in sent and len(cut) == 11
 
 
 def test_the_per_message_parts_fit_their_keys_by_whole_lines_too():
