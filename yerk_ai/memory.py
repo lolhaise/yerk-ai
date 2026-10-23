@@ -105,7 +105,7 @@ def settings(private: Path, state: Path, conf: dict[str, Any] | None = None) -> 
         rs = dict(load_toml(private / "rooms.toml").get("rooms", {}))
     uploads = [(state / "rooms" / n / "work" / "inbox").resolve() for n in rs]
     also += [u for u in uploads if u not in also]      # what was sent to a room is recalled there (said-or-noted), a person's too
-    INBOXES.update({u: ("private", "") if str(c.get("privacy", "owner")) == "owner" else (room_class(c), room_id(n, c))
+    INBOXES.update({u: ("private", "") if str(c.get("privacy", "owner")) == "owner" else ("room", room_id(n, c))
                     for u, (n, c) in zip(uploads, rs.items())})
     cites: dict[Path, str] = {}
     for r in (root, *also):          # its folder's name, else as much of its path as no earlier root's cite has (F3, 2026-10-21)
@@ -200,7 +200,7 @@ def one_line(text: str) -> str:
 
 CLASSES = ("private", "room", "shared")           # who may read a memory file or a day-log line
 # each room's upload inbox -> the (class, room id) every file in it has, from rooms.toml (settings()): an owner room's private, a
-# person room's its own lines' class and id, so it and the owner's rooms read what was sent there and no other room does
+# person room's class room with its id, whatever `class` its lines carry, so it and the owner's rooms read it and no other room does
 INBOXES: dict[Path, tuple[str, str]] = {}
 FRONT = re.compile(r"\A---\n(.*?)\n---\n", re.S)   # a memory file's front matter
 
