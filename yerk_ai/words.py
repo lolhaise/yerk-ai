@@ -89,7 +89,7 @@ STEP = {"bash": "running a command", "read": "reading {what}", "read_memory": "r
         "webfetch": "reading {what}", "web_fetch": "reading {what}", "fetch": "reading {what}",
         "websearch": "searching the web for {what}", "web_search": "searching the web for {what}", "send": "sending {what}",
         "remember": "filing a note", "hold": "waiting for {what}", "settings": "switching to {what}", "transcribe": "transcribing {what}",
-        "voice_note": "making a voice note", "seen": "filing a picture",
+        "voice_note": "making a voice note", "seen": "filing a picture", "need": "filing what it needs",
         "todowrite": "updating the plan", "task": "handing off {what}", "agent": "handing off {what}", "toolsearch": "loading a tool"}
 WORKER_STEP = {"start": "starting a worker", "list": "listing the workers", "stop": "stopping worker {id}",
                "report": "reading worker {id}'s report"}
@@ -154,7 +154,7 @@ RULE_TOPIC_LOG = "rule \"{job}\" filed as a topic rule in {file}: rules.md is fu
 RULE_TOPIC = "filed as a topic rule: loads when\n{triggers} come up\n\"{job}\"\nfrom {room}\n{where}\nrules.md is full at its cap of {cap:,}"
 TOPIC_WHERE = ("for every room", "for {rooms} only")
 TOPICS_MOVED = "{n} rule{s} moved to rules-topics.md\nfrom rules-overflow.md, once\neach loads when its topic comes up"
-PART_CUT = "session start cut {part}\n{size:,} of {cap:,} in {room}\n{n} line{s} sent broken or not at all:\n{heads}"
+PART_CUT = "{part}: {n} line{s} dropped\nto fit its {cap:,} in {room}"     # at session start: whole lines of its own, no framing
 FILED = re.compile(r"^\W*(?:filed|saved|from now on,? every room)\b", re.I)   # a final reporting a filing (stub)
 STUB = ("Only your final message reaches the room, and yours, \"{head}\", reports the filing, not the answer: the answer "
         "is above your last tool call, where the room never sees it, or it was never written. Write the whole answer as "
@@ -190,12 +190,6 @@ def outcome(state: str, **say: Any) -> tuple[str, str]:
     """(mark, words) for a worker state; `say` fills the words' blanks (cap, why, ticked, rows)."""
     mark, text = OUTCOME.get(state, (NOT_DONE, state))
     return mark, text.format(**say)
-
-
-def heads(lines: list[str], most: int = 12, n: int = 6) -> str:
-    """Each line's first `n` words in quotes, one a line held to a phone's width, `most` at the most, then how many more."""
-    said = ['"' + line(" ".join(x.lstrip("-*#> ").split()[:n]), PHONE - 2) + '"' for x in lines[:most]]
-    return "\n".join(said + ([f"and {len(lines) - most} more"] if len(lines) > most else []))
 
 
 def died(result: str) -> str:
@@ -235,6 +229,9 @@ WATCH_ASK = ("[watcher {name} saw {n} new line{s}. {what}Answer in your own voic
 # notes: a reminder, told to its room's own session when it is due
 NOTE_DUE = ("[reminder {name} due] {message}\n[set here for {at}: do what it says now and tell the room in your own "
             "voice, under {cap:,} characters]")
+# where the owner is (location.py): an owner room's per-message line, and the day's places as one day-log line
+PLACE = "[place] near {place}, {ago}, {state}"
+PLACES_DAY = "the owner's places from the phone, first and last fix at each: {stays}"
 
 
 # time, said the way a person says it
@@ -260,6 +257,11 @@ def clock(epoch: float, now: float | None = None) -> str:
     """A time of day as a person says it: '13:05' today, 'Mon 13:05' another day."""
     t, today = datetime.fromtimestamp(epoch), datetime.fromtimestamp(time.time() if now is None else now)
     return t.strftime("%H:%M") if t.date() == today.date() else t.strftime("%a %H:%M")
+
+
+def rest(until: float | None) -> str:
+    """An account's rest as /model says it: free, or resting until its end."""
+    return RESTING.format(until=clock(until)) if until else FREE
 
 
 # notices
@@ -304,6 +306,19 @@ PICTURES_NOT_LISTED = ("{folder} is not a folder {room} lists in rooms.toml (rea
 PICTURES_RUNNING = "{room}: a backfill runs already, one batch after another; its lines are in the machine room"
 PICTURES_BATCH = "pictures backfill {room}: batch {n} of {of} {how}, {filed} of {count} filed{then}"
 PICTURES_NEXT, PICTURES_STOP, PICTURES_DONE = "; batch {n} started", "; stopped, {left} left: run it again", "; done"
+FILE_TEXT = "[its text, extracted by code] saved at {path}"     # under a workbook's or a PDF's [attachment] line (files.py)
+FILES_PERSON = "{room} is not an owner room: a workbook or a PDF sent there is never read"
+FILES_BACKFILL = "{n} workbook(s) and PDF(s) in {where} with no text beside them or an older one; {done}"
+FILES_WRITTEN, FILES_DRY = "written", "nothing written (--dry-run)"
+# missing-ability (needs.py): a room's need in the machine room, its build and its end there, and the refusals
+NEED_FILED = WORKING + " need {n} from {room}: {ability}; `yerk needs build {day} {n}`"
+NEED_AGAIN = WORKING + " need {n} asked again from {room}, {count} times now: {ability}"
+NEED_PR, NEED_BRANCH = DONE + " need {n} built, PR {pr}: {ability}", WORKING + " need {n} built on {branch}, no PR seen: {ability}"
+NEED_FAILED = NOT_DONE + " need {n}: its builder {how}, no branch; filed again: {ability}"
+NEED_CLAUSE = "one clause at its end, this one: what you needed is filed for the owner to build for every room"
+NEED_NOT_YOURS = "not filed: a need from this room names only its own files, and {path} is not one"
+NEED_NONE = "no need {n} of {day}; `yerk needs list` shows them"
+NEED_BUSY = "need {n} is {state}: one builder a need, so nothing started"
 CHECKED = "checked by a second pass: {n} of {of} segments uncertain"
 PART_CHECKED = "checked by a second pass but for chunk {chunks}, where it failed: {n} of {of} segments uncertain"
 UNCHECKED = "one pass only, so nothing in it was checked: a second pass needs a Groq key at secrets/groq.key"
@@ -370,6 +385,41 @@ UNIT_USE, JOB_DUE = "{name}: {mb} MB, {cpu:.1f}% cpu", "job {name}: in {left}"
 NO_JOB_DUE, NO_TIMERS = "jobs: none due within the hour", "jobs: the timer list is unreadable"
 STALLS, NO_STALLS = "stalls {day}: {n}, longest {took}", "stalls {day}: none"
 TODAY, YESTERDAY = "today", "yesterday"
+# each account, two lines: its meters (a warning sign at HOT and over), then when its windows reset and its next bill;
+# the account whose week resets soonest wears the green mark on its tag; then the next two resets of each window
+HOT, WARN = 80, "\N{WARNING SIGN}\N{VARIATION SELECTOR-16}"
+RESETS, BILL = "\N{CLOCKWISE OPEN CIRCLE ARROW} {parts}", "\N{CREDIT CARD} {day}"
+BACK_AT, NEXT, THEN = "resting until {until}", "{label} next: {first}", " · then {tag} {when}"
+FIRST_TRY = "next turn tries {tag} first"         # accounts.pick for a room on no account of its own
+ROOMS_ON = "on account {account}: {rooms}"        # two rooms or more put on one account, one line
+NUMBERS = ("one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen "
+           "seventeen eighteen nineteen twenty").split()
+
+
+def tag(name: str) -> str:
+    """An account on the card: account one (or 1) is ①, up to ⑳; any other name is itself."""
+    n = NUMBERS.index(name.lower()) + 1 if name.lower() in NUMBERS else int(name) if name.isdigit() else 0
+    return chr(0x2460 + n - 1) if 1 <= n <= 20 else name
+
+
+def short_clock(epoch: float) -> str:
+    """'5p', '5:10p', '12a': a time of day the short way."""
+    t = datetime.fromtimestamp(epoch)
+    return f"{t.hour % 12 or 12}{'' if t.minute == 0 else f':{t.minute:02d}'}{'a' if t.hour < 12 else 'p'}"
+
+
+def short_when(epoch: float, now: float | None = None) -> str:
+    """A reset: '5:10p' within a day, 'Wed 2a' within a week, else 'Nov 8'."""
+    ahead = epoch - (time.time() if now is None else now)
+    if ahead < 86400:
+        return short_clock(epoch)
+    return f"{datetime.fromtimestamp(epoch):%a} {short_clock(epoch)}" if ahead < 7 * 86400 else short_day(epoch)
+
+
+def short_day(epoch: float) -> str:
+    """'Nov 8': a date, never a weekday (a bill)."""
+    t = datetime.fromtimestamp(epoch)
+    return f"{t:%b} {t.day}"
 # the morning diff (morning.py), for the machine room
 MORNING_NEW, MORNING_SAME, KNOWN = "morning: {n} new since the last diff", "morning: nothing new", ", {n} known"
 PAYLOAD, PART = "{room}: {size:,} chars, {change}", "{room} {part}: {change} chars"
@@ -386,6 +436,7 @@ DOCS_CHANGED, SHAPE, SHAPE_OK = "docs changed: {slug}", "rule shape: {counts}", 
 CURATE_OK, CURATE = "curate: {n} landed, {m} swept", "curate: {n} to read, {first}"     # the night's curation (curate.py)
 CURATE_RUNNING, CURATE_CUT = "curate: running since {at}", "curate: cut off at {at}, {n} to undo"
 RULES_CARD, RULES_MORE, RULES_APPLY = "rules: {n} proposed, -{chars} chars", "and {n} more in the proposals file", "apply: yerk curate --apply {day} N"
+RULES_KIND, RULES_NONE = "{kind}: {numbers}", "rules: none proposed {day}"     # the morning's list of the night's (curate.rules_lines)
 # the stance check (evidence.stance): the owner's pushback opens a line with one of these words or carries one of these phrases
 PUSHBACK = re.compile(r"^[^\in\n]*(?:(?:the|Next|run|starts|the|example+|note)\says[^\the\n]*)?(?:next+|step|and+(?!\the+(?:test|reads|it|back|as)\plain)"
                       r"|wrong|actually|disagree|not\s+(?:true|really|quite))\b|\b(?:you['’]?re|you\s+are|that['’]?s|that\s+is)\s+wrong\b"
@@ -461,12 +512,16 @@ CARRIED, RECAPPED = "the same session goes on", "a new session starts, with a re
 OWNER_ONLY = "not changed: this room keeps the model, thinking level and account it has, and answers on them"   # see WORKERS_OWNER_ONLY
 NOT_LISTED, NOT_A_LEVEL = "not on the list: {model}\nthe list: {models}", "not a thinking level: {effort}\nthe levels: {levels}"
 BACK_ON = "{model} not found; back on {usual}"       # a switched-to model no account could run
+# bare /model under the room's line, and its suggestions as the owner types (Yerkd.model_menu, model_picks)
+MENU_ACCOUNTS, MENU_ACCOUNT, MENU_MODELS = "accounts, in the order tried for {model}:", "{name}: order {order}, {state}", "models: {models}"
+FREE, RESTING, PINNED_MARK, PICK_ON = "free", "resting until {until}", ", pinned", "{model} on account {name}, {state}"
+PICK_DEFAULT = "default: clears the model and the account"
 USUAL = "the default"                                # a room whose rooms.toml names no model
 # slash commands on the rooms' own bot (Discord): the owner's only, every answer seen by the owner alone
 COMMANDS = {"model": "this room's model or account, from the next reply", "effort": "this room's thinking level, from the next reply",
             "new": "a new session in this room; memory stays", "stop": "end the running turn now",
             "status": "what runs now"}
-CHOICE = {"model": "a model on the list, or default", "effort": "a thinking level, or default", "account": "an account by name, or default"}
+CHOICE = {"model": "an account, a model or both, the account first; default clears both", "effort": "a thinking level, or default", "account": "an account by name, or default"}
 NOT_OWNER, NOT_A_ROOM = "only the owner can use this", "this channel is not a Yerk room"
 NO_OWNER = "set [discord] owner in yerkd.toml"       # every command, while yerkd.toml names no owner
 WATCHED = "{room} answers in <#{own}>, not here"     # a channel a room watches: read, never written to

@@ -2,7 +2,10 @@
 # One line per account: its name, its Claude Code config folder, its order (lower is tried
 # first), and optionally its one-year token file (relative to this folder; the default is
 # secrets/claude-<name>.token, written by `yerk accounts token NAME`). Adding or removing an
-# account is one line here and nothing else.
+# account is one line here and nothing else. Optionally `bill_day`, the day of the month the
+# plan bills (1 to 31), and `yerk status` shows the next one under the account (💳 Nov 8):
+# one = { config_dir = "~/.claude", order = 1, bill_day = 8 }. An account named one to
+# twenty shows on the card as ① to ⑳.
 
 [accounts]
 one = { config_dir = "~/.claude", order = 1 }

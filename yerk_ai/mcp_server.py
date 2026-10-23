@@ -2,8 +2,8 @@
 # official Python SDK) and the send tool's shape are adapted from Hermes Agent v0.22.2,
 # mcp_serve.py (create_mcp_server, messages_send), https://github.com/NousResearch/hermes-agent
 # Copyright (c) 2025 Nous Research. MIT License. See NOTICE.
-"""Yerk AI's own MCP server: eleven tools (send, hold, recall, read_memory, remember, worker, schedule, settings, transcribe,
-voice_note, seen), local-only HTTP, preloaded in every room; transcribe and voice_note are here and not plug-ins because the daemon
+"""Yerk AI's own MCP server: twelve tools (send, hold, recall, read_memory, remember, worker, schedule, settings, transcribe,
+voice_note, seen, need), local-only HTTP, preloaded in every room; transcribe and voice_note are here and not plug-ins because the daemon
 has the network and a room's shell has none, and seen because no owner room has a Write tool. A worker gets none of it: by default no MCP server at all, and with
 [workers] yerk_tools its own stdio server (`worker_server`) carrying recall and read_memory only.
 
@@ -53,6 +53,7 @@ class Daemon(Protocol):
     async def tool_transcribe(self, room: str, path: str, owner_yes: bool = False) -> dict[str, Any]: ...
     async def tool_voice_note(self, room: str, script: str, name: str = "", owner_yes: bool = False) -> dict[str, Any]: ...
     async def tool_seen(self, room: str, path: str, text: str, shows: str) -> dict[str, Any]: ...
+    async def tool_need(self, room: str, asked: str, tried: str, needed: str, shadow: str = "") -> dict[str, Any]: ...
 
 
 def caller_room(ctx: Context) -> str:
@@ -207,6 +208,14 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         owner" (in a person's room "the sender") unless its own text says otherwise, anyone else named only by that text, else "a man" or
         "a woman". Saved beside it as NAME.seen.txt."""
         return json.dumps(await daemon.tool_seen(caller_room(ctx), path, text, shows))
+
+    @mcp.tool()
+    async def need(asked: str, tried: str, needed: str, shadow: str = "", *, ctx: Context) -> str:
+        """You cannot do what you were asked (no tool, a refused tool, a wall): file what you needed in place of building a
+        way of your own, so one build gives every room the same way. `asked` what you were asked, `tried` what you tried and
+        how it failed, `needed` the ability in a few plain words ("see a picture in a post"), `shadow` what you did anyway, if
+        anything. The same ability filed again is counted on the open one."""
+        return json.dumps(await daemon.tool_need(caller_room(ctx), asked, tried, needed, shadow))
 
     @mcp.tool()
     async def voice_note(script: str, name: str = "", owner_yes: bool = False, *, ctx: Context) -> str:

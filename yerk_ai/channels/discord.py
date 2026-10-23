@@ -52,7 +52,7 @@ from typing import Any, Awaitable, Callable, Coroutine, TypeVar
 import discord
 from discord.http import handle_message_parameters
 
-from .. import status, transcribe, words
+from .. import files as extracted, status, transcribe, words
 from ..config import EFFORTS
 from ..ledger import Ledger
 from ..lifted.loopguard import LoopGuard
@@ -82,13 +82,14 @@ SETTLE = 30.0         # seconds another assistant's message sits with no edit or
 SAID = (discord.MessageType.default, discord.MessageType.reply)   # what a person types; the rest are Discord's lines
 
 
-def commands(models: dict[str, str]) -> list[dict[str, Any]]:
-    """Exactly this install's slash commands, in the shape Discord's bulk overwrite takes; /model takes an account too,
-    typed, never offered: a command's choices show to everyone in its guild, a people room's people too."""
-    def pick(name: str, values: list[str]) -> list[dict[str, Any]]:
+def commands() -> list[dict[str, Any]]:
+    """Exactly this install's slash commands, in the shape Discord's bulk overwrite takes. /model's argument (an account, a
+    model or both) is suggested as the owner types (autocomplete, DiscordChannel._suggest), never offered as choices: a
+    command's choices show to everyone in its guild, a people room's people too, a suggestion only to the one typing."""
+    def pick(name: str, values: list[str] | None) -> list[dict[str, Any]]:
         return [{"type": 3, "name": name, "description": words.CHOICE[name], "required": False,
-                 **({"choices": [{"name": v, "value": v} for v in values][:25]} if values else {})}]
-    opts = {"model": pick("model", [*models, "default"]) + pick("account", []), "effort": pick("effort", [*EFFORTS, "default"])}
+                 **({"choices": [{"name": v, "value": v} for v in values][:25]} if values else {"autocomplete": True} if values is None else {})}]
+    opts = {"model": pick("model", None) + pick("account", []), "effort": pick("effort", [*EFFORTS, "default"])}
     return [{"type": 1, "name": n, "description": what, "options": opts.get(n, [])} for n, what in words.COMMANDS.items()]
 
 
@@ -144,6 +145,7 @@ def message_text(m: Any, files: list[dict[str, Any]] | None = None, reply: str =
         if f.get("ok"):
             lines.append(f"[attachment] {f['name']}, {f['type']}, {f['size']:,} bytes, saved at {f['path']}")
             lines += [words.VOICE_NOTE.format(name=f["name"])] if transcribe.is_audio(f["name"], f["type"]) else []
+            lines += [words.FILE_TEXT.format(path=f["text"])] if f.get("text") else []
         else:
             lines.append(f"[attachment] {f['name']}: could not be fetched ({f.get('error', 'unknown')})")
     return "\n".join(x for x in lines if x).strip()
@@ -168,6 +170,7 @@ class DiscordChannel:
         self.shown: dict[str, str] = {}
         self.edited: dict[str, float] = {}        # room name -> when its card was last edited
         self.locks: dict[str, asyncio.Lock] = {}
+        self.order: dict[str, asyncio.Future[None]] = {}   # room name -> the last message taken, until it is in the room
         self.guard = guard or LoopGuard()
         self.loop: asyncio.AbstractEventLoop | None = None
         self.connected = False                   # /status: the gateway said ready (yerk deploy's proof)
@@ -302,10 +305,19 @@ class DiscordChannel:
                 self.taste(room.name, m.content)
             except Exception:                     # a record, never a reason to hold the message
                 log.exception("room %s: the owner's verdict on message %s was not kept", room.name, m.id)
-        await self._typing_begin(room.name, await self._channel(room.name))   # its own channel, never the watched one
-        await self._react(m.channel.id, m.id, ACK)
-        files = await self.stage(room, m)
-        room.submit(Inbound(str(m.id), sender, message_text(m, files, self.reply_line(room.name, m)), files=files))
+        ahead, mine = self.order.get(room.name), asyncio.get_running_loop().create_future()
+        self.order[room.name] = mine              # in the room in the order taken: staging waits on a file's text, and the
+        try:                                      # message sent after it must not overtake it
+            await self._typing_begin(room.name, await self._channel(room.name))   # its own channel, never the watched one
+            await self._react(m.channel.id, m.id, ACK)
+            files = await self.stage(room, m)
+            if ahead is not None:
+                await asyncio.shield(ahead)
+            room.submit(Inbound(str(m.id), sender, message_text(m, files, self.reply_line(room.name, m)), files=files))
+        finally:
+            mine.set_result(None)
+            if self.order.get(room.name) is mine:
+                del self.order[room.name]
 
     # the typing signal: "heard you", from the moment a message is taken until something is visible
     async def _typing_begin(self, room: str, ch: Any) -> None:
@@ -381,6 +393,7 @@ class DiscordChannel:
         """Each attachment saved under the room's inbox with its own name, a ledger row each; a
         visible notice for any that cannot be fetched."""
         files: list[dict[str, Any]] = []
+        texts: list[tuple[dict[str, Any], asyncio.Task[Path | None]]] = []    # each workbook's or PDF's text, read side by side
         for a in getattr(m, "attachments", []) or []:
             f, name = {"name": a.filename, "size": int(a.size or 0), "type": file_type(a.filename, a.content_type)}, safe_name(a.filename)
             try:
@@ -390,12 +403,17 @@ class DiscordChannel:
                 f.update(ok=True, path=str(dest), size=dest.stat().st_size)
                 self.ledger.attachment(message_id=str(m.id), room=room.name, name=a.filename, size=f["size"],
                                        type=f["type"], path=str(dest), state="staged")
+                if extracted.kind(dest) and str(getattr(room, "conf", {}).get("privacy", "owner")) == "owner":   # a person's: never
+                    texts.append((f, asyncio.ensure_future(extracted.beside(room.name, dest, self.daemon.memory.tz if self.daemon else None))))
             except (discord.HTTPException, OSError) as e:
                 f.update(ok=False, error=f"{type(e).__name__}: {str(e)[:120]}")
                 self.ledger.attachment(message_id=str(m.id), room=room.name, name=a.filename, size=f["size"],
                                        type=f["type"], state="missing", error=f["error"])
                 await self._post(room.name, f"{words.NOT_DONE} {words.NOT_FETCHED.format(name=a.filename)}", "notice", [str(m.id)])
             files.append(f)
+        for f, job in texts:                      # so the message waits files.WAIT once, never once a file
+            if side := await job:
+                f["text"] = str(side)
         return files
 
     async def on_ready(self) -> None:
@@ -454,7 +472,7 @@ class DiscordChannel:
                 log.warning("discord: no guild for channel %s, no commands there: %s", cid, e)
         for g in sorted(guilds):
             try:
-                await self.client.http.bulk_upsert_guild_commands(self.client.application_id, g, commands(self.daemon.models))
+                await self.client.http.bulk_upsert_guild_commands(self.client.application_id, g, commands())
                 log.info("discord: %d slash command(s) registered in guild %s", len(words.COMMANDS), g)
             except discord.HTTPException as e:
                 log.warning("discord: slash commands not registered in guild %s: %s", g, e)
@@ -462,6 +480,8 @@ class DiscordChannel:
     async def on_interaction(self, it: Any) -> None:
         """A slash command: the owner's only, in a room only; anyone else, or any other channel, gets one
         ephemeral line. Off (`daemon` None): left to whatever else answers."""
+        if self.daemon is not None and it.type == discord.InteractionType.autocomplete:
+            return await self._suggest(it)
         if self.daemon is None or it.type != discord.InteractionType.application_command:
             return
         data = it.data or {}
@@ -478,13 +498,26 @@ class DiscordChannel:
         else:
             await self._answer(it, self._command(str(data.get("name", "")), room.name, args))
 
+    async def _suggest(self, it: Any) -> None:
+        """/model's picker as the owner types in a room's own channel (Yerkd.model_picks); anyone else, anywhere else, is offered nothing."""
+        data, room = it.data or {}, self.rooms.get(int(it.channel_id or 0))
+        typed = next((str(o.get("value", "")) for o in data.get("options") or [] if o.get("focused")), "")
+        mine = self.owner is not None and getattr(it.user, "id", None) == self.owner and data.get("name") == "model"
+        try:
+            picks = self.daemon.model_picks(room.name, typed) if room and mine and self.names[room.name] == int(it.channel_id) else []
+        except Exception:
+            log.exception("discord: the /model suggestions failed")
+            picks = []
+        await it.response.autocomplete([discord.app_commands.Choice(name=n[:100], value=v[:100]) for n, v in picks])
+
     async def _command(self, name: str, room: str, args: dict[str, str]) -> str:
         """Each command is the daemon method the room's tool or `yerk` command calls; no second path."""
         d = self.daemon
         if name == "status":
-            return "\n".join(status.card(await d.status_now({})))
+            return "\n".join(status.card(await d.status_now({"live": True})))     # the meters asked now (usage.py)
         if name in ("model", "effort"):
-            r = await d.tool_settings(room, args.get("model", ""), args.get("effort", ""), args.get("account", ""), by_owner=True)
+            r = await (d.model_command(room, args.get("model", ""), args.get("account", "")) if name == "model"
+                       else d.tool_settings(room, "", args.get("effort", ""), by_owner=True))
             return f"{words.DONE if r['ok'] and args else words.PLAIN if r['ok'] else words.NOT_DONE} {r['line']}"
         if name in ("new", "stop"):
             r = await (d.room_new(room) if name == "new" else d.room_stop(room))

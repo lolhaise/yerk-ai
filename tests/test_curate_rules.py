@@ -9,7 +9,8 @@ from datetime import datetime, timezone
 
 import pytest
 
-from yerk_ai import curate, memory, words
+from yerk_ai import curate, memory, morning, words
+from yerk_ai.accounts import Cooldowns, load_accounts
 from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai.ledger import Ledger
 
@@ -21,8 +22,9 @@ RULES = ["---", "class: shared", "---", "# Rules: one live line per job, in ever
          "- send a photo: Send it as a file. (example-room, 2026-10-20 10:00:00+00:00) [m:1003]",
          "- greet a guest: Say hello by name, since a cold open reads rude; wave once. (example-room, 2026-10-21 09:00:00+00:00) [m:1002]",
          "- send a photo: Never as a file, inline only, since a file goes unopened. (example-room, 2026-10-21 10:00:00+00:00) [m:1004]",
-         f"- tell the menu: Name the soup first, then the bread, then the price on its own line {EX}, then stop. "
-         "(example-room, 2026-10-21 11:00:00+00:00) [m:1005]", ""]
+         f"- tell the menu: Name the soup first, then the bread, then the price on its own line {EX}, then stop. Name the soup first, "
+         "then the bread. (example-room, 2026-10-21 11:00:00+00:00) [m:1005]", ""]
+SAID = " Name the soup first, then the bread."               # RULES[9]'s clause said twice: the prose a condensation cuts first
 HELD = "- close the shop: Lights off, door locked, keys in the box. (example-room, 2026-10-21 11:30:00+00:00) [m:1006]"
 BOOK = ["# Rulebook", "", "<working>", "- Read the file before you answer, since a guess reads as a fact.",
         "- 🔴 SUPERSEDED: Answer in French.", "- Quote a day only from its line, memory/daily/2026-10-19.md:99 for the menu.", "</working>", ""]
@@ -90,7 +92,7 @@ def test_the_proposals_are_a_numbered_file_of_before_after_why_and_evidence_and_
     assert "says otherwise" in cuts[RULES[6]]["why"] and RULES[8] in cuts[RULES[6]]["why"] and "shadow 1" in cuts[RULES[6]]["evidence"]
     assert "daily/2026-10-19.md:99" in cuts[BOOK[5]]["why"] and "superseded" in cuts[BOOK[4]]["why"]
     short = by["condense"]["edits"][0][3]
-    assert "<example>" not in short and short.endswith("[m:1005]") and "the price on its own line, then stop." in short
+    assert short == RULES[9].replace(SAID, "") and EX in short and "kept: its 1 example, since memory/rules.md has room" in by["condense"]["why"]
     assert by["promote"]["needs"] and by["promote"]["edits"][0][1:] == [0, "", HELD] and by["promote"]["saved"] < 0
     page = (s.root / "rules-proposals" / f"{DAY}.md")
     text = page.read_text()
@@ -108,7 +110,7 @@ def test_two_proposals_apply_under_the_line_backed_up_and_undo_puts_the_files_ba
     by, was = kinds(curate.rules(priv, state, s, False, NOW, post=lambda p: {"ok": True})["proposals"]), f.read_bytes()
     out = curate.apply(priv, state, DAY, f"{by['merge']['n']},{by['condense']['n']}", now=NOW)
     rows = f.read_text().split("\n")
-    assert len(rows) == len(RULES) and rows[7] == "" and rows[5].endswith("[m:1001,1002]") and "<example>" not in rows[9]
+    assert len(rows) == len(RULES) and rows[7] == "" and rows[5].endswith("[m:1001,1002]") and rows[9] == RULES[9].replace(SAID, "")
     assert curate.part("rules", f.resolve(), f.read_text()) <= cap and any(x.endswith(f" of {cap:,}") for x in out)
     assert (priv / "backups" / f"curate-{DAY}" / "memory.rules.md").read_bytes() == was and not (state / curate.RUN).exists()
     assert curate.apply(priv, state, DAY, "undo", now=NOW) == ["rules.md: put back as it was"] and f.read_bytes() == was
@@ -211,14 +213,89 @@ def test_a_condensation_takes_out_quotes_and_examples_never_a_reason_or_a_clause
     quote, trail = ' (Ada, Oct 20: "a picture of the dish goes after the steps")', " (example-room, 2026-10-21 11:00:00+00:00) [m:1009]"
     x = (f"- hand over a recipe: One recipe per message, alone, the steps numbered{keep[0]}, one card per dish{keep[1]}, the photo last{quote}, "
          f"the oven note first{keep[2]}, then stop {EX}.{trail}")
-    assert len(x) > curate.LONG and curate.condensed(x) == x.replace(quote, "").replace(f" {EX}", "")
+    assert len(x) > curate.LONG and curate.condensed(x) == x.replace(quote, "") and curate.condensed(x, True) == x.replace(quote, "").replace(f" {EX}", "")
     y = "- hand over text to paste: " + "One paste per message, alone, under the line or it splits, " * 10 + keep[0][1:] + "." + trail
     assert len(y) > curate.LONG and curate.condensed(y) == y
 
 
-def test_a_bullet_whose_only_colon_is_in_an_example_is_condensed_with_every_example_out():
+def test_a_bullet_whose_only_colon_is_in_an_example_loses_its_clause_said_twice_first_and_its_examples_only_when_asked():
     """The live mom rulebook's line 72 shape: a hand-kept bullet's first colon is in its first example, and that example stayed."""
     x = ("- What a guest asks here is an order to fill now, " + "the kitchen reads it as it comes and the bill waits for the end of the meal; " * 6
          + '<example>Bounced, Oct 20 14:53: "I need the owner\'s word to change the menu."</example> '
          + '<example>Bounced, Oct 20 14:54: "orders count as notes rather than requests".</example>')
-    assert len(x) > curate.LONG and curate.condensed(x) == memory.EXAMPLE.sub("", x) and "<example>" not in curate.condensed(x)
+    y = curate.condensed(x)
+    assert len(x) > curate.LONG and y.count("the bill waits") == 1 and memory.EXAMPLE.findall(y) == memory.EXAMPLE.findall(x)
+    assert curate.condensed(x, True) == memory.EXAMPLE.sub("", y) and "<example>" not in curate.condensed(x, True)
+
+
+MOM = ("- A menu she will show guests opens with the soup and keeps to the price, the detail under it for whoever asks, because "
+       "guests can ask the waiter themselves. " + " ".join(f'<example>Bounced, Oct {d}: "{w} Way too long for a menu, the guests at the long table '
+       'stopped reading after the soup and never found the price at all."</example>' for d, w in ((3, "Too much."), (5, "Oh my."), (7, "Again."))))
+
+
+def test_a_condensation_keeps_its_examples_while_the_file_has_room_and_says_what_it_kept(tree):
+    """The 2026-10-23 three, declined: each took a live rulebook line's examples out with the file 3,451 characters under its line.
+    A line with room keeps them; a line whose only cut is its examples is no proposal at all."""
+    priv, state, s = tree
+    (book := priv / "rulebook.md").write_text(book.read_text() + MOM + "\n")
+    assert len(MOM) > curate.LONG
+    props, _, _ = curate.propose(priv, state, s, NOW)
+    by = kinds(props)
+    assert by["condense"]["edits"][0][3] == RULES[9].replace(SAID, "") and EX in by["condense"]["edits"][0][3]
+    assert by["condense"]["why"].startswith(f"{len(RULES[9]):,} characters, past 600: its prose said twice or hedged out, ")
+    assert "; kept: its 1 example, since memory/rules.md has room (" in by["condense"]["why"]
+    assert not any(e[2] == MOM for q in props for e in q["edits"])
+
+
+def test_its_examples_go_only_once_the_file_is_past_its_line_even_without_the_rest(tree, monkeypatch):
+    priv, state, s = tree
+    caps(monkeypatch, 600)
+    props, _, _ = curate.propose(priv, state, s, NOW)
+    q = kinds(props)["condense"]
+    assert q["edits"][0][3] == RULES[9].replace(SAID, "").replace(f" {EX}", "") and "<example>" not in q["edits"][0][3]
+    assert "its prose said twice or hedged and its 1 example out" in q["why"] and "since memory/rules.md is past its line even without the rest (" in q["why"]
+    assert q["why"].endswith("of 600), every other word its own")
+
+
+def test_its_examples_stay_when_the_files_other_proposals_bring_it_under_its_line(tree, monkeypatch):
+    """Past its line now, under it with the merge, the cut and the prose cut in: the file has room, so the example stays. A file
+    with no line (0, as rules-on-demand's topics file has) is never past it."""
+    priv, state, s = tree
+    f = (s.root / "rules.md").resolve()
+    caps(monkeypatch, curate.part("rules", f, f.read_text()) - 1)
+    q = kinds(curate.propose(priv, state, s, NOW)[0])["condense"]
+    assert q["edits"][0][3] == RULES[9].replace(SAID, "") and "; kept: its 1 example, since memory/rules.md has room (" in q["why"]
+    caps(monkeypatch, 0)
+    q = kinds(curate.propose(priv, state, s, NOW)[0])["condense"]
+    assert q["edits"][0][3] == RULES[9].replace(SAID, "") and "; kept: its 1 example, since memory/rules.md has no line," in q["why"]
+
+
+def test_the_prose_cut_takes_a_hedge_set_off_and_a_clause_said_again_whole_never_a_quote_a_fragment_or_a_narrower_rule():
+    """Only prose: a hedge set off by a comma, and a clause that is whole comma-parts of an earlier one, word for word. A clause
+    of two words, one holding a quote, and one that drops an earlier clause's "on weekends" stay; "a change of course" is no hedge."""
+    trail = " (example-room, 2026-10-21 11:00:00+00:00) [m:1010]"
+    said = ['Name the soup first, then the bread, of course, then stop.', 'Then stop.', 'Greet the guest, then wait.',
+            'Greet the guest "by name", then wait.', 'Never pour before nine on weekends.', 'Never pour before nine.',
+            'Announce a change of course to the kitchen, basically.', 'Name the soup first, then the bread.']
+    x = "- serve a table: " + " ".join(said) + trail
+    want = ("- serve a table: Name the soup first, then the bread then stop. " + " ".join(said[1:6])
+            + " Announce a change of course to the kitchen." + trail)
+    assert curate.condensed(x) == curate.condensed(x, True) == want
+    assert curate.why_condensed(x, want, 1, 2, "rules.md").startswith(f"{len(x):,} characters, past 600: its prose said twice or hedged out, ")
+    z = "- serve a table: Greet the guest,  then wait." + trail
+    assert curate.why_condensed(z, curate.condensed(z), 1, 2, "rules.md").startswith(f"{len(z):,} characters, past 600: its spacing out, ")
+
+
+def test_the_morning_lists_the_nights_proposals_by_kind_and_number_for_apply(tree):
+    priv, state, s = tree
+    assert curate.rules_lines(state, NOW) == []
+    props = curate.rules(priv, state, s, False, NOW, post=lambda p: {"ok": True})["proposals"]
+    lines = [x for _, x in curate.rules_lines(state, NOW + 3600)]
+    nums = {k: [q["n"] for q in props if q["kind"] == k] for k in dict.fromkeys(q["kind"] for q in sorted(props, key=lambda q: q["n"]))}
+    assert lines[0] == f"{words.WORKING} rules: {len(props)} proposed, -{sum(max(0, q['saved']) for q in props):,} chars"
+    assert lines[1:-1] == [f"{k}: {curate.spans(ns)}" for k, ns in nums.items()] and lines[-1] == f"apply: yerk curate --apply {DAY} N"
+    assert f"condense: {kinds(props)['condense']['n']}" in "\n".join(lines) and all(words.width(x) <= words.PHONE for x in lines)
+    diff, _ = morning.build(priv, state, load_accounts(priv / "accounts.toml"), Cooldowns(state / "cooldowns.json"),
+                            Ledger(state / "ledger.sqlite"), {"started": NOW - 86400, "units": []}, NOW + 3600)
+    assert all(x in diff for x in lines) and curate.rules_lines(state, NOW + 2 * 86400) == []
+    assert curate.spans([1, 2, 3, 5, 8, 9]) == "1-3, 5, 8, 9"

@@ -23,16 +23,17 @@ import sys
 import threading
 import time
 import uuid
+from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Awaitable, Callable
 from zoneinfo import ZoneInfo
 
-from . import (beat, context, deploy, doctor, evidence, gates, hooks, jobs, mcp_server, memory, mentions, pictures, status, taste,
-               transcribe, voice_note, workers)
+from . import (beat, context, deploy, doctor, evidence, gates, hooks, jobs, location, mcp_server, memory, mentions, needs, pictures, status,
+               taste, transcribe, voice_note, workers)
 from .accounts import Account, Cooldowns, from_dir, load_accounts, pick
-from .config import (EFFORTS, REPO, SHELLS, assistants, budgets, discord_id, flag, load_toml, models, override, people, pinned,
-                     private_dir, read_secret, room_id, room_settings, rooms, state_dir, table, trusted, write_private)
+from .config import (EFFORTS, REPO, SHELLS, account_and_model, account_named, assistants, budgets, discord_id, flag, load_toml, models,
+                     override, people, pinned, private_dir, read_secret, room_id, room_settings, rooms, state_dir, table, trusted, write_private)
 from .engine import RoomSpec, SessionTable
 from .ledger import Ledger
 from .lifted.classify import FailureTable
@@ -45,7 +46,7 @@ from . import abilities, words   # STYLE.md: what a room reads
 log = logging.getLogger("yerk.daemon")
 YERK_TOOLS = ["mcp__yerk__send", "mcp__yerk__hold", "mcp__yerk__recall", "mcp__yerk__read_memory",
               "mcp__yerk__remember", "mcp__yerk__worker", "mcp__yerk__schedule", "mcp__yerk__settings", "mcp__yerk__transcribe",
-              "mcp__yerk__voice_note", "mcp__yerk__seen"]
+              "mcp__yerk__voice_note", "mcp__yerk__seen", "mcp__yerk__need"]
 # A shell room's sandbox when rooms.toml gives it no [rooms.NAME.sandbox] table: unsandboxed, a Read deny stops `cat` and
 # the Read tool, but a script, grep or redirect read every secret (Claude Code 2.1.304, PR 66's cold read, 2026-10-21)
 SANDBOX = {"enabled": True, "autoAllowBashIfSandboxed": True}
@@ -168,6 +169,7 @@ class Yerkd:
         self.cooldowns = Cooldowns(state / "cooldowns.json")
         self.meters = Meters(state / "meters.json")
         self.memory = memory.settings(private, state, dict(self.conf.get("memory", {})))
+        self.location = location.settings(self.conf.get("location"), private)     # None: no room gets a place part
         me = str(self.conf.get("import", {}).get("me") or "")       # the name the owner's own words go by (decision 22: never in code)
         self.owner_names = (me,) if me and me != "me" else ()
         self.scoped = {n: self.memory.only(private, n, c["also"]) for n, c in self.room_confs.items() if "also" in c}
@@ -212,6 +214,7 @@ class Yerkd:
         self.jobs = jobs.Jobs(private, state, self.ledger, dict(self.conf.get("jobs", {})), self.rooms, self.channels,
                               self.room_confs, self.conf, self.workers)
         self.workers.hooks.append(self.pictures_done)            # a pictures backfill batch: its line, then the next batch
+        self.workers.hooks.append(self.need_built)               # a need's builder: its state and its line (needs.py)
         self.gates = gates.settings(self.conf.get("gates"))      # the rule-based gates (DESIGN 8)
         self.workers.gate = {"trash": list(self.gates.trash), "private": str(self.private),   # workers pass them too
                              "external": self.gates.external}
@@ -262,10 +265,11 @@ class Yerkd:
                         extra_args=extra, token=token, add_dirs=dirs)
 
     def cut_said(self, name: str, parts: list[context.Part]) -> None:
-        """Each part a session start sent trimmed: one machine-room notice naming the part, the room and the lines it cut (their
-        first six words; a rule file's by their job), once a day per part and its file, said by the first room to start
-        (cut-said.json in the state folder), so no budget cuts in silence (claim 8); `yerk doctor` names every room, red until
-        the part fits. Never stops the start."""
+        """Each part a session start sent with lines of its own dropped to fit its key (whole lines, never a blank, a `[from`
+        line or the pack's own oldest items, which it leaves out by construction): one machine-room notice, the part and how many,
+        then the key and the room, once a day per part and its file, said by the first room to start (cut-said.json in the state
+        folder), so no budget cuts in silence (claim 8); `yerk doctor` names every room, red until the part fits. Never stops
+        the start."""
         mark, today = self.state / "cut-said.json", time.strftime("%Y-%m-%d")
         try:
             said = dict(json.loads(mark.read_text()))
@@ -275,10 +279,8 @@ class Yerkd:
             return
         write_private(mark, json.dumps({**said, **{f"{p.name} {p.source}": today for p in new}}))
         for p in new:
-            n = len(p.cut)
-            heads = words.heads([memory.topic(x) for x in p.cut], n=12) if p.name in context.TAIL else words.heads(list(p.cut))
-            self.to_machine(f"{words.WORKING} " + words.PART_CUT.format(part=p.name, room=name, size=p.raw, cap=p.budget, n=n,
-                                                                       s="s" * (n != 1), heads=heads))
+            self.to_machine(f"{words.WORKING} " + words.PART_CUT.format(n=len(p.cut), s="s" * (len(p.cut) != 1), part=p.name, room=name,
+                                                                       cap=p.budget))
 
     def to_machine(self, text: str) -> None:
         """One line to the machine room (rooms.toml role = "machine") from a room's thread, where a process start runs: on the
@@ -376,6 +378,10 @@ class Yerkd:
         except OSError as e:                      # the message goes on without it
             log.warning("room %s: no taste part, %s could not be read: %s", room, path, e)
             return ""
+
+    def place_for(self, room: str, now: datetime) -> str:
+        """The place part of an owner room's message (location.py), else ""; a name that is no room gets none."""
+        return location.part(self.location, conf, now) if (conf := self.room_confs.get(room)) is not None else ""
 
     def reader(self, room: str) -> memory.Reader:
         """Who a memory read is for: an owner room reads everything, any other room its own lines and
@@ -502,6 +508,25 @@ class Yerkd:
         log.info("seen: %s, %s, %d characters of its words", room, p.name, len(text))
         return {"ok": True, "file": str(out), "next": words.FILED_NEXT.format(clause=words.FILED_AT_MOST)}
 
+    async def tool_need(self, room: str, asked: str, tried: str, needed: str, shadow: str = "") -> dict[str, Any]:
+        """The `need` tool: what a room could not do, filed as one line (needs.file), folded into an open need of the same
+        ability, and one line in the machine room; a person's room names only its own files (needs.foreign)."""
+        if room not in self.rooms:
+            return {"ok": False, "error": "need is for a room's own session"}
+        others = [r for r in self.room_confs if r != room]
+        if not self.owner(room) and (bad := needs.foreign([asked, tried, needed, shadow], self.state / "rooms" / room, others)):
+            return {"ok": False, "line": words.NEED_NOT_YOURS.format(path=words.no_paths(bad))}
+        with self.rooms[room].lock:
+            mid = ",".join(m.id for m in self.rooms[room].inflight) or f"x{self.rooms[room].turn_key}"
+        r = await asyncio.to_thread(needs.file, self.memory, self.state, room, mid, asked, tried, needed, shadow)
+        if not r["ok"]:
+            return r
+        if not r["again"]:                                # a retried call is said once
+            await self.jobs.alert(None, (words.NEED_AGAIN if r["folded"] else words.NEED_FILED).format(
+                n=r["n"], room=room, ability=words.line(r["ability"], 80), day=r["day"], count=r["count"]), 0)
+        log.info("need: %s, %s %s, %s", room, r["day"], r["n"], "folded" if r["folded"] else "filed")
+        return {**r, "next": words.FILED_NEXT.format(clause=words.NEED_CLAUSE)}
+
     async def pictures(self, req: dict[str, Any]) -> dict[str, Any]:
         """`yerk pictures backfill ROOM`: the owner room's pictures with no sidecar (at most `limit`), BATCH to a Yerk worker on the
         room's own account and model, one batch at a time (pictures_done starts the next), so the account's other workers wait
@@ -567,6 +592,51 @@ class Yerkd:
                 await self.channels[to].notify(to, line)
         self.ledger.worker_set(str(row["id"]), relay="skipped", relay_note="pictures backfill: its line went to the machine room")
         log.info("%s", line)
+        return True
+
+    async def need_build(self, req: dict[str, Any]) -> dict[str, Any]:
+        """`yerk needs build DAY N`: the need's brief (needs.brief) to a builder worker on [needs] account, else [curate]
+        account, else the workers' own pick, its card in the machine room. One builder a need: the need is claimed under the
+        lock, so one that is building, has a PR or a branch, or is merged starts nothing."""
+        day, n = str(req.get("day") or ""), int(req.get("n") or 0)
+        if await asyncio.to_thread(needs.update, self.memory, self.state, day, n, {"state": "building", "worker": ""},
+                                   lambda r: r.get("state", "filed") == "filed") is None:
+            row = needs.find(needs.load(self.state), day, n)
+            return {"ok": False, "error": words.NEED_NONE.format(day=day, n=n) if row is None else
+                    words.NEED_BUSY.format(n=n, state=needs.said(row))}
+        row = needs.find(needs.load(self.state), day, n) or {}
+        card = next((r for r, c in self.room_confs.items() if c.get("role") == "machine" and r in self.channels),
+                    next((r for r in self.rooms if self.owner(r)), ""))
+        conf = dict(self.conf.get("needs", {}))
+        out = await self.workers.start(card, needs.brief(row, REPO), account=str(conf.get("account") or dict(
+            self.conf.get("curate", {})).get("account") or ""), cap_minutes=float(conf.get("cap_minutes") or needs.CAP),
+            tasks=list(needs.TASKS), more={"need": {"day": day, "n": n}})
+        await asyncio.to_thread(needs.update, self.memory, self.state, day, n, {"worker": out["id"]} if out.get("ok") else {"state": "filed"})
+        log.info("needs: build %s %s: %s", day, n, out.get("id") or out.get("error"))
+        return {**out, "day": day, "n": n}
+
+    async def need_built(self, row: dict[str, Any], end: dict[str, Any]) -> bool:
+        """A need's builder ended (workers.hooks): the need's state from its report's first line (needs.ended) and one line to
+        the machine room, never a relay turn; False for any other worker."""
+        try:
+            job = json.loads((Path(row["staging"]) / "worker.json").read_text()).get("need")
+        except (OSError, ValueError):
+            return False
+        if not isinstance(job, dict):
+            return False
+        day, n = str(job.get("day")), int(job.get("n") or 0)
+        how = workers.settled_state(row, workers.tasks_of(Path(row["tasks"])), end)[1]
+        r = await asyncio.to_thread(needs.ended, self.memory, self.state, day, n, str(row["id"]), how,
+                                    workers.first_line(Path(row["report"])), end["exit"] == "done")
+        if r is not None:
+            ab, st = words.line(str(r["ability"]), 80), r.get("state")
+            line = (words.NEED_PR.format(n=n, pr=r.get("pr"), ability=ab) if st == "pr" else words.NEED_BRANCH.format(
+                n=n, branch=r.get("branch"), ability=ab) if st == "built" else words.NEED_FAILED.format(n=n, how=how, ability=ab))
+            if (to := str(row["room"])) in self.channels:
+                with contextlib.suppress(Exception):
+                    await self.channels[to].notify(to, line)
+            log.info("%s", line)
+        self.ledger.worker_set(str(row["id"]), relay="skipped", relay_note="need build: its line went to the machine room")
         return True
 
     async def tool_voice_note(self, room: str, script: str, name: str = "", owner_yes: bool = False) -> dict[str, Any]:
@@ -694,7 +764,7 @@ class Yerkd:
         conf, names = self.room_confs[room], {a.name.lower(): a.name for a in self.accounts}
         want, level, acct = model.strip(), effort.strip().lower(), account.strip()
         full = self.models.get(want.lower()) or (want if want in self.models.values() else want.lower())
-        put = "default" if acct.lower() == "default" else names.get(acct.lower(), "")
+        put = "default" if acct.lower() == "default" else account_named(acct, [*names.values()])
         if want and full != "default" and full not in self.models.values():
             listed = ", ".join(f"{a} ({words.model_name(m)})" for a, m in self.models.items())
             return {"ok": False, "line": words.NOT_LISTED.format(model=want, models=listed)}
@@ -719,6 +789,37 @@ class Yerkd:
         line = (words.NEXT_REPLY if want or level or acct else words.THIS_ROOM).format(
             model=words.model_name(now["model"][0]), effort=now["effort"][0] or "default", on=words.ON.format(account=on) if on else "")
         return {"ok": True, "line": line + (self.carried(room, on) if on != pin else "")}
+
+    async def model_command(self, room: str, choice: str, account: str = "") -> dict[str, Any]:
+        """/model: its one argument an account, a model or both (config.account_and_model), default clearing both, through the
+        settings tool (a typed `account` option keeps the argument a model alone, as before); nothing, the room's line, then
+        its accounts in the order tried and the models (model_menu)."""
+        acct, model = ("", choice) if account.strip() else account_and_model(choice, self.models, [a.name for a in self.accounts])
+        r = await self.tool_settings(room, model, "", account.strip() or acct or ("default" if model.strip().lower() == "default" else ""), by_owner=True)
+        return {**r, "line": "\n".join([r["line"], *self.model_menu(room)])} if r["ok"] and not (choice.strip() or account.strip()) else r
+
+    def tried(self, room: str, model: str) -> list[tuple[str, str]]:
+        """The room's accounts in the order a turn tries them (Room._account: the room's own list, rooms.toml's `accounts` first),
+        the one it is put on first, as (line, name): its order and its rest for `model`, the one it is put on marked."""
+        pin, order = pinned(self.state, room, [a.name for a in self.accounts]), (self.rooms[room].accounts if room in self.rooms else self.accounts)
+        return [(words.MENU_ACCOUNT.format(name=a.name, order=a.order, state=words.rest(self.cooldowns.until(a.name, model=model)))
+                 + (words.PINNED_MARK if a.name == pin else ""), a.name) for a in sorted(order, key=lambda a: a.name != pin)]
+
+    def model_menu(self, room: str) -> list[str]:
+        """Bare /model's lines under the room's own: the accounts in the order tried (when there is more than one), the models."""
+        model = room_settings(self.room_confs[room], self.state, room, self.models)["model"][0]
+        head = [words.MENU_ACCOUNTS.format(model=words.model_name(model) if model else words.USUAL), *(line for line, _ in self.tried(room, model))]
+        return (head if len(self.accounts) > 1 else []) + [words.MENU_MODELS.format(models=", ".join(f"{k} ({words.model_name(v)})" for k, v in self.models.items()))]
+
+    def model_picks(self, room: str, typed: str) -> list[tuple[str, str]]:
+        """/model's suggestions as the owner types, (label, value), at most Discord's 25: the accounts in the order tried, the
+        models and default, then each account with each model and its rest for it; once they type, the ones that match."""
+        tried = self.tried(room, room_settings(self.room_confs[room], self.state, room, self.models)["model"][0])
+        picks = [*tried, *((f"{k}: {words.model_name(v)}", k) for k, v in self.models.items()), (words.PICK_DEFAULT, "default")]
+        both = [(f"{n} {k}: " + words.PICK_ON.format(model=words.model_name(v), name=n, state=words.rest(self.cooldowns.until(n, model=v))), f"{n} {k}")
+                for _, n in tried for k, v in self.models.items()]
+        t = " ".join(filter(None, account_and_model(typed, self.models, [n for _, n in tried]))).lower()
+        return [p for p in picks + both if t in p[1] or t in p[0].lower()][:25] if t else picks[:25]
 
     def carried(self, room: str, pin: str) -> str:
         """After an account change, the line's second line: what the next message does where it starts (RoomProcess.start).
@@ -755,10 +856,11 @@ class Yerkd:
         return text, str(self.memory.daily)
 
     def compact_pack(self, room: str) -> str:
-        """The recall pack as session start builds it, for the re-add after a compaction."""
+        """The recall pack as session start builds and fits it, for the re-add after a compaction."""
         conf = self.room_confs[room]
         limit = int(self.budgets["session_start"]["appended"]["recall_pack"])
-        return context.recall_pack(context.layer_dir(self.private, conf), conf, limit, lambda left: self.room_pack(room, left))[0]
+        text, src = context.recall_pack(context.layer_dir(self.private, conf), conf, limit, lambda left: self.room_pack(room, left))
+        return context.fit("recall_pack", text, limit, src)[0]
 
     def recall_for(self, room: str, prompt: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], list[str]]:
         """(names, topics, past, absent), each search decided by code (decision 42), read as the room's reader in its scope: names
@@ -1022,7 +1124,7 @@ class Yerkd:
             return {}
         out = await asyncio.to_thread(hooks.user_prompt_submit, payload, self.state, self.room_confs,
                                       lambda r, p: self.rooms[r].meta_for(p), self.budgets, None, self.recall_for, name, self.rules_news,
-                                      self.taste_for, self.rules_topic)
+                                      self.taste_for, self.place_for, self.rules_topic)
         if out and "hookSpecificOutput" in out and name in self.rooms:
             prompt = str(payload.get("prompt", ""))
             said = self.said_in_turn(name, sid, prompt)
@@ -1151,6 +1253,8 @@ class Yerkd:
             return await self.jobs.handle(str(req.get("room") or ""), req)
         if isinstance(payload.get("pictures"), dict):   # `yerk pictures backfill ROOM`
             return await self.pictures(dict(payload["pictures"]))
+        if isinstance(payload.get("needs"), dict):      # `yerk needs build DAY N`
+            return await self.need_build(dict(payload["needs"]))
         if isinstance(payload.get("recall"), dict):     # a worker's read-only tools, from its own stdio server
             req = dict(payload["recall"])
             return await self.tool_recall(str(req.get("room", "")), str(req.get("query", "")), int(req.get("k") or 6))
@@ -1182,8 +1286,10 @@ class Yerkd:
         return {n: r.rp.proc.pid for n, r in list(self.rooms.items()) if r.rp is not None and r.rp.proc is not None}
 
     async def status_now(self, payload: dict[str, Any], auth: dict[str, str] | None = None) -> dict[str, Any]:
-        """/status: what runs now, for `yerk status` and any program that asks (status.py)."""
-        out = await asyncio.to_thread(status.collect, self.private, self.state, self.accounts, self.cooldowns, self.ledger, self.rooms)
+        """/status: what runs now, for `yerk status` and any program that asks (status.py); {"live": true} asks
+        each account's meters now (the card's), else only a reading under a minute old is used."""
+        out = await asyncio.to_thread(status.collect, self.private, self.state, self.accounts, self.cooldowns, self.ledger,
+                                      self.rooms, live=bool((payload or {}).get("live")))
         return {**out, "started": self.started, "commit": self.commit,
                 "connected": bool(getattr(self.link, "connected", False)),
                 "rebuilding": await asyncio.to_thread(self.rebuild_running)}   # deploy waits it out, as the gate does

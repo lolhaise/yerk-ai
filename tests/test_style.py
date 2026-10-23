@@ -160,9 +160,7 @@ def test_every_notice_is_state_first_plain_and_phone_width():
                                                                           words.PHONE - 2), room="example-room", cap=11886,   # the longest topic line
                                                            where=words.line(words.TOPIC_WHERE[1].format(rooms="example-room, example-quiet, family-room"))),
                 f"{words.DONE} " + words.TOPICS_MOVED.format(n=3, s="s"),
-                f"{words.WORKING} " + words.PART_CUT.format(part="pinned_memory", room="example-room", size=14100, cap=14000, n=14,
-                                                            s="s", heads=words.heads(["- " + "x" * 60] + [
-                                                                f"- answer the example question {i} first, then the rest" for i in range(13)]))]
+                f"{words.WORKING} " + words.PART_CUT.format(part="pinned_memory", room="example-room-long", cap=14000, n=1400, s="s")]
     for text in notices:
         assert (state_first(text) or text.startswith(words.SUB)) and not room_safe(text), text
         assert all(words.width(x) <= words.PHONE for x in text.splitlines()), text
@@ -179,7 +177,8 @@ def test_a_failed_turn_says_why_in_plain_words_for_every_class_and_outcome():
     assert all(words.width(f"{words.NOT_DONE} {x}") <= words.PHONE for x in words.WHY.values())
 
 
-def test_status_abilities_and_explain_print_state_first_at_phone_width(tmp_path, capsys):
+def test_status_abilities_and_explain_print_state_first_at_phone_width(tmp_path, capsys, monkeypatch):
+    monkeypatch.setenv("YERK_CLAUDE", str(Path(__file__).with_name("fake_claude.py")))   # the card's /usage call, never the real one
     assert cli.main(["status", "--private", str(EXAMPLE_PRIVATE), "--state", str(tmp_path)]) == 0
     assert cli.main(["abilities", "--private", str(EXAMPLE_PRIVATE), "--state", str(tmp_path)]) == 0
     lines = capsys.readouterr().out.splitlines()

@@ -14,8 +14,8 @@ hooks and settings off, no tools, no session kept, the rubric as the whole syste
 `claude -p` reported it (seconds, tokens, the list price it quotes).
 
 The bar a judge must clear before it may block (yerk_ai/evidence.py): 100 cases with under 1 in 10 false alarms. The
-run prints where this judge stands against it. Phase 2, not built here: the `taste` shadow rule in the Stop check,
-after the reply never before it, ledgered in `shadow` beside figure and stance, and `yerk eval taste` to re-run this.
+run prints where this judge stands against it. Phase 2 is `yerk eval taste` (yerk_ai/taste_eval.py): the same judge,
+also given what each turn read, replayed on demand beside these numbers; no reply is judged as it is posted.
 
 usage: python evals/taste/run.py --cases cases.jsonl --controls controls.jsonl --rubric rubric.md --out scores.json
          [--model NAME] [--effort LEVEL] [--jobs N] [--limit N] [--split heldout|rubric|all] [--claude PATH] [--timeout S]

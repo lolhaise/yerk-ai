@@ -19,7 +19,7 @@ from typing import Any, Callable
 from . import deploy, docs, hooks, memindex, memory, retention, status, words
 from . import shape as rule_shape                      # the check named "rule shape"; "layout" is the private folder's
 from .accounts import load_accounts, token_info
-from .config import REPO, ROOM_KEYS, budgets, load_toml, room_id, rooms, write_private
+from .config import REPO, ROOM_KEYS, budgets, filled, load_toml, room_defaults, room_id, rooms, write_private
 from .context import TOPICAL, chars, layer_dir, session_start
 from .ledger import Ledger
 from .mentions import Builder
@@ -143,6 +143,22 @@ def start(private: Path, state: Path, m: memory.Settings, flight: set[str]) -> s
         return f"doctor: crash repair failed, {type(e).__name__}: {words.no_paths(str(e))[:120]}"
 
 
+def drift(name: str, own: dict[str, Any], base: dict[str, Any]) -> str:
+    """An owner room as rooms.toml writes it against [defaults] (`base`), one line, "" when it inherits clean: red for a
+    default tool its own allow misses and its allow_remove does not name, orange for its own copy of a default (an allow
+    equal as a set to the one it would inherit, an mcp server equal to the default filled in for it), which is how the
+    rooms come apart later."""
+    mine = own["allow"] if isinstance(own.get("allow"), list) else None
+    inherited = [t for t in base.get("allow", []) if t not in set(own.get("allow_remove") or [])]
+    missing = [t for t in inherited if t not in mine] if mine is not None else []
+    copies = ["allow"] if mine is not None and "allow" in base and set(mine) == set(inherited) else []
+    servers = own["mcp"] if isinstance(own.get("mcp"), dict) else {}
+    copies += [f"mcp.{s}" for s, v in (base.get("mcp") or {}).items() if servers.get(s) == filled(v, name)]
+    said = [f"misses default tool{'s' * (len(missing) > 1)} {', '.join(missing)}"] if missing else []
+    said += [f"carries a copy of the default {' and '.join([', '.join(copies[:-1]), copies[-1]] if len(copies) > 1 else copies)}"] if copies else []
+    return f"{words.NOT_DONE if missing else words.WORKING} room {name}: {'; '.join(said)}" if said else ""
+
+
 def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings, now: float, last: dict[str, Any],
            found: list[str], dry: bool = False) -> dict[str, Any]:
     """Every check but the crash repair, each finding a line in `found`; returns the sizes and rule shape totals to keep."""
@@ -158,6 +174,8 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
                          if c.get(k) and not (layer_dir(private, c) / str(c[k])).is_file())
             found.extend(f"room {n}: rooms.toml key {k} is read by nothing" for k in sorted(set(c) - ROOM_KEYS))
             found.extend([f"room {n}: no layer folder"] if not layer_dir(private, c).is_dir() else [])
+        if base := room_defaults(load_toml(private / "rooms.toml")):     # each owner room as written, against [defaults]
+            found.extend(x for n, c in rooms(private, own=True).items() if str(c.get("privacy", "owner")) == "owner" and (x := drift(n, c, base)))
         also = {(private / Path(str(x)).expanduser()).resolve() for c in rs.values() if isinstance(c.get("also"), list) for x in c["also"]}
         found.extend(f"also root {r.name}: missing" for r in sorted(also | set(m.scope.roots[1:]) - set(m.uploads)) if not r.exists())
         named = [v for t in conf.values() if isinstance(t, dict) for k, v in t.items() if k.endswith(("_file", "_key")) and isinstance(v, str)]

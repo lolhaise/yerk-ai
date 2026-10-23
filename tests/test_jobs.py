@@ -9,6 +9,7 @@ import hashlib
 import io
 import json
 import subprocess
+import sys
 import time
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime
@@ -18,6 +19,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from yerk_ai import cli, jobs
+from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai import words as W
 from yerk_ai.jobs import Env, JobError, make_job
 
@@ -794,3 +796,25 @@ def test_the_schedule_tool_sets_a_note_by_default_in_a_room_that_is_not_the_owne
                                                         "what": "Remind them to call the clinic."}))
         out = json.loads((got[0] if isinstance(got, tuple) else got)[0].text)
         assert out["ok"] and (out["kind"], out["room"]) == (kind, room), out
+
+
+def test_a_script_job_runs_this_installs_yerk_on_this_installs_folders_and_never_an_account(tmp_path, monkeypatch):
+    """A `yerk` line in a script job (the nightly `yerk curate --rules`): the unit's YERK_PRIVATE and YERK_STATE reach it and this
+    install's bin is first on PATH, so it never falls back to the fake example layer; an account token still stays out."""
+    monkeypatch.setenv("YERK_PRIVATE", str(tmp_path / "private"))
+    monkeypatch.setenv("YERK_STATE", str(tmp_path / "state"))
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-example")
+    job = make_job("probe", {"kind": "script", "every": "1h", "room": "r", "command":
+                             'printf "%s|%s|%s|%s" "$YERK_PRIVATE" "$YERK_STATE" "${PATH%%:*}" "$CLAUDE_CODE_OAUTH_TOKEN"'})
+    (folder := tmp_path / "run").mkdir()
+    out = jobs.run_script(job, folder)
+    assert out["exit"] == 0 and out["output"] == f"{tmp_path / 'private'}|{tmp_path / 'state'}|{Path(sys.executable).parent}|"
+
+
+def test_the_example_nightly_rules_job_reads_exit_1_as_proposals_to_read_and_2_as_a_failure(tmp_path):
+    job = jobs.load(EXAMPLE_PRIVATE / jobs.FILE)[0]["example-curate-rules"]
+    (b := tmp_path / "bin").mkdir()
+    for code, rc in ((0, 0), (1, 0), (2, 1)):
+        (y := b / "yerk").write_text(f"#!/bin/sh\n[ \"$*\" = \"curate --rules\" ] || exit 9\nexit {code}\n")
+        y.chmod(0o755)
+        assert subprocess.run(["/bin/sh", "-c", job.payload], env={"PATH": f"{b}:/usr/bin:/bin"}).returncode == rc

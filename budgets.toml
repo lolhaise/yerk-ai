@@ -5,7 +5,7 @@
 # when a part or a total passes its number here.
 
 [session_start]
-total = 95514
+total = 96614
 
 # Load order, most stable first, so the cached start of the prompt survives.
 # The first five parts are Claude Code's own (its default prompt, the built-in tools
@@ -19,10 +19,13 @@ total = 95514
 # tools before `seen`, over the 8,000 line since transcribe (840), voice_note (911) and remember's `said` and `source`
 # (1,656) came in with no raise (it was measured once at 7,333, from a shape days old), and 10,823 with `seen` (845), so
 # 11,000; no part could pay, so the total rose by the 3,000.
+# 2026-10-23: missing-ability's `need` tool (a room that hits a wall files what it needed, in place of a way of its own),
+# 793 as this tree builds it on Python 3.13, about 808 as sent (`seen` measures 830 here against 845 sent), so 11,631 and
+# 11,700; no part could pay, so the total rose by the 700.
 [session_start.claude_code]
 claude_code_prompt = 11000
 builtin_tools = 10401
-yerk_tools = 11000
+yerk_tools = 11700
 deferred_tool_names = 1713
 skills = 0
 
@@ -61,8 +64,16 @@ skills = 0
 # the file at 12,923, so `rules` to 16,000 and the total up by the same 3,500 to 95,514 until rules-on-demand moves the
 # topic rules out of the always-on file; the curate swap
 # (propose the least-evidenced rule for the overflow when one is held) follows in its own PR.
+# 2026-10-23: the place line (an owner room's `[place]` line used unasked where it bears: a gym, work hours and the commute,
+# short replies on the move; a line used only when asked went unused) took the mechanics to 4,265, so
+# 4,300; no part was measured again to pay for it, so the total rose by the 200.
+# 2026-10-23: missing-ability's line (a wall is filed with `need` so one build gives every room the way, never a workaround;
+# one done anyway goes in its `shadow`; one best way for every room) took the
+# mechanics to 4,271, so 4,300; no part could pay, so the total rose by the 200, to 96,414 with the tools' 700.
+# Merged 2026-10-23, the train: the place line (#109) and missing-ability's line (#110) both ride, so the mechanics
+# take both raises, 4,500, and the total 96,614 (main's 95,714 plus this PR's 900).
 [session_start.appended]
-mechanics = 4100
+mechanics = 4500
 persona = 11800
 rulebook = 14000
 room_voice = 5500
@@ -74,11 +85,17 @@ recall_pack = 6000
 typical = 1500
 # 2026-10-21: 4,000 to 5,500, the taste part's 1,500 below (the owner's files carried over as they
 # are, the cap raised where they need it).
-cap = 5500
+# 2026-10-23: 5,500 to 5,650, the place part's 150 below.
+cap = 5650
 
 [per_message.parts]
 clock = 200
 metadata = 300
+# 2026-10-23: an owner room's `[place]` line, where the owner's phone last was (location.py, yerkd.toml [location]): one
+# short line, "[place] near <a label of the places table>, 7 min ago, stationary", none when the newest fix is past
+# `stale_after` or at no named place, and never in a person's room or on a person's message. The owner's longest label
+# makes it 90; 150 leaves a longer label room (a place line used only when asked went unused).
+place = 150
 
 [hook]
 # Claude Code moves a hook output longer than this into a file.
@@ -148,6 +165,16 @@ slack = 1
 drops = [
     "2026-10-22: 116 to 98, the index grew under the bench from Oct 19 to Oct 21 (the import put 259 days of old chats in the day logs, 126,415 chunks; the texts, mail, wiki and Workbot roots and five more): 18 answers crowded out of the top six, every one still whole in one chunk; Oct 19's code scores today's index the same 99 of 164 as today's; the record weight gives 6 back",
 ]
+
+[files]
+# 2026-10-23, sheets-and-pdfs: the most of a workbook's or a PDF's text one sidecar keeps (files.py), its header aside. Past
+# it the line that crosses it is cut there and one last line says how many characters were not kept. 200,000 characters is
+# about 50,000 tokens at four characters a token, and ten read_memory calls at its 20,000 a call (memory.READ_CHARS).
+# `secs`: a file still being read after this long stops there and its last line says so. Measured that day, read-only, over
+# the 50 workbooks and PDFs in the owner rooms' inboxes: pypdf reads their PDFs at 0.5 to 0.8 s a page, and 8 of the 19 over
+# 900 KB (29 to 131 pages) were still reading after 15 s. A message waits 30 s at most (files.WAIT); this bounds the rest.
+chars = 200000
+secs = 60
 
 [code]
 # The code itself. Unit: lines as `wc -l` counts them, in every .py file under yerk_ai/,
@@ -254,6 +281,75 @@ drops = [
 # by 2: config.py (an id in `[watch] assistants` that is the owner's or one a room's `people` lists stops the start, since
 # that person would never be answered again).
 # 18,767 merged on message-envelope (#96), no line shared.
+# 2026-10-23: model-account-pin raised it by 76: /model's one argument read as an account (its name or digit), a model or
+# both (config.py, 20: account_named, account_and_model), its daemon path, bare answer and suggestions (daemon.py, 31:
+# model_command, tried, model_menu, model_picks, the digit in the settings tool), Discord's autocomplete for it answered to
+# the owner alone (channels/discord.py, 16) and its words (words.py, 9) (the /model menu in
+# Yerk the same, with every account), not folded to fit.
+# 18,843 merged on model-account-pin (#103), no line shared.
+# 0000-00-00: before-the next run starts 000: `the example` note says the /sample item moved to the next, step (and the
+
+# `/usage` on each folder's login, never on a missing folder, parsed, kept a minute, three at a time, a read that does
+# not ask never waiting on one that does), status.py 85 (two
+# lines an account, the soonest week marked, the next two resets of each window, the next bill, the account the next turn
+# tries, rooms on one account in one line), words.py 35 (the tags, the short times, the words), accounts.py 3 (`bill_day`),
+# cli.py, daemon.py and discord.py 4 (the card asks live).
+# 2026-10-23: room-defaults raised it by 76: one tool set for every owner room, declared once in rooms.toml's [defaults]
+# (one best way for every room, automatically; that morning web reach went to five
+# rooms and hands to three by hand, a table at a time), not folded to fit. config.py 57 (the [defaults] reader and its
+# refusals, {room} in a server's args and env, the inheritance with allow_remove, a room's tables as written), doctor.py 18
+# (the drift line: a default tool missed, a copy of a default), move.py 1 (`yerk room add` copies a room as written).
+# 19,174 merged on status-card (#105), no line shared.
+# 2026-10-23: taste-eval raised it by 287: `yerk eval taste` from PR 93 (judge-2) without its shadow judge. The judge's
+# prompt, its `claude -p` runner and its verdict with a failed call's own reason (evidence.py, 92), the replay
+# (taste_eval.py, 161: the ledger join, the stratified sample, the scores per verdict beside phase 1's, the bar printed)
+# and the command (cli.py, 34). Left out, 59 of PR 93's 346: the call after every reply to the owner on the room's account
+# (daemon.py, 33), its recall pack, a read's first words and the shadow row (evidence.py, 24), the taste_judge room key
+# (example.note, 0) says the sample item moved to (the.next, 0), step and the test reads it back. As plain text with (one
+
+# outside `before` shows its own attachments to the judge, as phase 1's prompt does (evidence.py).
+# 19,462 merged on room-defaults (#111), no line shared.
+# 2026-10-23: recall-pack-fit raised it by 22: every session-start part under its key by construction (the owner's screenshot
+# showed one room's recall pack at 6,003 against its 6,000, its line counting the 749 left out 64 characters where 60
+# were kept for it and its items counted in code points, then 8 of the owner's lines cut from its middle and said). lifted/trim.py 17
+# (whole lines only, the marker counted in Claude Code's characters, shrunk until the whole text fits), memory.py 8 (the pack
+# drops its oldest items whole with its head and that line measured; `chars` moved from context.py, 5), context.py 1 (one
+# fit for every part, the compaction's re-add with it), hooks.py 2 (the topic hit's absence lines whole while they fit),
+# daemon.py 0, taste.py 0 (its last resort drops a whole reply), less words.py 6 (the cut notice's heads), not folded to fit.
+# 19,462 merged on taste-eval (#106), no line shared.
+# 2026-10-23: location raised it by 184: where the owner is, from the phone's fixes in yerkd.toml [location] (a line used only when asked went unused): location.py (140: the settings, the tail read, the place named by the
+
+# places table's nearest radius as the watcher names it, the `place` part, the day's stays and their one day-log line
+# replaced where it stands), cli.py (32: `yerk location day` and `yerk map` showing the part), daemon.py (6: the table read
+# at start, place_for, its import), words.py (3), context.py (2: the part and its head), hooks.py (1), not folded to fit.
+# 19,668 merged on taste-eval (#106) and recall-pack-fit (#107); cli.py's two command lines shared with #106, both kept.
+# 2026-10-23: sheets-and-pdfs raised it by 211: a workbook or a PDF sent to an owner room gets its text beside it, by code,
+# and is recalled like a picture's sidecar (the owner asked which kinds of files it covers), not folded to fit: files.py
+# (154: the extractors, one section a sheet or a page, the scan and the file that does not open named in one line, a
+# missing library writing nothing, the cap and its count, the reading time's stop, the wait on upload), cli.py (27: `yerk files backfill`, --root, --dry-run), memory.py (7: the mark and
+# mark_of, a cut keeping either mark), discord.py (17: on staging, an owner room's only, a message's files read side by
+# side so it waits files.WAIT once; the arrival line names the text; a message taken after one still staging goes in after
+# it, never before), words.py (4), memindex.py (2: the kinds and the header, a sidecar under any root), pictures.py (0:
+# header and pending take a head and a filter). Built on 19,668 (#111, #106, #107, #109), no line shared.
+# 2026-10-23: missing-ability raised it by 330: a room that hits a wall files what it needed and one builder makes it for
+# every room (one best way for every room, automatically), not folded
+# to fit. needs.py 217 (the record and the page's blocks, the fold, curate's numbering around the needs, a person room's
+# path check, the builder's brief, a builder's end read from its report), daemon.py 67 (the `need` tool, `yerk needs build`
+# through /control, the completion hook and its machine-room line), cli.py 26 (`yerk needs list|build|done`), words.py 9,
+# mcp_server.py 9 (the tool), curate.py 2 (its page keeps the needs and their numbers). Its cold read raised it by 6, all
+# needs.py: a promotion's WHY ("once N are applied") renumbered with its list (3), a report that starts "no branch" built
+# nothing whatever PR it mentions (2), the builder told that every name in a test or a doc is a placeholder (1).
+# 20,215 merged on room-defaults (#111), taste-eval (#106), recall-pack-fit (#107), location (#109) and
+# sheets-and-pdfs (#104); lines in cli.py, daemon.py and words.py shared with #104, #106 and #109, both sides kept.
+# 2026-10-23: curate-examples raised it by 92: a rule condensation keeps the rule's worked examples (the owner's ask: the
+# day's rules pass proposed three condensations that took a rulebook's examples out with the file 3,451 under its line,
+# all three declined). curate.py 87 (the staged cut: a clause said again or a hedge, then quoted asides, the examples last
+# and only past the file's line; its WHY naming what it kept; the morning's list of the night's proposals by kind and
+# number), jobs.py 3 (a `yerk` line in a script job runs on the unit's folders, never the fake example layer), morning.py 1,
+# words.py 1.
+# 18,935 merged on model-account-pin (#103), no line shared.
+# 19,190 merged on status-card (#105), no line shared.
+# 20,307 merged on missing-ability (#110), no line shared.
 # 2026-10-23: rules-on-demand raised it by 280: a rule the rules file has no room for loads when a message names its topic,
 # where it sat in rules-overflow.md in no room (after the day's third held card, a way
 # that costs no characters), not folded to fit. memory.py 106 (the topic tier: a rule's triggers, the rarity recall's search
@@ -264,4 +360,7 @@ drops = [
 # memindex.py 10 (the stem and rarity rules lifted out to be shared), words.py 8, cli.py 5, doctor.py 4, hooks.py 3.
 # Its cold read, 3 more in memory.py: a topic filing marks its job's older line in rules.md superseded, as its docstring said,
 # where both stayed live; the move's hand-typed [rooms: ...] mark is one changed line.
-lines = 19050
+# 20,590 merged on the train after #99: #103, #105, #111, #106, #107, #109, #104, #110 and #108. Lines shared and
+# both kept: context.py and hooks.py with #107 and #109, daemon.py with #109, doctor.py with #111, words.py with #107;
+# curate.py with #108, whose condense loop stands in for this PR's copy of the old one, its topic and gate block after it.
+lines = 20590

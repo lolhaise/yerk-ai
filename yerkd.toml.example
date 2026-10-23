@@ -9,3 +9,16 @@ owner = "<your Discord user id>"          # the owner, answered in every room
 # Other assistants' Discord user ids. In a channel a room watches (`watch` in rooms.toml), their messages go in that room's
 # day log under their own label once they stop changing, so the room can read what was already said there; never answered.
 assistants = ["<the other assistant's bot user id>"]
+
+[location]
+# Where the owner is, from a phone's fixes (README: The private folder): the `place` part in an owner room's messages and
+# `yerk location day`. Both files are only read, and nothing goes to the network. No table, no part.
+file = "<the fixes file: one JSON fix a line, ts_iso, lat, lon, speed_mps>"
+places = "<the named places: {\"places\": [{\"label\", \"lat\", \"lon\", \"radius_m\"}]}>"
+stale_after = "3h"                       # no part when the newest fix is older than this
+
+[needs]
+# What a room could not do, filed with its `need` tool, is built by `yerk needs build DAY N`: a builder worker with the
+# need as its brief, its card in the machine room. Every key is optional.
+account = "<an account name from accounts.toml>"   # the account builders run on; default: [curate] account, else the workers' pick
+cap_minutes = 60                                  # a builder's minutes before it is stopped

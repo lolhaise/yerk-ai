@@ -8,7 +8,7 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-23
 
-### rules-on-demand
+### rules-on-demand (#102)
 
 - A rule the shared rules file has no room for is no longer held in no room: it is filed in `memory/rules-topics.md` and
   loads on a message that names its topic. The machine-room notice says "filed as a topic rule: loads when <its words>
@@ -37,6 +37,163 @@ with the originals kept under `backups/`; the index chunks every file again when
 - A `[rooms: NAME,...]` mark typed on a line of `rules-overflow.md` before that first start is kept by the move, so the owner
   can keep a held rule whose words are every room's to one room.
 - **Upgrading:** nothing to edit. budgets.toml: `[code] lines` (a dated note). The move runs by itself at the next start.
+
+### curate-examples (#108)
+- A rule condensation keeps the rule's worked examples. `yerk curate --rules` now cuts a long rule's prose first (a clause
+  it says again, a hedge such as "basically" or "of course"), then its quoted asides, and takes its examples out only when
+  its file is past its line in budgets.toml even with every other proposal in. Its WHY says what it kept and the file's
+  size against its line. A long rule with nothing but examples to cut is no proposal at all: the three condensations of
+  a live rulebook proposed on 2026-10-23, each taking its examples out with the file 3,451 characters under its line, are
+  not proposed again.
+- The morning diff lists the last day's rule proposals by kind with their numbers ("condense: 1-3", "promote: 4, 5")
+  and the `yerk curate --apply DAY N` line.
+- A script job's command now gets the unit's YERK_PRIVATE and YERK_STATE and this install's `yerk` first on PATH, so a
+  `yerk` line in a job runs on the install's folders; before, it fell back to the fake example layer, or found no `yerk`.
+  Still no account token.
+- **Upgrading:** to run the rules pass nightly without units/yerk-curate.timer, copy `example-curate-rules` from
+  examples/private/jobs.toml into the private jobs.toml (its room, its zone) and run `yerk jobs sync`.
+
+### missing-ability (#110)
+
+- A room that hits a wall (no tool, a refused tool, a page that will not open) now files what it needed with the new
+  `need` tool, in place of building a way of its own: one line with what was asked, what it tried and what it needed,
+  plus what it did anyway behind a `[shadow]` mark. The machine room gets one line, "need N from ROOM: ABILITY", with
+  the command that builds it. The same ability filed again from any room is counted on the open need, never a second one.
+- Each need sits on the day's rule proposals page (`<memory>/rules-proposals/<day>.md`) as `N. need: ABILITY`, in the
+  same numbering as curate's proposals; curate's own proposals take the numbers the needs leave, and its nightly rewrite
+  of the page keeps every need.
+- `yerk needs build DAY N` starts a builder worker with a brief made from the need (every ask, the repository, and the
+  shape of done: the ability built once in Yerk with tests, committed on its own branch, never merged, pushed or
+  deployed by the worker), its card in the machine room. When it ends, the machine room hears "need N built, PR N" (or
+  the branch, or that it ended with no branch and is filed again). `yerk needs list` shows every need and its state;
+  `yerk needs done DAY N PR` marks one merged.
+- A person's room may file a need about its own files only; one naming another room's folder is refused with one line.
+- **Upgrading:** yerkd.toml, optional: `[needs] account` (the account builders run on; default `[curate] account`) and
+  `[needs] cap_minutes` (default 60). budgets.toml: `yerk_tools` 11,700, `mechanics` 4,500 and `total` 96,614 (on main's
+  location line) and `[code] lines`, each with a dated note. Each room has the `need` tool and its mechanics line from its next process start.
+
+### sheets-and-pdfs (#104)
+
+- A workbook (.xlsx, .xlsm) or a PDF sent to an owner room gets its text written beside it as it is staged, by code with
+  no model call: `NAME.sheet.txt` (a `## <sheet name>` section a sheet, a row a line, its cells tab-separated, empty rows
+  skipped, a formula as the value saved with it) or `NAME.pdf.txt` (a `## page N` section a page). Recall finds what is
+  in it and shows its lines behind "[text of a file sent to the room, as extracted]", never as anyone's words, and the
+  `[attachment]` line names the text file so the room can read it in the same turn. A message waits 30 s at most for
+  its files' text however many it holds, and a message sent after it still reaches the room after it.
+- A scanned PDF (no text on any page) gets one line naming it, its pages and "no text layer, not read"; there is no OCR.
+  A file that does not open gets one line saying so. Past 200,000 characters the text is cut, its last line saying how
+  many characters were not kept; a file still being read after 60 s stops there and says so. A person's room's files are never read this way.
+- `yerk files backfill ROOM [--dry-run]` writes the text of the workbooks and PDFs already in the room's inbox, and of any
+  whose text is older than the file, in that process (no yerkd, no model); `--root FOLDER` does it under a folder the room
+  lists in rooms.toml (`read` or `also`).
+- **Upgrading:** two new libraries, openpyxl and pypdf: `uv sync` in the daemon's checkout before `yerk deploy`, which
+  installs nothing (until then no text is written and the files wait for the backfill). budgets.toml: the new `[files] chars` (200,000) and
+  `secs` (60), and `[code] lines` (a dated note). Nothing to set; run `yerk files backfill ROOM` once per owner room for the files sent
+  before this.
+
+### location (#109)
+
+- An owner room's messages carry where the owner's phone last was, one short line after the metadata line:
+  `[place] near the office (Example City), 7 min ago, stationary`. It comes from yerkd.toml `[location]`: `file`, the
+  fixes a location watcher writes (one JSON fix a line), and `places`, its table of named places, the fix named by the
+  nearest place whose radius holds it; both only read, nothing sent anywhere. No line when the newest fix is older than
+  `stale_after` (3h unset) or at no named place, so no coordinate is ever said; none in a person's room or on a person's
+  message; no table, no line in any room.
+- The mechanics say when to use it unasked: at a gym, log the session there; at work, mind the hours and the commute;
+  moving, keep replies short.
+- `yerk location day [DATE]` writes the day's places into that day's log as one line the owner's rooms recall and no
+  person's room reads: each stay with its first and last fix, `08:40 to 12:00 the office (Example City); 17:40 to 23:40
+  home (Example Town)`. A re-run replaces its own line where it stands; `--dry-run` prints it. README has the nightly
+  script job for jobs.toml.
+- **Upgrading:** yerkd.toml, optional: `[location]` with `file`, `places` and `stale_after`. budgets.toml:
+  `[per_message.parts] place` (150) and `[per_message] cap` 5,650, `mechanics` 4,300 and the session total 95,714,
+  `[code] lines` (dated notes). jobs.toml, optional: the `location-day` script job in README. Each room has the new
+  mechanics line from its next process start.
+
+### recall-pack-fit (#107)
+
+- Every part of a room's session start now fits under its key in budgets.toml by construction. The recall pack counts
+  its own head and the line saying how many older items it left out, in Claude Code's characters (an emoji outside the
+  basic plane counts 2), and leaves its oldest items out whole. That morning one room's pack came out at
+  6,003 against its 6,000 (that line is 64 characters once the count has three digits, where 60 were kept for it, and two
+  emoji were counted once each), and the session start then cut 8 of the owner's items from the middle of the pack, two
+  of them mid-line.
+- A part still over its key (a file past it, or the open commitments alone past the pack's) loses whole lines, its
+  marker counted inside the key. Nothing is cut mid-line any more.
+- The machine room hears of a cut only when lines of a part's own file went, in one notice of two short lines: the part
+  and how many lines, then its key and the room (`🟠 rules: 3 lines dropped`, `to fit its 16,000 in example-room`). The
+  pack leaving its oldest items out is its normal shape and is never said; its own last line tells the room how many.
+- After a compaction the re-added recall pack is fitted the same way. The per-message recall part keeps its "nothing on
+  file" lines whole while they fit its key, and the taste part, still over with every reply at 80 characters, drops its
+  last reply whole.
+- **Upgrading:** budgets.toml: `[code] lines` (a dated note); no key changes. Each room sends the fitted parts from its
+  next process start.
+
+### taste-eval (#106)
+
+- PR 93 (judge-2) cut to its eval half; PR 93 is closed in favour of this one. `yerk eval taste [--cases P --controls P
+  --rubric P --ledger P --sample N --cap S]` replays the taste judge over the owner's complaints and the replies he
+  accepted, each with what its turn read, joined from the ledger read only and cut at the reply's time (a row the
+  ledger has no turn for is judged on the chat alone, never told that a claim no read carries was not checked). It
+  prints precision, recall, the false alarms per verdict (missed-the-ask, unchecked-claim, not-his-voice,
+  slow-or-no-answer) and the median judge seconds beside phase 1's, and the bar a gate would need (recall at least 5 of
+  7, false alarms under 1 in 10), never enforced: exit 0 whatever the numbers, 2 when the case file is missing. A call
+  that ends in an error (an account out of a model) is left out of the scores and counted, and a run where every call
+  failed says so instead of printing a recall of 0. The rubric is the private layer's `evals/taste/rubric.md`, else the
+  package's `taste-rubric.md`; the case file stays private and `tests/fixtures/taste-judge-*.jsonl` are example values.
+- Left out of PR 93: the judge call after every reply to the owner (a `claude -p` call on the room's account, in a
+  thread after the Stop hook), its `shadow` rows, the `taste_judge` room key and the morning diff's count of taste rows.
+  No reply is judged as it is posted, so no reply costs a second model call.
+- **Upgrading:** budgets.toml [code] lines goes to 19462. rooms.toml takes no new key.
+
+### room-defaults (#111)
+
+- One tool set for every owner room, declared once: a `[defaults]` table in rooms.toml holds `allow` and `mcp.<name>`
+  server tables, and every room whose privacy is owner (or unset) carries them from its next process start. A room's own
+  `allow`, or its own `mcp.<name>` table, replaces that one default whole; `allow_remove = [...]` in a room drops named
+  tools from the allow it inherits; `{room}` in a server's `args` and `env` is the room's name. A room whose privacy is
+  anything else inherits nothing. Each room keeps its own sandbox. Any other key in `[defaults]` stops the start with one
+  line naming it.
+- `yerk doctor` names an owner room that drifts from `[defaults]`, one line each: red for a default tool its own allow
+  misses and its `allow_remove` does not name, orange for its own copy of a default (an allow equal as a set, a server
+  equal once `{room}` is its name), since a copy is how the rooms come apart later.
+- `yerk room add` copies the room it is made like as rooms.toml writes it, so a new owner room inherits `[defaults]` under
+  its own name; before, it copied the other room's tables with the other room's name in them.
+- **Upgrading:** rooms.toml, optional: move the tables every owner room repeats under `[defaults]` (rooms.toml.example
+  shows the shape, commented) and take each room's copy out; `yerk doctor` names any copy left. An owner room with no
+  tools of its own, a machine room too, gains the defaults. budgets.toml: `[code] lines` (a dated note).
+
+### status-card (#105)
+
+- `yerk status` and the room's `/status` show each account the way the box's own card does, two lines each, listed in
+  accounts.toml order: `- ① 5h 7% · wk ⚠️93% · Fable ⚠️100%`, then `- ↻ 5h 5p · wk 12a · 💳 Nov 8`. Account one to
+  twenty is ① to ⑳. A number at 80% or more wears ⚠️. The line starts red when the account rests (its second line
+  then says until when) or a 5-hour or weekly window is full, orange when the model's week is full or any window is at
+  90% or more.
+- The meters are live: the card runs Claude Code's own `/usage` on each account's config folder (no model call; Claude
+  Code reads its own login, never the one-year token, which cannot read the meters), at most three at a time, and keeps
+  the answers a minute in `<state>/usage.json`, so a second card within the minute starts nothing. An account whose call
+  fails shows the stream's last reading and how old it is. `yerk status --json` asks nothing new and uses a reading
+  under a minute old when there is one; deploy's proof and the morning diff never ask.
+- The order of resets: the account whose week resets soonest wears 🟢 on its tag, and two lines say the next reset and
+  the one after it for both windows, `- wk next: 🟢① 12a · then ⑤ Sun 3a` and `- 5h next: ④ 2p · then ③ 2:40p`. One
+  more line names the account the next turn tries first (the first in order not resting). A room on an account of its
+  own says it by tag (`on account ④`), and rooms on one account share a line (`- on account ④: 6 rooms`).
+- **Upgrading:** accounts.toml, optional: `bill_day = N` on an account (1 to 31) puts its next bill under it, as a
+  date. budgets.toml: `[code] lines` (a dated note). A cold card for five accounts takes two rounds of Claude Code's
+  start (about 12 s); Discord shows it thinking meanwhile.
+
+### model-account-pin (#103)
+- `/model` takes an account as well as a model, in one argument: `/model five` (or `/model 5`) puts the room on account
+  five, `/model five fable` (or `five/claude-fable-5-1`) on both, `/model fable` on the model as before, and
+  `/model default` clears both. As the owner types, Discord suggests every account with its order and whether it is
+  resting for the room's model, the models, and each account with each model; anyone else is offered nothing, so no
+  account name shows to the guild. Bare `/model` lists the accounts in the order tried and the models under the room's line.
+- The pinned account is tried first; a rest or a limit on it falls through in accounts.toml's order, every account out of
+  the pinned model runs the turn on the room's own model and says so, and the pin stays for the next turn, as before.
+  The typed `account` option still works (with it, the argument is a model alone), and takes the digit too.
+
+**Upgrading**: nothing to do; the next start registers `/model`'s argument as suggestions in place of its fixed list.
 
 ### person-room-parity (#101)
 

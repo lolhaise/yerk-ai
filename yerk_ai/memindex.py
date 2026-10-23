@@ -132,12 +132,14 @@ def drop_orphan_shadow_tables(cur: sqlite3.Cursor, families: list[str]) -> list[
 UPLOADS = (".md", ".txt", ".csv", ".json", ".vtt", ".srt")    # a room inbox's text kinds: the transcribe tool's NAME.transcript.txt too
 SEEN = ".seen.txt"           # and a picture's NAME.seen.txt, what the room read on it (pictures.py): a text kind by its .txt
 SEEN_HEAD = "seen in "       # how a sidecar's first line, written by code, starts (pictures.header)
+EXTRACTED = (".sheet.txt", ".pdf.txt")   # a workbook's and a PDF's text as extracted beside it (files.py): text kinds by their .txt
+FILE_HEAD = "extracted in "  # how one's first line, written by code, starts (files.write)
 
 
 def kinds(root: Path) -> tuple[str, ...]:
-    """The file kinds a root is indexed for: Markdown and a picture's sidecar (a `--root` backfill files one beside a picture
-    in a listed folder), and in a room's upload inbox (<room>/work/inbox) its text kinds too."""
-    return UPLOADS if root.parts[-2:] == ("work", "inbox") else (".md", SEEN)
+    """The file kinds a root is indexed for: Markdown and a sidecar (a `--root` backfill files one beside a picture, a workbook
+    or a PDF in a listed folder), and in a room's upload inbox (<room>/work/inbox) its text kinds too."""
+    return UPLOADS if root.parts[-2:] == ("work", "inbox") else (".md", SEEN, *EXTRACTED)
 
 
 @dataclass(frozen=True)
