@@ -38,12 +38,13 @@ def test_yerk_explain_web_answers_from_the_abilities_file(tmp_path, capsys):
 
 def test_the_rooms_template_attaches_the_plug_in_by_its_command_line_under_the_names_the_rooms_allow():
     lines = [x.removeprefix("# ") for x in (REPO / "rooms.toml.example").read_text().splitlines()]
-    at = lines.index("[rooms.example-room.mcp.web-ladder]")
-    server = tomllib.loads("\n".join(lines[at:at + 6]))["rooms"]["example-room"]["mcp"]["web-ladder"]
+    at = lines.index("[defaults.mcp.web-ladder]")                 # every owner room's, from [defaults] (2026-10-23)
+    server = tomllib.loads("\n".join(lines[at:at + 6]))["defaults"]["mcp"]["web-ladder"]
     assert server["args"][0].endswith("plugins/web/server.mjs") and server["args"][1] == "--private" and server["type"] == "stdio"
-    assert (REPO / "plugins" / "web" / "server.mjs").is_file()
+    assert server["args"][-2:] == ["--room", "{room}"] and (REPO / "plugins" / "web" / "server.mjs").is_file()
     tools = ("web_fetch", "web_search", "web_research", "web_research_result", "web_image")
-    assert tomllib.loads(next(x for x in lines if x.startswith('allow = ["mcp__web-ladder__')))["allow"] == [f"mcp__web-ladder__{t}" for t in tools]
+    allow = tomllib.loads(next(x for x in lines if x.startswith('allow = ["mcp__web-ladder__')))["allow"]
+    assert [x for x in allow if x.startswith("mcp__web-ladder__")] == [f"mcp__web-ladder__{t}" for t in tools]
     assert all(f'name: "{t}"' in (REPO / "plugins" / "web" / "lib" / "tools.mjs").read_text() for t in tools)
 
 

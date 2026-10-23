@@ -267,6 +267,12 @@ drops = [
 # lines an account, the soonest week marked, the next two resets of each window, the next bill, the account the next turn
 # tries, rooms on one account in one line), words.py 35 (the tags, the short times, the words), accounts.py 3 (`bill_day`),
 # cli.py, daemon.py and discord.py 4 (the card asks live).
+# 2026-10-23: room-defaults raised it by 76: one tool set for every owner room, declared once in rooms.toml's [defaults]
+# (one best way for every room, automatically; that morning web reach went to five
+# rooms and hands to three by hand, a table at a time), not folded to fit. config.py 57 (the [defaults] reader and its
+# refusals, {room} in a server's args and env, the inheritance with allow_remove, a room's tables as written), doctor.py 18
+# (the drift line: a default tool missed, a copy of a default), move.py 1 (`yerk room add` copies a room as written).
+# 19,174 merged on status-card (#105), no line shared.
 # 2026-10-23: recall-pack-fit raised it by 22: every session-start part under its key by construction (the owner's screenshot
 # showed one room's recall pack at 6,003 against its 6,000, its line counting the 749 left out 64 characters where 60
 # were kept for it and its items counted in code points, then 8 of the owner's lines cut from its middle and said). lifted/trim.py 17
@@ -275,4 +281,4 @@ drops = [
 # fit for every part, the compaction's re-add with it), hooks.py 2 (the topic hit's absence lines whole while they fit),
 # daemon.py 0, taste.py 0 (its last resort drops a whole reply), less words.py 6 (the cut notice's heads), not folded to fit.
 # 00,000 one more line-for (#000), the check while.
-lines = 19120
+lines = 19196
