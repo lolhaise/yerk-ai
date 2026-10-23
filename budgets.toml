@@ -233,4 +233,10 @@ drops = [
 # pictures.py 24 (root_of, the walk, the folder header), cli.py 9, memory.py 9 (a root's sidecar known by its header),
 # daemon.py 5, memindex.py 2 (a sidecar indexed under any root), words.py 2. Then by 1: `yerk map --wire` measures a resumed
 # session's newest request shape, never its first (context.py).
-lines = 18602
+# 2026-10-23: message-envelope raised it by 110: `yerk map --wire` reads each later message by part (context.py, 109: the
+# part names and Claude Code's heads, hook_parts, envelope, in_text and made, render_wire's part table, its OVER read
+# against each part's key and the week's five largest, and 8 in wire: the hook text Claude Code merges into its own block
+# counted once, and a compaction's summary or Claude Code's caveat never a message; cli.py, 1: the room's time zone),
+# not folded to fit. Measured that day in the work room: no Yerk AI part past its key on any of 303 messages.
+# 18,712 merged on pictures-seen (#97), no line shared.
+lines = 18712
