@@ -250,7 +250,7 @@ def test_rooms_put_on_one_account_are_one_line_and_a_lone_room_keeps_its_own():
         return [x for x in status.card(s, NOW) if "on account" in x]
     assert pinned([("yerk-test", "four"), ("yerk-ops", "four"), ("club", "one"), ("free", "")]) == [
         "- on account ④: yerk-test, yerk-ops", "- club: on account ①"]
-    six = [(f"{n}-on-yerk", "four") for n in ("Alex", "matrix", "mom", "gym", "test", "ops")]
+    six = [(f"{n}-on-yerk", "four") for n in ("harbor", "main", "family", "club", "test", "ops")]
     assert pinned(six) == ["- on account ④: 6 rooms"]                      # the names would not fit
 
 
