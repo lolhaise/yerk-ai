@@ -1261,8 +1261,10 @@ class Yerkd:
         return {n: r.rp.proc.pid for n, r in list(self.rooms.items()) if r.rp is not None and r.rp.proc is not None}
 
     async def status_now(self, payload: dict[str, Any], auth: dict[str, str] | None = None) -> dict[str, Any]:
-        """/status: what runs now, for `yerk status` and any program that asks (status.py)."""
-        out = await asyncio.to_thread(status.collect, self.private, self.state, self.accounts, self.cooldowns, self.ledger, self.rooms)
+        """/status: what runs now, for `yerk status` and any program that asks (status.py); {"live": true} asks
+        each account's meters now (the card's), else only a reading under a minute old is used."""
+        out = await asyncio.to_thread(status.collect, self.private, self.state, self.accounts, self.cooldowns, self.ledger,
+                                      self.rooms, live=bool((payload or {}).get("live")))
         return {**out, "started": self.started, "commit": self.commit,
                 "connected": bool(getattr(self.link, "connected", False)),
                 "rebuilding": await asyncio.to_thread(self.rebuild_running)}   # deploy waits it out, as the gate does

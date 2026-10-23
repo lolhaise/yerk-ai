@@ -176,7 +176,8 @@ def test_a_failed_turn_says_why_in_plain_words_for_every_class_and_outcome():
     assert all(words.width(f"{words.NOT_DONE} {x}") <= words.PHONE for x in words.WHY.values())
 
 
-def test_status_abilities_and_explain_print_state_first_at_phone_width(tmp_path, capsys):
+def test_status_abilities_and_explain_print_state_first_at_phone_width(tmp_path, capsys, monkeypatch):
+    monkeypatch.setenv("YERK_CLAUDE", str(Path(__file__).with_name("fake_claude.py")))   # the card's /usage call, never the real one
     assert cli.main(["status", "--private", str(EXAMPLE_PRIVATE), "--state", str(tmp_path)]) == 0
     assert cli.main(["abilities", "--private", str(EXAMPLE_PRIVATE), "--state", str(tmp_path)]) == 0
     lines = capsys.readouterr().out.splitlines()
