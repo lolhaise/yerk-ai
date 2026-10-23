@@ -8,7 +8,7 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-23
 
-### room-defaults
+### room-defaults (#111)
 
 - One tool set for every owner room, declared once: a `[defaults]` table in rooms.toml holds `allow` and `mcp.<name>`
   server tables, and every room whose privacy is owner (or unset) carries them from its next process start. A room's own
