@@ -201,3 +201,16 @@ def test_one_message_that_filed_two_jobs_is_never_a_merge_and_one_on_overlapping
     assert not any(e[2] in (a, b) for q in props for e in q["edits"])
     merges = [q for q in props if q["kind"] == "merge"]
     assert [[e[2] for e in q["edits"]] for q in merges] == [[c, d]] and merges[0]["why"] == "filed from the same message (1008) on overlapping jobs"
+
+
+def test_a_condensation_takes_out_quotes_and_examples_never_a_reason_or_a_clause_of_the_rules_own():
+    """A quote in parentheses may go; one that holds a because, since or so-that clause stays, and so does one with a clause
+    of the rule's own after the quote (the live rules.md:10 shape: a condensation that dropped it was proposed)."""
+    keep = [' (Ada, Oct 20: "see how the kitchen pins it on the board"; the card\'s Copy button gives plain text)',
+            ' (Ada, Oct 20: "plain cards only, so that the printer reads them")', ' (Ada, Oct 20: "pin it on the left", because the right side is the oven)']
+    quote, trail = ' (Ada, Oct 20: "a picture of the dish goes after the steps")', " (example-room, 2026-10-21 11:00:00+00:00) [m:1009]"
+    x = (f"- hand over a recipe: One recipe per message, alone, the steps numbered{keep[0]}, one card per dish{keep[1]}, the photo last{quote}, "
+         f"the oven note first{keep[2]}, then stop {EX}.{trail}")
+    assert len(x) > curate.LONG and curate.condensed(x) == x.replace(quote, "").replace(f" {EX}", "")
+    y = "- hand over text to paste: " + "One paste per message, alone, under the line or it splits, " * 10 + keep[0][1:] + "." + trail
+    assert len(y) > curate.LONG and curate.condensed(y) == y

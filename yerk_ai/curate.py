@@ -472,7 +472,8 @@ def line(state: Path, now: float) -> tuple[str, str]:
 # cuts, condensations and promotions PROPOSED; only the owner's `--apply` writes one, and a line is blanked, never cut.
 PROPOSED, PROPOSALS, NEAR, LONG, CARD_MOST, WEEK = "curate-rules.json", "rules-proposals", 0.75, 600, 10, 7 * 86400
 TRAILER = re.compile(r" \(([^()]*\d{4}-\d{2}-\d{2} \d{2}:\d{2}[^()]*)\)( \[m:[^\]\s]+\])?$")   # a filing's room, time, message
-ASIDE = re.compile(r" ?\((?:[^()\"]{0,60}: )?\"[^\"]{8,}\"[^()]*\)")         # a quote in parentheses: an example, in its words
+ASIDE = re.compile(r" ?\((?:[^()\"]{0,60}: )?\"[^\"]{8,}\"[^();]*\)")        # a quote in parentheses, no clause after it: an example
+REASON = re.compile(r"\b(?:because|since|so that)\b", re.I)                    # a reason, which a condensation never takes out
 DAYCITE, DATED = re.compile(r"\bdaily/(\d{4}-\d{2}-\d{2})\.md:(\d+)"), re.compile(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}")
 NO = re.compile(r"\b(?:never|not|no longer|instead of|rather than|stop|don'?t)\b", re.I)    # a newer line that says otherwise
 CLAUSE = re.compile(r"(?<=[.;])\s+")
@@ -550,9 +551,11 @@ def merged(a: str, b: str) -> str:
 
 
 def condensed(x: str) -> str:
-    """A long line with its examples out, then its quotes in parentheses: only its own words, its trailer whole."""
+    """A long line with its examples out, then its quotes in parentheses, never one that holds a reason: only its own words,
+    its trailer whole."""
     head, said, trail = split(x)
-    return f"- {head}{' '.join(ASIDE.sub('', memory.EXAMPLE.sub('', said)).split())}{trail}"
+    said = ASIDE.sub(lambda m: m[0] if REASON.search(m[0]) else "", memory.EXAMPLE.sub("", said))
+    return f"- {head}{' '.join(said.split())}{trail}"
 
 
 def lost(s: memory.Settings, x: str) -> str:

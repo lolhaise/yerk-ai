@@ -15,7 +15,8 @@ with the originals kept under `backups/`; the index chunks every file again when
   `rules-overflow.md` and propose merges (two rules on one job, in near-duplicate words, or from one message on jobs
   that overlap, never one message alone: one line with every clause of both, the fuller example and both cites), cuts (a superseded line a session start still sends,
   a cite to a day-log line that is no longer there, an older rule a newer one on the same job says otherwise to, both
-  quoted), condensations (a line past 600 characters with its examples and quoted asides out, its own words otherwise)
+  quoted), condensations (a line past 600 characters with its examples and quoted asides out, never a reason or an aside's own
+  clause, its own words otherwise)
   and promotions (a rule held in `rules-overflow.md` that fits again, naming the proposals it needs first). Each has
   its evidence of the week: the shadow bounces, rated replies and `yerk` day-log lines that touch it, with cites.
 - They go numbered to `memory/rules-proposals/<day>.md` (0600: BEFORE, AFTER, WHY, EVIDENCE, and each rule file's size
