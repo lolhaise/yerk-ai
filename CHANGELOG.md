@@ -8,7 +8,7 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-23
 
-### model-account-pin
+### model-account-pin (#103)
 - `/model` takes an account as well as a model, in one argument: `/model five` (or `/model 5`) puts the room on account
   five, `/model five fable` (or `five/claude-fable-5-1`) on both, `/model fable` on the model as before, and
   `/model default` clears both. As the owner types, Discord suggests every account with its order and whether it is
