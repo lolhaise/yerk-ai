@@ -35,6 +35,7 @@ STOP = {"a", "an", "the", "to", "of", "in", "on", "for", "and", "or", "it", "its
 HEAD = re.compile(r"^## (\d+)\. ", re.M)                       # any proposal's number on the page, curate's or a need's
 BLOCK = re.compile(r"\n## \d+\. need: .*?(?=\n## |\Z)", re.S)    # a need's block, to its next heading
 PR = re.compile(r"\bPR\s*#?(\d+)\b")
+NO_BRANCH = re.compile(r"\W*no branch\b", re.I)                   # the brief's third first line: it built nothing
 BRANCH = re.compile(r"\bbranch\s+`?([\w./-]+?)`?(?=[\s,:;]|$)")
 TOKEN = re.compile(r"[^\s'\"`;,()<>]+")
 TASKS = ["worktree on its own branch", "the ability, with its tests", "the full suite green", "README, CHANGELOG, abilities",
@@ -98,13 +99,16 @@ def numbers(state: Path, day: str) -> set[int]:
 
 
 def around(props: list[dict[str, Any]], taken: set[int]) -> None:
-    """curate's proposals numbered in their order past the numbers the day's needs hold, a promotion's `needs` with them."""
+    """curate's proposals numbered in their order past the numbers the day's needs hold, a promotion's `needs` with them: in
+    its list and in its WHY's "once N, M are applied", the words curate.propose writes the numbers into."""
     free = (n for n in range(1, len(props) + len(taken) + 2) if n not in taken)
     new = {int(q["n"]): next(free) for q in props}
     for q in props:
         q["n"] = new[int(q["n"])]
         if isinstance(q.get("needs"), list):
-            q["needs"] = [new.get(int(x), x) for x in q["needs"]]
+            was, q["needs"] = q["needs"], [new.get(int(x), x) for x in q["needs"]]
+            q["why"] = str(q.get("why", "")).replace(f" once {', '.join(map(str, was))} are applied",
+                                                     f" once {', '.join(map(str, q['needs']))} are applied")
 
 
 def page(s: Settings, rows: list[dict[str, Any]], day: str) -> Path:
@@ -159,8 +163,9 @@ def update(s: Settings, state: Path, day: str, n: int, changes: dict[str, Any],
 
 def ended(s: Settings, state: Path, day: str, n: int, wid: str, how: str, first: str, clean: bool) -> dict[str, Any] | None:
     """A builder's end: PR N when its report's first line names one, else the branch it names, else filed again with how it
-    ended, so it can be built again; a need marked merged meanwhile, or built by another worker, stays as it is."""
-    pr, branch = PR.search(first), BRANCH.search(first)
+    ended, so it can be built again; a need marked merged meanwhile, or built by another worker, stays as it is. A line that
+    starts "no branch" names neither, whatever PR or branch its why mentions."""
+    pr, branch = (None, None) if NO_BRANCH.match(first) else (PR.search(first), BRANCH.search(first))
     changes: dict[str, Any] = ({"state": "pr", "pr": int(pr[1])} if pr else {"state": "built", "branch": branch[1]} if branch and clean
                                else {"state": "filed", "last": f"{wid}: {how}"})
     return update(s, state, day, n, changes, lambda r: r.get("state") == "building" and r.get("worker") == wid)
@@ -204,7 +209,8 @@ def brief(r: dict[str, Any], repo: Path) -> str:
         "1. The ability built once, the one best way, in Yerk itself, so one deploy gives every room the same way: never a "
         "workaround for one room, a script in a room's folder, or a rule telling rooms to improvise.\n"
         "2. Tests in the existing style for what it does and for the wall the asks above hit; the full suite green (`uv run "
-        "pytest -q`, its exit status read, never through `| tail`); ruff and mypy clean.\n"
+        "pytest -q`, its exit status read, never through `| tail`); ruff and mypy clean. Every person, place, handle and id in "
+        "a test, a fixture, a doc or the CHANGELOG is a placeholder, never one from the asks above.\n"
         "3. README.md, CHANGELOG.md and the abilities.toml entry.\n"
         f"4. Committed on `{branch}`. Never merge, push, open a PR or deploy: a worker's gate refuses a push and a PR, the "
         "branch reaches its pull request from outside this run, and the owner's cold read decides the merge.\n"

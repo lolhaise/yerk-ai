@@ -85,6 +85,7 @@ def test_the_brief_from_a_need_carries_every_ask_the_repo_and_the_shape_of_done(
     assert "Repo /srv/yerk-ai " in b and "worktree add <your folder>/wt -b need-2026-10-23-4 main" in b and "abilities.toml" in b
     assert "Never merge, push, open a PR or deploy" in b and "`PR <number>: <what it adds>`" in b
     assert "the full suite green" in b and "no tool call after it" in b and "\N{EM DASH}" not in b
+    assert "is a placeholder, never one from the asks above" in b         # a room's asks carry real names; the repo never does
 
 
 def test_build_starts_one_builder_on_the_needs_account_and_its_end_sets_the_state_list_and_done_follow(tmp_path, capsys):
@@ -113,7 +114,8 @@ def test_build_starts_one_builder_on_the_needs_account_and_its_end_sets_the_stat
     asyncio.run(y.workers.complete(r["id"]))
     assert rec.lines[-1] == words.NEED_PR.format(n=1, pr=123, ability=ASK[2]) and y.ledger.worker_get(r["id"])["relay"] == "skipped"
     assert listed(tmp_path, capsys) == [f"{day} 1 PR 123: {ASK[2]} (asked 2 times)"]
-    assert "STATE: PR 123, asked 2 times" in (y.memory.root / needs.FOLDER / f"{day}.md").read_text()
+    text = (y.memory.root / needs.FOLDER / f"{day}.md").read_text()
+    assert "STATE: PR 123, asked 2 times" in text and text.count("\n## 1. need: ") == 1      # each change rewrites its one block
     assert cli.main(["needs", "done", day, "1", "123", "--state", str(tmp_path), "--private", str(EXAMPLE_PRIVATE)]) == 0
     assert capsys.readouterr().out.strip() == f"need 1 of {day}: merged, PR 123"
     assert listed(tmp_path, capsys) == [f"{day} 1 merged, PR 123: {ASK[2]} (asked 2 times)"]
@@ -126,7 +128,13 @@ def test_build_starts_one_builder_on_the_needs_account_and_its_end_sets_the_stat
     asyncio.run(y.workers.complete(r2["id"]))
     assert rec.lines[-1].startswith(f"{words.NOT_DONE} need 2: its builder ") and rec.lines[-1].endswith(f"; filed again: {ASK[2]}")
     assert listed(tmp_path, capsys)[0].startswith(f"{day} 2 filed, last build {r2['id']}: ")
-    assert asyncio.run(y.control({"needs": {"action": "build", "day": day, "n": 2}}))["ok"] and len(units.calls) == 3
+    r3 = asyncio.run(y.control({"needs": {"action": "build", "day": day, "n": 2}}))
+    assert r3["ok"] and len(units.calls) == 3
+    # a report that says "no branch" built nothing, whatever PR or branch its why names, on a clean exit too
+    (Path(r3["staging"]) / "REPORT.md").write_text(f"no branch: PR 98 already does it, so branch need-{day}-2 was never made\n")
+    (Path(r3["staging"]) / "exit.json").write_text(json.dumps({"result": "success", "code": "exited", "status": "0"}))
+    asyncio.run(y.workers.complete(r3["id"]))
+    assert listed(tmp_path, capsys)[0].startswith(f"{day} 2 filed, last build {r3['id']}: ")
 
 
 def test_a_persons_room_files_a_need_about_its_own_files_only_never_one_naming_another_rooms(tmp_path):
@@ -138,7 +146,8 @@ def test_a_persons_room_files_a_need_about_its_own_files_only_never_one_naming_a
     assert needs.load(y.state) == [] and rec.lines == [] and not (y.memory.root / needs.FOLDER).exists()
     own = tmp_path / "rooms" / "her-room" / "work" / "inbox" / "m-3" / "lease.pdf"
     assert need(y, "her-room", "read my lease", f"Read {own} and ./inbox/m-3/lease.pdf: no text layer", "read a scanned PDF")["ok"]
-    assert need(y, "example-room", "read the notes", f"Read {other}: a scan", "read a scanned PDF")["folded"]     # the owner's room
+    theirs = tmp_path / "rooms" / "her-room" / "work" / "notes.md"
+    assert need(y, "example-room", "read the notes", f"Read {theirs}: a scan", "read a scanned PDF")["folded"]   # the owner's room
 
 
 def test_curates_rewrite_of_the_page_keeps_each_need_its_number_and_its_block(tmp_path, monkeypatch):
@@ -146,12 +155,15 @@ def test_curates_rewrite_of_the_page_keeps_each_need_its_number_and_its_block(tm
     day = need(y, "example-room", *ASK)["day"]
     fake = [{"n": i, "kind": "cut", "label": f"rule {i}", "edits": [["f", i, f"- rule {i}", ""]], "why": "w", "rows": 0,
              "evidence": "e", "saved": 10 - i} for i in (1, 2)]
-    fake[1]["needs"] = [1]                                     # a promotion's prerequisite moves with the number it names
+    fake[1]["needs"], fake[1]["why"] = [1], "it fits once 1 are applied"   # a prerequisite moves with the number it names
     monkeypatch.setattr(curate, "propose", lambda *a: (fake, [], {}))
+    took, real = [], curate.memory.daily_lock                  # the rewrite holds the needs' lock, so a need filed meanwhile waits
+    monkeypatch.setattr(curate.memory, "daily_lock", lambda p: took.append(p) or real(p))
     out = curate.rules(y.private, y.state, y.memory, False, time.time(), post=lambda p: {"ok": True})
-    assert [q["n"] for q in out["proposals"]] == [2, 3] and out["proposals"][1]["needs"] == [2]
+    assert [q["n"] for q in out["proposals"]] == [2, 3] and out["proposals"][1]["needs"] == [2] and took == [y.memory.daily]
     page = Path(out["file"]).read_text()
     assert "\n## 2. cut: rule 1 (-9 chars)\n" in page and "\n## 3. cut: rule 2 (-8 chars)\n" in page
+    assert "\nWHY: it fits once 2 are applied\n" in page and out["proposals"][1]["why"] == "it fits once 2 are applied"
     assert f"\n## 1. need: {ASK[2]}\n\nSTATE: filed, asked 1 time\n" in page and out["day"] == day
     assert [q["n"] for q in json.loads((y.state / curate.PROPOSED).read_text())["proposals"]] == [2, 3]
     assert need(y, "example-room", "post a reel", "no upload tool", "upload a video")["n"] == 4     # past every number of the day
@@ -165,3 +177,4 @@ def test_one_ability_said_twice_is_one_need_and_two_abilities_are_two():
     assert needs.same("see a picture in a post", "see the picture in a tweet's post")
     assert not needs.same("see a picture in a post", "upload a video") and not needs.same("read a scanned PDF", "send an email")
     assert not needs.same("", "see a picture")
+    assert needs.same("read a PDF", "read a scanned PDF from an email") and not needs.same("see", "see a picture")   # inside, 2+ words

@@ -265,5 +265,7 @@ drops = [
 # to fit. needs.py 217 (the record and the page's blocks, the fold, curate's numbering around the needs, a person room's
 # path check, the builder's brief, a builder's end read from its report), daemon.py 67 (the `need` tool, `yerk needs build`
 # through /control, the completion hook and its machine-room line), cli.py 26 (`yerk needs list|build|done`), words.py 9,
-# sample_item.moved 0 (to the), next.step 0 (and the test reads it back as plain).
-lines = 19097
+# mcp_server.py 9 (the tool), curate.py 2 (its page keeps the needs and their numbers). Its cold read raised it by 6, all
+# needs.py: a promotion's WHY ("once N are applied") renumbered with its list (3), a report that starts "no branch" built
+# nothing whatever PR it mentions (2), the builder told that every name in a test or a doc is a placeholder (1).
+lines = 19103
