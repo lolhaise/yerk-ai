@@ -5,7 +5,7 @@
 # when a part or a total passes its number here.
 
 [session_start]
-total = 88614
+total = 91614
 
 # Load order, most stable first, so the cached start of the prompt survives.
 # The first five parts are Claude Code's own (its default prompt, the built-in tools
@@ -14,10 +14,15 @@ total = 88614
 # Other tool entries: Claude Code's deferred-loading placeholder and other MCP servers' tools (web-ladder's).
 # Measured 2026-10-20 in each room's newest transcript (Claude Code 2.1.301): prompt 10,889, built-in tools 10,401, other entries 1,713.
 # No room sends a skill: every room starts with --setting-sources "" and no allowlist has Skill.
+# 2026-10-23, pictures-seen's cold read: Yerk AI's tools measured as `yerk map --wire` counts them (each entry as sent, the
+# work room's newest request shape; the daemon's Python 3.14 strips a docstring's indent, so measured there) at 9,978 for ten
+# tools before `seen`, over the 8,000 line since transcribe (840), voice_note (911) and remember's `said` and `source`
+# (1,656) came in with no raise (it was measured once at 7,333, from a shape days old), and 10,823 with `seen` (845), so
+# 11,000; no part could pay, so the total rose by the 3,000.
 [session_start.claude_code]
 claude_code_prompt = 11000
 builtin_tools = 10401
-yerk_tools = 8000
+yerk_tools = 11000
 deferred_tool_names = 1713
 skills = 0
 

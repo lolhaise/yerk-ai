@@ -28,9 +28,13 @@ with the originals kept under `backups/`; the index chunks every file again when
 - `yerk pictures backfill ROOM --root FOLDER` does the same for the pictures under a folder the room lists in rooms.toml
   (`read` or `also`), each sidecar beside its picture, cited and indexed under that folder as its other files are; a
   folder the room does not list, or one of Yerk's own, is refused in one line.
-- **Upgrading:** budgets.toml `[code] lines` 18,292 to 18,516, with a dated note; nothing else to edit. Each room has the
-  `seen` tool from its next process start. Then, with yerkd running, once per owner room: `yerk pictures backfill ROOM
-  --dry-run` to see what it would read, and the same without `--dry-run` to start it.
+- `yerk map --wire` measures a room's newest request shape, so a session resumed for days shows the tools it sends now.
+- **Upgrading:** budgets.toml, each with a dated note: `[code] lines` to 18,602; `yerk_tools` 8,000 to 11,000 (Yerk AI's
+  tools measured at 9,978 before `seen` and 10,823 with it); `mechanics` 3,600 to 3,700; the session `total` 88,514 to
+  91,614. Each room has the `seen` tool from its next process start. Then, with yerkd running, once per owner room:
+  `yerk pictures backfill ROOM --dry-run` to see what it would read, and the same without `--dry-run` to start it. For a
+  folder of older pictures, list it in the room's `also` (and in yerkd.toml's `[memory] also`, as every `also` is) or
+  `read`, restart yerkd, then the same with `--root FOLDER`.
 
 ### deploy-private
 
