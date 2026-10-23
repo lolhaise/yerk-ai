@@ -8,7 +8,7 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-23
 
-### taste-eval
+### taste-eval (#106)
 
 - PR 93 (judge-2) cut to its eval half; PR 93 is closed in favour of this one. `yerk eval taste [--cases P --controls P
   --rubric P --ledger P --sample N --cap S]` replays the taste judge over the owner's complaints and the replies he
@@ -23,7 +23,19 @@ with the originals kept under `backups/`; the index chunks every file again when
 - Left out of PR 93: the judge call after every reply to the owner (a `claude -p` call on the room's account, in a
   thread after the Stop hook), its `shadow` rows, the `taste_judge` room key and the morning diff's count of taste rows.
   No reply is judged as it is posted, so no reply costs a second model call.
-- **Upgrading:** budgets.toml [code] lines goes to 19055. rooms.toml takes no new key.
+- **Upgrading:** budgets.toml [code] lines goes to 19131. rooms.toml takes no new key.
+
+### model-account-pin (#103)
+- `/model` takes an account as well as a model, in one argument: `/model five` (or `/model 5`) puts the room on account
+  five, `/model five fable` (or `five/claude-fable-5-1`) on both, `/model fable` on the model as before, and
+  `/model default` clears both. As the owner types, Discord suggests every account with its order and whether it is
+  resting for the room's model, the models, and each account with each model; anyone else is offered nothing, so no
+  account name shows to the guild. Bare `/model` lists the accounts in the order tried and the models under the room's line.
+- The pinned account is tried first; a rest or a limit on it falls through in accounts.toml's order, every account out of
+  the pinned model runs the turn on the room's own model and says so, and the pin stays for the next turn, as before.
+  The typed `account` option still works (with it, the argument is a model alone), and takes the digit too.
+
+**Upgrading**: nothing to do; the next start registers `/model`'s argument as suggestions in place of its fixed list.
 
 ### person-room-parity (#101)
 
