@@ -8,7 +8,7 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-23
 
-### pictures-seen
+### pictures-seen (#97)
 
 - A picture sent to an owner room is findable later, the way its uploads and recordings are: in the same turn the room
   files what it read on it beside the picture as `NAME.seen.txt` (the new `seen` tool; the room already reads every
