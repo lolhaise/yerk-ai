@@ -19,6 +19,9 @@
   {
    "key": "cabin",
    "label": "the cabin",
+   "lat": 44.9,
+   "lon": -40.7,
+   "radius_m": 150,
    "todo": true
   }
  ]
