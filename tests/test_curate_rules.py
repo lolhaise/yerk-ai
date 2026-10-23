@@ -214,3 +214,11 @@ def test_a_condensation_takes_out_quotes_and_examples_never_a_reason_or_a_clause
     assert len(x) > curate.LONG and curate.condensed(x) == x.replace(quote, "").replace(f" {EX}", "")
     y = "- hand over text to paste: " + "One paste per message, alone, under the line or it splits, " * 10 + keep[0][1:] + "." + trail
     assert len(y) > curate.LONG and curate.condensed(y) == y
+
+
+def test_a_bullet_whose_only_colon_is_in_an_example_is_condensed_with_every_example_out():
+    """The live mom rulebook's line 72 shape: a hand-kept bullet's first colon is in its first example, and that example stayed."""
+    x = ("- What a guest asks here is an order to fill now, " + "the kitchen reads it as it comes and the bill waits for the end of the meal; " * 6
+         + '<example>Bounced, Oct 20 14:53: "I need the owner\'s word to change the menu."</example> '
+         + '<example>Bounced, Oct 20 14:54: "orders count as notes rather than requests".</example>')
+    assert len(x) > curate.LONG and curate.condensed(x) == memory.EXAMPLE.sub("", x) and "<example>" not in curate.condensed(x)

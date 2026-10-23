@@ -498,8 +498,8 @@ def part(kind: str, path: Path, text: str) -> int:
 
 
 def split(x: str) -> tuple[str, str, str]:
-    """A rule line as its `job: ` ("" on a hand-kept bullet), its words, and its filing's trailer, kept whole."""
-    t, m = memory.topic(x), TRAILER.search(x)
+    """A rule line as its `job: ` ("" on a hand-kept bullet, a colon in an example none), its words, and its filing's trailer, kept whole."""
+    t, m = memory.topic(memory.EXAMPLE.sub("", x)), TRAILER.search(x)
     said = (x[:m.start()] if m else x)[2:]
     head = f"{t}: " if said.startswith(f"{t}: ") else ""
     return head, said[len(head):], m[0] if m else ""
