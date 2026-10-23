@@ -71,6 +71,20 @@ def test_the_recall_bench_is_a_ratchet_a_drop_holds_until_a_dated_note_names_it(
     assert rec["slack"] == 1 and all(re.match(r"\d{4}-\d\d-\d\d: \d+ to \d+, \S", n) for n in rec["drops"])
 
 
+def test_once_the_notes_best_leaves_the_window_a_97_is_refused_and_the_next_honest_run_passes():
+    """The series as the first run on this code left it: 116, then 98, 98, 99 and 104, so the four runs before the next one
+    no longer hold the 116 a "116 to 98" note names. A faked 97 passed on that note while 116 was in the window; from here
+    it is refused, as 102 is, and the next honest run at 103 or more passes."""
+    def run(top_k: int) -> dict:
+        return {"top_k": top_k, "k": 6, "questions": 164}
+    series, note = [run(116), run(98), run(98), run(99), run(104)], ["2026-10-22: 116 to 98, the import"]
+    assert memory.ratchet([*series[:-1], run(97)], note) is None                       # 116 in the window: the note's floor
+    assert memory.ratchet([*series, run(97)], note) == ("top 6 fell to 97 of 164 from 104 in the 4 runs before, and no dated "
+                                                        "note in budgets.toml [recall] drops names it")
+    assert memory.ratchet([*series, run(102)], note)
+    assert [memory.ratchet([*series, run(n)], note) for n in (103, 104, 105)] == [None, None, None]
+
+
 @pytest.mark.skipif(not os.environ.get("YERK_PRIVATE"), reason="the real index exists only on the box")
 def test_the_real_index_holds_the_recall_bench_ratchet():
     """Where the install's index, question set and series are (the box: `yerk deploy`'s fast tests), the bench runs on the code
