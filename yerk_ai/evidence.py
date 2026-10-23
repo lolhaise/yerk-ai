@@ -446,9 +446,10 @@ def check_sheet(reply: str, ev: Evidence) -> list[tuple[str, str]]:
 # read). The prompt hook's recall block is not a call: the replay's misses of 2026-10-21 (who said to go ahead, where
 # the owner was) all had one. A question, a hedge or a proposal is no claim, and since 2026-10-23 (said-or-noted) neither is a
 # sentence about the owner ("you", the name the install gives the owner's words) or the room, or one the room marks as its own note:
-# eight of the first day's twelve rows told the owner what he had said or wanted, his words being the prompt.
+# eight of the first day's twelve rows told the owner what they had said or wanted, their words being the prompt. Nor is a
+# bare "told", only , . ; ) or the end after it ("286 posted, Sam told, 288 named"): the owner's own act in the passive, no one's words.
 PERSON = re.compile(r"\b([Yy]ou|[Hh]e|[Ss]he|[A-Z][a-z]+)\s+(?:(?:never|already|actually|just|also|still|even)\s+)?"
-                    r"(?:said|says|told|tells|asked|asks|decided|wants?|wanted|knows?|knew|went\s+to|(?:was|were)\s+(?:on|in|at)"
+                    r"(?:said|says|told(?!\s*(?:[,.;)]|$))|tells|asked|asks|decided|wants?|wanted|knows?|knew|went\s+to|(?:was|were)\s+(?:on|in|at)"
                     r"|(?:does|did|do)(?:n['’]?t|\s+not)\s+(?:want|know|say|ask|decide))\b")
 NOT_PEOPLE = frozenset("the this that these those it its there here what which who whoever nobody everyone everybody someone "
                        "somebody anyone anybody one each both all most some none nothing something everything anything we they "

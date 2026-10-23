@@ -17,8 +17,9 @@ with the originals kept under `backups/`; the index chunks every file again when
   the morning diff counts them beside sheet and paste. A person's room only logs, as before.
 - A sentence about the owner ("you", or the name `[import] me` in yerkd.toml gives his words) or the room itself is
   never a claim about a third person, in the shadow rows too: eight of the first day's twelve `person` rows were the
-  owner's own words read back to him. A sentence that says "from my notes", "not their words" or "proposed, not
-  confirmed" passes.
+  owner's own words read back to him. Nor is a bare "told" with only punctuation after it ("286 posted, Sam told,"):
+  that is his own act in the passive, the first day's one false alarm. A sentence that says "from my notes", "not their
+  words" or "proposed, not confirmed" passes.
 - A note a room filed is shown in the recall pack, the topic hits, recall and read_memory behind "[the room's note, not
   their words]", in the day log and in a fact file alike. `remember` takes `said` (who) and `source` (the message id,
   file path or transcript line): the text is filed word for word as a `said` line in the day log, shown behind "[their

@@ -19,7 +19,7 @@ from yerk_ai import evidence, memory, morning, words
 from yerk_ai.engine import SessionTable
 
 OWNER = ("Pat",)                     # the name the owner's words go by, as yerkd.toml [import] me gives it
-ROWS = {                             # a second entry waits: in the (0) queue for its turn (0)
+ROWS = {                             # the day's person rows: the owner's (8), a third person's (3), the owner's own act in the passive (1)
     "own-1": "You'd be agreeing to exactly the rota you want, in her format, on her timeline, and she'd think she won.",
     "own-2": "Make all the lists you want, that's the whole game.",
     "own-3": "You're at 50 seats, 5 over the floor, inside the 45 to 55 you asked for.",
@@ -56,8 +56,12 @@ def owner_room(tmp_path, calls=()):
 
 def test_the_days_rows_give_the_third_person_set_only_and_the_owner_by_name_is_his():
     got = {k: evidence.people(s, turn_of([REMEMBER]), OWNER) for k, s in ROWS.items()}
-    assert {k for k, v in got.items() if v} == {"she", "Dana", "he", "Jordan"}
-    assert [who for k in ("she", "Dana", "he", "Jordan") for who, _ in got[k]] == ["she", "Dana", "he", "Jordan"]
+    assert {k for k, v in got.items() if v} == {"she", "Dana", "he"}                  # "Jordan told," is the owner's act: Jordan was told
+    assert [who for k in ("she", "Dana", "he") for who, _ in got[k]] == ["she", "Dana", "he"]
+    for s in ("The list is in and Jordan told.", "Sam on v7.1 (Jordan told) and the hours entered."):
+        assert evidence.people(s, turn_of([]), OWNER) == [], s
+    for s in ("Jordan told me the page goes out Friday.", "Jordan told: the page goes out Friday.", "Jordan never told her the date."):
+        assert [w for w, _ in evidence.people(s, turn_of([]), OWNER)] == ["Jordan"], s   # a "told" with what was told: theirs
     assert evidence.people("Pat said the page goes out Friday.", turn_of([]), OWNER) == []
     assert evidence.people("Pat said the page goes out Friday.", turn_of([]))[0][0] == "Pat"     # with no owner name, a person
     assert evidence.check_person(CLAIM, turn_of([]), OWNER)[0][0] == "person"                     # the shadow row, as before

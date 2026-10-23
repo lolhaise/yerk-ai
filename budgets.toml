@@ -200,5 +200,6 @@ drops = [
 # `source`, and each owner room's upload inbox a recall root (memory.py, 31; memindex.py, 9: its text kinds only; the
 # doctor skips an inbox not made yet), the tool's two fields (mcp_server.py, 4) (never a wrong
 # answer to the owner), not folded to fit; 18,291 merged on recall-ratchet (#87, 37), no line
-# as (plain() text with `one` more #00'line `for` the check while a second entry).
-lines = 18291
+# shared (settings() takes its `uploads` and #87's `imports` on the two lines each touched). Its cold read raised it by 1:
+# a bare "told" ("286 posted, Sam told,") is the owner's own act in the passive, never a claim (evidence.py, PERSON).
+lines = 18292
