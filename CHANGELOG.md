@@ -8,7 +8,7 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-23
 
-### status-card (#PR)
+### status-card (#105)
 
 - `yerk status` and the room's `/status` show each account the way the box's own card does, two lines each, listed in
   accounts.toml order: `- ① 5h 7% · wk ⚠️93% · Fable ⚠️100%`, then `- ↻ 5h 5p · wk 12a · 💳 Nov 8`. Account one to
