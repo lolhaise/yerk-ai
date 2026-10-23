@@ -5,7 +5,7 @@
 # when a part or a total passes its number here.
 
 [session_start]
-total = 88514
+total = 88614
 
 # Load order, most stable first, so the cached start of the prompt survives.
 # The first five parts are Claude Code's own (its default prompt, the built-in tools
@@ -40,8 +40,11 @@ skills = 0
 # the work room's rulebook at 12,696 against 10,850 (13,518 at 11:1x; fifteen lines gone). `rules` to 12,500 and
 # `rulebook` to 14,000, the total up by the same 614 + 3,150. From here a cut is said in the machine room at session start
 # and `yerk doctor` reads red the day a part passes its line.
+# 2026-10-23: pictures-seen's cold read, the owner in their own photo (a person in a picture the owner
+# sends in his own room is him unless its own text says otherwise) took the mechanics to 3,648, so 3,700; no part could
+# pay, the six rooms' parts measured as on Oct 22, so the total rose by the 100.
 [session_start.appended]
-mechanics = 3600
+mechanics = 3700
 persona = 11800
 rulebook = 14000
 room_voice = 5500
@@ -212,5 +215,6 @@ drops = [
 # the pending list, the backfill brief), daemon.py (79: the seen tool, the backfill a batch at a time, one chain a room,
 # its machine-room line), cli.py (25: `yerk pictures backfill`), memory.py (12: the mark), room.py (10: the Stop rule), mcp_server.py (9),
 # words.py (10), workers.py (4: `bind`, `more`), memindex.py (1). 18,544 merged on deploy-private (#95), no line shared.
-# Back as plain text with one 0: more line for the check while a second entry waits in the queue (for.its _turn).
-lines = 18548
+# Its cold read raised it by 4: a sidecar line longer than a recall cut keeps its mark in front (memory.py _cut); then by 2,
+# case before the next run starts the example `note` says the sample item moved to (the_next.step 0, and.the 0).
+lines = 18550

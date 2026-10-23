@@ -204,7 +204,8 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         """In an owner's room, after you Read a picture sent to you and before your answer: file what you read on it, so a
         later recall finds it. `path` its saved path from the [attachment] line; `text` every word on it, verbatim, in
         reading order (a chat screenshot keeps who said what as shown), "" if none; `shows` one or two lines of what it shows,
-        a person named only by the picture's own text, else "a man" or "a woman". Saved beside it as NAME.seen.txt."""
+        a person in it "the owner" unless its own text says otherwise, anyone else named only by that text, else "a man" or
+        "a woman". Saved beside it as NAME.seen.txt."""
         return json.dumps(await daemon.tool_seen(caller_room(ctx), path, text, shows))
 
     @mcp.tool()

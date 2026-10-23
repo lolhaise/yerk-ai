@@ -67,8 +67,9 @@ def brief(room: str, pics: list[Path], tz: tzinfo, n: int, of: int) -> str:
             "- line 1: the first line given above, copied exactly;\n"
             "- then every word visible on the picture, verbatim, in reading order, its line breaks kept; a screenshot of a chat "
             f"keeps who said what exactly as shown; a word you cannot make out is [unreadable]; \"{NONE}\" when it has none;\n"
-            f"- then one or two lines starting \"{SHOWS}\": what the picture is, in plain words. Name a person only by a name the "
-            "picture's own text gives them; anyone else is \"a man\", \"a woman\" or \"a person\". Never guess.\n"
+            f"- then one or two lines starting \"{SHOWS}\": what the picture is, in plain words. A person in it is \"the owner\", "
+            "since they sent it, unless the picture's own text says otherwise; anyone else is named only by a name the picture's "
+            "own text gives them, else \"a man\", \"a woman\" or \"a person\". Never guess.\n"
             "Tick the picture's TASKS.md row once its sidecar is written. Write nothing else in the room's folders and change no "
             "picture. A picture that will not open gets no sidecar: name it in your report with why.\n"
             "REPORT.md's first line: \"N of M filed\", then one line per picture that was not.\n")

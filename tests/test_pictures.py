@@ -14,7 +14,8 @@ from zoneinfo import ZoneInfo
 
 from test_remember import daemon
 
-from yerk_ai import cli, memory, pictures, workers, words
+from yerk_ai import cli, context, mcp_server, memory, pictures, shape, workers, words
+from yerk_ai.config import budgets
 from yerk_ai.daemon import ConsoleChannel
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"\0" * 32
@@ -87,6 +88,23 @@ def test_an_owner_room_files_a_picture_it_was_sent_and_a_persons_room_files_none
             "ok": False, "error": words.SEEN_NOT_HERE.format(name=p.name)}
     assert asyncio.run(y.tool_seen("example-room", str(mine), WORDS, " ")) == {"ok": False, "error": words.SEEN_NO_SHOWS}
     assert "mcp__yerk__seen" in y.spec_for("example-room").settings["permissions"]["allow"]
+
+
+def test_a_person_in_a_photo_the_owner_sends_in_his_own_room_is_the_owner_and_no_other_name_is_guessed(tmp_path):
+    """A photo the owner sends in an owner room that shows a person shows the owner unless the picture's own text
+    says otherwise, so its `shows` line says "the owner", never "a man"; anyone else is named only by the picture's text.
+    One mechanics line where `seen` is, the tool's own description and the backfill brief say the same."""
+    text = context.MECHANICS.read_text().strip()
+    line = next(x for x in text.splitlines() if "`seen`" in x)
+    assert "in an owner room `seen` a picture, its `shows` calling a person in it the owner unless its own text says otherwise" in line
+    assert shape.offenses(line) == [] and context.chars(text) < budgets()["session_start"]["appended"]["mechanics"]
+    y = daemon(tmp_path)
+    tools = {t.name: t for t in asyncio.run(mcp_server.build(y, y.port, y.hook).list_tools())}
+    said = " ".join(str(tools["seen"].description).split())
+    assert 'a person in it "the owner" unless its own text says otherwise, anyone else named only by that text, else "a man"' in said
+    brief = " ".join(pictures.brief("example-room", [], ZoneInfo("UTC"), 1, 1).split())
+    assert ('A person in it is "the owner", since they sent it, unless the picture\'s own text says otherwise; anyone else is named '
+            "only by a name the picture's own text gives them" in brief and "Never guess." in brief)
 
 
 def test_a_picture_read_and_not_filed_bounces_once_in_an_owner_room_only(tmp_path):

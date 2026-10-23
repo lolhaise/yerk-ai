@@ -169,7 +169,7 @@ def test_claude_codes_parts_as_the_rooms_send_them_fit_their_lines_and_what_is_l
     assert all(sent <= line for sent, line in rows.values()), out
     assert all(line <= sent * 1.02 for name, (sent, line) in rows.items() if name != "Yerk AI's tools"), rows
     s = b["session_start"]
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 88514
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 88614
 
 
 # The largest room rulebook, the room's own text only since PR 47, across the six rooms: the work room's, read as session
@@ -189,7 +189,7 @@ def test_the_rulebook_line_keeps_about_1000_over_the_largest_room_text_and_what_
     doctor's fit check reads red the day a part passes its line."""
     s = budgets()["session_start"]
     assert 900 <= s["appended"]["rulebook"] - LIVE_RULEBOOK <= 1400 and s["appended"]["rules"] == 12500
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 88514
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 88614
     private = tmp_path / "private"
     shutil.copytree(EXAMPLE_PRIVATE, private)
     (private / "rulebook.md").write_text("r" * (LIVE_RULEBOOK - 1) + "\n")
