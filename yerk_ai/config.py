@@ -225,6 +225,26 @@ def pinned(state: Path, name: str, names: list[str]) -> str:
     return v if v in names else ""
 
 
+DIGITS = ("zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine")
+
+
+def account_named(text: str, names: list[str]) -> str:
+    """The account `text` names: its name in any case, else its one digit (5 for five, as the box says cli 5); "" for none."""
+    t, by = text.strip().lower(), {n.lower(): n for n in names}
+    digit = DIGITS[int(t)] if len(t) == 1 and t in "0123456789" else ""     # "²".isdigit() holds and int() refuses it
+    return by.get(t) or by.get(digit, "")
+
+
+def account_and_model(text: str, listed: dict[str, str], names: list[str]) -> tuple[str, str]:
+    """/model's one argument as (account, model): an account by name or digit, then a model or nothing ("five", "5 fable",
+    "five/claude-fable-5-1"). What reads as a model today (an alias, a full id, default) stays one: ("", text)."""
+    t = text.strip()
+    if t.lower() in listed or t in listed.values() or t.lower() == "default":
+        return "", t
+    head, _, rest = t.replace("/", " ", 1).partition(" ")
+    return (acct, rest.strip()) if (acct := account_named(head, names)) else ("", t)
+
+
 # Private files are created WITH their mode, never created then chmod-ed (after the owner's
 # tools/safe_write.py): between a create and a chmod the file sits at the umask's mode, and on a box
 # with umask 0002 that is a group-writable session table or token file for a moment that only has to
