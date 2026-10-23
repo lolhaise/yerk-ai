@@ -521,9 +521,9 @@ def cue(line: str, corpus: list[str], n: int = 3) -> list[str]:
 
 def move_held(s: Settings, books: dict[str, str]) -> int:
     """Once, at yerkd's first start with rules-on-demand: OVERFLOW's rules appended to TOPIC_RULES in their order (one there already
-    by its job and message, from a start cut off, not twice), each marking its job's line before it superseded, each kept to the
-    rooms `scoped` gives the room that filed it; then OVERFLOW renamed to OVERFLOW.moved beside it, the backup, so no later start
-    finds one, and one log line. The number of rules moved."""
+    by its job and message, from a start cut off, not twice), each marking its job's line before it superseded, each kept to the rooms
+    a [rooms: ...] mark already on its line names (the owner's hand edit before the move), else to those `scoped` gives the room that
+    filed it; then OVERFLOW renamed to OVERFLOW.moved beside it, the backup, so no later start finds one, and one log line. The count."""
     held, path = s.root / OVERFLOW, s.root / TOPIC_RULES
     if not held.is_file():
         return 0
@@ -535,7 +535,7 @@ def move_held(s: Settings, books: dict[str, str]) -> int:
                 continue
             at, job, tm = f"{cite(s, path)}:{len(out) + 1}", f"- {topic(x)}: ", TRAILER.search(x)
             out = [mark(y, at) if y.startswith(job) and mentions.OLD not in y else y for y in out]
-            out.append(placed(x, scoped(x, tm[1].split(",")[0], books, corpus) if tm else []))
+            out.append(placed(x, sorted(sc) if (sc := scope(x)) else scoped(x, tm[1].split(",")[0], books, corpus) if tm else []))
         write_private(path, "\n".join(out) + "\n")
         os.replace(held, held.with_name(OVERFLOW + ".moved"))
     log.info("rules: %d rule(s) moved from %s to %s, each loading when its topic comes up; the old file kept as %s.moved",
@@ -633,9 +633,9 @@ def rule(s: Settings, room: str, mid: str, job: str, text: str, cap: int = 0, lo
     from on its next message when it changes (context.news), shared so read_memory reads it anywhere. One line with its
     room, message and time; the job's live line before it, in RULES or TOPIC_RULES, is marked superseded by the new one, never
     deleted. A filing that would take the rules part past `cap` takes the examples out of its lines, newest first and its own
-    first, until the part is HEADROOM under it (`stripped`); with no room even then, RULES stays as it was and the line goes to
-    TOPIC_RULES (`topic`), loaded on a message naming its topic (context.topics) in the rooms `scoped` keeps it to (`books`: room
-    -> its rulebook's text), so a new rule never pushes a proven one out of a session start. A rule's own words are never cut.
+    first, until the part is HEADROOM under it (`stripped`); with no room even then, the line goes to TOPIC_RULES (`topic`), loaded on a
+    message naming its topic (context.topics) in the rooms `scoped` keeps it to (`books`: room -> its rulebook's text), and RULES changes
+    only by its job's older line marked, so a new rule never pushes a proven one out of a session start. A rule's own words are never cut.
     Each strip and the topic filing is a line in the room's day log (`log`)."""
     job, body = one_line(job).strip(" :").lower(), one_line(text)
     if not job or not body:
@@ -661,7 +661,7 @@ def rule(s: Settings, room: str, mid: str, job: str, text: str, cap: int = 0, lo
                 if mentions.OLD not in lines[i] and EXAMPLE.search(lines[i]):
                     stripped.append(topic(lines[i]))
                     lines[i] = EXAMPLE.sub("", lines[i])
-            if over and size() > cap - HEADROOM:      # no room even so: nothing in RULES changes, the rule loads on demand
+            if over and size() > cap - HEADROOM:      # no room even so: the rule loads on demand, RULES keeps all but its job's line
                 stripped.clear()
                 k = next((i + 1 for i, x in enumerate(have) if x.startswith((f"{head}{body} (", f"{head}{body} [rooms: "))
                           and mentions.OLD not in x), 0)      # a retried call
@@ -671,6 +671,9 @@ def rule(s: Settings, room: str, mid: str, job: str, text: str, cap: int = 0, lo
                     have = [mark(x, f"{cite(s, tier)}:{len(have) + 1}") if x.startswith(head) and mentions.OLD not in x else x for x in have]
                     write_private(tier, "\n".join(have := [*have, placed(new, rooms)]) + "\n")
                     k = len(have)
+                    if gone:                           # its job's older line in RULES, superseded by this one: no session start sends it
+                        old = path.read_text().splitlines()
+                        write_private(path, "\n".join(mark(x, f"{cite(s, tier)}:{k}") if i in gone else x for i, x in enumerate(old)) + "\n")
             else:
                 write_private(path, "\n".join(lines) + "\n")
                 if any(x.startswith(head) and mentions.OLD not in x for x in have):     # its topic rule, replaced by this line
@@ -683,8 +686,8 @@ def rule(s: Settings, room: str, mid: str, job: str, text: str, cap: int = 0, lo
             log.capture(room, f"{mid}.h{hashlib.sha1(body.encode()).hexdigest()[:8]}", "yerk",
                         words.RULE_TOPIC_LOG.format(job=job, file=TOPIC_RULES, cap=cap, triggers=words.either(cues)), when=at)
     if k:
-        return {"ok": True, "job": job, "cite": f"{cite(s, tier)}:{k}", "replaced": [], "topic": True, "triggers": cues, "rooms": rooms,
-                **({"again": True} if again else {})}
+        return {"ok": True, "job": job, "cite": f"{cite(s, tier)}:{k}", "replaced": [] if again else [f"{cite(s, path)}:{i + 1}" for i in gone],
+                "topic": True, "triggers": cues, "rooms": rooms, **({"again": True} if again else {})}
     return {"ok": True, "job": job, "cite": f"{cite(s, path)}:{n}", "replaced": [f"{cite(s, path)}:{i + 1}" for i in gone],
             **({"stripped": stripped} if stripped else {})}
 

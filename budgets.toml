@@ -262,4 +262,6 @@ drops = [
 # never applied), context.py 44 (the per-message topic block once a session, the rulebooks a scope reads, the rides `yerk map`
 # shows), daemon.py 27 (the notice, the hook's ride, the reset at a compaction, the move at start and its machine-room line),
 # memindex.py 10 (the stem and rarity rules lifted out to be shared), words.py 8, cli.py 5, doctor.py 4, hooks.py 3.
-lines = 19047
+# Its cold read, 3 more in memory.py: a topic filing marks its job's older line in rules.md superseded, as its docstring said,
+# where both stayed live; the move's hand-typed [rooms: ...] mark is one changed line.
+lines = 19050

@@ -112,7 +112,63 @@ def test_the_overflow_moves_to_the_topic_rules_once_with_its_backup_and_one_log_
     assert y.move_held() == line and (y.memory.root / memory.TOPIC_RULES).read_text().splitlines() == tier
 
 
-TILL = "- close the till: Count the till twice before closing, since one count misses a coin. (example-room, 2026-10-21 08:00:00+00:00) [m:1010]"
+def test_a_rooms_mark_typed_on_a_held_rule_is_kept_through_the_move(tmp_path):
+    """Second entry waits in the queue for its turn and the last (part closes: "the case before the", next-run-starts the): example
+    [rooms: ...] mark typed on its line in rules-overflow.md before yerkd's first start is the scope the move gives it, put before
+    its trailer, where `scoped` would make it every room's; a line with no mark still gets `scoped`'s."""
+    y = daemon(tmp_path)
+    fill(y, 3000)
+    held = y.memory.root / memory.OVERFLOW
+    held.write_text(f"# Rules held: past the rules file's cap, in no room\n\n{WIDGET} [rooms: {A}]\n{HALL}\n")     # typed after its trailer
+    assert memory.scoped(WIDGET, A, context.books(y.private, y.room_confs), [WIDGET, HALL]) == []           # its words: every room's
+    assert y.move_held()
+    assert (y.memory.root / memory.TOPIC_RULES).read_text().splitlines() == [*memory.TOPIC_HEAD, memory.placed(WIDGET, [A]), HALL]
+    for room, sid in ((A, "sid-a"), (FAMILY, "sid-f")):
+        start(y, room, sid)
+    assert memory.placed(WIDGET, [A]) in said(y, "sid-a", "draft the widget memo")
+    assert context.TOPICAL not in said(y, "sid-f", "draft the widget memo")           # her room reads A's rulebook, and still not
+
+
+def test_a_person_room_never_reads_the_topic_rules_file_whole(tmp_path):
+    """rules-topics.md is private, as rules-overflow.md was: the owner's rooms read it whole; a person's room (the family room) is
+    refused it by read_memory, recall drops its lines for her (memory.allowed_text, the filter every recall hit passes), and in her
+    messages only a topic rule for every room, or one kept to her room, ever rides."""
+    y = daemon(tmp_path)
+    fill(y, y.budgets["session_start"]["appended"]["rules"] - 50)
+    assert rule(y, A, "Open a widget memo on its order number, since the buyer files by it.", "write a widget memo")["topic"]
+    tier = y.memory.root / memory.TOPIC_RULES
+    assert memory.file_class(tier) == ("private", "") and tier.stat().st_mode & 0o777 == 0o600
+    topics(y, kept := memory.placed(WIDGET, [A]), HALL)
+    whole = asyncio.run(y.tool_read_memory(A, memory.TOPIC_RULES, 1, 50))
+    assert whole["ok"] and kept in whole["text"] and HALL in whole["text"]
+    assert asyncio.run(y.tool_read_memory(FAMILY, memory.TOPIC_RULES, 1, 50)) == {
+        "ok": False, "error": f"{memory.TOPIC_RULES} is not readable from room {FAMILY}: its class keeps it to the owner's rooms"}
+    assert memory.allowed_text(y.reader(FAMILY), tier, text := tier.read_text()) is None and memory.allowed_text(y.reader(A), tier, text) == text
+    start(y, FAMILY, "sid-f")
+    block = said(y, "sid-f", "book the example hall and write the widget memo")
+    assert HALL in block and kept not in block and "on its order number" not in block
+
+
+def test_a_topic_filing_supersedes_its_jobs_older_line_in_the_rules_file(tmp_path):
+    """Cold read: a correction filed as a topic rule left its job's older line live in rules.md, so every session start sent the
+    old rule and a message on its topic the new one beside it, "as binding". The older line is marked superseded by the topic
+    rule's cite (the docstring's "in RULES or TOPIC_RULES"), the news says it was replaced, and a retried call marks nothing."""
+    y = daemon(tmp_path)
+    was = "- write a widget memo: Open a widget memo on its date. (example-room, 2026-10-20 09:00:00-04:00) [m:m-6]"
+    path = fill(y, y.budgets["session_start"]["appended"]["rules"] - 50, (was,))
+    n, before = len(path.read_text().splitlines()), path.read_text().splitlines()
+    start(y, B, "sid-b")
+    body = "Open a widget memo on its order number, never its date, since the buyer files every memo by its order number and a dated one sits unread."
+    r = rule(y, A, body, "write a widget memo")
+    assert r["topic"] and r["cite"] == "tree/rules-topics.md:3" and r["replaced"] == [f"tree/rules.md:{n}"]
+    assert path.read_text().splitlines() == [*before[:-1], memory.mark(was, "tree/rules-topics.md:3")]
+    assert "on its date" not in context.rules_text(y.room_confs[A], path)[0]        # no session start sends the old rule
+    block = said(y, "sid-b", "draft the widget memo")
+    assert f"replaced in rules.md: {was.removeprefix('- ')}" in block and f"{context.TOPICAL}\n- write a widget memo: {body}" in block
+    assert rule(y, A, body, "write a widget memo") == {**r, "replaced": []} and path.read_text().splitlines()[-1] == memory.mark(was, "tree/rules-topics.md:3")
+
+
+TILL ="- close the till: Count the till twice before closing, since one count misses a coin. (example-room, 2026-10-21 08:00:00+00:00) [m:1010]"
 SHOP = "- open the shop: Unlock at nine, since the first guest comes at ten past. [rooms: example-room] (example-room, 2026-10-21 08:05:00+00:00) [m:1011]"
 HALLR = "- book the example hall: Book the Example Hall a week ahead, since it fills. (example-room, 2026-10-21 09:30:00+00:00) [m:2001]"
 NOTE = "- write a note: Keep a note free of em dashes, since he reads one as a machine's. (example-room, 2026-10-21 09:40:00+00:00) [m:2002]"

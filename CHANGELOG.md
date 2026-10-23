@@ -32,6 +32,10 @@ with the originals kept under `backups/`; the index chunks every file again when
 - `yerk map ROOM` shows the topic rules' count and size and which rode on the room's last 20 messages; `yerk doctor`'s fit
   check reads `rules-topics.md`: a topic rule too long for the per-message rules part or kept to no room on file, and an
   overflow not moved yet.
+- A topic rule filed as a correction marks its job's older line in the rules file superseded, so a session start no longer
+  sends the old rule beside the new one.
+- A `[rooms: NAME,...]` mark typed on a line of `rules-overflow.md` before that first start is kept by the move, so the owner
+  can keep a held rule whose words are every room's to one room.
 - **Upgrading:** nothing to edit. budgets.toml: `[code] lines` (a dated note). The move runs by itself at the next start.
 
 ### person-room-parity (#101)
