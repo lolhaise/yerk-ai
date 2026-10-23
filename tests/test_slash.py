@@ -392,9 +392,12 @@ def test_the_real_methods_keep_their_blocking_work_off_the_loop(y, monkeypatch):
     assert said[1][1].startswith(f"{words.DONE} next reply: Sonnet 5.5")
 
 
-def test_status_is_the_phone_width_card(y):
+def test_status_is_the_phone_width_card(y, monkeypatch):
+    asked, real = [], y.status_now
+    monkeypatch.setattr(y, "status_now", lambda payload, *a: asked.append(payload) or real(payload, *a))
     dc, _, _ = wire(y)
     said = slash(dc, "status")
+    assert asked == [{"live": True}]                                       # the room's /status asks the meters now
     lines = said[-1][1].splitlines()
     assert said[-1][2] and lines[0] == f"{words.PLAIN} {words.RUNNING_ROOMS.format(rooms=ROOM)}"
     assert all(words.width(x) <= words.PHONE for x in lines)

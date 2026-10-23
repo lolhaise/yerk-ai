@@ -184,9 +184,14 @@ def test_live_meters_put_five_accounts_on_the_card_in_the_box_cards_shape_with_t
     again = status.collect(tmp_path / "private", tmp_path, accounts, cool, Ledger(tmp_path / "ledger.sqlite"),
                            now=NOW + 59, units=set, timers=Timers({}), live=True, read_one=lambda a: asked.append(a.name))
     assert len(asked) == 5 and again["accounts"] == s["accounts"]           # under a minute: no second Claude Code
-    status.collect(tmp_path / "private", tmp_path, accounts, cool, Ledger(tmp_path / "ledger.sqlite"), now=NOW + 61,
-                   units=set, timers=Timers({}), live=True, read_one=lambda a: asked.append(a.name) or TANK[a.name])
+    cool.set("five", "rate_limit", NOW + 2 * H)                             # the first in order rests: the next free one
+    later = status.collect(tmp_path / "private", tmp_path, accounts, cool, Ledger(tmp_path / "ledger.sqlite"), now=NOW + 61,
+                           units=set, timers=Timers({}), live=True, read_one=lambda a: asked.append(a.name) or TANK[a.name])
     assert len(asked) == 10 and oct(os.stat(tmp_path / usage.FILE).st_mode & 0o777) == "0o600"
+    assert "- next turn tries ② first" in status.card(json.loads(json.dumps(later)), NOW + 61)
+    two = lambda m: status.account_lines([{"name": "two", "meter": m, "rests_until": None, "bill": None}], NOW)[0]  # noqa: E731
+    assert two(live(100, H, 50, 50 * H)) == f"{words.NOT_DONE} ② 5h {words.WARN}100% · wk 50%"     # a full window, no rest: red
+    assert two(live(79, H, 80, 50 * H)) == f"- ② 5h 79% · wk {words.WARN}80%"                        # the warning sign from 80
 
 
 def test_a_failed_live_read_shows_the_streams_reading_with_its_age_and_json_says_why(tmp_path):
@@ -296,6 +301,7 @@ def test_a_reset_is_read_in_its_zone_and_rolls_into_the_next_year_and_a_bill_day
     assert usage.reset_at("5:10pm (America/Toronto)", eve) == datetime(2026, 12, 30, 17, 10, tzinfo=ZoneInfo("America/Toronto")).timestamp()
     assert usage.reset_at("11am (America/Toronto)", eve) == datetime(2026, 12, 31, 11, tzinfo=ZoneInfo("America/Toronto")).timestamp()
     assert usage.reset_at("11:59pm (America/Toronto)", eve) == datetime(2026, 12, 31, tzinfo=ZoneInfo("America/Toronto")).timestamp()
+    assert usage.reset_at("Jan 2, 3am (Asia/Tokyo)", eve) == datetime(2027, 1, 2, 3, tzinfo=ZoneInfo("Asia/Tokyo")).timestamp()
     assert usage.reset_at("soon", eve) is None and usage.parse("Total cost: $0.0000\n", eve) == {}
     day = lambda *t: datetime(*t).timestamp()                                  # noqa: E731
     assert status.next_bill(8, day(2026, 11, 8, 15)) == day(2026, 11, 8)        # the day itself: today
