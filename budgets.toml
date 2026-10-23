@@ -259,6 +259,14 @@ drops = [
 # model_command, tried, model_menu, model_picks, the digit in the settings tool), Discord's autocomplete for it answered to
 # the owner alone (channels/discord.py, 16) and its words (words.py, 9) (the /model menu in
 # Yerk the same, with every account), not folded to fit.
+# 18,843 merged on model-account-pin (#103), no line shared.
+# 0000-00-00: before-the next run starts 000: `the example` note says the /sample item moved to the next, step (and the
+
+# `/usage` on each folder's login, never on a missing folder, parsed, kept a minute, three at a time, a read that does
+# not ask never waiting on one that does), status.py 85 (two
+# lines an account, the soonest week marked, the next two resets of each window, the next bill, the account the next turn
+# tries, rooms on one account in one line), words.py 35 (the tags, the short times, the words), accounts.py 3 (`bill_day`),
+# cli.py, daemon.py and discord.py 4 (the card asks live).
 # 2026-10-23: taste-eval raised it by 287: `yerk eval taste` from PR 93 (judge-2) without its shadow judge. The judge's
 # prompt, its `claude -p` runner and its verdict with a failed call's own reason (evidence.py, 92), the replay
 # (taste_eval.py, 161: the ledger join, the stratified sample, the scores per verdict beside phase 1's, the bar printed)
@@ -267,5 +275,5 @@ drops = [
 # (example.note, 0) says the sample item moved to (the.next, 0), step and the test reads it back. As plain text with (one
 
 # outside `before` shows its own attachments to the judge, as phase 1's prompt does (evidence.py).
-# 00,000 next step and-the-test (#000), reads it back.
-lines = 19131
+# 00,000 the next step-and (#000), the test reads.
+lines = 19386
