@@ -254,6 +254,11 @@ def clock(epoch: float, now: float | None = None) -> str:
     return t.strftime("%H:%M") if t.date() == today.date() else t.strftime("%a %H:%M")
 
 
+def rest(until: float | None) -> str:
+    """An account's rest as /model says it: free, or resting until its end."""
+    return RESTING.format(until=clock(until)) if until else FREE
+
+
 # notices
 # a notice: a short state line, then the reason on its own line (phone width, one look)
 NOT_SENT, NOT_SENT_AGAIN = "not sent: {name}\n{why}", "not resent: {name}\n{why}; ask again"
@@ -453,12 +458,16 @@ CARRIED, RECAPPED = "the same session goes on", "a new session starts, with a re
 OWNER_ONLY = "not changed: this room keeps the model, thinking level and account it has, and answers on them"   # see WORKERS_OWNER_ONLY
 NOT_LISTED, NOT_A_LEVEL = "not on the list: {model}\nthe list: {models}", "not a thinking level: {effort}\nthe levels: {levels}"
 BACK_ON = "{model} not found; back on {usual}"       # a switched-to model no account could run
+# bare /model under the room's line, and its suggestions as the owner types (Yerkd.model_menu, model_picks)
+MENU_ACCOUNTS, MENU_ACCOUNT, MENU_MODELS = "accounts, in the order tried for {model}:", "{name}: order {order}, {state}", "models: {models}"
+FREE, RESTING, PINNED_MARK, PICK_ON = "free", "resting until {until}", ", pinned", "{model} on account {name}, {state}"
+PICK_DEFAULT = "default: clears the model and the account"
 USUAL = "the default"                                # a room whose rooms.toml names no model
 # slash commands on the rooms' own bot (Discord): the owner's only, every answer seen by the owner alone
 COMMANDS = {"model": "this room's model or account, from the next reply", "effort": "this room's thinking level, from the next reply",
             "new": "a new session in this room; memory stays", "stop": "end the running turn now",
             "status": "what runs now"}
-CHOICE = {"model": "a model on the list, or default", "effort": "a thinking level, or default", "account": "an account by name, or default"}
+CHOICE = {"model": "an account, a model or both (five fable); default clears both", "effort": "a thinking level, or default", "account": "an account by name, or default"}
 NOT_OWNER, NOT_A_ROOM = "only the owner can use this", "this channel is not a Yerk room"
 NO_OWNER = "set [discord] owner in yerkd.toml"       # every command, while yerkd.toml names no owner
 WATCHED = "{room} answers in <#{own}>, not here"     # a channel a room watches: read, never written to

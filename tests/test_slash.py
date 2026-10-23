@@ -26,6 +26,7 @@ from yerk_ai.room import NEW_RECAP, Inbound, Room
 
 FAKE = Path(__file__).with_name("fake_claude.py")
 ROOM, ROOM_CH, OTHER_CH, OWNER, STRANGER, PERSON = "example-room", 11, 22, 7, 8, 31    # PERSON: listed in the room's `people`
+MODELS = "models: opus (Opus 5.5), sonnet (Sonnet 5.5), haiku (Haiku 5.5), fable (Fable 5.1)"   # bare /model's last line
 
 
 class Chan:
@@ -190,7 +191,7 @@ def test_model_and_effort_land_between_turns_through_the_settings_tool(y, tmp_pa
     a = starts(tmp_path)[-1]
     assert a[a.index("--resume") + 1] == first.session_id    # the same session, on the new settings
     assert a[a.index("--model") + 1] == "claude-sonnet-5-5" and a[a.index("--effort") + 1] == "low"
-    assert slash(dc, "model") == [("message", f"{words.PLAIN} this room: Sonnet 5.5, low thinking", True)]
+    assert slash(dc, "model") == [("message", f"{words.PLAIN} this room: Sonnet 5.5, low thinking\n{MODELS}", True)]   # one account: no list
     room.rp.close()
 
 
@@ -212,7 +213,9 @@ def test_model_puts_the_room_on_an_account_between_turns_through_the_settings_to
     wait(lambda: not room.busy)
     r = rows(tmp_path)[-1]                                   # the same session, carried to the pinned account
     assert r["config_dir"] == str(tmp_path / "cfg2") and r["argv"][r["argv"].index("--resume") + 1] == str(t)
-    assert slash(dc, "model") == [("message", f"{words.PLAIN} this room: Fable 5.1, default thinking, on account two", True)]
+    assert slash(dc, "model") == [("message", "\n".join([f"{words.PLAIN} this room: Fable 5.1, default thinking, on account two",
+                                                          "accounts, in the order tried for Fable 5.1:", "two: order 0, free, pinned",
+                                                          "one: order 0, free", MODELS]), True)]
     assert slash(dc, "model", account="five") == [("message", f"{words.NOT_DONE} not an account: five\n"
                                                               "the accounts: one, two, default", True)]
     assert slash(dc, "model", user=STRANGER, account="one") == [("message", f"{words.NOT_DONE} {words.NOT_OWNER}", True)]
@@ -226,12 +229,63 @@ def test_the_owners_model_command_works_in_a_family_room_where_the_rooms_own_too
     their rooms; a room's own `settings` call from a people room still is not."""
     y.room_confs[ROOM]["privacy"] = "family"
     dc, room, chan = wire(y)
-    assert slash(dc, "model") == [("message", f"{words.PLAIN} it back: As 0.0, plain text", True)]
+    assert slash(dc, "model") == [("message", f"{words.PLAIN} this room: Fable 5.1, default thinking\n{MODELS}", True)]
     assert slash(dc, "effort", effort="low")[0][1] == f"{words.DONE} next reply: Fable 5.1, low thinking"
     assert slash(dc, "model", user=STRANGER, effort="max") == [("message", f"{words.NOT_DONE} {words.NOT_OWNER}", True)]
     assert slash(dc, "model", user=PERSON, effort="max") == [("message", f"{words.NOT_DONE} {words.NOT_OWNER}", True)]   # in its people
     assert asyncio.run(y.tool_settings(ROOM, "", "max")) == {"ok": False, "line": words.OWNER_ONLY}
     assert json.loads((tmp_path / "rooms" / ROOM / "override.json").read_text()) == {"effort": "low"}
+
+
+def test_model_takes_an_account_a_model_or_both_by_name_or_digit_and_default_clears_both(y, tmp_path):
+    """/model names an account as well as a model, and the room stays pinned to what the owner set.
+    One argument: an account, a model or both; default clears both; bare, the accounts and the models."""
+    y.accounts += [Account("two", tmp_path / "cfg2", order=2), Account("three", tmp_path / "cfg3", order=3)]
+    dc, room, chan = wire(y)
+    f = tmp_path / "rooms" / ROOM / "override.json"
+    assert slash(dc, "model", model="three") == [("message", f"{words.DONE} next reply: Fable 5.1, default thinking, on account three", True)]
+    assert json.loads(f.read_text()) == {"account": "three"}                               # the account alone
+    assert slash(dc, "model", model="2 sonnet")[0][1] == f"{words.DONE} next reply: Sonnet 5.5, default thinking, on account two"
+    assert slash(dc, "model", model="three/claude-opus-5-5")[0][1] == f"{words.DONE} next reply: Opus 5.5, default thinking, on account three"
+    assert json.loads(f.read_text()) == {"model": "claude-opus-5-5", "account": "three"}
+    assert slash(dc, "model", model="haiku")[0][1] == f"{words.DONE} next reply: Haiku 5.5, default thinking, on account three"   # the pin stays
+    until = time.time() + 3600
+    y.cooldowns.set("two", "rate_limit:claude-haiku-5-5", until)                          # two is out of haiku
+    assert slash(dc, "model") == [("message", "\n".join([
+        f"{words.PLAIN} this room: Haiku 5.5, default thinking, on account three", "accounts, in the order tried for Haiku 5.5:",
+        "it: back 0, as, plain", "a: second 0, entry", f"part: closes 0, the case {words.clock(until)}", MODELS]), True)]
+    assert slash(dc, "model", model="default")[0][1] == f"{words.DONE} next reply: Fable 5.1, default thinking"
+    assert json.loads(f.read_text()) == {}                                                 # both pins gone
+    assert slash(dc, "model", model="six fable")[0][1].startswith(f"{words.NOT_DONE} not on the list: six fable")
+    assert slash(dc, "model", model="two", account="three")[0][1].startswith(f"{words.NOT_DONE} not on the list: two")   # typed: a model
+    assert slash(dc, "model", user=STRANGER, model="two") == [("message", f"{words.NOT_DONE} {words.NOT_OWNER}", True)]
+    assert slash(dc, "model", user=PERSON, model="1 opus") == [("message", f"{words.NOT_DONE} {words.NOT_OWNER}", True)]
+    assert json.loads(f.read_text()) == {}                                                 # a refusal writes nothing
+
+
+def suggest(dc, typed, user=OWNER, channel=ROOM_CH):
+    """Discord's autocomplete request for /model's argument as `user` types `typed`: what the bot offered, (label, value)."""
+    it, got = It("model", user=user, channel=channel), []
+    it.type, it.data["options"] = discord.InteractionType.autocomplete, [{"name": "model", "type": 3, "value": typed, "focused": True}]
+
+    async def autocomplete(choices):
+        got.extend((c.name, c.value) for c in choices)
+    it.response.autocomplete = autocomplete
+    asyncio.run(dc.on_interaction(it))
+    return got
+
+
+def test_the_model_picker_offers_every_account_and_model_to_the_owner_alone(y, tmp_path):
+    y.accounts.append(Account("two", tmp_path / "cfg2", order=2))
+    dc, room, chan = wire(y)
+    until = time.time() + 3600
+    y.cooldowns.set("two", "rate_limit:claude-fable-5-1", until)                          # two is out of the room's model
+    picks = suggest(dc, "")
+    assert picks[:2] == [("one: order 0, free", "one"), (f"two: order 2, resting until {words.clock(until)}", "two")]
+    assert [v for _, v in picks[2:]] == [*y.models, "default"] and picks[-1] == (words.PICK_DEFAULT, "default")
+    assert suggest(dc, "2 fa") == [(f"two fable: Fable 5.1 on account two, resting until {words.clock(until)}", "two fable")]
+    assert ("two opus: Opus 5.5 on account two, free", "two opus") in suggest(dc, "two")       # a rest for fable is not one for opus
+    assert suggest(dc, "", user=STRANGER) == suggest(dc, "", user=PERSON) == suggest(dc, "", channel=OTHER_CH) == []
 
 
 def test_stop_ends_the_running_turn_now_and_for_good(y, tmp_path):
@@ -410,7 +464,7 @@ def test_registration_is_exactly_these_commands_on_exactly_the_rooms_guilds(y, t
     assert [(app, g) for app, g, _ in bot.puts] == [(4242, 1), (4242, 2)]   # one overwrite per guild
     sent = bot.puts[0][2]
     assert bot.puts[1][2] == sent and [c["name"] for c in sent] == ["model", "effort", "new", "stop", "status"]
-    assert [c["value"] for c in sent[0]["options"][0]["choices"]] == [*y.models, "default"]
+    assert sent[0]["options"][0]["autocomplete"] is True and "choices" not in sent[0]["options"][0]   # suggested to the owner alone
     assert [c["value"] for c in sent[1]["options"][0]["choices"]] == [*EFFORTS, "default"]
     assert [o["name"] for o in sent[0]["options"]] == ["model", "account"] and len(sent[1]["options"]) == 1
     assert "choices" not in sent[0]["options"][1] and "two" not in json.dumps(sent)   # typed: no account name for the guild
