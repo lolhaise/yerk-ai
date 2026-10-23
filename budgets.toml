@@ -259,10 +259,18 @@ drops = [
 # model_command, tried, model_menu, model_picks, the digit in the settings tool), Discord's autocomplete for it answered to
 # the owner alone (channels/discord.py, 16) and its words (words.py, 9) (the /model menu in
 # Yerk the same, with every account), not folded to fit.
+# 18,843 merged on model-account-pin (#103), no line shared.
+# 0000-00-00: before-the next run starts 000: `the example` note says the /sample item moved to the next, step (and the
+
+# `/usage` on each folder's login, never on a missing folder, parsed, kept a minute, three at a time, a read that does
+# not ask never waiting on one that does), status.py 85 (two
+# lines an account, the soonest week marked, the next two resets of each window, the next bill, the account the next turn
+# tries, rooms on one account in one line), words.py 35 (the tags, the short times, the words), accounts.py 3 (`bill_day`),
+# cli.py, daemon.py and discord.py 4 (the card asks live).
 # 2026-10-23: room-defaults raised it by 76: one tool set for every owner room, declared once in rooms.toml's [defaults]
 # (one best way for every room, automatically; that morning web reach went to five
 # rooms and hands to three by hand, a table at a time), not folded to fit. config.py 57 (the [defaults] reader and its
 # refusals, {room} in a server's args and env, the inheritance with allow_remove, a room's tables as written), doctor.py 18
 # (the drift line: a default tool missed, a copy of a default), move.py 1 (`yerk room add` copies a room as written).
-# 00,000 sample item moved-to-the (#000), next step and.
-lines = 18919
+# 19,174 merged on status-card (#105), no line shared.
+lines = 19174

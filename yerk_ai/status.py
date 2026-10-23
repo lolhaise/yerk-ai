@@ -1,7 +1,7 @@
 """What is running now (rooms mid-turn, workers, jobs due, account usage, memory and CPU), for `yerk status` and
 any program that asks. The running yerkd answers POST /status (DESIGN 9, L195, L206), local only like /hook and
 flight and since when, the workers and their caps, the jobs due within the hour (from systemd), each
-account's 5-hour and weekly meters with reset times and the reading's age (meters.py), the memory
+within the hour (from systemd), each account's meters with reset times (usage.py live, else meters.py with the
 and CPU of the daemon and of each open room's process tree (from /proc), and today's stalls
 (beat.py). With no daemon answering, `yerk status` collects the same from the files, rooms aside.
 
@@ -9,6 +9,7 @@ and CPU of the daemon and of each open room's process tree (from /proc), and tod
 account at or near its limit, a blocked room, a stall today, a daemon down), else a dash."""
 from __future__ import annotations
 
+import calendar
 import json
 import os
 import subprocess
@@ -17,10 +18,10 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
 
-from . import __version__, config, jobs, words, workers
+from . import __version__, config, jobs, usage, words, workers
 from .accounts import Account, Cooldowns
 from .ledger import Ledger
-from .meters import Meters, meter_short
+from .meters import Meters
 
 PROC = Path("/proc")
 TICK, PAGE = os.sysconf("SC_CLK_TCK"), os.sysconf("SC_PAGE_SIZE")
@@ -70,9 +71,12 @@ def use(name: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 def collect(private: Path, state: Path, accounts: list[Account], cooldowns: Cooldowns, ledger: Ledger,
             rooms: dict[str, Any] | None = None, now: float | None = None, proc: Path = PROC,
-            units: Callable[[], set[str]] | None = None, timers: Any = None) -> dict[str, Any]:
+            units: Callable[[], set[str]] | None = None, timers: Any = None, live: bool = False,
+            read_one: Callable[[Account], dict[str, Any]] | None = None) -> dict[str, Any]:
     """The /status answer. `rooms`: the daemon's live rooms (None: collected by `yerk status` with no
-    daemon answering, so nothing about rooms or units)."""
+    daemon answering, so nothing about rooms or units). `live`: the card asks each account's meters now
+    (usage.py; a reading under a minute old is used again), else only a reading still that young is used;
+    an account with neither shows the stream's reading."""
     now = time.time() if now is None else now
     out: dict[str, Any] = {"at": now, "running": rooms is not None, "rooms": [], "units": []}
     if rooms is not None:
@@ -98,11 +102,34 @@ def collect(private: Path, state: Path, accounts: list[Account], cooldowns: Cool
                               if r.get("next") and 0 <= r["next"] - now <= SOON), key=lambda j: j["next"])
     except (OSError, subprocess.SubprocessError, ValueError):
         out["jobs"] = None                             # the timer list could not be read
-    meters = Meters(state / "meters.json")
-    out["accounts"] = [{"name": a.name, "meter": meters.reading(a),
-                        "rests_until": (cooldowns.show(a.name) or [{}])[0].get("until")} for a in accounts]
+    meters, fresh = Meters(state / "meters.json"), usage.readings(accounts, state, live, now, read_one)
+    out["accounts"] = [{"name": a.name, "meter": reading(meters.reading(a), fresh.get(a.name)),
+                        "rests_until": (cooldowns.show(a.name, now) or [{}])[0].get("until"),
+                        "bill": next_bill(a.bill_day, now)} for a in accounts]
+    out["live"] = live
     out["stalls"] = ledger.stalls(midnight(now))
     return out
+
+
+def reading(stream: dict[str, Any], live: dict[str, Any] | None) -> dict[str, Any]:
+    """The live reading when there is one, else the stream's, with why the live one failed (`--json`)."""
+    if live and "error" not in live:
+        return live
+    return {**stream, **({"live_error": live["error"]} if live else {})}
+
+
+def next_bill(day: int | None, now: float) -> float | None:
+    """The next bill on `day` of the month, today included, at local midnight; a shorter month bills on its last day."""
+    if not day:
+        return None
+    t = datetime.fromtimestamp(now)
+    y, m = t.year, t.month
+    for _ in range(2):
+        d = min(day, calendar.monthrange(y, m)[1])
+        if (y, m, d) >= (t.year, t.month, t.day):
+            return datetime(y, m, d).timestamp()
+        y, m = (y + 1, 1) if m == 12 else (y, m + 1)
+    return None
 
 
 def document(private: Path, state: Path, s: dict[str, Any], ledger: Ledger, now: float | None = None) -> dict[str, Any]:
@@ -140,10 +167,13 @@ def alive(state: Path) -> bool:
         return False
 
 
-def ask(state: Path, timeout: float = 10.0) -> dict[str, Any] | None:
-    """The running yerkd's /status under the install's secret (jobs.post_control); None when none answers."""
+def ask(state: Path, timeout: float = 10.0, payload: dict[str, Any] | None = None) -> dict[str, Any] | None:
+    """The running yerkd's /status under the install's secret (jobs.post_control); None when none answers. A live
+    card's meters can take two rounds of usage.TIMEOUT, so it waits that much longer."""
+    if (payload or {}).get("live"):
+        timeout += 2 * usage.TIMEOUT
     try:
-        return jobs.post_control(state, {}, timeout, path="status")
+        return jobs.post_control(state, payload or {}, timeout, path="status")
     except (OSError, ValueError, KeyError, TypeError):
         return None
 
@@ -153,6 +183,54 @@ def stall_line(stalls: list[dict[str, Any]], day: str, since: str = "") -> str:
         return words.line(f"{words.PLAIN} {words.NO_STALLS.format(day=day)}{since}")
     took = words.secs(max(float(x["seconds"]) for x in stalls))
     return words.line(f"{words.NOT_DONE} {words.STALLS.format(day=day, n=len(stalls), took=took)}")
+
+
+def account_lines(accounts: list[dict[str, Any]], now: float, live: bool = False) -> list[str]:
+    """Each account in two lines, the box card's shape: `- ① 5h 7% · wk 1% · Fable 2%`, then `- ↻ 5h 6:10p ·
+    wk Sun 3a · 💳 Oct 25`. Red first when it rests (its second line says until when) or a 5-hour or weekly window
+    is full, orange when the model's week is full or any window is at 90% or more; a warning sign on each number at
+    words.HOT or more. A reading that is not live says how old it is when the live one was asked for, or once it is
+    an hour old. With two accounts or more, the soonest weekly reset wears the green mark on its tag, and two lines
+    say the next two resets of each window, and one the account the next turn tries first."""
+    W = words
+
+    def ahead(w: str) -> dict[str, float]:
+        return {a["name"]: float(r) for a in accounts if (r := (a["meter"].get(w) or {}).get("resets")) and float(r) > now}
+    week, five, out = ahead("seven_day"), ahead("five_hour"), []
+    soonest = min(week, key=lambda n: (week[n], n)) if len(accounts) > 1 and week else None
+    for a in accounts:
+        m, rest, tag = a["meter"], a.get("rests_until"), W.tag(a["name"])
+        head = (W.DONE if a["name"] == soonest else "") + tag
+        wins = [(label, m[w]) for w, label in (("five_hour", "5h"), ("seven_day", "wk"), ("model", "")) if w in m]
+        pct = [round(float(x["pct"])) for _, x in wins]
+        full = max((p for (label, _), p in zip(wins, pct) if label), default=0) >= 100
+        mark = W.NOT_DONE if rest or full else W.WORKING if max(pct, default=0) >= 90 else W.PLAIN
+        if wins:                                                  # a long name is cut, never a meter
+            out.append(W.named(f"{mark} {head[:len(head) - len(tag)]}{{name}} {{meters}}", tag, meters=" · ".join(
+                f"{label or x['name']} {W.WARN if p >= W.HOT else ''}{p}%" for (label, x), p in zip(wins, pct))))
+        else:
+            out.append(W.named(f"{mark} {W.NO_READING}", head))
+        when = [f"{label or x['name']} {W.short_when(float(x['resets']), now)}" for label, x in wins
+                if x.get("resets") and float(x["resets"]) > now and (label or abs(float(x["resets"]) - week.get(a["name"], 0)) > 60)]
+        bill = [W.BILL.format(day=W.short_day(a["bill"]))] if a.get("bill") else []
+        parts = [W.BACK_AT.format(until=W.short_when(rest, now))] if rest else when
+        text = W.RESETS.format(parts=" · ".join(parts + bill))
+        if parts[2:] and W.width(f"{W.PLAIN} {text}") > W.PHONE:      # the model's own reset only where it fits
+            text = W.RESETS.format(parts=" · ".join(parts[:2] + bill))
+        if parts or bill:
+            out.append(W.line(f"{W.PLAIN} {text}"))
+        if m.get("source") != "live" and "at" in m and (live or now - m["at"] >= OLD):
+            out.append(W.named(f"{W.PLAIN} {W.OLD_READING}", tag, ago=W.ago(now - m["at"])))
+    for label, due in (("wk", week), ("5h", five)):
+        seq = sorted((r, n) for n, r in due.items())[:2] if len(accounts) > 1 else []
+        if seq:
+            first = (W.DONE if label == "wk" else "") + f"{W.tag(seq[0][1])} {W.short_when(seq[0][0], now)}"
+            then = W.THEN.format(tag=W.tag(seq[1][1]), when=W.short_when(seq[1][0], now)) if seq[1:] else ""
+            out.append(W.line(f"{W.PLAIN} {W.NEXT.format(label=label, first=first)}{then}"))
+    free = next((a["name"] for a in accounts if not a.get("rests_until")), None)     # accounts.pick, no room's own
+    if len(accounts) > 1 and free:
+        out.append(W.line(f"{W.PLAIN} {W.FIRST_TRY.format(tag=W.tag(free))}"))
+    return out
 
 
 def card(s: dict[str, Any], now: float | None = None) -> list[str]:
@@ -166,17 +244,24 @@ def card(s: dict[str, Any], now: float | None = None) -> list[str]:
     if W.width(f"{W.PLAIN} {head}") > W.PHONE:              # names that do not fit: how many
         head = W.RUNNING_ROOMS.format(rooms=W.ROOM_1 if len(s["rooms"]) == 1 else W.ROOMS_N.format(n=len(s["rooms"])))
     out = [row(W.PLAIN, head) if s["running"] else row(W.NOT_DONE, W.NOT_ANSWERING if s.get("alive") else W.NOT_RUNNING)]
-    for a in s["accounts"]:
-        out.append(meter_short(a["name"], a["meter"], a["rests_until"], now))
-        if now - a["meter"].get("at", now) >= OLD:
-            out.append(W.named(f"{W.PLAIN} {W.OLD_READING}", a["name"], ago=W.ago(now - a["meter"]["at"])))
+    out += account_lines(s["accounts"], now, bool(s.get("live")))
     for r in s["rooms"]:
         if r["since"] is not None:
             took = now - r["since"]
             out.append(W.named(f"{W.NOT_DONE if took > BLOCKED else W.PLAIN} {W.TURN_FOR}"
                                + (W.QUEUED.format(n=r["waiting"]) if r["waiting"] else ""), r["room"], took=W.span(took)))
     out += [W.named(f"{W.PLAIN} {W.WATCHES}", r["room"], channel=str(r["watch"]).partition(":")[2]) for r in s["rooms"] if r.get("watch")]
-    out += [W.named(f"{W.PLAIN} {W.PINNED}", r["room"], account=r["account"]) for r in s["rooms"] if r.get("account")]
+    pins: dict[str, list[str]] = {}
+    for r in s["rooms"]:
+        if r.get("account"):
+            pins.setdefault(r["account"], []).append(r["room"])
+    for acct, names in pins.items():                    # one room: its name; more: their names, else how many
+        if len(names) == 1:
+            out.append(W.named(f"{W.PLAIN} {W.PINNED}", names[0], account=W.tag(acct)))
+            continue
+        text = W.ROOMS_ON.format(account=W.tag(acct), rooms=", ".join(names))
+        out.append(row(W.PLAIN, text if W.width(f"{W.PLAIN} {text}") <= W.PHONE
+                       else W.ROOMS_ON.format(account=W.tag(acct), rooms=W.ROOMS_N.format(n=len(names)))))
     out.append(row(W.PLAIN, W.VERSION_AT.format(version=s.get("version") or __version__,   # what runs: an upgrade's receipt
                                                  commit=str(s.get("commit") or "")[:7] or "?")))
     nth: dict[str, int] = {}
