@@ -471,8 +471,20 @@ def line(state: Path, now: float) -> tuple[str, str]:
 # The rule files (PR curate-rules; decisions 30 and 42): the line-per-rule parts every room loads, read whole, and merges,
 # cuts, condensations and promotions PROPOSED; only the owner's `--apply` writes one, and a line is blanked, never cut.
 PROPOSED, PROPOSALS, NEAR, LONG, CARD_MOST, WEEK = "curate-rules.json", "rules-proposals", 0.75, 600, 10, 7 * 86400
-TRAILER = re.compile(r" \(([^()]*\d{4}-\d{2}-\d{2} \d{2}:\d{2}[^()]*)\)( \[m:[^\]\s]+\])?$")   # a filing's room, time, message
-ASIDE = re.compile(r" ?\((?:[^()\"]{0,60}: )?\"[^\"]{8,}\"[^();]*\)")        # a quote in parentheses, no clause after it: an example
+TRAILER, SHARE = memory.TRAILER, 1 / 3      # a filing's room, time, message; under SHARE of the week's messages, a rule is on one topic
+# A rule a code check could hold on every reply (`gate`: proposed, never built here), the words that say it and the check it needs
+GATES = ((re.compile(r"\bem[ -]?dash", re.I), "a reply holding an em dash (U+2014)"),
+         (re.compile(r"\b(?:no|not|never)\b[^.;]{0,30}\btables?\b|\btables?\b[^.;]{0,30}\b(?:breaks?|never)\b", re.I),
+          "a reply holding a Markdown table (a line opening and closing with |)"),
+         (re.compile(r"\blinks?\b[^.;]{0,40}<\.\.\.>", re.I), "a link in a reply outside <...>"),
+         (re.compile(r"\bsign[- ]?off\b", re.I), "a reply whose last line is a sign-off (Thanks, NAME)"),
+         (re.compile(r"\b(?:under|at most|no more than|max(?:imum)?|within) (\d[\d,]*) (lines?|words?|characters?|sentences?|bullets?)\b", re.I),
+          "a reply past {0} {1}"),
+         (re.compile(r"\b(?:figures?|numbers?)\b[^.;]{0,40}\b(?:as filed|never rounded|rounded)\b", re.I),
+          "a figure in a reply that is not on file as written (evidence.py's figure check, as a gate)"),
+         (re.compile(r"\b(?:never|no|don'?t|do not|avoid)\s+(?:(?:say|use|write|call \w+|open with|start with|end with)\s+)?"
+                     r"(?:the (?:word|phrase)\s+)?[\"“]([^\"”]{2,40})[\"”]", re.I), "a reply holding \"{0}\""))   # the quote it bans, never one it asks for
+ASIDE =re.compile(r" ?\((?:[^()\"]{0,60}: )?\"[^\"]{8,}\"[^();]*\)")        # a quote in parentheses, no clause after it: an example
 REASON = re.compile(r"\b(?:because|since|so that)\b", re.I)                    # a reason, which a condensation never takes out
 DAYCITE, DATED = re.compile(r"\bdaily/(\d{4}-\d{2}-\d{2})\.md:(\d+)"), re.compile(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}")
 NO = re.compile(r"\b(?:never|not|no longer|instead of|rather than|stop|don'?t)\b", re.I)    # a newer line that says otherwise
@@ -481,15 +493,40 @@ CLAUSE = re.compile(r"(?<=[.;])\s+")
 
 def rule_files(private: Path, s: memory.Settings) -> dict[Path, tuple[str, int]]:
     """Each line-per-rule file a room loads, once (the rules file, each rulebook), its kind and its line in budgets.toml;
-    then OVERFLOW, in no room, with no line."""
+    then TOPIC_RULES, loaded on demand with no line (there or not), and OVERFLOW until yerkd moves it, in no room."""
     caps, out = budgets()["session_start"]["appended"], dict[Path, tuple[str, int]]()
     for room in rooms(private).values():
         for k, p in shape.files(private, room, s.root / memory.RULES):
             if k in context.TAIL:
                 out.setdefault(p.resolve(), (k, int(caps[k])))
+    out[(s.root / memory.TOPIC_RULES).resolve()] = ("topics", 0)
     if (o := s.root / memory.OVERFLOW).is_file():
         out[o.resolve()] = ("overflow", 0)
     return out
+
+
+def asked(s: memory.Settings, days: list[str], ids_: set[str] | None = None) -> list[str]:
+    """What people sent (memory.PEOPLE_ROLES) on `days`, from the day logs: every message, or those of the message ids `ids_`."""
+    out: list[str] = []
+    for d in dict.fromkeys(days):
+        if (f := s.daily / f"{d}.md").is_file():
+            out += [ln.body for x in f.read_text(errors="replace").splitlines() if (ln := memory.parse_line(x))
+                    and ln.role in memory.PEOPLE_ROLES and (ids_ is None or ln.mid.split(".")[0] in ids_)]
+    return out
+
+
+def rides(state: Path, names: list[str], since: float) -> tuple[int, dict[str, int]]:
+    """The sessions since `since` in the rooms `names` (their assembled.jsonl's message rows), and per topic rule's job how many it rode in."""
+    sessions, rode = set[str](), dict[str, set[str]]()
+    for n in names:
+        p = state / "rooms" / n / "assembled.jsonl"
+        for x in p.read_text(errors="replace").splitlines() if p.is_file() else []:
+            with suppress(ValueError, AttributeError, TypeError):
+                if (r := json.loads(x)).get("event") == "message" and float(r.get("t", 0)) >= since:
+                    sessions.add(sid := str(r.get("session_id")))
+                    for j in r.get("topic_rules") or []:
+                        rode.setdefault(str(j), set()).add(sid)
+    return len(sessions), {j: len(v) for j, v in rode.items()}
 
 
 def part(kind: str, path: Path, text: str) -> int:
@@ -578,7 +615,7 @@ def edited(rows: dict[str, list[str]], edits: list[list[Any]], s: memory.Setting
     the line appended before it) made on `rows`, each file read on first use; a line that no longer holds its text refuses."""
     last = ""
     for f, i, was, new in edits:
-        r = rows.setdefault(f, Path(f).read_text(errors="replace").split("\n"))
+        r = rows.get(f) or rows.setdefault(f, Path(f).read_text(errors="replace").split("\n"))     # read once, and only when not held
         if not i:
             r.insert(len(r) - (r[-1] == ""), new)
             last = f"{memory.cite(s, Path(f))}:{len(r) - (r[-1] == '')}"
@@ -630,7 +667,7 @@ def propose(private: Path, state: Path, s: memory.Settings, now: float) -> tuple
     """The proposals, numbered, the most characters saved first and then the most evidence (a promotion last, with what it
     needs); per rule file its name, kind, line, its part now and with every proposal applied; and each file's name."""
     files, ev = rule_files(private, s), week(private, state, s, now)
-    rows = {str(p): p.read_text(errors="replace").split("\n") for p in files}
+    rows = {str(p): (p.read_text(errors="replace") if p.is_file() else "\n".join(memory.TOPIC_HEAD) + "\n").split("\n") for p in files}
     name = {str(p): shape.label(private, s, k, p) for p, (k, _) in files.items()}
     out: list[dict[str, Any]] = []
 
@@ -644,7 +681,7 @@ def propose(private: Path, state: Path, s: memory.Settings, now: float) -> tuple
         out.append({"kind": kind, "label": label, "edits": edits, "why": why, "rows": n, "evidence": line, "saved": sum(
             size(rows, f) - size(after, f) for f in dict.fromkeys(e[0] for e in edits) if files[Path(f)][1])})   # OVERFLOW: in no room
     for p, (kind, _) in files.items():
-        if kind == "overflow":
+        if kind in ("overflow", "topics"):           # in no session start: nothing to save there
             continue
         f, used = str(p), set[int]()
         live = [(i, x) for i, x in enumerate(rows[f], 1) if x.startswith("- ") and mentions.OLD not in x]
@@ -673,21 +710,51 @@ def propose(private: Path, state: Path, s: memory.Settings, now: float) -> tuple
             if i not in used and len(x) > LONG and len(y := condensed(x)) < len(x):
                 add("condense", short(x), [[f, i, x, y]], f"{len(x):,} characters, past {LONG}: its examples and quoted "
                     f"asides out, {len(y):,} left, every other word its own")
+    tier, r = str((s.root / memory.TOPIC_RULES).resolve()), next((p for p, (k, _) in files.items() if k == "rules"), None)
+    corpus = [x for p, (k, _) in files.items() if k in ("rules", "topics", "overflow") for x in rows[str(p)] if x.startswith("- ") and mentions.OLD not in x]
+    weights, books, taken = memory.rarities(corpus), context.books(private, rooms(private)), {(e[0], e[1]) for q in out for e in q["edits"]}
+    msgs, live = asked(s, [datetime.fromtimestamp(now - k * 86400, s.tz).date().isoformat() for k in range(7)]), list[tuple[int, str]]()
+    if r:                                            # topic rules: an always-on rule whose evidence is one topic (rules-on-demand)
+        live = [(i, x) for i, x in enumerate(rows[str(r)], 1) if x.startswith("- ") and mentions.OLD not in x and (str(r), i) not in taken]
+    per = {x: 0 for _, x in live}
+    for msg in msgs:                                 # the week's messages, each against every always-on rule at once
+        for _, x in memory.on_topic(msg, [x for _, x in live], corpus, weights):
+            per[x] += 1
+    for i, x in live:
+        days = [d for t in DATED.findall(tm[1]) for d in (t[:10], (date.fromisoformat(t[:10]) - timedelta(days=1)).isoformat())] if (tm := TRAILER.search(x)) else []
+        filed = asked(s, days, ids(x)) if tm and ids(x) else []
+        if (not filed or not all(memory.on_topic(b, [x], corpus, weights) for b in filed) or per[x] >= SHARE * max(1, len(msgs))
+                or any(re.search(t, shape.plain(memory.EXAMPLE.sub("", x), True), re.I) for t in shape.TOPICS.values())):
+            continue                                 # filed off a message not naming it, said on a third of them, or every reply's
+        where = {p.split(",")[0].strip() for p in tm[1].split(";")} if tm else set()
+        kept = memory.scoped(x, next(iter(where)), books, corpus) if len(where) == 1 else []
+        add("topic", short(x), [[str(r), i, x, ""], [tier, 0, "", memory.placed(x, kept)]], f"one topic: the message{'s' * (len(filed) > 1)} it "
+            f"was filed from name{'s' * (len(filed) == 1)} it ({words.either(memory.cue(x, corpus))}), it says no every-reply topic, and "
+            f"{per[x]} of the week's {len(msgs)} messages named it; on demand it loads on those, " + (f"in {', '.join(kept)} only" if kept else "in every room"))
+    for p, (kind, _) in files.items():               # gates: a rule a code check could hold on a reply, named, never built
+        for i, x in enumerate(rows[str(p)], 1) if kind != "overflow" else []:
+            said = memory.EXAMPLE.sub("", TRAILER.sub("", x)) if x.startswith("- ") and mentions.OLD not in x else ""
+            if checks := list(dict.fromkeys(c.format(*g.groups()) for rx, c in GATES if (g := rx.search(said)))):
+                add("gate", short(x), [[str(p), i, x, x]], f"a code check could hold it on every reply: {'; '.join(checks)}; curate names "
+                    "the check and never builds it")
     out.sort(key=lambda q: (-q["saved"], -q["rows"]))
     for n, q in enumerate(out, 1):
         q["n"] = n
-    held = next((p for p, (k, _) in files.items() if k == "overflow"), None)
-    if (r := next((p for p, (k, _) in files.items() if k == "rules"), None)) and held:   # promotions: held, and now it fits
-        f, cap, mine = str(r), files[r][1], [q for q in out if all(e[0] == str(r) for e in q["edits"])]
+    sessions, rode = rides(state, list(rooms(private)), now - WEEK)
+    for held, kind in [(p, k) for p, (k, _) in files.items() if k in ("overflow", "topics")]:   # promotions: it fits now
+        if r is None:
+            break
+        f, cap, mine = str(r), files[r][1], [q for q in out if q["kind"] != "gate" and all(e[0] == str(r) for e in q["edits"])]
         for j, h in enumerate(rows[str(held)], 1):
-            if not h.startswith("- ") or mentions.OLD in h:
-                continue
+            if not h.startswith("- ") or mentions.OLD in h or kind == "topics" and (memory.scope(h) or 2 * rode.get(memory.topic(h), 0) <= sessions):
+                continue                             # a topic rule: every room's, and it rode in most of the week's sessions
             marks = [[f, k, x, None] for k, x in enumerate(rows[f], 1) if x.startswith(f"- {memory.topic(h)}: ") and mentions.OLD not in x]
             for y, need in [(y, mine[:k]) for y in dict.fromkeys((h, memory.EXAMPLE.sub("", h))) for k in range(len(mine) + 1)]:
                 t = {k: list(v) for k, v in rows.items()}       # as held, with the fewest of the rest in; then examples out
                 edited(t, [e for q in need for e in q["edits"]] + [[f, 0, "", y], *marks], s)
                 if size(t, f) <= cap - memory.HEADROOM:
-                    add("promote", short(h), [[f, 0, "", y], *marks, [str(held), j, h, ""]], f"held in {memory.OVERFLOW}; it fits "
+                    add("promote", short(h), [[f, 0, "", y], *marks, [str(held), j, h, ""]], (f"held in {memory.OVERFLOW}" if kind == "overflow"
+                        else f"it rode in {rode[memory.topic(h)]} of the week's {sessions} sessions") + f"; it fits "
                         f"{memory.RULES} under its line" + (" with its examples out" if y != h else "") +
                         (f" once {', '.join(str(q['n']) for q in need)} are applied" if need else ""))
                     out[-1] |= {"n": len(out), "needs": [q["n"] for q in need]}
@@ -706,12 +773,14 @@ def page(day: str, props: list[dict[str, Any]], sizes: list[list[Any]], name: di
     head = (f"---\nclass: private\n---\n# Rule proposals, {day}\n\nProposed by `yerk curate --rules`, never applied: `yerk curate --apply "
             f"{day} N[,N...]` writes the numbers named (backed up first, refused past a file's line), `yerk curate --apply {day} undo` "
             "puts the last apply back.\n\n" + "".join(f"- {n}: {a:,} characters now, {b:,} with every proposal applied"
-                                                      + (f", its line {c:,}" if c else ", in no room") + "\n" for n, _, c, a, b in sizes))
+                                                      + (f", its line {c:,}" if c else ", loaded on demand" if k == "topics" else ", in no room")
+                                                      + "\n" for n, k, c, a, b in sizes))
     return head + "".join(
         f"\n## {q['n']}. {q['kind']}: {q['label']} ({-q['saved']:+,} chars)\n\nBEFORE\n"
         + "".join(f"{at(f, i)}: {was}\n" for f, i, was, _ in q["edits"] if i)
-        + "\nAFTER\n" + "".join(f"{at(f, i)}: " + ("(blank)" if new == "" else "(marked superseded by the line appended)" if new is None else new)
-                                + "\n" for f, i, _, new in q["edits"])
+        + "\nAFTER\n" + "".join(f"{at(f, i)}: " + ("(blank)" if new == "" else "(marked superseded by the line appended)" if new is None else
+                                                   "(unchanged: a gate would hold it)" if new == was else new)
+                                + "\n" for f, i, was, new in q["edits"])
         + f"\nWHY: {q['why']}\n\nEVIDENCE: {q['evidence']}\n" for q in props)
 
 
@@ -819,8 +888,12 @@ def apply(private: Path, state: Path, day: str, which: str, now: float | None = 
     props, want = {int(q["n"]): q for q in rec.get("proposals", [])}, [int(n) for n in which.split(",") if n.strip()]
     if not want or (bad := [n for n in want if n not in props]):
         raise RuntimeError(f"no proposal {bad[0] if want and bad else which} of {day}")
-    files, rows = rule_files(private, s), dict[str, list[str]]()
+    if gate := [n for n in want if props[n]["kind"] == "gate"]:
+        raise RuntimeError(f"{gate[0]} is a gate: it names a check a reply would need, which curate never builds; nothing applied")
+    files, rows, tier = rule_files(private, s), dict[str, list[str]](), (s.root / memory.TOPIC_RULES).resolve()
     with memory.daily_lock(s.daily):                     # the writers' lock: memory.rule files under it too
+        if not tier.is_file() and any(e[0] == str(tier) for n in want for e in props[n]["edits"]):
+            write_private(tier, "\n".join(memory.TOPIC_HEAD) + "\n")      # the first topic rule's file, its head only, backed up as such
         edited(rows, [e for n in want for e in props[n]["edits"]], s)
         for f, r in rows.items():
             if (kind_cap := files.get(Path(f))) is None:

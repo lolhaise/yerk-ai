@@ -3,11 +3,13 @@
 Session start, most stable first so the cached start of the prompt survives: Claude Code's own
 prompt, tools and skills, then one appended file holding the mechanics, persona, rulebook, room voice,
 pinned memory, the install's rules file and the recall pack. Per message: only parts with
-news: the clock line, the message metadata, and what changed in the rules since the session looked.
+news: the clock line, the message metadata, what changed in the rules since the session looked, and the topic rules
+the message names.
 """
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import re
 from dataclasses import dataclass
@@ -20,6 +22,7 @@ from .config import flag, write_private
 from .lifted.clock import clock_line, room_voice
 from .lifted.sizemap import fmt, split_sections
 from .lifted.trim import truncate
+from . import memory
 from .memory import FRONT, rules_part
 from .mentions import OLD
 
@@ -28,6 +31,8 @@ APPENDED = ("mechanics", "persona", "rulebook", "room_voice", "pinned_memory", "
 TAIL = ("rulebook", "rules")       # one rule a line, the newest last: past its size the newest lines go, never a middle one
 SEP = "\n\n"
 NEWS = "Rules changed since you last looked:"
+TOPICAL = "Rules on this message's topic, from rules-topics.md, as binding as the rules file's:"
+TOLD = "topics-told.json"          # in a room's state folder: the topic rules its session was handed, each once until a compaction
 
 
 def chars(s: str) -> int:
@@ -186,6 +191,45 @@ def news(path: Path, sid: str, private: Path, room: dict[str, Any], rules: Path,
     return f"{NEWS} {len(lines)} lines new or replaced, past the {budget:,} characters this note holds; read them: {where}."
 
 
+def books(private: Path, rooms: dict[str, dict[str, Any]]) -> dict[str, str]:
+    """Each room's rulebook text, whose words are the room's own (memory.scoped); a sealed room's none: it loads no shared rule."""
+    return {n: (p.read_text(errors="replace") if (p := layer_dir(private, c) / str(c["rulebook"])).is_file() else "")
+            for n, c in rooms.items() if c.get("rulebook") and not flag(c.get("sealed"))}
+
+
+def topics(path: Path, sid: str, room: str, rules: Path, text: str, budget: int) -> tuple[str, list[str]]:
+    """The topic rules beside `rules` (memory.TOPIC_RULES) that this message names (memory.on_topic) and `room` may have (no
+    [rooms: ...], or one naming it), each once per session `sid` until its next compaction (`path` keeps what it was handed),
+    best first, each whole under `budget` after TOPICAL: (the block, the jobs in it)."""
+    tier = memory.live_rules(rules.with_name(memory.TOPIC_RULES))
+    mine = [x for x in tier if (sc := memory.scope(x)) is None or room in sc]
+    if not sid or not mine or budget <= chars(TOPICAL):
+        return "", []
+    look = json.loads(path.read_text()) if path.is_file() else {}
+    had, out, left = set(look.get("told", [])) if look.get("session") == sid else set(), [TOPICAL], budget - chars(TOPICAL)
+    for _, x in memory.on_topic(text, mine, [*memory.live_rules(rules), *tier]):
+        if (k := hashlib.sha1(x.encode()).hexdigest()[:12]) not in had and chars(x) + 1 <= left:
+            out, left = [*out, x], left - chars(x) - 1
+            had.add(k)
+    if len(out) == 1:
+        return "", []
+    write_private(path, json.dumps({"session": sid, "told": sorted(had)}))
+    return "\n".join(out), [memory.topic(x) for x in out[1:]]
+
+
+def rode(state: Path, room: str, n: int = 20) -> tuple[int, dict[str, int]]:
+    """The topic rules that rode on the room's last `n` messages (hooks.record's `topic_rules`), each with the messages it rode on,
+    and how many messages were read."""
+    path, got, jobs = state / "rooms" / room / "assembled.jsonl", list[dict[str, Any]](), dict[str, int]()
+    for x in path.read_text(errors="replace").splitlines() if path.is_file() else []:
+        with contextlib.suppress(ValueError, AttributeError):
+            got += [r] if (r := json.loads(x)).get("event") == "message" else []
+    for r in got[-n:]:
+        for j in r.get("topic_rules") or []:
+            jobs[j] = jobs.get(j, 0) + 1
+    return len(got[-n:]), jobs
+
+
 def session_total(parts: list[Part], budgets: dict[str, Any]) -> int:
     """Yerk AI's parts at their untrimmed size, plus Claude Code's parts at their budget."""
     present = [p for p in parts if p.raw]
@@ -225,7 +269,7 @@ def hook_parts(event: str, said: str) -> dict[str, int]:
     (its heads, words.ABSENT and hooks.HEADS, have changed wording), a compaction's SessionStart one the recall pack."""
     if event != "UserPromptSubmit":
         return {"recall pack" if event == "SessionStart" else f"{event} hook": chars(said)}
-    heads = (("[clock] ", "clock"), ("[message] ", "metadata"), (NEWS, "rules"), ("[taste] ", "taste"), ("[", "recall"))
+    heads = (("[clock] ", "clock"), ("[message] ", "metadata"), (NEWS, "rules"), (TOPICAL, "rules"), ("[taste] ", "taste"), ("[", "recall"))
     lines: dict[str, list[str]] = {}
     cur = OTHER
     for line in said.split("\n"):

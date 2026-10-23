@@ -20,7 +20,7 @@ from . import deploy, docs, hooks, memindex, memory, retention, status, words
 from . import shape as rule_shape                      # the check named "rule shape"; "layout" is the private folder's
 from .accounts import load_accounts, token_info
 from .config import REPO, ROOM_KEYS, budgets, load_toml, room_id, rooms, write_private
-from .context import layer_dir, session_start
+from .context import TOPICAL, chars, layer_dir, session_start
 from .ledger import Ledger
 from .mentions import Builder
 
@@ -285,7 +285,7 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
         if ran and ix and ran != ix:
             found.append(f"memory index: runs {ix[:7]}, yerkd {str(ran)[:7]}: restart yerk-index")
 
-    def fits() -> None:                                         # a part past its line goes out cut (2026-10-22), a held rule not at all
+    def fits() -> None:                                         # a part past its line goes out cut (2026-10-22), a topic rule on demand
         over: dict[tuple[str, str], tuple[int, int, list[str]]] = {}      # (part, its file) -> its size, its line, the rooms
         for n, c in rooms(private).items():
             for p in (p for p in session_start(private, c, budgets(), rules=m.root / memory.RULES) if p.over):
@@ -293,9 +293,13 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
         for (part, src), (raw, cap, names) in over.items():
             found.append(f"{Path(src).name or part}: {part} over its line by {raw - cap:,} characters ({raw:,} of {cap:,}), cut "
                          f"at every session start in {', '.join(names)}; raise its line in budgets.toml or trim the file")
-        held = [x for x in ((m.root / memory.OVERFLOW).read_text().splitlines() if (m.root / memory.OVERFLOW).is_file() else []) if x.startswith("- ")]
-        found.extend([f"{words.WORKING} {memory.OVERFLOW}: {len(held)} rule{'s' * (len(held) != 1)} held, in no room: {memory.RULES} is full "
-                      f"at its cap of {budgets()['session_start']['appended']['rules']:,}; move each in by hand once it has room"] if held else [])
+        tier, most, on_file = memory.live_rules(m.root / memory.TOPIC_RULES), int(budgets()["per_message"]["on_hit"]["rules"]), set(rooms(private))
+        never = [memory.topic(x) for x in tier if chars(x) + 1 > most - chars(TOPICAL) or (sc := memory.scope(x)) is not None and not sc & on_file]
+        found.extend([f"{words.WORKING} {memory.TOPIC_RULES}: {len(never)} topic rule{'s' * (len(never) != 1)} never load, first \"{never[0]}\": "
+                      f"longer than the per-message rules part's {most:,} or kept to no room in rooms.toml; shorten it or fix its [rooms: ...]"] if never else [])
+        held = memory.live_rules(m.root / memory.OVERFLOW)
+        found.extend([f"{words.WORKING} {memory.OVERFLOW}: {len(held)} rule{'s' * (len(held) != 1)} in no room yet; yerkd moves "
+                      f"{'them' if len(held) != 1 else 'it'} to {memory.TOPIC_RULES} at its next start"] if held else [])
 
     for what, check in (("layout", layout), ("classes", classes), ("tokens", tokens), ("index", index), ("hooks", hooked),
                         ("modes", modes), ("secrets", leaks), ("disk", growth), ("memory cap", high), ("backfill", backfill),

@@ -8,6 +8,32 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-23
 
+### rules-on-demand
+
+- A rule the shared rules file has no room for is no longer held in no room: it is filed in `memory/rules-topics.md` and
+  loads on a message that names its topic. The machine-room notice says "filed as a topic rule: loads when <its words>
+  come up", with its job, the room it came from and whether it is that room's own or every room's; the room ends its reply
+  saying the same.
+- A topic rule's words are its job's words and what its own words name (a #channel, a file, code, a capitalised name),
+  weighted by how few rules say each, the way recall weighs a word. A message (with its attachments' names) that holds
+  enough of them gets the rule in the per-message rules part, beside "Rules changed since you last looked", best match
+  first and under that part's 1,500 characters, once per session and again after a compaction. It never loads at session
+  start, so the rules file's size and every room's start stay as they were.
+- A rule is kept to the rooms reading its room's rulebook (`[rooms: NAME,...]` before its trailer) when the heaviest of
+  its words that any rulebook says is said by that rulebook alone, so a rule about work chat messages filed in a work room
+  never loads in a family room; any other rule loads in every room. The mark can be edited by hand.
+- At yerkd's first start with this change, `rules-overflow.md`'s rules move to `rules-topics.md` once (the old file kept
+  beside it as `rules-overflow.md.moved`, one log line, one machine-room line), the newest of a job's lines live.
+- `yerk curate --rules` proposes three more kinds, each with BEFORE, AFTER, WHY and EVIDENCE: `topic` (a rule of the rules
+  file filed off a message naming its topic, on no every-reply topic, named by under a third of the week's messages, moved
+  to the topic rules, freeing its characters), `promote` from the topic rules (a rule every room's that rode in most of
+  the week's sessions, into the rules file when it fits) and `gate` (a rule a code check could hold on a reply: a banned
+  phrase, a format, a figure; it names the check and never builds it, and `--apply` refuses it).
+- `yerk map ROOM` shows the topic rules' count and size and which rode on the room's last 20 messages; `yerk doctor`'s fit
+  check reads `rules-topics.md`: a topic rule too long for the per-message rules part or kept to no room on file, and an
+  overflow not moved yet.
+- **Upgrading:** nothing to edit. budgets.toml: `[code] lines` (a dated note). The move runs by itself at the next start.
+
 ### person-room-parity (#101)
 
 - A person's room can read what the other assistant already told them where it watches. List that assistant's Discord

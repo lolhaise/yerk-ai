@@ -439,6 +439,16 @@ def terms(query: str) -> list[str]:
     return list(dict.fromkeys(w for w in WORD.findall(norm(query)) if len(w) > 1 and w not in STOP))[:24]
 
 
+def stems(text: str, every: bool = False) -> set[str]:
+    """What topic recall matches on, a word's first five letters: of `text`'s terms, or with `every` of each word it holds."""
+    return {w[:5] for w in (WORD.findall(norm(text)) if every else terms(text))}
+
+
+def rarity(total: int, df: int) -> float:
+    """A word's weight by how rare it is: said in `df` of `total` chunks (search), or of `total` rules (memory.on_topic)."""
+    return math.log(1 + (max(total, df) - df + 0.5) / (df + 0.5))
+
+
 def search(conn: sqlite3.Connection, query: str, k: int = 6, pool: int = 80,
            weights: dict[str, float] | None = None, skip: Path | None = None) -> list[dict[str, Any]]:
     """Ranked chunks for a query: any of its words (FTS5, stemmed), ordered by how much of the
@@ -461,7 +471,7 @@ def search(conn: sqlite3.Connection, query: str, k: int = 6, pool: int = 80,
     cover: dict[int, float] = {}
     for t in ts:
         df = conn.execute("SELECT count(*) FROM chunks_fts WHERE chunks_fts MATCH ?", (f'"{t}"',)).fetchone()[0]
-        w = math.log(1 + (max(total, df) - df + 0.5) / (df + 0.5))
+        w = rarity(total, df)
         if weights is not None:
             weights[t] = w
         for (rid,) in conn.execute(f"SELECT rowid FROM chunks_fts WHERE chunks_fts MATCH ? AND rowid IN ({marks})", (f'"{t}"', *ids)):

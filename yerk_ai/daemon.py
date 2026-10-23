@@ -643,8 +643,8 @@ class Yerkd:
 
     async def tool_rule(self, room: str, text: str, job: str) -> dict[str, Any]:
         """`remember` with a `job`: an owner's room files how it is done from now on (memory.rule) for every room, fitted under
-        the rules part's budget; one with no room even with no examples is held in rules-overflow.md and said (`held`, the
-        reply's clause, one machine-room notice)."""
+        the rules part's budget; one with no room even with no examples is filed as a topic rule in rules-topics.md and said
+        (`topic`: the reply's clause and one machine-room notice, each naming the words it loads on)."""
         if room not in self.rooms or not self.owner(room):
             return {"ok": False, "line": words.RULES_OWNER_ONLY}
         if self.reader(room).sealed:        # its teaching stays its own day-log note, the job its label, never the shared rules
@@ -652,13 +652,15 @@ class Yerkd:
         with self.rooms[room].lock:
             mid = ",".join(m.id for m in self.rooms[room].inflight) or f"x{self.rooms[room].turn_key}"
         cap = int(self.budgets["session_start"]["appended"]["rules"])
-        r = await asyncio.to_thread(memory.rule, self.memory, room, mid, job, text, cap, self.daily)
+        r = await asyncio.to_thread(memory.rule, self.memory, room, mid, job, text, cap, self.daily, context.books(self.private, self.room_confs))
         if not r["ok"]:
             return r
-        if r.get("held") and not r.pop("again", False):       # a retried call: held and said already
-            await self.jobs.alert(None, f"{words.WORKING} " + words.RULE_HELD.format(file=memory.OVERFLOW, job=words.line(
-                r["job"], words.PHONE - 2), room=room, cap=cap), 0)
-        return {**r, "next": words.FILED_NEXT.format(clause=words.HELD_CLAUSE if r.get("held") else words.RULE_CLAUSE.format(job=r["job"]))}
+        on = words.either(r.get("triggers", []))
+        if r.get("topic") and not r.pop("again", False):       # a retried call: filed and said already
+            where = words.TOPIC_WHERE[1].format(rooms=", ".join(r["rooms"])) if r["rooms"] else words.TOPIC_WHERE[0]
+            await self.jobs.alert(None, f"{words.DONE} " + words.RULE_TOPIC.format(triggers=words.line(on, words.PHONE - 8), job=words.line(
+                r["job"], words.PHONE - 2), room=room, where=words.line(where), cap=cap), 0)
+        return {**r, "next": words.FILED_NEXT.format(clause=words.TOPIC_CLAUSE.format(triggers=on) if r.get("topic") else words.RULE_CLAUSE.format(job=r["job"]))}
 
     async def tool_worker(self, room: str, req: dict[str, Any]) -> dict[str, Any]:
         """The `worker` tool (rooms only; a worker has no MCP server). `yerk worker` comes through
@@ -798,6 +800,21 @@ class Yerkd:
             return ""
         return context.news(self.state / "rooms" / room / "rules-seen.json", sid, self.private, self.room_confs[room],
                             self.memory.root / memory.RULES, int(self.budgets["per_message"]["on_hit"]["rules"]))
+
+    def rules_topic(self, room: str, sid: str, prompt: str, budget: int) -> tuple[str, list[str]]:
+        """The topic rules this message names, the room's own and every room's, each once per session (context.topics); none in a sealed room."""
+        if self.reader(room).sealed:
+            return "", []
+        return context.topics(self.state / "rooms" / room / context.TOLD, sid, room, self.memory.root / memory.RULES, prompt, budget)
+
+    def move_held(self) -> str:
+        """At a start: rules-overflow.md's rules into rules-topics.md, once (memory.move_held), and the machine-room line saying so."""
+        try:
+            n = memory.move_held(self.memory, context.books(self.private, self.room_confs))
+        except OSError:
+            log.exception("rules: %s did not move to %s; it stays as it was", memory.OVERFLOW, memory.TOPIC_RULES)
+            return ""
+        return f"{words.DONE} " + words.TOPICS_MOVED.format(n=n, s="s" * (n != 1)) if n else ""
 
     def shadow_stop(self, name: str, room: Room, reply: str, sid: str, refused: bool = False) -> list[tuple[str, str]]:
         """The evidence rules after a reply: ledgered and logged, never a block (shadow, DESIGN 8). `refused`: the said check
@@ -986,6 +1003,8 @@ class Yerkd:
             return {"decision": "block", "reason": reason} if reason else {}
         if event == "SessionStart":
             if payload.get("source") == "compact":
+                if name:                          # the topic rules ride again after it, each once (context.topics)
+                    (self.state / "rooms" / name / context.TOLD).unlink(missing_ok=True)
                 return await asyncio.to_thread(hooks.session_start, payload, self.state, self.compact_pack, name)
             prev = self.was_reset(name, sid) if name and payload.get("source") in ("startup", "clear") else ""
             if name and prev:                 # told only when the replaced session had answered something
@@ -1003,7 +1022,7 @@ class Yerkd:
             return {}
         out = await asyncio.to_thread(hooks.user_prompt_submit, payload, self.state, self.room_confs,
                                       lambda r, p: self.rooms[r].meta_for(p), self.budgets, None, self.recall_for, name, self.rules_news,
-                                      self.taste_for)
+                                      self.taste_for, self.rules_topic)
         if out and "hookSpecificOutput" in out and name in self.rooms:
             prompt = str(payload.get("prompt", ""))
             said = self.said_in_turn(name, sid, prompt)
@@ -1249,6 +1268,12 @@ class Yerkd:
         if not dc.rooms:
             raise SystemExit("no room has a discord:<channel id> in rooms.toml")
         self.workers.begin(asyncio.get_running_loop())
+        moved = self.move_held()                         # before any room starts; said after the connect
+
+        async def say_moved() -> None:
+            if moved:
+                await self.jobs.alert(None, moved, 0)
+        dc.after_recover.append(say_moved)
         dc.after_recover.append(self.workers.reattach)   # their cards are edited, so after the connect
         dc.after_recover.append(self.jobs.reattach)      # a script run that ended with no daemon up: delivered late
         self.write_status("discord")
@@ -1260,6 +1285,8 @@ class Yerkd:
     async def run_console(self, name: str) -> None:
         room = self.add_room(name, ConsoleChannel())
         self.workers.begin(asyncio.get_running_loop())
+        if moved := self.move_held():
+            await self.jobs.alert(None, moved, 0)
         await self.workers.reattach()
         await self.jobs.reattach()
         self.write_status("console")

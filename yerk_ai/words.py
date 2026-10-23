@@ -54,6 +54,11 @@ def carried(line: str) -> str:
     return no_paths(p)
 
 
+def either(ws: list[str]) -> str:
+    """Words as a notice lists them: "a", "a or b", "a, b or c"."""
+    return ", ".join(ws[:-1]) + " or " + ws[-1] if len(ws) > 1 else "".join(ws)
+
+
 def line(text: str, n: int = PHONE) -> str:
     """One line held to `n` phone columns, cut at a word with "..." when it is longer."""
     text = " ".join(str(text).split())
@@ -141,11 +146,14 @@ FILED_NEXT = ("Only the text after your last tool call reaches the room, and not
               "filing is {clause}.")
 FILED_AT_MOST = "one clause at its end at most"
 RULE_CLAUSE = "one clause at its end, this one: every room now does {job} this way"
-HELD_CLAUSE = "one clause at its end, this one: the rule is held for now, since the shared rules file is full"
-# a filing fitted under the rules file's cap (memory.rule): each strip and a hold in the room's day log, a hold in the machine room
+TOPIC_CLAUSE = "one clause at its end, this one: the rule loads when {triggers} come up, since the shared rules file is full"
+# a filing fitted under the rules file's cap (memory.rule): each strip and a topic rule in the room's day log, a topic rule in the
+# machine room (rules-on-demand: never "held", it loads when its topic comes up)
 RULE_STRIPPED = "the example in rule \"{job}\" taken out so rules.md fits its cap of {cap:,}"
-RULE_HELD_LOG = "rule \"{job}\" held in {file}: rules.md is full at its cap of {cap:,}, even with no examples"
-RULE_HELD = "rule held in {file}\n\"{job}\"\nfrom {room}\nrules.md is full at its cap of {cap:,}"
+RULE_TOPIC_LOG = "rule \"{job}\" filed as a topic rule in {file}: rules.md is full at its cap of {cap:,}; it loads when {triggers} come up"
+RULE_TOPIC = "filed as a topic rule: loads when\n{triggers} come up\n\"{job}\"\nfrom {room}\n{where}\nrules.md is full at its cap of {cap:,}"
+TOPIC_WHERE = ("for every room", "for {rooms} only")
+TOPICS_MOVED = "{n} rule{s} moved to rules-topics.md\nfrom rules-overflow.md, once\neach loads when its topic comes up"
 PART_CUT = "session start cut {part}\n{size:,} of {cap:,} in {room}\n{n} line{s} sent broken or not at all:\n{heads}"
 FILED = re.compile(r"^\W*(?:filed|saved|from now on,? every room)\b", re.I)   # a final reporting a filing (stub)
 STUB = ("Only your final message reaches the room, and yours, \"{head}\", reports the filing, not the answer: the answer "
