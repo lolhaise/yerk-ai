@@ -156,7 +156,7 @@ def test_one_word_that_names_nothing_is_never_a_key_whatever_file_heading_or_lin
     assert cites(idx.match("the next car")) == ["facts/people.md:6"] and cites(idx.match("my phone")) == ["facts/people.md:7"]
     assert cites(idx.match("examplia", limit=20)) == ["facts/people.md:8", "facts/people.md:1", "facts/people.md:3",
                                                       "facts/people.md:9", "facts/people.md:10"]    # under the name it writes
-    assert [mentions.key_of(w) for w in ("Tomorrow", "Lives", "Runs", "Alex")] == [None, None, None, "Alex"]
+    assert [mentions.key_of(w) for w in ("Tomorrow", "Lives", "Runs", "Greta")] == [None, None, None, "Greta"]
 
 
 def test_the_own_file_order_is_the_order_that_survives_the_recall_trim(tmp_path):

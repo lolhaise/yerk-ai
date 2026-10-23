@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from yerk_ai import context, memory
+from yerk_ai import context, memindex, memory
 from yerk_ai.config import EXAMPLE_PRIVATE, budgets, rooms, state_dir
 from yerk_ai.lifted.clock import clock_line
 from yerk_ai.lifted.trim import truncate
@@ -55,15 +55,60 @@ def test_real_private_layer_fits():
         assert bad == [], f"{name} {'; '.join(bad)}"      # the line `yerk deploy` puts on its card: the room, then its part
 
 
+def test_the_recall_bench_is_a_ratchet_a_drop_holds_until_a_dated_note_names_it():
+    def run(top_k: int, questions: int = 164) -> dict:
+        return {"top_k": top_k, "k": 6, "questions": questions}
+    four = [run(116), run(117), run(116), run(116)]
+    assert memory.ratchet([*four, run(116)], []) is None                                  # one under the best of four: the slack
+    assert memory.ratchet([*four, run(98)], []) == ("top 6 fell to 98 of 164 from 117 in the 4 runs before, and no dated note "
+                                                    "in budgets.toml [recall] drops names it")
+    assert memory.ratchet([*four, run(98)], ["2026-10-22: 117 to 98, the import"]) is None
+    assert memory.ratchet([*four, run(90)], ["2026-10-22: 117 to 98, the import"])         # under the floor the note names
+    assert memory.ratchet([*four, run(98)], ["117 to 98, the import"])                      # a note without its date names nothing
+    assert memory.ratchet([run(117), *[run(98)] * 4, run(98)], []) is None                 # the best has left the window
+    assert memory.ratchet([run(29, 46), run(98)], []) is None and memory.ratchet([run(98)], []) is None    # no history
+    rec = budgets()["recall"]
+    assert rec["slack"] == 1 and all(re.match(r"\d{4}-\d\d-\d\d: \d+ to \d+, \S", n) for n in rec["drops"])
+
+
+def test_once_the_notes_best_leaves_the_window_a_97_is_refused_and_the_next_honest_run_passes():
+    """The series as the first run on this code left it: 116, then 98, 98, 99 and 104, so the four runs before the next one
+    no longer hold the 116 a "116 to 98" note names. A faked 97 passed on that note while 116 was in the window; from here
+    it is refused, as 102 is, and the next honest run at 103 or more passes."""
+    def run(top_k: int) -> dict:
+        return {"top_k": top_k, "k": 6, "questions": 164}
+    series, note = [run(116), run(98), run(98), run(99), run(104)], ["2026-10-22: 116 to 98, the import"]
+    assert memory.ratchet([*series[:-1], run(97)], note) is None                       # 116 in the window: the note's floor
+    assert memory.ratchet([*series, run(97)], note) == ("top 6 fell to 97 of 164 from 104 in the 4 runs before, and no dated "
+                                                        "note in budgets.toml [recall] drops names it")
+    assert memory.ratchet([*series, run(102)], note)
+    assert [memory.ratchet([*series, run(n)], note) for n in (103, 104, 105)] == [None, None, None]
+
+
+@pytest.mark.skipif(not os.environ.get("YERK_PRIVATE"), reason="the real index exists only on the box")
+def test_the_real_index_holds_the_recall_bench_ratchet():
+    """Where the install's index, question set and series are (the box: `yerk deploy`'s fast tests), the bench runs on the code
+    under test, writing nothing, and its top six is held to the series as `yerk recall-bench` holds a run; skipped elsewhere."""
+    s = memory.settings(Path(os.environ["YERK_PRIVATE"]).expanduser(), state_dir())
+    series = s.index_db.parent / "recall-bench.jsonl"
+    if not (memindex.live(s.index_db).is_file() and s.bench.is_file() and series.is_file()) or memory.meaning_state(s) != "ok":
+        pytest.skip("no index, question set, series or meaning search here")
+    r = memory.bench(s)
+    assert r["ok"] and not r["blind"], r.get("error") or r["blind"]
+    rec = budgets()["recall"]
+    rows = [json.loads(x) for x in series.read_text().splitlines() if x.strip()]
+    assert (drop := memory.ratchet([*rows, r], rec["drops"], rec["slack"])) is None, drop
+
+
 def test_the_real_layer_test_counts_the_rules_file(tmp_path, monkeypatch):
     """A room over budget only through the install's rules file fails the real-layer test, named with its part. Built
     without the rules file, as it was, the test passed such a room."""
     private = tmp_path / "private"
     shutil.copytree(EXAMPLE_PRIVATE, private)
-    (private / "memory" / memory.RULES).write_text("- a job: done this way.\n" + "- another job: " + "x" * 12000 + "\n")
+    (private / "memory" / memory.RULES).write_text("- a job: done this way.\n" + "- another job: " + "x" * 13000 + "\n")
     monkeypatch.setenv("YERK_PRIVATE", str(private))
     monkeypatch.setenv("YERK_STATE", str(tmp_path / "state"))
-    with pytest.raises(AssertionError, match=rf"^example-room rules: 12,\d{{3}} > {budgets()['session_start']['appended']['rules']:,} \("):
+    with pytest.raises(AssertionError, match=rf"^example-room rules: 13,\d{{3}} > {budgets()['session_start']['appended']['rules']:,} \("):
         test_real_private_layer_fits()
 
 
@@ -124,11 +169,12 @@ def test_claude_codes_parts_as_the_rooms_send_them_fit_their_lines_and_what_is_l
     assert all(sent <= line for sent, line in rows.values()), out
     assert all(line <= sent * 1.02 for name, (sent, line) in rows.items() if name != "Yerk AI's tools"), rows
     s = b["session_start"]
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 84350
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 88514
 
 
-# The largest room rulebook, the room's own text only since PR 47, across the six rooms (`yerk map`, 2026-10-21, with the taste rules).
-LIVE_RULEBOOK = 9860
+# The largest room rulebook, the room's own text only since PR 47, across the six rooms: the work room's, read as session
+# start builds it (13,518 before a hand edit took two blocks out of it).
+LIVE_RULEBOOK = 12696
 
 
 def test_the_rulebook_line_keeps_about_1000_over_the_largest_room_text_and_what_it_freed_went_to_the_rules(tmp_path):
@@ -136,10 +182,14 @@ def test_the_rulebook_line_keeps_about_1000_over_the_largest_room_text_and_what_
     1,000 over that now and every character it freed went to `rules`: a rulebook of that size and a rules file of about
     11,000 both go out whole, where `rules` at 6,886 trimmed that file, the total holding at 80,000 (decision 12). On
     2026-10-21 the taste rules took the largest room text to 9,860: the line followed it, `rules` kept its 11,886, and the
-    total rose by the rulebook's 3,850 and room_voice's 500 to 84,350."""
+    total rose by the rulebook's 3,850 and room_voice's 500 to 84,350; on 2026-10-22 by the mechanics' 200 (the voice_note
+    line) to 84,550, then by the mechanics' 200 again (the paste line) to 84,750. That day both line-per-rule parts were
+    found cut from the middle at every start since Oct 21: the work room's rulebook (13,518, then 12,696) went to 14,000,
+    about 10% over it, `rules` to 12,500 for the shared file's 12,298, and the total rose by the 3,764 to 88,514; the
+    doctor's fit check reads red the day a part passes its line."""
     s = budgets()["session_start"]
-    assert 900 <= s["appended"]["rulebook"] - LIVE_RULEBOOK <= 1100 and s["appended"]["rules"] == 11886
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 84350
+    assert 900 <= s["appended"]["rulebook"] - LIVE_RULEBOOK <= 1400 and s["appended"]["rules"] == 12500
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 88514
     private = tmp_path / "private"
     shutil.copytree(EXAMPLE_PRIVATE, private)
     (private / "rulebook.md").write_text("r" * (LIVE_RULEBOOK - 1) + "\n")

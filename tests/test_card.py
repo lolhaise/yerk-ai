@@ -95,7 +95,7 @@ def test_a_card_with_nothing_to_show_says_what_was_owed():
 def test_an_image_never_read_bounces_once_at_stop(tmp_path):
     room = Room.__new__(Room)
     room.lock, room.rp, room.bounced = __import__("threading").Lock(), NS(read_paths=set()), False
-    room.images = {"/in/5/photo.png": "photo.png"}
+    room.to_open = {"/in/5/photo.png": "photo.png"}
     reason = room.stop_check(active=False)
     assert reason and "photo.png" in reason and "/in/5/photo.png" in reason
     assert room.stop_check(active=False) is None                       # once per result
@@ -105,7 +105,7 @@ def test_an_image_never_read_bounces_once_at_stop(tmp_path):
     assert room.stop_check(active=False) is None                       # read: nothing to say
 
 
-# for its turn and the (Last.part closes 0; the case, 0000-00-00: before the next run starts the example note says)
+# the rows in plain words (STYLE.md rule 4; the owner, 2026-10-19: a card a person who knows nothing can read)
 MEM = "/home/someone/.local/state/yerk/memory"                         # the memory tree: "your notes", never a path
 
 
@@ -121,12 +121,12 @@ def rows(*calls, failed=()):
 
 def test_rule_1_a_bash_row_is_its_own_description_never_the_command():
     told, bare = rows(("Bash", {"command": "sed -n '245p' yerk-snapshot-2026-10-06.md",
-                                "description": "For its Turn And 0:0"}),
+                                "description": "Look up Nora's Monday class"}),
                       ("Bash", {"command": "git status --short && ls"}))
-    assert told == f"{OK} line for The Check 0:0" and bare == f"{OK} its turn and"
+    assert told == f"{OK} look up Nora's Monday class" and bare == f"{OK} running a command"
     assert "sed" not in told and "git" not in bare and "run " not in told + bare
-    assert rows(("Bash", {"command": "x", "description": "Note says the sample Item-000 moved"})) == [
-        f"{OK} The last part closes The-000 case"]                       # more line for the check
+    assert rows(("Bash", {"command": "x", "description": "PDF text of the EX-901 contract"})) == [
+        f"{OK} PDF text of the EX-901 contract"]                       # an acronym keeps its capitals
     paths = rows(("Bash", {"command": "x", "description": "Run sed on memory/2026-10-06.md"}),
                  ("Bash", {"command": "x", "description": "Read `/home/someone/yerk-private/rooms.toml` and box-1.json"}),
                  ("Bash", {"command": "x", "description": "Check 24/7 and/or 10/19 on www.bdc.ca"}))
@@ -135,28 +135,28 @@ def test_rule_1_a_bash_row_is_its_own_description_never_the_command():
 
 
 def test_rule_2_a_search_says_where_and_what_in_words():
-    notes, code, files = rows(("Grep", {"pattern": "ABC-578|OPS-10001|Reports", "path": MEM}),
-                              ("Grep", {"pattern": r"^\s*(owner|the owner)\b.*$", "path": "/home/someone/code/yerk-ai", "-i": True}),
+    notes, code, files = rows(("Grep", {"pattern": "EX-901|HELP-10001|Releases", "path": MEM}),
+                              ("Grep", {"pattern": r"^\s*(owner|Nora)\b.*$", "path": "/home/someone/code/yerk-ai", "-i": True}),
                               ("Glob", {"pattern": "**/*.md", "path": MEM}))
-    assert notes == f"{OK} while a second entry Waits-000..." and "|" not in notes       # step and the test, reads it
-    assert code == f"{OK} with one-more line for, the check" and files == f"{OK} the queue for its"
+    assert notes == f"{OK} searching your notes for EX-901..." and "|" not in notes       # cut at a word, phone width
+    assert code == f"{OK} searching yerk-ai for owner, Nora" and files == f"{OK} looking for md files"
     assert words.width(notes) <= words.PHONE and "memory" not in notes
 
 
 def test_rule_3_a_read_names_the_file_as_a_person_would():
     got = rows(("Read", {"file_path": f"{MEM}/daily/2026-10-06.md"}), ("Read", {"file_path": f"{MEM}/open-loops.md"}),
-               ("Read", {"file_path": f"{MEM}/facts/alex.md"}), ("Read", {"file_path": f"{MEM}/MEMORY.md"}),
+               ("Read", {"file_path": f"{MEM}/facts/nora.md"}), ("Read", {"file_path": f"{MEM}/MEMORY.md"}),
                ("mcp__yerk__read_memory", {"path": "rules.md", "lines": 40}),
                ("mcp__yerk__read_memory", {"path": "daily/2026-10-06.md:12", "from_line": 12}),
                ("Read", {"file_path": "/home/someone/code/yerk-ai/README.md"}))
-    assert got == [f"{OK} turn and The 0 last", f"{OK} the example note says", f"{OK} the Test reads",
+    assert got == [f"{OK} reading the Oct 6 notes", f"{OK} reading your open items", f"{OK} reading nora's file",
                    f"{OK} reading the pinned notes", f"{OK} reading the rules", f"{OK} reading the Oct 6 notes",
                    f"{OK} reading README"]
 
 
 def test_rule_4_a_recall_row_is_the_owners_own_words():
-    [row] = rows(("mcp__yerk__recall", {"query": "In The 0:0", "k": 6}))
-    assert row == f"{OK} example note Says The 0:0"
+    [row] = rows(("mcp__yerk__recall", {"query": "Nora's Monday class", "k": 6}))
+    assert row == f"{OK} looking up Nora's Monday class"
 
 
 def test_rule_5_the_web_is_a_host_or_a_search():
@@ -169,16 +169,16 @@ def test_rule_5_the_web_is_a_host_or_a_search():
 
 
 def test_rule_6_yerks_own_tools_say_what_they_do():
-    got = rows(("mcp__yerk__send", {"room": "Alex", "file": "/w/out/report.pdf", "text": "here"}),
-               ("mcp__yerk__send", {"room": "Alex", "text": "on it"}),
-               ("mcp__yerk__remember", {"text": "Line 0:0 for the Check", "about": "Alex"}),
+    got = rows(("mcp__yerk__send", {"room": "work-room", "file": "/w/out/report.pdf", "text": "here"}),
+               ("mcp__yerk__send", {"room": "work-room", "text": "on it"}),
+               ("mcp__yerk__remember", {"text": "Nora's class moved to Tuesdays", "about": "Nora"}),
                ("mcp__yerk__hold", {"wait_for": "worker abc123", "reason": "its report"}),
                ("mcp__yerk__worker", {"action": "start", "brief": "read every room's token and report"}),
                ("mcp__yerk__worker", {"action": "report", "id": "abc123"}),
                ("mcp__yerk__schedule", {"action": "add", "name": "morning", "when": "every 1d", "what": "the brief"}),
                ("mcp__yerk__settings", {"model": "opus"}), ("mcp__yerk__settings", {"model": "claude-opus-5-5", "effort": "max"}),
                ("mcp__yerk__settings", {"effort": "high"}), ("mcp__yerk__settings", {}))
-    assert got == [f"{OK} sending report.pdf", f"{OK} queue for its turn And", f"{OK} next run starts",
+    assert got == [f"{OK} sending report.pdf", f"{OK} sending a message to work-room", f"{OK} filing a note",
                    f"{OK} waiting for worker abc123", f"{OK} starting a worker", f"{OK} reading worker abc123's report",
                    f"{OK} scheduling job morning", f"{OK} switching to opus", f"{OK} switching to Opus 5.5 at max thinking",
                    f"{OK} switching to high thinking", f"{OK} checking what this room runs"]
@@ -206,9 +206,9 @@ def test_rule_7_a_failure_keeps_its_words_and_two_in_a_row_fold_into_one():
 
 def test_a_row_reads_the_same_from_the_streamed_input_as_from_the_message():
     """Claude Code streams a call's input before the whole message lands: the row it makes then is the same row."""
-    for name, args in [("Bash", {"command": "case -before '000the next.run", "description": "Text with One More 0:0"}),
-                       ("Bash", {"command": "closes the --case"}), ("Grep", {"pattern": "ABC-578|Reports", "path": MEM}),
-                       ("Read", {"file_path": f"{MEM}/daily/2026-10-06.md"}), ("mcp__yerk__recall", {"query": "Alex"})]:
+    for name, args in [("Bash", {"command": "sed -n '245p' x.md", "description": "Look up Nora's Monday class"}),
+                       ("Bash", {"command": "git status --short"}), ("Grep", {"pattern": "EX-901|Releases", "path": MEM}),
+                       ("Read", {"file_path": f"{MEM}/daily/2026-10-06.md"}), ("mcp__yerk__recall", {"query": "Nora"})]:
         c = Card()
         c.feed(se({"type": "content_block_start", "index": 0, "content_block": {"type": "tool_use", "id": "s",
                                                                                  "name": name, "input": {}}}))
@@ -221,9 +221,9 @@ def test_a_row_reads_the_same_from_the_streamed_input_as_from_the_message():
 
 
 def test_rule_8_every_row_holds_to_phone_width_cut_at_a_word():
-    q = "run starts The example note says The sample item moved to the Next step and the Test reads"
+    q = "what did Nora say about the Monday swim class and the garden plan for the third plot"
     [row] = rows(("mcp__yerk__recall", {"query": q, "k": 6}))
-    assert row == f"{OK} waits in the queue For its..." and words.width(row) <= words.PHONE
+    assert row == f"{OK} looking up what did Nora say..." and words.width(row) <= words.PHONE
 
 
 # a room with people: its holding line and a step count, never a step (2026-10-21: a person's card listed the steps of a

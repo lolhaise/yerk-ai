@@ -449,7 +449,7 @@ def test_attachments_are_staged_and_a_missing_one_is_said_out_loud(dc):
 
 
 def test_two_attachments_with_one_name_in_one_message_are_both_staged(dc):
-    """Sample item moved (0000-00-00 00:00, #to-the-next): step and the test reads it, back as plain.text with
+    """The live shape: two pasted screenshots in one message, both named image.png by
     Discord (one webp, one png); the second was staged over the first in inbox/<message>/ and the room read one. The
     second takes a numbered name, the message names both, and the ledger has both paths."""
     d, client, room = dc

@@ -2,8 +2,9 @@
 # official Python SDK) and the send tool's shape are adapted from Hermes Agent v0.22.2,
 # mcp_serve.py (create_mcp_server, messages_send), https://github.com/NousResearch/hermes-agent
 # Copyright (c) 2025 Nous Research. MIT License. See NOTICE.
-"""Yerk AI's own MCP server: eight tools (send, hold, recall, read_memory, remember, worker, schedule, settings), local-only
-HTTP, preloaded in every room. A worker gets none of it: by default no MCP server at all, and with
+"""Yerk AI's own MCP server: ten tools (send, hold, recall, read_memory, remember, worker, schedule, settings, transcribe,
+voice_note), local-only HTTP, preloaded in every room; transcribe and voice_note are here and not plug-ins because the daemon
+has the network and a room's shell has none. A worker gets none of it: by default no MCP server at all, and with
 [workers] yerk_tools its own stdio server (`worker_server`) carrying recall and read_memory only.
 
 Every endpoint (/mcp, /hook, /control) wants the `x-yerk-secret` header (restart test R3). Three
@@ -44,11 +45,13 @@ class Daemon(Protocol):
     async def tool_hold(self, room: str, wait_for: str, reason: str) -> dict[str, Any]: ...
     async def tool_recall(self, room: str, query: str, k: int) -> dict[str, Any]: ...
     async def tool_read_memory(self, room: str, path: str, start: int, lines: int) -> dict[str, Any]: ...
-    async def tool_remember(self, room: str, text: str, about: str, replaces: list[str]) -> dict[str, Any]: ...
+    async def tool_remember(self, room: str, text: str, about: str, replaces: list[str], said: str = "", source: str = "") -> dict[str, Any]: ...
     async def tool_rule(self, room: str, text: str, job: str) -> dict[str, Any]: ...
     async def tool_worker(self, room: str, req: dict[str, Any]) -> dict[str, Any]: ...
     async def tool_schedule(self, room: str, req: dict[str, Any]) -> dict[str, Any]: ...
     async def tool_settings(self, room: str, model: str, effort: str, account: str = "") -> dict[str, Any]: ...
+    async def tool_transcribe(self, room: str, path: str, owner_yes: bool = False) -> dict[str, Any]: ...
+    async def tool_voice_note(self, room: str, script: str, name: str = "", owner_yes: bool = False) -> dict[str, Any]: ...
 
 
 def caller_room(ctx: Context) -> str:
@@ -107,7 +110,8 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
     @mcp.tool()
     async def send(room: str, text: str = "", file: str = "", *, ctx: Context) -> str:
         """Post to a room now, before your reply: text, or a file (absolute path) with the text as its
-        caption. `room` is a room id from the [message] line. Returns the posted message ids."""
+        caption; a voice_note file goes as a voice message. `room` is a room id from the [message] line. Returns the
+        posted message ids."""
         return json.dumps(await daemon.tool_send(room, text, file, caller_room(ctx)))
 
     @mcp.tool()
@@ -125,7 +129,8 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         return json.dumps(await daemon.tool_read_memory(caller_room(ctx), path, from_line, lines))
 
     @mcp.tool()
-    async def remember(text: str, about: str = "", replaces: list[str] | None = None, job: str = "", *, ctx: Context) -> str:
+    async def remember(text: str, about: str = "", replaces: list[str] | None = None, job: str = "", said: str = "", source: str = "",
+                       *, ctx: Context) -> str:
         """File in memory now, before you write the answer, what you were just told: a new fact, a decision or a
         correction, one line in plain words. `about`: for a fact, the person, place or thing it is about,
         by the name the owner uses (it names the fact file). `replaces`: for a correction, each old line as
@@ -133,9 +138,12 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         next 12 holding those words is marked superseded. Returns the new line's cite. `job`: when the owner
         says how a job is done from now on, or corrects how it was done, the job's short name ("open web pages",
         the rules' own name if it has one): `text` becomes its one rule in every room, the older one marked
-        replaced."""
+        replaced. `said`: when `text` is what a person said or wrote, word for word, their name, with `source`
+        (the message id, file path or transcript line holding those words): it is filed as their words.
+        Anything else about a person (what they decided or want, in your words) is your note, and is shown
+        as your note, never as their words."""
         return json.dumps(await (daemon.tool_rule(caller_room(ctx), text, job) if job else
-                                 daemon.tool_remember(caller_room(ctx), text, about, replaces or [])))
+                                 daemon.tool_remember(caller_room(ctx), text, about, replaces or [], said, source)))
 
     @mcp.tool()
     async def worker(action: str, brief: str = "", id: str = "", room: str = "", tasks: list[str] | None = None,
@@ -181,6 +189,24 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         a new session starts; with none it says what the room runs now. Say its `line`."""
         return json.dumps(await daemon.tool_settings(caller_room(ctx), model, effort, account))
 
+    @mcp.tool()
+    async def transcribe(path: str, owner_yes: bool = False, *, ctx: Context) -> str:
+        """A voice note or recording as text, since you take in sound only this way: `path` is the file's saved path from
+        its [attachment] line, or another audio file in this room's folders. The daemon transcribes it (your shell has no
+        network) and returns the words with a timestamp per segment, saved beside the audio as NAME.transcript.txt. A
+        segment marked (uncertain) has two readings that disagree, so give it as unsure or ask. A recording past US$1
+        comes back refused until the owner says yes; then call again with `owner_yes` true."""
+        return json.dumps(await daemon.tool_transcribe(caller_room(ctx), path, owner_yes))
+
+    @mcp.tool()
+    async def voice_note(script: str, name: str = "", owner_yes: bool = False, *, ctx: Context) -> str:
+        """Speaks `script` as a voice note in English, when the owner asks for one or to say something out loud. Write it as
+        it should sound: `[[pause]]` alone on a line between sections, `(break)` for a short pause. The daemon makes it (your
+        shell has no network), checks that its first 20 s read back as your opening, and returns its file, length, engine,
+        cost and `probe` words: `send` that file with no text and it goes as a voice message. A note past US$1 comes back
+        refused until the owner says yes; then call again with `owner_yes` true."""
+        return json.dumps(await daemon.tool_voice_note(caller_room(ctx), script, name, owner_yes))
+
     def route(path: str, handler: Handler) -> None:
         @mcp.custom_route(path, methods=["POST"])
         async def _route(request: Request) -> Response:
@@ -201,9 +227,12 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
 
 def room_config(url: str, room: str, path: Path, token: str = "", servers: dict[str, Any] | None = None) -> Path:
     """The per-room --mcp-config file (0600): this server, preloaded, the process's own token as its secret header
-    (the daemon knows the room by the token's binding), and the room's `mcp` servers from rooms.toml, never as yerk."""
+    (the daemon knows the room by the token's binding), and the room's `mcp` servers from rooms.toml, never as yerk. Its
+    `timeout` (10 min, inside a turn's 15 min of silence) is what lets a transcribe call run past 60 s: without one,
+    Claude Code drops an HTTP tool call that has not answered in 60 s, and this server answers only when the tool is done."""
     from .config import write_private
-    cfg = {"mcpServers": {**dict(servers or {}), "yerk": {"type": "http", "url": url, "headers": {HEADER: token}, "alwaysLoad": True}}}
+    yerk = {"type": "http", "url": url, "headers": {HEADER: token}, "alwaysLoad": True, "timeout": 600_000}
+    cfg = {"mcpServers": {**dict(servers or {}), "yerk": yerk}}
     write_private(path, json.dumps(cfg, indent=1))
     return path
 

@@ -51,11 +51,14 @@ def test_the_hook_endpoint_answers_over_http(tmp_path):
     assert other.json() == {}
 
 
-def test_eight_preloaded_tools_with_slim_schemas(tmp_path):
+def test_ten_preloaded_tools_with_slim_schemas(tmp_path):
     y = daemon(tmp_path)
     tools = {t.name: t for t in asyncio.run(mcp_server.build(y, y.port, y.hook).list_tools())}
-    assert set(tools) == {"send", "hold", "recall", "read_memory", "remember", "worker", "schedule", "settings"}
-    assert list(tools["remember"].inputSchema["properties"]) == ["text", "about", "replaces", "job"]
+    assert set(tools) == {"send", "hold", "recall", "read_memory", "remember", "worker", "schedule", "settings", "transcribe",
+                          "voice_note"}
+    assert list(tools["transcribe"].inputSchema["properties"]) == ["path", "owner_yes"]
+    assert list(tools["voice_note"].inputSchema["properties"]) == ["script", "name", "owner_yes"]
+    assert list(tools["remember"].inputSchema["properties"]) == ["text", "about", "replaces", "job", "said", "source"]
     assert {f"mcp__yerk__{t}" for t in tools} == set(YERK_TOOLS) and "`remember`" in context.MECHANICS.read_text()
     assert list(tools["settings"].inputSchema["properties"]) == ["model", "effort", "account"]
     assert "the owner asks to change this room's model or thinking level" in str(tools["settings"].description).lower()
@@ -70,6 +73,7 @@ def test_eight_preloaded_tools_with_slim_schemas(tmp_path):
                                                               "account", "model"]
     cfg = json.loads(mcp_server.room_config("http://127.0.0.1:1/mcp", "example-room", tmp_path / "m.json").read_text())
     assert cfg["mcpServers"]["yerk"]["alwaysLoad"] is True and list(cfg["mcpServers"]) == ["yerk"]
+    assert cfg["mcpServers"]["yerk"]["timeout"] == 600_000            # past Claude Code's 60 s, so a transcribe call can finish
     web = {"type": "stdio", "command": "/usr/bin/node", "args": ["server.mjs"], "timeout": 180000}   # a room's `mcp` table
     cfg = json.loads(mcp_server.room_config("http://127.0.0.1:1/mcp", "example-room", tmp_path / "m.json", "t",
                                             {"web-ladder": web, "yerk": {"type": "stdio", "command": "x"}}).read_text())
@@ -122,6 +126,8 @@ def test_a_send_outside_a_turn_has_a_key_of_its_own_across_restarts(tmp_path):
     room.busy, room.turn_key = True, "abc123def456"                   # inside a turn: its key and its messages
     room.inflight = [type("M", (), {"id": "501"})()]
     inside = context.layer_dir(y.private, y.room_confs["example-room"]) / "memory" / "pinned.md"
+    room.evidence.observe({"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "w1", "name": "Write",
+                                                                         "input": {"file_path": "/w/claims.md"}}]}})   # its sheet
     assert asyncio.run(y.tool_send("example-room", "pinned", str(inside), "example-room"))["ok"]
     assert ch.keys[-1] == ("abc123def456-s2", "501")
 

@@ -22,10 +22,12 @@ contents needs a read of a file. A claim with none is ledgered with the sentence
 turn ran. A question, a hedge or a proposal ("would", "could", "might", "I think") is not a claim.
 A fifth, the stance rule (claim 3), ledgers each reply to the owner's pushback: held, conceded or folded.
 A sixth, the sheet rule, ledgers once a turn that sent a document or pasted a block with no claims
-sheet written or named in the turn (check_sheet).
+sheet written or named in the turn (check_sheet), in a person's room; an owner's room is refused once instead.
 A seventh, the person rule, ledgers a sentence telling what someone said, wants, knows, decided or asked, or where they
 were, from a turn with no reading call (check_person); an eighth, the quote rule, a quoted span given as someone's or a
-document's words that nothing the turn read, was given or posted earlier carries (check_quote).
+document's words that nothing the turn read, was given or posted earlier carries (check_quote). Neither counts a sentence about
+the owner or the room itself, or one written as the room's own note ("from my notes, not their words"); since 2026-10-23 an
+owner's room refuses the rest once a result when the turn made no reading call (Room.said_check), a person's room logs.
 """
 from __future__ import annotations
 
@@ -368,7 +370,7 @@ STANDS = re.compile(r"\b(?:still\s+(?:stands?|holds?|true|right)|i\s+(?:still\s+
                     r"was\s+wrong|what\s+(?:still\s+)?stands)\b|:[*_\s]*(?:holds?|stands?)\b|\b(?:holds?|stands?)\s*[:(]", re.I)
 OWN_WRONG = re.compile(r"\bi\s+(?:was\s+wrong|got\s+(?:\w+\s+){0,3}?wrong|overstated|misread|miscounted|misspoke)\b"
                        r"|\b(?:my\s+(?:mistake|bad)|i\s+stand\s+corrected)\b", re.I)
-NO_READ = ("Write", "Edit", "MultiEdit", "NotebookEdit", "TodoWrite", "ToolSearch", "send", "hold", "remember", "rule", "worker", "schedule", "settings")
+NO_READ = ("Write", "Edit", "MultiEdit", "NotebookEdit", "TodoWrite", "ToolSearch", "send", "hold", "remember", "rule", "worker", "schedule", "settings", "voice_note")
 
 
 def stance(reply: str, pushed: list[float], ev: Evidence) -> list[tuple[str, str]]:
@@ -383,7 +385,8 @@ def stance(reply: str, pushed: list[float], ev: Evidence) -> list[tuple[str, str
 
 # the sheet rule: a turn that ships something in the owner's name, a document through the send tool or a pasted block
 # in the reply or in a send's text, with no claims sheet (claim, source line, quote) written or named in the turn.
-# The morning diff counts how often a room sends without checking its claims against source first. Logs only.
+# The morning diff counts how often a room sends without checking its claims against source first. Since 2026-10-22 an
+# owner's room is refused once a turn instead (Room.sheet_check, a shadow row per refusal); a person's room still logs.
 DOCUMENT = (".docx", ".pdf", ".xlsx", ".pptx", ".txt", ".md", ".csv")
 PASTE_TAGS = ("", "text", "plain", "none")              # a fence with one of these opens a paste; a language tag opens code
 SHEET = re.compile(r"claims[\w.-]*\.(?:md|txt|csv)\b", re.I)    # CLAIMS.md, example-report/claims.md, ex905-claims.md
@@ -406,52 +409,80 @@ def pasted(text: str) -> bool:
     return False
 
 
-def check_sheet(reply: str, ev: Evidence) -> list[tuple[str, str]]:
-    """The sheet rule in shadow: ("sheet", detail) once when the turn sent a document or pasted a block and no call
-    of the turn wrote or named a claims sheet. Logs only."""
+def sheet_written(ev: Evidence, beside: Path | None = None) -> bool:
+    """A claims sheet written or named this turn, the shadow rule's test and the refusal's alike: a call of the turn that
+    writes a file whose name holds claims (SHEET), or a shell command naming one; or, given `beside`, such a file in that
+    folder changed since the turn began (a sheet a call wrote counts before its stream line is read)."""
     with ev.lock:
-        calls = list(ev.calls.values())
-    sent: list[str] = []
-    texts = [reply]
-    for c in calls:
-        name, ti = c["tool"].rsplit("__", 1)[-1], c["input"]
-        if name == "send":
-            texts.append(str(ti.get("text") or ""))
-            if (file := str(ti.get("file") or "")) and file.lower().endswith(DOCUMENT):
-                sent.append(Path(file).name)
-        if (name in WRITES and SHEET.search(str(ti.get("file_path") or ""))) or (name == "Bash" and SHEET.search(str(ti.get("command") or ""))):
-            return []
-    paste = any(pasted(t) for t in texts)
-    if not sent and not paste:
+        calls, began = [(c["tool"].rsplit("__", 1)[-1], c["input"]) for c in ev.calls.values()], ev.started
+    if any(SHEET.search(str(ti.get("file_path") or "")) if name in WRITES else name == "Bash" and SHEET.search(str(ti.get("command") or ""))
+           for name, ti in calls):
+        return True
+    try:
+        return beside is not None and any(SHEET.search(p.name) and p.stat().st_mtime >= began for p in beside.iterdir() if p.is_file())
+    except OSError:
+        return False
+
+
+def shipped(sent: list[str], paste: bool) -> str:
+    """What a turn ships in the owner's name, as the sheet rows say it: "sent a.pdf", "pasted a block" or both."""
+    return " and ".join(x for x in (f"sent {', '.join(sent)}" if sent else "", "pasted a block" if paste else "") if x)
+
+
+def check_sheet(reply: str, ev: Evidence) -> list[tuple[str, str]]:
+    """The sheet rule in shadow, a person's room's (an owner's room refuses instead, Room.sheet_check): ("sheet", detail)
+    once when the turn sent a document or pasted a block and no call of the turn wrote or named a claims sheet. Logs only."""
+    with ev.lock:
+        sends = [c["input"] for c in ev.calls.values() if c["tool"].rsplit("__", 1)[-1] == "send"]
+    sent = [Path(f).name for ti in sends if (f := str(ti.get("file") or "")).lower().endswith(DOCUMENT)]
+    paste = any(pasted(t) for t in [reply, *(str(ti.get("text") or "") for ti in sends)])
+    if not sent and not paste or sheet_written(ev):
         return []
-    what = " and ".join(x for x in (f"sent {', '.join(sent)}" if sent else "", "pasted a block" if paste else "") if x)
-    return [("sheet", f"{what} with no claims sheet written this turn")]
+    return [("sheet", f"{shipped(sent, paste)} with no claims sheet written this turn")]
 
 
 # the person rule: what someone said, wants, knows, decided or asked, or where they were, told in a turn that made no
 # call that reads (any call outside NO_READ, the stance rule's test: a recall, read_memory, Read, Grep, web or shell
 # read). The prompt hook's recall block is not a call: the replay's misses of 2026-10-21 (who said to go ahead, where
-# the owner was) all had one. The owner ("you") is a person; a question, a hedge or a proposal is no claim. Logs only.
+# the owner was) all had one. A question, a hedge or a proposal is no claim, and since 2026-10-23 (said-or-noted) neither is a
+# sentence about the owner ("you", the name the install gives the owner's words) or the room, or one the room marks as its own note:
+# eight of the first day's twelve rows told the owner what they had said or wanted, their words being the prompt. Nor is a
+# bare "told", only , . ; ) or the end after it ("286 posted, Sam told, 288 named"): the owner's own act in the passive, no one's words.
 PERSON = re.compile(r"\b([Yy]ou|[Hh]e|[Ss]he|[A-Z][a-z]+)\s+(?:(?:never|already|actually|just|also|still|even)\s+)?"
-                    r"(?:said|says|told|tells|asked|asks|decided|wants?|wanted|knows?|knew|went\s+to|(?:was|were)\s+(?:on|in|at)"
+                    r"(?:said|says|told(?!\s*(?:[,.;)]|$))|tells|asked|asks|decided|wants?|wanted|knows?|knew|went\s+to|(?:was|were)\s+(?:on|in|at)"
                     r"|(?:does|did|do)(?:n['’]?t|\s+not)\s+(?:want|know|say|ask|decide))\b")
 NOT_PEOPLE = frozenset("the this that these those it its there here what which who whoever nobody everyone everybody someone "
                        "somebody anyone anybody one each both all most some none nothing something everything anything we they "
                        "i then so and but or if when once since as yes yeah fair right good ok okay also still just even now".split())
+OWNER = frozenset("you your yours i me my mine we our".split())      # the owner, or the room speaking of itself
+NOTED = re.compile(r"\bfrom\s+my\s+notes\b|\bnot\s+their\s+words\b|\bproposed,?\s+not\s+confirmed\b", re.I)
 
 
-def check_person(reply: str, ev: Evidence) -> list[tuple[str, str]]:
-    """The person rule in shadow: ("person", detail) for each such sentence, with the name and the tools line."""
+def read_any(ev: Evidence) -> bool:
+    """A call of the turn that reads: any outside NO_READ, whatever its target (the person rule's test)."""
+    with ev.lock:
+        return any(c["tool"].rsplit("__", 1)[-1] not in NO_READ for c in ev.calls.values())
+
+
+def people(reply: str, ev: Evidence, owner: tuple[str, ...] = ()) -> list[tuple[str, str]]:
+    """(name, detail) for each sentence telling what a third person said, wants, knows, decided or asked, from a turn with no
+    reading call: never one whose subject (the first such name) is the owner (OWNER, their `owner` names) or the room, nor one
+    marked as the room's note (NOTED)."""
     with ev.lock:
         calls = list(ev.calls.values())
     if any(c["tool"].rsplit("__", 1)[-1] not in NO_READ for c in calls):
         return []
-    out = []
+    out, mine = [], OWNER | {n.lower() for n in owner}
     for s in sentences(reply):
         names = [m.group(1) for m in PERSON.finditer(s) if m.group(1).lower() not in NOT_PEOPLE and not VERSION.search(m.group(1))]
-        if names and not s.endswith("?") and not HEDGE.search(s):
-            out.append(("person", f"{names[0]}: \"{s[:300]}\"; tools this turn: {tools_line(calls)}"))
+        if names and names[0].lower() not in mine and not s.endswith("?") and not HEDGE.search(s) and not NOTED.search(s):
+            out.append((names[0], f"{names[0]}: \"{s[:300]}\"; tools this turn: {tools_line(calls)}"))
     return out
+
+
+def check_person(reply: str, ev: Evidence, owner: tuple[str, ...] = ()) -> list[tuple[str, str]]:
+    """The person rule in shadow: ("person", detail) for each such sentence, with the name and the tools line."""
+    return [("person", detail) for _, detail in people(reply, ev, owner)]
 
 
 # the quote rule: a quoted span of three or more words that its lead-in gives as someone's or a document's words (said,
@@ -459,11 +490,24 @@ def check_person(reply: str, ev: Evidence) -> list[tuple[str, str]]:
 # up in the evidence the way `figure` is. The lead-in is the clause before the quote, cut at an earlier quote; its cue
 # ends within three words of the quote, or the clause ends in a colon ("wrote a note right on that detail:"). Logs only.
 QUOTED = re.compile(r"[\"“]([^\"“”\n]{3,400})[\"”]")
-LEAD = re.compile(r"(?:\b(?:[Ss]aid|says|saying|wrote|writes|told|tells|asked|replied|answered|put\s+it|quoted?|reads)"
-                  r"|\b(?:[Hh]er|[Hh]is|[Tt]heir|[Yy]our|[Mm]y|[Oo]ur|[Tt]he|[Tt]hat|[Tt]his|[A-Z][a-z]+['’]s)\s+(?:own\s+)?"
-                  r"(?:note|notes|message|email|e-mail|comment|text|ticket|page|doc|document|post|reply|memo|letter|words))\b")
+NOUN = (r"\b(?:[Hh]er|[Hh]is|[Tt]heir|[Yy]our|[Mm]y|[Oo]ur|[Tt]he|[Tt]hat|[Tt]his|[A-Z][a-z]+['’]s)\s+(?:own\s+)?"
+        r"(?:note|notes|message|email|e-mail|comment|text|ticket|page|doc|document|post|reply|memo|letter|words)")
+LEAD = re.compile(r"(?:\b(?:[Ss]aid|says|saying|wrote|writes|told|tells|asked|replied|answered|put\s+it|quoted?|reads)|" + NOUN + r")\b")
 INTRO = re.compile(LEAD.pattern + r"\W*(?:\w+\W+){0,3}$")
-SAID_AFTER = re.compile(r"^\W{0,3}(?:you|he|she|they|[A-Z][a-z]+)\s+(?:said|says|wrote|writes|asked|told)\b")
+SAID_AFTER = re.compile(r"^\W{0,3}(you|he|she|they|[A-Z][a-z]+)\s+(?:said|says|wrote|writes|asked|told)\b")
+DETERMINER = frozenset("the this that a an her his their its".split())
+
+
+def speaker(lead: str, after: re.Match[str] | None) -> str:
+    """Whose words a quote is given as: the name after it ("..., she said"), its lead-in's owned noun ("Her reply", "Sam's
+    note") or the subject of its verb ("She says", "the recurrence says"), its determiner kept."""
+    cue = [*LEAD.finditer(lead)][-1:]
+    if after or not cue:
+        return after.group(1) if after else ""
+    if re.match(NOUN, cue[0].group(0)):
+        return cue[0].group(0)
+    before = re.findall(r"[\w'’]+", lead[:cue[0].start()])[-2:]
+    return " ".join(before if len(before) == 2 and before[0].lower() in DETERMINER else before[-1:])
 
 
 def flat(text: str) -> str:
@@ -471,18 +515,27 @@ def flat(text: str) -> str:
     return " " + " ".join(re.findall(r"[\w%$]+", text.lower().replace("'", "").replace("’", ""))) + " "
 
 
-def check_quote(reply: str, ev: Evidence, said: str = "") -> list[tuple[str, str]]:
-    """The quote rule in shadow: ("quote", detail) for each such span with a part (split at an ellipsis) that the turn's
-    reads and prompts and the session's earlier replies, `said`, do not hold; detail: the span and its lead-in."""
-    out, pool = [], ""
+def quotes(reply: str, ev: Evidence, said: str = "", owner: tuple[str, ...] = ()) -> list[tuple[str, str]]:
+    """(whose, detail) for each quoted span given as someone's or a document's words with a part (split at an ellipsis) that
+    the turn's reads and prompts and the session's earlier replies, `said`, do not hold: never the owner's or the room's own
+    words (OWNER, their `owner` names), nor a span in a sentence marked as the room's note (NOTED); detail: the span, its lead-in."""
+    out, pool, mine = [], "", OWNER | {n.lower() for n in owner}
     for m in QUOTED.finditer(reply):
         span, lead = m.group(1).strip(), re.split(r"[.!?]\s|\n|[\"“”]", reply[max(0, m.start() - 80):m.start()])[-1]
         after, lead = SAID_AFTER.match(reply[m.end():m.end() + 60]), lead.strip()
         introduced = INTRO.search(lead) or (LEAD.search(lead) and lead.rstrip(" *_").endswith(":"))
         if len(re.findall(r"\w+", span)) < 3 or not (introduced or after):
             continue
+        who, rest = speaker(lead, after), re.split(r"(?<=[.!?])\s|\n", reply[m.end():], maxsplit=1)[0]
+        if re.sub(r"['’]s$", "", who.split(" ")[0].lower()) in mine or NOTED.search(f"{lead} {span} {rest}"):
+            continue
         pool = pool or flat(ev.read_text() + "\n" + said)
         if any(flat(part) not in pool for part in re.split(r"\.\.\.|…", span) if flat(part).strip()):
             lead = lead if LEAD.search(lead) else str(after.group(0) if after else "").strip(" ,.")
-            out.append(("quote", f"\"{span[:200]}\" after \"{lead[-80:]}\"; no read, prompt or earlier reply of the session carries it"))
+            out.append((who, f"\"{span[:200]}\" after \"{lead[-80:]}\"; no read, prompt or earlier reply of the session carries it"))
     return out
+
+
+def check_quote(reply: str, ev: Evidence, said: str = "", owner: tuple[str, ...] = ()) -> list[tuple[str, str]]:
+    """The quote rule in shadow: ("quote", detail) for each such span (quotes)."""
+    return [("quote", detail) for _, detail in quotes(reply, ev, said, owner)]

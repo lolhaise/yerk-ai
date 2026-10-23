@@ -10,7 +10,7 @@ skipped and why), health (the daily call per account: pass or fail and the login
 (gates.py): every gate decision, the approval holds, each hook call's time, each tool call's time and failure, and
 the tamper rows of a changed setting; stalls (beat.py: each time the event loop was held more than 2 s, with its
 dump); deploys (deploy.py: each deploy and rollback, the commit before and after, and whether a person's turn was
-each deploy and rollback, the commit before and after, and whether a person's turn was cut).
+each deploy and rollback, the commit before and after, and whether a person's turn was cut); spend (each paid call).
 
 Inbound states, after Hermes' delivery ledger (gateway/delivery_ledger.py, MIT): `received`
 (ledgered, nothing ran: run it plainly after a crash), `running` (sent to Claude Code: after a
@@ -330,6 +330,10 @@ class Ledger:
         return "\n".join(str(r["body"]) for r in rows)
 
     # observability (beat.py, status.py, morning.py)
+    def spend(self, **row: Any) -> int:
+        """One paid call (room, tool, engine, usd, note), so the morning diff carries the day's spend (decision 32)."""
+        return self._insert("spend", {"t": time.time(), **row})
+
     def stall(self, **row: Any) -> int:
         return self._insert("stalls", row)
 
@@ -376,7 +380,7 @@ class Ledger:
         return {str(r["rule"]): int(r["n"]) for r in rows}
 
     def spent(self, since: float, until: float) -> dict[str, Any]:
-        """{n, usd}: the paid calls a plug-in (plugins/web) booked in the window, as billed or at list price (decision 32)."""
+        """{n, usd}: the paid calls booked in the window (spend), as billed or at list price (decision 32)."""
         return self._first("SELECT count(*) AS n, coalesce(sum(usd), 0) AS usd FROM spend WHERE t >= ? AND t < ?", (since, until)) or {}
 
     def record(self, **row: Any) -> int:

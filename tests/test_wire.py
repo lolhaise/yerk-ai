@@ -21,7 +21,7 @@ def test_wire_reads_the_request_shape_and_each_message():
 
 
 def test_a_line_a_crash_zeroed_or_cut_is_skipped_and_counted(tmp_path):
-    """0000-00-00 ~00:00, next step and-the: test reads it back As plain text with 000 One more. Line For the
+    """Seen live after a hard power-off: one line of a work room's transcript was 193 NUL bytes. Claude Code reads
     past such a line; `yerk map --wire` stopped on it."""
     from yerk_ai.config import budgets
     rows = FIXTURE.read_text().splitlines(keepends=True)

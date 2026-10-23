@@ -20,7 +20,7 @@ from . import deploy, docs, hooks, memindex, memory, retention, status, words
 from . import shape as rule_shape                      # the check named "rule shape"; "layout" is the private folder's
 from .accounts import load_accounts, token_info
 from .config import REPO, ROOM_KEYS, budgets, load_toml, room_id, rooms, write_private
-from .context import layer_dir
+from .context import layer_dir, session_start
 from .ledger import Ledger
 from .mentions import Builder
 
@@ -159,7 +159,7 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
             found.extend(f"room {n}: rooms.toml key {k} is read by nothing" for k in sorted(set(c) - ROOM_KEYS))
             found.extend([f"room {n}: no layer folder"] if not layer_dir(private, c).is_dir() else [])
         also = {(private / Path(str(x)).expanduser()).resolve() for c in rs.values() if isinstance(c.get("also"), list) for x in c["also"]}
-        found.extend(f"also root {r.name}: missing" for r in sorted(also | set(m.scope.roots[1:])) if not r.exists())
+        found.extend(f"also root {r.name}: missing" for r in sorted(also | set(m.scope.roots[1:]) - set(m.uploads)) if not r.exists())
         named = [v for t in conf.values() if isinstance(t, dict) for k, v in t.items() if k.endswith(("_file", "_key")) and isinstance(v, str)]
         named += [str(r["token"]) for r in (load_toml(private / "accounts.toml").get("accounts") or {}).values() if r.get("token")]
         for p in (private / Path(x).expanduser() for x in named):
@@ -285,9 +285,21 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
         if ran and ix and ran != ix:
             found.append(f"memory index: runs {ix[:7]}, yerkd {str(ran)[:7]}: restart yerk-index")
 
+    def fits() -> None:                                         # a part past its line goes out cut (2026-10-22), a held rule not at all
+        over: dict[tuple[str, str], tuple[int, int, list[str]]] = {}      # (part, its file) -> its size, its line, the rooms
+        for n, c in rooms(private).items():
+            for p in (p for p in session_start(private, c, budgets(), rules=m.root / memory.RULES) if p.over):
+                over.setdefault((p.name, p.source), (p.raw, int(p.budget or 0), []))[2].append(n)
+        for (part, src), (raw, cap, names) in over.items():
+            found.append(f"{Path(src).name or part}: {part} over its line by {raw - cap:,} characters ({raw:,} of {cap:,}), cut "
+                         f"at every session start in {', '.join(names)}; raise its line in budgets.toml or trim the file")
+        held = [x for x in ((m.root / memory.OVERFLOW).read_text().splitlines() if (m.root / memory.OVERFLOW).is_file() else []) if x.startswith("- ")]
+        found.extend([f"{words.WORKING} {memory.OVERFLOW}: {len(held)} rule{'s' * (len(held) != 1)} held, in no room: {memory.RULES} is full "
+                      f"at its cap of {budgets()['session_start']['appended']['rules']:,}; move each in by hand once it has room"] if held else [])
+
     for what, check in (("layout", layout), ("classes", classes), ("tokens", tokens), ("index", index), ("hooks", hooked),
                         ("modes", modes), ("secrets", leaks), ("disk", growth), ("memory cap", high), ("backfill", backfill),
-                        ("cites", cites), ("code", code), ("rule shape", ruleshape)):
+                        ("cites", cites), ("code", code), ("rule shape", ruleshape), ("fit", fits)):
         try:
             check()
         except (Exception, SystemExit) as e:                    # a check that cannot run is a line; the others still run

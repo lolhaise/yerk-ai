@@ -4,11 +4,11 @@ message, once per version, and a session that starts after the change has it in 
 is a placeholder."""
 import asyncio
 import json
-import re
 import shutil
+from pathlib import Path
 
 from yerk_ai import context, memory, words
-from yerk_ai.config import EXAMPLE_PRIVATE
+from yerk_ai.config import EXAMPLE_PRIVATE, budgets
 from yerk_ai.daemon import ConsoleChannel, Yerkd
 from yerk_ai.lifted.trim import truncate
 from yerk_ai.room import Inbound
@@ -47,7 +47,7 @@ def test_a_rule_filed_in_one_room_reaches_a_running_room_on_its_next_message_onc
     assert context.NEWS not in told(y, "sid-b")                         # nothing changed since its start
     r = rule(y, A, "Open web pages with the example browser, never the example fetcher.", "Open web pages:")
     assert r == {"ok": True, "job": "open web pages", "cite": "tree/rules.md:6", "replaced": [],
-                 "next": words.FILED_NEXT.format(clause=words.RULE_CLAUSE.format(job="open web pages", over=""))}
+                 "next": words.FILED_NEXT.format(clause=words.RULE_CLAUSE.format(job="open web pages"))}
     assert r["next"].endswith("the filing is one clause at its end, this one: every room now does open web pages this way.")
     block = told(y, "sid-b")
     assert block.count(f"{context.NEWS}\nnew in rules.md: open web pages: Open web pages with the example browser, never "
@@ -97,32 +97,134 @@ def test_the_block_keeps_to_its_budget_and_past_it_gives_the_count_and_where_to_
     assert memory.read(y.memory, "rules.md", 6, 1, y.reader(FAMILY))["ok"]      # the pointer reads from any room
 
 
-def test_a_rule_past_the_rules_budget_is_filed_and_said_and_the_machine_room_hears_which_lines_every_start_cuts(tmp_path, capsys):
-    """2026-10-21: a room's rule took the rules part to 12,398 against its 11,886 and nothing said so, so every session
-    start sent it trimmed. Filed all the same (a correction is never lost); the result carries `over_budget` and the
-    reply's closing clause; the machine room gets one line naming the file, its size, the cap and the lines the trim drops."""
+EX = " <example>" + "Asked the example question, it gave the example answer first and stopped there. " * 2 + "</example>"
+SMALL = " <example>Asked the example question twice, it gave the one example answer first, then stopped.</example>"
+PLAIN = "- example job {i}: done the example way, step by step. (example-room, 2026-10-21 09:00:00-04:00) [m:m-{i}]"
+
+
+def fill(y: Yerkd, size: int, newest: tuple[str, ...] = ()) -> Path:
+    """The rules file at exactly `size` characters as a session start counts them: plain example rules, one padded to land
+    on it, then `newest`, the file's last lines."""
+    path, head, plain = y.memory.root / memory.RULES, ["---", "class: shared", "---", "# Rules: one live line per job, in every room", ""], []
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    def measure(pad: str) -> int:
+        path.write_text("\n".join([*head, *plain, pad, *newest]) + "\n")
+        return context.chars(context.rules_text(y.room_confs[A], path)[0])
+    while measure("- example pad x") < size - 300:
+        plain.append(PLAIN.format(i=len(plain)))
+    assert measure("- example pad x" + "x" * (size - measure("- example pad x"))) == size
+    return path
+
+
+def line_len(job: str, text: str) -> int:
+    """What the new rule's line adds to the rules part: the line and its newline (the time's width never changes)."""
+    return len(f"- {job}: {text} ({A}, 2026-01-01 00:00:00+00:00) [m:m-1]") + 1
+
+
+def older(job: str, example: str = EX) -> str:
+    return f"- {job}: done the {job} way.{example} ({A}, 2026-10-21 09:00:00-04:00) [m:m-{job.split()[-1]}]"
+
+
+def fitted(y: Yerkd) -> list[str]:
+    """The day-log lines Yerk AI wrote for a filing's fit, a strip's or a hold's, in order."""
+    return [ln.body for f in sorted(y.daily.daily.glob("*.md")) for x in f.read_text().splitlines()
+            if (ln := memory.parse_line(x)) and ln.role == "yerk"]
+
+
+def size(y: Yerkd) -> int:
+    return context.chars(context.rules_text(y.room_confs[A], y.memory.root / memory.RULES)[0])
+
+
+def test_a_filing_that_fits_is_filed_whole_with_its_example(tmp_path):
+    y = daemon(tmp_path)
+    cap = y.budgets["session_start"]["appended"]["rules"]
+    path = fill(y, cap - 1000, (older("example older a"),))
+    r = rule(y, A, "Answer the example question first." + EX, "example new")
+    assert "stripped" not in r and "held" not in r and size(y) <= cap
+    assert path.read_text().splitlines()[-1].startswith(f"- example new: Answer the example question first.{EX} ({A}, ")
+    assert path.read_text().count("<example>") == 2 and not (y.memory.root / memory.OVERFLOW).exists() and fitted(y) == []
+
+
+def test_a_filing_past_the_cap_loses_its_own_example_first_and_older_rules_keep_theirs(tmp_path):
+    """Seen live: one rule's 190-character example took the rules file past its cap and seven proven rules went out of
+    every session start. The new rule's own example goes first; here that is enough, so the older rules keep theirs."""
+    y = daemon(tmp_path)
+    cap, text = y.budgets["session_start"]["appended"]["rules"], "Answer the example question first."
+    path = fill(y, cap - memory.HEADROOM - line_len("example new", text), (older("example older a"), older("example older b")))
+    r = rule(y, A, text + EX, "example new")
+    assert r["stripped"] == ["example new"] and size(y) == cap - memory.HEADROOM
+    lines = path.read_text().splitlines()
+    assert lines[-1].startswith(f"- example new: {text} ({A}, ") and lines[-3:-1] == [older("example older a"), older("example older b")]
+    assert fitted(y) == [words.RULE_STRIPPED.format(job="example new", cap=cap)]
+
+
+def test_then_the_newest_older_rules_example_goes_and_never_an_older_ones_first(tmp_path):
+    y = daemon(tmp_path)
+    cap, text = y.budgets["session_start"]["appended"]["rules"], "Answer the example question first."
+    path = fill(y, cap - memory.HEADROOM - line_len("example new", text) + 50, (older("example older a"), older("example older b")))
+    r = rule(y, A, text + SMALL, "example new")                     # its own example is not enough: 50 still over
+    assert r["stripped"] == ["example new", "example older b"] and size(y) <= cap - memory.HEADROOM
+    lines = path.read_text().splitlines()
+    assert lines[-3] == older("example older a") and lines[-2] == older("example older b", "") and "<example>" not in lines[-1]
+    assert lines[-1].startswith(f"- example new: {text} ({A}, ")    # the rule's own words, whole
+    assert fitted(y) == [words.RULE_STRIPPED.format(job=j, cap=cap) for j in ("example new", "example older b")]
+
+
+def test_a_rule_with_no_room_even_with_no_examples_is_held_in_the_overflow_file_and_said_once(tmp_path, capsys):
+    """A rule that would take the rules file past its cap with every example taken out is never filed there: the file stays
+    as it was, the rule goes to rules-overflow.md (0600) whole, the machine room gets one notice and the room a clause."""
     y = daemon(tmp_path)
     y.room_confs["example-machine"] = {**y.room_confs[A], "role": "machine", "id": "example-machine-id"}
     y.add_room("example-machine", ConsoleChannel())
-    cap, path = y.budgets["session_start"]["appended"]["rules"], y.memory.root / memory.RULES
-    assert "over_budget" not in rule(y, A, "Example job zero is done the example way.", "example job zero")
-    path.write_text(path.read_text() + "".join(f"- example job {i}: done the example way, {'with care ' * 9}[m:m-{i}]\n"
-                                               for i in range(110)))
-    r = rule(y, A, "Example job last is done the example way.", "example job last")
-    text = context.rules_text(y.room_confs[A], path)[0]
-    assert path.read_text().splitlines()[-1].startswith("- example job last: Example job last is done the example way. (")
-    assert r["over_budget"] == {"size": context.chars(text), "cap": cap} and context.chars(text) > cap
-    assert list(r)[-1] == "next" and r["next"].endswith(
-        "every room now does example job last this way, and the shared rules file is over its cap.")
+    cap = y.budgets["session_start"]["appended"]["rules"]
+    before = (path := fill(y, cap - 50)).read_bytes()
+    start(y, B, "sid-b")
+    r = rule(y, A, "Example job last is done the example way." + EX, "example job last")
+    assert r == {"ok": True, "job": "example job last", "cite": "tree/rules-overflow.md:3", "replaced": [], "held": True,
+                 "next": words.FILED_NEXT.format(clause=words.HELD_CLAUSE)}
+    held = y.memory.root / memory.OVERFLOW
+    assert path.read_bytes() == before and held.stat().st_mode & 0o777 == 0o600
+    assert held.read_text().splitlines()[-1].startswith(f"- example job last: Example job last is done the example way.{EX} ({A}, ")
     posts = [json.loads(x) for x in capsys.readouterr().out.splitlines() if x.startswith("{")]
-    said = [p["notice"] for p in posts if p["room"] == "example-machine"]
-    assert len(said) == 1 and [p for p in posts if p["room"] == A] == []          # the room says it in its reply
-    head, cut = said[0].split("\n")
-    assert head == f"{words.WORKING} rules.md over cap: {context.chars(text):,} of {cap:,}"
-    first, last = map(int, re.fullmatch(r"session starts cut lines (\d+) to (\d+)", cut).groups())
-    lines, sent = path.read_text().splitlines(), truncate(text, "rules", cap)[0]
-    assert first < last and all(lines[n - 1] not in sent for n in range(first, last + 1))   # each one gone or broken
-    assert lines[first - 2] in sent and lines[last] in sent                                 # either side goes out whole
+    assert [p["notice"] for p in posts if p["room"] == "example-machine"] == [
+        f"{words.WORKING} " + words.RULE_HELD.format(file="rules-overflow.md", job="example job last", room=A, cap=cap)]
+    assert [p for p in posts if p["room"] == A] == []                  # the room says it in its reply
+    assert fitted(y) == [words.RULE_HELD_LOG.format(job="example job last", file="rules-overflow.md", cap=cap)]
+    assert context.NEWS not in told(y, "sid-b")                         # no room has it
+    assert rule(y, A, "Example job last is done the example way." + EX, "example job last") == r      # a retried call
+    assert held.read_text().count("- example job last: ") == 1 and len(fitted(y)) == 1 and "notice" not in capsys.readouterr().out
+
+
+def test_a_rule_file_past_its_size_at_session_start_loses_its_newest_lines_never_a_middle_one(tmp_path):
+    """Hand edits can still take a rule file past its size: the rules part and the rulebook keep their first lines whole and
+    drop the newest, the last ones; a persona keeps its head and tail as before."""
+    shutil.copytree(EXAMPLE_PRIVATE, priv := tmp_path / "private")
+    (rules := tmp_path / "rules.md").write_text("".join(f"- example job {i}: done the example way, step by step.\n" for i in range(300)))
+    (priv / "example-rulebook.md").write_text("".join(f"- example habit {i}: kept the example way, step by step.\n" for i in range(400)))
+    (priv / "example-persona.md").write_text("".join(f"The example voice, line {i}, said the example way.\n" for i in range(400)))
+    parts = {p.name: p for p in context.session_start(priv, {"rulebook": "example-rulebook.md", "persona": "example-persona.md"},
+                                                      budgets(), rules=rules)}
+    for name, path in (("rules", rules), ("rulebook", priv / "example-rulebook.md")):
+        p, lines = parts[name], path.read_text().splitlines()
+        k = len(lines) - len(p.cut)
+        assert p.over and p.size <= p.budget and 0 < k < len(lines) - 12, name
+        assert list(p.cut) == lines[k:] and p.text.split("\n\n[...trimmed ")[0].split("\n")[1:] == lines[:k], name   # the tail only, at a line's end
+        assert p.text.endswith(f"Its last lines, the newest, are omitted. The full file stays readable with the Read tool: {path.resolve()}]")
+    assert parts["persona"].over and "The middle is omitted." in parts["persona"].text
+
+
+def test_a_tail_cut_never_ends_inside_an_example_that_spans_lines():
+    """A rulebook kept by hand can hold an <example> over several lines under its rule: the cut keeps the rule's line and
+    drops the example whole, so no session start ends inside one."""
+    block = "- example habit {i}: kept the example way, step by step.\n<example>\n" + "Asked the example question, it gave the example answer.\n" * 3 + "</example>\n"
+    text = "".join(block.format(i=i) for i in range(40))
+    plain = text.rfind("\n", 0, 900 + 1)                                  # a line cut at 90% of 1,000 lands inside an example
+    assert text[:plain].count("<example>") == text[:plain].count("</example>") + 1
+    sent, cut = truncate(text, "rulebook", 1000, mode="tail")
+    body = sent.split("\n\n[...trimmed ")[0]
+    assert text.startswith(body + "\n") and cut == len(text) - len(body) and body.endswith("- example habit 3: kept the example way, step by step.")
+    assert body.count("<example>") == body.count("</example>") == 3
 
 
 def test_a_session_started_after_the_change_has_the_rules_at_start_and_no_block(tmp_path):

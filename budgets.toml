@@ -1,10 +1,11 @@
 # Every size limit Yerk AI enforces, in one place.
 # Unit: characters as Claude Code counts them (UTF-16 code units, so one emoji outside
 # the basic plane counts 2), except [session], in tokens (its idle keys say their own), [shape], in rule lines and topics,
-# and [code] at the end, which counts lines. The budget test fails the build when a part or a total passes its number here.
+# [recall], in questions of the recall bench, and [code] at the end, which counts lines. The budget test fails the build
+# when a part or a total passes its number here.
 
 [session_start]
-total = 84350
+total = 88514
 
 # Load order, most stable first, so the cached start of the prompt survives.
 # The first five parts are Claude Code's own (its default prompt, the built-in tools
@@ -29,18 +30,28 @@ skills = 0
 # 2026-10-21: the taste rules (one line each, a rule and the rated example replies that prove it; example lines are the
 # strongest voice lever there is) took the largest rulebook to 9,860 and two room voices to 4,999, so 10,850 and 5,500,
 # about 10% over each; `rules` keeps 11,886 and the total rose by the 4,350 (decision 12's 80,000 moves with it).
+# 2026-10-22: the voice_note line (when a room makes a voice note: only asked, since each one costs) took the mechanics to
+# 3,377, so 3,400; no part could pay, since the six rooms' largest persona measured 11,704, room voice 5,392 and pinned
+# memory 3,854 that day, so the total rose by the 200.
+# 2026-10-22: the paste line (a fenced block posted on an earlier day is turned back once, PR paste-check) took the
+# mechanics to 3,532, so 3,600; no part could pay on PR 88's three measurements of the day, so the total rose by the 200.
+# 2026-10-22: sheet-hard (W23) found both line-per-rule parts past their lines and cut from the middle at every session
+# start since Oct 21, said to no one: the shared rules file at 12,298 against 11,886 (seven rules gone in every room) and
+# the work room's rulebook at 12,696 against 10,850 (13,518 at 11:1x; fifteen lines gone). `rules` to 12,500 and
+# `rulebook` to 14,000, the total up by the same 614 + 3,150. From here a cut is said in the machine room at session start
+# and `yerk doctor` reads red the day a part passes its line.
 [session_start.appended]
-mechanics = 3200
+mechanics = 3600
 persona = 11800
-rulebook = 10850
+rulebook = 14000
 room_voice = 5500
 pinned_memory = 4000
-rules = 11886
+rules = 12500
 recall_pack = 6000
 
 [per_message]
 typical = 1500
-# 0000-00-00: 0,000 text 0,000, with one more 0,000 line (for the, 00:00: "check while a second entry waits in the queue for
+# 2026-10-21: 4,000 to 5,500, the taste part's 1,500 below (the owner's files carried over as they
 # are, the cap raised where they need it).
 cap = 5500
 
@@ -62,7 +73,7 @@ recall = 2000
 # note says the sample item moved to, the next step and; the test, reads it back as plain text with.
 rules = 1500
 # Paid on every message of an owner room whose layer keeps taste.jsonl: the owner's verdicts on the room's replies,
-# reads it back as plain, text with one more line, for the check while a second (entry.waits). in the, 0000-00-00
+# three praised and two faulted, the owner's words beside the reply, as an earlier setup injected them (taste.py). The owner asked
 # that their thumbs up and thumbs down go in the way their own files hold them, written as they are, and that the cap
 # rise if they need the room.
 taste = 1500
@@ -98,13 +109,24 @@ reply = 1500
 # The rule-shape check (shape.py; `yerk doctor` daily, `yerk docs shape` on demand): how many lines of each kind one rule
 # file a room loads may hold before the doctor says so, and how many topics the install may say in two files one room
 # loads. `yerk docs shape --rules` prints each count's exact rule. Zero is the prompting guide's shape: what to do and its
-# test, reads it <back> as, plain text with one, more line (0000-00-00, for the: "check while a second entry waits
+# why, examples inside <example> tags, each thing said once, calm words (2026-10-21: Yerk an expert on its own harness). A count at or under its number is in the report, not a finding.
 
 negatives_without_why = 0
 shouted = 0
 untagged_examples = 0
 alarm_marks = 0
 duplicated_topics = 0
+
+[recall]
+# The recall bench as a ratchet (memory.ratchet): every `yerk recall-bench` run adds its row to <state>/memory/recall-bench.jsonl
+# and exits 4, and the budget test fails where the install's index is (it runs the bench, `yerk deploy`'s fast tests among them),
+# when the top six is more than `slack` questions under the best of the four runs before it on the same questions, unless a
+# note in `drops` names that drop: "YYYY-MM-DD: BEST to NEW, why". A run at NEW less the slack or more passes while BEST is in
+# the window; it leaves after four runs.
+slack = 1
+drops = [
+    "2026-10-22: 116 to 98, the index grew under the bench from Oct 19 to Oct 21 (the import put 259 days of old chats in the day logs, 126,415 chunks; the texts, mail, wiki and Workbot roots and five more): 18 answers crowded out of the top six, every one still whole in one chunk; Oct 19's code scores today's index the same 99 of 164 as today's; the record weight gives 6 back",
+]
 
 [code]
 # The code itself. Unit: lines as `wc -l` counts them, in every .py file under yerk_ai/,
@@ -135,6 +157,52 @@ duplicated_topics = 0
 # 2026-10-22: recall-warm raised it by 165, the pin that holds the keyword tables' pages mapped against the box's
 # page-cache drops, its pass after a write and the doctor's cap counting them (the owner's ask: recall at 3 s), not
 # folded to fit; its cold read cut the /keywords path the first build had (269).
+# 2026-10-21: transcribe raised it by 269, the transcribe tool (transcribe.py, 198), the voice note's arrival line and its
+# Stop bounce, and the ledger's spend table with its writer, reader and morning line (the same table PR 76 adds; whichever
+# merges second keeps one copy), not folded to fit; its cold read added 6 of the 269 (a Read of a recording is not
+# hearing it, and the room's 10-minute tool timeout that lets a long recording's call finish).
+# 2026-10-22: voice_note raised it by 414, the voice_note tool (voice_note.py, 309: the box's recipe, both voices, the
+# assembly, the probe and the waveform), Discord's voice message path in send_file (45), the daemon's tool and the spend
+# the next run starts the (00), example note (00), says The sample (00) item moved to the next (0) (step and
+
+# 2026-10-22: paste-check raised it by 118: the fenced-block view (memory.py, 42: fenced(), earlier_blocks() and
+# room_lines' `first`), the daemon's view kept for the day, its call off the loop, the send refusal and the Stop
+# hook's fifth rule (33), Room.paste_check and its flag (20), the card's row for a refused send (18) and the words (5),
+# not folded to fit.
+# 2026-10-22: sheet-hard (W23) raised it by 110: the sheet rule turned from a logger into a refusal in an owner's room,
+# Room.sheet_check and its flag (27), the send refusal, the Stop hook's sixth rule and the session-start cut line said in
+# the machine room (47), the shared sheet test (evidence.py, 11), the refusal's and the cut line's words (14), the
+# doctor's fit check (9) and the cut lines a trim drops (context.py, 2) (a room that does not check
+# gets things wrong), not folded to fit.
+# 2026-10-22: rules-fit raised it by 56: a rule filing fitted under the rules file's cap before it is written (memory.py,
+# 49: the examples out newest first and its own first, to 150 under the cap, else the rule held in rules-overflow.md, a
+# day-log line for each, a retried hold said once), the tail cut for the rules and rulebook parts (lifted/trim.py, 10), the strip and hold words
+# (words.py, 4), the doctor's held count (3) and the held notice (daemon.py, 1), less the filing-time over-cap line and
+# rules_over it replaces (context.py, 11 fewer) (seen that day: one rule's example pushed seven proven rules out of
+# every session start), not folded to fit. Its cold read raised it by 5 more: the tail cut never ends inside an example
+# that spans lines, a hand-kept rulebook's (lifted/trim.py, 5).
+# 2026-10-22: curate-rules raised it by 418: the rule files' proposals (curate.py, 408: the files every room loads, the
+# merge, cut, condensation and promotion finders on the existing flat() and difflib, the week's shadow, taste and `yerk`
+# evidence, the numbered proposals file, the machine-room card, the owner's --apply with its fit check, backup, on-trial
+# record and byte-identical undo, and the nightly phase after the promotion), the --rules and --apply flags (cli.py, 9)
+# and the card's words (1) (all of it, on the owner's word), not folded to fit. Its cold read raised it by
+# 9 more: one message alone is no merge, the two jobs must overlap (curate.py overlap, 6), and a condensation never
+# takes out an aside that holds a reason or a clause of the rule's own (REASON and its keep, 3).
+# 2026-10-22: recall-ratchet raised it by 37, the bench held to its own series ([recall] above: the run's exit 4 and the
+# budget test) and the record weight in the fusion (memory.record, top six 99 to 105 on the same questions), not folded
+# to fit (the owner's rule: memory changes land only through the bench); 38 on its first base, one fewer merged, since
+# its settings() keyword shares the line main's `private` added.
+# 2026-10-23: said-or-noted raised it by 126: what a third person said, decided, wants or asked, or a quote of their
+# words, turned back once a result in an owner's room from a turn with no reading call (Room.said_check and its flag,
+# room.py, 19; the send refusal, the Stop hook's seventh rule and the owner's name from [import] me, daemon.py, 18; the
+# words, 4), the person and quote rules kept to third persons with the "from my notes" pass (evidence.py, 41: people(),
+# quotes(), speaker(), read_any()), a room's note never shown as anyone's words, a person's words filed with `said` and
+# `source`, and each owner room's upload inbox a recall root (memory.py, 31; memindex.py, 9: its text kinds only; the
+# doctor skips an inbox not made yet), the tool's two fields (mcp_server.py, 4) (never a wrong
+# answer to the owner), not folded to fit; 18,291 merged on recall-ratchet (#87, 37), no line
+# shared (settings() takes its `uploads` and #87's `imports` on the two lines each touched). Its cold read raised it by 1:
+# a bare "told" ("286 posted, Sam told,") is the owner's own act in the passive, never a claim (evidence.py, PERSON).
 # 2026-10-21: web raised it by 9, the ledger's spend table, its read and the morning line, so the morning diff carries the
 # day's spend (decision 32); the web plug-in itself (plugins/web, JavaScript) is outside this count, as every plug-in is.
-lines = 16738
+# 0 of the 9 merged on transcribe (#77), which brought the same table, read and line; 18,292 merged on said-or-noted (#94).
+lines = 18292

@@ -28,7 +28,8 @@ from types import SimpleNamespace
 from typing import Any, Awaitable, Callable
 from zoneinfo import ZoneInfo
 
-from . import beat, context, deploy, doctor, evidence, gates, hooks, jobs, mcp_server, memory, mentions, status, taste, workers
+from . import (beat, context, deploy, doctor, evidence, gates, hooks, jobs, mcp_server, memory, mentions, status, taste, transcribe,
+               voice_note, workers)
 from .accounts import Account, Cooldowns, from_dir, load_accounts, pick
 from .config import (EFFORTS, REPO, SHELLS, budgets, discord_id, flag, load_toml, models, override, people, pinned, private_dir,
                      read_secret, room_id, room_settings, rooms, state_dir, table, trusted, write_private)
@@ -43,7 +44,8 @@ from . import abilities, words   # STYLE.md: what a room reads
 
 log = logging.getLogger("yerk.daemon")
 YERK_TOOLS = ["mcp__yerk__send", "mcp__yerk__hold", "mcp__yerk__recall", "mcp__yerk__read_memory",
-              "mcp__yerk__remember", "mcp__yerk__worker", "mcp__yerk__schedule", "mcp__yerk__settings"]
+              "mcp__yerk__remember", "mcp__yerk__worker", "mcp__yerk__schedule", "mcp__yerk__settings", "mcp__yerk__transcribe",
+              "mcp__yerk__voice_note"]
 # A shell room's sandbox when rooms.toml gives it no [rooms.NAME.sandbox] table: unsandboxed, a Read deny stops `cat` and
 # the Read tool, but a script, grep or redirect read every secret (Claude Code 2.1.304, PR 66's cold read, 2026-10-21)
 SANDBOX = {"enabled": True, "autoAllowBashIfSandboxed": True}
@@ -126,6 +128,11 @@ class ConsoleChannel:
             raise FileNotFoundError(str(path))
         return self._out({"room": room, "file": str(path), "caption": caption})
 
+    async def send_voice(self, room: str, path: Path, meta: dict[str, Any], key: str | None = None, inbound: str = "") -> tuple[list[str], str]:
+        if not path.is_file():
+            raise FileNotFoundError(str(path))
+        return self._out({"room": room, "voice": str(path), "duration": meta["duration"]}), ""
+
     async def worker_card(self, room: str, key: str, text: str, message_id: str | None = None) -> str | None:
         print(f"[{key}] {text}", file=sys.stderr, flush=True)
         return message_id or f"console-{key}"
@@ -161,6 +168,8 @@ class Yerkd:
         self.cooldowns = Cooldowns(state / "cooldowns.json")
         self.meters = Meters(state / "meters.json")
         self.memory = memory.settings(private, state, dict(self.conf.get("memory", {})))
+        me = str(self.conf.get("import", {}).get("me") or "")       # the name the owner's own words go by (decision 22: never in code)
+        self.owner_names = (me,) if me and me != "me" else ()
         self.scoped = {n: self.memory.only(private, n, c["also"]) for n, c in self.room_confs.items() if "also" in c}
         context.walls(private, state, self.memory.scope.roots, self.room_confs)
         for n in (n for n, c in self.room_confs.items() if trusted(c)):
@@ -191,6 +200,8 @@ class Yerkd:
         self.channels: dict[str, Any] = {}       # room -> its channel adapter
         self.http: Any = None
         self.sends = 0
+        self.pastes: dict[str, tuple[str, dict[str, tuple[str, str]]]] = {}   # room -> (today, its earlier days' blocks)
+        self.paste_lock = threading.Lock()
         # a worker's unit never sees the install's secret or any room's folder (each room's token, settings
         # and override): both exist before the first unit, since a hidden path that is missing fails its start
         (state / "rooms").mkdir(parents=True, exist_ok=True)
@@ -223,6 +234,7 @@ class Yerkd:
         layer = context.layer_dir(self.private, conf)
         self.rules_news(name)          # first, the look a new session starts with: a rule filed meanwhile is told twice, never lost
         parts = context.session_start(self.private, conf, self.budgets, lambda left: self.room_pack(name, left), self.memory.root / memory.RULES)
+        self.cut_said(name, parts)
         ctx = write_private(rdir / "context.md", context.appended_file(parts))      # the owner's lines: 0600, as every private file
         hooks.record(self.state, name, "session_start", "", {p.name: p.size for p in parts},
                      next((p.text for p in parts if p.name == "recall_pack"), ""), file=str(ctx))
@@ -247,6 +259,43 @@ class Yerkd:
         return RoomSpec(room=name, model=now["model"][0], cwd=work, tools=list(conf.get("tools", [])), settings=settings,
                         context_file=ctx, mcp_config=mcp_server.room_config(f"{self.url}/mcp", name, rdir / "mcp.json", token, conf.get("mcp")),
                         extra_args=extra, token=token, add_dirs=dirs)
+
+    def cut_said(self, name: str, parts: list[context.Part]) -> None:
+        """Each part a session start sent trimmed: one machine-room notice naming the part, the room and the lines it cut (their
+        first six words; a rule file's by their job), once a day per part and its file, said by the first room to start
+        (cut-said.json in the state folder), so no budget cuts in silence (claim 8); `yerk doctor` names every room, red until
+        the part fits. Never stops the start."""
+        mark, today = self.state / "cut-said.json", time.strftime("%Y-%m-%d")
+        try:
+            said = dict(json.loads(mark.read_text()))
+        except (OSError, ValueError, TypeError):
+            said = {}
+        if not (new := [p for p in parts if p.cut and said.get(f"{p.name} {p.source}") != today]):
+            return
+        write_private(mark, json.dumps({**said, **{f"{p.name} {p.source}": today for p in new}}))
+        for p in new:
+            n = len(p.cut)
+            heads = words.heads([memory.topic(x) for x in p.cut], n=12) if p.name in context.TAIL else words.heads(list(p.cut))
+            self.to_machine(f"{words.WORKING} " + words.PART_CUT.format(part=p.name, room=name, size=p.raw, cap=p.budget, n=n,
+                                                                       s="s" * (n != 1), heads=heads))
+
+    def to_machine(self, text: str) -> None:
+        """One line to the machine room (rooms.toml role = "machine") from a room's thread, where a process start runs: on the
+        daemon's loop while it runs, else here (a test); logged, never raised, when it cannot go."""
+        machine = next((n for n, c in self.room_confs.items() if c.get("role") == "machine" and n in self.channels), None)
+        if machine is None:
+            log.warning("no machine room runs here; not said there: %s", text)
+            return
+
+        async def post(to: str) -> None:
+            try:
+                await self.channels[to].notify(to, text)
+            except Exception:
+                log.exception("not said in %s: %s", to, text)
+        if (loop := self.workers.loop) is not None and loop.is_running():
+            asyncio.run_coroutine_threadsafe(post(machine), loop)
+        else:
+            asyncio.run(post(machine))
 
     def walled(self, name: str) -> list[Path]:
         """What a trusted room's shell never reads or writes, from what the daemon knows, at each process start: every entry
@@ -356,6 +405,26 @@ class Yerkd:
         roots = [context.layer_dir(self.private, self.room_confs[room]), (self.state / "rooms" / room / "work").resolve()]
         return any(p.is_relative_to(r) for r in roots) and not any(p.is_relative_to(d) for d in folders) and p not in files
 
+    def earlier_blocks(self, room: str) -> dict[str, tuple[str, str]]:
+        """The paste rule's view of `room` (memory.earlier_blocks, read as the room's own lines are for its recall pack): built on
+        the first fenced text that asks for it each day and kept until the date changes, since a block posted today never
+        enters it; a restart builds it again from the day logs. Called off the loop."""
+        today = memory.window(self.memory, days=1)[0]
+        with self.paste_lock:
+            if (kept := self.pastes.get(room)) and kept[0] == today:
+                return kept[1]
+        view = memory.earlier_blocks(self.memory, room, rid=room_id(room, self.room_confs.get(room, {})), owner=self.owner(room))
+        with self.paste_lock:
+            self.pastes[room] = (today, view)
+        return view
+
+    async def paste(self, room: Room, text: str, active: bool, at: str) -> tuple[str, str] | None:
+        """The paste rule for a room's text bound for `at` (Room.paste_check), off the loop since its first call of the day reads
+        the day logs; a text with no three backticks never leaves this line."""
+        if memory.FENCE not in text:
+            return None
+        return await asyncio.to_thread(room.paste_check, active, text, lambda: self.earlier_blocks(at))
+
     async def tool_send(self, room: str, text: str, file: str, caller: str) -> dict[str, Any]:
         if caller in self.rooms and not self.owner(caller) and room != caller:     # a room that is not the owner's posts to itself only
             return {"ok": False, "error": f"room {caller} posts to itself only; it is not one of the owner's rooms"}
@@ -368,17 +437,75 @@ class Yerkd:
             await ch.notify(room, f"{words.NOT_DONE} {words.NOT_SENT.format(name=Path(file).name, why=words.file_why('outside'))}")
             return {"ok": False, "error": f"{file} is outside this room's folders; only files from them can be sent; " "the room was told"}
         src = self.rooms.get(caller) or self.rooms[room]
+        if caller in self.rooms and text and (stale := await self.paste(src, text, False, room)):   # filed under `room`
+            bounce, found = stale             # the Stop rule's words, flag and shadow row: the room's next send goes out
+            self.ledger.shadow(t=round(time.time(), 3), room=caller, session_id=src.rp.session_id if src.rp else "",
+                               turn=src.turn_key, rule="paste", detail=found, reply_chars=len(text))
+            log.info("send: %s -> %s turned back once: a fenced block posted on an earlier day (%s)", caller, room, found)
+            return {"ok": False, "error": bounce}
+        if caller in self.rooms and src.busy and (sheet := src.sheet_check(False, text, file)):     # a room's own turn
+            bounce, found = sheet             # the same way: its words, its flag, its shadow row
+            self.ledger.shadow(t=round(time.time(), 3), room=caller, session_id=src.rp.session_id if src.rp else "",
+                               turn=src.turn_key, rule="sheet", detail=found, reply_chars=len(text))
+            log.info("send: %s -> %s turned back once: %s", caller, room, found)
+            return {"ok": False, "error": bounce}
+        sid = src.rp.session_id if src.rp else ""
+        if caller in self.rooms and src.busy and (hit := src.said_check(False, text, lambda: self.ledger.said(caller, sid, src.evidence.started),
+                                                                         self.owner_names)):
+            bounce, rule, found = hit         # the same way: its words, its flag, its shadow row
+            self.ledger.shadow(t=round(time.time(), 3), room=caller, session_id=sid, turn=src.turn_key, rule=rule, detail=found,
+                               reply_chars=len(text))
+            log.info("send: %s -> %s turned back once: %s", caller, room, found)
+            return {"ok": False, "error": bounce}
         self.sends += 1
         with src.lock:                        # in a turn: its key and the messages it answers
             turn = src.turn_key if src.busy and src.turn_key else f"x{uuid.uuid4().hex[:11]}"
             inbound = ",".join(m.id for m in src.inflight) if src.busy else ""
         key = f"{turn}-s{self.sends}"                         # and this send's number: unique across restarts
+        voice, why = voice_note.meta(Path(file)) if file else None, ""     # a note voice_note made goes as a voice message
         try:
-            ids = await (ch.send_file(room, Path(file), text, key=key, inbound=inbound) if file else ch.send_text(room, text, key=key))
+            if voice:                                         # Discord takes no words beside one, so they follow it
+                ids, why = await ch.send_voice(room, Path(file), voice, key=key, inbound=inbound)
+                ids += await ch.send_text(room, text, key=f"{key}-t") if text else []
+            else:
+                ids = await (ch.send_file(room, Path(file), text, key=key, inbound=inbound) if file else ch.send_text(room, text, key=key))
         except (OSError, ValueError) as e:
             return {"ok": False, "error": str(e)}
-        log.info("send: %s -> %s, %d message(s)", caller or "?", room, len(ids))
-        return {"ok": True, "message_ids": ids}
+        log.info("send: %s -> %s, %d message(s)%s", caller or "?", room, len(ids), f", the voice note as a plain file: {why}" if why else "")
+        return {"ok": True, "message_ids": ids, **({"voice_message": not why} if voice else {}),
+                **({"note": words.VOICE_AS_FILE.format(why=why)} if why else {})}
+
+    async def tool_transcribe(self, room: str, path: str, owner_yes: bool = False) -> dict[str, Any]:
+        """The `transcribe` tool: an audio file from the calling room's own folders (may_send's rule; its inbox holds what
+        was sent) made text off the loop (transcribe.run) on the install's one OpenAI key, each paid call a spend row."""
+        p = Path(path).expanduser().resolve()
+        if room not in self.rooms or not self.may_send(room, p):
+            return {"ok": False, "error": f"{p.name} is outside this room's folders; transcribe reads the files sent to it"}
+        if not p.is_file():                           # not audio: ffmpeg says so before anything is paid
+            return {"ok": False, "error": f"there is no file {p.name} in this room's folders"}
+        r = await asyncio.to_thread(transcribe.run, p, self.memory.embeddings_key, self.private / transcribe.GROQ_KEY,
+                                    self.booker(room, "transcribe"), owner_yes)
+        log.info("transcribe: %s, %s", room, f"{r['segments']} segments, {r['uncertain']} uncertain" if r["ok"] else r["error"][:160])
+        return r
+
+    async def tool_voice_note(self, room: str, script: str, name: str = "", owner_yes: bool = False) -> dict[str, Any]:
+        """The `voice_note` tool: a script made a voice note off the loop (voice_note.run) in the calling room's own work
+        folder, where `send` takes it from, each paid call a spend row, as transcribe's are."""
+        if room not in self.rooms:
+            return {"ok": False, "error": f"no room {room!r}; rooms: {', '.join(self.rooms)}"}
+        r = await asyncio.to_thread(voice_note.run, script, name, self.state / "rooms" / room / "work" / voice_note.FOLDER, self.private,
+                                    self.memory.embeddings_key, self.booker(room, "voice_note"), owner_yes)
+        log.info("voice_note: %s, %s", room, f"{r['engine']}, {r['duration_s']} s, US${r['usd']:.4f}" if r["ok"] else r["error"][:160])
+        return r
+
+    def booker(self, room: str, tool: str) -> transcribe.Book:
+        """A paid tool's spend writer: one ledger row per paid call (decision 32), the morning diff's day total."""
+        def book(engine: str, usd: float, note: str) -> None:
+            try:
+                self.ledger.spend(room=room, tool=tool, engine=engine, usd=round(usd, 6), note=note)
+            except Exception as e:                    # the ledger never stops a paid call's answer reaching the room
+                log.warning("%s: a spend row was not written (%s, US$%.4f): %s", tool, engine, usd, e)
+        return book
 
     async def tool_recall(self, room: str, query: str, k: int) -> dict[str, Any]:
         """Off the loop: the index is yerk-index's file, read here, never built here (L47). The first
@@ -410,15 +537,15 @@ class Yerkd:
     async def tool_read_memory(self, room: str, path: str, start: int, lines: int) -> dict[str, Any]:
         return await asyncio.to_thread(memory.read, self.scoped.get(room, self.memory), path, start, lines, self.reader(room))
 
-    async def tool_remember(self, room: str, text: str, about: str, replaces: list[str]) -> dict[str, Any]:
+    async def tool_remember(self, room: str, text: str, about: str, replaces: list[str], said: str = "", source: str = "") -> dict[str, Any]:
         """The `remember` tool: a room's own note into Yerk's own tree (memory.remember), stamped with
-        the ids of the messages its turn answers; a filed one ends with `next`, the answer first and whole."""
+        the ids of the messages its turn answers, or with `said` and `source` a person's words; a filed one ends with `next`."""
         if room not in self.rooms:
             return {"ok": False, "error": "remember is for a room's own session"}
         with self.rooms[room].lock:
             mid = ",".join(m.id for m in self.rooms[room].inflight) or f"x{self.rooms[room].turn_key}"
         r = await asyncio.to_thread(memory.remember, self.scoped.get(room, self.memory), self.daily, room, mid, text, about,
-                                    tuple(replaces), self.reader(room))
+                                    tuple(replaces), self.reader(room), said, source)
         return {**r, "next": words.FILED_NEXT.format(clause=words.FILED_AT_MOST)} if r["ok"] else r
 
     def owner_only(self, room: str, named: str) -> dict[str, Any] | None:
@@ -434,24 +561,23 @@ class Yerkd:
         return None
 
     async def tool_rule(self, room: str, text: str, job: str) -> dict[str, Any]:
-        """`remember` with a `job`: an owner's room files how it is done from now on (memory.rule) for every room; past the
-        rules part's budget it is filed all the same and said (`over_budget`, the reply's clause, one machine-room line)."""
+        """`remember` with a `job`: an owner's room files how it is done from now on (memory.rule) for every room, fitted under
+        the rules part's budget; one with no room even with no examples is held in rules-overflow.md and said (`held`, the
+        reply's clause, one machine-room notice)."""
         if room not in self.rooms or not self.owner(room):
             return {"ok": False, "line": words.RULES_OWNER_ONLY}
         if self.reader(room).sealed:        # its teaching stays its own day-log note, the job its label, never the shared rules
             return await self.tool_remember(room, text, job.strip(" :"), [])
         with self.rooms[room].lock:
             mid = ",".join(m.id for m in self.rooms[room].inflight) or f"x{self.rooms[room].turn_key}"
-        r = await asyncio.to_thread(memory.rule, self.memory, room, mid, job, text)
+        cap = int(self.budgets["session_start"]["appended"]["rules"])
+        r = await asyncio.to_thread(memory.rule, self.memory, room, mid, job, text, cap, self.daily)
         if not r["ok"]:
             return r
-        over = await asyncio.to_thread(context.rules_over, self.room_confs[room], self.memory.root / memory.RULES,
-                                       int(self.budgets["session_start"]["appended"]["rules"]))
-        if over:
-            cut = f"\n{words.CUT_LINES.format(first=over['cut'][0], last=over['cut'][-1])}" if over["cut"] else ""
-            await self.jobs.alert(None, f"{words.WORKING} {words.RULES_CUT.format(file=memory.RULES, **over)}{cut}", 0)
-            r["over_budget"] = {"size": over["size"], "cap": over["cap"]}
-        return {**r, "next": words.FILED_NEXT.format(clause=words.RULE_CLAUSE.format(job=r["job"], over=words.RULES_OVER if over else ""))}
+        if r.get("held") and not r.pop("again", False):       # a retried call: held and said already
+            await self.jobs.alert(None, f"{words.WORKING} " + words.RULE_HELD.format(file=memory.OVERFLOW, job=words.line(
+                r["job"], words.PHONE - 2), room=room, cap=cap), 0)
+        return {**r, "next": words.FILED_NEXT.format(clause=words.HELD_CLAUSE if r.get("held") else words.RULE_CLAUSE.format(job=r["job"]))}
 
     async def tool_worker(self, room: str, req: dict[str, Any]) -> dict[str, Any]:
         """The `worker` tool (rooms only; a worker has no MCP server). `yerk worker` comes through
@@ -592,15 +718,17 @@ class Yerkd:
         return context.news(self.state / "rooms" / room / "rules-seen.json", sid, self.private, self.room_confs[room],
                             self.memory.root / memory.RULES, int(self.budgets["per_message"]["on_hit"]["rules"]))
 
-    def shadow_stop(self, name: str, room: Room, reply: str, sid: str) -> list[tuple[str, str]]:
-        """The evidence rules after a reply: ledgered and logged, never a block (shadow, DESIGN 8)."""
+    def shadow_stop(self, name: str, room: Room, reply: str, sid: str, refused: bool = False) -> list[tuple[str, str]]:
+        """The evidence rules after a reply: ledgered and logged, never a block (shadow, DESIGN 8). `refused`: the said check
+        turned this reply back, its own row written, so its person and quote rows are not written twice."""
         figure, known = memory.on_file(self.memory)
         said = self.ledger.said(name, sid, room.evidence.started)     # its replies posted earlier in this session
         found = evidence.check(reply, room.prompts(), room.evidence, self.memory.scope.roots, figure, known, said)
         found += evidence.check_claims(reply, room.evidence, self.memory.scope.roots)     # decision 25
-        found += evidence.check_sheet(reply, room.evidence)                               # the sheet rule
-        found += evidence.check_person(reply, room.evidence)                              # a claim about a person needs a read
-        found += evidence.check_quote(reply, room.evidence, said)                         # a quote needs its source
+        found += [] if room.in_owner_name() else evidence.check_sheet(reply, room.evidence)   # an owner's room refuses instead
+        if not refused:                                   # a claim about a person needs a read, a quote its source
+            found += evidence.check_person(reply, room.evidence, self.owner_names)
+            found += evidence.check_quote(reply, room.evidence, said, self.owner_names)
         with room.lock:                                   # claim 3: the owner pushing back on a reply posted earlier
             pushed = [m.received for m in room.inflight if m.sender == "owner" and words.PUSHBACK.search(m.text)]
         found += evidence.stance(reply, pushed, room.evidence) if pushed and said and reply.strip() else []
@@ -732,7 +860,7 @@ class Yerkd:
                     self.rewrites.pop(str(payload.get("tool_use_id") or ""), None)
             return {}
         if event == "Stop":
-            active = bool(payload.get("stop_hook_active"))
+            active, refused = bool(payload.get("stop_hook_active")), False
             reason = room.stop_check(active) if room else None
             if reason:
                 log.info("room %s: Stop bounced once: an image was never read", name)
@@ -753,9 +881,25 @@ class Yerkd:
                     self.ledger.shadow(t=round(time.time(), 3), room=name, session_id=sid, turn=room.turn_key, rule="board",
                                        detail=found, reply_chars=len(str(said)))
                     log.info("room %s: Stop bounced once: a status board in a room with people (%s)", name, found)
+                elif said and (paste := await self.paste(room, str(said), active, name)):
+                    reason, found = paste             # the send tool's words and flag: one bounce per result in either place
+                    self.ledger.shadow(t=round(time.time(), 3), room=name, session_id=sid, turn=room.turn_key, rule="paste",
+                                       detail=found, reply_chars=len(str(said)))
+                    log.info("room %s: Stop bounced once: a fenced block posted on an earlier day (%s)", name, found)
+                elif said and (sheet := room.sheet_check(active, str(said), stop=True)):
+                    reason, found = sheet             # the send tool's words and flag: one ask per result in either place
+                    self.ledger.shadow(t=round(time.time(), 3), room=name, session_id=sid, turn=room.turn_key, rule="sheet",
+                                       detail=found, reply_chars=len(str(said)))
+                    log.info("room %s: Stop bounced once: %s", name, found)
+                elif said and (hit := room.said_check(active, str(said), lambda: self.ledger.said(name, sid, room.evidence.started), self.owner_names)):
+                    reason, rule, found = hit         # the send tool's words and flag: one refusal per result in either place
+                    self.ledger.shadow(t=round(time.time(), 3), room=name, session_id=sid, turn=room.turn_key, rule=rule,
+                                       detail=found, reply_chars=len(str(said)))
+                    log.info("room %s: Stop bounced once: %s", name, found)
+                    refused = True
             if room and name:
                 try:
-                    await asyncio.to_thread(self.shadow_stop, name, room, str(payload.get("last_assistant_message") or ""), sid)
+                    await asyncio.to_thread(self.shadow_stop, name, room, str(payload.get("last_assistant_message") or ""), sid, refused)
                 except Exception:
                     log.exception("room %s: the shadow Stop check failed (nothing blocked)", name)
             return {"decision": "block", "reason": reason} if reason else {}

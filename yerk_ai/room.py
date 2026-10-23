@@ -24,13 +24,17 @@ adapter's event loop.
   key. A turn that was sent an image and never read it is bounced once at Stop, naming the file;
   a working turn answering a person that ends with nothing visible in the room bounces once,
   naming what is owed (nothing that already landed under the turn's key is sent again); a final
-  text that only reports a filing (`remember`, `schedule`, `hold`, `settings`) bounces once (stub).
+  text that only reports a filing (`remember`, `schedule`, `hold`, `settings`) bounces once (stub); a fenced block the
+  room posted on an earlier day is turned back once, in `send` before it posts and in the final text at Stop (paste); a
+  document or a pasted block an owner's room ships with no claims sheet written that turn is turned back once the same
+  way (sheet).
 - A message from the harness itself (sender `yerk`: a worker's relay) runs like any other but is
   not a human message for the clock line or the idle rule; it may cap its reply and name a line the
   reply must carry, and it hears how its turn ended.
 """
 from __future__ import annotations
 
+import calendar
 import contextlib
 import json
 import logging
@@ -40,14 +44,15 @@ import time
 import uuid
 from collections import deque
 from dataclasses import dataclass, field, replace
+from pathlib import Path
 from typing import Any, Callable, Protocol
 
-from . import words
+from . import memory, transcribe, words
 from .accounts import Account, Cooldowns, pick
 from .card import Card
 from .config import flag, override, pinned, write_private
 from .engine import RoomProcess, RoomSpec, SessionTable, Turn
-from .evidence import Evidence
+from .evidence import DOCUMENT, QUOTED, Evidence, pasted, people, quotes, read_any, sheet_written, shipped
 from .ledger import Ledger
 from .lifted.classify import Failure, FailureTable
 from .meters import Meters, rest_until
@@ -139,11 +144,14 @@ class Room:
         self.fresh_next: str | None = None        # a recap: the next turn starts a fresh session
         self.card = Card()
         self.turn_key = ""                        # the idempotency key of the result being produced
-        self.images: dict[str, str] = {}          # path -> name: images sent in since the last result
-        self.bounced = False                      # the unread-image check bounced this result already
+        self.to_open: dict[str, str] = {}         # path -> name: images and voice notes sent in since the last result
+        self.bounced = False                      # the unopened-file check bounced this result already
         self.silent_bounced = False               # the silent-ending check bounced this result already
         self.stub_bounced = False                 # the stub check bounced this result already
         self.board_bounced = False                # the board check bounced this result already
+        self.paste_bounced = False                # the paste check turned back a send or a final of this result already
+        self.sheet_bounced = False                # the sheet check turned back a send or a final of this result already
+        self.said_bounced = False                 # the person and quote check turned back a send or a final of this result already
         self.evidence = Evidence(on_call=self._ledger_call)   # every tool call of the turn and what it read
         self.answering: set[str] = set()                      # ids of the batch the turn answers
         self.stale = False                        # the settings changed mid-turn: the process closes at its end
@@ -286,21 +294,25 @@ class Room:
         d.mkdir(parents=True, exist_ok=True)
         return d
 
-    def unread_images(self) -> list[tuple[str, str]]:
-        """(name, path) of the images sent in this result that the process never Read."""
+    def unopened(self) -> list[tuple[str, str]]:
+        """(name, path) of the images and voice notes sent in this result that the process never Read or transcribed."""
         with self.lock:
             read = self.rp.read_paths if self.rp else set()
-            return [(n, p) for p, n in self.images.items() if p not in read]
+            return [(n, p) for p, n in self.to_open.items() if p not in read]
 
     def stop_check(self, active: bool) -> str | None:
-        """The Stop hook's rule, no judge: an image sent in and never read bounces once, naming it."""
-        unread = self.unread_images()
+        """The Stop hook's rule, no judge: an image sent in and never read, or a voice note never transcribed, bounces once,
+        naming it, so a room never answers a note it did not hear."""
+        unread = self.unopened()
         if not unread or active or self.bounced:
             return None
         self.bounced = True
-        names = ", ".join(n for n, _ in unread)
-        paths = " ".join(p for _, p in unread)
-        return f"You were sent {names} and have not opened it. Read {paths} with the Read tool, then answer with what it shows."
+        heard = [x for x in unread if transcribe.is_audio(x[0])]
+        seen = [x for x in unread if x not in heard]
+        return " ".join(([f"You were sent {', '.join(n for n, _ in seen)} and have not opened it. Read {' '.join(p for _, p in seen)} "
+                          "with the Read tool, then answer with what it shows."] if seen else []) +
+                        ([f"You were sent {', '.join(n for n, _ in heard)}, a recording, and have not transcribed it. Call transcribe "
+                          f"on {' '.join(p for _, p in heard)}, then open your answer with what it says."] if heard else []))
 
     def silent_check(self, active: bool, text: str | None, landed: int) -> str | None:
         """The Stop hook's second rule, no judge: a turn that ran tools for a person and ends with
@@ -346,13 +358,71 @@ class Room:
         found = f"{n} line{'s' * (n != 1)} with a checklist mark, the colour key or what unblocks it"
         return (words.BOARD.format(found=found), found) if n else None
 
+    def paste_check(self, active: bool, text: str | None,
+                    earlier: Callable[[], dict[str, tuple[str, str]]]) -> tuple[str, str] | None:
+        """The paste rule, no judge, in the `send` tool before it posts and as the Stop hook's fifth rule, one flag for both
+        (2026-10-22: a block posted the evening before went out again through `send`, word for word, its "tomorrow" and its
+        times that day's): a fenced block that memory.fenced() makes equal to one `earlier` holds (the daemon's view of the
+        room's earlier days, asked for only when the text holds three backticks) is turned back once, naming when it first
+        went out: (the bounce, what was found), or None."""
+        if active or not text or self.paste_bounced or memory.FENCE not in text:
+            return None
+        view = earlier()
+        if (hit := next((b for b in memory.fenced(text) if b in view), None)) is None:
+            return None
+        self.paste_bounced = True
+        day, at = view[hit]
+        when, n = f"{calendar.month_abbr[int(day[5:7])]} {int(day[8:10])} at {at[:5]}", hit.count(" / ") + 1
+        return words.PASTE.format(when=when), words.PASTE_FOUND.format(n=n, s="s" * (n != 1), when=when)
+
+    def in_owner_name(self) -> bool:
+        """What this room ships goes out in the owner's name: an owner room (rooms.toml privacy, "owner" when unset), no people."""
+        return str(self.conf.get("privacy", "owner")) == "owner" and not self.conf.get("people")
+
+    def sheet_check(self, active: bool, text: str | None, file: str = "", stop: bool = False) -> tuple[str, str] | None:
+        """The sheet rule, no judge, in an owner's room (a person's room keeps the shadow row), in `send` before it posts and
+        at Stop (`stop`), one flag for both (2026-10-22: eight sends in the owner's name in one morning with no claims sheet,
+        each logged, none stopped): a document (evidence.DOCUMENT) or a pasted block (evidence.pasted) with no sheet written
+        this turn (evidence.sheet_written, the shadow rule's test, also looking beside the file, else in the work folder) is
+        turned back once, saying what the sheet is and where it goes: (the refusal, what was found), or None."""
+        doc, paste = [Path(file).name] if file.lower().endswith(DOCUMENT) else [], bool(text) and pasted(str(text))
+        if active or self.sheet_bounced or not self.in_owner_name() or not (doc or paste):
+            return None
+        folder = Path(file).expanduser().resolve().parent if file else (self.state / "rooms" / self.name / "work").resolve()
+        if sheet_written(self.evidence, folder):
+            return None
+        self.sheet_bounced = True
+        done, again, nxt = words.SHEET_STOP if stop else words.SHEET_SEND
+        what = " and ".join([*doc, *([f"the fenced block in {'your final message' if stop else 'this message'}"] if paste else [])])
+        where = f"{folder / (Path(file).stem + '-claims.md')}, beside it" if doc else str(folder / "claims.md")
+        return (words.SHEET.format(done=done, what=what, where=where, thing="document" if doc else "block", again=again, next=nxt),
+                f"{shipped(doc, paste)} with no claims sheet written this turn")
+
+    def said_check(self, active: bool, text: str | None, said: Callable[[], str] = str,
+                   owner: tuple[str, ...] = ()) -> tuple[str, str, str] | None:
+        """The person and quote rules, no judge, in an owner's room (a person's room keeps the shadow rows), in `send` before it
+        posts and at Stop, one flag for both (2026-10-22: what a colleague said, decided or wrote went out from turns that read
+        nothing): a third person's words, decision or wants (evidence.people) or a quote no read, prompt or earlier reply holds
+        (evidence.quotes; `said` gives the session's earlier replies, asked for past the guards) from a turn with no reading
+        call (evidence.read_any) is turned back once, naming whose: (the refusal, its shadow rule, what was found), or None.
+        `owner`: the names his words go by."""
+        if active or self.said_bounced or not text or not self.in_owner_name() or read_any(self.evidence):
+            return None
+        found = [(who, "person-refused", d) for who, d in people(text, self.evidence, owner)]
+        found += [(who, "quote-refused", d) for who, d in quotes(text, self.evidence, said() if QUOTED.search(text) else "", owner)]
+        if not found:
+            return None
+        self.said_bounced = True
+        who, rule, detail = found[0]
+        return words.SAID.format(name=who[:1].upper() + who[1:]), rule, detail
+
     def _new_card(self, note: str = "") -> None:
         privacy = str(self.conf.get("privacy", "owner"))
         self.card = Card(thinking=flag(self.conf.get("thinking_panel")) and privacy == "owner",
                          people=self.name if self.conf.get("people") else "")
         self.card.narration = note                # a harness line from the first post, until the model's first words
         self.turn_key, self.bounced, self.silent_bounced, self.stub_bounced = uuid.uuid4().hex[:12], False, False, False
-        self.board_bounced = False
+        self.board_bounced = self.paste_bounced = self.sheet_bounced = self.said_bounced = False
         self.channel.open_card(self.name, self.card.render())   # state first from the first post
 
     def meta_for(self, prompt: str) -> tuple[str, float | None]:
@@ -436,8 +506,8 @@ class Room:
         self.pending.append(msg)
         self.inflight.append(msg)
         for f in msg.files:
-            if f.get("ok") and str(f.get("type", "")).startswith("image/"):
-                self.images[str(f["path"])] = str(f["name"])
+            if f.get("ok") and (str(f.get("type", "")).startswith("image/") or transcribe.is_audio(str(f["name"]), str(f.get("type", "")))):
+                self.to_open[str(f["path"])] = str(f["name"])
         text = f"{recap}\n\n{msg.text}" if recap else msg.text
         if recap:
             self.seen[text.strip()] = msg
@@ -513,7 +583,7 @@ class Room:
 
     def _turn(self, batch: list[Inbound]) -> None:
         with self.lock:
-            self.images, self.stopped = {}, False
+            self.to_open, self.stopped = {}, False
             self.halt.clear()
             self.answering = {m.id for m in batch}
         self.evidence.reset()
@@ -688,7 +758,7 @@ class Room:
                 self._then(m, "answered", reply_ids, len(text))
             with self.lock:
                 self.inflight = list(self.pending)
-                self.images = {}
+                self.to_open = {}
                 if not self.pending or self.fresh_next:
                     self.reading = False          # from here a new message queues for the next turn
                     return ("fresh" if self.pending else "done"), turn

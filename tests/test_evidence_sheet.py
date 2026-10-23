@@ -1,6 +1,7 @@
 """Checks the sheet rule, an evidence check on a turn that sends a document or a pasted block in your name with no claims sheet, a list of each
 claim with its source line and quote. In shadow, a turn that ships something in the owner's name (a document through the send tool, or a pasted
-`for`, the check while a second, entry waits. In the queue for its turn and 00:00 the 00:00 last part
+block in the reply or in a send's text) with no claims sheet written or named in the turn is ledgered once as `sheet`, counted in the morning
+diff, blocking nothing, in a person's room; since 2026-10-22 an owner's room is refused once instead (test_sheet_hard.py), on the same test of
 a sheet. The two slips it was built on: a one-page file whose rules the person it quoted never set, and a pasted prompt whose rule came from a
 remembered remark and not from the worksheet it was about."""
 from __future__ import annotations
@@ -12,10 +13,10 @@ from yerk_ai import abilities, cli, evidence, morning, status, words
 from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai.ledger import Ledger
 
-SEND =("mcp__yerk__send", {"room": "example-room", "text": "The-000, test reads it.", "file": "/w/ABC-565-v0.1.docx"})
+SEND =("mcp__yerk__send", {"room": "example-room", "text": "EX-905, every line traced.", "file": "/w/EX-905-v0.1.docx"})
 PASTE = "Here is the follow-up prompt for the run:\n```\nCount the shared corner once.\nKeep the edge total.\n```\n"
 CODE = "The check is one function:\n```python\ndef pasted(text):\n    return '```' in text\n```\n"
-FIRED_SEND = "for The-000-check0.0.while a second entry waits in the queue"
+FIRED_SEND = "sent EX-905-v0.1.docx with no claims sheet written this turn"
 FIRED_PASTE = "pasted a block with no claims sheet written this turn"
 
 
@@ -56,17 +57,20 @@ def test_a_plain_reply_with_no_send_is_silent():
 
 def test_a_send_and_a_paste_in_one_turn_with_no_sheet_fire_once():
     found = evidence.check_sheet(PASTE, turn_of([SEND]))
-    assert found == [("sheet", "and The-000-last0.0.part closes the case before the next run starts the example note")]
+    assert found == [("sheet", "sent EX-905-v0.1.docx and pasted a block with no claims sheet written this turn")]
     pasted_send = ("mcp__yerk__send", {"room": "example-room", "text": PASTE, "file": ""})     # the paste in a send's text
     assert sheet("Sent the prompt.", [pasted_send]) == [FIRED_PASTE]
 
 
-def test_through_the_stop_hook_the_row_is_ledgered_and_nothing_is_blocked(tmp_path):
+def test_through_the_stop_hook_a_persons_room_ledgers_the_row_and_an_owners_room_writes_none(tmp_path):
+    """An owner's room is refused at the send instead and writes its row there (test_sheet_hard.py), never a second at Stop."""
     y, room, ch = setup(tmp_path)
-    human_turn(room, "says the sample Item-000 moved")
+    human_turn(room, "send him the EX-905 page")
     room.evidence = turn_of([SEND])
-    out = call(y, {"hook_event_name": "Stop", "stop_hook_active": False, "last_assistant_message": "Item, moved to the."})
-    assert out == {}
+    stop = {"hook_event_name": "Stop", "stop_hook_active": False, "last_assistant_message": "Sent, every line traced."}
+    assert call(y, stop) == {} and [r for r in y.ledger.rows(50, "shadow") if r["rule"] == "sheet"] == []
+    room.conf.update(privacy="family", people=[1001])                 # a person's room: the shadow rule, as before
+    assert call(y, stop) == {}
     assert [r["detail"] for r in y.ledger.rows(50, "shadow") if r["rule"] == "sheet"] == [FIRED_SEND]
 
 

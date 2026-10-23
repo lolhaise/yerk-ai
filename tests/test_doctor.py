@@ -221,8 +221,8 @@ def test_a_stale_index_an_old_mention_index_and_no_meaning_search_are_each_a_lin
     monkeypatch.setattr(memindex, "check", lambda db, scope, *a: {"status": "stale"})
     monkeypatch.setattr(memory, "meaning_state", lambda s: "no-index")
     (priv / "memory" / "facts").mkdir()
-    (priv / "memory" / "facts" / "Alex.md").write_text("# And\n- note says the\n")
-    (state / "memory" / "mentions.json").write_text(json.dumps({"built": time.time() - 3600}))    # the next Run.starts
+    (priv / "memory" / "facts" / "nora.md").write_text("# Nora\n- the club treasurer\n")
+    (state / "memory" / "mentions.json").write_text(json.dumps({"built": time.time() - 3600}))    # older than nora.md
     assert doctor.main(priv, state) == 1
     assert capsys.readouterr().out.splitlines() == ["and the: test", "for the: check while a second entry",
                                                     "as plain: text-with"]
@@ -257,7 +257,38 @@ def test_the_folder_check_and_the_rule_check_name_themselves_apart_when_neither_
     priv, state, *_ = tree
     (priv / "rooms.toml").write_text("[rooms\n")
     said = [x.split(",")[0] for x in doctor.run(priv, state) if "not checked" in x]
-    assert said == ["layout: not checked", "rule shape: not checked"], said
+    assert said == ["layout: not checked", "rule shape: not checked", "fit: not checked"], said
+
+
+def test_a_part_past_its_line_reads_red_with_the_overflow_and_one_that_fits_reads_green(tree, capsys):
+    """2026-10-22: the shared rules file sat over its line for a day and every session start cut rules from its middle,
+    said to no one. Every room's parts are measured as session start builds them; a part past its line is one finding per
+    file, with the overflow in characters and the rooms it is cut in."""
+    priv, state, *_ = tree
+    rules, cap = priv / "memory" / memory.RULES, budgets()["session_start"]["appended"]["rules"]
+    rules.write_text("".join(f"- example job {i}: done the example way, step by step.\n" for i in range(300)))
+    raw = context.chars(context.rules_text({}, rules)[0])
+    assert doctor.main(priv, state) == 1
+    assert capsys.readouterr().out.splitlines() == [f"rules.md: rules over its line by {raw - cap:,} characters ({raw:,} of {cap:,}), "
+                                                    "cut at every session start in example-room, example-quiet; raise its line in "
+                                                    "budgets.toml or trim the file"]
+    assert doctor.line(state, time.time())[1].startswith(f"{words.NOT_DONE} ")
+    rules.write_text("- example job: done the example way.\n")
+    assert doctor.main(priv, state) == 0 and capsys.readouterr().out == ""
+
+
+def test_a_rule_held_in_the_overflow_file_reads_orange_with_the_count(tree, capsys):
+    """A rule the rules file had no room for is held in rules-overflow.md and reaches no room; the fit check counts the held
+    rules, orange, until each is moved in by hand."""
+    priv, state, *_ = tree
+    held, cap = priv / "memory" / memory.OVERFLOW, budgets()["session_start"]["appended"]["rules"]
+    held.write_text("# Rules held: past the rules file's cap, in no room\n\n" + "".join(
+        f"- example job {i}: done the example way. (example-room, 2026-10-22 16:54:00-04:00) [m:m-{i}]\n" for i in range(2)))
+    assert doctor.main(priv, state) == 1
+    assert capsys.readouterr().out.splitlines() == [f"{words.WORKING} rules-overflow.md: 2 rules held, in no room: rules.md is "
+                                                    f"full at its cap of {cap:,}; move each in by hand once it has room"]
+    held.write_text("# Rules held: past the rules file's cap, in no room\n\n")
+    assert doctor.main(priv, state) == 0 and capsys.readouterr().out == ""
 
 
 def test_a_dry_run_says_what_it_would_mend_and_changes_nothing(tree, capsys):
@@ -362,7 +393,7 @@ def test_every_key_a_loader_reads_from_a_room_is_in_room_keys(tmp_path, monkeypa
     for name, conf in y.room_confs.items():
         assert isinstance(conf, Seen)
         y.add_room(name, ConsoleChannel())
-        y.spec_for(name), y.reader(name), y.recall_for(name, "starts the Example note Says")
+        y.spec_for(name), y.reader(name), y.recall_for(name, "lunch with Nora on Monday")
         rules = y.memory.root / memory.RULES
         context.session_start(EXAMPLE_PRIVATE, conf, budgets(), rules=rules)
         context.per_message(name, conf, "owner", datetime.now().astimezone(), None, budgets())
@@ -411,4 +442,4 @@ def test_the_four_index_checks_each_fire_on_their_case_and_are_quiet_when_all_is
     assert index("max") == []                                            # each its own cite: quiet
     real = memory.settings
     monkeypatch.setattr(memory, "settings", lambda *a, **k: replace(real(*a, **k), cites=()))
-    assert index("max") == ["memory roots: 3 share the cite memory"]
+    assert index("max") == ["memory roots: 2 share the cite inbox", "memory roots: 3 share the cite memory"]   # the owner rooms' inboxes too

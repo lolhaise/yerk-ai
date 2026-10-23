@@ -321,9 +321,9 @@ def on_disk(*roots, skip=()):
 
 
 def test_a_busy_month_stays_under_one_fixed_bound_from_day_3_to_day_30(tmp_path):
-    """back as plain text (0000-00-00 00:00: "with one more line for the check while a second entry waits in the queue for its turn
-    the 0"): 00 sample item moved to the next step and the, test reads #it-back-as plain text with one more line, for
-    step and: 0 the test reads 00 It back as plain text with one, 000 More line for the check while a 00 (second Entry
+    """The owner's pass mark (a room should run every day for a month and be as clean as it was on
+    day 1): 30 days of a busy room at the shipped defaults, the shape a work room had that day at full size, in
+    sparse files: 5 page renders of 60 MB a day in the work folder, 900 MB more in seven minutes on day 10 (one PDF's
     page cuts), 2 sends of 10.6 MB, 40 MB of the person's attachments, 40 KB of stream log and 4 KB assembled, a 10 MB
     transcript of a new session each day, a finished worker every third day, 1,610 ledger rows; the sweep at 04:20 the
     next morning. Everything but the memory tree and work/inbox, measured before and after every sweep, stays under one
@@ -347,7 +347,7 @@ def test_a_busy_month_stays_under_one_fixed_bound_from_day_3_to_day_30(tmp_path)
         for i, h in enumerate((10, 11.5, 13, 14.5, 16)):
             sparse(work / "outbox" / f"day-{k}" / f"render-{i}.pgm", RENDER, day0 + h * 3600)
         for i in range(15 if k == 10 else 0):                             # 900 MB in seven minutes
-            sparse(work / "outbox" / "Alex-pages" / f"page-{i}.pgm", RENDER, day0 + 11.9 * 3600 + i * 28)
+            sparse(work / "outbox" / "spec-pages" / f"page-{i}.pgm", RENDER, day0 + 11.9 * 3600 + i * 28)
         for i, h in enumerate((12, 15)):
             sparse(room / "outbox" / f"{k:02d}{h}0000-k{k}-s{i}-plan.pdf", SEND, day0 + h * 3600)
         sparse(work / "inbox" / f"m{k}" / "drawing.pdf", INBOX, day0 + 9 * 3600)

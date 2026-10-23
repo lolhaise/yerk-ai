@@ -155,8 +155,11 @@ def test_every_notice_is_state_first_plain_and_phone_width():
                 f"{dmod.REDELIVERED}\nthe reply", f"{words.NOT_DONE} {words.HOOKS_DEAD}",
                 f"{words.NOT_DONE} {words.NOT_AN_ACCOUNT.format(account='five', accounts='one, two, default')}",
                 f"{words.DONE} {words.CARRIED}", f"{words.DONE} {words.RECAPPED}",
-                f"{words.WORKING} {words.RULES_CUT.format(file='rules.md', size=12398, cap=11886)}\n"   # 2026-10-21's numbers
-                f"{words.CUT_LINES.format(first=31, last=38)}"]
+                f"{words.WORKING} " + words.RULE_HELD.format(file="rules-overflow.md", job=words.line(  # the longest held line
+                    "send the example person to an example store for the example thing", words.PHONE - 2), room="example-room", cap=11886),
+                f"{words.WORKING} " + words.PART_CUT.format(part="pinned_memory", room="example-room", size=14100, cap=14000, n=14,
+                                                            s="s", heads=words.heads(["- " + "x" * 60] + [
+                                                                f"- answer the example question {i} first, then the rest" for i in range(13)]))]
     for text in notices:
         assert (state_first(text) or text.startswith(words.SUB)) and not room_safe(text), text
         assert all(words.width(x) <= words.PHONE for x in text.splitlines()), text
