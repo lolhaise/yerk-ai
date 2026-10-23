@@ -52,7 +52,7 @@ from typing import Any, Awaitable, Callable, Coroutine, TypeVar
 import discord
 from discord.http import handle_message_parameters
 
-from .. import status, transcribe, words
+from .. import files as extracted, status, transcribe, words
 from ..config import EFFORTS
 from ..ledger import Ledger
 from ..lifted.loopguard import LoopGuard
@@ -145,6 +145,7 @@ def message_text(m: Any, files: list[dict[str, Any]] | None = None, reply: str =
         if f.get("ok"):
             lines.append(f"[attachment] {f['name']}, {f['type']}, {f['size']:,} bytes, saved at {f['path']}")
             lines += [words.VOICE_NOTE.format(name=f["name"])] if transcribe.is_audio(f["name"], f["type"]) else []
+            lines += [words.FILE_TEXT.format(path=f["text"])] if f.get("text") else []
         else:
             lines.append(f"[attachment] {f['name']}: could not be fetched ({f.get('error', 'unknown')})")
     return "\n".join(x for x in lines if x).strip()
@@ -169,6 +170,7 @@ class DiscordChannel:
         self.shown: dict[str, str] = {}
         self.edited: dict[str, float] = {}        # room name -> when its card was last edited
         self.locks: dict[str, asyncio.Lock] = {}
+        self.order: dict[str, asyncio.Future[None]] = {}   # room name -> the last message taken, until it is in the room
         self.guard = guard or LoopGuard()
         self.loop: asyncio.AbstractEventLoop | None = None
         self.connected = False                   # /status: the gateway said ready (yerk deploy's proof)
@@ -303,10 +305,19 @@ class DiscordChannel:
                 self.taste(room.name, m.content)
             except Exception:                     # a record, never a reason to hold the message
                 log.exception("room %s: the owner's verdict on message %s was not kept", room.name, m.id)
-        await self._typing_begin(room.name, await self._channel(room.name))   # its own channel, never the watched one
-        await self._react(m.channel.id, m.id, ACK)
-        files = await self.stage(room, m)
-        room.submit(Inbound(str(m.id), sender, message_text(m, files, self.reply_line(room.name, m)), files=files))
+        ahead, mine = self.order.get(room.name), asyncio.get_running_loop().create_future()
+        self.order[room.name] = mine              # in the room in the order taken: staging waits on a file's text, and the
+        try:                                      # message sent after it must not overtake it
+            await self._typing_begin(room.name, await self._channel(room.name))   # its own channel, never the watched one
+            await self._react(m.channel.id, m.id, ACK)
+            files = await self.stage(room, m)
+            if ahead is not None:
+                await asyncio.shield(ahead)
+            room.submit(Inbound(str(m.id), sender, message_text(m, files, self.reply_line(room.name, m)), files=files))
+        finally:
+            mine.set_result(None)
+            if self.order.get(room.name) is mine:
+                del self.order[room.name]
 
     # the typing signal: "heard you", from the moment a message is taken until something is visible
     async def _typing_begin(self, room: str, ch: Any) -> None:
@@ -382,6 +393,7 @@ class DiscordChannel:
         """Each attachment saved under the room's inbox with its own name, a ledger row each; a
         visible notice for any that cannot be fetched."""
         files: list[dict[str, Any]] = []
+        texts: list[tuple[dict[str, Any], asyncio.Task[Path | None]]] = []    # each workbook's or PDF's text, read side by side
         for a in getattr(m, "attachments", []) or []:
             f, name = {"name": a.filename, "size": int(a.size or 0), "type": file_type(a.filename, a.content_type)}, safe_name(a.filename)
             try:
@@ -391,12 +403,17 @@ class DiscordChannel:
                 f.update(ok=True, path=str(dest), size=dest.stat().st_size)
                 self.ledger.attachment(message_id=str(m.id), room=room.name, name=a.filename, size=f["size"],
                                        type=f["type"], path=str(dest), state="staged")
+                if extracted.kind(dest) and str(getattr(room, "conf", {}).get("privacy", "owner")) == "owner":   # a person's: never
+                    texts.append((f, asyncio.ensure_future(extracted.beside(room.name, dest, self.daemon.memory.tz if self.daemon else None))))
             except (discord.HTTPException, OSError) as e:
                 f.update(ok=False, error=f"{type(e).__name__}: {str(e)[:120]}")
                 self.ledger.attachment(message_id=str(m.id), room=room.name, name=a.filename, size=f["size"],
                                        type=f["type"], state="missing", error=f["error"])
                 await self._post(room.name, f"{words.NOT_DONE} {words.NOT_FETCHED.format(name=a.filename)}", "notice", [str(m.id)])
             files.append(f)
+        for f, job in texts:                      # so the message waits files.WAIT once, never once a file
+            if side := await job:
+                f["text"] = str(side)
         return files
 
     async def on_ready(self) -> None:

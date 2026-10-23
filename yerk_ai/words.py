@@ -146,7 +146,7 @@ HELD_CLAUSE = "one clause at its end, this one: the rule is held for now, since 
 RULE_STRIPPED = "the example in rule \"{job}\" taken out so rules.md fits its cap of {cap:,}"
 RULE_HELD_LOG = "rule \"{job}\" held in {file}: rules.md is full at its cap of {cap:,}, even with no examples"
 RULE_HELD = "rule held in {file}\n\"{job}\"\nfrom {room}\nrules.md is full at its cap of {cap:,}"
-PART_CUT = "session start cut {part}\n{size:,} of {cap:,} in {room}\n{n} line{s} sent broken or not at all:\n{heads}"
+PART_CUT = "{part}: {n} line{s} dropped\nto fit its {cap:,} in {room}"     # at session start: whole lines of its own, no framing
 FILED = re.compile(r"^\W*(?:filed|saved|from now on,? every room)\b", re.I)   # a final reporting a filing (stub)
 STUB = ("Only your final message reaches the room, and yours, \"{head}\", reports the filing, not the answer: the answer "
         "is above your last tool call, where the room never sees it, or it was never written. Write the whole answer as "
@@ -182,12 +182,6 @@ def outcome(state: str, **say: Any) -> tuple[str, str]:
     """(mark, words) for a worker state; `say` fills the words' blanks (cap, why, ticked, rows)."""
     mark, text = OUTCOME.get(state, (NOT_DONE, state))
     return mark, text.format(**say)
-
-
-def heads(lines: list[str], most: int = 12, n: int = 6) -> str:
-    """Each line's first `n` words in quotes, one a line held to a phone's width, `most` at the most, then how many more."""
-    said = ['"' + line(" ".join(x.lstrip("-*#> ").split()[:n]), PHONE - 2) + '"' for x in lines[:most]]
-    return "\n".join(said + ([f"and {len(lines) - most} more"] if len(lines) > most else []))
 
 
 def died(result: str) -> str:
@@ -227,6 +221,9 @@ WATCH_ASK = ("[watcher {name} saw {n} new line{s}. {what}Answer in your own voic
 # notes: a reminder, told to its room's own session when it is due
 NOTE_DUE = ("[reminder {name} due] {message}\n[set here for {at}: do what it says now and tell the room in your own "
             "voice, under {cap:,} characters]")
+# where the owner is (location.py): an owner room's per-message line, and the day's places as one day-log line
+PLACE = "[place] near {place}, {ago}, {state}"
+PLACES_DAY = "the owner's places from the phone, first and last fix at each: {stays}"
 
 
 # time, said the way a person says it
@@ -301,6 +298,10 @@ PICTURES_NOT_LISTED = ("{folder} is not a folder {room} lists in rooms.toml (rea
 PICTURES_RUNNING = "{room}: a backfill runs already, one batch after another; its lines are in the machine room"
 PICTURES_BATCH = "pictures backfill {room}: batch {n} of {of} {how}, {filed} of {count} filed{then}"
 PICTURES_NEXT, PICTURES_STOP, PICTURES_DONE = "; batch {n} started", "; stopped, {left} left: run it again", "; done"
+FILE_TEXT = "[its text, extracted by code] saved at {path}"     # under a workbook's or a PDF's [attachment] line (files.py)
+FILES_PERSON = "{room} is not an owner room: a workbook or a PDF sent there is never read"
+FILES_BACKFILL = "{n} workbook(s) and PDF(s) in {where} with no text beside them or an older one; {done}"
+FILES_WRITTEN, FILES_DRY = "written", "nothing written (--dry-run)"
 # missing-ability (needs.py): a room's need in the machine room, its build and its end there, and the refusals
 NEED_FILED = WORKING + " need {n} from {room}: {ability}; `yerk needs build {day} {n}`"
 NEED_AGAIN = WORKING + " need {n} asked again from {room}, {count} times now: {ability}"

@@ -173,7 +173,7 @@ def test_claude_codes_parts_as_the_rooms_send_them_fit_their_lines_and_what_is_l
     assert all(sent <= line for sent, line in rows.values()), out
     assert all(line <= sent * 1.02 for name, (sent, line) in rows.items() if name != "Yerk AI's tools"), rows
     s = b["session_start"]
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 96414
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 96614
 
 
 # The largest room rulebook, the room's own text only since PR 47, across the six rooms: the work room's, read as session
@@ -194,10 +194,11 @@ def test_the_rulebook_line_keeps_about_1000_over_the_largest_room_text_and_what_
     took it to 88,714, and the mechanics' 200 again (the X-links line) to 88,914. Later that day two rules sat held in
     rules-overflow.md with the shared file at 12,923 against 12,500 and curate proposing nothing to cut, so a lesson from
     two misses in one morning loaded in no room: `rules` to 15,000 and the total by the same 2,500 to 94,514; within hours four were held, so 16,000 and 95,514.
-    Then missing-ability's `need` tool (700) and its mechanics line (200) took it to 96,414."""
+    Then the place line (200, location) took it to 95,714, and missing-ability's `need` tool (700) and its mechanics line
+    (200) to 96,614."""
     s = budgets()["session_start"]
     assert 900 <= s["appended"]["rulebook"] - LIVE_RULEBOOK <= 1400 and s["appended"]["rules"] == 16000
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 96414
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 96614
     private = tmp_path / "private"
     shutil.copytree(EXAMPLE_PRIVATE, private)
     (private / "rulebook.md").write_text("r" * (LIVE_RULEBOOK - 1) + "\n")
@@ -214,6 +215,14 @@ def test_the_mechanics_say_when_work_goes_to_a_worker_inside_their_budget():
     line = next(x for x in text.splitlines() if "`worker`" in x)
     assert "five minutes" in line and "one line now" in line
     assert context.chars(text) < budgets()["session_start"]["appended"]["mechanics"]
+
+
+def test_the_mechanics_say_when_to_use_the_place_unasked_in_one_line_inside_their_budget():
+    """The place line is used unasked where it bears: a line used only when asked went unused."""
+    text = context.MECHANICS.read_text().strip()
+    lines = [x for x in text.splitlines() if "`[place]`" in x]
+    assert len(lines) == 1 and all(w in lines[0] for w in ("unasked", "gym", "log the session", "work", "commute", "moving", "short"))
+    assert context.chars(text) < budgets()["session_start"]["appended"]["mechanics"] == 4500
 
 
 def test_declared_parts_fit_the_declared_total():

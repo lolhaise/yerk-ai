@@ -112,7 +112,8 @@ async def add(a: argparse.Namespace) -> int:
     guard before anything changes. A second run finds what the first made, keeps it, and tops the history up."""
     priv, state, dry = private_dir(a.private), state_dir(a.state), a.dry_run
     conf = load_toml(priv / "yerkd.toml")
-    d, rs, s = conf["discord"], rooms(priv), memory.settings(priv, state, dict(conf.get("memory", {})))
+    d, s = conf["discord"], memory.settings(priv, state, dict(conf.get("memory", {})))
+    rs = rooms(priv, own=True)                      # each as written: a new owner room inherits [defaults] under its own name
     t = load_toml(REPO / "examples" / "rooms" / ("person.toml" if a.person else "owner.toml"))
     room = t["room"].format(name=a.room)
     kind, _, old = a.source.partition(":")
@@ -136,7 +137,7 @@ async def add(a: argparse.Namespace) -> int:
         block = have or block_of(t, rs[like], fill) | ({"people": [a.person]} if a.person else {})
         text, head = (priv / "rooms.toml").read_text(), f"\n# {room}: moved in from {a.source} by `yerk room add`\n"
         if not have:                                # the file it would write loads, with the room as built
-            got = rooms(priv, text + head + "\n".join(toml_lines(f"rooms.{room}", block)))
+            got = rooms(priv, text + head + "\n".join(toml_lines(f"rooms.{room}", block)), own=True)
             if got.get(room) != block:
                 raise SystemExit(f"rooms.toml: {room} would not load as it was built")
             context.walls(priv, state, s.scope.roots, got)

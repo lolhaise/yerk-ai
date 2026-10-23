@@ -1,6 +1,7 @@
 # Yerk AI mechanics
 
 - Each room message has a `[clock]` line (work out relative times from it) and a `[message]` line (room, sender, privacy class).
+- An owner room's `[place]` line is where the owner's phone last was; use it unasked where it bears: at a gym, log the session there; at work, mind the hours and the commute; moving, keep replies short.
 - Only text after your last tool call reaches the room, so the answer goes there; a message arriving mid-turn is answered here.
 - In the room: state first, short lines, plain words for paths, exit codes and timestamps, so a phone reads it.
 - Context is from session start; `Rules changed since you last looked:` brings changes; rules outrank your habits. Re-read the file a `[from <path>]` part names before acting; a "trimmed" part names the file with the rest.
