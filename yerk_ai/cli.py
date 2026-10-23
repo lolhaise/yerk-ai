@@ -152,6 +152,26 @@ def cmd_pictures(a: argparse.Namespace) -> int:
     return 0 if out.get("ok") else 1
 
 
+def cmd_needs(a: argparse.Namespace) -> int:
+    """list and done read and write <state>/needs.json and the day's page, so they answer with the daemon down; build goes
+    through the running yerkd, which owns the workers and their cards (needs.py)."""
+    from . import memory, needs, words
+    if a.action == "list":
+        print("\n".join(needs.listing(state_dir(a.state))) or "no needs filed")
+        return 0
+    if not (a.day and a.n) or a.action == "done" and not a.pr:
+        print(f"{a.action} needs DAY N" + " PR" * (a.action == "done"), file=sys.stderr)
+        return 2
+    if a.action == "build":
+        out = _control(a.state, {"needs": {"action": "build", "day": a.day, "n": a.n}}, 120)
+        print(json.dumps(out))
+        return 0 if out.get("ok") else 1
+    priv, state = private_dir(a.private), state_dir(a.state)
+    r = needs.update(memory.settings(priv, state), state, a.day, a.n, {"state": "merged", "pr": a.pr})
+    print(f"need {a.n} of {a.day}: {needs.said(r)}" if r else words.NEED_NONE.format(day=a.day, n=a.n))
+    return 0 if r else 2
+
+
 def cmd_jobs(a: argparse.Namespace) -> int:
     """sync: the jobs file to one timer and service per job (idempotent), the diff, then every next
     fire read back from systemd; list: the read-back alone. Both work with the daemon down."""
@@ -643,6 +663,12 @@ def main(argv: list[str] | None = None) -> int:
     pc.add_argument("--limit", type=int, default=0, help="at most this many pictures, oldest first (default: all)")
     pc.add_argument("--dry-run", action="store_true", help="list each sidecar it would write; start nothing")
     pc.add_argument("--root", help="a folder the room lists in rooms.toml (read or also): its pictures in place of the inbox's")
+    nd = sub.add_parser("needs", help="what the rooms could not do and filed with `need`: list (each one's state), build DAY N "
+                        "(a builder worker on [needs] account, its card in the machine room; needs a running yerkd), done DAY N PR")
+    nd.add_argument("action", choices=["list", "build", "done"])
+    nd.add_argument("day", nargs="?", default="", help="build, done: the day it was filed (YYYY-MM-DD), as list shows it")
+    nd.add_argument("n", nargs="?", type=int, default=0, help="build, done: its number that day")
+    nd.add_argument("pr", nargs="?", type=int, default=0, help="done: the pull request that merged it")
     jb = sub.add_parser("jobs", help="scheduled jobs from the private jobs.toml: sync (one systemd user timer and "
                         "service per job, the diff, then every next fire time read back) or list (the read-back)")
     jb.add_argument("action", choices=["sync", "list"])
@@ -707,7 +733,7 @@ def main(argv: list[str] | None = None) -> int:
     dp.add_argument("ref", nargs="?", help="the commit (default: the daemon's tree's HEAD)")
     dp.add_argument("--no-tests", action="store_true", help="skip the fast tests (the card says so)")
     dp.add_argument("--unit", action="store_true", help="also move a systemd-run daemon onto units/yerkd.service")
-    for x in (ac, st, mo, rb, ab, ex, jb, sc, rt, dc, dk, cu, mm, dp, pc):
+    for x in (ac, st, mo, rb, ab, ex, jb, sc, rt, dc, dk, cu, mm, dp, pc, nd):
         x.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else "
                        + ("the running yerkd's own, from its unit)" if x is dp else "the fake example layer)"))
         x.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
@@ -716,7 +742,7 @@ def main(argv: list[str] | None = None) -> int:
                 "jobs": cmd_jobs, "schedule": cmd_schedule, "accounts": cmd_accounts, "status": cmd_status, "morning": cmd_morning,
                 "recall-bench": cmd_recall_bench, "abilities": cmd_abilities, "explain": cmd_explain, "config": cmd_config,
                 "memory": cmd_memory, "deploy": cmd_deploy, "retention": cmd_retention, "doctor": cmd_doctor, "docs": cmd_docs,
-                "curate": cmd_curate}[a.cmd](a))
+                "curate": cmd_curate, "needs": cmd_needs}[a.cmd](a))
 
 
 if __name__ == "__main__":

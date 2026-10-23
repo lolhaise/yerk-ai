@@ -20,13 +20,13 @@ import sqlite3
 import stat
 import subprocess
 import time
-from contextlib import suppress
+from contextlib import nullcontext, suppress
 from datetime import date, datetime, timedelta
 from itertools import combinations
 from pathlib import Path
 from typing import Any, Callable
 
-from . import context, doctor, memindex, memory, mentions, shape, taste, words
+from . import context, doctor, memindex, memory, mentions, needs, shape, taste, words
 from .accounts import account_env, load_accounts
 from .config import budgets, load_toml, rooms, write_private
 from .engine import claude_bin
@@ -747,16 +747,18 @@ def rules(private: Path, state: Path, s: memory.Settings, dry: bool, now: float,
     `dry` (the applies on file kept for undo), and the card said in the machine room at most once a day, never with none."""
     day = datetime.fromtimestamp(now, s.tz).date().isoformat()
     props, sizes, name = propose(private, state, s, now)
-    out: dict[str, Any] = {"day": day, "proposals": props, "sizes": sizes, "card": card(day, props), "file": ""}
+    with nullcontext() if dry else memory.daily_lock(s.daily):    # the needs' lock: a need filed now keeps its number and block
+        needs.around(props, needs.numbers(state, day))           # the day's needs keep theirs; the proposals take the rest
+        out: dict[str, Any] = {"day": day, "proposals": props, "sizes": sizes, "card": card(day, props), "file": ""}
+        if props and not dry:
+            (folder := s.root / PROPOSALS).mkdir(mode=0o700, parents=True, exist_ok=True)
+            out["file"] = str(write_private(folder / f"{day}.md", page(day, props, sizes, name) + needs.part(state, day)))
     if dry:
         return out
     try:
         old = dict(json.loads((state / PROPOSED).read_text()))
     except (OSError, ValueError, TypeError):
         old = {}
-    if props:
-        (folder := s.root / PROPOSALS).mkdir(mode=0o700, parents=True, exist_ok=True)
-        out["file"] = str(write_private(folder / f"{day}.md", page(day, props, sizes, name)))
     said = str(old.get("said", ""))
     if out["card"] and said != day and say(private, state, day, out["card"], post):
         said = day

@@ -28,8 +28,8 @@ from types import SimpleNamespace
 from typing import Any, Awaitable, Callable
 from zoneinfo import ZoneInfo
 
-from . import (beat, context, deploy, doctor, evidence, gates, hooks, jobs, mcp_server, memory, mentions, pictures, status, taste,
-               transcribe, voice_note, workers)
+from . import (beat, context, deploy, doctor, evidence, gates, hooks, jobs, mcp_server, memory, mentions, needs, pictures, status,
+               taste, transcribe, voice_note, workers)
 from .accounts import Account, Cooldowns, from_dir, load_accounts, pick
 from .config import (EFFORTS, REPO, SHELLS, assistants, budgets, discord_id, flag, load_toml, models, override, people, pinned,
                      private_dir, read_secret, room_id, room_settings, rooms, state_dir, table, trusted, write_private)
@@ -45,7 +45,7 @@ from . import abilities, words   # STYLE.md: what a room reads
 log = logging.getLogger("yerk.daemon")
 YERK_TOOLS = ["mcp__yerk__send", "mcp__yerk__hold", "mcp__yerk__recall", "mcp__yerk__read_memory",
               "mcp__yerk__remember", "mcp__yerk__worker", "mcp__yerk__schedule", "mcp__yerk__settings", "mcp__yerk__transcribe",
-              "mcp__yerk__voice_note", "mcp__yerk__seen"]
+              "mcp__yerk__voice_note", "mcp__yerk__seen", "mcp__yerk__need"]
 # A shell room's sandbox when rooms.toml gives it no [rooms.NAME.sandbox] table: unsandboxed, a Read deny stops `cat` and
 # the Read tool, but a script, grep or redirect read every secret (Claude Code 2.1.304, PR 66's cold read, 2026-10-21)
 SANDBOX = {"enabled": True, "autoAllowBashIfSandboxed": True}
@@ -212,6 +212,7 @@ class Yerkd:
         self.jobs = jobs.Jobs(private, state, self.ledger, dict(self.conf.get("jobs", {})), self.rooms, self.channels,
                               self.room_confs, self.conf, self.workers)
         self.workers.hooks.append(self.pictures_done)            # a pictures backfill batch: its line, then the next batch
+        self.workers.hooks.append(self.need_built)               # a need's builder: its state and its line (needs.py)
         self.gates = gates.settings(self.conf.get("gates"))      # the rule-based gates (DESIGN 8)
         self.workers.gate = {"trash": list(self.gates.trash), "private": str(self.private),   # workers pass them too
                              "external": self.gates.external}
@@ -502,6 +503,25 @@ class Yerkd:
         log.info("seen: %s, %s, %d characters of its words", room, p.name, len(text))
         return {"ok": True, "file": str(out), "next": words.FILED_NEXT.format(clause=words.FILED_AT_MOST)}
 
+    async def tool_need(self, room: str, asked: str, tried: str, needed: str, shadow: str = "") -> dict[str, Any]:
+        """The `need` tool: what a room could not do, filed as one line (needs.file), folded into an open need of the same
+        ability, and one line in the machine room; a person's room names only its own files (needs.foreign)."""
+        if room not in self.rooms:
+            return {"ok": False, "error": "need is for a room's own session"}
+        others = [r for r in self.room_confs if r != room]
+        if not self.owner(room) and (bad := needs.foreign([asked, tried, needed, shadow], self.state / "rooms" / room, others)):
+            return {"ok": False, "line": words.NEED_NOT_YOURS.format(path=words.no_paths(bad))}
+        with self.rooms[room].lock:
+            mid = ",".join(m.id for m in self.rooms[room].inflight) or f"x{self.rooms[room].turn_key}"
+        r = await asyncio.to_thread(needs.file, self.memory, self.state, room, mid, asked, tried, needed, shadow)
+        if not r["ok"]:
+            return r
+        if not r["again"]:                                # a retried call is said once
+            await self.jobs.alert(None, (words.NEED_AGAIN if r["folded"] else words.NEED_FILED).format(
+                n=r["n"], room=room, ability=words.line(r["ability"], 80), day=r["day"], count=r["count"]), 0)
+        log.info("need: %s, %s %s, %s", room, r["day"], r["n"], "folded" if r["folded"] else "filed")
+        return {**r, "next": words.FILED_NEXT.format(clause=words.NEED_CLAUSE)}
+
     async def pictures(self, req: dict[str, Any]) -> dict[str, Any]:
         """`yerk pictures backfill ROOM`: the owner room's pictures with no sidecar (at most `limit`), BATCH to a Yerk worker on the
         room's own account and model, one batch at a time (pictures_done starts the next), so the account's other workers wait
@@ -567,6 +587,51 @@ class Yerkd:
                 await self.channels[to].notify(to, line)
         self.ledger.worker_set(str(row["id"]), relay="skipped", relay_note="pictures backfill: its line went to the machine room")
         log.info("%s", line)
+        return True
+
+    async def need_build(self, req: dict[str, Any]) -> dict[str, Any]:
+        """`yerk needs build DAY N`: the need's brief (needs.brief) to a builder worker on [needs] account, else [curate]
+        account, else the workers' own pick, its card in the machine room. One builder a need: the need is claimed under the
+        lock, so one that is building, has a PR or a branch, or is merged starts nothing."""
+        day, n = str(req.get("day") or ""), int(req.get("n") or 0)
+        if await asyncio.to_thread(needs.update, self.memory, self.state, day, n, {"state": "building", "worker": ""},
+                                   lambda r: r.get("state", "filed") == "filed") is None:
+            row = needs.find(needs.load(self.state), day, n)
+            return {"ok": False, "error": words.NEED_NONE.format(day=day, n=n) if row is None else
+                    words.NEED_BUSY.format(n=n, state=needs.said(row))}
+        row = needs.find(needs.load(self.state), day, n) or {}
+        card = next((r for r, c in self.room_confs.items() if c.get("role") == "machine" and r in self.channels),
+                    next((r for r in self.rooms if self.owner(r)), ""))
+        conf = dict(self.conf.get("needs", {}))
+        out = await self.workers.start(card, needs.brief(row, REPO), account=str(conf.get("account") or dict(
+            self.conf.get("curate", {})).get("account") or ""), cap_minutes=float(conf.get("cap_minutes") or needs.CAP),
+            tasks=list(needs.TASKS), more={"need": {"day": day, "n": n}})
+        await asyncio.to_thread(needs.update, self.memory, self.state, day, n, {"worker": out["id"]} if out.get("ok") else {"state": "filed"})
+        log.info("needs: build %s %s: %s", day, n, out.get("id") or out.get("error"))
+        return {**out, "day": day, "n": n}
+
+    async def need_built(self, row: dict[str, Any], end: dict[str, Any]) -> bool:
+        """A need's builder ended (workers.hooks): the need's state from its report's first line (needs.ended) and one line to
+        the machine room, never a relay turn; False for any other worker."""
+        try:
+            job = json.loads((Path(row["staging"]) / "worker.json").read_text()).get("need")
+        except (OSError, ValueError):
+            return False
+        if not isinstance(job, dict):
+            return False
+        day, n = str(job.get("day")), int(job.get("n") or 0)
+        how = workers.settled_state(row, workers.tasks_of(Path(row["tasks"])), end)[1]
+        r = await asyncio.to_thread(needs.ended, self.memory, self.state, day, n, str(row["id"]), how,
+                                    workers.first_line(Path(row["report"])), end["exit"] == "done")
+        if r is not None:
+            ab, st = words.line(str(r["ability"]), 80), r.get("state")
+            line = (words.NEED_PR.format(n=n, pr=r.get("pr"), ability=ab) if st == "pr" else words.NEED_BRANCH.format(
+                n=n, branch=r.get("branch"), ability=ab) if st == "built" else words.NEED_FAILED.format(n=n, how=how, ability=ab))
+            if (to := str(row["room"])) in self.channels:
+                with contextlib.suppress(Exception):
+                    await self.channels[to].notify(to, line)
+            log.info("%s", line)
+        self.ledger.worker_set(str(row["id"]), relay="skipped", relay_note="need build: its line went to the machine room")
         return True
 
     async def tool_voice_note(self, room: str, script: str, name: str = "", owner_yes: bool = False) -> dict[str, Any]:
@@ -1132,6 +1197,8 @@ class Yerkd:
             return await self.jobs.handle(str(req.get("room") or ""), req)
         if isinstance(payload.get("pictures"), dict):   # `yerk pictures backfill ROOM`
             return await self.pictures(dict(payload["pictures"]))
+        if isinstance(payload.get("needs"), dict):      # `yerk needs build DAY N`
+            return await self.need_build(dict(payload["needs"]))
         if isinstance(payload.get("recall"), dict):     # a worker's read-only tools, from its own stdio server
             req = dict(payload["recall"])
             return await self.tool_recall(str(req.get("room", "")), str(req.get("query", "")), int(req.get("k") or 6))

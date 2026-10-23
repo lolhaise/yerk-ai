@@ -5,7 +5,7 @@
 # when a part or a total passes its number here.
 
 [session_start]
-total = 95514
+total = 96414
 
 # Load order, most stable first, so the cached start of the prompt survives.
 # The first five parts are Claude Code's own (its default prompt, the built-in tools
@@ -19,10 +19,13 @@ total = 95514
 # tools before `seen`, over the 8,000 line since transcribe (840), voice_note (911) and remember's `said` and `source`
 # (1,656) came in with no raise (it was measured once at 7,333, from a shape days old), and 10,823 with `seen` (845), so
 # 11,000; no part could pay, so the total rose by the 3,000.
+# 2026-10-23: missing-ability's `need` tool (a room that hits a wall files what it needed, in place of a way of its own),
+# 793 as this tree builds it on Python 3.13, about 808 as sent (`seen` measures 830 here against 845 sent), so 11,631 and
+# 11,700; no part could pay, so the total rose by the 700.
 [session_start.claude_code]
 claude_code_prompt = 11000
 builtin_tools = 10401
-yerk_tools = 11000
+yerk_tools = 11700
 deferred_tool_names = 1713
 skills = 0
 
@@ -61,8 +64,11 @@ skills = 0
 # the file at 12,923, so `rules` to 16,000 and the total up by the same 3,500 to 95,514 until rules-on-demand moves the
 # topic rules out of the always-on file; the curate swap
 # (propose the least-evidenced rule for the overflow when one is held) follows in its own PR.
+# 2026-10-23: missing-ability's line (a wall is filed with `need` so one build gives every room the way, never a workaround;
+# one done anyway goes in its `shadow`; one best way for every room) took the
+# mechanics to 4,271, so 4,300; no part could pay, so the total rose by the 200, to 96,414 with the tools' 700.
 [session_start.appended]
-mechanics = 4100
+mechanics = 4300
 persona = 11800
 rulebook = 14000
 room_voice = 5500
@@ -254,4 +260,10 @@ drops = [
 # by 2: config.py (an id in `[watch] assistants` that is the owner's or one a room's `people` lists stops the start, since
 # that person would never be answered again).
 # 18,767 merged on message-envelope (#96), no line shared.
-lines = 18767
+# 2026-10-23: missing-ability raised it by 330: a room that hits a wall files what it needed and one builder makes it for
+# every room (one best way for every room, automatically), not folded
+# to fit. needs.py 217 (the record and the page's blocks, the fold, curate's numbering around the needs, a person room's
+# path check, the builder's brief, a builder's end read from its report), daemon.py 67 (the `need` tool, `yerk needs build`
+# through /control, the completion hook and its machine-room line), cli.py 26 (`yerk needs list|build|done`), words.py 9,
+# sample_item.moved 0 (to the), next.step 0 (and the test reads it back as plain).
+lines = 19097
