@@ -154,6 +154,22 @@ def test_a_picture_read_outside_what_was_sent_never_bounces_the_hands_screenshot
     assert own.stop_check(active=False) is None and not any(pictures.sidecar(Path(p)).exists() for p in others)
 
 
+def test_in_a_persons_room_too_only_a_picture_sent_in_this_result_bounces(tmp_path):
+    """person-room-parity cold read: the proof above in a person's room, which now files its pictures: an earlier message's
+    picture and a loose one, read again and never filed, never bounce it; the one sent in this result does, once."""
+    y = daemon(tmp_path, "example-room", "her-room")
+    older = picture(tmp_path, "her-room", "m-0")
+    (loose := tmp_path / "rooms" / "her-room" / "work" / "loose.png").write_bytes(PNG)
+    others = [str(older), str(loose.resolve())]
+    hers = y.rooms["her-room"]
+    hers.to_open, hers.rp, hers.bounced = {}, NS(read_paths=set(others)), False
+    assert hers.unfiled() == [] and hers.stop_check(active=False) is None and not hers.bounced
+    sent = str(picture(tmp_path, "her-room", "m-1"))
+    hers.to_open, hers.rp = {sent: "photo.png"}, NS(read_paths={*others, sent})
+    reason = hers.stop_check(active=False)
+    assert hers.unfiled() == [("photo.png", sent)] and reason and sent in reason and not any(p in reason for p in others)
+    assert hers.stop_check(active=False) is None                             # once per result
+
 def test_the_index_takes_a_sidecar_as_an_inbox_text_kind_an_owner_rooms_private_a_persons_class_room_hers(tmp_path):
     (priv := tmp_path / "private").mkdir()
     (priv / "yerkd.toml").write_text('[memory]\nroot = "memory"\n')

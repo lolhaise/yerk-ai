@@ -5,7 +5,7 @@ lines from the watched channel), the config refusal, and the `yerk map` and `yer
 import asyncio
 import shutil
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace as NS
 
@@ -253,6 +253,31 @@ def test_an_assistants_lines_never_fill_the_recall_pack_and_the_setting_takes_id
         with pytest.raises(SystemExit, match=r"\[watch\] assistants must be a list of Discord user ids"):
             config.assistants({"watch": {"assistants": bad}})
 
+
+def test_the_other_assistants_wait_is_thirty_seconds_from_its_own_last_edit_and_none_from_history(tmp_path):
+    """Cold read (2026-10-23): the wait is SETTLE, 30 s, counted from the message's own time (its last edit, else its post), so a
+    reply left alone is filed 30 s after it went up, one edited 10 s ago waits 20 s more, and one already older than 30 s (read
+    from history after a restart) is filed at once. The test above shrinks SETTLE to run fast; this one keeps it."""
+    assert dmod.SETTLE == 30.0
+    log = DailyLog(tmp_path / "daily", timezone.utc, {ROOM: ("room-id", "room")})
+    own, watched = Spy(OWN), Spy(WATCHED)
+    room = Room(tmp_path)
+    room.name = ROOM
+    dc = DiscordChannel("token", OWNER, [HOOK], Ledger(tmp_path / "l.sqlite"), client=Bot(own, watched), state=tmp_path,
+                        capture=log.capture, assistants=frozenset({5555}))       # an example id
+    dc.add_room(OWN, room, watch=WATCHED)
+    waits: list[tuple[int, int]] = []
+    dc.loop = NS(call_later=lambda delay, fn, *a: waits.append((a[1].id, round(delay))) or NS(cancel=lambda: None))
+    now = datetime.now(timezone.utc)
+    fresh, edited, old = (Msg(watched, mid, f"reply {mid}", author=5555, name="helper-bot") for mid in (911, 912, 913))
+    fresh.created_at = now
+    edited.created_at, edited.edited_at = now - timedelta(seconds=120), now - timedelta(seconds=10)
+    old.created_at = now - timedelta(seconds=31)
+    for m in (fresh, edited, old):
+        dc.file(ROOM, m)
+    assert waits == [(911, 30), (912, 20)] and set(dc.settling) == {"911", "912"}
+    text = "".join(p.read_text() for p in (tmp_path / "daily").glob("*.md"))
+    assert "reply 913" in text and "reply 911" not in text and "reply 912" not in text
 
 def test_a_thread_started_in_the_watched_channel_never_brings_the_other_sides_words(tmp_path):
     """Cold read 33 W2: in discord.py 2.6.4 a thread_created line is in the name of whoever started the thread and its

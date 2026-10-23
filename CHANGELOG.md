@@ -8,7 +8,7 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-23
 
-### person-room-parity
+### person-room-parity (#101)
 
 - A person's room can read what the other assistant already told them where it watches. List that assistant's Discord
   user id in yerkd.toml (`[watch] assistants = ["<user id>"]`): its messages in a watched channel go in the room's day
