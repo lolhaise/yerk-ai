@@ -260,6 +260,11 @@ drops = [
 # by 2: config.py (an id in `[watch] assistants` that is the owner's or one a room's `people` lists stops the start, since
 # that person would never be answered again).
 # 18,767 merged on message-envelope (#96), no line shared.
+# 2026-10-23: model-account-pin raised it by 76: /model's one argument read as an account (its name or digit), a model or
+# both (config.py, 20: account_named, account_and_model), its daemon path, bare answer and suggestions (daemon.py, 31:
+# model_command, tried, model_menu, model_picks, the digit in the settings tool), Discord's autocomplete for it answered to
+# the owner alone (channels/discord.py, 16) and its words (words.py, 9) (the /model menu in
+# Yerk the same, with every account), not folded to fit.
 # 2026-10-23: missing-ability raised it by 330: a room that hits a wall files what it needed and one builder makes it for
 # every room (one best way for every room, automatically), not folded
 # to fit. needs.py 217 (the record and the page's blocks, the fold, curate's numbering around the needs, a person room's
@@ -268,4 +273,5 @@ drops = [
 # mcp_server.py 9 (the tool), curate.py 2 (its page keeps the needs and their numbers). Its cold read raised it by 6, all
 # needs.py: a promotion's WHY ("once N are applied") renumbered with its list (3), a report that starts "no branch" built
 # nothing whatever PR it mentions (2), the builder told that every name in a test or a doc is a placeholder (1).
-lines = 19103
+# 00,000 before the next-run-starts (#000), the example note.
+lines = 19179

@@ -8,7 +8,7 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-23
 
-### missing-ability
+### missing-ability (#110)
 
 - A room that hits a wall (no tool, a refused tool, a page that will not open) now files what it needed with the new
   `need` tool, in place of building a way of its own: one line with what was asked, what it tried and what it needed,
@@ -26,6 +26,18 @@ with the originals kept under `backups/`; the index chunks every file again when
 - **Upgrading:** yerkd.toml, optional: `[needs] account` (the account builders run on; default `[curate] account`) and
   `[needs] cap_minutes` (default 60). budgets.toml: `yerk_tools` 11,700, `mechanics` 4,300, `total` 96,414 and `[code]
   lines`, each with a dated note. Each room has the `need` tool and its mechanics line from its next process start.
+
+### model-account-pin (#103)
+- `/model` takes an account as well as a model, in one argument: `/model five` (or `/model 5`) puts the room on account
+  five, `/model five fable` (or `five/claude-fable-5-1`) on both, `/model fable` on the model as before, and
+  `/model default` clears both. As the owner types, Discord suggests every account with its order and whether it is
+  resting for the room's model, the models, and each account with each model; anyone else is offered nothing, so no
+  account name shows to the guild. Bare `/model` lists the accounts in the order tried and the models under the room's line.
+- The pinned account is tried first; a rest or a limit on it falls through in accounts.toml's order, every account out of
+  the pinned model runs the turn on the room's own model and says so, and the pin stays for the next turn, as before.
+  The typed `account` option still works (with it, the argument is a model alone), and takes the digit too.
+
+**Upgrading**: nothing to do; the next start registers `/model`'s argument as suggestions in place of its fixed list.
 
 ### person-room-parity (#101)
 
