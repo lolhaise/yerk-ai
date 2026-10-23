@@ -301,16 +301,15 @@ class Room:
             return [(n, p) for p, n in self.to_open.items() if p not in read]
 
     def unfiled(self) -> list[tuple[str, str]]:
-        """(name, path) of the pictures sent to an owner room in this result that it Read and did not file with `seen`."""
+        """(name, path) of the pictures sent to this room in this result that it Read and did not file with `seen`."""
         with self.lock:
             read = self.rp.read_paths if self.rp else set()
-            out = [(n, p) for p, n in self.to_open.items() if p in read and pictures.is_picture(Path(p))
-                   and not pictures.sidecar(Path(p)).exists()]
-        return out if out and str(self.conf.get("privacy", "owner")) == "owner" else []
+            return [(n, p) for p, n in self.to_open.items() if p in read and pictures.is_picture(Path(p))
+                    and not pictures.sidecar(Path(p)).exists()]
 
     def stop_check(self, active: bool) -> str | None:
         """The Stop hook's rule, no judge: an image sent in and never read, or a voice note never transcribed, bounces once,
-        naming it, so a room never answers a note it did not hear; in an owner room, so does a picture read and not filed."""
+        naming it, so a room never answers a note it did not hear; so does a picture read and not filed."""
         unread, unfiled = self.unopened(), self.unfiled()
         if not (unread or unfiled) or active or self.bounced:
             return None
@@ -410,21 +409,24 @@ class Room:
 
     def said_check(self, active: bool, text: str | None, said: Callable[[], str] = str,
                    owner: tuple[str, ...] = ()) -> tuple[str, str, str] | None:
-        """The person and quote rules, no judge, in an owner's room (a person's room keeps the shadow rows), in `send` before it
-        posts and at Stop, one flag for both (2026-10-22: what a colleague said, decided or wrote went out from turns that read
-        nothing): a third person's words, decision or wants (evidence.people) or a quote no read, prompt or earlier reply holds
-        (evidence.quotes; `said` gives the session's earlier replies, asked for past the guards) from a turn with no reading
-        call (evidence.read_any) is turned back once, naming whose: (the refusal, its shadow rule, what was found), or None.
-        `owner`: the names his words go by."""
-        if active or self.said_bounced or not text or not self.in_owner_name() or read_any(self.evidence):
+        """The person and quote rules, no judge, in an owner's room and a person's (an owner's room with people keeps the
+        shadow rows), in `send` before it posts and at Stop, one flag for both (2026-10-22: what a colleague said, decided or
+        wrote went out from turns that read nothing): a third person's words, decision or wants (evidence.people) or a quote no
+        read, prompt or earlier reply holds (evidence.quotes; `said` gives the session's earlier replies, asked for past the
+        guards) from a turn with no reading call (evidence.read_any) is turned back once, naming whose: (the refusal, its shadow
+        rule, what was found), or None. `owner`: the names the owner's words go by, their own only in their rooms; a person's room is
+        pointed at its own sources (words.SAID_HERE), never a file outside its layer."""
+        mine, person = self.in_owner_name(), str(self.conf.get("privacy", "owner")) != "owner"
+        if active or self.said_bounced or not text or not (mine or person) or read_any(self.evidence):
             return None
+        owner = owner if mine else ()        # in a person's room the owner is a third person: their words need a read too
         found = [(who, "person-refused", d) for who, d in people(text, self.evidence, owner)]
         found += [(who, "quote-refused", d) for who, d in quotes(text, self.evidence, said() if QUOTED.search(text) else "", owner)]
         if not found:
             return None
         self.said_bounced = True
         who, rule, detail = found[0]
-        return words.SAID.format(name=who[:1].upper() + who[1:]), rule, detail
+        return (words.SAID if mine else words.SAID_HERE).format(name=who[:1].upper() + who[1:]), rule, detail
 
     def _new_card(self, note: str = "") -> None:
         privacy = str(self.conf.get("privacy", "owner"))

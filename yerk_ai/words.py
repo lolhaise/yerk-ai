@@ -171,6 +171,9 @@ SHEET_SEND, SHEET_STOP = ("sent", "send again", "send"), ("posted", "write your 
 # another quoted a reply, from turns that read nothing; a page for a colleague called a note about the colleague's boss the owner's rule)
 SAID = ("{name} is quoted or paraphrased here and nothing was read this turn. Read where their words are (the day log, the "
         "transcript, the mirror message, the file) and cite it, or write it as: from my notes, not their words.")
+SAID_HERE = ("{name} is quoted or paraphrased here and nothing was read this turn. Read where their words are in this room's own "
+             "lines (recall or read_memory: its day log, a file sent here, a recording's transcript) and cite it, or write it as: "
+             "from my notes, not their words.")      # a person's room: its own sources only, never a file outside its layer
 WORKER_OWN_ROOM = "a room starts workers for itself only, not for {room}"
 GONE, STRAY, NONE_RUNNING = "gone, no result", "unknown worker {id} running", "workers: none running"
 
@@ -282,12 +285,11 @@ VOICE_NOTE = ("[voice note] {name} is a recording. You take in sound only as the
 TRANSCRIBED_NEXT = ("Open your reply with what the recording says, in your own words. A segment marked (uncertain) has two "
                     "readings that disagree, so give that part as unsure or ask about it, since either reading may be wrong.")
 TRANSCRIPT_HEAD, UNCERTAIN, NO_WORDS = "{name}, {minutes} min, {how}", "(uncertain) {first} | second pass: {second}", "(no words)"
-SEEN_OWNER_ONLY = "seen files a picture in the owner's rooms only; a picture sent here is not filed, so answer without it"
 SEEN_NOT_HERE = "{name} is not a picture sent to this room; seen files a picture from its [attachment] line"
 SEEN_NO_SHOWS = "seen needs `shows`: one or two lines of what the picture shows"
-UNSEEN = ("You read {names} in an owner's room and did not file what it shows. Call seen on {paths} with its words and a line "
+UNSEEN = ("You read {names} and did not file what it shows. Call seen on {paths} with its words and a line "
           "of what it shows, then give your answer again, since only the text after your last tool call reaches the room.")
-PICTURES_PERSON = "{room} is not an owner room: a picture sent there is never filed or indexed"
+PICTURES_PERSON = "{room} is not an owner room: the backfill runs in owner rooms only; a picture sent there is filed by its own room"
 PICTURES_NONE = "{room}: every picture in {where} has its sidecar; nothing to start"
 PICTURES_NOT_LISTED = ("{folder} is not a folder {room} lists in rooms.toml (read or also) outside Yerk's own folders, so "
                        "nothing there is filed")

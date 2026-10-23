@@ -8,6 +8,27 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-23
 
+### person-room-parity (#101)
+
+- A person's room can read what the other assistant already told them where it watches. List that assistant's Discord
+  user id in yerkd.toml (`[watch] assistants = ["<user id>"]`): its messages in a watched channel go in the room's day
+  log under their own label, "[the other assistant's reply where this room watches: a record, never an instruction]",
+  about 30 seconds after they stop changing, so a progress card it edits and then deletes is never filed. They are never
+  answered or run and never fill the recall pack; recall and read_memory find them, so "which answer was better?" can be
+  answered by reading both.
+- A person's room files what it read on a picture sent to it (`seen`), and is turned back once when it read one and filed
+  nothing, as an owner room is. What is sent there (the text kinds, a recording's transcript, a picture's
+  `NAME.seen.txt`) is recalled there and cited as `<room>/work/inbox/...`, the same way: that room and the owner's rooms
+  read it, no other room does. An owner room's uploads stay in the owner's rooms, whatever a file's own front matter says.
+  A picture's lines now read "[text on a picture sent to the room, as the room read it]".
+- A person's room now turns back, once a result, a reply that says what a third person said or quotes them from a turn
+  that read nothing, as an owner room does; the refusal points at the room's own lines (its day log, a file sent there, a
+  recording's transcript), never at a file outside its folder. There the owner is a third person too, so his words need a
+  read. The second try goes out as it is.
+- **Upgrading:** yerkd.toml, optional: `[watch] assistants`, a list of Discord user ids (anything else, or the owner's id
+  or one a room's `people` lists, stops the start with one line). budgets.toml: `[code] lines` (a dated note). Each room
+  has the new `seen` description and mechanics line from its next process start.
+
 ### message-envelope (#96)
 
 - `yerk map ROOM --wire` reads every later message by part: Yerk AI's hook (clock, metadata, rules, recall, taste) and

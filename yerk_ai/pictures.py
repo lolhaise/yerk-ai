@@ -1,9 +1,10 @@
-"""pictures-seen: a picture sent to an owner room is findable the way its uploads and recordings are. The room reads it in the
+"""Makes a picture sent to a room findable later, the way its uploads and recordings are, and lets a room zoom in on part of one. The room reads
 turn it arrives (Read on an image is vision, so its content is in context at no extra cost) and files what it read with the
 NAME.seen.txt beside the picture in <inbox>/<message id>/, its first line the header this module writes (room, message id, the local time it was
 saved, its name), then every word on the picture verbatim in reading order, then one or two lines of what it shows. A password, a passphrase, a
-lines of what it shows. The index takes it as an inbox text kind (memindex.SEEN), class private; recall and read_memory show
-its lines behind memory.SEEN_MARK, never as anyone's words. A person's room files none, as its uploads are never indexed.
+lines of what it shows. The index takes it as an inbox text kind (memindex.SEEN), in its room's class (memory.INBOXES: an
+person room's its own); recall and read_memory show its lines behind memory.SEEN_MARK, never as anyone's words. The backfill is an owner room's
+only.
 `yerk pictures backfill ROOM` files the pictures sent before this: a Yerk worker per BATCH pictures on the room's own account,
 one at a time, one line to the machine room per batch; with `--root FOLDER`, the pictures under a folder the room lists in
 rooms.toml (`read` or `also`), each sidecar beside its picture, indexed under that root as its other files are.

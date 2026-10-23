@@ -243,4 +243,13 @@ drops = [
 # counted once, and a compaction's summary or Claude Code's caveat never a message; cli.py, 1: the room's time zone),
 # not folded to fit. Measured that day in the work room: no Yerk AI part past its key on any of 303 messages.
 # 18,712 merged on pictures-seen (#97), no line shared.
-lines = 18712
+# 2026-10-23: person-room-parity raised it by 53: a person's room reads what the other assistant told them where it watches and
+# keeps what is sent to it as its own (a person's room, within nine minutes: the same article to both rooms, and the room could not see
+# the other answer). discord.py 29 (`[watch] assistants` filed once settled, a card never, never answered), config.py 10 (the
+# setting, ids only), memory.py 9 (the role and its mark, kept out of the pack; every room's inbox a root, its class the
+# room's), words.py 2 (the refusal pointing at a person room's own lines), room.py 2, pictures.py 1, daemon.py 0 (the seen
+# check one line shorter, the shell wall one longer: a room's own inbox is a memory root it reads). Its cold read raised it
+# by 2: config.py (an id in `[watch] assistants` that is the owner's or one a room's `people` lists stops the start, since
+# that person would never be answered again).
+# 18,767 merged on message-envelope (#96), no line shared.
+lines = 18767

@@ -201,10 +201,10 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
 
     @mcp.tool()
     async def seen(path: str, text: str, shows: str, *, ctx: Context) -> str:
-        """In an owner's room, after you Read a picture sent to you and before your answer: file what you read on it, so a
-        later recall finds it. `path` its saved path from the [attachment] line; `text` every word on it, verbatim, in
-        reading order (a chat screenshot keeps who said what as shown), "" if none; `shows` one or two lines of what it shows,
-        a person in it "the owner" unless its own text says otherwise, anyone else named only by that text, else "a man" or
+        """After you Read a picture sent to you and before your answer: file what you read on it, so a later recall finds
+        it. `path` its saved path from the [attachment] line; `text` every word on it, verbatim, in reading order (a chat
+        screenshot keeps who said what as shown), "" if none; `shows` one or two lines of what it shows, a person in it "the
+        owner" (in a person's room "the sender") unless its own text says otherwise, anyone else named only by that text, else "a man" or
         "a woman". Saved beside it as NAME.seen.txt."""
         return json.dumps(await daemon.tool_seen(caller_room(ctx), path, text, shows))
 

@@ -1,0 +1,11 @@
+# yerkd.toml: the daemon's settings, in the private folder beside rooms.toml (README: The private folder). Every value here
+# is a placeholder.
+
+[discord]
+token_file = "secrets/discord.token"     # the bot's token, a file only you can read (0600)
+owner = "<your Discord user id>"          # the owner, answered in every room
+
+[watch]
+# Other assistants' Discord user ids. In a channel a room watches (`watch` in rooms.toml), their messages go in that room's
+# day log under their own label once they stop changing, so the room can read what was already said there; never answered.
+assistants = ["<the other assistant's bot user id>"]

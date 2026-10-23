@@ -95,15 +95,18 @@ def test_a_card_with_nothing_to_show_says_what_was_owed():
 def test_an_image_never_read_bounces_once_at_stop(tmp_path):
     room = Room.__new__(Room)
     room.lock, room.rp, room.bounced = __import__("threading").Lock(), NS(read_paths=set()), False
-    room.conf = {"privacy": "family"}            # a room that files no picture it reads (test_pictures has an owner's)
-    room.to_open = {"/in/5/photo.png": "photo.png"}
+    room.conf = {"privacy": "family"}            # any room: one read and not filed bounces too (test_pictures)
+    (pic := tmp_path / "in" / "5" / "photo.png").parent.mkdir(parents=True)
+    pic.write_bytes(b"example")
+    room.to_open = {str(pic): "photo.png"}
     reason = room.stop_check(active=False)
     assert reason and "photo.png" in reason and "/in/5/photo.png" in reason
     assert room.stop_check(active=False) is None                       # once per result
     room.bounced = False
     assert room.stop_check(active=True) is None                        # Claude Code's own loop guard
-    room.rp.read_paths.add("/in/5/photo.png")
-    assert room.stop_check(active=False) is None                       # read: nothing to say
+    room.rp.read_paths.add(str(pic))
+    pic.with_name("photo.seen.txt").write_text("seen in example\n")
+    assert room.stop_check(active=False) is None                       # read and filed: nothing to say
 
 
 # the rows in plain words (STYLE.md rule 4; the owner, 2026-10-19: a card a person who knows nothing can read)

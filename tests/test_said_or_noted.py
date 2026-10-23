@@ -1,9 +1,9 @@
 """Checks that a claim about what a third person said, decided, wants or asked, or a quote of their words, cannot go out from a turn that read nothing: it is
 turned back once per result, with the fix, and the second try goes out. This holds in an owner's room and in a person's room too (said-or-noted, 2026-10-23;
-out (a person's room only logs, as before). A sentence about the owner ("you", the name his words go by) or the room is never
+person-room-parity), pointed at its own sources. A sentence about the owner ("you", the name their words go by) or the room is never
 such a claim, and one the room writes as its own note ("from my notes, not their words") passes. A room's note is never shown as
-anyone's words; a person's words filed with `said` and their `source` are shown as theirs. What was sent to an owner room is a
-recall root there. The sentences have the shapes of the first live day's sixteen shadow rows; every name and value here is a
+anyone's words; a person's words filed with `said` and their `source` are shown as theirs. What was sent to a room is a recall
+root, an owner room's private and a person's room's its own. The sentences have the shapes of the first live day's sixteen shadow rows; every name and value here is a
 placeholder."""
 from __future__ import annotations
 
@@ -110,17 +110,40 @@ def test_at_stop_an_owner_room_refuses_once_and_the_second_final_is_logged_in_sh
     assert call(y, {**stop, "last_assistant_message": ROWS["own-1"]}) == {}       # the owner's own: never refused
 
 
-def test_a_persons_room_is_never_refused_and_only_logs(tmp_path):
+def family_room(tmp_path):
     y, _, _ = setup(tmp_path)
+    y.owner_names = OWNER
     fam = "family-room"
     y.room_confs[fam] = {**y.room_confs["example-room"], "privacy": "family", "people": [1001], "id": f"{fam}-id"}
     room = y.add_room(fam, Rec())
     SessionTable(tmp_path / "sessions.json").bind(fam, "sid-f", "one")
     human_turn(room, "what did Dana say?", sender="person")
     room.evidence = turn_of([])
-    assert send(y, CLAIM, room=fam)["ok"]
-    out = call(y, {"hook_event_name": "Stop", "session_id": "sid-f", "stop_hook_active": False, "last_assistant_message": CLAIM})
-    assert out == {} and [r["rule"] for r in y.ledger.rows(50, "shadow")] == ["person"]
+    return y, room, fam
+
+
+def test_a_persons_room_refuses_once_a_result_pointed_at_its_own_sources_and_the_second_try_goes_out(tmp_path):
+    """person-room-parity: a person's room refuses as an owner's does, in `send` and at Stop, the refusal naming only its own
+    lines (its day log, a file sent there, a recording's transcript), never a file outside its layer; its rows as today."""
+    y, room, fam = family_room(tmp_path)
+    assert send(y, CLAIM, room=fam) == {"ok": False, "error": words.SAID_HERE.format(name="Dana")}
+    assert "this room's own lines (recall or read_memory: its day log, a file sent here, a recording's transcript)" in words.SAID_HERE
+    assert all(x not in words.SAID_HERE for x in ("mirror message", "the file)", "/"))     # nothing outside its layer
+    assert send(y, CLAIM, room=fam)["ok"]                                                   # the second try goes out as it is
+    assert refused(y) == [("person-refused", f'Dana: "{CLAIM}"; tools this turn: none')]
+    room._new_card()
+    stop = {"hook_event_name": "Stop", "session_id": "sid-f", "stop_hook_active": False, "last_assistant_message": CLAIM}
+    assert call(y, stop) == {"decision": "block", "reason": words.SAID_HERE.format(name="Dana")}
+    assert call(y, {**stop, "stop_hook_active": True}) == {} and call(y, stop) == {}
+    assert sorted(r["rule"] for r in y.ledger.rows(50, "shadow")) == ["person", "person-refused", "person-refused"]
+
+
+def test_in_a_persons_room_the_owner_is_a_third_person_and_his_words_need_a_read(tmp_path):
+    y, room, fam = family_room(tmp_path)
+    assert send(y, "Pat said the page goes out Friday.", room=fam) == {"ok": False, "error": words.SAID_HERE.format(name="Pat")}
+    room._new_card()
+    room.evidence = turn_of([("mcp__yerk__recall", {"query": "Pat page Friday", "k": 6})])
+    assert send(y, "Pat said the page goes out Friday.", room=fam)["ok"] and send(y, ROWS["own-8"], room=fam)["ok"]
 
 
 def test_the_morning_diff_counts_each_refusal(tmp_path):
@@ -164,11 +187,14 @@ def test_a_note_is_never_shown_as_their_words_and_a_said_line_is(tmp_path):
     assert memory.snippets([rule], {}, 900)[0]["text"].startswith("- Example kettle")
 
 
-def test_an_owner_rooms_inbox_is_a_recall_root_its_text_only_and_a_persons_never(tmp_path):
+def test_every_rooms_inbox_is_a_recall_root_an_owner_rooms_his_alone_and_a_persons_hers_and_his(tmp_path):
+    """PR 94's inbox root, both ways (person-room-parity): an owner room's uploads stay in the owner's rooms, whatever a file says
+    about itself; a person's room reads its own and the owner's rooms read it (decision 44); no other person's room does."""
     (priv := tmp_path / "private").mkdir()
     (priv / "yerkd.toml").write_text('[memory]\nroot = "memory"\n')
     (priv / "rooms.toml").write_text('[rooms.own-room]\nchannel = "console:own"\n\n'
-                                     '[rooms.her-room]\nchannel = "console:her"\nprivacy = "family"\npeople = [1001]\n')
+                                     '[rooms.her-room]\nchannel = "console:her"\nprivacy = "family"\npeople = [1001]\n\n'
+                                     '[rooms.next-room]\nchannel = "console:next"\nprivacy = "family"\npeople = [1002]\n')
     state = tmp_path / "state"
     own, hers = (state / "rooms" / r / "work" / "inbox" / "m-1" for r in ("own-room", "her-room"))
     for d in (own, hers):
@@ -176,14 +202,26 @@ def test_an_owner_rooms_inbox_is_a_recall_root_its_text_only_and_a_persons_never
     for name in ("notes.txt", "export.csv", "talk.transcript.txt", "talk.ogg", "scan.pdf", "page.md"):
         (own / name).write_text("example upload text\n")
     (hers / "hers.txt").write_text("example of hers\n")
+    (hers / "talk.ogg").write_text("example\n")
+    (own / "shared.md").write_text("---\nclass: shared\n---\nexample the owner sent\n")     # a file saying it is shared
     s = memory.settings(priv, state)
-    files = {p.rsplit("/", 1)[-1] for p in s.scope.files() if "/work/inbox/" in p}
-    assert files == {"notes.txt", "export.csv", "talk.transcript.txt", "page.md"}   # text kinds only, none of hers
+    files = {p.split("/work/inbox/")[1] for p in s.scope.files() if "/work/inbox/" in p}
+    assert files == {f"m-1/{n}" for n in ("notes.txt", "export.csv", "talk.transcript.txt", "page.md", "shared.md", "hers.txt")}
     assert memory.cite(s, (own / "notes.txt").resolve()) == "own-room/work/inbox/m-1/notes.txt"
+    assert memory.cite(s, (hers / "hers.txt").resolve()) == "her-room/work/inbox/m-1/hers.txt"
     assert memory.read(s, "own-room/work/inbox/m-1/notes.txt")["text"] == "example upload text"
-    assert not memory.read(s, str(own / "scan.pdf"))["ok"] and not memory.read(s, str(hers / "hers.txt"))["ok"]
-    her = memory.Reader(name="her-room", rid="her-room", owner=False)
+    assert not memory.read(s, str(own / "scan.pdf"))["ok"]
+    her, nxt = (memory.Reader(name=n, rid=f"console:{c}", owner=False) for n, c in (("her-room", "her"), ("next-room", "next")))
     assert memory.file_class((own / "notes.txt").resolve()) == ("private", "")    # the owner room's class: the owner's rooms only
-    assert not memory.read(s, "own-room/work/inbox/m-1/notes.txt", reader=her)["ok"]
+    assert memory.file_class((own / "shared.md").resolve()) == ("private", "")    # the room decides, never the file
+    assert memory.file_class((hers / "hers.txt").resolve()) == ("room", "console:her")
+    for cite in ("own-room/work/inbox/m-1/notes.txt", "own-room/work/inbox/m-1/shared.md"):
+        assert not memory.read(s, cite, reader=her)["ok"], cite                   # nothing of the owner's reaches her room
+    assert memory.read(s, "her-room/work/inbox/m-1/hers.txt", reader=her)["text"] == "example of hers"
+    assert memory.read(s, "her-room/work/inbox/m-1/hers.txt", reader=memory.Reader("own-room", "console:own", True))["ok"]
+    assert not memory.read(s, "her-room/work/inbox/m-1/hers.txt", reader=nxt)["ok"]
+    for path in (own / "notes.txt", own / "shared.md"):                       # recall's filter on every hit (memory.ranked)
+        assert memory.allowed_text(her, path.resolve(), "example", daily=s.daily) is None
+    assert memory.allowed_text(her, (hers / "hers.txt").resolve(), "example", daily=s.daily) == "example"
     assert (state / "rooms" / "own-room" / "work" / "inbox").resolve() in s.only(priv, "own-room", []).scope.roots
     assert (state / "rooms" / "own-room" / "work" / "inbox").resolve() not in s.only(priv, "other-room", []).scope.roots
