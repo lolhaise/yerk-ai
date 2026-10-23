@@ -28,11 +28,14 @@ were, from a turn with no reading call (check_person); an eighth, the quote rule
 document's words that nothing the turn read, was given or posted earlier carries (check_quote). Neither counts a sentence about
 the owner or the room itself, or one written as the room's own note ("from my notes, not their words"); since 2026-10-23 an
 owner's room refuses the rest once a result when the turn made no reading call (Room.said_check), a person's room logs.
+The taste judge at the end (taste_prompt, taste_runner, taste_judge) is no rule of this check: nothing calls it after a
+reply; `yerk eval taste` (taste_eval.py) replays it over the owner's complaints and the replies they accepted.
 """
 from __future__ import annotations
 
 import json
 import re
+import subprocess
 import threading
 import time
 from pathlib import Path
@@ -539,3 +542,92 @@ def quotes(reply: str, ev: Evidence, said: str = "", owner: tuple[str, ...] = ()
 def check_quote(reply: str, ev: Evidence, said: str = "", owner: tuple[str, ...] = ()) -> list[tuple[str, str]]:
     """The quote rule in shadow: ("quote", detail) for each such span (quotes)."""
     return [("quote", detail) for _, detail in quotes(reply, ev, said, owner)]
+
+
+# the taste judge (the taste eval's phase 2, from PR 93 without its shadow thread): a judge model reads a reply to the
+# owner the way phase 1's did (the messages before it, the reply marked, never what they wrote after), plus what the turn
+# READ: each call's tool, target and characters back, a read's first words when the row carries them, and the recall the
+# prompt hook gave with the message. It answers phase 1's ten kinds; the answer says the verdict they fold into, the why
+# and the read or message it leaned on. One `claude -p` call a row, hooks, settings and tools off, the rubric as its whole
+# system prompt, `timeout` alone at the cap. Only `yerk eval taste` (taste_eval.py) calls it: no reply is judged as it is
+# posted, and nothing here is a rule of the Stop check. The bar for a gate, printed by `yerk eval taste` and enforced
+# nowhere: recall at least 5 of 7 on the owner's complaints, false alarms under 1 in 10 on the replies they accepted.
+TASTE_KINDS = ("wrong fact", "wrong register", "missed the ask", "too long", "no check before claiming", "filed instead of answering",
+               "slow or no answer", "repeated itself", "overstepped", "other")
+TASTE_VERDICTS = {"wrong fact": "unchecked-claim", "no check before claiming": "unchecked-claim", "missed the ask": "missed-the-ask",
+                  "filed instead of answering": "missed-the-ask", "overstepped": "missed-the-ask", "other": "missed-the-ask",
+                  "wrong register": "not-his-voice", "too long": "not-his-voice", "repeated itself": "not-his-voice",
+                  "slow or no answer": "slow-or-no-answer"}
+TASTE_SCHEMA = {"type": "object", "properties": {"would_complain": {"type": "boolean"}, "kind": {"type": "string", "enum": [*TASTE_KINDS, "none"]},
+                                                 "why": {"type": "string"}, "cite": {"type": "string"}},
+                "required": ["would_complain", "kind", "why", "cite"]}
+TASTE_CAP, TASTE_RECALL = 20.0, 4000        # seconds a judge call may take; characters of recall
+TASTE_RUBRIC = Path(__file__).with_name("taste-rubric.md")
+MARK = "  <-- THE REPLY UNDER JUDGMENT"
+
+
+def taste_prompt(row: dict[str, Any]) -> str:
+    """The judge's input from a row (room, before, reply_id, reply, reads, recall): the messages before the owner's next one,
+    oldest first, the reply marked, then what the turn read and the recall it was given. A row with no `reads` (no ledger
+    to join it to) is judged on the chat alone, as phase 1 was."""
+    out, rid, marked = [f"Room: {row.get('room', '')}", "", "Messages before the owner's next message, oldest first:"], row.get("reply_id"), False
+    for b in row.get("before") or []:
+        mark = MARK if rid and b.get("message_id") == rid else ""
+        marked, atts = marked or bool(mark), f" [attachments: {', '.join(b['attachments'])}]" if b.get("attachments") else ""
+        out.append(f"[{'owner' if b.get('author') == 'owner' else 'room'} {b.get('at', '')}]{mark} {b.get('text', '')}{atts}")
+    if not marked:
+        out.append(f"[room {row.get('reply_at', '')}]{MARK} {row.get('reply', '')}")
+    if (reads := row.get("reads")) is not None:
+        out += ["", "What the turn read before it replied, in order (tool, what it read, characters back, the first words of a read):"]
+        out += [f"- {r['tool']} {r['target']} ({r['chars']} chars)" + (f": {r['head']}" if r.get("head") else "") for r in reads]
+        out += [] if reads else ["- nothing: the turn made no call"]
+    if row.get("recall"):
+        out += ["", "Recall the room was given with the message:", str(row["recall"])[:TASTE_RECALL]]
+    out += ["", ("A claim of the reply that no read above and no message carries was not checked. " if reads is not None else "")
+            + "Would the owner complain about, correct or push back on the reply marked above? Answer with the JSON; cite is the read or "
+            "message your answer leans on, or none."]
+    return "\n".join(out)
+
+
+def taste_runner(rubric: Path, model: str = "", effort: str = "medium", cwd: Path | None = None,
+                 claude: str = "") -> Callable[[str, float], str]:
+    """run(prompt, cap) -> the judge's stdout: one `claude -p` call (json out, the schema forced, the rubric as the system
+    prompt, no tools, hooks, settings, MCP or session kept) on whatever account the environment gives it; TimeoutExpired
+    past `cap`."""
+    from .engine import claude_bin
+    argv = [claude or claude_bin(), "-p", "--output-format", "json", "--json-schema", json.dumps(TASTE_SCHEMA), "--system-prompt-file",
+            str(rubric), "--tools", "", "--setting-sources", "", "--strict-mcp-config", "--no-session-persistence",
+            *(["--model", model] if model else []), *(["--effort", effort] if effort else [])]
+
+    def run(prompt: str, cap: float) -> str:
+        return subprocess.run(argv, input=prompt, capture_output=True, text=True, timeout=cap, cwd=cwd).stdout
+    return run
+
+
+def taste_judge(prompt: str, run: Callable[[str, float], str], cap: float = TASTE_CAP) -> dict[str, Any]:
+    """One judge call: {verdict, kind, why, cite, seconds, tokens}, {error, seconds} or {timeout, seconds}."""
+    t0 = time.time()
+    try:
+        out = run(prompt, cap)
+    except subprocess.TimeoutExpired:
+        return {"timeout": True, "seconds": round(time.time() - t0, 2)}
+    rec: dict[str, Any] = {"seconds": round(time.time() - t0, 2)}
+    try:
+        d = json.loads(out)
+        assert isinstance(d, dict)
+    except (ValueError, AssertionError):
+        return {**rec, "error": f"no JSON: {str(out)[-120:]}"}
+    ans = d.get("structured_output")
+    if not isinstance(ans, dict) and not d.get("is_error"):       # an error's result is its reason (a usage limit), never an answer
+        try:
+            ans = json.loads(d.get("result") or "")
+        except ValueError:
+            ans = None
+    rec.update(seconds=round(float(d.get("duration_ms") or rec["seconds"] * 1000) / 1000, 2), tokens=sum(
+        int((d.get("usage") or {}).get(k) or 0) for k in ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens")))
+    if d.get("is_error") or not isinstance(ans, dict) or "would_complain" not in ans:
+        return {**rec, "error": str(d.get("result") or "no answer")[:120]}
+    kind = str(ans.get("kind") or "none")
+    verdict = TASTE_VERDICTS.get(kind, "missed-the-ask") if ans["would_complain"] else "ok"
+    return {**rec, "verdict": verdict, "kind": kind, "why": " ".join(str(ans.get("why") or "").split())[:300],
+            "cite": " ".join(str(ans.get("cite") or "none").split())[:160]}

@@ -254,4 +254,11 @@ drops = [
 # by 2: config.py (an id in `[watch] assistants` that is the owner's or one a room's `people` lists stops the start, since
 # that person would never be answered again).
 # 18,767 merged on message-envelope (#96), no line shared.
-lines = 18767
+# 2026-10-23: taste-eval raised it by 287: `yerk eval taste` from PR 93 (judge-2) without its shadow judge. The judge's
+# prompt, its `claude -p` runner and its verdict with a failed call's own reason (evidence.py, 92), the replay
+# (taste_eval.py, 161: the ledger join, the stratified sample, the scores per verdict beside phase 1's, the bar printed)
+# and the command (cli.py, 34). Left out, 59 of PR 93's 346: the call after every reply to the owner on the room's account
+# (daemon.py, 33), its recall pack, a read's first words and the shadow row (evidence.py, 24), the taste_judge room key
+# (example.note, 0) says the sample item moved to (the.next, 0), step and the test reads it back. As plain text with (one
+# queue for Its 00, Turn 00 00:00: "and the last part closes the case").
+lines = 19054
