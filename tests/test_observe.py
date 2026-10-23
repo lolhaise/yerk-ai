@@ -9,14 +9,16 @@ import socket
 import tempfile
 import threading
 import time
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from types import SimpleNamespace
+from zoneinfo import ZoneInfo
 
 from starlette.testclient import TestClient
 
-from yerk_ai import __version__, beat, cli, jobs, mcp_server, morning, status, words
-from yerk_ai.accounts import Cooldowns, load_accounts
+from yerk_ai import __version__, beat, cli, jobs, mcp_server, morning, status, usage, words
+from yerk_ai.accounts import Account, Cooldowns, load_accounts
 from yerk_ai.config import EXAMPLE_PRIVATE, REPO
 from yerk_ai.daemon import ConsoleChannel, Yerkd
 from yerk_ai.ledger import Ledger
@@ -93,7 +95,8 @@ def test_the_card_is_phone_width_state_first_and_colours_only_what_means_somethi
     lines = status.card(json.loads(json.dumps(s)), now)            # what the socket carries is plain JSON
     assert all(words.width(x) <= words.PHONE and x[:1] in (*DOTS, words.PLAIN) for x in lines), lines
     assert lines[0] == "- yerkd running: 2 rooms"                         # two names would not fit
-    assert lines[1].startswith(f"{words.WORKING} one: 5h 95% (") and lines[2].startswith(f"{words.NOT_DONE} two: resting")
+    assert lines[1] == f"{words.WORKING} ① 5h {words.WARN}95%" and lines[2] == f"- ↻ 5h {words.short_when(now + 3000, now)}"
+    assert lines[3] == f"{words.NOT_DONE} ②: no reading yet" and lines[4].startswith("- ↻ resting until ")
     assert "- example-room: busy 2 min, 1 waiting" in lines            # in flight, since when
     assert f"{words.NOT_DONE} example-quiet: busy 15 min" in lines      # past 10 minutes: a blocked room
     assert "- worker abc123: 3 min of 15" in lines and f"{words.NOT_DONE} worker def456: gone, no result" in lines
@@ -117,11 +120,156 @@ def test_a_room_put_on_an_account_says_so_on_the_card_and_a_room_on_its_order_sa
                        Ledger(tmp_path / "ledger.sqlite"), rooms, units=set, timers=Timers({}))
     lines = status.card(json.loads(json.dumps(s)))
     assert [r["account"] for r in s["rooms"]] == ["two", "", ""]
-    assert [x for x in lines if "account" in x] == ["- example-room: on account two"]   # the pin, and only the pin
+    assert [x for x in lines if "account" in x] == ["- example-room: on account ②"]     # the pin, and only the pin
     assert all(words.width(x) <= words.PHONE and x[:1] in (*DOTS, words.PLAIN) for x in lines), lines
 
 
-def test_the_status_endpoint_answers_and_yerk_status_renders_it(tmp_path, capsys):
+FAKE = Path(__file__).with_name("fake_claude.py")
+H = 3600.0
+FIVE = """[accounts]
+one = {{ config_dir = "{d}/one", order = 2, bill_day = 8 }}
+four = {{ config_dir = "{d}/four", order = 3 }}
+two = {{ config_dir = "{d}/two", order = 4, bill_day = 31 }}
+three = {{ config_dir = "{d}/three", order = 5, bill_day = 0 }}
+five = {{ config_dir = "{d}/five", order = 1, bill_day = 25 }}
+"""
+
+
+def five_accounts(tmp_path):
+    (tmp_path / "private").mkdir()
+    (tmp_path / "private" / "accounts.toml").write_text(FIVE.format(d=tmp_path))
+    return load_accounts(tmp_path / "private" / "accounts.toml")
+
+
+def live(five, five_in, week, week_in, fable=None, fable_in=None):
+    """A live reading as usage.parse returns one: percents, and resets this many seconds after NOW."""
+    r = {"five_hour": {"pct": five, "resets": NOW + five_in}, "seven_day": {"pct": week, "resets": NOW + week_in}}
+    return r if fable is None else {**r, "model": {"name": "Fable", "pct": fable, "resets": NOW + (fable_in or week_in)}}
+
+
+# the box card's tank as seen live, its accounts as Yerk names them
+TANK = {"one": live(7, 3.3 * H, 93, 10 * H, 100), "two": live(29, 3.5 * H, 72, 108 * H, 100),
+        "three": live(14, 1 * H, 93, 72 * H, 100), "four": live(100, 0.3 * H, 48, 132 * H, 76),
+        "five": live(7, 4.5 * H, 1, 38 * H, 2)}
+
+
+def test_live_meters_put_five_accounts_on_the_card_in_the_box_cards_shape_with_the_next_resets_in_order(tmp_path):
+    accounts, asked = five_accounts(tmp_path), []
+    assert [(a.name, a.bill_day) for a in accounts] == [("five", 25), ("one", 8), ("four", None), ("two", 31),
+                                                         ("three", None)]      # 0 is no day of a month: left out
+    cool = Cooldowns(tmp_path / "cooldowns.json")
+    cool.set("one", "rate_limit", NOW + 10 * H)
+    cool.set("four", "rate_limit", NOW + 0.3 * H)
+    s = status.collect(tmp_path / "private", tmp_path, accounts, cool, Ledger(tmp_path / "ledger.sqlite"), now=NOW,
+                       units=set, timers=Timers({}), live=True, read_one=lambda a: asked.append(a.name) or TANK[a.name])
+    lines = status.card(json.loads(json.dumps(s)), NOW)
+    w, d, ok = words.short_when, words.short_day, f"{words.WARN}"
+    block = lines[1:lines.index("- yerk " + __version__ + " at ?")]
+    assert block == [
+        "- ⑤ 5h 7% · wk 1% · Fable 2%",
+        f"- ↻ 5h {w(NOW + 4.5 * H, NOW)} · wk {w(NOW + 38 * H, NOW)} · 💳 {d(status.next_bill(25, NOW))}",
+        f"{words.NOT_DONE} {words.DONE}① 5h 7% · wk {ok}93% · Fable {ok}100%",          # resting, and its week is next
+        f"- ↻ resting until {w(NOW + 10 * H, NOW)} · 💳 {d(status.next_bill(8, NOW))}",
+        f"{words.NOT_DONE} ④ 5h {ok}100% · wk 48% · Fable 76%",
+        f"- ↻ resting until {w(NOW + 0.3 * H, NOW)}",                                    # no bill day: no card
+        f"{words.WORKING} ② 5h 29% · wk 72% · Fable {ok}100%",                           # Fable is out, Opus is not
+        f"- ↻ 5h {w(NOW + 3.5 * H, NOW)} · wk {w(NOW + 108 * H, NOW)} · 💳 {d(status.next_bill(31, NOW))}",
+        f"{words.WORKING} ③ 5h 14% · wk {ok}93% · Fable {ok}100%",
+        f"- ↻ 5h {w(NOW + 1 * H, NOW)} · wk {w(NOW + 72 * H, NOW)}",
+        f"- wk next: {words.DONE}① {w(NOW + 10 * H, NOW)} · then ⑤ {w(NOW + 38 * H, NOW)}",
+        f"- 5h next: ④ {w(NOW + 0.3 * H, NOW)} · then ③ {w(NOW + 1 * H, NOW)}",
+        "- next turn tries ⑤ first"]
+    assert all(words.width(x) <= words.PHONE and x[:1] in (*DOTS, words.PLAIN) for x in lines), lines
+    assert sorted(asked) == sorted(TANK) and s["accounts"][0]["meter"]["source"] == "live"
+    again = status.collect(tmp_path / "private", tmp_path, accounts, cool, Ledger(tmp_path / "ledger.sqlite"),
+                           now=NOW + 59, units=set, timers=Timers({}), live=True, read_one=lambda a: asked.append(a.name))
+    assert len(asked) == 5 and again["accounts"] == s["accounts"]           # under a minute: no second Claude Code
+    status.collect(tmp_path / "private", tmp_path, accounts, cool, Ledger(tmp_path / "ledger.sqlite"), now=NOW + 61,
+                   units=set, timers=Timers({}), live=True, read_one=lambda a: asked.append(a.name) or TANK[a.name])
+    assert len(asked) == 10 and oct(os.stat(tmp_path / usage.FILE).st_mode & 0o777) == "0o600"
+
+
+def test_a_failed_live_read_shows_the_streams_reading_with_its_age_and_json_says_why(tmp_path):
+    accounts = five_accounts(tmp_path)[:2]                                     # five and one
+    (tmp_path / "meters.json").write_text(json.dumps({"one": {"at": NOW - 1.5 * H, "source": "stream",
+                                                              "five_hour": {"pct": 42.0, "resets": NOW + 2 * H},
+                                                              "seven_day": {"pct": 91.0, "resets": NOW - 60}}}))
+    fail = {"five": live(3, 4 * H, 20, 50 * H, 5), "one": {"error": "no answer in 15 s"}}
+    s = status.collect(tmp_path / "private", tmp_path, accounts, Cooldowns(None), Ledger(tmp_path / "ledger.sqlite"),
+                       now=NOW, units=set, timers=Timers({}), live=True, read_one=lambda a: fail[a.name])
+    lines = status.card(json.loads(json.dumps(s)), NOW)
+    i = lines.index(f"{words.WORKING} ① 5h 42% · wk {words.WARN}91%")              # the stream's numbers
+    assert lines[i + 1:i + 3] == [f"- ↻ 5h {words.short_when(NOW + 2 * H, NOW)} · 💳 {words.short_day(status.next_bill(8, NOW))}",
+                                  "- ①: last reading 1 h 30 min ago"]       # a passed reset is not said
+    assert s["accounts"][1]["meter"]["live_error"] == "no answer in 15 s"
+    assert f"- wk next: {words.DONE}⑤ {words.short_when(NOW + 50 * H, NOW)}" in lines   # one reset ahead: no "then"
+    young = json.loads((tmp_path / "meters.json").read_text())
+    young["one"]["at"] = NOW - 600
+    (tmp_path / "meters.json").write_text(json.dumps(young))
+    s = status.collect(tmp_path / "private", tmp_path, accounts, Cooldowns(None), Ledger(tmp_path / "ledger.sqlite"),
+                       now=NOW + 30, units=set, timers=Timers({}), live=True, read_one=lambda a: fail[a.name])
+    assert "- ①: last reading 10 min ago" in status.card(json.loads(json.dumps(s)), NOW + 30)   # live asked: any age
+
+
+def said(epoch):
+    """A reset the way Claude Code 2.1.304's /usage says it."""
+    t = datetime.fromtimestamp(epoch, ZoneInfo("America/Toronto"))
+    return f"{t:%b} {t.day}, {t.hour % 12 or 12}{f':{t.minute:02d}' if t.minute else ''}{'am' if t.hour < 12 else 'pm'} (America/Toronto)"
+
+
+def test_claude_codes_own_usage_on_the_folders_login_is_read_never_the_token(tmp_path, monkeypatch):
+    soon, week = (time.time() // 60) * 60 + 3 * H, (time.time() // 3600) * 3600 + 80 * H
+    (tmp_path / "usage").mkdir()
+    (tmp_path / "usage" / "cfg-a.txt").write_text(
+        "You are currently using your subscription to power your Claude Code usage\n\n"
+        f"Current session: 30% used · resets {said(soon)}\nCurrent week (all models): 72% used · resets {said(week)}\n"
+        f"Current week (Fable): 100% used · resets {said(week)}\n\nWhat's contributing to your limits usage?\n")
+    monkeypatch.setenv("YERK_CLAUDE", str(FAKE))
+    monkeypatch.setenv("FAKE_CLAUDE_USAGE_DIR", str(tmp_path / "usage"))
+    monkeypatch.setenv("FAKE_CLAUDE_RECORD", str(tmp_path / "record.jsonl"))
+    (tmp_path / "a.token").write_text("sk-" + "ant-oat01-" + "x" * 40)
+    a = Account("a", tmp_path / "cfg-a", token_file=tmp_path / "a.token")      # a one-year token: left out of this call
+    assert usage.read(a, tmp_path) == {"error": "no config folder"} and not (tmp_path / "record.jsonl").exists()  # never made
+    (tmp_path / "cfg-a").mkdir()
+    (tmp_path / "cfg-b").mkdir()
+    r = usage.read(a, tmp_path)
+    assert r == {"five_hour": {"pct": 30.0, "resets": soon}, "seven_day": {"pct": 72.0, "resets": week},
+                 "model": {"name": "Fable", "pct": 100.0, "resets": week}}
+    rec = json.loads((tmp_path / "record.jsonl").read_text().splitlines()[0])
+    assert rec["argv"][:2] == ["-p", "/usage"] and "--no-session-persistence" in rec["argv"] and "--strict-mcp-config" in rec["argv"]
+    assert rec["config_dir"] == str(tmp_path / "cfg-a") and "CLAUDE_CODE_OAUTH_TOKEN" not in rec["env_keys"]
+    assert usage.read(Account("b", tmp_path / "cfg-b"), tmp_path) == {"error": "no meters in what Claude Code printed"}
+    monkeypatch.setenv("FAKE_CLAUDE_USAGE_SLOW", "3")
+    assert usage.read(a, tmp_path, timeout=0.5) == {"error": "no answer in 0.5 s"}
+
+
+def test_rooms_put_on_one_account_are_one_line_and_a_lone_room_keeps_its_own():
+    def pinned(rooms):
+        s = {"at": NOW, "running": True, "units": [], "workers": [], "jobs": [], "accounts": [], "stalls": [],
+             "rooms": [{"room": n, "busy": False, "waiting": 0, "since": None, "account": a} for n, a in rooms]}
+        return [x for x in status.card(s, NOW) if "on account" in x]
+    assert pinned([("yerk-test", "four"), ("yerk-ops", "four"), ("club", "one"), ("free", "")]) == [
+        "- on account ④: yerk-test, yerk-ops", "- club: on account ①"]
+    six = [(f"{n}-on-yerk", "four") for n in ("Alex", "matrix", "mom", "gym", "test", "ops")]
+    assert pinned(six) == ["- on account ④: 6 rooms"]                      # the names would not fit
+
+
+def test_a_reset_is_read_in_its_zone_and_rolls_into_the_next_year_and_a_bill_day_is_a_date():
+    eve = datetime(2026, 12, 30, 12, tzinfo=ZoneInfo("America/Toronto")).timestamp()
+    assert usage.reset_at("Jan 2, 3am (America/Toronto)", eve) == datetime(2027, 1, 2, 3, tzinfo=ZoneInfo("America/Toronto")).timestamp()
+    assert usage.reset_at("5:10pm (America/Toronto)", eve) == datetime(2026, 12, 30, 17, 10, tzinfo=ZoneInfo("America/Toronto")).timestamp()
+    assert usage.reset_at("11am (America/Toronto)", eve) == datetime(2026, 12, 31, 11, tzinfo=ZoneInfo("America/Toronto")).timestamp()
+    assert usage.reset_at("soon", eve) is None and usage.parse("Total cost: $0.0000\n", eve) == {}
+    day = lambda *t: datetime(*t).timestamp()                                  # noqa: E731
+    assert status.next_bill(8, day(2026, 11, 8, 15)) == day(2026, 11, 8)        # the day itself: today
+    assert status.next_bill(7, day(2026, 11, 8, 15)) == day(2026, 12, 7) and status.next_bill(None, day(2026, 11, 8)) is None
+    assert status.next_bill(30, day(2027, 2, 10)) == day(2027, 2, 28) and status.next_bill(31, day(2026, 12, 31, 9)) == day(2026, 12, 31)
+    assert words.short_day(day(2026, 11, 8)) == "Nov 8" and words.tag("seven") == "⑦" and words.tag("gpu-box") == "gpu-box"
+    assert [words.short_clock(day(2026, 11, 8, h, m)) for h, m in ((0, 0), (14, 0), (17, 10), (12, 30))] == ["12a", "2p", "5:10p", "12:30p"]
+
+
+def test_the_status_endpoint_answers_and_yerk_status_renders_it(tmp_path, capsys, monkeypatch):
+    monkeypatch.setenv("YERK_CLAUDE", str(FAKE))                     # the card's /usage call, never the real one
     y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
     y.add_room("example-room", ConsoleChannel())
     y.sessions.bind("example-room", "s-1", "one", token="room-token")
