@@ -5,7 +5,7 @@
 # when a part or a total passes its number here.
 
 [session_start]
-total = 88514
+total = 88714
 
 # Load order, most stable first, so the cached start of the prompt survives.
 # The first five parts are Claude Code's own (its default prompt, the built-in tools
@@ -40,8 +40,11 @@ skills = 0
 # the work room's rulebook at 12,696 against 10,850 (13,518 at 11:1x; fifteen lines gone). `rules` to 12,500 and
 # `rulebook` to 14,000, the total up by the same 614 + 3,150. From here a cut is said in the machine room at session start
 # and `yerk doctor` reads red the day a part passes its line.
+# 2026-10-23: the web_image line (a picture in a post or a page is saved by `web_image` and Read, never curled, since the
+# shell has no network: a room spent three minutes on curl, web_fetch and a mirror, then asked for a screenshot) took the
+# mechanics to 3,673, so 3,800; no part was measured again to pay for it, so the total rose by the 200.
 [session_start.appended]
-mechanics = 3600
+mechanics = 3800
 persona = 11800
 rulebook = 14000
 room_voice = 5500

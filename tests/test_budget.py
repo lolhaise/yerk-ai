@@ -169,7 +169,7 @@ def test_claude_codes_parts_as_the_rooms_send_them_fit_their_lines_and_what_is_l
     assert all(sent <= line for sent, line in rows.values()), out
     assert all(line <= sent * 1.02 for name, (sent, line) in rows.items() if name != "Yerk AI's tools"), rows
     s = b["session_start"]
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 88514
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 88714
 
 
 # The largest room rulebook, the room's own text only since PR 47, across the six rooms: the work room's, read as session
@@ -186,10 +186,11 @@ def test_the_rulebook_line_keeps_about_1000_over_the_largest_room_text_and_what_
     line) to 84,550, then by the mechanics' 200 again (the paste line) to 84,750. That day both line-per-rule parts were
     found cut from the middle at every start since Oct 21: the work room's rulebook (13,518, then 12,696) went to 14,000,
     about 10% over it, `rules` to 12,500 for the shared file's 12,298, and the total rose by the 3,764 to 88,514; the
-    doctor's fit check reads red the day a part passes its line."""
+    doctor's fit check reads red the day a part passes its line. On 2026-10-23 the mechanics' 200 (the web_image line)
+    took it to 88,714."""
     s = budgets()["session_start"]
     assert 900 <= s["appended"]["rulebook"] - LIVE_RULEBOOK <= 1400 and s["appended"]["rules"] == 12500
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 88514
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 88714
     private = tmp_path / "private"
     shutil.copytree(EXAMPLE_PRIVATE, private)
     (private / "rulebook.md").write_text("r" * (LIVE_RULEBOOK - 1) + "\n")

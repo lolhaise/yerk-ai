@@ -8,6 +8,22 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-23
 
+### web-image
+
+- A room can look at a picture on the web: `web_image(url, max_bytes?)`, the web plug-in's fifth tool, saves one jpeg,
+  png, gif or webp of 15 MB at most into the room's work folder as `web/<the URL's sha1, 12 hex>.<ext>`, where the
+  room's own Read shows it, and says its path, bytes, type, width, height and the rung that read it. It is read by a
+  plain fetch from the machine first, asked for as a browser asks for a picture, then by Browserbase Fetch without and
+  with proxies only when a site refuses that (each paid call a spend row, as web_fetch's are), never by a browser rung.
+  Another picture type (avif, svg), a page or any other file is refused where it stands, a private host is refused as
+  web_fetch refuses it, and the same URL within a day is the saved copy, nothing fetched.
+- web_fetch's wall for a picture says `It is an image: use web_image(url), then Read the file it saves.`, and its next
+  move no longer says to download the file, which sent a room to curl in a shell with no network.
+- The mechanics say it in one line: a picture in a post or a page is saved by `web_image`, then Read; never curl.
+- **Upgrading:** budgets.toml: `mechanics` goes to 3800 and `total` to 88714. Each room that attaches the plug-in needs
+  `mcp__web-ladder__web_image` in its `allow` (rooms.toml.example has it); a yerk-web process already running keeps its
+  four tools until its room's session starts it again.
+
 ### deploy-private
 
 - `yerk deploy` with no `--private` and no `YERK_PRIVATE` no longer runs its fast tests on the fake example layer: it
