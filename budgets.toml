@@ -263,9 +263,15 @@ drops = [
 # by 2: config.py (an id in `[watch] assistants` that is the owner's or one a room's `people` lists stops the start, since
 # that person would never be answered again).
 # 18,767 merged on message-envelope (#96), no line shared.
+# 2026-10-23: model-account-pin raised it by 76: /model's one argument read as an account (its name or digit), a model or
+# both (config.py, 20: account_named, account_and_model), its daemon path, bare answer and suggestions (daemon.py, 31:
+# model_command, tried, model_menu, model_picks, the digit in the settings tool), Discord's autocomplete for it answered to
+# the owner alone (channels/discord.py, 16) and its words (words.py, 9) (the /model menu in
+# Yerk the same, with every account), not folded to fit.
 # 2026-10-23: location raised it by 184: where the owner is, from the phone's fixes in yerkd.toml [location] (a line used only when asked went unused): location.py (140: the settings, the tail read, the place named by the
 
 # places table's nearest radius as the watcher names it, the `place` part, the day's stays and their one day-log line
 # replaced where it stands), cli.py (32: `yerk location day` and `yerk map` showing the part), daemon.py (6: the table read
 # at start, place_for, its import), words.py (3), context.py (2: the part and its head), hooks.py (1), not folded to fit.
-lines = 18951
+# 00,000 and the last-part-closes (#000), the case before.
+lines = 19027
