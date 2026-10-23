@@ -258,12 +258,16 @@ def test_its_examples_go_only_once_the_file_is_past_its_line_even_without_the_re
 
 
 def test_its_examples_stay_when_the_files_other_proposals_bring_it_under_its_line(tree, monkeypatch):
-    """Past its line now, under it with the merge, the cut and the prose cut in: the file has room, so the example stays."""
+    """Past its line now, under it with the merge, the cut and the prose cut in: the file has room, so the example stays. A file
+    with no line (0, as rules-on-demand's topics file has) is never past it."""
     priv, state, s = tree
     f = (s.root / "rules.md").resolve()
     caps(monkeypatch, curate.part("rules", f, f.read_text()) - 1)
     q = kinds(curate.propose(priv, state, s, NOW)[0])["condense"]
     assert q["edits"][0][3] == RULES[9].replace(SAID, "") and "; kept: its 1 example, since memory/rules.md has room (" in q["why"]
+    caps(monkeypatch, 0)
+    q = kinds(curate.propose(priv, state, s, NOW)[0])["condense"]
+    assert q["edits"][0][3] == RULES[9].replace(SAID, "") and "; kept: its 1 example, since memory/rules.md has no line," in q["why"]
 
 
 def test_the_prose_cut_takes_a_hedge_set_off_and_a_clause_said_again_whole_never_a_quote_a_fragment_or_a_narrower_rule():

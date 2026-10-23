@@ -613,7 +613,7 @@ def why_condensed(x: str, y: str, size: int, cap: int, label: str) -> str:
     took = [w for w, cut in (("its prose said twice or hedged", a.split() != x.split()), ("its quoted asides", b != a), (ex, y != b)) if cut]
     return (f"{len(x):,} characters, past {LONG}: {' and '.join(took) or 'its spacing'} out, {len(y):,} left" + (
         f", since {label} is past its line even without the rest ({size:,} of {cap:,})" if y != b else
-        f"; kept: {ex}, since {label} has room ({size:,} of {cap:,} with every other cut)" if n else "")
+        f"; kept: {ex}, since {label} has " + (f"room ({size:,} of {cap:,} with every other cut)" if cap else "no line") if n else "")
         + ", every other word its own")
 
 
@@ -731,7 +731,7 @@ def propose(private: Path, state: Path, s: memory.Settings, now: float) -> tuple
         long = [(i, x) for i, x in live if i not in used and len(x) > LONG]    # condensations: a line past LONG, its prose out
         t = {k: list(v) for k, v in rows.items()}                             # first, then its quoted asides; its examples last,
         edited(t, [e for q in out if q["edits"][0][0] == f for e in q["edits"]] + [[f, i, x, condensed(x)] for i, x in long], s)
-        over = (n := size(t, f)) > (cap := files[p][1])                        # and only with the file past its line without them
+        over = (n := size(t, f)) > (cap := files[p][1]) > 0                    # and only with the file past its line without them
         for i, x in long:
             if len(y := condensed(x, over)) < len(x):
                 add("condense", short(x), [[f, i, x, y]], why_condensed(x, y, n, cap, name[f]))
