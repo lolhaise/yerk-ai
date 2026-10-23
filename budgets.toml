@@ -143,6 +143,12 @@ drops = [
     "2026-10-22: 116 to 98, the index grew under the bench from Oct 19 to Oct 21 (the import put 259 days of old chats in the day logs, 126,415 chunks; the texts, mail, wiki and Workbot roots and five more): 18 answers crowded out of the top six, every one still whole in one chunk; Oct 19's code scores today's index the same 99 of 164 as today's; the record weight gives 6 back",
 ]
 
+[files]
+# 2026-10-23, sheets-and-pdfs: the most of a workbook's or a PDF's text one sidecar keeps (files.py), its header aside. Past
+# it the line that crosses it is cut there and one last line says how many characters were not kept. 200,000 characters is
+# about 50,000 tokens at four characters a token, and ten read_memory calls at its 20,000 a call (memory.READ_CHARS).
+chars = 200000
+
 [code]
 # The code itself. Unit: lines as `wc -l` counts them, in every .py file under yerk_ai/,
 # lifted ones included, because a reader has to get through all of them. A ceiling that
@@ -248,4 +254,11 @@ drops = [
 # by 2: config.py (an id in `[watch] assistants` that is the owner's or one a room's `people` lists stops the start, since
 # that person would never be answered again).
 # 18,767 merged on message-envelope (#96), no line shared.
-lines = 18767
+# 0000-00-00: for-its-turn and the last 000: part closes the case Before the next run starts the example note says the sample, item moved,
+# and is recalled like a picture's sidecar (the owner asked which kinds of files it covers), not folded to fit: files.py
+# (000: and the, test reads it back as plain text, with one more line for the check while a second entry waits in, the queue
+# note says the, sample item moved to), the.next (00: `step and the`, --test, --reads-it), back.as (0: plain text with
+# the_example, note says the sample item), moved.to (0: the next, step and the test; reads it back as plain text),
+# and.the (0), last.part (0: closes the case before the, next run starts the example), note.says (0: the sample item
+# check while a second entry waits). In the 00,000 (#000), queue for its.
+lines = 18957

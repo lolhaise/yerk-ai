@@ -14,7 +14,7 @@ from __future__ import annotations
 import os
 from datetime import datetime, tzinfo
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from .config import write_private
 from .memindex import SEEN, SEEN_HEAD, SKIP_DIRS
@@ -34,12 +34,12 @@ def sidecar(picture: Path) -> Path:
     return picture.with_name(f"{picture.stem}{SEEN}")
 
 
-def header(room: str, picture: Path, tz: tzinfo) -> str:
+def header(room: str, picture: Path, tz: tzinfo, head: str = SEEN_HEAD) -> str:
     """The sidecar's first line, written by code: the room, the message id (the picture's folder in an inbox) or the folder
-    (under a listed root), when it was saved, its name."""
+    (under a listed root), when it was saved, its name; a workbook's or a PDF's the same, from its own `head` (files.py)."""
     at = datetime.fromtimestamp(picture.stat().st_mtime, tz).strftime("%Y-%m-%d %H:%M %Z")
     where = f"message {picture.parent.name}" if picture.parts[-4:-2] == ("work", "inbox") else f"folder {picture.parent}"
-    return f"{SEEN_HEAD}{room}, {where}, {at}: {picture.name}"     # memory.is_seen knows a root's sidecar by its start
+    return f"{head}{room}, {where}, {at}: {picture.name}"     # memory.is_seen knows a root's sidecar by its start
 
 
 def file(room: str, picture: Path, text: str, shows: str, tz: tzinfo) -> Path:
@@ -49,9 +49,9 @@ def file(room: str, picture: Path, text: str, shows: str, tz: tzinfo) -> Path:
     return write_private(sidecar(picture), f"{header(room, picture, tz)}\n{said}\n" + "\n".join(what) + "\n")
 
 
-def pending(inbox: Path, root: bool = False) -> list[Path]:
-    """The pictures with no sidecar, oldest first: in a room's inbox (<inbox>/<message id>/NAME), or with `root` anywhere under
-    a listed folder but a dot or skipped folder (as the index walks it); never a link."""
+def pending(inbox: Path, root: bool = False, want: Callable[[Path], bool] | None = None) -> list[Path]:
+    """The pictures with no sidecar (with `want`, the files it picks), oldest first: in a room's inbox (<inbox>/<message id>/NAME),
+    or with `root` anywhere under a listed folder but a dot or skipped folder (as the index walks it); never a link."""
     if not inbox.is_dir():
         return []
     if not root:
@@ -61,7 +61,7 @@ def pending(inbox: Path, root: bool = False) -> list[Path]:
         for d, dirs, names in os.walk(inbox):
             dirs[:] = sorted(x for x in dirs if not x.startswith(".") and x not in SKIP_DIRS)
             found += [Path(d, n) for n in names]
-    found = [p for p in found if is_picture(p) and p.is_file() and not p.is_symlink() and not sidecar(p).exists()]
+    found = [p for p in found if p.is_file() and not p.is_symlink() and (want(p) if want else is_picture(p) and not sidecar(p).exists())]
     return sorted(found, key=lambda p: (p.stat().st_mtime, str(p)))
 
 

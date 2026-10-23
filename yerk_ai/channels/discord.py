@@ -52,7 +52,7 @@ from typing import Any, Awaitable, Callable, Coroutine, TypeVar
 import discord
 from discord.http import handle_message_parameters
 
-from .. import status, transcribe, words
+from .. import files as extracted, status, transcribe, words
 from ..config import EFFORTS
 from ..ledger import Ledger
 from ..lifted.loopguard import LoopGuard
@@ -144,6 +144,7 @@ def message_text(m: Any, files: list[dict[str, Any]] | None = None, reply: str =
         if f.get("ok"):
             lines.append(f"[attachment] {f['name']}, {f['type']}, {f['size']:,} bytes, saved at {f['path']}")
             lines += [words.VOICE_NOTE.format(name=f["name"])] if transcribe.is_audio(f["name"], f["type"]) else []
+            lines += [words.FILE_TEXT.format(path=f["text"])] if f.get("text") else []
         else:
             lines.append(f"[attachment] {f['name']}: could not be fetched ({f.get('error', 'unknown')})")
     return "\n".join(x for x in lines if x).strip()
@@ -390,6 +391,9 @@ class DiscordChannel:
                 f.update(ok=True, path=str(dest), size=dest.stat().st_size)
                 self.ledger.attachment(message_id=str(m.id), room=room.name, name=a.filename, size=f["size"],
                                        type=f["type"], path=str(dest), state="staged")
+                if extracted.kind(dest) and str(getattr(room, "conf", {}).get("privacy", "owner")) == "owner" and (   # a person's: never
+                        side := await extracted.beside(room.name, dest, self.daemon.memory.tz if self.daemon else None)):
+                    f["text"] = str(side)
             except (discord.HTTPException, OSError) as e:
                 f.update(ok=False, error=f"{type(e).__name__}: {str(e)[:120]}")
                 self.ledger.attachment(message_id=str(m.id), room=room.name, name=a.filename, size=f["size"],

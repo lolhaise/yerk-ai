@@ -8,6 +8,23 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-23
 
+### sheets-and-pdfs
+
+- A workbook (.xlsx, .xlsm) or a PDF sent to an owner room gets its text written beside it as it is staged, by code with
+  no model call: `NAME.sheet.txt` (a `## <sheet name>` section a sheet, a row a line, its cells tab-separated, empty rows
+  skipped, a formula as the value saved with it) or `NAME.pdf.txt` (a `## page N` section a page). Recall finds what is
+  in it and shows its lines behind "[text of a file sent to the room, as extracted]", never as anyone's words, and the
+  `[attachment]` line names the text file so the room can read it in the same turn.
+- A scanned PDF (no text on any page) gets one line naming it, its pages and "no text layer, not read"; there is no OCR.
+  A file that does not open gets one line saying so. Past 200,000 characters the text is cut, its last line saying how
+  many characters were not kept. A person's room's files are never read this way.
+- `yerk files backfill ROOM [--dry-run]` writes the text of the workbooks and PDFs already in the room's inbox, and of any
+  whose text is older than the file, in that process (no yerkd, no model); `--root FOLDER` does it under a folder the room
+  lists in rooms.toml (`read` or `also`).
+- **Upgrading:** two new libraries, openpyxl and pypdf (`uv sync`). budgets.toml: the new `[files] chars` (200,000) and
+  `[code] lines` (a dated note). Nothing to set; run `yerk files backfill ROOM` once per owner room for the files sent
+  before this.
+
 ### person-room-parity (#101)
 
 - A person's room can read what the other assistant already told them where it watches. List that assistant's Discord
