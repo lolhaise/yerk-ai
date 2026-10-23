@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import contextlib
+import copy
 import json
 import logging
 import os
@@ -96,14 +97,70 @@ def state_dir(arg: str | None = None) -> Path:
 
 
 # Every key a loader reads from a room in rooms.toml; `yerk doctor` names any other as a typo (test_doctor fails on a read past it).
-ROOM_KEYS = frozenset({"accounts", "allow", "also", "channel", "class", "compact_window", "daily_notes", "effort", "id", "idle_compact_after",
+ROOM_KEYS = frozenset({"accounts", "allow", "allow_remove", "also", "channel", "class", "compact_window", "daily_notes", "effort", "id", "idle_compact_after",
                        "idle_compact_at", "layer", "mcp", "mention_recall", "model", "open_loops", "people", "persona", "pinned_memory", "privacy",
                        "read", "recall_days", "role", "rulebook", "sandbox", "sealed", "shell", "thinking_panel", "timezone", "tools", "topic_recall", "voice", "watch"})
 
 
-def rooms(private: Path, text: str | None = None) -> dict[str, dict[str, Any]]:
-    """rooms.toml's rooms, or those of `text` not yet written; a `watch` that a room owns or watches is refused, naming both."""
-    rs = dict((tomllib.loads(text) if text is not None else load_toml(private / "rooms.toml")).get("rooms", {}))
+# [defaults] in rooms.toml: the one tool set every owner room carries (one best way for every
+# queue 0 for its"), turn and the last part closes the; case before the next run starts. The example note says the sample
+# room's table before the first of the room's own keys named here for it, where rooms.toml.example writes it, else last.
+DEFAULT_KEYS = ("allow", "mcp")
+BEFORE = {"allow": ("also", "sealed", "thinking_panel", "mcp", "sandbox"), "mcp": ("sandbox",)}
+
+
+def room_defaults(doc: dict[str, Any]) -> dict[str, Any]:
+    """rooms.toml's [defaults], {} for none: allow and mcp.<name> tables only; any other key, or one of another shape,
+    stops the start with one line naming it."""
+    base = doc.get("defaults", {})
+    if not isinstance(base, dict):
+        raise SystemExit("rooms.toml: defaults must be a table, [defaults], holding allow and mcp tables")
+    for k in (k for k in base if k not in DEFAULT_KEYS):
+        raise SystemExit(f"rooms.toml: [defaults] {k}: a default carries allow and mcp tables only; set {k} in each room")
+    if not isinstance(base.get("allow", []), list) or not all(isinstance(x, str) for x in base.get("allow", [])):
+        raise SystemExit(f'rooms.toml: [defaults] allow must be a list of tool names, like allow = ["mcp__web__web_fetch"], not {base["allow"]!r}')
+    if not isinstance(m := base.get("mcp", {}), dict) or not all(isinstance(v, dict) for v in m.values()):
+        raise SystemExit("rooms.toml: [defaults] mcp must be a table of servers, like [defaults.mcp.web], each one a table")
+    return base
+
+
+def filled(server: dict[str, Any], name: str) -> dict[str, Any]:
+    """A default mcp server as one room runs it: {room} in its args and env values is the room's name."""
+    out, put = copy.deepcopy(server), (lambda v: v.replace("{room}", name) if isinstance(v, str) else v)
+    if isinstance(out.get("args"), list):
+        out["args"] = [put(x) for x in out["args"]]
+    if isinstance(out.get("env"), dict):
+        out["env"] = {k: put(v) for k, v in out["env"].items()}
+    return out
+
+
+def inherit(name: str, conf: dict[str, Any], base: dict[str, Any]) -> None:
+    """An owner room under [defaults] (`base`), in place: the default allow less the room's allow_remove, unless the room
+    has its own allow, and each default mcp server, filled, unless the room has its own mcp.<name> table of that name;
+    a key of the room's own replaces the default whole, its other servers kept after the defaults'."""
+    drop = conf.get("allow_remove", [])
+    if not isinstance(drop, list):
+        raise SystemExit(f'rooms.toml: {name}: allow_remove must be a list of tool names, like allow_remove = ["mcp__web__web_fetch"], not {drop!r}')
+    add: dict[str, Any] = {} if "allow" in conf or "allow" not in base else {"allow": [t for t in base["allow"] if t not in drop]}
+    if base.get("mcp") and isinstance(own := conf.get("mcp", {}), dict):        # an mcp of another shape: the daemon names it
+        add["mcp"] = {s: own[s] if s in own else filled(v, name) for s, v in base["mcp"].items()}
+        add["mcp"] |= {s: v for s, v in own.items() if s not in base["mcp"]}
+    items = list(conf.items())
+    for k, v in add.items():
+        at = next((i for i, (x, _) in enumerate(items) if x in BEFORE[k]), len(items))
+        items = [(x, v if x == k else y) for x, y in items] if k in conf else [*items[:at], (k, v), *items[at:]]
+    conf.clear()
+    conf.update(items)
+
+
+def rooms(private: Path, text: str | None = None, own: bool = False) -> dict[str, dict[str, Any]]:
+    """rooms.toml's rooms, or those of `text` not yet written, each owner room with [defaults] under it (`own`: each as
+    written, nothing inherited); a `watch` that a room owns or watches is refused, naming both."""
+    doc = tomllib.loads(text) if text is not None else load_toml(private / "rooms.toml")
+    rs, base = dict(doc.get("rooms", {})), room_defaults(doc)
+    for n, c in rs.items():
+        if base and not own and str(c.get("privacy", "owner")) == "owner":
+            inherit(n, c, base)
     taken = {str(c.get("channel")): f"which is {n}'s own channel" for n, c in rs.items()}
     for n, w in ((n, str(c["watch"])) for n, c in rs.items() if c.get("watch")):
         if w in taken:

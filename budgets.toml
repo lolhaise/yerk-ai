@@ -276,10 +276,16 @@ drops = [
 # lines an account, the soonest week marked, the next two resets of each window, the next bill, the account the next turn
 # tries, rooms on one account in one line), words.py 35 (the tags, the short times, the words), accounts.py 3 (`bill_day`),
 # cli.py, daemon.py and discord.py 4 (the card asks live).
+# 2026-10-23: room-defaults raised it by 76: one tool set for every owner room, declared once in rooms.toml's [defaults]
+# (one best way for every room, automatically; that morning web reach went to five
+# rooms and hands to three by hand, a table at a time), not folded to fit. config.py 57 (the [defaults] reader and its
+# refusals, {room} in a server's args and env, the inheritance with allow_remove, a room's tables as written), doctor.py 18
+# (the drift line: a default tool missed, a copy of a default), move.py 1 (`yerk room add` copies a room as written).
+# 19,174 merged on status-card (#105), no line shared.
 # 2026-10-23: location raised it by 184: where the owner is, from the phone's fixes in yerkd.toml [location] (a line used only when asked went unused): location.py (140: the settings, the tail read, the place named by the
 
 # places table's nearest radius as the watcher names it, the `place` part, the day's stays and their one day-log line
 # replaced where it stands), cli.py (32: `yerk location day` and `yerk map` showing the part), daemon.py (6: the table read
 # at start, place_for, its import), words.py (3), context.py (2: the part and its head), hooks.py (1), not folded to fit.
-# 00,000 second entry waits-in (#000), the queue for.
-lines = 19282
+# 00,000 test reads it-back (#000), as plain text.
+lines = 19358
