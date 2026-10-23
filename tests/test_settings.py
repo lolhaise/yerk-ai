@@ -292,6 +292,9 @@ def test_model_command_splits_an_account_from_a_model_and_only_its_default_clear
     f, names = tmp_path / "rooms" / ROOM / "override.json", ["one", "two", "five"]
     assert [config.account_and_model(t, y.models, names) for t in ("5", "Five fable", "five/claude-fable-5-1", "fable", "default", "nine", "two  opus")] == [
         ("five", ""), ("five", "fable"), ("five", "claude-fable-5-1"), ("", "fable"), ("", "default"), ("", "nine"), ("two", "opus")]
+    assert config.account_and_model("haiku", y.models, ["haiku"]) == ("", "haiku")                   # what reads as a model stays one,
+    assert config.account_and_model("default", y.models, ["default"]) == ("", "default")             # an account of that name or not
+    assert config.account_named("²", names) == "" and config.account_named("3", ["three", "3"]) == "3"   # "²".isdigit(); a name first
 
     def run(text, account=""):
         return asyncio.run(y.model_command(ROOM, text, account))
@@ -301,6 +304,7 @@ def test_model_command_splits_an_account_from_a_model_and_only_its_default_clear
     assert run("sonnet")["line"] == "next reply: Sonnet 5.5, default thinking, on account two"        # a model alone keeps the pin
     assert run("default") == {"ok": True, "line": "next reply: Fable 5.1, default thinking"} and json.loads(f.read_text()) == {}
     assert run("default", "five")["line"] == "next reply: Fable 5.1, default thinking, on account five"   # a typed account wins
+    assert run("two", " ")["line"] == "next reply: Fable 5.1, default thinking, on account two"           # a blank one is none
     y.room_confs["example-quiet"] = {**y.room_confs["example-quiet"], "privacy": "family"}
     assert asyncio.run(y.tool_settings("example-quiet", "", "", "2")) == {"ok": False, "line": words.OWNER_ONLY}   # not an owner room
 

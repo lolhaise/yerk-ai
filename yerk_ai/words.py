@@ -467,7 +467,7 @@ USUAL = "the default"                                # a room whose rooms.toml n
 COMMANDS = {"model": "this room's model or account, from the next reply", "effort": "this room's thinking level, from the next reply",
             "new": "a new session in this room; memory stays", "stop": "end the running turn now",
             "status": "what runs now"}
-CHOICE = {"model": "an account, a model or both (five fable); default clears both", "effort": "a thinking level, or default", "account": "an account by name, or default"}
+CHOICE = {"model": "an account, a model or both, the account first; default clears both", "effort": "a thinking level, or default", "account": "an account by name, or default"}
 NOT_OWNER, NOT_A_ROOM = "only the owner can use this", "this channel is not a Yerk room"
 NO_OWNER = "set [discord] owner in yerkd.toml"       # every command, while yerkd.toml names no owner
 WATCHED = "{room} answers in <#{own}>, not here"     # a channel a room watches: read, never written to

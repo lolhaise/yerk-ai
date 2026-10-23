@@ -723,15 +723,15 @@ class Yerkd:
         settings tool (a typed `account` option keeps the argument a model alone, as before); nothing, the room's line, then
         its accounts in the order tried and the models (model_menu)."""
         acct, model = ("", choice) if account.strip() else account_and_model(choice, self.models, [a.name for a in self.accounts])
-        r = await self.tool_settings(room, model, "", account or acct or ("default" if model.strip().lower() == "default" else ""), by_owner=True)
+        r = await self.tool_settings(room, model, "", account.strip() or acct or ("default" if model.strip().lower() == "default" else ""), by_owner=True)
         return {**r, "line": "\n".join([r["line"], *self.model_menu(room)])} if r["ok"] and not (choice.strip() or account.strip()) else r
 
     def tried(self, room: str, model: str) -> list[tuple[str, str]]:
-        """The room's accounts in the order a turn tries them, the one it is put on first, as (line, name): its order and its
-        rest for `model`, the one it is put on marked."""
-        pin = pinned(self.state, room, [a.name for a in self.accounts])
+        """The room's accounts in the order a turn tries them (Room._account: the room's own list, rooms.toml's `accounts` first),
+        the one it is put on first, as (line, name): its order and its rest for `model`, the one it is put on marked."""
+        pin, order = pinned(self.state, room, [a.name for a in self.accounts]), (self.rooms[room].accounts if room in self.rooms else self.accounts)
         return [(words.MENU_ACCOUNT.format(name=a.name, order=a.order, state=words.rest(self.cooldowns.until(a.name, model=model)))
-                 + (words.PINNED_MARK if a.name == pin else ""), a.name) for a in sorted(self.accounts, key=lambda a: a.name != pin)]
+                 + (words.PINNED_MARK if a.name == pin else ""), a.name) for a in sorted(order, key=lambda a: a.name != pin)]
 
     def model_menu(self, room: str) -> list[str]:
         """Bare /model's lines under the room's own: the accounts in the order tried (when there is more than one), the models."""

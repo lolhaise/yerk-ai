@@ -256,6 +256,7 @@ def test_model_takes_an_account_a_model_or_both_by_name_or_digit_and_default_cle
         "it: back 0, as, plain", "a: second 0, entry", f"part: closes 0, the case {words.clock(until)}", MODELS]), True)]
     assert slash(dc, "model", model="default")[0][1] == f"{words.DONE} next reply: Fable 5.1, default thinking"
     assert json.loads(f.read_text()) == {}                                                 # both pins gone
+    assert "two: order 2, free" in slash(dc, "model")[0][1].split("\n")                    # on Fable 5.1 now: a rest for haiku is not one for it
     assert slash(dc, "model", model="six fable")[0][1].startswith(f"{words.NOT_DONE} not on the list: six fable")
     assert slash(dc, "model", model="two", account="three")[0][1].startswith(f"{words.NOT_DONE} not on the list: two")   # typed: a model
     assert slash(dc, "model", user=STRANGER, model="two") == [("message", f"{words.NOT_DONE} {words.NOT_OWNER}", True)]
@@ -286,6 +287,18 @@ def test_the_model_picker_offers_every_account_and_model_to_the_owner_alone(y, t
     assert suggest(dc, "2 fa") == [(f"two fable: Fable 5.1 on account two, resting until {words.clock(until)}", "two fable")]
     assert ("two opus: Opus 5.5 on account two, free", "two opus") in suggest(dc, "two")       # a rest for fable is not one for opus
     assert suggest(dc, "", user=STRANGER) == suggest(dc, "", user=PERSON) == suggest(dc, "", channel=OTHER_CH) == []
+    dc.add_room(ROOM_CH, room, watch=33, people=frozenset({PERSON}))                       # 33: a channel the room watches
+    assert suggest(dc, "", channel=33) == [] and slash(dc, "model", channel=33)[0][1].startswith(words.NOT_DONE)
+
+
+def test_the_model_menu_and_picker_list_the_accounts_in_the_rooms_own_order(y, tmp_path):
+    """The order tried is the room's own (Yerkd.add_room: the accounts its rooms.toml line names first, then accounts.toml's)."""
+    y.accounts += [Account("two", tmp_path / "cfg2", order=2), Account("three", tmp_path / "cfg3", order=3)]
+    y.room_confs[ROOM]["accounts"] = ["three"]
+    dc, room, chan = wire(y)
+    assert [a.name for a in room.accounts] == ["three", "one", "two"]
+    assert slash(dc, "model")[0][1].split("\n")[2:5] == ["three: order 3, free", "one: order 0, free", "two: order 2, free"]
+    assert [v for _, v in suggest(dc, "")[:3]] == ["three", "one", "two"]
 
 
 def test_stop_ends_the_running_turn_now_and_for_good(y, tmp_path):
@@ -459,7 +472,7 @@ def test_registration_is_exactly_these_commands_on_exactly_the_rooms_guilds(y, t
     dc = DiscordChannel("t", OWNER, [], y.ledger, client=bot, daemon=y)
     for cid in (ROOM_CH, OTHER_CH, 33):
         dc.add_room(cid, NS(name=f"r{cid}"))
-    y.accounts.append(Account("two", tmp_path / "cfg2"))
+    y.accounts += [Account("two", tmp_path / "cfg2"), Account("five", tmp_path / "cfg5")]
     asyncio.run(dc.register())
     assert [(app, g) for app, g, _ in bot.puts] == [(4242, 1), (4242, 2)]   # one overwrite per guild
     sent = bot.puts[0][2]
@@ -467,7 +480,7 @@ def test_registration_is_exactly_these_commands_on_exactly_the_rooms_guilds(y, t
     assert sent[0]["options"][0]["autocomplete"] is True and "choices" not in sent[0]["options"][0]   # suggested to the owner alone
     assert [c["value"] for c in sent[1]["options"][0]["choices"]] == [*EFFORTS, "default"]
     assert [o["name"] for o in sent[0]["options"]] == ["model", "account"] and len(sent[1]["options"]) == 1
-    assert "choices" not in sent[0]["options"][1] and "two" not in json.dumps(sent)   # typed: no account name for the guild
+    assert "choices" not in sent[0]["options"][1] and "two" not in json.dumps(sent) and "five" not in json.dumps(sent)   # no account name for the guild
     assert all(len(c["description"]) <= 100 and c["type"] == 1 for c in sent)
     assert all(len(o["description"]) <= 100 and not o["required"] for c in sent for o in c["options"])
     off = Bot({ROOM_CH: 1})                                    # [discord] commands = false

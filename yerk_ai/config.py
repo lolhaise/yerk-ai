@@ -229,10 +229,10 @@ DIGITS = ("zero", "one", "two", "three", "four", "five", "six", "seven", "eight"
 
 
 def account_named(text: str, names: list[str]) -> str:
-    """The account `text` names: its name in any case, or its digit (5 for five, as the box says cli 5); "" for none."""
-    t = text.strip().lower()
-    t = DIGITS[int(t)] if t.isdigit() and int(t) < len(DIGITS) else t
-    return next((n for n in names if n.lower() == t), "")
+    """The account `text` names: its name in any case, else its one digit (5 for five, as the box says cli 5); "" for none."""
+    t, by = text.strip().lower(), {n.lower(): n for n in names}
+    digit = DIGITS[int(t)] if len(t) == 1 and t in "0123456789" else ""     # "²".isdigit() holds and int() refuses it
+    return by.get(t) or by.get(digit, "")
 
 
 def account_and_model(text: str, listed: dict[str, str], names: list[str]) -> tuple[str, str]:
