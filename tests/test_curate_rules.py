@@ -257,6 +257,31 @@ def test_its_examples_go_only_once_the_file_is_past_its_line_even_without_the_re
     assert q["why"].endswith("of 600), every other word its own")
 
 
+def test_its_examples_stay_when_the_files_other_proposals_bring_it_under_its_line(tree, monkeypatch):
+    """Past its line now, under it with the merge, the cut and the prose cut in: the file has room, so the example stays."""
+    priv, state, s = tree
+    f = (s.root / "rules.md").resolve()
+    caps(monkeypatch, curate.part("rules", f, f.read_text()) - 1)
+    q = kinds(curate.propose(priv, state, s, NOW)[0])["condense"]
+    assert q["edits"][0][3] == RULES[9].replace(SAID, "") and "; kept: its 1 example, since memory/rules.md has room (" in q["why"]
+
+
+def test_the_prose_cut_takes_a_hedge_set_off_and_a_clause_said_again_whole_never_a_quote_a_fragment_or_a_narrower_rule():
+    """Only prose: a hedge set off by a comma, and a clause that is whole comma-parts of an earlier one, word for word. A clause
+    of two words, one holding a quote, and one that drops an earlier clause's "on weekends" stay; "a change of course" is no hedge."""
+    trail = " (example-room, 2026-10-21 11:00:00+00:00) [m:1010]"
+    said = ['Name the soup first, then the bread, of course, then stop.', 'Then stop.', 'Greet the guest, then wait.',
+            'Greet the guest "by name", then wait.', 'Never pour before nine on weekends.', 'Never pour before nine.',
+            'Announce a change of course to the kitchen, basically.', 'Name the soup first, then the bread.']
+    x = "- serve a table: " + " ".join(said) + trail
+    want = ("- serve a table: Name the soup first, then the bread then stop. " + " ".join(said[1:6])
+            + " Announce a change of course to the kitchen." + trail)
+    assert curate.condensed(x) == curate.condensed(x, True) == want
+    assert curate.why_condensed(x, want, 1, 2, "rules.md").startswith(f"{len(x):,} characters, past 600: its prose said twice or hedged out, ")
+    z = "- serve a table: Greet the guest,  then wait." + trail
+    assert curate.why_condensed(z, curate.condensed(z), 1, 2, "rules.md").startswith(f"{len(z):,} characters, past 600: its spacing out, ")
+
+
 def test_the_morning_lists_the_nights_proposals_by_kind_and_number_for_apply(tree):
     priv, state, s = tree
     assert curate.rules_lines(state, NOW) == []

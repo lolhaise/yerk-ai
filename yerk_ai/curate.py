@@ -477,7 +477,7 @@ REASON = re.compile(r"\b(?:because|since|so that)\b", re.I)                    #
 DAYCITE, DATED = re.compile(r"\bdaily/(\d{4}-\d{2}-\d{2})\.md:(\d+)"), re.compile(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}")
 NO = re.compile(r"\b(?:never|not|no longer|instead of|rather than|stop|don'?t)\b", re.I)    # a newer line that says otherwise
 CLAUSE = re.compile(r"(?<=[.;])\s+")
-HEDGE = re.compile(r"(?:,\s*|\s+|^)(?:basically|of course|needless to say|so to speak|as it were)\b,?", re.I)   # adds no condition
+HEDGE = re.compile(r"(?:,\s*|\s+|^)(?:basically|needless to say|so to speak|as it were)\b,?|,\s*of course\b,?|(?:^|(?<=[.;]))\s*of course,", re.I)  # set off
 SPAN, HELD, EXM, QM = re.compile(r"\"[^\"]*\"|“[^”]*”"), re.compile("[\x00\x01]\\d+[\x00\x01]"), "\x00", "\x01"   # a quote; held aside
 
 
@@ -568,15 +568,15 @@ def back(text: str, held: list[str], mark: str, keep: bool = True) -> str:
 
 
 def said_in(c: str, h: str) -> bool:
-    """Three or more words, every one of clause `c` standing in clause `h` in its order: `c` says nothing `h` does not (a reason,
-    a no, a name)."""
-    want, it = re.findall(r"[\w']+", flat(HELD.sub("", c)).lower()), iter(re.findall(r"[\w']+", flat(HELD.sub("", h)).lower()))
-    return len(want) > 2 and all(w in it for w in want)        # a fragment ("e.g.", "Then stop.") is never said again
+    """Three or more words, clause `c` word for word one or more whole comma-parts of clause `h` in a row: `c` says nothing `h`
+    does not (a reason, a no, a name) and drops no word that narrows it ("never call before nine" is not "... on weekends")."""
+    want, *parts = (re.findall(r"[\w']+", flat(HELD.sub("", t)).lower()) for t in (c, *h.split(",")))
+    return len(want) > 2 and any(want == sum(parts[i:j], []) for i in range(len(parts)) for j in range(i + 1, len(parts) + 1))
 
 
 def prose(said: str) -> str:
-    """A rule's words with its prose cut, its quotes and what is held aside kept as they are: a clause said again (each of its
-    words in an earlier clause, in order; one holding a quote never), its examples left where it stood; then a hedge."""
+    """A rule's words with its prose cut, its quotes and what is held aside kept as they are: a clause said again (whole comma-parts
+    of an earlier clause, word for word; one holding a quote never), its examples left where it stood; then a hedge set off."""
     text, quotes = hold(SPAN, said, QM)
     have: list[str] = []
     for c in CLAUSE.split(text):
@@ -610,7 +610,7 @@ def why_condensed(x: str, y: str, size: int, cap: int, label: str) -> str:
     a, b, _ = stages(x)
     n = len(memory.EXAMPLE.findall(split(x)[1]))
     ex = f"its {n} example{'s' * (n != 1)}"
-    took = [w for w, cut in (("its prose said twice or hedged", a != x), ("its quoted asides", b != a), (ex, y != b)) if cut]
+    took = [w for w, cut in (("its prose said twice or hedged", a.split() != x.split()), ("its quoted asides", b != a), (ex, y != b)) if cut]
     return (f"{len(x):,} characters, past {LONG}: {' and '.join(took) or 'its spacing'} out, {len(y):,} left" + (
         f", since {label} is past its line even without the rest ({size:,} of {cap:,})" if y != b else
         f"; kept: {ex}, since {label} has room ({size:,} of {cap:,} with every other cut)" if n else "")
