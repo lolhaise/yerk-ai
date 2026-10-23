@@ -54,3 +54,11 @@ def test_the_mechanics_send_a_picture_on_the_web_to_web_image_and_read_never_to_
     line = next(x for x in text.splitlines() if "`web_image`" in x)
     assert "picture" in line and "Read" in line and "never curl" in line and "no network" in line
     assert context.chars(text) < budgets()["session_start"]["appended"]["mechanics"]
+
+
+def test_the_mechanics_read_an_x_post_through_fxtwitter_first_never_the_x_com_page():
+    """Seen live: web_fetch of the post's x.com link climbed to the paid L3n rung for 33.6 s and got its login page;
+    fxtwitter's API answered at F1 in 0.3 s with the text and the picture's URL."""
+    line = next(x for x in context.MECHANICS.read_text().splitlines() if "api.fxtwitter.com" in x)
+    assert all(w in line for w in ("x.com or twitter.com", "`web_fetch` `https://api.fxtwitter.com/<user>/status/<id>` first",
+                                   "never the x.com page, since", "`web_image`"))

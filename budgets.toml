@@ -5,7 +5,7 @@
 # when a part or a total passes its number here.
 
 [session_start]
-total = 88714
+total = 88914
 
 # Load order, most stable first, so the cached start of the prompt survives.
 # The first five parts are Claude Code's own (its default prompt, the built-in tools
@@ -43,8 +43,11 @@ skills = 0
 # 2026-10-23: the web_image line (a picture in a post or a page is saved by `web_image` and Read, never curled, since the
 # shell has no network: a room spent three minutes on curl, web_fetch and a mirror, then asked for a screenshot) took the
 # mechanics to 3,673, so 3,800; no part was measured again to pay for it, so the total rose by the 200.
+# 2026-10-23: the X-links line (an x.com or twitter.com post is read through fxtwitter's API first, never the x.com page:
+# that morning web_fetch of a post climbed to the paid L3n rung for 33.6 s and got its login page, where fxtwitter answered
+# at F1 in 0.3 s) took the mechanics to 3,930, so 4,000; no part was measured again to pay for it, so the total rose by 200.
 [session_start.appended]
-mechanics = 3800
+mechanics = 4000
 persona = 11800
 rulebook = 14000
 room_voice = 5500

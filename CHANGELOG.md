@@ -23,7 +23,10 @@ with the originals kept under `backups/`; the index chunks every file again when
 - web_fetch's wall for a picture says `It is an image: use web_image(url), then Read the file it saves.`, and its next
   move no longer says to download the file, which sent a room to curl in a shell with no network.
 - The mechanics say it in one line: a picture in a post or a page is saved by `web_image`, then Read; never curl.
-- **Upgrading:** budgets.toml: `mechanics` goes to 3800 and `total` to 88714. Each room that attaches the plug-in needs
+- And in one more: an x.com or twitter.com post is read through fxtwitter's API first
+  (`https://api.fxtwitter.com/<user>/status/<id>`: the text, counts and picture URLs, free, under a second), never the
+  x.com page, which serves a login page at a paid rung; its picture then through `web_image`.
+- **Upgrading:** budgets.toml: `mechanics` goes to 4000 and `total` to 88914. Each room that attaches the plug-in needs
   `mcp__web-ladder__web_image` in its `allow` (rooms.toml.example has it); a yerk-web process already running keeps its
   four tools until its room's session starts it again.
 
