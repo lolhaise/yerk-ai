@@ -1,6 +1,6 @@
 """Checks the schema versions and migrations of the ledger, the small database of what ran: a ledger from before versions moves to the current one
-to the current one in order, ids become rows, order is by the stored time, the indexes exist, a rename
-is one idempotent step. Every value here is a placeholder."""
+in order, order is by the stored time, the indexes exist, a rename is one idempotent step. The step that turned old comma text into rows left in
+shrink-1: the one install had run it. This is restart test R4. Every value here is a placeholder."""
 import sqlite3
 
 from yerk_ai import ledger as L
@@ -32,9 +32,7 @@ def test_a_ledger_from_before_versions_migrates_in_order_once(tmp_path):
     old_ledger(tmp_path / "l.sqlite")
     assert sqlite3.connect(tmp_path / "l.sqlite").execute("PRAGMA user_version").fetchone()[0] == 0
     led = L.Ledger(tmp_path / "l.sqlite")
-    assert led.migrated == [1, 2, 3] and led.version() == L.MIGRATIONS[-1][0] == 3
-    assert links(led, "inbound", "m1", "reply_ids") == ["a", "b"] and links(led, "job_runs", 1, "message_ids") == ["x", "y", "z"]
-    assert led.delivered_for("m1") == ["o1"] and [r["key"] for r in led.files_sent_for(["m1"])] == ["k1:1"]
+    assert led.migrated == [1, 3] and led.version() == L.MIGRATIONS[-1][0] == 3
     assert led.files_sent_for([]) == [] and led.delivered_for("nobody") == []
     again = L.Ledger(tmp_path / "l.sqlite")
     assert again.migrated == [] and again.version() == 3
@@ -71,6 +69,3 @@ def test_every_write_of_an_id_list_writes_its_rows(tmp_path):
     rid = led.job_run_add(job="j", kind="script")
     led.job_run_set(rid, message_ids="a,b")
     assert links(led, "job_runs", rid, "message_ids") == ["a", "b"]
-    eid = led.watch_add(job="w", room="r", state="pending")
-    led.watch_set(eid, reply_ids="c", inbound="m9")
-    assert links(led, "watch_events", eid, "reply_ids") == ["c"] and links(led, "watch_events", eid, "inbound") == ["m9"]

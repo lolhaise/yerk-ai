@@ -9,7 +9,7 @@ built (`yerk explain morning-brief`).
 ```toml
 [jobs.morning-brief]
 kind = "agent"                      # a worker with the message below as its whole brief
-schedule = "0 7 * * 1-5"            # 07:00 on weekdays
+schedule = "Mon..Fri 07:00"          # 07:00 on weekdays
 tz = "Europe/Berlin"
 room = "example-room"
 cap = 15

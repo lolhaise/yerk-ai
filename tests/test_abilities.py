@@ -10,7 +10,8 @@ from starlette.testclient import TestClient
 
 from yerk_ai import abilities, cli, hooks, mcp_server, words
 from yerk_ai.config import EXAMPLE_PRIVATE
-from yerk_ai.daemon import ConsoleChannel, Yerkd
+from yerk_ai.daemon import Yerkd
+from fake_channel import ConsoleChannel
 from yerk_ai.engine import SessionTable
 
 DOTS = (words.DONE, words.WORKING, words.NOT_DONE, words.NOTHING)

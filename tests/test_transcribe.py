@@ -21,7 +21,8 @@ import pytest
 
 from yerk_ai import shape, transcribe, words
 from yerk_ai.channels.discord import message_text
-from yerk_ai.daemon import ConsoleChannel, Yerkd
+from yerk_ai.daemon import Yerkd
+from fake_channel import ConsoleChannel
 from yerk_ai.engine import RoomProcess
 from yerk_ai.ledger import Ledger
 from yerk_ai.room import Room

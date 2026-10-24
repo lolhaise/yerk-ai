@@ -15,7 +15,8 @@ import pytest
 
 from yerk_ai import evidence, gates, hooks, mcp_server, memindex, memory, words
 from yerk_ai.config import EXAMPLE_PRIVATE
-from yerk_ai.daemon import ConsoleChannel, Yerkd
+from yerk_ai.daemon import Yerkd
+from fake_channel import ConsoleChannel
 from yerk_ai.engine import SessionTable
 from yerk_ai.room import Inbound
 

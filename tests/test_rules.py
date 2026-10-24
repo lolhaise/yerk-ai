@@ -9,7 +9,8 @@ from pathlib import Path
 
 from yerk_ai import context, memory, words
 from yerk_ai.config import EXAMPLE_PRIVATE, budgets
-from yerk_ai.daemon import ConsoleChannel, Yerkd
+from yerk_ai.daemon import Yerkd
+from fake_channel import ConsoleChannel
 from yerk_ai.lifted.trim import truncate
 from yerk_ai.room import Inbound
 

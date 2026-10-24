@@ -3,7 +3,7 @@
 Rooms come from the private folder's rooms.toml and accounts.toml; daemon settings (the Discord
 token file, owner, test senders, port) from its yerkd.toml. One local HTTP server carries Yerk
 AI's MCP tools (/mcp) and the Claude Code hooks (/hook). Rooms with a Discord channel run through
-the Discord adapter; `--console ROOM` runs one room on the terminal instead, a line in, a reply out.
+the Discord adapter.
 """
 from __future__ import annotations
 
@@ -25,7 +25,6 @@ import time
 import uuid
 from datetime import datetime
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any, Awaitable, Callable
 from zoneinfo import ZoneInfo
 
@@ -91,57 +90,6 @@ def free_port() -> int:
         return int(s.getsockname()[1])
 
 
-class ConsoleChannel:
-    """A room on the terminal: replies on stdout as JSON lines, the card on stderr."""
-
-    def __init__(self) -> None:
-        self.n = 0
-
-    def _out(self, obj: dict[str, Any]) -> list[str]:
-        self.n += 1
-        print(json.dumps({"t": round(time.time(), 3), **obj}, ensure_ascii=False), flush=True)   # the room's own words
-        return [f"console-{self.n}"]
-
-    def open_card(self, room: str, text: str, kind: str = "turn") -> None:
-        self.progress(room, text)
-
-    def progress(self, room: str, text: str) -> None:
-        print(f"[card] {text}", file=sys.stderr, flush=True)
-
-    def reply(self, room: str, text: str, inbound: list[str], card: str | None = None, key: str | None = None) -> list[str]:
-        if card:
-            self.progress(room, card)
-        return self._out({"room": room, "reply": text, "inbound": inbound, **({"card": card} if card else {})})
-
-    def notice(self, room: str, text: str, inbound: list[str], card: str | None = None, key: str | None = None) -> list[str]:
-        if card:
-            self.progress(room, card)
-        return self._out({"room": room, "notice": text, "inbound": inbound})
-
-    async def send_text(self, room: str, text: str, key: str | None = None) -> list[str]:
-        return self._out({"room": room, "send": text})
-
-    async def notify(self, room: str, text: str) -> list[str]:
-        return self._out({"room": room, "notice": text, "inbound": []})
-
-    async def send_file(self, room: str, path: Path, caption: str = "", key: str | None = None, inbound: str = "") -> list[str]:
-        if not path.is_file():
-            raise FileNotFoundError(str(path))
-        return self._out({"room": room, "file": str(path), "caption": caption})
-
-    async def send_voice(self, room: str, path: Path, meta: dict[str, Any], key: str | None = None, inbound: str = "") -> tuple[list[str], str]:
-        if not path.is_file():
-            raise FileNotFoundError(str(path))
-        return self._out({"room": room, "voice": str(path), "duration": meta["duration"]}), ""
-
-    async def worker_card(self, room: str, key: str, text: str, message_id: str | None = None) -> str | None:
-        print(f"[{key}] {text}", file=sys.stderr, flush=True)
-        return message_id or f"console-{key}"
-
-    async def worker_settle(self, room: str, key: str, text: str, how: str, message_id: str | None = None) -> str | None:
-        return await self.worker_card(room, key, f"{text}\n({how})", message_id)
-
-
 class Yerkd:
     def __init__(self, private: Path, state: Path, *, port: int = 0, idle_minutes: float = 30.0,
                  only_account: Account | None = None, log_dir: Path | None = None):
@@ -181,14 +129,6 @@ class Yerkd:
         # crash repair before anything reads a day log, assembled log or bound transcript (doctor.py): a hard power-off
         # zeroes the line a file was writing; a room the crash left with a message waiting is left for the daily run
         log.info("%s", doctor.start(private, state, self.memory, {str(r["room"]) for r in self.ledger.inbound_open()}))
-        # day-log lines written before offsets, ids, authors and classes are rewritten once, here, before any
-        # channel opens and under the lock capture holds, so no second writer ever races the rewrite (cold
-        # read F3); the originals go beside the private layer, or under the state folder for the example one
-        backup = (state if private.resolve().is_relative_to(REPO) else private) / "backups" / f"daily-before-{time.strftime('%Y-%m-%d')}"
-        moved = memory.migrate_daylogs(self.memory.daily, self.memory.tz, self.daily.rooms, backup)
-        if moved["rewritten"]:
-            log.info("memory: %d day-log line(s) in %d file(s) rewritten in today's shape; the originals are under %s",
-                     moved["rewritten"], moved["files"], backup)
         # the install's secrets for /hook, /control and /mcp (R3): under the state folder for every layer, so
         # no room's Read(/<layer>/**) rule or --add-dir reaches them (cold read F4); yerkd.json names the paths
         sdir = state / "secrets"
@@ -740,7 +680,7 @@ class Yerkd:
 
     async def tool_schedule(self, room: str, req: dict[str, Any]) -> dict[str, Any]:
         """The `schedule` tool (add, remove, list); the job runner's hand-offs come through /control. An agent,
-        script or watcher job runs as the owner's user (a worker; a shell command with no sandbox at all), so an
+        script job runs as the owner's user (a worker; a shell command with no sandbox at all), so an
         owner's room adds one for itself by the worker rule and lists or removes any. A note runs nothing (its room
         is told its text when due), so a room that is not the owner's keeps its own notes and nothing else."""
         if room and not self.owner(room):
@@ -921,9 +861,9 @@ class Yerkd:
     def shadow_stop(self, name: str, room: Room, reply: str, sid: str, refused: bool = False) -> list[tuple[str, str]]:
         """The evidence rules after a reply: ledgered and logged, never a block (shadow, DESIGN 8). `refused`: the said check
         turned this reply back, its own row written, so its person and quote rows are not written twice."""
-        figure, known = memory.on_file(self.memory)
+        figure = memory.on_file(self.memory)
         said = self.ledger.said(name, sid, room.evidence.started)     # its replies posted earlier in this session
-        found = evidence.check(reply, room.prompts(), room.evidence, self.memory.scope.roots, figure, known, said)
+        found = evidence.check(reply, room.evidence, figure, said)
         found += evidence.check_claims(reply, room.evidence, self.memory.scope.roots)     # decision 25
         found += [] if room.in_owner_name() else evidence.check_sheet(reply, room.evidence)   # an owner's room refuses instead
         if not refused:                                   # a claim about a person needs a read, a quote its source
@@ -1348,7 +1288,6 @@ class Yerkd:
                 await asyncio.to_thread(room.reap_idle)
             try:
                 await self.workers.reconcile()         # the backstop for a missed watch event
-                await self.jobs.events_open()          # ... and for a watcher event the daemon was not told of
             except Exception:
                 log.exception("workers: the reconcile pass failed")
 
@@ -1388,37 +1327,6 @@ class Yerkd:
                                                    self.beat.tick(self.listening), dc.start())]
         await self.until_stopped(tasks, dc.close)
 
-    async def run_console(self, name: str) -> None:
-        room = self.add_room(name, ConsoleChannel())
-        self.workers.begin(asyncio.get_running_loop())
-        if moved := self.move_held():
-            await self.jobs.alert(None, moved, 0)
-        await self.workers.reattach()
-        await self.jobs.reattach()
-        self.write_status("console")
-        http = asyncio.create_task(self.serve_http())
-        reaper = asyncio.create_task(self.reap(min(60.0, self.idle_seconds / 2)))
-        ticker = asyncio.create_task(self.beat.tick(self.listening))
-        await asyncio.sleep(0.5)
-        self.link = SimpleNamespace(connected=True)    # the terminal is the channel: it is there once read
-        n = 0
-        while line := await asyncio.to_thread(sys.stdin.readline):
-            if not line.strip():
-                continue
-            n += 1
-            mid = f"console-in-{int(time.time())}-{n}"
-            self.ledger.inbound_add(mid, name, "console", "owner", len(line.strip()))
-            self.daily.capture(name, mid, "owner", line.strip())
-            room.submit(Inbound(mid, "owner", line.strip()))
-        while room.busy:
-            await asyncio.sleep(0.2)
-        if room.rp:
-            await asyncio.to_thread(room.rp.close)
-        reaper.cancel()
-        ticker.cancel()
-        self.http.should_exit = True
-        await http
-
 
 def claim(state: Path) -> int:
     """One daemon per state folder: an exclusive flock on <state>/yerkd.lock, held for the process's life (the kernel
@@ -1440,8 +1348,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
     p.add_argument("--port", type=int, default=0, help="local port for /mcp and /hook (default: yerkd.toml, else free)")
     p.add_argument("--idle-minutes", type=float, default=30.0, help="close a room's process after this long idle")
-    p.add_argument("--console", metavar="ROOM", help="run ROOM on the terminal instead of Discord")
-    p.add_argument("--config-dir", help="console: use only this account's Claude Code config folder")
+    p.add_argument("--config-dir", help="use only this account's Claude Code config folder (the contract probes' smoke)")
     a = p.parse_args(argv)
     logging.basicConfig(level=logging.INFO, stream=sys.stderr, format="%(asctime)s %(name)s %(message)s")
     priv, state = private_dir(a.private), state_dir(a.state)
@@ -1449,7 +1356,7 @@ def main(argv: list[str] | None = None) -> int:
     y = Yerkd(priv, state, port=a.port, idle_minutes=a.idle_minutes,
               only_account=from_dir(a.config_dir) if a.config_dir else None, log_dir=state / "logs")
     (state / "logs").mkdir(exist_ok=True)
-    asyncio.run(y.run_console(a.console) if a.console else y.run_discord())
+    asyncio.run(y.run_discord())
     return 0
 
 

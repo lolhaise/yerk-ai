@@ -166,8 +166,8 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
                        account: str = "", *, ctx: Context) -> str:
         """Timed work that lands in a room, kept on systemd timers that outlive the daemon. action
         "add": `name` (lowercase letters, digits, hyphens); `when` is a date and time ("2026-03-09 09:00":
-        a one-shot, removed after it fires), "every 2h" (an interval), or a cron expression
-        ("0 9 * * 1-5"); `tz` an IANA zone (default: this room's); `what`, by `kind` (default "agent" in the
+        a one-shot, removed after it fires) or a systemd calendar line, recurring ("Mon..Fri 09:00",
+        "*:0/30" every half hour; never cron); `tz` an IANA zone (default: this room's); `what`, by `kind` (default "agent" in the
         owner's rooms, "note" in any other): "note", a reminder
         (when it is due this room is told the text and says it in its own voice; no worker, shell or
         account); "agent", the brief a worker gets (a headless run with a card here, its last message told
