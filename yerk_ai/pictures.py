@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .config import write_private
+from .context import attachments_dir
 from .memindex import SEEN, SEEN_HEAD, SKIP_DIRS
 
 KINDS = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".heic")     # a picture as Discord delivers it
@@ -67,11 +68,13 @@ def pending(inbox: Path, root: bool = False, want: Callable[[Path], bool] | None
 
 def root_of(private: Path, state: Path, room: str, conf: dict[str, Any], folder: str) -> Path | None:
     """`--root FOLDER`: the folder, resolved, when the room lists it in rooms.toml (`read` from its work folder, `also` from
-    the private layer, as the daemon resolves each) and it holds none of Yerk's own folders nor sits in one; else None."""
+    the private layer, as the daemon resolves each) and it holds none of Yerk's own folders nor sits in one; else None. The
+    one folder in the private layer it takes is the room's own <layer>/NAME-attachments listed in its `also`: the files
+    `yerk room add` saved, nothing of Yerk's (never in the state, which a worker reads only)."""
     p, work = Path(folder).expanduser().resolve(), state / "rooms" / room / "work"
-    listed = [(work / Path(str(x)).expanduser()).resolve() for x in conf.get("read") or []] + [
-        (private / Path(str(x)).expanduser()).resolve() for x in conf.get("also") or []]
-    own = (private.resolve(), state.resolve())
+    also = [(private / Path(str(x)).expanduser()).resolve() for x in conf.get("also") or []]
+    listed = [(work / Path(str(x)).expanduser()).resolve() for x in conf.get("read") or []] + also
+    own = (state.resolve(),) if p in also and p == attachments_dir(private, room, conf) else (private.resolve(), state.resolve())
     return p if p.is_dir() and p in listed and not any(p.is_relative_to(q) or q.is_relative_to(p) for q in own) else None
 
 

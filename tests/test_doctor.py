@@ -14,7 +14,7 @@ from datetime import date, datetime, timedelta
 
 import pytest
 
-from yerk_ai import config, context, doctor, hooks, memindex, memory, morning, status, words
+from yerk_ai import config, context, doctor, files, hooks, memindex, memory, morning, pictures, status, words
 from yerk_ai.accounts import Cooldowns, load_accounts
 from yerk_ai.config import EXAMPLE_PRIVATE, ROOM_KEYS, budgets
 from yerk_ai.daemon import ConsoleChannel, Yerkd
@@ -216,6 +216,27 @@ def test_a_rooms_toml_key_no_loader_reads_is_named_with_its_room(tree, capsys):
     assert capsys.readouterr().out.splitlines() == ["room example-room: rooms.toml key recal_days is read by nothing"]
 
 
+def test_the_files_a_moved_room_brought_with_no_sidecar_are_one_orange_line_with_the_two_backfills(tree, capsys):
+    """attachments-root (2026-10-24): an owner room's <layer>/NAME-attachments holding pictures or documents with no sidecar
+    is one line with the counts and the two backfills, which says to list the folder first while it is not; quiet once
+    each has its sidecar."""
+    priv, state, *_ = tree
+    (f := priv / "example-room-attachments").mkdir()
+    for name in ("1-shot.png", "2-shot.jpg", "3-plan.pdf", "4-clip.mov"):
+        (f / name).write_bytes(b"\0")
+    f = f.resolve()
+    said = (f"{words.WORKING} example-room: 2 picture(s) and 1 workbook(s) or PDF(s) moved in with it, in {f}, have no sidecar, so "
+            f"no recall finds what is in them: yerk pictures backfill example-room --root {f}; yerk files backfill example-room --root {f}")
+    assert doctor.main(priv, state) == 1 and capsys.readouterr().out.splitlines() == [said + words.MOVED_UNLISTED]
+    rooms = priv / "rooms.toml"
+    rooms.write_text(rooms.read_text().replace("recall_days = 2", 'recall_days = 2\nalso = ["example-room-attachments"]', 1))
+    (priv / "yerkd.toml").write_text('[memory]\nalso = ["example-room-attachments"]\n')
+    assert doctor.main(priv, state) == 1 and capsys.readouterr().out.splitlines() == [said]
+    for side in (pictures.sidecar(f / "1-shot.png"), pictures.sidecar(f / "2-shot.jpg"), files.sidecar(f / "3-plan.pdf")):
+        side.write_text("filed\n")
+    assert doctor.main(priv, state) == 0 and capsys.readouterr().out == ""
+
+
 def test_a_stale_index_an_old_mention_index_and_no_meaning_search_are_each_a_line(tree, capsys, monkeypatch):
     priv, state, *_ = tree
     monkeypatch.setattr(memindex, "check", lambda db, scope, *a: {"status": "stale"})
@@ -257,7 +278,7 @@ def test_the_folder_check_and_the_rule_check_name_themselves_apart_when_neither_
     priv, state, *_ = tree
     (priv / "rooms.toml").write_text("[rooms\n")
     said = [x.split(",")[0] for x in doctor.run(priv, state) if "not checked" in x]
-    assert said == ["layout: not checked", "rule shape: not checked", "fit: not checked"], said
+    assert said == ["layout: not checked", "rule shape: not checked", "fit: not checked", "moved in: not checked"], said
 
 
 def test_a_part_past_its_line_reads_red_with_the_overflow_and_one_that_fits_reads_green(tree, capsys):

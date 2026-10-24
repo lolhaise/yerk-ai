@@ -8,6 +8,24 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-24
 
+### attachments-root
+
+- The files a chat brought when `yerk room add NAME` moved it in, saved in `<layer>/NAME-attachments`, can be recalled.
+  `yerk pictures backfill ROOM --root FOLDER` and `yerk files backfill ROOM --root FOLDER` take that folder for its own
+  room, NAME-on-yerk, when the room's `also` lists it: the one folder of the private layer they take. Another room's
+  folder, and every other folder of the private layer or the state, is refused in the same line as before.
+- `yerk room add` lists the folder in the new block's `also` when the block it copies has one (a block with none recalls
+  every root and is left so; a person room never), prints the yerkd.toml `[memory] also` line to add by hand before the
+  deploy (yerkd does not start while a room's `also` names a root `[memory] also` lacks), and ends on the two backfills,
+  after the deploy line. `--dry-run` says "would list".
+- `yerk doctor`, in its daily run, names an owner room whose moved-in folder holds pictures, workbooks or PDFs with no
+  sidecar: one 🟠 line with the counts and the two commands, and to list the folder first while it is not.
+- **Upgrading:** budgets.toml: `[code] lines` (a dated note). A room moved in before this needs its folder, by hand, in
+  yerkd.toml's `[memory] also` and in its block's `also` in rooms.toml, both as `"<layer>/NAME-attachments"` (in
+  `[memory] also` first: rooms.toml alone stops yerkd's next start); then `yerk deploy`; then once each,
+  `yerk files backfill NAME-on-yerk --root <layer>/NAME-attachments` and
+  `yerk pictures backfill NAME-on-yerk --root <layer>/NAME-attachments` (workers on the room's account, 20 pictures a batch).
+
 ### rules-margin (#113)
 
 - Test only. The rules-part test tripled a 5,300-character rules file and expected it over the 16,000 line, but the

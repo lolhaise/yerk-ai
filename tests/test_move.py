@@ -206,6 +206,32 @@ def test_an_owner_room_moves_in_and_a_second_run_only_tops_up(layer, capsys, tmp
     assert "#sports-on-yerk 77 is there, kept as it is" in again and "rooms.toml: sports-on-yerk is there, kept as it is" in again
     assert "142 messages from discord:30, 2 filed, 140 there already" in again and "test webhook 88 already" not in again
     assert v.read_text() == voice.read_text() and "rooms/sports.md: there, kept as it is" in again       # no --voice now: kept
+    assert again.rstrip().splitlines()[-1] == ("backfill: none, sports-on-yerk has no also (it recalls every [memory] also root) "
+                                               "and a backfill takes only a folder it lists")
+
+
+def test_a_room_with_an_also_lists_the_files_it_brought_and_ends_on_their_two_backfills(layer, capsys):
+    """attachments-root (2026-10-24): the folder the history's files go to joins the new block's `also` ("would list" in a
+    dry run), yerkd.toml's [memory] also is named by hand before the deploy (yerkd does not start on a room's also outside
+    it), and the last two steps are the backfills, which then take that folder."""
+    priv, state, fake = layer
+    (priv / "rooms.toml").write_text(ROOMS.replace('privacy = "owner"\n', 'privacy = "owner"\nalso = ["notes"]\n', 1))
+    (priv / "yerkd.toml").write_text((priv / "yerkd.toml").read_text() + 'also = ["notes"]\n')
+    folder = (priv / "desk" / "sports-attachments").resolve()
+    steps = [f"pictures, after the deploy: yerk pictures backfill sports-on-yerk --root {folder}",
+             f"files, after the deploy: yerk files backfill sports-on-yerk --root {folder}"]
+    assert run(priv, state, "sports", "--from", f"discord:{OLD}", "--dry-run") == 0
+    out = capsys.readouterr().out
+    block = tomllib.loads(out.split("in backups/:\n", 1)[1].split("\nalso: ", 1)[0])["rooms"]["sports-on-yerk"]
+    assert block["also"] == ["notes", str(folder)] and f"also: would list {folder} in it, the folder the history's files go to" in out
+    assert f'yerkd.toml [memory] also, by hand before the deploy, or yerkd does not start: add "{folder}"' in out
+    assert out.rstrip().splitlines()[-2:] == steps and not folder.exists()
+    assert run(priv, state, "sports", "--from", f"discord:{OLD}") == 0
+    assert f"also: listing {folder} in it" in (out := capsys.readouterr().out) and out.rstrip().splitlines()[-2:] == steps
+    assert rooms(priv)["sports-on-yerk"]["also"] == ["notes", str(folder)] and len(list(folder.iterdir())) == 2
+    assert cli.main(["files", "backfill", "sports-on-yerk", "--root", str(folder), "--dry-run", "--private", str(priv), "--state", str(state)]) == 0
+    assert cli.main(["pictures", "backfill", "sports-on-yerk", "--root", str(folder), "--dry-run", "--private", str(priv), "--state", str(state)]) == 0
+    assert capsys.readouterr().out.splitlines()[-1] == f"2 picture(s) in {folder} with no sidecar, 1 batch(es) of 20; nothing started (--dry-run)"
 
 
 def test_a_person_room_gets_a_layer_of_its_own_behind_the_wall(layer, capsys):

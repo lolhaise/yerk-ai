@@ -363,4 +363,9 @@ secs = 60
 # 20,590 merged on the train after #99: #103, #105, #111, #106, #107, #109, #104, #110 and #108. Lines shared and
 # both kept: context.py and hooks.py with #107 and #109, daemon.py with #109, doctor.py with #111, words.py with #107;
 # curate.py with #108, whose condense loop stands in for this PR's copy of the old one, its topic and gate block after it.
-lines = 20590
+# 0000-00-00: part-closes the case before 00: the next run starts the example note says (the sample item: 000 moved to
+# four rooms' <layer>/NAME-attachments with no sidecar, as root_of refused every folder in the private folder), not folded
+# to fit. move.py 14 (the folder joins a block's `also` when it has one, yerkd.toml's [memory] also named by hand, the two
+# backfills as the last steps), doctor.py 10 (one line a room with the counts and the commands), context.py 5 (the folder's
+# entry waits, in_the), queue.for 0, its.turn 0 (and_the last part closes, the case before the next `run`).
+lines = 20626

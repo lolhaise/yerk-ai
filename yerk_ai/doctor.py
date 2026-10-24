@@ -16,11 +16,11 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
 
-from . import deploy, docs, hooks, memindex, memory, retention, status, words
+from . import deploy, docs, files, hooks, memindex, memory, pictures, retention, status, words
 from . import shape as rule_shape                      # the check named "rule shape"; "layout" is the private folder's
 from .accounts import load_accounts, token_info
 from .config import REPO, ROOM_KEYS, budgets, filled, load_toml, room_defaults, room_id, rooms, write_private
-from .context import TOPICAL, chars, layer_dir, session_start
+from .context import TOPICAL, attachments_dir, chars, layer_dir, session_start
 from .ledger import Ledger
 from .mentions import Builder
 
@@ -285,6 +285,16 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
         named = [memory.cite(m, r) for r in m.scope.roots]
         found.extend(f"memory roots: {named.count(n)} share the cite {n}" for n in sorted(set(named)) if named.count(n) > 1)
 
+    def moved() -> None:                                        # the files a moved owner room brought, with no sidecar: no recall finds them
+        for n, c in rooms(private).items():
+            if str(c.get("privacy", "owner")) != "owner" or not (f := attachments_dir(private, n, c)).is_dir():
+                continue
+            pics, sheets = len(pictures.pending(f, True)), len(files.pending(f, True))
+            listed = f in m.scope.roots and f in [(private / Path(str(x)).expanduser()).resolve() for x in c.get("also") or []]
+            cmds = "; ".join(x.format(room=n, folder=f) for x in words.BACKFILLS)
+            found.extend([f"{words.WORKING} " + words.MOVED_IN.format(room=n, pics=pics, sheets=sheets, folder=f, commands=cmds)
+                          + ("" if listed else words.MOVED_UNLISTED)] if pics or sheets else [])
+
     shaped: dict[str, int] = {}
 
     def ruleshape() -> None:                                    # every room's rule files against the prompting guide
@@ -321,7 +331,7 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
 
     for what, check in (("layout", layout), ("classes", classes), ("tokens", tokens), ("index", index), ("hooks", hooked),
                         ("modes", modes), ("secrets", leaks), ("disk", growth), ("memory cap", high), ("backfill", backfill),
-                        ("cites", cites), ("code", code), ("rule shape", ruleshape), ("fit", fits)):
+                        ("cites", cites), ("code", code), ("rule shape", ruleshape), ("fit", fits), ("moved in", moved)):
         try:
             check()
         except (Exception, SystemExit) as e:                    # a check that cannot run is a line; the others still run
