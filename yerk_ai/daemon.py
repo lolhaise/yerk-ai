@@ -374,6 +374,7 @@ class Yerkd:
         return await asyncio.to_thread(room.paste_check, active, text, lambda: self.earlier_blocks(at))
 
     async def tool_send(self, room: str, text: str, file: str, caller: str) -> dict[str, Any]:
+        room = gates.room_named(room, self.room_confs) or room       # a room's name, or its channel id (the gate reads it so)
         if caller in self.rooms and not self.owner(caller) and room != caller:     # a room that is not the owner's posts to itself only
             return {"ok": False, "error": f"room {caller} posts to itself only; it is not one of the owner's rooms"}
         if room not in self.rooms:
@@ -1098,7 +1099,7 @@ class Yerkd:
                 model, line = gates.refused(what, why)
                 v = gates.Verdict("restart", "deny", model, line, f"{what}; {why}")
         key, shown, cwd = "", "", str(payload.get("cwd") or self.state / "rooms" / name / "work")
-        if v is None and (hit := gates.external_hit(tool, ti, name, self.gates)):
+        if v is None and (hit := gates.external_hit(tool, ti, name, self.gates, self.room_confs)):
             rule, what, call = hit
             key = gates.call_key(tool, ti)
             shown = gates.plain(tool, ti) if self.room_confs[name].get("people") else key     # a person reads it: no JSON

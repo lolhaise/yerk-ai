@@ -391,4 +391,10 @@ secs = 60
 # memindex.py 2 (a recording's NAME.transcript.txt a sidecar kind of a listed folder, as a picture's seen file is).
 # 19,960 merged after #112 and #114 (main 8ae7760): 19,922 + 38. Lines shared and both kept: doctor.py's import (#112's
 # jobs with this PR's files and pictures); README and words.py, which #114 also changed, merged with no line in common.
-lines = 19960
+# 2026-10-24: send-own-channel raised it by 16: a room's own channel id is the room itself in the send tool and its gate
+# (found that day: a room asked to post a picture in its own chat passed its channel id, the gate held it as a
+# send to another room, and the send would have answered no room by that id), not folded to fit. gates.py 15 (room_named,
+# the one resolver: a room's name, its rooms.toml channel or the id alone; external_hit reads it with the rooms' confs and
+# names a held send's room by it), daemon.py 1 (the send tool resolves `room` through it before its checks).
+# 19,976 on main 9d9e05b (#116): 19,960 + 16.
+lines = 19976
