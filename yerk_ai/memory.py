@@ -842,13 +842,12 @@ def fuse(keywords: list[dict[str, Any]], vectors: list[dict[str, Any]], k: int, 
     on the cosine. No calibration between a bm25 cover and a cosine is needed, and a chunk both searches put first outranks either search's lone top hit.
     Vector hits under half the best cosine are noise and leave the fusion first. `keep` holds each
     search's own first `keep` hits in the top k (in fused order), so a lone keyword hit at rank two is
-    not pushed out by chunks both searches place low."""
-    if not vectors:
-        return keywords[:k]
-    top = float(vectors[0]["score"])
+    not pushed out by chunks both searches place low. With no vectors (the meaning half off, down or late) the
+    keywords go by their cover times `weight`, so a note still comes before a record on the same words."""
+    top = float(vectors[0]["score"]) if vectors else 0.0
     vectors = [h for h in vectors if float(h["score"]) >= top / 2] if top > 0 else []
     if not vectors:
-        return keywords[:k]
+        return sorted(keywords, key=lambda h: -float(h["score"]) * weight(h))[:k] if weight else keywords[:k]
     score: dict[int, float] = {}
     rows: dict[int, dict[str, Any]] = {}
     for ranked in (keywords, vectors):
@@ -883,12 +882,13 @@ def record(s: Settings, now: datetime | None = None) -> Callable[[dict[str, Any]
 
 
 def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader: Reader | None = None,
-           weights: dict[str, float] | None = None, wide: bool = True, wait: float = MEANING_WAIT, docs: bool = True) -> dict[str, Any]:
+           weights: dict[str, float] | None = None, wide: bool = True, wait: float = MEANING_WAIT, docs: bool = True, weigh: bool = True) -> dict[str, Any]:
     """Ranked chunks, whole, with path and line, the keyword rank fused with the meaning rank when
     yerk-index serves one and `wide`, waiting `wait` for it at most (the bench's rank reads these; the recall tool cuts them). A timeout and a
     failure of the index read differently (L54); a provider timeout or error reads differently from
     both: keywords only for this query, logged. `weights` gets the query words' weights. The docs root's hits come after every
-    other hit, and with `docs` False there are none: what a room is handed per message, it reads the docs only when it asks."""
+    other hit, and with `docs` False there are none: what a room is handed per message, it reads the docs only when it asks.
+    `weigh` False: no record weight, so the exact half alone comes as the index ranks it (deep recall's order, as before #114)."""
     k = max(1, min(int(k), 20))
     try:
         conn = memindex.connect(s.index_db, readonly=True, deadline=time.monotonic() + deadline_s)
@@ -915,7 +915,7 @@ def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader:
     if reader and (not reader.owner or reader.sealed):   # a room that is not an owner room, or is sealed, ranks and gets only chunks it can
         keywords, vectors = ([h for h in x if allowed_text(reader, Path(h["path"]), str(h.get("text", "")), daily=s.daily) == h.get("text")]
                              for x in (keywords, vectors))     # read whole (R2): its own line beside a hidden one reaches it through its pack,
-    hits = fuse(keywords, vectors, k, weight=record(s))     # its topic hits and read_memory, never recall: a chunk read in part ranks on words it may not see
+    hits = fuse(keywords, vectors, k, weight=record(s) if weigh else None)   # its topic hits and read_memory, never recall: a chunk read in part ranks on words it may not see
     # the owner's notes above the docs: they say how this install's things are, the docs how Claude runs anywhere, in the same words
     hits.sort(key=lambda h: s.docs is not None and Path(h["path"]).is_relative_to(s.docs))
     for h in hits:
@@ -938,12 +938,12 @@ def recall(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader:
 def lines_on(s: Settings, what: str, reader: Reader | None = None, k: int = 8, exclude: set[str] | None = None,
              best: int = 6) -> list[dict[str, Any]]:
     """Deep recall (decision 42): the `best` lines on `what`, a name or a topic, in the reader's scope less the docs root, in the order
-    of the k chunks the keyword rank gives (a name is its words: no meaning search), each holding every word of it; then a standing file's
+    of the k chunks the keyword rank gives, unweighed (a name is its words: no meaning search), each holding every word of it; then a standing file's
     lines first, the day logs' newest first. Never a line of the message being answered (`exclude`, its ids), a corrected line, or one
     that asks about it (words.ASKED): an ask is not on file. A keyword read that did not finish raises LookupError: it proves no absence."""
     want = {t for t in mentions.tokens(what, True) if len(t) > 1 and t not in memindex.STOP}
     out: list[dict[str, Any]] = []
-    r: dict[str, Any] = ranked(s, what, k, 2.0, reader, wide=False, docs=False) if want else {"ok": True}
+    r: dict[str, Any] = ranked(s, what, k, 2.0, reader, wide=False, docs=False, weigh=False) if want else {"ok": True}
     if not r["ok"]:
         raise LookupError(f"the keyword read on {what!r} did not finish: {r['status']}")
     for h in r.get("hits", []):
@@ -1243,6 +1243,11 @@ def has_all(text: str, tokens: list[str]) -> bool:
     return all(memindex.norm(tok) in t for tok in tokens)
 
 
+def rank_of(hits: list[dict[str, Any]], q: dict[str, Any], stale: re.Pattern[str]) -> int | None:
+    """A question's hit: the rank of the first result whose whole chunk holds every answer token and whose path is not a stale copy."""
+    return next((i + 1 for i, h in enumerate(hits) if not stale.search(h["path"]) and has_all(h["text"], list(q["answer_tokens"]))), None)
+
+
 def bench(s: Settings, questions: Path | None = None, k: int = 6) -> dict[str, Any]:
     """Each question's search; a hit is a result in the top k whose whole chunk holds every answer token
     and whose path is not a stale copy. Controls must hit, or the instrument is blind. `kept`: the hits
@@ -1256,8 +1261,7 @@ def bench(s: Settings, questions: Path | None = None, k: int = 6) -> dict[str, A
         r = ranked(s, str(q["q"]), k, deadline_s=30.0, weights=weights)
         if not r["ok"]:
             return {"ok": False, "status": r["status"], "error": r["error"]}
-        rank = next((i + 1 for i, h in enumerate(r["hits"])
-                     if not stale.search(h["path"]) and has_all(h["text"], list(q["answer_tokens"]))), None)
+        rank = rank_of(r["hits"], q, stale)
         cut = snippets(r["hits"], weights, s.recall_chars) if rank else []
         rows.append({"id": q["id"], "control": bool(q.get("control")), "rank": rank,
                      "kept": has_all(cut[rank - 1]["text"], list(q["answer_tokens"])) if rank else None,
@@ -1271,6 +1275,25 @@ def bench(s: Settings, questions: Path | None = None, k: int = 6) -> dict[str, A
             "top_k": top_k, "top_1": top_1, "k": k, "top_k_rate": round(top_k / n, 3), "top_1_rate": round(top_1 / n, 3),
             "kept": sum(1 for r in scored if r["kept"]), "lost": [r["id"] for r in scored if r["rank"] and not r["kept"]],
             "rows": rows, "file": str(qfile)}
+
+
+def controls(s: Settings, questions: Path | None = None, k: int = 6, find: Callable[..., dict[str, Any]] | None = None) -> dict[str, Any]:
+    """The bench's controls alone, as `yerk deploy` holds them, writing nothing: each through the exact half (`ranked`, meaning off), a
+    miss there once more as a room's recall runs, meaning half and its MEANING_WAIT; `none`: nothing held, no controls or no index."""
+    qfile, find = questions or s.bench, find or ranked
+    data = json.loads(qfile.read_text()) if qfile.is_file() else {"questions": []}
+    qs = [q for q in data["questions"] if q.get("control")]
+    none = "no controls" if not qs else "" if memindex.live(s.index_db).is_file() else "no index"
+    stale = re.compile(str(data.get("stale") or r"(^|/)overwrite-backups/"))
+    meant, missed = [], []
+    for q in [] if none else qs:
+        for wide in (False, True):
+            if (r := find(s, str(q["q"]), k, deadline_s=30.0, wide=wide))["ok"] and rank_of(r["hits"], q, stale):
+                meant += [q["id"]] * wide
+                break
+        else:
+            missed.append(q["id"])
+    return {"of": len(qs), "hit": 0 if none else len(qs) - len(missed), "meaning": meant, "missed": missed, "none": none}
 
 
 def ratchet(rows: list[dict[str, Any]], drops: list[str], slack: int = 1) -> str | None:

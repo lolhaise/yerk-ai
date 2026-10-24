@@ -8,6 +8,58 @@ version changes.
 
 ## 2026-10-24
 
+### web-budget (#116)
+
+- The line for Claude Code's other tool entries (its deferred-loading placeholder and the web plug-in's tools) is 3,429,
+  what the rooms sent when it was measured: web_research and web_research_result (1,716) came in on Oct 20 with no
+  raise, and `yerk map` counts this part at its line until a transcript measures it, so no check saw them. `yerk map
+  --wire` reads 3,421, under it, in the two rooms whose newest shape holds the plug-in's four tools and nothing more;
+  the two whose newest shape came after the measurement (Oct 24, 13:2x) also send web_image (913) and read 4,334, one
+  of them 11,453 with a second MCP server's five tools, both still over it.
+- The budget test carries the research pair at its measured sizes, so it fails when the part as sent passes its line.
+- **Upgrading:** nothing to edit. budgets.toml: `deferred_tool_names` 3,429 and the session `total` 98,330 (a dated note).
+
+### attachments-root (#115)
+
+- The files a chat brought when `yerk room add NAME` moved it in, saved in `<layer>/NAME-attachments`, can be recalled.
+  `yerk pictures backfill ROOM --root FOLDER` and `yerk files backfill ROOM --root FOLDER` take that folder for its own
+  room, NAME-on-yerk, when the room's `also` lists it: the one folder of the private layer they take. Another room's
+  folder, and every other folder of the private layer or the state, is refused in the same line as before.
+- `yerk room add` lists the folder in the new block's `also` when the block it copies has one (a block with none recalls
+  every root and is left so; a person room never), prints the yerkd.toml `[memory] also` line to add by hand before the
+  deploy (yerkd does not start while a room's `also` names a root `[memory] also` lacks), and ends on the two backfills,
+  after the deploy line. `--dry-run` says "would list".
+- `yerk doctor`, in its daily run, names an owner room whose moved-in folder holds pictures, workbooks or PDFs with no
+  sidecar: one 🟠 line with the counts and the two commands, and to list the folder first while it is not.
+- A recording's `NAME.transcript.txt`, the file the transcribe tool writes beside it, is indexed under a listed folder
+  as a picture's `NAME.seen.txt` is, where before only a room's inbox took it, so a recording a moved room brought is
+  recalled once it is transcribed. The recording itself is never indexed; nothing here transcribes one.
+- **Upgrading:** budgets.toml: `[code] lines` (a dated note). A room moved in before this needs its folder, by hand, in
+  yerkd.toml's `[memory] also` and in its block's `also` in rooms.toml, both as `"<layer>/NAME-attachments"` (in
+  `[memory] also` first: rooms.toml alone stops yerkd's next start); then `yerk deploy`; then once each,
+  `yerk files backfill NAME-on-yerk --root <layer>/NAME-attachments` and
+  `yerk pictures backfill NAME-on-yerk --root <layer>/NAME-attachments` (workers on the room's account, 20 pictures a batch).
+
+### gate-live-step (#114)
+
+- `yerk deploy` holds the layer's recall controls (the question set's `"control": true` rows) after the fast tests and
+  before the restart: each is searched on the exact half, one missed there once more as a room's recall searches, the
+  meaning half and its 5 s wait included, and one missed then deploys nothing, the tree put back and nothing restarted.
+  The card says `recall: N of N hit`, with how many only through the meaning half, or names the ones missed on a
+  `missed:` line. It runs on the code under test, in the daemon's tree (`yerk recall-bench --controls`: one JSON line,
+  nothing written to the bench series), about 3 s on the box's index. `--no-tests` skips it with the fast tests; with no
+  index or no controls the card says `recall: not checked` and the deploy goes on.
+- With the meaning half off, down or late, the recall tool's exact half alone (a room's recall, the bench, the deploy's
+  controls) now weighs a stored message as the fused rank does: the keywords go by their cover times its share (RECORD,
+  0.5), so a note comes before an old day log or an import that covers no more of the question, where the keyword list
+  was used as it came (a hit's score there is still the keyword cover). On the install's 164 scored questions the exact
+  half alone goes from 66 to 78 in the top six (top one 31 to 36), and 2 of the 3 controls only the meaning half found
+  are found without it; the fused rank is unchanged (top six 103). No reindex.
+- Deep recall is unchanged: the lines a room is handed on each name and topic in a message (decision 42) come from the
+  exact half as the index ranks it, unweighed, as before (`ranked(weigh=False)`), so it picks the lines it picked; a test
+  pins them to main's. Weighed, 90 of 186 sampled names on the install would have traded old day-log lines for notes.
+- **Upgrading:** budgets.toml `[code] lines` goes to 19922: shrink-1's 19,865 plus this PR's 57 (a dated note).
+
 ### shrink-1 (#112)
 
 - Deletion only: 725 counted lines out (20,590 to 19,865), toward ROADMAP-v3 claim 9. Nothing a room or a job used this
@@ -35,17 +87,6 @@ version changes.
   at /tmp's 85, over the line only at 94 or more, as under a longer TMPDIR. No earlier test's state was in it. It
   refused a deploy on 2026-10-24 with nothing wrong in the layer. The file is now quadrupled (21,207 plus the
   path), so the test says what it means in any temp folder.
-
-## 2026-10-24
-
-### web-budget
-
-- The line for Claude Code's other tool entries (its deferred-loading placeholder and the web plug-in's tools) is 3,429,
-  what the rooms send: web_research and web_research_result (1,716) came in on Oct 20 with no raise, and `yerk map`
-  counts this part at its line until a transcript measures it, so no check saw them. `yerk map --wire` reads 3,421 where
-  a room runs the plug-in and 3,429 in the one room whose newest shape is still the box bridge's, both under it now.
-- The budget test carries the research pair at its measured sizes, so it fails when the part as sent passes its line.
-- **Upgrading:** nothing to edit. budgets.toml: `deferred_tool_names` 3,429 and the session `total` 98,330 (a dated note).
 
 ## 2026-10-23
 

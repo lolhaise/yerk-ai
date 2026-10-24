@@ -1,6 +1,7 @@
 """`yerk room add NAME --from discord:ID`: a Discord chat moves in as a room. Its channel, its voice, its rooms.toml
 block (a template in examples/rooms/, owner.toml or person.toml, over a room of the same kind it is made like), its
-history through the one import below, its test webhook; then the deploy line and the check. Discord through
+history through the one import below (its files in <layer>/NAME-attachments, added to the block's `also` when it has
+one), its test webhook; then the deploy line, the check and the two backfills of those files. Discord through
 discord.py's REST client and the bot token yerkd.toml names, never printed. --dry-run reads and prints, and writes
 and sends nothing. It never restarts the daemon: a deploy runs detached from any room. `yerk import` files a chat's
 history, or every chat's on the server, through the same import with no room made."""
@@ -16,7 +17,7 @@ from typing import Any
 
 import discord
 
-from . import context, memory
+from . import context, memory, words
 from .channels.discord import REPLY_MAX, file_type, safe_name
 from .config import REPO, budgets, load_toml, people, private_dir, room_id, rooms, state_dir, toml_value, write_private
 
@@ -135,6 +136,9 @@ async def add(a: argparse.Namespace) -> int:
         ows += [{"id": str(a.person), "type": 1, "allow": str(t["allow"]), "deny": "0"}] if a.person else []
         fill = {"name": a.room, "channel": cid or "NEW", "layer": str(priv.resolve() / a.room)}
         block = have or block_of(t, rs[like], fill) | ({"people": [a.person]} if a.person else {})
+        saved = context.attachments_dir(priv, room, block)       # the history's files: in its also, its recall and backfills reach them
+        if listing := not have and not a.person and isinstance(block.get("also"), list) and str(saved) not in block["also"]:
+            block["also"] = [*block["also"], str(saved)]         # a block with no also reads every root: never cut to this one
         text, head = (priv / "rooms.toml").read_text(), f"\n# {room}: moved in from {a.source} by `yerk room add`\n"
         if not have:                                # the file it would write loads, with the room as built
             got = rooms(priv, text + head + "\n".join(toml_lines(f"rooms.{room}", block)), own=True)
@@ -166,6 +170,8 @@ async def add(a: argparse.Namespace) -> int:
         body = "\n".join(toml_lines(f"rooms.{room}", block))
         print(f"rooms.toml: {room} is there, kept as it is" if have else
               f"rooms.toml: {'would append' if dry else 'appending'}, after a timestamped copy in backups/:{head}{body}")
+        if listing:
+            print(f"also: {'would list' if dry else 'listing'} {saved} in it, the folder the history's files go to")
         if not have and not dry:
             (priv / "backups").mkdir(mode=0o700, exist_ok=True)
             write_private(priv / "backups" / f"rooms.toml.pre-{a.room}-{datetime.now():%Y-%m-%d-%H%M%S}", text)
@@ -173,7 +179,7 @@ async def add(a: argparse.Namespace) -> int:
         log = memory.DailyLog(s.daily, s.tz, {room: (room_id(room, block), memory.room_class(block))})
         since = datetime.fromisoformat(a.since).replace(tzinfo=s.tz) if a.since else SINCE
         roles = {str(d["owner"]): "owner", **({str(a.person): "person"} if a.person else {})}
-        n = await history(http, log, room, old, roles, lay / f"{a.room}-attachments", since, dry)
+        n = await history(http, log, room, old, roles, saved, since, dry)
         print(f"history: {n['messages']} messages from {a.source}, {n['new']} {'to file' if dry else 'filed'}, "
               f"{n['messages'] - n['new']} there already; {n['files']} files up to 25 MB, {n['saved']} {'to save' if dry else 'saved'}")
         hooks = [w for w in await http.channel_webhooks(cid) if w["name"] == HOOK] if cid else []
@@ -188,12 +194,20 @@ async def add(a: argparse.Namespace) -> int:
     ids, wid = list(d.get("test_senders", [])), int(hook["id"]) if hook else "NEW"
     print(f"yerkd.toml: test_senders has the test webhook {wid} already" if wid in ids else "yerkd.toml [discord], by "
           f"hand before the deploy:\n- test_senders = {toml_value(ids)}\n+ test_senders = {toml_value([*ids, wid])}")
+    also = [(priv / Path(str(x)).expanduser()).resolve() for x in block.get("also") or []]
+    if saved in also and saved not in s.scope.roots:            # a room's also outside them stops yerkd's start (memory.Settings.only)
+        print(f"yerkd.toml [memory] also, by hand before the deploy, or yerkd does not start: add \"{saved}\"")
     b, now = budgets(), datetime.now(timezone.utc)
     start = context.session_start(priv, block, b, rules=s.root / memory.RULES)
     bad = context.violations(start, context.per_message(room, block, "owner", now, now - timedelta(minutes=27), b), b)
     print(f"map: {'; '.join(bad) if bad else 'under budget'} (`yerk map {room}` after the deploy shows each part)")
     print(f"deploy, detached at a quiet moment: setsid nohup yerk deploy > {state}/deploy-{a.room}.log 2>&1 < /dev/null &")
     print(f"warm-up, after it: curl -s -H 'Content-Type: application/json' -d '{{\"content\": \"...\"}}' \"$(cat {url})\"")
+    if saved in also:
+        print("\n".join(f"{k}, after the deploy: {c.format(room=room, folder=saved)}" for k, c in zip(("pictures", "files"), words.BACKFILLS)))
+    elif not a.person:
+        print(f"backfill: {saved} is not in {room}'s also; add it there and to yerkd.toml [memory] also by hand" if "also" in block else
+              f"backfill: none, {room} has no also (it recalls every [memory] also root) and a backfill takes only a folder it lists")
     return 1 if bad else 0
 
 

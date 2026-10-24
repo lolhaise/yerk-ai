@@ -134,12 +134,14 @@ SEEN = ".seen.txt"           # and a picture's NAME.seen.txt, what the room read
 SEEN_HEAD = "seen in "       # how a sidecar's first line, written by code, starts (pictures.header)
 EXTRACTED = (".sheet.txt", ".pdf.txt")   # a workbook's and a PDF's text as extracted beside it (files.py): text kinds by their .txt
 FILE_HEAD = "extracted in "  # how one's first line, written by code, starts (files.write)
+TRANSCRIPT = ".transcript.txt"     # a recording's words as transcribed beside it (transcribe.py): a text kind by its .txt
 
 
 def kinds(root: Path) -> tuple[str, ...]:
     """The file kinds a root is indexed for: Markdown and a sidecar (a `--root` backfill files one beside a picture, a workbook
-    or a PDF in a listed folder), and in a room's upload inbox (<room>/work/inbox) its text kinds too."""
-    return UPLOADS if root.parts[-2:] == ("work", "inbox") else (".md", SEEN, *EXTRACTED)
+    or a PDF in a listed folder; a recording's transcript beside it is one too), and in a room's upload inbox
+    (<room>/work/inbox) its text kinds too."""
+    return UPLOADS if root.parts[-2:] == ("work", "inbox") else (".md", SEEN, *EXTRACTED, TRANSCRIPT)
 
 
 @dataclass(frozen=True)

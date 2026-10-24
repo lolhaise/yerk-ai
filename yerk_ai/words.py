@@ -307,6 +307,10 @@ FILE_TEXT = "[its text, extracted by code] saved at {path}"     # under a workbo
 FILES_PERSON = "{room} is not an owner room: a workbook or a PDF sent there is never read"
 FILES_BACKFILL = "{n} workbook(s) and PDF(s) in {where} with no text beside them or an older one; {done}"
 FILES_WRITTEN, FILES_DRY = "written", "nothing written (--dry-run)"
+BACKFILLS = ("yerk pictures backfill {room} --root {folder}", "yerk files backfill {room} --root {folder}")   # room add's, the doctor's
+MOVED_IN = ("{room}: {pics} picture(s) and {sheets} workbook(s) or PDF(s) moved in with it, in {folder}, have no sidecar, so no "
+            "recall finds what is in them: {commands}")
+MOVED_UNLISTED = "; list the folder in the room's also and in yerkd.toml's [memory] also first"
 # missing-ability (needs.py): a room's need in the machine room, its build and its end there, and the refusals
 NEED_FILED = WORKING + " need {n} from {room}: {ability}; `yerk needs build {day} {n}`"
 NEED_AGAIN = WORKING + " need {n} asked again from {room}, {count} times now: {ability}"
@@ -484,6 +488,8 @@ ROLLBACK_NEVER, DETACHED = "rollback to {commit} never ran", "detached at {commi
 MOVED_BACK, AHEAD = "{name} moved back to {commit}", "{name} is {n} ahead"
 PULL_BRINGS = "a pull brings {commit} back to the tree"
 TESTS_PASSED, TESTS_SKIPPED, TESTS_FAILED = "fast tests passed", "fast tests skipped", "the fast tests failed"
+RECALL, RECALL_BY, MISSED = "recall: {n} of {of} hit", " ({m} by meaning)", "missed: {name}"     # the live controls
+RECALL_NONE, RECALL_BROKE = "recall: not checked, {why}", "the recall check did not run"
 NOT_QUIET = "never quiet in {span}"
 TURN_RUNS, RECENT = "{name} has a turn", "{name} had a message {ago} ago"
 PROOF_UP, PROOF_CONNECTED, PROOF_STATUS = "yerkd up", "channel connected", "status answers"

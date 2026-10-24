@@ -59,6 +59,11 @@ def layer_dir(private: Path, room: dict[str, Any]) -> Path:
     return (private / str(room.get("layer", "."))).resolve()
 
 
+def attachments_dir(private: Path, name: str, room: dict[str, Any]) -> Path:
+    """Where `yerk room add NAME` saves the files the moved chat brought: <layer>/NAME-attachments, the room NAME-on-yerk."""
+    return layer_dir(private, room) / f"{name.removesuffix('-on-yerk')}-attachments"
+
+
 def walls(private: Path, state: Path, roots: tuple[Path, ...], rooms: dict[str, dict[str, Any]]) -> None:
     """The people guard: a room with `people` has a layer of its own (a working folder, its files the prompt)."""
     held = (*roots, (private / "secrets").resolve(), state.resolve())
