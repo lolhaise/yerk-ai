@@ -8,6 +8,17 @@ version changes.
 
 ## 2026-10-24
 
+### web-budget (#116)
+
+- The line for Claude Code's other tool entries (its deferred-loading placeholder and the web plug-in's tools) is 3,429,
+  what the rooms sent when it was measured: web_research and web_research_result (1,716) came in on Oct 20 with no
+  raise, and `yerk map` counts this part at its line until a transcript measures it, so no check saw them. `yerk map
+  --wire` reads 3,421, under it, in the two rooms whose newest shape holds the plug-in's four tools and nothing more;
+  the two whose newest shape came after the measurement (Oct 24, 13:2x) also send web_image (913) and read 4,334, one
+  of them 11,453 with a second MCP server's five tools, both still over it.
+- The budget test carries the research pair at its measured sizes, so it fails when the part as sent passes its line.
+- **Upgrading:** nothing to edit. budgets.toml: `deferred_tool_names` 3,429 and the session `total` 98,330 (a dated note).
+
 ### attachments-root (#115)
 
 - The files a chat brought when `yerk room add NAME` moved it in, saved in `<layer>/NAME-attachments`, can be recalled.

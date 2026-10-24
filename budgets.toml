@@ -5,7 +5,7 @@
 # when a part or a total passes its number here.
 
 [session_start]
-total = 96614
+total = 98330
 
 # Load order, most stable first, so the cached start of the prompt survives.
 # The first five parts are Claude Code's own (its default prompt, the built-in tools
@@ -22,11 +22,18 @@ total = 96614
 # 2026-10-23: missing-ability's `need` tool (a room that hits a wall files what it needed, in place of a way of its own),
 # 793 as this tree builds it on Python 3.13, about 808 as sent (`seen` measures 830 here against 845 sent), so 11,631 and
 # 11,700; no part could pay, so the total rose by the 700.
+# 2026-10-24, web-budget: the other tool entries measured as `yerk map --wire` counts them in the six rooms' newest request
+# shapes (Claude Code 2.1.304): 3,421 in three rooms (the web plug-in's web_fetch 871, web_search 620, web_research 1,284
+# and web_research_result 432, the placeholder 214) and 3,429 in a person's room (the box bridge's web_fetch 878 and
+# web_search 621, its newest shape Oct 22), over the 1,713 line since the research pair (1,716) came in on Oct 20 with no
+# raise, so 3,429; no part could pay (the six rooms' largest mechanics 4,474, persona 11,750, rulebook 13,607, room voice
+# 5,443 and pinned memory 3,912 that day, 614 between them; `rules` is the cap a rule filing fits under), so the total
+# rose by the 1,716.
 [session_start.claude_code]
 claude_code_prompt = 11000
 builtin_tools = 10401
 yerk_tools = 11700
-deferred_tool_names = 1713
+deferred_tool_names = 3429
 skills = 0
 
 # Yerk AI's own parts, joined into the one file passed by --append-system-prompt-file. `rules` is the
