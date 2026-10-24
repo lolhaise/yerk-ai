@@ -241,27 +241,35 @@ def test_the_index_answers_throughout_a_backfill(tmp_path):
     idx.close()
 
 
-# 6. the bench's output shape is unchanged, on the example set with its two room-recall kinds
-def test_the_bench_shape_is_unchanged_and_the_example_set_has_the_room_kinds(tmp_path, capsys):
+# 6. the bench's output shape, on the example set with its two room-recall kinds and the bench's three kinds beside it
+def test_the_bench_shape_holds_the_three_kinds_and_the_example_set_has_the_room_kinds(tmp_path, capsys):
     s = memory.settings(EXAMPLE_PRIVATE, tmp_path / "state", {"timezone": "UTC"})
     memindex.Index(s.index_db, s.scope).sync()
     qfile = EXAMPLE_PRIVATE / "evals" / "recall-questions.json"
     kinds = [q["kind"] for q in json.loads(qfile.read_text())["questions"]]
     assert "room-recent" in kinds and "room-day" in kinds
     r = memory.bench(s, qfile)
-    assert sorted(r) == ["blind", "controls", "file", "k", "kept", "lost", "ok", "questions", "rows", "top_1", "top_1_rate",
+    assert sorted(r) == ["blind", "controls", "file", "k", "kept", "kinds", "lost", "ok", "questions", "rows", "top_1", "top_1_rate",
                          "top_k", "top_k_rate"]
-    assert all(sorted(row) == ["control", "id", "kept", "rank", "top"] for row in r["rows"])
+    assert all(sorted(row) == ["control", "id", "kept", "kind", "rank", "top"] for row in r["rows"])
     assert r["kept"] == sum(1 for row in r["rows"] if row["kept"] and not row["control"]) and r["kept"] + len(r["lost"]) == r["top_k"]
     assert r["ok"] and r["blind"] == [] and r["controls"] == 1 and r["top_k"] >= 6
+    ids = {x: [q["id"] for q in json.loads(qfile.with_name(f"{x}-questions.json").read_text())["questions"] if not q.get("control")]
+           for x in memory.KINDS}                                          # the example layer's three files parse, one kind each
+    assert {x: [row["id"] for row in r["rows"] if row["kind"] == x and not row["control"]] for x in memory.KINDS} == ids
+    assert [(x, n["questions"]) for x, n in r["kinds"].items()] == [(x, len(ids[x])) for x in memory.KINDS]
+    assert sum(n["questions"] for n in r["kinds"].values()) == r["questions"] and sum(n["top_k"] for n in r["kinds"].values()) == r["top_k"]
     assert cli.main(["recall-bench", "--private", str(EXAMPLE_PRIVATE), "--state", str(tmp_path / "state"),
                      "--questions", str(qfile)]) == 0
     out = capsys.readouterr().out.splitlines()
     assert re.fullmatch(r"top 6: \d+/\d+ \(\d+\.\d%\)   top one: \d+/\d+ \(\d+\.\d%\)   controls: \d+   "
                         r"answer in the snippet: \d+/\d+", out[0]), out[0]
     assert out[1].startswith("misses: ")
-    assert sorted(json.loads((tmp_path / "state" / "memory" / "recall-bench.jsonl").read_text().splitlines()[-1])) == [
-        "at", "blind", "controls", "k", "kept", "lost", "misses", "questions", "top_1", "top_1_rate", "top_k", "top_k_rate"]
+    assert [re.fullmatch(rf"{x}: top 6 \d+/{len(ids[x])} \(\d+\.\d%\)   top one \d+/{len(ids[x])} \(\d+\.\d%\)", line) is not None
+            for x, line in zip(memory.KINDS, out[2:])] == [True] * 3, out[2:]
+    row = json.loads((tmp_path / "state" / "memory" / "recall-bench.jsonl").read_text().splitlines()[-1])
+    assert sorted(row) == ["at", "blind", "controls", "k", "kept", "kinds", "lost", "misses", "questions", "top_1", "top_1_rate",
+                           "top_k", "top_k_rate"] and list(row["kinds"]) == list(memory.KINDS)
 
 
 # 6b. the bench is a ratchet: a planted drop exits 4 and says so; a dated note in budgets.toml naming it lets the run pass
@@ -273,13 +281,21 @@ def test_a_planted_drop_fails_the_bench_unless_a_dated_note_names_it(tmp_path, c
     assert cli.main(args) == 0
     series = tmp_path / "state" / "memory" / "recall-bench.jsonl"
     row = json.loads(series.read_text().splitlines()[-1])
-    best = row["top_k"] + 2                                                 # four runs before, each two over this one
-    series.write_text("".join(json.dumps({**row, "top_k": best}) + "\n" for _ in range(4)))
-    capsys.readouterr()
+
+    def plant(kind: str) -> tuple[dict, int]:      # four runs before, each two over this one in `kind` alone
+        n = row["kinds"][kind]
+        series.write_text("".join(json.dumps({**row, "kinds": {**row["kinds"], kind: {**n, "top_k": n["top_k"] + 2}}}) + "\n" for _ in range(4)))
+        capsys.readouterr()
+        return n, n["top_k"] + 2
+    n, best = plant("recall")
     assert cli.main(args) == 4
-    assert f"RATCHET: top 6 fell to {row['top_k']} of {row['questions']} from {best} in the 4 runs before" in capsys.readouterr().err
-    monkeypatch.setattr(cli, "budgets", lambda: {"recall": {"slack": 1, "drops": [f"2026-10-22: {best} to {row['top_k']}, planted"]}})
+    assert f"RATCHET: top 6 fell to {n['top_k']} of {n['questions']} from {best} in the 4 runs before" in capsys.readouterr().err
+    monkeypatch.setattr(cli, "budgets", lambda: {"recall": {"slack": 1, "drops": [f"2026-10-22: {best} to {n['top_k']}, planted"]}})
     assert cli.main(args) == 0 and "RATCHET" not in capsys.readouterr().err
+    n, best = plant("self")                          # the note, now with the self kind's numbers and no kind, names recall's
+    assert cli.main(args) == 4
+    assert capsys.readouterr().err.splitlines() == [f"RATCHET: self: top 6 fell to {n['top_k']} of {n['questions']} from {best} in the "
+                                                    "4 runs before, and no dated note in budgets.toml [recall] drops names it"]
 
 
 # 7. the manifest, and `yerk abilities` and `yerk explain` both ways
@@ -423,7 +439,7 @@ def test_a_model_change_re_embeds_once_and_a_narrower_width_keeps_the_shape(tmp_
         {"id": "q1", "kind": "fact", "q": "what colour is the example kettle", "answer_tokens": ["teal"]},
         {"id": "c1", "kind": "fact", "control": True, "q": "example kettle", "answer_tokens": ["kettle"]}]}))
     b = memory.bench(s, qfile)
-    assert sorted(b) == ["blind", "controls", "file", "k", "kept", "lost", "ok", "questions", "rows", "top_1", "top_1_rate",
+    assert sorted(b) == ["blind", "controls", "file", "k", "kept", "kinds", "lost", "ok", "questions", "rows", "top_1", "top_1_rate",
                          "top_k", "top_k_rate"]
     assert b["blind"] == [] and b["top_k"] == 1
     server2.stop()

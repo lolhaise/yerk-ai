@@ -1,0 +1,8 @@
+{
+  "format": "yerk recall-bench question set, the episodic kind (example, invented): what happened on a day, in the owner's words. Read beside recall-questions.json, in its shape, and scored apart from it and with it; a hit counts as there.",
+  "stale": "(^|/)overwrite-backups/",
+  "questions": [
+    {"id": "ep-shed", "kind": "episodic", "q": "what happened with the shed door", "answer_tokens": ["shed", "hinge"]},
+    {"id": "ep-trip", "kind": "episodic", "q": "what did I add to the packing list for the trip", "answer_tokens": ["packing list", "charger"]}
+  ]
+}

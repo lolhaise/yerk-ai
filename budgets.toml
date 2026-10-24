@@ -397,4 +397,8 @@ secs = 60
 # the one resolver: a room's name, its rooms.toml channel or the id alone; external_hit reads it with the rooms' confs and
 # names a held send's room by it), daemon.py 1 (the send tool resolves `room` through it before its checks).
 # 19,976 on main 9d9e05b (#116): 19,960 + 16.
-lines = 19976
+# 2026-10-24: bench-kinds raised it by 17: the recall bench scores the episodic and self kinds beside the recall one, apart
+# and together, and holds each to its own ratchet (ROADMAP-v6 step 4, the judge v5 promised for those two sets), not folded
+# to fit. memory.py 13 (KINDS, score, the bench reading <kind>-questions.json beside the recall file, the ratchet a kind at
+# a time with its kind in the note), cli.py 4 (the series row's kinds, a line and a ratchet per kind). 19,993 on main 30ea8dc.
+lines = 19993
