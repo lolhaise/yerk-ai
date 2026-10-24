@@ -17,7 +17,7 @@ import subprocess
 import time
 from types import SimpleNamespace
 
-from yerk_ai import beat, deploy, gates, jobs, morning, status, words
+from yerk_ai import beat, deploy, gates, jobs, memory, morning, status, words
 from yerk_ai.accounts import Cooldowns, load_accounts
 from yerk_ai.config import EXAMPLE_PRIVATE, REPO, budgets, private_dir
 from yerk_ai.daemon import Yerkd
@@ -201,7 +201,8 @@ def test_the_fast_tests_run_in_the_tree_and_a_failure_deploys_nothing(tmp_path, 
     assert capsys.readouterr().out.splitlines()[1] == f"{words.PLAIN} the fast tests failed"
     assert f.restarts == [] and deploy.head(tree) == ids[0]
     assert deploy.run(priv, state, ids[2], sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap) == 0
-    assert f"{words.DONE} fast tests passed" in capsys.readouterr().out.splitlines()
+    out = capsys.readouterr().out.splitlines()                         # the real recall check, in the tree: this layer has no index
+    assert f"{words.DONE} fast tests passed" in out and f"{words.PLAIN} recall: not checked, no index" in out
 
 
 def test_the_fast_tests_read_the_layer_deployed_for_and_the_card_names_the_room_and_part(tmp_path, capsys, monkeypatch):
@@ -966,3 +967,63 @@ def test_with_no_private_given_and_none_on_the_unit_s_command_line_the_deploy_re
                           proc=proc, systemd=lambda name: f) == 1
         assert capsys.readouterr().out.splitlines() == [f"{words.NOT_DONE} not deployed", f"{words.PLAIN} no private folder: pass --private"]
     assert f.restarts == [] and posts == [] and where(tree) == ("main", ids[0]) and [r[3] for r in rows(state)] == ["refused"] * 2
+
+
+def test_the_recall_step_searches_each_control_on_the_exact_half_and_a_miss_there_once_more_with_the_meaning_half(tmp_path):
+    """memory.controls, `yerk deploy`'s recall step: a control the exact half finds is one search, with the meaning half off;
+    one it misses is searched once more as a room's recall searches, meaning half and all, and is a hit through it; one
+    neither finds is missed. The scored questions are not its business, and with no index or no controls it holds nothing."""
+    s = memory.settings(tmp_path / "private", tmp_path / "state", {"timezone": "UTC"})
+    s.index_db.parent.mkdir(parents=True)
+    s.index_db.write_text("")                                          # an index there; the fake search never opens it
+    qs = [{"id": f"ctrl-{i}", "q": f"where is example thing {i}", "answer_tokens": [f"example{i}"], "control": True} for i in range(13)]
+    (qfile := tmp_path / "questions.json").write_text(json.dumps({"questions": [*qs, {"id": "q-1", "q": "a scored one", "answer_tokens": ["x"]}]}))
+    calls: list = []
+
+    def search(meaning_only=(), nowhere=()):
+        def find(_s, query, k, deadline_s=5.0, wide=True):
+            cid = "ctrl-" + query.rsplit(" ", 1)[1]
+            calls.append((cid, wide))
+            hit = cid not in nowhere and (wide or cid not in meaning_only)
+            return {"ok": True, "hits": [{"path": "/x/memory/notes.md", "text": f"example{cid[5:]} is here" if hit else "else"}]}
+        return find
+    assert memory.controls(s, qfile, find=search()) == {"of": 13, "hit": 13, "meaning": [], "missed": [], "none": ""}
+    assert calls == [(f"ctrl-{i}", False) for i in range(13)]          # the exact half alone, once each
+    calls.clear()
+    assert memory.controls(s, qfile, find=search(meaning_only={"ctrl-3"})) == {"of": 13, "hit": 13, "meaning": ["ctrl-3"], "missed": [], "none": ""}
+    assert len(calls) == 14 and [c for c in calls if c[1]] == [("ctrl-3", True)]     # the retry: once, and for that control only
+    calls.clear()
+    r = memory.controls(s, qfile, find=search(nowhere={"ctrl-5"}))
+    assert (r["hit"], r["meaning"], r["missed"], calls.count(("ctrl-5", True)), len(calls)) == (12, [], ["ctrl-5"], 1, 14)
+    calls.clear()
+    assert memory.controls(s, tmp_path / "none.json", find=search())["none"] == "no controls"
+    s.index_db.unlink()
+    assert memory.controls(s, qfile, find=search()) == {"of": 13, "hit": 0, "meaning": [], "missed": [], "none": "no index"} and calls == []
+
+
+def test_a_deploy_holds_the_live_controls_after_the_fast_tests_and_one_missed_restarts_nothing(tmp_path, capsys):
+    """After the fast tests and before the restart the deploy runs the layer's controls in the tree (`yerk recall-bench
+    --controls`, its check): the card says how many hit and how many only through the meaning half, or names the ones
+    missed, and then nothing restarts and the tree goes back; a check that never ran holds nothing. --no-tests skips it too."""
+    tree, ids = repo(tmp_path)
+    (tree / "tests").mkdir()
+    (tree / "tests" / "test_x.py").write_text("def test_x():\n    pass\n")
+    priv, state = layer(tmp_path, tree, tests=["tests/test_x.py"])
+    f, seen, ok = Fake(tree), [], lambda p: {"ok": True}
+
+    def check(r):
+        return lambda *a: seen.append(a) or r
+    miss = {"of": 13, "hit": 12, "meaning": [], "missed": ["ctrl-example"], "none": ""}
+    assert deploy.run(priv, state, ids[1], sd=f, ask=f.ask, post=ok, sleep=nap, check=check(miss)) == 1
+    assert capsys.readouterr().out.splitlines() == [f"{words.NOT_DONE} not deployed", f"{words.DONE} fast tests passed",
+                                                    f"{words.PLAIN} recall: 12 of 13 hit", f"{words.PLAIN} missed: ctrl-example"]
+    assert seen == [(tree, priv, state)] and f.restarts == [] and where(tree) == ("main", ids[0])
+    assert deploy.run(priv, state, ids[1], sd=f, ask=f.ask, post=ok, sleep=nap, check=check({"broke": True})) == 1
+    assert capsys.readouterr().out.splitlines()[2:] == [f"{words.PLAIN} the recall check did not run"] and f.restarts == []
+    held = {"of": 13, "hit": 13, "meaning": ["ctrl-a", "ctrl-b", "ctrl-c"], "missed": [], "none": ""}
+    assert deploy.run(priv, state, ids[1], sd=f, ask=f.ask, post=ok, sleep=nap, check=check(held)) == 0
+    out = capsys.readouterr().out.splitlines()
+    assert out[1:3] == [f"{words.DONE} fast tests passed", f"{words.DONE} recall: 13 of 13 hit (3 by meaning)"] and f.restarts == [ids[1]]
+    assert all(words.width(x) <= words.PHONE for x in out)
+    assert deploy.run(priv, state, ids[2], tests=False, sd=f, ask=f.ask, post=ok, sleep=nap, check=check(miss)) == 0 and len(seen) == 3
+    assert [r[3] for r in rows(state)] == ["recall failed", "recall failed", "proven", "proven"]

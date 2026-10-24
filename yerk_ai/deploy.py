@@ -1,7 +1,8 @@
 """`yerk deploy [REF]`: moves the running daemon onto a commit and proves it is up; when the proof fails, it
 moves the daemon back to the commit it ran and proves that. REF must fast-forward from the running commit and
 from the branch checked out in the daemon's tree, which moves to it by `merge --ff-only` (a rollback moves it
-`reset --keep`; a detached tree stays detached); the fast tests run there; the restart waits until no
+back with `reset --keep`; a detached tree stays detached); the fast tests run there, then the layer's recall
+controls (each through the exact half, a miss once more with the meaning half; one missed deploys nothing); the
 person's turn runs, no room has had a person's message for [deploy] quiet_seconds and the memory
 index is not rebuilding, and gives quiet_seconds and the memory index is not rebuilding, and gives up after cap_minutes, the checkout as it was
 found. The proof: the unit active, the channel connected, /status answering under the install's secret with the
@@ -286,6 +287,27 @@ def indexed(state: Path) -> str:
         return ""
 
 
+def recall_check(tree: Path, private: Path, state: Path) -> dict[str, Any]:
+    """The layer's recall controls on the code under test, run in the tree as the fast tests are (memory.controls, through
+    `yerk recall-bench --controls`, which writes nothing); a check that did not run or printed no result is {"broke": True}."""
+    try:
+        t = subprocess.run([sys.executable, "-m", "yerk_ai.cli", "recall-bench", "--controls", "--private", str(private),
+                            "--state", str(state)], cwd=tree, capture_output=True, text=True, timeout=180)
+        return dict(json.loads(t.stdout.splitlines()[-1]))
+    except (OSError, ValueError, TypeError, IndexError, subprocess.SubprocessError):
+        return {"broke": True}
+
+
+def recalled(r: dict[str, Any]) -> tuple[bool, list[str]]:
+    """(held, the card's lines): every control hit, how many only through the meaning half; else the ones missed."""
+    W = words
+    if r.get("broke") or r.get("none"):
+        return not r.get("broke"), [W.line(f"{W.PLAIN} {W.RECALL_BROKE if r.get('broke') else W.RECALL_NONE.format(why=r['none'])}")]
+    said = W.RECALL.format(n=r["hit"], of=r["of"]) + (W.RECALL_BY.format(m=len(r["meaning"])) if r["meaning"] else "")
+    missed = [W.named(f"{W.PLAIN} {W.MISSED}", ", ".join(r["missed"]))] if r["missed"] else []
+    return not missed, [W.line(f"{W.PLAIN if missed else W.DONE} {said}"), *missed]
+
+
 def prove(state: Path, sd: Systemd, ask: Ask, served: set[str], want: str, wait: float,
           sleep: Callable[[float], None], unit_file: str = "", index: bool = False) -> tuple[bool, list[str]]:
     """Checked until all hold or `wait` seconds pass; a line per check, its colour first. After the move
@@ -316,7 +338,8 @@ def cut(ledger: Ledger, opened: set[str], until: float) -> int:
 def run(private: Path, state: Path, ref: str = "", tests: bool = True, unit_file: bool = False, *,
         sd: Systemd | None = None, ask: Ask = status.ask, post: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
         sleep: Callable[[float], None] = time.sleep, home: Path = Path.home() / ".config" / "systemd" / "user",
-        systemd: Callable[[str], Systemd] = Systemd, proc: Path = Path("/proc")) -> int:
+        systemd: Callable[[str], Systemd] = Systemd, proc: Path = Path("/proc"),
+        check: Callable[[Path, Path, Path], dict[str, Any]] = recall_check) -> int:
     """0 deployed and proven; 1 rolled back or not deployed (the card says which and why); 2 the rollback
     failed or never ran, so the daemon may run a commit no proof passed (the morning diff says it again);
     130 stopped by Ctrl-C, SIGTERM or SIGHUP, and rolled back or nothing stopped (the card says which)."""
@@ -428,14 +451,18 @@ def run(private: Path, state: Path, ref: str = "", tests: bool = True, unit_file
         why = [W.line(f"{W.PLAIN} {W.no_paths(x)}") for x in FAILED.findall(t.stdout)[:1]]     # the first failure, in its words
         return no("tests failed", W.line(f"{W.PLAIN} {W.TESTS_FAILED}"), *why, after=target)
     tested = W.line(f"{W.DONE if tests else W.PLAIN} {W.TESTS_PASSED if tests else W.TESTS_SKIPPED}")
+    held, rec = recalled(check(tree, private, state)) if tests else (True, [])   # the live controls, the layer the daemon serves
+    if not held:
+        move(tree, on, found)
+        return no("recall failed", tested, *rec, after=target)
     where = [] if on else [W.line(f"{W.PLAIN} {W.DETACHED.format(commit=target[:7])}")]
     ok, why, outcome = settle("deploy", target, before, (lambda: sd.move(tree, home, moved)) if unit_file else sd.restart)
     if why:
         move(tree, on, found)
-        return no(outcome, *why, tested, after=target)
+        return no(outcome, *why, tested, *rec, after=target)
     if ok:
-        return tell([W.line(f"{W.DONE} {W.DEPLOYED.format(commit=target[:7])}"), tested, *card, *where], 0)
-    first = [W.line(f"{W.NOT_DONE} {(W.BROKE_OFF if outcome == 'fault' else W.FAILED_PROOF).format(commit=target[:7])}"), tested, *card]
+        return tell([W.line(f"{W.DONE} {W.DEPLOYED.format(commit=target[:7])}"), tested, *rec, *card, *where], 0)
+    first = [W.line(f"{W.NOT_DONE} {(W.BROKE_OFF if outcome == 'fault' else W.FAILED_PROOF).format(commit=target[:7])}"), tested, *rec, *card]
     card.clear()
 
     def restart_before() -> bool:
