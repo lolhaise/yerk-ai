@@ -36,6 +36,17 @@ version changes.
   refused a deploy on 2026-10-24 with nothing wrong in the layer. The file is now quadrupled (21,207 plus the
   path), so the test says what it means in any temp folder.
 
+## 2026-10-24
+
+### web-budget
+
+- The line for Claude Code's other tool entries (its deferred-loading placeholder and the web plug-in's tools) is 3,429,
+  what the rooms send: web_research and web_research_result (1,716) came in on Oct 20 with no raise, and `yerk map`
+  counts this part at its line until a transcript measures it, so no check saw them. `yerk map --wire` reads 3,421 where
+  a room runs the plug-in and 3,429 in the one room whose newest shape is still the box bridge's, both under it now.
+- The budget test carries the research pair at its measured sizes, so it fails when the part as sent passes its line.
+- **Upgrading:** nothing to edit. budgets.toml: `deferred_tool_names` 3,429 and the session `total` 98,330 (a dated note).
+
 ## 2026-10-23
 
 ### rules-on-demand (#102)
