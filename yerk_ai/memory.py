@@ -884,21 +884,6 @@ def record(s: Settings, now: datetime | None = None) -> Callable[[dict[str, Any]
     return weight
 
 
-ALIASES = 0          # the keyword search's query: the question, then its names' card keys (mentions.py): 1 every one, 2 a fuller form only
-_NAMES: dict[Path, mentions.Index] = {}
-
-
-def aliased(s: Settings, query: str) -> str:
-    """The question for the keyword search, with ALIASES each name it names followed by the own keys of the entries its card would
-    show (2: only a key holding the name's words, "Ada" brings "Ada Example"): a thing named one way in the question and another in
-    the notes is found both ways."""
-    if not ALIASES:
-        return query
-    found = _NAMES.setdefault(s.mentions, mentions.Index(s.mentions)).load().match(query)
-    return " ".join(dict.fromkeys([query, *(e["key"] for e in found if e["key"] and (
-        ALIASES == 1 or set(e["named"].split()) < set(mentions.tokens(e["key"], True))))]))
-
-
 def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader: Reader | None = None,
            weights: dict[str, float] | None = None, wide: bool = True, wait: float = MEANING_WAIT, docs: bool = True, weigh: bool = True) -> dict[str, Any]:
     """Ranked chunks, whole, with path and line, the keyword rank fused with the meaning rank when
@@ -913,7 +898,7 @@ def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader:
         try:
             # twice the pool by bm25, re-ranked by cover down to the pool: the cover re-rank needs
             # the candidates bm25 alone ranks low (measured on the fixed question set: 2 more top-six hits)
-            keywords = memindex.search(conn, aliased(s, query) if weigh else query, POOL, POOL * 2, weights, None if docs else s.docs)
+            keywords = memindex.search(conn, query, POOL, POOL * 2, weights, None if docs else s.docs)
         finally:
             conn.close()
     except FileNotFoundError as e:
