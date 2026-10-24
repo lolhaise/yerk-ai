@@ -1,5 +1,5 @@
-# The rule shapes (a figure grounded only by a user line or a tool result of the session, a
-# "what did we decide" answer needing a memory read, every tool that can carry evidence counted)
+# The rule shapes (a figure grounded only by a user line or a tool result of the session, every
+# tool that can carry evidence counted)
 # follow the workspace hooks this harness replaces; the code is new.
 """Records what each turn read (the evidence ledger), and after each reply checks what it claims against what it read (the Stop check).
 
@@ -8,23 +8,20 @@ tool_result): what it read (a path, a query, a command) and the text that came b
 prompts, the context the prompt hook added and the session-start file count as read too. The
 store is bounded by characters and drops the OLDEST result text first, never a later hit (DESIGN 5 and 8; L185, L175).
 
-After each reply the Stop check runs three rules and LOGS what it would bounce, never blocks
+After each reply the Stop check runs one rule and LOGS what it would bounce, never blocks
 (shadow mode, until 100 cases show under 1 in 10 false alarms):
 - figure: the reply quotes a figure that is on file in the memory tree, that no read of the turn
-  carries and that the room did not post in a reply earlier in its session (the check read that reply);
-- file: the reply names a file of the memory tree the turn never read;
-- decide: the prompt asks what was decided and the turn made no memory read (a recall or
-  read_memory call, a read inside a memory root, or recall the prompt hook put in).
-A fourth, decision 25 ("the check is the read"), reads the reply sentence by sentence: a claim
+  carries and that the room did not post in a reply earlier in its session (the check read that reply).
+A second, decision 25 ("the check is the read"), reads the reply sentence by sentence: a claim
 about what code does or lacks needs a test or probe run in the turn, a claim about what is running
 needs a status read, a claim about what was decided needs a memory read, a claim about a file's
 contents needs a read of a file. A claim with none is ledgered with the sentence and the tools the
 turn ran. A question, a hedge or a proposal ("would", "could", "might", "I think") is not a claim.
-A fifth, the stance rule (claim 3), ledgers each reply to the owner's pushback: held, conceded or folded.
-A sixth, the sheet rule, ledgers once a turn that sent a document or pasted a block with no claims
+A third, the stance rule (claim 3), ledgers each reply to the owner's pushback: held, conceded or folded.
+A fourth, the sheet rule, ledgers once a turn that sent a document or pasted a block with no claims
 sheet written or named in the turn (check_sheet), in a person's room; an owner's room is refused once instead.
-A seventh, the person rule, ledgers a sentence telling what someone said, wants, knows, decided or asked, or where they
-were, from a turn with no reading call (check_person); an eighth, the quote rule, a quoted span given as someone's or a
+A fifth, the person rule, ledgers a sentence telling what someone said, wants, knows, decided or asked, or where they
+were, from a turn with no reading call (check_person); a sixth, the quote rule, a quoted span given as someone's or a
 document's words that nothing the turn read, was given or posted earlier carries (check_quote). Neither counts a sentence about
 the owner or the room itself, or one written as the room's own note ("from my notes, not their words"); since 2026-10-23 an
 owner's room refuses the rest once a result when the turn made no reading call (Room.said_check), a person's room logs.
@@ -43,9 +40,6 @@ from typing import Any, Callable
 
 KEEP_CHARS = 400_000
 FIGURE = re.compile(r"(?<![\w.,$])(?:\$\s?\d[\d,]*(?:\.\d+)?[kKmM]?|\d{1,3}(?:,\d{3})+(?:\.\d+)?%?|\d+\.\d+%?|\d+%)" r"(?![\w,]|\.\d)")
-FILE = re.compile(r"(?<![\w/.-])((?:[\w.-]+/)*[\w.-]+\.(?:md|txt|json|toml|csv|pdf))(?::\d+)?\b")
-DECIDE = re.compile(r"\bwhat\s+(?:did|have|had)\s+we\s+(?:decide|agree|settle|choose|pick|land|go\s+with)"
-                    r"|\bdid\s+we\s+(?:decide|agree|settle)\b|\bwhat\s+was\s+(?:the|our)\s+(?:decision|call)\b", re.I)
 MEMORY_TOOLS = ("recall", "read_memory")
 
 
@@ -243,8 +237,8 @@ class Quoted(str):
         return False
 
 
-def check(reply: str, prompts: list[str], ev: Evidence, roots: tuple[Path, ...], filed: Callable[[str], str | None],
-          known: Callable[[str], str | None], said: str = "") -> list[tuple[str, str]]:
+def check(reply: str, ev: Evidence, filed: Callable[[str], str | None],
+          said: str = "") -> list[tuple[str, str]]:
     """(rule, detail) for each thing the reply leans on that the turn never read. Logs only. A figure in what the room
     posted in its session's earlier replies, `said` (Ledger.said), counts as read: the check ran on those replies."""
     out: list[tuple[str, str]] = []
@@ -265,13 +259,6 @@ def check(reply: str, prompts: list[str], ev: Evidence, roots: tuple[Path, ...],
         if where := filed(quoted):
             out.append(("figure", f"quoted {fig}, on file at {where}; no read this turn carries it "
                                   "(missing read: recall or read_memory of that file)"))
-    for name in dict.fromkeys(m.group(1) for m in FILE.finditer(reply)):
-        if Path(name).name in seen:
-            continue
-        if where := known(name):
-            out.append(("file", f"named {name} ({where}); the turn never read it"))
-    if any(DECIDE.search(p) for p in prompts) and not ev.memory_read(roots):
-        out.append(("decide", "answered what was decided with no memory read this turn"))
     return out
 
 

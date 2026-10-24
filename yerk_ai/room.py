@@ -179,10 +179,6 @@ class Room:
         with self.lock:
             return {m.id for m in [*self.inflight, *self.queue]} | self.answering
 
-    def prompts(self) -> list[str]:
-        with self.lock:
-            return [m.text for m in self.inflight]
-
     def compact_now(self) -> str:
         """`yerk room compact ROOM`: the same /compact the overflow path sends, when no turn runs."""
         with self.lock:

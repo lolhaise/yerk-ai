@@ -4,12 +4,9 @@ text here is made up. The lookup is memory.on_file's: a line holding the figure 
 
 from __future__ import annotations
 
-from pathlib import Path
 
 from yerk_ai import evidence
 
-ROOTS = (Path("memory"),)
-KNOWN = lambda name: None  # noqa: E731
 
 
 def figures(reply: str, *lines: str, read: str = "", said: str = "") -> list[str]:
@@ -23,7 +20,7 @@ def figures(reply: str, *lines: str, read: str = "", said: str = "") -> list[str
     ev = evidence.Evidence()
     if read:
         ev.give(read)
-    return [d for rule, d in evidence.check(reply, ["a question"], ev, ROOTS, filed, KNOWN, said) if rule == "figure"]
+    return [d for rule, d in evidence.check(reply, ev, filed, said) if rule == "figure"]
 
 
 def test_a_line_that_only_shares_the_digits_is_not_the_source() -> None:

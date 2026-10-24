@@ -861,9 +861,9 @@ class Yerkd:
     def shadow_stop(self, name: str, room: Room, reply: str, sid: str, refused: bool = False) -> list[tuple[str, str]]:
         """The evidence rules after a reply: ledgered and logged, never a block (shadow, DESIGN 8). `refused`: the said check
         turned this reply back, its own row written, so its person and quote rows are not written twice."""
-        figure, known = memory.on_file(self.memory)
+        figure = memory.on_file(self.memory)
         said = self.ledger.said(name, sid, room.evidence.started)     # its replies posted earlier in this session
-        found = evidence.check(reply, room.prompts(), room.evidence, self.memory.scope.roots, figure, known, said)
+        found = evidence.check(reply, room.evidence, figure, said)
         found += evidence.check_claims(reply, room.evidence, self.memory.scope.roots)     # decision 25
         found += [] if room.in_owner_name() else evidence.check_sheet(reply, room.evidence)   # an owner's room refuses instead
         if not refused:                                   # a claim about a person needs a read, a quote its source

@@ -1206,8 +1206,8 @@ def earlier_blocks(s: Settings, room: str, now: datetime | None = None, rid: str
     return seen
 
 
-def on_file(s: Settings, deadline_s: float = 1.5) -> tuple[Any, Any]:
-    """(figure lookup, file lookup) for the shadow Stop check, each answering the cite or None."""
+def on_file(s: Settings, deadline_s: float = 1.5) -> Any:
+    """The figure lookup for the shadow Stop check, answering the cite or None."""
     from .evidence import Quoted, has_figure
 
     def rows(sql: str, args: tuple[str, ...]) -> list[Any]:
@@ -1234,11 +1234,7 @@ def on_file(s: Settings, deadline_s: float = 1.5) -> tuple[Any, Any]:
                     break
         return f"{min(found)[1]}:{min(found)[2]}" if found else None
 
-    def known(name: str) -> str | None:
-        hit = rows("SELECT path FROM files WHERE path = ? OR path LIKE ? LIMIT 1", (name, "%/" + name.lstrip("./")))
-        return cite(s, Path(hit[0][0])) if hit else None
-
-    return figure, known
+    return figure
 
 
 # the recall bench: a fixed question set, run against the index (L63)
