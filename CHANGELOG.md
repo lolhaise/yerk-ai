@@ -8,6 +8,29 @@ version changes.
 
 ## 2026-10-24
 
+### measured-budgets
+
+- The budget gate reads what Claude Code sends. `yerk map`, the budget test and so `yerk deploy`'s fast gate take Claude
+  Code's parts (its prompt, the built-in tools, Yerk AI's tools, the other tool entries) from the room's newest
+  transcript, its newest request shape, where they counted them at their budgets.toml line or against numbers measured
+  Oct 20. A room with no transcript yet is counted at its lines, and the map says which it used. A part past its line
+  fails the gate, named with the room, the part and the transcript.
+- Read that way, three rooms sent more than their lines that day and no check saw it: the hands plug-in's five tools
+  (7,119) and web_image (913) inside the line for other tool entries (3,429), and a person's room's Edit and Write
+  (1,731) past the built-in tools' line (10,401). budgets.toml gives each plug-in a line of its own, named by the prefix
+  of its tools' names (`mcp__hands__` 7,119, `mcp__web-ladder__web_image` 913), the built-in tools 12,132 (the widest
+  room's), and the session-start total 108,093: up by the 9,763 already sent, since no part could pay. That evening an
+  owner room's new start sent Yerk AI's tools at 11,734 (schedule's and send's new descriptions), 34 past 11,700:
+  `yerk_tools` 11,734, paid by Claude Code's prompt line (10,966; the largest prompt sent is 10,889).
+- `yerk map --wire` splits the system prompt where that start's file began, so Claude Code's own prompt reads what it
+  sent (it read -6,401 in a room whose layer had changed since its last start), and the first message's own blocks
+  (Claude Code's environment and account reminder, the first hook) show outside the total, which no line names.
+- The morning diff: each room's line is its session start as sent and what is left under the total, where it was Yerk
+  AI's parts and the change since the last diff. What moved is the part lines below it, Claude Code's parts among them
+  from the second diff on, and a Claude Code part past its line is a red line every morning it lasts.
+- **Upgrading:** nothing to edit (budgets.toml ships in the repo). budgets.toml: `[code] lines` 20,048 (a dated note).
+  The first morning diff after the deploy counts Claude Code's parts in each room's size for the first time.
+
 ### send-own-channel (#117)
 
 - A room that names itself in `send` by its channel id (the id alone, or `discord:<id>` as rooms.toml writes it) posts in

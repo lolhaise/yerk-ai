@@ -4,6 +4,7 @@ for 3 s in a test daemon on a temp state folder with no channel adapter attached
 import asyncio
 import json
 import os
+import re
 import shutil
 import socket
 import tempfile
@@ -17,9 +18,9 @@ from zoneinfo import ZoneInfo
 
 from starlette.testclient import TestClient
 
-from yerk_ai import __version__, beat, cli, jobs, mcp_server, morning, status, usage, words
+from yerk_ai import __version__, beat, cli, context, jobs, mcp_server, morning, status, usage, words
 from yerk_ai.accounts import Account, Cooldowns, load_accounts
-from yerk_ai.config import EXAMPLE_PRIVATE, REPO
+from yerk_ai.config import EXAMPLE_PRIVATE, REPO, budgets
 from yerk_ai.daemon import Yerkd
 from fake_channel import ConsoleChannel
 from yerk_ai.ledger import Ledger
@@ -439,7 +440,7 @@ def test_a_planted_payload_change_shows_up_the_next_morning_in_the_machine_room_
         posts.append(p["morning"])
         return {"ok": True, "message_ids": ["m1"]}
     assert morning.run(priv, state, accounts, cool, post=post, now=NOW) == 0
-    assert "- example-room: " in posts[0]["text"] and "chars, first map" in posts[0]["text"]
+    assert re.search(r"^- example-room: [\d,]+, [\d,]+ left$", posts[0]["text"], re.M)          # as sent and its gap to the total
     (priv / "rulebook.md").write_text("x" * 500 + (priv / "rulebook.md").read_text())     # planted
     assert morning.run(priv, state, accounts, cool, post=post, now=NOW + 86400) == 0
     text = posts[1]["text"].splitlines()
@@ -451,6 +452,39 @@ def test_a_planted_payload_change_shows_up_the_next_morning_in_the_machine_room_
     assert {p["room"] for p in posts} == {"example-quiet"}                            # the machine room, no other
     assert all(words.width(x) <= words.PHONE for p in posts for x in p["text"].splitlines())
     assert (state / "morning" / time.strftime("%Y-%m-%d.txt", time.localtime(NOW))).is_file()
+
+
+def test_the_morning_diff_reads_claude_codes_parts_as_sent_says_the_gap_and_names_a_part_that_grew_or_passed_its_line(tmp_path):
+    """measured-budgets (2026-10-24): each room's line is its session start as sent, Claude Code's parts from its newest
+    transcript (context.sent), and what is left under the total; a Claude Code part that grew is a finding the next
+    morning, and one past its line is red while it lasts (the deploy's gate refuses it)."""
+    priv, state, accounts, cool = layer(tmp_path)
+    b, posts, t = budgets(), [], tmp_path / "s1.jsonl"
+    line = b["session_start"]["claude_code"]["mcp__hands__"]
+
+    def sends(n):           # the room's newest shape: a prompt of 1,000 and the plug-in's one tool at n characters as sent
+        tool = {"name": "mcp__hands__browser", "description": ""}
+        tool["description"] = "x" * (n - context.chars(json.dumps(tool)))
+        shape = {"system": [{"type": "text", "text": "p" * 999 + "\n# Yerk AI mechanics"}], "tools": [tool]}
+        t.write_text(json.dumps({"type": "api-request-shape", "shape": shape}) + "\n")
+    (state / "sessions.json").write_text(json.dumps({"example-room": {"session_id": "s1", "transcript": str(t)}}))
+
+    def post(p):
+        posts.append(p["morning"]["text"].splitlines())
+        return {"ok": True}
+    sends(3000)
+    assert morning.run(priv, state, accounts, cool, post=post, now=NOW) == 0
+    sizes = morning.sizes(priv, state)["example-room"]
+    assert (sizes["claude_code_prompt"], sizes["mcp__hands__"], sizes["builtin_tools"]) == (1000, 3000, 0)
+    size = context.start_size(sizes)
+    assert words.named(f"{words.PLAIN} {words.PAYLOAD}", "example-room", size=size, left=b["session_start"]["total"] - size) in posts[0]
+    sends(3050)
+    assert morning.run(priv, state, accounts, cool, post=post, now=NOW + 86400) == 0
+    assert f"{words.WORKING} example-room mcp__hands__: +50 chars" in posts[1]
+    sends(line + 1)
+    assert morning.run(priv, state, accounts, cool, post=post, now=NOW + 2 * 86400) == 0
+    assert words.named(f"{words.NOT_DONE} {words.OVER_PART}", "example-room mcp__hands__", size=line + 1, line=line) in posts[2]
+    assert all(words.width(x) <= words.PHONE for p in posts for x in p)
 
 
 def test_a_failed_post_stamps_nothing_so_the_change_shows_again(tmp_path, capsys):
