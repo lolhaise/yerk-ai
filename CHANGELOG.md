@@ -6,6 +6,16 @@ A line that changes a file the install keeps (rooms.toml, yerkd.toml, budgets.to
 newer than the code is refused with one line, never changed); the day logs are rewritten once at the daemon's start
 with the originals kept under `backups/`; the index chunks every file again when its chunker's version changes.
 
+## 2026-10-24
+
+### rules-margin (#113)
+
+- Test only. The rules-part test tripled a 5,300-character rules file and expected it over the 16,000 line, but the
+  part counts its own `[from <path>]` line, so it came to 15,907 plus the length of the test's temporary path: 15,992
+  at /tmp's 85, over the line only at 94 or more, as under a longer TMPDIR. No earlier test's state was in it. It
+  refused a deploy on 2026-10-24 with nothing wrong in the layer. The file is now quadrupled (21,207 plus the
+  path), so the test says what it means in any temp folder.
+
 ## 2026-10-23
 
 ### rules-on-demand (#102)
