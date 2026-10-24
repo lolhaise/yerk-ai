@@ -508,6 +508,9 @@ def cmd_recall_bench(a: argparse.Namespace) -> int:
     state = state_dir(a.state)
     s = memory.settings(private_dir(a.private), state)
     qfile = Path(a.questions).expanduser() if a.questions else s.bench
+    if a.controls:                                      # `yerk deploy`'s recall step: one JSON line, nothing written
+        print(json.dumps(r := memory.controls(s, qfile, a.k)))
+        return 2 if r["missed"] else 0
     if not qfile.is_file():
         print(f"no question set at {qfile} ([memory] bench in yerkd.toml names it)", file=sys.stderr)
         return 2
@@ -774,6 +777,8 @@ def main(argv: list[str] | None = None) -> int:
     rb.add_argument("--questions", help="question file (default: [memory] bench, else <private>/evals/recall-questions.json)")
     rb.add_argument("-k", type=int, default=6, help="results per question (default 6, the recall tool's default)")
     rb.add_argument("--json", action="store_true", help="the run as JSON, per-question ranks included")
+    rb.add_argument("--controls", action="store_true", help="the controls alone, as `yerk deploy` holds them: one JSON line, "
+                    "nothing written (exit 2 when one misses)")
     ev = sub.add_parser("eval", help="taste: the taste judge replayed over the owner's complaints and the replies they accepted, "
                         "with what each turn read; precision, recall, false alarms per verdict, phase 1 beside (the bar printed, not enforced)")
     ev.add_argument("what", choices=["taste"])
@@ -830,7 +835,7 @@ def main(argv: list[str] | None = None) -> int:
     dp = sub.add_parser("deploy", help="a commit onto the running yerkd: fast-forward only, fast tests, a quiet "
                         "room, the restart, the proof card to the machine room, else the rollback")
     dp.add_argument("ref", nargs="?", help="the commit (default: the daemon's tree's HEAD)")
-    dp.add_argument("--no-tests", action="store_true", help="skip the fast tests (the card says so)")
+    dp.add_argument("--no-tests", action="store_true", help="skip the fast tests and the recall check (the card says so)")
     dp.add_argument("--unit", action="store_true", help="also move a systemd-run daemon onto units/yerkd.service")
     for x in (ac, st, mo, rb, ev, ab, ex, jb, sc, lc, rt, dc, dk, cu, mm, dp, pc, fl, nd):
         x.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else "

@@ -335,6 +335,16 @@ def test_a_stored_message_ranks_after_a_note_on_the_same_ranks(tmp_path):
     both = [hit(1, old), hit(2, note)]                                      # the old day first in both lists, the note second
     assert [h["id"] for h in memory.fuse(both, both, 6, keep=0)] == [1, 2]
     assert [h["id"] for h in memory.fuse(both, both, 6, keep=0, weight=weight)] == [2, 1]     # the note leads; the day is kept
+    assert [h["id"] for h in memory.fuse(both, [], 6, keep=0, weight=weight)] == [2, 1]       # and so on the exact half alone
+
+
+# 9c. with the meaning half out (off, down or late) the exact half alone ranks a note before an old record on the same words:
+# three of the install's 13 recall controls were found only through the meaning half until it did (gate-live-step)
+def test_with_the_meaning_half_out_a_note_still_ranks_before_an_old_day_on_the_same_words(tmp_path):
+    s = tree(tmp_path, key=False)
+    memindex.Index(s.index_db, s.scope).sync()
+    hits = memory.ranked(s, "kettle", 6, wide=False)["hits"]
+    assert [Path(h["path"]).name for h in hits] == ["kettle.md", "2026-01-05.md"]     # the day's five kettles led on bm25
 
 
 # 10. the manifest's embeddings entry records the fit choice: the dimensions, the units, the width

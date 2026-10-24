@@ -6,6 +6,24 @@ A line that changes a file the install keeps (rooms.toml, yerkd.toml, budgets.to
 newer than the code is refused with one line, never changed); the day logs are rewritten once at the daemon's start
 with the originals kept under `backups/`; the index chunks every file again when its chunker's version changes.
 
+## 2026-10-24
+
+### gate-live-step
+
+- `yerk deploy` holds the layer's recall controls (the question set's `"control": true` rows) after the fast tests and
+  before the restart: each is searched on the exact half, one missed there once more as a room's recall searches, the
+  meaning half and its 5 s wait included, and one missed then deploys nothing, the tree put back and nothing restarted.
+  The card says `recall: N of N hit`, with how many only through the meaning half, or names the ones missed on a
+  `missed:` line. It runs on the code under test, in the daemon's tree (`yerk recall-bench --controls`: one JSON line,
+  nothing written to the bench series), about 3 s on the box's index. `--no-tests` skips it with the fast tests; with no
+  index or no controls the card says `recall: not checked` and the deploy goes on.
+- With the meaning half off, down or late, the exact half alone now weighs a stored message as the fused rank does: the
+  keywords go by their cover times its share (RECORD, 0.5), so a note comes before an old day log or an import that covers
+  no more of the question, where the keyword list was used as it came (a hit's score there is still the keyword cover).
+  On the install's 164 scored questions the exact half alone goes from 66 to 78 in the top six (top one 31 to 36), and 2
+  of the 3 controls only the meaning half found are found without it; the fused rank is unchanged (top six 103). No reindex.
+- **Upgrading:** budgets.toml [code] lines goes to 20646.
+
 ## 2026-10-23
 
 ### rules-on-demand (#102)
