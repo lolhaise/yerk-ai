@@ -8,6 +8,30 @@ version changes.
 
 ## 2026-10-24
 
+### import-openclaw
+
+- `yerk import openclaw:<workspace dir>` moves an OpenClaw box's notes in, one workspace a run: MEMORY.md, USER.md,
+  memory/ and wiki/ (the kinds the index reads, and the text files of memory/transcripts/), and media/gym whole, copied
+  as they are into <private>/openclaw/<its name>/<the same path>, files 0600, folders 0700, each with the box file's
+  time. Never into the day logs or facts/, and outside imports/, so a note keeps its whole weight.
+- Left by rule, one line a rule with its files and bytes: the box tools' own state (memory/health, jobstate, finance,
+  sms, modelbench, forensics, tft, index, archive-offindex), a kind the index does not read, a link, a temp or backup
+  copy and the folders the index skips; a dot or secrets folder is never entered.
+- A line holding a shape of yerk doctor's secret scan (a key, a one-time code, a password or token line) is copied with
+  case before the next run starts, the example note says; the sample item moved to the next step.
+- By path and sha256 against <private>/openclaw/<name>.sums: a second run writes nothing, so the same command tops up; a
+  changed file is written again through a temp file and a rename, one the box deleted is deleted from the copy, and a
+  part the box no longer has is held. `--since YYYY-MM-DD` takes the files changed from that day on; `--dry-run` prints
+  the inventory (files, bytes, each rule, the lines to scrub) and writes nothing. A workspace inside the private folder
+  (or the other way round), a copy that names another box and, for a real run, a private folder in the repository are
+  refused before the box is read.
+- After a real run it prints the yerkd.toml and rooms.toml lines that would read the copies, and never writes them: each
+  box path in an `also` line becomes its copy in its place, so every cite name stays; a `read` naming the box stays
+  while the box runs (yerkd refuses one inside the private folder); a denyRead keeping a shell off the box gains the
+  copies.
+- **Upgrading:** nothing to edit; the printed lines are made by hand, then yerk-index and yerkd restarted. budgets.toml:
+  `[and] the` 00,000 (test reads it).
+
 ### send-own-channel (#117)
 
 - A room that names itself in `send` by its channel id (the id alone, or `discord:<id>` as rooms.toml writes it) posts in

@@ -397,4 +397,9 @@ secs = 60
 # the one resolver: a room's name, its rooms.toml channel or the id alone; external_hit reads it with the rooms' confs and
 # names a held send's room by it), daemon.py 1 (the send tool resolves `room` through it before its checks).
 # 19,976 on main 9d9e05b (#116): 19,960 + 16.
-lines = 19976
+# 2026-10-24: import-openclaw raised it by 207: `yerk import openclaw:<workspace dir>`, a box's notes copied into
+# <private>/openclaw/<its name> by the memory copy inventory's rules (the owner's ask, claim 17), not folded to fit.
+# sources.py 205 (the parts and their rules, the doctor's secret shapes written as their kind, the record by path and
+# sha256 so a second run writes nothing, the refusals, and the yerkd.toml and rooms.toml lines that read the copies,
+# printed and never written), move.py 1 and cli.py 1 (the source named). 20,183 on main 30ea8dc (#117): 19,976 + 207.
+lines = 20183
