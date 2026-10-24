@@ -363,4 +363,4 @@ secs = 60
 # 20,590 merged on the train after #99: #103, #105, #111, #106, #107, #109, #104, #110 and #108. Lines shared and
 # both kept: context.py and hooks.py with #107 and #109, daemon.py with #109, doctor.py with #111, words.py with #107;
 # curate.py with #108, whose condense loop stands in for this PR's copy of the old one, its topic and gate block after it.
-lines = 19974
+lines = 19886

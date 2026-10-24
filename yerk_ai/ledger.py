@@ -162,21 +162,8 @@ def add_columns(db: sqlite3.Connection) -> None:
                 db.execute(f"ALTER TABLE {table} ADD COLUMN {col} {kind}")
 
 
-def backfill_links(db: sqlite3.Connection) -> int:
-    """Every id in every comma-joined column becomes a row in message_links (the ids were text only)."""
-    n = 0
-    for (table, col), key in LINKED.items():
-        for row_key, text in db.execute(f"SELECT {key}, {col} FROM {table} WHERE {col} IS NOT NULL AND {col} != ''"):
-            for pos, mid in enumerate(ids_of(text)):
-                db.execute("INSERT OR IGNORE INTO message_links (tbl, row_key, col, message_id, pos) VALUES (?, ?, ?, ?, ?)",
-                           (table, str(row_key), col, mid, pos))
-                n += 1
-    return n
-
-
 MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], Any]]] = [
     (1, "the run-1 tables and every column added since", add_columns),
-    (2, "ids as rows: message_links backfilled from the comma-joined columns", backfill_links),
     (3, "the indexes the hot queries need", lambda db: [db.execute(x) for x in INDEXES.split(";") if x.strip()]),
 ]
 

@@ -129,14 +129,6 @@ class Yerkd:
         # crash repair before anything reads a day log, assembled log or bound transcript (doctor.py): a hard power-off
         # zeroes the line a file was writing; a room the crash left with a message waiting is left for the daily run
         log.info("%s", doctor.start(private, state, self.memory, {str(r["room"]) for r in self.ledger.inbound_open()}))
-        # day-log lines written before offsets, ids, authors and classes are rewritten once, here, before any
-        # channel opens and under the lock capture holds, so no second writer ever races the rewrite (cold
-        # read F3); the originals go beside the private layer, or under the state folder for the example one
-        backup = (state if private.resolve().is_relative_to(REPO) else private) / "backups" / f"daily-before-{time.strftime('%Y-%m-%d')}"
-        moved = memory.migrate_daylogs(self.memory.daily, self.memory.tz, self.daily.rooms, backup)
-        if moved["rewritten"]:
-            log.info("memory: %d day-log line(s) in %d file(s) rewritten in today's shape; the originals are under %s",
-                     moved["rewritten"], moved["files"], backup)
         # the install's secrets for /hook, /control and /mcp (R3): under the state folder for every layer, so
         # no room's Read(/<layer>/**) rule or --add-dir reaches them (cold read F4); yerkd.json names the paths
         sdir = state / "secrets"
