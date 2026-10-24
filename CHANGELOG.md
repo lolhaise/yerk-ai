@@ -28,6 +28,14 @@ version changes.
   already carries, so the sync finds the unit unchanged. Until it is swapped, the job's runs are refused (ledgered "not
   run" with that line), and a sync removes its timer. budgets.toml: `[code] lines` (a dated note).
 
+### rules-margin (#113)
+
+- Test only. The rules-part test tripled a 5,300-character rules file and expected it over the 16,000 line, but the
+  part counts its own `[from <path>]` line, so it came to 15,907 plus the length of the test's temporary path: 15,992
+  at /tmp's 85, over the line only at 94 or more, as under a longer TMPDIR. No earlier test's state was in it. It
+  refused a deploy on 2026-10-24 with nothing wrong in the layer. The file is now quadrupled (21,207 plus the
+  path), so the test says what it means in any temp folder.
+
 ## 2026-10-23
 
 ### rules-on-demand (#102)

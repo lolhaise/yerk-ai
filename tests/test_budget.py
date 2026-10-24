@@ -126,7 +126,7 @@ def test_the_rules_file_is_a_part_of_its_own_so_a_full_rulebook_never_pushes_a_r
     assert list(part) == ["mechanics", "persona", "rulebook", "room_voice", "pinned_memory", "rules", "recall_pack"]
     assert bad == [] and not part["rulebook"].over and part["rules"].raw > 5000
     assert all(f"- job {i}: " in part["rules"].text for i in range(120)) and "[...trimmed" not in context.appended_file(start)
-    rules.write_text(rules.read_text() * 3)                                                     # past the part's own budget
+    rules.write_text(rules.read_text() * 4)                                                     # 21,200: past the part's own budget (x3 was 15,986 against 16,000)
     bad, start = build(private, "example-room", tmp_path / "state")
     part = {p.name: p for p in start}
     assert [v.split(":")[0] for v in bad] == ["rules"] and "[...trimmed rules: kept" in part["rules"].text
