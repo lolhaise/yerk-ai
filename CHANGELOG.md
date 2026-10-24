@@ -6,6 +6,14 @@ A line that changes a file the install keeps (rooms.toml, yerkd.toml, budgets.to
 newer than the code is refused with one line, never changed); the day logs are rewritten once at the daemon's start
 with the originals kept under `backups/`; the index chunks every file again when its chunker's version changes.
 
+## 2026-10-24
+
+### rules-margin
+
+- Test only. The rules-part test tripled a 5,300-character rules file to 15,986 against the 16,000 line and expected it
+  over budget; it passed only when an earlier test's state leaked into it, and refused a deploy on 2026-10-24 with
+  nothing wrong in the layer. The file is now quadrupled (21,200), so the test says what it means in any order.
+
 ## 2026-10-23
 
 ### rules-on-demand (#102)
