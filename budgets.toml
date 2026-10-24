@@ -376,4 +376,12 @@ secs = 60
 # message as the fused rank does is in the lines that were there.
 # 2026-10-24: merged with shrink-1 (#112, main ed8044a): its 19,865 plus gate-live-step's 57 is 19,922, counted on the
 # merged tree; cli.py and words.py, which both changed, merged with no line in common.
-lines = 19922
+# 2026-10-24: attachments-root raised it by 38: the files a moved room brought are recallable (found that day: 985 files in
+# four rooms' <layer>/NAME-attachments with no sidecar, as root_of refused every folder in the private folder), not folded
+# to fit. move.py 14 (the folder joins a block's `also` when it has one, yerkd.toml's [memory] also named by hand, the two
+# backfills as the last steps), doctor.py 10 (one line a room with the counts and the commands), context.py 5 (the folder's
+# one name, attachments_dir), words.py 4, pictures.py 3 (root_of takes that folder, listed in the room's own `also`),
+# memindex.py 2 (a recording's NAME.transcript.txt a sidecar kind of a listed folder, as a picture's seen file is).
+# 19,960 merged after #112 and #114 (main 8ae7760): 19,922 + 38. Lines shared and both kept: doctor.py's import (#112's
+# jobs with this PR's files and pictures); README and words.py, which #114 also changed, merged with no line in common.
+lines = 19960

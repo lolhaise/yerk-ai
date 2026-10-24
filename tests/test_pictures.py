@@ -390,3 +390,46 @@ def test_backfill_over_a_listed_root_runs_the_same_worker_path_with_no_room_fold
     assert {pictures.sidecar(p).stat().st_mode & 0o777 for p in pics} == {0o600}
     assert asyncio.run(y.control({"pictures": {"room": "example-room", "root": str(root)}})) == {
         "ok": True, "room": "example-room", "pictures": 0, "line": words.PICTURES_NONE.format(room="example-room", where=root)}
+
+
+def test_a_moved_rooms_own_saved_files_are_the_one_root_the_private_layer_lends(tmp_path, capsys):
+    """attachments-root (2026-10-24): `--root` takes <layer>/NAME-attachments, where `yerk room add NAME` saved the old chat's
+    files, for the room NAME-on-yerk when its `also` lists it; never unlisted, never another room's from the same `also`,
+    and no other folder of the private layer or the state (the memory root, its day logs, the state, a layer kept in it)."""
+    priv, state = tmp_path / "private", tmp_path / "state"
+    for d in (priv / "desk" / "sports-attachments", priv / "desk" / "chess-attachments", priv / "memory" / "daily",
+              kept := state / "kept" / "kept-attachments"):
+        d.mkdir(parents=True)
+    own, other = (priv / "desk" / "sports-attachments").resolve(), (priv / "desk" / "chess-attachments").resolve()
+    (own / "1003-photo.png").write_bytes(PNG)
+    conf = {"privacy": "owner", "layer": "desk", "also": [str(own), str(other), "memory", "memory/daily", str(state)]}
+    assert pictures.root_of(priv, state, "sports-on-yerk", conf, str(own)) == own
+    assert pictures.root_of(priv, state, "chess-on-yerk", conf, str(other)) == other              # its own, from the same also
+    for bad in (other, priv / "memory", priv / "memory" / "daily", state):
+        assert pictures.root_of(priv, state, "sports-on-yerk", conf, str(bad)) is None
+    assert pictures.root_of(priv, state, "sports-on-yerk", {**conf, "also": [str(other)]}, str(own)) is None      # not listed
+    assert pictures.root_of(priv, state, "kept-on-yerk", {"layer": str(state / "kept"), "also": [str(kept)]}, str(kept)) is None
+    (priv / "rooms.toml").write_text(f'[rooms.sports-on-yerk]\nchannel = "console:sports"\nlayer = "desk"\nalso = ["{own}", "{other}"]\n')
+    base = ["--private", str(priv), "--state", str(state), "--dry-run"]
+    assert cli.main(["pictures", "backfill", "sports-on-yerk", "--root", str(own), *base]) == 0
+    assert capsys.readouterr().out.splitlines() == [str(pictures.sidecar(own / "1003-photo.png")),
+                                                   f"1 picture(s) in {own} with no sidecar, 1 batch(es) of 20; nothing started (--dry-run)"]
+    for cmd in ("pictures", "files"):                           # the same one line as any folder it does not list
+        assert cli.main([cmd, "backfill", "sports-on-yerk", "--root", str(other), *base]) == 2
+        assert capsys.readouterr().err.strip() == words.PICTURES_NOT_LISTED.format(room="sports-on-yerk", folder=other)
+
+
+def test_a_recordings_transcript_in_a_listed_folder_is_indexed_and_the_recording_is_not(tmp_path):
+    """attachments-root (2026-10-24): NAME.transcript.txt, what transcribe.py writes beside a recording, is a sidecar kind of a
+    listed folder as a picture's seen file is, so a recording a moved room brought is recalled once it is transcribed; the
+    recording itself is never indexed."""
+    from yerk_ai import memindex
+    (root := tmp_path / "sports-attachments").mkdir()
+    (ogg := root / "1004-voice.ogg").write_bytes(b"OggS" + b"\0" * 32)
+    (said := root / "1004-voice.transcript.txt").write_text("1004-voice.ogg, 0.2 min, checked\nthe example drill runs at nine\n")
+    (priv := tmp_path / "private").mkdir()
+    (priv / "yerkd.toml").write_text(f'[memory]\nroot = "memory"\nalso = ["{root}"]\n')
+    s = memory.settings(priv, tmp_path / "state")
+    assert str(said) in s.scope.files() and str(ogg) not in s.scope.files()
+    memindex.Index(s.index_db, s.scope).sync()
+    assert any(h["cite"].startswith(f"{root.name}/1004-voice.transcript.txt") for h in memory.recall(s, "example drill nine", 6)["hits"])
