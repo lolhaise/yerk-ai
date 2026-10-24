@@ -397,4 +397,10 @@ secs = 60
 # the one resolver: a room's name, its rooms.toml channel or the id alone; external_hit reads it with the rooms' confs and
 # names a held send's room by it), daemon.py 1 (the send tool resolves `room` through it before its checks).
 # 19,976 on main 9d9e05b (#116): 19,960 + 16.
-lines = 19976
+# 2026-10-24: fusion-levers raised it by 3: the keyword rank's part of the fusion, SHARE 0.4 where both ranks counted alike
+# (memory.py 3: SHARE and its measured note 2, fuse's docstring on the two parts 1; its `share` argument and the loop's parts
+# are in the lines that were there), measured alone on the 164-question set (top six 103 to 107, top one 59 to 62, no control
+# lower), not folded to fit. The three levers measured alone after it and deleted (name and field boosts, the tense order,
+# alias rewriting) leave no line.
+# 19,979 on main 30ea8dc (#117): 19,976 + 3.
+lines = 19979

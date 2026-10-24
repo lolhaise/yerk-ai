@@ -8,6 +8,26 @@ version changes.
 
 ## 2026-10-24
 
+### fusion-levers (#118)
+
+- A room's recall counts the meaning search's order a little above the keyword search's: in the reciprocal rank fusion of
+  the two, the keyword rank's part is 0.4 and the meaning rank's 0.6, where both counted alike (`SHARE` in memory.py). On
+  the install's 164 scored questions (13 controls), both halves recorded once from the live index and replayed for every
+  setting, the top six goes from 103 to 107 and the top one from 59 to 62, and no control ranks lower. The keyword share
+  was swept: 0.3 109/65 with a control falling from first to second, 0.5 103/59 (as before), 0.6 102/57 and 0.7 96/57,
+  both with a control missed.
+- Measured alone on the same questions and left out, as none raised both the top six and the top one with no control
+  ranking lower: score fusion (each search's score over its best) in place of rank fusion, keyword share 0.3 to 0.7: 103/65,
+  103/59, 103/54, 106/53, 106/53; a hit whose file name or first heading holds a name the question names ranked above a
+  body-only hit, at 1.5 to 100 times: 100/56 down to 96/45; a facts file above a day log for a present-tense question: 104/61
+  at 1.5, 105/63 at 4, with a control falling from first to third; the day logs newest first for "when did" and "last time"
+  questions and oldest first for "first time": 103/59 at every setting (7 of the 177 questions say "when did", none the
+  other two); the question's names followed by their card keys before the keyword search: 97/53, and 98/55 with a fuller
+  form only, a control falling from first to second.
+- Deep recall is unchanged: the lines a room is handed on each name and topic in a message come from the keyword half
+  alone, where there is no meaning rank to share with; on 187 of the install's names they are byte-identical to main's.
+- **Upgrading:** nothing to edit. budgets.toml: `[code] lines` 19,979 (a dated note).
+
 ### send-own-channel (#117)
 
 - A room that names itself in `send` by its channel id (the id alone, or `discord:<id>` as rooms.toml writes it) posts in
