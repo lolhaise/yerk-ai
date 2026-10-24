@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -336,6 +337,49 @@ def test_a_stored_message_ranks_after_a_note_on_the_same_ranks(tmp_path):
     both = [hit(1, old), hit(2, note)]                                      # the old day first in both lists, the note second
     assert [h["id"] for h in memory.fuse(both, both, 6, keep=0)] == [1, 2]
     assert [h["id"] for h in memory.fuse(both, both, 6, keep=0, weight=weight)] == [2, 1]     # the note leads; the day is kept
+    assert [h["id"] for h in memory.fuse(both, [], 6, keep=0, weight=weight)] == [2, 1]       # and so on the exact half alone
+
+
+# 9c. with the meaning half out (off, down or late) the exact half alone ranks a note before an old record on the same words:
+# three of the install's 13 recall controls were found only through the meaning half until it did (gate-live-step)
+def test_with_the_meaning_half_out_a_note_still_ranks_before_an_old_day_on_the_same_words(tmp_path):
+    s = tree(tmp_path, key=False)
+    memindex.Index(s.index_db, s.scope).sync()
+    hits = memory.ranked(s, "kettle", 6, wide=False)["hits"]
+    assert [Path(h["path"]).name for h in hits] == ["kettle.md", "2026-01-05.md"]     # the day's five kettles led on bm25
+
+
+# 9d. deep recall (lines_on, decision 42) reads a name on the exact half alone, unweighed: 9c's note-first order is the recall tool's.
+# Two old day logs name Examplia six times and a note once, so the two orders keep different lines; deep recall's are main's (ed8044a,
+# before gate-live-step) field for field. On the bare example layer every name's lines are the same either way: too few to cut.
+def test_deep_recall_keeps_the_index_order_while_the_recall_tool_puts_the_note_first(tmp_path):
+    shutil.copytree(EXAMPLE_PRIVATE, priv := tmp_path / "private")
+    (mem := priv / "memory").joinpath("facts").mkdir()
+    (mem / "facts" / "examplia.md").write_text("# Examplia (example, invented)\n\n- Examplia: the example neighbour two doors down, who keeps the example hedge trimmed.\n")
+    for day, verbs in (("2026-01-02", ("lent", "fixed", "returned")), ("2026-01-03", ("borrowed", "painted", "stored"))):
+        (mem / "daily" / f"{day}.md").write_text(f"# {day} (example, invented)\n\n" + "".join(f"- 1{i}:00 Examplia {v} the example ladder.\n" for i, v in enumerate(verbs)))
+    s = memory.settings(priv, tmp_path / "state", {"timezone": "UTC"})
+    memindex.Index(s.index_db, s.scope).sync()
+    ladder = [("memory/daily/2026-01-03.md:5", "2026-01-03", 5, "01-03 12:00 Examplia stored the example ladder."),
+              ("memory/daily/2026-01-03.md:4", "2026-01-03", 4, "01-03 11:00 Examplia painted the example ladder."),
+              ("memory/daily/2026-01-03.md:3", "2026-01-03", 3, "01-03 10:00 Examplia borrowed the example ladder."),
+              ("memory/daily/2026-01-02.md:5", "2026-01-02", 5, "01-02 12:00 Examplia returned the example ladder."),
+              ("memory/daily/2026-01-02.md:4", "2026-01-02", 4, "01-02 11:00 Examplia fixed the example ladder."),
+              ("memory/daily/2026-01-02.md:3", "2026-01-02", 3, "01-02 10:00 Examplia lent the example ladder.")]
+    main = {"Examplia": ladder, "example ladder": ladder,                       # the six day lines; weighed, the note's two would come in
+            "library card": [("memory/open-loops.md:3", "", 3, "Renew the library card before the 20th. surface: remind on the 15th."),
+                             ("memory/daily/2026-01-05.md:4", "2026-01-05", 4, "01-05 14:40 Set a reminder to renew the library card before the 20th.")],
+            "reading list": [("memory/open-loops.md:4", "", 4, "Suggest the next book from the reading list. surface: next time the owner asks about reading."),
+                             ("memory/daily/2026-01-06.md:4", "2026-01-06", 4, "01-06 18:05 Owner finished the book from the reading list and wants the next one.")],
+            "shopping list": [("memory/daily/2026-01-07.md:7", "2026-01-07", 7, "01-07 12:26 yerk: Filed it. The hinge is on the shopping list under batteries."),
+                              ("memory/daily/2026-01-07.md:4", "2026-01-07", 4, "01-07 12:20 Drafted a shopping list: rice, lemons, coffee, batteries.")]}
+    for what, want in main.items():
+        got = memory.lines_on(s, what) or memory.lines_on(s, what, None, 20)       # as the daemon calls it
+        assert [(x["cite"], x["day"], x["n"], x["text"]) for x in got] == want
+        assert all(list(x) == ["cite", "at", "day", "n", "text"] and x["at"] == f"{priv}/{x['cite']}" for x in got)
+    assert [h["cite"] for h in memory.ranked(s, "Examplia", 6, wide=False)["hits"]] == [
+        "memory/facts/examplia.md:1", "memory/daily/2026-01-03.md:1", "memory/daily/2026-01-02.md:1"]     # the deploy's controls
+    assert memory.recall(s, "Examplia")["hits"][0]["cite"].startswith("memory/facts/examplia.md:")         # and a room's recall
 
 
 # 10. the manifest's embeddings entry records the fit choice: the dimensions, the units, the width
