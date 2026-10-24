@@ -20,6 +20,9 @@ with the originals kept under `backups/`; the index chunks every file again when
   after the deploy line. `--dry-run` says "would list".
 - `yerk doctor`, in its daily run, names an owner room whose moved-in folder holds pictures, workbooks or PDFs with no
   sidecar: one 🟠 line with the counts and the two commands, and to list the folder first while it is not.
+- A recording's `NAME.transcript.txt`, the file the transcribe tool writes beside it, is indexed under a listed folder
+  as a picture's `NAME.seen.txt` is, where before only a room's inbox took it, so a recording a moved room brought is
+  recalled once it is transcribed. The recording itself is never indexed; nothing here transcribes one.
 - **Upgrading:** budgets.toml: `[code] lines` (a dated note). A room moved in before this needs its folder, by hand, in
   yerkd.toml's `[memory] also` and in its block's `also` in rooms.toml, both as `"<layer>/NAME-attachments"` (in
   `[memory] also` first: rooms.toml alone stops yerkd's next start); then `yerk deploy`; then once each,

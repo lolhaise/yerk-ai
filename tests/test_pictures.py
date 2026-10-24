@@ -417,3 +417,19 @@ def test_a_moved_rooms_own_saved_files_are_the_one_root_the_private_layer_lends(
     for cmd in ("pictures", "files"):                           # the same one line as any folder it does not list
         assert cli.main([cmd, "backfill", "sports-on-yerk", "--root", str(other), *base]) == 2
         assert capsys.readouterr().err.strip() == words.PICTURES_NOT_LISTED.format(room="sports-on-yerk", folder=other)
+
+
+def test_a_recordings_transcript_in_a_listed_folder_is_indexed_and_the_recording_is_not(tmp_path):
+    """attachments-root (2026-10-24): NAME.transcript.txt, what transcribe.py writes beside a recording, is a sidecar kind of a
+    listed folder as a picture's seen file is, so a recording a moved room brought is recalled once it is transcribed; the
+    recording itself is never indexed."""
+    from yerk_ai import memindex
+    (root := tmp_path / "sports-attachments").mkdir()
+    (ogg := root / "1004-voice.ogg").write_bytes(b"OggS" + b"\0" * 32)
+    (said := root / "1004-voice.transcript.txt").write_text("1004-voice.ogg, 0.2 min, checked\nthe example drill runs at nine\n")
+    (priv := tmp_path / "private").mkdir()
+    (priv / "yerkd.toml").write_text(f'[memory]\nroot = "memory"\nalso = ["{root}"]\n')
+    s = memory.settings(priv, tmp_path / "state")
+    assert str(said) in s.scope.files() and str(ogg) not in s.scope.files()
+    memindex.Index(s.index_db, s.scope).sync()
+    assert any(h["cite"].startswith(f"{root.name}/1004-voice.transcript.txt") for h in memory.recall(s, "example drill nine", 6)["hits"])
