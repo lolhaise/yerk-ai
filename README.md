@@ -94,7 +94,6 @@ Then the rule files, by proposal only: the same nightly run (and `yerk curate --
 uv sync
 uv run yerk map example-room                 # the example room's context, part by part, against budgets.toml
 uv run yerkd                                 # every room with a discord:<channel id>, through the Discord adapter
-uv run yerkd --console example-room --config-dir ~/.claude   # one room on the terminal: a line in, a JSON reply out
 uv run yerk map example-room --wire          # also the sizes as sent, read from the room's Claude Code transcript (a line that does not parse, as a crash leaves one, is skipped and counted)
 uv run yerk setup-room ROOM                  # a Discord room's test webhook; its URL goes to secrets/ (0600), never printed
 uv run yerk room close ROOM                  # the running yerkd closes ROOM's process now (never mid-turn); the session stays

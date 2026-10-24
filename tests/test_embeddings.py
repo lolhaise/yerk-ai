@@ -23,7 +23,8 @@ import pytest
 
 from yerk_ai import abilities, cli, embeddings, memindex, memory
 from yerk_ai.config import EXAMPLE_PRIVATE
-from yerk_ai.daemon import NO_KEY_LINE, ConsoleChannel, Yerkd
+from yerk_ai.daemon import NO_KEY_LINE, Yerkd
+from fake_channel import ConsoleChannel
 
 CONCEPTS = ["kettle", "colour", "lunch", "weather", "book"]
 WORDS = {"kettle": "kettle", "teapot": "kettle", "pot": "kettle", "boil": "kettle", "teal": "colour", "painted": "colour",

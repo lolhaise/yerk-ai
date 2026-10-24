@@ -17,7 +17,8 @@ import pytest
 from yerk_ai import config, context, doctor, hooks, memindex, memory, morning, status, words
 from yerk_ai.accounts import Cooldowns, load_accounts
 from yerk_ai.config import EXAMPLE_PRIVATE, ROOM_KEYS, budgets
-from yerk_ai.daemon import ConsoleChannel, Yerkd
+from yerk_ai.daemon import Yerkd
+from fake_channel import ConsoleChannel
 from yerk_ai.ledger import Ledger
 
 DAY = 86400.0

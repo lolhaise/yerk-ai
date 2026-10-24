@@ -16,7 +16,8 @@ from yerk_ai import abilities, cli, mcp_server, words, workers
 from yerk_ai.card import Card
 from yerk_ai.channels import discord as dmod
 from yerk_ai.config import EXAMPLE_PRIVATE
-from yerk_ai.daemon import NO_KEY_LINE, ConsoleChannel, Yerkd
+from yerk_ai.daemon import NO_KEY_LINE, Yerkd
+from fake_channel import ConsoleChannel
 from yerk_ai.engine import SessionTable
 from yerk_ai.room import fit
 

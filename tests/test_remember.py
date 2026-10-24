@@ -9,7 +9,8 @@ from datetime import datetime, timezone
 
 from yerk_ai import memindex, memory, mentions, words
 from yerk_ai.config import EXAMPLE_PRIVATE
-from yerk_ai.daemon import ConsoleChannel, Yerkd
+from yerk_ai.daemon import Yerkd
+from fake_channel import ConsoleChannel
 from yerk_ai.room import Inbound
 
 SRC = r"\(example-room#discord:CHANNEL_ID, \d{4}-\d\d-\d\d \d\d:\d\d:\d\d[+-]\d\d:\d\d\) \[m:m-1\]"

@@ -12,7 +12,8 @@ from starlette.testclient import TestClient
 
 from yerk_ai import evidence, hooks, mcp_server, memindex, memory, mentions, words
 from yerk_ai.config import EXAMPLE_PRIVATE, budgets, rooms
-from yerk_ai.daemon import ConsoleChannel, Yerkd
+from yerk_ai.daemon import Yerkd
+from fake_channel import ConsoleChannel
 from yerk_ai.engine import SessionTable
 
 UTC = timezone.utc

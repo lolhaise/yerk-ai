@@ -20,7 +20,8 @@ from starlette.testclient import TestClient
 from yerk_ai import __version__, beat, cli, jobs, mcp_server, morning, status, usage, words
 from yerk_ai.accounts import Account, Cooldowns, load_accounts
 from yerk_ai.config import EXAMPLE_PRIVATE, REPO
-from yerk_ai.daemon import ConsoleChannel, Yerkd
+from yerk_ai.daemon import Yerkd
+from fake_channel import ConsoleChannel
 from yerk_ai.ledger import Ledger
 from yerk_ai.meters import Meters
 from yerk_ai.room import Inbound
