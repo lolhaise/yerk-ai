@@ -8,7 +8,7 @@ with the originals kept under `backups/`; the index chunks every file again when
 
 ## 2026-10-24
 
-### attachments-root
+### attachments-root (#115)
 
 - The files a chat brought when `yerk room add NAME` moved it in, saved in `<layer>/NAME-attachments`, can be recalled.
   `yerk pictures backfill ROOM --root FOLDER` and `yerk files backfill ROOM --root FOLDER` take that folder for its own
