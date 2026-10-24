@@ -111,8 +111,8 @@ def test_a_calendar_line_and_a_time_are_the_two_schedules_and_a_cron_line_is_ref
     assert weekdays.calendar() == ["Mon..Fri 09:00 America/Toronto"] and weekdays.when == "calendar"
     assert weekdays.describe() == "calendar `Mon..Fri 09:00` America/Toronto"
     assert weekdays.planned(epoch(2026, 3, 9, 9, 0, 4, tz=TOR)) == epoch(2026, 3, 9, 9, 0, 4, tz=TOR)     # planned when it fired
-    # the owner's three lines of Oct 24 first: the replacement is the OnCalendar text their timers already carry
-    for cron, line in (("0 10 * * 1", "Mon *-*-* 10:0:00"), ("55 23 * * *", "*-*-* 23:55:00"), ("30 4 * * *", "*-*-* 4:30:00"),
+    # plain lines first: the replacement is the OnCalendar text the old parser wrote for each, so a swapped unit is unchanged
+    for cron, line in (("0 10 * * 1", "Mon *-*-* 10:0:00"), ("45 22 * * *", "*-*-* 22:45:00"), ("30 4 * * *", "*-*-* 4:30:00"),
                        ("*/15 8-10 * * 1-5", "Mon..Fri *-*-* 8..10:0/15:00"), ("0 0 */2 * *", "*-*-1/2 0:0:00")):
         with pytest.raises(JobError) as e:
             make_job("x", {"kind": "note", "schedule": cron, "tz": "UTC", "room": "r", "message": "m"})
