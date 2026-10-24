@@ -758,8 +758,8 @@ def main(argv: list[str] | None = None) -> int:
                         "`schedule` tool, from the command line)")
     sc.add_argument("action", choices=["add", "remove", "list"])
     sc.add_argument("name", nargs="?", help="the job's name: lowercase letters, digits, hyphens")
-    sc.add_argument("--when", help='add: a date and time ("2026-03-09 09:00", a one-shot), "every 2h", or a cron '
-                    'expression ("0 9 * * 1-5")')
+    sc.add_argument("--when", help='add: a date and time ("2026-03-09 09:00", a one-shot) or a systemd calendar line '
+                    '("Mon..Fri 09:00", recurring)')
     sc.add_argument("--what", help="add: the worker's brief (kind agent), the shell line (kind script) or the text "
                     "the room is told (kind note)")
     sc.add_argument("--kind", choices=["agent", "script", "note"], default="agent")

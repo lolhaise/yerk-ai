@@ -9,8 +9,8 @@ systemd and prints that; a job that cannot be scheduled is named with why. `yerk
 read-back alone. The units outlive the daemon, and a timer's Persistent=true fires a run missed
 while the box was down, once, on return (DESIGN 7; decisions 15 and 16).
 
-Three schedule kinds: `schedule` (a cron expression) with `tz` (an IANA name); `every` (a
-duration); `at` (one time with tz, removed from the file after it fires).
+Two schedule kinds: `schedule` (a systemd calendar line, such as `Mon 10:00`) with `tz` (an IANA name);
+`at` (one time with tz, removed from the file after it fires). A cron line is refused with the calendar line for it.
 
 Three timed job kinds. A script job runs its `command` inside the unit under an account-free environment
 (no account token, no Claude Code variables) with the job's cap, then hands the result to the
@@ -46,8 +46,7 @@ import tomllib
 import urllib.request
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta, timezone
-from itertools import product
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterator
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -70,7 +69,6 @@ NO_REPLY = "NO_REPLY"
 WAITING = "undelivered: waiting for the room's turn"       # a told note's run until its turn ends (Jobs.tell)
 OUTPUT_MAX = 4000                 # characters of a script's output posted; the rest stays in the run folder
 ALERT_MAX = 300
-MIN_EVERY = 30                    # seconds
 DEFAULT_CAP = {"script": 10.0, "agent": 15.0, "note": 0.0}     # a note runs nothing: no cap
 ROOM_NOTES, ROOM_NOTE_MINUTES, NOTE_CHARS = 20, 5, 600     # the [jobs] defaults (CONF)
 ROOM_NOTE_BURST = 3      # notes per room_note_minutes window: a reminder, its follow-up check and a watch in one turn
@@ -82,11 +80,8 @@ KEYS: dict[str, str] = {        # every key of a [jobs.NAME] table, in plain wor
             'a headless Claude Code run with the message as its brief, its last message told by the room) or "note" '
             "(a reminder: when it is due the room's own session is told its message and says it in its voice; no "
             "worker, no shell, no account, no cap, so any room may set one for itself)",
-    "schedule": 'a cron expression, five fields (minute hour day-of-month month day-of-week; "*", lists, ranges and '
-                'steps, Sun=0), read in `tz`; one of schedule, every, at',
-    "every": 'a duration between runs ("30m", "2h", "1h30m", "90s"; at least 30s). One that divides an hour or a day '
-             "runs on the clock's boundaries in `tz` (every 2h fires at even hours), so a missed run fires on return; "
-             "any other interval runs one interval after the sync and after each run",
+    "schedule": 'a systemd calendar line (OnCalendar, `man systemd.time`: "Mon 10:00", "Mon..Fri *-*-* 07:30", "*:0/30" '
+                'every half hour), read in `tz`; a missed run fires once on return. One of schedule or at',
     "at": 'one date and time ("2026-03-09 09:00", or with an offset), read in `tz` when it has none: a one-shot, '
           'removed from this file after it fires; a time missed while the box was down fires once on return',
     "tz": "the IANA time zone the schedule or the time is read in (such as Europe/Paris); required with schedule, "
@@ -122,144 +117,25 @@ class JobError(ValueError):
     """Why a job cannot be scheduled, in one sentence."""
 
 
-# the schedule: cron, every, at
-MONTHS = {m: i + 1 for i, m in enumerate(("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"))}
+# the schedule: a calendar line, or one time
 DAY_NAMES = ("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
-DAYS = {d.lower(): i for i, d in enumerate(DAY_NAMES)}
-
-
-def _num(text: str, names: dict[str, int], lo: int, hi: int) -> int:
-    key = text.strip().lower()[:3]
-    try:
-        n = names[key] if key in names else int(text)
-    except ValueError:
-        raise JobError(f"{text!r} is not a number") from None
-    if not lo <= n <= hi:
-        raise JobError(f"{n} is outside {lo}-{hi}")
-    return n
-
-
-def _field(text: str, lo: int, hi: int, names: dict[str, int] | None = None) -> set[int]:
-    names = names or {}
-    out: set[int] = set()
-    for part in text.split(","):
-        step = 1
-        if "/" in part:
-            part, s = part.split("/", 1)
-            step = _num(s, {}, 1, hi)
-        if part == "*":
-            a, b = lo, hi
-        elif "-" in part:
-            x, y = part.split("-", 1)
-            a, b = _num(x, names, lo, hi), _num(y, names, lo, hi)
-            if a > b:
-                raise JobError(f"the range {part!r} runs backwards")
-        else:
-            a = _num(part, names, lo, hi)
-            b = hi if step > 1 else a
-        out.update(range(a, b + 1, step))
-    return out
-
-
-def _compact(values: set[int], lo: int, hi: int) -> str:
-    """A set as systemd writes it: "*" for all, "lo/step" for a stride from lo, else the list."""
-    if (s := sorted(values)) == list(range(lo, hi + 1)):
-        return "*"
-    for step in range(2, hi - lo + 1):
-        if len(s) >= 3 and s == list(range(lo, hi + 1, step)):
-            return f"{lo}/{step}"
-    return ",".join(map(str, s))
-
-
-@dataclass(frozen=True)
-class Cron:
-    minute: frozenset[int]
-    hour: frozenset[int]
-    dom: frozenset[int]
-    month: frozenset[int]
-    dow: frozenset[int]
-    dom_any: bool
-    dow_any: bool
-
-    @classmethod
-    def parse(cls, expr: str) -> Cron:
-        parts = expr.split()
-        if len(parts) != 5:
-            raise JobError(f"a cron expression has five fields (minute hour day month weekday), this has {len(parts)}")
-        try:
-            minute, hour = _field(parts[0], 0, 59), _field(parts[1], 0, 23)
-            dom, month = _field(parts[2], 1, 31), _field(parts[3], 1, 12, MONTHS)
-            dow = {d % 7 for d in _field(parts[4], 0, 7, DAYS)}
-        except JobError as e:
-            raise JobError(f"in the cron expression {expr!r}: {e}") from None
-        return cls(frozenset(minute), frozenset(hour), frozenset(dom), frozenset(month), frozenset(dow), parts[2] == "*", parts[4] == "*")
-
-    def day_ok(self, d: date) -> bool:
-        dom, dow = d.day in self.dom, (d.isoweekday() % 7) in self.dow
-        either = not (self.dom_any or self.dow_any)      # vixie cron: when both are restricted, either one matches
-        return d.month in self.month and ((dom or dow) if either else (dom and dow))
-
-    def fire(self, at: float, tz: ZoneInfo, back: bool = False) -> float | None:
-        """The first fire after `at`, or with `back` the last one at or before it; None if none in five years."""
-        start = datetime.fromtimestamp(at, tz).date()
-        for i in range(366 * 5):
-            d = start + timedelta(days=-i if back else i)
-            if not self.day_ok(d):
-                continue
-            for h, m in sorted(product(self.hour, self.minute), reverse=back):
-                t = datetime(d.year, d.month, d.day, h, m, tzinfo=tz)
-                real = t.astimezone(timezone.utc).astimezone(tz).replace(tzinfo=None) == t.replace(tzinfo=None)
-                if real and (t.timestamp() <= at if back else t.timestamp() > at):   # real: not a spring-forward gap
-                    return t.timestamp()
-        return None
-
-    def calendar(self, tz: str) -> list[str]:
-        """OnCalendar= lines: two when both the day of month and the weekday are restricted, since
-        cron fires on either and systemd on both."""
-        clock = f"{_compact(set(self.hour), 0, 23)}:{_compact(set(self.minute), 0, 59)}:00 {tz}"
-        months = _compact(set(self.month), 1, 12)
-        dows = ",".join(DAY_NAMES[d] for d in sorted(self.dow))
-        doms = _compact(set(self.dom), 1, 31)
-        if self.dom_any and self.dow_any:
-            return [f"*-{months}-* {clock}"]
-        out = []
-        if not self.dow_any:
-            out.append(f"{dows} *-{months}-* {clock}")
-        if not self.dom_any:
-            out.append(f"*-{months}-{doms} {clock}")
-        return out
-
-
-DURATION = re.compile(r"(\d+)\s*(d|days?|h|hours?|hrs?|m|min|mins|minutes?|s|secs?|seconds?)(?![a-z])", re.I)
+DURATION = re.compile(r"(\d+)\s*(d|days?|h|hours?|hrs?|m|min|mins|minutes?|s|secs?|seconds?)(?![a-z])", re.I)   # location.py's
 UNITS_S = {"d": 86400, "h": 3600, "m": 60, "s": 1}
 
 
-def parse_every(text: str) -> int:
-    """A duration in seconds: "30m", "2h", "1h30m", "90s", "2 hours"."""
-    t = text.strip().lower().removeprefix("every").strip()
-    found = DURATION.findall(t)
-    if not found or DURATION.sub("", t).strip(" ,"):
-        raise JobError(f"{text!r} is not a duration (write it like 30m, 2h, 1h30m or 90s)")
-    if (secs := sum(int(n) * UNITS_S[u[0]] for n, u in found)) < MIN_EVERY:
-        raise JobError(f"every {text!r} is under {MIN_EVERY} seconds")
-    return secs
-
-
-def every_cron(seconds: int) -> str | None:
-    """An interval that divides an hour or a day, as the cron expression of its clock boundaries;
-    None for the rest (those run on systemd's monotonic clock from the sync)."""
-    if seconds % 60:
-        return None
-    m = seconds // 60
-    if m < 60 and 60 % m == 0:
-        return f"*/{m} * * * *" if m > 1 else "* * * * *"
-    if m % 60 == 0:
-        h = m // 60
-        if h < 24 and 24 % h == 0:
-            return f"0 */{h} * * *" if h > 1 else "0 * * * *"
-        if h == 24:
-            return "0 0 * * *"
-    return None
+def cron_refusal(spec: str) -> str:
+    """The one line that refuses a cron line (five fields, no colon) in `schedule`, with the calendar line that says the
+    same when this can say it exactly (numbers, `*`, lists, ranges, a `*/n` step; one of the two day fields); "" for
+    any other schedule. The loader raises it, `yerk doctor` prints it: the jobs file is the owner's, never rewritten."""
+    if len(f := spec.split()) != 5 or ":" in spec:
+        return ""
+    head = f"`schedule` takes a systemd calendar line now, not cron: replace schedule = {toml_value(spec)} with "
+    if "*" not in (f[2], f[4]) or not re.fullmatch(r"\*|\d+(-\d+)?(,\d+(-\d+)?)*", f[4]) or not all(
+            re.fullmatch(r"\*(/\d+)?|\d+(-\d+)?(,\d+(-\d+)?)*", x) for x in f[:4]):
+        return head + 'a calendar line (`man systemd.time`; "Mon 10:00" is Mondays at 10)'
+    minute, hour, dom, month = (x.replace("-", "..").replace("*/", "0/" if i < 2 else "1/") for i, x in enumerate(f[:4]))
+    days = "" if f[4] == "*" else ",".join("..".join(DAY_NAMES[int(d) % 7] for d in r.split("-")) for r in f[4].split(",")) + " "
+    return head + f"schedule = {toml_value(f'{days}*-{month}-{dom} {hour}:{minute}:00')}"
 
 
 def parse_at(value: Any, tz: ZoneInfo | None) -> float:
@@ -293,14 +169,13 @@ class Job:
     name: str
     kind: str
     room: str
-    when: str                     # "cron", "every" or "at"
-    spec: str                     # the cron expression, the duration, or the time as written
-    tz: str                       # IANA name ("" only for `every` with none given)
+    when: str                     # "calendar" or "at"
+    spec: str                     # the calendar line, or the time as written
+    tz: str                       # IANA name
     cap: float                    # minutes
     deliver: str
     payload: str                  # the command or the message
     account: str = ""
-    every_seconds: int = 0
     at_epoch: float = 0.0
 
     @property
@@ -312,34 +187,20 @@ class Job:
         return ZoneInfo(self.tz or "UTC")
 
     def describe(self) -> str:
-        if self.when == "cron":
-            return f"cron `{self.spec}` {self.tz}"
-        return f"every {self.spec}" if self.when == "every" else f"one-shot {when_text(self.at_epoch, self.tz)}"
+        if self.when == "calendar":
+            return f"calendar `{self.spec}` {self.tz}"
+        return f"one-shot {when_text(self.at_epoch, self.tz)}"
 
-    @property
-    def cron(self) -> Cron | None:
-        """The clock expression behind a cron schedule, or behind an interval that divides an hour
-        or a day; None for a one-shot or an interval that runs on the monotonic clock."""
-        if self.when == "cron":
-            return Cron.parse(self.spec)
-        return Cron.parse(expr) if self.when == "every" and (expr := every_cron(self.every_seconds)) else None
-
-    def planned(self, fired: float, last_trigger: float | None = None) -> float:
-        """The time this run was meant for: the clock instant at or before the fire, the one-shot's
-        time, or for a monotonic interval the timer's own trigger time."""
-        if self.cron is not None:
-            return self.cron.fire(fired, self.zone, back=True) or fired
-        if self.when == "at":
-            return self.at_epoch
-        return last_trigger if last_trigger and abs(fired - last_trigger) < 3600 else fired
+    def planned(self, fired: float) -> float:
+        """The time this run was meant for: the one-shot's time; a calendar run's own fire (systemd starts it on its
+        second, AccuracySec=1s), so a run caught up after the box was down is planned when it fired."""
+        return self.at_epoch if self.when == "at" else fired
 
     def calendar(self) -> list[str]:
-        """OnCalendar= lines; [] for an interval on the monotonic clock."""
-        if self.cron is not None:
-            return self.cron.calendar(self.tz or "UTC")
+        """OnCalendar= lines: the one-shot's time, or the schedule as written, in the job's zone."""
         if self.when == "at":
             return [datetime.fromtimestamp(self.at_epoch, self.zone).strftime("%Y-%m-%d %H:%M:%S") + f" {self.tz}"]
-        return []
+        return [f"{self.spec} {self.tz}"]
 
 
 def make_job(name: str, raw: dict[str, Any], now: float | None = None) -> Job:
@@ -354,13 +215,13 @@ def make_job(name: str, raw: dict[str, Any], now: float | None = None) -> Job:
         raise JobError('`kind` must be "script", "agent" or "note"' + (f", not {kind!r}" if kind else ""))
     if kind == "note" and (extra := [k for k in ("command", "account", "cap") if k in raw]):
         raise JobError(f"a note runs nothing, so it takes no `{extra[0]}`: its `message` is what its room is told")
-    whens = [k for k in ("schedule", "every", "at") if k in raw]
+    whens = [k for k in ("schedule", "at") if k in raw]
     if len(whens) != 1:
-        raise JobError("give exactly one of `schedule` (cron), `every` (a duration) or `at` (one time)")
-    when = {"schedule": "cron", "every": "every", "at": "at"}[whens[0]]
+        raise JobError("give exactly one of `schedule` (a systemd calendar line) or `at` (one time)")
+    when = {"schedule": "calendar", "at": "at"}[whens[0]]
     tz_name = str(raw.get("tz", "") or "")
     tz = zone(tz_name) if tz_name else None
-    if when == "cron" and tz is None:
+    if when == "calendar" and tz is None:
         raise JobError("`schedule` needs `tz` (an IANA name such as Europe/Paris), so the hours mean what you mean")
     if not (room := str(raw.get("room", "") or "")):
         raise JobError("`room` is required: the room the output or the relay lands in")
@@ -388,13 +249,11 @@ def make_job(name: str, raw: dict[str, Any], now: float | None = None) -> Job:
         if not payload.strip():
             raise JobError("a note needs `message`, the text its room is told" if kind == "note" else
                            "an agent job needs `message`, the brief its worker gets")
-    every_s, at_epoch, spec = 0, 0.0, ""
-    if when == "cron":
-        spec = str(raw["schedule"])
-        Cron.parse(spec)
-    elif when == "every":
-        spec = str(raw["every"])
-        every_s = parse_every(spec)
+    at_epoch, spec = 0.0, ""
+    if when == "calendar":
+        spec = str(raw["schedule"]).strip()
+        if (why := cron_refusal(spec)):
+            raise JobError(why)
     else:
         at_epoch = parse_at(raw["at"], tz)
         shown = datetime.fromtimestamp(at_epoch, tz or timezone.utc)
@@ -403,7 +262,7 @@ def make_job(name: str, raw: dict[str, Any], now: float | None = None) -> Job:
             tz_name = "UTC"
         if at_epoch <= now:
             raise JobError(f"`at` {when_text(at_epoch, tz_name)} is in the past")
-    return Job(name, kind, room, when, spec, tz_name, cap, deliver, payload, account, every_s, at_epoch)
+    return Job(name, kind, room, when, spec, tz_name, cap, deliver, payload, account, at_epoch)
 
 
 def load(path: Path, now: float | None = None) -> tuple[dict[str, Job], dict[str, str]]:
@@ -500,14 +359,12 @@ def remove(path: Path, name: str) -> bool:
 
 def fields_for(kind: str, when: str, what: str, room: str, tz: str, deliver: str = "announce", cap: float = 0.0,
                account: str = "") -> dict[str, Any]:
-    """The table a `schedule add` writes: `when` is a time (a one-shot), "every ..." (an interval)
-    or a cron expression; `what` is the message (agent, note) or the command (script)."""
+    """The table a `schedule add` writes: `when` is a time (a one-shot) or a systemd calendar line
+    (recurring); `what` is the message (agent, note) or the command (script)."""
     w = when.strip()
     out: dict[str, Any] = {"kind": kind, "room": room}
     if re.match(r"^\d{4}-\d{2}-\d{2}", w):
         out["at"] = w
-    elif w.lower().startswith("every ") or (DURATION.fullmatch(w) and len(w.split()) == 1):
-        out["every"] = w.lower().removeprefix("every").strip()
     else:
         out["schedule"] = w
     if tz:
@@ -550,10 +407,7 @@ def unit_texts(job: Job, env: Env) -> tuple[str, str]:
            f'Environment="YERK_STATE={unit_line(str(env.state))}"',
            f"ExecStart={unit_line(env.python, '-P', '-m', 'yerk_ai.jobs', 'run', job.name)}"]
     timer =[head, "[Unit]", f"Description=Yerk AI job {job.name} (timer)", "", "[Timer]"]
-    if not job.calendar():                 # an interval off the clock's boundaries: systemd's monotonic clock
-        timer += [f"OnActiveSec={job.every_seconds}s", f"OnUnitActiveSec={job.every_seconds}s"]
-    else:
-        timer += [f"OnCalendar={c}" for c in job.calendar()] + ["Persistent=true"]
+    timer += [f"OnCalendar={c}" for c in job.calendar()] + ["Persistent=true"]
     timer += ["AccuracySec=1s", f"Unit={job.unit}.service", "", "[Install]", "WantedBy=timers.target", ""]
     start = 120 if job.kind == "agent" else int(job.cap * 60) + 120      # the runner's own cap comes first (L163)
     service = [head, "[Unit]", f"Description=Yerk AI job {job.name}", "", "[Service]", "Type=oneshot", *run, f"TimeoutStartSec={start}", ""]
@@ -768,14 +622,6 @@ def status_lines(path: Path, units: Systemd, now: float | None = None) -> list[s
 
 
 # the run: inside the unit
-def last_trigger(units: Systemd, job: Job) -> float | None:
-    try:
-        t = units.timers().get(f"{job.unit}.timer")
-    except (OSError, subprocess.SubprocessError, ValueError):
-        return None
-    return t["last"] if t else None
-
-
 def run_script(job: Job, folder: Path) -> dict[str, Any]:
     """The command under /bin/sh with an account-free environment, the job's cap, stdout and stderr
     to files in the run folder. Returns exit, timed_out, output and the stderr tail. A `yerk` line in it is this install's
@@ -831,7 +677,7 @@ def run(name: str, private: Path, state: Path, units: Systemd | None = None,
         return 2
     folder = state / "jobs" / name / time.strftime("%Y%m%d-%H%M%S", time.localtime(fired))
     folder.mkdir(parents=True, exist_ok=True)
-    planned = job.planned(fired, last_trigger(units, job) if job.when == "every" and job.cron is None else None)
+    planned = job.planned(fired)
     run_id = ledger.job_run_add(job=name, kind=job.kind, room=job.room, unit=job.unit, planned=planned, fired=fired, folder=str(folder))
     log.info("job %s: run %d fired %.1f s after its time", name, run_id, fired - planned)
     rc = 0
