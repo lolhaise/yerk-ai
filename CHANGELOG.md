@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-10-24
 
-### send-own-channel
+### send-own-channel (#117)
 
 - A room that names itself in `send` by its channel id (the id alone, or `discord:<id>` as rooms.toml writes it) posts in
   its own chat. The approval gate held that send as a send to another room and asked for the word, and the send would
