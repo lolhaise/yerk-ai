@@ -214,13 +214,28 @@ def restart_hit(tool: str, ti: dict[str, Any], private: Path) -> str | None:
     return None
 
 
-def external_hit(tool: str, ti: dict[str, Any], room: str, s: Settings) -> tuple[str, str, str] | None:
-    """(rule, what in plain words, the call in one line) for an action named external, else None."""
+def room_named(value: str, rooms: dict[str, dict[str, Any]]) -> str | None:
+    """The room a send's `room` names, else None: a room's name, or its channel in rooms.toml (`discord:<id>`), whole or
+    the id alone (the day log's room id when rooms.toml sets no `id`). The gate's "other" and the send tool both read it."""
+    if value in rooms:
+        return value
+    for name, conf in rooms.items():
+        channel = str(conf.get("channel") or "")
+        if value and value in (channel, channel.partition(":")[2]):
+            return name
+    return None
+
+
+def external_hit(tool: str, ti: dict[str, Any], room: str, s: Settings,
+                 rooms: dict[str, dict[str, Any]] | None = None) -> tuple[str, str, str] | None:
+    """(rule, what in plain words, the call in one line) for an action named external, else None. With `rooms`
+    (rooms.toml's) a send names a room by its channel too (room_named); without, by its name only."""
     parts = shell(str(ti.get("command") or "")) if tool == "Bash" else []
     for name, rule in s.external.items():
         if not re.search(rule.get("tool", r"^$"), tool):
             continue
-        if rule.get("room") == "other" and str(ti.get("room") or room) == room:
+        to = room_named(str(ti.get("room") or room), rooms or {room: {}}) if rule.get("room") == "other" else None
+        if rule.get("room") == "other" and to == room:      # its own name or channel: never another room
             continue
         what = rule.get("what", name)
         if rule.get("command"):
@@ -229,7 +244,7 @@ def external_hit(tool: str, ti: dict[str, Any], room: str, s: Settings) -> tuple
                 continue
             return name, what, hit[:160]
         if ti.get("room"):
-            what = f"{what} ({ti['room']})"
+            what = f"{what} ({to or ti['room']})"
         return name, what, f"{tool} {str(ti)[:140]}"
     return None
 

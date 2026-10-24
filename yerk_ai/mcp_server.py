@@ -112,8 +112,8 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
     @mcp.tool()
     async def send(room: str, text: str = "", file: str = "", *, ctx: Context) -> str:
         """Post to a room now, before your reply: text, or a file (absolute path) with the text as its
-        caption; a voice_note file goes as a voice message. `room` is a room id from the [message] line. Returns the
-        posted message ids."""
+        caption; a voice_note file goes as a voice message. `room` is a room's name; this room's own name or its
+        channel id both mean this room. Returns the posted message ids."""
         return json.dumps(await daemon.tool_send(room, text, file, caller_room(ctx)))
 
     @mcp.tool()

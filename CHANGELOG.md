@@ -8,6 +8,19 @@ version changes.
 
 ## 2026-10-24
 
+### send-own-channel (#117)
+
+- A room that names itself in `send` by its channel id (the id alone, or `discord:<id>` as rooms.toml writes it) posts in
+  its own chat. The approval gate held that send as a send to another room and asked for the word, and the send would
+  then have answered that no room has that name (seen live: a room asked to post a picture in its chat passed its
+  own id). The gate and the send tool read one resolver: a room's name, its channel, or the id alone.
+- Another room's id or channel is still a send to another room: held until the owner says the word, the held line naming
+  the room rather than the id, then posted in that room. A value that is no room's name or channel is held as before, and
+  the send refuses it with the rooms' names. A room with people still posts to itself only, its own id now included.
+- The send tool's description says `room` is a room's name, and that the room's own name or its channel id both mean
+  that room: 40 characters more, inside the line for Yerk AI's tools (11,671 against 11,700).
+- **Upgrading:** nothing to edit. budgets.toml: `[code] lines` 19,976 (a dated note).
+
 ### web-budget (#116)
 
 - The line for Claude Code's other tool entries (its deferred-loading placeholder and the web plug-in's tools) is 3,429,
