@@ -397,4 +397,11 @@ secs = 60
 # the one resolver: a room's name, its rooms.toml channel or the id alone; external_hit reads it with the rooms' confs and
 # names a held send's room by it), daemon.py 1 (the send tool resolves `room` through it before its checks).
 # 19,976 on main 9d9e05b (#116): 19,960 + 16.
-lines = 19976
+# 2026-10-24: addons-1 raised it by 355, part one of the core and the add-ons (ROADMAP-v6 step 3): the
+# loader, addons.py 295 (`yerk add` from a folder, a git URL or the repo the registry names, its checks, the size ceiling
+# among them, the marked blocks in rooms.toml and yerkd.toml, the units, `yerk remove`, the budget lines and rooms.toml keys
+# an installed add-on brings), words.py 23, cli.py 20, abilities.py 13 (the on state read from the install and from each
+# entry's `keys`, the three names checked by hand and the voice_note import gone), status.py 2, deploy.py 1, memory.py 1;
+# not folded to fit. 20,331 on main 30ea8dc (#117): 19,976 + 355. The core's target is under 10,000 after the extractions
+# (parts two and three), not with this one.
+lines = 20331

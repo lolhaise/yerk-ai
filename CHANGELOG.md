@@ -8,6 +8,29 @@ version changes.
 
 ## 2026-10-24
 
+### addons-1
+
+- `yerk add SOURCE` installs an add-on, an ability that lives in a repo of its own: SOURCE is a folder, a git URL
+  (`file://` included), or an ability whose abilities.toml entry names its `repo`. Each step is a line as it is done:
+  fetched into the state folder's `addons/NAME`, checked (its entry, and its code against its own `size`: an add-on over
+  its own ceiling is refused, nothing written), its package installed into this venv, its MCP server and its tools'
+  allow lines written under rooms.toml's `[defaults]` and its tables into yerkd.toml (each a marked block, read back
+  through the loaders that start yerkd before anything is written), its units linked into `~/.config/systemd/user`, its
+  budget lines and its words file named, its own fast tests run. A failing test undoes every step. `--dry-run` says each
+  step as "would".
+- `yerk remove NAME` undoes each step and leaves the private folder byte for byte as it was before the add; the add-on's
+  folder goes to the trash, and a package that will not uninstall is said on its own line.
+- abilities.toml entries gain `repo`, `version`, `size` and `install`, and `yerk abilities` reads an add-on's state from
+  what is installed (the package importable, its server under `[defaults]`, its units linked): installed, missing a part,
+  or not installed when a repo is named. A key-tier ability is on when the keys its new `keys` field names are there,
+  where three names were checked by hand.
+- While an add-on is installed its budget lines count in the gate (`yerk map`, the daemon) and its rooms.toml keys are
+  known keys to the doctor. `yerk deploy` runs each installed add-on's fast tests after the core's, and a failure names
+  the add-on. `yerk status` has one `add-ons:` line.
+- examples/addons/hello is the example: one MCP tool, one unit, one budget line, one words file, one test.
+- **Upgrading:** nothing to edit; rooms.toml and yerkd.toml change only when you run `yerk add`. budgets.toml:
+  `[code] lines` 20,331 (a dated note: 19,976 + 355).
+
 ### send-own-channel (#117)
 
 - A room that names itself in `send` by its channel id (the id alone, or `discord:<id>` as rooms.toml writes it) posts in
