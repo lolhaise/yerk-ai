@@ -20,7 +20,8 @@ from starlette.testclient import TestClient
 from yerk_ai import __version__, beat, cli, jobs, mcp_server, morning, status, usage, words
 from yerk_ai.accounts import Account, Cooldowns, load_accounts
 from yerk_ai.config import EXAMPLE_PRIVATE, REPO
-from yerk_ai.daemon import ConsoleChannel, Yerkd
+from yerk_ai.daemon import Yerkd
+from fake_channel import ConsoleChannel
 from yerk_ai.ledger import Ledger
 from yerk_ai.meters import Meters
 from yerk_ai.room import Inbound
@@ -51,9 +52,6 @@ class Timers:
         if self.t is None:
             raise OSError("systemctl --user list-timers exited 1")
         return self.t
-
-    def active(self, unit):
-        return "active"
 
 
 def busy_room(since=None, waiting=0, pid=None):
@@ -544,7 +542,7 @@ def test_the_nightly_rules_pass_is_an_example_job_that_parses_and_the_status_car
     code); due within the hour, `yerk status` names it like any job."""
     found, bad = jobs.load(EXAMPLE_PRIVATE / jobs.FILE, NOW)
     job = found["example-curate-rules"]
-    assert "example-curate-rules" not in bad and (job.kind, job.when, job.spec, job.deliver, job.account) == ("script", "cron", "30 4 * * *", "silent", "")
+    assert "example-curate-rules" not in bad and (job.kind, job.when, job.spec, job.deliver, job.account) == ("script", "calendar", "*-*-* 04:30", "silent", "")
     assert job.payload.startswith("yerk curate --rules")
     s = status.collect(EXAMPLE_PRIVATE, tmp_path, [], Cooldowns(tmp_path / "c.json"), Ledger(tmp_path / "l.sqlite"), now=NOW, units=set,
                        timers=Timers({f"{jobs.UNIT}example-curate-rules.timer": {"next": NOW + 1200, "last": None}}))

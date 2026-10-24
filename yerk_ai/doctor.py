@@ -16,7 +16,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
 
-from . import deploy, docs, files, hooks, memindex, memory, pictures, retention, status, words
+from . import deploy, docs, files, hooks, jobs, memindex, memory, pictures, retention, status, words
 from . import shape as rule_shape                      # the check named "rule shape"; "layout" is the private folder's
 from .accounts import load_accounts, token_info
 from .config import REPO, ROOM_KEYS, budgets, filled, load_toml, room_defaults, room_id, rooms, write_private
@@ -176,6 +176,8 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
             found.extend([f"room {n}: no layer folder"] if not layer_dir(private, c).is_dir() else [])
         if base := room_defaults(load_toml(private / "rooms.toml")):     # each owner room as written, against [defaults]
             found.extend(x for n, c in rooms(private, own=True).items() if str(c.get("privacy", "owner")) == "owner" and (x := drift(n, c, base)))
+        table = load_toml(private / jobs.FILE).get("jobs") if (private / jobs.FILE).is_file() else {}   # a cron line left in the jobs file
+        found.extend(f"job {n}: {x}" for n, j in (table or {}).items() if isinstance(j, dict) and (x := jobs.cron_refusal(str(j.get("schedule", "")))))
         also = {(private / Path(str(x)).expanduser()).resolve() for c in rs.values() if isinstance(c.get("also"), list) for x in c["also"]}
         found.extend(f"also root {r.name}: missing" for r in sorted(also | set(m.scope.roots[1:]) - set(m.uploads)) if not r.exists())
         named = [v for t in conf.values() if isinstance(t, dict) for k, v in t.items() if k.endswith(("_file", "_key")) and isinstance(v, str)]

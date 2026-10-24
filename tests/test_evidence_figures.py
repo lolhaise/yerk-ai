@@ -5,20 +5,17 @@ on 2026-10-18 where each was ledgered against an unrelated line."""
 
 from __future__ import annotations
 
-from pathlib import Path
 
 from yerk_ai import evidence
 
-ROOTS = (Path("memory"),)
 FILED = lambda fig: "facts/numbers.md:3"  # noqa: E731  every figure is "on file" somewhere
-KNOWN = lambda name: None  # noqa: E731
 
 
 def figures(reply: str, read: str = "") -> list[str]:
     ev = evidence.Evidence()
     if read:
         ev.give(read)
-    return [d for rule, d in evidence.check(reply, ["a question"], ev, ROOTS, FILED, KNOWN) if rule == "figure"]
+    return [d for rule, d in evidence.check(reply, ev, FILED) if rule == "figure"]
 
 
 def test_a_version_after_a_name_is_not_a_figure() -> None:

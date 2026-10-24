@@ -422,7 +422,7 @@ class Workers:
         # completion hooks (jobs.py): each gets (row, end) after the card settles; True means it
         # delivered the result itself, so the default relay does not run
         self.hooks: list[Callable[[dict[str, Any], dict[str, Any]], Awaitable[bool]]] = []
-        # harness turns waiting for an idle room (relays, a watcher's events): in order, one at a time
+        # harness turns waiting for an idle room (relays, notes): in order, one at a time
         self.waiting: dict[str, list[Inbound]] = {}
         self.asked: dict[str, str] = {}                 # room -> the harness turn it is running now
         self.loop: asyncio.AbstractEventLoop | None = None
@@ -487,7 +487,7 @@ class Workers:
 
     async def start(self, room: str, brief: str = "", brief_file: str = "", account: str = "", model: str = "",
                     cap_minutes: float = 0.0, tasks: list[str] | None = None, job: str = "",
-                    watch: int = 0, more: dict[str, Any] | None = None) -> dict[str, Any]:
+                    more: dict[str, Any] | None = None) -> dict[str, Any]:
         """`more`: keys the daemon's own callers add to worker.json (never the tool's or the command line's), none replacing one."""
         if room not in self.rooms:
             return {"ok": False, "error": f"no room {room!r}; rooms: {', '.join(self.rooms)}"}
@@ -541,7 +541,7 @@ class Workers:
         row: dict[str, Any] = {"id": wid, "room": room, "account": acct.name, "unit": f"{UNIT}{wid}", "model": model,
                "session_id": sid, "brief": brief_file or str(d / "BRIEF.md"), "staging": str(d),
                "report": str(report), "tasks": str(tasks_md), "cap": cap, "started": now,
-               "job": job or None, "watch": watch or None}
+               "job": job or None}
         if busy >= self.conf.per_account:                   # one heavy worker per account: this one waits
             row.update(queued=now, waiting=1)
         self.ledger.worker_add(**row)

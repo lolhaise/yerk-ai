@@ -93,37 +93,6 @@ def test_the_offset_is_the_lines_own_and_the_room_and_author_carry_an_id_and_a_h
     assert memory.system_zone()                                  # a zone name, never a fixed offset
 
 
-def test_the_migration_rewrites_old_lines_once_with_a_backup_and_leaves_new_ones(tmp_path):
-    from zoneinfo import ZoneInfo
-    tz = ZoneInfo("America/Toronto")
-    daily = tmp_path / "daily"
-    daily.mkdir()
-    (daily / "2026-03-08.md").write_text(                        # the clocks change at 02:00 that day
-        "# 2026-03-08\n\n- 01:30:00 an-example-room owner: before the change [m:1]\n"
-        "- 03:30:00 an-example-room yerk: after the change [m:2]\n  - attachment: a.png, image/png, 10 bytes\n"
-        "- 04:00:00 other-room owner: another room, no id on file [m:3]\n"
-        "- 05:00:00-04:00 an-example-room#discord:1000 owner@h: already new [c:room] [m:4]\n")
-    (daily / "2026-11-01.md").write_text("# 2026-11-01\n\n- 01:30:00 an-example-room owner: the repeated hour [m:5]\n")
-    rooms = {"an-example-room": ("discord:1000", "room")}
-    st = memory.migrate_daylogs(daily, tz, rooms, tmp_path / "backup")
-    assert (st["files"], st["rewritten"], st["kept"]) == (2, 4, 1)
-    lines = (daily / "2026-03-08.md").read_text().splitlines()
-    assert lines[2:] == [
-        "- 01:30:00-05:00 an-example-room#discord:1000 owner: before the change [c:room] [m:1]",
-        "- 03:30:00-04:00 an-example-room#discord:1000 yerk: after the change [c:room] [m:2]",
-        "  - attachment: a.png, image/png, 10 bytes",
-        "- 04:00:00-04:00 other-room owner: another room, no id on file [c:private] [m:3]",
-        "- 05:00:00-04:00 an-example-room#discord:1000 owner@h: already new [c:room] [m:4]"]
-    assert (daily / "2026-11-01.md").read_text().splitlines()[-1].startswith("- 01:30:00-04:00 ")   # the first offset
-    assert (tmp_path / "backup" / "2026-03-08.md").read_text().splitlines()[2].startswith("- 01:30:00 an-example-room owner")
-    again = memory.migrate_daylogs(daily, tz, rooms, tmp_path / "backup")
-    assert (again["rewritten"], again["kept"]) == (0, 5)
-    s = memory.settings(tmp_path, tmp_path / "state", {"timezone": "America/Toronto", "root": "."})
-    hits = memory.topic_hits(s, "an-example-room", "before the change?", set(), datetime(2026, 3, 9, tzinfo=UTC), rid="discord:1000")
-    by = {h["cite"]: h["text"] for h in hits}                                   # read back across the migration
-    assert by["daily/2026-03-08.md:3"] == "before the change" and "other room" not in str(hits)
-
-
 # privacy classes (restart test R2): a room reads shared files and its own lines, an owner room everything
 def test_a_room_cannot_read_another_rooms_private_lines_or_files(tmp_path):
     s = tree(tmp_path)
@@ -201,37 +170,6 @@ def test_a_former_rooms_name_is_not_a_non_owner_rooms_history(tmp_path):
     assert len(memory.room_items(s, "family", now, rid="f-new")) == 2                  # the owner view, by name too
     assert len(memory.topic_hits(s, "family", "decided on the kettle?", set(), now, rid="f-new")) == 2
     assert len(memory.room_items(s, "family", now, rid="family", owner=False)) == 0   # an old line never reaches a non-owner room
-
-
-def test_a_line_the_daemon_files_during_the_migrations_rewrite_lands_in_the_new_file(tmp_path, monkeypatch):
-    """Cold read F3: the daemon's capture and the migration's rewrite hold one lock, so an append that
-    arrives between the read and the rename waits, then lands in the rewritten file."""
-    import threading
-    from zoneinfo import ZoneInfo
-    tz, rooms = ZoneInfo("America/Toronto"), {"an-example-room": ("discord:1000", "room")}
-    daily = tmp_path / "daily"
-    daily.mkdir()
-    (daily / "2026-10-18.md").write_text("# 2026-10-18\n\n- 10:00:00 an-example-room owner: an old line [m:1]\n")
-    log = memory.DailyLog(daily, tz, rooms)
-    filed = threading.Thread(target=log.capture, args=("an-example-room", "2", "owner", "filed during the rewrite"),
-                             kwargs={"when": datetime(2026, 10, 18, 14, 0, 5, tzinfo=UTC)})
-    real = os.replace
-
-    def replace_while_a_message_lands(a, b):
-        if Path(b) == daily / "2026-10-18.md":                  # the day file's rename, not the backup copy's
-            filed.start()
-            filed.join(0.5)                  # without the lock the line is in the old file by now, and lost
-        return real(a, b)
-    monkeypatch.setattr(os, "replace", replace_while_a_message_lands)
-    st = memory.migrate_daylogs(daily, tz, rooms, tmp_path / "backup")
-    filed.join(5)
-    assert (st["rewritten"], st["kept"]) == (1, 0) and not filed.is_alive()
-    assert (daily / "2026-10-18.md").read_text().splitlines()[2:] == [
-        "- 10:00:00-04:00 an-example-room#discord:1000 owner: an old line [c:room] [m:1]",
-        "- 10:00:05-04:00 an-example-room#discord:1000 owner: filed during the rewrite [c:room] [m:2]"]
-    assert (tmp_path / "backup" / "2026-10-18.md").read_text().endswith("an old line [m:1]\n")
-    assert memory.migrate_daylogs(daily, tz, rooms, tmp_path / "backup-2")["rewritten"] == 0
-    assert not (tmp_path / "backup-2").exists()                          # nothing to rewrite: nothing copied
 
 
 def test_the_example_layer_never_captures_into_the_repo(tmp_path):

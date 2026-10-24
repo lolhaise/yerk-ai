@@ -363,10 +363,18 @@ secs = 60
 # 20,590 merged on the train after #99: #103, #105, #111, #106, #107, #109, #104, #110 and #108. Lines shared and
 # both kept: context.py and hooks.py with #107 and #109, daemon.py with #109, doctor.py with #111, words.py with #107;
 # curate.py with #108, whose condense loop stands in for this PR's copy of the old one, its topic and gate block after it.
+# 2026-10-24: shrink-1 lowered it by 725, by deletion alone (ROADMAP-v3 claim 9, run 1 of three; no line folded): the
+# watcher job kind 380 (never in the owner's jobs file; its 7 ledger rows were the yerk-test drill of Oct 18), the cron
+# and `every` parser 152 net (`schedule` is a systemd calendar line; the line that refuses a cron schedule with its
+# replacement, and the doctor's line for it, are in), console mode 84 (its channel is tests/fake_channel.py now), the two
+# one-off migrations whose job is done 88, the evidence check's file and decide rules 21 (0 rows in six days). Kept by
+# their premises: the script job kind (two live jobs) and VoiceFile.to_dict (discord.py calls it on every voice note).
 # 2026-10-24: attachments-root raised it by 38: the files a moved room brought are recallable (found that day: 985 files in
 # four rooms' <layer>/NAME-attachments with no sidecar, as root_of refused every folder in the private folder), not folded
 # to fit. move.py 14 (the folder joins a block's `also` when it has one, yerkd.toml's [memory] also named by hand, the two
 # backfills as the last steps), doctor.py 10 (one line a room with the counts and the commands), context.py 5 (the folder's
 # one name, attachments_dir), words.py 4, pictures.py 3 (root_of takes that folder, listed in the room's own `also`),
 # memindex.py 2 (a recording's NAME.transcript.txt a sidecar kind of a listed folder, as a picture's seen file is).
-lines = 20628
+# 00,000 second entry #000 (waits-0): 00,000 + 00. In the queue for its: turn.and the, #000'last part closes
+# plain Text with one more.
+lines = 19903

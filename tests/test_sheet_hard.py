@@ -17,7 +17,8 @@ from test_observe import layer
 
 from yerk_ai import context, memory, morning, words
 from yerk_ai.config import EXAMPLE_PRIVATE
-from yerk_ai.daemon import ConsoleChannel, Yerkd
+from yerk_ai.daemon import Yerkd
+from fake_channel import ConsoleChannel
 from yerk_ai.engine import SessionTable
 
 PASTE = "Here is the block for the ticket:\n```\nExample line one.\nExample line two.\n```\n"

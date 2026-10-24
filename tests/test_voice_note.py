@@ -26,7 +26,8 @@ from test_discord import HOOK, OWNER, ROOM_CH, Client, Room
 from yerk_ai import abilities, cli, context, memory, shape, transcribe, voice_note, words
 from yerk_ai.channels.discord import DiscordChannel
 from yerk_ai.config import budgets
-from yerk_ai.daemon import YERK_TOOLS, ConsoleChannel, Yerkd
+from yerk_ai.daemon import YERK_TOOLS, Yerkd
+from fake_channel import ConsoleChannel
 from yerk_ai.ledger import Ledger
 
 EXAMPLE_PRIVATE = Path(__file__).resolve().parents[1] / "examples" / "private"

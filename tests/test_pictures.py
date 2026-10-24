@@ -16,7 +16,7 @@ from test_remember import daemon
 
 from yerk_ai import cli, context, mcp_server, memory, pictures, shape, workers, words
 from yerk_ai.config import budgets
-from yerk_ai.daemon import ConsoleChannel
+from fake_channel import ConsoleChannel
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"\0" * 32
 WORDS = "EX-42 TOTAL 1,250 sf\nPat: see you at 9\nRiley: works for me"

@@ -19,7 +19,7 @@ import threading
 import time
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, replace
-from datetime import date, datetime, timedelta, timezone, tzinfo
+from datetime import datetime, timedelta, timezone, tzinfo
 from pathlib import Path
 from typing import Any, Callable, Iterator
 from zoneinfo import ZoneInfo
@@ -1206,52 +1206,8 @@ def earlier_blocks(s: Settings, room: str, now: datetime | None = None, rid: str
     return seen
 
 
-def migrate_daylogs(daily: Path, tz: tzinfo, rooms: dict[str, tuple[str, str]], backup: Path) -> dict[str, Any]:
-    """One-time: every day-log line written before offsets, ids, authors and classes is rewritten in
-    today's shape, its offset resolved for its own day and time in `tz` (the repeated hour of a clock
-    change takes the first offset, the only ambiguity the old shape left), its room's id and class from
-    `rooms` (name -> (id, class); an unknown name keeps the name, class private). A file that changes
-    is copied to `backup` first (a copy already there is kept); a line already in the new shape is
-    left as it is, and a file with nothing to rewrite is left untouched. Each file is read and
-    replaced under the lock capture holds, so a line the daemon files meanwhile waits for the rename
-    and lands in the new file (cold read F3): the daemon runs this at its start, and `yerk memory
-    migrate-daylogs` runs it by hand, beside a running daemon or not."""
-    stats: dict[str, Any] = {"files": 0, "rewritten": 0, "kept": 0, "other": 0, "backup": str(backup)}
-    for f in sorted(daily.glob("????-??-??.md")):
-        with daily_lock(daily):
-            text = f.read_text(errors="replace")
-            day = date.fromisoformat(f.stem)
-            out = []
-            for raw in text.splitlines():
-                if (ln := parse_line(raw)) is None:
-                    stats["other"] += 1
-                    out.append(raw)
-                    continue
-                if ln.offset and ln.cls:
-                    stats["kept"] += 1
-                    out.append(raw)
-                    continue
-                h, m_, sec = (int(x) for x in ln.time.split(":"))
-                at = datetime(day.year, day.month, day.day, h, m_, sec, tzinfo=tz)
-                rid, cls = rooms.get(ln.label, (ln.rid, "private")) if not ln.room_id else (ln.rid, ln.cls or "private")
-                out.append(format_line(at, ln.label, rid, ln.role, ln.who, ln.body, ln.cls or cls, ln.mid))
-                stats["rewritten"] += 1
-            new = "\n".join(out) + ("\n" if text.endswith("\n") else "")
-            if new != text:
-                backup.mkdir(parents=True, exist_ok=True, mode=0o700)
-                if not (backup / f.name).exists():
-                    write_private(backup / f.name, text)
-                tmp = f.with_name(f".{f.name}.{os.getpid()}.tmp")
-                fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-                with os.fdopen(fd, "w") as w:
-                    w.write(new)
-                os.replace(tmp, f)
-        stats["files"] += 1
-    return stats
-
-
-def on_file(s: Settings, deadline_s: float = 1.5) -> tuple[Any, Any]:
-    """(figure lookup, file lookup) for the shadow Stop check, each answering the cite or None."""
+def on_file(s: Settings, deadline_s: float = 1.5) -> Any:
+    """The figure lookup for the shadow Stop check, answering the cite or None."""
     from .evidence import Quoted, has_figure
 
     def rows(sql: str, args: tuple[str, ...]) -> list[Any]:
@@ -1278,11 +1234,7 @@ def on_file(s: Settings, deadline_s: float = 1.5) -> tuple[Any, Any]:
                     break
         return f"{min(found)[1]}:{min(found)[2]}" if found else None
 
-    def known(name: str) -> str | None:
-        hit = rows("SELECT path FROM files WHERE path = ? OR path LIKE ? LIMIT 1", (name, "%/" + name.lstrip("./")))
-        return cite(s, Path(hit[0][0])) if hit else None
-
-    return figure, known
+    return figure
 
 
 # the recall bench: a fixed question set, run against the index (L63)

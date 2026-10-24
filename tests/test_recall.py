@@ -12,7 +12,8 @@ from starlette.testclient import TestClient
 
 from yerk_ai import evidence, hooks, mcp_server, memindex, memory, mentions, words
 from yerk_ai.config import EXAMPLE_PRIVATE, budgets, rooms
-from yerk_ai.daemon import ConsoleChannel, Yerkd
+from yerk_ai.daemon import Yerkd
+from fake_channel import ConsoleChannel
 from yerk_ai.engine import SessionTable
 
 UTC = timezone.utc
@@ -254,21 +255,14 @@ def stream(ev: evidence.Evidence, tool: str, ti: dict, result: str, n: int = 1) 
 def test_read_then_quote_logs_nothing_and_quote_without_read_logs_the_figure(tmp_path):
     calls = []
     ev = evidence.Evidence(on_call=calls.append)
-    roots = (tmp_path / "memory",)
     filed = lambda fig: "facts/boiler.md:3" if fig == "1.35" else None  # noqa: E731
-    known = lambda name: None  # noqa: E731
     stream(ev, "mcp__yerk__read_memory", {"path": "facts/boiler.md"}, "- The example boiler holds 1.35 bar cold.")
     assert calls[0]["tool"] == "mcp__yerk__read_memory" and calls[0]["target"] == "path=facts/boiler.md"
-    assert evidence.check("1.35 bar cold, per facts/boiler.md:3", ["how much?"], ev, roots, filed, known) == []
+    assert evidence.check("1.35 bar cold, per facts/boiler.md:3", ev, filed) == []
     ev.reset()
     ev.give("what was that number again?")
-    found = evidence.check("1.35 bar", ["what was that number again?"], ev, roots, filed, known)
+    found = evidence.check("1.35 bar", ev, filed)
     assert len(found) == 1 and found[0][0] == "figure" and "1.35" in found[0][1] and "missing read" in found[0][1]
-    ev.reset()
-    assert evidence.check("we went with the left layout", ["what did we decide about it?"], ev, roots, filed,
-                          known)[0][0] == "decide"
-    stream(ev, "mcp__yerk__recall", {"query": "layout"}, "...")
-    assert evidence.check("we went with the left layout", ["what did we decide?"], ev, roots, filed, known) == []
 
 
 def test_the_store_drops_the_oldest_text_never_a_later_hit():
