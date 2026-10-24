@@ -4,6 +4,8 @@
 # [recall], in questions of the recall bench, and [code] at the end, which counts lines. The budget test fails the build
 # when a part or a total passes its number here.
 
+# The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and
+# Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 [session_start]
 total = 98330
 
@@ -88,6 +90,8 @@ pinned_memory = 4000
 rules = 16000
 recall_pack = 6000
 
+# What the UserPromptSubmit hook adds to each message: `typical` caps the parts every message carries (the next table),
+# `cap` the most one message's hook output may carry with the parts paid only on a hit.
 [per_message]
 typical = 1500
 # 2026-10-21: 4,000 to 5,500, the taste part's 1,500 below (the owner's files carried over as they
@@ -95,6 +99,7 @@ typical = 1500
 # 2026-10-23: 5,500 to 5,650, the place part's 150 below.
 cap = 5650
 
+# The parts every message carries, one cap each: the clock line, the metadata line and, in an owner room, the place line.
 [per_message.parts]
 clock = 200
 metadata = 300
@@ -397,4 +402,12 @@ secs = 60
 # the one resolver: a room's name, its rooms.toml channel or the id alone; external_hit reads it with the rooms' confs and
 # names a held send's room by it), daemon.py 1 (the send tool resolves `room` through it before its checks).
 # 19,976 on main 9d9e05b (#116): 19,960 + 16.
-lines = 19976
+# 2026-10-24: docs-from-code raised it by 356: Yerk AI's own docs written from the code, `yerk docs own` (decision 16; the
+# audit's section G, items 4 and 5), not folded to fit. owndocs.py 232 (the six pages: commands from the three installed
+# commands' parsers, tools from the MCP server's own list, settings from the key tables, budgets from this file's comments,
+# hooks, units; the writer and its dry run), config.py 96 (ROOM_WORDS, every rooms.toml key in plain words, ROOM_KEYS now
+# its keys; YERKD_WORDS, every yerkd.toml key not described where it is read), cli.py 11 (the `own` action and parser(),
+# split out of main so the page can read it), hooks.py 9 (EVENTS, what each event does, out of the module docstring and
+# made true to the daemon's seven Stop checks), daemon.py 4 and memindex.py 4 (their parser()). 20,332 on main 30ea8dc
+# (#117): 19,976 + 356.
+lines = 20332

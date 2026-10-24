@@ -71,6 +71,19 @@ def test_the_denylist_fails_a_planted_name_and_is_empty_without_its_file(tmp_pat
     assert scan(bad, "docs/leak.md", denylist()) == ["docs/leak.md:2: denylist entry 1"]
 
 
+def test_the_docs_and_the_readme_are_scanned_and_the_written_pages_carry_nothing_of_the_owners(tmp_path):
+    """docs-from-code: README.md and every page in docs/ are among the files the scan reads (a docs/ added to SKIP_DIRS fails
+    here), and the pages as `yerk docs own` writes them now, before they reach docs/, pass the same scan and denylist."""
+    from yerk_ai import owndocs
+    pages, rels = owndocs.pages(), {p.relative_to(ROOT).as_posix() for p in repo_files()}
+    assert {"README.md", "docs/STATUS.md", "docs/GUIDE.md", *(f"docs/{n}" for n in pages)} <= rels
+    hits, deny = [], denylist()
+    for name, text in pages.items():
+        (page := tmp_path / name).write_text(text)
+        hits += scan(page, f"docs/{name}", deny)
+    assert not hits, "\n".join(hits)
+
+
 def test_what_a_run_leaves_in_the_checkout_is_not_scanned(tmp_path):
     for d in (".ruff_cache/0.17.1", ".hypothesis/examples", ".tox/py312", "venv/lib", "node_modules/x", "docs"):
         (tmp_path / d).mkdir(parents=True)

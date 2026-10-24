@@ -17,7 +17,7 @@
 # MemoryMax at twice it.
 #
 # `yerk deploy --unit` moves a daemon started by systemd-run onto this file under its own name, with
-# its command, folder and environment; `yerk deploy` restarts it after that (README, Install).
+# its command, folder and environment; `yerk deploy` restarts it after that (docs/GUIDE.md, Install as a service).
 [Unit]
 Description=Yerk AI daemon (yerkd)
 After=network-online.target

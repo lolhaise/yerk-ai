@@ -8,6 +8,25 @@ version changes.
 
 ## 2026-10-24
 
+### docs-from-code
+
+- `yerk docs own` writes Yerk AI's own docs into docs/ from the code: commands.md (every command and flag of `yerk`,
+  `yerkd` and `yerk-index`, from their parsers), tools.md (the twelve tools a room is handed, each description as the
+  model reads it, with its arguments), settings.md (every rooms.toml, yerkd.toml and jobs.toml key with its default and
+  plain words), budgets.md (budgets.toml with its comments as prose), hooks.md (each Claude Code event and what it does)
+  and units.md (each unit and when it runs). The same tree writes the same bytes on Python 3.12, 3.13 and 3.14, and
+  nothing of the private layer or the state folder goes in. `--dry-run` names a stale page and writes nothing.
+- A test fails the build when docs/ is stale against the code (test_owndocs), so a change to a flag, a tool's words, a
+  key, a budget, a hook event or a unit runs `yerk docs own` in the same commit. The scrub test reads docs/ and the
+  README as it reads the code, and scans the pages as they are written before they reach docs/.
+- README.md is a ten-minute read: 9,328 bytes from 118,399. Its first section stays as it was; install in five commands,
+  the private folder in one picture, a room's turn in one paragraph, add-ons and where the docs are are new. The Status
+  section is docs/STATUS.md, whole, a record as of today; Use through Files are docs/GUIDE.md, whole (two links mended).
+  The pointers to README sections in rooms.toml.example, yerkd.toml.example and units/yerkd.service name docs/GUIDE.md.
+- The hooks' description is now hooks.EVENTS and says the seven Stop checks the daemon runs (the docstring named three).
+- **Upgrading:** nothing to edit. budgets.toml: `[code] lines` 20,332 (a dated note), and three tables gain the comment
+  line that says what they are; no number changed.
+
 ### send-own-channel (#117)
 
 - A room that names itself in `send` by its channel id (the id alone, or `discord:<id>` as rooms.toml writes it) posts in
