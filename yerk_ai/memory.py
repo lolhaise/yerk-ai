@@ -884,6 +884,32 @@ def record(s: Settings, now: datetime | None = None) -> Callable[[dict[str, Any]
     return weight
 
 
+FIELD = 1.0          # a hit whose file name or heading names a person or thing the question names: its weight times this (1: off)
+FACTS = 1.0          # a question in the present tense: a facts file's hit times this, beside a day log's (1: off)
+PRESENT = re.compile(r"\b(?:is|are|am|does|do|has|have|whats|whos)\b|\w['’]s\b", re.I)
+PAST = re.compile(r"\b(?:did|was|were|had|ago|yesterday|last (?:time|night|week|month|year))\b|\w['’]d\b", re.I)
+_NAMES: dict[Path, mentions.Index] = {}
+
+
+def named(s: Settings, query: str) -> list[list[str]]:
+    """The keys of the names index (mentions.py) the question names, each as its words, in the order named."""
+    found = _NAMES.setdefault(s.mentions, mentions.Index(s.mentions)).load().match(query)
+    return [k.split() for k in dict.fromkeys(e["named"] for e in found)]
+
+
+def fielded(s: Settings, query: str, weight: Callable[[dict[str, Any]], float]) -> Callable[[dict[str, Any]], float]:
+    """`weight` times FIELD for a hit whose file name or first heading holds every word of a name the question names, and for a
+    question in the present tense times FACTS for a facts file's hit (a day log says what was, a facts file what is)."""
+    names = named(s, query) if FIELD != 1.0 else []
+    now = FACTS != 1.0 and bool(PRESENT.search(query)) and not PAST.search(query)
+
+    def lifted(h: dict[str, Any]) -> float:
+        p, head = Path(h["path"]), str(h.get("text", "")).split("\n", 1)[0]
+        field = set(mentions.tokens(p.stem.replace("-", " ").replace("_", " ") + " " + (head if head.startswith("#") else ""), True))
+        return weight(h) * (FIELD if any(set(n) <= field for n in names) else 1.0) * (FACTS if now and p.parent.name == "facts" else 1.0)
+    return lifted
+
+
 def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader: Reader | None = None,
            weights: dict[str, float] | None = None, wide: bool = True, wait: float = MEANING_WAIT, docs: bool = True, weigh: bool = True) -> dict[str, Any]:
     """Ranked chunks, whole, with path and line, the keyword rank fused with the meaning rank when
@@ -918,7 +944,7 @@ def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader:
     if reader and (not reader.owner or reader.sealed):   # a room that is not an owner room, or is sealed, ranks and gets only chunks it can
         keywords, vectors = ([h for h in x if allowed_text(reader, Path(h["path"]), str(h.get("text", "")), daily=s.daily) == h.get("text")]
                              for x in (keywords, vectors))     # read whole (R2): its own line beside a hidden one reaches it through its pack,
-    hits = fuse(keywords, vectors, k, weight=record(s) if weigh else None)   # its topic hits and read_memory, never recall: a chunk read in part ranks on words it may not see
+    hits = fuse(keywords, vectors, k, weight=fielded(s, query, record(s)) if weigh else None)   # its topic hits and read_memory, never recall: a chunk read in part ranks on words it may not see
     # the owner's notes above the docs: they say how this install's things are, the docs how Claude runs anywhere, in the same words
     hits.sort(key=lambda h: s.docs is not None and Path(h["path"]).is_relative_to(s.docs))
     for h in hits:
