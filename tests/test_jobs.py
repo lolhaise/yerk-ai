@@ -113,10 +113,13 @@ def test_a_calendar_line_and_a_time_are_the_two_schedules_and_a_cron_line_is_ref
     assert weekdays.planned(epoch(2026, 3, 9, 9, 0, 4, tz=TOR)) == epoch(2026, 3, 9, 9, 0, 4, tz=TOR)     # planned when it fired
     # plain lines first: the replacement is the OnCalendar text the old parser wrote for each, so a swapped unit is unchanged
     for cron, line in (("0 10 * * 1", "Mon *-*-* 10:0:00"), ("45 22 * * *", "*-*-* 22:45:00"), ("30 4 * * *", "*-*-* 4:30:00"),
-                       ("*/15 8-10 * * 1-5", "Mon..Fri *-*-* 8..10:0/15:00"), ("0 0 */2 * *", "*-*-1/2 0:0:00")):
+                       ("*/15 8-10 * * 1-5", "Mon..Fri *-*-* 8..10:0/15:00"), ("0 0 */2 * *", "*-*-1/2 0:0:00"),
+                       ("0 9 * * 5-7", "Fri..Sun *-*-* 9:0:00")):
         with pytest.raises(JobError) as e:
             make_job("x", {"kind": "note", "schedule": cron, "tz": "UTC", "room": "r", "message": "m"})
         assert str(e.value) == f'`schedule` takes a systemd calendar line now, not cron: replace schedule = "{cron}" with schedule = "{line}"'
+    with pytest.raises(JobError, match=r'replace schedule = "0 9 \* \* 0-4" with a calendar line \(`man systemd.time`'):
+        make_job("x", {"kind": "note", "schedule": "0 9 * * 0-4", "tz": "UTC", "room": "r", "message": "m"})   # Sun..Thu: systemd refuses it
     with pytest.raises(JobError, match=r'replace schedule = "0 0 1 \* 1" with a calendar line \(`man systemd.time`'):
         make_job("x", {"kind": "note", "schedule": "0 0 1 * 1", "tz": "UTC", "room": "r", "message": "m"})   # both day fields
     assert jobs.cron_refusal("Mon 10:00") == jobs.cron_refusal("*-*-* 04:30:00 UTC") == jobs.cron_refusal("hourly") == ""

@@ -124,13 +124,13 @@ UNITS_S = {"d": 86400, "h": 3600, "m": 60, "s": 1}
 
 
 def cron_refusal(spec: str) -> str:
-    """The one line that refuses a cron line (five fields, no colon) in `schedule`, with the calendar line that says the
-    same when this can say it exactly (numbers, `*`, lists, ranges, a `*/n` step; one of the two day fields); "" for
-    any other schedule. The loader raises it, `yerk doctor` prints it: the jobs file is the owner's, never rewritten."""
+    """The one line that refuses a cron line (five fields, no colon) in `schedule`, with the calendar line that says the same when
+    this can say it exactly (numbers, `*`, lists, ranges, a `*/n` step; one of the two day fields; no weekday range from Sunday,
+    which ends systemd's week); "" for any other schedule. The loader raises it, `yerk doctor` prints it: the jobs file is the owner's, never rewritten."""
     if len(f := spec.split()) != 5 or ":" in spec:
         return ""
     head = f"`schedule` takes a systemd calendar line now, not cron: replace schedule = {toml_value(spec)} with "
-    if "*" not in (f[2], f[4]) or not re.fullmatch(r"\*|\d+(-\d+)?(,\d+(-\d+)?)*", f[4]) or not all(
+    if "*" not in (f[2], f[4]) or not re.fullmatch(r"\*|([0-7]|[1-6]-[1-7])(,([0-7]|[1-6]-[1-7]))*", f[4]) or not all(
             re.fullmatch(r"\*(/\d+)?|\d+(-\d+)?(,\d+(-\d+)?)*", x) for x in f[:4]):
         return head + 'a calendar line (`man systemd.time`; "Mon 10:00" is Mondays at 10)'
     minute, hour, dom, month = (x.replace("-", "..").replace("*/", "0/" if i < 2 else "1/") for i, x in enumerate(f[:4]))
@@ -406,7 +406,7 @@ def unit_texts(job: Job, env: Env) -> tuple[str, str]:
            f'Environment="YERK_PRIVATE={unit_line(str(env.private))}"',
            f'Environment="YERK_STATE={unit_line(str(env.state))}"',
            f"ExecStart={unit_line(env.python, '-P', '-m', 'yerk_ai.jobs', 'run', job.name)}"]
-    timer =[head, "[Unit]", f"Description=Yerk AI job {job.name} (timer)", "", "[Timer]"]
+    timer = [head, "[Unit]", f"Description=Yerk AI job {job.name} (timer)", "", "[Timer]"]
     timer += [f"OnCalendar={c}" for c in job.calendar()] + ["Persistent=true"]
     timer += ["AccuracySec=1s", f"Unit={job.unit}.service", "", "[Install]", "WantedBy=timers.target", ""]
     start = 120 if job.kind == "agent" else int(job.cap * 60) + 120      # the runner's own cap comes first (L163)
