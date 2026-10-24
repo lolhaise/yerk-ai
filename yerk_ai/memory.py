@@ -838,7 +838,7 @@ def meaning(s: Settings, query: str, pool: int = POOL, deadline_s: float = MEANI
 
 
 def fuse(keywords: list[dict[str, Any]], vectors: list[dict[str, Any]], k: int, keep: int = KEEP,
-         weight: Callable[[dict[str, Any]], float] | None = None, share: float = SHARE) -> list[dict[str, Any]]:
+         weight: Callable[[dict[str, Any]], float] | None = None, share: float = SHARE, day: int = 0) -> list[dict[str, Any]]:
     """Reciprocal rank fusion of the two ranked lists: each chunk scores the sum over the lists it is in
     of 1 / (RRF_K + its rank there), the keyword list's at twice `share`, the meaning list's at twice the rest, times its `weight`
     (`record`: a stored message counts RECORD); a tie breaks
@@ -860,6 +860,8 @@ def fuse(keywords: list[dict[str, Any]], vectors: list[dict[str, Any]], k: int, 
     cos = {h["id"]: float(h["score"]) for h in vectors}
     near = {h["id"]: h["near"] for h in vectors if h.get("near")}       # the line the meaning matched
     order = sorted(score, key=lambda i: (-score[i], -cos.get(i, 0.0)))
+    if day:
+        order = by_day(order, score, rows, day)
     held = list(dict.fromkeys([h["id"] for h in keywords[:keep]] + [h["id"] for h in vectors[:keep]]))[:k]
     chosen = set(held) | set([cid for cid in order if cid not in held][:k - len(held)])
     out = []
@@ -869,6 +871,36 @@ def fuse(keywords: list[dict[str, Any]], vectors: list[dict[str, Any]], k: int, 
         if cid in near:
             h["near"] = near[cid]
         out.append(h)
+    return out
+
+
+TENSE = 0            # day-log order by the question's tense: 0 off, 1 "when did" and "last time", 2 any past tense (PAST)
+DAY_TIE = 0.0        # hits whose fused scores are this close tie, and among them the day logs go by their day
+NEWEST = re.compile(r"\bwhen did\b|\blast time\b", re.I)
+FIRST = re.compile(r"\bfirst time\b", re.I)
+PAST = re.compile(r"\b(?:did|was|were|had|ago|yesterday|last (?:time|night|week|month|year))\b|\w['’]d\b", re.I)
+
+
+def day_of(query: str) -> int:
+    """1: the day logs newest first ("when did", "last time"; with TENSE 2 any past tense); -1: oldest first ("first time"); 0: as fused."""
+    if not TENSE:
+        return 0
+    return -1 if FIRST.search(query) else 1 if NEWEST.search(query) or TENSE == 2 and PAST.search(query) else 0
+
+
+def by_day(order: list[int], score: dict[int, float], rows: dict[int, dict[str, Any]], day: int) -> list[int]:
+    """`order` with each run of tied scores (within DAY_TIE of its first) holding its day logs in day order, newest first for `day` 1,
+    oldest for -1, in the places day logs held; every other hit keeps its place."""
+    out: list[int] = []
+    i = 0
+    while i < len(order):
+        j = i
+        while j + 1 < len(order) and score[order[i]] - score[order[j + 1]] <= DAY_TIE:
+            j += 1
+        run = order[i:j + 1]
+        logs = iter(sorted((c for c in run if is_daylog(rows[c]["path"])), key=lambda c: Path(rows[c]["path"]).stem, reverse=day > 0))
+        out += [next(logs) if is_daylog(rows[c]["path"]) else c for c in run]
+        i = j + 1
     return out
 
 
@@ -918,7 +950,7 @@ def ranked(s: Settings, query: str, k: int = 6, deadline_s: float = 5.0, reader:
     if reader and (not reader.owner or reader.sealed):   # a room that is not an owner room, or is sealed, ranks and gets only chunks it can
         keywords, vectors = ([h for h in x if allowed_text(reader, Path(h["path"]), str(h.get("text", "")), daily=s.daily) == h.get("text")]
                              for x in (keywords, vectors))     # read whole (R2): its own line beside a hidden one reaches it through its pack,
-    hits = fuse(keywords, vectors, k, weight=record(s) if weigh else None)   # its topic hits and read_memory, never recall: a chunk read in part ranks on words it may not see
+    hits = fuse(keywords, vectors, k, weight=record(s) if weigh else None, day=day_of(query) if weigh else 0)   # its topic hits and read_memory, never recall: a chunk read in part ranks on words it may not see
     # the owner's notes above the docs: they say how this install's things are, the docs how Claude runs anywhere, in the same words
     hits.sort(key=lambda h: s.docs is not None and Path(h["path"]).is_relative_to(s.docs))
     for h in hits:
