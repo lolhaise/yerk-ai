@@ -347,7 +347,7 @@ def test_the_console_channel_shows_the_rooms_own_words(capsys):
     assert NO_KEY_LINE.splitlines()[0] in json.loads(capsys.readouterr().out)["notice"]
 
 
-def test_job_lines_the_waiting_card_and_the_watcher_turn_are_plain_and_state_first():
+def test_job_lines_and_the_waiting_card_are_plain_and_state_first():
     """Run 2's two alert lines (a job's failure and a job worker's death) go through words.outcome and
     words.died like every other room line: no exit code, no systemd word, state first, phone width."""
     lines = [words.job_line("bad", "failed"), words.job_line("slow", "timed out", 600),
@@ -365,5 +365,4 @@ def test_job_lines_the_waiting_card_and_the_watcher_turn_are_plain_and_state_fir
     assert all(state_first(x) for x in lines) and state_first(card)
     assert card.splitlines()[:2] == [f"{words.WORKING} worker waiting for an account",
                                      f"{words.WAITING} 2nd in line for account one"]
-    ask = words.WATCH_ASK.format(name="w", n=1, s="", what="", cap=1500)
-    assert not room_safe(ask) and status
+    assert status

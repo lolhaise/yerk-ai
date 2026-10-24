@@ -52,9 +52,6 @@ class Timers:
             raise OSError("systemctl --user list-timers exited 1")
         return self.t
 
-    def active(self, unit):
-        return "active"
-
 
 def busy_room(since=None, waiting=0, pid=None):
     rp = SimpleNamespace(proc=SimpleNamespace(pid=pid), alive=lambda: True) if pid else None

@@ -73,7 +73,7 @@ class Inbound:
     must: str = ""                        # ... a line the reply must carry (a relay's "report saved" line)
     then: Callable[[str, list[str], int], None] | None = None   # (answered or failed, message ids, chars)
     alone: bool = False                   # a harness turn of its own: never folded into a running turn, never
-                                          # batched with another message (a relay, a watcher's event); in a
+                                          # batched with another message (a relay, a note); in a
                                           # closed room it resumes the room's session, as any message does
     after: bool = False                   # it folded into a turn that failed: it runs next as its own turn, and its card says so
 

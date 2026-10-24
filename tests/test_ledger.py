@@ -71,6 +71,3 @@ def test_every_write_of_an_id_list_writes_its_rows(tmp_path):
     rid = led.job_run_add(job="j", kind="script")
     led.job_run_set(rid, message_ids="a,b")
     assert links(led, "job_runs", rid, "message_ids") == ["a", "b"]
-    eid = led.watch_add(job="w", room="r", state="pending")
-    led.watch_set(eid, reply_ids="c", inbound="m9")
-    assert links(led, "watch_events", eid, "reply_ids") == ["c"] and links(led, "watch_events", eid, "inbound") == ["m9"]

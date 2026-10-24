@@ -740,7 +740,7 @@ class Yerkd:
 
     async def tool_schedule(self, room: str, req: dict[str, Any]) -> dict[str, Any]:
         """The `schedule` tool (add, remove, list); the job runner's hand-offs come through /control. An agent,
-        script or watcher job runs as the owner's user (a worker; a shell command with no sandbox at all), so an
+        script job runs as the owner's user (a worker; a shell command with no sandbox at all), so an
         owner's room adds one for itself by the worker rule and lists or removes any. A note runs nothing (its room
         is told its text when due), so a room that is not the owner's keeps its own notes and nothing else."""
         if room and not self.owner(room):
@@ -1348,7 +1348,6 @@ class Yerkd:
                 await asyncio.to_thread(room.reap_idle)
             try:
                 await self.workers.reconcile()         # the backstop for a missed watch event
-                await self.jobs.events_open()          # ... and for a watcher event the daemon was not told of
             except Exception:
                 log.exception("workers: the reconcile pass failed")
 

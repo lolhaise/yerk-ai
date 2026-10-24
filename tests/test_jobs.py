@@ -54,9 +54,6 @@ class FakeSystemd:
         return sorted({p.name.removeprefix(jobs.UNIT).removesuffix(".timer").removesuffix(".service")
                        for p in self.folder.glob(f"{jobs.UNIT}*") if p.read_text().startswith(jobs.HEADER)})
 
-    def active(self, unit):
-        return "active" if self.enabled.get(unit) else "inactive"
-
     def reload(self):
         self.calls.append(("reload",))
 
@@ -150,7 +147,7 @@ def test_cron_every_and_at_compute_the_right_next_fire():
 
 
 @pytest.mark.parametrize("raw, why", [
-    ({"kind": "cron", "schedule": "* * * * *", "tz": "UTC", "room": "r", "command": "x"}, '`kind` must be "script", "agent", "watcher" or "note"'),
+    ({"kind": "cron", "schedule": "* * * * *", "tz": "UTC", "room": "r", "command": "x"}, '`kind` must be "script", "agent" or "note"'),
     ({"kind": "script", "schedule": "* * * * *", "every": "1h", "tz": "UTC", "room": "r", "command": "x"}, "exactly one of"),
     ({"kind": "script", "schedule": "0 9 * * *", "room": "r", "command": "x"}, "needs `tz`"),
     ({"kind": "script", "schedule": "0 25 * * *", "tz": "UTC", "room": "r", "command": "x"}, "25 is outside 0-23"),
@@ -656,8 +653,8 @@ def test_the_schedule_tool_round_trips_through_the_file(setup, tmp_path):
 
 def test_a_room_with_people_keeps_its_own_notes_and_every_other_job_stays_the_owners(tmp_path):
     """Seen live: a person's room could not set the reminder they asked for, since every job ran as the owner. A
-    queue for its turn and the last part, closes the case before the next, run starts the example note says; the sample,
-    one more line for, the check while a second entry, waits in the queue for its turn and the last; part closes
+    room that is not the owner's now adds, lists and removes its own notes, and no answer names another job; an agent
+    or script job, or a note for another room, gets the line that says what it can do instead; the owner's
     rooms and `yerk schedule` keep every form."""
     from test_room_scope import install
     y, mom = install(tmp_path, family=True), "family-room"
@@ -672,7 +669,7 @@ def test_a_room_with_people_keeps_its_own_notes_and_every_other_job_stays_the_ow
     assert out["ok"] and (out["kind"], out["room"], out["tz"]) == ("note", mom, "UTC") and "diff" not in out
     assert jobs.load(path)[0]["trip-deals"].room == mom and sd.read("yerk-job-trip-deals.timer")
     for req in ({**note, "name": "x", "kind": "agent"}, {**note, "name": "x", "kind": "script", "what": "echo hi"},
-                {**note, "name": "x", "kind": "watcher"}, {**note, "name": "x", "room": "example-room"}, {"action": "sync"}):
+                {**note, "name": "x", "room": "example-room"}, {"action": "sync"}):
         assert ask(mom, **req) == {"ok": False, "line": W.JOBS_OWNER_ONLY}, req
     assert "[jobs.x]" not in path.read_text()
     assert W.JOBS_OWNER_ONLY.splitlines()[0] == "not scheduled: only this room's notes"        # state first, what it can do

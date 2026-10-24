@@ -614,7 +614,7 @@ def cmd_explain(a: argparse.Namespace) -> int:
         return 0
     s = memory.settings(private_dir(a.private), state_dir(a.state))
     print("\n".join(abilities.explain(a.ability, ab, table_, s)))     # one state line: the first (STYLE 1)
-    if a.ability in ("jobs", "watchers"):     # the jobs file's keys, from the code (decision 16)
+    if a.ability == "jobs":     # the jobs file's keys, from the code (decision 16)
         from . import jobs
         for head, table in (("a [jobs.NAME] table in the private jobs.toml", jobs.KEYS), ("[jobs] in the private yerkd.toml", jobs.CONF)):
             print(f"keys of {head}:")
