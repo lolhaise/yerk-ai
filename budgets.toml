@@ -397,4 +397,11 @@ secs = 60
 # the one resolver: a room's name, its rooms.toml channel or the id alone; external_hit reads it with the rooms' confs and
 # names a held send's room by it), daemon.py 1 (the send tool resolves `room` through it before its checks).
 # 19,976 on main 9d9e05b (#116): 19,960 + 16.
-lines = 19976
+# 2026-10-24: latency-bench raised it by 180: claim 18's judge, which did not exist, and the dead_turns query that held
+# `yerk status --json` for 111 s, not folded to fit. latency.py 136 (`yerk bench latency`: the first line, the queue wait,
+# the turn, the hooks, Yerk's tools and the cache hit rate per room from the ledger read only and the logs, the file the
+# next run diffs, the day's medians), ledger.py 18 (dead_turns as lookups, its docstring saying why; waits with the turn and
+# room; the timing rows; read_only), cli.py 17 (the bench command), morning.py 4 and status.py 3 (the day's medians against
+# the day before, and on the card), words.py 2.
+# 20,156 on main 30ea8dc: 19,976 + 180.
+lines = 20156
