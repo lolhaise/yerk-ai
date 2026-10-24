@@ -363,8 +363,9 @@ secs = 60
 # 20,590 merged on the train after #99: #103, #105, #111, #106, #107, #109, #104, #110 and #108. Lines shared and
 # both kept: context.py and hooks.py with #107 and #109, daemon.py with #109, doctor.py with #111, words.py with #107;
 # curate.py with #108, whose condense loop stands in for this PR's copy of the old one, its topic and gate block after it.
-# 0000-00-00: the-next-run starts the example 00, `note says` the sample item moved to the next step and, the
-# part closes the case before the next (run 00: starts the example note says the; sample 00: item moved to the next step, and
-# it back as plain text with one, more line for the check while a; second 0, entry 0), waits in the queue. For
-# the example note says the sample item moved to the next step and the test reads it back as.
-lines = 20646
+# 2026-10-24: gate-live-step raised it by 57, `yerk deploy` holding the layer's recall controls after the fast tests, on
+# the code under test in its tree (deploy 27: the check and its card lines; memory 23: the controls on the exact half, a
+# miss once more through the meaning half, the hit rule shared with the bench, and ranked's `weigh`, which deep recall
+# turns off so its lines stay as they were; cli 5, words 2), not folded to fit. The exact half alone weighing a stored
+# message as the fused rank does is in the lines that were there.
+lines = 20647

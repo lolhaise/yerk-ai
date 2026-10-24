@@ -17,12 +17,16 @@ with the originals kept under `backups/`; the index chunks every file again when
   `missed:` line. It runs on the code under test, in the daemon's tree (`yerk recall-bench --controls`: one JSON line,
   nothing written to the bench series), about 3 s on the box's index. `--no-tests` skips it with the fast tests; with no
   index or no controls the card says `recall: not checked` and the deploy goes on.
-- With the meaning half off, down or late, the exact half alone now weighs a stored message as the fused rank does: the
-  keywords go by their cover times its share (RECORD, 0.5), so a note comes before an old day log or an import that covers
-  no more of the question, where the keyword list was used as it came (a hit's score there is still the keyword cover).
-  On the install's 164 scored questions the exact half alone goes from 66 to 78 in the top six (top one 31 to 36), and 2
-  of the 3 controls only the meaning half found are found without it; the fused rank is unchanged (top six 103). No reindex.
-- **Upgrading:** budgets.toml [code] lines goes to 20646.
+- With the meaning half off, down or late, the recall tool's exact half alone (a room's recall, the bench, the deploy's
+  controls) now weighs a stored message as the fused rank does: the keywords go by their cover times its share (RECORD,
+  0.5), so a note comes before an old day log or an import that covers no more of the question, where the keyword list
+  was used as it came (a hit's score there is still the keyword cover). On the install's 164 scored questions the exact
+  half alone goes from 66 to 78 in the top six (top one 31 to 36), and 2 of the 3 controls only the meaning half found
+  are found without it; the fused rank is unchanged (top six 103). No reindex.
+- Deep recall is unchanged: the lines a room is handed on each name and topic in a message (decision 42) come from the
+  exact half as the index ranks it, unweighed, as before (`ranked(weigh=False)`), so it picks the lines it picked; a test
+  pins them to main's. Weighed, 90 of 186 sampled names on the install would have traded old day-log lines for notes.
+- **Upgrading:** budgets.toml [code] lines goes to 20647.
 
 ### rules-margin (#113)
 
