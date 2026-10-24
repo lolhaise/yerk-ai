@@ -8,6 +8,25 @@ version changes.
 
 ## 2026-10-24
 
+### decision-receipts
+
+- A reply that makes a call for the owner shows its receipt in the next morning diff (claim 19). Code reads each reply that
+  went out, sentence by sentence, for a call's shape (`words.CALL`: "I'd go with" or "I'd" with an imperative verb, "go with"
+  or "pick" opening a sentence, "my call:", "you should", "the plan is", a number with an imperative after it); no model
+  decides, and a question, a quoted span and a code block are never a call. Replayed read only over one day of a work room
+  (Oct 23, 96 turns): 7 calls in 6 turns, each a real recommendation.
+- Each call is a `calls` row in the ledger: its room, its turn, its sentence, and the cites its turn read (the recall hits
+  the prompt hook handed it, each file and line it opened, the file:line hits a recall or grep returned), or a flag that it
+  read nothing. A call in a person's room is that person's, never the owner's, and a reply a Stop rule turned back makes none.
+- The morning diff gives each of yesterday's calls its room and words, and under it its number and cites, or "no reads
+  behind it": the first 20, then the count after. A person's room's calls are counted, never quoted; a quiet day says
+  `calls yesterday: none`.
+- `yerk calls fix ID PATH:LINE NOTE` files the correction beside the wrong line the way `remember` does: a note in the call's
+  room's day log that names the line it supersedes and the call, that line marked superseded. It refuses a persona, a
+  rulebook, a voice file or a rules file; the next morning diff shows the fix.
+- **Upgrading:** nothing to edit; the ledger gains its `calls` table at the next start (no schema version change).
+  budgets.toml: `[code] lines` 20,145 (a dated note).
+
 ### send-own-channel (#117)
 
 - A room that names itself in `send` by its channel id (the id alone, or `discord:<id>` as rooms.toml writes it) posts in

@@ -397,4 +397,11 @@ secs = 60
 # the one resolver: a room's name, its rooms.toml channel or the id alone; external_hit reads it with the rooms' confs and
 # names a held send's room by it), daemon.py 1 (the send tool resolves `room` through it before its checks).
 # 19,976 on main 9d9e05b (#116): 19,960 + 16.
-lines = 19976
+# 2026-10-24: decision-receipts raised it by 169: a call a room makes for the owner shows its receipt in the morning diff
+# (claim 19, decision 45, the owner's Oct 21 ask), not folded to fit. evidence.py 56 (calls, the trigger read by code off
+# words.CALL; receipts and receipt_rows, the join to the turn's reads and the recall the prompt hook handed it, kept apart
+# from the session-start file every turn carries), cli.py 39 (`yerk calls fix`, the correction through memory.remember, a
+# persona or a rule file refused), morning.py 28 (a call's line and its receipt, the cap of 20, a person's room counted, the
+# fix), ledger.py 20 (the calls table and its four methods), words.py 17 (the shape and the lines), daemon.py 9 (a row per
+# call of a reply no Stop rule turned back). 20,145 on main 30ea8dc (#117): 19,976 + 169.
+lines = 20145

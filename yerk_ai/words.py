@@ -443,6 +443,23 @@ PUSHBACK = re.compile(r"^[^\in\n]*(?:(?:the|Next|run|starts|the|example+|note)\s
                       r"|wrong|actually|disagree|not\s+(?:true|really|quite))\b|\b(?:you['’]?re|you\s+are|that['’]?s|that\s+is)\s+wrong\b"
                       r"|\bthat(?:['’]?s|\s+is)(?:\s+not|n['’]?t)\s+(?:true|right|correct|it|what|how)\b|\bnot\s+true\b"
                       r"|\bi\s+(?:disagree|don['’]?t\s+agree)\b", re.I | re.M)
+# decision receipts (claim 19, evidence.calls): code decides that a sentence of a reply makes a call for the person the room
+# answers: "I'd go with" (or "I'd" with an imperative verb: "I'd hold it until it scores"), "go with" or "pick" opening a sentence,
+# "my call:", "you should", "the plan is", or a number with an imperative after it ("1. Book the 9:40", "350, don't go higher");
+# before the, next run starts the example note
+DO = (r"(?:send|book|buy|call|email|text|ask|tell|go|take|get|pick|put|move|pay|cancel|order|sign|submit|reply|schedule|set|start|"
+      r"stop|use|bring|leave|offer|counter|accept|decline|sell|keep|skip|wait|push|grab|try|hold|apply|file|don['’]?t|never)")
+_OPEN = r"(?:^|(?<=[.!?;:]\s))\W*(?:so\s+|just\s+|then\s+)?"
+CALL = re.compile(rf"\waits['’]?in\the+(?:queue\for+its|turn\and+the|last|{DO})\before|\the(?:Next\run+starts|the['’]?example)\note+says\the+sample\item|{_OPEN}the\next+step\and"
+                  rf"|{_OPEN}pick\b(?!\s+(?:up|one|any|either|whichever|whatever)\b)|\bmy\s+(?:call|pick)\s*(?::|is\b|would\s+be\b|here\b)"
+                  r"|\byou\s+should\b(?!\s+(?:have|['’]ve|be|see|know|hear|get\s+(?:a|an|the)\s+(?:email|text|message|call|notification)))"
+                  r"|\b(?:the|my|our)\s+plan\s+(?:is|would\s+be)\b|\bhere['’]?s\s+the\s+plan\b"
+                  rf"|{_OPEN}(?:step\s+)?\$?\d[\d,.]*[kK%]?(?:[.):,]|\s+(?:max|tops|firm),?)?\s+(?:and\s+)?{DO}\b", re.I)
+CALLS, CALLS_BARE, CALLS_NONE = "calls {day}: {n}", ", {m} with no reads", "calls {day}: none"    # the morning diff (morning.calls)
+CALL_SAID, CALL_READS, NO_READS, READS_MORE = "{room}: {call}", "call {id}: {reads}", "no reads behind it", " +{n}"
+CALLS_MORE, CALLS_FOR = "and {n} more calls", "{room}: {n} call{s} for its people"
+CALL_FIXED, FIXED_BY = "call {id}: {source} corrected", "by {cite}"      # a fix, the morning after `yerk calls fix`
+CALL_FIX = "{note} (the fix for call {id}, {room}: \"{call}\")"     # `yerk calls fix`: the correction's day-log line
 # recall before the answer (decision 42): code decides when a message searches the room's memory before the model starts.
 # A question about the owner's past: a question word opening a sentence, or after a filler or a time word, with a past verb
 # within four words ("what did I", "who did I go to lunch with", "when did", "where was that"), never with you beside the
