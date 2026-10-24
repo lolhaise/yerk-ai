@@ -434,9 +434,10 @@ def cmd_location(a: argparse.Namespace) -> int:
 
 
 def cmd_doctor(a: argparse.Namespace) -> int:
-    """The daily check and the crash repair (doctor.py): a line per finding, none when all is well; --dry-run changes nothing."""
+    """The daily check and the crash repair (doctor.py): a line per finding, one green line when all is well; --dry-run
+    changes nothing; --scrub swaps the value on each secret-shaped line the check names, each file backed up first."""
     from . import doctor
-    return doctor.main(private_dir(a.private), state_dir(a.state), a.dry_run, refresh=True)
+    return doctor.main(private_dir(a.private), state_dir(a.state), a.dry_run, refresh=not a.scrub, scrubbing=a.scrub)
 
 
 def cmd_docs(a: argparse.Namespace) -> int:
@@ -491,9 +492,13 @@ def cmd_curate(a: argparse.Namespace) -> int:
 
 def cmd_deploy(a: argparse.Namespace) -> int:
     """`yerk deploy [REF]` (deploy.py): fast-forward, fast tests, a quiet room, the restart, the proof,
-    else the rollback; the card to the machine room. --unit: onto units/yerkd.service as well."""
-    from . import deploy
-    from .config import state_dir
+    else the rollback; the card to the machine room. --unit: onto units/yerkd.service as well. --timers: only each timer
+    in units/ the box has not installed, installed and on (the doctor's fix for one), nothing restarted."""
+    from . import deploy, words
+    from .config import REPO, state_dir
+    if a.timers:
+        print("\n".join(out := deploy.timers(REPO, deploy.USER_UNITS)) or f"{words.DONE} every timer in units/ is installed")
+        return int(any(x.startswith(words.NOT_DONE) for x in out))
     return deploy.run(private_dir(a.private), state_dir(a.state), a.ref or "", tests=not a.no_tests, unit_file=a.unit)
 
 
@@ -788,7 +793,9 @@ def main(argv: list[str] | None = None) -> int:
             "the rule files' shape) and the crash repair of NUL lines, each file backed up first; once a week it also fetches "
             "the Claude docs from the web ([docs] fetch = false in yerkd.toml turns that off)")
     dc = sub.add_parser("doctor", help=said, description=said)
-    dc.add_argument("--dry-run", action="store_true", help="say what would be mended, change nothing")
+    dc.add_argument("--dry-run", action="store_true", help="say what would be mended or scrubbed, change nothing")
+    dc.add_argument("--scrub", action="store_true", help="only the scrub: each secret-shaped line's value swapped for [scrubbed], "
+                    "every line kept, each file copied first into <private>/backups/scrub-<day>/")
     dk = sub.add_parser("docs", help="the Claude docs kept as a memory root every room recalls (refresh, list, show NAME), "
                         "and shape: every room's rule files scored against the prompting guide")
     dk.add_argument("action", choices=["refresh", "list", "show", "shape"])
@@ -814,6 +821,7 @@ def main(argv: list[str] | None = None) -> int:
     dp.add_argument("ref", nargs="?", help="the commit (default: the daemon's tree's HEAD)")
     dp.add_argument("--no-tests", action="store_true", help="skip the fast tests and the recall check (the card says so)")
     dp.add_argument("--unit", action="store_true", help="also move a systemd-run daemon onto units/yerkd.service")
+    dp.add_argument("--timers", action="store_true", help="only install and turn on each timer in units/ not installed yet")
     for x in (ac, st, mo, rb, ev, ab, ex, jb, sc, lc, rt, dc, dk, cu, dp, pc, fl, nd):
         x.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else "
                        + ("the running yerkd's own, from its unit)" if x is dp else "the fake example layer)"))

@@ -397,4 +397,10 @@ secs = 60
 # the one resolver: a room's name, its rooms.toml channel or the id alone; external_hit reads it with the rooms' confs and
 # names a held send's room by it), daemon.py 1 (the send tool resolves `room` through it before its checks).
 # 19,976 on main 9d9e05b (#116): 19,960 + 16.
-lines = 19976
+# 2026-10-24: quiet-doctor raised it by 108: the doctor's severities and a fix on every finding, the weekly rule-shape
+# line, the scope change said once, the timers check, `yerk doctor --scrub`, and the deploy installing a timer the box
+# lacks (the audit that day: yerk-curate.timer never installed, so the night's curation never ran there), not folded to
+# fit. doctor.py 78 (leaked, unshaped and scrub among them, and the drift line's fix), deploy.py 22 (timers and its call),
+# cli.py 8 (--scrub, --timers), words.py 0 (doctor: clean; SHAPE_OK, read by nothing now, gone). 20,084 on main 30ea8dc
+# (#000): 00,000 + 000.
+lines = 20084

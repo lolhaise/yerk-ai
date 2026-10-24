@@ -1,5 +1,5 @@
 """`yerk doctor`: checks the install once a day, and repairs the files a crash or a power cut left damaged. units/yerk-doctor.timer
-units/yerk-doctor.timer, after retention's), quiet when all is well, a plain line per finding, each run kept in
+runs it after retention's (Layer 11, claim 6, decision 40): one green line when all is well, a red or orange line per finding with
 <state>/doctor.json for the morning diff; once a week it also fetches the Claude docs from the web (docs.py), unless
 [docs] fetch = false in yerkd.toml. A hard power-off zeroes the line a file was writing, so on yerkd's start and
 log, assembled log or bound transcript with a NUL byte is copied first (a day log to backups/doctor-<day>/ beside the private
@@ -23,18 +23,23 @@ from .config import REPO, ROOM_KEYS, budgets, filled, load_toml, room_defaults, 
 from .context import TOPICAL, attachments_dir, chars, layer_dir, session_start
 from .ledger import Ledger
 from .mentions import Builder
+from .workers import systemctl
 
 DAY, LAST, GROWTH_MB = 86400.0, "doctor.json", 500      # [doctor] growth_mb in yerkd.toml over GROWTH_MB
+RED, ORANGE, SUNDAY = words.NOT_DONE, words.WORKING, 6  # a finding's severity, its first character; the weekly run's day
+INDEX = "`systemctl --user restart yerk-index`"         # what a stale, re-scoped, failed or behind index wants
 CGROUP, STUCK = Path("/sys/fs/cgroup"), 3               # where a process's memory cap is read; backfill pauses in a row that are a finding
 # Secret-shaped text in memory (claim 4): the key shapes tests/test_scrub.py knows, then one-time codes and password or
-# token lines. Said by file:line and kind, never the value; the owner scrubs and rotates (a key in a log is already out).
+# token lines. Said by file:line and kind, never the value; `yerk doctor --scrub` swaps each value (group v, else the whole
+# match) for MARK, which no shape matches, and the owner rotates (a key in a log is already out).
 SECRETS = {"key": re.compile(r"sk-ant-[A-Za-z0-9_-]{16,}|sk-[A-Za-z0-9]{32,}|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{20,}"
                              r"|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----"
                              r"|[MN][A-Za-z0-9]{23,25}\.[A-Za-z0-9_-]{6}\.[A-Za-z0-9_-]{27,}"),
            "one-time code": re.compile(r"(?i)\b(?:(?:verification|security|one[- ]time|login|sign[- ]in|2fa|confirmation)\s+"
-                                       r"(?:code|pin)|otp|passcode|your (?:code|pin) is)\b\D{0,12}\d{4,8}\b"),
-           "password line": re.compile(r"(?i)\bpass(?:word|phrase)\s*(?:is|:|=)\s*(?=\S*[\d!#$%^&*])\S{6,}"),
-           "token line": re.compile(r"(?i)\b(?:token|api[ _-]?key|secret|bearer)\s*[:=]\s*[\"'`]?[\w.-]{16,}")}
+                                       r"(?:code|pin)|otp|passcode|your (?:code|pin) is)\b\D{0,12}(?P<v>\d{4,8})\b"),
+           "password line": re.compile(r"(?i)\bpass(?:word|phrase)\s*(?:is|:|=)\s*(?=\S*[\d!#$%^&*])(?P<v>\S{6,})"),
+           "token line": re.compile(r"(?i)\b(?:token|api[ _-]?key|secret|bearer)\s*[:=]\s*[\"'`]?(?P<v>[\w.-]{16,})")}
+MARK = "[scrubbed]"
 TEXT = (".md", ".txt", ".json", ".jsonl", ".csv", ".eml")
 SPENT = 2 * DAY                                         # a one-time code is dead this long after its own line's date
 
@@ -54,7 +59,7 @@ def scan(f: Path, now: float | None = None) -> list[tuple[int, str]]:
     month = dated(f.stem, "%Y-%m")
     end = (month.replace(day=28) + timedelta(days=4)).replace(day=1).timestamp() if month else None
     out, at = list[tuple[int, str]](), None
-    for n, line in enumerate(f.read_text(errors="replace").splitlines(), 1):
+    for n, line in enumerate(f.read_bytes().decode(errors="replace").split("\n"), 1):     # by b"\n", as rewrite numbers them
         if line.startswith("- "):                           # an entry's first line: its own time, or none
             at = d.timestamp() if (d := dated(line[2:18], "%Y-%m-%d %H:%M")) else None
         dead = now is not None and now - (at or end or now) > SPENT
@@ -100,6 +105,50 @@ def mend(path: Path, daylog: bool, backup: Path, dry: bool) -> list[int]:
     return rewrite(path, backup, fix, dry)
 
 
+def leaked(private: Path, m: memory.Settings, now: float) -> dict[Path, list[tuple[int, str]]]:
+    """Each file with a secret-shaped line and its (line, kind) hits: the day logs, notes and fact files, and the text an
+    import saved (an import's dead one-time codes are no hit)."""
+    roots = [m.root] + [private / d for d in ("attachments", "imports") if (private / d).is_dir()]
+    found = ((f, scan(f, now if f.is_relative_to(private / "imports") else None))
+             for f in sorted(p for r in roots for p in r.rglob("*") if p.suffix in TEXT and p.is_file()))
+    return {f: hits for f, hits in found if hits}
+
+
+def unshaped(line: bytes) -> bytes:
+    """The line with each secret-shaped value swapped for MARK until no shape is left in it, the rest of its bytes and its
+    newline as they were: the file keeps its line count and a second scrub finds nothing."""
+    text = line.decode(errors="surrogateescape")
+    for _ in range(64):                                     # a value a pass; MARK matches no shape, so this ends
+        if not (mo := next((x for rx in SECRETS.values() if (x := rx.search(text))), None)):
+            break
+        a, b = mo.span("v") if "v" in mo.re.groupindex else mo.span()
+        text = text[:a] + MARK + text[b:]
+    return text.encode(errors="surrogateescape")
+
+
+def scrub(private: Path, state: Path, dry: bool = False, now: float | None = None) -> list[str]:
+    """`yerk doctor --scrub`: each file the secrets check names copied first into <private>/backups/scrub-<day>/ (the
+    example layer's into the state folder's, as the crash repair's), then the value on each line it named swapped for
+    MARK; a line per file, by file and line, never the value; "would scrub" when `dry`, nothing written."""
+    now = time.time() if now is None else now
+    conf = load_toml(private / "yerkd.toml") if (private / "yerkd.toml").is_file() else {}
+    m, out = memory.settings(private, state, dict(conf.get("memory", {}))), list[str]()
+    keep = (state if private.resolve().is_relative_to(REPO) else private) / "backups" / f"scrub-{retention.day(now)}"
+    with memory.daily_lock(m.daily) if m.daily.is_dir() else suppress():      # capture's appends wait for the rename
+        for f, hits in leaked(private, m, now).items():
+            at, n, kinds = {h[0] for h in hits}, iter(range(1, 1 << 62)), ", ".join(dict.fromkeys(h[1] for h in hits))
+            name = f.relative_to(private) if f.is_relative_to(private) else f.name
+            try:
+                done = rewrite(f, keep, lambda x: unshaped(x) if next(n) in at else None, dry)
+            except OSError as e:
+                out.append(f"{RED} {name}: not scrubbed, {type(e).__name__}: {words.no_paths(str(e))[:80]}")
+                continue
+            lines = f"line{'s' * (len(done) > 1)} {', '.join(map(str, done[:8]))}{', ...' * (len(done) > 8)}"
+            out.append(f"{ORANGE} {name}: would scrub {lines} ({kinds})" if dry else
+                       f"{words.DONE} {name}: scrubbed {lines} ({kinds}), its copy in {keep.parent.name}/{keep.name}/")
+    return out or [f"{words.DONE} scrub: no secret-shaped line"]
+
+
 def exposed(root: Path) -> list[tuple[str, int]]:
     """(path under `root`, mode) of each file and folder, `root` too, that a group or other user can read: its read bit
     for them, every folder above it up to `root` searchable by them. A 0700 root hides everything in it. Links: not followed."""
@@ -130,7 +179,7 @@ def repair(private: Path, state: Path, m: memory.Settings, flight: set[str], dry
         if room not in flight and p.is_file() and ((st := p.stat()).st_dev, st.st_ino) not in busy:
             files.append((f"{room} {what}", mend(p, False, state / "trash" / day / "doctor", dry)))
     said = "would mend" if dry else "mended"
-    return [f"{what}: {said} line{'s' if len(n) > 1 else ''} {', '.join(map(str, n[:5]))}" for what, n in files if n]
+    return [f"{ORANGE} {what}: {said} line{'s' if len(n) > 1 else ''} {', '.join(map(str, n[:5]))}" for what, n in files if n]
 
 
 def start(private: Path, state: Path, m: memory.Settings, flight: set[str]) -> str:
@@ -156,7 +205,9 @@ def drift(name: str, own: dict[str, Any], base: dict[str, Any]) -> str:
     copies += [f"mcp.{s}" for s, v in (base.get("mcp") or {}).items() if servers.get(s) == filled(v, name)]
     said = [f"misses default tool{'s' * (len(missing) > 1)} {', '.join(missing)}"] if missing else []
     said += [f"carries a copy of the default {' and '.join([', '.join(copies[:-1]), copies[-1]] if len(copies) > 1 else copies)}"] if copies else []
-    return f"{words.NOT_DONE if missing else words.WORKING} room {name}: {'; '.join(said)}" if said else ""
+    fix = ["add each to the room's allow or name it in allow_remove"] if missing else []
+    fix += ["delete the copy so the room inherits [defaults]"] if copies else []
+    return f"{words.NOT_DONE if missing else words.WORKING} room {name}: {'; '.join(said)}; in rooms.toml, {', and '.join(fix)}" if said else ""
 
 
 def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings, now: float, last: dict[str, Any],
@@ -170,21 +221,24 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
                 raise ValueError(f"{name} does not read: {e}") from e
         rs = rooms(private)                                     # a room the loader refuses ends this check with its why
         for n, c in rs.items():
-            found.extend(f"room {n}: no {k} file" for k in ("persona", "rulebook", "voice")
-                         if c.get(k) and not (layer_dir(private, c) / str(c[k])).is_file())
-            found.extend(f"room {n}: rooms.toml key {k} is read by nothing" for k in sorted(set(c) - ROOM_KEYS))
-            found.extend([f"room {n}: no layer folder"] if not layer_dir(private, c).is_dir() else [])
+            found.extend(f"{RED} room {n}: no {k} file; write {c[k]} in its layer folder or fix {k} in rooms.toml"
+                         for k in ("persona", "rulebook", "voice") if c.get(k) and not (layer_dir(private, c) / str(c[k])).is_file())
+            found.extend(f"{ORANGE} room {n}: rooms.toml key {k} is read by nothing; fix its name or delete it in rooms.toml"
+                         for k in sorted(set(c) - ROOM_KEYS))
+            found.extend([f"{RED} room {n}: no layer folder; `mkdir -m 700 {layer_dir(private, c)}`"] if not layer_dir(private, c).is_dir() else [])
         if base := room_defaults(load_toml(private / "rooms.toml")):     # each owner room as written, against [defaults]
             found.extend(x for n, c in rooms(private, own=True).items() if str(c.get("privacy", "owner")) == "owner" and (x := drift(n, c, base)))
         table = load_toml(private / jobs.FILE).get("jobs") if (private / jobs.FILE).is_file() else {}   # a cron line left in the jobs file
-        found.extend(f"job {n}: {x}" for n, j in (table or {}).items() if isinstance(j, dict) and (x := jobs.cron_refusal(str(j.get("schedule", "")))))
+        found.extend(f"{RED} job {n}: {x}" for n, j in (table or {}).items() if isinstance(j, dict) and (x := jobs.cron_refusal(str(j.get("schedule", "")))))
         also = {(private / Path(str(x)).expanduser()).resolve() for c in rs.values() if isinstance(c.get("also"), list) for x in c["also"]}
-        found.extend(f"also root {r.name}: missing" for r in sorted(also | set(m.scope.roots[1:]) - set(m.uploads)) if not r.exists())
+        found.extend(f"{ORANGE} also root {r.name}: missing; put the folder back or drop it from also in rooms.toml"
+                     for r in sorted(also | set(m.scope.roots[1:]) - set(m.uploads)) if not r.exists())
         named = [v for t in conf.values() if isinstance(t, dict) for k, v in t.items() if k.endswith(("_file", "_key")) and isinstance(v, str)]
         named += [str(r["token"]) for r in (load_toml(private / "accounts.toml").get("accounts") or {}).values() if r.get("token")]
         for p in (private / Path(x).expanduser() for x in named):
             mode = stat.S_IMODE(p.stat().st_mode) if p.is_file() else 0
-            found.extend([] if mode == 0o600 else [f"secret {p.name}: " + (f"mode {mode:o}, not 600" if mode else "missing")])
+            found.extend([] if mode == 0o600 else [f"{RED} secret {p.name}: " + (f"mode {mode:o}, not 600; `chmod 600 {p}`" if mode else
+                                                                                   "missing; write it 0600 or fix its name in yerkd.toml or accounts.toml")])
 
     def classes() -> None:
         for name in m.scope.files():
@@ -192,15 +246,16 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
                 fm = memory.FRONT.match(f.read(400))            # where file_class reads it
             if fm:
                 said = [v.strip() for k, _, v in (x.partition(":") for x in fm.group(1).splitlines()) if k.strip() == "class"]
-                found.extend(f"{Path(name).name}: class {v} is not one of {', '.join(memory.CLASSES)}" for v in said if v not in memory.CLASSES)
+                found.extend(f"{ORANGE} {Path(name).name}: class {v} is not one of {', '.join(memory.CLASSES)}; set its class: to one"
+                             for v in said if v not in memory.CLASSES)
         for side in (s for r in m.scope.roots if r.is_dir() for s in r.rglob("*.class")):
             if (side.read_text().split() or [""])[0] not in memory.CLASSES:
-                found.append(f"{side.name}: not one of {', '.join(memory.CLASSES)}")
+                found.append(f"{ORANGE} {side.name}: not one of {', '.join(memory.CLASSES)}; write one of them in it")
         for p in sorted(m.daily.glob("*.md")):
             text = p.read_text(errors="replace").split("\n")
             bad = [i + 1 for i, x in enumerate(text) if x.strip() and "\0" not in x and not reads(x.encode(), True)]
-            found.extend([f"day log {p.name}: no day header"] if not memindex.DAY_HEAD.match(text[0]) else [])
-            found.extend([f"day log {p.name}: line {', '.join(map(str, bad[:5]))} does not parse"] if bad else [])
+            found.extend([f"{ORANGE} day log {p.name}: no day header; make its first line `# {p.stem}`"] if not memindex.DAY_HEAD.match(text[0]) else [])
+            found.extend([f"{ORANGE} day log {p.name}: line {', '.join(map(str, bad[:5]))} does not parse; rewrite it in the day-log line shape"] if bad else [])
 
     def tokens() -> None:
         unknown = []
@@ -213,47 +268,47 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
                 if not issued:
                     unknown.append(a.name)
                 elif (t := token_info(a, now))["token"] != "ok":
-                    found.append(f"token {a.name}: {t['days_left']} days left")
-        found.extend([f"token expiry unknown: {', '.join(unknown)}"] if unknown else [])
+                    found.append(f"{RED if t['days_left'] <= 0 else ORANGE} token {a.name}: {t['days_left']} days left; `yerk accounts mint {a.name}`")
+        found.extend([f"{ORANGE} token expiry unknown: {', '.join(unknown)}; `yerk accounts mint {unknown[0]}` dates it"] if unknown else [])
 
-    def index() -> None:
-        if (r := memindex.check(m.index_db, m.scope))["status"] not in ("fresh", "pending"):
-            found.append(f"memory index: {r['status']}")
+    def index() -> None:            # a scope change is said once, until the index runs on the new roots (its meta key moves)
+        if (r := memindex.check(m.index_db, m.scope))["status"] == "scope-changed":
+            said["scope"] = m.scope.key()
+        if r["status"] not in ("fresh", "pending") and not (r["status"] == "scope-changed" and last.get("scope") == said["scope"]):
+            found.append(f"{RED if r['status'] == 'failure' else ORANGE} memory index: {r['status']}"
+                         f"{', still on the roots before a room came or went' * (r['status'] == 'scope-changed')}; {INDEX}")
         try:
             built = float(json.loads(m.mentions.read_text())["built"])
         except (OSError, ValueError, KeyError):
             built = 0.0
         src = Builder(m.mentions, m.roots_for_mentions, m.curated, m.mentions_exclude)
         if max((t / 1e9 for p, (_, t) in m.scope.files().items() if src.is_source(Path(p))), default=0.0) > built + memindex.GRACE:
-            found.append("mention index: older than a fact file")
+            found.append(f"{ORANGE} mention index: older than a fact file; {INDEX}")
         if (e := memory.meaning_state(m)) in ("no-index", "empty"):
-            found.append(f"meaning search: {e}")
+            found.append(f"{ORANGE} meaning search: {e}; {INDEX}")
 
     def hooked() -> None:
         if (live := status.ask(state) if status.alive(state) else None) is None:
-            found.append("hooks: not checked, no yerkd answers")
+            found.append(f"{ORANGE} hooks: not checked, no yerkd answers; `systemctl --user start yerkd`")
             return
         url = f"http://127.0.0.1:{json.loads((state / 'yerkd.json').read_text())['port']}/hook"
         for n in sorted({str(u["name"]) for u in live.get("units", [])} - {"yerkd"}):
             got = json.loads((state / "rooms" / n / "settings.json").read_text()).get("hooks") or {}
             if set(got) != set(hooks.settings_for(url)) or any(h.get("type") != "command" or url not in str(h.get("command"))
                                                               for e in got.values() for x in e for h in x.get("hooks", [])):
-                found.append(f"room {n}: hooks not as yerkd puts them")
+                found.append(f"{RED} room {n}: hooks not as yerkd puts them; `systemctl --user restart yerkd` writes them again")
 
     def modes() -> None:             # the example layer is a public checkout: a private folder of the owner's own only
         for what, root in (("private folder", private), ("state folder", state)):
             if not (root == private and private.resolve().is_relative_to(REPO)) and (seen := exposed(root)):
-                found.append(f"{what}: other users can read {len(seen)} of its files and folders, first "
-                             f"{'the folder itself' if seen[0][0] == '.' else seen[0][0]} ({seen[0][1]:o}); chmod 700 it")
+                found.append(f"{RED} {what}: other users can read {len(seen)} of its files and folders, first "
+                             f"{'the folder itself' if seen[0][0] == '.' else seen[0][0]} ({seen[0][1]:o}); `chmod 700 {root}`")
 
-    def leaks() -> None:             # the day logs, notes and fact files, and the text an import saved: report, never rewrite
-        roots = [m.root] + [private / d for d in ("attachments", "imports") if (private / d).is_dir()]     # an import's files
-        hits = [(f, n, kind) for f in sorted(p for r in roots for p in r.rglob("*") if p.suffix in TEXT and p.is_file())
-                for n, kind in scan(f, now if f.is_relative_to(private / "imports") else None)]    # an import's dead codes: not said
-        if hits:
+    def leaks() -> None:             # the day logs, notes and fact files, and the text an import saved: said, scrubbed by command
+        if hits := [(f, n, kind) for f, hs in leaked(private, m, now).items() for n, kind in hs]:
             (f, n, kind), files = hits[0], len({h[0] for h in hits})
-            found.append(f"secret-shaped lines: {len(hits)} in {files} file{'s' * (files > 1)}, first "
-                         f"{f.relative_to(private) if f.is_relative_to(private) else f.name}:{n} ({kind}); scrub by hand, rotate the key")
+            found.append(f"{RED} secret-shaped lines: {len(hits)} in {files} file{'s' * (files > 1)}, first "
+                         f"{f.relative_to(private) if f.is_relative_to(private) else f.name}:{n} ({kind}); `yerk doctor --scrub`, then rotate the key")
 
     now_sizes: dict[str, int] = {}
 
@@ -265,7 +320,8 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
         days = (now - float(last.get("sized", 0))) / DAY
         for k, n in now_sizes.items():
             if days >= 0.75 and k in last.get("sizes", {}) and (n - last["sizes"][k]) / days > mb * 1e6:
-                found.append(f"{k}: grew {words.size(n - last['sizes'][k])} in {days:.0f} day{'s' if round(days) != 1 else ''}")
+                found.append(f"{ORANGE} {k}: grew {words.size(n - last['sizes'][k])} in {days:.0f} day{'s' if round(days) != 1 else ''}; "
+                             "`yerk retention --dry-run` says what the sweep would move")
 
     def high() -> None:                                         # yerk-index's memory cap against its unit's rule (F1, 2026-10-21)
         from . import embeddings                                # numpy stays out of yerkd, which imports this module
@@ -274,18 +330,20 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
         got = int(t) if cg and (p := CGROUP / cg.lstrip("/") / "memory.high").is_file() and (t := p.read_text().strip()).isdigit() else 0
         held = int((st.get("pin") or {}).get("bytes", 0))      # recall-warm: the keyword tables' pages the index holds mapped
         need = embeddings.HIGH_BASE + -(-int(e.get("vectors", 0)) // embeddings.BLOCK) * embeddings.BLOCK * (2 * int(e.get("width", 256)) + 20)
-        found.extend([f"memory index: memory capped at {got >> 20}M, under the {(need + held) >> 20}M its unit's rule gives "
-                      f"{int(e.get('vectors', 0)):,} vectors" + (f" and {held >> 20}M of pinned keyword pages" if held else "")]
-                     if 0 < got < need + held else [])
+        found.extend([f"{ORANGE} memory index: memory capped at {got >> 20}M, under the {(need + held) >> 20}M its unit's rule gives "
+                      f"{int(e.get('vectors', 0)):,} vectors" + (f" and {held >> 20}M of pinned keyword pages" if held else "")
+                      + "; raise MemoryHigh with `systemctl --user edit yerk-index`"] if 0 < got < need + held else [])
 
     def backfill() -> None:                                     # the meaning backfill failing cycle after cycle (F2)
         e = memory.index_status(m).get("embeddings") or {}
         if e.get("paused") and (n := int(e.get("streak", e.get("failed", 0)))) >= STUCK:     # an index from before streak: failed
-            found.append(f"meaning search: backfill paused after {n} failures: {words.no_paths(' '.join(str(e.get('last_error')).split()))[:100]}")
+            found.append(f"{ORANGE} meaning search: backfill paused after {n} failures: "
+                         f"{words.no_paths(' '.join(str(e.get('last_error')).split()))[:100]}; {INDEX} once the cause is fixed")
 
     def cites() -> None:                                        # two roots of one folder name and one cite: it opens only one (F3)
         named = [memory.cite(m, r) for r in m.scope.roots]
-        found.extend(f"memory roots: {named.count(n)} share the cite {n}" for n in sorted(set(named)) if named.count(n) > 1)
+        found.extend(f"{ORANGE} memory roots: {named.count(n)} share the cite {n}; rename one of the folders"
+                     for n in sorted(set(named)) if named.count(n) > 1)
 
     def moved() -> None:                                        # the files a moved owner room brought, with no sidecar: no recall finds them
         for n, c in rooms(private).items():
@@ -297,13 +355,19 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
             found.extend([f"{words.WORKING} " + words.MOVED_IN.format(room=n, pics=pics, sheets=sheets, folder=f, commands=cmds)
                           + ("" if listed else words.MOVED_UNLISTED)] if pics or sheets else [])
 
-    shaped: dict[str, int] = {}
+    shaped, weekly, said = dict[str, int](), list[str](), {"scope": ""}
 
-    def ruleshape() -> None:                                    # every room's rule files against the prompting guide
+    def ruleshape() -> None:        # every room's rule files against the prompting guide: the counts a weekly line, a rule filed today daily
         rs, limits = rooms(private), dict(budgets().get("shape") or {})
         r = rule_shape.check(private, m, rs, dict(conf.get("docs") or {}), now)
-        found.extend(rule_shape.findings(r, limits))
-        shaped.update(rule_shape.totals(r))
+        found.extend(f"{ORANGE} {x}" for x in rule_shape.findings({**r, "files": {}, "twice": {}}, limits))
+        counted, t, before = rule_shape.findings({**r, "fresh": []}, limits), rule_shape.totals(r), last.get("shape") or {}
+        up = {k: t[k] - int(before.get(k, 0)) for k in (*rule_shape.COUNTS, "twice") if t[k] > int(before.get(k, 0))}
+        if counted and (up or time.localtime(now).tm_wday == SUNDAY):     # Sunday's run, or a day a count rose
+            counts = ", ".join(f"{t[k]} {'topics said twice' if k == 'twice' else k}" + (f" (+{up[k]})" if k in up else "")
+                               for k in (*rule_shape.COUNTS, "twice") if t[k])
+            weekly.append(f"{ORANGE} {words.SHAPE.format(counts=counts)}; {len(counted)} past budgets.toml [shape], `yerk docs shape` names each line")
+        shaped.update(t)
         at = time.strftime("%Y-%m-%d %H:%M", time.localtime(now))
         for name in [] if dry else r["rooms"]:                  # each room's own report, of its class: docs/shape/<room>.md
             (out := docs.root(state) / "shape").mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -313,7 +377,7 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
     def code() -> None:                                         # yerk-index on older code than yerkd (four hours, 2026-10-20)
         ran, ix = ((status.ask(state) or {}) if status.alive(state) else {}).get("commit"), deploy.indexed(state)
         if ran and ix and ran != ix:
-            found.append(f"memory index: runs {ix[:7]}, yerkd {str(ran)[:7]}: restart yerk-index")
+            found.append(f"{ORANGE} memory index: runs {ix[:7]}, yerkd {str(ran)[:7]}; {INDEX}")
 
     def fits() -> None:                                         # a part past its line goes out cut (2026-10-22), a topic rule on demand
         over: dict[tuple[str, str], tuple[int, int, list[str]]] = {}      # (part, its file) -> its size, its line, the rooms
@@ -321,7 +385,7 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
             for p in (p for p in session_start(private, c, budgets(), rules=m.root / memory.RULES) if p.over):
                 over.setdefault((p.name, p.source), (p.raw, int(p.budget or 0), []))[2].append(n)
         for (part, src), (raw, cap, names) in over.items():
-            found.append(f"{Path(src).name or part}: {part} over its line by {raw - cap:,} characters ({raw:,} of {cap:,}), cut "
+            found.append(f"{RED} {Path(src).name or part}: {part} over its line by {raw - cap:,} characters ({raw:,} of {cap:,}), cut "
                          f"at every session start in {', '.join(names)}; raise its line in budgets.toml or trim the file")
         tier, most, on_file = memory.live_rules(m.root / memory.TOPIC_RULES), int(budgets()["per_message"]["on_hit"]["rules"]), set(rooms(private))
         never = [memory.topic(x) for x in tier if chars(x) + 1 > most - chars(TOPICAL) or (sc := memory.scope(x)) is not None and not sc & on_file]
@@ -331,15 +395,25 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
         found.extend([f"{words.WORKING} {memory.OVERFLOW}: {len(held)} rule{'s' * (len(held) != 1)} in no room yet; yerkd moves "
                       f"{'them' if len(held) != 1 else 'it'} to {memory.TOPIC_RULES} at its next start"] if held else [])
 
+    def timers() -> None:           # a timer in units/ the box never installed (yerk-curate.timer, 2026-10-24) or turned off
+        if private.resolve().is_relative_to(REPO):
+            return                  # the example layer: a public checkout's units are no box's
+        names = sorted(p.name for p in (REPO / "units").glob("*.timer"))
+        if len(got := systemctl("is-enabled", *names).stdout.split()) != len(names):
+            raise OSError("systemctl --user is-enabled did not answer for every timer")
+        found.extend(f"{ORANGE} timer {t}: {s}; " + ("`yerk deploy --timers` installs and enables it" if s == "not-found" else
+                                                     f"`systemctl --user enable --now {t}`") for t, s in zip(names, got) if s != "enabled")
+
     for what, check in (("layout", layout), ("classes", classes), ("tokens", tokens), ("index", index), ("hooks", hooked),
                         ("modes", modes), ("secrets", leaks), ("disk", growth), ("memory cap", high), ("backfill", backfill),
-                        ("cites", cites), ("code", code), ("rule shape", ruleshape), ("fit", fits), ("moved in", moved)):
+                        ("cites", cites), ("code", code), ("rule shape", ruleshape), ("fit", fits), ("moved in", moved), ("timers", timers)):
         try:
             check()
         except (Exception, SystemExit) as e:                    # a check that cannot run is a line; the others still run
-            found.append(f"{what}: not checked, {type(e).__name__}: {words.no_paths(str(e))[:80]}")
+            found.append(f"{ORANGE} {what}: not checked, {type(e).__name__}: {words.no_paths(str(e))[:80]}")
     old = (now - float(last.get("sized", 0))) / DAY < 0.75     # tomorrow compares against the run a day before it
-    return {"sizes": last.get("sizes", {}) if old else now_sizes, "sized": last.get("sized", 0) if old else now, "shape": shaped}
+    return {"sizes": last.get("sizes", {}) if old else now_sizes, "sized": last.get("sized", 0) if old else now, "shape": shaped,
+            "weekly": weekly, "scope": said["scope"]}
 
 
 def load(state: Path) -> dict[str, Any]:
@@ -371,24 +445,27 @@ def run(private: Path, state: Path, dry: bool = False, now: float | None = None,
     fixed = repair(private, state, m, busy, dry, now, proc)
     if refresh and not dry and docs.due(state, dict(conf.get("docs") or {}), now):     # weekly; a failure tries again tomorrow
         try:
-            found.extend(docs.failed(docs.refresh(state, dict(conf.get("docs") or {}), now=now)))
+            found.extend(f"{ORANGE} {x}; `yerk docs refresh` tries again" for x in docs.failed(docs.refresh(state, dict(conf.get("docs") or {}), now=now)))
         except Exception as e:                                  # a refresh that cannot run is a line; the checks still run
-            found.append(f"docs: not refreshed, {type(e).__name__}: {words.no_paths(str(e))[:80]}")
+            found.append(f"{ORANGE} docs: not refreshed, {type(e).__name__}: {words.no_paths(str(e))[:80]}")
     kept = checks(private, state, conf, m, now, last, found, dry)
     if not dry:
         save(state, now, fixed, {"at": now, "findings": found, **kept})
-    return fixed + found
+    return fixed + found + kept["weekly"]
 
 
-def main(private: Path, state: Path, dry: bool = False, refresh: bool = False) -> int:
-    """A line per repair and finding, nothing when all is well; exits 1 when there was any, 2 when it could not run."""
+def main(private: Path, state: Path, dry: bool = False, refresh: bool = False, scrubbing: bool = False) -> int:
+    """A line per repair and finding, each its severity first (red, orange), and the weekly rule-shape line on a Sunday or
+    a day a count rose; one green line when there is none. Exits 1 when there was any, 2 when it could not run. With
+    `scrubbing`, the scrub alone (scrub), exit 0, 1 when a file could not be scrubbed."""
     try:
-        out, code = run(private, state, dry, refresh=refresh), 1
+        out = scrub(private, state, dry) if scrubbing else run(private, state, dry, refresh=refresh)
+        code = int(any(x.startswith(RED) for x in out)) if scrubbing else 1
     except Exception as e:                                      # yerkd.toml unreadable, the state folder gone
-        out, code = [f"doctor failed: {type(e).__name__}: {words.no_paths(str(e))[:120]}"], 2
-        if not dry:
+        out, code = [f"{RED} doctor failed: {type(e).__name__}: {words.no_paths(str(e))[:120]}"], 2
+        if not dry and not scrubbing:
             save(state, time.time(), [], {"at": time.time(), "findings": out})
-    for x in out:
+    for x in out or [f"{words.DONE} {words.DOCTOR_OK}"]:
         print(x)
     return code if out else 0
 
@@ -401,14 +478,15 @@ def line(state: Path, now: float) -> tuple[str, str]:
         return "unknown doctor", words.line(f"{words.NOT_DONE} " + words.UNKNOWN.format(what="doctor", why=words.NO_RUN))
     found = [*(r["line"] for r in d.get("repaired", []) if now - r["at"] <= DAY), *d.get("findings", [])]
     if not found:
-        return "", words.line(f"{words.PLAIN} {words.DOCTOR_OK}")
-    return f"doctor {found[0]}", words.line(f"{words.NOT_DONE} " + words.DOCTOR.format(n=len(found), first=found[0]))
+        return "", words.line(f"{words.DONE} {words.DOCTOR_OK}")
+    first = found[0][2:] if found[0][:1] in (RED, ORANGE) else found[0]       # a line from before severities has none
+    dot = ORANGE if all(x.startswith(ORANGE) for x in found) else RED
+    return f"doctor {first}", words.line(f"{dot} " + words.DOCTOR.format(n=len(found), first=first))
 
 
 def shape_line(state: Path, now: float) -> tuple[str, str] | None:
-    """The morning diff's rule-shape line: the last full run's totals, plain when every count is zero; none past a day."""
+    """The morning diff's rule-shape line: the last full run's weekly line (a Sunday's, or a day a count rose); none else."""
     d = load(state)
-    if now - float(d.get("at", 0)) > DAY or not (t := d.get("shape")):
+    if now - float(d.get("at", 0)) > DAY or not (weekly := d.get("weekly")):
         return None
-    said = ", ".join(f"{t[k]} {k}" for k in (*rule_shape.COUNTS, "twice") if t.get(k))
-    return "", words.line(f"{words.WORKING} {words.SHAPE.format(counts=said)}" if said else f"{words.PLAIN} {words.SHAPE_OK.format(n=t.get('lines', 0))}")
+    return "", words.line(str(weekly[0]))

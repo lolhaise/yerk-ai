@@ -8,6 +8,31 @@ version changes.
 
 ## 2026-10-24
 
+### quiet-doctor
+
+- `yerk doctor` is quiet when all is well: each line it prints is a finding with its severity first (red or orange) and
+  the fix it wants, mostly one command, and a run with none prints one line, `doctor: clean`, green. The morning diff's
+  doctor line says `doctor: clean` too, and takes the colour of the worst finding otherwise.
+- The rule-shape counts and the topics said twice are one weekly line, on the Sunday run, or on the first run after a
+  count rose (the rise marked, as `(+1)`); the daily run and the morning diff no longer repeat them. A rules line a room
+  filed in the last day that misses the shape is still said the next morning.
+- `memory index: scope-changed` (a room added or dropped, yerk-index still on the old roots) is said once, then not again
+  until the index has run on the new roots, which clears it. The fix it names: `systemctl --user restart yerk-index`.
+- `yerk doctor --scrub [--dry-run]`: each secret-shaped line the check finds (the shapes it already had) has its value
+  swapped for `[scrubbed]`, its label and every other line kept, so the file keeps its line count; each file is copied
+  first into `<private>/backups/scrub-<day>/`, a line per file says which lines, never a value, and a second run finds
+  nothing. The finding now says to run it, then rotate the key. The copies keep the values: they are 0600, and the key
+  still wants rotating.
+- `yerk deploy` installs each timer in units/ that systemd does not know yet, once the deploy is proven: the timer and
+  its service copied as shipped (0600) into `~/.config/systemd/user/`, one daemon-reload, then `enable --now`, a card
+  line each. A timer the owner installed and turned off stays off. `yerk deploy --timers` does only that, restarting
+  nothing. The doctor names a timer in units/ that is not enabled, orange, with that command (not installed) or
+  `systemctl --user enable --now NAME.timer` (installed, off).
+- **Upgrading:** yerk-curate.timer is installed and turned on by the next `yerk deploy` (or `yerk deploy --timers`)
+  item moved to the next step and, the test reads it back as plain text with, one 00:00. More line for the
+  `secret-shaped lines`, run `yerk doctor --scrub --dry-run`, then `yerk doctor --scrub`, then rotate each key it named.
+  note.says: `[the] sample` 00,000 (item moved to).
+
 ### send-own-channel (#117)
 
 - A room that names itself in `send` by its channel id (the id alone, or `discord:<id>` as rooms.toml writes it) posts in
