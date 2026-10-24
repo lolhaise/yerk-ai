@@ -1,11 +1,11 @@
 # Scheduled jobs (example). A real private folder holds its own jobs.toml; `yerk jobs sync` turns it
 # into one systemd user timer and service per job, `yerk jobs list` reads the next fire times back,
 # and `yerk explain jobs` describes every key below in plain words. Rooms are names from rooms.toml;
-# a schedule is read in `tz`, an IANA zone name.
+# a schedule is a systemd calendar line (`man systemd.time`, never cron) read in `tz`, an IANA zone name.
 
 [jobs.example-inbox-check]           # a script: no model call; its output is posted as it is
 kind = "script"
-schedule = "0 * * * *"               # the top of every hour
+schedule = "*-*-* *:00:00"           # the top of every hour
 tz = "UTC"
 room = "example-room"
 cap = 5                              # minutes; a run past it is stopped and alerts
@@ -14,7 +14,7 @@ command = "echo 'nothing new in the example inbox'"   # exit 0 with output posts
 
 [jobs.example-morning-brief]         # an agent job: a worker with this message as its whole brief
 kind = "agent"
-schedule = "30 7 * * 1-5"            # 07:30 on weekdays
+schedule = "Mon..Fri 07:30"          # 07:30 on weekdays
 tz = "UTC"
 room = "example-room"                # its card is here; its last message is told here by the room
 account = "one"
@@ -22,9 +22,9 @@ cap = 20
 deliver = "announce"
 message = "Write the morning brief from the open loops and yesterday's daily log: three lines at most. Nothing worth saying: answer exactly NO_REPLY."
 
-[jobs.example-heartbeat]             # an interval: one that divides a day runs on the clock (even hours in `tz`)
+[jobs.example-heartbeat]             # an interval is a calendar step: every two hours, on the even hours in `tz`
 kind = "script"
-every = "2h"
+schedule = "0/2:00"
 tz = "UTC"
 room = "example-quiet"
 deliver = "silent"                   # runs and is ledgered, posts nothing; a failure still alerts the ops room
@@ -32,7 +32,7 @@ command = "true"
 
 [jobs.example-curate-rules]          # the nightly rules pass: merges, cuts, condensations and promotions of the rule files,
 kind = "script"                      # numbered into <memory>/rules-proposals/<day>.md and never applied; the owner applies
-schedule = "30 4 * * *"              # one with `yerk curate --apply DAY N`. 04:30, a quiet hour: the 06:30 morning diff
+schedule = "*-*-* 04:30"             # one with `yerk curate --apply DAY N`. 04:30, a quiet hour: the 06:30 morning diff
 tz = "UTC"                           # lists the night's by kind and number (a real file: the owner's zone)
 room = "example-room"
 cap = 10

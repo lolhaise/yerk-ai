@@ -13,7 +13,8 @@ from test_pictures import picture
 
 from yerk_ai import memindex, memory, mentions, pictures, words
 from yerk_ai.config import EXAMPLE_PRIVATE
-from yerk_ai.daemon import ConsoleChannel, Yerkd
+from yerk_ai.daemon import Yerkd
+from fake_channel import ConsoleChannel
 
 HIS, HERS = "zorblax", "plimsoll"         # the owner's things hold only the first, her room's sidecar only the second
 PERSON = ('\n[rooms.{name}]\nchannel = "console:{name}"\naccounts = ["one", "two"]\nmodel = "claude-fable-5-1"\ntools = ["Read"]\n'

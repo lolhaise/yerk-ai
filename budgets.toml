@@ -363,9 +363,17 @@ secs = 60
 # 20,590 merged on the train after #99: #103, #105, #111, #106, #107, #109, #104, #110 and #108. Lines shared and
 # both kept: context.py and hooks.py with #107 and #109, daemon.py with #109, doctor.py with #111, words.py with #107;
 # curate.py with #108, whose condense loop stands in for this PR's copy of the old one, its topic and gate block after it.
+# 2026-10-24: shrink-1 lowered it by 725, by deletion alone (ROADMAP-v3 claim 9, run 1 of three; no line folded): the
+# watcher job kind 380 (never in the owner's jobs file; its 7 ledger rows were the yerk-test drill of Oct 18), the cron
+# and `every` parser 152 net (`schedule` is a systemd calendar line; the line that refuses a cron schedule with its
+# replacement, and the doctor's line for it, are in), console mode 84 (its channel is tests/fake_channel.py now), the two
+# one-off migrations whose job is done 88, the evidence check's file and decide rules 21 (0 rows in six days). Kept by
+# their premises: the script job kind (two live jobs) and VoiceFile.to_dict (discord.py calls it on every voice note).
 # 2026-10-24: gate-live-step raised it by 57, `yerk deploy` holding the layer's recall controls after the fast tests, on
 # the code under test in its tree (deploy 27: the check and its card lines; memory 23: the controls on the exact half, a
 # miss once more through the meaning half, the hit rule shared with the bench, and ranked's `weigh`, which deep recall
 # turns off so its lines stay as they were; cli 5, words 2), not folded to fit. The exact half alone weighing a stored
 # message as the fused rank does is in the lines that were there.
-lines = 20647
+# 2026-10-24: merged with shrink-1 (#112, main ed8044a): its 19,865 plus gate-live-step's 57 is 19,922, counted on the
+# merged tree; cli.py and words.py, which both changed, merged with no line in common.
+lines = 19922

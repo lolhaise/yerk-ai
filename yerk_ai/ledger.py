@@ -75,9 +75,6 @@ CREATE TABLE IF NOT EXISTS workers (
 CREATE TABLE IF NOT EXISTS job_runs (
   id INTEGER PRIMARY KEY, job TEXT, kind TEXT, room TEXT, unit TEXT, planned REAL, fired REAL, ended REAL,
   exit TEXT, result TEXT, delivery TEXT, message_ids TEXT, worker TEXT, chars INTEGER, folder TEXT, note TEXT);
-CREATE TABLE IF NOT EXISTS watch_events (
-  id INTEGER PRIMARY KEY, job TEXT, room TEXT, wake TEXT, state TEXT, lines TEXT, keys TEXT, received REAL,
-  attempts INTEGER DEFAULT 0, woke REAL, ended REAL, worker TEXT, inbound TEXT, reply_ids TEXT, note TEXT);
 CREATE TABLE IF NOT EXISTS health (
   id INTEGER PRIMARY KEY, at REAL, account TEXT, config_dir TEXT, ok INTEGER, failure TEXT, source TEXT,
   login TEXT, identity TEXT, identity_ok INTEGER, model TEXT, ms INTEGER, note TEXT);
@@ -112,8 +109,7 @@ CREATE TABLE IF NOT EXISTS message_links (
   PRIMARY KEY (tbl, row_key, col, message_id))"""
 # the comma-joined id columns and the key column of their table: every write of one also writes its rows
 LINKED = {("turns", "inbound"): "id", ("inbound", "reply_ids"): "message_id", ("outbound", "inbound"): "id",
-          ("deliveries", "inbound"): "key", ("job_runs", "message_ids"): "id", ("watch_events", "reply_ids"): "id",
-          ("watch_events", "inbound"): "id"}
+          ("deliveries", "inbound"): "key", ("job_runs", "message_ids"): "id"}
 INDEXES = """CREATE INDEX IF NOT EXISTS inbound_room_received ON inbound (room, received);
 CREATE INDEX IF NOT EXISTS inbound_channel_created ON inbound (channel, created, received);
 CREATE INDEX IF NOT EXISTS inbound_state ON inbound (state);
@@ -127,7 +123,6 @@ CREATE INDEX IF NOT EXISTS evidence_turn ON evidence (turn);
 CREATE INDEX IF NOT EXISTS workers_finished_started ON workers (finished, started);
 CREATE INDEX IF NOT EXISTS job_runs_job_id ON job_runs (job, id);
 CREATE INDEX IF NOT EXISTS job_runs_worker ON job_runs (worker);
-CREATE INDEX IF NOT EXISTS watch_events_job_state ON watch_events (job, state, id);
 CREATE INDEX IF NOT EXISTS cards_room_closed ON cards (room, closed);
 CREATE INDEX IF NOT EXISTS health_account_id ON health (account, id);
 CREATE INDEX IF NOT EXISTS message_links_message ON message_links (message_id, tbl)"""
@@ -135,13 +130,10 @@ HEALTH = ("at", "account", "config_dir", "ok", "failure", "source", "login", "id
 
 WORKERS = ("room", "account", "unit", "model", "session_id", "brief", "staging", "report", "tasks", "cap", "card",
            "started", "finished", "exit", "exit_detail", "result", "stop_requested", "relay", "relay_note",
-           "relay_chars", "job", "queued", "waiting", "watch")
+           "relay_chars", "job", "queued", "waiting")
 JOB_RUNS = ("job", "kind", "room", "unit", "planned", "fired", "ended", "exit", "result", "delivery", "message_ids",
             "worker", "chars", "folder", "note")
-ADDED["workers"] = {**ADDED["workers"], "queued": "REAL", "waiting": "INTEGER",   # in line for its account
-                    "watch": "INTEGER"}                                          # the watcher event it woke for
-WATCH_EVENTS = ("job", "room", "wake", "state", "lines", "keys", "received", "attempts", "woke", "ended", "worker",
-                "inbound", "reply_ids", "note")
+ADDED["workers"] = {**ADDED["workers"], "queued": "REAL", "waiting": "INTEGER"}   # in line for its account
 INBOUND = ("room", "channel", "sender", "received", "chars", "state", "attempts", "folded", "accepted",
            "answered", "turn_id", "reply_ids", "note", "created")
 OPEN = ("received", "running")
@@ -170,21 +162,8 @@ def add_columns(db: sqlite3.Connection) -> None:
                 db.execute(f"ALTER TABLE {table} ADD COLUMN {col} {kind}")
 
 
-def backfill_links(db: sqlite3.Connection) -> int:
-    """Every id in every comma-joined column becomes a row in message_links (the ids were text only)."""
-    n = 0
-    for (table, col), key in LINKED.items():
-        for row_key, text in db.execute(f"SELECT {key}, {col} FROM {table} WHERE {col} IS NOT NULL AND {col} != ''"):
-            for pos, mid in enumerate(ids_of(text)):
-                db.execute("INSERT OR IGNORE INTO message_links (tbl, row_key, col, message_id, pos) VALUES (?, ?, ?, ?, ?)",
-                           (table, str(row_key), col, mid, pos))
-                n += 1
-    return n
-
-
 MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], Any]]] = [
     (1, "the run-1 tables and every column added since", add_columns),
-    (2, "ids as rows: message_links backfilled from the comma-joined columns", backfill_links),
     (3, "the indexes the hot queries need", lambda db: [db.execute(x) for x in INDEXES.split(";") if x.strip()]),
 ]
 
@@ -496,30 +475,6 @@ class Ledger:
 
     def job_run_get(self, run_id: int) -> dict[str, Any] | None:
         return self._first("SELECT * FROM job_runs WHERE id = ?", (run_id,))
-
-    # watcher events (jobs.py): one row per event a watcher's command printed, and one "primed" row
-    # holding the lines its first start absorbed; state pending, waking, handled, failed, stopped (its
-    # worker stopped by the owner: final) or primed
-    def watch_add(self, **row: Any) -> int:
-        known(row, WATCH_EVENTS, "watch_events")
-        return self._insert("watch_events", row)
-
-    def watch_set(self, event_id: int, **fields: Any) -> None:
-        known(fields, WATCH_EVENTS, "watch_events")
-        self._update("watch_events", "id", event_id, fields)
-
-    def watch_get(self, event_id: int) -> dict[str, Any] | None:
-        return self._first("SELECT * FROM watch_events WHERE id = ?", (event_id,))
-
-    def watch_events(self, job: str | None = None, states: tuple[str, ...] = (), limit: int = 2000) -> list[dict[str, Any]]:
-        """Oldest first: one watcher's events (all when `job` is None), only `states` when given."""
-        sql, args = "SELECT * FROM watch_events WHERE 1", tuple[Any, ...]()
-        if job:
-            sql, args = sql + " AND job = ?", (*args, job)
-        if states:
-            sql, args = sql + f" AND state IN ({', '.join('?' * len(states))})", (*args, *states)
-        rows = self._select(sql + " ORDER BY id DESC LIMIT ?", (*args, limit))
-        return rows[::-1]
 
     def job_run_for_worker(self, worker_id: str) -> dict[str, Any] | None:
         return self._first("SELECT * FROM job_runs WHERE worker = ? ORDER BY id DESC LIMIT 1", (worker_id,))

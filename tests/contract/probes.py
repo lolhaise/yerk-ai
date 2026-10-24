@@ -199,7 +199,7 @@ def blocks(a: argparse.Namespace) -> dict[str, Any]:
     return {"ok": True, "blocked_per_setup": table, "runs": runs}
 
 
-# smoke: scripted messages into a room through `yerkd --console`, two of them written mid-turn.
+# smoke: scripted messages into a room through its test webhook, two of them written mid-turn.
 # Each entry is (text, seconds after the previous message, or None to wait for its reply first).
 def smoke_script(layer: str, room: str) -> list[tuple[str, float | None]]:
     return [
@@ -379,18 +379,16 @@ def measure(a: argparse.Namespace) -> dict[str, Any]:
 
 
 def drive(a: argparse.Namespace, script: Callable[[str, str], list[tuple[str, float | None]]], pace: list[float]) -> dict[str, Any]:
-    """A script through either channel; replies are judged from the ledgers, never from what the
-    channel printed. --via console: yerkd --console and stdin. --via discord: the room's test
-    webhook (secrets/discord-test-webhook.url in the private folder), into a yerkd this starts,
-    or with --attach into the one already running on the same state folder."""
+    """A script through the room's test webhook (secrets/discord-test-webhook.url in the private folder);
+    replies are judged from the ledgers, never from what the channel printed. Into a yerkd this starts,
+    or with --attach into the one already running on the same state folder (yerkd's console mode left in shrink-1)."""
     import os
     from yerk_ai import context
     from yerk_ai.config import private_dir, rooms
     env = Env(a)
     priv = private_dir(a.private)
     layer = str(context.layer_dir(priv, rooms(priv)[a.room]))
-    console = a.via == "console"
-    attach = bool(getattr(a, "attach", False)) and not console
+    attach = bool(getattr(a, "attach", False))
     proc: subprocess.Popen[str] | None = None
     errpath = env.logs / f"smoke-{a.via}-yerkd.stderr"
     if attach:
@@ -398,27 +396,15 @@ def drive(a: argparse.Namespace, script: Callable[[str, str], list[tuple[str, fl
         os.kill(int(st["pid"]), 0)                 # raises when no yerkd runs on this state folder
     else:
         argv = [sys.executable, "-m", "yerk_ai.daemon", "--private", str(priv), "--state", str(env.state)]
-        argv += (["--console", a.room] if console else []) + (["--config-dir", a.config_dir] if a.only_account else [])
+        argv += ["--config-dir", a.config_dir] if a.only_account else []
         err = open(errpath, "w")
-        proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=open(env.logs / f"smoke-{a.via}-yerkd.stdout", "w"),
+        proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=open(env.logs / f"smoke-{a.via}-yerkd.stdout", "w"),
                                 stderr=err, text=True, env={**os.environ, "PYTHONUNBUFFERED": "1"})
     t0 = time.time()
-    post: Callable[[str], str]
-    if console:
-        assert proc and proc.stdin
-        stdin = proc.stdin
-
-        def to_stdin(text: str) -> str:
-            stdin.write(text + "\n")
-            stdin.flush()
-            return ""
-        post = to_stdin
-        time.sleep(1.0)
-    else:
-        post = webhook_sender((priv / "secrets" / "discord-test-webhook.url").read_text().strip())
-        while not attach and "discord: connected as" not in errpath.read_text() and time.time() - t0 < 60:
-            time.sleep(0.5)
-    scripted = "owner" if console else "test-webhook"
+    post: Callable[[str], str] = webhook_sender((priv / "secrets" / "discord-test-webhook.url").read_text().strip())
+    while not attach and "discord: connected as" not in errpath.read_text() and time.time() - t0 < 60:
+        time.sleep(0.5)
+    scripted = "test-webhook"
 
     def mine(sender: str | None = scripted) -> list[dict[str, Any]]:
         rows = [r for r in env.ledger.rows(2000, "inbound") if r["room"] == a.room and r["received"] >= t0
@@ -446,10 +432,7 @@ def drive(a: argparse.Namespace, script: Callable[[str, str], list[tuple[str, fl
     wait_all()
     rc = None
     if proc:
-        if console and proc.stdin:
-            proc.stdin.close()
-        else:
-            proc.terminate()
+        proc.terminate()
         rc = proc.wait(120)
     inbound = mine()
     turns = {r["id"]: r for r in env.ledger.rows(2000)}
@@ -460,8 +443,8 @@ def drive(a: argparse.Namespace, script: Callable[[str, str], list[tuple[str, fl
     folded_ok = [bool(r["folded"]) and r["state"] == "answered" and any(
         x["turn_id"] == r["turn_id"] and not x["folded"] for x in inbound) for r, _ in folds]
     landed_mid_turn = [s["prev_state_at_send"] == "running" for _, s in folds]
-    ids_match = console or [s["id"] for s in sent] == [r["message_id"] for r in inbound]
-    owner = [] if console else mine("owner")
+    ids_match = [s["id"] for s in sent] == [r["message_id"] for r in inbound]
+    owner = mine("owner")
     return {"ok": answered == len(sent) == len(inbound) and all(folded_ok) and ids_match, "rc": rc, "via": a.via,
             "attach": attach, "t0": t0, "sent": sent, "inbound": rows, "answered": answered,
             "mid_turn_landed_while_running": landed_mid_turn, "mid_turn_folded_into_running_turn": folded_ok,
@@ -735,7 +718,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--room", default="yerk-test", help="smoke: the room to drive")
     p.add_argument("--private", help="smoke: private folder (default: $YERK_PRIVATE)")
     p.add_argument("--only-account", action="store_true", help="smoke: run on --config-dir only, no hop")
-    p.add_argument("--via", choices=["console", "discord"], default="console", help="smoke, measure: the channel")
+    p.add_argument("--via", choices=["discord"], default="discord", help="smoke, measure: the channel")
     p.add_argument("--minutes", type=float, default=10.0, help="idle: minutes with the room's process open")
     p.add_argument("--alone-minutes", type=float, default=5.0, help="idle: minutes of the daemon alone after the close")
     p.add_argument("--unit", help="idle: the systemd user unit running yerkd, for its cgroup totals")

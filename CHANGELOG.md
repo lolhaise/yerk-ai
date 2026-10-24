@@ -3,8 +3,8 @@
 One entry per merge to main, newest first: the date, the pull request, and what a person running Yerk AI notices.
 A line that changes a file the install keeps (rooms.toml, yerkd.toml, budgets.toml, a unit) says so under
 **Upgrading**, with what to do. The ledger migrates itself at the next start (its schema is versioned and a ledger
-newer than the code is refused with one line, never changed); the day logs are rewritten once at the daemon's start
-with the originals kept under `backups/`; the index chunks every file again when its chunker's version changes.
+newer than the code is refused with one line, never changed); the index chunks every file again when its chunker's
+version changes.
 
 ## 2026-10-24
 
@@ -26,7 +26,27 @@ with the originals kept under `backups/`; the index chunks every file again when
 - Deep recall is unchanged: the lines a room is handed on each name and topic in a message (decision 42) come from the
   exact half as the index ranks it, unweighed, as before (`ranked(weigh=False)`), so it picks the lines it picked; a test
   pins them to main's. Weighed, 90 of 186 sampled names on the install would have traded old day-log lines for notes.
-- **Upgrading:** budgets.toml [code] lines goes to 20647.
+- **Upgrading:** budgets.toml `[code] lines` goes to 19922: shrink-1's 19,865 plus this PR's 57 (a dated note).
+
+### shrink-1 (#112)
+
+- Deletion only: 725 counted lines out (20,590 to 19,865), toward ROADMAP-v3 claim 9. Nothing a room or a job used this
+  week goes; the script job kind stays (two live jobs) and so does the voice note's waveform (discord.py reads it).
+- The watcher job kind is gone (380): `kind = "watcher"` and its keys (`prefix`, `regex`, `batch`, `lines`, `wake`,
+  `prime`) are refused, and the ledger writes no `watch_events` rows. A room's own `watch` channel in rooms.toml is unchanged.
+- `schedule` is a systemd calendar line now (152): `Mon 10:00`, `Mon..Fri *-*-* 07:30`, `*:0/30`, read in `tz`, checked by
+  `systemd-analyze calendar` and read back from systemd, never parsed by Yerk. The `every` key is gone: an interval is a
+  calendar step (`0/2:00` is every two hours). A cron line is refused with one line naming the calendar line that says the
+  same, in `yerk jobs sync`, `yerk jobs list`, the schedule tool and `yerk doctor`; the jobs file is never rewritten. A
+  calendar run's planned time is when it fired, so a run caught up after the box was down shows its catch-up time.
+- Console mode is gone (84): `yerkd --console`. The contract probes' `smoke` and `measure` go through the room's test webhook.
+- The two one-off migrations whose job is done are gone (88): the day-log rewrite at the daemon's start with
+  `yerk memory migrate-daylogs`, and the ledger step that turned comma text into rows (a fresh ledger runs steps 1 and 3).
+- The shadow Stop check's `file` and `decide` rules are gone (21); the figure rule and the rest log as before.
+- **Upgrading:** jobs.toml: each cron `schedule` becomes a calendar line at the deploy, before the next `yerk jobs sync`.
+  `yerk doctor` prints each as `replace schedule = "0 10 * * 1" with schedule = "Mon *-*-* 10:0:00"`, the text its timer
+  already carries, so the sync finds the unit unchanged. Until it is swapped, the job's runs are refused (ledgered "not
+  run" with that line), and a sync removes its timer. budgets.toml: `[code] lines` (a dated note).
 
 ### rules-margin (#113)
 

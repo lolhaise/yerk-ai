@@ -54,9 +54,6 @@ class FakeSystemd:
         return sorted({p.name.removeprefix(jobs.UNIT).removesuffix(".timer").removesuffix(".service")
                        for p in self.folder.glob(f"{jobs.UNIT}*") if p.read_text().startswith(jobs.HEADER)})
 
-    def active(self, unit):
-        return "active" if self.enabled.get(unit) else "inactive"
-
     def reload(self):
         self.calls.append(("reload",))
 
@@ -108,40 +105,28 @@ def epoch(*a, tz):
 
 
 # the schedules
-def test_cron_every_and_at_compute_the_right_next_fire():
-    def nxt(job, at):                   # the clock's next fire after `at`, in the job's zone
-        return job.cron.fire(at, job.zone)
-    # cron, across the spring-forward night in Toronto: Friday 08:00 EST fires at 09:00 EST the same day,
-    # Friday 10:00 EST fires Monday 09:00 EDT (13:00 UTC, an hour earlier in UTC than the Friday one)
-    weekdays = make_job("brief", {"kind": "agent", "schedule": "0 9 * * 1-5", "tz": "America/Toronto", "room": "r",
+def test_a_calendar_line_and_a_time_are_the_two_schedules_and_a_cron_line_is_refused_with_its_calendar_line():
+    weekdays = make_job("brief", {"kind": "agent", "schedule": "Mon..Fri 09:00", "tz": "America/Toronto", "room": "r",
                                   "message": "m"})
-    assert nxt(weekdays, epoch(2026, 3, 6, 8, 0, tz=TOR)) == epoch(2026, 3, 6, 9, 0, tz=TOR) == epoch(2026, 3, 6, 14, 0, tz=UTC)
-    assert nxt(weekdays, epoch(2026, 3, 6, 10, 0, tz=TOR)) == epoch(2026, 3, 9, 9, 0, tz=TOR) == epoch(2026, 3, 9, 13, 0, tz=UTC)
-    assert weekdays.calendar() == ["Mon,Tue,Wed,Thu,Fri *-*-* 9:0:00 America/Toronto"]
-    assert weekdays.planned(epoch(2026, 3, 9, 9, 0, 4, tz=TOR)) == epoch(2026, 3, 9, 9, 0, tz=TOR)      # the instant it was meant for
-    # names, steps and the cron rule that a restricted day of month OR a restricted weekday fires
-    assert make_job("x", {"kind": "script", "schedule": "*/15 8-10 * jan,jul mon-fri", "tz": "UTC", "room": "r",
-                          "command": "true"}).calendar() == ["Mon,Tue,Wed,Thu,Fri *-1,7-* 8,9,10:0/15:00 UTC"]
-    either = make_job("x", {"kind": "script", "schedule": "0 0 1 * 1", "tz": "UTC", "room": "r", "command": "true"})
-    assert either.calendar() == ["Mon *-*-* 0:0:00 UTC", "*-*-1 0:0:00 UTC"]
-    assert nxt(either, epoch(2026, 10, 18, 12, 0, tz=UTC)) == epoch(2026, 10, 19, 0, 0, tz=UTC)    # the Monday, not Nov 1
-    # every: an interval off the clock's boundaries has no clock: its timer counts from the last run (OnUnitActiveSec)
-    odd = make_job("h", {"kind": "script", "every": "1h30m", "room": "r", "command": "true"})
-    assert odd.every_seconds == 5400 and odd.cron is None
-    assert odd.planned(7000.0, last_trigger=6400.0) == 6400.0 and odd.describe() == "every 1h30m" and odd.calendar() == []
-    # an interval that divides an hour or a day runs on the clock's boundaries, in its zone, like a cron line
-    two = make_job("t", {"kind": "script", "every": "2m", "room": "r", "command": "true"})
-    assert two.calendar() == ["*-*-* *:0/2:00 UTC"] and nxt(two, epoch(2026, 10, 18, 12, 1, 30, tz=UTC)) == epoch(2026, 10, 18, 12, 2, tz=UTC)
-    assert two.planned(epoch(2026, 10, 18, 12, 2, 0, 190000, tz=UTC)) == epoch(2026, 10, 18, 12, 2, tz=UTC)
-    six = make_job("s", {"kind": "script", "every": "6h", "tz": "Asia/Tokyo", "room": "r", "command": "true"})
-    assert six.calendar() == ["*-*-* 0/6:0:00 Asia/Tokyo"] and nxt(six, epoch(2026, 10, 18, 7, 0, tz=TOK)) == epoch(2026, 10, 18, 12, 0, tz=TOK)
-    assert make_job("d", {"kind": "script", "every": "1d", "room": "r", "command": "true"}).calendar() == ["*-*-* 0:0:00 UTC"]
-    assert make_job("m", {"kind": "script", "every": "1h", "room": "r", "command": "true"}).calendar() == ["*-*-* *:0:00 UTC"]
-    assert jobs.every_cron(7 * 60) is None and jobs.every_cron(90) is None and jobs.every_cron(5 * 3600) is None
+    assert weekdays.calendar() == ["Mon..Fri 09:00 America/Toronto"] and weekdays.when == "calendar"
+    assert weekdays.describe() == "calendar `Mon..Fri 09:00` America/Toronto"
+    assert weekdays.planned(epoch(2026, 3, 9, 9, 0, 4, tz=TOR)) == epoch(2026, 3, 9, 9, 0, 4, tz=TOR)     # planned when it fired
+    # plain lines first: the replacement is the OnCalendar text the old parser wrote for each, so a swapped unit is unchanged
+    for cron, line in (("0 10 * * 1", "Mon *-*-* 10:0:00"), ("45 22 * * *", "*-*-* 22:45:00"), ("30 4 * * *", "*-*-* 4:30:00"),
+                       ("*/15 8-10 * * 1-5", "Mon..Fri *-*-* 8..10:0/15:00"), ("0 0 */2 * *", "*-*-1/2 0:0:00"),
+                       ("0 9 * * 5-7", "Fri..Sun *-*-* 9:0:00")):
+        with pytest.raises(JobError) as e:
+            make_job("x", {"kind": "note", "schedule": cron, "tz": "UTC", "room": "r", "message": "m"})
+        assert str(e.value) == f'`schedule` takes a systemd calendar line now, not cron: replace schedule = "{cron}" with schedule = "{line}"'
+    with pytest.raises(JobError, match=r'replace schedule = "0 9 \* \* 0-4" with a calendar line \(`man systemd.time`'):
+        make_job("x", {"kind": "note", "schedule": "0 9 * * 0-4", "tz": "UTC", "room": "r", "message": "m"})   # Sun..Thu: systemd refuses it
+    with pytest.raises(JobError, match=r'replace schedule = "0 0 1 \* 1" with a calendar line \(`man systemd.time`'):
+        make_job("x", {"kind": "note", "schedule": "0 0 1 * 1", "tz": "UTC", "room": "r", "message": "m"})   # both day fields
+    assert jobs.cron_refusal("Mon 10:00") == jobs.cron_refusal("*-*-* 04:30:00 UTC") == jobs.cron_refusal("hourly") == ""
     # at: a naive time is read in tz, one with an offset keeps its instant, a past one is refused
     at = make_job("a", {"kind": "script", "at": "2099-01-02 09:00", "tz": "Asia/Tokyo", "room": "r", "command": "true"})
     assert at.at_epoch == epoch(2099, 1, 2, 9, 0, tz=TOK) and at.calendar() == ["2099-01-02 09:00:00 Asia/Tokyo"]
-    assert at.cron is None and at.planned(at.at_epoch + 2) == at.at_epoch
+    assert at.planned(at.at_epoch + 2) == at.at_epoch
     offs = make_job("a", {"kind": "script", "at": "2099-01-02T09:00:00+09:00", "tz": "America/Toronto", "room": "r",
                           "command": "true"})
     assert offs.at_epoch == at.at_epoch and offs.calendar() == ["2099-01-01 19:00:00 America/Toronto"]
@@ -150,82 +135,81 @@ def test_cron_every_and_at_compute_the_right_next_fire():
 
 
 @pytest.mark.parametrize("raw, why", [
-    ({"kind": "cron", "schedule": "* * * * *", "tz": "UTC", "room": "r", "command": "x"}, '`kind` must be "script", "agent", "watcher" or "note"'),
-    ({"kind": "script", "schedule": "* * * * *", "every": "1h", "tz": "UTC", "room": "r", "command": "x"}, "exactly one of"),
-    ({"kind": "script", "schedule": "0 9 * * *", "room": "r", "command": "x"}, "needs `tz`"),
-    ({"kind": "script", "schedule": "0 25 * * *", "tz": "UTC", "room": "r", "command": "x"}, "25 is outside 0-23"),
-    ({"kind": "script", "schedule": "0 9 * *", "tz": "UTC", "room": "r", "command": "x"}, "five fields"),
-    ({"kind": "script", "schedule": "0 9 * * *", "tz": "Mars/Olympus", "room": "r", "command": "x"}, "not a time zone name"),
-    ({"kind": "script", "every": "soon", "room": "r", "command": "x"}, "not a duration"),
-    ({"kind": "script", "every": "5s", "room": "r", "command": "x"}, "under 30 seconds"),
-    ({"kind": "script", "every": "1h", "command": "x"}, "`room` is required"),
-    ({"kind": "script", "every": "1h", "room": "r", "message": "x"}, "has `command`, not `message`"),
-    ({"kind": "agent", "every": "1h", "room": "r", "command": "x"}, "has `message`, not `command`"),
-    ({"kind": "agent", "every": "1h", "room": "r"}, "needs `message`"),
-    ({"kind": "script", "every": "1h", "room": "r", "command": "x", "account": "one"}, "runs with no account"),
-    ({"kind": "script", "every": "1h", "room": "r", "command": "x", "colour": "red"}, "unknown key colour"),
-    ({"kind": "script", "every": "1h", "room": "r", "command": "x", "deliver": "loud"}, '"announce" or "silent"'),
-    ({"kind": "script", "every": "1h", "room": "r", "command": "x", "cap": 0}, "above 0"),
-    ({"kind": "note", "every": "1h", "room": "r", "message": "x", "command": "echo x"}, "runs nothing, so it takes no `command`"),
-    ({"kind": "note", "every": "1h", "room": "r", "message": "x", "account": "one"}, "takes no `account`"),
-    ({"kind": "note", "every": "1h", "room": "r", "message": "x", "cap": 5}, "takes no `cap`"),
-    ({"kind": "note", "every": "1h", "room": "r"}, "a note needs `message`, the text its room is told"),
+    ({"kind": "cron", "schedule": "* * * * *", "tz": "UTC", "room": "r", "command": "x"}, '`kind` must be "script", "agent" or "note"'),
+    ({"kind": "script", "schedule": "*:00", "at": "2099-01-01 00:00", "tz": "UTC", "room": "r", "command": "x"}, "exactly one of"),
+    ({"kind": "script", "schedule": "*-*-* 09:00", "room": "r", "command": "x"}, "needs `tz`"),
+    ({"kind": "script", "schedule": "0 9 * * *", "tz": "UTC", "room": "r", "command": "x"}, "takes a systemd calendar line now, not cron"),
+    ({"kind": "script", "every": "1h", "room": "r", "command": "x"}, "unknown key every"),
+    ({"kind": "script", "schedule": "*-*-* 09:00", "tz": "Mars/Olympus", "room": "r", "command": "x"}, "not a time zone name"),
+    ({"kind": "script", "schedule": "*:00", "tz": "UTC", "command": "x"}, "`room` is required"),
+    ({"kind": "script", "schedule": "*:00", "tz": "UTC", "room": "r", "message": "x"}, "has `command`, not `message`"),
+    ({"kind": "agent", "schedule": "*:00", "tz": "UTC", "room": "r", "command": "x"}, "has `message`, not `command`"),
+    ({"kind": "agent", "schedule": "*:00", "tz": "UTC", "room": "r"}, "needs `message`"),
+    ({"kind": "script", "schedule": "*:00", "tz": "UTC", "room": "r", "command": "x", "account": "one"}, "runs with no account"),
+    ({"kind": "script", "schedule": "*:00", "tz": "UTC", "room": "r", "command": "x", "colour": "red"}, "unknown key colour"),
+    ({"kind": "script", "schedule": "*:00", "tz": "UTC", "room": "r", "command": "x", "deliver": "loud"}, '"announce" or "silent"'),
+    ({"kind": "script", "schedule": "*:00", "tz": "UTC", "room": "r", "command": "x", "cap": 0}, "above 0"),
+    ({"kind": "note", "schedule": "*:00", "tz": "UTC", "room": "r", "message": "x", "command": "echo x"}, "runs nothing, so it takes no `command`"),
+    ({"kind": "note", "schedule": "*:00", "tz": "UTC", "room": "r", "message": "x", "account": "one"}, "takes no `account`"),
+    ({"kind": "note", "schedule": "*:00", "tz": "UTC", "room": "r", "message": "x", "cap": 5}, "takes no `cap`"),
+    ({"kind": "note", "schedule": "*:00", "tz": "UTC", "room": "r"}, "a note needs `message`, the text its room is told"),
 ])
 def test_a_job_that_cannot_be_scheduled_is_named_with_why(raw, why):
     with pytest.raises(JobError, match=why):
         make_job("ok-name", raw)
     with pytest.raises(JobError, match="lowercase"):
-        make_job("Not OK", {"kind": "script", "every": "1h", "room": "r", "command": "x"})
+        make_job("Not OK", {"kind": "script", "schedule": "*:00", "tz": "UTC", "room": "r", "command": "x"})
 
 
 # the sync
 def test_sync_is_idempotent_shows_the_diff_and_cleans_a_removed_job(tmp_path):
     sd = FakeSystemd(tmp_path / "units")
     path = write_jobs(tmp_path / "private" / "jobs.toml", "# my jobs\n\n"
-                      '[jobs.brief]\nkind = "agent"\nschedule = "0 9 * * 1-5"\ntz = "America/Toronto"\nroom = "r"\n'
+                      '[jobs.brief]\nkind = "agent"\nschedule = "Mon..Fri 09:00"\ntz = "America/Toronto"\nroom = "r"\n'
                       'account = "two"\ncap = 20\nmessage = "the brief"\n\n'
-                      '[jobs.beat]\nkind = "script"\nevery = "2m"\nroom = "r"\ndeliver = "silent"\ncommand = "true"\n')
+                      '[jobs.beat]\nkind = "script"\nschedule = "*:0/2"\ntz = "UTC"\nroom = "r"\ndeliver = "silent"\ncommand = "true"\n')
     p, back = jobs.sync(path, sd, ENV)
     assert (p.added, p.changed, p.unchanged, p.removed, p.errors) == (["brief", "beat"], [], [], [], {})
     assert [c for c in sd.calls if c[0] != "write"] == [("reload",), ("enable", "yerk-job-brief.timer"),
                                                          ("enable", "yerk-job-beat.timer")]
     timer, service = sd.read("yerk-job-brief.timer"), sd.read("yerk-job-brief.service")
-    assert timer.startswith(jobs.HEADER + "brief.") and "OnCalendar=Mon,Tue,Wed,Thu,Fri *-*-* 9:0:00 America/Toronto" in timer
+    assert timer.startswith(jobs.HEADER + "brief.") and "OnCalendar=Mon..Fri 09:00 America/Toronto" in timer
     assert "Persistent=true" in timer and "AccuracySec=1s" in timer and "Unit=yerk-job-brief.service" in timer
     assert "ExecStart=/opt/yerk/bin/python -P -m yerk_ai.jobs run brief" in service and "TimeoutStartSec=120" in service
     assert 'Environment="YERK_PRIVATE=/opt/private"' in service and "WorkingDirectory=/opt/yerk" in service
     beat = sd.read("yerk-job-beat.timer")
-    assert "OnCalendar=*-*-* *:0/2:00 UTC" in beat and "Persistent=true" in beat     # on the clock: even minutes
+    assert "OnCalendar=*:0/2 UTC" in beat and "Persistent=true" in beat     # the line as written, in its zone
     assert "TimeoutStartSec=720" in sd.read("yerk-job-beat.service")          # the 10-minute default cap plus 120 s
     assert set(back) == {"brief", "beat"} and all(r["scheduled"] for r in back.values())
-    assert jobs.diff_lines(p)[0] == "+ brief (new): cron `0 9 * * 1-5` America/Toronto"
+    assert jobs.diff_lines(p)[0] == "+ brief (new): calendar `Mon..Fri 09:00` America/Toronto"
     # the same file again: nothing written, nothing enabled, nothing restarted
     n = len(sd.calls)
     p2, _ = jobs.sync(path, sd, ENV)
     assert (p2.added, p2.changed, p2.unchanged, p2.removed) == ([], [], ["brief", "beat"], []) and len(sd.calls) == n
     assert jobs.diff_lines(p2) == ["= 2 unchanged: brief, beat"]
     # one job changed: its units rewritten and its timer restarted; the other untouched
-    path.write_text(path.read_text().replace('every = "2m"', 'every = "7m"'))       # off the clock: monotonic
+    path.write_text(path.read_text().replace('schedule = "*:0/2"', 'schedule = "*:0/7"'))
     p3, _ = jobs.sync(path, sd, ENV)
     assert (p3.changed, p3.unchanged) == (["beat"], ["brief"])
     beat = sd.read("yerk-job-beat.timer")
-    assert "OnActiveSec=420s" in beat and "OnUnitActiveSec=420s" in beat and "Persistent" not in beat
+    assert "OnCalendar=*:0/7 UTC" in beat and "Persistent=true" in beat
     assert sd.calls[n:] == [("write", "yerk-job-beat.service"), ("write", "yerk-job-beat.timer"), ("reload",),
                             ("enable", "yerk-job-beat.timer"), ("restart", "yerk-job-beat.timer")]
     # a job removed from the file: disabled, both files gone; a broken one named with why, its unit never written
-    path.write_text(path.read_text().split("[jobs.beat]")[0] + '[jobs.broken]\nkind = "script"\nschedule = "0 25 * * *"\n'
+    path.write_text(path.read_text().split("[jobs.beat]")[0] + '[jobs.broken]\nkind = "script"\nschedule = "0 9 * * *"\n'
                     'tz = "UTC"\nroom = "r"\ncommand = "true"\n')
     n = len(sd.calls)
     p4, back4 = jobs.sync(path, sd, ENV)
-    assert p4.removed == ["beat"] and list(p4.errors) == ["broken"] and "25 is outside 0-23" in p4.errors["broken"]
+    assert p4.removed == ["beat"] and list(p4.errors) == ["broken"] and "not cron" in p4.errors["broken"]
     assert sd.calls[n:] == [("disable", "yerk-job-beat.timer"), ("remove", "yerk-job-beat.timer"),
                             ("remove", "yerk-job-beat.service"), ("reload",)]
     assert sd.ours() == ["brief"] and set(back4) == {"brief"}
     assert jobs.diff_lines(p4) == ["- beat (removed: not in the jobs file)", "= 1 unchanged: brief",
-                                   "! broken: cannot be scheduled: in the cron expression '0 25 * * *': 25 is outside 0-23"]
+                                   '! broken: cannot be scheduled: `schedule` takes a systemd calendar line now, not cron: replace '
+                                   'schedule = "0 9 * * *" with schedule = "*-*-* 9:0:00"']
     # a calendar systemd itself refuses is named too, and a stray timer is named in the read-back
     path.write_text(path.read_text().replace('tz = "UTC"', 'tz = "UTC"').replace("[jobs.broken]", "[jobs.mars]")
-                    .replace('schedule = "0 25 * * *"', 'schedule = "0 9 * * *"'))
+                    .replace('schedule = "0 9 * * *"', 'schedule = "*-*-* 09:00"'))
     sd.check = lambda spec: "systemd does not take it"                                           # every spec refused
     p5, _ = jobs.sync(path, sd, ENV)
     assert set(p5.errors) == {"brief", "mars"} and p5.removed == ["brief"] and sd.ours() == []
@@ -234,7 +218,7 @@ def test_sync_is_idempotent_shows_the_diff_and_cleans_a_removed_job(tmp_path):
     lines = jobs.status_lines(path, sd)
     assert lines[:2] == [f"{jobs.NOTHING} brief: not scheduled", f"{jobs.NOTHING} mars: not scheduled"]
     assert f"{jobs.NOT_DONE} timer stray: not in the jobs file" in lines
-    path.write_text(path.read_text().replace('schedule = "0 9 * * *"', 'schedule = "0 25 * * *"'))
+    path.write_text(path.read_text().replace('schedule = "*-*-* 09:00"', 'schedule = "0 9 * * *"'))
     lines = jobs.status_lines(path, sd)
     assert lines[-1] == f"{jobs.NOT_DONE} mars: cannot be scheduled"
     assert all(x[0] in (jobs.DONE, jobs.NOT_DONE, jobs.NOTHING) and len(x) <= jobs.PHONE - 2 for x in lines)   # state first, phone width
@@ -243,7 +227,7 @@ def test_sync_is_idempotent_shows_the_diff_and_cleans_a_removed_job(tmp_path):
 
 def test_the_read_back_comes_from_systemd_in_the_jobs_zone(tmp_path):
     sd = FakeSystemd(tmp_path / "units")
-    path = write_jobs(tmp_path / "jobs.toml", '[jobs.tokyo]\nkind = "script"\nschedule = "0 9 * * *"\ntz = "Asia/Tokyo"\n'
+    path = write_jobs(tmp_path / "jobs.toml", '[jobs.tokyo]\nkind = "script"\nschedule = "*-*-* 09:00"\ntz = "Asia/Tokyo"\n'
                                               'room = "r"\ncommand = "true"\n')
     p, back = jobs.sync(path, sd, ENV)
     sd.next["yerk-job-tokyo.timer"] = epoch(2026, 10, 19, 9, 0, tz=TOK)
@@ -252,7 +236,7 @@ def test_the_read_back_comes_from_systemd_in_the_jobs_zone(tmp_path):
     back = jobs.readback(p.jobs, sd, now)
     line, = jobs.read_lines(back, p.jobs, now)
     assert line.startswith("tokyo: next Mon 2026-10-19 09:00:00 JST (in 30m 00s), last Sun 2026-10-18 09:00:00 JST; "
-                           "cron `0 9 * * *` Asia/Tokyo, room r, script")
+                           "calendar `*-*-* 09:00` Asia/Tokyo, room r, script")
     assert jobs.status_lines(path, sd, now) == [f"{jobs.DONE} tokyo: in 30m 00s"]      # the detail is `yerk jobs list`
     sd.enabled.clear()
     assert jobs.status_lines(path, sd, now) == [f"{jobs.NOTHING} tokyo: not scheduled"]
@@ -294,7 +278,7 @@ def test_a_systemctl_that_cannot_start_raises_so_the_tool_keeps_the_job_and_a_re
     fail["restart"] = 1                                                             # only a nonzero exit is a refusal
     assert sd.restart("yerk-job-x.timer") == "systemctl --user restart yerk-job-x.timer exited 1: boom"
     path = write_jobs(tmp_path / "jobs.toml", "")
-    assert jobs.schedule_add(path, sd, ENV, "x", "script", "every 1h", "true", "r", "UTC") == \
+    assert jobs.schedule_add(path, sd, ENV, "x", "script", "*:00", "true", "r", "UTC") == \
         {"ok": False, "error": "the sync failed: [Errno 12] Cannot allocate memory"}
     assert "[jobs.x]" in path.read_text()                                          # kept for the next sync
     fail.clear()
@@ -328,7 +312,7 @@ def test_a_script_jobs_three_exit_cases_deliver_stay_silent_and_alert(setup, tmp
     s.ledger.__init__(state / "ledger.sqlite")          # the runner opens the ledger at <state>/ledger.sqlite
     j.ledger = w.ledger = s.ledger
     write_jobs(priv / "jobs.toml", "\n".join(
-        f'[jobs.{n}]\nkind = "script"\nevery = "1h"\ntz = "UTC"\nroom = "r"\n{extra}command = {c!r}\n'.replace("'", '"')
+        f'[jobs.{n}]\nkind = "script"\nschedule = "*:00"\ntz = "UTC"\nroom = "r"\n{extra}command = {c!r}\n'.replace("'", '"')
         for n, c, extra in (("out", "echo hello from the job", ""), ("quiet", "true", ""),
                             ("bad", "echo oops >&2; exit 3", ""), ("envy", "env | sort", 'deliver = "silent"\n'),
                             ("slow", "sleep 30", "cap = 0.02\n"))))
@@ -368,7 +352,7 @@ def test_a_script_run_with_no_daemon_is_ledgered_undelivered_and_delivered_late_
     j, w, sd, priv, state = manager(setup, tmp_path, {"r": s.room()}, {"r": rec})
     s.ledger.__init__(state / "ledger.sqlite")
     j.ledger = w.ledger = s.ledger
-    write_jobs(priv / "jobs.toml", '[jobs.late]\nkind = "script"\nevery = "1h"\ntz = "UTC"\nroom = "r"\ncommand = "echo while you were out"\n')
+    write_jobs(priv / "jobs.toml", '[jobs.late]\nkind = "script"\nschedule = "*:00"\ntz = "UTC"\nroom = "r"\ncommand = "echo while you were out"\n')
 
     def down(payload):
         raise OSError("connection refused")
@@ -391,13 +375,13 @@ def test_an_agent_job_becomes_a_worker_with_the_right_account_and_cap_and_relays
     s.ledger.__init__(state / "ledger.sqlite")
     j.ledger = w.ledger = s.ledger
     write_jobs(priv / "jobs.toml",
-               '[jobs.brief]\nkind = "agent"\nschedule = "0 9 * * *"\ntz = "UTC"\nroom = "r"\naccount = "two"\ncap = 7\n'
+               '[jobs.brief]\nkind = "agent"\nschedule = "*-*-* 09:00"\ntz = "UTC"\nroom = "r"\naccount = "two"\ncap = 7\n'
                'message = "FAKE report=\\"Three things happened\\" result=\\"Three things happened today\\""\n\n'
-               '[jobs.hush]\nkind = "agent"\nevery = "1h"\nroom = "r"\n'
+               '[jobs.hush]\nkind = "agent"\nschedule = "*:00"\ntz = "UTC"\nroom = "r"\n'
                'message = "FAKE report=\\"NO_REPLY\\" result=\\"NO_REPLY\\""\n\n'
-               '[jobs.mute]\nkind = "agent"\nevery = "1h"\nroom = "r"\ndeliver = "silent"\n'
+               '[jobs.mute]\nkind = "agent"\nschedule = "*:00"\ntz = "UTC"\nroom = "r"\ndeliver = "silent"\n'
                'message = "FAKE report=\\"kept\\" result=\\"kept to the ledger\\""\n\n'
-               '[jobs.crash]\nkind = "agent"\nevery = "1h"\nroom = "r"\nmessage = "FAKE report=\\"half\\" exit=3"\n')
+               '[jobs.crash]\nkind = "agent"\nschedule = "*:00"\ntz = "UTC"\nroom = "r"\nmessage = "FAKE report=\\"half\\" exit=3"\n')
     jobs.sync(priv / "jobs.toml", sd, ENV)
 
     async def go():
@@ -441,14 +425,14 @@ def test_a_one_shot_is_removed_from_the_file_and_its_units_go_after_it_fires(set
     j, w, sd, priv, state = manager(setup, tmp_path, {"r": s.room()}, {"r": rec})
     s.ledger.__init__(state / "ledger.sqlite")
     j.ledger = w.ledger = s.ledger
-    path = write_jobs(priv / "jobs.toml", "# keep this comment\n\n[jobs.keep]\nkind = \"script\"\nevery = \"1h\"\nroom = \"r\"\n"
+    path = write_jobs(priv / "jobs.toml", "# keep this comment\n\n[jobs.keep]\nkind = \"script\"\nschedule = \"*:00\"\ntz = \"UTC\"\nroom = \"r\"\n"
                       "command = \"true\"\n\n[jobs.once]  # the reminder\nkind = \"script\"\nat = \"2099-01-02 09:00\"\n"
                       "tz = \"UTC\"\nroom = \"r\"\ncommand = \"echo Reminder: it is time\"\n")
     jobs.sync(path, sd, ENV)
     assert sd.ours() == ["keep", "once"]
     rc = jobs.run("once", priv, state, units=sd, handoff=lambda p: asyncio.run(j.handle("", p["job"])))
     assert rc == 0 and rec.sent[0][1] == "Reminder: it is time"
-    assert path.read_text() == "# keep this comment\n\n[jobs.keep]\nkind = \"script\"\nevery = \"1h\"\nroom = \"r\"\ncommand = \"true\"\n"
+    assert path.read_text() == "# keep this comment\n\n[jobs.keep]\nkind = \"script\"\nschedule = \"*:00\"\ntz = \"UTC\"\nroom = \"r\"\ncommand = \"true\"\n"
     assert sd.ours() == ["keep"] and ("disable", "yerk-job-once.timer") in sd.calls and sd.read("yerk-job-once.service") is None
     r, = s.ledger.job_runs(job="once")
     assert r["planned"] == epoch(2099, 1, 2, 9, 0, tz=UTC) and r["delivery"] == "delivered"
@@ -474,7 +458,7 @@ async def settled(ledger, run_id, timeout=20.0):
 def test_a_message_toml_cannot_hold_raw_is_written_so_the_file_still_parses_and_no_other_timer_goes(tmp_path):
     """Any room writes a note's message now. A DEL in it made the jobs file unparseable, so the add's own sync took
     every other job's timer away; a lone surrogate truncated the file to nothing. Both are written so the file parses."""
-    keep = '[jobs.keep]\nkind = "script"\nevery = "1h"\nroom = "r"\ncommand = "true"\n'
+    keep = '[jobs.keep]\nkind = "script"\nschedule = "*:00"\ntz = "UTC"\nroom = "r"\ncommand = "true"\n'
     path, sd = write_jobs(tmp_path / "jobs.toml", keep), FakeSystemd(tmp_path / "units")
     jobs.sync(path, sd, ENV)
     for name, text in (("del", "call\x7f the clinic"), ("half", "call \ud800 the clinic")):
@@ -506,7 +490,7 @@ def test_a_note_is_told_by_its_rooms_own_session_and_then_leaves_the_file(setup,
     j, w, sd, priv, state = manager(setup, tmp_path, {"r": s.room()}, {"r": rec})
     s.ledger.__init__(state / "ledger.sqlite")
     j.ledger = w.ledger = s.ledger
-    path = write_jobs(priv / "jobs.toml", f'[jobs.keep]\nkind = "script"\nevery = "1h"\nroom = "r"\ncommand = "true"\n\n'
+    path = write_jobs(priv / "jobs.toml", f'[jobs.keep]\nkind = "script"\nschedule = "*:00"\ntz = "UTC"\nroom = "r"\ncommand = "true"\n\n'
                       f"[jobs.call-clinic]\n{NOTE}")
     jobs.sync(path, sd, ENV)
 
@@ -534,7 +518,7 @@ def test_a_note_the_daemon_missed_is_told_at_the_next_start_and_one_already_said
     j, w, sd, priv, state = manager(setup, tmp_path, {"r": s.room()}, {"r": Rec()})
     s.ledger.__init__(state / "ledger.sqlite")
     j.ledger = w.ledger = s.ledger
-    write_jobs(priv / "jobs.toml", '[jobs.water]\nkind = "note"\nevery = "2h"\ntz = "UTC"\nroom = "r"\nmessage = "Water the plants."\n')
+    write_jobs(priv / "jobs.toml", '[jobs.water]\nkind = "note"\nschedule = "0/2:00"\ntz = "UTC"\nroom = "r"\nmessage = "Water the plants."\n')
     jobs.sync(priv / "jobs.toml", sd, ENV)
 
     def down(payload):
@@ -577,7 +561,7 @@ def test_a_note_whose_hand_off_failed_after_the_start_is_told_by_that_start(setu
     j, w, sd, priv, state = manager(setup, tmp_path, {"r": s.room()}, {"r": Rec()})
     s.ledger.__init__(state / "ledger.sqlite")
     j.ledger = w.ledger = s.ledger
-    write_jobs(priv / "jobs.toml", '[jobs.water]\nkind = "note"\nevery = "2h"\ntz = "UTC"\nroom = "r"\nmessage = "Water the plants."\n')
+    write_jobs(priv / "jobs.toml", '[jobs.water]\nkind = "note"\nschedule = "0/2:00"\ntz = "UTC"\nroom = "r"\nmessage = "Water the plants."\n')
     jobs.sync(priv / "jobs.toml", sd, ENV)
     j.started = time.time() - 1                                     # the start, before /control answers
 
@@ -612,28 +596,29 @@ def test_the_schedule_tool_round_trips_through_the_file(setup, tmp_path):
     assert path.read_text().startswith("# the owner's comment stays\n\n[jobs.remind]\nkind = \"script\"\nat = \"2099-01-02 09:00\"\n"
                                        "tz = \"Asia/Tokyo\"\nroom = \"r\"\ncommand = \"echo hi\"\n")
     # the room's zone, the daemon's zone, an explicit zone; never UTC by accident
-    assert add(name="cron", when="0 9 * * 1-5", what="the brief", room="q")["tz"] == "America/Toronto"
-    assert add(name="paris", when="every 2h", what="the brief", tz="Europe/Paris", deliver="silent", cap_minutes=3)["tz"] == "Europe/Paris"
+    assert add(name="weekdays", when="Mon..Fri 09:00", what="the brief", room="q")["tz"] == "America/Toronto"
+    assert add(name="paris", when="0/2:00", what="the brief", tz="Europe/Paris", deliver="silent", cap_minutes=3)["tz"] == "Europe/Paris"
     j.daemon_conf = {}
-    assert "give `tz`" in add(name="nozone", when="0 9 * * *", what="x", room="q")["error"]
+    assert "give `tz`" in add(name="nozone", when="*-*-* 09:00", what="x", room="q")["error"]
     assert "nozone" not in path.read_text()
     paris = jobs.load(path)[0]["paris"]
-    assert (paris.when, paris.every_seconds, paris.deliver, paris.cap, paris.kind) == ("every", 7200, "silent", 3.0, "agent")
+    assert (paris.when, paris.spec, paris.deliver, paris.cap, paris.kind) == ("calendar", "0/2:00", "silent", 3.0, "agent")
     # list reads the timers back; a repeated name and a bad `when` leave the file as it was
     before = hashlib.sha256(path.read_bytes()).hexdigest()
     assert "already in the file" in add(name="remind", when="2099-05-05 10:00", what="x", kind="script")["error"]
-    assert "five fields" in add(name="odd", when="tomorrowish", what="x")["error"]
-    assert "not a time zone" in add(name="odd", when="0 9 * * *", what="x", tz="Mars/Olympus")["error"]
+    assert add(name="odd", when="0 9 * * 1-5", what="x")["error"] == ('`schedule` takes a systemd calendar line now, not cron: '
+                                                                    'replace schedule = "0 9 * * 1-5" with schedule = "Mon..Fri *-*-* 9:0:00"')
+    assert "not a time zone" in add(name="odd", when="*-*-* 09:00", what="x", tz="Mars/Olympus")["error"]
     assert hashlib.sha256(path.read_bytes()).hexdigest() == before
     listed = asyncio.run(j.handle("r", {"action": "list"}))
-    assert [x["name"] for x in listed["jobs"]] == ["remind", "cron", "paris"] and all(x["scheduled"] for x in listed["jobs"])
+    assert [x["name"] for x in listed["jobs"]] == ["remind", "weekdays", "paris"] and all(x["scheduled"] for x in listed["jobs"])
     assert listed["lines"][0].startswith("remind: next ") and "JST" in listed["lines"][0]
     # remove: the block goes, the rest of the file byte for byte
     kept = path.read_text()
-    out = asyncio.run(j.handle("r", {"action": "remove", "name": "cron"}))
-    assert out["ok"] and "- cron (removed" in out["diff"][0] and sd.ours() == ["paris", "remind"]
-    assert path.read_text() == kept.replace(kept[kept.index("\n[jobs.cron]"):kept.index("\n[jobs.paris]")], "")
-    assert not asyncio.run(j.handle("r", {"action": "remove", "name": "cron"}))["ok"]
+    out = asyncio.run(j.handle("r", {"action": "remove", "name": "weekdays"}))
+    assert out["ok"] and "- weekdays (removed" in out["diff"][0] and sd.ours() == ["paris", "remind"]
+    assert path.read_text() == kept.replace(kept[kept.index("\n[jobs.weekdays]"):kept.index("\n[jobs.paris]")], "")
+    assert not asyncio.run(j.handle("r", {"action": "remove", "name": "weekdays"}))["ok"]
     # the same three actions from the command line, on the same file and timers
     monkey = pytest.MonkeyPatch()
     monkey.setattr(jobs, "Systemd", lambda: sd)
@@ -641,7 +626,7 @@ def test_the_schedule_tool_round_trips_through_the_file(setup, tmp_path):
     try:
         buf = io.StringIO()
         with redirect_stdout(buf):
-            rc = cli.main(["schedule", "add", "cli-job", "--when", "every 45m", "--what", "echo cli", "--kind", "script",
+            rc = cli.main(["schedule", "add", "cli-job", "--when", "*:0/45", "--what", "echo cli", "--kind", "script",
                            "--room", "r", "--private", str(priv), "--state", str(state)])
             rc2 = cli.main(["schedule", "list", "--private", str(priv), "--state", str(state)])
             rc3 = cli.main(["jobs", "sync", "--private", str(priv), "--state", str(state)])
@@ -650,14 +635,14 @@ def test_the_schedule_tool_round_trips_through_the_file(setup, tmp_path):
         monkey.undo()
     text = buf.getvalue()
     assert (rc, rc2, rc3, rc4) == (0, 0, 0, 0)
-    assert text.startswith("cli-job: every 45m, script job, room r, deliver announce; next ") and "cli-job: next" in text
+    assert text.startswith("cli-job: calendar `*:0/45` Asia/Tokyo, script job, room r, deliver announce; next ") and "cli-job: next" in text
     assert "= 3 unchanged: remind, paris, cli-job" in text and "cli-job: removed" in text and "cli-job" not in path.read_text()
 
 
 def test_a_room_with_people_keeps_its_own_notes_and_every_other_job_stays_the_owners(tmp_path):
     """Seen live: a person's room could not set the reminder they asked for, since every job ran as the owner. A
-    queue for its turn and the last part, closes the case before the next, run starts the example note says; the sample,
-    one more line for, the check while a second entry, waits in the queue for its turn and the last; part closes
+    room that is not the owner's now adds, lists and removes its own notes, and no answer names another job; an agent
+    or script job, or a note for another room, gets the line that says what it can do instead; the owner's
     rooms and `yerk schedule` keep every form."""
     from test_room_scope import install
     y, mom = install(tmp_path, family=True), "family-room"
@@ -672,7 +657,7 @@ def test_a_room_with_people_keeps_its_own_notes_and_every_other_job_stays_the_ow
     assert out["ok"] and (out["kind"], out["room"], out["tz"]) == ("note", mom, "UTC") and "diff" not in out
     assert jobs.load(path)[0]["trip-deals"].room == mom and sd.read("yerk-job-trip-deals.timer")
     for req in ({**note, "name": "x", "kind": "agent"}, {**note, "name": "x", "kind": "script", "what": "echo hi"},
-                {**note, "name": "x", "kind": "watcher"}, {**note, "name": "x", "room": "example-room"}, {"action": "sync"}):
+                {**note, "name": "x", "room": "example-room"}, {"action": "sync"}):
         assert ask(mom, **req) == {"ok": False, "line": W.JOBS_OWNER_ONLY}, req
     assert "[jobs.x]" not in path.read_text()
     assert W.JOBS_OWNER_ONLY.splitlines()[0] == "not scheduled: only this room's notes"        # state first, what it can do
@@ -680,7 +665,7 @@ def test_a_room_with_people_keeps_its_own_notes_and_every_other_job_stays_the_ow
     monkey.setattr(jobs, "Systemd", lambda: sd)
     try:
         with redirect_stdout(io.StringIO()):
-            rc = cli.main(["schedule", "add", "nightly", "--kind", "agent", "--when", "every 2h", "--what", "look",
+            rc = cli.main(["schedule", "add", "nightly", "--kind", "agent", "--when", "0/2:00", "--what", "look",
                            "--room", mom, "--private", str(path.parent), "--state", str(tmp_path / "state")])
     finally:
         monkey.undo()
@@ -706,7 +691,7 @@ def test_a_room_that_is_not_the_owners_keeps_room_notes_at_most_and_adds_one_per
     def ask(caller, name, when="2099-01-03 10:00"):
         return asyncio.run(y.tool_schedule(caller, {"action": "add", "kind": "note", "name": name, "when": when,
                                                     "what": "Remind them to call the clinic."}))
-    assert not ask(mom, "bad", when="soon")["ok"] and ask(mom, "one")["ok"]          # the refused add did not count
+    assert not ask(mom, "bad", when="0 9 * * *")["ok"] and ask(mom, "one")["ok"]          # the refused add did not count
     wait = ask(mom, "two")
     assert wait == {"ok": False, "line": W.NOTES_WAIT.format(what="one note", every="5", wait="5 min")}
     assert wait["line"].splitlines() == ["not scheduled: one note per 5 min here", "the next in 5 min"]
@@ -749,7 +734,7 @@ def test_a_room_with_people_adds_a_reminder_its_check_and_a_watch_in_one_turn(tm
         return await asyncio.gather(*(y.tool_schedule(mom, {"action": "add", "kind": "note", "name": n, "when": w,
                                                             "what": "Remind them to book the dinner."}) for n, w in adds))
     y.jobs.added[mom] = []
-    bad, good = asyncio.run(at_once(("bad", "soon"), ("sixth", "2099-01-03 10:00")))
+    bad, good = asyncio.run(at_once(("bad", "0 9 * * *"), ("sixth", "2099-01-03 10:00")))
     assert not bad["ok"] and good["ok"] and len(y.jobs.added[mom]) == 1              # the refused add gives back its own place only
 
 
@@ -804,7 +789,7 @@ def test_a_script_job_runs_this_installs_yerk_on_this_installs_folders_and_never
     monkeypatch.setenv("YERK_PRIVATE", str(tmp_path / "private"))
     monkeypatch.setenv("YERK_STATE", str(tmp_path / "state"))
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-example")
-    job = make_job("probe", {"kind": "script", "every": "1h", "room": "r", "command":
+    job = make_job("probe", {"kind": "script", "schedule": "*:00", "tz": "UTC", "room": "r", "command":
                              'printf "%s|%s|%s|%s" "$YERK_PRIVATE" "$YERK_STATE" "${PATH%%:*}" "$CLAUDE_CODE_OAUTH_TOKEN"'})
     (folder := tmp_path / "run").mkdir()
     out = jobs.run_script(job, folder)

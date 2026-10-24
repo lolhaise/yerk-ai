@@ -16,7 +16,8 @@ from test_sheet_hard import machine_said
 
 from yerk_ai import context, hooks, memory, taste, words
 from yerk_ai.config import EXAMPLE_PRIVATE, budgets, rooms
-from yerk_ai.daemon import ConsoleChannel, Yerkd
+from yerk_ai.daemon import Yerkd
+from fake_channel import ConsoleChannel
 
 ROOM = "example-room"
 MORE = "({} older items not shown; recall or read_memory reaches them)"

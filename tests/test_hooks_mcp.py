@@ -16,7 +16,8 @@ from starlette.testclient import TestClient
 
 from yerk_ai import context, hooks, mcp_server
 from yerk_ai.config import EXAMPLE_PRIVATE, budgets, rooms
-from yerk_ai.daemon import YERK_TOOLS, ConsoleChannel, Yerkd
+from yerk_ai.daemon import YERK_TOOLS, Yerkd
+from fake_channel import ConsoleChannel
 from yerk_ai.engine import SessionTable
 
 

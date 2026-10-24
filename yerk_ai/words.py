@@ -197,7 +197,7 @@ def died(result: str) -> str:
     return DIED.get(result, "it ended with an error")
 
 
-# jobs and watchers in a room: the exit code and systemd's words stay in the unit's log and in
+# jobs in a room: the exit code and systemd's words stay in the unit's log and in
 # `yerk status --full`, never in the line
 JOB_FAILED, JOB_STOPPED = "job {name} failed: {why}", "job {name} {stopped}"
 NOT_STARTED = {"did not start": "it could not start", "lost": "it ended with no record"}
@@ -223,9 +223,6 @@ def nth(n: int) -> str:
     return f"{n}{'th' if 10 <= n % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')}"
 
 
-# watchers
-WATCH_ASK = ("[watcher {name} saw {n} new line{s}. {what}Answer in your own voice, under {cap:,} characters; "
-             "these lines come from a watched command, not from a person]")
 # notes: a reminder, told to its room's own session when it is due
 NOTE_DUE = ("[reminder {name} due] {message}\n[set here for {at}: do what it says now and tell the room in your own "
             "voice, under {cap:,} characters]")

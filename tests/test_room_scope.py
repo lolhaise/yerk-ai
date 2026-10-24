@@ -191,7 +191,7 @@ def test_a_family_room_with_one_person_reads_its_own_lines_and_shared_files_only
     refused. The owner's room still reads everything."""
     from yerk_ai import words
     from yerk_ai.config import people
-    from yerk_ai.daemon import ConsoleChannel
+    from fake_channel import ConsoleChannel
     from yerk_ai.room import Inbound
     y, mom = install(tmp_path, family=True), "family-room"
     assert people(mom, y.room_confs[mom]) == frozenset({MOM}) and not y.owner(mom) and y.daily.rooms[mom] == ("discord:MOM_ID", "room")
@@ -276,7 +276,7 @@ def test_a_family_room_never_learns_what_it_may_not_read(tmp_path):
     room itself only; and the room's Claude Code
     process refuses file reads outside its working folders in every mode. The owner's room keeps all of it."""
     from yerk_ai import words
-    from yerk_ai.daemon import ConsoleChannel
+    from fake_channel import ConsoleChannel
     y, mom = install(tmp_path, family=True), "family-room"
     y.daily.capture("example-room", "o5", "owner", "zanzibar quartz is the owner's private code word")
     y.daily.capture(mom, "p5", "person", "see you at dinner on sunday", who="mom")

@@ -617,7 +617,7 @@ def cmd_explain(a: argparse.Namespace) -> int:
         return 0
     s = memory.settings(private_dir(a.private), state_dir(a.state))
     print("\n".join(abilities.explain(a.ability, ab, table_, s)))     # one state line: the first (STYLE 1)
-    if a.ability in ("jobs", "watchers"):     # the jobs file's keys, from the code (decision 16)
+    if a.ability == "jobs":     # the jobs file's keys, from the code (decision 16)
         from . import jobs
         for head, table in (("a [jobs.NAME] table in the private jobs.toml", jobs.KEYS), ("[jobs] in the private yerkd.toml", jobs.CONF)):
             print(f"keys of {head}:")
@@ -649,25 +649,6 @@ def cmd_config(a: argparse.Namespace) -> int:
         print(f"no setting {a.key!r}; settings: {', '.join(r['key'] for r in rows)}", file=sys.stderr)
         return 2
     print(json.dumps(pick) if a.json else "\n".join(x for r in pick for x in _setting_lines(r)))
-    return 0
-
-
-def cmd_memory(a: argparse.Namespace) -> int:
-    """`yerk memory migrate-daylogs`: the rewrite of day-log lines written before offsets, room ids,
-    authors and classes (restart test R5, R2), every file that changes copied to the private layer's
-    backups folder first. The daemon runs the same rewrite at its start; by hand it is safe beside a
-    running daemon, since the rewrite and the daemon's capture hold one lock (cold read F3)."""
-    import time
-    from pathlib import Path
-    from . import memory
-    from .config import load_toml, room_id, state_dir
-    from .config import rooms as load_rooms
-    priv, state = private_dir(a.private), state_dir(a.state)
-    conf = load_toml(priv / "yerkd.toml") if (priv / "yerkd.toml").is_file() else {}
-    s = memory.settings(priv, state, dict(conf.get("memory", {})))
-    rooms = {n: (room_id(n, c), memory.room_class(c)) for n, c in load_rooms(priv).items()}
-    backup = Path(a.backup) if a.backup else priv / "backups" / f"daily-before-{time.strftime('%Y-%m-%d')}"
-    print(json.dumps(memory.migrate_daylogs(s.daily, s.tz, rooms, backup)))
     return 0
 
 
@@ -761,8 +742,8 @@ def main(argv: list[str] | None = None) -> int:
                         "`schedule` tool, from the command line)")
     sc.add_argument("action", choices=["add", "remove", "list"])
     sc.add_argument("name", nargs="?", help="the job's name: lowercase letters, digits, hyphens")
-    sc.add_argument("--when", help='add: a date and time ("2026-03-09 09:00", a one-shot), "every 2h", or a cron '
-                    'expression ("0 9 * * 1-5")')
+    sc.add_argument("--when", help='add: a date and time ("2026-03-09 09:00", a one-shot) or a systemd calendar line '
+                    '("Mon..Fri 09:00", recurring)')
     sc.add_argument("--what", help="add: the worker's brief (kind agent), the shell line (kind script) or the text "
                     "the room is told (kind note)")
     sc.add_argument("--kind", choices=["agent", "script", "note"], default="agent")
@@ -821,10 +802,6 @@ def main(argv: list[str] | None = None) -> int:
                     "proposed into <memory>/rules-proposals/<day>.md, never applied")
     cu.add_argument("--apply", nargs=2, metavar=("DAY", "N"), help="the owner's word: proposals N[,N...] of DAY written, backed "
                     "back as plain text with one more, line `for`: the check while a second")
-    mm = sub.add_parser("memory", help="the memory tree's one-time migrations: migrate-daylogs (offsets, room ids, "
-                        "authors and classes on every day-log line written before them; files copied to backups/ first)")
-    mm.add_argument("action", choices=["migrate-daylogs"])
-    mm.add_argument("--backup", help="where the copies go (default: <private>/backups/daily-before-<today>)")
     cf = sub.add_parser("config", help="the settings Yerk AI describes, with their values here and plain words")
     cf.add_argument("action", choices=["get"])
     cf.add_argument("key", nargs="?", default="", help="a setting or section (presentation, memory, room); all when left out")
@@ -837,7 +814,7 @@ def main(argv: list[str] | None = None) -> int:
     dp.add_argument("ref", nargs="?", help="the commit (default: the daemon's tree's HEAD)")
     dp.add_argument("--no-tests", action="store_true", help="skip the fast tests and the recall check (the card says so)")
     dp.add_argument("--unit", action="store_true", help="also move a systemd-run daemon onto units/yerkd.service")
-    for x in (ac, st, mo, rb, ev, ab, ex, jb, sc, lc, rt, dc, dk, cu, mm, dp, pc, fl, nd):
+    for x in (ac, st, mo, rb, ev, ab, ex, jb, sc, lc, rt, dc, dk, cu, dp, pc, fl, nd):
         x.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else "
                        + ("the running yerkd's own, from its unit)" if x is dp else "the fake example layer)"))
         x.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
@@ -845,7 +822,7 @@ def main(argv: list[str] | None = None) -> int:
     return int({"map": cmd_map, "setup-room": cmd_setup_room, "room": cmd_room, "import": cmd_room, "worker": cmd_worker, "pictures": cmd_pictures, "files": cmd_files,
                 "jobs": cmd_jobs, "schedule": cmd_schedule, "accounts": cmd_accounts, "status": cmd_status, "morning": cmd_morning,
                 "recall-bench": cmd_recall_bench, "eval": cmd_eval, "abilities": cmd_abilities, "explain": cmd_explain, "config": cmd_config,
-                "memory": cmd_memory, "deploy": cmd_deploy, "retention": cmd_retention, "location": cmd_location, "doctor": cmd_doctor,
+                "deploy": cmd_deploy, "retention": cmd_retention, "location": cmd_location, "doctor": cmd_doctor,
                 "docs": cmd_docs,
                 "curate": cmd_curate, "needs": cmd_needs}[a.cmd](a))
 
