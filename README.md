@@ -12,17 +12,25 @@ Yerk AI turns chat rooms into long-lived Claude Code sessions. It is a small Pyt
 
 ## Install
 
-You need Python 3.12 or newer, [uv](https://docs.astral.sh/uv/), Claude Code installed and logged in on each account you will name, and a Discord bot with the permissions [docs/GUIDE.md](docs/GUIDE.md) lists under The private folder.
+You need Python 3.12 or newer, [uv](https://docs.astral.sh/uv/), Claude Code installed and logged in on each account you will name, and a Discord bot (below).
 
 ```sh
 git clone <this repository's URL> yerk-ai && cd yerk-ai
 uv sync
 uv run yerk map example-room                  # the fake example room's context, part by part, against budgets.toml
-cp -r examples/private ~/yerk-private && cp yerkd.toml.example ~/yerk-private/yerkd.toml
+cp -r examples/private ~/yerk-private && chmod 700 ~/yerk-private && mkdir -m 700 ~/yerk-private/secrets
 YERK_PRIVATE=~/yerk-private uv run yerkd      # every room with a discord:<channel id>, through the Discord adapter
 ```
 
-Between the last two, make the folder yours: `chmod 700 ~/yerk-private`, a room per chat in rooms.toml, a line per Claude Code config folder in accounts.toml, the bot's token file and your Discord user id in yerkd.toml, and the token itself in `secrets/discord.token` (0600). `uv run pytest` runs the tests. To run yerkd and its nightly jobs as services, the units are in `units/`, and [docs/units.md](docs/units.md) says when each one runs.
+Between the last two, make the folder yours. The bot: make an application in Discord's Developer Portal, turn on its bot's Message Content intent (or it reads nothing) and copy its token; invite it to your server with the `bot` and `applications.commands` scopes and permissions `274878008384` (View Channels, Send Messages, Send Messages in Threads, Read Message History, Add Reactions, Attach Files); [docs/GUIDE.md](docs/GUIDE.md), The private folder, has the rest. The token goes in `~/yerk-private/secrets/discord.token`, 0600. An id comes from Discord's Developer Mode (User Settings, Advanced): right-click the channel and Copy Channel ID, your own name and Copy User ID. A first room's `~/yerk-private/yerkd.toml` is only this:
+
+```toml
+[discord]
+token_file = "secrets/discord.token"
+owner = "<your user id>"
+```
+
+In rooms.toml give `example-room` your channel, `channel = "discord:<channel id>"` (a room per chat; yerkd starts none without one), and in accounts.toml keep a line per Claude Code config folder you have (`one` is `~/.claude`), each room's `accounts` naming only those. Do not copy yerkd.toml.example whole: its `[watch] assistants` placeholder stops yerkd's start until it is a real id or deleted. `uv run pytest` runs the tests. To run yerkd and its nightly jobs as services, the units are in `units/`, and [docs/units.md](docs/units.md) says when each one runs.
 
 ## The private folder
 

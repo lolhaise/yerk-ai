@@ -23,7 +23,9 @@ version changes.
   (the file as load_toml returns it, followed through names, sections and the functions they are handed to; all 19
   sections and 58 keys today) and fails on one settings.md does not describe, with its file and line. It found three, all
   described now: `[discord] guild`, which `yerk setup-room` needs, and `[backup] keep` and `units` (#128).
-- README.md is a ten-minute read: 9,328 bytes from 118,399. Its first section stays as it was; install in five commands,
+- README.md is a ten-minute read: 10,235 bytes from 118,399. Its first section stays as it was; install in five commands
+  and what a first room needs after them (the bot's intent, scopes and permissions, where a channel id and a user id come
+  from, a three-line yerkd.toml; yerkd.toml.example copied whole had stopped yerkd's start on its `[watch]` placeholder),
   the private folder in one picture, a room's turn in one paragraph, add-ons and where the docs are are new. The Status
   section is docs/STATUS.md, whole, a record as of today; Use through Files are docs/GUIDE.md, whole (two links mended).
   The pointers to README sections in rooms.toml.example, yerkd.toml.example and units/yerkd.service name docs/GUIDE.md.
