@@ -452,6 +452,25 @@ secs = 60
 # withheld's shapes: the doctor's, its password line run to the line's end, KEYED as its token line). 20,555 + 7 = 20,562.
 # 2026-10-25: merged with fusion-levers (#118, main 3255849): its 20,351 plus import-openclaw's 214 (207 and the fix's 7)
 # is 20,565, counted on the merged tree; no .py file changed on both sides (#118: memory; this PR: sources, move, cli).
+# 2026-10-24: decision-receipts raised it by 169: a call a room makes for the owner shows its receipt in the morning diff
+# (claim 19, decision 45, the owner's Oct 21 ask), not folded to fit. evidence.py 56 (calls, the trigger read by code off
+# words.CALL; receipts and receipt_rows, the join to the turn's reads and the recall the prompt hook handed it, kept apart
+# from the session-start file every turn carries), cli.py 39 (`yerk calls fix`, the correction through memory.remember, a
+# persona or a rule file refused), morning.py 28 (a call's line and its receipt, the cap of 20, a person's room counted, the
+# fix), ledger.py 20 (the calls table and its four methods), words.py 17 (the shape and the lines), daemon.py 9 (a row per
+# call of a reply no Stop rule turned back). 20,145 on main 30ea8dc (#117): 19,976 + 169.
+# 2026-10-25: merged with backup-restore (#128) after measured-budgets (#123), main 9f53348: its 20,348 plus
+# decision-receipts' 169 is 20,517, counted on the merged tree; cli.py's subcommand list kept both PRs' parsers, and
+# morning.py, words.py and README, which both changed, merged with no line in common.
+# 2026-10-25: the cold read's two fixes raised it by 3, not folded to fit: words.py 3 (the had rule, "I'd put" or "I'd set"
+# with a past-time word later in the sentence, and its comment; "should've" with no space before 've on the same line).
+# 20,520 on main 9f53348 (#128): 20,517 + 3.
+# 2026-10-25: merged with fusion-levers (#118, main 3255849): its 20,351 plus decision-receipts' 172 (169 and the fixes'
+# 3) is 20,523, counted on the merged tree; no .py file changed on both sides (#118: memory; #119: cli, daemon, evidence,
+# ledger, morning, words).
+# 2026-10-25: merged with import-openclaw (#125, main b81731f): its 20,565 plus decision-receipts' 172 is 20,737, counted
+# on the merged tree; cli.py, which both changed (#125 the import's help, #119 `yerk calls`), and README merged with no
+# line in common.
 # 2026-10-24: bench-kinds raised it by 17: the recall bench scores the episodic and self kinds beside the recall one, apart
 # and together, and holds each to its own ratchet (ROADMAP-v6 step 4, the judge v5 promised for those two sets), not folded
 # to fit. memory.py 13 (KINDS, score, the bench reading <kind>-questions.json beside the recall file, the ratchet a kind at
@@ -462,4 +481,7 @@ secs = 60
 # 2026-10-25: merged with fusion-levers (#118) and import-openclaw (#125), main b81731f: its 20,565 plus
 # bench-kinds' 17 is 20,582, counted on the merged tree; memory.py (#118's SHARE in fuse, this PR's bench and
 # ratchet), cli.py, tests/test_embeddings.py and README.md, which both changed, merged with no line in common.
-lines = 20582
+# 2026-10-25: merged with decision-receipts (#119, main a5c4389): its 20,737 plus bench-kinds' 17 is 20,754, counted
+# on the merged tree; cli.py (#119's `yerk calls`, this PR's recall-bench) and README.md, which both changed, merged
+# with no line in common.
+lines = 20754

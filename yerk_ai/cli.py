@@ -200,6 +200,39 @@ def cmd_needs(a: argparse.Namespace) -> int:
     return 0 if r else 2
 
 
+def cmd_calls(a: argparse.Namespace) -> int:
+    """`yerk calls fix ID PATH:LINE NOTE` (claim 19): the correction for a call that stood on a wrong line, filed the way
+    `remember` files one (a note in the call's room's day log naming the line it supersedes, that line marked), citing the
+    call; never into a persona or a rule file. The next morning diff shows it."""
+    from . import words
+    from .config import load_toml, room_id
+    from .ledger import Ledger
+    priv, state = private_dir(a.private), state_dir(a.state)
+    conf = load_toml(priv / "yerkd.toml") if (priv / "yerkd.toml").is_file() else {}
+    s, confs, led = memory.settings(priv, state, dict(conf.get("memory", {}))), rooms(priv), Ledger(state / "ledger.sqlite")
+    kept = {str((priv / str(v)).resolve()) for c in confs.values() for k in ("persona", "rulebook", "voice") if (v := c.get(k))}
+    kept |= {str((s.root / f).resolve()) for f in (memory.RULES, memory.OVERFLOW, memory.TOPIC_RULES)}
+    got: dict[str, Any] = memory.read(s, a.source, lines=1) if a.source.rpartition(":")[2].isdigit() else {"ok": False, "error": "give the line as path:line"}
+    if not (c := led.call_row(a.id) or {}):
+        got = {"ok": False, "error": f"no call {a.id}"}
+    elif got["ok"] and got["path"] in kept:
+        got = {"ok": False, "error": f"{got['path'].rsplit('/', 1)[-1]} is a persona or a rule file: fix the line the call stood on"}
+    elif got["ok"] and (not got["text"].strip() or got["text"].lstrip().startswith("#")):
+        got = {"ok": False, "error": f"{a.source} is a heading or a blank"}
+    if not got["ok"]:
+        print(f"not fixed: {got['error']}", file=sys.stderr)
+        return 2
+    log = memory.DailyLog(s.daily, s.tz, {n: (room_id(n, x), memory.room_class(x)) for n, x in confs.items()})
+    note = words.CALL_FIX.format(note=a.note, id=a.id, room=c["room"], call=words.line(str(c["call"]), 80))
+    if not (r := memory.remember(s, log, str(c["room"]), f"call-{a.id}", note, old=(a.source,)))["ok"]:
+        print(f"not fixed: {r['error']}", file=sys.stderr)
+        return 1
+    led.call_fix(a.id, fixed=datetime.now().timestamp(), source=a.source, correction=r["cite"], note=a.note)
+    print("\n".join([words.CALL_FIXED.format(id=a.id, source=a.source), words.FIXED_BY.format(cite=r["cite"]), *(f"superseded: {x}" for x in r["superseded"]),
+                     *r["refused"], *r["not_edited"]]))
+    return 0
+
+
 def cmd_jobs(a: argparse.Namespace) -> int:
     """sync: the jobs file to one timer and service per job (idempotent), the diff, then every next
     fire read back from systemd; list: the read-back alone. Both work with the daemon down."""
@@ -748,6 +781,12 @@ def main(argv: list[str] | None = None) -> int:
     nd.add_argument("day", nargs="?", default="", help="build, done: the day it was filed (YYYY-MM-DD), as list shows it")
     nd.add_argument("n", nargs="?", type=int, default=0, help="build, done: its number that day")
     nd.add_argument("pr", nargs="?", type=int, default=0, help="done: the pull request that merged it")
+    cl = sub.add_parser("calls", help="fix ID PATH:LINE NOTE: a call (as the morning diff numbers it) that stood on a wrong line gets "
+                        "the correction filed beside that line the way remember files one, never into a persona or a rule")
+    cl.add_argument("action", choices=["fix"])
+    cl.add_argument("id", type=int)
+    cl.add_argument("source", help="the wrong line, as path:line (a cite the diff shows)")
+    cl.add_argument("note", help="what is true instead")
     jb = sub.add_parser("jobs", help="scheduled jobs from the private jobs.toml: sync (one systemd user timer and "
                         "service per job, the diff, then every next fire time read back) or list (the read-back)")
     jb.add_argument("action", choices=["sync", "list"])
@@ -839,7 +878,7 @@ def main(argv: list[str] | None = None) -> int:
     dp.add_argument("ref", nargs="?", help="the commit (default: the daemon's tree's HEAD)")
     dp.add_argument("--no-tests", action="store_true", help="skip the fast tests and the recall check (the card says so)")
     dp.add_argument("--unit", action="store_true", help="also move a systemd-run daemon onto units/yerkd.service")
-    for x in (ac, st, mo, rb, ev, ab, ex, jb, sc, lc, rt, bk, rs, dc, dk, cu, dp, pc, fl, nd):
+    for x in (ac, st, mo, rb, ev, ab, ex, jb, sc, lc, rt, bk, rs, dc, dk, cu, dp, pc, fl, nd, cl):
         x.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else "
                        + ("the running yerkd's own, from its unit)" if x is dp else "the fake example layer)"))
         x.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
@@ -850,7 +889,7 @@ def main(argv: list[str] | None = None) -> int:
                 "deploy": cmd_deploy, "retention": cmd_retention, "backup": cmd_backup, "restore": cmd_restore, "location": cmd_location,
                 "doctor": cmd_doctor,
                 "docs": cmd_docs,
-                "curate": cmd_curate, "needs": cmd_needs}[a.cmd](a))
+                "curate": cmd_curate, "needs": cmd_needs, "calls": cmd_calls}[a.cmd](a))
 
 
 if __name__ == "__main__":
