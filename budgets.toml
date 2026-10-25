@@ -429,6 +429,16 @@ secs = 60
 # 20,276 on main 30ea8dc (#117): 19,976 + 300.
 # 2026-10-24: merged with measured-budgets (#123, main dbb06f8): its 20,048 plus backup-restore's 300 is 20,348, counted
 # on the merged tree; cli.py and words.py, which both changed, merged clean.
+# 2026-10-24: fusion-levers raised it by 3: the keyword rank's part of the fusion, SHARE 0.4 where both ranks counted alike
+# (memory.py 3: SHARE and its measured note 2, fuse's docstring on the two parts 1; its `share` argument and the loop's parts
+# are in the lines that were there), measured alone on the 164-question set (top six 103 to 107, top one 59 to 62, no control
+# lower), not folded to fit. The three levers measured alone after it and deleted (name and field boosts, the tense order,
+# alias rewriting) leave no line.
+# 19,979 on main 30ea8dc (#117): 19,976 + 3.
+# 2026-10-24: merged with measured-budgets (#123, main dbb06f8): its 20,048 plus fusion-levers' 3 is 20,051, counted on
+# the merged tree; no .py file changed on both sides (#123: cli, context, morning, words; #118: memory).
+# 2026-10-24: merged with backup-restore (#128, main 9f53348): its 20,348 plus fusion-levers' 3 is 20,351, counted on
+# the merged tree; no .py file changed on both sides (#128: backup, cli, doctor, status, words; #118: memory).
 # 2026-10-24: latency-bench raised it by 180: claim 18's judge, which did not exist, and the dead_turns query that held
 # `yerk status --json` for 111 s, not folded to fit. latency.py 136 (`yerk bench latency`: the first line, the queue wait,
 # the turn, the hooks, Yerk's tools and the cache hit rate per room from the ledger read only and the logs, the file the
@@ -439,4 +449,6 @@ secs = 60
 # 2026-10-24: merged with main 9f533481 (#123 measured-budgets and #128 backup-restore): its 20,348 plus latency-bench's
 # 180 is 20,528, counted on the merged tree; cli.py (the bench command beside backup and restore) and status.py (the speed
 # key and line beside the backup's) took both sides, morning.py and words.py merged clean.
-lines = 20528
+# 2026-10-24: merged with main 3255849 (#118 fusion-levers): its 20,351 plus latency-bench's 180 is 20,531, counted on the
+# merged tree; no .py file changed on both sides (#118: memory; #121: cli, latency, ledger, morning, status, words).
+lines = 20531
