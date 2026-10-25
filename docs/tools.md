@@ -77,9 +77,9 @@ as your note, never as their words.
 ```text
 Heavy work leaves the room: a worker is a headless run with its own card in the room and a
 report. action "start": `brief` is the whole job (what done looks like, where it ends, what to
-leave alone); optional `tasks` (its checklist rows), `cap_minutes` (default 65), `account`,
-`model`, `room` (default this room). Returns its id, folder and report path; when it ends, the
-card settles and the room hears the result. "list": workers and their state. "stop" / "report":
+leave alone); optional `tasks` (its checklist rows), `cap_minutes` (default 65), `account`, `model`,
+`effort` (low, medium, high, xhigh, max; default the room's live level), `room` (default this room). Returns its
+id, folder and report path; when it ends, the card settles and the room hears the result. "list": workers and their state. "stop" / "report":
 by `id` (report gives the report's text, for you to tell in your own words).
 ```
 
@@ -91,6 +91,7 @@ by `id` (report gives the report's text, for you to tell in your own words).
 - `cap_minutes`: number, default 0
 - `account`: string, default ""
 - `model`: string, default ""
+- `effort`: string, default ""
 
 ## schedule
 

@@ -638,3 +638,33 @@ def test_only_the_owners_rooms_use_workers_each_for_itself_and_the_install_keeps
     assert out["own"]["ok"] and out["own"]["room"] == "example-room"
     assert out["control"]["ok"] and out["control"]["room"] == "family"          # `yerk worker`: any room
     assert [c["unit"] for c in units.calls] == [out["own"]["unit"], out["control"]["unit"]]
+
+
+def test_a_worker_runs_at_the_calls_effort_else_config_else_the_rooms_and_refuses_a_made_up_level(setup):
+    s = setup
+
+    async def go():
+        w = s.make({"r": Busy()})
+        w.begin(asyncio.get_running_loop())
+        w.room_confs["r"]["effort"] = "max"
+        a = await w.start("r", 'FAKE report="room effort"', account="one")
+        await ended(s.ledger, a["id"])
+        (s.tmp / "rooms" / "r").mkdir(parents=True)                       # the room's /effort: its override beats rooms.toml
+        (s.tmp / "rooms" / "r" / "override.json").write_text(json.dumps({"effort": "medium"}))
+        o = await w.start("r", 'FAKE report="live effort"', account="one")
+        await ended(s.ledger, o["id"])
+        w.conf.effort = "xhigh"
+        b = await w.start("r", 'FAKE report="config effort"', account="one")
+        await ended(s.ledger, b["id"])
+        c = await w.start("r", 'FAKE report="call effort"', account="one", effort="high")
+        await ended(s.ledger, c["id"])
+        before = sorted(p.name for p in (s.tmp / "workers").iterdir())
+        d = await w.start("r", 'FAKE report="bad effort"', account="one", effort="turbo")
+        return a, o, b, c, d, before
+    a, o, b, c, d, before = asyncio.run(go())
+    for out, level in ((a, "max"), (o, "medium"), (b, "xhigh"), (c, "high")):
+        argv = json.loads((Path(out["staging"]) / "fake-record.json").read_text())["argv"]
+        assert argv[argv.index("--effort") + 1] == level and out["effort"] == level
+        assert json.loads((Path(out["staging"]) / "worker.json").read_text())["effort"] == level
+    assert d["ok"] is False and "no effort level 'turbo'" in d["error"]
+    assert sorted(p.name for p in (s.tmp / "workers").iterdir()) == before      # a refusal leaves no folder behind

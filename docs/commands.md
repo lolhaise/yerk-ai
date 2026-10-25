@@ -98,6 +98,7 @@ workers: start (needs a running yerkd), list, stop, report
 - `--cap CAP`: start: minutes before it is stopped (default [workers], 65)
 - `--account ACCOUNT`: start: the account to run on (default [workers], else the first not resting)
 - `--model MODEL`: start: the model (default [workers], else the room's)
+- `--effort EFFORT`: start: the thinking level, one of low, medium, high, xhigh, max (default [workers], else the room's)
 - `--limit LIMIT`: list: how many; default 20
 - `--json`
 - `--state STATE`: state folder (default: $YERK_STATE, else ~/.local/state/yerk)

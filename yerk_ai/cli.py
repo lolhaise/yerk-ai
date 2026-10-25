@@ -108,7 +108,7 @@ def cmd_worker(a: argparse.Namespace) -> int:
             print("stop needs the worker's id", file=sys.stderr)
             return 2
         req = {"action": a.action, "id": a.id or "", "room": a.room or "", "tasks": a.task, "cap_minutes": a.cap,
-               "account": a.account or "", "model": a.model or "",
+               "account": a.account or "", "model": a.model or "", "effort": a.effort or "",
                "brief_file": str(Path(a.brief).expanduser().resolve()) if a.brief else ""}
         out = _control(a.state, {"worker": req}, 120)
         print(json.dumps(out))
@@ -793,6 +793,7 @@ def parser() -> argparse.ArgumentParser:
     wk.add_argument("--cap", type=float, default=0.0, help="start: minutes before it is stopped (default [workers], 65)")
     wk.add_argument("--account", help="start: the account to run on (default [workers], else the first not resting)")
     wk.add_argument("--model", help="start: the model (default [workers], else the room's)")
+    wk.add_argument("--effort", help="start: the thinking level, one of low, medium, high, xhigh, max (default [workers], else the room's)")
     wk.add_argument("--limit", type=int, default=20, help="list: how many")
     wk.add_argument("--json", action="store_true")
     wk.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")

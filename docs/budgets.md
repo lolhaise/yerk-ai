@@ -309,4 +309,8 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-10-25: docs-from-code merged with main 44a5281 (#119, #126, #124, #120, #121): main's 21,418 plus this PR's 358 is 21,776, counted on the merged tree; cli.py and daemon.py, which both changed, merged clean. What main added to the old README went to the page that holds its section now: #126's Status line to docs/STATUS.md, #119's two lines and #124's Add-ons section to docs/GUIDE.md; `yerk docs own` wrote commands.md and budgets.md.
 
-- `lines = 21776`
+2026-10-25: worker-effort raised it by 3, a worker's thinking level and the room's live /effort and /model (the owner's ask), the rest folded to fit (one import line, the argv splat, the stdin dup).
+
+2026-10-25: worker-effort merged with main 9d06eba (#124, #120, #121, then #122 docs-from-code): main's 21,776 plus this PR's 3, and 1 for `[workers] effort`'s line in config.YERKD_WORDS (#122's key table, which test_owndocs checks both ways), is 21,780, counted on the merged tree; cli.py and daemon.py, which both changed, merged clean; `yerk docs own` wrote commands.md (--effort), tools.md (the worker tool's effort), settings.md and budgets.md.
+
+- `lines = 21780`

@@ -97,6 +97,7 @@ The daemon's settings, in the private folder beside rooms.toml, read when yerkd 
 - `cap_minutes`: minutes before a worker is stopped (default 65)
 - `model`: a worker's model (default: the room's)
 - `account`: the account workers run on (default: the first not resting)
+- `effort`: a worker's thinking level, one of low, medium, high, xhigh, max (default: the room's live level)
 - `tools`: a worker's built-in tools (default Bash, Read, Write, Edit, Glob, Grep, WebFetch, WebSearch, TodoWrite)
 - `permission_mode`: a worker's --permission-mode (default bypassPermissions)
 - `idle_seconds`: seconds a room goes without a human message before a worker's end is told there (default 60)
