@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-10-24
 
-### measured-budgets
+### measured-budgets (#123)
 
 - The budget gate reads what Claude Code sends. `yerk map`, the budget test and so `yerk deploy`'s fast gate take Claude
   Code's parts (its prompt, the built-in tools, Yerk AI's tools, the other tool entries) from the room's newest
