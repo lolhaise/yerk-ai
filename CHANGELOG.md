@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-10-24
 
-### quiet-doctor
+### quiet-doctor (#120)
 
 - `yerk doctor` is quiet when all is well: each line it prints is a finding with its severity first (red or orange) and
   the fix it wants, mostly one command, and a run with none prints one line, `doctor: clean`, green. The morning diff's
