@@ -439,6 +439,19 @@ secs = 60
 # the merged tree; no .py file changed on both sides (#123: cli, context, morning, words; #118: memory).
 # 2026-10-24: merged with backup-restore (#128, main 9f53348): its 20,348 plus fusion-levers' 3 is 20,351, counted on
 # the merged tree; no .py file changed on both sides (#128: backup, cli, doctor, status, words; #118: memory).
+# 2026-10-24: import-openclaw raised it by 207: `yerk import openclaw:<workspace dir>`, a box's notes copied into
+# <private>/openclaw/<its name> by the memory copy inventory's rules (the owner's ask, claim 17), not folded to fit.
+# sources.py 205 (the parts and their rules, the doctor's secret shapes written as their kind, the record by path and
+# sha256 so a second run writes nothing, the refusals, and the yerkd.toml and rooms.toml lines that read the copies,
+# printed and never written), move.py 1 and cli.py 1 (the source named). 20,183 on main 30ea8dc (#117): 19,976 + 207.
+# 2026-10-25: merged with backup-restore (#128, main 9f53348, after #123): its 20,348 plus import-openclaw's 207 is
+# 20,555, counted on the merged tree; cli.py and README.md, which both changed, merged with no line in common.
+# 2026-10-25: import-openclaw's cold read fix raised it by 7: on an import the key is the tell, not the value (the cold
+# read found `token: abc123`, a pin, a password with no digit and an Authorization header crossing under the doctor's
+# 16 character floor), not folded to fit. sources.py 7 (KEYED, the secret keys with `:` or `=` and its comment, and
+# withheld's shapes: the doctor's, its password line run to the line's end, KEYED as its token line). 20,555 + 7 = 20,562.
+# 2026-10-25: merged with fusion-levers (#118, main 3255849): its 20,351 plus import-openclaw's 214 (207 and the fix's 7)
+# is 20,565, counted on the merged tree; no .py file changed on both sides (#118: memory; this PR: sources, move, cli).
 # 2026-10-24: addons-1 raised it by 355, part one of the core and the add-ons (ROADMAP-v6 step 3): the
 # loader, addons.py 295 (`yerk add` from a folder, a git URL or the repo the registry names, its checks, the size ceiling
 # among them, the marked blocks in rooms.toml and yerkd.toml, the units, `yerk remove`, the budget lines and rooms.toml keys
@@ -456,4 +469,6 @@ secs = 60
 # addons.py 8, channels/discord.py 2, words.py 1). 20,703 + 9 + 11 is 20,723.
 # 2026-10-25: addons-1 merged with main 3255849 (#118 fusion-levers): main's 20,351 plus this PR's 375 (355 + 20) is
 # 20,726, counted on the merged tree; memory.py, which both changed (#118: the fusion's SHARE; #124: one line), merged clean.
-lines = 20726
+# 2026-10-25: addons-1 merged with main b81731f (#125 import-openclaw): main's 20,565 plus this PR's 375 is 20,940,
+# counted on the merged tree; cli.py and README.md, which both changed, merged clean.
+lines = 20940

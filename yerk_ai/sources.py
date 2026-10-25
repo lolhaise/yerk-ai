@@ -6,7 +6,8 @@ class, so it reads as private: an owner room reads the two folders once [memory]
 does. By id, a message's guid and a mail's UIDVALIDITY:UID, one a line in imports/texts.ids and imports/mail.ids, so a
 second run adds only what is new. A security mail, a security text from a short code and every secret-shaped string are
 written as their kind only. The Messages databases are opened read-only; Gmail is read with EXAMINE and BODY.PEEK only,
-its app password read from the file [gmail] names and never printed."""
+its app password read from the file [gmail] names and never printed. `yerk import openclaw:<workspace dir>`: a box's
+notes as copies of its files, at the end."""
 from __future__ import annotations
 
 import argparse
@@ -14,6 +15,7 @@ import base64
 import bisect
 import email
 import fcntl
+import hashlib
 import html
 import imaplib
 import os
@@ -22,6 +24,8 @@ import quopri
 import re
 import sqlite3
 import sys
+import time
+import tomllib
 import unicodedata
 from collections import Counter, defaultdict
 from contextlib import suppress
@@ -30,11 +34,12 @@ from email import policy
 from email.header import decode_header, make_header
 from email.message import Message
 from email.utils import getaddresses, parseaddr, parsedate_to_datetime
+from fnmatch import fnmatch
 from pathlib import Path
 from typing import Any, Iterator
 
-from . import memory
-from .config import load_toml, private_dir, state_dir, write_private
+from . import memindex, memory
+from .config import REPO, load_toml, private_dir, state_dir, toml_value, write_private
 
 # A security mail, by the words on its subject or anywhere in its fetched text: its body is written as its kind only.
 SECURITY = re.compile(r"\b(?:pass)?codes?\b|\bpasswords?\b|\bverif(?:y|ied|ies|ying|ication)\b|\breset\b"
@@ -532,14 +537,221 @@ def mail(g: dict[str, Any], priv: Path, tz: tzinfo, since: datetime | None, have
             len(found), len(uids), len(failed))
 
 
+# a box: an OpenClaw workspace's notes as copies of its files in <private>/openclaw/<its name>/<the same path> (the memory
+# copy inventory, 2026-10-24): of each part what the index reads, the box tools' own state left, and a line with a secret's
+# shape as yerk doctor finds one written with its kind in its place. Named in [memory] also where the box's path was, a copied
+# root keeps its cite name (memory.settings names roots by their last parts, in order); outside imports/ a note keeps its
+# whole weight, and beside daily/, never in it, a box's day log never meets DailyLog.
+PARTS = (("MEMORY.md", "file"), ("USER.md", "file"), ("memory", "notes"), ("wiki", "notes"), ("media/gym", "every"))
+LEFT = {"health": "telemetry the box's tools write all day", "jobstate": "the job cycle's state", "finance": "the money run's data",
+        "sms": "texts, one-time codes among them", "modelbench": "bench data", "forensics": "never indexed", "tft": "never indexed",
+        "index": "never indexed", "archive-offindex": "overwrite backups, kept off the index by design"}    # folders of memory/
+TEXTS = ("memory/transcripts/", (".csv", ".txt", ".json", ".html", ".vtt"))    # its text files too: read_memory reads any file of a root
+TEXT = (".md", *TEXTS[1])                           # a copy scrubbed a line at a time (a sidecar's .txt too); a picture goes as it is
+SUMS = "# yerk import openclaw:"                    # the record's first line, then a line a file: box sha, copy sha, lines scrubbed, path
+# On an import the key is the tell, not the value (PR 125's cold read: `token: abc123`, a pin, a password with no digit and an
+# Authorization header crossed under the doctor's 16 character floor): a key naming a secret, with `:` or `=` (quoted, starred,
+# or the end of a longer key, ACCESS_TOKEN), withholds its line from the key on; prose that only says the word does not.
+KEYED = re.compile(r"(?i)(?<![A-Za-z0-9])(?:token|api[ _-]?key|secret|pass(?:word|phrase|wd)|pin|bearer|authorization|cookie"
+                   r"|session|private[ _-]?key)[\"'`*_\s]*[:=].*")
+
+
+def withheld(data: bytes) -> tuple[bytes, list[tuple[int, str]]]:
+    """A text with each line holding a shape of yerk doctor's scan (a key, a one-time code, a password or token line), or a
+    key naming a secret whatever its value (KEYED, a token line; a password line too runs to the line's end), written with the
+    shape's kind in its place until it holds none (a kind is no shape: a line written twice is never one again);
+    (line, kind) of each line changed, by its first shape, as the doctor says one."""
+    from .doctor import SECRETS
+    shapes = {**SECRETS, "password line": re.compile(SECRETS["password line"].pattern + ".*"), "token line": KEYED}
+    text = data.decode("utf-8", "surrogateescape")
+    if not any(rx.search(text) for rx in shapes.values()):
+        return data, []
+    lines, hits = text.split("\n"), list[tuple[int, str]]()
+    for n, line in enumerate(lines):
+        while k := next((k for k, rx in shapes.items() if rx.search(line)), ""):
+            hits += [] if hits and hits[-1][0] == n + 1 else [(n + 1, k)]
+            line = shapes[k].sub(f"[{k.replace(' ', '-')} withheld]", line)
+        lines[n] = line
+    return "\n".join(lines).encode("utf-8", "surrogateescape"), hits
+
+
+def box(ws: Path) -> tuple[dict[str, os.stat_result], dict[str, list[int]], list[str]]:
+    """The workspace's files to copy by their path under it, each rule's files and bytes (a stat each, nothing opened), and
+    the folders never entered: a dot folder (a session's cookie jar, the box ledger's blobs, git's own) and a secrets one."""
+    take, said, shut = dict[str, os.stat_result](), defaultdict[str, list[int]](lambda: [0, 0]), list[str]()
+    for part, how in PARTS:
+        if how == "file":
+            if (p := ws / part).is_file() and not p.is_symlink():
+                take[part] = st = p.stat()
+                said[f"copy {part}"] = [1, st.st_size]
+            continue
+        for d, dirs, names in os.walk(ws / part):
+            shut += sorted((Path(d) / x).relative_to(ws).as_posix() for x in dirs if x.startswith(".") or x == "secrets")
+            dirs[:] = sorted(x for x in dirs if not x.startswith(".") and x != "secrets")
+            for n in sorted(names):
+                p = Path(d, n)
+                rel, sub = p.relative_to(ws).as_posix(), p.relative_to(ws / part).parts
+                try:
+                    st = p.lstat()
+                except OSError:                     # gone between the listing and the stat: the next run
+                    continue
+                rule = (f"skip memory/{sub[0]}/: {LEFT[sub[0]]}" if part == "memory" and len(sub) > 1 and sub[0] in LEFT else
+                        "skip a folder the index skips (node_modules, __pycache__, overwrite-backups)" if set(sub[:-1]) & memindex.SKIP_DIRS
+                        else "skip a link, as the index does" if p.is_symlink() else "skip a temp or backup copy (*.tmp, *.bak, *.pre-*)"
+                        if any(fnmatch(n, x) for x in memindex.SKIP_NAMES) or "\n" in n else
+                        f"copy {part}/, every file (a picture beside its seen sidecar)" if how == "every" else
+                        f"copy {part}/, the kinds the index reads" if n.endswith(memindex.kinds(ws / part)) else
+                        f"copy {TEXTS[0]}, its text files too ({' '.join(TEXTS[1])})" if rel.startswith(TEXTS[0]) and n.endswith(TEXTS[1])
+                        else "skip a kind the index does not read")
+                said[rule][0] += 1
+                said[rule][1] += st.st_size
+                if rule.startswith("copy"):
+                    take[rel] = st
+    return take, said, shut
+
+
+def folder(top: Path, d: Path) -> None:
+    """`d` and each folder above it from `top` down, made 0700 where missing (mkdir's parents take the umask's mode)."""
+    for p in (*reversed(d.parents), d):
+        if p.is_relative_to(top) and not p.is_dir():
+            p.mkdir(mode=0o700)
+
+
+def listed(line: str, at: int) -> tuple[list[str], str] | None:
+    """The array of strings at `at` in a one-line TOML assignment, and what follows it (its comment); None for another value."""
+    for j in (j for j, ch in enumerate(line) if ch == "]" and j > at):
+        with suppress(tomllib.TOMLDecodeError):
+            xs = tomllib.loads(f"x = {line[at:j + 1]}")["x"]
+            return ([str(x) for x in xs], line[j + 1:]) if all(isinstance(x, str) for x in xs) else None
+    return None
+
+
+def swaps(priv: Path) -> list[str]:
+    """The yerkd.toml and rooms.toml lines that read the copies, to make by hand: in an `also` line each box path with a copy
+    becomes its copy in its place, so every root keeps its cite name; a `read` naming one stays while the box runs (yerkd
+    refuses a `read` inside the private folder) and loses it when its room retires; a denyRead keeping a shell off a box
+    keeps it off the copies too. Every box whose record is in <private>/openclaw counts, so the last run's lines are whole."""
+    base = priv.resolve() / "openclaw"
+    boxes = {Path(h[len(SUMS):]): f.with_suffix("") for f in sorted(base.glob("*.sums"))
+             if (h := f.read_text().partition("\n")[0]).startswith(SUMS)}
+
+    def moved(x: str) -> str:
+        p = (priv / Path(x).expanduser()).resolve()
+        return next((str(c / p.relative_to(b)) for b, c in boxes.items() if p.is_relative_to(b) and (c / p.relative_to(b)).exists()), x)
+
+    out = []
+    for name in ("yerkd.toml", "rooms.toml"):
+        for n, ln in enumerate((priv / name).read_text().split("\n") if (priv / name).is_file() else [], 1):
+            if not (m := re.match(r"\s*(also|read|denyRead)\s*=\s*\[", ln)) or (got := listed(ln, m.end() - 1)) is None:
+                continue
+            (xs, rest), deny = got, [x[1:] for x in got[0] if x.startswith("//")]     # a sandbox path: // and the absolute path
+            new = [moved(x) for x in xs] if m[1] == "also" else xs
+            at = next((i for i, x in enumerate(xs) if x.startswith("//") and any(b.is_relative_to(x[1:]) for b in boxes)), -1)
+            if m[1] == "denyRead" and at >= 0 and not any(base.is_relative_to(x) for x in deny):
+                new = [*xs[:at + 1], f"/{base}", *xs[at + 1:]]      # beside the box's
+            if new != xs:
+                out += [f"{name}:{n} now: {ln}", f"{name}:{n} to:  {ln[:m.end() - 1]}{toml_value(new)}{rest}"]
+            elif m[1] == "read" and any(moved(x) != x for x in xs):
+                out.append(f"{name}:{n}: its `read` stays while the box runs (yerkd refuses one inside the private folder); "
+                           "its box path goes when the room retires")
+    return ["the lines that read the copies, by hand (never written here), then yerk-index and yerkd restarted:", *out] if out else []
+
+
+def openclaw(priv: Path, raw: str, since: datetime | None, dry: bool) -> int:
+    """`yerk import openclaw:<workspace dir>`, once a workspace: its notes copied in, a rule a line, the scrubbed lines by file
+    and line, then the whole and the lines that read the copies. By path and sha256 against the record beside the copy
+    (<name>.sums), so a second run writes nothing, a file the box changed is written again (a private temp file renamed, so
+    the index never reads half of one, its time the box's) and one it deleted leaves the copy; a part the box no longer has
+    is held, not deleted. --since: the files changed from that day on; --dry-run: the inventory, nothing written."""
+    t0, ws, mine = time.monotonic(), Path(raw).expanduser().resolve(), priv.resolve()
+    out = mine / "openclaw" / ws.name
+    record, head = out.parent / f"{ws.name}.sums", f"{SUMS}{ws}"
+    old = record.read_text() if record.is_file() else ""
+    first = old.partition("\n")[0]
+    why = ("openclaw: takes openclaw:<an OpenClaw workspace's folder>" if not raw
+           else f"openclaw: {ws} is not a folder" if not ws.is_dir()
+           else "openclaw: the workspace and the private folder hold one another" if ws.is_relative_to(mine) or mine.is_relative_to(ws)
+           else f"openclaw: {priv} is not a folder" if not dry and not priv.is_dir()
+           else "openclaw: --private or YERK_PRIVATE, a private folder of your own: the copy never goes into the repository"
+           if not dry and mine.is_relative_to(REPO)
+           else f"openclaw/{ws.name}: the copy of {first[len(SUMS):]}, not of {ws}; move it aside and run this again" if old and first != head
+           else f"openclaw/{ws.name}: files no import wrote (no {record.name} beside it); move them aside and run this again"
+           if not old and out.is_dir() and any(out.iterdir()) else "")
+    if why:
+        print(why, file=sys.stderr)
+        return 2
+    have = {r: (b, c, s) for b, c, s, r in (x.split("\t", 3) for x in old.split("\n")[1:] if x.count("\t") >= 3)}
+    files, said, shut = box(ws)
+    print("\n".join([f"openclaw:{ws} into {out}{' (a dry run: nothing written)' if dry else ''}",
+                     *(f"{k}: {n:,} file{'s' * (n != 1)}, {size:,} bytes" for k, (n, size) in sorted(said.items(), key=lambda kv: kv[0][:4] != "copy")),
+                     *([f"skip a dot or secrets folder, never entered: {', '.join(shut[:6])}" + (f" and {len(shut) - 6} more" if shut[6:] else "")]
+                       if shut else [])]), flush=True)
+    keep, hits, new, changed, same, older, failed = dict[str, tuple[str, str, str]](), list[tuple[str, str]](), 0, 0, 0, 0, 0
+    for rel, st in files.items():
+        if since and st.st_mtime < since.timestamp():
+            older += 1
+            keep |= {rel: have[rel]} if rel in have else {}
+            continue
+        try:
+            data = (ws / rel).read_bytes()
+        except OSError as e:                        # gone since the walk, or not readable: its copy as it is, and the next run
+            failed += not isinstance(e, FileNotFoundError)
+            print(f"openclaw: {rel} not read, left for the next run: {type(e).__name__}", flush=True)
+            keep |= {rel: have[rel]} if rel in have else {}
+            continue
+        sha, dest, was = hashlib.sha256(data).hexdigest(), out / rel, have.get(rel)
+        there = dest.read_bytes() if dest.is_file() else None
+        if was and was[0] == sha and there is not None and hashlib.sha256(there).hexdigest() == was[1]:
+            same, keep[rel] = same + 1, was         # the same file and its copy as written: not scrubbed again
+            hits += [(rel, x) for x in was[2].split(";") if x]
+            continue
+        body, found = withheld(data) if rel.endswith(TEXT) else (data, [])
+        keep[rel] = (sha, hashlib.sha256(body).hexdigest(), ";".join(f"{n} ({k})" for n, k in found))
+        hits += [(rel, f"{n} ({k})") for n, k in found]
+        if there == body:
+            same += 1
+            continue
+        new, changed = new + (there is None), changed + (there is not None)
+        if not dry:
+            folder(out.parent, dest.parent)
+            write_private(dest, body)
+            os.utime(dest, ns=(st.st_atime_ns, st.st_mtime_ns))
+    tops = {r: next((p for p, _ in PARTS if r == p or r.startswith(p + "/")), "") for r in have if r not in files}
+    held = [r for r, p in tops.items() if p and not (ws / p).exists()]
+    gone, keep = [r for r in tops if r not in held], keep | {r: have[r] for r in held}
+    text = "\n".join([head, *(f"{b}\t{c}\t{s}\t{r}" for r, (b, c, s) in sorted(keep.items()))]) + "\n"
+    if not dry:
+        folder(out.parent, out.parent)
+        out.parent.chmod(0o700)
+        for r in gone:
+            (out / r).unlink(missing_ok=True)
+        if text != old:
+            write_private(record, text)
+    if since:
+        print(f"skip a file older than --since {since:%Y-%m-%d}, its copy as it is: {older:,} files")
+    if held:
+        print(f"hold {len(held):,} copies under a part the box no longer has (a folder gone is no file deleted): kept")
+    print(f"scrub: {len(hits):,} lines in {len({r for r, _ in hits}):,} files, a shape of yerk doctor's written as its kind"
+          + "".join(f"\n  {r}:{x}" for r, x in hits))
+    print(f"openclaw:{ws.name}: {len(files):,} file{'s' * (len(files) != 1)}, {sum(s.st_size for s in files.values()):,} bytes; {new + changed:,} "
+          f"{'to write' if dry else 'written'} ({new:,} new, {changed:,} changed), {same:,} the same, {len(gone):,} the box deleted "
+          f"{'to take' if dry else 'taken'} out; {time.monotonic() - t0:.1f} s")
+    if not dry and (lines := swaps(priv)):
+        print("\n".join(lines))
+    return 1 if failed else 0
+
+
 def imports(a: argparse.Namespace) -> int:
     """`yerk import imessage:<chat.db> [--contacts <db>]` or `yerk import gmail`, through the same import command, --since and
-    --dry-run as a Discord chat: each file said as it is written, then the whole; --dry-run reads and counts and writes nothing."""
+    --dry-run as a Discord chat: each file said as it is written, then the whole; --dry-run reads and counts and writes nothing.
+    `openclaw:<workspace dir>`: a box's notes copied in, above."""
     priv = private_dir(a.private)
     conf = load_toml(priv / "yerkd.toml") if (priv / "yerkd.toml").is_file() else {}
     tz, imp = memory.settings(priv, state_dir(a.state), dict(conf.get("memory", {}))).tz, dict(conf.get("import", {}))
     since = datetime.fromisoformat(a.since).replace(tzinfo=tz) if a.since else None
     kind, _, path = a.source.partition(":")
+    if kind == "openclaw":
+        return openclaw(priv, path, since, a.dry_run)
     db, contacts = Path(path).expanduser(), Path(a.contacts).expanduser() if a.contacts else None
     g, out = dict(conf.get("gmail", {})), priv / "imports" / ("texts" if kind == "imessage" else "mail")
     record, why = out.with_suffix(".ids"), ""
