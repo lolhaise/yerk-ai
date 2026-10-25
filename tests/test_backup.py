@@ -34,6 +34,7 @@ def layer(tmp_path, monkeypatch):
     (priv / "secrets" / "example.key").chmod(0o600)
     (priv / "example-room-attachments").mkdir()
     (priv / "example-room-attachments" / "note.txt").write_text("an example attachment\n")
+    (priv / "example-room-attachments" / "note.txt").chmod(0o660)     # a group-write bit: tarfile's own filter drops it, keep_mode keeps it
     (priv / "yerkd.toml").write_text(f'[backup]\npath = "{tmp_path / "backups"}"\nunits = "{units}"\nkeep = 2\n')
     (state / "memory").mkdir(parents=True)
     db = sqlite3.connect(state / "ledger.sqlite")
