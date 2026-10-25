@@ -7,7 +7,7 @@
 # it inherits. A room whose privacy is not owner inherits nothing. {room} in a server's args and env is the room's name.
 # `yerk doctor` names an owner room that misses a default tool or carries its own copy of one. The set below is one
 # install's: the web plug-in and hands, a second assistant's reach on the machine over MCP (owner rooms only).
-# Web reach (README "Web reach"): the plug-in in plugins/web, run `npm ci --omit=dev` there once. Its keys are files in
+# Web reach (docs/GUIDE.md "Web reach"): the plug-in in plugins/web, run `npm ci --omit=dev` there once. Its keys are files in
 # the private folder's secrets/, each optional; with none it reads pages from this machine and searches keyless engines.
 # [defaults]
 # allow = ["mcp__web-ladder__web_fetch", "mcp__web-ladder__web_search", "mcp__web-ladder__web_research", "mcp__web-ladder__web_research_result", "mcp__hands__browser", "mcp__hands__desktop", "mcp__hands__mac", "mcp__hands__mail", "mcp__hands__discord", "mcp__web-ladder__web_image"]

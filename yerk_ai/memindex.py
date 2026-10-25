@@ -704,10 +704,7 @@ class Pin:
         self.retired, self.fd, self.real = [], -1, None
 
 
-def main(argv: list[str] | None = None) -> int:
-    from . import mentions
-    from .config import REPO, head, private_dir, state_dir
-    from .memory import settings
+def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="yerk-index", description="The memory index: FTS5 over the private "
                                 "memory tree, updated per changed chunk, in its own process.")
     p.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else the fake example layer)")
@@ -718,7 +715,14 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--check", action="store_true", help="compare the index with the disk; exit 0 fresh or "
                    "pending, 1 stale or scope changed, 2 failure, 3 timeout")
     p.add_argument("--deadline", type=float, default=10.0, help="--check: seconds before it reads as a timeout")
-    a = p.parse_args(argv)
+    return p
+
+
+def main(argv: list[str] | None = None) -> int:
+    from . import mentions
+    from .config import REPO, head, private_dir, state_dir
+    from .memory import settings
+    a = parser().parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     m = settings(private_dir(a.private), state_dir(a.state))
     if a.check:

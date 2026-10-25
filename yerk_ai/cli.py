@@ -489,7 +489,11 @@ def cmd_doctor(a: argparse.Namespace) -> int:
 def cmd_docs(a: argparse.Namespace) -> int:
     """The Claude docs Yerk keeps (docs.py): refresh them now, list them, show one; or `shape`, the rule-shape report the
     doctor writes for each room (shape.py), printed here without a doctor run. Exit 1 on a page not fetched or a count past
-    budgets.toml [shape], 2 on a page that is not on the list."""
+    budgets.toml [shape], 2 on a page that is not on the list. `own`: Yerk AI's own pages, written from the code alone
+    (owndocs.py); --dry-run names each stale one and writes nothing, exit 1 when one is."""
+    if a.action == "own":
+        from . import owndocs
+        return owndocs.main(a.dry_run)
     from . import docs, shape
     priv, state = private_dir(a.private), state_dir(a.state)
     conf = docs.settings(priv)
@@ -727,7 +731,8 @@ def cmd_config(a: argparse.Namespace) -> int:
     return 0
 
 
-def main(argv: list[str] | None = None) -> int:
+def parser() -> argparse.ArgumentParser:
+    """Every command and flag of `yerk`, with its help; docs/commands.md is written from it (`yerk docs own`)."""
     p = argparse.ArgumentParser(prog="yerk", description="Yerk AI: chat rooms as long-lived Claude Code sessions.")
     p.add_argument("--version", action="version", version=f"yerk {__version__}")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -897,10 +902,12 @@ def main(argv: list[str] | None = None) -> int:
     dc.add_argument("--scrub", action="store_true", help="only the scrub: each secret-shaped line's value swapped for [scrubbed], "
                     "every line kept, each file copied first into <private>/backups/scrub-<day>/")
     dk = sub.add_parser("docs", help="the Claude docs kept as a memory root every room recalls (refresh, list, show NAME), "
-                        "and shape: every room's rule files scored against the prompting guide")
-    dk.add_argument("action", choices=["refresh", "list", "show", "shape"])
+                        "shape: every room's rule files scored against the prompting guide, and own: Yerk AI's own docs "
+                        "written into docs/ from the code")
+    dk.add_argument("action", choices=["refresh", "list", "show", "shape", "own"])
     dk.add_argument("name", nargs="?", default="", help="show: the page's slug; shape: one room (default: every room)")
     dk.add_argument("--rules", action="store_true", help="shape: print each count's exact rule")
+    dk.add_argument("--dry-run", action="store_true", help="own: name each page that differs from the code, write nothing")
     cu = sub.add_parser("curate", help="the night's card curation: the sweep (repeats, superseded and past-date lines, cite "
                         "drift), then the day's facts proposed, knocked down, checked and landed only if the bench holds")
     cu.add_argument("--since", default="", help="each day from this date (YYYY-MM-DD) to yesterday, for a backfill")
@@ -926,7 +933,11 @@ def main(argv: list[str] | None = None) -> int:
         x.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else "
                        + ("the running yerkd's own, from its unit)" if x is dp else "the fake example layer)"))
         x.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
-    a = p.parse_args(argv)
+    return p
+
+
+def main(argv: list[str] | None = None) -> int:
+    a = parser().parse_args(argv)
     return int({"map": cmd_map, "setup-room": cmd_setup_room, "room": cmd_room, "import": cmd_room, "worker": cmd_worker, "pictures": cmd_pictures, "files": cmd_files,
                 "jobs": cmd_jobs, "schedule": cmd_schedule, "accounts": cmd_accounts, "status": cmd_status, "morning": cmd_morning,
                 "recall-bench": cmd_recall_bench, "bench": cmd_bench, "eval": cmd_eval, "abilities": cmd_abilities, "explain": cmd_explain, "config": cmd_config,

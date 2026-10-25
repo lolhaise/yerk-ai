@@ -4,6 +4,8 @@
 # [recall], in questions of the recall bench, and [code] at the end, which counts lines. The budget test fails the build
 # when a part or a total passes its number here.
 
+# The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and
+# Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 [session_start]
 total = 108093
 
@@ -105,6 +107,8 @@ pinned_memory = 4000
 rules = 16000
 recall_pack = 6000
 
+# What the UserPromptSubmit hook adds to each message: `typical` caps the parts every message carries (the next table),
+# `cap` the most one message's hook output may carry with the parts paid only on a hit.
 [per_message]
 typical = 1500
 # 2026-10-21: 4,000 to 5,500, the taste part's 1,500 below (the owner's files carried over as they
@@ -112,6 +116,7 @@ typical = 1500
 # 2026-10-23: 5,500 to 5,650, the place part's 150 below.
 cap = 5650
 
+# The parts every message carries, one cap each: the clock line, the metadata line and, in an owner room, the place line.
 [per_message.parts]
 clock = 200
 metadata = 300
@@ -540,4 +545,26 @@ secs = 60
 # plus this PR's 180 is 21,418, counted on the merged tree; cli.py keeps every side: the bench parser's `bn` beside
 # #124's `ad, rm` and #119's `cl` in the --private loop under #120's --timers argument, and the command map's "bench"
 # beside #124's add and remove; ledger.py, morning.py, status.py and words.py, which both changed, merged clean.
-lines = 21418
+# 2026-10-24: docs-from-code raised it by 356: Yerk AI's own docs written from the code, `yerk docs own` (decision 16; the
+# audit's section G, items 4 and 5), not folded to fit. owndocs.py 232 (the six pages: commands from the three installed
+# commands' parsers, tools from the MCP server's own list, settings from the key tables, budgets from this file's comments,
+# hooks, units; the writer and its dry run), config.py 96 (ROOM_WORDS, every rooms.toml key in plain words, ROOM_KEYS now
+# its keys; YERKD_WORDS, every yerkd.toml key not described where it is read), cli.py 11 (the `own` action and parser(),
+# split out of main so the page can read it), hooks.py 9 (EVENTS, what each event does, out of the module docstring and
+# made true to the daemon's seven Stop checks), daemon.py 4 and memindex.py 4 (their parser()). 20,332 on main 30ea8dc
+# (#117): 19,976 + 356.
+# 2026-10-25: merged with measured-budgets and backup-restore (#123 and #128, main 9f53348): their 20,348 plus
+# docs-from-code's 356 is 20,704, counted on the merged tree; cli.py, which all three changed, merged clean.
+# 2026-10-25: the cold read of #122 and its fix raised it by 2: config.py 2 (YERKD_WORDS names [discord] guild, which
+# `yerk setup-room` reads, and [backup] keep and units, which backup.py reads since #128, with path in #128's words; so
+# settings.md has every yerkd.toml key the package reads by name, which test_owndocs now checks both ways). 20,706:
+# 20,704 + 2.
+# 2026-10-25: merged with fusion-levers (#118, main 3255849): its 20,351 plus this branch's 358 (docs-from-code's 356
+# and the cold read's 2) is 20,709, counted on the merged tree; no .py file changed on both sides (#118: memory).
+# 2026-10-25: merged with import-openclaw (#125, main b81731f): its 20,565 plus this branch's 358 (docs-from-code's
+# 356 and the cold read's 2) is 20,923, counted on the merged tree; cli.py, which both changed, merged clean.
+# 2026-10-25: docs-from-code merged with main 44a5281 (#119, #126, #124, #120, #121): main's 21,418 plus this PR's 358
+# is 21,776, counted on the merged tree; cli.py and daemon.py, which both changed, merged clean. What main added to the
+# old README went to the page that holds its section now: #126's Status line to docs/STATUS.md, #119's two lines and
+# #124's Add-ons section to docs/GUIDE.md; `yerk docs own` wrote commands.md and budgets.md.
+lines = 21776

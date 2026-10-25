@@ -1,0 +1,204 @@
+# Settings
+
+Written by `yerk docs own` from yerk_ai/config.py (ROOM_WORDS, DEFAULT_KEYS, YERKD_WORDS) and the tables beside the code that reads them (words.SETTINGS, memory.described, jobs.CONF, jobs.KEYS, retention.DAYS and CAP); change those and run it again, never this page.
+
+Every key the loaders take from the private folder's rooms.toml, yerkd.toml and jobs.toml, in plain words with its default. rooms.toml.example and yerkd.toml.example are commented copies with example values.
+
+## rooms.toml
+
+One `[rooms.NAME]` table a room; `yerk doctor` names any other key as a typo.
+
+- `accounts`: the accounts the room is tried on, in this order, then the rest of accounts.toml; the settings tool or /model can put it on one first
+- `allow`: permission rules beyond Read (the tool goes in `tools` too); the gates run first. An owner room carries [defaults] allow unless it sets its own
+- `allow_remove`: tools an owner room does without, out of the allow it inherits from [defaults]
+- `also`: which of yerkd.toml's [memory] also roots reach the room's recall, read_memory and names (unset: all of them)
+- `channel`: the chat the room is, discord:<channel id>
+- `class`: the class the room's day-log lines carry: private, room or shared (default: private in an owner room, room in any other)
+- `compact_window`: tokens the session keeps before Claude Code compacts (unset: budgets.toml [session]; 0: the model's own)
+- `daily_notes`: the room's day-log folder (default memory/daily)
+- `effort`: passed as --effort: low, medium, high, xhigh or max (unset: the model's own default)
+- `id`: the room's id in the day logs and the ledgers (default: its channel, else its name)
+- `idle_compact_after`: minutes with no turn before a session at idle_compact_at or more is compacted (unset: budgets.toml [session])
+- `idle_compact_at`: the share of compact_window past which an idle session is compacted between turns (unset: budgets.toml [session]; 0: never)
+- `layer`: the folder the room's files come from, in the private folder (default: the private folder itself)
+- `mcp`: the room's own MCP servers, one [rooms.NAME.mcp.SERVER] table each; an owner room carries each [defaults] server it does not set
+- `mention_recall`: the people and things a message names, with their best lines, in its recall part (default true)
+- `model`: the model the room runs on, an alias or id from the install's model list; also what a turn runs on while every account is out of the one the settings tool put it on
+- `open_loops`: the open commitments file, kept whole in the recall pack at a session start
+- `people`: Discord user ids answered in the room besides the owner, as sender person (unset: the owner only); needs privacy family or shared
+- `persona`: the persona file, the session start's persona part
+- `pinned_memory`: the pinned memory file, the session start's pinned_memory part
+- `privacy`: owner (the default): the owner's room, which reads the whole memory; any other value walls the room: its own lines and the shared files only
+- `read`: folders the room may read besides its own, from its work folder; a room with people takes none, trusted or not
+- `recall_days`: how many of the newest day logs the recall pack reads at a session start (default 2)
+- `role`: machine: the machine room, where the morning diff, the deploy card and the ops lines land
+- `rulebook`: the rulebook file, the session start's rulebook part
+- `sandbox`: [rooms.NAME.sandbox]: Claude Code's sandbox for the room's shell (default: Yerk AI's own when a shell tool is listed); a trusted room may add filesystem.denyRead, filesystem.denyWrite and the network allowlist, no other key
+- `sealed`: true: in Yerk's own tree, the room's own lines only, no other room's lines, notes, facts or rules
+- `shell`: trusted: a room with people that runs the owner rooms' tools, its shell inside the daemon's wall (`yerk explain trusted`), Write and Edit on its layer and work folder only
+- `thinking_panel`: owner-only rooms: a thinking line on the card, about 5 s a reply (default false)
+- `timezone`: the room's IANA zone: its clock line (default UTC) and its jobs (else [memory] timezone)
+- `tools`: the built-in tools the room's Claude Code gets (--tools); a shell tool brings the sandbox
+- `topic_recall`: the room's own lines on the message's topic, and the search of a question about the past, in its recall part (default true)
+- `voice`: the room's voice file, the session start's room_voice part
+- `watch`: discord:<channel id> of a channel the room watches: [watch] assistants' messages there go in its day log, never answered
+
+### [defaults]
+
+Keys: allow, mcp. An owner room under [defaults] (`base`), in place: the default allow less the room's allow_remove, unless the room has its own allow, and each default mcp server, filled, unless the room has its own mcp.<name> table of that name; a key of the room's own replaces the default whole, its other servers kept after the defaults'.
+
+## yerkd.toml
+
+The daemon's settings, in the private folder beside rooms.toml, read when yerkd starts.
+
+### [discord]
+
+- `token_file`: the bot's token, a file in the private folder only you can read (0600)
+- `owner`: the owner's Discord user id, answered in every room
+- `test_senders`: webhook ids accepted as senders in test mode (`yerk setup-room` makes one a room)
+- `guild`: the Discord server's id, where `yerk setup-room` finds or makes a room's channel and its test webhook (that command only)
+- `webhook_burst`: webhook events per 5 minutes before 10 minutes off, the loop guard (default 100)
+- `commands`: the slash commands (default true)
+
+### [http]
+
+- `port`: the local port of /mcp, /hook and /control (default: a free one; yerkd --port wins)
+
+### [watch]
+
+- `assistants`: other assistants' Discord user ids: in a channel a room watches, their messages go in its day log under their own label once they stop changing, never answered and never an instruction
+
+### [memory]
+
+- `root`: the memory tree, in the private folder (default: its memory/)
+- `also`: more roots the owner's rooms recall, each in the private folder or absolute (a room's own `also` narrows them)
+- `exclude`: paths the index leaves out
+- `interval`: the least seconds between the index's passes (default 2)
+- `timezone`: the install's IANA zone: the day logs' days, `yerk location day`, a job's default zone (default: the system's)
+- `bench`: the recall bench's question file (default evals/recall-questions.json)
+- `curated`: the curated files, as the recall reads them (default MEMORY.md)
+- `mentions_exclude`: files kept out of mention recall whole
+- `embeddings_key`: the provider key file for meaning search (default secrets/openai.key; none there: keywords only)
+- `embeddings_model`: the provider model every line, chunk and query is embedded with; a change re-embeds the tree once (each model's vectors are kept apart in the index, so switching back pays nothing); small costs $0.02 and large $0.13 per 1M tokens (OpenAI, read 2026-10-18): a 3,800-file tree's lines (10.4M tokens) $0.21 or $1.35, its chunks (16.7M) $0.33 or $2.17; measured on the 164-question set at 256 kept, large brings paraphrase golds closer but loses on the top six (110 against 117), so small is the default (default text-embedding-3-small; choices: text-embedding-3-small, text-embedding-3-large; takes effect when yerk-index restarts; the backfill then embeds what is missing, in the background)
+- `embeddings_dim`: dimensions asked of the provider and stored in the index (2 bytes each a vector): at most 1536 for text-embedding-3-small and 3072 for text-embedding-3-large (OpenAI's embeddings guide, read 2026-10-18); a change re-embeds the tree once; more dimensions buy a finer vector, not a cheaper one (default 256; choices: 256, 512, 1024, 1536, 3072; takes effect when yerk-index restarts; the backfill then embeds what is missing, in the background)
+- `embeddings_width`: dimensions kept in memory: the first width of dim, renormalised (the provider's own shortening rule), so a narrower store needs no re-embedding; the index process holds about vectors times (2 times width plus 20) bytes; 192 and 128 were measured and lost (default the dim; choices: 256, 384, 512, the dim; takes effect when yerk-index restarts; the backfill then embeds what is missing, in the background)
+- `embeddings_units`: what gets a vector: every line and bullet and every chunk (both, measured best), the lines alone (a smaller store), or the chunks alone (the fewest vectors, a paraphrase then rarely found) (default both; choices: both, lines, chunks; takes effect when yerk-index restarts; the backfill then embeds what is missing, in the background)
+- `recall_chars`: characters one recall call hands the room for its first six hits, six hits' worth, their snippets together (each hit at most 750: the lines that carry the match, the cite reads on); each hit past the sixth adds its best line, at most 160; measured on the 164-question set by the recall diet's cold read, 4500 kept 116 of 116 answers found with the key and 84 of 84 keywords only, for about 155 characters a call more than 700 and 4200, still about 21% under whole chunks; less shrinks each of the first six (default 4500; choices: 4500, any number from 100; takes effect when yerkd restarts)
+
+### [location]
+
+- `file`: the phone's fixes, one JSON fix a line (ts_iso, lat, lon, speed_mps), only read
+- `places`: the named places, {"places": [{"label", "lat", "lon", "radius_m"}]}, only read
+- `stale_after`: no place part when the newest fix is older than this (default 3h)
+
+### [workers]
+
+- `root`: where workers' folders go (default <state>/workers)
+- `cap_minutes`: minutes before a worker is stopped (default 65)
+- `model`: a worker's model (default: the room's)
+- `account`: the account workers run on (default: the first not resting)
+- `tools`: a worker's built-in tools (default Bash, Read, Write, Edit, Glob, Grep, WebFetch, WebSearch, TodoWrite)
+- `permission_mode`: a worker's --permission-mode (default bypassPermissions)
+- `idle_seconds`: seconds a room goes without a human message before a worker's end is told there (default 60)
+- `per_account`: workers at once on one account (default 1)
+- `yerk_tools`: Yerk AI tools a worker gets on its own server: recall and read_memory only (default none)
+
+### [gates]
+
+- `approvers`: the senders whose word releases a held action (default owner)
+- `word`: the word that does (default approve)
+- `approve_minutes`: a word older than this releases nothing (default 30)
+- `trash`: the trash command a delete is rewritten into (default: one found on the machine)
+- `off`: the built-in outward-action rules turned off, by name
+- `external`: [gates.external.NAME] tables, outward-action rules of your own: tool, command and what
+
+### [import]
+
+- `me`: the name your own texts and mail are filed under
+- `classes`: a chat id's class or room, "shared" or "room:<a room's id>" (default private)
+- `skip`: chat ids a server import leaves out
+
+### [gmail]
+
+- `user`: the Gmail address `yerk import gmail` reads
+- `password_file`: a file holding its app password, never printed
+
+### [needs]
+
+- `account`: the account `yerk needs build` runs on (default [curate] account, else the workers' pick)
+- `cap_minutes`: a builder's minutes before it is stopped (default 60)
+
+### [curate]
+
+- `account`: the one account the night's curation runs on
+- `logs`: more files in the private folder read as the owner's own stream
+
+### [docs]
+
+- `fetch`: the doctor's weekly fetch of the Claude docs (default true)
+- `refresh_days`: days between fetches (default 7)
+- `pages`: the pages kept, slug = URL (default config.DOCS_PAGES)
+
+### [deploy]
+
+- `unit`: the systemd unit `yerk deploy` restarts (default: the one the running yerkd is in)
+- `tree`: the daemon's checkout (default: the unit's working folder)
+- `tests`: the fast tests run before a restart (default test_scrub, test_budget, test_card and test_style)
+- `quiet_seconds`: how long the rooms must be quiet before the restart (default 240)
+- `cap_minutes`: the longest a deploy waits for that quiet (default 60)
+- `proof_seconds`: how long the proof may take (default 60)
+
+### [retention]
+
+- `logs`: days the daemon's logs keep (default 14)
+- `assembled`: days the rooms' assembled.jsonl keep (default 14)
+- `transcripts`: days Claude Code's transcripts keep (default 30)
+- `ledger`: days of the ledger's timing rows (default 90)
+- `workers`: days a finished worker's folder keeps (default 30)
+- `scratch`: days a room's scratch keeps (default 2)
+- `scratch_mb`: megabytes a room's scratch keeps, its oldest files out first (default 500)
+- `trash`: days the trash keeps what left (default 7)
+- `scratch_trash`: days the trash keeps a room's scratch (default 1)
+
+### [doctor]
+
+- `growth_mb`: the disk growth a day past which the doctor says so (default 500)
+
+### [backup]
+
+- `path`: the folder `yerk backup` writes to, in the private folder or absolute (default yerk-backups beside the private folder)
+- `keep`: how many archives stay, the newest (default 7)
+- `units`: the systemd units folder backed up and restored (default ~/.config/systemd/user)
+
+### [models]
+
+- `ALIAS`: one line a model, alias = full id (default: the package's models.toml)
+
+### [presentation]
+
+- `footer`: What the last lines of a worker card show. minimal: how long it ran and the command that opens the report. full: also the account and the model it ran on. (default minimal; choices: minimal, full; read when yerkd starts; restart it to apply a change)
+- `paths`: Whether a file path may appear in a room. never: a report shows as 'report saved' with the command that opens it. owner: a worker card in a room whose privacy is owner also shows the report's path. (default never; choices: never, owner; read when yerkd starts; restart it to apply a change)
+- `times`: How a card says when. relative: '3 min of 15', 'done in 3 min'. clock: the time of day, 'started 13:05, cap 15 min'. (default relative; choices: relative, clock; read when yerkd starts; restart it to apply a change)
+
+### [jobs]
+
+- `ops_room`: the room a job's failure alert goes to when rooms.toml has no machine room; unset, the job's own room
+- `room_notes`: the most notes a room that is not the owner's keeps at once (default 20)
+- `room_note_minutes`: such a room adds room_note_burst notes at most in this many minutes (default 5); a refused add does not count
+- `room_note_burst`: how many notes such a room adds in one room_note_minutes window (default 3), so a reminder and its follow-up check go in the same turn
+- `note_chars`: the most characters a note's message may have, in any room and from `yerk schedule` (default 600); a longer one is refused with the cap, never cut
+
+## jobs.toml
+
+One `[jobs.NAME]` table a scheduled job; `yerk jobs sync` makes its systemd timer.
+
+- `kind`: what runs: "script" (a shell command, no model call, its output posted as is), "agent" (a worker: a headless Claude Code run with the message as its brief, its last message told by the room) or "note" (a reminder: when it is due the room's own session is told its message and says it in its voice; no worker, no shell, no account, no cap, so any room may set one for itself)
+- `schedule`: a systemd calendar line (OnCalendar, `man systemd.time`: "Mon 10:00", "Mon..Fri *-*-* 07:30", "*:0/30" every half hour), read in `tz`; a missed run fires once on return. One of schedule or at
+- `at`: one date and time ("2026-03-09 09:00", or with an offset), read in `tz` when it has none: a one-shot, removed from this file after it fires; a time missed while the box was down fires once on return
+- `tz`: the IANA time zone the schedule or the time is read in (such as Europe/Paris); required with schedule, and with at when the time carries no offset
+- `room`: the room the output, the relay or the note lands in (a name from rooms.toml); an agent job's card is there too. A room that is not the owner's adds, lists and removes its own notes and no other job
+- `account`: agent jobs: the account (accounts.toml) the worker runs on; unset, the first one not resting
+- `cap`: minutes the run may take before it is stopped (default 10 for a script, 15 for an agent); a stopped run alerts
+- `deliver`: "announce" (default): the output or the relay goes to the room; "silent": the run and its ledger row happen, nothing is posted, a failure still alerts the ops room
+- `command`: script jobs: the shell line to run (/bin/sh -c), with an account-free environment, TZ set to the job's zone, YERK_JOB and YERK_JOB_DIR set, YERK_PRIVATE and YERK_STATE as the unit has them and this install's `yerk` first on PATH, so a `yerk` line runs on this install's folders; exit 0 with output posts it, exit 0 with nothing posts nothing, anything else alerts
+- `message`: agent jobs: the brief the worker gets, written as the whole job; its last message is what the room hears, and exactly NO_REPLY means nothing is posted. Notes: the text the room is told when it is due
