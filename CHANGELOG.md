@@ -27,7 +27,34 @@ version changes.
   room's day log that names the line it supersedes and the call, that line marked superseded. It refuses a persona, a
   rulebook, a voice file or a rules file; the next morning diff shows the fix.
 - **Upgrading:** nothing to edit; the ledger gains its `calls` table at the next start (no schema version change).
-  budgets.toml: `[code] lines` 20,523 (a dated note).
+  budgets.toml: `[code] lines` 20,737 (a dated note).
+
+### import-openclaw (#125)
+
+- `yerk import openclaw:<workspace dir>` moves an OpenClaw box's notes in, one workspace a run: MEMORY.md, USER.md,
+  memory/ and wiki/ (the kinds the index reads, and the text files of memory/transcripts/), and media/gym whole, copied
+  as they are into <private>/openclaw/<its name>/<the same path>, files 0600, folders 0700, each with the box file's
+  time. Never into the day logs or facts/, and outside imports/, so a note keeps its whole weight.
+- Left by rule, one line a rule with its files and bytes: the box tools' own state (memory/health, jobstate, finance,
+  sms, modelbench, forensics, tft, index, archive-offindex), a kind the index does not read, a link, a temp or backup
+  copy and the folders the index skips; a dot or secrets folder is never entered.
+- A line holding a shape of yerk doctor's secret scan (a key, a one-time code, a password or token line) is copied with
+  its kind in the value's place, the file's lines kept; the run lists each by file and line. On an import the key is
+  the tell, not the value: a line whose key is token, api_key, secret, password, passwd, pin, bearer, authorization,
+  cookie, session or private_key (with `:` or `=`) is written `[token-line withheld]` from the key on, so a short
+  token, a pin or a password with no digit never crosses; a line that only says the word (the token economy) is copied.
+- By path and sha256 against <private>/openclaw/<name>.sums: a second run writes nothing, so the same command tops up; a
+  changed file is written again through a temp file and a rename, one the box deleted is deleted from the copy, and a
+  part the box no longer has is held. `--since YYYY-MM-DD` takes the files changed from that day on; `--dry-run` prints
+  the inventory (files, bytes, each rule, the lines to scrub) and writes nothing. A workspace inside the private folder
+  (or the other way round), a copy that names another box and, for a real run, a private folder in the repository are
+  refused before the box is read.
+- After a real run it prints the yerkd.toml and rooms.toml lines that would read the copies, and never writes them: each
+  box path in an `also` line becomes its copy in its place, so every cite name stays; a `read` naming the box stays
+  while the box runs (yerkd refuses one inside the private folder); a denyRead keeping a shell off the box gains the
+  copies.
+- **Upgrading:** nothing to edit; the printed lines are made by hand, then yerk-index and yerkd restarted. budgets.toml:
+  `[code] lines` 20,565 (a dated note).
 
 ### fusion-levers (#118)
 

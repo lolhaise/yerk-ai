@@ -237,8 +237,8 @@ async def imports(a: argparse.Namespace) -> int:
     its people `person`); a chat a room covers is filed as that room files it. Each chat is said as it is done, one
     that fails said and the rest carried on. --dry-run reads and counts and writes nothing: on a server, the inventory
     (a chat it cannot read counted by Discord's own thread count where there is one); on one chat, also every line.
-    `imessage:<chat.db>` and `gmail`: a person's texts and mail, as files (sources.py)."""
-    if a.source.partition(":")[0] in ("imessage", "gmail"):
+    `imessage:<chat.db>` and `gmail`: a person's texts and mail, as files; `openclaw:<workspace dir>`: a box's notes (sources.py)."""
+    if a.source.partition(":")[0] in ("imessage", "gmail", "openclaw"):
         from . import sources
         return sources.imports(a)
     priv, state, dry = private_dir(a.private), state_dir(a.state), a.dry_run
@@ -250,7 +250,8 @@ async def imports(a: argparse.Namespace) -> int:
     kind, _, cid = a.source.partition(":")
     if wrong or kind not in ("discord", "discord-guild") or not cid.isdigit():
         print(f"yerkd.toml [import] classes: {', '.join(wrong)}: each is private, shared or room:<the id of a room in rooms.toml>"
-              if wrong else "yerk import takes discord:<channel or thread id>, discord-guild:<guild id>, imessage:<chat.db> or gmail",
+              if wrong else "yerk import takes discord:<channel or thread id>, discord-guild:<guild id>, imessage:<chat.db>, gmail "
+              "or openclaw:<workspace dir>",
               file=sys.stderr)
         return 2
     since = datetime.fromisoformat(a.since).replace(tzinfo=s.tz) if a.since else SINCE
