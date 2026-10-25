@@ -225,6 +225,26 @@ the daily sweep: logs, transcripts, timing rows, finished workers and rooms' scr
 - `--private PRIVATE`: private folder (default: $YERK_PRIVATE, else the fake example layer)
 - `--state STATE`: state folder (default: $YERK_STATE, else ~/.local/state/yerk)
 
+### yerk backup
+
+one dated archive with a manifest: the private folder, the state's ledger, sessions and index metadata, the units; into [backup] path (yerkd.toml), the last [backup] keep (7) kept
+
+- `--to TO`: the folder for it (default: [backup] path, else yerk-backups beside the private folder)
+- `--with-index`: the index's vector store too (else yerk-index rebuilds it)
+- `--private PRIVATE`: private folder (default: $YERK_PRIVATE, else the fake example layer)
+- `--state STATE`: state folder (default: $YERK_STATE, else ~/.local/state/yerk)
+
+### yerk restore ARCHIVE
+
+an archive back, read whole against its manifest first: into an empty folder, or over the layer with --force after a backup of it
+
+- `ARCHIVE`
+- `--to TO`: an empty folder to restore into, as DIR/private, DIR/state and DIR/units
+- `--dry-run`: verify and say each step, write nothing
+- `--force`: over the layer after a backup of it, and under a running yerkd
+- `--private PRIVATE`: private folder (default: $YERK_PRIVATE, else the fake example layer)
+- `--state STATE`: state folder (default: $YERK_STATE, else ~/.local/state/yerk)
+
 ### yerk doctor
 
 the daily check (the private folder's layout, rooms.toml keys, memory classes, tokens, the index, hooks, disk growth, the rule files' shape) and the crash repair of NUL lines, each file backed up first; once a week it also fetches the Claude docs from the web ([docs] fetch = false in yerkd.toml turns that off)

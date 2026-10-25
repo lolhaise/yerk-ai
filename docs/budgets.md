@@ -10,11 +10,11 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 98330`
+- `total = 108093`
 
 ## [session_start.claude_code]
 
-Load order, most stable first, so the cached start of the prompt survives. The first five parts are Claude Code's own (its default prompt, the built-in tools allowed by --tools, Yerk AI's MCP tools, its other tool entries, the room's skills): `yerk map` shows them at their budget until they are measured from a transcript. Other tool entries: Claude Code's deferred-loading placeholder and other MCP servers' tools (web-ladder's). Measured 2026-10-20 in each room's newest transcript (Claude Code 2.1.301): prompt 10,889, built-in tools 10,401, other entries 1,713. No room sends a skill: every room starts with --setting-sources "" and no allowlist has Skill.
+Load order, most stable first, so the cached start of the prompt survives. The first parts are Claude Code's own (its default prompt, the built-in tools allowed by --tools, Yerk AI's MCP tools, its other tool entries, a plug-in's tools, the room's skills): `yerk map`, the budget test and so the deploy's gate read them as the room last sent them (context.sent: its newest transcript's newest request shape), each at its line only for a room with no transcript. Other tool entries: Claude Code's deferred-loading placeholder and other MCP servers' tools (web-ladder's). A line named `mcp__...` counts the entries whose names begin with it (a plug-in's), and they leave the other entries. The first message's own blocks (Claude Code's environment and account reminder, the first hook) are that message's: no line, outside this total (`yerk map --wire` shows them). Measured 2026-10-20 in each room's newest transcript (Claude Code 2.1.301): prompt 10,889, built-in tools 10,401, other entries 1,713. No room sends a skill: every room starts with --setting-sources "" and no allowlist has Skill.
 
 2026-10-23, pictures-seen's cold read: Yerk AI's tools measured as `yerk map --wire` counts them (each entry as sent, the work room's newest request shape; the daemon's Python 3.14 strips a docstring's indent, so measured there) at 9,978 for ten tools before `seen`, over the 8,000 line since transcribe (840), voice_note (911) and remember's `said` and `source` (1,656) came in with no raise (it was measured once at 7,333, from a shape days old), and 10,823 with `seen` (845), so 11,000; no part could pay, so the total rose by the 3,000.
 
@@ -22,10 +22,14 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-10-24, web-budget: the other tool entries measured as `yerk map --wire` counts them in the six rooms' newest request shapes (Claude Code 2.1.304): 3,421 in three rooms (the web plug-in's web_fetch 871, web_search 620, web_research 1,284 and web_research_result 432, the placeholder 214) and 3,429 in a person's room (the box bridge's web_fetch 878 and web_search 621, its newest shape Oct 22), over the 1,713 line since the research pair (1,716) came in on Oct 20 with no raise, so 3,429; no part could pay (the six rooms' largest mechanics 4,474, persona 11,750, rulebook 13,607, room voice 5,443 and pinned memory 3,912 that day, 614 between them; `rules` is the cap a rule filing fits under), so the total rose by the 1,716.
 
-- `claude_code_prompt = 11000`
-- `builtin_tools = 10401`
-- `yerk_tools = 11700`
+2026-10-24, measured-budgets: the lines above are read as sent now, and in the six rooms' newest request shapes that day (Claude Code 2.1.304) three rooms sent more than they held, no check seeing it: the hands plug-in's five tools (7,119) in the two owner rooms that carry it, web_image (913) in those two and a person's room, and that person's room's Edit and Write (1,731) beside the four built-in tools every room has. Each plug-in gets a line of its own at what it sends (`mcp__hands__` 7,119, `mcp__web-ladder__web_image` 913), the other entries keep the placeholder and web-ladder's four (3,421 in each room, under 3,429), and `builtin_tools` goes to the widest room's 12,132. No part could pay (the largest appended parts as on the web-budget note, 614 between them; Claude Code's prompt 10,889, measured from the shape now, and Yerk AI's tools 11,663, 148 between them), so the total rose by what is already sent, 9,763, to 108,093. Read again that evening, an owner room's new start (the tree of #117) sent Yerk AI's tools at 11,734 (schedule's calendar wording +31 and send's own-channel line +40 on the 11,663 the older starts send), 34 past 11,700: the prompt line pays it, as persona paid for mechanics (10,889 the largest prompt sent, so 10,966), `yerk_tools` 11,734, the total as above.
+
+- `claude_code_prompt = 10966`
+- `builtin_tools = 12132`
+- `yerk_tools = 11734`
 - `deferred_tool_names = 3429`
+- `mcp__hands__ = 7119`
+- `mcp__web-ladder__web_image = 913`
 - `skills = 0`
 
 ## [session_start.appended]
@@ -229,6 +233,14 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-10-24: send-own-channel raised it by 16: a room's own channel id is the room itself in the send tool and its gate (found that day: a room asked to post a picture in its own chat passed its channel id, the gate held it as a send to another room, and the send would have answered no room by that id), not folded to fit. gates.py 15 (room_named, the one resolver: a room's name, its rooms.toml channel or the id alone; external_hit reads it with the rooms' confs and names a held send's room by it), daemon.py 1 (the send tool resolves `room` through it before its checks). 19,976 on main 9d9e05b (#116): 19,960 + 16.
 
+2026-10-24: measured-budgets raised it by 72: the budget gate reads what Claude Code sends (found that day: Claude Code's parts were counted at their line, so three rooms sent the hands plug-in, web_image and a person's room's Edit and Write past theirs and nothing saw it), not folded to fit. context.py 72 (`sent`, the one read: the room's newest transcript, its newest shape alone, Claude Code's prompt split where that start's file began, each tool entry under its line, a line named `mcp__...` a plug-in's; `violations` naming such a part first; the wire view's rows from the same read, the first message's blocks outside its total), morning.py 2 (each room as sent and its gap, a part past its line red), cli.py -2 (`yerk map --wire` finds the transcript through the same read). 20,048 on main 30ea8dc (#117): 19,976 + 72.
+
+2026-10-24: backup-restore raised it by 300: `yerk backup` and `yerk restore` (the audit's section G item 3, PR 65's design: an install with no backup loses everything to one bad disk), not folded to fit. backup.py 265 (the archive and its manifest, the last N kept, a restore read whole against the manifest before it writes, the move aside, the daemon's lock), cli.py 23 (the two commands), doctor.py 7 (a backup past 36 h, or none under a [backup] table), status.py 4 (the card's line, and --json's backup_age through backup.newest: a missing [backup] path had read as the current folder), words.py 1. 20,276 on main 30ea8dc (#117): 19,976 + 300.
+
+2026-10-24: merged with measured-budgets (#123, main dbb06f8): its 20,048 plus backup-restore's 300 is 20,348, counted on the merged tree; cli.py and words.py, which both changed, merged clean.
+
 2026-10-24: docs-from-code raised it by 356: Yerk AI's own docs written from the code, `yerk docs own` (decision 16; the audit's section G, items 4 and 5), not folded to fit. owndocs.py 232 (the six pages: commands from the three installed commands' parsers, tools from the MCP server's own list, settings from the key tables, budgets from this file's comments, hooks, units; the writer and its dry run), config.py 96 (ROOM_WORDS, every rooms.toml key in plain words, ROOM_KEYS now its keys; YERKD_WORDS, every yerkd.toml key not described where it is read), cli.py 11 (the `own` action and parser(), split out of main so the page can read it), hooks.py 9 (EVENTS, what each event does, out of the module docstring and made true to the daemon's seven Stop checks), daemon.py 4 and memindex.py 4 (their parser()). 20,332 on main 30ea8dc (#117): 19,976 + 356.
 
-- `lines = 20332`
+2026-10-24: merged with measured-budgets and backup-restore (#123 and #128, main 9f53348): their 20,348 plus docs-from-code's 356 is 20,704, counted on the merged tree; cli.py, which all three changed, merged clean.
+
+- `lines = 20704`

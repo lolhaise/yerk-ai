@@ -4,6 +4,7 @@ Written by `yerk docs own` from units/; change those and run it again, never thi
 
 The systemd user units Yerk AI ships, each service with when it runs, then each file line by line; an Environment line shows its variable's name only. Copy a unit to ~/.config/systemd/user/ to install it.
 
+- yerk-backup.service: yerk-backup.timer, OnCalendar=*-*-* 04:10:00
 - yerk-curate.service: yerk-curate.timer, OnCalendar=*-*-* 05:00:00
 - yerk-doctor.service: yerk-doctor.timer, OnCalendar=*-*-* 04:40:00
 - yerk-health.service: yerk-health.timer, OnCalendar=*-*-* 07:10:00
@@ -12,6 +13,42 @@ The systemd user units Yerk AI ships, each service with when it runs, then each 
 - yerk-recall-bench.service: yerk-recall-bench.timer, OnCalendar=Sun 06:00
 - yerk-retention.service: yerk-retention.timer, OnCalendar=*-*-* 04:20:00
 - yerkd.service: no timer, it runs while it is enabled
+
+## yerk-backup.service
+
+The nightly backup (yerk backup): the private folder, the state's ledger, sessions and index metadata, and these units, as one dated archive with a manifest under [backup] path in yerkd.toml (else yerk-backups beside the private folder), 0600; the last [backup] keep (7) stay. One line a run; a failure exits 1 and fails the unit, and `yerk status` and the doctor say a backup older than 36 h. Installed with yerk-backup.timer: copy both to ~/.config/systemd/user/ and `systemctl --user enable --now yerk-backup.timer`.
+
+[Unit]
+
+- Description: `Yerk AI backup`
+- Before: `yerk-retention.service`
+
+[Service]
+
+- Type: `oneshot`
+- Environment: YERK_PRIVATE
+- Environment: YERK_STATE
+- ExecStart: `%h/yerk-ai/.venv/bin/yerk backup`
+- Nice: `10`
+- IOSchedulingClass: `idle`
+- TimeoutStartSec: `1800`
+
+## yerk-backup.timer
+
+Every day at 04:10 local time, after the rooms' processes have gone idle and before retention's 04:20 sweep moves anything into the trash; a night the box was off runs once when it is back.
+
+[Unit]
+
+- Description: `Yerk AI backup at 04:10`
+
+[Timer]
+
+- OnCalendar: `*-*-* 04:10:00`
+- Persistent: `true`
+
+[Install]
+
+- WantedBy: `timers.target`
 
 ## yerk-curate.service
 
