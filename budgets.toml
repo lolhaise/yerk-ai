@@ -397,4 +397,6 @@ secs = 60
 # the one resolver: a room's name, its rooms.toml channel or the id alone; external_hit reads it with the rooms' confs and
 # names a held send's room by it), daemon.py 1 (the send tool resolves `room` through it before its checks).
 # 19,976 on main 9d9e05b (#116): 19,960 + 16.
-lines = 19976
+# 2026-10-25: worker-effort raised it by 3, a worker's thinking level and the room's live /effort and /model (the owner's ask),
+# the rest folded to fit (one import line, the argv splat, the stdin dup).
+lines = 19979

@@ -11,10 +11,11 @@ version changes.
 ### worker-effort (#129)
 
 - A worker runs at its room's thinking level. A room already passed its `effort` to its own claude, and a worker it
-  started ran at Claude Code's default; a worker started from a room whose rooms.toml says `effort = "max"` now runs
-  at max. The order: the call's `effort` (a new field on the room's `worker` tool, `yerk worker start --effort`), then
-  `[workers] effort` in yerkd.toml, then the room's. A level outside low, medium, high, xhigh, max is refused in one
-  line with the list, before any folder, ledger row or card exists.
+  started ran at Claude Code's default; a worker started from a room running at max now runs at max. The order: the
+  call's `effort` (a new field on the room's `worker` tool, `yerk worker start --effort`), then `[workers] effort` in
+  yerkd.toml, then the room's live level: a `/effort` typed in the room counts, the same way the room's own claude reads
+  it, and so does a `/model`, which a worker used to miss too. A level outside low, medium, high, xhigh, max is refused
+  in one line with the list, before any folder, ledger row or card exists. The code ceiling moves up by 3 for it.
 
 **Upgrading**: nothing to change; `[workers] effort` is a new optional key in yerkd.toml.
 

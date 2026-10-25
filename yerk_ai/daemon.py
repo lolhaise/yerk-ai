@@ -150,7 +150,7 @@ class Yerkd:
         self.workers = workers.Workers(self.ledger, workers.settings(state, dict(self.conf.get("workers", {})),
                                                                      self.budgets),
                                        self.accounts, self.cooldowns, self.rooms, self.channels, self.room_confs,
-                                       state=state, hidden=(self.secret_file, state / "rooms"))
+                                       state=state, hidden=(self.secret_file, state / "rooms"), models=self.models)
         self.jobs = jobs.Jobs(private, state, self.ledger, dict(self.conf.get("jobs", {})), self.rooms, self.channels,
                               self.room_confs, self.conf, self.workers)
         self.workers.hooks.append(self.pictures_done)            # a pictures backfill batch: its line, then the next batch
