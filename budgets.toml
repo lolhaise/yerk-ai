@@ -397,4 +397,10 @@ secs = 60
 # the one resolver: a room's name, its rooms.toml channel or the id alone; external_hit reads it with the rooms' confs and
 # names a held send's room by it), daemon.py 1 (the send tool resolves `room` through it before its checks).
 # 19,976 on main 9d9e05b (#116): 19,960 + 16.
-lines = 19976
+# 2026-10-24: backup-restore raised it by 300: `yerk backup` and `yerk restore` (the audit's section G item 3, PR 65's
+# design: an install with no backup loses everything to one bad disk), not folded to fit. backup.py 265 (the archive and its
+# manifest, the last N kept, a restore read whole against the manifest before it writes, the move aside, the daemon's lock),
+# cli.py 23 (the two commands), doctor.py 7 (a backup past 36 h, or none under a [backup] table), status.py 4 (the card's
+# line, and --json's backup_age through backup.newest: a missing [backup] path had read as the current folder), words.py 1.
+# 20,276 on main 30ea8dc (#117): 19,976 + 300.
+lines = 20276
