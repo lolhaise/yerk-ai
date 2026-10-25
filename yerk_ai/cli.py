@@ -32,7 +32,8 @@ def cmd_map(a: argparse.Namespace) -> int:
         rated = taste.render(taste.load(path), a.room, cap) if path else ""
         hit = [context.Part("taste", rated, cap, context.chars(rated), str(path) if path else f"no {taste.FILE} in the layer")]
     label = "the fake example layer" if priv == EXAMPLE_PRIVATE else str(priv)
-    print(context.render(a.room, label, start, msg, b, hit))
+    sent, src = context.sent(priv, state_dir(a.state), a.room, b)        # Claude Code's parts as last sent, else at their line
+    print(context.render(a.room, label, start, msg, b, hit, sent, src))
     tier = memory.live_rules(root / memory.TOPIC_RULES)
     mine, (seen, jobs) = [x for x in tier if (sc := memory.scope(x)) is None or a.room in sc], context.rode(state_dir(a.state), a.room)
     print(f"\nTopic rules ({memory.TOPIC_RULES}): {len(tier)}, {sum(context.chars(x) + 1 for x in tier):,} characters, {len(mine)} of them "
@@ -40,18 +41,15 @@ def cmd_map(a: argparse.Namespace) -> int:
     print(f"  on its last {seen} messages: " + (", ".join(f"{j} ({k})" for j, k in sorted(jobs.items(), key=lambda kv: -kv[1])) or "none rode"))
     if rs[a.room].get("watch"):
         print(f"\nWatches {rs[a.room]['watch']}: read as its own channel, never written to; it answers in {rs[a.room].get('channel')}.")
-    bad = context.violations(start, msg, b)
+    bad = context.violations(start, msg, b, sent, src)
     for v in bad:
         print("OVER BUDGET: " + v)
     if a.wire:
-        from .accounts import load_accounts
-        sid = json.loads((state_dir(a.state) / "sessions.json").read_text())[a.room]["session_id"]
-        dirs = [x.config_dir for x in load_accounts(priv / "accounts.toml")] if (priv / "accounts.toml").is_file() else []
-        if not (found := [f for d in dirs for f in sorted(d.glob(f"projects/*/{sid}.jsonl"))]):
-            print(f"no transcript for session {sid} in {', '.join(map(str, dirs))}", file=sys.stderr)
+        if not (t := context.transcript(priv, state_dir(a.state), a.room)):
+            print(f"no transcript for room {a.room} (sessions.json in {state_dir(a.state)})", file=sys.stderr)
             return 2
         print()
-        print(context.render_wire(a.room, context.wire(found[0]), context.chars(context.appended_file(start)), b,
+        print(context.render_wire(a.room, context.wire(t), context.chars(context.appended_file(start)), b,
                                   str(rs[a.room].get("timezone", "UTC"))))
     return 1 if bad else 0
 
