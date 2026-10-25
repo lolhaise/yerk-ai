@@ -18,7 +18,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
 
-from . import __version__, config, jobs, usage, words, workers
+from . import __version__, backup, config, jobs, usage, words, workers
 from .accounts import Account, Cooldowns
 from .ledger import Ledger
 from .meters import Meters
@@ -108,6 +108,7 @@ def collect(private: Path, state: Path, accounts: list[Account], cooldowns: Cool
                         "bill": next_bill(a.bill_day, now)} for a in accounts]
     out["live"] = live
     out["stalls"] = ledger.stalls(midnight(now))
+    out["backup"] = backup.newest(private, state)
     return out
 
 
@@ -136,7 +137,7 @@ def document(private: Path, state: Path, s: dict[str, Any], ledger: Ledger, now:
     """`yerk status --json`: one document a monitoring tool reads. The /status answer (rooms, accounts, workers, jobs,
     units, stalls, commit, connected, rebuilding) plus the version, each room's last answered turn, the turns that failed
     and the person's messages left unanswered in the last day, the index's state (yerk-index's own status file and its
-    age) and the newest backup's age when `[backup] path` names a folder."""
+    age) and the newest backup's age (backup.py's folder), null when there is none."""
     from . import memory
     now = time.time() if now is None else now
     conf = config.load_toml(private / "yerkd.toml") if (private / "yerkd.toml").is_file() else {}
@@ -148,9 +149,8 @@ def document(private: Path, state: Path, s: dict[str, Any], ledger: Ledger, now:
         out["index"] = {**index, "age": round(now - float(index.get("at") or 0), 1)} if index else None
     except (OSError, ValueError, KeyError):
         out["index"] = None
-    folder = Path(str((conf.get("backup") or {}).get("path") or "")).expanduser()
-    newest = max((p.stat().st_mtime for p in folder.glob("yerk-*") if p.is_file()), default=None) if folder.is_dir() else None
-    out["backup_age"] = None if newest is None else round(now - newest, 1)
+    newest = backup.newest(private, state)
+    out["backup_age"] = None if newest is None else round(now - newest["at"], 1)
     return out
 
 
@@ -280,4 +280,8 @@ def card(s: dict[str, Any], now: float | None = None) -> list[str]:
     if s["jobs"] == []:
         out.append(row(W.PLAIN, W.NO_JOB_DUE))
     out += [W.named(f"{W.PLAIN} {W.UNIT_USE}", u["name"], mb=round(u["rss_mb"]), cpu=u["cpu_pct"]) for u in s["units"] if not u.get("gone")]
+    if "backup" in s:                                   # the newest archive (backup.py): red when there is none, or past STALE
+        b = s["backup"]
+        text = W.BACKUP_AT.format(ago=W.span(now - b["at"]), size=W.size(int(b["bytes"]))) if b else W.NO_BACKUP
+        out.append(row(W.NOT_DONE if not b or now - b["at"] > backup.STALE else W.PLAIN, text))
     return out + [stall_line(s["stalls"], W.TODAY)]
