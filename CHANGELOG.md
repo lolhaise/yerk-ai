@@ -19,12 +19,16 @@ version changes.
 - A test fails the build when docs/ is stale against the code (test_owndocs), so a change to a flag, a tool's words, a
   key, a budget, a hook event or a unit runs `yerk docs own` in the same commit. The scrub test reads docs/ and the
   README as it reads the code, and scans the pages as they are written before they reach docs/.
+- And the other way for yerkd.toml: a test reads the package for every section and key of yerkd.toml it reads by name
+  (the file as load_toml returns it, followed through names, sections and the functions they are handed to; all 19
+  sections and 58 keys today) and fails on one settings.md does not describe, with its file and line. It found three, all
+  described now: `[discord] guild`, which `yerk setup-room` needs, and `[backup] keep` and `units` (#128).
 - README.md is a ten-minute read: 9,328 bytes from 118,399. Its first section stays as it was; install in five commands,
   the private folder in one picture, a room's turn in one paragraph, add-ons and where the docs are are new. The Status
   section is docs/STATUS.md, whole, a record as of today; Use through Files are docs/GUIDE.md, whole (two links mended).
   The pointers to README sections in rooms.toml.example, yerkd.toml.example and units/yerkd.service name docs/GUIDE.md.
 - The hooks' description is now hooks.EVENTS and says the seven Stop checks the daemon runs (the docstring named three).
-- **Upgrading:** nothing to edit. budgets.toml: `[code] lines` 20,332 (a dated note), and three tables gain the comment
+- **Upgrading:** nothing to edit. budgets.toml: `[code] lines` 20,706 (a dated note), and three tables gain the comment
   line that says what they are; no number changed.
 
 ### backup-restore (#128)

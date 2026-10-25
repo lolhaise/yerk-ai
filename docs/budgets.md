@@ -243,4 +243,6 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-10-24: merged with measured-budgets and backup-restore (#123 and #128, main 9f53348): their 20,348 plus docs-from-code's 356 is 20,704, counted on the merged tree; cli.py, which all three changed, merged clean.
 
-- `lines = 20704`
+2026-10-24: the cold read of #122 and its fix raised it by 2: config.py 2 (YERKD_WORDS names [discord] guild, which `yerk setup-room` reads, and [backup] keep and units, which backup.py reads since #128, with path in #128's words; so settings.md has every yerkd.toml key the package reads by name, which test_owndocs now checks both ways). 20,706: 20,704 + 2.
+
+- `lines = 20706`

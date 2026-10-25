@@ -145,6 +145,7 @@ YERKD_WORDS = {
     "discord": {"token_file": "the bot's token, a file in the private folder only you can read (0600)",
                 "owner": "the owner's Discord user id, answered in every room",
                 "test_senders": "webhook ids accepted as senders in test mode (`yerk setup-room` makes one a room)",
+                "guild": "the Discord server's id, where `yerk setup-room` finds or makes a room's channel and its test webhook (that command only)",
                 "webhook_burst": "webhook events per 5 minutes before 10 minutes off, the loop guard (default 100)",
                 "commands": "the slash commands (default true)"},
     "http": {"port": "the local port of /mcp, /hook and /control (default: a free one; yerkd --port wins)"},
@@ -193,7 +194,8 @@ YERKD_WORDS = {
                   "scratch_mb": "megabytes a room's scratch keeps, its oldest files out first", "trash": "days the trash keeps what left",
                   "scratch_trash": "days the trash keeps a room's scratch"},
     "doctor": {"growth_mb": "the disk growth a day past which the doctor says so (default 500)"},
-    "backup": {"path": "the folder of the newest backup, its age in `yerk status --json`"},
+    "backup": {"path": "the folder `yerk backup` writes to, in the private folder or absolute (default yerk-backups beside the private folder)",
+               "keep": "how many archives stay, the newest (default 7)", "units": "the systemd units folder backed up and restored (default ~/.config/systemd/user)"},
     "models": {"ALIAS": "one line a model, alias = full id (default: the package's models.toml)"},
 }
 
