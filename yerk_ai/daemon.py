@@ -40,7 +40,7 @@ from .lifted.loopguard import LoopGuard
 from .lifted.systemd_notify import notify
 from .meters import Meters
 from .room import Channel, Inbound, Room
-from . import abilities, words   # STYLE.md: what a room reads
+from . import abilities, addons, words   # STYLE.md: what a room reads
 
 log = logging.getLogger("yerk.daemon")
 YERK_TOOLS = ["mcp__yerk__send", "mcp__yerk__hold", "mcp__yerk__recall", "mcp__yerk__read_memory",
@@ -98,7 +98,7 @@ class Yerkd:
         words.configure(self.conf.get("presentation"))          # what every card and notice shows (STYLE.md)
         self.port = port or int(self.conf.get("http", {}).get("port", 0)) or free_port()
         self.url = f"http://127.0.0.1:{self.port}"
-        self.budgets, self.room_confs, self.models = budgets(), rooms(private), models(self.conf)
+        self.budgets, self.room_confs, self.models = addons.with_lines(budgets(), state), rooms(private), models(self.conf)
         for n, c in self.room_confs.items():               # one string would be read as one folder per letter
             for key in (k for k in ("read", "also") if not isinstance(c.get(k, []), list)):
                 raise SystemExit(f'room {n}: {key} must be a list of folders, like {key} = ["~/notes"], not {c[key]!r}')
@@ -1352,14 +1352,18 @@ def claim(state: Path) -> int:
     return fd
 
 
-def main(argv: list[str] | None = None) -> int:
+def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="yerkd", description="The Yerk AI daemon.")
     p.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else the fake example layer)")
     p.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
     p.add_argument("--port", type=int, default=0, help="local port for /mcp and /hook (default: yerkd.toml, else free)")
     p.add_argument("--idle-minutes", type=float, default=30.0, help="close a room's process after this long idle")
     p.add_argument("--config-dir", help="use only this account's Claude Code config folder (the contract probes' smoke)")
-    a = p.parse_args(argv)
+    return p
+
+
+def main(argv: list[str] | None = None) -> int:
+    a = parser().parse_args(argv)
     logging.basicConfig(level=logging.INFO, stream=sys.stderr, format="%(asctime)s %(name)s %(message)s")
     priv, state = private_dir(a.private), state_dir(a.state)
     claim(state)                                 # before the ledger opens: a second daemon writes nothing

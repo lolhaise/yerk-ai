@@ -1,0 +1,8 @@
+# The example add-on's unit: `yerk add` links it into the user's systemd folder and `yerk remove` unlinks it. A oneshot
+# that prints the greeting once, to show where an add-on's units go; nothing enables it.
+[Unit]
+Description=Yerk AI hello, the example add-on
+
+[Service]
+Type=oneshot
+ExecStart=%h/yerk-ai/.venv/bin/python -c "from yerk_hello import words as w; print(w.GREETING.format(greeting=w.HELLO, name=w.SOMEONE))"

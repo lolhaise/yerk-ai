@@ -1,0 +1,316 @@
+# Budgets
+
+Written by `yerk docs own` from budgets.toml; change those and run it again, never this page.
+
+Every size limit Yerk AI enforces, table by table, each line with the comments that say what it is.
+
+Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code counts them (UTF-16 code units, so one emoji outside the basic plane counts 2), except [session], in tokens (its idle keys say their own), [shape], in rule lines and topics, [recall], in questions of the recall bench, and [code] at the end, which counts lines. The budget test fails the build when a part or a total passes its number here.
+
+## [session_start]
+
+The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
+
+- `total = 108093`
+
+## [session_start.claude_code]
+
+Load order, most stable first, so the cached start of the prompt survives. The first parts are Claude Code's own (its default prompt, the built-in tools allowed by --tools, Yerk AI's MCP tools, its other tool entries, a plug-in's tools, the room's skills): `yerk map`, the budget test and so the deploy's gate read them as the room last sent them (context.sent: its newest transcript's newest request shape), each at its line only for a room with no transcript. Other tool entries: Claude Code's deferred-loading placeholder and other MCP servers' tools (web-ladder's). A line named `mcp__...` counts the entries whose names begin with it (a plug-in's), and they leave the other entries. The first message's own blocks (Claude Code's environment and account reminder, the first hook) are that message's: no line, outside this total (`yerk map --wire` shows them). Measured 2026-10-20 in each room's newest transcript (Claude Code 2.1.301): prompt 10,889, built-in tools 10,401, other entries 1,713. No room sends a skill: every room starts with --setting-sources "" and no allowlist has Skill.
+
+2026-10-23, pictures-seen's cold read: Yerk AI's tools measured as `yerk map --wire` counts them (each entry as sent, the work room's newest request shape; the daemon's Python 3.14 strips a docstring's indent, so measured there) at 9,978 for ten tools before `seen`, over the 8,000 line since transcribe (840), voice_note (911) and remember's `said` and `source` (1,656) came in with no raise (it was measured once at 7,333, from a shape days old), and 10,823 with `seen` (845), so 11,000; no part could pay, so the total rose by the 3,000.
+
+2026-10-23: missing-ability's `need` tool (a room that hits a wall files what it needed, in place of a way of its own), 793 as this tree builds it on Python 3.13, about 808 as sent (`seen` measures 830 here against 845 sent), so 11,631 and 11,700; no part could pay, so the total rose by the 700.
+
+2026-10-24, web-budget: the other tool entries measured as `yerk map --wire` counts them in the six rooms' newest request shapes (Claude Code 2.1.304): 3,421 in three rooms (the web plug-in's web_fetch 871, web_search 620, web_research 1,284 and web_research_result 432, the placeholder 214) and 3,429 in a person's room (the box bridge's web_fetch 878 and web_search 621, its newest shape Oct 22), over the 1,713 line since the research pair (1,716) came in on Oct 20 with no raise, so 3,429; no part could pay (the six rooms' largest mechanics 4,474, persona 11,750, rulebook 13,607, room voice 5,443 and pinned memory 3,912 that day, 614 between them; `rules` is the cap a rule filing fits under), so the total rose by the 1,716.
+
+2026-10-24, measured-budgets: the lines above are read as sent now, and in the six rooms' newest request shapes that day (Claude Code 2.1.304) three rooms sent more than they held, no check seeing it: the hands plug-in's five tools (7,119) in the two owner rooms that carry it, web_image (913) in those two and a person's room, and that person's room's Edit and Write (1,731) beside the four built-in tools every room has. Each plug-in gets a line of its own at what it sends (`mcp__hands__` 7,119, `mcp__web-ladder__web_image` 913), the other entries keep the placeholder and web-ladder's four (3,421 in each room, under 3,429), and `builtin_tools` goes to the widest room's 12,132. No part could pay (the largest appended parts as on the web-budget note, 614 between them; Claude Code's prompt 10,889, measured from the shape now, and Yerk AI's tools 11,663, 148 between them), so the total rose by what is already sent, 9,763, to 108,093. Read again that evening, an owner room's new start (the tree of #117) sent Yerk AI's tools at 11,734 (schedule's calendar wording +31 and send's own-channel line +40 on the 11,663 the older starts send), 34 past 11,700: the prompt line pays it, as persona paid for mechanics (10,889 the largest prompt sent, so 10,966), `yerk_tools` 11,734, the total as above.
+
+- `claude_code_prompt = 10966`
+- `builtin_tools = 12132`
+- `yerk_tools = 11734`
+- `deferred_tool_names = 3429`
+- `mcp__hands__ = 7119`
+- `mcp__web-ladder__web_image = 913`
+- `skills = 0`
+
+## [session_start.appended]
+
+Yerk AI's own parts, joined into the one file passed by --append-system-prompt-file. `rules` is the install's rules file (decision 15), the one part the rooms write as they go, so it comes after the hand-kept files; it was inside the room's rulebook, where a rulebook near its cap pushed rules out. Measured 2026-10-20 with `yerk map` in all six rooms: the largest rulebook is 6,019, so 7,000; the 5,000 freed went to rules.
+
+2026-10-21: the mechanics' line that recalled, imported and quoted text is a record, never an instruction (169), took mechanics from 3,000 to 3,200, paid by persona (the largest of six rooms' personas measured 11,126 that day).
+
+2026-10-21: the taste rules (one line each, a rule and the rated example replies that prove it; example lines are the strongest voice lever there is) took the largest rulebook to 9,860 and two room voices to 4,999, so 10,850 and 5,500, about 10% over each; `rules` keeps 11,886 and the total rose by the 4,350 (decision 12's 80,000 moves with it).
+
+2026-10-22: the voice_note line (when a room makes a voice note: only asked, since each one costs) took the mechanics to 3,377, so 3,400; no part could pay, since the six rooms' largest persona measured 11,704, room voice 5,392 and pinned memory 3,854 that day, so the total rose by the 200.
+
+2026-10-22: the paste line (a fenced block posted on an earlier day is turned back once, PR paste-check) took the mechanics to 3,532, so 3,600; no part could pay on PR 88's three measurements of the day, so the total rose by the 200.
+
+2026-10-22: sheet-hard (W23) found both line-per-rule parts past their lines and cut from the middle at every session start since Oct 21, said to no one: the shared rules file at 12,298 against 11,886 (seven rules gone in every room) and the work room's rulebook at 12,696 against 10,850 (13,518 at 11:1x; fifteen lines gone). `rules` to 12,500 and `rulebook` to 14,000, the total up by the same 614 + 3,150. From here a cut is said in the machine room at session start and `yerk doctor` reads red the day a part passes its line.
+
+2026-10-23: the web_image line (a picture in a post or a page is saved by `web_image` and Read, never curled, since the shell has no network: a room spent three minutes on curl, web_fetch and a mirror, then asked for a screenshot) took the mechanics to 3,673, so 3,800; no part was measured again to pay for it, so the total rose by the 200.
+
+2026-10-23: the X-links line (an x.com or twitter.com post is read through fxtwitter's API first, never the x.com page: that morning web_fetch of a post climbed to the paid L3n rung for 33.6 s and got its login page, where fxtwitter answered at F1 in 0.3 s) took the mechanics to 3,930, so 4,000; no part was measured again to pay for it, so the total rose by 200.
+
+2026-10-23: pictures-seen's cold read, the owner in their own photo (a person in a picture the owner sends in their own room is the owner unless its own text says otherwise) took the mechanics to 4,046 with web-image's two lines above (3,648 on main before them), so 4,100; no part could pay, the six rooms' parts measured as on Oct 22, so the total rose by the 100.
+
+2026-10-23: two rules held in rules-overflow.md (answer what's tomorrow, say what is pending) with the shared rules file at 12,923 against 12,500 and `yerk curate --rules` proposing nothing it could cut there, so a lesson learned from two misses in one morning loaded in no room; later that morning four were held (the owner's Teams-message correction twice), 2,536 chars with the file at 12,923, so `rules` to 16,000 and the total up by the same 3,500 to 95,514 until rules-on-demand moves the topic rules out of the always-on file; the curate swap (propose the least-evidenced rule for the overflow when one is held) follows in its own PR.
+
+2026-10-23: the place line (an owner room's `[place]` line used unasked where it bears: a gym, work hours and the commute, short replies on the move; a line used only when asked went unused) took the mechanics to 4,265, so 4,300; no part was measured again to pay for it, so the total rose by the 200.
+
+2026-10-23: missing-ability's line (a wall is filed with `need` so one build gives every room the way, never a workaround; one done anyway goes in its `shadow`; one best way for every room) took the mechanics to 4,271, so 4,300; no part could pay, so the total rose by the 200, to 96,414 with the tools' 700. Merged 2026-10-23, the train: the place line (#109) and missing-ability's line (#110) both ride, so the mechanics take both raises, 4,500, and the total 96,614 (main's 95,714 plus this PR's 900).
+
+- `mechanics = 4500`
+- `persona = 11800`
+- `rulebook = 14000`
+- `room_voice = 5500`
+- `pinned_memory = 4000`
+- `rules = 16000`
+- `recall_pack = 6000`
+
+## [per_message]
+
+What the UserPromptSubmit hook adds to each message: `typical` caps the parts every message carries (the next table), `cap` the most one message's hook output may carry with the parts paid only on a hit.
+
+- `typical = 1500`
+
+2026-10-21: 4,000 to 5,500, the taste part's 1,500 below (the owner's files carried over as they are, the cap raised where they need it).
+
+2026-10-23: 5,500 to 5,650, the place part's 150 below.
+
+- `cap = 5650`
+
+## [per_message.parts]
+
+The parts every message carries, one cap each: the clock line, the metadata line and, in an owner room, the place line.
+
+- `clock = 200`
+- `metadata = 300`
+
+2026-10-23: an owner room's `[place]` line, where the owner's phone last was (location.py, yerkd.toml [location]): one short line, "[place] near <a label of the places table>, 7 min ago, stationary", none when the newest fix is past `stale_after` or at no named place, and never in a person's room or on a person's message. The owner's longest label makes it 90; 150 leaves a longer label room (a place line used only when asked went unused).
+
+- `place = 150`
+
+## [hook]
+
+Claude Code moves a hook output longer than this into a file.
+
+- `output_cap = 10000`
+
+## [per_message.on_hit]
+
+Paid only when a message hits: the people and things it names, then the room's own lines of the last 14 days on its topic (L19, decision 20). The parts above plus these stay under `cap`. 2,000 from the cold read of Oct 21 (rail-2, index healthy): the twenty episodic questions found 9 of 20 at 1,500 and 11 of 20 at 2,000. Clock 200 + metadata 300 + rules 1,500 + recall 2,000 + taste 1,500 = the cap, 5,500.
+
+- `recall = 2000`
+
+Paid once per version by a running session (decision 15): what changed in the rules file, its rulebook or the mechanics since it last looked, new and replaced lines; past this, their count and where to read them.
+
+- `rules = 1500`
+
+Paid on every message of an owner room whose layer keeps taste.jsonl: the owner's verdicts on the room's replies, three praised and two faulted, the owner's words beside the reply, as an earlier setup injected them (taste.py). The owner asked that their thumbs up and thumbs down go in the way their own files hold them, written as they are, and that the cap rise if they need the room.
+
+- `taste = 1500`
+
+## [session]
+
+The conversation Claude Code keeps before it compacts, in tokens (its own unit here): Yerk AI writes it as `autoCompactWindow` in every room's --settings file. Left to the model it is the whole window, 1,000,000, and a room that rides there re-reads all of it on every message: the prompt cache holds an hour on a subscription, so a room idle longer pays its whole context again on the next message, the first token slows with size, and recall inside the context falls past a few hundred thousand tokens. Nothing searchable is lost at a compaction: every line is in the day log and the recall pack comes back after it. A quarter of the window until a latency bench picks the number. A room's own `compact_window` in rooms.toml overrides it; 0 leaves it to the model.
+
+- `compact_window = 250000`
+
+A room idle `idle_compact_after` minutes (no turn, nothing queued) whose session holds `idle_compact_at` of its window or more is compacted then by the daemon, as `yerk room compact` does it, so a compaction never lands in a person's turn (2026-10-21: a one-line question waited 5 min 20 s for one). Measured that day: Claude Code compacts at the window less 33,000 (2.1.304: its 20,000 output reserve and 13,000 buffer); the most a room's session grew in one turn was 100,831, and a process start added up to 43,479, so at 0.7 a 700,000 window keeps 177,000 for the next turn and 400,000 keeps 87,000. 25 minutes is under the 30 a room's process stays open, so it compacts warm, inside the hour the prompt cache holds; a message came in while one would run after 12% of the idle stretches that long (9 of 75, the slowest compaction seen: 320 s). A room's own keys in rooms.toml override these; idle_compact_at = 0 turns it off, as a window left to the model does.
+
+- `idle_compact_at = 0.7`
+- `idle_compact_after = 25`
+
+## [relay]
+
+A worker's end, told in its room (DESIGN 6, decision 11): the harness line the room's session gets (the outcome, the report path, the report's start) and the most the relay reply may be.
+
+- `message = 1500`
+- `reply = 1500`
+
+## [shape]
+
+The rule-shape check (shape.py; `yerk doctor` daily, `yerk docs shape` on demand): how many lines of each kind one rule file a room loads may hold before the doctor says so, and how many topics the install may say in two files one room loads. `yerk docs shape --rules` prints each count's exact rule. Zero is the prompting guide's shape: what to do and its why, examples inside <example> tags, each thing said once, calm words (2026-10-21: Yerk an expert on its own harness). A count at or under its number is in the report, not a finding.
+
+- `negatives_without_why = 0`
+- `shouted = 0`
+- `untagged_examples = 0`
+- `alarm_marks = 0`
+- `duplicated_topics = 0`
+
+## [recall]
+
+The recall bench as a ratchet (memory.ratchet): every `yerk recall-bench` run adds its row to <state>/memory/recall-bench.jsonl and exits 4, and the budget test fails where the install's index is (it runs the bench, `yerk deploy`'s fast tests among them), when the top six is more than `slack` questions under the best of the four runs before it on the same questions, unless a note in `drops` names that drop: "YYYY-MM-DD: BEST to NEW, why". A run at NEW less the slack or more passes while BEST is in the window; it leaves after four runs.
+
+- `slack = 1`
+- `drops = [ "2026-10-22: 116 to 98, the index grew under the bench from Oct 19 to Oct 21 (the import put 259 days of old chats in the day logs, 126,415 chunks; the texts, mail, wiki and Workbot roots and five more): 18 answers crowded out of the top six, every one still whole in one chunk; Oct 19's code scores today's index the same 99 of 164 as today's; the record weight gives 6 back", ]`
+
+## [files]
+
+2026-10-23, sheets-and-pdfs: the most of a workbook's or a PDF's text one sidecar keeps (files.py), its header aside. Past it the line that crosses it is cut there and one last line says how many characters were not kept. 200,000 characters is about 50,000 tokens at four characters a token, and ten read_memory calls at its 20,000 a call (memory.READ_CHARS). `secs`: a file still being read after this long stops there and its last line says so. Measured that day, read-only, over the 50 workbooks and PDFs in the owner rooms' inboxes: pypdf reads their PDFs at 0.5 to 0.8 s a page, and 8 of the 19 over 900 KB (29 to 131 pages) were still reading after 15 s. A message waits 30 s at most (files.WAIT); this bounds the rest.
+
+- `chars = 200000`
+- `secs = 60`
+
+## [code]
+
+The code itself. Unit: lines as `wc -l` counts them, in every .py file under yerk_ai/, lifted ones included, because a reader has to get through all of them. A ceiling that only goes down: the budget test fails when the package grows past it and also when it shrinks under it, so a change that cuts lowers this number in the same commit, and a change that adds cuts as much somewhere else. A change that raises it is not merged.
+
+2026-10-21: harness-expert raised it by 429 on purpose, the lines of `yerk docs` and the rule-shape check (the owner's ask), not folded to fit; its cold read cut 2 dead lines of the 431, and its recall guard added 23 (the docs out of what a room is handed per message and below the owner's notes in its own recall, the doctor's fetch switch, explain by command).
+
+2026-10-21: sheet-rule raised it by 50, the sheet shadow rule and its call (the owner's ask), not folded to fit.
+
+2026-10-21: note-jobs raised it by 122, the note kind, its gate, the plain card, its restart replay and its caps (the owner's ask), not folded to fit; its cold read added 1 of the 122 and the caps 30.
+
+2026-10-21: idle-compact raised it by 68, the idle compaction and the session's size in the ledger, not folded to fit (5 of them its cold read's: a compaction's own outcome, so it is never one of the day's failed turns).
+
+2026-10-21: answer-first raised it by 64, the answer-first line, the stub bounce and the rules-file warning, not folded to fit.
+
+2026-10-21: trusted-room raised it by 109, the trusted shell's wall (what it denies, built from what the daemon knows), its start checks and the outbox kept read only (the owner's ask), not folded to fit.
+
+2026-10-21: taste-ledger raised it by 178, an earlier setup's thumbs as they are in its files (the classifier's three lists unchanged, the capture, the reply it rates, the taste part and its map row; the owner's ask), not folded to fit.
+
+2026-10-22: person-claim-rule raised it by 65, the person and quote shadow rules and their call (the owner's ask), not folded to fit.
+
+2026-10-22: people-card raised it by 56, the people room's card, the board bounce and the note burst (the owner asked why it took so long), not folded to fit.
+
+2026-10-22: figure-noise raised it by 90, the figure rule's same-thing test (label words, unit, the reply's own copy, a number's written forms) and its lookup in memory.on_file (the owner's ask), not folded to fit.
+
+2026-10-22: recall-warm raised it by 165, the pin that holds the keyword tables' pages mapped against the box's page-cache drops, its pass after a write and the doctor's cap counting them (the owner's ask: recall at 3 s), not folded to fit; its cold read cut the /keywords path the first build had (269).
+
+2026-10-21: transcribe raised it by 269, the transcribe tool (transcribe.py, 198), the voice note's arrival line and its Stop bounce, and the ledger's spend table with its writer, reader and morning line (the same table PR 76 adds; whichever merges second keeps one copy), not folded to fit; its cold read added 6 of the 269 (a Read of a recording is not hearing it, and the room's 10-minute tool timeout that lets a long recording's call finish).
+
+2026-10-22: voice_note raised it by 414, the voice_note tool (voice_note.py, 309: the box's recipe, both voices, the assembly, the probe and the waveform), Discord's voice message path in send_file (45), the daemon's tool and the spend writer it shares with transcribe (27), its words (16), the MCP tool (11) and the ability's key check (6) (the owner's ask: give it everything there is), not folded to fit.
+
+2026-10-22: paste-check raised it by 118: the fenced-block view (memory.py, 42: fenced(), earlier_blocks() and room_lines' `first`), the daemon's view kept for the day, its call off the loop, the send refusal and the Stop hook's fifth rule (33), Room.paste_check and its flag (20), the card's row for a refused send (18) and the words (5), not folded to fit.
+
+2026-10-22: sheet-hard (W23) raised it by 110: the sheet rule turned from a logger into a refusal in an owner's room, Room.sheet_check and its flag (27), the send refusal, the Stop hook's sixth rule and the session-start cut line said in the machine room (47), the shared sheet test (evidence.py, 11), the refusal's and the cut line's words (14), the doctor's fit check (9) and the cut lines a trim drops (context.py, 2) (a room that does not check gets things wrong), not folded to fit.
+
+2026-10-22: rules-fit raised it by 56: a rule filing fitted under the rules file's cap before it is written (memory.py, 49: the examples out newest first and its own first, to 150 under the cap, else the rule held in rules-overflow.md, a day-log line for each, a retried hold said once), the tail cut for the rules and rulebook parts (lifted/trim.py, 10), the strip and hold words (words.py, 4), the doctor's held count (3) and the held notice (daemon.py, 1), less the filing-time over-cap line and rules_over it replaces (context.py, 11 fewer) (seen that day: one rule's example pushed seven proven rules out of every session start), not folded to fit. Its cold read raised it by 5 more: the tail cut never ends inside an example that spans lines, a hand-kept rulebook's (lifted/trim.py, 5).
+
+2026-10-22: curate-rules raised it by 418: the rule files' proposals (curate.py, 408: the files every room loads, the merge, cut, condensation and promotion finders on the existing flat() and difflib, the week's shadow, taste and `yerk` evidence, the numbered proposals file, the machine-room card, the owner's --apply with its fit check, backup, on-trial record and byte-identical undo, and the nightly phase after the promotion), the --rules and --apply flags (cli.py, 9) and the card's words (1) (all of it, on the owner's word), not folded to fit. Its cold read raised it by 9 more: one message alone is no merge, the two jobs must overlap (curate.py overlap, 6), and a condensation never takes out an aside that holds a reason or a clause of the rule's own (REASON and its keep, 3).
+
+2026-10-22: recall-ratchet raised it by 37, the bench held to its own series ([recall] above: the run's exit 4 and the budget test) and the record weight in the fusion (memory.record, top six 99 to 105 on the same questions), not folded to fit (the owner's rule: memory changes land only through the bench); 38 on its first base, one fewer merged, since its settings() keyword shares the line main's `private` added.
+
+2026-10-23: said-or-noted raised it by 126: what a third person said, decided, wants or asked, or a quote of their words, turned back once a result in an owner's room from a turn with no reading call (Room.said_check and its flag, room.py, 19; the send refusal, the Stop hook's seventh rule and the owner's name from [import] me, daemon.py, 18; the words, 4), the person and quote rules kept to third persons with the "from my notes" pass (evidence.py, 41: people(), quotes(), speaker(), read_any()), a room's note never shown as anyone's words, a person's words filed with `said` and `source`, and each owner room's upload inbox a recall root (memory.py, 31; memindex.py, 9: its text kinds only; the doctor skips an inbox not made yet), the tool's two fields (mcp_server.py, 4) (never a wrong answer to the owner), not folded to fit; 18,291 merged on recall-ratchet (#87, 37), no line shared (settings() takes its `uploads` and #87's `imports` on the two lines each touched). Its cold read raised it by 1: a bare "told" ("286 posted, Sam told,") is the owner's own act in the passive, never a claim (evidence.py, PERSON).
+
+2026-10-21: web raised it by 9, the ledger's spend table, its read and the morning line, so the morning diff carries the day's spend (decision 32); the web plug-in itself (plugins/web, JavaScript) is outside this count, as every plug-in is. 0 of the 9 merged on transcribe (#77), which brought the same table, read and line; 18,292 merged on said-or-noted (#94).
+
+2026-10-23: deploy-private raised it by 28, `yerk deploy` with no --private taking the private and state folders from the running yerkd's unit, and refusing when there are none (deploy 26, cli 1, words 1), not folded to fit.
+
+2026-10-23: pictures-seen raised it by 224: a picture sent to an owner room is filed beside it and recalled (the owner asked for their pictures to be indexed), not folded to fit: pictures.py (74: the sidecar, its header by code, the pending list, the backfill brief), daemon.py (79: the seen tool, the backfill a batch at a time, one chain a room, its machine-room line), cli.py (25: `yerk pictures backfill`), memory.py (12: the mark), room.py (10: the Stop rule), mcp_server.py (9), words.py (10), workers.py (4: `bind`, `more`), memindex.py (1). 18,544 merged on deploy-private (#95), no line shared. Its cold read raised it by 4: a sidecar line longer than a recall cut keeps its mark in front (memory.py _cut); then by 2, the owner in their own photo in the `seen` tool's description and the backfill brief (mcp_server.py 1, pictures.py 1); then by 51, `yerk pictures backfill ROOM --root FOLDER` over a folder the room lists (an older room's photos): pictures.py 24 (root_of, the walk, the folder header), cli.py 9, memory.py 9 (a root's sidecar known by its header), daemon.py 5, memindex.py 2 (a sidecar indexed under any root), words.py 2. Then by 1: `yerk map --wire` measures a resumed session's newest request shape, never its first (context.py).
+
+2026-10-23: message-envelope raised it by 110: `yerk map --wire` reads each later message by part (context.py, 109: the part names and Claude Code's heads, hook_parts, envelope, in_text and made, render_wire's part table, its OVER read against each part's key and the week's five largest, and 8 in wire: the hook text Claude Code merges into its own block counted once, and a compaction's summary or Claude Code's caveat never a message; cli.py, 1: the room's time zone), not folded to fit. Measured that day in the work room: no Yerk AI part past its key on any of 303 messages. 18,712 merged on pictures-seen (#97), no line shared.
+
+2026-10-23: person-room-parity raised it by 53: a person's room reads what the other assistant told them where it watches and keeps what is sent to it as its own (a person's room, within nine minutes: the same article to both rooms, and the room could not see the other answer). discord.py 29 (`[watch] assistants` filed once settled, a card never, never answered), config.py 10 (the setting, ids only), memory.py 9 (the role and its mark, kept out of the pack; every room's inbox a root, its class the room's), words.py 2 (the refusal pointing at a person room's own lines), room.py 2, pictures.py 1, daemon.py 0 (the seen check one line shorter, the shell wall one longer: a room's own inbox is a memory root it reads). Its cold read raised it by 2: config.py (an id in `[watch] assistants` that is the owner's or one a room's `people` lists stops the start, since that person would never be answered again). 18,767 merged on message-envelope (#96), no line shared.
+
+2026-10-23: model-account-pin raised it by 76: /model's one argument read as an account (its name or digit), a model or both (config.py, 20: account_named, account_and_model), its daemon path, bare answer and suggestions (daemon.py, 31: model_command, tried, model_menu, model_picks, the digit in the settings tool), Discord's autocomplete for it answered to the owner alone (channels/discord.py, 16) and its words (words.py, 9) (the /model menu in Yerk the same, with every account), not folded to fit. 18,843 merged on model-account-pin (#103), no line shared.
+
+2026-10-23: status-card raised it by 255: `yerk status` and the room's /status in the box card's shape, live (the owner's ask: the same card as the box's, and the reset after the next one), not folded to fit. usage.py 128 (Claude Code's own `/usage` on each folder's login, never on a missing folder, parsed, kept a minute, three at a time, a read that does not ask never waiting on one that does), status.py 85 (two lines an account, the soonest week marked, the next two resets of each window, the next bill, the account the next turn tries, rooms on one account in one line), words.py 35 (the tags, the short times, the words), accounts.py 3 (`bill_day`), cli.py, daemon.py and discord.py 4 (the card asks live).
+
+2026-10-23: room-defaults raised it by 76: one tool set for every owner room, declared once in rooms.toml's [defaults] (one best way for every room, automatically; that morning web reach went to five rooms and hands to three by hand, a table at a time), not folded to fit. config.py 57 (the [defaults] reader and its refusals, {room} in a server's args and env, the inheritance with allow_remove, a room's tables as written), doctor.py 18 (the drift line: a default tool missed, a copy of a default), move.py 1 (`yerk room add` copies a room as written). 19,174 merged on status-card (#105), no line shared.
+
+2026-10-23: taste-eval raised it by 287: `yerk eval taste` from PR 93 (judge-2) without its shadow judge. The judge's prompt, its `claude -p` runner and its verdict with a failed call's own reason (evidence.py, 92), the replay (taste_eval.py, 161: the ledger join, the stratified sample, the scores per verdict beside phase 1's, the bar printed) and the command (cli.py, 34). Left out, 59 of PR 93's 346: the call after every reply to the owner on the room's account (daemon.py, 33), its recall pack, a read's first words and the shadow row (evidence.py, 24), the taste_judge room key (config.py, 1) and the morning count by verdict (ledger.py, 1), so no reply costs a judge call. Not folded to fit (the owner left PR 93 to the builder's judgment). Its cold read raised it by 1: a reply the row keeps outside `before` shows its own attachments to the judge, as phase 1's prompt does (evidence.py). 19,462 merged on room-defaults (#111), no line shared.
+
+2026-10-23: recall-pack-fit raised it by 22: every session-start part under its key by construction (the owner's screenshot showed one room's recall pack at 6,003 against its 6,000, its line counting the 749 left out 64 characters where 60 were kept for it and its items counted in code points, then 8 of the owner's lines cut from its middle and said). lifted/trim.py 17 (whole lines only, the marker counted in Claude Code's characters, shrunk until the whole text fits), memory.py 8 (the pack drops its oldest items whole with its head and that line measured; `chars` moved from context.py, 5), context.py 1 (one fit for every part, the compaction's re-add with it), hooks.py 2 (the topic hit's absence lines whole while they fit), daemon.py 0, taste.py 0 (its last resort drops a whole reply), less words.py 6 (the cut notice's heads), not folded to fit. 19,462 merged on taste-eval (#106), no line shared.
+
+2026-10-23: location raised it by 184: where the owner is, from the phone's fixes in yerkd.toml [location] (a line used only when asked went unused): location.py (140: the settings, the tail read, the place named by the places table's nearest radius as the watcher names it, the `place` part, the day's stays and their one day-log line replaced where it stands), cli.py (32: `yerk location day` and `yerk map` showing the part), daemon.py (6: the table read at start, place_for, its import), words.py (3), context.py (2: the part and its head), hooks.py (1), not folded to fit. 19,668 merged on taste-eval (#106) and recall-pack-fit (#107); cli.py's two command lines shared with #106, both kept.
+
+2026-10-23: sheets-and-pdfs raised it by 211: a workbook or a PDF sent to an owner room gets its text beside it, by code, and is recalled like a picture's sidecar (the owner asked which kinds of files it covers), not folded to fit: files.py (154: the extractors, one section a sheet or a page, the scan and the file that does not open named in one line, a missing library writing nothing, the cap and its count, the reading time's stop, the wait on upload), cli.py (27: `yerk files backfill`, --root, --dry-run), memory.py (7: the mark and mark_of, a cut keeping either mark), discord.py (17: on staging, an owner room's only, a message's files read side by side so it waits files.WAIT once; the arrival line names the text; a message taken after one still staging goes in after it, never before), words.py (4), memindex.py (2: the kinds and the header, a sidecar under any root), pictures.py (0: header and pending take a head and a filter). Built on 19,668 (#111, #106, #107, #109), no line shared.
+
+2026-10-23: missing-ability raised it by 330: a room that hits a wall files what it needed and one builder makes it for every room (one best way for every room, automatically), not folded to fit. needs.py 217 (the record and the page's blocks, the fold, curate's numbering around the needs, a person room's path check, the builder's brief, a builder's end read from its report), daemon.py 67 (the `need` tool, `yerk needs build` through /control, the completion hook and its machine-room line), cli.py 26 (`yerk needs list|build|done`), words.py 9, mcp_server.py 9 (the tool), curate.py 2 (its page keeps the needs and their numbers). Its cold read raised it by 6, all needs.py: a promotion's WHY ("once N are applied") renumbered with its list (3), a report that starts "no branch" built nothing whatever PR it mentions (2), the builder told that every name in a test or a doc is a placeholder (1). 20,215 merged on room-defaults (#111), taste-eval (#106), recall-pack-fit (#107), location (#109) and sheets-and-pdfs (#104); lines in cli.py, daemon.py and words.py shared with #104, #106 and #109, both sides kept.
+
+2026-10-23: curate-examples raised it by 92: a rule condensation keeps the rule's worked examples (the owner's ask: the day's rules pass proposed three condensations that took a rulebook's examples out with the file 3,451 under its line, all three declined). curate.py 87 (the staged cut: a clause said again or a hedge, then quoted asides, the examples last and only past the file's line; its WHY naming what it kept; the morning's list of the night's proposals by kind and number), jobs.py 3 (a `yerk` line in a script job runs on the unit's folders, never the fake example layer), morning.py 1, words.py 1. 18,935 merged on model-account-pin (#103), no line shared. 19,190 merged on status-card (#105), no line shared. 20,307 merged on missing-ability (#110), no line shared.
+
+2026-10-23: rules-on-demand raised it by 280: a rule the rules file has no room for loads when a message names its topic, where it sat in rules-overflow.md in no room (after the day's third held card, a way that costs no characters), not folded to fit. memory.py 106 (the topic tier: a rule's triggers, the rarity recall's search weighs a word by, the match, the scope mark and its call at filing, a filing at the cap into rules-topics.md, the one-time move of rules-overflow.md), curate.py 73 (the topic, gate and promote-from-topics proposals, the checks a gate names, a gate never applied), context.py 44 (the per-message topic block once a session, the rulebooks a scope reads, the rides `yerk map` shows), daemon.py 27 (the notice, the hook's ride, the reset at a compaction, the move at start and its machine-room line), memindex.py 10 (the stem and rarity rules lifted out to be shared), words.py 8, cli.py 5, doctor.py 4, hooks.py 3. Its cold read, 3 more in memory.py: a topic filing marks its job's older line in rules.md superseded, as its docstring said, where both stayed live; the move's hand-typed [rooms: ...] mark is one changed line. 20,590 merged on the train after #99: #103, #105, #111, #106, #107, #109, #104, #110 and #108. Lines shared and both kept: context.py and hooks.py with #107 and #109, daemon.py with #109, doctor.py with #111, words.py with #107; curate.py with #108, whose condense loop stands in for this PR's copy of the old one, its topic and gate block after it.
+
+2026-10-24: shrink-1 lowered it by 725, by deletion alone (ROADMAP-v3 claim 9, run 1 of three; no line folded): the watcher job kind 380 (never in the owner's jobs file; its 7 ledger rows were the yerk-test drill of Oct 18), the cron and `every` parser 152 net (`schedule` is a systemd calendar line; the line that refuses a cron schedule with its replacement, and the doctor's line for it, are in), console mode 84 (its channel is tests/fake_channel.py now), the two one-off migrations whose job is done 88, the evidence check's file and decide rules 21 (0 rows in six days). Kept by their premises: the script job kind (two live jobs) and VoiceFile.to_dict (discord.py calls it on every voice note).
+
+2026-10-24: gate-live-step raised it by 57, `yerk deploy` holding the layer's recall controls after the fast tests, on the code under test in its tree (deploy 27: the check and its card lines; memory 23: the controls on the exact half, a miss once more through the meaning half, the hit rule shared with the bench, and ranked's `weigh`, which deep recall turns off so its lines stay as they were; cli 5, words 2), not folded to fit. The exact half alone weighing a stored message as the fused rank does is in the lines that were there.
+
+2026-10-24: merged with shrink-1 (#112, main ed8044a): its 19,865 plus gate-live-step's 57 is 19,922, counted on the merged tree; cli.py and words.py, which both changed, merged with no line in common.
+
+2026-10-24: attachments-root raised it by 38: the files a moved room brought are recallable (found that day: 985 files in four rooms' <layer>/NAME-attachments with no sidecar, as root_of refused every folder in the private folder), not folded to fit. move.py 14 (the folder joins a block's `also` when it has one, yerkd.toml's [memory] also named by hand, the two backfills as the last steps), doctor.py 10 (one line a room with the counts and the commands), context.py 5 (the folder's one name, attachments_dir), words.py 4, pictures.py 3 (root_of takes that folder, listed in the room's own `also`), memindex.py 2 (a recording's NAME.transcript.txt a sidecar kind of a listed folder, as a picture's seen file is). 19,960 merged after #112 and #114 (main 8ae7760): 19,922 + 38. Lines shared and both kept: doctor.py's import (#112's jobs with this PR's files and pictures); README and words.py, which #114 also changed, merged with no line in common.
+
+2026-10-24: send-own-channel raised it by 16: a room's own channel id is the room itself in the send tool and its gate (found that day: a room asked to post a picture in its own chat passed its channel id, the gate held it as a send to another room, and the send would have answered no room by that id), not folded to fit. gates.py 15 (room_named, the one resolver: a room's name, its rooms.toml channel or the id alone; external_hit reads it with the rooms' confs and names a held send's room by it), daemon.py 1 (the send tool resolves `room` through it before its checks). 19,976 on main 9d9e05b (#116): 19,960 + 16.
+
+2026-10-24: measured-budgets raised it by 72: the budget gate reads what Claude Code sends (found that day: Claude Code's parts were counted at their line, so three rooms sent the hands plug-in, web_image and a person's room's Edit and Write past theirs and nothing saw it), not folded to fit. context.py 72 (`sent`, the one read: the room's newest transcript, its newest shape alone, Claude Code's prompt split where that start's file began, each tool entry under its line, a line named `mcp__...` a plug-in's; `violations` naming such a part first; the wire view's rows from the same read, the first message's blocks outside its total), morning.py 2 (each room as sent and its gap, a part past its line red), cli.py -2 (`yerk map --wire` finds the transcript through the same read). 20,048 on main 30ea8dc (#117): 19,976 + 72.
+
+2026-10-24: backup-restore raised it by 300: `yerk backup` and `yerk restore` (the audit's section G item 3, PR 65's design: an install with no backup loses everything to one bad disk), not folded to fit. backup.py 265 (the archive and its manifest, the last N kept, a restore read whole against the manifest before it writes, the move aside, the daemon's lock), cli.py 23 (the two commands), doctor.py 7 (a backup past 36 h, or none under a [backup] table), status.py 4 (the card's line, and --json's backup_age through backup.newest: a missing [backup] path had read as the current folder), words.py 1. 20,276 on main 30ea8dc (#117): 19,976 + 300.
+
+2026-10-24: merged with measured-budgets (#123, main dbb06f8): its 20,048 plus backup-restore's 300 is 20,348, counted on the merged tree; cli.py and words.py, which both changed, merged clean.
+
+2026-10-24: fusion-levers raised it by 3: the keyword rank's part of the fusion, SHARE 0.4 where both ranks counted alike (memory.py 3: SHARE and its measured note 2, fuse's docstring on the two parts 1; its `share` argument and the loop's parts are in the lines that were there), measured alone on the 164-question set (top six 103 to 107, top one 59 to 62, no control lower), not folded to fit. The three levers measured alone after it and deleted (name and field boosts, the tense order, alias rewriting) leave no line. 19,979 on main 30ea8dc (#117): 19,976 + 3.
+
+2026-10-24: merged with measured-budgets (#123, main dbb06f8): its 20,048 plus fusion-levers' 3 is 20,051, counted on the merged tree; no .py file changed on both sides (#123: cli, context, morning, words; #118: memory).
+
+2026-10-24: merged with backup-restore (#128, main 9f53348): its 20,348 plus fusion-levers' 3 is 20,351, counted on the merged tree; no .py file changed on both sides (#128: backup, cli, doctor, status, words; #118: memory).
+
+2026-10-24: import-openclaw raised it by 207: `yerk import openclaw:<workspace dir>`, a box's notes copied into <private>/openclaw/<its name> by the memory copy inventory's rules (the owner's ask, claim 17), not folded to fit. sources.py 205 (the parts and their rules, the doctor's secret shapes written as their kind, the record by path and sha256 so a second run writes nothing, the refusals, and the yerkd.toml and rooms.toml lines that read the copies, printed and never written), move.py 1 and cli.py 1 (the source named). 20,183 on main 30ea8dc (#117): 19,976 + 207.
+
+2026-10-25: merged with backup-restore (#128, main 9f53348, after #123): its 20,348 plus import-openclaw's 207 is 20,555, counted on the merged tree; cli.py and README.md, which both changed, merged with no line in common.
+
+2026-10-25: import-openclaw's cold read fix raised it by 7: on an import the key is the tell, not the value (the cold read found `token: abc123`, a pin, a password with no digit and an Authorization header crossing under the doctor's 16 character floor), not folded to fit. sources.py 7 (KEYED, the secret keys with `:` or `=` and its comment, and withheld's shapes: the doctor's, its password line run to the line's end, KEYED as its token line). 20,555 + 7 = 20,562.
+
+2026-10-25: merged with fusion-levers (#118, main 3255849): its 20,351 plus import-openclaw's 214 (207 and the fix's 7) is 20,565, counted on the merged tree; no .py file changed on both sides (#118: memory; this PR: sources, move, cli).
+
+2026-10-24: decision-receipts raised it by 169: a call a room makes for the owner shows its receipt in the morning diff (claim 19, decision 45, the owner's Oct 21 ask), not folded to fit. evidence.py 56 (calls, the trigger read by code off words.CALL; receipts and receipt_rows, the join to the turn's reads and the recall the prompt hook handed it, kept apart from the session-start file every turn carries), cli.py 39 (`yerk calls fix`, the correction through memory.remember, a persona or a rule file refused), morning.py 28 (a call's line and its receipt, the cap of 20, a person's room counted, the fix), ledger.py 20 (the calls table and its four methods), words.py 17 (the shape and the lines), daemon.py 9 (a row per call of a reply no Stop rule turned back). 20,145 on main 30ea8dc (#117): 19,976 + 169.
+
+2026-10-25: merged with backup-restore (#128) after measured-budgets (#123), main 9f53348: its 20,348 plus decision-receipts' 169 is 20,517, counted on the merged tree; cli.py's subcommand list kept both PRs' parsers, and morning.py, words.py and README, which both changed, merged with no line in common.
+
+2026-10-25: the cold read's two fixes raised it by 3, not folded to fit: words.py 3 (the had rule, "I'd put" or "I'd set" with a past-time word later in the sentence, and its comment; "should've" with no space before 've on the same line). 20,520 on main 9f53348 (#128): 20,517 + 3.
+
+2026-10-25: merged with fusion-levers (#118, main 3255849): its 20,351 plus decision-receipts' 172 (169 and the fixes' 3) is 20,523, counted on the merged tree; no .py file changed on both sides (#118: memory; #119: cli, daemon, evidence, ledger, morning, words).
+
+2026-10-25: merged with import-openclaw (#125, main b81731f): its 20,565 plus decision-receipts' 172 is 20,737, counted on the merged tree; cli.py, which both changed (#125 the import's help, #119 `yerk calls`), and README merged with no line in common.
+
+2026-10-24: bench-kinds raised it by 17: the recall bench scores the episodic and self kinds beside the recall one, apart and together, and holds each to its own ratchet (ROADMAP-v6 step 4, the judge v5 promised for those two sets), not folded to fit. memory.py 13 (KINDS, score, the bench reading <kind>-questions.json beside the recall file, the ratchet a kind at a time with its kind in the note), cli.py 4 (the series row's kinds, a line and a ratchet per kind). 19,993 on main 30ea8dc.
+
+2026-10-24: merged with measured-budgets (#123) and backup-restore (#128), main 9f53348: its 20,348 plus bench-kinds' 17 is 20,365, counted on the merged tree; cli.py, README and tests/test_budget.py, which both changed, merged clean.
+
+2026-10-25: merged with fusion-levers (#118) and import-openclaw (#125), main b81731f: its 20,565 plus bench-kinds' 17 is 20,582, counted on the merged tree; memory.py (#118's SHARE in fuse, this PR's bench and ratchet), cli.py, tests/test_embeddings.py and README.md, which both changed, merged with no line in common.
+
+2026-10-25: merged with decision-receipts (#119, main a5c4389): its 20,737 plus bench-kinds' 17 is 20,754, counted on the merged tree; cli.py (#119's `yerk calls`, this PR's recall-bench) and README.md, which both changed, merged with no line in common.
+
+2026-10-24: addons-1 raised it by 355, part one of the core and the add-ons (ROADMAP-v6 step 3): the loader, addons.py 295 (`yerk add` from a folder, a git URL or the repo the registry names, its checks, the size ceiling among them, the marked blocks in rooms.toml and yerkd.toml, the units, `yerk remove`, the budget lines and rooms.toml keys an installed add-on brings), words.py 23, cli.py 20, abilities.py 13 (the on state read from the install and from each entry's `keys`, the three names checked by hand and the voice_note import gone), status.py 2, deploy.py 1, memory.py 1; not folded to fit. 20,331 on main 30ea8dc (#117): 19,976 + 355. The core's target is under 10,000 after the extractions (parts two and three), not with this one.
+
+2026-10-24: addons-1 merged with main 9f53348 (#123 measured-budgets and #128 backup-restore): main's 20,348 plus this PR's 355 is 20,703, counted on the merged tree; cli.py's parser loop and command map and doctor.py's import, which both changed, keep both sides' names.
+
+2026-10-25: addons-1's fix after its cold read raised it by 20: check() refuses a name that is not one plain word, an install table that is not a table, a budget value that is not a whole number and a words, tests or unit path outside the add-on's folder (addons.py 9); the widened except that undoes a late failure is 0; the `reads` install key, an attachment type to one of the add-on's own allowed tools, named under a room's [attachment] line (the cold read's video-read hook: addons.py 8, channels/discord.py 2, words.py 1). 20,703 + 9 + 11 is 20,723.
+
+2026-10-25: addons-1 merged with main 3255849 (#118 fusion-levers): main's 20,351 plus this PR's 375 (355 + 20) is 20,726, counted on the merged tree; memory.py, which both changed (#118: the fusion's SHARE; #124: one line), merged clean.
+
+2026-10-25: addons-1 merged with main b81731f (#125 import-openclaw): main's 20,565 plus this PR's 375 is 20,940, counted on the merged tree; cli.py and README.md, which both changed, merged clean.
+
+2026-10-25: addons-1 merged with main 915a364 (#119 decision-receipts, then #126 bench-kinds): main's 20,754 plus this PR's 375 is 21,129, counted on the merged tree; cli.py's parser loop, which both changed (#119's `yerk calls`, this PR's `yerk add` and `yerk remove`), keeps both sides' names; daemon.py, memory.py, words.py and README.md merged clean.
+
+2026-10-24: quiet-doctor raised it by 108: the doctor's severities and a fix on every finding, the weekly rule-shape line, the scope change said once, the timers check, `yerk doctor --scrub`, and the deploy installing a timer the box lacks (the audit that day: yerk-curate.timer never installed, so the night's curation never ran there), not folded to fit. doctor.py 78 (leaked, unshaped and scrub among them, and the drift line's fix), deploy.py 22 (timers and its call), cli.py 8 (--scrub, --timers), words.py 0 (doctor: clean; SHAPE_OK, read by nothing now, gone). 20,084 on main 30ea8dc (#117): 19,976 + 108. 20,156 merged after #123 (main dbb06f8): 20,048 + 108. cli.py and words.py, which #123 also changed, merged with no line in common. 20,457 merged after #128 (main 9f53348): 20,348 + 108, and 1 for the doctor's check loop, which wraps one more line with both checks in it (joined, a line would pass ruff's 160); doctor.py and cli.py, which #128 also changed, keep both sides (its backup check beside the timers check, its two subcommands in the --private loop).
+
+2026-10-25: quiet-doctor merged with main b78b172 (#118, #125, #119, #126, then #124 addons-1): main's 21,129 plus this PR's 109 is 21,238, counted on the merged tree; cli.py (the --timers argument, then #124's and #119's names in the --private loop), deploy.py (both imports) and doctor.py (this PR's severity and fix on each room finding, over #124's known keys) keep both sides; tests/test_doctor.py's add-on key test reads the finding and the clean line as this PR's doctor says them; words.py and tests/test_deploy.py merged clean.
+
+2026-10-24: latency-bench raised it by 180: claim 18's judge, which did not exist, and the dead_turns query that held `yerk status --json` for 111 s, not folded to fit. latency.py 136 (`yerk bench latency`: the first line, the queue wait, the turn, the hooks, Yerk's tools and the cache hit rate per room from the ledger read only and the logs, the file the next run diffs, the day's medians), ledger.py 18 (dead_turns as lookups, its docstring saying why; waits with the turn and room; the timing rows; read_only), cli.py 17 (the bench command), morning.py 4 and status.py 3 (the day's medians against the day before, and on the card), words.py 2. 20,156 on main 30ea8dc: 19,976 + 180.
+
+2026-10-24: merged with main 9f533481 (#123 measured-budgets and #128 backup-restore): its 20,348 plus latency-bench's 180 is 20,528, counted on the merged tree; cli.py (the bench command beside backup and restore) and status.py (the speed key and line beside the backup's) took both sides, morning.py and words.py merged clean.
+
+2026-10-25: merged with main 3255849 (#118 fusion-levers): its 20,351 plus latency-bench's 180 is 20,531, counted on the merged tree; no .py file changed on both sides (#118: memory; #121: cli, latency, ledger, morning, status, words).
+
+2026-10-25: merged with main b81731f (#125 import-openclaw): its 20,565 plus latency-bench's 180 is 20,745, counted on the merged tree; cli.py, which both changed, merged clean (the bench command beside the import's source); no other .py file changed on both sides (#125: sources, move; #121: latency, ledger, morning, status, words).
+
+2026-10-25: latency-bench merged with main 7716086 (#119, #126, #124 addons-1, then #120 quiet-doctor): main's 21,238 plus this PR's 180 is 21,418, counted on the merged tree; cli.py keeps every side: the bench parser's `bn` beside #124's `ad, rm` and #119's `cl` in the --private loop under #120's --timers argument, and the command map's "bench" beside #124's add and remove; ledger.py, morning.py, status.py and words.py, which both changed, merged clean.
+
+2026-10-24: docs-from-code raised it by 356: Yerk AI's own docs written from the code, `yerk docs own` (decision 16; the audit's section G, items 4 and 5), not folded to fit. owndocs.py 232 (the six pages: commands from the three installed commands' parsers, tools from the MCP server's own list, settings from the key tables, budgets from this file's comments, hooks, units; the writer and its dry run), config.py 96 (ROOM_WORDS, every rooms.toml key in plain words, ROOM_KEYS now its keys; YERKD_WORDS, every yerkd.toml key not described where it is read), cli.py 11 (the `own` action and parser(), split out of main so the page can read it), hooks.py 9 (EVENTS, what each event does, out of the module docstring and made true to the daemon's seven Stop checks), daemon.py 4 and memindex.py 4 (their parser()). 20,332 on main 30ea8dc (#117): 19,976 + 356.
+
+2026-10-25: merged with measured-budgets and backup-restore (#123 and #128, main 9f53348): their 20,348 plus docs-from-code's 356 is 20,704, counted on the merged tree; cli.py, which all three changed, merged clean.
+
+2026-10-25: the cold read of #122 and its fix raised it by 2: config.py 2 (YERKD_WORDS names [discord] guild, which `yerk setup-room` reads, and [backup] keep and units, which backup.py reads since #128, with path in #128's words; so settings.md has every yerkd.toml key the package reads by name, which test_owndocs now checks both ways). 20,706: 20,704 + 2.
+
+2026-10-25: merged with fusion-levers (#118, main 3255849): its 20,351 plus this branch's 358 (docs-from-code's 356 and the cold read's 2) is 20,709, counted on the merged tree; no .py file changed on both sides (#118: memory).
+
+2026-10-25: merged with import-openclaw (#125, main b81731f): its 20,565 plus this branch's 358 (docs-from-code's 356 and the cold read's 2) is 20,923, counted on the merged tree; cli.py, which both changed, merged clean.
+
+2026-10-25: docs-from-code merged with main 44a5281 (#119, #126, #124, #120, #121): main's 21,418 plus this PR's 358 is 21,776, counted on the merged tree; cli.py and daemon.py, which both changed, merged clean. What main added to the old README went to the page that holds its section now: #126's Status line to docs/STATUS.md, #119's two lines and #124's Add-ons section to docs/GUIDE.md; `yerk docs own` wrote commands.md and budgets.md.
+
+2026-10-25: worker-effort raised it by 3, a worker's thinking level and the room's live /effort and /model (the owner's ask), the rest folded to fit (one import line, the argv splat, the stdin dup).
+
+2026-10-25: worker-effort merged with main 9d06eba (#124, #120, #121, then #122 docs-from-code): main's 21,776 plus this PR's 3, and 1 for `[workers] effort`'s line in config.YERKD_WORDS (#122's key table, which test_owndocs checks both ways), is 21,780, counted on the merged tree; cli.py and daemon.py, which both changed, merged clean; `yerk docs own` wrote commands.md (--effort), tools.md (the worker tool's effort), settings.md and budgets.md.
+
+- `lines = 21780`

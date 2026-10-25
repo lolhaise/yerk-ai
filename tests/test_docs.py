@@ -179,10 +179,10 @@ def test_yerk_doctor_refreshes_the_docs_once_a_week_never_with_fetch_off_and_say
     assert doctor.main(priv, state, refresh=True) == 0 and seen == ["text/markdown"]
     assert doctor.main(priv, state, refresh=True) == 0 and len(seen) == 1   # inside the week: nothing fetched
     (priv / "yerkd.toml").write_text(f'[docs]\nrefresh_days = 1\n[docs.pages]\nguide = "{url}/page"\ngone = "{url}/gone"\n')
-    assert doctor.run(priv, state, now=time.time() + 2 * DAY, refresh=True)[0].startswith("docs: 1 page not fetched, first gone: HTTPError")
+    assert doctor.run(priv, state, now=time.time() + 2 * DAY, refresh=True)[0].startswith(f"{words.WORKING} docs: 1 page not fetched, first gone: HTTPError")
     accounts, cool, led = load_accounts(priv / "accounts.toml"), Cooldowns(state / "cooldowns.json"), Ledger(state / "ledger.sqlite")
     lines, _ = morning.build(priv, state, accounts, cool, led, {"started": time.time() - DAY, "units": []}, time.time() + 2 * DAY)
-    assert any(x.startswith(f"{words.NOT_DONE} doctor: 1 found, docs: 1 page") for x in lines)
+    assert any(x.startswith(f"{words.WORKING} doctor: 1 found, docs: 1 page") for x in lines)
 
 
 def test_the_morning_diff_says_a_changed_page_as_a_finding(site, tmp_path):
@@ -245,7 +245,7 @@ def test_a_page_cut_off_mid_read_is_a_failure_of_that_page_and_never_stops_the_d
     def cut(u):
         raise http.client.IncompleteRead(b"half")
     monkeypatch.setattr(docs, "fetch", cut)
-    assert doctor.run(priv, state, refresh=True)[0].startswith("docs: 1 page not fetched, first guide: IncompleteRead")
+    assert doctor.run(priv, state, refresh=True)[0].startswith(f"{words.WORKING} docs: 1 page not fetched, first guide: IncompleteRead")
     monkeypatch.setattr(docs, "refresh", lambda *a, **k: 1 / 0)
     out = doctor.run(priv, state, refresh=True)
-    assert out[0] == "docs: not refreshed, ZeroDivisionError: division by zero" and len(out) == 1
+    assert out[0] == f"{words.WORKING} docs: not refreshed, ZeroDivisionError: division by zero" and len(out) == 1

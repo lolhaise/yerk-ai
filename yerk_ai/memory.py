@@ -68,6 +68,7 @@ class Settings:
     uploads: tuple[Path, ...] = ()  # each room's <state>/rooms/<room>/work/inbox, its text files a root (memindex.UPLOADS)
     private: Path | None = None     # the private folder: where an ability's other key files are looked for (abilities.state)
     imports: Path | None = None     # <private>/imports: what `yerk import` stores, texts and mail, a message a line (sources.py)
+    state: Path | None = None       # the state folder: where the installed add-ons are (abilities.state, addons.py)
 
     @property
     def daily(self) -> Path:
@@ -130,7 +131,7 @@ def settings(private: Path, state: Path, conf: dict[str, Any] | None = None) -> 
                     embeddings_width=int(conf.get("embeddings_width") or conf.get("embeddings_dim") or 256),
                     index_status=state / "memory" / "index.json",
                     recall_chars=max(100, int(conf.get("recall_chars", RECALL_CHARS))), cites=tuple(cites.items()), docs=docs, uploads=tuple(uploads),
-                    private=private, imports=(private / "imports").resolve())
+                    private=private, imports=(private / "imports").resolve(), state=state)
 
 
 # the embedding settings a user with another model or budget can pick, described from the code (run 5):

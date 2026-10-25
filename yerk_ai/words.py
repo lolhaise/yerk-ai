@@ -304,6 +304,7 @@ PICTURES_RUNNING = "{room}: a backfill runs already, one batch after another; it
 PICTURES_BATCH = "pictures backfill {room}: batch {n} of {of} {how}, {filed} of {count} filed{then}"
 PICTURES_NEXT, PICTURES_STOP, PICTURES_DONE = "; batch {n} started", "; stopped, {left} left: run it again", "; done"
 FILE_TEXT = "[its text, extracted by code] saved at {path}"     # under a workbook's or a PDF's [attachment] line (files.py)
+ADDON_READS = "[read by an add-on] {name} is read through {tool}, an installed add-on's tool: call it on the path above"   # addons.reads
 FILES_PERSON = "{room} is not an owner room: a workbook or a PDF sent there is never read"
 FILES_BACKFILL = "{n} workbook(s) and PDF(s) in {where} with no text beside them or an older one; {done}"
 FILES_WRITTEN, FILES_DRY = "written", "nothing written (--dry-run)"
@@ -365,12 +366,35 @@ def needs(what: str, provider: str, ability: str, meanwhile: str) -> str:
 
 # abilities (yerk abilities, yerk explain)
 ABILITY = {"on": (DONE, "on"), "needs": (WORKING, "needs {provider}"), "free": (NOTHING, "runs on the free path"),
-           "described": (NOTHING, "known, not built")}
+           "described": (NOTHING, "known, not built"), "installed": (DONE, "installed, version {version}"),
+           "available": (NOTHING, "not installed: yerk add {name}"), "broken": (NOT_DONE, "installed, missing {what}")}
 
 
 def ability(state: str, **say: Any) -> tuple[str, str]:
     mark, text = ABILITY[state]
     return mark, text.format(**say)
+
+
+# `yerk add` and `yerk remove` (addons.py): each step as done, and as a dry run says it would be (step)
+ADD_STEP = {"fetch": ("fetched", "fetch", "{src}"), "check": ("checked", "check", "{name} {version}: {lines} lines of code, its ceiling {size}"),
+            "package": ("installed", "install", "its package {package}"), "server": ("wrote", "write", "[defaults.mcp.{name}] and {n} allow line(s) in rooms.toml"),
+            "tables": ("wrote", "write", "{tables} in yerkd.toml"), "units": ("linked", "link", "{units} into {into}"),
+            "budgets": ("counted", "count", "budget line(s) {lines} while it is installed"),
+            "words": ("kept", "keep", "its words file {words} under the style test"), "tests": ("ran", "run", "its fast tests ({said})")}
+REMOVE_STEP = {"server": ("took", "take", "[defaults.mcp.{name}] and its allow lines out of rooms.toml"),
+               "tables": ("took", "take", "{tables} out of yerkd.toml"), "units": ("unlinked", "unlink", "{units}"),
+               "package": ("uninstalled", "uninstall", "its package {package}"), "folder": ("moved", "move", "its folder to the trash")}
+ADD_NONE = "no add-on {source}: name a folder, a git URL or an ability with a repo ({names})"
+NOT_ADDED, ADD_TESTS_FAILED, ADD_DRY = "not added: {why}", "its fast tests failed: {said}", "dry run: nothing written"
+ADDED, REMOVED, NOT_REMOVED = "added {name} {version}: the rooms get it at yerkd's next start", "removed {name}", "not removed: no add-on {name} is installed"
+ADDONS, NO_ADDONS, OF_ADDON = "add-ons: {names}", "none installed", "the fast tests of add-on {name} failed"
+NOT_UNINSTALLED = "not uninstalled: its package {package}; the rest is removed"
+
+
+def step(steps: dict[str, tuple[str, str, str]], key: str, dry: bool, **say: Any) -> str:
+    """A `yerk add` or `yerk remove` step, state first: done, or what a dry run would do."""
+    past, base, rest = steps[key]
+    return f"{PLAIN} would {base} {rest.format(**say)}" if dry else f"{DONE} {past} {rest.format(**say)}"
 
 
 # status (yerk status, the card): the colour only where it means something (an account at or near
@@ -428,13 +452,15 @@ PAYLOAD, PART = "{name}: {size:,}, {left:,} left", "{room} {part}: {change} char
 OVER_PART = "{name}: {size:,} > {line:,}"           # "room part", a Claude Code part past its line: the deploy's gate refuses
 ANSWERED, SINCE = "{day}: {n} messages answered", " since {at}"
 WAIT, FIRST_LINE = "queue wait: {mid} typical, {worst} worst", "first line: {mid} typical, {worst} worst"
+SPEED = "{day}: first line {first}, turn {turn}"                     # the day's medians (latency.medians) on the status card
+SPEED_WAS, SPEED_OF = "{what} {now}, day before {was}", {"first": "first line", "turn": "turn"}   # the morning's, against the day before
 SHADOW, NO_SHADOW = "shadow flag {rule}: {n}", "shadow flags: none"
 SPENT = "spent {day}: US${usd:.2f} on {n} calls"                     # the spend rows, one per paid call (ledger.spent)
 UNKNOWN, NOT_ANSWERING_WHY = "{what}: unknown, {why}", "yerkd not answering"
 DEAD, NO_YERKD, NO_DEAD = "dead turns: {n}, {name}, last {at}", "no yerkd answers", "dead turns: none in 24h"
 SWEPT, SWEEP_FAILED = "swept: {kinds}", "retention failed: {why}"     # the night's sweep (retention.py)
-DOCTOR_OK, DOCTOR, NO_RUN = "doctor: ok", "doctor: {n} found, {first}", "one more line 00for"     # the case before (the.next)
-DOCS_CHANGED, SHAPE, SHAPE_OK = "docs changed: {slug}", "rule shape: {counts}", "waits in: the, {n} before"  # docs, shape
+DOCTOR_OK, DOCTOR, NO_RUN = "doctor: clean", "doctor: {n} found, {first}", "no run in 24h"  # the daily check (doctor.py)
+DOCS_CHANGED, SHAPE = "docs changed: {slug}", "rule shape: {counts}"         # docs, the weekly rule-shape line
 CURATE_OK, CURATE = "curate: {n} landed, {m} swept", "curate: {n} to read, {first}"     # the night's curation (curate.py)
 CURATE_RUNNING, CURATE_CUT = "curate: running since {at}", "curate: cut off at {at}, {n} to undo"
 RULES_CARD, RULES_MORE, RULES_APPLY = "rules: {n} proposed, -{chars} chars", "and {n} more in the proposals file", "apply: yerk curate --apply {day} N"

@@ -69,18 +69,25 @@ def test_the_mechanics_and_the_example_layer_are_in_the_shape(tmp_path):
     assert "`<example>` tags, marked landed or bounced" in text and "`docs/claude/` and `docs/shape/`" in text
 
 
-def test_the_doctor_says_a_rule_file_past_the_shape_writes_each_rooms_report_of_its_class_and_the_morning_line(tree, capsys):  # noqa: F811
+def test_the_rule_shape_counts_are_one_weekly_line_said_on_sunday_or_the_day_one_rose_and_each_rooms_report_is_written(tree, capsys):  # noqa: F811
+    """quiet-doctor (2026-10-24): the counts were six lines every day, read by no one. Now one line, on the Sunday run or
+    the run a count rose since the last; the daily run and the morning diff are quiet about them otherwise."""
     priv, state, *_ = tree
-    assert doctor.main(priv, state) == 0 and capsys.readouterr().out == ""
+    assert doctor.main(priv, state) == 0 and capsys.readouterr().out == f"{words.DONE} doctor: clean\n"
     accounts, cool, led = load_accounts(priv / "accounts.toml"), Cooldowns(state / "cooldowns.json"), Ledger(state / "ledger.sqlite")
     lines, _ = morning.build(priv, state, accounts, cool, led, {"started": time.time() - DAY, "units": []}, time.time())
-    n = json.loads((state / "doctor.json").read_text())["shape"]["lines"]
-    assert words.line(f"{words.PLAIN} rule shape: clean, {n} lines") in lines
+    assert json.loads((state / "doctor.json").read_text())["shape"]["lines"] > 0 and not [x for x in lines if "rule shape" in x]
     (priv / "rulebook.md").write_text((priv / "rulebook.md").read_text() + "- NEVER guess a date.\n")
-    assert doctor.main(priv, state) == 1
-    assert capsys.readouterr().out == "rule shape rulebook.md: 1 no why, 1 loud, first line 12\n"
+    week = "; 1 past budgets.toml [shape], `yerk docs shape` names each line"
+    assert doctor.main(priv, state) == 1                                   # a count rose: said today, whatever the day
+    assert capsys.readouterr().out == f"{words.WORKING} rule shape: 1 no why (+1), 1 loud (+1){week}\n"
     lines, stamp = morning.build(priv, state, accounts, cool, led, {"started": time.time() - DAY, "units": []}, time.time())
-    assert words.line(f"{words.WORKING} rule shape: 1 no why, 1 loud") in lines and "doctor rule shape rulebook.md: 1 no why, 1 loud, first line 12" in stamp["findings"]
+    assert words.line(f"{words.WORKING} rule shape: 1 no why (+1), 1 loud (+1){week}") in lines and not [k for k in stamp["findings"] if k.startswith("doctor")]
+    t = time.localtime()            # by the calendar, not k * DAY: a clock change makes a day 25 hours (Nov 1 2026, "Monday" at 00:xx was Sunday 23:xx)
+    ahead = (doctor.SUNDAY - t.tm_wday) % 7 or 7
+    sunday, monday = (time.mktime((t.tm_year, t.tm_mon, t.tm_mday + d, t.tm_hour, t.tm_min, t.tm_sec, 0, 0, -1)) for d in (ahead, ahead + 1))
+    assert doctor.run(priv, state, now=sunday) == [f"{words.WORKING} rule shape: 1 no why, 1 loud{week}"]     # the weekly run
+    assert doctor.run(priv, state, now=monday) == []                      # Monday, no count up: nothing
     report = state / "docs" / "shape" / "example-room.md"
     assert memory.file_class(report) == ("room", "discord:CHANNEL_ID") and "- loud, line 12: - NEVER guess a date." in report.read_text()
     m = memory.settings(priv, state)
@@ -95,8 +102,8 @@ def test_a_rule_filed_in_the_last_day_that_misses_the_shape_is_named_by_its_cite
     assert filed["ok"]                                                      # a room is never blocked from filing a rule
     assert doctor.main(priv, state) == 1
     out = capsys.readouterr().out.splitlines()
-    assert f"rule shape {filed['cite']}: filed in the last day with a negative with no why; file it again in the shape" in out
-    assert not [x for x in doctor.run(priv, state, dry=True, now=time.time() + 2 * DAY) if x.startswith(f"rule shape {filed['cite']}")]
+    assert f"{words.WORKING} rule shape {filed['cite']}: filed in the last day with a negative with no why; file it again in the shape" in out
+    assert not [x for x in doctor.run(priv, state, dry=True, now=time.time() + 2 * DAY) if x[2:].startswith(f"rule shape {filed['cite']}")]
     memory.rule(m, "example-room", "m2", "dates", "take a date from a file, since a guessed date reads as fact")
     assert doctor.main(priv, state) == 0                                   # the old line is superseded, so never loaded
 

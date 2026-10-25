@@ -1,4 +1,4 @@
-# yerkd.toml: the daemon's settings, in the private folder beside rooms.toml (README: The private folder). Every value here
+# An example yerkd.toml, the settings of yerkd, the program that stays running, carries every room's messages and runs
 # is a placeholder.
 
 [discord]
@@ -11,7 +11,7 @@ owner = "<your Discord user id>"          # the owner, answered in every room
 assistants = ["<the other assistant's bot user id>"]
 
 [location]
-# Where the owner is, from a phone's fixes (README: The private folder): the `place` part in an owner room's messages and
+# Where the owner is, from a phone's fixes (docs/GUIDE.md: The private folder): the `place` part in an owner room's messages and
 # `yerk location day`. Both files are only read, and nothing goes to the network. No table, no part.
 file = "<the fixes file: one JSON fix a line, ts_iso, lat, lon, speed_mps>"
 places = "<the named places: {\"places\": [{\"label\", \"lat\", \"lon\", \"radius_m\"}]}>"
