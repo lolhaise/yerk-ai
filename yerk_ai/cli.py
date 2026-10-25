@@ -201,6 +201,39 @@ def cmd_needs(a: argparse.Namespace) -> int:
     return 0 if r else 2
 
 
+def cmd_calls(a: argparse.Namespace) -> int:
+    """`yerk calls fix ID PATH:LINE NOTE` (claim 19): the correction for a call that stood on a wrong line, filed the way
+    `remember` files one (a note in the call's room's day log naming the line it supersedes, that line marked), citing the
+    call; never into a persona or a rule file. The next morning diff shows it."""
+    from . import words
+    from .config import load_toml, room_id
+    from .ledger import Ledger
+    priv, state = private_dir(a.private), state_dir(a.state)
+    conf = load_toml(priv / "yerkd.toml") if (priv / "yerkd.toml").is_file() else {}
+    s, confs, led = memory.settings(priv, state, dict(conf.get("memory", {}))), rooms(priv), Ledger(state / "ledger.sqlite")
+    kept = {str((priv / str(v)).resolve()) for c in confs.values() for k in ("persona", "rulebook", "voice") if (v := c.get(k))}
+    kept |= {str((s.root / f).resolve()) for f in (memory.RULES, memory.OVERFLOW, memory.TOPIC_RULES)}
+    got: dict[str, Any] = memory.read(s, a.source, lines=1) if a.source.rpartition(":")[2].isdigit() else {"ok": False, "error": "give the line as path:line"}
+    if not (c := led.call_row(a.id) or {}):
+        got = {"ok": False, "error": f"no call {a.id}"}
+    elif got["ok"] and got["path"] in kept:
+        got = {"ok": False, "error": f"{got['path'].rsplit('/', 1)[-1]} is a persona or a rule file: fix the line the call stood on"}
+    elif got["ok"] and (not got["text"].strip() or got["text"].lstrip().startswith("#")):
+        got = {"ok": False, "error": f"{a.source} is a heading or a blank"}
+    if not got["ok"]:
+        print(f"not fixed: {got['error']}", file=sys.stderr)
+        return 2
+    log = memory.DailyLog(s.daily, s.tz, {n: (room_id(n, x), memory.room_class(x)) for n, x in confs.items()})
+    note = words.CALL_FIX.format(note=a.note, id=a.id, room=c["room"], call=words.line(str(c["call"]), 80))
+    if not (r := memory.remember(s, log, str(c["room"]), f"call-{a.id}", note, old=(a.source,)))["ok"]:
+        print(f"not fixed: {r['error']}", file=sys.stderr)
+        return 1
+    led.call_fix(a.id, fixed=datetime.now().timestamp(), source=a.source, correction=r["cite"], note=a.note)
+    print("\n".join([words.CALL_FIXED.format(id=a.id, source=a.source), words.FIXED_BY.format(cite=r["cite"]), *(f"superseded: {x}" for x in r["superseded"]),
+                     *r["refused"], *r["not_edited"]]))
+    return 0
+
+
 def cmd_jobs(a: argparse.Namespace) -> int:
     """sync: the jobs file to one timer and service per job (idempotent), the diff, then every next
     fire read back from systemd; list: the read-back alone. Both work with the daemon down."""
@@ -532,7 +565,7 @@ def cmd_recall_bench(a: argparse.Namespace) -> int:
         print(f"recall-bench: the index {'timed out (busy, not down)' if r['status'] == 'timeout' else 'failed'}: "
               f"{r['error']}", file=sys.stderr)
         return 3 if r["status"] == "timeout" else 1
-    keep = ("questions", "controls", "k", "top_k", "top_1", "top_k_rate", "top_1_rate", "blind", "kept", "lost")
+    keep = ("questions", "controls", "k", "top_k", "top_1", "top_k_rate", "top_1_rate", "blind", "kept", "lost", "kinds")
     row = {"at": datetime.now(timezone.utc).isoformat(timespec="seconds"), **{x: r[x] for x in keep},
            "misses": [x["id"] for x in r["rows"] if not x["rank"]]}
     (state / "memory").mkdir(parents=True, exist_ok=True)
@@ -540,7 +573,7 @@ def cmd_recall_bench(a: argparse.Namespace) -> int:
         f.write(json.dumps(row) + "\n")
     rec = budgets().get("recall") or {}
     series = [json.loads(x) for x in (state / "memory" / "recall-bench.jsonl").read_text().splitlines() if x.strip()]
-    drop = memory.ratchet(series, list(rec.get("drops", [])), int(rec.get("slack", 1)))
+    drops = [d for x in r["kinds"] if (d := memory.ratchet(series, list(rec.get("drops", [])), int(rec.get("slack", 1)), x))]
     if a.json:
         print(json.dumps({**row, "rows": r["rows"]}, indent=1))
     else:
@@ -548,11 +581,14 @@ def cmd_recall_bench(a: argparse.Namespace) -> int:
               f"top one: {r['top_1']}/{r['questions']} ({r['top_1_rate']:.1%})   controls: {r['controls']}   "
               f"answer in the snippet: {r['kept']}/{r['top_k']}")
         print("misses: " + (" ".join(row["misses"]) or "none"))
+        for x, n in r["kinds"].items():
+            print(f"{x}: top {r['k']} {n['top_k']}/{n['questions']} ({n['top_k_rate']:.1%})   top one {n['top_1']}/{n['questions']} "
+                  f"({n['top_1_rate']:.1%})")
         if r["blind"]:
             print(f"BLIND: control question(s) missed: {', '.join(r['blind'])}", file=sys.stderr)
-    if drop:
-        print(f"RATCHET: {drop}", file=sys.stderr)
-    return 2 if r["blind"] else 4 if drop else 0
+    for d in drops:
+        print(f"RATCHET: {d}", file=sys.stderr)
+    return 2 if r["blind"] else 4 if drops else 0
 
 
 def cmd_eval(a: argparse.Namespace) -> int:
@@ -757,6 +793,12 @@ def main(argv: list[str] | None = None) -> int:
     nd.add_argument("day", nargs="?", default="", help="build, done: the day it was filed (YYYY-MM-DD), as list shows it")
     nd.add_argument("n", nargs="?", type=int, default=0, help="build, done: its number that day")
     nd.add_argument("pr", nargs="?", type=int, default=0, help="done: the pull request that merged it")
+    cl = sub.add_parser("calls", help="fix ID PATH:LINE NOTE: a call (as the morning diff numbers it) that stood on a wrong line gets "
+                        "the correction filed beside that line the way remember files one, never into a persona or a rule")
+    cl.add_argument("action", choices=["fix"])
+    cl.add_argument("id", type=int)
+    cl.add_argument("source", help="the wrong line, as path:line (a cite the diff shows)")
+    cl.add_argument("note", help="what is true instead")
     jb = sub.add_parser("jobs", help="scheduled jobs from the private jobs.toml: sync (one systemd user timer and "
                         "service per job, the diff, then every next fire time read back) or list (the read-back)")
     jb.add_argument("action", choices=["sync", "list"])
@@ -778,7 +820,8 @@ def main(argv: list[str] | None = None) -> int:
     sc.add_argument("--json", action="store_true")
     rb = sub.add_parser("recall-bench", help="the fixed question set against the memory index: top six and top one "
                         "hit rates (exit 2 when a control misses, 1 failure, 3 timeout, 4 a drop budgets.toml [recall] does not name)")
-    rb.add_argument("--questions", help="question file (default: [memory] bench, else <private>/evals/recall-questions.json)")
+    rb.add_argument("--questions", help="the recall kind's question file (default: [memory] bench, else <private>/evals/recall-questions"
+                    ".json); the episodic and self kinds are episodic-questions.json and self-questions.json beside it")
     rb.add_argument("-k", type=int, default=6, help="results per question (default 6, the recall tool's default)")
     rb.add_argument("--json", action="store_true", help="the run as JSON, per-question ranks included")
     rb.add_argument("--controls", action="store_true", help="the controls alone, as `yerk deploy` holds them: one JSON line, "
@@ -854,7 +897,7 @@ def main(argv: list[str] | None = None) -> int:
     dp.add_argument("ref", nargs="?", help="the commit (default: the daemon's tree's HEAD)")
     dp.add_argument("--no-tests", action="store_true", help="skip the fast tests and the recall check (the card says so)")
     dp.add_argument("--unit", action="store_true", help="also move a systemd-run daemon onto units/yerkd.service")
-    for x in (ac, st, mo, rb, ev, ab, ex, jb, sc, lc, rt, bk, rs, dc, dk, cu, dp, pc, fl, nd, ad, rm):
+    for x in (ac, st, mo, rb, ev, ab, ex, jb, sc, lc, rt, bk, rs, dc, dk, cu, dp, pc, fl, nd, ad, rm, cl):
         x.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else "
                        + ("the running yerkd's own, from its unit)" if x is dp else "the fake example layer)"))
         x.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
@@ -866,7 +909,7 @@ def main(argv: list[str] | None = None) -> int:
                 "deploy": cmd_deploy, "retention": cmd_retention, "backup": cmd_backup, "restore": cmd_restore, "location": cmd_location,
                 "doctor": cmd_doctor,
                 "docs": cmd_docs,
-                "curate": cmd_curate, "needs": cmd_needs}[a.cmd](a))
+                "curate": cmd_curate, "needs": cmd_needs, "calls": cmd_calls}[a.cmd](a))
 
 
 if __name__ == "__main__":

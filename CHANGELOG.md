@@ -35,7 +35,45 @@ version changes.
   is read through the add-on.
 - examples/addons/hello is the example: one MCP tool, one unit, one budget line, one words file, one test.
 - **Upgrading:** nothing to edit; rooms.toml and yerkd.toml change only when you run `yerk add`. budgets.toml:
-  `[code] lines` 20,940 (dated notes: main's 20,565 + 355, then 20 for the cold read's fixes and `reads`).
+  `[code] lines` 21,129 (dated notes: main's 20,754 + 355, then 20 for the cold read's fixes and `reads`).
+
+### bench-kinds (#126)
+
+- `yerk recall-bench` scores three kinds: recall (the question file it always read), and episodic and self
+  (`episodic-questions.json` and `self-questions.json` beside it, read when they are there, in the recall file's shape).
+  The first line is the kinds together, as before; after `misses:` comes a line per kind. A run's row in
+  recall-bench.jsonl carries `kinds`: each kind's questions, top six and top one, with their rates.
+- The ratchet holds each kind on its own, so a change that lifts recall and sinks self exits 4 with `RATCHET: self: ...`
+  even when the kinds together hold. A row from before this is the recall kind whole, so the series' history still holds
+  recall. A dated note in budgets.toml `[recall] drops` names episodic or self before BEST ("2026-10-25: self 21 to 18,
+  why"); a note with no kind names recall, as every note so far does.
+- The nightly curate holds the lines it lands to the kinds together, and `yerk deploy`'s real-index test holds each kind to
+  its ratchet, once the two files are in the private layer. The controls stay in the recall file; `--controls` reads only
+  it. The example layer has two invented questions of each new kind.
+- **Upgrading:** to score the new kinds, put `episodic-questions.json` and `self-questions.json` in `<private>/evals/`
+  beside the recall file; without them the bench runs the recall kind alone, as before. budgets.toml: `[code] lines`
+  20,754 (a dated note).
+
+### decision-receipts (#119)
+
+- A reply that makes a call for the owner shows its receipt in the next morning diff (claim 19). Code reads each reply that
+  went out, sentence by sentence, for a call's shape (`words.CALL`: "I'd go with" or "I'd" with an imperative verb, "go with"
+  or "pick" opening a sentence, "my call:", "you should", "the plan is", a number with an imperative after it); no model
+  decides, and a question, a quoted span and a code block are never a call, nor "you should have" or "should've", nor "I'd
+  put" or "I'd set" with a past-time word later in the sentence ("I'd" as "I had"). Replayed read only over one day of a work
+  room (Oct 23, 96 turns): 7 calls in 6 turns, 6 of them real recommendations; the seventh was "I'd" meaning "I had", so the
+  day now reads 6 calls in 5 turns.
+- Each call is a `calls` row in the ledger: its room, its turn, its sentence, and the cites its turn read (the recall hits
+  the prompt hook handed it, each file and line it opened, the file:line hits a recall or grep returned), or a flag that it
+  read nothing. A call in a person's room is that person's, never the owner's, and a reply a Stop rule turned back makes none.
+- The morning diff gives each of yesterday's calls its room and words, and under it its number and cites, or "no reads
+  behind it": the first 20, then the count after. A person's room's calls are counted, never quoted; a quiet day says
+  `calls yesterday: none`.
+- `yerk calls fix ID PATH:LINE NOTE` files the correction beside the wrong line the way `remember` does: a note in the call's
+  room's day log that names the line it supersedes and the call, that line marked superseded. It refuses a persona, a
+  rulebook, a voice file or a rules file; the next morning diff shows the fix.
+- **Upgrading:** nothing to edit; the ledger gains its `calls` table at the next start (no schema version change).
+  budgets.toml: `[code] lines` 20,737 (a dated note).
 
 ### import-openclaw (#125)
 
