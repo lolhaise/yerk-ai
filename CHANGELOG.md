@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-10-24
 
-### addons-1
+### addons-1 (#124)
 
 - `yerk add SOURCE` installs an add-on, an ability that lives in a repo of its own: SOURCE is a folder, a git URL
   (`file://` included), or an ability whose abilities.toml entry names its `repo`. Each step is a line as it is done:
