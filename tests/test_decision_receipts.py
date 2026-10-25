@@ -15,10 +15,16 @@ from yerk_ai.ledger import Ledger
 CALLS = ["I'd go with Plan B, it is 20 a month less.", "Pick the 2 pm slot, the morning one clashes with the standup.",
          "My call: send the deck tonight, not Monday.", "You should ask the lead before Friday.",
          "The plan is: leave at 7, fuel at the halfway stop, there by 9.", "1. Book the 9:40 to the north office.",
-         "350, don't go higher.", "Go with Option B.", "I'd hold it until the second score is in."]
+         "350, don't go higher.", "Go with Option B.", "I'd hold it until the second score is in.",
+         "I'd put it at 60/40 the lead says yes.", "I'd take the earlier one, it lands before the standup."]
 NOT_CALLS = ["I went with the blue one last time.", "You should have gotten an email from the lead by now.",
              "My call with the vendor went long.", "So you should call the lead tonight?", 'The lead said "go with the blue one" last week.',
-             "2. The deck went out at 9.", "Pick up the parcel at 3.", "The plan was to leave at 7."]
+             "2. The deck went out at 9.", "Pick up the parcel at 3.", "The plan was to leave at 7.",
+             # the cold read's two real replies, their names, dates and the rest cut: a past move criticised, and "I'd" as "I had"
+             "Almost nobody, and that's the point you should've led with.", "That is the point you should’ve led with.",
+             "I'd put your two runs in the tracker an hour earlier, so the information was in my hands and I didn't check it against "
+             "what I was about to say.", "I'd set the reminder last week.", "I'd set it up two days ago.",
+             "I'd put the parcel in the hall yesterday.", "I'd already put the deck in the drive.", "You could've asked, and I would've said yes."]
 REPLY = ("Checked both quotes.\n\n- **Plan B:** 20 a month less, same speed.\n\nI'd go with Plan B. Want me to book the install?\n"
          "```python\npick = 'the first one'\n```")
 RECALL = f"what about the plans?\n{hooks.HEADS[1]}\n- Plan B quoted at 20 a month less (memory/daily/2026-01-05.md:4)"

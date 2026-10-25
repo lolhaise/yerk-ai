@@ -13,8 +13,10 @@ version changes.
 - A reply that makes a call for the owner shows its receipt in the next morning diff (claim 19). Code reads each reply that
   went out, sentence by sentence, for a call's shape (`words.CALL`: "I'd go with" or "I'd" with an imperative verb, "go with"
   or "pick" opening a sentence, "my call:", "you should", "the plan is", a number with an imperative after it); no model
-  decides, and a question, a quoted span and a code block are never a call. Replayed read only over one day of a work room
-  (Oct 23, 96 turns): 7 calls in 6 turns, each a real recommendation.
+  decides, and a question, a quoted span and a code block are never a call, nor "you should have" or "should've", nor "I'd
+  put" or "I'd set" with a past-time word later in the sentence ("I'd" as "I had"). Replayed read only over one day of a work
+  room (Oct 23, 96 turns): 7 calls in 6 turns, 6 of them real recommendations; the seventh was "I'd" meaning "I had", so the
+  day now reads 6 calls in 5 turns.
 - Each call is a `calls` row in the ledger: its room, its turn, its sentence, and the cites its turn read (the recall hits
   the prompt hook handed it, each file and line it opened, the file:line hits a recall or grep returned), or a flag that it
   read nothing. A call in a person's room is that person's, never the owner's, and a reply a Stop rule turned back makes none.
@@ -25,7 +27,7 @@ version changes.
   room's day log that names the line it supersedes and the call, that line marked superseded. It refuses a persona, a
   rulebook, a voice file or a rules file; the next morning diff shows the fix.
 - **Upgrading:** nothing to edit; the ledger gains its `calls` table at the next start (no schema version change).
-  budgets.toml: `[code] lines` 20,517 (a dated note).
+  budgets.toml: `[code] lines` 20,520 (a dated note).
 
 ### backup-restore (#128)
 

@@ -439,4 +439,7 @@ secs = 60
 # 2026-10-25: merged with backup-restore (#128) after measured-budgets (#123), main 9f53348: its 20,348 plus
 # decision-receipts' 169 is 20,517, counted on the merged tree; cli.py's subcommand list kept both PRs' parsers, and
 # morning.py, words.py and README, which both changed, merged with no line in common.
-lines = 20517
+# 2026-10-25: the cold read's two fixes raised it by 3, not folded to fit: words.py 3 (the had rule, "I'd put" or "I'd set"
+# with a past-time word later in the sentence, and its comment; "should've" with no space before 've on the same line).
+# 20,520 on main 9f53348 (#128): 20,517 + 3.
+lines = 20520

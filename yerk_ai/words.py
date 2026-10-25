@@ -447,13 +447,16 @@ PUSHBACK = re.compile(r"^[^\in\n]*(?:(?:the|Next|run|starts|the|example+|note)\s
 # decision receipts (claim 19, evidence.calls): code decides that a sentence of a reply makes a call for the person the room
 # answers: "I'd go with" (or "I'd" with an imperative verb: "I'd hold it until it scores"), "go with" or "pick" opening a sentence,
 # "my call:", "you should", "the plan is", or a number with an imperative after it ("1. Book the 9:40", "350, don't go higher");
-# before the, next run starts the example note
+# a question, quotes and code are never one, nor "you should have" or "should've"; and by the had rule "I'd put" or "I'd set"
+# with a past-time word later in its sentence (earlier, already, ago, yesterday, last) is "I had": "I'd put your two runs in the
+# tracker an hour earlier". They are the only verbs here whose "I had" reads the same; "I'd take the earlier one" is a call
 DO = (r"(?:send|book|buy|call|email|text|ask|tell|go|take|get|pick|put|move|pay|cancel|order|sign|submit|reply|schedule|set|start|"
       r"stop|use|bring|leave|offer|counter|accept|decline|sell|keep|skip|wait|push|grab|try|hold|apply|file|don['’]?t|never)")
 _OPEN = r"(?:^|(?<=[.!?;:]\s))\W*(?:so\s+|just\s+|then\s+)?"
-CALL = re.compile(rf"\waits['’]?in\the+(?:queue\for+its|turn\and+the|last|{DO})\before|\the(?:Next\run+starts|the['’]?example)\note+says\the+sample\item|{_OPEN}the\next+step\and"
+_HAD = r"(?!(?:put|set)\b(?:(?![.!?](?:\s|$)).)*?\b(?:earlier|already|ago|yesterday|last)\b)"     # the had rule, above
+CALL = re.compile(rf"\bI['’]?d\s+{_HAD}(?:go\s+with|stick\s+with|choose|{DO})\b|\b(?:I\s+would|let['’]?s)\s+go\s+with\b|{_OPEN}go\s+with\b"
                   rf"|{_OPEN}pick\b(?!\s+(?:up|one|any|either|whichever|whatever)\b)|\bmy\s+(?:call|pick)\s*(?::|is\b|would\s+be\b|here\b)"
-                  r"|\byou\s+should\b(?!\s+(?:have|['’]ve|be|see|know|hear|get\s+(?:a|an|the)\s+(?:email|text|message|call|notification)))"
+                  r"|\byou\s+should\b(?!\s*['’]ve\b|\s+(?:have|be|see|know|hear|get\s+(?:a|an|the)\s+(?:email|text|message|call|notification)))"
                   r"|\b(?:the|my|our)\s+plan\s+(?:is|would\s+be)\b|\bhere['’]?s\s+the\s+plan\b"
                   rf"|{_OPEN}(?:step\s+)?\$?\d[\d,.]*[kK%]?(?:[.):,]|\s+(?:max|tops|firm),?)?\s+(?:and\s+)?{DO}\b", re.I)
 CALLS, CALLS_BARE, CALLS_NONE = "calls {day}: {n}", ", {m} with no reads", "calls {day}: none"    # the morning diff (morning.calls)
