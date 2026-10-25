@@ -421,4 +421,12 @@ secs = 60
 # named `mcp__...` a plug-in's; `violations` naming such a part first; the wire view's rows from the same read, the first
 # message's blocks outside its total), morning.py 2 (each room as sent and its gap, a part past its line red), cli.py -2
 # (`yerk map --wire` finds the transcript through the same read). 20,048 on main 30ea8dc (#117): 19,976 + 72.
-lines = 20048
+# 2026-10-24: backup-restore raised it by 300: `yerk backup` and `yerk restore` (the audit's section G item 3, PR 65's
+# design: an install with no backup loses everything to one bad disk), not folded to fit. backup.py 265 (the archive and its
+# manifest, the last N kept, a restore read whole against the manifest before it writes, the move aside, the daemon's lock),
+# cli.py 23 (the two commands), doctor.py 7 (a backup past 36 h, or none under a [backup] table), status.py 4 (the card's
+# line, and --json's backup_age through backup.newest: a missing [backup] path had read as the current folder), words.py 1.
+# 20,276 on main 30ea8dc (#117): 19,976 + 300.
+# 2026-10-24: merged with measured-budgets (#123, main dbb06f8): its 20,048 plus backup-restore's 300 is 20,348, counted
+# on the merged tree; cli.py and words.py, which both changed, merged clean.
+lines = 20348
