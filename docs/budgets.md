@@ -245,12 +245,22 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-10-24: merged with backup-restore (#128, main 9f53348): its 20,348 plus fusion-levers' 3 is 20,351, counted on the merged tree; no .py file changed on both sides (#128: backup, cli, doctor, status, words; #118: memory).
 
+2026-10-24: import-openclaw raised it by 207: `yerk import openclaw:<workspace dir>`, a box's notes copied into <private>/openclaw/<its name> by the memory copy inventory's rules (the owner's ask, claim 17), not folded to fit. sources.py 205 (the parts and their rules, the doctor's secret shapes written as their kind, the record by path and sha256 so a second run writes nothing, the refusals, and the yerkd.toml and rooms.toml lines that read the copies, printed and never written), move.py 1 and cli.py 1 (the source named). 20,183 on main 30ea8dc (#117): 19,976 + 207.
+
+2026-10-25: merged with backup-restore (#128, main 9f53348, after #123): its 20,348 plus import-openclaw's 207 is 20,555, counted on the merged tree; cli.py and README.md, which both changed, merged with no line in common.
+
+2026-10-25: import-openclaw's cold read fix raised it by 7: on an import the key is the tell, not the value (the cold read found `token: abc123`, a pin, a password with no digit and an Authorization header crossing under the doctor's 16 character floor), not folded to fit. sources.py 7 (KEYED, the secret keys with `:` or `=` and its comment, and withheld's shapes: the doctor's, its password line run to the line's end, KEYED as its token line). 20,555 + 7 = 20,562.
+
+2026-10-25: merged with fusion-levers (#118, main 3255849): its 20,351 plus import-openclaw's 214 (207 and the fix's 7) is 20,565, counted on the merged tree; no .py file changed on both sides (#118: memory; this PR: sources, move, cli).
+
 2026-10-24: docs-from-code raised it by 356: Yerk AI's own docs written from the code, `yerk docs own` (decision 16; the audit's section G, items 4 and 5), not folded to fit. owndocs.py 232 (the six pages: commands from the three installed commands' parsers, tools from the MCP server's own list, settings from the key tables, budgets from this file's comments, hooks, units; the writer and its dry run), config.py 96 (ROOM_WORDS, every rooms.toml key in plain words, ROOM_KEYS now its keys; YERKD_WORDS, every yerkd.toml key not described where it is read), cli.py 11 (the `own` action and parser(), split out of main so the page can read it), hooks.py 9 (EVENTS, what each event does, out of the module docstring and made true to the daemon's seven Stop checks), daemon.py 4 and memindex.py 4 (their parser()). 20,332 on main 30ea8dc (#117): 19,976 + 356.
 
-2026-10-24: merged with measured-budgets and backup-restore (#123 and #128, main 9f53348): their 20,348 plus docs-from-code's 356 is 20,704, counted on the merged tree; cli.py, which all three changed, merged clean.
+2026-10-25: merged with measured-budgets and backup-restore (#123 and #128, main 9f53348): their 20,348 plus docs-from-code's 356 is 20,704, counted on the merged tree; cli.py, which all three changed, merged clean.
 
-2026-10-24: the cold read of #122 and its fix raised it by 2: config.py 2 (YERKD_WORDS names [discord] guild, which `yerk setup-room` reads, and [backup] keep and units, which backup.py reads since #128, with path in #128's words; so settings.md has every yerkd.toml key the package reads by name, which test_owndocs now checks both ways). 20,706: 20,704 + 2.
+2026-10-25: the cold read of #122 and its fix raised it by 2: config.py 2 (YERKD_WORDS names [discord] guild, which `yerk setup-room` reads, and [backup] keep and units, which backup.py reads since #128, with path in #128's words; so settings.md has every yerkd.toml key the package reads by name, which test_owndocs now checks both ways). 20,706: 20,704 + 2.
 
-2026-10-24: merged with fusion-levers (#118, main 3255849): its 20,351 plus this branch's 358 (docs-from-code's 356 and the cold read's 2) is 20,709, counted on the merged tree; no .py file changed on both sides (#118: memory).
+2026-10-25: merged with fusion-levers (#118, main 3255849): its 20,351 plus this branch's 358 (docs-from-code's 356 and the cold read's 2) is 20,709, counted on the merged tree; no .py file changed on both sides (#118: memory).
 
-- `lines = 20709`
+2026-10-25: merged with import-openclaw (#125, main b81731f): its 20,565 plus this branch's 358 (docs-from-code's 356 and the cold read's 2) is 20,923, counted on the merged tree; cli.py, which both changed, merged clean.
+
+- `lines = 20923`

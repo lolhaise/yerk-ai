@@ -47,9 +47,9 @@ act on a running yerkd's room (close, compact), or add one: a Discord chat moved
 
 a chat's whole history into the day logs, no room made: discord:<channel or thread id>, or discord-guild:<guild id> for every chat on the server no room covers (--dry-run: the inventory)
 
-- `SOURCE`: discord:<channel or thread id>, discord-guild:<guild id>, imessage:<a Messages chat.db> (texts into imports/texts) or gmail (All Mail into imports/mail, by yerkd.toml [gmail])
+- `SOURCE`: discord:<channel or thread id>, discord-guild:<guild id>, imessage:<a Messages chat.db> (texts into imports/texts), gmail (All Mail into imports/mail, by yerkd.toml [gmail]) or openclaw:<an OpenClaw workspace's folder> (its notes copied into openclaw/<its name>, the lines that read them printed)
 - `--contacts CONTACTS`: imessage: a Contacts database, for the names its numbers and addresses have
-- `--since SINCE`: the history from this day on, YYYY-MM-DD (default: all of it)
+- `--since SINCE`: the history from this day on, YYYY-MM-DD (default: all of it; openclaw: the files changed since)
 - `--files`: save attachments up to 25 MB too (default: each named with its size, none downloaded)
 - `--dry-run`: read and count, write nothing; on one chat, also print every line it would file
 - `--private PRIVATE`: private folder (default: $YERK_PRIVATE, else the fake example layer)
