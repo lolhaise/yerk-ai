@@ -83,9 +83,11 @@ def test_the_rule_shape_counts_are_one_weekly_line_said_on_sunday_or_the_day_one
     assert capsys.readouterr().out == f"{words.WORKING} rule shape: 1 no why (+1), 1 loud (+1){week}\n"
     lines, stamp = morning.build(priv, state, accounts, cool, led, {"started": time.time() - DAY, "units": []}, time.time())
     assert words.line(f"{words.WORKING} rule shape: 1 no why (+1), 1 loud (+1){week}") in lines and not [k for k in stamp["findings"] if k.startswith("doctor")]
-    sunday = time.time() + ((doctor.SUNDAY - time.localtime().tm_wday) % 7 or 7) * DAY
+    t = time.localtime()            # by the calendar, not k * DAY: a clock change makes a day 25 hours (Nov 1 2026, "Monday" at 00:xx was Sunday 23:xx)
+    ahead = (doctor.SUNDAY - t.tm_wday) % 7 or 7
+    sunday, monday = (time.mktime((t.tm_year, t.tm_mon, t.tm_mday + d, t.tm_hour, t.tm_min, t.tm_sec, 0, 0, -1)) for d in (ahead, ahead + 1))
     assert doctor.run(priv, state, now=sunday) == [f"{words.WORKING} rule shape: 1 no why, 1 loud{week}"]     # the weekly run
-    assert doctor.run(priv, state, now=sunday + DAY) == []                # Monday, no count up: nothing
+    assert doctor.run(priv, state, now=monday) == []                      # Monday, no count up: nothing
     report = state / "docs" / "shape" / "example-room.md"
     assert memory.file_class(report) == ("room", "discord:CHANNEL_ID") and "- loud, line 12: - NEVER guess a date." in report.read_text()
     m = memory.settings(priv, state)
