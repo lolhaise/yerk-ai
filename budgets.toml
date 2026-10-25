@@ -429,6 +429,29 @@ secs = 60
 # 20,276 on main 30ea8dc (#117): 19,976 + 300.
 # 2026-10-24: merged with measured-budgets (#123, main dbb06f8): its 20,048 plus backup-restore's 300 is 20,348, counted
 # on the merged tree; cli.py and words.py, which both changed, merged clean.
+# 2026-10-24: fusion-levers raised it by 3: the keyword rank's part of the fusion, SHARE 0.4 where both ranks counted alike
+# (memory.py 3: SHARE and its measured note 2, fuse's docstring on the two parts 1; its `share` argument and the loop's parts
+# are in the lines that were there), measured alone on the 164-question set (top six 103 to 107, top one 59 to 62, no control
+# lower), not folded to fit. The three levers measured alone after it and deleted (name and field boosts, the tense order,
+# alias rewriting) leave no line.
+# 19,979 on main 30ea8dc (#117): 19,976 + 3.
+# 2026-10-24: merged with measured-budgets (#123, main dbb06f8): its 20,048 plus fusion-levers' 3 is 20,051, counted on
+# the merged tree; no .py file changed on both sides (#123: cli, context, morning, words; #118: memory).
+# 2026-10-24: merged with backup-restore (#128, main 9f53348): its 20,348 plus fusion-levers' 3 is 20,351, counted on
+# the merged tree; no .py file changed on both sides (#128: backup, cli, doctor, status, words; #118: memory).
+# 2026-10-24: import-openclaw raised it by 207: `yerk import openclaw:<workspace dir>`, a box's notes copied into
+# <private>/openclaw/<its name> by the memory copy inventory's rules (the owner's ask, claim 17), not folded to fit.
+# sources.py 205 (the parts and their rules, the doctor's secret shapes written as their kind, the record by path and
+# sha256 so a second run writes nothing, the refusals, and the yerkd.toml and rooms.toml lines that read the copies,
+# printed and never written), move.py 1 and cli.py 1 (the source named). 20,183 on main 30ea8dc (#117): 19,976 + 207.
+# 2026-10-25: merged with backup-restore (#128, main 9f53348, after #123): its 20,348 plus import-openclaw's 207 is
+# 20,555, counted on the merged tree; cli.py and README.md, which both changed, merged with no line in common.
+# 2026-10-25: import-openclaw's cold read fix raised it by 7: on an import the key is the tell, not the value (the cold
+# read found `token: abc123`, a pin, a password with no digit and an Authorization header crossing under the doctor's
+# 16 character floor), not folded to fit. sources.py 7 (KEYED, the secret keys with `:` or `=` and its comment, and
+# withheld's shapes: the doctor's, its password line run to the line's end, KEYED as its token line). 20,555 + 7 = 20,562.
+# 2026-10-25: merged with fusion-levers (#118, main 3255849): its 20,351 plus import-openclaw's 214 (207 and the fix's 7)
+# is 20,565, counted on the merged tree; no .py file changed on both sides (#118: memory; this PR: sources, move, cli).
 # 2026-10-24: bench-kinds raised it by 17: the recall bench scores the episodic and self kinds beside the recall one, apart
 # and together, and holds each to its own ratchet (ROADMAP-v6 step 4, the judge v5 promised for those two sets), not folded
 # to fit. memory.py 13 (KINDS, score, the bench reading <kind>-questions.json beside the recall file, the ratchet a kind at
@@ -436,4 +459,7 @@ secs = 60
 # 2026-10-24: merged with measured-budgets (#123) and backup-restore (#128), main 9f53348: its 20,348 plus
 # bench-kinds' 17 is 20,365, counted on the merged tree; cli.py, README and tests/test_budget.py, which
 # both changed, merged clean.
-lines = 20365
+# 2026-10-25: merged with fusion-levers (#118) and import-openclaw (#125), main b81731f: its 20,565 plus
+# bench-kinds' 17 is 20,582, counted on the merged tree; memory.py (#118's SHARE in fuse, this PR's bench and
+# ratchet), cli.py, tests/test_embeddings.py and README.md, which both changed, merged with no line in common.
+lines = 20582

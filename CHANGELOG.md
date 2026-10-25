@@ -23,7 +23,55 @@ version changes.
   it. The example layer has two invented questions of each new kind.
 - **Upgrading:** to score the new kinds, put `episodic-questions.json` and `self-questions.json` in `<private>/evals/`
   beside the recall file; without them the bench runs the recall kind alone, as before. budgets.toml: `[code] lines`
-  20,365 (a dated note).
+  20,582 (a dated note).
+
+### import-openclaw (#125)
+
+- `yerk import openclaw:<workspace dir>` moves an OpenClaw box's notes in, one workspace a run: MEMORY.md, USER.md,
+  memory/ and wiki/ (the kinds the index reads, and the text files of memory/transcripts/), and media/gym whole, copied
+  as they are into <private>/openclaw/<its name>/<the same path>, files 0600, folders 0700, each with the box file's
+  time. Never into the day logs or facts/, and outside imports/, so a note keeps its whole weight.
+- Left by rule, one line a rule with its files and bytes: the box tools' own state (memory/health, jobstate, finance,
+  sms, modelbench, forensics, tft, index, archive-offindex), a kind the index does not read, a link, a temp or backup
+  copy and the folders the index skips; a dot or secrets folder is never entered.
+- A line holding a shape of yerk doctor's secret scan (a key, a one-time code, a password or token line) is copied with
+  its kind in the value's place, the file's lines kept; the run lists each by file and line. On an import the key is
+  the tell, not the value: a line whose key is token, api_key, secret, password, passwd, pin, bearer, authorization,
+  cookie, session or private_key (with `:` or `=`) is written `[token-line withheld]` from the key on, so a short
+  token, a pin or a password with no digit never crosses; a line that only says the word (the token economy) is copied.
+- By path and sha256 against <private>/openclaw/<name>.sums: a second run writes nothing, so the same command tops up; a
+  changed file is written again through a temp file and a rename, one the box deleted is deleted from the copy, and a
+  part the box no longer has is held. `--since YYYY-MM-DD` takes the files changed from that day on; `--dry-run` prints
+  the inventory (files, bytes, each rule, the lines to scrub) and writes nothing. A workspace inside the private folder
+  (or the other way round), a copy that names another box and, for a real run, a private folder in the repository are
+  refused before the box is read.
+- After a real run it prints the yerkd.toml and rooms.toml lines that would read the copies, and never writes them: each
+  box path in an `also` line becomes its copy in its place, so every cite name stays; a `read` naming the box stays
+  while the box runs (yerkd refuses one inside the private folder); a denyRead keeping a shell off the box gains the
+  copies.
+- **Upgrading:** nothing to edit; the printed lines are made by hand, then yerk-index and yerkd restarted. budgets.toml:
+  `[code] lines` 20,565 (a dated note).
+
+### fusion-levers (#118)
+
+- A room's recall counts the meaning search's order a little above the keyword search's: in the reciprocal rank fusion of
+  the two, the keyword rank's part is 0.4 and the meaning rank's 0.6, where both counted alike (`SHARE` in memory.py). On
+  the install's 164 scored questions (13 controls), both halves recorded once from the live index and replayed for every
+  setting, the top six goes from 103 to 107 and the top one from 59 to 62, and no control ranks lower. The keyword share
+  was swept: 0.3 109/65 with a control falling from first to second, 0.5 103/59 (as before), 0.6 102/57 and 0.7 96/57,
+  both with a control missed.
+- Measured alone on the same questions and left out, as none raised both the top six and the top one with no control
+  ranking lower: score fusion (each search's score over its best) in place of rank fusion, keyword share 0.3 to 0.7: 103/65,
+  103/59, 103/54, 106/53, 106/53; a hit whose file name or first heading holds a name the question names ranked above a
+  body-only hit, at 1.5 to 100 times: 100/56 down to 96/45; a facts file above a day log for a present-tense question: 104/61
+  at 1.5, 105/63 at 4, with a control falling from first to third; the day logs newest first for "when did" and "last time"
+  questions and oldest first for "first time": 103/59 at every setting (7 of the 177 questions say "when did", none the
+  other two); the question's names followed by their card keys before the keyword search: 97/53, and 98/55 with a fuller
+  form only, a control falling from first to second.
+- Deep recall is unchanged: the lines a room is handed on each name and topic in a message come from the keyword half
+  alone, where there is no meaning rank to share with; on 187 of the install's names they are byte-identical to main's.
+- **Upgrading:** nothing to edit. budgets.toml: `[code] lines` 20,351: backup-restore's 20,348 plus this PR's 3 (a dated
+  note).
 
 ### backup-restore (#128)
 

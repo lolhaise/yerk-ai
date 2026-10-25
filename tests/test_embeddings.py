@@ -398,6 +398,19 @@ def test_deep_recall_keeps_the_index_order_while_the_recall_tool_puts_the_note_f
     assert memory.recall(s, "Examplia")["hits"][0]["cite"].startswith("memory/facts/examplia.md:")         # and a room's recall
 
 
+# 9e. the keyword rank's part of the fusion is SHARE, the meaning rank's the rest (0.4: on the install's 164 questions top six 103 to
+# 107, top one 59 to 62); at 0.5 both count alike, as before. A lone keyword first hit against a lone meaning second hit:
+def test_the_meaning_rank_counts_more_than_the_keyword_rank_in_the_fusion():
+    def row(cid: int, score: float) -> dict:
+        return {"id": cid, "path": f"/t/memory/facts/f{cid}.md", "line": 1, "lines": "1-1", "text": f"t{cid}", "score": score}
+    keywords, vectors = [row(1, 3.0)], [row(101, 0.9), row(102, 0.8)]
+    fused = memory.fuse(keywords, vectors, 6, keep=0)
+    assert [(h["id"], h["score"]) for h in fused] == [(101, 0.0571), (102, 0.0545), (1, 0.0381)]     # 1.2/21, 1.2/22, 0.8/21
+    even = memory.fuse(keywords, vectors, 6, keep=0, share=0.5)
+    assert [(h["id"], h["score"]) for h in even] == [(101, 0.0476), (1, 0.0476), (102, 0.0455)]       # 1/21 each, the cosine breaks the tie
+    assert memory.fuse(keywords, [], 6, keep=0, share=0.1) == keywords      # the exact half alone (deep recall) has no share to read
+
+
 # 10. the manifest's embeddings entry records the fit choice: the dimensions, the units, the width
 def test_the_manifest_records_the_fit_choice():
     ab = abilities.manifest()["embeddings"]
