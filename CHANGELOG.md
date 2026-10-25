@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-10-24
 
-### docs-from-code
+### docs-from-code (#122)
 
 - `yerk docs own` writes Yerk AI's own docs into docs/ from the code: commands.md (every command and flag of `yerk`,
   `yerkd` and `yerk-index`, from their parsers), tools.md (the twelve tools a room is handed, each description as the
