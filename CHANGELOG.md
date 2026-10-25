@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-10-24
 
-### backup-restore
+### backup-restore (#128)
 
 - `yerk backup [--to DIR] [--with-index]`: one dated archive, `yerk-YYYYmmdd-HHMMSS.tar`, 0600 in a 0700 folder: the
   private layer whole (persona, rules, rooms, memory, imports, the attachments folders, secrets as bytes with their
