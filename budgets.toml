@@ -5,13 +5,17 @@
 # when a part or a total passes its number here.
 
 [session_start]
-total = 98330
+total = 108093
 
 # Load order, most stable first, so the cached start of the prompt survives.
-# The first five parts are Claude Code's own (its default prompt, the built-in tools
-# allowed by --tools, Yerk AI's MCP tools, its other tool entries, the room's skills):
-# `yerk map` shows them at their budget until they are measured from a transcript.
-# Other tool entries: Claude Code's deferred-loading placeholder and other MCP servers' tools (web-ladder's).
+# The first parts are Claude Code's own (its default prompt, the built-in tools
+# allowed by --tools, Yerk AI's MCP tools, its other tool entries, a plug-in's tools, the room's skills):
+# `yerk map`, the budget test and so the deploy's gate read them as the room last sent them (context.sent: its newest
+# transcript's newest request shape), each at its line only for a room with no transcript.
+# Other tool entries: Claude Code's deferred-loading placeholder and other MCP servers' tools (web-ladder's). A line named
+# `mcp__...` counts the entries whose names begin with it (a plug-in's), and they leave the other entries.
+# The first message's own blocks (Claude Code's environment and account reminder, the first hook) are that message's:
+# no line, outside this total (`yerk map --wire` shows them).
 # Measured 2026-10-20 in each room's newest transcript (Claude Code 2.1.301): prompt 10,889, built-in tools 10,401, other entries 1,713.
 # No room sends a skill: every room starts with --setting-sources "" and no allowlist has Skill.
 # 2026-10-23, pictures-seen's cold read: Yerk AI's tools measured as `yerk map --wire` counts them (each entry as sent, the
@@ -29,11 +33,24 @@ total = 98330
 # raise, so 3,429; no part could pay (the six rooms' largest mechanics 4,474, persona 11,750, rulebook 13,607, room voice
 # 5,443 and pinned memory 3,912 that day, 614 between them; `rules` is the cap a rule filing fits under), so the total
 # rose by the 1,716.
+# 2026-10-24, measured-budgets: the lines above are read as sent now, and in the six rooms' newest request shapes that day
+# (Claude Code 2.1.304) three rooms sent more than they held, no check seeing it: the hands plug-in's five tools (7,119)
+# in the two owner rooms that carry it, web_image (913) in those two and a person's room, and that person's room's Edit and
+# Write (1,731) beside the four built-in tools every room has. Each plug-in gets a line of its own at what it sends
+# (`mcp__hands__` 7,119, `mcp__web-ladder__web_image` 913), the other entries keep the placeholder and web-ladder's four
+# (3,421 in each room, under 3,429), and `builtin_tools` goes to the widest room's 12,132. No part could pay (the largest
+# appended parts as on the web-budget note, 614 between them; Claude Code's prompt 10,889, measured from the shape now,
+# and Yerk AI's tools 11,663, 148 between them), so the total rose by what is already sent, 9,763, to 108,093. Read again
+# that evening, an owner room's new start (the tree of #117) sent Yerk AI's tools at 11,734 (schedule's calendar wording
+# +31 and send's own-channel line +40 on the 11,663 the older starts send), 34 past 11,700: the prompt line pays it, as
+# persona paid for mechanics (10,889 the largest prompt sent, so 10,966), `yerk_tools` 11,734, the total as above.
 [session_start.claude_code]
-claude_code_prompt = 11000
-builtin_tools = 10401
-yerk_tools = 11700
+claude_code_prompt = 10966
+builtin_tools = 12132
+yerk_tools = 11734
 deferred_tool_names = 3429
+mcp__hands__ = 7119
+mcp__web-ladder__web_image = 913
 skills = 0
 
 # Yerk AI's own parts, joined into the one file passed by --append-system-prompt-file. `rules` is the
@@ -397,6 +414,21 @@ secs = 60
 # the one resolver: a room's name, its rooms.toml channel or the id alone; external_hit reads it with the rooms' confs and
 # names a held send's room by it), daemon.py 1 (the send tool resolves `room` through it before its checks).
 # 19,976 on main 9d9e05b (#116): 19,960 + 16.
+# 2026-10-24: measured-budgets raised it by 72: the budget gate reads what Claude Code sends (found that day: Claude Code's
+# parts were counted at their line, so three rooms sent the hands plug-in, web_image and a person's room's Edit and Write
+# past theirs and nothing saw it), not folded to fit. context.py 72 (`sent`, the one read: the room's newest transcript, its
+# newest shape alone, Claude Code's prompt split where that start's file began, each tool entry under its line, a line
+# named `mcp__...` a plug-in's; `violations` naming such a part first; the wire view's rows from the same read, the first
+# message's blocks outside its total), morning.py 2 (each room as sent and its gap, a part past its line red), cli.py -2
+# (`yerk map --wire` finds the transcript through the same read). 20,048 on main 30ea8dc (#117): 19,976 + 72.
+# 2026-10-24: backup-restore raised it by 300: `yerk backup` and `yerk restore` (the audit's section G item 3, PR 65's
+# design: an install with no backup loses everything to one bad disk), not folded to fit. backup.py 265 (the archive and its
+# manifest, the last N kept, a restore read whole against the manifest before it writes, the move aside, the daemon's lock),
+# cli.py 23 (the two commands), doctor.py 7 (a backup past 36 h, or none under a [backup] table), status.py 4 (the card's
+# line, and --json's backup_age through backup.newest: a missing [backup] path had read as the current folder), words.py 1.
+# 20,276 on main 30ea8dc (#117): 19,976 + 300.
+# 2026-10-24: merged with measured-budgets (#123, main dbb06f8): its 20,048 plus backup-restore's 300 is 20,348, counted
+# on the merged tree; cli.py and words.py, which both changed, merged clean.
 # 2026-10-24: latency-bench raised it by 180: claim 18's judge, which did not exist, and the dead_turns query that held
 # `yerk status --json` for 111 s, not folded to fit. latency.py 136 (`yerk bench latency`: the first line, the queue wait,
 # the turn, the hooks, Yerk's tools and the cache hit rate per room from the ledger read only and the logs, the file the
@@ -404,4 +436,7 @@ secs = 60
 # room; the timing rows; read_only), cli.py 17 (the bench command), morning.py 4 and status.py 3 (the day's medians against
 # the day before, and on the card), words.py 2.
 # 20,156 on main 30ea8dc: 19,976 + 180.
-lines = 20156
+# 2026-10-24: merged with main 9f533481 (#123 measured-budgets and #128 backup-restore): its 20,348 plus latency-bench's
+# 180 is 20,528, counted on the merged tree; cli.py (the bench command beside backup and restore) and status.py (the speed
+# key and line beside the backup's) took both sides, morning.py and words.py merged clean.
+lines = 20528

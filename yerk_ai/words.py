@@ -383,6 +383,7 @@ NO_READING, RESTS = "{name}: no reading yet", "{name}: resting until {until}"
 OLD_READING, TURN_FOR = "{name}: last reading {ago}", "{name}: busy {took}"
 QUEUED, WATCHES = ", {n} waiting", "{name}: watches {channel}"
 UNIT_USE, JOB_DUE = "{name}: {mb} MB, {cpu:.1f}% cpu", "job {name}: in {left}"
+BACKUP_AT, NO_BACKUP = "backup: {ago} ago, {size}", "backup: none yet"
 NO_JOB_DUE, NO_TIMERS = "jobs: none due within the hour", "jobs: the timer list is unreadable"
 STALLS, NO_STALLS = "stalls {day}: {n}, longest {took}", "stalls {day}: none"
 TODAY, YESTERDAY = "today", "yesterday"
@@ -423,8 +424,8 @@ def short_day(epoch: float) -> str:
     return f"{t:%b} {t.day}"
 # the morning diff (morning.py), for the machine room
 MORNING_NEW, MORNING_SAME, KNOWN = "morning: {n} new since the last diff", "morning: nothing new", ", {n} known"
-PAYLOAD, PART = "{room}: {size:,} chars, {change}", "{room} {part}: {change} chars"
-FIRST_MAP, SAME = "first map", "same"
+PAYLOAD, PART = "{name}: {size:,}, {left:,} left", "{room} {part}: {change} chars"     # as sent and its gap to the total; what moved
+OVER_PART = "{name}: {size:,} > {line:,}"           # "room part", a Claude Code part past its line: the deploy's gate refuses
 ANSWERED, SINCE = "{day}: {n} messages answered", " since {at}"
 WAIT, FIRST_LINE = "queue wait: {mid} typical, {worst} worst", "first line: {mid} typical, {worst} worst"
 SPEED = "{day}: first line {first}, turn {turn}"                     # the day's medians (latency.medians) on the status card

@@ -1,0 +1,17 @@
+# The nightly backup (yerk backup): the private folder, the state's ledger, sessions and index metadata, and these
+# units, as one dated archive with a manifest under [backup] path in yerkd.toml (else yerk-backups beside the private
+# folder), 0600; the last [backup] keep (7) stay. One line a run; a failure exits 1 and fails the unit, and `yerk status`
+# and the doctor say a backup older than 36 h. Installed with yerk-backup.timer: copy both to ~/.config/systemd/user/ and
+# `systemctl --user enable --now yerk-backup.timer`.
+[Unit]
+Description=Yerk AI backup
+Before=yerk-retention.service
+
+[Service]
+Type=oneshot
+Environment=YERK_PRIVATE=%h/yerk-private
+Environment=YERK_STATE=%h/.local/state/yerk
+ExecStart=%h/yerk-ai/.venv/bin/yerk backup
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=1800

@@ -16,7 +16,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
 
-from . import deploy, docs, files, hooks, jobs, memindex, memory, pictures, retention, status, words
+from . import backup, deploy, docs, files, hooks, jobs, memindex, memory, pictures, retention, status, words
 from . import shape as rule_shape                      # the check named "rule shape"; "layout" is the private folder's
 from .accounts import load_accounts, token_info
 from .config import REPO, ROOM_KEYS, budgets, filled, load_toml, room_defaults, room_id, rooms, write_private
@@ -331,9 +331,16 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
         found.extend([f"{words.WORKING} {memory.OVERFLOW}: {len(held)} rule{'s' * (len(held) != 1)} in no room yet; yerkd moves "
                       f"{'them' if len(held) != 1 else 'it'} to {memory.TOPIC_RULES} at its next start"] if held else [])
 
+    def backed() -> None:                                       # one bad disk takes an install with no backup (2026-10-24)
+        b = backup.newest(private, state)
+        if b is None and "backup" in conf:                      # a [backup] table: the owner set it up, and nothing landed
+            found.append(f"backup: none in {backup.settings(private, state)[0].name}; `yerk backup` makes one, yerk-backup.timer each night")
+        elif b is not None and now - b["at"] > backup.STALE:
+            found.append(f"backup: the newest, {b['name']}, is {(now - b['at']) / 3600:.0f} h old, past 36 h; is yerk-backup.timer on?")
+
     for what, check in (("layout", layout), ("classes", classes), ("tokens", tokens), ("index", index), ("hooks", hooked),
                         ("modes", modes), ("secrets", leaks), ("disk", growth), ("memory cap", high), ("backfill", backfill),
-                        ("cites", cites), ("code", code), ("rule shape", ruleshape), ("fit", fits), ("moved in", moved)):
+                        ("cites", cites), ("code", code), ("rule shape", ruleshape), ("fit", fits), ("moved in", moved), ("backup", backed)):
         try:
             check()
         except (Exception, SystemExit) as e:                    # a check that cannot run is a line; the others still run
