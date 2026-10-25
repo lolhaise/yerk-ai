@@ -14,6 +14,7 @@ import json
 import statistics
 import sys
 import time
+from collections import Counter
 from pathlib import Path
 from typing import Any, Callable
 
@@ -24,15 +25,42 @@ from .ledger import Ledger
 from .meters import Meters, meter_short
 
 DAY = 86400.0
+CALLS_SHOWN = 20                                         # a day's calls shown a line each, then their count (claim 19)
 STATIC = ("mechanics", "persona", "rulebook", "room_voice", "pinned_memory", "rules")   # the parts whose change is
                                                                                         # a finding: the recall pack moves daily
 
 
 def sizes(private: Path, state: Path) -> dict[str, dict[str, int]]:
     """Each room's session-start parts in characters before any trim (`yerk map`'s raw numbers), so a
-    part past its budget still shows its growth."""
+    part past its budget still shows its growth; Claude Code's as the room last sent them (context.sent)."""
     b, rules = budgets(), memory.settings(private, state).root / memory.RULES
-    return {name: {p.name: p.raw for p in context.session_start(private, conf, b, rules=rules)} for name, conf in rooms(private).items()}
+    return {name: {**context.sent(private, state, name, b)[0], **{p.name: p.raw for p in context.session_start(private, conf, b, rules=rules)}}
+            for name, conf in rooms(private).items()}
+
+
+def calls(ledger: Ledger, since: float, until: float) -> list[tuple[str, str]]:
+    """Claim 19: each call a room made for the owner in the window, a line of its room and words and under it its id and the
+    cites its turn read, or that it read nothing; the first CALLS_SHOWN, then the count after; a person's room's calls counted,
+    never quoted; each fix filed in the window. Receipts, never findings, so a call's two lines stay together."""
+    W, made = words, ledger.calls(since, until)
+    mine = [c for c in made if since <= float(c["t"]) < until and c["whom"] == "owner"]
+    bare = sum(1 for c in mine if c["no_reads"])
+    out = [W.line(f"{W.PLAIN} " + (W.CALLS.format(day=W.YESTERDAY, n=len(mine)) + (W.CALLS_BARE.format(m=bare) if bare else "")
+                                   if mine else W.CALLS_NONE.format(day=W.YESTERDAY)))]
+    for c in mine[:CALLS_SHOWN]:
+        reads, k, left = json.loads(c["reads"] or "[]"), 1, W.PHONE - W.width(W.CALL_READS.format(id=c["id"], reads=""))
+        while k < len(reads) and W.width(", ".join(reads[:k + 1]) + W.READS_MORE.format(n=len(reads) - k - 1) * (k + 1 < len(reads))) <= left:
+            k += 1
+        said = W.NO_READS if c["no_reads"] else ", ".join(reads[:k]) + W.READS_MORE.format(n=len(reads) - k) * (k < len(reads))
+        out.append("\n".join([W.line(f"{W.WORKING if c['no_reads'] else W.PLAIN} " + W.CALL_SAID.format(room=c["room"], call=c["call"])),
+                              W.line(W.SUB + W.CALL_READS.format(id=c["id"], reads=said))]))
+    if len(mine) > CALLS_SHOWN:
+        out.append(W.line(f"{W.PLAIN} " + W.CALLS_MORE.format(n=len(mine) - CALLS_SHOWN)))
+    theirs = Counter(str(c["room"]) for c in made if since <= float(c["t"]) < until and c["whom"] != "owner")
+    out += [W.line(f"{W.PLAIN} " + W.CALLS_FOR.format(room=r, n=n, s="s" * (n != 1))) for r, n in sorted(theirs.items())]
+    out += ["\n".join([W.line(f"{W.DONE} " + W.CALL_FIXED.format(id=c["id"], source=c["source"])), W.line(W.SUB + W.FIXED_BY.format(cite=c["correction"]))])
+            for c in made if since <= float(c["fixed"] or 0) < until]
+    return [("", x) for x in out]
 
 
 def build(private: Path, state: Path, accounts: list[Account], cooldowns: Cooldowns, ledger: Ledger,
@@ -48,13 +76,14 @@ def build(private: Path, state: Path, accounts: list[Account], cooldowns: Cooldo
 
     def add(key: str, mark: str, text: str) -> None:
         rows.append((key, W.line(f"{mark} {text}")))
-    now_sizes = sizes(private, state)
+    now_sizes, s = sizes(private, state), budgets()["session_start"]
     for room, parts in now_sizes.items():
-        before = last.get("sizes", {}).get(room)
-        d = sum(parts.values()) - sum((before or {}).values())
-        add("", W.PLAIN, W.PAYLOAD.format(room=room, size=sum(parts.values()),
-                                          change=W.FIRST_MAP if before is None else f"{d:+,}" if d else W.SAME))
-        for part in STATIC if before else ():
+        before, cc = last.get("sizes", {}).get(room), s["claude_code"]
+        left = int(s["total"]) - (size := context.start_size(parts))       # the session start as sent and its gap to the line
+        rows.append(("" if left >= 0 else f"over {room}", W.named(f"{W.PLAIN if left >= 0 else W.NOT_DONE} {W.PAYLOAD}", room, size=size, left=left)))
+        rows += [(f"over {room} {k}", W.named(f"{W.NOT_DONE} {W.OVER_PART}", f"{room} {k}", size=parts[k], line=n))
+                 for k, n in cc.items() if parts.get(k, 0) > n]
+        for part in [*STATIC, *(k for k in cc if k in before)] if before else ():     # Claude Code's too, from its second diff
             if d := parts.get(part, 0) - before.get(part, 0):
                 add(f"payload {room} {part} {d:+}", W.WORKING, W.PART.format(room=room, part=part, change=f"{d:+,}"))
     waits = ledger.waits(since, until)
@@ -85,6 +114,7 @@ def build(private: Path, state: Path, accounts: list[Account], cooldowns: Cooldo
         add("" if fine else f"shadow {rule}", W.PLAIN if fine else W.WORKING, W.SHADOW.format(rule=rule, n=n))
     if not flags:
         add("", W.PLAIN, W.NO_SHADOW)
+    rows += calls(ledger, since, until)                  # claim 19: each call's receipt, and a fix the day after it was filed
     if (spent := ledger.spent(since, until)).get("n"):   # the paid calls, a spend row each (transcribe, voice_note, plugins/web)
         add("", W.PLAIN, W.SPENT.format(day=W.YESTERDAY, **spent))
     for d in ledger.deploys(now - DAY):                  # its card may never have reached the machine room

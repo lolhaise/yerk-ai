@@ -21,6 +21,136 @@ version changes.
 
 ## 2026-10-24
 
+### bench-kinds (#126)
+
+- `yerk recall-bench` scores three kinds: recall (the question file it always read), and episodic and self
+  (`episodic-questions.json` and `self-questions.json` beside it, read when they are there, in the recall file's shape).
+  The first line is the kinds together, as before; after `misses:` comes a line per kind. A run's row in
+  recall-bench.jsonl carries `kinds`: each kind's questions, top six and top one, with their rates.
+- The ratchet holds each kind on its own, so a change that lifts recall and sinks self exits 4 with `RATCHET: self: ...`
+  even when the kinds together hold. A row from before this is the recall kind whole, so the series' history still holds
+  recall. A dated note in budgets.toml `[recall] drops` names episodic or self before BEST ("2026-10-25: self 21 to 18,
+  why"); a note with no kind names recall, as every note so far does.
+- The nightly curate holds the lines it lands to the kinds together, and `yerk deploy`'s real-index test holds each kind to
+  its ratchet, once the two files are in the private layer. The controls stay in the recall file; `--controls` reads only
+  it. The example layer has two invented questions of each new kind.
+- **Upgrading:** to score the new kinds, put `episodic-questions.json` and `self-questions.json` in `<private>/evals/`
+  beside the recall file; without them the bench runs the recall kind alone, as before. budgets.toml: `[code] lines`
+  20,754 (a dated note).
+
+### decision-receipts (#119)
+
+- A reply that makes a call for the owner shows its receipt in the next morning diff (claim 19). Code reads each reply that
+  went out, sentence by sentence, for a call's shape (`words.CALL`: "I'd go with" or "I'd" with an imperative verb, "go with"
+  or "pick" opening a sentence, "my call:", "you should", "the plan is", a number with an imperative after it); no model
+  decides, and a question, a quoted span and a code block are never a call, nor "you should have" or "should've", nor "I'd
+  put" or "I'd set" with a past-time word later in the sentence ("I'd" as "I had"). Replayed read only over one day of a work
+  room (Oct 23, 96 turns): 7 calls in 6 turns, 6 of them real recommendations; the seventh was "I'd" meaning "I had", so the
+  day now reads 6 calls in 5 turns.
+- Each call is a `calls` row in the ledger: its room, its turn, its sentence, and the cites its turn read (the recall hits
+  the prompt hook handed it, each file and line it opened, the file:line hits a recall or grep returned), or a flag that it
+  read nothing. A call in a person's room is that person's, never the owner's, and a reply a Stop rule turned back makes none.
+- The morning diff gives each of yesterday's calls its room and words, and under it its number and cites, or "no reads
+  behind it": the first 20, then the count after. A person's room's calls are counted, never quoted; a quiet day says
+  `calls yesterday: none`.
+- `yerk calls fix ID PATH:LINE NOTE` files the correction beside the wrong line the way `remember` does: a note in the call's
+  room's day log that names the line it supersedes and the call, that line marked superseded. It refuses a persona, a
+  rulebook, a voice file or a rules file; the next morning diff shows the fix.
+- **Upgrading:** nothing to edit; the ledger gains its `calls` table at the next start (no schema version change).
+  budgets.toml: `[code] lines` 20,737 (a dated note).
+
+### import-openclaw (#125)
+
+- `yerk import openclaw:<workspace dir>` moves an OpenClaw box's notes in, one workspace a run: MEMORY.md, USER.md,
+  memory/ and wiki/ (the kinds the index reads, and the text files of memory/transcripts/), and media/gym whole, copied
+  as they are into <private>/openclaw/<its name>/<the same path>, files 0600, folders 0700, each with the box file's
+  time. Never into the day logs or facts/, and outside imports/, so a note keeps its whole weight.
+- Left by rule, one line a rule with its files and bytes: the box tools' own state (memory/health, jobstate, finance,
+  sms, modelbench, forensics, tft, index, archive-offindex), a kind the index does not read, a link, a temp or backup
+  copy and the folders the index skips; a dot or secrets folder is never entered.
+- A line holding a shape of yerk doctor's secret scan (a key, a one-time code, a password or token line) is copied with
+  its kind in the value's place, the file's lines kept; the run lists each by file and line. On an import the key is
+  the tell, not the value: a line whose key is token, api_key, secret, password, passwd, pin, bearer, authorization,
+  cookie, session or private_key (with `:` or `=`) is written `[token-line withheld]` from the key on, so a short
+  token, a pin or a password with no digit never crosses; a line that only says the word (the token economy) is copied.
+- By path and sha256 against <private>/openclaw/<name>.sums: a second run writes nothing, so the same command tops up; a
+  changed file is written again through a temp file and a rename, one the box deleted is deleted from the copy, and a
+  part the box no longer has is held. `--since YYYY-MM-DD` takes the files changed from that day on; `--dry-run` prints
+  the inventory (files, bytes, each rule, the lines to scrub) and writes nothing. A workspace inside the private folder
+  (or the other way round), a copy that names another box and, for a real run, a private folder in the repository are
+  refused before the box is read.
+- After a real run it prints the yerkd.toml and rooms.toml lines that would read the copies, and never writes them: each
+  box path in an `also` line becomes its copy in its place, so every cite name stays; a `read` naming the box stays
+  while the box runs (yerkd refuses one inside the private folder); a denyRead keeping a shell off the box gains the
+  copies.
+- **Upgrading:** nothing to edit; the printed lines are made by hand, then yerk-index and yerkd restarted. budgets.toml:
+  `[code] lines` 20,565 (a dated note).
+
+### fusion-levers (#118)
+
+- A room's recall counts the meaning search's order a little above the keyword search's: in the reciprocal rank fusion of
+  the two, the keyword rank's part is 0.4 and the meaning rank's 0.6, where both counted alike (`SHARE` in memory.py). On
+  the install's 164 scored questions (13 controls), both halves recorded once from the live index and replayed for every
+  setting, the top six goes from 103 to 107 and the top one from 59 to 62, and no control ranks lower. The keyword share
+  was swept: 0.3 109/65 with a control falling from first to second, 0.5 103/59 (as before), 0.6 102/57 and 0.7 96/57,
+  both with a control missed.
+- Measured alone on the same questions and left out, as none raised both the top six and the top one with no control
+  ranking lower: score fusion (each search's score over its best) in place of rank fusion, keyword share 0.3 to 0.7: 103/65,
+  103/59, 103/54, 106/53, 106/53; a hit whose file name or first heading holds a name the question names ranked above a
+  body-only hit, at 1.5 to 100 times: 100/56 down to 96/45; a facts file above a day log for a present-tense question: 104/61
+  at 1.5, 105/63 at 4, with a control falling from first to third; the day logs newest first for "when did" and "last time"
+  questions and oldest first for "first time": 103/59 at every setting (7 of the 177 questions say "when did", none the
+  other two); the question's names followed by their card keys before the keyword search: 97/53, and 98/55 with a fuller
+  form only, a control falling from first to second.
+- Deep recall is unchanged: the lines a room is handed on each name and topic in a message come from the keyword half
+  alone, where there is no meaning rank to share with; on 187 of the install's names they are byte-identical to main's.
+- **Upgrading:** nothing to edit. budgets.toml: `[code] lines` 20,351: backup-restore's 20,348 plus this PR's 3 (a dated
+  note).
+
+### backup-restore (#128)
+
+- `yerk backup [--to DIR] [--with-index]`: one dated archive, `yerk-YYYYmmdd-HHMMSS.tar`, 0600 in a 0700 folder: the
+  private layer whole (persona, rules, rooms, memory, imports, the attachments folders, secrets as bytes with their
+  modes), the ledger through SQLite's own backup (whole while yerkd writes), sessions.json and the rooms' small files,
+  the index's metadata, and the `yerk*` units. The last member, MANIFEST.json, lists every other with its bytes, sha256
+  and mode. The index's vector store goes in only with `--with-index`; `yerk-index` rebuilds it from the layer. One line
+  a run; the last `[backup] keep` (7) stay. An archive is written under a hidden name and renamed only when whole.
+- `yerk restore ARCHIVE [--to DIR] [--dry-run] [--force]`: the whole archive read against its manifest first; one cut
+  short, missing a member or changed in a byte is refused before anything is written. Into an empty folder (the layer's
+  own, on a new disk, too), or with `--force` over a layer that holds files after a backup of it; what it replaces, a
+  unit file too, moved to `<state>/trash/<day>/restore-<time>/`; refused while yerkd runs on the target unless
+  `--force`. A line a step; `--dry-run` writes nothing.
+- `yerk status` says the newest backup's age and size on one line, red when there is none or it is past 36 h; `--json`'s
+  `backup_age` reads the same folder (a missing `[backup] path` had read the current folder). `yerk doctor` says a
+  backup older than 36 h, and none at all once yerkd.toml has a `[backup]` table.
+- **Upgrading:** yerkd.toml gains an optional `[backup]` table: `path` (default `yerk-backups` beside the private
+  folder), `keep` (7), `units` (`~/.config/systemd/user`). Copy `units/yerk-backup.service` and `units/yerk-backup.timer`
+  to `~/.config/systemd/user/` and `systemctl --user enable --now yerk-backup.timer` (04:10, before retention's 04:20).
+  budgets.toml: `[code] lines` 20,348 (a dated note).
+
+### measured-budgets (#123)
+
+- The budget gate reads what Claude Code sends. `yerk map`, the budget test and so `yerk deploy`'s fast gate take Claude
+  Code's parts (its prompt, the built-in tools, Yerk AI's tools, the other tool entries) from the room's newest
+  transcript, its newest request shape, where they counted them at their budgets.toml line or against numbers measured
+  Oct 20. A room with no transcript yet is counted at its lines, and the map says which it used. A part past its line
+  fails the gate, named with the room, the part and the transcript.
+- Read that way, three rooms sent more than their lines that day and no check saw it: the hands plug-in's five tools
+  (7,119) and web_image (913) inside the line for other tool entries (3,429), and a person's room's Edit and Write
+  (1,731) past the built-in tools' line (10,401). budgets.toml gives each plug-in a line of its own, named by the prefix
+  of its tools' names (`mcp__hands__` 7,119, `mcp__web-ladder__web_image` 913), the built-in tools 12,132 (the widest
+  room's), and the session-start total 108,093: up by the 9,763 already sent, since no part could pay. That evening an
+  owner room's new start sent Yerk AI's tools at 11,734 (schedule's and send's new descriptions), 34 past 11,700:
+  `yerk_tools` 11,734, paid by Claude Code's prompt line (10,966; the largest prompt sent is 10,889).
+- `yerk map --wire` splits the system prompt where that start's file began, so Claude Code's own prompt reads what it
+  sent (it read -6,401 in a room whose layer had changed since its last start), and the first message's own blocks
+  (Claude Code's environment and account reminder, the first hook) show outside the total, which no line names.
+- The morning diff: each room's line is its session start as sent and what is left under the total, where it was Yerk
+  AI's parts and the change since the last diff. What moved is the part lines below it, Claude Code's parts among them
+  from the second diff on, and a Claude Code part past its line is a red line every morning it lasts.
+- **Upgrading:** nothing to edit (budgets.toml ships in the repo). budgets.toml: `[code] lines` 20,048 (a dated note).
+  The first morning diff after the deploy counts Claude Code's parts in each room's size for the first time.
+
 ### send-own-channel (#117)
 
 - A room that names itself in `send` by its channel id (the id alone, or `discord:<id>` as rooms.toml writes it) posts in

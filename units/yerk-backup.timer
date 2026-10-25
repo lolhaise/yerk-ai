@@ -1,0 +1,11 @@
+# Every day at 04:10 local time, after the rooms' processes have gone idle and before retention's 04:20 sweep moves
+# anything into the trash; a night the box was off runs once when it is back.
+[Unit]
+Description=Yerk AI backup at 04:10
+
+[Timer]
+OnCalendar=*-*-* 04:10:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

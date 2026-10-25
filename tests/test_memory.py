@@ -500,6 +500,30 @@ def test_the_bench_scores_top_six_and_top_one_and_flags_a_blind_control(tmp_path
     assert memory.bench(s, q)["blind"] == ["c2"]
 
 
+def test_the_bench_scores_each_kind_apart_and_together(tmp_path):
+    """The question file is the recall kind; episodic-questions.json and self-questions.json beside it are the other two, each
+    scored on its own in `kinds` and with the rest in the numbers together; a kind with no file beside it is not run."""
+    s = tree(tmp_path)
+    build(s)
+    q = tmp_path / "recall-questions.json"
+    q.write_text(json.dumps({"questions": [
+        {"id": "c1", "q": "what colour is the example kettle", "answer_tokens": ["teal"], "control": True},
+        {"id": "q1", "q": "what does a person prefer in the morning", "answer_tokens": ["tea", "morning"]},
+        {"id": "q3", "q": "what is the example lamp", "answer_tokens": ["lamp", "shelf"]}]}))
+    (tmp_path / "episodic-questions.json").write_text(json.dumps({"questions": [
+        {"id": "e1", "kind": "episodic", "q": "who had lunch at example.com", "answer_tokens": ["lunch", "a person"]}]}))
+    (tmp_path / "self-questions.json").write_text(json.dumps({"questions": [
+        {"id": "s1", "kind": "self", "q": "what is the example lamp", "answer_tokens": ["lamp", "shelf"]}]}))
+    r = memory.bench(s, q)
+    assert [(x["id"], x["kind"]) for x in r["rows"]] == [("c1", "recall"), ("q1", "recall"), ("q3", "recall"), ("e1", "episodic"), ("s1", "self")]
+    assert r["kinds"] == {"recall": {"questions": 2, "top_k": 1, "top_1": 1, "top_k_rate": 0.5, "top_1_rate": 0.5},
+                          "episodic": {"questions": 1, "top_k": 1, "top_1": 1, "top_k_rate": 1.0, "top_1_rate": 1.0},
+                          "self": {"questions": 1, "top_k": 0, "top_1": 0, "top_k_rate": 0.0, "top_1_rate": 0.0}}
+    assert (r["questions"], r["top_k"], r["top_1"], r["controls"], r["blind"]) == (4, 2, 2, 1, [])
+    (tmp_path / "self-questions.json").unlink()
+    assert list(memory.bench(s, q)["kinds"]) == ["recall", "episodic"]
+
+
 def test_the_manifest_declares_every_memory_ability_with_a_tier():
     abilities = tomllib.loads((REPO / "abilities.toml").read_text())["abilities"]
     assert {"capture", "memory-index", "recall", "read-memory", "recall-bench", "mention-recall", "topic-recall",
