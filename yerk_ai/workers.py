@@ -497,9 +497,9 @@ class Workers:
                 return {"ok": False, "error": f"cannot read the brief file: {e}"}
         if not brief.strip():
             return {"ok": False, "error": "a worker needs a brief: give `brief` (text) or `brief_file` (a path)"}
-        now = room_settings(self.room_confs.get(room, {}), self.state, room, self.models)   # the room's live model and level
-        model = model or self.conf.model or now["model"][0]
-        if (effort := (effort or self.conf.effort or now["effort"][0]).strip().lower()) and effort not in EFFORTS:
+        live = room_settings(self.room_confs.get(room, {}), self.state, room, self.models)  # the room's live model and level
+        model = model or self.conf.model or live["model"][0]
+        if (effort := (effort or self.conf.effort or live["effort"][0]).strip().lower()) and effort not in EFFORTS:
             return {"ok": False, "error": f"no effort level {effort!r}; levels: {', '.join(EFFORTS)}"}
         if (acct := self._account(account, model)) is None:
             return {"ok": False, "error": f"no account {account or self.conf.account!r}; accounts: "
