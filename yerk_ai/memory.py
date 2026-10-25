@@ -775,6 +775,8 @@ def read(s: Settings, path: str, start: int = 1, lines: int = READ_LINES, reader
 POOL = 80            # candidates from each search (keywords, meaning) before fusion
 RRF_K = 20           # reciprocal rank fusion's constant: 1 / (RRF_K + rank); 60 before run 4, 20 measured on the 164-question set
 KEEP = 1             # each search's own first KEEP hits stay in the fused top k (measured: 1; 0 was plain fusion)
+SHARE = 0.4          # the keyword rank's part of the fused score, the meaning rank's the rest (0.5 before; measured on the 164-question
+                     # set, Oct 24: top six 103 to 107, top one 59 to 62; 0.3 more, but a control fell; score fusion lost at every share)
 RECORD = 0.5         # a stored message's share of the fused score beside a note's: an import's line, a day of the install's own log past
                      # the window (measured on the 164-question set after the Oct 21 import: top six 99 to 105, top one 56 to 60)
 MEANING_WAIT = 5.0   # seconds a recall waits for yerk-index's meaning search (its own provider wait is shorter)
@@ -837,9 +839,10 @@ def meaning(s: Settings, query: str, pool: int = POOL, deadline_s: float = MEANI
 
 
 def fuse(keywords: list[dict[str, Any]], vectors: list[dict[str, Any]], k: int, keep: int = KEEP,
-         weight: Callable[[dict[str, Any]], float] | None = None) -> list[dict[str, Any]]:
+         weight: Callable[[dict[str, Any]], float] | None = None, share: float = SHARE) -> list[dict[str, Any]]:
     """Reciprocal rank fusion of the two ranked lists: each chunk scores the sum over the lists it is in
-    of 1 / (RRF_K + its rank there), times its `weight` (`record`: a stored message counts RECORD); a tie breaks
+    of 1 / (RRF_K + its rank there), the keyword list's at twice `share`, the meaning list's at twice the rest, times its `weight`
+    (`record`: a stored message counts RECORD); a tie breaks
     on the cosine. No calibration between a bm25 cover and a cosine is needed, and a chunk both searches put first outranks either search's lone top hit.
     Vector hits under half the best cosine are noise and leave the fusion first. `keep` holds each
     search's own first `keep` hits in the top k (in fused order), so a lone keyword hit at rank two is
@@ -851,9 +854,9 @@ def fuse(keywords: list[dict[str, Any]], vectors: list[dict[str, Any]], k: int, 
         return sorted(keywords, key=lambda h: -float(h["score"]) * weight(h))[:k] if weight else keywords[:k]
     score: dict[int, float] = {}
     rows: dict[int, dict[str, Any]] = {}
-    for ranked in (keywords, vectors):
+    for ranked, part in ((keywords, 2 * share), (vectors, 2 * (1 - share))):
         for rank, h in enumerate(ranked, 1):
-            score[h["id"]] = score.get(h["id"], 0.0) + (weight(h) if weight else 1.0) / (RRF_K + rank)
+            score[h["id"]] = score.get(h["id"], 0.0) + part * (weight(h) if weight else 1.0) / (RRF_K + rank)
             rows.setdefault(h["id"], h)
     cos = {h["id"]: float(h["score"]) for h in vectors}
     near = {h["id"]: h["near"] for h in vectors if h.get("near")}       # the line the meaning matched

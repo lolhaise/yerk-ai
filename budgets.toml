@@ -429,6 +429,16 @@ secs = 60
 # 20,276 on main 30ea8dc (#117): 19,976 + 300.
 # 2026-10-24: merged with measured-budgets (#123, main dbb06f8): its 20,048 plus backup-restore's 300 is 20,348, counted
 # on the merged tree; cli.py and words.py, which both changed, merged clean.
+# 2026-10-24: fusion-levers raised it by 3: the keyword rank's part of the fusion, SHARE 0.4 where both ranks counted alike
+# (memory.py 3: SHARE and its measured note 2, fuse's docstring on the two parts 1; its `share` argument and the loop's parts
+# are in the lines that were there), measured alone on the 164-question set (top six 103 to 107, top one 59 to 62, no control
+# lower), not folded to fit. The three levers measured alone after it and deleted (name and field boosts, the tense order,
+# alias rewriting) leave no line.
+# 19,979 on main 30ea8dc (#117): 19,976 + 3.
+# 2026-10-24: merged with measured-budgets (#123, main dbb06f8): its 20,048 plus fusion-levers' 3 is 20,051, counted on
+# the merged tree; no .py file changed on both sides (#123: cli, context, morning, words; #118: memory).
+# 2026-10-24: merged with backup-restore (#128, main 9f53348): its 20,348 plus fusion-levers' 3 is 20,351, counted on
+# the merged tree; no .py file changed on both sides (#128: backup, cli, doctor, status, words; #118: memory).
 # 2026-10-24: addons-1 raised it by 355, part one of the core and the add-ons (ROADMAP-v6 step 3): the
 # loader, addons.py 295 (`yerk add` from a folder, a git URL or the repo the registry names, its checks, the size ceiling
 # among them, the marked blocks in rooms.toml and yerkd.toml, the units, `yerk remove`, the budget lines and rooms.toml keys
@@ -444,4 +454,6 @@ secs = 60
 # add-on's folder (addons.py 9); the widened except that undoes a late failure is 0; the `reads` install key, an attachment
 # type to one of the add-on's own allowed tools, named under a room's [attachment] line (the cold read's video-read hook:
 # addons.py 8, channels/discord.py 2, words.py 1). 20,703 + 9 + 11 is 20,723.
-lines = 20723
+# 2026-10-25: addons-1 merged with main 3255849 (#118 fusion-levers): main's 20,351 plus this PR's 375 (355 + 20) is
+# 20,726, counted on the merged tree; memory.py, which both changed (#118: the fusion's SHARE; #124: one line), merged clean.
+lines = 20726
