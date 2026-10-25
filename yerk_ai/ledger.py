@@ -194,6 +194,13 @@ class Ledger:
         stay beside it until its last connection closes (the doctor's modes check counted its own, 2026-10-21)."""
         self.db.close()
 
+    @classmethod
+    def read_only(cls, path: Path) -> Ledger:
+        """The ledger opened ?mode=ro, no schema or migration run: a reader that cannot write (yerk bench latency)."""
+        led = cls.__new__(cls)
+        led.db, led.lock, led.migrated = sqlite3.connect(f"file:{path}?mode=ro", uri=True, check_same_thread=False), threading.Lock(), []
+        return led
+
     def version(self) -> int:
         return int(self.db.execute("PRAGMA user_version").fetchone()[0])
 
@@ -337,25 +344,36 @@ class Ledger:
 
     def dead_turns(self, since: float, until: float) -> list[dict[str, Any]]:
         """A person's messages in the window with no reply, notice or file in the room for them: no part
-        sent under the key of a turn that took them, and no visible post linked to them (L192)."""
+        sent under the key of a turn that took them, and no visible post linked to them (L192). Every join is a
+        lookup, so the cost is per message, not messages times turns times parts (64 s for a day on Oct 24): a turn
+        by its id (i.turn_id, or a link's row_key, which _link writes as the id's text), a part by the key range
+        under the turn's key (`<key>:` to `<key>;`, `<key>-s` to `<key>-t`, the keys LIKE matched: a turn key is
+        lowercase hex), a post by its id; the unary + keeps the planner off the link table's (tbl, ...) key."""
         return self._select(
             "SELECT i.message_id, i.room, i.received FROM inbound i WHERE i.received >= ? AND i.received < ? AND "
-            "i.sender != 'yerk' AND i.state != 'ignored' AND NOT EXISTS (SELECT 1 FROM turns t JOIN deliveries d ON "
-            "d.state = 'sent' AND (d.key LIKE t.turn_key || ':%' OR d.key LIKE t.turn_key || '-s%') WHERE "
-            "t.turn_key != '' AND (t.id = i.turn_id OR CAST(t.id AS TEXT) IN (SELECT row_key FROM message_links WHERE "
-            "tbl = 'turns' AND col = 'inbound' AND message_id = i.message_id))) AND NOT EXISTS (SELECT 1 FROM "
-            "message_links l JOIN outbound o ON l.row_key = CAST(o.id AS TEXT) WHERE l.tbl = 'outbound' AND "
-            "l.col = 'inbound' AND l.message_id = i.message_id AND o.message_id IS NOT NULL AND o.kind NOT IN "
-            "('progress', 'progress-edit', 'worker-card')) ORDER BY i.received", (since, until))
+            "i.sender != 'yerk' AND i.state != 'ignored' AND NOT EXISTS (SELECT 1 FROM turns t JOIN (SELECT ':' AS lo, "
+            "';' AS hi UNION ALL SELECT '-s', '-t') k JOIN deliveries d ON d.state = 'sent' AND d.key >= t.turn_key || k.lo "
+            "AND d.key < t.turn_key || k.hi WHERE t.turn_key != '' AND t.id IN (SELECT i.turn_id UNION ALL SELECT "
+            "CAST(row_key AS INTEGER) FROM message_links WHERE message_id = i.message_id AND +tbl = 'turns' AND "
+            "col = 'inbound')) AND NOT EXISTS (SELECT 1 FROM message_links l JOIN outbound o ON o.id = CAST(l.row_key "
+            "AS INTEGER) WHERE l.message_id = i.message_id AND +l.tbl = 'outbound' AND l.col = 'inbound' AND "
+            "o.message_id IS NOT NULL AND o.kind NOT IN ('progress', 'progress-edit', 'worker-card')) "
+            "ORDER BY i.received", (since, until))
 
     def waits(self, since: float, until: float) -> list[dict[str, Any]]:
         """Each person's message in the window joined to the turn that answered it: `wait`, the turn's
-        start after the message (0 when it folded into a running turn), and `first`, the turn's first
-        visible line after the message (None when there was none, or it came before the message)."""
+        start after the message (0 when it folded into a running turn), `first`, the turn's first
+        visible line after the message (None when there was none, or it came before the message), and the
+        turn's `turn` length (None while it runs), `turn_id` and `room` (a turn that took three messages is one turn)."""
         return self._select("SELECT max(0, t.started - i.received) AS wait, CASE WHEN t.first_visible >= i.received "
-                            "THEN t.first_visible - i.received END AS first FROM inbound i JOIN turns t ON "
-                            "i.turn_id = t.id WHERE i.received >= ? AND i.received < ? AND i.sender != 'yerk'",
-                            (since, until))
+                            "THEN t.first_visible - i.received END AS first, t.ended - t.started AS turn, t.id AS turn_id, "
+                            "i.room FROM inbound i JOIN turns t ON i.turn_id = t.id WHERE i.received >= ? AND "
+                            "i.received < ? AND i.sender != 'yerk'", (since, until))
+
+    def timings(self, table: str, since: float, until: float) -> list[dict[str, Any]]:
+        """The hook_calls or tool_times rows timed in the window (yerk bench latency)."""
+        known({table: 1}, ("hook_calls", "tool_times"), "timing")
+        return self._select(f"SELECT * FROM {table} WHERE t >= ? AND t < ?", (since, until))
 
     def shadow_rules(self, since: float, until: float) -> dict[str, int]:
         rows = self._select("SELECT rule || CASE rule WHEN 'stance' THEN ' ' || detail ELSE '' END AS rule, count(*) AS n "

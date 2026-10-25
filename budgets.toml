@@ -521,4 +521,23 @@ secs = 60
 # --private loop), deploy.py (both imports) and doctor.py (this PR's severity and fix on each room finding, over #124's
 # known keys) keep both sides; tests/test_doctor.py's add-on key test reads the finding and the clean line as this PR's
 # doctor says them; words.py and tests/test_deploy.py merged clean.
-lines = 21238
+# 2026-10-24: latency-bench raised it by 180: claim 18's judge, which did not exist, and the dead_turns query that held
+# `yerk status --json` for 111 s, not folded to fit. latency.py 136 (`yerk bench latency`: the first line, the queue wait,
+# the turn, the hooks, Yerk's tools and the cache hit rate per room from the ledger read only and the logs, the file the
+# next run diffs, the day's medians), ledger.py 18 (dead_turns as lookups, its docstring saying why; waits with the turn and
+# room; the timing rows; read_only), cli.py 17 (the bench command), morning.py 4 and status.py 3 (the day's medians against
+# the day before, and on the card), words.py 2.
+# 20,156 on main 30ea8dc: 19,976 + 180.
+# 2026-10-24: merged with main 9f533481 (#123 measured-budgets and #128 backup-restore): its 20,348 plus latency-bench's
+# 180 is 20,528, counted on the merged tree; cli.py (the bench command beside backup and restore) and status.py (the speed
+# key and line beside the backup's) took both sides, morning.py and words.py merged clean.
+# 2026-10-25: merged with main 3255849 (#118 fusion-levers): its 20,351 plus latency-bench's 180 is 20,531, counted on the
+# merged tree; no .py file changed on both sides (#118: memory; #121: cli, latency, ledger, morning, status, words).
+# 2026-10-25: merged with main b81731f (#125 import-openclaw): its 20,565 plus latency-bench's 180 is 20,745, counted on
+# the merged tree; cli.py, which both changed, merged clean (the bench command beside the import's source); no other .py
+# file changed on both sides (#125: sources, move; #121: latency, ledger, morning, status, words).
+# 2026-10-25: latency-bench merged with main 7716086 (#119, #126, #124 addons-1, then #120 quiet-doctor): main's 21,238
+# plus this PR's 180 is 21,418, counted on the merged tree; cli.py keeps every side: the bench parser's `bn` beside
+# #124's `ad, rm` and #119's `cl` in the --private loop under #120's --timers argument, and the command map's "bench"
+# beside #124's add and remove; ledger.py, morning.py, status.py and words.py, which both changed, merged clean.
+lines = 21418

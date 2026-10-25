@@ -18,7 +18,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Callable
 
-from . import context, curate, docs, doctor, jobs, memory, retention, status, words
+from . import context, curate, docs, doctor, jobs, latency, memory, retention, status, words
 from .accounts import Account, Cooldowns
 from .config import budgets, rooms
 from .ledger import Ledger
@@ -92,6 +92,10 @@ def build(private: Path, state: Path, accounts: list[Account], cooldowns: Cooldo
                      (W.FIRST_LINE, [float(r["first"]) for r in waits if r["first"] is not None])):
         if xs:
             add("", W.PLAIN, word.format(mid=W.secs(statistics.median(xs)), worst=W.secs(max(xs))))
+    day, before = latency.medians(ledger, since, until), latency.medians(ledger, status.midnight(now, 2), since)
+    for k in ("first", "turn"):                          # the day's medians, each against the day before's (claim 18)
+        if (x := day[k]) is not None:
+            add("", W.PLAIN, W.SPEED_WAS.format(what=W.SPEED_OF[k], now=W.secs(x), was=W.secs(y) if (y := before[k]) is not None else "-"))
     stalls, started = ledger.stalls(since, until), float((live or {}).get("started") or 0)
     if not stalls and live is None:                      # a blind detector says so (L190)
         add("unknown stalls", W.NOT_DONE, W.UNKNOWN.format(what="stalls", why=W.NOT_ANSWERING_WHY))

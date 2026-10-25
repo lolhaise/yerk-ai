@@ -596,6 +596,18 @@ def cmd_recall_bench(a: argparse.Namespace) -> int:
     return 2 if r["blind"] else 4 if drops else 0
 
 
+def cmd_bench(a: argparse.Namespace) -> int:
+    """`yerk bench latency` (latency.py): the table, and the file it went to on stderr; the ledger read only."""
+    from pathlib import Path
+
+    from . import latency
+    from .config import state_dir
+    lines, out = latency.run(state_dir(a.state), a.days, Path(a.out).expanduser() if a.out else None)
+    print("\n".join(lines))
+    print(f"written to {out}", file=sys.stderr)
+    return 0
+
+
 def cmd_eval(a: argparse.Namespace) -> int:
     """`yerk eval taste` (taste_eval.py): the taste judge over the owner's complaints and the replies they accepted, phase 2
     beside phase 1; the bar printed, never enforced (exit 0 whatever the numbers; 2 when the case file is missing)."""
@@ -831,6 +843,11 @@ def main(argv: list[str] | None = None) -> int:
     rb.add_argument("--json", action="store_true", help="the run as JSON, per-question ranks included")
     rb.add_argument("--controls", action="store_true", help="the controls alone, as `yerk deploy` holds them: one JSON line, "
                     "nothing written (exit 2 when one misses)")
+    bn = sub.add_parser("bench", help="latency: the first visible line, the turn, the hooks, Yerk's tools and the cache hit rate per "
+                        "room, from the ledger (read only) and the logs; the table, and <state>/bench/latency-<day>.json to diff")
+    bn.add_argument("what", choices=["latency"])
+    bn.add_argument("--days", type=float, default=7.0, help="the window, days back from now (default 7)")
+    bn.add_argument("--out", help="the file written instead of <state>/bench/latency-<day>.json")
     ev = sub.add_parser("eval", help="taste: the taste judge replayed over the owner's complaints and the replies they accepted, "
                         "with what each turn read; precision, recall, false alarms per verdict, phase 1 beside (the bar printed, not enforced)")
     ev.add_argument("what", choices=["taste"])
@@ -905,14 +922,14 @@ def main(argv: list[str] | None = None) -> int:
     dp.add_argument("--no-tests", action="store_true", help="skip the fast tests and the recall check (the card says so)")
     dp.add_argument("--unit", action="store_true", help="also move a systemd-run daemon onto units/yerkd.service")
     dp.add_argument("--timers", action="store_true", help="only install and turn on each timer in units/ not installed yet")
-    for x in (ac, st, mo, rb, ev, ab, ex, jb, sc, lc, rt, bk, rs, dc, dk, cu, dp, pc, fl, nd, ad, rm, cl):
+    for x in (ac, st, mo, rb, bn, ev, ab, ex, jb, sc, lc, rt, bk, rs, dc, dk, cu, dp, pc, fl, nd, ad, rm, cl):
         x.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else "
                        + ("the running yerkd's own, from its unit)" if x is dp else "the fake example layer)"))
         x.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
     a = p.parse_args(argv)
     return int({"map": cmd_map, "setup-room": cmd_setup_room, "room": cmd_room, "import": cmd_room, "worker": cmd_worker, "pictures": cmd_pictures, "files": cmd_files,
                 "jobs": cmd_jobs, "schedule": cmd_schedule, "accounts": cmd_accounts, "status": cmd_status, "morning": cmd_morning,
-                "recall-bench": cmd_recall_bench, "eval": cmd_eval, "abilities": cmd_abilities, "explain": cmd_explain, "config": cmd_config,
+                "recall-bench": cmd_recall_bench, "bench": cmd_bench, "eval": cmd_eval, "abilities": cmd_abilities, "explain": cmd_explain, "config": cmd_config,
                 "add": cmd_add, "remove": cmd_add,
                 "deploy": cmd_deploy, "retention": cmd_retention, "backup": cmd_backup, "restore": cmd_restore, "location": cmd_location,
                 "doctor": cmd_doctor,

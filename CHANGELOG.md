@@ -8,6 +8,22 @@ version changes.
 
 ## 2026-10-24
 
+### latency-bench (#121)
+
+- `yerk bench latency [--days N]` (default 7): per room and over all of them, the first visible line after a person's
+  message, the queue wait and the turn (median, p90, p95), the prompt hook and the daemon's hook handling summed per turn,
+  the recall inside the prompt hook, Yerk's own tool round trips, and the cache hit rate. The ledger is opened read only
+  and the logs are only read; the table is printed and written to `<state>/bench/latency-<day>.json`, each median beside
+  the newest earlier day's file, so a speed lever is kept or cut on a diff. Under the table, what the records cannot
+  measure and the one record that would (three lines).
+- `yerk status` carries today's median first line and turn on one line ("today: first line 5.6 s, turn 12 s"), and
+  `--json` as `speed`; the morning diff carries yesterday's against the day before.
+- The dead turns query (`yerk status --json`, the morning diff) is a lookup per message, no longer every turn times every
+  sent part: a day of messages on a copy of the Oct 24 ledger took 128.8 s and takes 2.0 ms, and `yerk status --json` on
+  that copy 139.7 s, now 0.20 s. The same rows, compared per message on all 1,427.
+- **Upgrading:** nothing to edit. budgets.toml: `[code] lines` 21,418 (a dated note). The bench's files go in a new
+  folder, `<state>/bench/`.
+
 ### quiet-doctor (#120)
 
 - `yerk doctor` is quiet when all is well: each line it prints is a finding with its severity first (red or orange) and
