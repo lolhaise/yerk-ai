@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-10-24
 
-### decision-receipts
+### decision-receipts (#119)
 
 - A reply that makes a call for the owner shows its receipt in the next morning diff (claim 19). Code reads each reply that
   went out, sentence by sentence, for a call's shape (`words.CALL`: "I'd go with" or "I'd" with an imperative verb, "go with"
