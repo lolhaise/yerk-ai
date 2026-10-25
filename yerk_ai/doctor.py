@@ -16,7 +16,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
 
-from . import backup, deploy, docs, files, hooks, jobs, memindex, memory, pictures, retention, status, words
+from . import addons, backup, deploy, docs, files, hooks, jobs, memindex, memory, pictures, retention, status, words
 from . import shape as rule_shape                      # the check named "rule shape"; "layout" is the private folder's
 from .accounts import load_accounts, token_info
 from .config import REPO, ROOM_KEYS, budgets, filled, load_toml, room_defaults, room_id, rooms, write_private
@@ -168,11 +168,11 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
                 load_toml(private / name)
             except (OSError, ValueError) as e:
                 raise ValueError(f"{name} does not read: {e}") from e
-        rs = rooms(private)                                     # a room the loader refuses ends this check with its why
+        rs, known = rooms(private), ROOM_KEYS | addons.room_keys(state)     # an installed add-on's keys are known keys
         for n, c in rs.items():
             found.extend(f"room {n}: no {k} file" for k in ("persona", "rulebook", "voice")
                          if c.get(k) and not (layer_dir(private, c) / str(c[k])).is_file())
-            found.extend(f"room {n}: rooms.toml key {k} is read by nothing" for k in sorted(set(c) - ROOM_KEYS))
+            found.extend(f"room {n}: rooms.toml key {k} is read by nothing" for k in sorted(set(c) - known))
             found.extend([f"room {n}: no layer folder"] if not layer_dir(private, c).is_dir() else [])
         if base := room_defaults(load_toml(private / "rooms.toml")):     # each owner room as written, against [defaults]
             found.extend(x for n, c in rooms(private, own=True).items() if str(c.get("privacy", "owner")) == "owner" and (x := drift(n, c, base)))

@@ -18,7 +18,8 @@ def cmd_map(a: argparse.Namespace) -> int:
     if a.room not in rs:
         print(f"no room {a.room!r} in {priv / 'rooms.toml'}; rooms: {', '.join(rs) or 'none'}", file=sys.stderr)
         return 2
-    b, root = budgets(), memory.settings(priv, state_dir(a.state)).root
+    from . import addons
+    b, root = addons.with_lines(budgets(), state_dir(a.state)), memory.settings(priv, state_dir(a.state)).root
     start = context.session_start(priv, rs[a.room], b, rules=root / memory.RULES)
     now = datetime.now(timezone.utc)
     from . import location
@@ -395,6 +396,8 @@ def cmd_status(a: argparse.Namespace) -> int:
         s = status.ask(state, payload={"live": live}) if status.alive(state) else None
         s = s or {**status.collect(priv, state, accounts, cool, ledger, live=live), "alive": status.alive(state),
                   "commit": deploy.head(REPO)}
+        from . import addons
+        s["addons"] = [f"{n} {ab.get('version', '')}".strip() for n, ab in addons.installed(state).items()]
         if getattr(a, "json", False):             # one document for a monitoring tool (status.document)
             print(json.dumps(status.document(priv, state, s, ledger), default=str))
             return 0
@@ -614,12 +617,21 @@ def cmd_abilities(a: argparse.Namespace) -> int:
     free path, known but not built."""
     from . import abilities, memory
     from .config import state_dir
-    s = memory.settings(private_dir(a.private), state_dir(a.state))
-    tab = abilities.manifest()
+    s = memory.settings(private_dir(a.private), state := state_dir(a.state))
+    tab = abilities.manifest(state)
     for name, ab in sorted(tab.items(), key=lambda kv: kv[1].get("state", "built") == "described"):
         print(abilities.line(name, ab, tab, s))
     print("yerk explain <ability>: what it does, needs and costs")
     return 0
+
+
+def cmd_add(a: argparse.Namespace) -> int:
+    """`yerk add SOURCE` and `yerk remove NAME` (addons.py), each step a line; never on the fake example layer."""
+    from . import addons, words
+    if (priv := private_dir(a.private)).resolve() == EXAMPLE_PRIVATE.resolve():
+        print(f"{words.NOT_DONE} {words.NO_LAYER}", file=sys.stderr)
+        return 2
+    return (addons.add if a.cmd == "add" else addons.remove)(a.source, priv, state_dir(a.state), a.dry_run)
 
 
 def _settings(a: argparse.Namespace) -> list[dict[str, Any]]:
@@ -650,7 +662,7 @@ def cmd_explain(a: argparse.Namespace) -> int:
     from . import abilities, memory
     from .config import state_dir
     from .words import NOT_DONE
-    table_ = abilities.manifest()
+    table_ = abilities.manifest(state_dir(a.state))
     if (ab := table_.get(a.ability)) is None:
         if (hit := _pick(_settings(a), a.ability)):
             print("\n".join(_setting_lines(hit[0])))
@@ -828,6 +840,13 @@ def main(argv: list[str] | None = None) -> int:
     ev.add_argument("--cap", type=float, default=20.0, help="seconds a judge call may take (default 20)")
     ev.add_argument("--sample", type=int, default=0, help="a stratified N cases (by verdict) and N controls (by room), not all")
     ab = sub.add_parser("abilities", help="every ability and its state on this install, one line each")
+    ad = sub.add_parser("add", help="an add-on into this install (a folder, a git URL, or an ability whose entry names its repo): "
+                        "fetched, checked against its own size, its package, server, tables and units in, its tests run")
+    ad.add_argument("source")
+    rm = sub.add_parser("remove", help="an installed add-on out again, each step of yerk add undone")
+    rm.add_argument("source", metavar="name")
+    for x in (ad, rm):
+        x.add_argument("--dry-run", action="store_true", help="say each step it would take, change nothing")
     ex = sub.add_parser("explain", help="one ability (what it does, needs and costs, its free path, its state here) or one setting")
     ex.add_argument("ability")
     lc = sub.add_parser("location", help="day: the day's places (yerkd.toml [location]) as one line in its day log, place by "
@@ -878,7 +897,7 @@ def main(argv: list[str] | None = None) -> int:
     dp.add_argument("ref", nargs="?", help="the commit (default: the daemon's tree's HEAD)")
     dp.add_argument("--no-tests", action="store_true", help="skip the fast tests and the recall check (the card says so)")
     dp.add_argument("--unit", action="store_true", help="also move a systemd-run daemon onto units/yerkd.service")
-    for x in (ac, st, mo, rb, ev, ab, ex, jb, sc, lc, rt, bk, rs, dc, dk, cu, dp, pc, fl, nd, cl):
+    for x in (ac, st, mo, rb, ev, ab, ex, jb, sc, lc, rt, bk, rs, dc, dk, cu, dp, pc, fl, nd, ad, rm, cl):
         x.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else "
                        + ("the running yerkd's own, from its unit)" if x is dp else "the fake example layer)"))
         x.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
@@ -886,6 +905,7 @@ def main(argv: list[str] | None = None) -> int:
     return int({"map": cmd_map, "setup-room": cmd_setup_room, "room": cmd_room, "import": cmd_room, "worker": cmd_worker, "pictures": cmd_pictures, "files": cmd_files,
                 "jobs": cmd_jobs, "schedule": cmd_schedule, "accounts": cmd_accounts, "status": cmd_status, "morning": cmd_morning,
                 "recall-bench": cmd_recall_bench, "eval": cmd_eval, "abilities": cmd_abilities, "explain": cmd_explain, "config": cmd_config,
+                "add": cmd_add, "remove": cmd_add,
                 "deploy": cmd_deploy, "retention": cmd_retention, "backup": cmd_backup, "restore": cmd_restore, "location": cmd_location,
                 "doctor": cmd_doctor,
                 "docs": cmd_docs,

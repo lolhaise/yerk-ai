@@ -205,6 +205,25 @@ def test_the_fast_tests_run_in_the_tree_and_a_failure_deploys_nothing(tmp_path, 
     assert f"{words.DONE} fast tests passed" in out and f"{words.PLAIN} recall: not checked, no index" in out
 
 
+def test_each_installed_add_on_s_fast_tests_run_beside_the_core_s_and_one_failing_deploys_nothing(tmp_path, capsys):
+    """addons-1 (2026-10-24): an add-on installed under the state folder brings its own fast tests, and the deploy runs
+    them after the core's, in its folder, on the tree under test; one failing refuses the deploy with the add-on named."""
+    tree, ids = repo(tmp_path)
+    (tree / "tests").mkdir()
+    (tree / "tests" / "test_x.py").write_text("def test_x():\n    pass\n")
+    priv, state = layer(tmp_path, tree, tests=["tests/test_x.py"])
+    (a := state / "addons" / "hi" / "tests").mkdir(parents=True)
+    (a.parent / "addon.toml").write_text('[abilities.hi]\nversion = "1"\n[abilities.hi.install]\ntests = ["tests"]\n')
+    (a / "test_hi.py").write_text("def test_hi():\n    assert False, 'hi is broken'\n")
+    f = Fake(tree)
+    assert deploy.run(priv, state, ids[1], sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap) == 1
+    assert capsys.readouterr().out.splitlines()[1:3] == [f"{words.PLAIN} the fast tests of add-on hi failed", f"{words.PLAIN} hi is broken"]
+    assert f.restarts == [] and deploy.head(tree) == ids[0]
+    (a / "test_hi.py").write_text("def test_hi():\n    pass\n")
+    assert deploy.run(priv, state, ids[1], sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap) == 0
+    assert f"{words.DONE} fast tests passed" in capsys.readouterr().out.splitlines()
+
+
 def test_the_fast_tests_read_the_layer_deployed_for_and_the_card_names_the_room_and_part(tmp_path, capsys, monkeypatch):
     """The fast tests run with the deploy's --private and --state, so the real-layer budget test is the gate (it skipped
     without YERK_PRIVATE, so a room over budget passed). A planted over-budget part fails the deploy's own fast tests

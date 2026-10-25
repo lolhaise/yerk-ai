@@ -220,6 +220,18 @@ A call that stood on a wrong line is fixed at that line with `yerk calls fix <nu
 
 `abilities.toml` holds 84 abilities: 27 built and 57 described, known and not built. The described ones are the abilities a long-running personal install grew over months, written neutrally: reading bank balances read-only, job applications that are true and reviewed, texting as you with a preview and a veto, a browser on its own profile, a morning brief, watching a page, and 51 more. Each carries what it is, how it would be built, its tier (50 free, 3 need a provider key, 4 are paid), what it needs, what it would cost, its free path and why it is not built yet; one that is partly built names the built ability under `upgrade`. `yerk abilities` lists them one line each, `yerk explain NAME` answers for any one, a room that names one gets that entry's answer before the model starts, and "what can you do" gets every name by its state. `examples/abilities/` shows five of them with placeholder values; `tests/test_abilities.py` keeps every entry in that shape and free of anything shaped like a person's name and role, a room, a handle, an address, a dollar figure or a date.
 
+## Add-ons
+
+The core is what every install runs. An add-on is an ability in a repo of its own, installed only where it is wanted. Its root holds `addon.toml`, an abilities.toml entry with `repo` (its git URL), `version`, `size` (its own ceiling, in lines of its code) and `install` (its package and module, its MCP server and allow lines, its yerkd.toml tables, the rooms.toml keys it reads, its units, its budget lines, its words file and its tests, and the attachment types it reads, each to one of its own tools, as `reads = { "video/*" = "mcp__NAME__frames" }`).
+
+```
+yerk add examples/addons/hello --private ~/yerk-private --dry-run   # each step it would take, nothing written
+yerk add examples/addons/hello --private ~/yerk-private             # a folder, a git URL, or an ability whose entry names its repo
+yerk remove hello --private ~/yerk-private                          # each step undone, the private folder as it was
+```
+
+`yerk add` fetches it into the state folder's `addons/NAME`, refuses it when its code is over its own `size`, its name is not one plain word (letters, digits, `-` and `_`), a words file, test or unit it names is outside its folder (absolute, through `..` or through a link) or a budget value is not a whole number, installs its package into this venv, writes its server as `[defaults.mcp.NAME]` and its tools into `[defaults] allow` in rooms.toml and its tables into yerkd.toml (marked blocks the loaders read back first), links its units into `~/.config/systemd/user`, and runs its own fast tests; a failing test, or any step that fails, undoes every step. The rooms get it at yerkd's next start. While it is installed its budget lines count in the gate, its rooms.toml keys are known to `yerk doctor`, an attachment of a type it reads gets a line naming its tool under the room's `[attachment]` line, `yerk deploy` runs its fast tests after the core's, `yerk abilities` says installed (or what is missing) and `yerk status` names it. examples/addons/hello is the example: one MCP tool, one unit, one budget line, one words file and one test.
+
 ## Voice notes
 
 A voice note or recording sent to a room arrives with one line under its `[attachment]` line: the room takes in the sound only through the `transcribe` tool on Yerk's own server (the daemon has the network, a room's shell has none), which returns the words with a timestamp per segment and saves them beside the audio as `NAME.transcript.txt`, and a turn that ends without calling it bounces once.
