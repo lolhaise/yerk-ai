@@ -29,9 +29,31 @@ version changes.
   nothing. The doctor names a timer in units/ that is not enabled, orange, with that command (not installed) or
   `systemctl --user enable --now NAME.timer` (installed, off).
 - **Upgrading:** yerk-curate.timer is installed and turned on by the next `yerk deploy` (or `yerk deploy --timers`)
-  item moved to the next step and, the test reads it back as plain text with, one 00:00. More line for the
+  on a box that never copied it, so the night's card curation runs from then on, at 05:00; the same deploy installs
+  and turns on yerk-backup.timer (#128) the same way, which does #128's copy and enable step. If the doctor said
   `secret-shaped lines`, run `yerk doctor --scrub --dry-run`, then `yerk doctor --scrub`, then rotate each key it named.
-  text.with: `[one] more` 00,000 (line for the).
+  entry.waits: `[in] the` 00,000 (queue for its).
+
+### backup-restore (#128)
+
+- `yerk backup [--to DIR] [--with-index]`: one dated archive, `yerk-YYYYmmdd-HHMMSS.tar`, 0600 in a 0700 folder: the
+  private layer whole (persona, rules, rooms, memory, imports, the attachments folders, secrets as bytes with their
+  modes), the ledger through SQLite's own backup (whole while yerkd writes), sessions.json and the rooms' small files,
+  the index's metadata, and the `yerk*` units. The last member, MANIFEST.json, lists every other with its bytes, sha256
+  and mode. The index's vector store goes in only with `--with-index`; `yerk-index` rebuilds it from the layer. One line
+  a run; the last `[backup] keep` (7) stay. An archive is written under a hidden name and renamed only when whole.
+- `yerk restore ARCHIVE [--to DIR] [--dry-run] [--force]`: the whole archive read against its manifest first; one cut
+  short, missing a member or changed in a byte is refused before anything is written. Into an empty folder (the layer's
+  own, on a new disk, too), or with `--force` over a layer that holds files after a backup of it; what it replaces, a
+  unit file too, moved to `<state>/trash/<day>/restore-<time>/`; refused while yerkd runs on the target unless
+  `--force`. A line a step; `--dry-run` writes nothing.
+- `yerk status` says the newest backup's age and size on one line, red when there is none or it is past 36 h; `--json`'s
+  `backup_age` reads the same folder (a missing `[backup] path` had read the current folder). `yerk doctor` says a
+  backup older than 36 h, and none at all once yerkd.toml has a `[backup]` table.
+- **Upgrading:** yerkd.toml gains an optional `[backup]` table: `path` (default `yerk-backups` beside the private
+  folder), `keep` (7), `units` (`~/.config/systemd/user`). Copy `units/yerk-backup.service` and `units/yerk-backup.timer`
+  to `~/.config/systemd/user/` and `systemctl --user enable --now yerk-backup.timer` (04:10, before retention's 04:20).
+  budgets.toml: `[code] lines` 20,348 (a dated note).
 
 ### measured-budgets (#123)
 

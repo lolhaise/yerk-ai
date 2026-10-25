@@ -525,7 +525,7 @@ def test_a_timer_in_units_the_box_never_installed_or_turned_off_is_one_orange_li
         return [x for x in doctor.run(private, state, dry=True) if x[2:].startswith(("timer ", "timers:"))]
     assert timers() == [f"{words.WORKING} timer yerk-curate.timer: not-found; `yerk deploy --timers` installs and enables it",
                         f"{words.WORKING} timer yerk-recall-bench.timer: disabled; `systemctl --user enable --now yerk-recall-bench.timer`"]
-    assert asked == [("is-enabled", *sorted(p.name for p in (config.REPO / "units").glob("*.timer")))] and len(asked[0]) == 7
+    assert asked == [("is-enabled", *sorted(p.name for p in (config.REPO / "units").glob("*.timer")))] and len(asked[0]) == 8
     states.clear()
     assert timers() == []
     asked.clear()
