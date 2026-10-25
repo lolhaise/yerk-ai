@@ -229,9 +229,10 @@ def test_every_yerkd_key_the_package_reads_is_described():
     page, so settings.md's claim to every key was false while the test above, which asks only that a described key is
     named somewhere, passed. Each yerkd.toml section and key the package reads by name is on settings.md, its file and line
     named when one is not; and the scan still sees the reads it was built on, so a scan gone blind cannot pass."""
-    reads = yerkd_reads()
-    assert {("discord", "guild"), ("watch", "assistants"), ("backup", "keep"), ("memory", "root")} <= set(reads), "the scan is blind: mend yerkd_reads"
-    missing = {f"[{s}] {k}".rstrip(): sorted(w) for (s, k), w in reads.items() if (s, k) not in described_yerkd()}
+    reads, described = yerkd_reads(), described_yerkd()
+    blind = {("discord", "guild"), ("watch", "assistants"), ("backup", "keep"), ("memory", "root")} - set(reads)
+    assert not blind, f"the scan no longer sees {sorted(blind)}: mend yerkd_reads if the code still reads them, else drop them here"
+    missing = {f"[{s}] {k}".rstrip(): sorted(w) for (s, k), w in reads.items() if (s, k) not in described}
     assert missing == {}, f"read in the code, not in docs/settings.md (a line in config.YERKD_WORDS, then `yerk docs own`): {missing}"
 
 
