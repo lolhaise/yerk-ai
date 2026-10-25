@@ -549,21 +549,28 @@ LEFT = {"health": "telemetry the box's tools write all day", "jobstate": "the jo
 TEXTS = ("memory/transcripts/", (".csv", ".txt", ".json", ".html", ".vtt"))    # its text files too: read_memory reads any file of a root
 TEXT = (".md", *TEXTS[1])                           # a copy scrubbed a line at a time (a sidecar's .txt too); a picture goes as it is
 SUMS = "# yerk import openclaw:"                    # the record's first line, then a line a file: box sha, copy sha, lines scrubbed, path
+# On an import the key is the tell, not the value (PR 125's cold read: `token: abc123`, a pin, a password with no digit and an
+# Authorization header crossed under the doctor's 16 character floor): a key naming a secret, with `:` or `=` (quoted, starred,
+# or the end of a longer key, ACCESS_TOKEN), withholds its line from the key on; prose that only says the word does not.
+KEYED = re.compile(r"(?i)(?<![A-Za-z0-9])(?:token|api[ _-]?key|secret|pass(?:word|phrase|wd)|pin|bearer|authorization|cookie"
+                   r"|session|private[ _-]?key)[\"'`*_\s]*[:=].*")
 
 
 def withheld(data: bytes) -> tuple[bytes, list[tuple[int, str]]]:
-    """A text with each line holding a shape of yerk doctor's scan (a key, a one-time code, a password or token line) written
-    with the shape's kind in its place until it holds none (a kind is no shape: a line written twice is never one again);
+    """A text with each line holding a shape of yerk doctor's scan (a key, a one-time code, a password or token line), or a
+    key naming a secret whatever its value (KEYED, a token line; a password line too runs to the line's end), written with the
+    shape's kind in its place until it holds none (a kind is no shape: a line written twice is never one again);
     (line, kind) of each line changed, by its first shape, as the doctor says one."""
     from .doctor import SECRETS
+    shapes = {**SECRETS, "password line": re.compile(SECRETS["password line"].pattern + ".*"), "token line": KEYED}
     text = data.decode("utf-8", "surrogateescape")
-    if not any(rx.search(text) for rx in SECRETS.values()):
+    if not any(rx.search(text) for rx in shapes.values()):
         return data, []
     lines, hits = text.split("\n"), list[tuple[int, str]]()
     for n, line in enumerate(lines):
-        while k := next((k for k, rx in SECRETS.items() if rx.search(line)), ""):
+        while k := next((k for k, rx in shapes.items() if rx.search(line)), ""):
             hits += [] if hits and hits[-1][0] == n + 1 else [(n + 1, k)]
-            line = SECRETS[k].sub(f"[{k.replace(' ', '-')} withheld]", line)
+            line = shapes[k].sub(f"[{k.replace(' ', '-')} withheld]", line)
         lines[n] = line
     return "\n".join(lines).encode("utf-8", "surrogateescape"), hits
 

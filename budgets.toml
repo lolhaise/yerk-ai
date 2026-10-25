@@ -436,4 +436,8 @@ secs = 60
 # printed and never written), move.py 1 and cli.py 1 (the source named). 20,183 on main 30ea8dc (#117): 19,976 + 207.
 # 2026-10-25: merged with backup-restore (#128, main 9f53348, after #123): its 20,348 plus import-openclaw's 207 is
 # 20,555, counted on the merged tree; cli.py and README.md, which both changed, merged with no line in common.
-lines = 20555
+# 2026-10-25: import-openclaw's cold read fix raised it by 7: on an import the key is the tell, not the value (the cold
+# read found `token: abc123`, a pin, a password with no digit and an Authorization header crossing under the doctor's
+# 16 character floor), not folded to fit. sources.py 7 (KEYED, the secret keys with `:` or `=` and its comment, and
+# withheld's shapes: the doctor's, its password line run to the line's end, KEYED as its token line). 20,555 + 7 = 20,562.
+lines = 20562

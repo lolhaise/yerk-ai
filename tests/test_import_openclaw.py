@@ -1,5 +1,6 @@
 """Checks `yerk import openclaw:`, which copies the notes of an OpenClaw workspace, another assistant's files, into the private folder with
-doctor's secret shapes written as their kind on the copy's own lines, a second run writing nothing, a file the box changed
+secrets taken out, against a small OpenClaw workspace built here. The cases: each part copied or skipped by its rule, the doctor's secret shapes
+and a line whose key names a secret written as their kind on the copy's own lines (whatever the value: a short token, a pin, a password with no
 digit), a second run writing nothing, a file the box changed or deleted carried over and a part it no longer has held, --since and --dry-run, what
 rooms.toml lines that read the copies printed in place and never written. Every value here is a placeholder."""
 import os
@@ -10,9 +11,13 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from yerk_ai import cli, memory
+from yerk_ai import cli, memory, sources
 
 CODE, PASSWORD, TOKEN = "your code is 482913", "password: placeholder-7!", "token: " + "placeholder" * 2   # the doctor's shapes
+KEYED = {"token: abc123": "abc123", "password: hunter": "hunter", "pin: 123456": "123456",            # under the doctor's floor
+         "Authorization: Bearer abc123def456": "abc123def456", "token: placeholder1234567": "placeholder1234567"}  # 18: over it
+KEYS = ("token", "api_key", "apikey", "secret", "password", "passwd", "pin", "bearer", "authorization", "cookie", "session",
+        "private_key")
 FILES = {"MEMORY.md": "# the index\n- the kettle is on the shelf\n", "USER.md": "# the owner\n- tea, no sugar\n",
          "memory/2026-04-01.md": f"# 2026-04-01\n- 09:00 the morning\n- 09:05 {CODE} for the login\n- 09:06 {PASSWORD}\n"
                                  f"- 09:07 {TOKEN}\n- 09:10 the end\n",
@@ -78,6 +83,27 @@ def test_each_part_is_copied_or_skipped_by_its_rule_and_a_secret_shape_leaves_as
     files = [p for p in (priv / "openclaw").rglob("*") if p.is_file()]
     dirs = [priv / "openclaw", *(p for p in (priv / "openclaw").rglob("*") if p.is_dir())]
     assert {stat.S_IMODE(p.stat().st_mode) for p in files} == {0o600} and {stat.S_IMODE(p.stat().st_mode) for p in dirs} == {0o700}
+
+
+def test_a_line_whose_key_names_a_secret_leaves_as_its_kind_whatever_its_value(box, capsys):
+    ws, priv, state = box
+    prose = "- the token economy, a word in a sentence"
+    (ws / "memory/2026-04-02.md").write_text("\n".join(["# 2026-04-02", prose, *(f"- {x}" for x in KEYED), ""]))
+    assert run(ws, priv, state) == 0
+    out, copy = capsys.readouterr().out, (priv / "openclaw/helper/memory/2026-04-02.md").read_text()
+    assert copy.split("\n") == ["# 2026-04-02", prose, *["- [token-line withheld]"] * len(KEYED), ""]
+    assert "scrub: 8 lines in 2 files" in out and all(f"  memory/2026-04-02.md:{n} (token line)" in out for n in range(3, 8))
+    landed = [p for p in priv.rglob("*") if p.is_file() for v in KEYED.values() if v.encode() in p.read_bytes()]
+    assert landed == [] and not any(v in out for v in KEYED.values())
+
+
+def test_on_an_import_the_key_is_the_tell_not_the_value():
+    lines = [f"{k}{sep}abc" for k in (*KEYS, *(k.upper() for k in KEYS)) for sep in (": ", "=", " = ")]
+    for line in [*lines, '"api_key": "abc"', "ACCESS_TOKEN=abc", "**PIN**: abc", "passphrase: abc"]:
+        out, hits = sources.withheld(f"- {line}\n".encode())
+        assert hits == [(1, "token line")] and b"abc" not in out and out.endswith(b"[token-line withheld]\n"), line
+    for line in (b"- the token economy, a word in a sentence\n", b"- tokens: 1,200 a day\n", b"- a spin: 3 laps\n"):
+        assert sources.withheld(line) == (line, [])
 
 
 def test_a_second_run_writes_nothing_and_a_box_change_deletion_and_lost_part_are_carried(box, capsys):

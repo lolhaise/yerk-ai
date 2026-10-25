@@ -18,7 +18,10 @@ version changes.
   sms, modelbench, forensics, tft, index, archive-offindex), a kind the index does not read, a link, a temp or backup
   copy and the folders the index skips; a dot or secrets folder is never entered.
 - A line holding a shape of yerk doctor's secret scan (a key, a one-time code, a password or token line) is copied with
-  case before the next run starts, the example note says; the sample item moved to the next step.
+  its kind in the value's place, the file's lines kept; the run lists each by file and line. On an import the key is
+  the tell, not the value: a line whose key is token, api_key, secret, password, passwd, pin, bearer, authorization,
+  cookie, session or private_key (with `:` or `=`) is written `[token-line withheld]` from the key on, so a short
+  token, a pin or a password with no digit never crosses; a line that only says the word (the token economy) is copied.
 - By path and sha256 against <private>/openclaw/<name>.sums: a second run writes nothing, so the same command tops up; a
   changed file is written again through a temp file and a rename, one the box deleted is deleted from the copy, and a
   part the box no longer has is held. `--since YYYY-MM-DD` takes the files changed from that day on; `--dry-run` prints
@@ -30,7 +33,7 @@ version changes.
   while the box runs (yerkd refuses one inside the private folder); a denyRead keeping a shell off the box gains the
   copies.
 - **Upgrading:** nothing to edit; the printed lines are made by hand, then yerk-index and yerkd restarted. budgets.toml:
-  `[with] one` 00,000 (more line for).
+  `[check] while` 00,000 (a second entry).
 
 ### backup-restore (#128)
 

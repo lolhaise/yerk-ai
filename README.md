@@ -134,7 +134,7 @@ uv run pytest
 
 A person room's persona and rulebook start as the other person room's less its own text: fill in OWNER, PERSON and RELATION in the persona's last section, read the rest for anything else of that room's, and write pinned.md, before the person talks there.
 
-Next Step and the test reads it back `as plain text:<with one> [--more Line-For-The] [--check-while]`, a second entry waits: In.the, Queue.for, its/, turn/ and the/last part closes the case before <the>/next/<run starts>/<the example note> (says 0000), the sample item moved, to the next step and the test reads it back as plain text with, one more line for the check while a second entry waits in the queue; for its turn and000, the last part closes the case before the next run starts the.
+An OpenClaw box moves its notes in with `yerk import openclaw:<workspace dir> [--since YYYY-MM-DD] [--dry-run]`, one workspace a run: MEMORY.md, USER.md, memory/, wiki/ and media/gym copied as they are into <private>/openclaw/<its name>/<the same path> (files 0600), the box tools' state, the kinds the index does not read and every dot or secrets folder left, each line with a shape of yerk doctor's secret scan, or whose key names a secret (a token, a password, a pin, a session) whatever its value, written as its kind; by path and sha256, so a second run writes nothing and the same command tops up.
 After a real run it prints the yerkd.toml and rooms.toml lines that read the copies (in each `also` a box path becomes its copy in its place, so every cite name stays; a `read` stays while the box runs; a denyRead keeping a shell off the box gains the copies), to make by hand before yerk-index and yerkd are restarted; it never writes them.
 
 ## Importing a chat
