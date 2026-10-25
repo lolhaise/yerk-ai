@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-10-24
 
-### import-openclaw
+### import-openclaw (#125)
 
 - `yerk import openclaw:<workspace dir>` moves an OpenClaw box's notes in, one workspace a run: MEMORY.md, USER.md,
   memory/ and wiki/ (the kinds the index reads, and the text files of memory/transcripts/), and media/gym whole, copied
