@@ -31,7 +31,8 @@ TOTALS = {"session_start": ("total",), "per_message": ("typical", "cap")}     # 
 BEGIN, END = "# add-on {name}: yerk add wrote these lines, yerk remove {name} takes them out\n", "# add-on {name}: end\n"
 DEFAULTS = "\n[defaults]                    # the add-ons' tools, written by yerk add\nallow = []\n"
 ALLOW = re.compile(r"^\[defaults\][^\n]*\n(?:(?!\[)[^\n]*\n)*?[ \t]*allow\s*=\s*\[", re.M)    # [defaults]' own allow = [
-Run = Callable[..., "subprocess.CompletedProcess[str]"]
+NAME = re.compile(r"[A-Za-z0-9_-]+")      # an add-on's name: one folder under addons/, a bare TOML key, the NAME in mcp__NAME__
+Run =Callable[..., "subprocess.CompletedProcess[str]"]
 
 
 def units_dir() -> Path:
@@ -84,24 +85,32 @@ def size(folder: Path) -> int:
 
 
 def check(name: str, ab: dict[str, Any], folder: Path, known: dict[str, Any] | None) -> str:
-    """Why `yerk add` refuses this entry, "" for nothing: a field missing, an install key no step reads, a tool that is not
-    its own server's, a budget line on a total or outside the parts, a version other than the registry's, a words file or
-    tests that are not there, its code over its own ceiling."""
+    """Why `yerk add` refuses this entry, "" for nothing: a name that is not one plain word, a field missing, an install key no
+    step reads or a table that is not one, a tool that is not its own server's, a budget line on a total, outside the parts or
+    not a whole number, a version other than the registry's, a path outside it, a words file or tests not there, its code over its own ceiling."""
     ins = ab.get("install")
+    if not NAME.fullmatch(name):
+        return f"its name {name} is not one plain word: letters, digits, - and _ only"
     if miss := [k for k in ("what", "tier", "needs", "free_path", "version", "size", "install") if k not in ab]:
         return f"its entry has no {', '.join(miss)}"
     if not isinstance(ins, dict) or (bad := sorted(set(ins) - set(INSTALL))):
         return f"install {', '.join(bad) if isinstance(ins, dict) else 'is not a table'}: no step reads it ({', '.join(INSTALL)})"
+    if bad := [k for k in ("mcp", "settings", "budgets") if not isinstance(ins.get(k, {}), dict)]:
+        return f"install {bad[0]} is not a table"
     if known is not None and "install" not in known and "repo" not in known:
         return f"{name} is a core ability"
     if bad := [t for t in ins.get("allow", []) if not str(t).startswith(f"mcp__{name}__")]:
         return f"allow {bad[0]} is not a tool of its own server (mcp__{name}__...)"
     if bad := [k for k in ins.get("budgets", {}) if k.split(".")[0] not in TOTALS or k.rsplit(".", 1)[-1] in sum(TOTALS.values(), ())]:
         return f"budget line {bad[0]}: an add-on adds session_start and per_message parts, never a total"
+    if bad := [f"{k} = {n!r}" for k, n in ins.get("budgets", {}).items() if type(n) is not int or n < 0]:
+        return f"budget line {bad[0]}: not a whole number"
     if known and known.get("version") and str(known["version"]) != str(ab["version"]):
         return f"it is version {ab['version']} and the registry names {known['version']}"
     if not ins.get("words") or not ins.get("tests"):
         return "install names no words file or no tests, and an add-on brings both"
+    if bad := [str(p) for p in [ins["words"], *ins["tests"], *ins.get("units", [])] if not (folder / str(p)).resolve().is_relative_to(folder.resolve())]:
+        return f"{bad[0]} is outside its folder"        # absolute, or out through .. or a link: remove would leave it linked
     if bad := [str(p) for p in [ins["words"], *ins["tests"]] if not (folder / str(p)).exists()]:
         return f"no {bad[0]} in it"
     if (n := size(folder)) > int(ab["size"]):

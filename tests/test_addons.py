@@ -35,8 +35,9 @@ def pips(run) -> list[str]:
     return [c[c.index("pip") + 1] for c in run.ran if "pip" in c]
 
 
-def git_repo(tmp_path: Path) -> str:
+def git_repo(tmp_path: Path, change=lambda r: None) -> str:
     shutil.copytree(HELLO, r := tmp_path / "yerk-hello", ignore=shutil.ignore_patterns("__pycache__"))
+    change(r)
     for c in (["init", "-q"], ["add", "."], ["-c", "user.name=t", "-c", "user.email=t", "commit", "-qm", "hello"]):
         subprocess.run(["git", "-C", str(r), *c], check=True, capture_output=True)
     return r.as_uri()
@@ -100,6 +101,17 @@ def test_an_add_on_over_its_own_ceiling_is_refused_and_nothing_is_written(instal
     ('tests = ["tests"]', 'tests = ["tests"]\nhooks = ["Stop"]', f"install hooks: no step reads it ({', '.join(addons.INSTALL)})"),
     ("abilities.hello", "abilities.web", "web is a core ability"),
     ('words = "yerk_hello/words.py"', 'words = "words.toml"', "no words.toml in it"),
+    ("abilities.hello", 'abilities."../escape"', "its name ../escape is not one plain word: letters, digits, - and _ only"),
+    ("size = 40\n", "", "its entry has no size"),
+    ('settings = { hello = { greeting = "Hello" } }', 'settings = ["hello"]', "install settings is not a table"),
+    ('names" = 300', 'names" = "300"', "budget line session_start.claude_code.deferred_tool_names = '300': not a whole number"),
+    ('names" = 300', 'names" = -300', "budget line session_start.claude_code.deferred_tool_names = -300: not a whole number"),
+    ('names" = 300', 'names" = true', "budget line session_start.claude_code.deferred_tool_names = True: not a whole number"),
+    ('words = "yerk_hello/words.py"\n', "", "install names no words file or no tests, and an add-on brings both"),
+    ('words = "yerk_hello/words.py"', 'words = "../../outside/words.py"', "../../outside/words.py is outside its folder"),
+    ('words = "yerk_hello/words.py"', f'words = "{HELLO / "yerk_hello" / "words.py"}"', f"{HELLO / 'yerk_hello' / 'words.py'} is outside its folder"),
+    ('tests = ["tests"]', f'tests = ["{HELLO / "tests"}"]', f"{HELLO / 'tests'} is outside its folder"),
+    ('units = ["units/yerk-hello.service"]', 'units = ["../evil.service"]', "../evil.service is outside its folder"),
 ])
 def test_an_entry_the_checks_refuse_writes_nothing(install, tmp_path, capsys, old, new, why):
     priv, state = install
@@ -108,6 +120,19 @@ def test_an_entry_the_checks_refuse_writes_nothing(install, tmp_path, capsys, ol
     before = snapshot(priv)
     assert addons.add(str(bad), priv, state, run=fake()) == 1
     assert capsys.readouterr().out.splitlines()[-1] == f"{words.NOT_DONE} not added: {why}" and snapshot(priv) == before
+
+
+def test_a_path_that_leaves_it_through_a_link_is_refused(install, tmp_path, capsys):
+    priv, state = install
+    (out := tmp_path / "words.py").write_text('GREETING = "x"\n')
+
+    def link(r):                        # a git clone keeps the link, where a folder's copy takes the file it points to
+        (w := r / "yerk_hello" / "words.py").unlink()
+        w.symlink_to(out)
+    before = snapshot(priv)
+    assert addons.add(git_repo(tmp_path, link), priv, state, run=fake()) == 1
+    assert capsys.readouterr().out.splitlines()[-1] == f"{words.NOT_DONE} not added: yerk_hello/words.py is outside its folder"
+    assert snapshot(priv) == before and list((state / "addons").iterdir()) == []
 
 
 def test_its_own_failing_test_undoes_every_step(install, capsys):
