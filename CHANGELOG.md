@@ -8,6 +8,23 @@ version changes.
 
 ## 2026-10-24
 
+### bench-kinds (#126)
+
+- `yerk recall-bench` scores three kinds: recall (the question file it always read), and episodic and self
+  (`episodic-questions.json` and `self-questions.json` beside it, read when they are there, in the recall file's shape).
+  The first line is the kinds together, as before; after `misses:` comes a line per kind. A run's row in
+  recall-bench.jsonl carries `kinds`: each kind's questions, top six and top one, with their rates.
+- The ratchet holds each kind on its own, so a change that lifts recall and sinks self exits 4 with `RATCHET: self: ...`
+  even when the kinds together hold. A row from before this is the recall kind whole, so the series' history still holds
+  recall. A dated note in budgets.toml `[recall] drops` names episodic or self before BEST ("2026-10-25: self 21 to 18,
+  why"); a note with no kind names recall, as every note so far does.
+- The nightly curate holds the lines it lands to the kinds together, and `yerk deploy`'s real-index test holds each kind to
+  its ratchet, once the two files are in the private layer. The controls stay in the recall file; `--controls` reads only
+  it. The example layer has two invented questions of each new kind.
+- **Upgrading:** to score the new kinds, put `episodic-questions.json` and `self-questions.json` in `<private>/evals/`
+  beside the recall file; without them the bench runs the recall kind alone, as before. budgets.toml: `[code] lines`
+  20,754 (a dated note).
+
 ### decision-receipts (#119)
 
 - A reply that makes a call for the owner shows its receipt in the next morning diff (claim 19). Code reads each reply that

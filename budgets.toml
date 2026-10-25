@@ -471,4 +471,17 @@ secs = 60
 # 2026-10-25: merged with import-openclaw (#125, main b81731f): its 20,565 plus decision-receipts' 172 is 20,737, counted
 # on the merged tree; cli.py, which both changed (#125 the import's help, #119 `yerk calls`), and README merged with no
 # line in common.
-lines = 20737
+# 2026-10-24: bench-kinds raised it by 17: the recall bench scores the episodic and self kinds beside the recall one, apart
+# and together, and holds each to its own ratchet (ROADMAP-v6 step 4, the judge v5 promised for those two sets), not folded
+# to fit. memory.py 13 (KINDS, score, the bench reading <kind>-questions.json beside the recall file, the ratchet a kind at
+# a time with its kind in the note), cli.py 4 (the series row's kinds, a line and a ratchet per kind). 19,993 on main 30ea8dc.
+# 2026-10-24: merged with measured-budgets (#123) and backup-restore (#128), main 9f53348: its 20,348 plus
+# bench-kinds' 17 is 20,365, counted on the merged tree; cli.py, README and tests/test_budget.py, which
+# both changed, merged clean.
+# 2026-10-25: merged with fusion-levers (#118) and import-openclaw (#125), main b81731f: its 20,565 plus
+# bench-kinds' 17 is 20,582, counted on the merged tree; memory.py (#118's SHARE in fuse, this PR's bench and
+# ratchet), cli.py, tests/test_embeddings.py and README.md, which both changed, merged with no line in common.
+# 2026-10-25: merged with decision-receipts (#119, main a5c4389): its 20,737 plus bench-kinds' 17 is 20,754, counted
+# on the merged tree; cli.py (#119's `yerk calls`, this PR's recall-bench) and README.md, which both changed, merged
+# with no line in common.
+lines = 20754
