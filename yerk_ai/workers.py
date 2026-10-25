@@ -56,6 +56,7 @@ from typing import Any, Awaitable, Callable, Sequence
 from . import words
 from .accounts import Account, Cooldowns, account_env, pick
 from .card import ROWS_SHOWN, short
+from .config import EFFORTS
 from .config import PACKAGE
 from .engine import claude_bin
 from .ledger import Ledger
@@ -79,6 +80,7 @@ class Settings:
     cap_minutes: float = 65.0
     model: str = ""                     # "" = the room's own model
     account: str = ""                   # "" = the first account in order that is not resting
+    effort: str = ""                    # "" = the room's own effort; one of EFFORTS (config.py)
     tools: list[str] = field(default_factory=lambda: list(TOOLS))
     permission_mode: str = "bypassPermissions"     # headless: nobody is there to answer a prompt
     idle_seconds: float = 60.0          # the relay runs only after this long without a human message
@@ -92,7 +94,8 @@ def settings(state: Path, conf: dict[str, Any], budgets: dict[str, Any] | None =
     relay = (budgets or {}).get("relay", {})
     return Settings(root=Path(str(conf.get("root", state / "workers"))).expanduser(),
                     cap_minutes=float(conf.get("cap_minutes", 65.0)), model=str(conf.get("model", "")),
-                    account=str(conf.get("account", "")), tools=list(conf.get("tools", TOOLS)),
+                    account=str(conf.get("account", "")), effort=str(conf.get("effort", "")),
+                    tools=list(conf.get("tools", TOOLS)),
                     permission_mode=str(conf.get("permission_mode", "bypassPermissions")),
                     idle_seconds=float(conf.get("idle_seconds", 60.0)),
                     relay_message=int(relay.get("message", 1500)), relay_reply=int(relay.get("reply", 1500)),
@@ -213,6 +216,8 @@ def run(spec_path: Path) -> int:
             "--session-id", str(spec["session_id"]), "--setting-sources", "", "--strict-mcp-config",
             "--tools", ",".join(spec["tools"]), "--disallowedTools", "Agent", "--permission-mode",
             str(spec["permission_mode"])]
+    if spec.get("effort"):                                     # the room's level, or the call's
+        argv += ["--effort", str(spec["effort"])]
     if spec.get("mcp_config") and spec.get("yerk_tools"):     # only the read-only tools, from its own server
         argv += ["--mcp-config", str(spec["mcp_config"]),
                  "--allowedTools", ",".join(f"mcp__yerk__{t}" for t in spec["yerk_tools"] if t in WORKER_TOOLS)]
@@ -471,7 +476,7 @@ class Workers:
             return await self.start(room, str(req.get("brief") or ""),
                                     str(req.get("brief_file") or ""), str(req.get("account") or ""),
                                     str(req.get("model") or ""), float(req.get("cap_minutes") or 0),
-                                    list(req.get("tasks") or []))
+                                    list(req.get("tasks") or []), effort=str(req.get("effort") or ""))
         if action == "stop":
             return await self.stop(str(req.get("id", "")))
         if action == "list":
@@ -487,7 +492,7 @@ class Workers:
 
     async def start(self, room: str, brief: str = "", brief_file: str = "", account: str = "", model: str = "",
                     cap_minutes: float = 0.0, tasks: list[str] | None = None, job: str = "",
-                    more: dict[str, Any] | None = None) -> dict[str, Any]:
+                    more: dict[str, Any] | None = None, effort: str = "") -> dict[str, Any]:
         """`more`: keys the daemon's own callers add to worker.json (never the tool's or the command line's), none replacing one."""
         if room not in self.rooms:
             return {"ok": False, "error": f"no room {room!r}; rooms: {', '.join(self.rooms)}"}
@@ -499,6 +504,9 @@ class Workers:
         if not brief.strip():
             return {"ok": False, "error": "a worker needs a brief: give `brief` (text) or `brief_file` (a path)"}
         model = model or self.conf.model or str(self.room_confs.get(room, {}).get("model", ""))
+        effort = (effort or self.conf.effort or str(self.room_confs.get(room, {}).get("effort", ""))).strip().lower()
+        if effort and effort not in EFFORTS:
+            return {"ok": False, "error": f"no effort level {effort!r}; levels: {', '.join(EFFORTS)}"}
         if (acct := self._account(account, model)) is None:
             return {"ok": False, "error": f"no account {account or self.conf.account!r}; accounts: "
                                           f"{', '.join(a.name for a in self.accounts)}"}
@@ -527,7 +535,7 @@ class Workers:
             "Yerk AI's own config are refused. Put what you could not do in your report.\n\n"
             f"The brief (also in {d / 'BRIEF.md'}):\n\n{brief.strip()}\n")
         sid = str(uuid.uuid4())
-        spec = {"id": wid, "room": room, "account": acct.name, "model": model, "session_id": sid,
+        spec = {"id": wid, "room": room, "account": acct.name, "model": model, "effort": effort, "session_id": sid,
                 "claude": shutil.which(claude_bin()) or claude_bin(), "tools": self.conf.tools,
                 "permission_mode": self.conf.permission_mode, "prompt": str(prompt), "report": str(report),
                 "tasks": str(tasks_md), "cap": cap, "gate": self.gate, "settings": str(gate_settings(d))}
@@ -549,7 +557,7 @@ class Workers:
         self.live[wid] = row
         if self.watch:
             self.watch.add(d)
-        out = {"ok": True, "id": wid, "unit": row["unit"], "room": room, "account": acct.name, "model": model,
+        out = {"ok": True, "id": wid, "unit": row["unit"], "room": room, "account": acct.name, "model": model, "effort": effort,
                "staging": str(d), "report": str(report), "tasks": str(tasks_md), "cap_minutes": cap / 60}
         if row.get("waiting"):
             row["line"] = len(self.in_line(acct.name))
