@@ -409,6 +409,18 @@ def cmd_retention(a: argparse.Namespace) -> int:
     return retention.main(private_dir(a.private), state_dir(a.state), a.dry_run)
 
 
+def cmd_backup(a: argparse.Namespace) -> int:
+    """`yerk backup` (backup.py): one archive with its manifest, one line; exit 1 when none was written."""
+    from . import backup
+    return backup.main(private_dir(a.private), state_dir(a.state), a.to, a.with_index)
+
+
+def cmd_restore(a: argparse.Namespace) -> int:
+    """`yerk restore ARCHIVE` (backup.py): read against its manifest first, then a line a step; exit 1 when refused."""
+    from . import backup
+    return backup.restore_main(a.archive, private_dir(a.private), state_dir(a.state), a.to, a.dry_run, a.force)
+
+
 def cmd_location(a: argparse.Namespace) -> int:
     """`yerk location day [DATE]`: the day's places as one line in its day log (location.py), an earlier run's line replaced;
     prints the line, or why there is none; exit 1 with no [location] table, no located place in its places table or no readable fixes file."""
@@ -782,6 +794,16 @@ def main(argv: list[str] | None = None) -> int:
     rt = sub.add_parser("retention", help="the daily sweep: logs, transcripts, timing rows, finished workers and rooms' scratch "
                         "past their days ([retention] in yerkd.toml) into the trash, and the trash past its days deleted")
     rt.add_argument("--dry-run", action="store_true", help="say what would move and how much, move nothing")
+    bk = sub.add_parser("backup", help="one dated archive with a manifest: the private folder, the state's ledger, sessions and "
+                        "index metadata, the units; into [backup] path (yerkd.toml), the last [backup] keep (7) kept")
+    bk.add_argument("--to", help="the folder for it (default: [backup] path, else yerk-backups beside the private folder)")
+    bk.add_argument("--with-index", action="store_true", help="the index's vector store too (else yerk-index rebuilds it)")
+    rs = sub.add_parser("restore", help="an archive back, read whole against its manifest first: into an empty folder, or "
+                        "over the layer with --force after a backup of it")
+    rs.add_argument("archive")
+    rs.add_argument("--to", help="an empty folder to restore into, as DIR/private, DIR/state and DIR/units")
+    rs.add_argument("--dry-run", action="store_true", help="verify and say each step, write nothing")
+    rs.add_argument("--force", action="store_true", help="over the layer after a backup of it, and under a running yerkd")
     said = ("the daily check (the private folder's layout, rooms.toml keys, memory classes, tokens, the index, hooks, disk growth, "
             "the rule files' shape) and the crash repair of NUL lines, each file backed up first; once a week it also fetches "
             "the Claude docs from the web ([docs] fetch = false in yerkd.toml turns that off)")
@@ -812,7 +834,7 @@ def main(argv: list[str] | None = None) -> int:
     dp.add_argument("ref", nargs="?", help="the commit (default: the daemon's tree's HEAD)")
     dp.add_argument("--no-tests", action="store_true", help="skip the fast tests and the recall check (the card says so)")
     dp.add_argument("--unit", action="store_true", help="also move a systemd-run daemon onto units/yerkd.service")
-    for x in (ac, st, mo, rb, ev, ab, ex, jb, sc, lc, rt, dc, dk, cu, dp, pc, fl, nd):
+    for x in (ac, st, mo, rb, ev, ab, ex, jb, sc, lc, rt, bk, rs, dc, dk, cu, dp, pc, fl, nd):
         x.add_argument("--private", help="private folder (default: $YERK_PRIVATE, else "
                        + ("the running yerkd's own, from its unit)" if x is dp else "the fake example layer)"))
         x.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
@@ -820,7 +842,8 @@ def main(argv: list[str] | None = None) -> int:
     return int({"map": cmd_map, "setup-room": cmd_setup_room, "room": cmd_room, "import": cmd_room, "worker": cmd_worker, "pictures": cmd_pictures, "files": cmd_files,
                 "jobs": cmd_jobs, "schedule": cmd_schedule, "accounts": cmd_accounts, "status": cmd_status, "morning": cmd_morning,
                 "recall-bench": cmd_recall_bench, "eval": cmd_eval, "abilities": cmd_abilities, "explain": cmd_explain, "config": cmd_config,
-                "deploy": cmd_deploy, "retention": cmd_retention, "location": cmd_location, "doctor": cmd_doctor,
+                "deploy": cmd_deploy, "retention": cmd_retention, "backup": cmd_backup, "restore": cmd_restore, "location": cmd_location,
+                "doctor": cmd_doctor,
                 "docs": cmd_docs,
                 "curate": cmd_curate, "needs": cmd_needs}[a.cmd](a))
 

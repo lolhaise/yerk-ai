@@ -103,11 +103,12 @@ def test_the_card_is_phone_width_state_first_and_colours_only_what_means_somethi
     assert "- example-room: 100 MB, 6.0% cpu" in lines and any(x.startswith("- yerkd: 80 MB") for x in lines)
     assert lines[-1] == f"{words.NOT_DONE} stalls today: 1, longest 3.2 s"
     reds = [x for x in lines if x.startswith(words.NOT_DONE)]
-    assert len(reds) == 4                                                   # resting, blocked, gone, stall: no other
+    assert len(reds) == 5 and f"{words.NOT_DONE} {words.NO_BACKUP}" in reds  # resting, blocked, gone, no backup, stall: no other
     quiet = status.card(status.collect(EXAMPLE_PRIVATE, tmp_path / "q", [], cool, Ledger(tmp_path / "q.sqlite"),
                                        units=set, timers=Timers()), now)
     assert quiet == [f"{words.NOT_DONE} yerkd: not running", f"- yerk {__version__} at ?", "- workers: none running",
-                     f"{words.NOT_DONE} jobs: the timer list is unreadable", "- stalls today: none"]
+                     f"{words.NOT_DONE} jobs: the timer list is unreadable", f"{words.NOT_DONE} {words.NO_BACKUP}",
+                     "- stalls today: none"]
 
 
 def test_a_room_put_on_an_account_says_so_on_the_card_and_a_room_on_its_order_says_nothing_new(tmp_path):
