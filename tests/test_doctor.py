@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import time
 from datetime import date, datetime, timedelta
+from pathlib import Path
 
 import pytest
 
@@ -217,6 +218,18 @@ def test_a_rooms_toml_key_no_loader_reads_is_named_with_its_room(tree, capsys):
     rooms.write_text(rooms.read_text().replace("recall_days = 2", "recall_days = 2\nrecal_days = 3", 1))
     assert doctor.main(priv, state) == 1
     assert capsys.readouterr().out.splitlines() == [f"{words.WORKING} room example-room: rooms.toml key recal_days is read by nothing; fix its name or delete it in rooms.toml"]
+
+
+def test_a_rooms_toml_key_an_installed_add_on_reads_is_a_known_key(tree, capsys):
+    """addons-1: hello's manifest names hello_name among its room_keys, so while it is installed the key is read by it."""
+    priv, state, *_ = tree
+    rooms = priv / "rooms.toml"
+    rooms.write_text(rooms.read_text().replace("recall_days = 2", 'recall_days = 2\nhello_name = "Nora"', 1))
+    assert doctor.main(priv, state) == 1
+    assert capsys.readouterr().out.splitlines() == [f"{words.WORKING} room example-room: rooms.toml key hello_name is read by nothing; fix its name or delete it in rooms.toml"]
+    (state / "addons" / "hello").mkdir(parents=True)
+    shutil.copy(Path(__file__).resolve().parents[1] / "examples" / "addons" / "hello" / "addon.toml", state / "addons" / "hello")
+    assert doctor.main(priv, state) == 0 and capsys.readouterr().out == CLEAN
 
 
 def test_the_files_a_moved_room_brought_with_no_sidecar_are_one_orange_line_with_the_two_backfills(tree, capsys):

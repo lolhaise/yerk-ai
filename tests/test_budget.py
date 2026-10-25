@@ -69,7 +69,25 @@ def test_the_recall_bench_is_a_ratchet_a_drop_holds_until_a_dated_note_names_it(
     assert memory.ratchet([run(117), *[run(98)] * 4, run(98)], []) is None                 # the best has left the window
     assert memory.ratchet([run(29, 46), run(98)], []) is None and memory.ratchet([run(98)], []) is None    # no history
     rec = budgets()["recall"]
-    assert rec["slack"] == 1 and all(re.match(r"\d{4}-\d\d-\d\d: \d+ to \d+, \S", n) for n in rec["drops"])
+    assert rec["slack"] == 1 and all(re.match(rf"\d{{4}}-\d\d-\d\d: (({'|'.join(memory.KINDS)}) )?\d+ to \d+, \S", n) for n in rec["drops"])
+
+
+def test_the_ratchet_holds_each_kind_on_its_own_so_a_lever_that_lifts_one_and_sinks_another_is_seen():
+    """A row carries each kind's numbers (cli.cmd_recall_bench); a row from before the kinds is the recall kind whole. Recall up 3
+    and self down 3 leave the kinds together where they were, and the self kind's fall is still a drop, named for its kind; a
+    note names another kind's drop only with the kind before BEST."""
+    def run(rec: int, ep: int, me: int) -> dict:
+        return {"top_k": rec + ep + me, "k": 6, "questions": 209, "kinds": {
+            "recall": {"questions": 164, "top_k": rec}, "episodic": {"questions": 20, "top_k": ep}, "self": {"questions": 25, "top_k": me}}}
+    four, lever = [run(100, 14, 20)] * 4, run(103, 14, 17)
+    assert [memory.ratchet([*four, lever], [], 1, x) for x in ("recall", "episodic")] == [None, None]
+    assert memory.ratchet([*four, lever], [], 1, "self") == ("self: top 6 fell to 17 of 25 from 20 in the 4 runs before, and no "
+                                                            "dated note in budgets.toml [recall] drops names it")
+    assert memory.ratchet([*four, lever], ["2026-10-25: self 20 to 17, the lever"], 1, "self") is None
+    assert memory.ratchet([*four, lever], ["2026-10-25: 20 to 17, the lever"], 1, "self")              # no kind: a recall note
+    assert memory.ratchet([*four, run(97, 14, 20)], ["2026-10-25: self 100 to 97, the lever"])         # a self note, not recall's
+    old = [{"top_k": 100, "k": 6, "questions": 164}] * 4                                               # before the kinds
+    assert memory.ratchet([*old, run(97, 14, 20)], []) and memory.ratchet([*old, run(97, 14, 17)], [], 1, "self") is None
 
 
 def test_once_the_notes_best_leaves_the_window_a_97_is_refused_and_the_next_honest_run_passes():
@@ -98,7 +116,7 @@ def test_the_real_index_holds_the_recall_bench_ratchet():
     assert r["ok"] and not r["blind"], r.get("error") or r["blind"]
     rec = budgets()["recall"]
     rows = [json.loads(x) for x in series.read_text().splitlines() if x.strip()]
-    assert (drop := memory.ratchet([*rows, r], rec["drops"], rec["slack"])) is None, drop
+    assert (drops := [d for x in r["kinds"] if (d := memory.ratchet([*rows, r], rec["drops"], rec["slack"], x))]) == [], drops
 
 
 def test_the_real_layer_test_counts_the_rules_file(tmp_path, monkeypatch):

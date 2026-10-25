@@ -1,0 +1,8 @@
+{
+  "format": "yerk recall-bench question set, the self kind (example, invented): what the owner is like and what they want, in their words. Read beside recall-questions.json, in its shape, and scored apart from it and with it; a hit counts as there.",
+  "stale": "(^|/)overwrite-backups/",
+  "questions": [
+    {"id": "self-times", "kind": "self", "q": "how do I like times written", "answer_tokens": ["24-hour"]},
+    {"id": "self-reading", "kind": "self", "q": "what do I want once I finish a book", "answer_tokens": ["finished the book", "next one"]}
+  ]
+}

@@ -32,7 +32,7 @@ import traceback
 from pathlib import Path
 from typing import Any, Callable, Iterator
 
-from . import jobs, status, words
+from . import addons, jobs, status, words
 from .config import EXAMPLE_PRIVATE, REPO, head, load_toml, rooms, write_private
 from .ledger import Ledger
 from .workers import systemctl, unit_line
@@ -467,11 +467,12 @@ def run(private: Path, state: Path, ref: str = "", tests: bool = True, unit_file
         return no("refused", W.named(f"{W.PLAIN} {W.NOT_AHEAD}", on, ref=target[:7]), after=target)
     move(tree, on, target)
     env = {**os.environ, "YERK_PRIVATE": str(private), "YERK_STATE": str(state)}    # the budget test reads the real rooms
-    if tests and (t := subprocess.run([sys.executable, "-m", "pytest", "-q", "-x", "--tb=line", *conf.get("tests", FAST)],
-                                      cwd=tree, capture_output=True, text=True, env=env)).returncode:
-        move(tree, on, found)
-        why = [W.line(f"{W.PLAIN} {W.no_paths(x)}") for x in FAILED.findall(t.stdout)[:1]]     # the first failure, in its words
-        return no("tests failed", W.line(f"{W.PLAIN} {W.TESTS_FAILED}"), *why, after=target)
+    for name, paths, cwd in [("", list(conf.get("tests", FAST)), tree), *addons.tests(state)] if tests else []:   # each add-on's too
+        if (t := subprocess.run([sys.executable, "-m", "pytest", "-q", "-x", "--tb=line", *paths], cwd=cwd, capture_output=True,
+                                text=True, env={**env, "PYTHONPATH": str(tree)})).returncode:
+            move(tree, on, found)
+            why = [W.line(f"{W.PLAIN} {W.no_paths(x)}") for x in FAILED.findall(t.stdout)[:1]]     # the first failure, in its words
+            return no("tests failed", W.line(f"{W.PLAIN} {W.OF_ADDON.format(name=name) if name else W.TESTS_FAILED}"), *why, after=target)
     tested = W.line(f"{W.DONE if tests else W.PLAIN} {W.TESTS_PASSED if tests else W.TESTS_SKIPPED}")
     held, rec = recalled(check(tree, private, state)) if tests else (True, [])   # the live controls, the layer the daemon serves
     if not held:

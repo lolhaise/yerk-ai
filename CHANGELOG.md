@@ -32,7 +32,122 @@ version changes.
   on a box that never copied it, so the night's card curation runs from then on, at 05:00; the same deploy installs
   and turns on yerk-backup.timer (#128) the same way, which does #128's copy and enable step. If the doctor said
   `secret-shaped lines`, run `yerk doctor --scrub --dry-run`, then `yerk doctor --scrub`, then rotate each key it named.
-  entry.waits: `[in] the` 00,000 (queue for its).
+  budgets.toml: `[code] lines` 21,238 (a dated note).
+
+### addons-1 (#124)
+
+- `yerk add SOURCE` installs an add-on, an ability that lives in a repo of its own: SOURCE is a folder, a git URL
+  (`file://` included), or an ability whose abilities.toml entry names its `repo`. Each step is a line as it is done:
+  fetched into the state folder's `addons/NAME`, checked (its entry, and its code against its own `size`: an add-on over
+  its own ceiling is refused, nothing written; so is a name that is not one plain word of letters, digits, `-` and `_`,
+  a words file, test or unit outside its folder, absolute, through `..` or through a link, and a budget value that is not
+  a whole number, each with its reason), its package installed into this venv, its MCP server and its tools'
+  allow lines written under rooms.toml's `[defaults]` and its tables into yerkd.toml (each a marked block, read back
+  through the loaders that start yerkd before anything is written), its units linked into `~/.config/systemd/user`, its
+  budget lines and its words file named, its own fast tests run. A failing test, or any step that fails after the first
+  write, undoes every step. `--dry-run` says each step as "would".
+- `yerk remove NAME` undoes each step and leaves the private folder byte for byte as it was before the add; the add-on's
+  folder goes to the trash, and a package that will not uninstall is said on its own line.
+- abilities.toml entries gain `repo`, `version`, `size` and `install`, and `yerk abilities` reads an add-on's state from
+  what is installed (the package importable, its server under `[defaults]`, its units linked): installed, missing a part,
+  or not installed when a repo is named. A key-tier ability is on when the keys its new `keys` field names are there,
+  where three names were checked by hand.
+- While an add-on is installed its budget lines count in the gate (`yerk map`, the daemon) and its rooms.toml keys are
+  known keys to the doctor. `yerk deploy` runs each installed add-on's fast tests after the core's, and a failure names
+  the add-on. `yerk status` has one `add-ons:` line.
+- An add-on's `install` may name the attachment types it reads, each to one of its own allowed tools
+  (`reads = { "video/*" = "mcp__NAME__frames" }`; a tool not on its allow list is refused): while it is installed, a
+  room's `[attachment]` line of that type gets one line under it naming the tool, so a kind the core cannot read, a video,
+  is read through the add-on.
+- examples/addons/hello is the example: one MCP tool, one unit, one budget line, one words file, one test.
+- **Upgrading:** nothing to edit; rooms.toml and yerkd.toml change only when you run `yerk add`. budgets.toml:
+  `[code] lines` 21,129 (dated notes: main's 20,754 + 355, then 20 for the cold read's fixes and `reads`).
+
+### bench-kinds (#126)
+
+- `yerk recall-bench` scores three kinds: recall (the question file it always read), and episodic and self
+  (`episodic-questions.json` and `self-questions.json` beside it, read when they are there, in the recall file's shape).
+  The first line is the kinds together, as before; after `misses:` comes a line per kind. A run's row in
+  recall-bench.jsonl carries `kinds`: each kind's questions, top six and top one, with their rates.
+- The ratchet holds each kind on its own, so a change that lifts recall and sinks self exits 4 with `RATCHET: self: ...`
+  even when the kinds together hold. A row from before this is the recall kind whole, so the series' history still holds
+  recall. A dated note in budgets.toml `[recall] drops` names episodic or self before BEST ("2026-10-25: self 21 to 18,
+  why"); a note with no kind names recall, as every note so far does.
+- The nightly curate holds the lines it lands to the kinds together, and `yerk deploy`'s real-index test holds each kind to
+  its ratchet, once the two files are in the private layer. The controls stay in the recall file; `--controls` reads only
+  it. The example layer has two invented questions of each new kind.
+- **Upgrading:** to score the new kinds, put `episodic-questions.json` and `self-questions.json` in `<private>/evals/`
+  beside the recall file; without them the bench runs the recall kind alone, as before. budgets.toml: `[code] lines`
+  20,754 (a dated note).
+
+### decision-receipts (#119)
+
+- A reply that makes a call for the owner shows its receipt in the next morning diff (claim 19). Code reads each reply that
+  went out, sentence by sentence, for a call's shape (`words.CALL`: "I'd go with" or "I'd" with an imperative verb, "go with"
+  or "pick" opening a sentence, "my call:", "you should", "the plan is", a number with an imperative after it); no model
+  decides, and a question, a quoted span and a code block are never a call, nor "you should have" or "should've", nor "I'd
+  put" or "I'd set" with a past-time word later in the sentence ("I'd" as "I had"). Replayed read only over one day of a work
+  room (Oct 23, 96 turns): 7 calls in 6 turns, 6 of them real recommendations; the seventh was "I'd" meaning "I had", so the
+  day now reads 6 calls in 5 turns.
+- Each call is a `calls` row in the ledger: its room, its turn, its sentence, and the cites its turn read (the recall hits
+  the prompt hook handed it, each file and line it opened, the file:line hits a recall or grep returned), or a flag that it
+  read nothing. A call in a person's room is that person's, never the owner's, and a reply a Stop rule turned back makes none.
+- The morning diff gives each of yesterday's calls its room and words, and under it its number and cites, or "no reads
+  behind it": the first 20, then the count after. A person's room's calls are counted, never quoted; a quiet day says
+  `calls yesterday: none`.
+- `yerk calls fix ID PATH:LINE NOTE` files the correction beside the wrong line the way `remember` does: a note in the call's
+  room's day log that names the line it supersedes and the call, that line marked superseded. It refuses a persona, a
+  rulebook, a voice file or a rules file; the next morning diff shows the fix.
+- **Upgrading:** nothing to edit; the ledger gains its `calls` table at the next start (no schema version change).
+  budgets.toml: `[code] lines` 20,737 (a dated note).
+
+### import-openclaw (#125)
+
+- `yerk import openclaw:<workspace dir>` moves an OpenClaw box's notes in, one workspace a run: MEMORY.md, USER.md,
+  memory/ and wiki/ (the kinds the index reads, and the text files of memory/transcripts/), and media/gym whole, copied
+  as they are into <private>/openclaw/<its name>/<the same path>, files 0600, folders 0700, each with the box file's
+  time. Never into the day logs or facts/, and outside imports/, so a note keeps its whole weight.
+- Left by rule, one line a rule with its files and bytes: the box tools' own state (memory/health, jobstate, finance,
+  sms, modelbench, forensics, tft, index, archive-offindex), a kind the index does not read, a link, a temp or backup
+  copy and the folders the index skips; a dot or secrets folder is never entered.
+- A line holding a shape of yerk doctor's secret scan (a key, a one-time code, a password or token line) is copied with
+  its kind in the value's place, the file's lines kept; the run lists each by file and line. On an import the key is
+  the tell, not the value: a line whose key is token, api_key, secret, password, passwd, pin, bearer, authorization,
+  cookie, session or private_key (with `:` or `=`) is written `[token-line withheld]` from the key on, so a short
+  token, a pin or a password with no digit never crosses; a line that only says the word (the token economy) is copied.
+- By path and sha256 against <private>/openclaw/<name>.sums: a second run writes nothing, so the same command tops up; a
+  changed file is written again through a temp file and a rename, one the box deleted is deleted from the copy, and a
+  part the box no longer has is held. `--since YYYY-MM-DD` takes the files changed from that day on; `--dry-run` prints
+  the inventory (files, bytes, each rule, the lines to scrub) and writes nothing. A workspace inside the private folder
+  (or the other way round), a copy that names another box and, for a real run, a private folder in the repository are
+  refused before the box is read.
+- After a real run it prints the yerkd.toml and rooms.toml lines that would read the copies, and never writes them: each
+  box path in an `also` line becomes its copy in its place, so every cite name stays; a `read` naming the box stays
+  while the box runs (yerkd refuses one inside the private folder); a denyRead keeping a shell off the box gains the
+  copies.
+- **Upgrading:** nothing to edit; the printed lines are made by hand, then yerk-index and yerkd restarted. budgets.toml:
+  `[code] lines` 20,565 (a dated note).
+
+### fusion-levers (#118)
+
+- A room's recall counts the meaning search's order a little above the keyword search's: in the reciprocal rank fusion of
+  the two, the keyword rank's part is 0.4 and the meaning rank's 0.6, where both counted alike (`SHARE` in memory.py). On
+  the install's 164 scored questions (13 controls), both halves recorded once from the live index and replayed for every
+  setting, the top six goes from 103 to 107 and the top one from 59 to 62, and no control ranks lower. The keyword share
+  was swept: 0.3 109/65 with a control falling from first to second, 0.5 103/59 (as before), 0.6 102/57 and 0.7 96/57,
+  both with a control missed.
+- Measured alone on the same questions and left out, as none raised both the top six and the top one with no control
+  ranking lower: score fusion (each search's score over its best) in place of rank fusion, keyword share 0.3 to 0.7: 103/65,
+  103/59, 103/54, 106/53, 106/53; a hit whose file name or first heading holds a name the question names ranked above a
+  body-only hit, at 1.5 to 100 times: 100/56 down to 96/45; a facts file above a day log for a present-tense question: 104/61
+  at 1.5, 105/63 at 4, with a control falling from first to third; the day logs newest first for "when did" and "last time"
+  questions and oldest first for "first time": 103/59 at every setting (7 of the 177 questions say "when did", none the
+  other two); the question's names followed by their card keys before the keyword search: 97/53, and 98/55 with a fuller
+  form only, a control falling from first to second.
+- Deep recall is unchanged: the lines a room is handed on each name and topic in a message come from the keyword half
+  alone, where there is no meaning rank to share with; on 187 of the install's names they are byte-identical to main's.
+- **Upgrading:** nothing to edit. budgets.toml: `[code] lines` 20,351: backup-restore's 20,348 plus this PR's 3 (a dated
+  note).
 
 ### backup-restore (#128)
 

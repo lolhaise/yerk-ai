@@ -1,0 +1,27 @@
+# The example add-on (README "Add-ons"): one MCP tool, one unit, one budget line, one words file and one test, the
+# shape an add-on in a repo of its own has. `yerk add examples/addons/hello --private <your private folder>` installs it
+# from this folder; from its own repo it is `yerk add <its git URL>`, or `yerk add hello` once the core's
+# abilities.toml names that repo. `yerk remove hello` takes it out again.
+
+[abilities.hello]
+state = "built"
+what = "The example add-on: a hello tool on its own MCP server, which greets the room by the name its rooms.toml table gives, to show what an add-on is."
+tier = "free"
+needs = "nothing but the core: `yerk add examples/addons/hello`"
+free_path = "this is the free path"
+asked_as = ["say hello"]
+repo = "https://github.com/OWNER/yerk-hello"
+version = "0.1.0"
+size = 40
+
+[abilities.hello.install]
+package = "yerk-hello"
+module = "yerk_hello"
+mcp = { type = "stdio", command = "python", args = ["-m", "yerk_hello", "--private", "{private}", "--room", "{room}"] }
+allow = ["mcp__hello__hello"]
+settings = { hello = { greeting = "Hello" } }
+room_keys = ["hello_name"]
+units = ["units/yerk-hello.service"]
+budgets = { "session_start.claude_code.deferred_tool_names" = 300 }
+words = "yerk_hello/words.py"
+tests = ["tests"]
