@@ -239,10 +239,18 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-10-24: merged with measured-budgets (#123, main dbb06f8): its 20,048 plus backup-restore's 300 is 20,348, counted on the merged tree; cli.py and words.py, which both changed, merged clean.
 
+2026-10-24: fusion-levers raised it by 3: the keyword rank's part of the fusion, SHARE 0.4 where both ranks counted alike (memory.py 3: SHARE and its measured note 2, fuse's docstring on the two parts 1; its `share` argument and the loop's parts are in the lines that were there), measured alone on the 164-question set (top six 103 to 107, top one 59 to 62, no control lower), not folded to fit. The three levers measured alone after it and deleted (name and field boosts, the tense order, alias rewriting) leave no line. 19,979 on main 30ea8dc (#117): 19,976 + 3.
+
+2026-10-24: merged with measured-budgets (#123, main dbb06f8): its 20,048 plus fusion-levers' 3 is 20,051, counted on the merged tree; no .py file changed on both sides (#123: cli, context, morning, words; #118: memory).
+
+2026-10-24: merged with backup-restore (#128, main 9f53348): its 20,348 plus fusion-levers' 3 is 20,351, counted on the merged tree; no .py file changed on both sides (#128: backup, cli, doctor, status, words; #118: memory).
+
 2026-10-24: docs-from-code raised it by 356: Yerk AI's own docs written from the code, `yerk docs own` (decision 16; the audit's section G, items 4 and 5), not folded to fit. owndocs.py 232 (the six pages: commands from the three installed commands' parsers, tools from the MCP server's own list, settings from the key tables, budgets from this file's comments, hooks, units; the writer and its dry run), config.py 96 (ROOM_WORDS, every rooms.toml key in plain words, ROOM_KEYS now its keys; YERKD_WORDS, every yerkd.toml key not described where it is read), cli.py 11 (the `own` action and parser(), split out of main so the page can read it), hooks.py 9 (EVENTS, what each event does, out of the module docstring and made true to the daemon's seven Stop checks), daemon.py 4 and memindex.py 4 (their parser()). 20,332 on main 30ea8dc (#117): 19,976 + 356.
 
 2026-10-24: merged with measured-budgets and backup-restore (#123 and #128, main 9f53348): their 20,348 plus docs-from-code's 356 is 20,704, counted on the merged tree; cli.py, which all three changed, merged clean.
 
 2026-10-24: the cold read of #122 and its fix raised it by 2: config.py 2 (YERKD_WORDS names [discord] guild, which `yerk setup-room` reads, and [backup] keep and units, which backup.py reads since #128, with path in #128's words; so settings.md has every yerkd.toml key the package reads by name, which test_owndocs now checks both ways). 20,706: 20,704 + 2.
 
-- `lines = 20706`
+2026-10-24: merged with fusion-levers (#118, main 3255849): its 20,351 plus this branch's 358 (docs-from-code's 356 and the cold read's 2) is 20,709, counted on the merged tree; no .py file changed on both sides (#118: memory).
+
+- `lines = 20709`
