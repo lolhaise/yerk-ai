@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
+from .accounts import load_accounts
 from .config import flag, write_private
 from .lifted.clock import clock_line, room_voice
 from .lifted.sizemap import fmt, split_sections
@@ -237,17 +238,26 @@ def rode(state: Path, room: str, n: int = 20) -> tuple[int, dict[str, int]]:
     return len(got[-n:]), jobs
 
 
-def session_total(parts: list[Part], budgets: dict[str, Any]) -> int:
-    """Yerk AI's parts at their untrimmed size, plus Claude Code's parts at their budget."""
-    present = [p for p in parts if p.raw]
-    return sum(budgets["session_start"]["claude_code"].values()) + sum(p.raw for p in present) + chars(SEP) * max(len(present) - 1, 0)
+def session_total(parts: list[Part], budgets: dict[str, Any], sent: dict[str, int] | None = None) -> int:
+    """Yerk AI's parts at their untrimmed size, plus Claude Code's parts as the room last sent them (`sent`), else at their line."""
+    return start_size({**(sent or budgets["session_start"]["claude_code"]), **{p.name: p.raw for p in parts}})
 
 
-def violations(start: list[Part], msg: list[Part], budgets: dict[str, Any]) -> list[str]:
-    out = [f"{p.name}: {p.raw:,} > {p.budget:,} ({p.source or 'no file'})" for p in start + msg if p.over]
-    total, limit = session_total(start, budgets), int(budgets["session_start"]["total"])
+def start_size(sizes: dict[str, int]) -> int:
+    """A session start from its parts' sizes by name (`yerk map`'s and the morning diff's): their sum and SEP between each
+    two of Yerk AI's that are there."""
+    return sum(sizes.values()) + chars(SEP) * max(sum(1 for k in APPENDED if sizes.get(k)) - 1, 0)
+
+
+def violations(start: list[Part], msg: list[Part], budgets: dict[str, Any], sent: dict[str, int] | None = None,
+               src: str = "") -> list[str]:
+    """Each part past its line, Claude Code's as sent (`sent` from `src`, context.sent) first, then the totals."""
+    cc = budgets["session_start"]["claude_code"]
+    out = [f"{k}: {n:,} > {cc.get(k, 0):,} (as sent, {src})" for k, n in (sent or {}).items() if n > cc.get(k, 0)]
+    out += [f"{p.name}: {p.raw:,} > {p.budget:,} ({p.source or 'no file'})" for p in start + msg if p.over]
+    total, limit = session_total(start, budgets, sent), int(budgets["session_start"]["total"])
     if total > limit:
-        out.append(f"session start total: {total:,} > {limit:,}")
+        out.append(f"session start total: {total:,} > {limit:,}" + (f" (Claude Code's parts as sent, {src})" if src else ""))
     every, typical = sum(p.raw for p in msg), int(budgets["per_message"]["typical"])
     if every > typical:
         out.append(f"every message: {every:,} > {typical:,}")
@@ -334,9 +344,7 @@ def wire(transcript: Path) -> dict[str, Any]:
         with contextlib.suppress(ValueError):
             rows.append(json.loads(line))
     shape: dict[str, Any] = next((r["shape"] for r in reversed(rows) if r.get("type") == "api-request-shape"), {})
-    out: dict[str, Any] = {"system": sum(chars(b.get("text", "")) for b in shape.get("system", [])),
-                           "tools": {str(t.get("name")): chars(json.dumps(t)) for t in shape.get("tools", [])},
-                           "messages": [], "skipped": len(lines) - len(rows)}
+    out: dict[str, Any] = {**measured(shape), "messages": [], "skipped": len(lines) - len(rows)}
     group: list[tuple[str, str]] = []
     prompt: tuple[str, bool, float | None] | None = None      # the newest message not yet sent: (text, folded, when)
     added: list[tuple[str, str, str]] = []          # its attachments, rendered as Claude Code sends them: prefix + text
@@ -378,14 +386,78 @@ def wire(transcript: Path) -> dict[str, Any]:
     return out
 
 
+def measured(shape: dict[str, Any]) -> dict[str, Any]:
+    """A request shape's sizes: the system prompt, Claude Code's own part of it (the text before the appended file's first
+    line, the mechanics' heading, so the file is the one that start sent, never today's), and each tool entry."""
+    head = re.compile("(?m)^" + re.escape(MECHANICS.read_text().partition("\n")[0]) + "$")
+    texts, own = [str(b.get("text", "")) for b in shape.get("system", [])], 0
+    for t in texts:
+        if m := head.search(t):
+            own += chars(t[:m.start()])
+            break
+        own += chars(t)
+    return {"system": sum(map(chars, texts)), "prompt": own, "tools": {str(t.get("name")): chars(json.dumps(t)) for t in shape.get("tools", [])}}
+
+
+def newest_shape(path: Path) -> dict[str, Any]:
+    """A transcript's newest request shape (each process start writes one), its other rows never parsed."""
+    got: dict[str, Any] = {}
+    for line in path.open(errors="replace"):
+        if '"api-request-shape"' in line:
+            with contextlib.suppress(ValueError, AttributeError):
+                if (r := json.loads(line)).get("type") == "api-request-shape":
+                    got = r.get("shape") or got
+    return got
+
+
+def transcript(private: Path, state: Path, room: str) -> Path | None:
+    """The room's newest transcript, its session's in sessions.json: at the path its first hook call learnt, else by the
+    session's id in an account's projects folder; None for a room with no session or none written yet."""
+    with contextlib.suppress(OSError, ValueError, AttributeError):
+        row = json.loads((state / "sessions.json").read_text()).get(room) or {}
+        if (p := Path(str(row.get("transcript") or ""))).is_file():
+            return p
+        dirs = [a.config_dir for a in load_accounts(private / "accounts.toml")] if (private / "accounts.toml").is_file() else []
+        return next((f for d in dirs for f in sorted(d.glob(f"projects/*/{row['session_id']}.jsonl"))), None) if row.get("session_id") else None
+    return None
+
+
+def tool_line(name: str, lines: dict[str, Any]) -> str:
+    """The budgets.toml line a tool entry counts under: a capital name is a built-in tool (the deferred-loading placeholder
+    is not one), `mcp__yerk__` Yerk AI's, a line named `mcp__...` takes the entries its name begins (a plug-in's, the
+    longest such name), and every other entry is `deferred_tool_names`."""
+    if name[:1].isupper() and name != "DeferredToolPlaceholder":
+        return "builtin_tools"
+    if name.startswith("mcp__yerk__"):
+        return "yerk_tools"
+    return max((k for k in lines if k.startswith("mcp__") and name.startswith(k)), key=len, default="deferred_tool_names")
+
+
+def claude_parts(w: dict[str, Any], lines: dict[str, Any]) -> dict[str, int]:
+    """Claude Code's parts as a shape sent them (`measured`), by their line, each line there; no room sends a skill."""
+    out = {k: 0 for k in lines} | {"claude_code_prompt": int(w["prompt"])}
+    for name, n in w["tools"].items():
+        k = tool_line(name, lines)
+        out[k] = out.get(k, 0) + n
+    return out
+
+
+def sent(private: Path, state: Path, room: str, budgets: dict[str, Any]) -> tuple[dict[str, int], str]:
+    """Claude Code's parts as `room` last sent them, from its newest transcript's newest request shape, and that transcript;
+    for a room with none, each part at its line and "". The one read of them: `yerk map`, the budget test (the deploy's
+    fast gate) and the morning diff."""
+    lines = budgets["session_start"]["claude_code"]
+    if (t := transcript(private, state, room)) and (shape := newest_shape(t)):
+        return claude_parts(measured(shape), lines), str(t)
+    return dict(lines), ""
+
+
 def render_wire(room_name: str, w: dict[str, Any], appended: int, budgets: dict[str, Any], tz: str = "UTC",
                 now: float | None = None) -> str:
     """The measured counterpart of `render`: the first message carries the session-start parts; each later one is read
     by part, Yerk AI's against their keys, and the week's five largest named by the part that made them large."""
-    tools, cc, yerk = w["tools"], budgets["session_start"]["claude_code"], ("mcp__yerk__",)
-    builtin = sum(n for k, n in tools.items() if not k.startswith(yerk) and k[:1].isupper() and k != "DeferredToolPlaceholder")
-    mine = sum(n for k, n in tools.items() if k.startswith(yerk))
-    extra = sum(tools.values()) - builtin - mine
+    tools, cc = w["tools"], budgets["session_start"]["claude_code"]
+    parts, limit, file = claude_parts(w, cc), int(budgets["session_start"]["total"]), w["system"] - w["prompt"]
     msgs = w["messages"]
     first = sum(msgs[0]["around"]) if msgs else 0
     late = sorted((m for m in msgs[1:] if not m["folded"]), key=lambda m: sum(m["around"]))
@@ -394,22 +466,19 @@ def render_wire(room_name: str, w: dict[str, Any], appended: int, budgets: dict[
     pm = budgets["per_message"]
     keys = {**pm["parts"], **pm["on_hit"], "recall pack": budgets["session_start"]["appended"]["recall_pack"]}
     over = {n: c for n, k in keys.items() if (c := sum(m["parts"].get(n, 0) > k for m in late))}
-    total = w["system"] + sum(tools.values()) + first
+    total = w["system"] + sum(tools.values())
     row = "  {:<34}{:>9}{:>9}  {}"
     skipped = f"; damaged lines skipped: {w['skipped']}" if w.get("skipped") else ""      # a crash's zeroed or cut lines
+    label = {"claude_code_prompt": "system prompt: Claude Code's own", "builtin_tools": "built-in tools", "yerk_tools": "Yerk AI's tools",
+             "deferred_tool_names": "other tool entries"}
+    start = [row.format(label.get(k, k) + (f" ({', '.join(t for t in tools if tool_line(t, cc) == k)})" if k in ("builtin_tools", "deferred_tool_names")
+                                           else ""), fmt(n), fmt(cc[k]), "OVER" if n > cc[k] else "none sent" if k == "skills" else "")
+             for k, n in parts.items()]          # each line as `yerk map` counts it (context.sent), the room's file as that start sent it
+    start.insert(1, row.format("system prompt: Yerk AI's file", fmt(file), "", "" if file == appended else f"`yerk map` builds {fmt(appended)} now"))
     L = [f"yerk map {room_name} --wire  (from the room's transcript: what Claude Code sent{skipped})", "",
-         f"{'Session start, as sent':<36}{'chars':>9}{'budget':>9}",
-         row.format("system prompt: Claude Code's own", fmt(w["system"] - appended), fmt(cc["claude_code_prompt"]), ""),
-         row.format("system prompt: Yerk AI's file", fmt(appended), "", ""),
-         row.format("built-in tools (" + ", ".join(k for k in tools if k[:1].isupper() and k != "DeferredToolPlaceholder") + ")",
-                    fmt(builtin), fmt(cc["builtin_tools"]), ""),
-         row.format("Yerk AI's tools", fmt(mine), fmt(cc["yerk_tools"]), ""),
-         row.format("other tool entries (" + ", ".join(k for k in tools if not k.startswith(yerk) and not
-                    (k[:1].isupper() and k != "DeferredToolPlaceholder")) + ")", fmt(extra), fmt(cc["deferred_tool_names"]), ""),
-         row.format("skills", "0", fmt(cc["skills"]), "none sent"),
-         row.format("first message's added blocks", fmt(first), "", "environment, account reminder, hook"),
-         row.format("total", fmt(total), fmt(budgets["session_start"]["total"]),
-                    "ok" if total <= budgets["session_start"]["total"] else "OVER"), "",
+         f"{'Session start, as sent':<36}{'chars':>9}{'budget':>9}", *start,
+         row.format("total", fmt(total), fmt(limit), "ok" if total <= limit else "OVER"),
+         row.format("first message's added blocks", fmt(first), "", "environment, account reminder, hook: no line, outside the total"), "",
          f"{'Every later message, around its text':<36}{'chars':>9}{'budget':>9}"]
     if later:              # OVER is a part past its key; `typical` alone is a total the parts each under their keys can pass
         med, typ = later[len(later) // 2], pm["typical"]
@@ -450,20 +519,23 @@ def made(m: dict[str, Any]) -> str:
 
 
 def render(room_name: str, private_label: str, start: list[Part], msg: list[Part], budgets: dict[str, Any],
-           hit: list[Part] | None = None) -> str:
+           hit: list[Part] | None = None, sent: dict[str, int] | None = None, src: str = "") -> str:
+    """The room's parts against their lines, Claude Code's as the room last sent them (`sent` from `src`, context.sent)."""
     row = "  {:<30}{:>9}{:>9}  {}"
     L = [f"yerk map {room_name}  (private folder: {private_label})",
-         "Characters as Claude Code counts them. Untrimmed sizes; an over-budget file is sent trimmed.", "",
+         "Characters as Claude Code counts them. Untrimmed sizes; an over-budget file is sent trimmed.",
+         f"Claude Code's parts as the room last sent them: {src}" if src else "Claude Code's parts at their line: no transcript of this room yet", "",
          f"{'Session start, in load order':<32}{'chars':>9}{'budget':>9}  status"]
     for name, b in budgets["session_start"]["claude_code"].items():
-        L.append(row.format(name, "-", fmt(b), "sent by Claude Code; counted at budget"))
+        n = (sent or {}).get(name, 0)
+        L.append(row.format(name, fmt(n) if src else "-", fmt(b), ("OVER" if n > b else "ok") + ", as sent" if src else "counted at its line"))
     for p in start:
         status = f"OVER, sent trimmed to {fmt(p.size)}" if p.over else ("ok" if p.raw else "empty")
         L.append(row.format(p.name, fmt(p.raw), fmt(p.budget or 0), status + (f"  [{p.source}]" if p.source else "")))
         sections = split_sections(p.text, chars) if p.text else []
         for sec, n in sections[1:7] if len(sections) > 1 else []:
             L.append(f"      {sec[:26]:<26}{fmt(n):>9}")
-    total, limit = session_total(start, budgets), int(budgets["session_start"]["total"])
+    total, limit = session_total(start, budgets, sent), int(budgets["session_start"]["total"])
     L.append(row.format("total", fmt(total), fmt(limit), "ok" if total <= limit else "OVER"))
     L.append(row.format("  of which Yerk AI's file", fmt(chars(appended_file(start))), "", "as sent"))
     L += ["", f"{'Every message':<32}{'chars':>9}{'budget':>9}  status"]
