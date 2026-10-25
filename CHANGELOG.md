@@ -6,6 +6,18 @@ A line that changes a file the install keeps (rooms.toml, yerkd.toml, budgets.to
 newer than the code is refused with one line, never changed); the index chunks every file again when its chunker's
 version changes.
 
+## 2026-10-25
+
+### worker-effort (#129)
+
+- A worker runs at its room's thinking level. A room already passed its `effort` to its own claude, and a worker it
+  started ran at Claude Code's default; a worker started from a room whose rooms.toml says `effort = "max"` now runs
+  at max. The order: the call's `effort` (a new field on the room's `worker` tool, `yerk worker start --effort`), then
+  `[workers] effort` in yerkd.toml, then the room's. A level outside low, medium, high, xhigh, max is refused in one
+  line with the list, before any folder, ledger row or card exists.
+
+**Upgrading**: nothing to change; `[workers] effort` is a new optional key in yerkd.toml.
+
 ## 2026-10-24
 
 ### send-own-channel (#117)
