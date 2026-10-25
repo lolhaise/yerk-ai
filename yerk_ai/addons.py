@@ -248,7 +248,7 @@ def add(source: str, private: Path, state: Path, dry: bool = False, run: Run = s
                                  cwd=folder, capture_output=True, text=True)).returncode:
             raise RuntimeError(W.ADD_TESTS_FAILED.format(said=W.no_paths((t.stdout.strip().splitlines() or ["no output"])[-1])))
         say(W.step(W.ADD_STEP, "tests", dry, said=", ".join(ins["tests"])))
-    except (OSError, subprocess.SubprocessError, RuntimeError) as e:
+    except (OSError, subprocess.SubprocessError, RuntimeError, ValueError, TypeError, KeyError) as e:   # any step's: each undone
         say(f"{W.NOT_DONE} " + W.NOT_ADDED.format(why=W.no_paths(str(e))))
         remove(name, private, state, say=lambda _: None, run=run)
         return 1

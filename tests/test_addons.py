@@ -119,6 +119,21 @@ def test_its_own_failing_test_undoes_every_step(install, capsys):
     assert not (state / "addons" / "hello").exists() and pips(run) == ["install", "uninstall"]
 
 
+@pytest.mark.parametrize("error", [ValueError, TypeError, KeyError])
+def test_a_late_failure_of_any_kind_undoes_every_step(install, capsys, error):
+    priv, state = install
+    before, ran = snapshot(priv), fake()
+
+    def run(cmd, **k):                  # every step done, then the last one raises, as a string budget value did at its line
+        if "pytest" in cmd:
+            raise error("late")
+        return ran(cmd, **k)
+    assert addons.add(str(HELLO), priv, state, run=run) == 1
+    assert capsys.readouterr().out.splitlines()[-1].startswith(f"{words.NOT_DONE} not added: ")
+    assert snapshot(priv) == before and not (addons.units_dir() / "yerk-hello.service").is_symlink()
+    assert not (state / "addons" / "hello").exists() and pips(ran) == ["install", "uninstall"]
+
+
 def test_a_package_that_will_not_uninstall_is_said_and_the_rest_is_removed(install, capsys):
     priv, state = install
     before = snapshot(priv)
