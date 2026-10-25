@@ -45,6 +45,7 @@ import shutil
 import sqlite3
 import time
 import uuid
+from fnmatch import fnmatchcase
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Awaitable, Callable, Coroutine, TypeVar
@@ -52,7 +53,7 @@ from typing import Any, Awaitable, Callable, Coroutine, TypeVar
 import discord
 from discord.http import handle_message_parameters
 
-from .. import files as extracted, status, transcribe, words
+from .. import addons, files as extracted, status, transcribe, words
 from ..config import EFFORTS
 from ..ledger import Ledger
 from ..lifted.loopguard import LoopGuard
@@ -133,10 +134,10 @@ def file_type(name: str, given: str | None = None) -> str:
     return (given or mimetypes.guess_type(name)[0] or "application/octet-stream").split(";")[0]
 
 
-def message_text(m: Any, files: list[dict[str, Any]] | None = None, reply: str = "") -> str:
-    """The message body (mentions as names), with what it replies to and its files listed (staged
-    path, or why it is missing) so none is dropped unseen, a voice note with the line that it is heard only through
-    the transcribe tool. Without `files`, the attachments as Discord lists them."""
+def message_text(m: Any, files: list[dict[str, Any]] | None = None, reply: str = "", reads: dict[str, str] | None = None) -> str:
+    """The message body (mentions as names), with what it replies to and its files listed (staged path, or why it is missing)
+    so none is dropped unseen, a voice note with the line that it is heard only through the transcribe tool, a type an installed
+    add-on reads with the line naming its tool (`reads`, addons.reads). Without `files`, the attachments as Discord lists them."""
     lines = [reply, str(getattr(m, "clean_content", None) or m.content or "")]
     if files is None:
         files = [{"name": a.filename, "size": a.size, "type": file_type(a.filename, getattr(a, "content_type", None)),
@@ -145,6 +146,7 @@ def message_text(m: Any, files: list[dict[str, Any]] | None = None, reply: str =
         if f.get("ok"):
             lines.append(f"[attachment] {f['name']}, {f['type']}, {f['size']:,} bytes, saved at {f['path']}")
             lines += [words.VOICE_NOTE.format(name=f["name"])] if transcribe.is_audio(f["name"], f["type"]) else []
+            lines += [words.ADDON_READS.format(name=f["name"], tool=t) for k, t in (reads or {}).items() if fnmatchcase(f["type"], k)][:1]
             lines += [words.FILE_TEXT.format(path=f["text"])] if f.get("text") else []
         else:
             lines.append(f"[attachment] {f['name']}: could not be fetched ({f.get('error', 'unknown')})")
@@ -313,7 +315,7 @@ class DiscordChannel:
             files = await self.stage(room, m)
             if ahead is not None:
                 await asyncio.shield(ahead)
-            room.submit(Inbound(str(m.id), sender, message_text(m, files, self.reply_line(room.name, m)), files=files))
+            room.submit(Inbound(str(m.id), sender, message_text(m, files, self.reply_line(room.name, m), addons.reads(self.state)), files=files))
         finally:
             mine.set_result(None)
             if self.order.get(room.name) is mine:
@@ -367,7 +369,7 @@ class DiscordChannel:
             return
         self.edits[mid] = str(m.edited_at)
         files = await self.stage(room, m)
-        text = message_text(m, files, self.reply_line(room.name, m))
+        text = message_text(m, files, self.reply_line(room.name, m), addons.reads(self.state))
         if room.revise(mid, text):
             self.ledger.inbound_set(mid, note="edited before it ran")
             return
@@ -560,7 +562,7 @@ class DiscordChannel:
                 self.ledger.inbound_set(row["message_id"], state="abandoned", note="message deleted")
                 continue
             files = await self.stage(room, m)
-            text = message_text(m, files, self.reply_line(room.name, m)) + ("\n[redelivered after a restart]" if attempts else "")
+            text = message_text(m, files, self.reply_line(room.name, m), addons.reads(self.state)) + ("\n[redelivered after a restart]" if attempts else "")
             sent = self.ledger.files_sent_for([str(row["message_id"])])
             if sent:                              # the cut-short turn's files: in the room already
                 text += ("\n[already in the room from before the restart, not to be sent again: "

@@ -304,6 +304,7 @@ PICTURES_RUNNING = "{room}: a backfill runs already, one batch after another; it
 PICTURES_BATCH = "pictures backfill {room}: batch {n} of {of} {how}, {filed} of {count} filed{then}"
 PICTURES_NEXT, PICTURES_STOP, PICTURES_DONE = "; batch {n} started", "; stopped, {left} left: run it again", "; done"
 FILE_TEXT = "[its text, extracted by code] saved at {path}"     # under a workbook's or a PDF's [attachment] line (files.py)
+ADDON_READS = "[read by an add-on] {name} is read through {tool}, an installed add-on's tool: call it on the path above"   # addons.reads
 FILES_PERSON = "{room} is not an owner room: a workbook or a PDF sent there is never read"
 FILES_BACKFILL = "{n} workbook(s) and PDF(s) in {where} with no text beside them or an older one; {done}"
 FILES_WRITTEN, FILES_DRY = "written", "nothing written (--dry-run)"

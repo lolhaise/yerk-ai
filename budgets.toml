@@ -439,7 +439,9 @@ secs = 60
 # 2026-10-24: addons-1 merged with main 9f53348 (#123 measured-budgets and #128 backup-restore): main's 20,348 plus
 # this PR's 355 is 20,703, counted on the merged tree; cli.py's parser loop and command map and doctor.py's import, which
 # both changed, keep both sides' names.
-# 2026-10-25: addons-1's fix after its cold read raised it by 9: check() refuses a name that is not one plain word, an
+# 2026-10-25: addons-1's fix after its cold read raised it by 20: check() refuses a name that is not one plain word, an
 # install table that is not a table, a budget value that is not a whole number and a words, tests or unit path outside the
-# add-on's folder (addons.py 9); the widened except that undoes a late failure is 0. 20,703 + 9 is 20,712.
-lines = 20712
+# add-on's folder (addons.py 9); the widened except that undoes a late failure is 0; the `reads` install key, an attachment
+# type to one of the add-on's own allowed tools, named under a room's [attachment] line (the cold read's video-read hook:
+# addons.py 8, channels/discord.py 2, words.py 1). 20,703 + 9 + 11 is 20,723.
+lines = 20723

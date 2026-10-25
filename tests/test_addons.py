@@ -1,13 +1,16 @@
 """Checks add-ons (addons.py), put in with `yerk add` and taken out with `yerk remove`. The cases: `yerk add` from a folder
 or a file:// git URL, each step a line, and `yerk remove` leaving the private folder byte-identical; an add-on over its own
-refused whole; the state read from the install; its budget lines and rooms.toml keys counted only while installed."""
+ceiling, an entry the checks refuse and its own failing test each refused whole; the state read from the install; its
+only while installed."""
 import shutil
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace as NS
 
 import pytest
 
-from yerk_ai import abilities, addons, cli, config, memory, words
+from yerk_ai import abilities, addons, cli, config, memory, shape, words
+from yerk_ai.channels.discord import message_text
 from yerk_ai.config import EXAMPLE_PRIVATE
 
 HELLO = Path(__file__).resolve().parents[1] / "examples" / "addons" / "hello"
@@ -109,9 +112,11 @@ def test_an_add_on_over_its_own_ceiling_is_refused_and_nothing_is_written(instal
     ('names" = 300', 'names" = true', "budget line session_start.claude_code.deferred_tool_names = True: not a whole number"),
     ('words = "yerk_hello/words.py"\n', "", "install names no words file or no tests, and an add-on brings both"),
     ('words = "yerk_hello/words.py"', 'words = "../../outside/words.py"', "../../outside/words.py is outside its folder"),
-    ('words = "yerk_hello/words.py"', f'words = "{HELLO / "yerk_hello" / "words.py"}"', f"{HELLO / 'yerk_hello' / 'words.py'} is outside its folder"),
+    ('words = "yerk_hello/words.py"', f'words = "{HELLO / "yerk_hello" / "words.py"}"',
+     f"{HELLO / 'yerk_hello' / 'words.py'} is outside its folder"),
     ('tests = ["tests"]', f'tests = ["{HELLO / "tests"}"]', f"{HELLO / 'tests'} is outside its folder"),
     ('units = ["units/yerk-hello.service"]', 'units = ["../evil.service"]', "../evil.service is outside its folder"),
+    ('tests = ["tests"]', 'tests = ["tests"]\nreads = { "video/*" = "mcp__hello__frames" }', "reads video/* = mcp__hello__frames: not a tool on its own allow list"),
 ])
 def test_an_entry_the_checks_refuse_writes_nothing(install, tmp_path, capsys, old, new, why):
     priv, state = install
@@ -198,6 +203,23 @@ def test_its_budget_lines_and_rooms_toml_keys_count_only_while_it_is_installed(i
     assert addons.room_keys(state) == {"hello_name"}
     assert addons.remove("hello", priv, state, run=fake(), say=lambda _: None) == 0
     assert addons.with_lines(core, state) == core and addons.room_keys(state) == frozenset()
+
+
+def test_an_attachment_type_it_reads_names_its_tool_under_the_attachment_line_only_while_it_is_installed(install, tmp_path):
+    priv, state = install
+    shutil.copytree(HELLO, a := tmp_path / "hello")
+    (a / "addon.toml").write_text((a / "addon.toml").read_text().replace('tests = ["tests"]', 'tests = ["tests"]\nreads = { "video/*" = "mcp__hello__hello" }'))
+    files = [{"name": n, "type": t, "size": 10, "path": f"/s/inbox/9/{n}", "ok": True} for n, t in (("clip.mp4", "video/mp4"), ("photo.png", "image/png"))]
+
+    def said() -> list[str]:            # the room's text for a message with a video and a picture, as yerkd builds it
+        return message_text(NS(clean_content="?", content="?"), files, "", addons.reads(state)).splitlines()
+    assert addons.reads(state) == {} and said() == ["?", *[f"[attachment] {n}, {t}, 10 bytes, saved at /s/inbox/9/{n}" for n, t in
+                                                        (("clip.mp4", "video/mp4"), ("photo.png", "image/png"))]]
+    assert addons.add(str(a), priv, state, run=fake(), say=lambda _: None) == 0
+    line = words.ADDON_READS.format(name="clip.mp4", tool="mcp__hello__hello")
+    assert addons.reads(state) == {"video/*": "mcp__hello__hello"} and said()[2] == line and len(said()) == 4 and shape.offenses(line) == []
+    assert addons.remove("hello", priv, state, run=fake(), say=lambda _: None) == 0
+    assert addons.reads(state) == {} and len(said()) == 3
 
 
 def test_yerk_add_refuses_the_example_layer_and_yerk_status_names_the_installed_add_ons(install, monkeypatch, capsys):

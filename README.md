@@ -216,7 +216,7 @@ Every card, notice and status line follows one rule set, written down with an ex
 
 ## Add-ons
 
-The core is what every install runs. An add-on is an ability in a repo of its own, installed only where it is wanted. Its root holds `addon.toml`, an abilities.toml entry with `repo` (its git URL), `version`, `size` (its own ceiling, in lines of its code) and `install` (its package and module, its MCP server and allow lines, its yerkd.toml tables, the rooms.toml keys it reads, its units, its budget lines, its words file and its tests).
+The core is what every install runs. An add-on is an ability in a repo of its own, installed only where it is wanted. Its root holds `addon.toml`, an abilities.toml entry with `repo` (its git URL), `version`, `size` (its own ceiling, in lines of its code) and `install` (its package and module, its MCP server and allow lines, its yerkd.toml tables, the rooms.toml keys it reads, its units, its budget lines, its words file and its tests, and the attachment types it reads, each to one of its own tools, as `reads = { "video/*" = "mcp__NAME__frames" }`).
 
 ```
 yerk add examples/addons/hello --private ~/yerk-private --dry-run   # each step it would take, nothing written
@@ -224,7 +224,7 @@ yerk add examples/addons/hello --private ~/yerk-private             # a folder, 
 yerk remove hello --private ~/yerk-private                          # each step undone, the private folder as it was
 ```
 
-`yerk add` fetches it into the state folder's `addons/NAME`, refuses it when its code is over its own `size`, installs its package into this venv, writes its server as `[defaults.mcp.NAME]` and its tools into `[defaults] allow` in rooms.toml and its tables into yerkd.toml (marked blocks the loaders read back first), links its units into `~/.config/systemd/user`, and runs its own fast tests; a failing test undoes every step. The rooms get it at yerkd's next start. While it is installed its budget lines count in the gate, its rooms.toml keys are known to `yerk doctor`, `yerk deploy` runs its fast tests after the core's, `yerk abilities` says installed (or what is missing) and `yerk status` names it. examples/addons/hello is the example: one MCP tool, one unit, one budget line, one words file and one test.
+`yerk add` fetches it into the state folder's `addons/NAME`, refuses it when its code is over its own `size`, its name is not one plain word (letters, digits, `-` and `_`), a words file, test or unit it names is outside its folder (absolute, through `..` or through a link) or a budget value is not a whole number, installs its package into this venv, writes its server as `[defaults.mcp.NAME]` and its tools into `[defaults] allow` in rooms.toml and its tables into yerkd.toml (marked blocks the loaders read back first), links its units into `~/.config/systemd/user`, and runs its own fast tests; a failing test, or any step that fails, undoes every step. The rooms get it at yerkd's next start. While it is installed its budget lines count in the gate, its rooms.toml keys are known to `yerk doctor`, an attachment of a type it reads gets a line naming its tool under the room's `[attachment]` line, `yerk deploy` runs its fast tests after the core's, `yerk abilities` says installed (or what is missing) and `yerk status` names it. examples/addons/hello is the example: one MCP tool, one unit, one budget line, one words file and one test.
 
 ## Voice notes
 

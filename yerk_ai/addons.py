@@ -3,8 +3,8 @@ with `repo`, `version`, `size` (its own ceiling in lines of code) and `install`;
 ability, where each lives on GitHub, and adds one easily. `yerk add` fetches it into <state>/addons/NAME, checks it, installs its
 package, writes its server and allow lines under rooms.toml's [defaults] and its tables into yerkd.toml (marked blocks,
 read back through the loaders that start yerkd), links its units and runs its fast tests, a line per step; `yerk remove`
-step and the test reads it back as plain text. With one, more line for the check while a second entry
-waits.in the queue for its. Turn and the last part closes the case, before the next run."""
+undoes each and leaves the private folder as it was. While installed, its budget lines count in the gate, its rooms.toml keys are known
+keys and an attachment of a type it reads names its tool. What is installed is read from the install, never kept by name."""
 from __future__ import annotations
 
 import contextlib
@@ -25,7 +25,7 @@ from . import words
 from .config import load_toml, rooms, table, toml_value, write_private
 
 DIR, MANIFEST = "addons", "addon.toml"
-INSTALL = ("package", "module", "mcp", "allow", "settings", "room_keys", "units", "budgets", "words", "tests")
+INSTALL = ("package", "module", "mcp", "allow", "settings", "room_keys", "units", "budgets", "words", "tests", "reads")
 CODE, SKIP = (".py", ".mjs", ".js"), ("tests", "node_modules", ".git", ".venv", "__pycache__", ".pytest_cache")
 TOTALS = {"session_start": ("total",), "per_message": ("typical", "cap")}     # a part's raise raises its section's totals
 BEGIN, END = "# add-on {name}: yerk add wrote these lines, yerk remove {name} takes them out\n", "# add-on {name}: end\n"
@@ -95,12 +95,14 @@ def check(name: str, ab: dict[str, Any], folder: Path, known: dict[str, Any] | N
         return f"its entry has no {', '.join(miss)}"
     if not isinstance(ins, dict) or (bad := sorted(set(ins) - set(INSTALL))):
         return f"install {', '.join(bad) if isinstance(ins, dict) else 'is not a table'}: no step reads it ({', '.join(INSTALL)})"
-    if bad := [k for k in ("mcp", "settings", "budgets") if not isinstance(ins.get(k, {}), dict)]:
+    if bad := [k for k in ("mcp", "settings", "budgets", "reads") if not isinstance(ins.get(k, {}), dict)]:
         return f"install {bad[0]} is not a table"
     if known is not None and "install" not in known and "repo" not in known:
         return f"{name} is a core ability"
     if bad := [t for t in ins.get("allow", []) if not str(t).startswith(f"mcp__{name}__")]:
         return f"allow {bad[0]} is not a tool of its own server (mcp__{name}__...)"
+    if bad := [f"{k} = {t}" for k, t in ins.get("reads", {}).items() if t not in ins.get("allow", [])]:
+        return f"reads {bad[0]}: not a tool on its own allow list"
     if bad := [k for k in ins.get("budgets", {}) if k.split(".")[0] not in TOTALS or k.rsplit(".", 1)[-1] in sum(TOTALS.values(), ())]:
         return f"budget line {bad[0]}: an add-on adds session_start and per_message parts, never a total"
     if bad := [f"{k} = {n!r}" for k, n in ins.get("budgets", {}).items() if type(n) is not int or n < 0]:
@@ -188,6 +190,12 @@ def with_lines(b: dict[str, Any], state: Path) -> dict[str, Any]:
 def room_keys(state: Path) -> frozenset[str]:
     """The rooms.toml keys the installed add-ons read: known keys to the doctor while they are installed."""
     return frozenset(str(k) for ab in installed(state).values() for k in ab.get("install", {}).get("room_keys", []))
+
+
+def reads(state: Path | None) -> dict[str, str]:
+    """Each attachment type an installed add-on reads ("video/*") to its own tool for it, named under a room's [attachment] line."""
+    found = [ab.get("install", {}).get("reads") for ab in installed(state).values()] if state else []
+    return {str(k): str(t) for r in found if isinstance(r, dict) for k, t in r.items()}
 
 
 def add(source: str, private: Path, state: Path, dry: bool = False, run: Run = subprocess.run, say: Callable[[str], Any] = print) -> int:
