@@ -30,9 +30,10 @@ STATIC = ("mechanics", "persona", "rulebook", "room_voice", "pinned_memory", "ru
 
 def sizes(private: Path, state: Path) -> dict[str, dict[str, int]]:
     """Each room's session-start parts in characters before any trim (`yerk map`'s raw numbers), so a
-    part past its budget still shows its growth."""
+    part past its budget still shows its growth; Claude Code's as the room last sent them (context.sent)."""
     b, rules = budgets(), memory.settings(private, state).root / memory.RULES
-    return {name: {p.name: p.raw for p in context.session_start(private, conf, b, rules=rules)} for name, conf in rooms(private).items()}
+    return {name: {**context.sent(private, state, name, b)[0], **{p.name: p.raw for p in context.session_start(private, conf, b, rules=rules)}}
+            for name, conf in rooms(private).items()}
 
 
 def build(private: Path, state: Path, accounts: list[Account], cooldowns: Cooldowns, ledger: Ledger,
@@ -48,13 +49,14 @@ def build(private: Path, state: Path, accounts: list[Account], cooldowns: Cooldo
 
     def add(key: str, mark: str, text: str) -> None:
         rows.append((key, W.line(f"{mark} {text}")))
-    now_sizes = sizes(private, state)
+    now_sizes, s = sizes(private, state), budgets()["session_start"]
     for room, parts in now_sizes.items():
-        before = last.get("sizes", {}).get(room)
-        d = sum(parts.values()) - sum((before or {}).values())
-        add("", W.PLAIN, W.PAYLOAD.format(room=room, size=sum(parts.values()),
-                                          change=W.FIRST_MAP if before is None else f"{d:+,}" if d else W.SAME))
-        for part in STATIC if before else ():
+        before, cc = last.get("sizes", {}).get(room), s["claude_code"]
+        left = int(s["total"]) - (size := context.start_size(parts))       # the session start as sent and its gap to the line
+        rows.append(("" if left >= 0 else f"over {room}", W.named(f"{W.PLAIN if left >= 0 else W.NOT_DONE} {W.PAYLOAD}", room, size=size, left=left)))
+        rows += [(f"over {room} {k}", W.named(f"{W.NOT_DONE} {W.OVER_PART}", f"{room} {k}", size=parts[k], line=n))
+                 for k, n in cc.items() if parts.get(k, 0) > n]
+        for part in [*STATIC, *(k for k in cc if k in before)] if before else ():     # Claude Code's too, from its second diff
             if d := parts.get(part, 0) - before.get(part, 0):
                 add(f"payload {room} {part} {d:+}", W.WORKING, W.PART.format(room=room, part=part, change=f"{d:+,}"))
     waits = ledger.waits(since, until)
