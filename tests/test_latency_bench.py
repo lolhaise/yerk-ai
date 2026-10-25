@@ -142,7 +142,7 @@ def test_bench_reads_the_fixture_into_one_table_and_diffs_the_earlier_file(tmp_p
     rows = {(r["what"], r["room"]): r for r in latency.bench(state, 7, NOW)["rows"]}
     assert rows["first", "all"] == {"what": "first", "room": "all", "n": 5, "median": 8, "p90": 30, "p95": 30}
     assert (rows["first", "example-room"]["median"], rows["first", "example-quiet"]["median"]) == (4, 27.5)
-    assert (rows["wait", "all"]["median"], rows["wait", "example-quiet"]["n"]) == (1, 2)
+    assert (rows["wait", "all"]["median"], rows["wait", "example-quiet"]["n"], rows["wait", "example-quiet"]["median"]) == (1, 2, 1.5)    # folded: 0, not -2
     assert rows["turn", "all"] == {"what": "turn", "room": "all", "n": 4, "median": 30, "p90": 100, "p95": 100}
     assert (rows["hook", "example-room"]["median"], rows["daemon", "example-room"]["median"]) == (200, 250)
     assert (rows["tools", "all"]["n"], rows["tools", "all"]["median"]) == (2, 23)
