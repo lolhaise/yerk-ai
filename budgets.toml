@@ -457,6 +457,94 @@ secs = 60
 # withheld's shapes: the doctor's, its password line run to the line's end, KEYED as its token line). 20,555 + 7 = 20,562.
 # 2026-10-25: merged with fusion-levers (#118, main 3255849): its 20,351 plus import-openclaw's 214 (207 and the fix's 7)
 # is 20,565, counted on the merged tree; no .py file changed on both sides (#118: memory; this PR: sources, move, cli).
+# 2026-10-24: decision-receipts raised it by 169: a call a room makes for the owner shows its receipt in the morning diff
+# (claim 19, decision 45, the owner's Oct 21 ask), not folded to fit. evidence.py 56 (calls, the trigger read by code off
+# words.CALL; receipts and receipt_rows, the join to the turn's reads and the recall the prompt hook handed it, kept apart
+# from the session-start file every turn carries), cli.py 39 (`yerk calls fix`, the correction through memory.remember, a
+# persona or a rule file refused), morning.py 28 (a call's line and its receipt, the cap of 20, a person's room counted, the
+# fix), ledger.py 20 (the calls table and its four methods), words.py 17 (the shape and the lines), daemon.py 9 (a row per
+# call of a reply no Stop rule turned back). 20,145 on main 30ea8dc (#117): 19,976 + 169.
+# 2026-10-25: merged with backup-restore (#128) after measured-budgets (#123), main 9f53348: its 20,348 plus
+# decision-receipts' 169 is 20,517, counted on the merged tree; cli.py's subcommand list kept both PRs' parsers, and
+# morning.py, words.py and README, which both changed, merged with no line in common.
+# 2026-10-25: the cold read's two fixes raised it by 3, not folded to fit: words.py 3 (the had rule, "I'd put" or "I'd set"
+# with a past-time word later in the sentence, and its comment; "should've" with no space before 've on the same line).
+# 20,520 on main 9f53348 (#128): 20,517 + 3.
+# 2026-10-25: merged with fusion-levers (#118, main 3255849): its 20,351 plus decision-receipts' 172 (169 and the fixes'
+# 3) is 20,523, counted on the merged tree; no .py file changed on both sides (#118: memory; #119: cli, daemon, evidence,
+# ledger, morning, words).
+# 2026-10-25: merged with import-openclaw (#125, main b81731f): its 20,565 plus decision-receipts' 172 is 20,737, counted
+# on the merged tree; cli.py, which both changed (#125 the import's help, #119 `yerk calls`), and README merged with no
+# line in common.
+# 2026-10-24: bench-kinds raised it by 17: the recall bench scores the episodic and self kinds beside the recall one, apart
+# and together, and holds each to its own ratchet (ROADMAP-v6 step 4, the judge v5 promised for those two sets), not folded
+# to fit. memory.py 13 (KINDS, score, the bench reading <kind>-questions.json beside the recall file, the ratchet a kind at
+# a time with its kind in the note), cli.py 4 (the series row's kinds, a line and a ratchet per kind). 19,993 on main 30ea8dc.
+# 2026-10-24: merged with measured-budgets (#123) and backup-restore (#128), main 9f53348: its 20,348 plus
+# bench-kinds' 17 is 20,365, counted on the merged tree; cli.py, README and tests/test_budget.py, which
+# both changed, merged clean.
+# 2026-10-25: merged with fusion-levers (#118) and import-openclaw (#125), main b81731f: its 20,565 plus
+# bench-kinds' 17 is 20,582, counted on the merged tree; memory.py (#118's SHARE in fuse, this PR's bench and
+# ratchet), cli.py, tests/test_embeddings.py and README.md, which both changed, merged with no line in common.
+# 2026-10-25: merged with decision-receipts (#119, main a5c4389): its 20,737 plus bench-kinds' 17 is 20,754, counted
+# on the merged tree; cli.py (#119's `yerk calls`, this PR's recall-bench) and README.md, which both changed, merged
+# with no line in common.
+# 2026-10-24: addons-1 raised it by 355, part one of the core and the add-ons (ROADMAP-v6 step 3): the
+# loader, addons.py 295 (`yerk add` from a folder, a git URL or the repo the registry names, its checks, the size ceiling
+# among them, the marked blocks in rooms.toml and yerkd.toml, the units, `yerk remove`, the budget lines and rooms.toml keys
+# an installed add-on brings), words.py 23, cli.py 20, abilities.py 13 (the on state read from the install and from each
+# entry's `keys`, the three names checked by hand and the voice_note import gone), status.py 2, deploy.py 1, memory.py 1;
+# not folded to fit. 20,331 on main 30ea8dc (#117): 19,976 + 355. The core's target is under 10,000 after the extractions
+# (parts two and three), not with this one.
+# 2026-10-24: addons-1 merged with main 9f53348 (#123 measured-budgets and #128 backup-restore): main's 20,348 plus
+# this PR's 355 is 20,703, counted on the merged tree; cli.py's parser loop and command map and doctor.py's import, which
+# both changed, keep both sides' names.
+# 2026-10-25: addons-1's fix after its cold read raised it by 20: check() refuses a name that is not one plain word, an
+# install table that is not a table, a budget value that is not a whole number and a words, tests or unit path outside the
+# add-on's folder (addons.py 9); the widened except that undoes a late failure is 0; the `reads` install key, an attachment
+# type to one of the add-on's own allowed tools, named under a room's [attachment] line (the cold read's video-read hook:
+# addons.py 8, channels/discord.py 2, words.py 1). 20,703 + 9 + 11 is 20,723.
+# 2026-10-25: addons-1 merged with main 3255849 (#118 fusion-levers): main's 20,351 plus this PR's 375 (355 + 20) is
+# 20,726, counted on the merged tree; memory.py, which both changed (#118: the fusion's SHARE; #124: one line), merged clean.
+# 2026-10-25: addons-1 merged with main b81731f (#125 import-openclaw): main's 20,565 plus this PR's 375 is 20,940,
+# counted on the merged tree; cli.py and README.md, which both changed, merged clean.
+# 2026-10-25: addons-1 merged with main 915a364 (#119 decision-receipts, then #126 bench-kinds): main's 20,754 plus this
+# PR's 375 is 21,129, counted on the merged tree; cli.py's parser loop, which both changed (#119's `yerk calls`, this
+# PR's `yerk add` and `yerk remove`), keeps both sides' names; daemon.py, memory.py, words.py and README.md merged clean.
+# 2026-10-24: quiet-doctor raised it by 108: the doctor's severities and a fix on every finding, the weekly rule-shape
+# line, the scope change said once, the timers check, `yerk doctor --scrub`, and the deploy installing a timer the box
+# lacks (the audit that day: yerk-curate.timer never installed, so the night's curation never ran there), not folded to
+# fit. doctor.py 78 (leaked, unshaped and scrub among them, and the drift line's fix), deploy.py 22 (timers and its call),
+# cli.py 8 (--scrub, --timers), words.py 0 (doctor: clean; SHAPE_OK, read by nothing now, gone). 20,084 on main 30ea8dc
+# (#117): 19,976 + 108. 20,156 merged after #123 (main dbb06f8): 20,048 + 108. cli.py and words.py, which #123 also
+# changed, merged with no line in common. 20,457 merged after #128 (main 9f53348): 20,348 + 108, and 1 for the
+# doctor's check loop, which wraps one more line with both checks in it (joined, a line would pass ruff's 160);
+# doctor.py and cli.py, which #128 also changed, keep both sides (its backup check beside the timers check, its two
+# subcommands in the --private loop).
+# 2026-10-25: quiet-doctor merged with main b78b172 (#118, #125, #119, #126, then #124 addons-1): main's 21,129 plus
+# this PR's 109 is 21,238, counted on the merged tree; cli.py (the --timers argument, then #124's and #119's names in the
+# --private loop), deploy.py (both imports) and doctor.py (this PR's severity and fix on each room finding, over #124's
+# known keys) keep both sides; tests/test_doctor.py's add-on key test reads the finding and the clean line as this PR's
+# doctor says them; words.py and tests/test_deploy.py merged clean.
+# 2026-10-24: latency-bench raised it by 180: claim 18's judge, which did not exist, and the dead_turns query that held
+# `yerk status --json` for 111 s, not folded to fit. latency.py 136 (`yerk bench latency`: the first line, the queue wait,
+# the turn, the hooks, Yerk's tools and the cache hit rate per room from the ledger read only and the logs, the file the
+# next run diffs, the day's medians), ledger.py 18 (dead_turns as lookups, its docstring saying why; waits with the turn and
+# room; the timing rows; read_only), cli.py 17 (the bench command), morning.py 4 and status.py 3 (the day's medians against
+# the day before, and on the card), words.py 2.
+# 20,156 on main 30ea8dc: 19,976 + 180.
+# 2026-10-24: merged with main 9f533481 (#123 measured-budgets and #128 backup-restore): its 20,348 plus latency-bench's
+# 180 is 20,528, counted on the merged tree; cli.py (the bench command beside backup and restore) and status.py (the speed
+# key and line beside the backup's) took both sides, morning.py and words.py merged clean.
+# 2026-10-25: merged with main 3255849 (#118 fusion-levers): its 20,351 plus latency-bench's 180 is 20,531, counted on the
+# merged tree; no .py file changed on both sides (#118: memory; #121: cli, latency, ledger, morning, status, words).
+# 2026-10-25: merged with main b81731f (#125 import-openclaw): its 20,565 plus latency-bench's 180 is 20,745, counted on
+# the merged tree; cli.py, which both changed, merged clean (the bench command beside the import's source); no other .py
+# file changed on both sides (#125: sources, move; #121: latency, ledger, morning, status, words).
+# 2026-10-25: latency-bench merged with main 7716086 (#119, #126, #124 addons-1, then #120 quiet-doctor): main's 21,238
+# plus this PR's 180 is 21,418, counted on the merged tree; cli.py keeps every side: the bench parser's `bn` beside
+# #124's `ad, rm` and #119's `cl` in the --private loop under #120's --timers argument, and the command map's "bench"
+# beside #124's add and remove; ledger.py, morning.py, status.py and words.py, which both changed, merged clean.
 # 2026-10-24: docs-from-code raised it by 356: Yerk AI's own docs written from the code, `yerk docs own` (decision 16; the
 # audit's section G, items 4 and 5), not folded to fit. owndocs.py 232 (the six pages: commands from the three installed
 # commands' parsers, tools from the MCP server's own list, settings from the key tables, budgets from this file's comments,
@@ -475,4 +563,8 @@ secs = 60
 # and the cold read's 2) is 20,709, counted on the merged tree; no .py file changed on both sides (#118: memory).
 # 2026-10-25: merged with import-openclaw (#125, main b81731f): its 20,565 plus this branch's 358 (docs-from-code's
 # 356 and the cold read's 2) is 20,923, counted on the merged tree; cli.py, which both changed, merged clean.
-lines = 20923
+# 2026-10-25: docs-from-code merged with main 44a5281 (#119, #126, #124, #120, #121): main's 21,418 plus this PR's 358
+# is 21,776, counted on the merged tree; cli.py and daemon.py, which both changed, merged clean. What main added to the
+# old README went to the page that holds its section now: #126's Status line to docs/STATUS.md, #119's two lines and
+# #124's Add-ons section to docs/GUIDE.md; `yerk docs own` wrote commands.md and budgets.md.
+lines = 21776

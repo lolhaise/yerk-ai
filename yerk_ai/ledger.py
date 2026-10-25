@@ -10,7 +10,8 @@ skipped and why), health (the daily call per account: pass or fail and the login
 (gates.py): every gate decision, the approval holds, each hook call's time, each tool call's time and failure, and
 the tamper rows of a changed setting; stalls (beat.py: each time the event loop was held more than 2 s, with its
 dump); deploys (deploy.py: each deploy and rollback, the commit before and after, and whether a person's turn was
-each deploy and rollback, the commit before and after, and whether a person's turn was cut); spend (each paid call).
+cut); spend (each paid call); calls (each call a room made in a reply, with the cites its turn read, and its fix:
+claim 19).
 
 Inbound states, after Hermes' delivery ledger (gateway/delivery_ledger.py, MIT): `received`
 (ledgered, nothing ran: run it plainly after a crash), `running` (sent to Claude Code: after a
@@ -104,6 +105,9 @@ CREATE TABLE IF NOT EXISTS deploys (
   proof TEXT, note TEXT);
 CREATE TABLE IF NOT EXISTS spend (
   id INTEGER PRIMARY KEY, t REAL, room TEXT, tool TEXT, engine TEXT, usd REAL, note TEXT);
+CREATE TABLE IF NOT EXISTS calls (
+  id INTEGER PRIMARY KEY, t REAL, room TEXT, session_id TEXT, turn TEXT, whom TEXT, call TEXT, reads TEXT, no_reads INTEGER,
+  fixed REAL, source TEXT, correction TEXT, note TEXT);
 CREATE TABLE IF NOT EXISTS message_links (
   tbl TEXT, row_key TEXT, col TEXT, message_id TEXT, pos INTEGER,
   PRIMARY KEY (tbl, row_key, col, message_id))"""
@@ -189,6 +193,13 @@ class Ledger:
         cycle (its statement cache is bound to it), and a WAL database's -wal and -shm files, made at the umask's mode,
         stay beside it until its last connection closes (the doctor's modes check counted its own, 2026-10-21)."""
         self.db.close()
+
+    @classmethod
+    def read_only(cls, path: Path) -> Ledger:
+        """The ledger opened ?mode=ro, no schema or migration run: a reader that cannot write (yerk bench latency)."""
+        led = cls.__new__(cls)
+        led.db, led.lock, led.migrated = sqlite3.connect(f"file:{path}?mode=ro", uri=True, check_same_thread=False), threading.Lock(), []
+        return led
 
     def version(self) -> int:
         return int(self.db.execute("PRAGMA user_version").fetchone()[0])
@@ -333,30 +344,57 @@ class Ledger:
 
     def dead_turns(self, since: float, until: float) -> list[dict[str, Any]]:
         """A person's messages in the window with no reply, notice or file in the room for them: no part
-        sent under the key of a turn that took them, and no visible post linked to them (L192)."""
+        sent under the key of a turn that took them, and no visible post linked to them (L192). Every join is a
+        lookup, so the cost is per message, not messages times turns times parts (64 s for a day on Oct 24): a turn
+        by its id (i.turn_id, or a link's row_key, which _link writes as the id's text), a part by the key range
+        under the turn's key (`<key>:` to `<key>;`, `<key>-s` to `<key>-t`, the keys LIKE matched: a turn key is
+        lowercase hex), a post by its id; the unary + keeps the planner off the link table's (tbl, ...) key."""
         return self._select(
             "SELECT i.message_id, i.room, i.received FROM inbound i WHERE i.received >= ? AND i.received < ? AND "
-            "i.sender != 'yerk' AND i.state != 'ignored' AND NOT EXISTS (SELECT 1 FROM turns t JOIN deliveries d ON "
-            "d.state = 'sent' AND (d.key LIKE t.turn_key || ':%' OR d.key LIKE t.turn_key || '-s%') WHERE "
-            "t.turn_key != '' AND (t.id = i.turn_id OR CAST(t.id AS TEXT) IN (SELECT row_key FROM message_links WHERE "
-            "tbl = 'turns' AND col = 'inbound' AND message_id = i.message_id))) AND NOT EXISTS (SELECT 1 FROM "
-            "message_links l JOIN outbound o ON l.row_key = CAST(o.id AS TEXT) WHERE l.tbl = 'outbound' AND "
-            "l.col = 'inbound' AND l.message_id = i.message_id AND o.message_id IS NOT NULL AND o.kind NOT IN "
-            "('progress', 'progress-edit', 'worker-card')) ORDER BY i.received", (since, until))
+            "i.sender != 'yerk' AND i.state != 'ignored' AND NOT EXISTS (SELECT 1 FROM turns t JOIN (SELECT ':' AS lo, "
+            "';' AS hi UNION ALL SELECT '-s', '-t') k JOIN deliveries d ON d.state = 'sent' AND d.key >= t.turn_key || k.lo "
+            "AND d.key < t.turn_key || k.hi WHERE t.turn_key != '' AND t.id IN (SELECT i.turn_id UNION ALL SELECT "
+            "CAST(row_key AS INTEGER) FROM message_links WHERE message_id = i.message_id AND +tbl = 'turns' AND "
+            "col = 'inbound')) AND NOT EXISTS (SELECT 1 FROM message_links l JOIN outbound o ON o.id = CAST(l.row_key "
+            "AS INTEGER) WHERE l.message_id = i.message_id AND +l.tbl = 'outbound' AND l.col = 'inbound' AND "
+            "o.message_id IS NOT NULL AND o.kind NOT IN ('progress', 'progress-edit', 'worker-card')) "
+            "ORDER BY i.received", (since, until))
 
     def waits(self, since: float, until: float) -> list[dict[str, Any]]:
         """Each person's message in the window joined to the turn that answered it: `wait`, the turn's
-        start after the message (0 when it folded into a running turn), and `first`, the turn's first
-        visible line after the message (None when there was none, or it came before the message)."""
+        start after the message (0 when it folded into a running turn), `first`, the turn's first
+        visible line after the message (None when there was none, or it came before the message), and the
+        turn's `turn` length (None while it runs), `turn_id` and `room` (a turn that took three messages is one turn)."""
         return self._select("SELECT max(0, t.started - i.received) AS wait, CASE WHEN t.first_visible >= i.received "
-                            "THEN t.first_visible - i.received END AS first FROM inbound i JOIN turns t ON "
-                            "i.turn_id = t.id WHERE i.received >= ? AND i.received < ? AND i.sender != 'yerk'",
-                            (since, until))
+                            "THEN t.first_visible - i.received END AS first, t.ended - t.started AS turn, t.id AS turn_id, "
+                            "i.room FROM inbound i JOIN turns t ON i.turn_id = t.id WHERE i.received >= ? AND "
+                            "i.received < ? AND i.sender != 'yerk'", (since, until))
+
+    def timings(self, table: str, since: float, until: float) -> list[dict[str, Any]]:
+        """The hook_calls or tool_times rows timed in the window (yerk bench latency)."""
+        known({table: 1}, ("hook_calls", "tool_times"), "timing")
+        return self._select(f"SELECT * FROM {table} WHERE t >= ? AND t < ?", (since, until))
 
     def shadow_rules(self, since: float, until: float) -> dict[str, int]:
         rows = self._select("SELECT rule || CASE rule WHEN 'stance' THEN ' ' || detail ELSE '' END AS rule, count(*) AS n "
                             "FROM shadow WHERE t >= ? AND t < ? GROUP BY 1", (since, until))     # stance by its label
         return {str(r["rule"]): int(r["n"]) for r in rows}
+
+    def call(self, **row: Any) -> int:
+        """One call a room made in a reply (claim 19): whom it was for, its sentence, the cites its turn read (JSON), none flagged."""
+        return self._insert("calls", row)
+
+    def calls(self, since: float, until: float) -> list[dict[str, Any]]:
+        """The calls made in the window and those fixed in it, oldest first."""
+        return self._select("SELECT * FROM calls WHERE t >= ? AND t < ? OR fixed >= ? AND fixed < ? ORDER BY id", (since, until, since, until))
+
+    def call_row(self, cid: int) -> dict[str, Any] | None:
+        return self._first("SELECT * FROM calls WHERE id = ?", (cid,))
+
+    def call_fix(self, cid: int, **fix: Any) -> None:
+        """`yerk calls fix`: when, the source line it names, the correction's cite and its note."""
+        known(fix, ("fixed", "source", "correction", "note"), "calls")
+        self._update("calls", "id", cid, fix)
 
     def spent(self, since: float, until: float) -> dict[str, Any]:
         """{n, usd}: the paid calls booked in the window (spend), as billed or at list price (decision 32)."""

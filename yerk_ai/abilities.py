@@ -11,7 +11,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from . import voice_note, words
+from . import addons, words
 from .config import load_toml, table
 
 log = logging.getLogger("yerk.abilities")
@@ -19,8 +19,9 @@ SELF = "abilities"                  # "what can you do": its answer is every abi
 HOW = {"built": "How it works:", "described": "How it would be built:"}     # its `how` lines
 
 
-def manifest() -> dict[str, dict[str, Any]]:
-    return dict(load_toml(table("abilities.toml"))["abilities"])
+def manifest(state: Path | None = None) -> dict[str, dict[str, Any]]:
+    """The core's abilities.toml, with each add-on installed under `state` by its own entry (addons.py)."""
+    return dict(load_toml(table("abilities.toml"))["abilities"]) | (addons.installed(state) if state else {})
 
 
 def has(key: Path | None) -> bool:
@@ -28,16 +29,28 @@ def has(key: Path | None) -> bool:
     return key is not None and key.is_file() and key.stat().st_size > 0
 
 
+def key(name: str, s: Any) -> Path | None:
+    """A key an entry's `keys` names: openai is the install's one OpenAI key file ([memory] embeddings_key), any other
+    secrets/NAME.key in the private folder."""
+    private = getattr(s, "private", None)
+    return getattr(s, "embeddings_key", None) if name == "openai" else private / "secrets" / f"{name}.key" if private else None
+
+
 def state(name: str, ab: dict[str, Any], tab: dict[str, dict[str, Any]], s: Any) -> tuple[str, str]:
-    """(mark, words): on; needs <provider>; runs on the free path (the ability that lifts it is
-    off); known, not built (described only, decision 26). The key file is looked at, never read."""
+    """(mark, words): on; needs <provider>; runs on the free path (the ability that lifts it is off); known, not built
+    (described only, decision 26); an add-on (a `repo` or an `install`) installed, missing a part, or not installed, as the
+    install itself says (addons.missing). A key-tier one is on when every key its `keys` names is there (a|b: either),
+    each looked at, never read."""
+    if "repo" in ab or "install" in ab:                 # an add-on: the install says; "described" is for one with no repo
+        if (st := getattr(s, "state", None)) is None or not (st / addons.DIR / name / addons.MANIFEST).is_file():
+            return words.ability("available", name=name)
+        miss = addons.missing(name, ab, s.private, st)
+        return words.ability("broken", what=", ".join(miss)) if miss else words.ability("installed", version=ab.get("version", "?"))
     if ab.get("state", "built") == "described":
         return words.ability("described")
     if ab["tier"] in ("key", "paid"):
-        openai, private = getattr(s, "embeddings_key", None), getattr(s, "private", None)   # the install has one OpenAI key file
-        ready = {"embeddings": has(openai), "transcribe": has(openai),     # voice_note: a voice key and the check's OpenAI key
-                 "voice_note": has(openai) and private is not None and any(has(private / k) for k in voice_note.KEYS.values())}
-        return words.ability("on") if ready.get(name) else words.ability("needs", provider=ab.get("provider", "a provider key"))
+        ready = bool(ab.get("keys")) and all(any(has(key(k, s)) for k in str(x).split("|")) for x in ab["keys"])
+        return words.ability("on") if ready else words.ability("needs", provider=ab.get("provider", "a provider key"))
     if (up := str(ab.get("upgrade", ""))) and up in tab and state(up, tab[up], tab, s)[0] != words.DONE:
         return words.ability("free")
     return words.ability("on")
@@ -111,7 +124,7 @@ def asked(prompt: str, s: Any, tab: dict[str, dict[str, Any]] | None = None) -> 
     per-message recall part (`brief`), so the room answers from the manifest in its own words, never
     "I can't" and never a guess."""
     try:
-        tab = manifest() if tab is None else tab
+        tab = manifest(getattr(s, "state", None)) if tab is None else tab
     except (OSError, ValueError, KeyError) as e:
         log.warning("abilities: the manifest could not be read: %s", e)
         return []

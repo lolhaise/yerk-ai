@@ -68,6 +68,7 @@ class Settings:
     uploads: tuple[Path, ...] = ()  # each room's <state>/rooms/<room>/work/inbox, its text files a root (memindex.UPLOADS)
     private: Path | None = None     # the private folder: where an ability's other key files are looked for (abilities.state)
     imports: Path | None = None     # <private>/imports: what `yerk import` stores, texts and mail, a message a line (sources.py)
+    state: Path | None = None       # the state folder: where the installed add-ons are (abilities.state, addons.py)
 
     @property
     def daily(self) -> Path:
@@ -130,7 +131,7 @@ def settings(private: Path, state: Path, conf: dict[str, Any] | None = None) -> 
                     embeddings_width=int(conf.get("embeddings_width") or conf.get("embeddings_dim") or 256),
                     index_status=state / "memory" / "index.json",
                     recall_chars=max(100, int(conf.get("recall_chars", RECALL_CHARS))), cites=tuple(cites.items()), docs=docs, uploads=tuple(uploads),
-                    private=private, imports=(private / "imports").resolve())
+                    private=private, imports=(private / "imports").resolve(), state=state)
 
 
 # the embedding settings a user with another model or budget can pick, described from the code (run 5):
@@ -1251,33 +1252,42 @@ def rank_of(hits: list[dict[str, Any]], q: dict[str, Any], stale: re.Pattern[str
     return next((i + 1 for i, h in enumerate(hits) if not stale.search(h["path"]) and has_all(h["text"], list(q["answer_tokens"]))), None)
 
 
+KINDS = ("recall", "episodic", "self")     # the bench's question sets: [memory] bench, then <kind>-questions.json beside it
+
+
+def score(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Top k and top one over the rows that are not controls, as counts and rates."""
+    scored = [r for r in rows if not r["control"]]
+    n, top_k, top_1 = len(scored) or 1, sum(1 for r in scored if r["rank"]), sum(1 for r in scored if r["rank"] == 1)
+    return {"questions": len(scored), "top_k": top_k, "top_1": top_1, "top_k_rate": round(top_k / n, 3), "top_1_rate": round(top_1 / n, 3)}
+
+
 def bench(s: Settings, questions: Path | None = None, k: int = 6) -> dict[str, Any]:
     """Each question's search; a hit is a result in the top k whose whole chunk holds every answer token
     and whose path is not a stale copy. Controls must hit, or the instrument is blind. `kept`: the hits
-    whose snippet, as recall hands it to the room, still holds every answer token."""
-    qfile = questions or s.bench
-    data = json.loads(qfile.read_text())
-    stale = re.compile(str(data.get("stale") or r"(^|/)overwrite-backups/"))
-    rows = []
-    for q in data["questions"]:
-        weights: dict[str, float] = {}
-        r = ranked(s, str(q["q"]), k, deadline_s=30.0, weights=weights)
-        if not r["ok"]:
-            return {"ok": False, "status": r["status"], "error": r["error"]}
-        rank = rank_of(r["hits"], q, stale)
-        cut = snippets(r["hits"], weights, s.recall_chars) if rank else []
-        rows.append({"id": q["id"], "control": bool(q.get("control")), "rank": rank,
-                     "kept": has_all(cut[rank - 1]["text"], list(q["answer_tokens"])) if rank else None,
-                     "top": r["hits"][0]["path"] if r["hits"] else None})
+    whose snippet, as recall hands it to the room, still holds every answer token. The file is the recall kind; each other
+    kind is <kind>-questions.json beside it, read when it is there; the numbers are the kinds together, `kinds` each apart."""
+    qfile, rows = questions or s.bench, []
+    for kind, f in ((x, qfile if x == "recall" else qfile.with_name(f"{x}-questions.json")) for x in KINDS):
+        if kind != "recall" and not f.is_file():
+            continue
+        data = json.loads(f.read_text())
+        stale = re.compile(str(data.get("stale") or r"(^|/)overwrite-backups/"))
+        for q in data["questions"]:
+            weights: dict[str, float] = {}
+            r = ranked(s, str(q["q"]), k, deadline_s=30.0, weights=weights)
+            if not r["ok"]:
+                return {"ok": False, "status": r["status"], "error": r["error"]}
+            rank = rank_of(r["hits"], q, stale)
+            cut = snippets(r["hits"], weights, s.recall_chars) if rank else []
+            rows.append({"id": q["id"], "kind": kind, "control": bool(q.get("control")), "rank": rank,
+                         "kept": has_all(cut[rank - 1]["text"], list(q["answer_tokens"])) if rank else None,
+                         "top": r["hits"][0]["path"] if r["hits"] else None})
     scored = [r for r in rows if not r["control"]]
-    n = len(scored) or 1
-    top_k = sum(1 for r in scored if r["rank"])
-    top_1 = sum(1 for r in scored if r["rank"] == 1)
-    return {"ok": True, "questions": len(scored), "controls": len(rows) - len(scored),
+    return {"ok": True, **score(rows), "controls": len(rows) - len(scored), "k": k,
             "blind": [r["id"] for r in rows if r["control"] and not r["rank"]],
-            "top_k": top_k, "top_1": top_1, "k": k, "top_k_rate": round(top_k / n, 3), "top_1_rate": round(top_1 / n, 3),
             "kept": sum(1 for r in scored if r["kept"]), "lost": [r["id"] for r in scored if r["rank"] and not r["kept"]],
-            "rows": rows, "file": str(qfile)}
+            "kinds": {x: score(xs) for x in KINDS if (xs := [r for r in rows if r["kind"] == x])}, "rows": rows, "file": str(qfile)}
 
 
 def controls(s: Settings, questions: Path | None = None, k: int = 6, find: Callable[..., dict[str, Any]] | None = None) -> dict[str, Any]:
@@ -1299,17 +1309,21 @@ def controls(s: Settings, questions: Path | None = None, k: int = 6, find: Calla
     return {"of": len(qs), "hit": 0 if none else len(qs) - len(missed), "meaning": meant, "missed": missed, "none": none}
 
 
-def ratchet(rows: list[dict[str, Any]], drops: list[str], slack: int = 1) -> str | None:
-    """The bench as a ratchet (budgets.toml [recall]): the newest row's top k more than `slack` under the best of the four
-    rows before it, on the same questions and k, is a drop, unless a dated note in `drops` names it, "YYYY-MM-DD: BEST to
-    NEW, why"; a row at NEW less the slack or more then passes while BEST is in the window. None, or the line saying why not."""
+def ratchet(rows: list[dict[str, Any]], drops: list[str], slack: int = 1, kind: str = "recall") -> str | None:
+    """The bench as a ratchet (budgets.toml [recall]), one kind at a time (a row from before the kinds is the recall kind whole): the
+    newest row's top k more than `slack` under the best of the four rows before it, on the same questions and k, is a drop, unless a
+    dated note in `drops` names it, "YYYY-MM-DD: BEST to NEW, why", the kind before BEST for any other kind ("YYYY-MM-DD: self 21 to
+    18, why"); a row at NEW less the slack or more then passes while BEST is in the window. None, or the line saying why not."""
+    rows = [{**r["kinds"][kind], "k": r.get("k")} if kind in r.get("kinds", {}) else {} if "kinds" in r or kind != "recall" else r
+            for r in rows]
     new = rows[-1] if rows else {}
-    before = [r for r in rows[:-1] if (r.get("questions"), r.get("k")) == (new.get("questions"), new.get("k"))][-4:]
+    before = [r for r in rows[:-1] if r and (r.get("questions"), r.get("k")) == (new.get("questions"), new.get("k"))][-4:]
     best = max((int(r["top_k"]) for r in before), default=0)
     if not before or int(new["top_k"]) >= best - slack:
         return None
     for note in drops:
-        if (m := re.match(r"\d{4}-\d\d-\d\d: (\d+) to (\d+)\b", note)) and int(m[1]) == best and int(new["top_k"]) >= int(m[2]) - slack:
+        if ((m := re.match(r"\d{4}-\d\d-\d\d: (?:([a-z]+) )?(\d+) to (\d+)\b", note)) and (m[1] or "recall") == kind and int(m[2]) == best
+                and int(new["top_k"]) >= int(m[3]) - slack):
             return None
-    return (f"top {new['k']} fell to {new['top_k']} of {new['questions']} from {best} in the {len(before)} runs before, and no "
-            "dated note in budgets.toml [recall] drops names it")
+    return (f"{'' if kind == 'recall' else kind + ': '}top {new['k']} fell to {new['top_k']} of {new['questions']} from {best} in the "
+            f"{len(before)} runs before, and no dated note in budgets.toml [recall] drops names it")

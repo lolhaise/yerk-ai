@@ -127,9 +127,24 @@ The daemon's one local HTTP server carries `/mcp` (the tools `send`: text, or a 
 
 Every card, notice and status line follows one rule set, written down with an example of each in [STYLE.md](../STYLE.md): the state first (🟢 done, 🟠 running or partly, 🔴 not done, ⚪ nothing to do), one short line per item at phone width, no file paths or exit codes in a room (a report is "report saved" with `yerk worker report <id>` behind it), times as a person says them, and the same words in every room from one vocabulary, `yerk_ai/words.py`. The developer detail lives behind `yerk worker report <id>` and `yerk status --full`. `yerk abilities` lists every ability one line each, built or known but not built (voice is described, not shipped, and `yerk explain voice` says how it would be built and why it is not); `yerk config get presentation` prints the presentation settings with their plain words. `tests/test_style.py` holds every renderer to it.
 
+Each morning the diff also shows yesterday's calls, every pick, plan or "you should" a room made for you (read by code, no model): the room and its words, and under them the call's number and the cites its turn read, or "no reads behind it", the first 20 and then the count.
+A call that stood on a wrong line is fixed at that line with `yerk calls fix <number> <path:line> <what is true>`, filed the way `remember` files a correction and never into a persona or a rule, and the next morning's diff shows the fix.
+
 ## What it knows it can do
 
 `abilities.toml` holds 84 abilities: 27 built and 57 described, known and not built. The described ones are the abilities a long-running personal install grew over months, written neutrally: reading bank balances read-only, job applications that are true and reviewed, texting as you with a preview and a veto, a browser on its own profile, a morning brief, watching a page, and 51 more. Each carries what it is, how it would be built, its tier (50 free, 3 need a provider key, 4 are paid), what it needs, what it would cost, its free path and why it is not built yet; one that is partly built names the built ability under `upgrade`. `yerk abilities` lists them one line each, `yerk explain NAME` answers for any one, a room that names one gets that entry's answer before the model starts, and "what can you do" gets every name by its state. `examples/abilities/` shows five of them with placeholder values; `tests/test_abilities.py` keeps every entry in that shape and free of anything shaped like a person's name and role, a room, a handle, an address, a dollar figure or a date.
+
+## Add-ons
+
+The core is what every install runs. An add-on is an ability in a repo of its own, installed only where it is wanted. Its root holds `addon.toml`, an abilities.toml entry with `repo` (its git URL), `version`, `size` (its own ceiling, in lines of its code) and `install` (its package and module, its MCP server and allow lines, its yerkd.toml tables, the rooms.toml keys it reads, its units, its budget lines, its words file and its tests, and the attachment types it reads, each to one of its own tools, as `reads = { "video/*" = "mcp__NAME__frames" }`).
+
+```
+yerk add examples/addons/hello --private ~/yerk-private --dry-run   # each step it would take, nothing written
+yerk add examples/addons/hello --private ~/yerk-private             # a folder, a git URL, or an ability whose entry names its repo
+yerk remove hello --private ~/yerk-private                          # each step undone, the private folder as it was
+```
+
+`yerk add` fetches it into the state folder's `addons/NAME`, refuses it when its code is over its own `size`, its name is not one plain word (letters, digits, `-` and `_`), a words file, test or unit it names is outside its folder (absolute, through `..` or through a link) or a budget value is not a whole number, installs its package into this venv, writes its server as `[defaults.mcp.NAME]` and its tools into `[defaults] allow` in rooms.toml and its tables into yerkd.toml (marked blocks the loaders read back first), links its units into `~/.config/systemd/user`, and runs its own fast tests; a failing test, or any step that fails, undoes every step. The rooms get it at yerkd's next start. While it is installed its budget lines count in the gate, its rooms.toml keys are known to `yerk doctor`, an attachment of a type it reads gets a line naming its tool under the room's `[attachment]` line, `yerk deploy` runs its fast tests after the core's, `yerk abilities` says installed (or what is missing) and `yerk status` names it. examples/addons/hello is the example: one MCP tool, one unit, one budget line, one words file and one test.
 
 ## Voice notes
 

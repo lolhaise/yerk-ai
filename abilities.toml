@@ -7,6 +7,12 @@
 # it as known, not built; `yerk explain` and a room message naming one of its `asked_as` phrases
 # get the same answer from this file. A described ability becomes built only by a pull request
 # with its own acceptance measurement.
+# keys: a key-tier ability is on when each key named is in the private folder (openai: the install's OpenAI key file,
+# [memory] embeddings_key; any other NAME: secrets/NAME.key; "a|b": either), looked at, never read.
+# An add-on (README "Add-ons") is an entry with `repo` (its git URL), `version`, `size` (its own ceiling, in lines of
+# code) and `install` (what `yerk add` does: its package and module, its mcp server and allow lines, its yerkd.toml
+# settings, its room_keys, units, budgets lines, words file and tests). Its state is read from what is installed:
+# installed, missing a part, or, with a repo named and nothing installed, not installed. examples/addons/hello is one.
 
 [abilities.voice]
 state = "described"
@@ -390,6 +396,7 @@ how = [
   "Spend: every paid call is a spend row in the ledger, the morning diff says the day's total, and a recording past US$1 waits for the owner's yes.",
 ]
 tier = "key"
+keys = ["openai"]
 provider = "OpenAI, and Groq for the second pass"
 model = "whisper-1, then whisper-large-v3-turbo"
 needs = "ffmpeg on the machine; the install's OpenAI key (secrets/openai.key in the private folder, the one embeddings use); a Groq key at secrets/groq.key for the second pass, optional"
@@ -411,6 +418,7 @@ how = [
   "English only: both voices and the check are English; another language needs other voices and another check.",
 ]
 tier = "paid"
+keys = ["openai", "minimax|fish"]
 provider = "MiniMax, and Fish Audio when MiniMax fails"
 model = "speech-2.8-hd, then s2.1-pro-free; whisper-1 for the check"
 needs = "ffmpeg on the machine; a MiniMax key at secrets/minimax.key and a Fish Audio key at secrets/fish.key in the private folder (either one makes notes, MiniMax first); the install's OpenAI key (secrets/openai.key) for the check; pronunciation rules in voice/pronounce.txt there, one word/say-it a line, optional"
@@ -990,6 +998,7 @@ layer = 4
 state = "built"
 what = "Meaning search behind the keywords: yerk-index embeds every line of a day log and every bullet of a fact or topic file once (changed lines only, the vector stored next to the line's hash, copied across a rebuild) and answers recall's query by cosine, each hit mapped to its chunk; recall fuses that rank with the keyword rank by reciprocal rank fusion, holds each search's own first hits in the top six and gives a fact or topic file a small edge over a day log, so a paraphrase finds the line its words never name."
 tier = "key"
+keys = ["openai"]
 provider = "OpenAI"
 model = "text-embedding-3-small at 256 dimensions ([memory] embeddings_model, embeddings_dim), a vector per line and per bullet ([memory] embeddings_units = both, the line vectors and the chunk vectors together, measured best; lines or chunks alone are the alternatives), kept whole in memory as float16 (256 of 256 dimensions, 512 bytes a vector; [memory] embeddings_width narrows it): about 343,000 vectors for a 3,800-file tree, the index process about 272 MB resident; text-embedding-3-large (embeddings_dim 512 stored, embeddings_width 256 kept, the same memory) is the alternative, measured in run 5 and not the default"
 needs = "a provider key at secrets/openai.key in the private folder ([memory] embeddings_key in yerkd.toml names another path), read by yerk-index alone and never logged; numpy (installed with the package); a running yerk-index, which makes every provider call and serves the search on a local port"

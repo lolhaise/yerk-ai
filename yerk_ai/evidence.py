@@ -38,6 +38,8 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
+from .words import CALL, no_paths
+
 KEEP_CHARS = 400_000
 FIGURE = re.compile(r"(?<![\w.,$])(?:\$\s?\d[\d,]*(?:\.\d+)?[kKmM]?|\d{1,3}(?:,\d{3})+(?:\.\d+)?%?|\d+\.\d+%?|\d+%)" r"(?![\w,]|\.\d)")
 MEMORY_TOOLS = ("recall", "read_memory")
@@ -72,6 +74,7 @@ class Evidence:
         with self.lock:
             self.calls: dict[str, dict[str, Any]] = {}
             self.given: list[str] = []          # prompts, the hook's added context, the session-start file
+            self.recalled: list[str] = []       # of those, the prompt hook's that carried recall: a call's receipt reads these only
             self.injected_recall = False
             self.logged: set[tuple[str, str]] = set()
             self.kept = 0
@@ -82,6 +85,7 @@ class Evidence:
         with self.lock:
             if text:
                 self.given.append(text)
+                self.recalled += [text] if recall else []
             self.injected_recall = self.injected_recall or recall
 
     def observe(self, ev: dict[str, Any]) -> None:
@@ -529,6 +533,58 @@ def quotes(reply: str, ev: Evidence, said: str = "", owner: tuple[str, ...] = ()
 def check_quote(reply: str, ev: Evidence, said: str = "", owner: tuple[str, ...] = ()) -> list[tuple[str, str]]:
     """The quote rule in shadow: ("quote", detail) for each such span (quotes)."""
     return [("quote", detail) for _, detail in quotes(reply, ev, said, owner)]
+
+
+# decision receipts (claim 19): each call a reply makes (words.CALL, code's word, no model) with what its turn stood on, the
+# recall hits the prompt hook handed it and the cites of every call that reads (outside NO_READ), one `calls` row a call
+# (Ledger.call) for the next morning diff; a call with no reads behind it is flagged
+LIST = re.compile(r"^(?:step\s+)?\d{1,2}[.):]\s+", re.I)       # a numbered line's own number, where no sentence ends
+END = re.compile(r"[.!?](?=\s|$)")
+CITED = re.compile(r"\(([^()\s]+:\d{1,7})\)$", re.M)           # a recall line's cite, at its end (hooks.render_recall)
+AT = re.compile(r"(?<![\w/.~-])((?:~|/)?(?:[\w.@+-]+/)*[\w.@+-]+\.[A-Za-z]\w*):(\d{1,7})(?!\d)")    # file:line in a result
+OPENS = ("Read", "NotebookRead", "read_memory")                # one file from a line: cited by its input
+
+
+def calls(reply: str) -> list[str]:
+    """Each sentence of a reply that makes a call, once, in order, its stars out and cut to 300 characters: never a question,
+    a shape inside quotes (someone else's words) or one in a code block."""
+    out: list[str] = []
+    for line in re.sub(r"```.*?```", " ", reply, flags=re.S).splitlines():
+        line = line.strip(" -*>`#")
+        bare = QUOTED.sub(lambda m: " " * len(m.group(0)), line)
+        skip = n.end() if (n := LIST.match(bare)) else 0
+        for m in CALL.finditer(bare):
+            lo = 0 if m.start() < skip else max([skip, *(e.end() for e in END.finditer(bare, skip, m.start()))])
+            hi = next((e.end() for e in END.finditer(bare, m.end())), len(bare))
+            if (s := re.sub(r"\*+", "", line[lo:hi]).strip()[:300]) and not s.endswith("?") and s not in out:
+                out.append(s)
+    return out
+
+
+def receipts(ev: Evidence, short: Callable[[str], str] = str, most: int = 20) -> list[str]:
+    """The cites a turn's calls stand on, each once, in order, `most` at most: the recall hits the prompt hook handed it (never
+    the session-start file's, which every turn of a session carries), then each call that reads: a Read or read_memory as its
+    file and first line, any other by the file:line cites in what it returned (recall's hits, grep's lines), five a call, else
+    by what it read (a query, a url, a command). `short` names a path as a room cites it (memory.cite)."""
+    with ev.lock:
+        given, made = list(ev.recalled), list(ev.calls.values())
+    out = [m.group(1) for g in given for m in CITED.finditer(g)]
+    for c in made:
+        name, ti = c["tool"].rsplit("__", 1)[-1], c["input"]
+        if name in NO_READ:
+            continue
+        if name in OPENS and (p := str(ti.get("file_path") or ti.get("notebook_path") or ti.get("path") or "")):
+            f, _, n = p.rpartition(":") if re.search(r":\d+$", p) else (p, "", str(ti.get("offset") or ti.get("start") or 1))
+            out.append(f"{short(f)}:{n if n.isdigit() else 1}")
+        else:
+            out += [f"{short(m.group(1))}:{m.group(2)}" for m in AT.finditer(c["result"])][:5] or [no_paths(c["target"].partition("=")[2])[:80]]
+    return list(dict.fromkeys(x for x in out if x))[:most]
+
+
+def receipt_rows(reply: str, ev: Evidence, short: Callable[[str], str] = str) -> list[dict[str, Any]]:
+    """A `calls` row's own part for each call the reply makes: its sentence, the turn's cites (JSON) and the flag when none."""
+    reads = receipts(ev, short) if (said := calls(reply)) else []
+    return [{"call": s, "reads": json.dumps(reads), "no_reads": int(not reads)} for s in said]
 
 
 # the taste judge (the taste eval's phase 2, from PR 93 without its shadow thread): a judge model reads a reply to the

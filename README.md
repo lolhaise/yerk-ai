@@ -67,7 +67,7 @@ What a room can do beyond Claude Code's own tools comes in as add-ons: MCP serve
 - [docs/budgets.md](docs/budgets.md): every size limit, with the notes that say why it is that size
 - [docs/hooks.md](docs/hooks.md): each Claude Code event Yerk AI handles and what it does
 
-- [docs/GUIDE.md](docs/GUIDE.md): the long form: using it, moving a chat in, importing one, the service, backup and restore, how a room runs, what you see, voice notes, web reach, the harness docs, the ledgers
+- [docs/GUIDE.md](docs/GUIDE.md): the long form: using it, moving a chat in, importing one, the service, backup and restore, how a room runs, what you see, add-ons, voice notes, web reach, the harness docs, the ledgers
 - [docs/STATUS.md](docs/STATUS.md): the build's history layer by layer as it stood on 2026-10-24, kept as a record
 - [CHANGELOG.md](CHANGELOG.md) says what each merge changes, [STYLE.md](STYLE.md) how every card and notice reads, and [NOTICE](NOTICE) where the lifted code comes from.
 

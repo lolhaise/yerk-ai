@@ -136,6 +136,17 @@ what the rooms could not do and filed with `need`: list (each one's state), buil
 - `--private PRIVATE`: private folder (default: $YERK_PRIVATE, else the fake example layer)
 - `--state STATE`: state folder (default: $YERK_STATE, else ~/.local/state/yerk)
 
+### yerk calls ACTION ID SOURCE NOTE
+
+fix ID PATH:LINE NOTE: a call (as the morning diff numbers it) that stood on a wrong line gets the correction filed beside that line the way remember files one, never into a persona or a rule
+
+- `ACTION`: one of fix
+- `ID`
+- `SOURCE`: the wrong line, as path:line (a cite the diff shows)
+- `NOTE`: what is true instead
+- `--private PRIVATE`: private folder (default: $YERK_PRIVATE, else the fake example layer)
+- `--state STATE`: state folder (default: $YERK_STATE, else ~/.local/state/yerk)
+
 ### yerk jobs ACTION
 
 scheduled jobs from the private jobs.toml: sync (one systemd user timer and service per job, the diff, then every next fire time read back) or list (the read-back)
@@ -167,10 +178,20 @@ add a one-shot or a recurring job, remove one, or list them (the room's `schedul
 
 the fixed question set against the memory index: top six and top one hit rates (exit 2 when a control misses, 1 failure, 3 timeout, 4 a drop budgets.toml [recall] does not name)
 
-- `--questions QUESTIONS`: question file (default: [memory] bench, else <private>/evals/recall-questions.json)
+- `--questions QUESTIONS`: the recall kind's question file (default: [memory] bench, else <private>/evals/recall-questions.json); the episodic and self kinds are episodic-questions.json and self-questions.json beside it
 - `-k K`: results per question (default 6, the recall tool's default)
 - `--json`: the run as JSON, per-question ranks included
 - `--controls`: the controls alone, as `yerk deploy` holds them: one JSON line, nothing written (exit 2 when one misses)
+- `--private PRIVATE`: private folder (default: $YERK_PRIVATE, else the fake example layer)
+- `--state STATE`: state folder (default: $YERK_STATE, else ~/.local/state/yerk)
+
+### yerk bench WHAT
+
+latency: the first visible line, the turn, the hooks, Yerk's tools and the cache hit rate per room, from the ledger (read only) and the logs; the table, and <state>/bench/latency-<day>.json to diff
+
+- `WHAT`: one of latency
+- `--days DAYS`: the window, days back from now (default 7)
+- `--out OUT`: the file written instead of <state>/bench/latency-<day>.json
 - `--private PRIVATE`: private folder (default: $YERK_PRIVATE, else the fake example layer)
 - `--state STATE`: state folder (default: $YERK_STATE, else ~/.local/state/yerk)
 
@@ -196,6 +217,24 @@ taste: the taste judge replayed over the owner's complaints and the replies they
 
 every ability and its state on this install, one line each
 
+- `--private PRIVATE`: private folder (default: $YERK_PRIVATE, else the fake example layer)
+- `--state STATE`: state folder (default: $YERK_STATE, else ~/.local/state/yerk)
+
+### yerk add SOURCE
+
+an add-on into this install (a folder, a git URL, or an ability whose entry names its repo): fetched, checked against its own size, its package, server, tables and units in, its tests run
+
+- `SOURCE`
+- `--dry-run`: say each step it would take, change nothing
+- `--private PRIVATE`: private folder (default: $YERK_PRIVATE, else the fake example layer)
+- `--state STATE`: state folder (default: $YERK_STATE, else ~/.local/state/yerk)
+
+### yerk remove NAME
+
+an installed add-on out again, each step of yerk add undone
+
+- `NAME`
+- `--dry-run`: say each step it would take, change nothing
 - `--private PRIVATE`: private folder (default: $YERK_PRIVATE, else the fake example layer)
 - `--state STATE`: state folder (default: $YERK_STATE, else ~/.local/state/yerk)
 
@@ -249,7 +288,8 @@ an archive back, read whole against its manifest first: into an empty folder, or
 
 the daily check (the private folder's layout, rooms.toml keys, memory classes, tokens, the index, hooks, disk growth, the rule files' shape) and the crash repair of NUL lines, each file backed up first; once a week it also fetches the Claude docs from the web ([docs] fetch = false in yerkd.toml turns that off)
 
-- `--dry-run`: say what would be mended, change nothing
+- `--dry-run`: say what would be mended or scrubbed, change nothing
+- `--scrub`: only the scrub: each secret-shaped line's value swapped for [scrubbed], every line kept, each file copied first into <private>/backups/scrub-<day>/
 - `--private PRIVATE`: private folder (default: $YERK_PRIVATE, else the fake example layer)
 - `--state STATE`: state folder (default: $YERK_STATE, else ~/.local/state/yerk)
 
@@ -293,6 +333,7 @@ a commit onto the running yerkd: fast-forward only, fast tests, a quiet room, th
 - `[REF]`: the commit (default: the daemon's tree's HEAD)
 - `--no-tests`: skip the fast tests and the recall check (the card says so)
 - `--unit`: also move a systemd-run daemon onto units/yerkd.service
+- `--timers`: only install and turn on each timer in units/ not installed yet
 - `--private PRIVATE`: private folder (default: $YERK_PRIVATE, else the running yerkd's own, from its unit)
 - `--state STATE`: state folder (default: $YERK_STATE, else ~/.local/state/yerk)
 

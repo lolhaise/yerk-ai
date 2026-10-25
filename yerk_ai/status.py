@@ -18,7 +18,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
 
-from . import __version__, backup, config, jobs, usage, words, workers
+from . import __version__, backup, config, jobs, latency, usage, words, workers
 from .accounts import Account, Cooldowns
 from .ledger import Ledger
 from .meters import Meters
@@ -108,6 +108,7 @@ def collect(private: Path, state: Path, accounts: list[Account], cooldowns: Cool
                         "bill": next_bill(a.bill_day, now)} for a in accounts]
     out["live"] = live
     out["stalls"] = ledger.stalls(midnight(now))
+    out["speed"] = latency.medians(ledger, midnight(now), now)    # today's median first line and turn
     out["backup"] = backup.newest(private, state)
     return out
 
@@ -264,6 +265,8 @@ def card(s: dict[str, Any], now: float | None = None) -> list[str]:
                        else W.ROOMS_ON.format(account=W.tag(acct), rooms=W.ROOMS_N.format(n=len(names)))))
     out.append(row(W.PLAIN, W.VERSION_AT.format(version=s.get("version") or __version__,   # what runs: an upgrade's receipt
                                                  commit=str(s.get("commit") or "")[:7] or "?")))
+    if s.get("addons") is not None:                     # `yerk status` names the installed add-ons (addons.py)
+        out.append(row(W.PLAIN, W.ADDONS.format(names=", ".join(s["addons"]) or W.NO_ADDONS)))
     nth: dict[str, int] = {}
     for w in sorted(s["workers"], key=lambda w: (bool(w["waiting"]), float(w["queued"] or 0))):
         if w["waiting"]:
@@ -280,6 +283,8 @@ def card(s: dict[str, Any], now: float | None = None) -> list[str]:
     if s["jobs"] == []:
         out.append(row(W.PLAIN, W.NO_JOB_DUE))
     out += [W.named(f"{W.PLAIN} {W.UNIT_USE}", u["name"], mb=round(u["rss_mb"]), cpu=u["cpu_pct"]) for u in s["units"] if not u.get("gone")]
+    if (sp := s.get("speed")) and any(v is not None for v in sp.values()):     # none before the day's first message
+        out.append(row(W.PLAIN, W.SPEED.format(day=W.TODAY, **{k: "-" if v is None else W.secs(v) for k, v in sp.items()})))
     if "backup" in s:                                   # the newest archive (backup.py): red when there is none, or past STALE
         b = s["backup"]
         text = W.BACKUP_AT.format(ago=W.span(now - b["at"]), size=W.size(int(b["bytes"]))) if b else W.NO_BACKUP
