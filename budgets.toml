@@ -429,6 +429,16 @@ secs = 60
 # 20,276 on main 30ea8dc (#117): 19,976 + 300.
 # 2026-10-24: merged with measured-budgets (#123, main dbb06f8): its 20,048 plus backup-restore's 300 is 20,348, counted
 # on the merged tree; cli.py and words.py, which both changed, merged clean.
+# 2026-10-24: fusion-levers raised it by 3: the keyword rank's part of the fusion, SHARE 0.4 where both ranks counted alike
+# (memory.py 3: SHARE and its measured note 2, fuse's docstring on the two parts 1; its `share` argument and the loop's parts
+# are in the lines that were there), measured alone on the 164-question set (top six 103 to 107, top one 59 to 62, no control
+# lower), not folded to fit. The three levers measured alone after it and deleted (name and field boosts, the tense order,
+# alias rewriting) leave no line.
+# 19,979 on main 30ea8dc (#117): 19,976 + 3.
+# 2026-10-24: merged with measured-budgets (#123, main dbb06f8): its 20,048 plus fusion-levers' 3 is 20,051, counted on
+# the merged tree; no .py file changed on both sides (#123: cli, context, morning, words; #118: memory).
+# 2026-10-24: merged with backup-restore (#128, main 9f53348): its 20,348 plus fusion-levers' 3 is 20,351, counted on
+# the merged tree; no .py file changed on both sides (#128: backup, cli, doctor, status, words; #118: memory).
 # 2026-10-24: decision-receipts raised it by 169: a call a room makes for the owner shows its receipt in the morning diff
 # (claim 19, decision 45, the owner's Oct 21 ask), not folded to fit. evidence.py 56 (calls, the trigger read by code off
 # words.CALL; receipts and receipt_rows, the join to the turn's reads and the recall the prompt hook handed it, kept apart
@@ -442,4 +452,7 @@ secs = 60
 # 2026-10-25: the cold read's two fixes raised it by 3, not folded to fit: words.py 3 (the had rule, "I'd put" or "I'd set"
 # with a past-time word later in the sentence, and its comment; "should've" with no space before 've on the same line).
 # 20,520 on main 9f53348 (#128): 20,517 + 3.
-lines = 20520
+# 2026-10-25: merged with fusion-levers (#118, main 3255849): its 20,351 plus decision-receipts' 172 (169 and the fixes'
+# 3) is 20,523, counted on the merged tree; no .py file changed on both sides (#118: memory; #119: cli, daemon, evidence,
+# ledger, morning, words).
+lines = 20523
