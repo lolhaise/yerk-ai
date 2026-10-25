@@ -506,4 +506,19 @@ secs = 60
 # 2026-10-25: addons-1 merged with main 915a364 (#119 decision-receipts, then #126 bench-kinds): main's 20,754 plus this
 # PR's 375 is 21,129, counted on the merged tree; cli.py's parser loop, which both changed (#119's `yerk calls`, this
 # PR's `yerk add` and `yerk remove`), keeps both sides' names; daemon.py, memory.py, words.py and README.md merged clean.
-lines = 21129
+# 2026-10-24: quiet-doctor raised it by 108: the doctor's severities and a fix on every finding, the weekly rule-shape
+# line, the scope change said once, the timers check, `yerk doctor --scrub`, and the deploy installing a timer the box
+# lacks (the audit that day: yerk-curate.timer never installed, so the night's curation never ran there), not folded to
+# fit. doctor.py 78 (leaked, unshaped and scrub among them, and the drift line's fix), deploy.py 22 (timers and its call),
+# cli.py 8 (--scrub, --timers), words.py 0 (doctor: clean; SHAPE_OK, read by nothing now, gone). 20,084 on main 30ea8dc
+# (#117): 19,976 + 108. 20,156 merged after #123 (main dbb06f8): 20,048 + 108. cli.py and words.py, which #123 also
+# changed, merged with no line in common. 20,457 merged after #128 (main 9f53348): 20,348 + 108, and 1 for the
+# doctor's check loop, which wraps one more line with both checks in it (joined, a line would pass ruff's 160);
+# doctor.py and cli.py, which #128 also changed, keep both sides (its backup check beside the timers check, its two
+# subcommands in the --private loop).
+# 2026-10-25: quiet-doctor merged with main b78b172 (#118, #125, #119, #126, then #124 addons-1): main's 21,129 plus
+# this PR's 109 is 21,238, counted on the merged tree; cli.py (the --timers argument, then #124's and #119's names in the
+# --private loop), deploy.py (both imports) and doctor.py (this PR's severity and fix on each room finding, over #124's
+# known keys) keep both sides; tests/test_doctor.py's add-on key test reads the finding and the clean line as this PR's
+# doctor says them; words.py and tests/test_deploy.py merged clean.
+lines = 21238

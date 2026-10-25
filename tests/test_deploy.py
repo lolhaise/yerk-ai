@@ -1046,3 +1046,31 @@ def test_a_deploy_holds_the_live_controls_after_the_fast_tests_and_one_missed_re
     assert all(words.width(x) <= words.PHONE for x in out)
     assert deploy.run(priv, state, ids[2], tests=False, sd=f, ask=f.ask, post=ok, sleep=nap, check=check(miss)) == 0 and len(seen) == 3
     assert [r[3] for r in rows(state)] == ["recall failed", "recall failed", "proven", "proven"]
+
+
+def test_a_proven_deploy_installs_and_turns_on_each_timer_in_units_the_box_does_not_have(tmp_path, capsys):
+    """quiet-doctor (2026-10-24): yerk-curate.timer sat in units/ and was never copied, so the night's curation never ran
+    on the box. A proven deploy copies each timer systemd calls not-found, with its service, into the user's unit folder
+    (0600), reloads once and turns it on, a card line each; one already there, on or off, is left as it is."""
+    tree, ids = repo(tmp_path)
+    priv, state = layer(tmp_path, tree)
+    (tree / "units").mkdir()                                           # untracked: the tree stays clean
+    for name in ("yerk-curate.timer", "yerk-curate.service", "yerk-doctor.timer", "yerk-doctor.service"):
+        shutil.copy(deploy.REPO / "units" / name, tree / "units")
+    home, calls, f = tmp_path / "user-units", [], Fake(tree)
+    states = {"yerk-curate.timer": "not-found", "yerk-doctor.timer": "disabled"}
+
+    def ctl(*a, **k):
+        calls.append(a)
+        return subprocess.CompletedProcess(a, 0, "".join(f"{states[t]}\n" for t in a[1:]) if a[0] == "is-enabled" else "", "")
+    code = deploy.run(priv, state, ids[1], tests=False, sd=f, ask=f.ask, post=lambda p: {"ok": True}, sleep=nap, home=home, ctl=ctl)
+    assert code == 0 and capsys.readouterr().out.splitlines()[-1] == f"{words.DONE} yerk-curate.timer installed, on"
+    assert sorted(p.name for p in home.iterdir()) == ["yerk-curate.service", "yerk-curate.timer"]
+    assert (home / "yerk-curate.timer").read_bytes() == (deploy.REPO / "units" / "yerk-curate.timer").read_bytes()
+    assert stat.S_IMODE((home / "yerk-curate.service").stat().st_mode) == 0o600
+    assert calls == [("is-enabled", "yerk-curate.timer", "yerk-doctor.timer"), ("daemon-reload",), ("enable", "--now", "yerk-curate.timer")]
+    states["yerk-curate.timer"], calls[:] = "enabled", []
+    assert deploy.timers(tree, home, ctl) == [] and calls == [("is-enabled", "yerk-curate.timer", "yerk-doctor.timer")]
+    states["yerk-curate.timer"] = "not-found"                            # an enable that fails is red on the card
+    assert deploy.timers(tree, tmp_path / "other", lambda *a, **k: subprocess.CompletedProcess(
+        a, 1 if a[0] == "enable" else 0, "not-found\nenabled\n" if a[0] == "is-enabled" else "", "")) == [f"{words.NOT_DONE} yerk-curate.timer not enabled"]
