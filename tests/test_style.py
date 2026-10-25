@@ -5,6 +5,7 @@ among the described, and a room that asks "can you do voice" gets the manifest's
 import ast
 import asyncio
 import json
+import os
 import re
 import time
 from pathlib import Path
@@ -12,7 +13,7 @@ from pathlib import Path
 import discord
 from starlette.testclient import TestClient
 
-from yerk_ai import abilities, cli, mcp_server, words, workers
+from yerk_ai import abilities, addons, cli, mcp_server, words, workers
 from yerk_ai.card import Card
 from yerk_ai.channels import discord as dmod
 from yerk_ai.config import EXAMPLE_PRIVATE
@@ -192,7 +193,7 @@ def test_status_abilities_and_explain_print_state_first_at_phone_width(tmp_path,
 
 # 2. one vocabulary
 RENDERERS = ["card.py", "workers.py", "room.py", "channels/discord.py", "daemon.py", "cli.py", "meters.py",
-             "abilities.py", "status.py", "morning.py"]
+             "abilities.py", "status.py", "morning.py", "addons.py"]
 MARKS = ("\U0001F7E2", "\U0001F7E0", "\U0001F534", "\u26AA", "LARGE GREEN CIRCLE", "LARGE ORANGE CIRCLE",
          "LARGE RED CIRCLE", "MEDIUM WHITE CIRCLE", "HOURGLASS WITH FLOWING SAND", "CROSS MARK", "WHITE SMALL SQUARE",
          "STOPWATCH", "BLACK SQUARE FOR STOP", "\u23F3", "\u274C", "\u25AB", "\u23F1", "\u23F9")
@@ -242,6 +243,17 @@ def test_the_vocabulary_grep_catches_a_renderer_that_spells_its_own():
     assert spelled('head = f"{x} worker finished clean"\n') == ["phrase 'finished clean'"]
     assert spelled('mark = "\\N{LARGE GREEN CIRCLE}"\n') == ["mark 'LARGE GREEN CIRCLE'"]
     assert spelled('def f():\n    """finished clean, in a docstring"""\n    log.info("finished clean")\n') == []
+
+
+def test_an_add_ons_words_file_is_held_to_the_same_rules():
+    """addons-1: an add-on's own words file (the example's, and each one installed under $YERK_STATE, which `yerk deploy`
+    sets) spells no state mark or phrase of words.py's, and none of its lines breaks a room rule."""
+    state = Path(os.environ["YERK_STATE"]) if os.environ.get("YERK_STATE") else None
+    files = [PKG.parent / "examples" / "addons" / "hello" / "yerk_hello" / "words.py"]
+    files += [state / addons.DIR / n / ab["install"]["words"] for n, ab in addons.installed(state).items()] if state else []
+    for f in files:
+        src = f.read_text()
+        assert not spelled(src) and not [x for x in literals(src) if room_safe(x)], f
 
 
 # 3. the manifest: built or described on every entry, voice among the described (tests/test_abilities.py has the rest)

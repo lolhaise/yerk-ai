@@ -21,8 +21,101 @@ version changes.
 - The dead turns query (`yerk status --json`, the morning diff) is a lookup per message, no longer every turn times every
   sent part: a day of messages on a copy of the Oct 24 ledger took 128.8 s and takes 2.0 ms, and `yerk status --json` on
   that copy 139.7 s, now 0.20 s. The same rows, compared per message on all 1,427.
-- **Upgrading:** nothing to edit. budgets.toml: `[code] lines` 20,745 (a dated note). The bench's files go in a new
+- **Upgrading:** nothing to edit. budgets.toml: `[code] lines` 21,418 (a dated note). The bench's files go in a new
   folder, `<state>/bench/`.
+
+### quiet-doctor (#120)
+
+- `yerk doctor` is quiet when all is well: each line it prints is a finding with its severity first (red or orange) and
+  the fix it wants, mostly one command, and a run with none prints one line, `doctor: clean`, green. The morning diff's
+  doctor line says `doctor: clean` too, and takes the colour of the worst finding otherwise.
+- The rule-shape counts and the topics said twice are one weekly line, on the Sunday run, or on the first run after a
+  count rose (the rise marked, as `(+1)`); the daily run and the morning diff no longer repeat them. A rules line a room
+  filed in the last day that misses the shape is still said the next morning.
+- `memory index: scope-changed` (a room added or dropped, yerk-index still on the old roots) is said once, then not again
+  until the index has run on the new roots, which clears it. The fix it names: `systemctl --user restart yerk-index`.
+- `yerk doctor --scrub [--dry-run]`: each secret-shaped line the check finds (the shapes it already had) has its value
+  swapped for `[scrubbed]`, its label and every other line kept, so the file keeps its line count; each file is copied
+  first into `<private>/backups/scrub-<day>/`, a line per file says which lines, never a value, and a second run finds
+  nothing. The finding now says to run it, then rotate the key. The copies keep the values: they are 0600, and the key
+  still wants rotating.
+- `yerk deploy` installs each timer in units/ that systemd does not know yet, once the deploy is proven: the timer and
+  its service copied as shipped (0600) into `~/.config/systemd/user/`, one daemon-reload, then `enable --now`, a card
+  line each. A timer the owner installed and turned off stays off. `yerk deploy --timers` does only that, restarting
+  nothing. The doctor names a timer in units/ that is not enabled, orange, with that command (not installed) or
+  `systemctl --user enable --now NAME.timer` (installed, off).
+- **Upgrading:** yerk-curate.timer is installed and turned on by the next `yerk deploy` (or `yerk deploy --timers`)
+  on a box that never copied it, so the night's card curation runs from then on, at 05:00; the same deploy installs
+  and turns on yerk-backup.timer (#128) the same way, which does #128's copy and enable step. If the doctor said
+  `secret-shaped lines`, run `yerk doctor --scrub --dry-run`, then `yerk doctor --scrub`, then rotate each key it named.
+  budgets.toml: `[code] lines` 21,238 (a dated note).
+
+### addons-1 (#124)
+
+- `yerk add SOURCE` installs an add-on, an ability that lives in a repo of its own: SOURCE is a folder, a git URL
+  (`file://` included), or an ability whose abilities.toml entry names its `repo`. Each step is a line as it is done:
+  fetched into the state folder's `addons/NAME`, checked (its entry, and its code against its own `size`: an add-on over
+  its own ceiling is refused, nothing written; so is a name that is not one plain word of letters, digits, `-` and `_`,
+  a words file, test or unit outside its folder, absolute, through `..` or through a link, and a budget value that is not
+  a whole number, each with its reason), its package installed into this venv, its MCP server and its tools'
+  allow lines written under rooms.toml's `[defaults]` and its tables into yerkd.toml (each a marked block, read back
+  through the loaders that start yerkd before anything is written), its units linked into `~/.config/systemd/user`, its
+  budget lines and its words file named, its own fast tests run. A failing test, or any step that fails after the first
+  write, undoes every step. `--dry-run` says each step as "would".
+- `yerk remove NAME` undoes each step and leaves the private folder byte for byte as it was before the add; the add-on's
+  folder goes to the trash, and a package that will not uninstall is said on its own line.
+- abilities.toml entries gain `repo`, `version`, `size` and `install`, and `yerk abilities` reads an add-on's state from
+  what is installed (the package importable, its server under `[defaults]`, its units linked): installed, missing a part,
+  or not installed when a repo is named. A key-tier ability is on when the keys its new `keys` field names are there,
+  where three names were checked by hand.
+- While an add-on is installed its budget lines count in the gate (`yerk map`, the daemon) and its rooms.toml keys are
+  known keys to the doctor. `yerk deploy` runs each installed add-on's fast tests after the core's, and a failure names
+  the add-on. `yerk status` has one `add-ons:` line.
+- An add-on's `install` may name the attachment types it reads, each to one of its own allowed tools
+  (`reads = { "video/*" = "mcp__NAME__frames" }`; a tool not on its allow list is refused): while it is installed, a
+  room's `[attachment]` line of that type gets one line under it naming the tool, so a kind the core cannot read, a video,
+  is read through the add-on.
+- examples/addons/hello is the example: one MCP tool, one unit, one budget line, one words file, one test.
+- **Upgrading:** nothing to edit; rooms.toml and yerkd.toml change only when you run `yerk add`. budgets.toml:
+  `[code] lines` 21,129 (dated notes: main's 20,754 + 355, then 20 for the cold read's fixes and `reads`).
+
+### bench-kinds (#126)
+
+- `yerk recall-bench` scores three kinds: recall (the question file it always read), and episodic and self
+  (`episodic-questions.json` and `self-questions.json` beside it, read when they are there, in the recall file's shape).
+  The first line is the kinds together, as before; after `misses:` comes a line per kind. A run's row in
+  recall-bench.jsonl carries `kinds`: each kind's questions, top six and top one, with their rates.
+- The ratchet holds each kind on its own, so a change that lifts recall and sinks self exits 4 with `RATCHET: self: ...`
+  even when the kinds together hold. A row from before this is the recall kind whole, so the series' history still holds
+  recall. A dated note in budgets.toml `[recall] drops` names episodic or self before BEST ("2026-10-25: self 21 to 18,
+  why"); a note with no kind names recall, as every note so far does.
+- The nightly curate holds the lines it lands to the kinds together, and `yerk deploy`'s real-index test holds each kind to
+  its ratchet, once the two files are in the private layer. The controls stay in the recall file; `--controls` reads only
+  it. The example layer has two invented questions of each new kind.
+- **Upgrading:** to score the new kinds, put `episodic-questions.json` and `self-questions.json` in `<private>/evals/`
+  beside the recall file; without them the bench runs the recall kind alone, as before. budgets.toml: `[code] lines`
+  20,754 (a dated note).
+
+### decision-receipts (#119)
+
+- A reply that makes a call for the owner shows its receipt in the next morning diff (claim 19). Code reads each reply that
+  went out, sentence by sentence, for a call's shape (`words.CALL`: "I'd go with" or "I'd" with an imperative verb, "go with"
+  or "pick" opening a sentence, "my call:", "you should", "the plan is", a number with an imperative after it); no model
+  decides, and a question, a quoted span and a code block are never a call, nor "you should have" or "should've", nor "I'd
+  put" or "I'd set" with a past-time word later in the sentence ("I'd" as "I had"). Replayed read only over one day of a work
+  room (Oct 23, 96 turns): 7 calls in 6 turns, 6 of them real recommendations; the seventh was "I'd" meaning "I had", so the
+  day now reads 6 calls in 5 turns.
+- Each call is a `calls` row in the ledger: its room, its turn, its sentence, and the cites its turn read (the recall hits
+  the prompt hook handed it, each file and line it opened, the file:line hits a recall or grep returned), or a flag that it
+  read nothing. A call in a person's room is that person's, never the owner's, and a reply a Stop rule turned back makes none.
+- The morning diff gives each of yesterday's calls its room and words, and under it its number and cites, or "no reads
+  behind it": the first 20, then the count after. A person's room's calls are counted, never quoted; a quiet day says
+  `calls yesterday: none`.
+- `yerk calls fix ID PATH:LINE NOTE` files the correction beside the wrong line the way `remember` does: a note in the call's
+  room's day log that names the line it supersedes and the call, that line marked superseded. It refuses a persona, a
+  rulebook, a voice file or a rules file; the next morning diff shows the fix.
+- **Upgrading:** nothing to edit; the ledger gains its `calls` table at the next start (no schema version change).
+  budgets.toml: `[code] lines` 20,737 (a dated note).
 
 ### import-openclaw (#125)
 

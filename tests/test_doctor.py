@@ -9,8 +9,10 @@ import gc
 import json
 import re
 import shutil
+import subprocess
 import time
 from datetime import date, datetime, timedelta
+from pathlib import Path
 
 import pytest
 
@@ -23,6 +25,7 @@ from yerk_ai.ledger import Ledger
 
 DAY = 86400.0
 URL = "http://127.0.0.1:4321/hook"
+CLEAN = f"{words.DONE} doctor: clean\n"                 # what a run with nothing to say prints
 
 
 def day_line(i):
@@ -63,12 +66,12 @@ def collector():
     gc.enable()
 
 
-def test_a_healthy_tree_prints_nothing_and_its_run_is_kept(tree, capsys):
+def test_a_healthy_tree_prints_one_green_line_and_its_run_is_kept(tree, capsys):
     priv, state, *_ = tree
-    assert doctor.main(priv, state) == 0 and capsys.readouterr().out == ""
+    assert doctor.main(priv, state) == 0 and capsys.readouterr().out == CLEAN
     d = json.loads((state / "doctor.json").read_text())
     assert d["findings"] == [] and d["repaired"] == [] and d["sizes"]["state folder"] > 0
-    assert doctor.line(state, time.time()) == ("", f"{words.PLAIN} doctor: ok")
+    assert doctor.line(state, time.time()) == ("", f"{words.DONE} doctor: clean")
 
 
 def test_a_file_another_user_can_read_is_named_and_a_0700_folder_hides_what_is_in_it(tree, capsys, tmp_path, collector):
@@ -84,14 +87,14 @@ def test_a_file_another_user_can_read_is_named_and_a_0700_folder_hides_what_is_i
     assert oct(config.state_dir(str(fresh)).stat().st_mode & 0o777) == "0o700"
     (ctx := state / "rooms" / "example-room" / "context.md").write_text("the owner's lines")
     ctx.chmod(0o644)
-    assert doctor.main(priv, state) == 0 and capsys.readouterr().out == ""
+    assert doctor.main(priv, state) == 0 and capsys.readouterr().out == CLEAN
     state.chmod(0o750)
     collector.collect()                                      # whatever an earlier run left to the collector is gone now,
     seen = doctor.exposed(state)                             # and nothing the next run leaves to it goes before its check
     collector.disable()
     assert doctor.main(priv, state) == 1 and ("rooms/example-room/context.md", 0o644) in seen
-    assert capsys.readouterr().out.splitlines() == [f"state folder: other users can read {len(seen)} of its files and "
-                                                    "folders, first the folder itself (750); chmod 700 it"]
+    assert capsys.readouterr().out.splitlines() == [f"{words.NOT_DONE} state folder: other users can read {len(seen)} of its files and "
+                                                    f"folders, first the folder itself (750); `chmod 700 {state}`"]
     assert doctor.exposed(state) == seen and not [p for p, _ in seen if p.startswith("ledger.sqlite-")]
     t = tmp_path / "t"
     (t / "open" / "shut").mkdir(parents=True)
@@ -121,8 +124,8 @@ def test_a_secret_shaped_line_in_memory_or_an_import_is_named_by_file_and_line_n
         (priv / rel).write_text(text)
     assert doctor.main(priv, state) == 1
     out = capsys.readouterr().out
-    assert out.splitlines() == ["secret-shaped lines: 6 in 4 files, first attachments/discord-1/note.txt:1 (token line); "
-                                "scrub by hand, rotate the key"]
+    assert out.splitlines() == [f"{words.NOT_DONE} secret-shaped lines: 6 in 4 files, first attachments/discord-1/note.txt:1 (token line); "
+                                "`yerk doctor --scrub`, then rotate the key"]
     assert not [v for v in (key, bot, "482913", "Exa-mple9!", "abcd1234", "q" * 20) if v in out]
     assert {k for k, rx in doctor.SECRETS.items() for t in planted.values() if rx.search(t)} == set(doctor.SECRETS)
 
@@ -142,8 +145,8 @@ def test_a_one_time_code_in_an_import_two_days_past_its_own_lines_date_is_dead_a
         (priv / rel).parent.mkdir(parents=True, exist_ok=True)
         (priv / rel).write_text(text)
     assert doctor.main(priv, state) == 1
-    assert capsys.readouterr().out.splitlines() == ["secret-shaped lines: 3 in 3 files, first imports/mail/2019-02.md:6 (password line); "
-                                                    "scrub by hand, rotate the key"]
+    assert capsys.readouterr().out.splitlines() == [f"{words.NOT_DONE} secret-shaped lines: 3 in 3 files, first imports/mail/2019-02.md:6 (password line); "
+                                                    "`yerk doctor --scrub`, then rotate the key"]
     assert doctor.scan(priv / f"imports/mail/{fresh:%Y-%m}.md", time.time()) == [(4, "one-time code")]
     assert doctor.scan(priv / "imports/mail/2019-02.md", time.time()) == [(6, "password line")]
     assert doctor.scan(priv / "imports/mail/2019-02.md") == [(3, "one-time code"), (5, "one-time code"), (6, "one-time code")]
@@ -162,12 +165,12 @@ def test_a_zeroed_day_log_line_is_backed_up_then_blank_so_every_line_number_hold
     day.write_text("\n".join(zeroed))
     before = day.read_bytes()
     assert doctor.main(priv, state) == 1
-    assert capsys.readouterr().out.splitlines() == ["day log 2026-10-20.md: mended lines 4, 6"]
+    assert capsys.readouterr().out.splitlines() == [f"{words.WORKING} day log 2026-10-20.md: mended lines 4, 6"]
     after = day.read_text().split("\n")
     assert len(after) == len(lines) and after[3] == "" and after[:3] + after[4:] == lines[:3] + lines[4:]
     backup, = (priv / "backups").glob("doctor-*/daily.2026-10-20.md")
     assert backup.read_bytes() == before and backup.stat().st_mode & 0o777 == 0o600
-    assert doctor.line(state, time.time())[1] == words.line(f"{words.NOT_DONE} doctor: 1 found, day log 2026-10-20.md: mended lines 4, 6")
+    assert doctor.line(state, time.time())[1] == words.line(f"{words.WORKING} doctor: 1 found, day log 2026-10-20.md: mended lines 4, 6")
 
 
 def test_a_zeroed_jsonl_line_is_dropped_and_a_line_that_outlived_its_nuls_is_kept(tree, capsys):
@@ -176,7 +179,7 @@ def test_a_zeroed_jsonl_line_is_dropped_and_a_line_that_outlived_its_nuls_is_kep
     assembled.write_text("\n".join([rows[0], "\0" * 200, rows[1], "\0" * 50 + rows[2], rows[3]]) + "\n")
     sid.write_bytes(sid.read_bytes() + b"\0" * 193)          # the last write zeroed, no newline after it
     assert doctor.main(priv, state) == 1
-    assert capsys.readouterr().out.splitlines() == ["example-room assembled log: mended lines 2, 4", "example-room transcript: mended line 5"]
+    assert capsys.readouterr().out.splitlines() == [f"{words.WORKING} example-room assembled log: mended lines 2, 4", f"{words.WORKING} example-room transcript: mended line 5"]
     assert assembled.read_text().splitlines() == rows
     assert sid.read_text() == "".join(json.dumps({"turn": i}) + "\n" for i in range(4))
     assert sorted(p.name for p in (state / "trash").glob("*/doctor/*")) == ["example-room.assembled.jsonl", "p.s1.jsonl"]
@@ -205,7 +208,7 @@ def test_a_room_with_a_turn_in_flight_or_a_message_waiting_is_never_mended(tree,
     else:
         Ledger(state / "ledger.sqlite").inbound_add("m9", "example-room", "discord:1", "owner", 5)   # received, never answered
     before = assembled.read_bytes(), sid.read_bytes()
-    assert doctor.main(priv, state) == 0 and capsys.readouterr().out == ""
+    assert doctor.main(priv, state) == 0 and capsys.readouterr().out == CLEAN
     assert (assembled.read_bytes(), sid.read_bytes()) == before and not (state / "trash").exists()
 
 
@@ -214,7 +217,19 @@ def test_a_rooms_toml_key_no_loader_reads_is_named_with_its_room(tree, capsys):
     rooms = priv / "rooms.toml"
     rooms.write_text(rooms.read_text().replace("recall_days = 2", "recall_days = 2\nrecal_days = 3", 1))
     assert doctor.main(priv, state) == 1
-    assert capsys.readouterr().out.splitlines() == ["room example-room: rooms.toml key recal_days is read by nothing"]
+    assert capsys.readouterr().out.splitlines() == [f"{words.WORKING} room example-room: rooms.toml key recal_days is read by nothing; fix its name or delete it in rooms.toml"]
+
+
+def test_a_rooms_toml_key_an_installed_add_on_reads_is_a_known_key(tree, capsys):
+    """addons-1: hello's manifest names hello_name among its room_keys, so while it is installed the key is read by it."""
+    priv, state, *_ = tree
+    rooms = priv / "rooms.toml"
+    rooms.write_text(rooms.read_text().replace("recall_days = 2", 'recall_days = 2\nhello_name = "Nora"', 1))
+    assert doctor.main(priv, state) == 1
+    assert capsys.readouterr().out.splitlines() == [f"{words.WORKING} room example-room: rooms.toml key hello_name is read by nothing; fix its name or delete it in rooms.toml"]
+    (state / "addons" / "hello").mkdir(parents=True)
+    shutil.copy(Path(__file__).resolve().parents[1] / "examples" / "addons" / "hello" / "addon.toml", state / "addons" / "hello")
+    assert doctor.main(priv, state) == 0 and capsys.readouterr().out == CLEAN
 
 
 def test_the_files_a_moved_room_brought_with_no_sidecar_are_one_orange_line_with_the_two_backfills(tree, capsys):
@@ -235,7 +250,7 @@ def test_the_files_a_moved_room_brought_with_no_sidecar_are_one_orange_line_with
     assert doctor.main(priv, state) == 1 and capsys.readouterr().out.splitlines() == [said]
     for side in (pictures.sidecar(f / "1-shot.png"), pictures.sidecar(f / "2-shot.jpg"), files.sidecar(f / "3-plan.pdf")):
         side.write_text("filed\n")
-    assert doctor.main(priv, state) == 0 and capsys.readouterr().out == ""
+    assert doctor.main(priv, state) == 0 and capsys.readouterr().out == CLEAN
 
 
 def test_a_cron_line_left_in_the_jobs_file_is_one_line_with_the_calendar_line_that_replaces_it(tree, capsys):
@@ -244,7 +259,7 @@ def test_a_cron_line_left_in_the_jobs_file_is_one_line_with_the_calendar_line_th
     (priv / "jobs.toml").write_text('[jobs.example-weekly]\nkind = "note"\nschedule = "0 10 * * 1"\ntz = "UTC"\n'
                                     'room = "example-room"\nmessage = "the example check"\n')
     assert doctor.main(priv, state) == 1
-    assert capsys.readouterr().out.splitlines() == ['job example-weekly: `schedule` takes a systemd calendar line now, not cron: '
+    assert capsys.readouterr().out.splitlines() == [f'{words.NOT_DONE} job example-weekly: `schedule` takes a systemd calendar line now, not cron: '
                                                     'replace schedule = "0 10 * * 1" with schedule = "Mon *-*-* 10:0:00"']
     assert "0 10 * * 1" in (priv / "jobs.toml").read_text()
 
@@ -257,8 +272,8 @@ def test_a_stale_index_an_old_mention_index_and_no_meaning_search_are_each_a_lin
     (priv / "memory" / "facts" / "nora.md").write_text("# Nora\n- the club treasurer\n")
     (state / "memory" / "mentions.json").write_text(json.dumps({"built": time.time() - 3600}))    # older than nora.md
     assert doctor.main(priv, state) == 1
-    assert capsys.readouterr().out.splitlines() == ["and the: test", "for the: check while a second entry",
-                                                    "as plain: text-with"]
+    assert capsys.readouterr().out.splitlines() == [f"{words.WORKING} memory index: stale; {doctor.INDEX}", f"{words.WORKING} mention index: older than a fact file; {doctor.INDEX}",
+                                                    f"{words.WORKING} meaning search: no-index; {doctor.INDEX}"]
 
 
 def test_each_other_check_says_one_plain_line(tree, capsys, monkeypatch):
@@ -278,18 +293,20 @@ def test_each_other_check_says_one_plain_line(tree, capsys, monkeypatch):
     (state / "doctor.json").write_text(json.dumps({"at": time.time() - DAY, "sizes": {"state folder": 0}, "sized": time.time() - DAY}))
     assert doctor.main(priv, state) == 1
     out = capsys.readouterr().out.splitlines()
-    assert out[:4] + out[5:6] == ["secret claude-one.token: mode 644, not 600", "note.md: class secret is not one of private, room, shared",
-                                  "pinned.md.class: not one of private, room, shared", "day log 2026-10-20.md: line 8 does not parse",
-                                  "room example-room: hooks not as yerkd puts them"], out
-    assert re.fullmatch(r"token one: (9|10) days left", out[4]) and len(out) == 7, out      # 10 days, less the hours of today
-    assert re.fullmatch(r"state folder: grew \d[\d.]* (KB|MB|bytes) in 1 day", out[6]), out
+    assert out[:4] + out[5:6] == [f"{words.NOT_DONE} secret claude-one.token: mode 644, not 600; `chmod 600 {tok}`",
+                                  f"{words.WORKING} note.md: class secret is not one of private, room, shared; set its class: to one",
+                                  f"{words.WORKING} pinned.md.class: not one of private, room, shared; write one of them in it",
+                                  f"{words.WORKING} day log 2026-10-20.md: line 8 does not parse; rewrite it in the day-log line shape",
+                                  f"{words.NOT_DONE} room example-room: hooks not as yerkd puts them; `systemctl --user restart yerkd` writes them again"], out
+    assert re.fullmatch(rf"{words.WORKING} token one: (9|10) days left; `yerk accounts mint one`", out[4]) and len(out) == 7, out      # 10 days, less the hours of today
+    assert re.fullmatch(rf"{words.WORKING} state folder: grew \d[\d.]* (KB|MB|bytes) in 1 day; `yerk retention --dry-run` says what the sweep would move", out[6]), out
 
 
 def test_the_folder_check_and_the_rule_check_name_themselves_apart_when_neither_can_run(tree):
     """`layout` is the private folder's check and `rule shape` the rule files'; both were once read as "shape"."""
     priv, state, *_ = tree
     (priv / "rooms.toml").write_text("[rooms\n")
-    said = [x.split(",")[0] for x in doctor.run(priv, state) if "not checked" in x]
+    said = [x[2:].split(",")[0] for x in doctor.run(priv, state) if "not checked" in x]
     assert said == ["layout: not checked", "rule shape: not checked", "fit: not checked", "moved in: not checked"], said
 
 
@@ -302,12 +319,12 @@ def test_a_part_past_its_line_reads_red_with_the_overflow_and_one_that_fits_read
     rules.write_text("".join(f"- example job {i}: done the example way, step by step.\n" for i in range(300)))
     raw = context.chars(context.rules_text({}, rules)[0])
     assert doctor.main(priv, state) == 1
-    assert capsys.readouterr().out.splitlines() == [f"rules.md: rules over its line by {raw - cap:,} characters ({raw:,} of {cap:,}), "
+    assert capsys.readouterr().out.splitlines() == [f"{words.NOT_DONE} rules.md: rules over its line by {raw - cap:,} characters ({raw:,} of {cap:,}), "
                                                     "cut at every session start in example-room, example-quiet; raise its line in "
                                                     "budgets.toml or trim the file"]
     assert doctor.line(state, time.time())[1].startswith(f"{words.NOT_DONE} ")
     rules.write_text("- example job: done the example way.\n")
-    assert doctor.main(priv, state) == 0 and capsys.readouterr().out == ""
+    assert doctor.main(priv, state) == 0 and capsys.readouterr().out == CLEAN
 
 
 def test_the_fit_check_reads_the_topic_rules_and_an_overflow_not_moved_yet(tree, capsys):
@@ -329,7 +346,7 @@ def test_the_fit_check_reads_the_topic_rules_and_an_overflow_not_moved_yet(tree,
     assert capsys.readouterr().out.splitlines() == [f"{words.WORKING} rules-overflow.md: 1 rule in no room yet; yerkd moves it to "
                                                     "rules-topics.md at its next start"]
     held.unlink()
-    assert doctor.main(priv, state) == 0 and capsys.readouterr().out == ""
+    assert doctor.main(priv, state) == 0 and capsys.readouterr().out == CLEAN
 
 
 def test_a_dry_run_says_what_it_would_mend_and_changes_nothing(tree, capsys):
@@ -338,8 +355,8 @@ def test_a_dry_run_says_what_it_would_mend_and_changes_nothing(tree, capsys):
     assembled.write_bytes(b"\0" * 9 + b"\n" + assembled.read_bytes())
     before = {p: p.read_bytes() for p in (day, assembled, sid)}
     assert doctor.main(priv, state, dry=True) == 1
-    assert capsys.readouterr().out.splitlines() == ["day log 2026-10-20.md: would mend line 8",
-                                                    "example-room assembled log: would mend line 1"]
+    assert capsys.readouterr().out.splitlines() == [f"{words.WORKING} day log 2026-10-20.md: would mend line 8",
+                                                    f"{words.WORKING} example-room assembled log: would mend line 1"]
     assert {p: p.read_bytes() for p in before} == before
     assert not (priv / "backups").exists() and not (state / "trash").exists() and not (state / "doctor.json").exists()
 
@@ -347,7 +364,7 @@ def test_a_dry_run_says_what_it_would_mend_and_changes_nothing(tree, capsys):
 def test_a_doctor_that_cannot_run_says_why_exits_2_and_the_morning_line_says_it(tree, capsys):
     priv, state, *_ = tree
     (priv / "yerkd.toml").write_text("[doctor\n")
-    assert doctor.main(priv, state) == 2 and capsys.readouterr().out.startswith("doctor failed: TOMLDecodeError: ")
+    assert doctor.main(priv, state) == 2 and capsys.readouterr().out.startswith(f"{words.NOT_DONE} doctor failed: TOMLDecodeError: ")
     assert doctor.line(state, time.time())[1].startswith(f"{words.NOT_DONE} doctor: 1 found, doctor failed")
 
 
@@ -359,7 +376,7 @@ def test_the_morning_diff_carries_one_doctor_line_and_says_unknown_with_no_run(t
     day.write_bytes(day.read_bytes() + b"\0" * 9)
     doctor.main(priv, state)
     lines, stamp = morning.build(priv, state, accounts, cool, led, {"started": time.time() - DAY, "units": []}, time.time())
-    assert words.line(f"{words.NOT_DONE} doctor: 1 found, day log 2026-10-20.md: mended line 8") in lines
+    assert words.line(f"{words.WORKING} doctor: 1 found, day log 2026-10-20.md: mended line 8") in lines
     assert "doctor day log 2026-10-20.md: mended line 8" in stamp["findings"]
     doctor.main(priv, state)
     assert doctor.line(state, time.time() + DAY + 60)[0] == "unknown doctor"           # a day later: no run since
@@ -373,7 +390,7 @@ def test_yerkd_mends_a_zeroed_line_before_any_room_opens_and_logs_the_line(tree,
     y = Yerkd(priv, state)
     assert b"\0" not in day.read_bytes() + assembled.read_bytes() and not y.rooms
     d = json.loads((state / "doctor.json").read_text())
-    assert [r["line"] for r in d["repaired"]] == ["day log 2026-10-20.md: mended line 8", "example-room assembled log: mended line 1"]
+    assert [r["line"] for r in d["repaired"]] == [f"{words.WORKING} day log 2026-10-20.md: mended line 8", f"{words.WORKING} example-room assembled log: mended line 1"]
     assert "at" not in d                                     # the checks have not run: the morning line says not run yet
     said = [r.getMessage() for r in caplog.records]
 
@@ -463,19 +480,20 @@ def test_the_four_index_checks_each_fire_on_their_case_and_are_quiet_when_all_is
         cap.write_text(f"{high}\n")
         (state / "memory" / "index.json").write_text(json.dumps({"pid": os.getpid(), "port": 1, "commit": emb.pop("commit", "b" * 40),
                                                                  "embeddings": {"vectors": 861965, "width": 256, **emb}, **(top or {})}))
-        return [x for x in doctor.run(priv, state, dry=True) if x.startswith(("memory index", "meaning search", "memory roots"))]
+        return [x for x in doctor.run(priv, state, dry=True) if x[2:].startswith(("memory index", "meaning search", "memory roots"))]
+    CAP = "raise MemoryHigh with `systemctl --user edit yerk-index`"
     assert index(1 << 30, paused=False, streak=0) == [] and index("max", paused=True, streak=2) == []
-    assert index(450 << 20) == ["memory index: memory capped at 450M, under the 696M its unit's rule gives 861,965 vectors"]
+    assert index(450 << 20) == [f"{words.WORKING} memory index: memory capped at 450M, under the 696M its unit's rule gives 861,965 vectors; {CAP}"]
     # recall-warm (2026-10-22): the keyword tables' pages the index holds mapped count too
     held = {"pin": {"bytes": 414 << 20}}
-    assert index(1 << 30, held) == ["memory index: memory capped at 1024M, under the 1110M its unit's rule gives 861,965 vectors "
-                                    "and 414M of pinned keyword pages"]
+    assert index(1 << 30, held) == [f"{words.WORKING} memory index: memory capped at 1024M, under the 1110M its unit's rule gives 861,965 vectors "
+                                    f"and 414M of pinned keyword pages; {CAP}"]
     assert index(1400 << 20, held) == []
     stuck = 'HTTP 400 from the provider: {\n  "error": {\n    "message": "Invalid \'input\': maximum request size is 300000 tokens'
     assert index("max", paused=True, streak=3, failed=9, last_error=stuck) == [
-        "meaning search: backfill paused after 3 failures: " + ' '.join(stuck.split())[:100]]
-    assert index("max", paused=True, failed=138, last_error=stuck)[0].startswith("meaning search: backfill paused after 138 failures")   # before streak
-    assert index("max", commit="a" * 40) == ["memory index: runs aaaaaaa, yerkd bbbbbbb: restart yerk-index"]
+        f"{words.WORKING} meaning search: backfill paused after 3 failures: " + ' '.join(stuck.split())[:100] + f"; {doctor.INDEX} once the cause is fixed"]
+    assert index("max", paused=True, failed=138, last_error=stuck)[0].startswith(f"{words.WORKING} meaning search: backfill paused after 138 failures")   # before streak
+    assert index("max", commit="a" * 40) == [f"{words.WORKING} memory index: runs aaaaaaa, yerkd bbbbbbb; {doctor.INDEX}"]
     # (c): two roots named `memory` and no cite of their own each, as every cite was before 2026-10-21
     for n in ("one", "two"):
         (tmp_path / n / "memory").mkdir(parents=True)
@@ -483,4 +501,94 @@ def test_the_four_index_checks_each_fire_on_their_case_and_are_quiet_when_all_is
     assert index("max") == []                                            # each its own cite: quiet
     real = memory.settings
     monkeypatch.setattr(memory, "settings", lambda *a, **k: replace(real(*a, **k), cites=()))
-    assert index("max") == ["memory roots: 2 share the cite inbox", "memory roots: 3 share the cite memory"]   # the owner rooms' inboxes too
+    assert index("max") == [f"{words.WORKING} memory roots: 2 share the cite inbox; rename one of the folders",
+                              f"{words.WORKING} memory roots: 3 share the cite memory; rename one of the folders"]   # the owner rooms' inboxes too
+
+
+def test_a_scope_change_is_said_once_and_again_only_after_the_index_ran_on_the_new_roots(tree, capsys, monkeypatch):
+    """quiet-doctor (2026-10-24): "memory index: scope-changed" stood on every run after a room came. It is said on the first
+    run that sees the doctor's scope key unindexed, then quiet until the index has run on the new roots (its meta key moves:
+    check says anything else), which clears it, so a later change is said again."""
+    priv, state, *_ = tree
+    st = {"status": "scope-changed"}
+    monkeypatch.setattr(memindex, "check", lambda db, scope, *a: dict(st))
+    said = f"{words.WORKING} memory index: scope-changed, still on the roots before a room came or went; {doctor.INDEX}\n"
+    assert doctor.main(priv, state) == 1 and capsys.readouterr().out == said
+    assert doctor.main(priv, state) == 0 and capsys.readouterr().out == CLEAN          # said once
+    st["status"] = "fresh"                                                              # the index ran on the new roots
+    assert doctor.main(priv, state) == 0 and capsys.readouterr().out == CLEAN
+    assert json.loads((state / "doctor.json").read_text())["scope"] == ""
+    st["status"] = "scope-changed"                                                      # a room later: said again
+    assert doctor.main(priv, state) == 1 and capsys.readouterr().out == said
+
+
+def test_a_timer_in_units_the_box_never_installed_or_turned_off_is_one_orange_line_with_its_command(tree, monkeypatch):
+    """quiet-doctor (2026-10-24): yerk-curate.timer sat in units/ and was never installed, so the night's curation never ran
+    on the box. A timer in units/ that `systemctl --user is-enabled` does not call enabled is orange with its fix; a systemd
+    that does not answer is one line; the example layer, a public checkout with no box of its own, is never asked."""
+    priv, state, *_ = tree
+    states, asked = {"yerk-curate.timer": "not-found", "yerk-recall-bench.timer": "disabled"}, []
+
+    def fake(*a, **k):
+        asked.append(a)
+        return subprocess.CompletedProcess(a, 0, "".join(f"{states.get(x, 'enabled')}\n" for x in a[1:]), "")
+    monkeypatch.setattr(doctor, "systemctl", fake)
+
+    def timers(private=priv):
+        return [x for x in doctor.run(private, state, dry=True) if x[2:].startswith(("timer ", "timers:"))]
+    assert timers() == [f"{words.WORKING} timer yerk-curate.timer: not-found; `yerk deploy --timers` installs and enables it",
+                        f"{words.WORKING} timer yerk-recall-bench.timer: disabled; `systemctl --user enable --now yerk-recall-bench.timer`"]
+    assert asked == [("is-enabled", *sorted(p.name for p in (config.REPO / "units").glob("*.timer")))] and len(asked[0]) == 8
+    states.clear()
+    assert timers() == []
+    asked.clear()
+    assert timers(EXAMPLE_PRIVATE) == [] and asked == []
+    monkeypatch.setattr(doctor, "systemctl", lambda *a, **k: subprocess.CompletedProcess(a, 1, "", "Failed to connect to bus"))
+    assert timers() == [f"{words.WORKING} timers: not checked, OSError: systemctl --user is-enabled did not answer for every timer"]
+
+
+def test_the_scrub_swaps_each_planted_value_keeps_every_line_backs_up_first_and_a_second_run_finds_nothing(tree, capsys):
+    """quiet-doctor (2026-10-24): `yerk doctor --scrub` on the shapes PR 66's scan finds (example values only, decision 22):
+    a dry run says each file and changes nothing; the scrub copies each file into <private>/backups/scrub-<day>/ first, swaps
+    each value for [scrubbed] with the label and every line kept, never says a value, leaves an import's dead code (no hit)
+    as it is, and a second run finds nothing to scrub."""
+    priv, state, day, *_ = tree
+    key, bot = "sk-ant-" + "a" * 24, "M" + "a" * 24 + "." + "b" * 6 + "." + "c" * 27
+    at = datetime(2026, 10, 20, 11, 20).astimezone()
+    lines = ["your verification code is 482913", "the example wifi password is Exa-mple9!", "an example line with nothing in it"]
+    planted = {"attachments/discord-1/note.txt": "token: " + "abcd1234" * 3 + " and after it\n",
+               "memory/facts/example-thing.md": f"# example thing\n\n- the example key {key}\n- the bot's {bot}\n- a plain line\n",
+               "imports/mail/2019-02.md": "# Mail 2019-02\n\n- 2019-02-14 09:12 From: Example Bank | Subject: sign in\n"
+                                          "  your verification code is 551234\n- 2019-02-15 10:00 the password is Exa-mple9!\n",
+               "memory/daily/2026-10-20.md": day.read_text() + "".join(
+                   memory.format_line(at, "example-room", "", "owner", "", x, "private", f"s{i}") + "\n" for i, x in enumerate(lines))}
+    for rel, text in planted.items():
+        (priv / rel).parent.mkdir(parents=True, exist_ok=True)
+        (priv / rel).write_text(text)
+    before = {rel: (priv / rel).read_bytes() for rel in planted}
+    values = (key, bot, "abcd1234" * 3, "482913", "Exa-mple9!")
+    assert doctor.main(priv, state, dry=True, scrubbing=True) == 0
+    out = capsys.readouterr().out
+    assert out.splitlines() == [f"{words.WORKING} attachments/discord-1/note.txt: would scrub line 1 (token line)",
+                                f"{words.WORKING} imports/mail/2019-02.md: would scrub line 5 (password line)",
+                                f"{words.WORKING} memory/daily/2026-10-20.md: would scrub lines 8, 9 (one-time code, password line)",
+                                f"{words.WORKING} memory/facts/example-thing.md: would scrub lines 3, 4 (key)"]
+    assert {rel: (priv / rel).read_bytes() for rel in planted} == before and not (priv / "backups").exists()
+    assert doctor.main(priv, state, scrubbing=True) == 0
+    out = capsys.readouterr().out
+    kept = list((priv / "backups").glob("scrub-*"))
+    assert len(kept) == 1 and out.splitlines()[0] == (f"{words.DONE} attachments/discord-1/note.txt: scrubbed line 1 (token line), "
+                                                      f"its copy in backups/{kept[0].name}/") and len(out.splitlines()) == 4
+    assert not [v for v in values if v in out]
+    assert sorted(p.read_bytes() for p in kept[0].iterdir()) == sorted(before.values())          # each file copied first
+    for rel, was in before.items():
+        now = (priv / rel).read_bytes()
+        assert now.count(b"\n") == was.count(b"\n") and not [v for v in values if v.encode() in now], rel
+    assert (priv / "attachments/discord-1/note.txt").read_text() == "token: [scrubbed] and after it\n"
+    assert "- the example key [scrubbed]\n- the bot's [scrubbed]\n- a plain line\n" in (priv / "memory/facts/example-thing.md").read_text()
+    assert "your verification code is 551234" in (priv / "imports/mail/2019-02.md").read_text()      # dead: not a hit, not touched
+    after = {rel: (priv / rel).read_bytes() for rel in planted}
+    assert doctor.main(priv, state, scrubbing=True) == 0
+    assert capsys.readouterr().out == f"{words.DONE} scrub: no secret-shaped line\n"
+    assert {rel: (priv / rel).read_bytes() for rel in planted} == after and len(list(kept[0].iterdir())) == 4
+    assert not [x for x in doctor.run(priv, state, dry=True) if "secret-shaped" in x]

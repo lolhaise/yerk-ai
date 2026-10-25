@@ -32,12 +32,13 @@ import traceback
 from pathlib import Path
 from typing import Any, Callable, Iterator
 
-from . import jobs, status, words
-from .config import EXAMPLE_PRIVATE, REPO, head, load_toml, rooms
+from . import addons, jobs, status, words
+from .config import EXAMPLE_PRIVATE, REPO, head, load_toml, rooms, write_private
 from .ledger import Ledger
 from .workers import systemctl, unit_line
 
 FAST = ["tests/test_scrub.py", "tests/test_budget.py", "tests/test_card.py", "tests/test_style.py"]
+USER_UNITS = Path.home() / ".config" / "systemd" / "user"      # where `systemctl --user` finds a unit file of the user's
 FAILED = re.compile(r"^/\S+:\d+: (?:AssertionError: )?(.+)$", re.M)     # pytest --tb=line: where a test failed, and why
 Ask = Callable[[Path], "dict[str, Any] | None"]
 
@@ -328,6 +329,26 @@ def prove(state: Path, sd: Systemd, ask: Ask, served: set[str], want: str, wait:
         sleep(2.0)
 
 
+def timers(tree: Path, home: Path, ctl: Callable[..., subprocess.CompletedProcess[str]] = systemctl) -> list[str]:
+    """Each timer in the tree's units/ that systemd does not know (`is-enabled`: not-found) copied with its service into
+    `home` as shipped (0600; a service file already there is kept), one daemon-reload, then `enable --now`: a card line
+    each. Its comment once said to copy it by hand, and yerk-curate.timer never was (2026-10-24). One the owner installed
+    and turned off stays off; the doctor names it."""
+    names = sorted(p.name for p in (tree / "units").glob("*.timer"))
+    new = [t for t, s in zip(names, ctl("is-enabled", *names).stdout.split() if names else []) if s == "not-found"]
+    try:
+        for f in (tree / "units" / x for t in new for x in (t, t.removesuffix(".timer") + ".service")):
+            if f.is_file() and not (home / f.name).exists():
+                home.mkdir(parents=True, exist_ok=True)
+                write_private(home / f.name, f.read_bytes())
+    except OSError as e:
+        return [words.line(f"{words.NOT_DONE} timers not installed: {type(e).__name__}")]
+    if new:
+        ctl("daemon-reload")
+    return [words.line(f"{words.NOT_DONE} {t} not enabled" if ctl("enable", "--now", t).returncode else f"{words.DONE} {t} installed, on")
+            for t in new]
+
+
 def cut(ledger: Ledger, opened: set[str], until: float) -> int:
     """A person's messages a restart left taken and not answered (the turns it cut): open once it
     returned at `until` and received before then, and not already open at the last quiet check (a row a
@@ -337,12 +358,13 @@ def cut(ledger: Ledger, opened: set[str], until: float) -> int:
 
 def run(private: Path, state: Path, ref: str = "", tests: bool = True, unit_file: bool = False, *,
         sd: Systemd | None = None, ask: Ask = status.ask, post: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
-        sleep: Callable[[float], None] = time.sleep, home: Path = Path.home() / ".config" / "systemd" / "user",
+        sleep: Callable[[float], None] = time.sleep, home: Path = USER_UNITS,
         systemd: Callable[[str], Systemd] = Systemd, proc: Path = Path("/proc"),
-        check: Callable[[Path, Path, Path], dict[str, Any]] = recall_check) -> int:
-    """0 deployed and proven; 1 rolled back or not deployed (the card says which and why); 2 the rollback
-    failed or never ran, so the daemon may run a commit no proof passed (the morning diff says it again);
-    130 stopped by Ctrl-C, SIGTERM or SIGHUP, and rolled back or nothing stopped (the card says which)."""
+        check: Callable[[Path, Path, Path], dict[str, Any]] = recall_check,
+        ctl: Callable[..., subprocess.CompletedProcess[str]] = systemctl) -> int:
+    """0 deployed and proven, and then each timer in units/ not installed yet installed and on (timers); 1 rolled back or
+    not deployed (the card says which and why); 2 the rollback failed or never ran, so the daemon may run a commit no proof
+    passed (the morning diff says it again); 130 stopped by Ctrl-C, SIGTERM or SIGHUP, and rolled back or nothing stopped."""
     taken = daemon_layer(state, sd, proc, systemd) if private.resolve() == EXAMPLE_PRIVATE.resolve() else None
     private, state = taken or (private, state)        # no --private, no $YERK_PRIVATE: the layer the daemon serves
     conf = dict(load_toml(private / "yerkd.toml").get("deploy", {})) if (private / "yerkd.toml").is_file() else {}
@@ -445,11 +467,12 @@ def run(private: Path, state: Path, ref: str = "", tests: bool = True, unit_file
         return no("refused", W.named(f"{W.PLAIN} {W.NOT_AHEAD}", on, ref=target[:7]), after=target)
     move(tree, on, target)
     env = {**os.environ, "YERK_PRIVATE": str(private), "YERK_STATE": str(state)}    # the budget test reads the real rooms
-    if tests and (t := subprocess.run([sys.executable, "-m", "pytest", "-q", "-x", "--tb=line", *conf.get("tests", FAST)],
-                                      cwd=tree, capture_output=True, text=True, env=env)).returncode:
-        move(tree, on, found)
-        why = [W.line(f"{W.PLAIN} {W.no_paths(x)}") for x in FAILED.findall(t.stdout)[:1]]     # the first failure, in its words
-        return no("tests failed", W.line(f"{W.PLAIN} {W.TESTS_FAILED}"), *why, after=target)
+    for name, paths, cwd in [("", list(conf.get("tests", FAST)), tree), *addons.tests(state)] if tests else []:   # each add-on's too
+        if (t := subprocess.run([sys.executable, "-m", "pytest", "-q", "-x", "--tb=line", *paths], cwd=cwd, capture_output=True,
+                                text=True, env={**env, "PYTHONPATH": str(tree)})).returncode:
+            move(tree, on, found)
+            why = [W.line(f"{W.PLAIN} {W.no_paths(x)}") for x in FAILED.findall(t.stdout)[:1]]     # the first failure, in its words
+            return no("tests failed", W.line(f"{W.PLAIN} {W.OF_ADDON.format(name=name) if name else W.TESTS_FAILED}"), *why, after=target)
     tested = W.line(f"{W.DONE if tests else W.PLAIN} {W.TESTS_PASSED if tests else W.TESTS_SKIPPED}")
     held, rec = recalled(check(tree, private, state)) if tests else (True, [])   # the live controls, the layer the daemon serves
     if not held:
@@ -460,8 +483,8 @@ def run(private: Path, state: Path, ref: str = "", tests: bool = True, unit_file
     if why:
         move(tree, on, found)
         return no(outcome, *why, tested, *rec, after=target)
-    if ok:
-        return tell([W.line(f"{W.DONE} {W.DEPLOYED.format(commit=target[:7])}"), tested, *rec, *card, *where], 0)
+    if ok:                                            # the proven commit's timers: one units/ has and the box does not, on
+        return tell([W.line(f"{W.DONE} {W.DEPLOYED.format(commit=target[:7])}"), tested, *rec, *card, *where, *timers(tree, home, ctl)], 0)
     first = [W.line(f"{W.NOT_DONE} {(W.BROKE_OFF if outcome == 'fault' else W.FAILED_PROOF).format(commit=target[:7])}"), tested, *rec, *card]
     card.clear()
 

@@ -265,6 +265,8 @@ def card(s: dict[str, Any], now: float | None = None) -> list[str]:
                        else W.ROOMS_ON.format(account=W.tag(acct), rooms=W.ROOMS_N.format(n=len(names)))))
     out.append(row(W.PLAIN, W.VERSION_AT.format(version=s.get("version") or __version__,   # what runs: an upgrade's receipt
                                                  commit=str(s.get("commit") or "")[:7] or "?")))
+    if s.get("addons") is not None:                     # `yerk status` names the installed add-ons (addons.py)
+        out.append(row(W.PLAIN, W.ADDONS.format(names=", ".join(s["addons"]) or W.NO_ADDONS)))
     nth: dict[str, int] = {}
     for w in sorted(s["workers"], key=lambda w: (bool(w["waiting"]), float(w["queued"] or 0))):
         if w["waiting"]:

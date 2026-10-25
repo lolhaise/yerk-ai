@@ -101,12 +101,16 @@ def test_a_rooms_own_allow_or_own_server_replaces_that_default_whole_and_its_oth
     assert list(a["mcp"]) == ["web", "hands", "notes"]             # its own server in the default's place, its others after
 
 
+COPY = "; in rooms.toml, delete the copy so the room inherits [defaults]"     # the fix each drift line names (quiet-doctor)
+MISS = "; in rooms.toml, add each to the room's allow or name it in allow_remove"
+
+
 def test_allow_remove_drops_named_tools_from_the_allow_a_room_inherits():
     a = rooms(Path(), BASE + room("a", 1, 'allow_remove = ["mcp__hands__browser"]\n'))["a"]
     assert a["allow"] == ["mcp__web__fetch"] and a["mcp"] == {"web": web("a"), "hands": hands("a")}
     assert doctor.drift("a", rooms(Path(), BASE + room("a", 1, 'allow_remove = ["mcp__hands__browser"]\n'), own=True)["a"], room_defaults(tomllib.loads(BASE))) == ""
     mine = rooms(Path(), BASE + room("a", 1, 'allow = ["mcp__web__fetch"]\nallow_remove = ["mcp__hands__browser"]\n'), own=True)["a"]
-    assert doctor.drift("a", mine, room_defaults(tomllib.loads(BASE))) == f"{words.WORKING} room a: carries a copy of the default allow"   # a tool it drops is not missed
+    assert doctor.drift("a", mine, room_defaults(tomllib.loads(BASE))) == f"{words.WORKING} room a: carries a copy of the default allow{COPY}"   # a tool it drops is not missed
     with pytest.raises(SystemExit, match=r"^rooms.toml: a: allow_remove must be a list of tool names, like"):
         rooms(Path(), BASE + room("a", 1, 'allow_remove = "mcp__hands__browser"\n'))
 
@@ -138,7 +142,7 @@ def test_doctor_reads_todays_rooms_under_the_defaults_as_four_copies_and_the_mov
 
     def said(text: str) -> list[str]:
         return [x for n, c in rooms(Path(), text, own=True).items() if c.get("privacy", "owner") == "owner" and (x := doctor.drift(n, c, base))]
-    assert said(BEFORE) == [f"{words.WORKING} closes {n}: item moved to the next step and, the.test-reads it back.as"
+    assert said(BEFORE) == [f"{words.WORKING} room {n}: carries a copy of the default allow, mcp.web-ladder and mcp.hands{COPY}"
                             for n in ("yerk-test", "work-on-yerk", "chat-on-yerk", "fitness-on-yerk")]      # yerk-test's allow: equal as a set
     assert said(AFTER) == []
 
@@ -151,10 +155,10 @@ def test_doctor_names_an_owner_room_that_misses_a_default_tool_or_carries_a_copy
                     + '\nallow = ["mcp__hands__browser", "mcp__web__fetch"]\n\n[rooms.example-quiet.mcp.web]\ntype = "stdio"\n'
                     'args = ["server.mjs", "--room", "example-quiet"]\ntimeout = 180000\n')
     assert doctor.main(priv, state) == 1
-    assert capsys.readouterr().out.splitlines() == [f"{words.NOT_DONE} room example-room: misses default tool mcp__hands__browser",
-                                                    f"{words.WORKING} room example-quiet: carries a copy of the default allow and mcp.web"]
+    assert capsys.readouterr().out.splitlines() == [f"{words.NOT_DONE} room example-room: misses default tool mcp__hands__browser{MISS}",
+                                                    f"{words.WORKING} room example-quiet: carries a copy of the default allow and mcp.web{COPY}"]
     path.write_text(text)                                           # the copies out: both rooms inherit, and all is well
-    assert doctor.main(priv, state) == 0 and capsys.readouterr().out == ""
+    assert doctor.main(priv, state) == 0 and capsys.readouterr().out == f"{words.DONE} doctor: clean\n"
 
 
 def test_a_room_made_like_another_copies_its_own_keys_and_inherits_the_defaults_under_its_own_name(layer, capsys):  # noqa: F811

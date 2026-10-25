@@ -40,7 +40,7 @@ from .lifted.loopguard import LoopGuard
 from .lifted.systemd_notify import notify
 from .meters import Meters
 from .room import Channel, Inbound, Room
-from . import abilities, words   # STYLE.md: what a room reads
+from . import abilities, addons, words   # STYLE.md: what a room reads
 
 log = logging.getLogger("yerk.daemon")
 YERK_TOOLS = ["mcp__yerk__send", "mcp__yerk__hold", "mcp__yerk__recall", "mcp__yerk__read_memory",
@@ -98,7 +98,7 @@ class Yerkd:
         words.configure(self.conf.get("presentation"))          # what every card and notice shows (STYLE.md)
         self.port = port or int(self.conf.get("http", {}).get("port", 0)) or free_port()
         self.url = f"http://127.0.0.1:{self.port}"
-        self.budgets, self.room_confs, self.models = budgets(), rooms(private), models(self.conf)
+        self.budgets, self.room_confs, self.models = addons.with_lines(budgets(), state), rooms(private), models(self.conf)
         for n, c in self.room_confs.items():               # one string would be read as one folder per letter
             for key in (k for k in ("read", "also") if not isinstance(c.get(k, []), list)):
                 raise SystemExit(f'room {n}: {key} must be a list of folders, like {key} = ["~/notes"], not {c[key]!r}')
@@ -859,9 +859,11 @@ class Yerkd:
             return ""
         return f"{words.DONE} " + words.TOPICS_MOVED.format(n=n, s="s" * (n != 1)) if n else ""
 
-    def shadow_stop(self, name: str, room: Room, reply: str, sid: str, refused: bool = False) -> list[tuple[str, str]]:
+    def shadow_stop(self, name: str, room: Room, reply: str, sid: str, refused: bool = False, went: bool = False) -> list[tuple[str, str]]:
         """The evidence rules after a reply: ledgered and logged, never a block (shadow, DESIGN 8). `refused`: the said check
-        turned this reply back, its own row written, so its person and quote rows are not written twice."""
+        turned this reply back, its own row written, so its person and quote rows are not written twice. `went`: no Stop rule
+        turned it back, so each call it makes is a `calls` row with the cites its turn read (claim 19), a person's room's
+        for its people, never the owner."""
         figure = memory.on_file(self.memory)
         said = self.ledger.said(name, sid, room.evidence.started)     # its replies posted earlier in this session
         found = evidence.check(reply, room.evidence, figure, said)
@@ -879,6 +881,13 @@ class Yerkd:
             self.ledger.shadow(t=round(time.time(), 3), room=name, session_id=sid, turn=room.turn_key, rule=rule,
                                detail=detail, reply_chars=len(reply))
             log.info("room %s: shadow %s: %s (not blocked)", name, rule, detail)
+        if went:
+            s = self.scoped.get(name, self.memory)
+            for row in evidence.receipt_rows(reply, room.evidence, lambda p: memory.cite(s, Path(p).expanduser()) if p.startswith(("/", "~")) else p):
+                if ("call", row["call"]) not in room.evidence.logged:
+                    room.evidence.logged.add(("call", row["call"]))
+                    self.ledger.call(t=round(time.time(), 3), room=name, session_id=sid, turn=room.turn_key,
+                                     whom="owner" if room.in_owner_name() else name, **row)
         return new
 
     # the hooks
@@ -1040,7 +1049,7 @@ class Yerkd:
                     refused = True
             if room and name:
                 try:
-                    await asyncio.to_thread(self.shadow_stop, name, room, str(payload.get("last_assistant_message") or ""), sid, refused)
+                    await asyncio.to_thread(self.shadow_stop, name, room, str(payload.get("last_assistant_message") or ""), sid, refused, not reason)
                 except Exception:
                     log.exception("room %s: the shadow Stop check failed (nothing blocked)", name)
             return {"decision": "block", "reason": reason} if reason else {}

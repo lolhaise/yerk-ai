@@ -10,7 +10,8 @@ skipped and why), health (the daily call per account: pass or fail and the login
 (gates.py): every gate decision, the approval holds, each hook call's time, each tool call's time and failure, and
 the tamper rows of a changed setting; stalls (beat.py: each time the event loop was held more than 2 s, with its
 dump); deploys (deploy.py: each deploy and rollback, the commit before and after, and whether a person's turn was
-each deploy and rollback, the commit before and after, and whether a person's turn was cut); spend (each paid call).
+cut); spend (each paid call); calls (each call a room made in a reply, with the cites its turn read, and its fix:
+claim 19).
 
 Inbound states, after Hermes' delivery ledger (gateway/delivery_ledger.py, MIT): `received`
 (ledgered, nothing ran: run it plainly after a crash), `running` (sent to Claude Code: after a
@@ -104,6 +105,9 @@ CREATE TABLE IF NOT EXISTS deploys (
   proof TEXT, note TEXT);
 CREATE TABLE IF NOT EXISTS spend (
   id INTEGER PRIMARY KEY, t REAL, room TEXT, tool TEXT, engine TEXT, usd REAL, note TEXT);
+CREATE TABLE IF NOT EXISTS calls (
+  id INTEGER PRIMARY KEY, t REAL, room TEXT, session_id TEXT, turn TEXT, whom TEXT, call TEXT, reads TEXT, no_reads INTEGER,
+  fixed REAL, source TEXT, correction TEXT, note TEXT);
 CREATE TABLE IF NOT EXISTS message_links (
   tbl TEXT, row_key TEXT, col TEXT, message_id TEXT, pos INTEGER,
   PRIMARY KEY (tbl, row_key, col, message_id))"""
@@ -375,6 +379,22 @@ class Ledger:
         rows = self._select("SELECT rule || CASE rule WHEN 'stance' THEN ' ' || detail ELSE '' END AS rule, count(*) AS n "
                             "FROM shadow WHERE t >= ? AND t < ? GROUP BY 1", (since, until))     # stance by its label
         return {str(r["rule"]): int(r["n"]) for r in rows}
+
+    def call(self, **row: Any) -> int:
+        """One call a room made in a reply (claim 19): whom it was for, its sentence, the cites its turn read (JSON), none flagged."""
+        return self._insert("calls", row)
+
+    def calls(self, since: float, until: float) -> list[dict[str, Any]]:
+        """The calls made in the window and those fixed in it, oldest first."""
+        return self._select("SELECT * FROM calls WHERE t >= ? AND t < ? OR fixed >= ? AND fixed < ? ORDER BY id", (since, until, since, until))
+
+    def call_row(self, cid: int) -> dict[str, Any] | None:
+        return self._first("SELECT * FROM calls WHERE id = ?", (cid,))
+
+    def call_fix(self, cid: int, **fix: Any) -> None:
+        """`yerk calls fix`: when, the source line it names, the correction's cite and its note."""
+        known(fix, ("fixed", "source", "correction", "note"), "calls")
+        self._update("calls", "id", cid, fix)
 
     def spent(self, since: float, until: float) -> dict[str, Any]:
         """{n, usd}: the paid calls booked in the window (spend), as billed or at list price (decision 32)."""
