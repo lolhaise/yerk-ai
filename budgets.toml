@@ -7,7 +7,7 @@
 # The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and
 # Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 [session_start]
-total = 108093
+total = 108259
 
 # Load order, most stable first, so the cached start of the prompt survives.
 # The first parts are Claude Code's own (its default prompt, the built-in tools
@@ -46,10 +46,13 @@ total = 108093
 # that evening, an owner room's new start (the tree of #117) sent Yerk AI's tools at 11,734 (schedule's calendar wording
 # +31 and send's own-channel line +40 on the 11,663 the older starts send), 34 past 11,700: the prompt line pays it, as
 # persona paid for mechanics (10,889 the largest prompt sent, so 10,966), `yerk_tools` 11,734, the total as above.
+# 2026-10-26, tools-line: worker-effort (#129) put `effort` on the room's `worker` tool and no line moved; Yerk AI's tools
+# it 00,000 back as plain text-with-one more Line (`for the`, Check While 0.0.0a), second entry 00,000 waits, in
+# the deploy of #134 refused on it; so 11,900, no part could pay, the total rose by the 166.
 [session_start.claude_code]
 claude_code_prompt = 10966
 builtin_tools = 12132
-yerk_tools = 11734
+yerk_tools = 11900
 deferred_tool_names = 3429
 mcp__hands__ = 7119
 mcp__web-ladder__web_image = 913

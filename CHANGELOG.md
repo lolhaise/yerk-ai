@@ -8,6 +8,14 @@ version changes.
 
 ## 2026-10-26
 
+### tools-line (#135)
+
+- Deploys pass again. The `effort` field #129 put on the room's `worker` tool grew Yerk AI's tool entries to 11,871
+  characters as sent, past the 11,734 line in budgets.toml, and the deploy of #134 refused on the fast tests. The line
+  is 11,900 and the session-start total rose by the same 166; a person running Yerk notices nothing else.
+
+**Upgrading**: budgets.toml moves with the code; nothing to do by hand.
+
 ### note-feedback (#134)
 
 - A complaint about a voice note counts as one. A message that called a note too short and said it had not hyped its
