@@ -3,7 +3,7 @@ row in taste.jsonl, and every message to one of your own rooms carries the rated
 the room had said. The format is the one an earlier setup of the maintainer's used, so replies rated there carry
 the owner's files).
 
-The classifier is the box's, its three lists unchanged: a verdict is a phrase about the reply (praise, its length, a
+The classifier is that setup's too, its three lists unchanged: a verdict is a phrase about the reply (praise, its length, a
 repeat, the wrong register), never about the room (an insult aimed at the room, even seconds after praise for its reply, rates
 nothing), praise with a complaint is the complaint, and anything else rates nothing. The file is the switch: a layer without
 no row and no part, and a room that is not the owner's gets neither.
@@ -32,8 +32,8 @@ NEG = [
     r"(ain'?t|not|aint) reading (all )?(that|this)", r"\btoo long\b", r"\btl;?dr\b",
     r"\byou (have |had )?said (that|this|it)\b", r"\blike \d+ times\b", r"\bagain\?", r"\byou keep\b",
     r"\bnot what i (asked|meant|said)\b", r"\bwhy (did|do|are|would) you\b", r"\bstop (saying|doing|with)\b",
-    r"\to the(next)? (step and )?the test", r"\bguess what\b", r"\the queue for\its", r"\bshorter\b",
-    r"\test?reads (it|back) as\plain", r"\bthat'?s (not|wrong)\b", r"\bnah (man|bro|that)\b",
+    r"\bi want(ed)? (to know )?your opinion", r"\bguess what\b", r"\bwrite it properly\b", r"\bshorter\b", r"\b(didn['’]?t|did not) (even )?hype me( up)?\b",
+    r"\bdon'?t (say|do) that\b", r"\bthat'?s (not|wrong)\b", r"\bnah (man|bro|that)\b", r"\bnot long enough\b",
 ]
 # The box's register verdicts (2026-08-29): a negated appraisal the reply should have held ("feel like you don't think
 # I did anything good") or how it should sound ("you gotta be more energetic", "don't make your responses so formal").

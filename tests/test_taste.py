@@ -47,6 +47,9 @@ KNOWN = [
     ("I feel like you can't even picture what that would do for the team", None),
     ("feel like you don't have to rush it", None),
     ("Idk man my lunch was good today", None),
+    ("Not long enough intro and it didn’t hype me up at all, I asked for hype", "neg"),      # praise words inside a complaint: once read as "pos"
+    ("what if my draft is not good enough", None),                                      # about themselves, not the reply
+    ("Still not bright enough", None),
 ]
 
 
