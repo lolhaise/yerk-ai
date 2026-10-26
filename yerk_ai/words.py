@@ -130,7 +130,7 @@ DIED = {"exit-code": "it ended with an error", "signal": "it was killed", "core-
         "oom-kill": "it ran out of memory", "watchdog": "it stopped answering", "resources": "it could not start",
         "start-limit-hit": "it was started too often", "protocol": "it could not start"}
 REPORT_SAVED, NO_REPORT = "report saved: `yerk worker report {id}`", "no report: `yerk worker report {id}`"
-RELAY_ASK = ("[tell the room the outcome in your own voice, under {cap:,} characters, ending with the line "
+RELAY_ASK = ("[tell the room the outcome in your own voice{under}, ending with the line "
              "\"{saved}\"; no file path and no exit code; {where}; do not paste it]")
 # A room whose privacy is not owner hears what it can do instead and no person as the switch (seen live: a room
 # turned the words for the owner's rooms into the owner's name, as the person who has to turn it on)
@@ -225,7 +225,7 @@ def nth(n: int) -> str:
 
 # notes: a reminder, told to its room's own session when it is due
 NOTE_DUE = ("[reminder {name} due] {message}\n[set here for {at}: do what it says now and tell the room in your own "
-            "voice, under {cap:,} characters]")
+            "voice{under}]")
 # where the owner is (location.py): an owner room's per-message line, and the day's places as one day-log line
 PLACE = "[place] near {place}, {ago}, {state}"
 PLACES_DAY = "the owner's places from the phone, first and last fix at each: {stays}"
@@ -248,6 +248,11 @@ def of_cap(seconds: float, cap_seconds: float) -> str:
 
 def ago(seconds: float) -> str:
     return "just now" if seconds < 60 else f"{span(seconds)} ago"
+
+
+def under(cap: int) -> str:
+    """A harness ask's length, ", under N characters"; nothing for an uncapped install's 0 ([limits] uncapped)."""
+    return f", under {cap:,} characters" if cap else ""
 
 
 def clock(epoch: float, now: float | None = None) -> str:
@@ -456,6 +461,7 @@ SPEED = "{day}: first line {first}, turn {turn}"                     # the day's
 SPEED_WAS, SPEED_OF = "{what} {now}, day before {was}", {"first": "first line", "turn": "turn"}   # the morning's, against the day before
 SHADOW, NO_SHADOW = "shadow flag {rule}: {n}", "shadow flags: none"
 SPENT = "spent {day}: US${usd:.2f} on {n} calls"                     # the spend rows, one per paid call (ledger.spent)
+SPEND = "spend {day} US${usd:.2f} ({n} call{s}) · week US${week:.2f}"     # an uncapped install's, every day (status.spend_line)
 UNKNOWN, NOT_ANSWERING_WHY = "{what}: unknown, {why}", "yerkd not answering"
 DEAD, NO_YERKD, NO_DEAD = "dead turns: {n}, {name}, last {at}", "no yerkd answers", "dead turns: none in 24h"
 SWEPT, SWEEP_FAILED = "swept: {kinds}", "retention failed: {why}"     # the night's sweep (retention.py)

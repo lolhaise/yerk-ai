@@ -164,7 +164,31 @@ def budgets() -> str:
         block = []
         if not s.startswith("["):
             out.append(f"- `{value}`" + (f": {note}" if note else ""))
+    para(out, "## Uncapped", *UNCAPPED)
     return "\n".join(out).rstrip() + "\n"
+
+
+UNCAPPED = (    # budgets.md's last section: what yerkd.toml [limits] uncapped lifts and what it cannot (config.uncapped)
+    "`[limits] uncapped = true` in the private yerkd.toml lifts every character budget on this page for what is sent. Each "
+    "number stays a measurement: `yerk map` reports a part past its line as `uncapped`, never OVER, and the fit tests and the "
+    "deploy's fast gate report it as a warning, never a failure. False, or no [limits] table, is the capped install byte for byte.",
+    "What it lifts: every appended part of the session start goes whole, and the rules part carries every live topic rule the "
+    "room may have after the rules file, under the topical head; a rule filing never strips an example or moves a rule to "
+    "rules-topics.md for size (memory.rule's cap reads 0); a message's rules, recall and taste parts go whole (each taste row "
+    "untrimmed, still three praised and two faulted), and it carries only a topic rule filed after its session started, once; "
+    "a compaction re-adds those with the whole recall pack; a worker's relay hands the room the whole report and asks no length "
+    "of the reply; a workbook's or a PDF's text is kept whole, however long the read. The money gates go too, a receipt in their "
+    "place: no paid call waits for the owner's yes, each still books its spend row, transcribe's result carries `usd` as "
+    "voice_note's does, the mechanics tell the room to say a paid call's cost, and `yerk status` and the morning diff carry "
+    "the day's and the week's spend.",
+    "What it cannot lift: Claude Code caps one hook's output at 10,000 characters ([hook] output_cap) and past it hands the "
+    "model a preview and a file in the session's folder, which a room may not read, so an uncapped hook text is cut at a line "
+    "under that ceiling (300 left for the approval line) and its last line names the file in the room's work folder that holds "
+    "it whole. Claude Code's own parts, its prompt and its tool entries, are its own to send: measured as sent, never cut by "
+    "Yerk AI. The model's window is 1,000,000 tokens; compact_window and idle_compact_at, which the switch leaves alone, decide "
+    "when a session compacts. A Discord post still splits at the channel's 2,000. Code constants that are no line here stay: "
+    "recall's 280-character topic lines, a recall snippet's 750, the recall pack's 280-character items.",
+)
 
 
 def hooks() -> str:

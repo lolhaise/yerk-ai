@@ -19,8 +19,8 @@ from typing import Any, Callable
 from . import addons, backup, deploy, docs, files, hooks, jobs, memindex, memory, pictures, retention, status, words
 from . import shape as rule_shape                      # the check named "rule shape"; "layout" is the private folder's
 from .accounts import load_accounts, token_info
-from .config import REPO, ROOM_KEYS, budgets, filled, load_toml, room_defaults, room_id, rooms, write_private
-from .context import TOPICAL, attachments_dir, chars, layer_dir, session_start
+from .config import REPO, ROOM_KEYS, budgets, filled, load_toml, room_defaults, room_id, rooms, uncapped, write_private
+from .context import NONE, TOPICAL, attachments_dir, chars, layer_dir, session_start
 from .ledger import Ledger
 from .mentions import Builder
 from .workers import systemctl
@@ -381,13 +381,14 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
 
     def fits() -> None:                                         # a part past its line goes out cut (2026-10-22), a topic rule on demand
         over: dict[tuple[str, str], tuple[int, int, list[str]]] = {}      # (part, its file) -> its size, its line, the rooms
-        for n, c in rooms(private).items():
-            for p in (p for p in session_start(private, c, budgets(), rules=m.root / memory.RULES) if p.over):
+        b = budgets(load_toml(private / "yerkd.toml") if (private / "yerkd.toml").is_file() else {})   # uncapped: nothing is cut
+        for n, c in rooms(private).items() if not uncapped(b) else []:
+            for p in (p for p in session_start(private, c, b, rules=m.root / memory.RULES) if p.over):
                 over.setdefault((p.name, p.source), (p.raw, int(p.budget or 0), []))[2].append(n)
         for (part, src), (raw, cap, names) in over.items():
             found.append(f"{RED} {Path(src).name or part}: {part} over its line by {raw - cap:,} characters ({raw:,} of {cap:,}), cut "
                          f"at every session start in {', '.join(names)}; raise its line in budgets.toml or trim the file")
-        tier, most, on_file = memory.live_rules(m.root / memory.TOPIC_RULES), int(budgets()["per_message"]["on_hit"]["rules"]), set(rooms(private))
+        tier, most, on_file = memory.live_rules(m.root / memory.TOPIC_RULES), NONE if uncapped(b) else int(b["per_message"]["on_hit"]["rules"]), set(rooms(private))
         never = [memory.topic(x) for x in tier if chars(x) + 1 > most - chars(TOPICAL) or (sc := memory.scope(x)) is not None and not sc & on_file]
         found.extend([f"{words.WORKING} {memory.TOPIC_RULES}: {len(never)} topic rule{'s' * (len(never) != 1)} never load, first \"{never[0]}\": "
                       f"longer than the per-message rules part's {most:,} or kept to no room in rooms.toml; shorten it or fix its [rooms: ...]"] if never else [])

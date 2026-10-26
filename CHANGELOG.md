@@ -8,6 +8,31 @@ version changes.
 
 ## 2026-10-26
 
+### uncapped (#136)
+
+- One switch lifts every character budget, and flipping it back restores them. `[limits] uncapped = true` in the private
+  yerkd.toml makes each budget in budgets.toml read as unlimited for what is sent, its number kept as a measurement: the
+  session start sends every part whole, its rules part carrying the room's topic rules after the rules file; a rule
+  filing never strips an example or files a rule away for size; a message's rules, recall and taste parts go whole
+  (taste rows untrimmed, the counts the same) and carry only a topic rule filed after the session started, which a
+  compaction re-adds with the whole recall pack; a worker's relay hands the room the whole report and asks no length;
+  a workbook's or a PDF's text is kept whole, however long the read. The one cut left is Claude Code's: a hook text
+  past its 10,000 characters is cut at a line, its last line naming the file in the room's work folder that holds it
+  whole. `yerk map` says `uncapped` where it said OVER and exits 0; the fit tests and the deploy's fast gate report a
+  part past its line, never fail on it; `yerk doctor` no longer calls such a part cut. False, or no table, is main's
+  assembly byte for byte, held by a test against a fixture taken on 0967822. compact_window and idle_compact_at are
+  not touched (the 800,000 window is rooms.toml's). docs/budgets.md gains an Uncapped section.
+- The same switch lifts the money gates and puts a receipt in their place: `transcribe` and `voice_note` no longer
+  wait for the owner's yes past US$1, every paid call still books its spend row, transcribe's result carries `usd` as
+  voice_note's does, the session start's mechanics tell the room to say a paid call's cost in the same reply (and ask
+  no length of a worker's relay), and `yerk status` and the morning diff carry `spend today US$x.xx · week US$y.yy`
+  (the call count too where the phone's 40 columns hold it). The web plug-in's own gates (its US$2 daily research
+  cap and xhigh's yes) are read from web.json inside plugins/web and stay. budgets.toml's [session] note no longer
+  says the first token slows with size: a cold re-read after the cache's hour is where size costs.
+- **Upgrading:** nothing to change; `[limits] uncapped` is a new optional key in yerkd.toml (docs/settings.md), and
+  leaving it out keeps the install capped. budgets.toml: `[code] lines` 21,903, main's 21,780 plus this PR's 123 (a
+  dated note).
+
 ### note-feedback (#134)
 
 - A complaint about a voice note counts as one. A message that called a note too short and said it had not hyped its

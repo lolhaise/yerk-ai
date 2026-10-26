@@ -99,14 +99,15 @@ def record(path: Path, room: str, channel: str, text: str, reply: dict[str, Any]
     return row
 
 
-def excerpt(s: str, n: int) -> str:
+def excerpt(s: str, n: int | None) -> str:
     s = re.sub(r"\s+", " ", s.strip())
-    return s if len(s) <= n else s[: n - 1].rstrip() + "…"
+    return s if n is None or len(s) <= n else s[: n - 1].rstrip() + "…"
 
 
-def render(rows: list[dict[str, Any]], room: str, budget: int, pos_n: int = 3, neg_n: int = 2, each: int = 260) -> str:
+def render(rows: list[dict[str, Any]], room: str, budget: int, pos_n: int = 3, neg_n: int = 2, each: int = 260, whole: bool = False) -> str:
     """The box's `taste-ledger examples` for `room` as one part: up to `pos_n` praised and `neg_n` faulted replies, the room's
-    own newest first, then the other rooms' newest; each reply cut 40 shorter, down to 80, until the part fits `budget`."""
+    own newest first, then the other rooms' newest; each reply cut 40 shorter, down to 80, until the part fits `budget`;
+    `whole` (an uncapped install): each row's words and reply whole, the part never fitted, the counts the same."""
     seen: set[tuple[Any, Any]] = set()
     pos: list[dict[str, Any]] = []
     neg: list[dict[str, Any]] = []
@@ -118,9 +119,11 @@ def render(rows: list[dict[str, Any]], room: str, budget: int, pos_n: int = 3, n
     if not picked:
         return ""
 
-    def text(n: int) -> str:
-        return "\n".join([HEAD] + [f"{'👍' if r.get('verdict') == 'pos' else '👎'} \"{excerpt(str(r.get('signal', '')), 80)}\" → "
+    def text(n: int | None) -> str:
+        return "\n".join([HEAD] + [f"{'👍' if r.get('verdict') == 'pos' else '👎'} \"{excerpt(str(r.get('signal', '')), n and 80)}\" → "
                                    f"\"{excerpt(str(r.get('reply', '')), n)}\"" for r in picked])
+    if whole:
+        return text(None)
     out = text(each)
     while chars(out) > budget and each > 80:
         each -= 40

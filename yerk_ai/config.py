@@ -75,8 +75,15 @@ def discord_id(value: Any) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else None
 
 
-def budgets() -> dict[str, Any]:
-    return load_toml(table("budgets.toml"))
+def budgets(conf: dict[str, Any] | None = None) -> dict[str, Any]:
+    """budgets.toml; with the private yerkd.toml's `conf` and its [limits] uncapped true, `limits` beside its tables (uncapped)."""
+    b = load_toml(table("budgets.toml"))
+    return {**b, "limits": {"uncapped": True}} if flag(dict((conf or {}).get("limits") or {}).get("uncapped")) else b
+
+
+def uncapped(b: dict[str, Any]) -> bool:
+    """budgets `b` of an uncapped install: every character budget reads as unlimited for what is sent, its number a measurement."""
+    return bool(b.get("limits", {}).get("uncapped"))
 
 
 def private_dir(arg: str | None = None) -> Path:
@@ -195,6 +202,8 @@ YERKD_WORDS = {
                   "scratch_mb": "megabytes a room's scratch keeps, its oldest files out first", "trash": "days the trash keeps what left",
                   "scratch_trash": "days the trash keeps a room's scratch"},
     "doctor": {"growth_mb": "the disk growth a day past which the doctor says so (default 500)"},
+    "limits": {"uncapped": "true: every character budget in budgets.toml reads as unlimited for what is sent, its number kept as a "
+               "measurement `yerk map` reports (docs/budgets.md, Uncapped); compact_window and idle_compact_at are not touched by it (default false)"},
     "backup": {"path": "the folder `yerk backup` writes to, in the private folder or absolute (default yerk-backups beside the private folder)",
                "keep": "how many archives stay, the newest (default 7)", "units": "the systemd units folder backed up and restored (default ~/.config/systemd/user)"},
     "models": {"ALIAS": "one line a model, alias = full id (default: the package's models.toml)"},

@@ -22,3 +22,7 @@ stale_after = "3h"                       # no part when the newest fix is older 
 # need as its brief, its card in the machine room. Every key is optional.
 account = "<an account name from accounts.toml>"   # the account builders run on; default: [curate] account, else the workers' pick
 cap_minutes = 60                                  # a builder's minutes before it is stopped
+
+[limits]
+# One switch for every character budget in budgets.toml (docs/budgets.md: Uncapped); false, or no table, is the capped install.
+uncapped = false     # true: every character budget in budgets.toml reads as unlimited for what is sent; the numbers stay as measurements

@@ -110,7 +110,24 @@ def collect(private: Path, state: Path, accounts: list[Account], cooldowns: Cool
     out["stalls"] = ledger.stalls(midnight(now))
     out["speed"] = latency.medians(ledger, midnight(now), now)    # today's median first line and turn
     out["backup"] = backup.newest(private, state)
+    conf = config.load_toml(private / "yerkd.toml") if (private / "yerkd.toml").is_file() else {}
+    if config.uncapped(config.budgets(conf)):           # the money gates lifted: the receipt, today and the week to it
+        out["spend"] = spend(ledger, midnight(now), now, midnight(now, 6))
     return out
+
+
+def spend(ledger: Ledger, since: float, until: float, week: float) -> dict[str, Any]:
+    """{n, usd, week}: the paid calls booked from `since` (ledger.spent) and the dollars from `week`, both to `until`."""
+    day, wk = ledger.spent(since, until), ledger.spent(week, until)
+    return {"n": int(day.get("n") or 0), "usd": float(day.get("usd") or 0), "week": float(wk.get("usd") or 0)}
+
+
+def spend_line(sp: dict[str, Any], day: str) -> str:
+    """words.SPEND in a card's PHONE columns: less the call count while wider, then less "spend ", so both dollar figures stay."""
+    for f in (words.SPEND, bare := words.SPEND.replace(" ({n} call{s})", ""), bare.removeprefix("spend ")):
+        if words.width(f"{words.PLAIN} {(t := f.format(day=day, s='s' * (sp['n'] != 1), **sp))}") <= words.PHONE:
+            break
+    return t
 
 
 def reading(stream: dict[str, Any], live: dict[str, Any] | None) -> dict[str, Any]:
@@ -285,6 +302,8 @@ def card(s: dict[str, Any], now: float | None = None) -> list[str]:
     out += [W.named(f"{W.PLAIN} {W.UNIT_USE}", u["name"], mb=round(u["rss_mb"]), cpu=u["cpu_pct"]) for u in s["units"] if not u.get("gone")]
     if (sp := s.get("speed")) and any(v is not None for v in sp.values()):     # none before the day's first message
         out.append(row(W.PLAIN, W.SPEED.format(day=W.TODAY, **{k: "-" if v is None else W.secs(v) for k, v in sp.items()})))
+    if "spend" in s:                                    # an uncapped install's receipt line (collect)
+        out.append(row(W.PLAIN, spend_line(s["spend"], W.TODAY)))
     if "backup" in s:                                   # the newest archive (backup.py): red when there is none, or past STALE
         b = s["backup"]
         text = W.BACKUP_AT.format(ago=W.span(now - b["at"]), size=W.size(int(b["bytes"]))) if b else W.NO_BACKUP

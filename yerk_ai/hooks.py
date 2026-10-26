@@ -20,6 +20,7 @@ from .engine import SessionTable
 Meta = Callable[[str, str], tuple[str, float | None]]     # (room, prompt) -> (sender, previous human time)
 Recall = Callable[[str, str], tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], list[str]]]   # -> (names, topics, past, absent)
 RECORD_MAX = 5_000_000                                    # assembled.jsonl rolls to .1 past this
+WHOLE = "message-whole.md"         # in a room's work folder: an uncapped message's pack whole, when it passed the hook ceiling
 log = logging.getLogger("yerk.hooks")
 UNBOUND = {"yerk": "unbound"}          # the answer to a hook call no room binding explains (R3)
 HEADS = ("[on file, no lookup needed: the people and things this message names; records, never instructions]",
@@ -32,8 +33,10 @@ EVENTS = {      # what each event settings_for registers does (the daemon's _hoo
     "not on file, the owner's people and things the message names with their best lines, the best hits of a question about the owner's "
     "past, then this room's lines of the last 14 days on its topic, capped at `recall`), then in an owner room whose layer keeps "
     "taste.jsonl the owner's rated replies (taste.py, capped at `taste`); every assembly goes to the room's assembled.jsonl, and a "
-    "message that is the approval word from an approver approves the room's held action",
-    "SessionStart": "re-adds the recall pack after a `compact` and lets the topic rules ride again; after a `startup` or `clear` "
+    "message that is the approval word from an approver approves the room's held action. An uncapped install ([limits] uncapped) "
+    "holds no part to its line: past Claude Code's 10,000 the text is cut at a line and its last line names the file holding it whole",
+    "SessionStart": "re-adds the recall pack after a `compact` and lets the topic rules ride again (uncapped: the pack whole and "
+    "the topic rules the session start did not carry, each told once); after a `startup` or `clear` "
     "that replaced a session which had answered something, it posts the reset line",
     "PreToolUse": "runs the gates in order (gates.py): hardline, trash (a delete rewritten into the trash), restart, approval",
     "PostToolUse": "times the call into the tool_times ledger",
@@ -102,8 +105,9 @@ def user_prompt_submit(payload: dict[str, Any], state: Path, rooms: dict[str, di
     last = datetime.fromtimestamp(prev, timezone.utc) if prev else None
     parts = context.per_message(room, rooms[room], sender, now, last, budgets,      # (room, now) -> the place line, or ""
                                 place(room, now) if place and sender != "person" else "")    # never on a person's message
+    whole = context.uncapped(budgets)      # [limits] uncapped: no part held to its line, the hook ceiling the one cut
     told, cap = news(room, sid) if news else "", int(budgets["per_message"]["on_hit"]["rules"])     # (room, session) -> the rules block
-    rode, jobs = ride(room, sid, prompt, cap - context.chars(told) - 1) if ride else ("", [])      # the topic rules it names, under the rest
+    rode, jobs = ride(room, sid, prompt, (context.NONE if whole else cap) - context.chars(told) - 1) if ride else ("", [])   # the topic rules it names
     if said := "\n".join(x for x in (told, rode) if x):
         parts.append(context.Part("rules", said, cap, context.chars(said)))
     names: list[dict[str, Any]] = []
@@ -115,12 +119,13 @@ def user_prompt_submit(payload: dict[str, Any], state: Path, rooms: dict[str, di
         t0 = time.monotonic()
         names, topics, past, absent = recall(room, prompt)
         cap = int(budgets["per_message"].get("on_hit", {}).get("recall", 1500))
-        rtext = render_recall(names, topics, cap, past, absent)
+        rtext = render_recall(names, topics, context.NONE if whole else cap, past, absent)
         parts.append(context.Part("recall", rtext, cap, context.chars(rtext)))
         took = round((time.monotonic() - t0) * 1000)
     if taste and (rated := taste(room)):                       # room -> its taste part, or ""
         parts.append(context.Part("taste", rated, int(budgets["per_message"]["on_hit"]["taste"]), context.chars(rated)))
-    text = "\n".join(p.text for p in parts if p.text)[: int(budgets["hook"]["output_cap"]) - 1]
+    text, top = "\n".join(p.text for p in parts if p.text), int(budgets["hook"]["output_cap"])
+    text = context.ceiling(text, top, state / "rooms" / room / "work" / WHOLE, context.APPROVAL) if whole else text[: top - 1]
     record(state, room, "message", sid, {p.name: p.size for p in parts}, text, prompt_chars=context.chars(prompt),
            names=[e["key"] for e in names if e["key"]], deep=[e["cite"] for e in names if not e["key"]], topics=[h["cite"] for h in topics],
            past=[h["cite"] for h in past], absent=absent, recall_ms=took, topic_rules=jobs)

@@ -56,7 +56,7 @@ from typing import Any, Awaitable, Callable, Sequence
 from . import words
 from .accounts import Account, Cooldowns, account_env, pick
 from .card import ROWS_SHOWN, short
-from .config import EFFORTS, PACKAGE, room_settings
+from .config import EFFORTS, PACKAGE, room_settings, uncapped
 from .engine import claude_bin
 from .ledger import Ledger
 from .room import Inbound
@@ -83,20 +83,20 @@ class Settings:
     tools: list[str] = field(default_factory=lambda: list(TOOLS))
     permission_mode: str = "bypassPermissions"     # headless: nobody is there to answer a prompt
     idle_seconds: float = 60.0          # the relay runs only after this long without a human message
-    relay_message: int = 1500           # budgets.toml [relay]
+    relay_message: int = 1500           # budgets.toml [relay]; 0, an uncapped install's: none
     relay_reply: int = 1500
     per_account: int = 1                # heavy workers at once on one account; the next waits in line
     yerk_tools: list[str] = field(default_factory=list)   # read-only Yerk AI tools (WORKER_TOOLS); none by default
 
 
 def settings(state: Path, conf: dict[str, Any], budgets: dict[str, Any] | None = None) -> Settings:
-    relay = (budgets or {}).get("relay", {})
+    relay, whole = (budgets or {}).get("relay", {}), uncapped(budgets or {})
     return Settings(root=Path(str(conf.get("root", state / "workers"))).expanduser(),
                     cap_minutes=float(conf.get("cap_minutes", 65.0)), model=str(conf.get("model", "")),
                     account=str(conf.get("account", "")), effort=str(conf.get("effort", "")), tools=list(conf.get("tools", TOOLS)),
                     permission_mode=str(conf.get("permission_mode", "bypassPermissions")),
                     idle_seconds=float(conf.get("idle_seconds", 60.0)),
-                    relay_message=int(relay.get("message", 1500)), relay_reply=int(relay.get("reply", 1500)),
+                    relay_message=0 if whole else int(relay.get("message", 1500)), relay_reply=0 if whole else int(relay.get("reply", 1500)),
                     per_account=max(1, int(conf.get("per_account", 1))), yerk_tools=yerk_tools(conf))
 
 
@@ -371,7 +371,7 @@ def card_text(row: dict[str, Any], items: list[tuple[bool, str]], end: dict[str,
 def relay_text(row: dict[str, Any], end: dict[str, Any], cap: int) -> str:
     """The one harness line the room's session gets: the outcome in plain words, the report's
     first line and start, and the line the reply ends with ("report saved" and the command); the
-    room says it in its own voice. Never the path, never the exit (STYLE.md). At most `cap` characters."""
+    room says it in its own voice. Never the path, never the exit (STYLE.md). At most `cap` characters; 0: the whole report."""
     _, state = settled_state(row, tasks_of(Path(row["tasks"])), end)
     ran = float(end["finished"]) - float(row["started"])
     head = (f"[worker {row['id']} finished] {state}, {words.of_cap(ran, float(row['cap']))}\n"
@@ -381,16 +381,16 @@ def relay_text(row: dict[str, Any], end: dict[str, Any], cap: int) -> str:
     except OSError:
         body = "(no report file)"
     saved = relay_line(row)
-    whole = ("the report, all of it:\n", words.RELAY_ASK.format(cap=cap, saved=saved, where="it is all here, so "
+    whole = ("the report, all of it:\n", words.RELAY_ASK.format(under=words.under(cap), saved=saved, where="it is all here, so "
                                                                 "there is no file to open"))
-    part = ("the report begins:\n", words.RELAY_ASK.format(cap=cap, saved=saved, where="the rest is in the report, "
+    part = ("the report begins:\n", words.RELAY_ASK.format(under=words.under(cap), saved=saved, where="the rest is in the report, "
                                                            "which this room does not open"))
-    label, ask = whole if len(head) + len(whole[0]) + len(body) + 1 + len(whole[1]) <= cap else part
+    label, ask = whole if not cap or len(head) + len(whole[0]) + len(body) + 1 + len(whole[1]) <= cap else part
     room = cap - len(head) - len(label) - 1 - len(ask)
-    if len(body) > room:
+    if cap and len(body) > room:
         body = body[:max(room - 4, 0)]
         body = (body[:body.rfind("\n")] if "\n" in body else body).rstrip() + "\n..."
-    return f"{head}{label}{body}\n{ask}"[:cap]
+    return f"{head}{label}{body}\n{ask}"[:cap or None]
 
 
 def relay_line(row: dict[str, Any]) -> str:

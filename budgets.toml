@@ -149,11 +149,14 @@ taste = 1500
 # The conversation Claude Code keeps before it compacts, in tokens (its own unit here): Yerk AI writes
 # it as `autoCompactWindow` in every room's --settings file. Left to the model it is the whole window,
 # 1,000,000, and a room that rides there re-reads all of it on every message: the prompt cache holds an
-# hour on a subscription, so a room idle longer pays its whole context again on the next message, the
-# first token slows with size, and recall inside the context falls past a few hundred thousand tokens.
+# hour on a subscription, so a room idle longer pays its whole context again on the next message, and a cold
+# re-read after the cache's hour is where size costs time and meter. Recall inside the context falls past a
+# few hundred thousand tokens.
 # Nothing searchable is lost at a compaction: every line is in the day log and the recall pack comes
 # back after it. A quarter of the window until a latency bench picks the number. A room's own
 # `compact_window` in rooms.toml overrides it; 0 leaves it to the model.
+# 2026-10-26: the first line measured flat with size while the cache was warm, 154 turns up to 366,000 tokens
+# (the box's day log), so the clause that the first token slows with size went.
 compact_window = 250000
 # A room idle `idle_compact_after` minutes (no turn, nothing queued) whose session holds `idle_compact_at` of its window
 # or more is compacted then by the daemon, as `yerk room compact` does it, so a compaction never lands in a person's turn
@@ -573,4 +576,11 @@ secs = 60
 # this PR's 3, and 1 for `[workers] effort`'s line in config.YERKD_WORDS (#122's key table, which test_owndocs checks
 # both ways), is 21,780, counted on the merged tree; cli.py and daemon.py, which both changed, merged clean;
 # `yerk docs own` wrote commands.md (--effort), tools.md (the worker tool's effort), settings.md and budgets.md.
-lines = 21780
+# 2026-10-26: uncapped raised it by 123, yerkd.toml [limits] uncapped (every cap off, in a way
+# that can be reverted at any point): one switch read where each budget is enforced (context, hooks,
+# daemon, taste, workers, jobs, files, cli, doctor), the hook ceiling's marked cut (context.ceiling) and budgets.md's
+# Uncapped section (owndocs.UNCAPPED), 85; and the money gates lifted with a receipt in their place (the owner asked
+# that paid calls be tracked and their cost said, not asked first): owner_yes passed, transcribe's `usd`, the mechanics' paid-call line, the
+# status and morning spend line (daemon, context, status, morning, words) and the Uncapped section's sentence on them,
+# 38; not folded to fit. 21,903: main 0967822's 21,780 plus 123.
+lines = 21903

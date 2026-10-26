@@ -12,6 +12,7 @@ import contextlib
 import hashlib
 import json
 import re
+import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -19,7 +20,7 @@ from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
 from .accounts import load_accounts
-from .config import flag, write_private
+from .config import flag, uncapped, write_private
 from .lifted.clock import clock_line, room_voice
 from .lifted.sizemap import fmt, split_sections
 from .lifted.trim import truncate
@@ -34,6 +35,11 @@ SEP = "\n\n"
 NEWS = "Rules changed since you last looked:"
 TOPICAL = "Rules on this message's topic, from rules-topics.md, as binding as the rules file's:"
 TOLD = "topics-told.json"          # in a room's state folder: the topic rules its session was handed, each once until a compaction
+NONE = sys.maxsize                 # an uncapped install's limit for what is sent ([limits] uncapped); the budget's number stays its line
+APPROVAL = 300                     # what an uncapped message's pack leaves under the hook ceiling: the daemon's [approval] line after it
+CUT = "[uncapped: {n:,} characters past Claude Code's {cap:,} hook limit were cut; the whole is at {path}]"
+PAID = ("- A tool result that carries `usd` was a paid call: say its cost in the same reply, in US dollars as given, since the "
+        "owner lifted the money gates on being told what each thing costs.")      # the owner's rule
 
 
 @dataclass
@@ -114,33 +120,43 @@ def recall_pack(base: Path, room: dict[str, Any], limit: int = 6000, pack: Pack 
     return SEP.join(texts), ", ".join(srcs)
 
 
-def rules_text(room: dict[str, Any], rules: Path | None) -> tuple[str, str]:
-    """The install's rules file's live lines (memory.rule), a part of its own: no front matter or superseded line."""
+def rules_text(room: dict[str, Any], rules: Path | None, topical: str | None = None) -> tuple[str, str]:
+    """The install's rules file's live lines (memory.rule), a part of its own: no front matter or superseded line; with
+    `topical`, an uncapped install's room name, after them under TOPICAL every live topic rule that room may have, whole."""
     if not rules or not rules.is_file() or flag(room.get("sealed")):      # sealed: its own rulebook, no other room's rule
         return "", ""
-    return rules_part(rules, rules.read_text()), str(rules.resolve())
+    mine = [] if topical is None else [x for x in memory.live_rules(rules.with_name(memory.TOPIC_RULES))
+                                       if (sc := memory.scope(x)) is None or topical in sc]
+    return "\n".join(x for x in (rules_part(rules, rules.read_text()), *([TOPICAL, *mine] if mine else [])) if x), str(rules.resolve())
 
 
 def session_start(private: Path, room: dict[str, Any], budgets: dict[str, Any], pack: Pack | None = None,
-                  rules: Path | None = None) -> list[Part]:
-    limits = budgets["session_start"]["appended"]
+                  rules: Path | None = None, room_name: str = "") -> list[Part]:
+    """The appended parts, each fitted to its line; an uncapped install's each whole, the rules part with `room_name`'s topic rules."""
+    limits, whole = budgets["session_start"]["appended"], uncapped(budgets)
     base = layer_dir(private, room)
     voice = str(room.get("voice") or "")
     vpath = (base / voice).resolve() if voice else None
     raw = {
-        "mechanics": (MECHANICS.read_text().strip(), "yerk_ai/mechanics.md"),
+        "mechanics": (mechanics(whole), "yerk_ai/mechanics.md"),
         "persona": _read(base, room.get("persona")),
         "rulebook": _read(base, room.get("rulebook")),
         "room_voice": (cited(vpath, room_voice(vpath) or ""), str(vpath)) if vpath else ("", ""),
         "pinned_memory": _read(base, room.get("pinned_memory")),
-        "rules": rules_text(room, rules),
-        "recall_pack": recall_pack(base, room, int(limits["recall_pack"]), pack),
+        "rules": rules_text(room, rules, room_name if whole else None),
+        "recall_pack": recall_pack(base, room, NONE if whole else int(limits["recall_pack"]), pack),
     }
     parts = []
     for name in APPENDED:
         text, src = raw[name]
-        parts.append(Part(name, *fit(name, text, int(limits[name]), src)))
+        parts.append(Part(name, text, int(limits[name]), chars(text), src) if whole else Part(name, *fit(name, text, int(limits[name]), src)))
     return parts
+
+
+def mechanics(whole: bool = False) -> str:
+    """mechanics.md as a session start sends it; an uncapped install's with no length asked of a worker's relay, and PAID."""
+    text = MECHANICS.read_text().strip()
+    return f"{text.replace(', under 1,500 characters,', ',')}\n{PAID}" if whole else text
 
 
 def fit(name: str, text: str, limit: int, src: str = "") -> tuple[str, int, int, str, tuple[str, ...]]:
@@ -205,17 +221,18 @@ def books(private: Path, rooms: dict[str, dict[str, Any]]) -> dict[str, str]:
             for n, c in rooms.items() if c.get("rulebook") and not flag(c.get("sealed"))}
 
 
-def topics(path: Path, sid: str, room: str, rules: Path, text: str, budget: int) -> tuple[str, list[str]]:
+def topics(path: Path, sid: str, room: str, rules: Path, text: str | None, budget: int, start: str | None = None) -> tuple[str, list[str]]:
     """The topic rules beside `rules` (memory.TOPIC_RULES) that this message names (memory.on_topic) and `room` may have (no
     [rooms: ...], or one naming it), each once per session `sid` until its next compaction (`path` keeps what it was handed),
-    best first, each whole under `budget` after TOPICAL: (the block, the jobs in it)."""
+    best first, each whole under `budget` after TOPICAL: (the block, the jobs in it). `start`, an uncapped install's session
+    start file: a rule it carries never rides again, and `text` None takes every other one (a compaction's re-add)."""
     tier = memory.live_rules(rules.with_name(memory.TOPIC_RULES))
-    mine = [x for x in tier if (sc := memory.scope(x)) is None or room in sc]
+    mine = [x for x in tier if ((sc := memory.scope(x)) is None or room in sc) and (start is None or x not in start)]
     if not sid or not mine or budget <= chars(TOPICAL):
         return "", []
     look = json.loads(path.read_text()) if path.is_file() else {}
     had, out, left = set(look.get("told", [])) if look.get("session") == sid else set(), [TOPICAL], budget - chars(TOPICAL)
-    for _, x in memory.on_topic(text, mine, [*memory.live_rules(rules), *tier]):
+    for _, x in memory.on_topic(text, mine, [*memory.live_rules(rules), *tier]) if text is not None else [(0.0, x) for x in mine]:
         if (k := hashlib.sha1(x.encode()).hexdigest()[:12]) not in had and chars(x) + 1 <= left:
             out, left = [*out, x], left - chars(x) - 1
             had.add(k)
@@ -223,6 +240,22 @@ def topics(path: Path, sid: str, room: str, rules: Path, text: str, budget: int)
         return "", []
     write_private(path, json.dumps({"session": sid, "told": sorted(had)}))
     return "\n".join(out), [memory.topic(x) for x in out[1:]]
+
+
+def ceiling(text: str, cap: int, path: Path, tail: int = 0) -> str:
+    """An uncapped install's hook text under Claude Code's ceiling `cap` ([hook] output_cap; past it Claude Code hands the
+    model a preview and a file in the session's folder, which a room may not read): whole lines, `tail` left free, then CUT
+    naming how much went and `path`, a file in the room's own work folder where the whole is written."""
+    if chars(text) < cap - tail:
+        return text
+    path.parent.mkdir(parents=True, exist_ok=True)
+    write_private(path, text + "\n")
+    kept, used, room = list[str](), -1, cap - 1 - tail - chars(CUT.format(n=chars(text), cap=cap, path=path)) - 1
+    for line in text.split("\n"):
+        if (used := used + 1 + chars(line)) > room:      # each line after the first brings its newline
+            break
+        kept.append(line)
+    return "\n".join([*kept, CUT.format(n=chars(text) - chars("\n".join(kept)), cap=cap, path=path)])
 
 
 def rode(state: Path, room: str, n: int = 20) -> tuple[int, dict[str, int]]:
@@ -456,7 +489,7 @@ def render_wire(room_name: str, w: dict[str, Any], appended: int, budgets: dict[
                 now: float | None = None) -> str:
     """The measured counterpart of `render`: the first message carries the session-start parts; each later one is read
     by part, Yerk AI's against their keys, and the week's five largest named by the part that made them large."""
-    tools, cc = w["tools"], budgets["session_start"]["claude_code"]
+    tools, cc, word = w["tools"], budgets["session_start"]["claude_code"], "uncapped" if uncapped(budgets) else "OVER"
     parts, limit, file = claude_parts(w, cc), int(budgets["session_start"]["total"]), w["system"] - w["prompt"]
     msgs = w["messages"]
     first = sum(msgs[0]["around"]) if msgs else 0
@@ -472,17 +505,17 @@ def render_wire(room_name: str, w: dict[str, Any], appended: int, budgets: dict[
     label = {"claude_code_prompt": "system prompt: Claude Code's own", "builtin_tools": "built-in tools", "yerk_tools": "Yerk AI's tools",
              "deferred_tool_names": "other tool entries"}
     start = [row.format(label.get(k, k) + (f" ({', '.join(t for t in tools if tool_line(t, cc) == k)})" if k in ("builtin_tools", "deferred_tool_names")
-                                           else ""), fmt(n), fmt(cc[k]), "OVER" if n > cc[k] else "none sent" if k == "skills" else "")
+                                           else ""), fmt(n), fmt(cc[k]), word if n > cc[k] else "none sent" if k == "skills" else "")
              for k, n in parts.items()]          # each line as `yerk map` counts it (context.sent), the room's file as that start sent it
     start.insert(1, row.format("system prompt: Yerk AI's file", fmt(file), "", "" if file == appended else f"`yerk map` builds {fmt(appended)} now"))
     L = [f"yerk map {room_name} --wire  (from the room's transcript: what Claude Code sent{skipped})", "",
          f"{'Session start, as sent':<36}{'chars':>9}{'budget':>9}", *start,
-         row.format("total", fmt(total), fmt(limit), "ok" if total <= limit else "OVER"),
+         row.format("total", fmt(total), fmt(limit), "ok" if total <= limit else word),
          row.format("first message's added blocks", fmt(first), "", "environment, account reminder, hook: no line, outside the total"), "",
          f"{'Every later message, around its text':<36}{'chars':>9}{'budget':>9}"]
     if later:              # OVER is a part past its key; `typical` alone is a total the parts each under their keys can pass
         med, typ = later[len(later) // 2], pm["typical"]
-        L.append(row.format(f"median of {len(later)}", fmt(med), fmt(typ), "OVER: " + ", ".join(f"{n} on {c}" for n, c in over.items())
+        L.append(row.format(f"median of {len(later)}", fmt(med), fmt(typ), f"{word}: " + ", ".join(f"{n} on {c}" for n, c in over.items())
                             if over else "ok" if med <= typ else "every part under its key, by part below"))
         L.append(row.format("largest", fmt(later[-1]), fmt(pm["cap"]), made(late[-1])))
     if folds:
@@ -494,11 +527,11 @@ def render_wire(room_name: str, w: dict[str, Any], appended: int, budgets: dict[
     hook = sorted(n for m in late if (n := sum(v for k, v in m["parts"].items() if k in pm["parts"] or k in pm["on_hit"])))
     L += ["", f"{'By part, on the messages carrying it':<46}{'on':>5}{'median':>9}{'largest':>9}{'budget':>9}",
           prow.format("Yerk AI's hook, its parts together", len(hook), fmt(hook[len(hook) // 2] if hook else 0), fmt(hook[-1] if hook else 0),
-                      fmt(pm["cap"]), "ok" if not hook or hook[-1] <= pm["cap"] else "OVER")]
+                      fmt(pm["cap"]), "ok" if not hook or hook[-1] <= pm["cap"] else word)]
     order = list(keys)
     for n in sorted({n for m in late for n in m["parts"]}, key=lambda n: (n.startswith("Claude Code"), order.index(n) if n in order else len(order), n)):
         got = sorted(m["parts"][n] for m in late if n in m["parts"])
-        status = ("ok" if n not in over else f"OVER on {over[n]}") if n in keys else "Claude Code's" if n.startswith("Claude Code") else "no key"
+        status = ("ok" if n not in over else f"{word} on {over[n]}") if n in keys else "Claude Code's" if n.startswith("Claude Code") else "no key"
         L.append(prow.format(n, len(got), fmt(got[len(got) // 2]), fmt(got[-1]), fmt(keys[n]) if n in keys else "", status))
     for n in ("reply header", "attachment lines", OWN):
         if got := sorted(m["in_text"][n] for m in late if m["in_text"].get(n)):
@@ -520,28 +553,31 @@ def made(m: dict[str, Any]) -> str:
 
 def render(room_name: str, private_label: str, start: list[Part], msg: list[Part], budgets: dict[str, Any],
            hit: list[Part] | None = None, sent: dict[str, int] | None = None, src: str = "") -> str:
-    """The room's parts against their lines, Claude Code's as the room last sent them (`sent` from `src`, context.sent)."""
-    row = "  {:<30}{:>9}{:>9}  {}"
+    """The room's parts against their lines, Claude Code's as the room last sent them (`sent` from `src`, context.sent); an
+    uncapped install's past its line `uncapped`, never OVER: sent whole, the line what it would have been held to."""
+    row, over = "  {:<30}{:>9}{:>9}  {}", "uncapped" if uncapped(budgets) else "OVER"
     L = [f"yerk map {room_name}  (private folder: {private_label})",
-         "Characters as Claude Code counts them. Untrimmed sizes; an over-budget file is sent trimmed.",
+         "Characters as Claude Code counts them. " + ("This install is uncapped ([limits] uncapped in yerkd.toml): every part is sent "
+                                                      "whole; its budget is the line it would have been held to." if over != "OVER" else
+                                                      "Untrimmed sizes; an over-budget file is sent trimmed."),
          f"Claude Code's parts as the room last sent them: {src}" if src else "Claude Code's parts at their line: no transcript of this room yet", "",
          f"{'Session start, in load order':<32}{'chars':>9}{'budget':>9}  status"]
     for name, b in budgets["session_start"]["claude_code"].items():
         n = (sent or {}).get(name, 0)
-        L.append(row.format(name, fmt(n) if src else "-", fmt(b), ("OVER" if n > b else "ok") + ", as sent" if src else "counted at its line"))
+        L.append(row.format(name, fmt(n) if src else "-", fmt(b), (over if n > b else "ok") + ", as sent" if src else "counted at its line"))
     for p in start:
-        status = f"OVER, sent trimmed to {fmt(p.size)}" if p.over else ("ok" if p.raw else "empty")
+        status = (over if over != "OVER" else f"OVER, sent trimmed to {fmt(p.size)}") if p.over else ("ok" if p.raw else "empty")
         L.append(row.format(p.name, fmt(p.raw), fmt(p.budget or 0), status + (f"  [{p.source}]" if p.source else "")))
         sections = split_sections(p.text, chars) if p.text else []
         for sec, n in sections[1:7] if len(sections) > 1 else []:
             L.append(f"      {sec[:26]:<26}{fmt(n):>9}")
     total, limit = session_total(start, budgets, sent), int(budgets["session_start"]["total"])
-    L.append(row.format("total", fmt(total), fmt(limit), "ok" if total <= limit else "OVER"))
+    L.append(row.format("total", fmt(total), fmt(limit), "ok" if total <= limit else over))
     L.append(row.format("  of which Yerk AI's file", fmt(chars(appended_file(start))), "", "as sent"))
     L += ["", f"{'Every message':<32}{'chars':>9}{'budget':>9}  status"]
-    L += [row.format(p.name, fmt(p.raw), fmt(p.budget or 0), "OVER" if p.over else "ok") for p in msg]
+    L += [row.format(p.name, fmt(p.raw), fmt(p.budget or 0), over if p.over else "ok") for p in msg]
     every, pm = sum(p.raw for p in msg), budgets["per_message"]
-    L.append(row.format("total", fmt(every), fmt(pm["typical"]), f"{'ok' if every <= pm['typical'] else 'OVER'} (cap {fmt(pm['cap'])})"))
-    L += [row.format(p.name, fmt(p.raw), fmt(p.budget or 0), f"{'OVER' if p.over else 'ok' if p.raw else 'empty'}, on hit, under the cap"
+    L.append(row.format("total", fmt(every), fmt(pm["typical"]), f"{'ok' if every <= pm['typical'] else over} (cap {fmt(pm['cap'])})"))
+    L += [row.format(p.name, fmt(p.raw), fmt(p.budget or 0), f"{over if p.over else 'ok' if p.raw else 'empty'}, on hit, under the cap"
                      + (f"  [{p.source}]" if p.source else "")) for p in hit or []]
     return "\n".join(L)
