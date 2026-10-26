@@ -6,6 +6,17 @@ A line that changes a file the install keeps (rooms.toml, yerkd.toml, budgets.to
 newer than the code is refused with one line, never changed); the index chunks every file again when its chunker's
 version changes.
 
+## 2026-10-26
+
+### note-feedback (#134)
+
+- A complaint about a voice note counts as one. A message that called a note too short and said it had not hyped its
+  listener up went into taste.jsonl as a thumbs up, because the praise list reads a bare "hype" as praise and the
+  complaint list knew length only as "too long" and "shorter". Two complaint shapes added, "not long enough" and
+  "didn't hype me up", each run over the owner's 36,747 lines (one hit each, that message) and over both taste ledgers (no
+  earlier row changes sign). The mechanics line on `voice_note` no longer says each note costs, which read as a reason
+  to keep one short; the dollar gate on a dear note is unchanged.
+
 ## 2026-10-25
 
 ### worker-effort (#129)
