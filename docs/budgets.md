@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 108093`
+- `total = 108259`
 
 ## [session_start.claude_code]
 
@@ -24,9 +24,11 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-10-24, measured-budgets: the lines above are read as sent now, and in the six rooms' newest request shapes that day (Claude Code 2.1.304) three rooms sent more than they held, no check seeing it: the hands plug-in's five tools (7,119) in the two owner rooms that carry it, web_image (913) in those two and a person's room, and that person's room's Edit and Write (1,731) beside the four built-in tools every room has. Each plug-in gets a line of its own at what it sends (`mcp__hands__` 7,119, `mcp__web-ladder__web_image` 913), the other entries keep the placeholder and web-ladder's four (3,421 in each room, under 3,429), and `builtin_tools` goes to the widest room's 12,132. No part could pay (the largest appended parts as on the web-budget note, 614 between them; Claude Code's prompt 10,889, measured from the shape now, and Yerk AI's tools 11,663, 148 between them), so the total rose by what is already sent, 9,763, to 108,093. Read again that evening, an owner room's new start (the tree of #117) sent Yerk AI's tools at 11,734 (schedule's calendar wording +31 and send's own-channel line +40 on the 11,663 the older starts send), 34 past 11,700: the prompt line pays it, as persona paid for mechanics (10,889 the largest prompt sent, so 10,966), `yerk_tools` 11,734, the total as above.
 
+2026-10-26, tools-line: worker-effort (#129) put `effort` on the room's `worker` tool and no line moved; Yerk AI's tools measured 11,871 as sent in a work room and an owner's room (`yerk map`, Claude Code 2.1.3xx), over the 11,734 line, and the deploy of #134 refused on it; so 11,900, no part could pay, the total rose by the 166.
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
-- `yerk_tools = 11734`
+- `yerk_tools = 11900`
 - `deferred_tool_names = 3429`
 - `mcp__hands__ = 7119`
 - `mcp__web-ladder__web_image = 913`
