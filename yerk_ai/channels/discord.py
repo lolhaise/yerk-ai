@@ -956,6 +956,8 @@ class DiscordChannel:
                         self.ledger.delivery_set(f"{key}:0", state="sent", message_id=str(msg.id), sent=time.time(),
                                                  note="the turn's card, kept")
                         ids = [str(msg.id)]
+                    if kind == "silent":          # kept first, then the quiet line before it goes: one stands
+                        await self._supersede(room, str(msg.id))
                 elif msg is not None:
                     await msg.delete()
                     self.ledger.card_close(str(msg.id), "replaced by the reply")
@@ -966,6 +968,22 @@ class DiscordChannel:
             if mid.isdigit():                     # a Discord message; the harness's own (a relay) has no reaction
                 await self._react(cid, mid, mark, remove=ACK)
         return ids
+
+    async def _supersede(self, room: str, kept: str) -> None:
+        """The room's quiet card before `kept`, found in the ledger (so a restart changes nothing), is deleted when the room
+        said nothing after it; once anything else was said, it stays as history. The caller holds the room's lock."""
+        row = self.ledger.last_outbound(room, besides=kept)
+        if row is None or row["kind"] != "card-note" or str(row["body"] or "").split("\n")[0] != f"{words.DONE} {words.QUIET}":
+            return
+        mid = str(row["message_id"])
+        try:
+            await (await self._channel(room)).get_partial_message(int(mid)).delete()
+        except discord.NotFound:
+            pass                                  # gone already
+        except discord.HTTPException as e:
+            log.warning("quiet card %s in %s not removed: %s", mid, room, e)
+            return                                # it still stands: its row stays kept
+        self.ledger.card_close(mid, "superseded by the next quiet card")
 
     async def _debug_pause(self, point: str) -> None:
         """A test hook for the crash drill: <state>/debug/pause-delivery holding "before-post 60"
