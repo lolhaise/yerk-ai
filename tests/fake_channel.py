@@ -36,6 +36,10 @@ class ConsoleChannel:
             self.progress(room, card)
         return self._out({"room": room, "notice": text, "inbound": inbound})
 
+    def silent(self, room: str, inbound: list[str], card: str, key: str | None = None) -> list[str]:
+        self.progress(room, card)                 # nothing on stdout: a final of exactly NO_REPLY posts nothing
+        return []
+
     async def send_text(self, room: str, text: str, key: str | None = None) -> list[str]:
         return self._out({"room": room, "send": text})
 

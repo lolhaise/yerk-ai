@@ -136,6 +136,8 @@ ROOM_WORDS = {
     "topic_recall": "the room's own lines on the message's topic, and the search of a question about the past, in its recall part (default true)",
     "voice": "the room's voice file, the session start's room_voice part",
     "watch": "discord:<channel id> of a channel the room watches: [watch] assistants' messages there go in its day log, never answered",
+    "watch_assistant": "the assistant the owner talks to in the watched channel, by name: a message read from there comes in marked as sent to it, "
+    "not to this room (default: the other assistant)",
 }
 ROOM_KEYS = frozenset(ROOM_WORDS)
 # The private yerkd.toml's keys by section, in plain words, beside those described where they are read (words.SETTINGS for

@@ -576,4 +576,8 @@ secs = 60
 # this PR's 3, and 1 for `[workers] effort`'s line in config.YERKD_WORDS (#122's key table, which test_owndocs checks
 # both ways), is 21,780, counted on the merged tree; cli.py and daemon.py, which both changed, merged clean;
 # `yerk docs own` wrote commands.md (--effort), tools.md (the worker tool's effort), settings.md and budgets.md.
-lines = 21780
+# 2026-10-27: watch-note raised it by 32, a watched channel's message naming who it was sent to and a final of exactly
+# NO_REPLY posting nothing (the owner's ask), not folded to fit: discord.py 16 (the line, one helper for the live,
+# edited and restarted paths; `silent`, the kept card its row), room.py 8 (the silent final, its card and note, the stub
+# rule passing NO_REPLY, the Channel method), words.py 6, config.py 2 (`watch_assistant` in ROOM_WORDS).
+lines = 21812

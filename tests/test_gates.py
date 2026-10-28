@@ -327,6 +327,23 @@ def test_a_final_that_only_reports_a_filing_bounces_once_and_so_does_an_answer_l
     assert call(y, {**stop, "last_assistant_message": "Got it, one line from now on."})["decision"] == "block"
 
 
+def test_a_no_reply_final_is_never_bounced_and_an_empty_one_still_is(tmp_path):
+    """watch-note: NO_REPLY is the whole answer of a room reading along with nothing to add (room.py posts nothing), so no Stop
+    rule sends it back: not the silent-ending rule, which still bounces an empty final once, and not the stub rule after a
+    filing, which still bounces an answer written above the call (the second turn)."""
+    y, room, ch = setup(tmp_path)
+    stop = {"hook_event_name": "Stop", "stop_hook_active": False}
+    human_turn(room, "squats felt heavy today")
+    stream(room, *ANSWER_ABOVE)                         # a long text above a filing call, then the final
+    assert call(y, {**stop, "last_assistant_message": "NO_REPLY\n"}) == {}
+    out = call(y, {**stop, "last_assistant_message": ""})
+    assert out["decision"] == "block" and '"squats felt heavy today"' in out["reason"]
+    room._new_card()
+    stream(room, *ANSWER_ABOVE)
+    assert call(y, {**stop, "last_assistant_message": RULE_LINE})["decision"] == "block"
+    assert [r["rule"] for r in y.ledger.rows(5, "gates")] == ["silent-ending"]
+
+
 def test_session_start_posts_a_reset_line_only_when_a_new_session_replaced_one(tmp_path):
     y, room, ch = setup(tmp_path)
     work = str(tmp_path / "rooms" / "example-room" / "work")

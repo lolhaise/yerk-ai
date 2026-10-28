@@ -7,6 +7,7 @@ from types import SimpleNamespace as NS
 import discord
 import pytest
 
+from yerk_ai import words
 from yerk_ai.channels.discord import ACK, DiscordChannel
 from yerk_ai.ledger import Ledger
 from yerk_ai.room import Inbound, Room
@@ -186,12 +187,13 @@ def test_a_reply_in_a_watched_channel_keeps_that_it_is_one_and_drops_the_other_s
     run(d.on_raw_message_edit(p.update(reply(601, "ok but why that many", theirs,
                                              edited_timestamp="2026-10-17T23:21:00.000000+00:00"))))
     blind = "[a reply to an earlier message]"
+    sent = words.SENT_THERE.format(who=words.OTHER_ASSISTANT, channel=OTHER_CH, quiet=words.NO_REPLY)   # read there: marked
     assert [(m.id, m.text) for m in room.got] == [
-        ("601", f"{blind}\nok but why"),
-        ("603", '[a reply to Owner\'s message: "squats felt heavy"]\nand the bench?'),
-        ("605", '[a reply to test sender\'s message: "a test sender\'s line"]\nnoted'),
+        ("601", f"{sent}\n{blind}\nok but why"),
+        ("603", f'{sent}\n[a reply to Owner\'s message: "squats felt heavy"]\nand the bench?'),
+        ("605", f'{sent}\n[a reply to test sender\'s message: "a test sender\'s line"]\nnoted'),
         ("607", '[a reply to Ben\'s message: "the deck is ready"]\nwhy that one'),
-        ("601", f"[an earlier message was edited; it now reads:]\n{blind}\nok but why that many")]
+        ("601", f"[an earlier message was edited; it now reads:]\n{sent}\n{blind}\nok but why that many")]
     days = "".join(f.read_text() for f in (tmp_path / "daily").glob("*.md"))
     assert [x.split(" ", 3)[3].rsplit(" [c:", 1)[0] for x in days.splitlines() if x.startswith("- ")] == [
         f"owner@owner: {blind} / ok but why",

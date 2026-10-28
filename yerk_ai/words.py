@@ -305,6 +305,12 @@ PICTURES_BATCH = "pictures backfill {room}: batch {n} of {of} {how}, {filed} of 
 PICTURES_NEXT, PICTURES_STOP, PICTURES_DONE = "; batch {n} started", "; stopped, {left} left: run it again", "; done"
 FILE_TEXT = "[its text, extracted by code] saved at {path}"     # under a workbook's or a PDF's [attachment] line (files.py)
 ADDON_READS = "[read by an add-on] {name} is read through {tool}, an installed add-on's tool: call it on the path above"   # addons.reads
+# the line above a message from the channel a room watches (rooms.toml `watch`, `watch_assistant`): who it was sent to there
+SENT_THERE = ("[sent to {who} in #{channel}, not to this room: the owner is talking to {who} there. Read along and file what "
+              "matters. Answer here only if the owner's words ask this room something, or you have something they would want from this "
+              "room that {who} did not give; otherwise answer exactly {quiet}.]")
+OTHER_ASSISTANT = "the other assistant"              # `watch_assistant` unset
+NO_REPLY, QUIET = "NO_REPLY", "read it, nothing to add"   # a final of exactly NO_REPLY posts nothing; its card says QUIET
 FILES_PERSON = "{room} is not an owner room: a workbook or a PDF sent there is never read"
 FILES_BACKFILL = "{n} workbook(s) and PDF(s) in {where} with no text beside them or an older one; {done}"
 FILES_WRITTEN, FILES_DRY = "written", "nothing written (--dry-run)"
