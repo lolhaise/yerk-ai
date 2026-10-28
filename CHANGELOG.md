@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-10-28
 
-### need-2026-10-28-24 (#?)
+### need-2026-10-28-24 (#141)
 
 - A room can hand back a PDF of a document and say how many pages it is, so "does it fit on one page?" gets a measured
   answer. The new `render` tool on Yerk's own server takes a document in the room's own folders (a .docx, .doc, .odt,
@@ -29,6 +29,18 @@ version changes.
 **Upgrading**: for PDFs, install LibreOffice so `soffice` is on yerkd's PATH; nothing changes in rooms.toml or
 yerkd.toml, and each room allows `mcp__yerk__render` from its next process start. budgets.toml moves with the code: Yerk
 AI's tools to 12,800, the mechanics to 4,700, the session-start total to 109,359.
+
+### quiet-card (#140)
+
+- A room that watches another channel keeps one `🟢 read it, nothing to add` line, not one per message. When the room
+  reads a message there and has nothing to add, its new quiet line stands and the quiet line before it is deleted, as
+  long as the room posted nothing else in between: a reply, a notice, a file, a voice note, a worker's card or a card
+  kept to say a turn failed leaves the older line where it is, as history. A conversation in the watched channel now
+  leaves one green line in the room, the newest, where it left one per message before.
+- The line before is found in the ledger, so the rule holds across a restart. One already deleted by hand changes
+  nothing; one Discord will not delete stays and is logged. The code ceiling moves up by 25.
+
+**Upgrading**: nothing to change. budgets.toml moves with the code.
 
 ### watch-answer (#?)
 

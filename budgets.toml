@@ -597,10 +597,15 @@ secs = 60
 # folded to fit: discord.py 148 (the Hold, the answer judged by its own 6 s settle and a delete, the group's one turn, its
 # lines and its rows, the wait from the sender's last message and what is left of it after a restart, a held message's edit and
 # delete), words.py 3 (the answer line, its file line, the not-answered line), config.py 1 (`watch_wait` in ROOM_WORDS).
+# 2026-10-28: quiet-card raised it by 25, one quiet line standing in a watching room, not one per message (an owner's
+# room, in eleven minutes: 13 quiet lines in a row), not folded to fit: discord.py 18 (the call in `_finish` once the card
+# is kept, and `_supersede`: the line before, read from the ledger, deleted unless the room said anything since, its
+# card row closed), ledger.py 6 (`last_outbound`, the one SELECT), room.py 1 (the docstring's clause).
 # 2026-10-28: need-2026-10-28-24 raised it by 126, a document as a PDF with its page count for every room (need 24:
 # a room could not check that a document fits on one page, since LibreOffice will not run in its sandbox), not folded to
 # fit: render.py 92 (the soffice run under a fresh profile a call, removed after; one at a time across rooms; the timeout
 # that kills its process group; the page count by pypdf, a PDF counted alone; the owner's own fonts kept for fontconfig),
 # daemon.py 14 (the tool, may_send's rule, the call off the loop, its log line), mcp_server.py 12 (the tool and its
 # description, the protocol line, the module's count of tools), words.py 8 (the refusals and failures in words).
-lines = 22221
+# Merged 2026-10-28: quiet-card (#140) landed first, need-2026-10-28-24 (#141) carries both raises: 22,095 + 25 + 126.
+lines = 22246
