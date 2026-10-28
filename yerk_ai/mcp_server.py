@@ -2,9 +2,10 @@
 # official Python SDK) and the send tool's shape are adapted from Hermes Agent v0.22.2,
 # mcp_serve.py (create_mcp_server, messages_send), https://github.com/NousResearch/hermes-agent
 # Copyright (c) 2025 Nous Research. MIT License. See NOTICE.
-"""Yerk AI's own MCP server: twelve tools (send, hold, recall, read_memory, remember, worker, schedule, settings, transcribe,
-voice_note, seen, need), local-only HTTP, preloaded in every room; transcribe and voice_note are here and not plug-ins because the daemon
-has the network and a room's shell has none, and seen because no owner room has a Write tool. A worker gets none of it: by default no MCP server at all, and with
+"""Yerk AI's own MCP server: thirteen tools (send, hold, recall, read_memory, remember, worker, schedule, settings, transcribe,
+voice_note, seen, render, need), local-only HTTP, preloaded in every room; transcribe and voice_note are here and not plug-ins because the daemon
+has the network and a room's shell has none, seen because no owner room has a Write tool, and render because LibreOffice needs a writable
+/tmp a room's sandbox does not give. A worker gets none of it: by default no MCP server at all, and with
 [workers] yerk_tools its own stdio server (`worker_server`) carrying recall and read_memory only.
 
 Every endpoint (/mcp, /hook, /control) wants the `x-yerk-secret` header (restart test R3). Three
@@ -52,6 +53,7 @@ class Daemon(Protocol):
     async def tool_settings(self, room: str, model: str, effort: str, account: str = "") -> dict[str, Any]: ...
     async def tool_transcribe(self, room: str, path: str, owner_yes: bool = False) -> dict[str, Any]: ...
     async def tool_voice_note(self, room: str, script: str, name: str = "", owner_yes: bool = False) -> dict[str, Any]: ...
+    async def tool_render(self, room: str, path: str) -> dict[str, Any]: ...
     async def tool_seen(self, room: str, path: str, text: str, shows: str) -> dict[str, Any]: ...
     async def tool_need(self, room: str, asked: str, tried: str, needed: str, shadow: str = "") -> dict[str, Any]: ...
 
@@ -199,6 +201,16 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         NAME.transcript.txt. A segment marked (uncertain) has two readings that disagree, so give it as unsure or ask. A
         recording past US$1 comes back refused until the owner says yes; then call again with `owner_yes` true."""
         return json.dumps(await daemon.tool_transcribe(caller_room(ctx), path, owner_yes))
+
+    @mcp.tool()
+    async def render(path: str, *, ctx: Context) -> str:
+        """A document as a PDF and its page count, since LibreOffice does not run in your shell: `path` is a document in this
+        room's folders (a .docx, .doc, .odt, .rtf, .xlsx, .pptx or anything LibreOffice opens). The daemon renders it to a PDF
+        saved beside it as NAME.pdf (an older NAME.pdf there is replaced) and returns its page count; a .pdf path returns its
+        page count alone, nothing rendered. Use it to check a document fits a page count before you send it, and `send` the PDF
+        when the owner wants the PDF. The layout is LibreOffice's, not Word's, so a document that fits by a line in one can
+        spill in the other: say a result near the edge as near the edge."""
+        return json.dumps(await daemon.tool_render(caller_room(ctx), path))
 
     @mcp.tool()
     async def seen(path: str, text: str, shows: str, *, ctx: Context) -> str:

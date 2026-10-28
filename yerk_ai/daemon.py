@@ -28,8 +28,8 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 from zoneinfo import ZoneInfo
 
-from . import (beat, context, deploy, doctor, evidence, gates, hooks, jobs, location, mcp_server, memory, mentions, needs, pictures, status,
-               taste, transcribe, voice_note, workers)
+from . import (beat, context, deploy, doctor, evidence, gates, hooks, jobs, location, mcp_server, memory, mentions, needs, pictures, render,
+               status, taste, transcribe, voice_note, workers)
 from .accounts import Account, Cooldowns, from_dir, load_accounts, pick
 from .config import (EFFORTS, REPO, SHELLS, account_and_model, account_named, assistants, budgets, discord_id, flag, load_toml, models,
                      override, people, pinned, private_dir, read_secret, room_id, room_settings, rooms, state_dir, table, trusted, write_private)
@@ -45,7 +45,7 @@ from . import abilities, addons, words   # STYLE.md: what a room reads
 log = logging.getLogger("yerk.daemon")
 YERK_TOOLS = ["mcp__yerk__send", "mcp__yerk__hold", "mcp__yerk__recall", "mcp__yerk__read_memory",
               "mcp__yerk__remember", "mcp__yerk__worker", "mcp__yerk__schedule", "mcp__yerk__settings", "mcp__yerk__transcribe",
-              "mcp__yerk__voice_note", "mcp__yerk__seen", "mcp__yerk__need"]
+              "mcp__yerk__voice_note", "mcp__yerk__seen", "mcp__yerk__render", "mcp__yerk__need"]
 # A shell room's sandbox when rooms.toml gives it no [rooms.NAME.sandbox] table: unsandboxed, a Read deny stops `cat` and
 # the Read tool, but a script, grep or redirect read every secret (Claude Code 2.1.304, PR 66's cold read, 2026-10-21)
 SANDBOX = {"enabled": True, "autoAllowBashIfSandboxed": True}
@@ -436,6 +436,20 @@ class Yerkd:
         r = await asyncio.to_thread(transcribe.run, p, self.memory.embeddings_key, self.private / transcribe.GROQ_KEY,
                                     self.booker(room, "transcribe"), owner_yes, self.private / transcribe.META_KEY)
         log.info("transcribe: %s, %s", room, f"{r['segments']} segments, {r['uncertain']} uncertain" if r["ok"] else r["error"][:160])
+        return r
+
+    async def tool_render(self, room: str, path: str) -> dict[str, Any]:
+        """The `render` tool: a document from the calling room's own folders (may_send's rule, as transcribe's) made a PDF
+        beside it by LibreOffice off the loop (render.run), one at a time across rooms, and its pages counted; a PDF's
+        pages counted alone. Free: no spend row."""
+        p = Path(path).expanduser().resolve()
+        if room not in self.rooms or not self.may_send(room, p):
+            return {"ok": False, "error": words.RENDER_NOT_HERE.format(name=p.name)}
+        if not p.is_file():
+            return {"ok": False, "error": words.RENDER_NO_FILE.format(name=p.name)}
+        r = await asyncio.to_thread(render.run, p, self.state)
+        said = f"{p.name}, {r['pages']} page(s)" + (f" in {r['seconds']} s" if "seconds" in r else "") if r["ok"] else r["error"][:160]
+        log.info("render: %s, %s", room, said)
         return r
 
     async def tool_seen(self, room: str, path: str, text: str, shows: str) -> dict[str, Any]:

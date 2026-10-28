@@ -8,6 +8,28 @@ version changes.
 
 ## 2026-10-28
 
+### need-2026-10-28-24 (#?)
+
+- A room can hand back a PDF of a document and say how many pages it is, so "does it fit on one page?" gets a measured
+  answer. The new `render` tool on Yerk's own server takes a document in the room's own folders (a .docx, .doc, .odt,
+  .rtf, .xlsx, .pptx or anything LibreOffice opens), saves its PDF beside it as `NAME.pdf` (an older one there is
+  replaced) and returns the page count; the room `send`s that PDF when you want it. A .pdf is counted as it is, nothing
+  rendered.
+- The daemon runs LibreOffice for the room, since LibreOffice keeps its pipe in /tmp and a room's sandbox has no writable
+  /tmp; the sandbox and the wall between rooms are unchanged. Each call runs `soffice --headless --convert-to pdf` under a
+  fresh profile of its own in the state folder's `render/`, removed after; one conversion runs at a time across rooms, a
+  second call waiting its turn; one past 120 seconds is stopped with everything it started, and the room says so. The
+  fonts in your own `~/.local/share/fonts` are used, so a document set in Arial lays out in its same-width twin where one
+  is installed, not in a wider stand-in that pushes it onto another page.
+- The layout is LibreOffice's, not Word's: a document that fits by a line in one can spill in the other, and the room says
+  a result near the edge as near the edge. Without LibreOffice on the machine the room says no PDF could be made. It is
+  free: no spend row. The mechanics gain one line (a page count comes from `render`, never an estimate off the text), and
+  the code ceiling moves up by 126.
+
+**Upgrading**: for PDFs, install LibreOffice so `soffice` is on yerkd's PATH; nothing changes in rooms.toml or
+yerkd.toml, and each room allows `mcp__yerk__render` from its next process start. budgets.toml moves with the code: Yerk
+AI's tools to 12,800, the mechanics to 4,700, the session-start total to 109,359.
+
 ### watch-answer (#?)
 
 - A message the owner sends in a channel a room watches now waits for the other assistant's answer there before the

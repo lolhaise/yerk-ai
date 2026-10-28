@@ -296,6 +296,14 @@ TRANSCRIBED_NEXT = ("Open your reply with what the recording says, in your own w
 TRANSCRIPT_HEAD, UNCERTAIN, NO_WORDS = "{name}, {minutes} min, {how}", "(uncertain) {first} | second pass: {second}", "(no words)"
 SEEN_NOT_HERE = "{name} is not a picture sent to this room; seen files a picture from its [attachment] line"
 SEEN_NO_SHOWS = "seen needs `shows`: one or two lines of what the picture shows"
+# a document rendered (render.py): why no PDF or page count came back
+RENDER_NOT_HERE = "{name} is outside this room's folders; render reads the files sent to it and this room's own work"
+RENDER_NO_FILE = "there is no file {name} in this room's folders"
+RENDER_NO_SOFFICE = "LibreOffice (soffice) is not on this machine, so no PDF could be made"
+RENDER_FAILED, RENDER_NO_WHY = "LibreOffice could not make a PDF of {name}: {why}", "it gave no reason"
+RENDER_TIMED_OUT = "LibreOffice did not finish {name} in {seconds} s, so it was stopped and no PDF was made"
+RENDER_NOT_PDF = "{name} did not open as a PDF ({why}), so its pages could not be counted"
+RENDER_DAMAGED, RENDER_LOCKED = "it is damaged or not a PDF", "it is locked with a password"
 UNSEEN = ("You read {names} and did not file what it shows. Call seen on {paths} with its words and a line "
           "of what it shows, then give your answer again, since only the text after your last tool call reaches the room.")
 PICTURES_PERSON = "{room} is not an owner room: the backfill runs in owner rooms only; a picture sent there is filed by its own room"
