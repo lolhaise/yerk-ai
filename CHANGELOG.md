@@ -6,6 +6,24 @@ A line that changes a file the install keeps (rooms.toml, yerkd.toml, budgets.to
 newer than the code is refused with one line, never changed); the index chunks every file again when its chunker's
 version changes.
 
+## 2026-10-27
+
+### watch-note (#137)
+
+- A message the owner types in a channel a room watches reaches the room under one line saying who it was sent to: the
+  assistant there, by the name `watch_assistant` gives it in rooms.toml (else "the other assistant"), in that channel by
+  its name, not this room. The room reads along, files what matters, and answers only if his words ask it something or
+  it has something he would want that the other assistant did not give; otherwise it answers exactly NO_REPLY. Before,
+  it read the message as its own and answered it as if asked. The line comes on every way a message from there reaches
+  the room: as it lands, edited, and run again after a restart; a message in the room's own channel never carries it.
+- A reply that is exactly NO_REPLY posts nothing. The turn's card stays, saying the room read it and had nothing to
+  add; the message is answered in the ledger with the note `silent`, its row kind `silent`. No Stop rule sends it back.
+  An empty reply still goes back to the session once, as before, and a reply that only contains NO_REPLY is posted as
+  it is. The code ceiling moves up by 32 for both.
+
+**Upgrading**: nothing to change; `watch_assistant` is a new optional key beside `watch` in rooms.toml (docs/settings.md
+names it).
+
 ## 2026-10-26
 
 ### tools-line (#135)

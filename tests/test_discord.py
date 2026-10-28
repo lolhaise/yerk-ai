@@ -3,6 +3,7 @@ against a fake client. The cases: who is answered, the ledger before anything ru
 attachment staging."""
 import asyncio
 import os
+import threading
 from types import SimpleNamespace as NS
 
 import discord
@@ -321,8 +322,9 @@ def test_a_message_sent_during_the_outage_is_filed_once_before_it_runs(tmp_path)
             d.ledger.inbound_set(mid, state="answered")
     text = "".join(p.read_text() for p in (tmp_path / "daily").glob("*.md"))
     assert MARK.findall(text) == ["10", "11", "20"] and "the other side's answer" not in text
+    sent = words.SENT_THERE.format(who=words.OTHER_ASSISTANT, channel=OTHER_CH, quiet=words.NO_REPLY)   # read there: marked
     assert [(m.id, m.text) for m in room.got] == [("10", "the owner, while it was down"),
-                                                  ("20", "the owner, in the watched channel")]
+                                                  ("20", f"{sent}\nthe owner, in the watched channel")]
 
 
 def test_a_busy_watched_channel_never_pushes_the_owners_missed_messages_past_the_cap(tmp_path):
@@ -484,6 +486,26 @@ def test_a_failed_turn_keeps_its_card_saying_what_was_owed(dc):
     card = ch.sent[0]
     assert ids == [str(card.id)] and not card.deleted and card.edits == ["❌ No reply to \"hi\": auth"]
     assert len(ch.sent) == 1 and d.ledger.deliveries("test-room", "sent")[0]["key"] == "t6:0"
+
+
+def test_a_silent_turn_keeps_its_card_saying_so_posts_nothing_and_is_ledgered_silent(dc):
+    """watch-note: a final of exactly NO_REPLY (room.py) comes to the channel as `silent`: nothing is posted, the turn's card is
+    kept with the line it is handed, the message gets its done mark, and the part's row is kind silent with the card's id; with
+    no card up, that line is the one post (the card the turn never got), never the reply text."""
+    d, client, _ = dc
+    ch = client.chans[ROOM_CH]
+    loop = asyncio.new_event_loop()
+    threading.Thread(target=loop.run_forever, daemon=True).start()
+    d.loop, line = loop, f"{words.DONE} {words.QUIET}"
+    asyncio.run_coroutine_threadsafe(d._open("test-room", "working on it", "turn"), loop).result(5)
+    ids = d.silent("test-room", ["5"], line, key="t7")
+    card = ch.sent[0]
+    assert ids == [str(card.id)] and len(ch.sent) == 1 and card.edits == [line] and not card.deleted
+    assert ch.reactions == [(5, "-", ACK), (5, "+", DONE)] and d.ledger.cards_open("test-room") == []
+    assert [(r["key"], r["kind"], r["state"], r["message_id"]) for r in d.ledger.deliveries("test-room")] == [
+        ("t7:0", "silent", "sent", str(card.id))]
+    assert d.silent("test-room", ["6"], line, key="t8") == [str(ch.sent[1].id)] and [m.content for m in ch.sent] == ["working on it", line]
+    loop.call_soon_threadsafe(loop.stop)
 
 
 def plan_file(d, tmp_path, key, name="report.pdf", data=b"%PDF-1.4 drill", inbound="5", snapshot=True):

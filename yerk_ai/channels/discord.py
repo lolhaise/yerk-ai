@@ -2,7 +2,8 @@
 
 - Every other channel is ignored before anything is read: no reply, no reaction, no history.
 - A room's `watch` channel is read as its own and never written to: what it sends, its card, its typing
-  signal and its reactions go to its own channel only; a slash command there gets one ephemeral line. Another
+  signal and its reactions go to its own channel only; a slash command there gets one ephemeral line. A message
+  taken there reaches the room under a line saying it was sent to the assistant there (`watch_assistant`). Another
   assistant's message there (`[watch] assistants` in yerkd.toml) is filed under its own role once it has settled
   (SETTLE), so the room can read what was said there, and never answered.
 - Only the owner, the people a room lists (`people` in rooms.toml), and in test mode the listed webhooks,
@@ -237,6 +238,17 @@ class DiscordChannel:
         said = said or ", ".join(f"file {a.filename}" for a in getattr(got, "attachments", []) or []) or "(no text)"
         return f'[a reply to {who}: "{said if len(said) <= REPLY_MAX else said[:REPLY_MAX - 3] + "..."}"]'
 
+    def inbound_text(self, room: Room, m: Any, files: list[dict[str, Any]]) -> str:
+        """What the room reads of a message it takes: message_text, and from the channel it watches, a line above it naming who
+        the message was sent to there (`watch_assistant`, the channel's name as the client sees it, else its id), so the room
+        reads along and answers NO_REPLY unless his words ask it something. Never on a message in its own channel."""
+        text = message_text(m, files, self.reply_line(room.name, m), addons.reads(self.state))
+        if (cid := m.channel.id) == self.names[room.name]:
+            return text
+        who = str(getattr(room, "conf", {}).get("watch_assistant") or words.OTHER_ASSISTANT)
+        where = getattr(self.client.get_channel(cid) or m.channel, "name", None) or cid
+        return f"{words.SENT_THERE.format(who=who, channel=where, quiet=words.NO_REPLY)}\n{text}"
+
     async def on_message(self, m: Any) -> None:
         if (room := self.rooms.get(m.channel.id)) is not None:
             self.file(room.name, m)
@@ -315,7 +327,7 @@ class DiscordChannel:
             files = await self.stage(room, m)
             if ahead is not None:
                 await asyncio.shield(ahead)
-            room.submit(Inbound(str(m.id), sender, message_text(m, files, self.reply_line(room.name, m), addons.reads(self.state)), files=files))
+            room.submit(Inbound(str(m.id), sender, self.inbound_text(room, m, files), files=files))
         finally:
             mine.set_result(None)
             if self.order.get(room.name) is mine:
@@ -369,7 +381,7 @@ class DiscordChannel:
             return
         self.edits[mid] = str(m.edited_at)
         files = await self.stage(room, m)
-        text = message_text(m, files, self.reply_line(room.name, m), addons.reads(self.state))
+        text = self.inbound_text(room, m, files)
         if room.revise(mid, text):
             self.ledger.inbound_set(mid, note="edited before it ran")
             return
@@ -562,7 +574,7 @@ class DiscordChannel:
                 self.ledger.inbound_set(row["message_id"], state="abandoned", note="message deleted")
                 continue
             files = await self.stage(room, m)
-            text = message_text(m, files, self.reply_line(room.name, m), addons.reads(self.state)) + ("\n[redelivered after a restart]" if attempts else "")
+            text = self.inbound_text(room, m, files) + ("\n[redelivered after a restart]" if attempts else "")
             sent = self.ledger.files_sent_for([str(row["message_id"])])
             if sent:                              # the cut-short turn's files: in the room already
                 text += ("\n[already in the room from before the restart, not to be sent again: "
@@ -659,6 +671,10 @@ class DiscordChannel:
     def notice(self, room: str, text: str, inbound: list[str], card: str | None = None, key: str | None = None) -> list[str]:
         """A visible failure: the turn's card kept and edited to `card` (what was owed), else `text` posted."""
         return self._call(self._finish(room, text, inbound, FAILED, kind="notice", card=card, key=key, instead=card is not None)) or []
+
+    def silent(self, room: str, inbound: list[str], card: str, key: str | None = None) -> list[str]:
+        """A final of exactly NO_REPLY: nothing posted; the turn's card kept and edited to `card`, its row kind `silent`."""
+        return self._call(self._finish(room, "", inbound, DONE, kind="silent", card=card, key=key, instead=True)) or []
 
     # outbound: on the loop
     def _lock(self, room: str) -> asyncio.Lock:
@@ -773,8 +789,8 @@ class DiscordChannel:
             self.want.pop(room, None)
             msg = self.cards.pop(room, None)
             ids: list[str] = []
-            if instead and msg is None:           # no card to keep: the notice is posted
-                instead = False
+            if instead and msg is None and kind == "notice":   # no card to keep: the notice is posted (a silent turn's
+                instead = False                                 # line is posted as its card)
                 for i, part in enumerate(split_message(text.strip(), LIMIT)):
                     self.ledger.delivery_plan(f"{key}:{i}", room, kind, part, ",".join(inbound))
             if not instead:
