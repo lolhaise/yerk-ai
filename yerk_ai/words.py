@@ -304,6 +304,21 @@ RENDER_FAILED, RENDER_NO_WHY = "LibreOffice could not make a PDF of {name}: {why
 RENDER_TIMED_OUT = "LibreOffice did not finish {name} in {seconds} s, so it was stopped and no PDF was made"
 RENDER_NOT_PDF = "{name} did not open as a PDF ({why}), so its pages could not be counted"
 RENDER_DAMAGED, RENDER_LOCKED = "it is damaged or not a PDF", "it is locked with a password"
+# a video watched (watch.py): why no video came back, and a result's note on what it has no frames or transcript for
+WATCH_NO_ROOM = "watch puts the video in a room's work folder, and there is no room {room}"
+WATCH_NOT_LINK = "\"{given}\" is not a link: watch takes a post's web address, one that starts http:// or https://"
+WATCH_NO_YTDLP = "yt-dlp is not on this machine, so no video could be pulled"
+WATCH_FAILED, WATCH_NO_WHY = "no video was pulled from that link: {why}", "it gave no reason"
+WATCH_NOTHING = ("no video was pulled from that link: yt-dlp saved nothing, as it does for a video over 300 MB or a page with "
+                 "no video in it")
+WATCH_TIMED_OUT = "the download did not finish in {seconds} s, so it was stopped and no video was saved"
+WATCH_NO_FFMPEG = "ffmpeg and ffprobe are not both on this machine, so the video could not be read"
+WATCH_NOT_READ, WATCH_SLOW = "{name} did not read as a video ({why})", "it took past {seconds} s"
+WATCH_BROKE = "the video could not be watched: {why}"
+WATCH_LINKED = "{name} in this room's work folder is a link, and watch never writes through one, so nothing was pulled"
+WATCH_NO_SOUND, WATCH_NO_PICTURE = "it has no sound, so there is no transcript", "it has no picture, so there are no frames"
+WATCH_NO_TRANSCRIPT = "no transcript: {why}"
+WATCH_FRAMES_LOST = "{got} of {of} frames came, the rest would not: {why}"
 UNSEEN = ("You read {names} and did not file what it shows. Call seen on {paths} with its words and a line "
           "of what it shows, then give your answer again, since only the text after your last tool call reaches the room.")
 PICTURES_PERSON = "{room} is not an owner room: the backfill runs in owner rooms only; a picture sent there is filed by its own room"

@@ -2,10 +2,10 @@
 # official Python SDK) and the send tool's shape are adapted from Hermes Agent v0.22.2,
 # mcp_serve.py (create_mcp_server, messages_send), https://github.com/NousResearch/hermes-agent
 # Copyright (c) 2025 Nous Research. MIT License. See NOTICE.
-"""Yerk AI's own MCP server: thirteen tools (send, hold, recall, read_memory, remember, worker, schedule, settings, transcribe,
-voice_note, seen, render, need), local-only HTTP, preloaded in every room; transcribe and voice_note are here and not plug-ins because the daemon
-has the network and a room's shell has none, seen because no owner room has a Write tool, and render because LibreOffice needs a writable
-/tmp a room's sandbox does not give. A worker gets none of it: by default no MCP server at all, and with
+"""Yerk AI's own MCP server: fourteen tools (send, hold, recall, read_memory, remember, worker, schedule, settings, transcribe,
+voice_note, seen, render, watch, need), local-only HTTP, preloaded in every room; transcribe, voice_note and watch are here and not plug-ins
+because the daemon has the network and a room's shell has none, seen because no owner room has a Write tool, and render because LibreOffice
+needs a writable /tmp a room's sandbox does not give. A worker gets none of it: by default no MCP server at all, and with
 [workers] yerk_tools its own stdio server (`worker_server`) carrying recall and read_memory only.
 
 Every endpoint (/mcp, /hook, /control) wants the `x-yerk-secret` header (restart test R3). Three
@@ -54,6 +54,7 @@ class Daemon(Protocol):
     async def tool_transcribe(self, room: str, path: str, owner_yes: bool = False) -> dict[str, Any]: ...
     async def tool_voice_note(self, room: str, script: str, name: str = "", owner_yes: bool = False) -> dict[str, Any]: ...
     async def tool_render(self, room: str, path: str) -> dict[str, Any]: ...
+    async def tool_watch(self, room: str, url: str, frames: int = 6, owner_yes: bool = False) -> dict[str, Any]: ...
     async def tool_seen(self, room: str, path: str, text: str, shows: str) -> dict[str, Any]: ...
     async def tool_need(self, room: str, asked: str, tried: str, needed: str, shadow: str = "") -> dict[str, Any]: ...
 
@@ -211,6 +212,19 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         when the owner wants the PDF. The layout is LibreOffice's, not Word's, so a document that fits by a line in one can
         spill in the other: say a result near the edge as near the edge."""
         return json.dumps(await daemon.tool_render(caller_room(ctx), path))
+
+    @mcp.tool()
+    async def watch(url: str, frames: int = 6, owner_yes: bool = False, *, ctx: Context) -> str:
+        """A video in a post, its frames and its transcript, since your shell has no network to pull it: `url` is the link to
+        a post that holds a video (an Instagram reel or post, a TikTok, an X post, a YouTube link, or any page yt-dlp knows).
+        The daemon pulls the video into this room's work folder under videos/, takes `frames` still pictures spread evenly
+        through it (6 unless you ask for 1 to 12) and transcribes its sound, and returns the file paths and the transcript;
+        open the frames with Read to see what is on screen. Use it whenever the owner sends a video link and expects you to
+        have watched it, since the caption, the cover picture and the comments are not the video. A page that needs a login,
+        a private post or a page with no video comes back as that, in the site's own words. A transcript past US$1 comes back
+        refused until the owner says yes; then call again with `owner_yes` true. A video already pulled is not pulled or
+        transcribed again."""
+        return json.dumps(await daemon.tool_watch(caller_room(ctx), url, frames, owner_yes))
 
     @mcp.tool()
     async def seen(path: str, text: str, shows: str, *, ctx: Context) -> str:

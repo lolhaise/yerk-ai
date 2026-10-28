@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 109359`
+- `total = 110959`
 
 ## [session_start.claude_code]
 
@@ -28,9 +28,11 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-10-28, need-2026-10-28-24: the `render` tool (a document as a PDF with its page count, since LibreOffice will not run in a room's sandbox) is 852 as this tree builds it on Python 3.13 and 3.14, about 883 as sent (each of Yerk AI's entries goes out 31 over its build: `need` 793 built, 824 sent), so about 12,754 on the 11,871 the rooms send; so 12,800, no part could pay, the total rose by the 900.
 
+2026-10-28, need-2026-10-28-26: the `watch` tool (a video in a post pulled from its link with its frames and its transcript, since a room's shell has no network) is 1,282 as this tree builds it on Python 3.13, about 1,313 as sent (31 over its build, as each of Yerk AI's entries goes out), so about 14,067 on the 12,754 the rooms send with `render`; so 14,100, no part could pay, the total rose by the 1,300.
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
-- `yerk_tools = 12800`
+- `yerk_tools = 14100`
 - `deferred_tool_names = 3429`
 - `mcp__hands__ = 7119`
 - `mcp__web-ladder__web_image = 913`
@@ -64,7 +66,9 @@ Yerk AI's own parts, joined into the one file passed by --append-system-prompt-f
 
 2026-10-28, need-2026-10-28-24: the render line (a document's PDF or page count comes from `render` on its path, never an estimate off the text) took the mechanics to 4,667, so 4,700; no part could pay, so the total rose by the 200, to 109,359 with the tools' 900.
 
-- `mechanics = 4700`
+2026-10-28, need-2026-10-28-26: the watch line (a video in a post is watched with `watch` on its link; the caption, the cover picture and the comments are not the video, and an answer given off them says so) took the mechanics to 4,995, so 5,000; no part could pay, so the total rose by the 300, to 110,959 with the tools' 1,300.
+
+- `mechanics = 5000`
 - `persona = 11800`
 - `rulebook = 14000`
 - `room_voice = 5500`
@@ -329,4 +333,6 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-10-28: need-2026-10-28-24 raised it by 126, a document as a PDF with its page count for every room (need 24: a room could not check that a document fits on one page, since LibreOffice will not run in its sandbox), not folded to fit: render.py 92 (the soffice run under a fresh profile a call, removed after; one at a time across rooms; the timeout that kills its process group; the page count by pypdf, a PDF counted alone; the owner's own fonts kept for fontconfig), daemon.py 14 (the tool, may_send's rule, the call off the loop, its log line), mcp_server.py 12 (the tool and its description, the protocol line, the module's count of tools), words.py 8 (the refusals and failures in words). Merged 2026-10-28: quiet-card (#140) landed first, need-2026-10-28-24 (#141) carries both raises: 22,095 + 25 + 126.
 
-- `lines = 22246`
+2026-10-28: need-2026-10-28-26 raised it by 260, a video in a post watched for every room, its frames and its transcript (need 26: a room sent a reel link read only the caption, the cover frame and the comments, since its shell has no network to pull the video), not folded to fit: watch.py 212 (the link's folder and the slug a post, its link kept so another post with the same slug never takes its video, a link the room's shell left there never followed; the yt-dlp run in a clean environment, one at a time across rooms, its process group killed at the timeout, the site's own error line; ffprobe's length and streams; the even frames; the transcript through transcribe.run or read from its file, never paid twice; one call a post at a time), daemon.py 19 (the tool, the link check, the transcribe call as tool_transcribe makes it, its log line), mcp_server.py 14 (the tool and its description, the protocol line, the module's count of tools), words.py 15 (the refusals, failures and notes in words).
+
+- `lines = 22506`

@@ -8,6 +8,29 @@ version changes.
 
 ## 2026-10-28
 
+### need-2026-10-28-26 (#?)
+
+- Send a room a reel, a TikTok, an X video or a YouTube link and it watches the video, where before it answered off the
+  caption, the cover picture and the comments. The new `watch` tool on Yerk's own server pulls the video from the link
+  into the room's work folder (`videos/<site>-<the post's id>/`), takes still frames spread evenly through it (6, or 1
+  to 12 when asked) that the room opens and looks at, and transcribes its sound, so the answer is about what is on
+  screen and what is said.
+- The daemon runs yt-dlp for the room, since a room's shell has no network; the sandbox and the wall between rooms are
+  unchanged. A call pulls the best picture at 720 lines or under with its sound, skips a video over 300 MB, runs one
+  download at a time across rooms, and stops one past 300 seconds with everything it started, and the room says so. A
+  page that needs a login, a private post or a page with no video is said in the site's own words; no cookies and no
+  logins are used.
+- The transcript goes through the transcribe engine on the same keys and the same US$1 gate, each paid call a spend row
+  under `watch`; a video with no sound has frames only, and a transcript that fails still leaves the frames, with the
+  reason. A post already pulled is never pulled or paid for again: a second call reads its saved transcript and only
+  makes the frames again. The mechanics gain one line (a video in a post is watched with `watch`; an answer off the
+  caption says so), `yerk explain video-read` and `yerk explain youtube-transcript` name `watch` as their built part,
+  and the code ceiling moves up by 260.
+
+**Upgrading**: install yt-dlp so `yt-dlp` is on yerkd's PATH, beside the ffmpeg and ffprobe transcribe already uses;
+nothing changes in rooms.toml or yerkd.toml, and each room allows `mcp__yerk__watch` from its next process start.
+budgets.toml moves with the code: Yerk AI's tools to 14,100, the mechanics to 5,000, the session-start total to 110,959.
+
 ### need-2026-10-28-24 (#141)
 
 - A room can hand back a PDF of a document and say how many pages it is, so "does it fit on one page?" gets a measured
