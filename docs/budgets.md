@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 108259`
+- `total = 109359`
 
 ## [session_start.claude_code]
 
@@ -26,9 +26,11 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-10-26, tools-line: worker-effort (#129) put `effort` on the room's `worker` tool and no line moved; Yerk AI's tools measured 11,871 as sent in a work room and an owner's room (`yerk map`, Claude Code 2.1.3xx), over the 11,734 line, and the deploy of #134 refused on it; so 11,900, no part could pay, the total rose by the 166.
 
+2026-10-28, need-2026-10-28-24: the `render` tool (a document as a PDF with its page count, since LibreOffice will not run in a room's sandbox) is 852 as this tree builds it on Python 3.13 and 3.14, about 883 as sent (each of Yerk AI's entries goes out 31 over its build: `need` 793 built, 824 sent), so about 12,754 on the 11,871 the rooms send; so 12,800, no part could pay, the total rose by the 900.
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
-- `yerk_tools = 11900`
+- `yerk_tools = 12800`
 - `deferred_tool_names = 3429`
 - `mcp__hands__ = 7119`
 - `mcp__web-ladder__web_image = 913`
@@ -60,7 +62,9 @@ Yerk AI's own parts, joined into the one file passed by --append-system-prompt-f
 
 2026-10-23: missing-ability's line (a wall is filed with `need` so one build gives every room the way, never a workaround; one done anyway goes in its `shadow`; one best way for every room) took the mechanics to 4,271, so 4,300; no part could pay, so the total rose by the 200, to 96,414 with the tools' 700. Merged 2026-10-23, the train: the place line (#109) and missing-ability's line (#110) both ride, so the mechanics take both raises, 4,500, and the total 96,614 (main's 95,714 plus this PR's 900).
 
-- `mechanics = 4500`
+2026-10-28, need-2026-10-28-24: the render line (a document's PDF or page count comes from `render` on its path, never an estimate off the text) took the mechanics to 4,667, so 4,700; no part could pay, so the total rose by the 200, to 109,359 with the tools' 900.
+
+- `mechanics = 4700`
 - `persona = 11800`
 - `rulebook = 14000`
 - `room_voice = 5500`
@@ -323,4 +327,6 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-10-28: quiet-card raised it by 25, one quiet line standing in a watching room, not one per message (an owner's room, in eleven minutes: 13 quiet lines in a row), not folded to fit: discord.py 18 (the call in `_finish` once the card is kept, and `_supersede`: the line before, read from the ledger, deleted unless the room said anything since, its card row closed), ledger.py 6 (`last_outbound`, the one SELECT), room.py 1 (the docstring's clause).
 
-- `lines = 22120`
+2026-10-28: need-2026-10-28-24 raised it by 126, a document as a PDF with its page count for every room (need 24: a room could not check that a document fits on one page, since LibreOffice will not run in its sandbox), not folded to fit: render.py 92 (the soffice run under a fresh profile a call, removed after; one at a time across rooms; the timeout that kills its process group; the page count by pypdf, a PDF counted alone; the owner's own fonts kept for fontconfig), daemon.py 14 (the tool, may_send's rule, the call off the loop, its log line), mcp_server.py 12 (the tool and its description, the protocol line, the module's count of tools), words.py 8 (the refusals and failures in words). Merged 2026-10-28: quiet-card (#140) landed first, need-2026-10-28-24 (#141) carries both raises: 22,095 + 25 + 126.
+
+- `lines = 22246`

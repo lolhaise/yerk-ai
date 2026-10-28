@@ -428,6 +428,23 @@ key = "put each key on the first line of its own file in the private folder's se
 free_path = "a text reply"
 asked_as = ["voice note", "voice message", "send me audio", "say it out loud"]
 
+[abilities.render]
+state = "built"
+what = "The render tool on Yerk's own MCP server: a document in a room's own folders (a Word file, a spreadsheet, a slide deck or anything LibreOffice opens) becomes a PDF saved beside it as NAME.pdf and its page count comes back to the room, so it can say whether the document fits a page count and send the PDF; a PDF has its pages counted alone. The daemon runs it, since LibreOffice keeps its pipe in a /tmp a room's sandbox cannot write."
+how = [
+  "Render: `soffice --headless --norestore --nologo --convert-to pdf --outdir <its folder> <the file>`, run by the daemon off its loop; an older NAME.pdf there is replaced.",
+  "Fresh profile: each call gets its own LibreOffice profile in the state folder's render/, 0700 with a random name, removed after whatever happens, so two calls never share one and none leaves a stale lock; the environment is clean, HOME the profile, with the owner's own fonts still found.",
+  "One at a time: one conversion runs at a time across rooms, since LibreOffice is heavy; a second call waits its turn and never fails for it.",
+  "Timeout: a conversion past 120 seconds is killed with its whole process group, and the room is told LibreOffice did not finish.",
+  "Count: pypdf counts the PDF's pages; a .pdf path is counted alone, nothing run.",
+  "Layout: LibreOffice's, not Word's, so a document that fits by a line in one can spill in the other; a result near the edge is said as near the edge.",
+]
+tier = "free"
+needs = "LibreOffice on the machine: `soffice` on PATH"
+price = "none"
+free_path = "none: without LibreOffice the room says so"
+asked_as = ["render to pdf", "docx to pdf", "how many pages", "does it fit on one page", "page count"]
+
 [abilities.video-read]
 state = "described"
 what = "Says what is in a short video: the song, the words spoken, the on-screen caption cards, and frames to look at."
