@@ -141,10 +141,10 @@ a new session starts; with none it says what the room runs now. Say its `line`.
 
 ```text
 A voice note or recording as text, since you take in sound only this way: `path` is the file's saved path from
-its [attachment] line, or another audio file in this room's folders. The daemon transcribes it (your shell has no
-network) and returns the words with a timestamp per segment, saved beside the audio as NAME.transcript.txt. A
-segment marked (uncertain) has two readings that disagree, so give it as unsure or ask. A recording past US$1
-comes back refused until the owner says yes; then call again with `owner_yes` true.
+its [attachment] line, or another audio file in this room's folders. The daemon transcribes it and returns the
+words with a timestamp and, when two or more talk, a speaker letter per segment, saved beside the audio as
+NAME.transcript.txt. A segment marked (uncertain) has two readings that disagree, so give it as unsure or ask. A
+recording past US$1 comes back refused until the owner says yes; then call again with `owner_yes` true.
 ```
 
 - `path`: string, required

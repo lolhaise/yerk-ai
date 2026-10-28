@@ -393,15 +393,16 @@ how = [
   "Chunks: ffmpeg cuts the audio into 14-minute mono mp3s, under both providers' 25 MB upload cap, sent in parallel.",
   "Pass 1: OpenAI whisper-1 on every chunk; a segment both near silence and low in confidence is dropped, the made-up line whisper writes over quiet.",
   "Pass 2: with a Groq key, Groq whisper-large-v3-turbo on the same chunks, the two aligned word by word; a segment where they differ on more than 3 words in 10 is marked uncertain with both readings, so a room gives it as unsure.",
+  "Speakers: with a Meta key, Meta's Muse Voice Transcribe in DIARIZATION mode says who talks when, on 540-second mono 16 kHz WAV windows starting every 450 s, so each shares 90 s with the next (one request takes 10 minutes at most). Its letters (A, B) hold for one request only, so they are reconciled across windows by the speaking time they share in each overlap, and each whisper-1 segment takes the letter covering most of it; the words and their times stay whisper-1's. Letters, not names: the file's speakers line tells the room to say who is who as a guess unless the owner says. One voice writes no letters; a missing key or a failed window leaves the words unlabelled and the speakers line says why.",
   "Spend: every paid call is a spend row in the ledger, the morning diff says the day's total, and a recording past US$1 waits for the owner's yes.",
 ]
 tier = "key"
 keys = ["openai"]
-provider = "OpenAI, and Groq for the second pass"
-model = "whisper-1, then whisper-large-v3-turbo"
-needs = "ffmpeg on the machine; the install's OpenAI key (secrets/openai.key in the private folder, the one embeddings use); a Groq key at secrets/groq.key for the second pass, optional"
-price = "US$0.006 a minute on OpenAI (its pricing page) and US$0.04 an hour on Groq, 10 s billed at least per call (its speech-to-text page), both read 2026-10-21: a 7-minute voice note is about 4.7 US cents with both passes"
-key = "put each key on the first line of its own file in the private folder's secrets/, 0600: openai.key and groq.key; the next call reads it, no restart"
+provider = "OpenAI, Groq for the second pass, and Meta for the speakers"
+model = "whisper-1, then whisper-large-v3-turbo, and muse-voice-transcribe-1.0 for the speakers"
+needs = "ffmpeg on the machine; the install's OpenAI key (secrets/openai.key in the private folder, the one embeddings use); a Groq key at secrets/groq.key for the second pass, optional; a Meta key at secrets/meta.key for the speaker letters, optional"
+price = "US$0.006 a minute on OpenAI (its pricing page) and US$0.04 an hour on Groq, 10 s billed at least per call (its speech-to-text page), both read 2026-10-21; US$0.18 an hour of audio on Meta's Muse, no least (its speech-to-text page, read 2026-09-27), about 1.2 times the recording since the windows overlap: a 7-minute voice note is about 6.8 US cents with all three, a 70-minute meeting about 72"
+key = "put each key on the first line of its own file in the private folder's secrets/, 0600: openai.key, and groq.key and meta.key, both optional; the next call reads it, no restart"
 free_path = "none: without the OpenAI key the room says the note could not be transcribed and answers from the message text"
 asked_as = ["transcribe", "transcription", "transcribe this", "what does this recording say"]
 

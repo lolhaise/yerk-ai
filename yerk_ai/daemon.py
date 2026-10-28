@@ -426,14 +426,15 @@ class Yerkd:
 
     async def tool_transcribe(self, room: str, path: str, owner_yes: bool = False) -> dict[str, Any]:
         """The `transcribe` tool: an audio file from the calling room's own folders (may_send's rule; its inbox holds what
-        was sent) made text off the loop (transcribe.run) on the install's one OpenAI key, each paid call a spend row."""
+        was sent) made text off the loop (transcribe.run) on the install's one OpenAI key, with who talks when on the Meta
+        key when it is there, each paid call a spend row."""
         p = Path(path).expanduser().resolve()
         if room not in self.rooms or not self.may_send(room, p):
             return {"ok": False, "error": f"{p.name} is outside this room's folders; transcribe reads the files sent to it"}
         if not p.is_file():                           # not audio: ffmpeg says so before anything is paid
             return {"ok": False, "error": f"there is no file {p.name} in this room's folders"}
         r = await asyncio.to_thread(transcribe.run, p, self.memory.embeddings_key, self.private / transcribe.GROQ_KEY,
-                                    self.booker(room, "transcribe"), owner_yes)
+                                    self.booker(room, "transcribe"), owner_yes, self.private / transcribe.META_KEY)
         log.info("transcribe: %s, %s", room, f"{r['segments']} segments, {r['uncertain']} uncertain" if r["ok"] else r["error"][:160])
         return r
 

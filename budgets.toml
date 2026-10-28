@@ -580,4 +580,9 @@ secs = 60
 # NO_REPLY posting nothing (the owner's ask), not folded to fit: discord.py 16 (the line, one helper for the live,
 # edited and restarted paths; `silent`, the kept card its row), room.py 8 (the silent final, its card and note, the stub
 # rule passing NO_REPLY, the Channel method), words.py 6, config.py 2 (`watch_assistant` in ROOM_WORDS).
-lines = 21812
+# 2026-10-28: need-2026-10-28-23 raised it by 131, speaker labels on a transcript from Meta's Muse (who is
+# talking, the owner or the other person), not folded to fit:
+# transcribe.py 123 (the overlapping WAV windows, the Muse request and the send it shares with post, its turns, the letters
+# reconciled across windows, a letter per segment, the speakers line, its spend rows and its share of the gate), words.py 7
+# (the speakers line and its three other forms, TRANSCRIBED_NEXT's sentence), daemon.py 1 (the Meta key's path).
+lines = 21943

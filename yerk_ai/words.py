@@ -290,7 +290,9 @@ VOICE_NOTE = ("[voice note] {name} is a recording. You take in sound only as the
               "transcribe on the path above before you answer, then open your reply with what it says, or with the fact that it "
               "could not be transcribed. Call that step transcribing, never listening, since nothing plays the sound to you.")
 TRANSCRIBED_NEXT = ("Open your reply with what the recording says, in your own words. A segment marked (uncertain) has two "
-                    "readings that disagree, so give that part as unsure or ask about it, since either reading may be wrong.")
+                    "readings that disagree, so give that part as unsure or ask about it, since either reading may be wrong. A "
+                    "letter before a line (A:) is a voice told apart by sound, so say which person each letter is as your guess "
+                    "from what they say, unless the owner said who is who.")
 TRANSCRIPT_HEAD, UNCERTAIN, NO_WORDS = "{name}, {minutes} min, {how}", "(uncertain) {first} | second pass: {second}", "(no words)"
 SEEN_NOT_HERE = "{name} is not a picture sent to this room; seen files a picture from its [attachment] line"
 SEEN_NO_SHOWS = "seen needs `shows`: one or two lines of what the picture shows"
@@ -330,6 +332,11 @@ NEED_BUSY = "need {n} is {state}: one builder a need, so nothing started"
 CHECKED = "checked by a second pass: {n} of {of} segments uncertain"
 PART_CHECKED = "checked by a second pass but for chunk {chunks}, where it failed: {n} of {of} segments uncertain"
 UNCHECKED = "one pass only, so nothing in it was checked: a second pass needs a Groq key at secrets/groq.key"
+# the line under a transcript's head: who talks how long, by Muse's letters reconciled across its windows (transcribe.reconcile)
+SPEAKERS = "speakers: {who} (letters, not names: say who is who as a guess from what is said, unless the owner tells you)"
+UNMATCHED, ONE_VOICE = ", {n} letters could not be matched across windows", "one voice"
+NO_SPEAKERS, NO_META_KEY, NO_TURNS = "speakers: none (Muse: {why})", "no Meta key at secrets/meta.key", "no speech turns in its answer"
+MUSE_FAILED = "window {windows} of {of} failed: {error}"
 MORE_IN_FILE = "(the rest is in the file: Read it from this line on)"
 NO_SPEECH_KEY = "no OpenAI key in the private folder (secrets/openai.key), so the recording could not be transcribed"
 OVER_GATE = ("not transcribed yet, since {minutes} min of audio is about US${usd:.2f}, past the US$1 a call spends only with the "
