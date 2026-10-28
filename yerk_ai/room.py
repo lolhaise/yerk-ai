@@ -24,7 +24,8 @@ adapter's event loop.
   key. A turn that was sent an image and never read it is bounced once at Stop, naming the file;
   a working turn answering a person that ends with nothing visible in the room bounces once,
   naming what is owed (nothing that already landed under the turn's key is sent again); a final of exactly NO_REPLY
-  posts nothing, its card kept saying the room read the message and had nothing to add, ledgered `silent`; a final
+  posts nothing, its card kept saying the room read the message and had nothing to add, ledgered `silent`, and the
+  quiet line before it goes when the room said nothing since, so one stands; a final
   text that only reports a filing (`remember`, `schedule`, `hold`, `settings`) bounces once (stub); a fenced block the
   room posted on an earlier day is turned back once, in `send` before it posts and in the final text at Stop (paste); a
   document or a pasted block an owner's room ships with no claims sheet written that turn is turned back once the same

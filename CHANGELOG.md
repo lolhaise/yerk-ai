@@ -8,6 +8,18 @@ version changes.
 
 ## 2026-10-28
 
+### quiet-card (#?)
+
+- A room that watches another channel keeps one `🟢 read it, nothing to add` line, not one per message. When the room
+  reads a message there and has nothing to add, its new quiet line stands and the quiet line before it is deleted, as
+  long as the room posted nothing else in between: a reply, a notice, a file, a voice note, a worker's card or a card
+  kept to say a turn failed leaves the older line where it is, as history. A conversation in the watched channel now
+  leaves one green line in the room, the newest, where it left one per message before.
+- The line before is found in the ledger, so the rule holds across a restart. One already deleted by hand changes
+  nothing; one Discord will not delete stays and is logged. The code ceiling moves up by 25.
+
+**Upgrading**: nothing to change. budgets.toml moves with the code.
+
 ### watch-answer (#?)
 
 - A message the owner sends in a channel a room watches now waits for the other assistant's answer there before the

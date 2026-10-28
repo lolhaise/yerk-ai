@@ -508,6 +508,106 @@ def test_a_silent_turn_keeps_its_card_saying_so_posts_nothing_and_is_ledgered_si
     loop.call_soon_threadsafe(loop.stop)
 
 
+def on_a_loop(d):
+    """`d` on a loop of its own, as the daemon runs it (silent and reply wait on it from a room's thread); returns the
+    call that opens a turn's card there."""
+    d.loop = asyncio.new_event_loop()
+    threading.Thread(target=d.loop.run_forever, daemon=True).start()
+    return lambda: asyncio.run_coroutine_threadsafe(d._open("test-room", "working on it", "turn"), d.loop).result(5)
+
+
+def card_hows(d):
+    return {r["message_id"]: r["how"] for r in d.ledger._select("SELECT message_id, how FROM cards", ())}
+
+
+def test_a_quiet_card_goes_when_the_next_one_stands(dc):
+    """quiet-card: two watched messages in a row, each read with nothing to add, leave one quiet line in the room, the
+    newest. The one before goes once the new one stands (deleted, its card row closed as superseded); both turns' rows
+    stay as they were, kind silent and sent. Its first line is what counts: a quiet card shows its rows under it."""
+    d, client, _ = dc
+    ch, line, card_up = client.chans[ROOM_CH], f"{words.DONE} {words.QUIET}", on_a_loop(d)
+    card_up()
+    d.silent("test-room", ["5"], f"{line}\n{words.DONE} filing a note", key="t7")
+    [kept] = d.ledger.deliveries("test-room")
+    card_up()
+    assert d.silent("test-room", ["6"], line, key="t8") == [str(ch.sent[1].id)]
+    first, second = ch.sent
+    assert ch.deleted == [first.id] and second.edits == [line] and not second.deleted
+    assert card_hows(d) == {str(first.id): "superseded by the next quiet card", str(second.id): f"kept: {line}"}
+    assert d.ledger.deliveries("test-room")[0] == kept                # the first turn's row, as it was
+    assert [(r["key"], r["kind"], r["state"], r["message_id"]) for r in d.ledger.deliveries("test-room")] == [
+        ("t7:0", "silent", "sent", str(first.id)), ("t8:0", "silent", "sent", str(second.id))]
+    assert ch.reactions[-2:] == [(6, "-", ACK), (6, "+", DONE)]
+    d.loop.call_soon_threadsafe(d.loop.stop)
+
+
+def test_a_quiet_card_stays_once_the_room_said_anything_after_it(dc):
+    """quiet-card: a reply between two quiet lines makes the older one history, and so does a card kept to say a turn
+    went unanswered (a card-note too, its first line not the quiet one): nothing is deleted but the turn's own card the
+    reply replaced, as before."""
+    d, client, _ = dc
+    ch, line, card_up = client.chans[ROOM_CH], f"{words.DONE} {words.QUIET}", on_a_loop(d)
+    card_up()
+    d.silent("test-room", ["5"], line, key="t7")
+    card_up()
+    d.reply("test-room", "an answer", ["6"], key="t8")
+    card_up()
+    d.silent("test-room", ["7"], line, key="t9")
+    quiet, working, answer, last = ch.sent
+    assert ch.deleted == [] and working.deleted and answer.content == "an answer" and last.edits == [line]
+    card_up()
+    d.notice("test-room", "No reply", ["8"], card=f"{words.NOT_DONE} {words.NOT_ANSWERED}", key="t10")
+    card_up()
+    d.silent("test-room", ["9"], line, key="t11")
+    assert ch.deleted == [] and len(ch.sent) == 6 and not quiet.deleted and not last.deleted
+    assert card_hows(d)[str(quiet.id)] == card_hows(d)[str(last.id)] == f"kept: {line}"
+    d.loop.call_soon_threadsafe(d.loop.stop)
+
+
+def test_a_quiet_card_from_before_a_restart_goes_when_the_next_one_stands(dc, tmp_path):
+    """quiet-card: the line before is read from the ledger, never from memory: a new adapter over the same ledger and
+    client (a restart) leaves the closed quiet card standing at its start, then deletes it once its own stands."""
+    d, client, room = dc
+    ch, line, card_up = client.chans[ROOM_CH], f"{words.DONE} {words.QUIET}", on_a_loop(d)
+    card_up()
+    d.silent("test-room", ["5"], line, key="t7")
+    d.loop.call_soon_threadsafe(d.loop.stop)
+    again = DiscordChannel("token", OWNER, [HOOK], d.ledger, client=client, state=tmp_path)
+    again.add_room(ROOM_CH, room, people=frozenset({PERSON}))
+    run(again.recover(ROOM_CH, room))
+    assert ch.deleted == []                                            # a start removes open cards only
+    card_up = on_a_loop(again)
+    card_up()
+    assert again.silent("test-room", ["6"], line, key="t8") == [str(ch.sent[1].id)]
+    before, after = ch.sent
+    assert ch.deleted == [before.id] and after.edits == [line]
+    assert card_hows(d) == {str(before.id): "superseded by the next quiet card", str(after.id): f"kept: {line}"}
+    again.loop.call_soon_threadsafe(again.loop.stop)
+
+
+def test_a_quiet_card_already_gone_still_closes_and_one_that_will_not_go_stays_kept(dc, monkeypatch):
+    """quiet-card: the delete answering NotFound (the line was removed first) ends the turn clean and closes the older
+    card's row as superseded; any other refusal is a warning, the turn ends clean all the same, and the card that could
+    not go keeps its row as kept, since it still stands."""
+    d, client, _ = dc
+    ch, line, card_up = client.chans[ROOM_CH], f"{words.DONE} {words.QUIET}", on_a_loop(d)
+    answers = [discord.NotFound(NS(status=404, reason="Not Found"), {"code": 10008, "message": "Unknown Message"}),
+               discord.Forbidden(NS(status=403, reason="Forbidden"), {"code": 50013, "message": "Missing Permissions"})]
+
+    async def refused(self):
+        raise answers.pop(0)
+    monkeypatch.setattr(Partial, "delete", refused)
+    for n in (5, 6, 7):
+        card_up()
+        assert d.silent("test-room", [str(n)], line, key=f"t{n}") == [str(ch.sent[-1].id)]
+        assert ch.reactions[-2:] == [(n, "-", ACK), (n, "+", DONE)]
+    first, second, third = ch.sent
+    assert answers == [] and card_hows(d) == {str(first.id): "superseded by the next quiet card",
+                                              str(second.id): f"kept: {line}", str(third.id): f"kept: {line}"}
+    assert [(r["kind"], r["state"]) for r in d.ledger.deliveries("test-room")] == [("silent", "sent")] * 3
+    d.loop.call_soon_threadsafe(d.loop.stop)
+
+
 def plan_file(d, tmp_path, key, name="report.pdf", data=b"%PDF-1.4 drill", inbound="5", snapshot=True):
     """A file send a crash cut short: its row planned and, unless told not to, its outbox snapshot."""
     d.ledger.delivery_plan(f"{key}:0", "test-room", "file", "the report", inbound, file=name, size=len(data),

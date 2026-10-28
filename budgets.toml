@@ -590,4 +590,8 @@ secs = 60
 # folded to fit: discord.py 148 (the Hold, the answer judged by its own 6 s settle and a delete, the group's one turn, its
 # lines and its rows, the wait from the sender's last message and what is left of it after a restart, a held message's edit and
 # delete), words.py 3 (the answer line, its file line, the not-answered line), config.py 1 (`watch_wait` in ROOM_WORDS).
-lines = 22095
+# 2026-10-28: quiet-card raised it by 25, one quiet line standing in a watching room, not one per message (an owner's
+# room, in eleven minutes: 13 quiet lines in a row), not folded to fit: discord.py 18 (the call in `_finish` once the card
+# is kept, and `_supersede`: the line before, read from the ledger, deleted unless the room said anything since, its
+# card row closed), ledger.py 6 (`last_outbound`, the one SELECT), room.py 1 (the docstring's clause).
+lines = 22120
