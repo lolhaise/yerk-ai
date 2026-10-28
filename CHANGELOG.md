@@ -6,6 +6,30 @@ A line that changes a file the install keeps (rooms.toml, yerkd.toml, budgets.to
 newer than the code is refused with one line, never changed); the index chunks every file again when its chunker's
 version changes.
 
+## 2026-10-28
+
+### need-2026-10-28-23 (#138)
+
+- A recording of two or more people comes back saying who talks when. With a Meta key at `secrets/meta.key`, the
+  transcribe tool also sends the recording to Meta's Muse Voice Transcribe in DIARIZATION mode, and each line of the
+  transcript starts with a speaker letter: `[00:14:00 -> 00:14:03] B: then email the vendor`. The words, their times and
+  the uncertain marks are whisper-1's and Groq's as before; Muse only says who. A line under the file's head gives each
+  letter's speaking time and tells the room the letters are not names, so it gives who is who as a guess from what is
+  said unless the owner says; the tool's result carries that line as `speakers_how` and the seconds as `speakers`.
+- Muse takes 10 minutes a request and its letters hold for one request only, so a longer recording goes as 9-minute
+  windows starting every 7.5 minutes, and each window's letters are matched to the ones before by the speaking time
+  they share in the 90 seconds the two overlap. A letter that cannot be matched (its speaker silent through an overlap)
+  gets a new letter, and the speakers line says how many could not be matched.
+- One voice writes no letters, so a voice note's file reads as before. Without the key, or when a Muse window fails,
+  the words come back as before under the line `speakers: none (Muse: why)`.
+- Muse costs US$0.18 an hour of audio sent, about 1.2 times the recording since the windows overlap: a spend row per
+  window in the morning's total, inside the same US$1 gate; a 70-minute meeting is about 72 US cents with all three
+  engines. The code ceiling moves up by 131.
+
+**Upgrading**: for speaker letters, put the Meta key on the first line of `secrets/meta.key` in the private folder,
+0600; the next call reads it, no restart. Without it every transcript says `speakers: none (Muse: no Meta key at
+secrets/meta.key)` under its head and nothing else changes. budgets.toml moves with the code.
+
 ## 2026-10-27
 
 ### watch-note (#137)
