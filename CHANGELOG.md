@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-10-28
 
-### need-2026-10-28-23 (#?)
+### need-2026-10-28-23 (#138)
 
 - A recording of two or more people comes back saying who talks when. With a Meta key at `secrets/meta.key`, the
   transcribe tool also sends the recording to Meta's Muse Voice Transcribe in DIARIZATION mode, and each line of the
