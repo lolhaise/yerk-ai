@@ -8,6 +8,27 @@ version changes.
 
 ## 2026-10-28
 
+### watch-answer (#?)
+
+- A message the owner sends in a channel a room watches now waits for the other assistant's answer there before the
+  room reads it, so the room no longer says it has nothing to add while the other assistant is still typing. The
+  answer is the first message after his from an id in `[watch] assistants` that goes 6 seconds with no edit and is not
+  deleted, so the other assistant's progress card, edited again and again and then deleted, is never it. The room then
+  reads both in one turn: the line saying who his message was sent to, his message, and `[<assistant> answered at
+  HH:MM in #<channel>: <text>]`, the text's whitespace folded and cut at 2,500 characters, the time in the room's zone,
+  with a `[<assistant> attached: "<name>"]` line per file it sent (named, not fetched).
+- The room waits up to `watch_wait` seconds after his last message (a new rooms.toml key, default 150); past it the
+  turn comes with `[<assistant> had not answered in #<channel> within 150 s of his message]`. Messages he sends there
+  while one waits come in the same turn, each as he last edited it; one he deletes while it waits never comes. The
+  room's own channel never waits behind it, and nothing is posted or typed in the watched channel, as before.
+- After a restart, a watched message whose answer is already in the channel's history comes in at once with it; one
+  without waits what is left of its wait. The answer is still filed in the day log under its own label, as before.
+  With no `[watch] assistants` listed there is nothing to wait for, so a watched message comes in at once, as before.
+  The code ceiling moves up by 152.
+
+**Upgrading**: nothing to change; `watch_wait` is a new optional key beside `watch_assistant` in rooms.toml
+(docs/settings.md names it). budgets.toml moves with the code.
+
 ### need-2026-10-28-23 (#138)
 
 - A recording of two or more people comes back saying who talks when. With a Meta key at `secrets/meta.key`, the

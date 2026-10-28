@@ -312,6 +312,9 @@ SENT_THERE = ("[sent to {who} in #{channel}, not to this room: the owner is talk
               "matters. Answer here only if the owner's words ask this room something, or you have something they would want from this "
               "room that {who} did not give; otherwise answer exactly {quiet}.]")
 OTHER_ASSISTANT = "the other assistant"              # `watch_assistant` unset
+# the line under it once that assistant's answer there has settled, a line per file it attached; else once `watch_wait` ran out
+WATCH_ANSWERED, WATCH_ATTACHED = "[{who} answered at {at} in #{channel}: {text}]", '[{who} attached: "{name}"]'
+WATCH_UNANSWERED = "[{who} had not answered in #{channel} within {wait} s of the owner's message]"
 NO_REPLY, QUIET = "NO_REPLY", "read it, nothing to add"   # a final of exactly NO_REPLY posts nothing; its card says QUIET
 FILES_PERSON = "{room} is not an owner room: a workbook or a PDF sent there is never read"
 FILES_BACKFILL = "{n} workbook(s) and PDF(s) in {where} with no text beside them or an older one; {done}"

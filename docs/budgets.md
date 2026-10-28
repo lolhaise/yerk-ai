@@ -319,4 +319,6 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-10-28: need-2026-10-28-23 raised it by 131, speaker labels on a transcript from Meta's Muse (who is talking, the owner or the other person), not folded to fit: transcribe.py 123 (the overlapping WAV windows, the Muse request and the send it shares with post, its turns, the letters reconciled across windows, a letter per segment, the speakers line, its spend rows and its share of the gate), words.py 7 (the speakers line and its three other forms, TRANSCRIBED_NEXT's sentence), daemon.py 1 (the Meta key's path).
 
-- `lines = 21943`
+2026-10-28: watch-answer raised it by 152, a watched message held for the other assistant's settled answer and read with it in one turn (the room had finished its turn before it saw what the other assistant answered), not folded to fit: discord.py 148 (the Hold, the answer judged by its own 6 s settle and a delete, the group's one turn, its lines and its rows, the wait from the sender's last message and what is left of it after a restart, a held message's edit and delete), words.py 3 (the answer line, its file line, the not-answered line), config.py 1 (`watch_wait` in ROOM_WORDS).
+
+- `lines = 22095`

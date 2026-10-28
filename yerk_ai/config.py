@@ -138,6 +138,7 @@ ROOM_WORDS = {
     "watch": "discord:<channel id> of a channel the room watches: [watch] assistants' messages there go in its day log, never answered",
     "watch_assistant": "the assistant the owner talks to in the watched channel, by name: a message read from there comes in marked as sent to it, "
     "not to this room (default: the other assistant)",
+    "watch_wait": "seconds the room waits for the watched assistant's answer before it reads a watched message (default 150)",
 }
 ROOM_KEYS = frozenset(ROOM_WORDS)
 # The private yerkd.toml's keys by section, in plain words, beside those described where they are read (words.SETTINGS for
