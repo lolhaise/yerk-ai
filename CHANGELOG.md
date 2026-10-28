@@ -14,7 +14,7 @@ version changes.
   caption, the cover picture and the comments. The new `watch` tool on Yerk's own server pulls the video from the link
   into the room's work folder (`videos/<site>-<the post's id>/`), takes still frames spread evenly through it (6, or 1
   to 12 when asked) that the room opens and looks at, and transcribes its sound, so the answer is about what is on
-  screen and what is said.
+  screen and what is said. The turn card reads `watching a video on <the site>`, never the link.
 - The daemon runs yt-dlp for the room, since a room's shell has no network; the sandbox and the wall between rooms are
   unchanged. A call pulls the best picture at 720 lines or under with its sound, skips a video over 300 MB, runs one
   download at a time across rooms, and stops one past 300 seconds with everything it started, and the room says so. A

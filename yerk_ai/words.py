@@ -89,7 +89,7 @@ STEP = {"bash": "running a command", "read": "reading {what}", "read_memory": "r
         "webfetch": "reading {what}", "web_fetch": "reading {what}", "fetch": "reading {what}",
         "websearch": "searching the web for {what}", "web_search": "searching the web for {what}", "send": "sending {what}",
         "remember": "filing a note", "hold": "waiting for {what}", "settings": "switching to {what}", "transcribe": "transcribing {what}",
-        "voice_note": "making a voice note", "seen": "filing a picture", "need": "filing what it needs",
+        "voice_note": "making a voice note", "seen": "filing a picture", "need": "filing what it needs", "watch": "watching a video on {what}",
         "todowrite": "updating the plan", "task": "handing off {what}", "agent": "handing off {what}", "toolsearch": "loading a tool"}
 WORKER_STEP = {"start": "starting a worker", "list": "listing the workers", "stop": "stopping worker {id}",
                "report": "reading worker {id}'s report"}

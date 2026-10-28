@@ -22,7 +22,7 @@ from typing import Any
 
 import pytest
 
-from yerk_ai import context, mcp_server, transcribe, watch, words
+from yerk_ai import card, context, mcp_server, transcribe, watch, words
 from yerk_ai.daemon import Yerkd
 from fake_channel import ConsoleChannel
 
@@ -133,6 +133,7 @@ def test_the_tool_is_preloaded_allowed_in_every_room_and_the_mechanics_send_a_vi
                                    "open the frames with Read", "are not the video", "`owner_yes` true", "not pulled or transcribed"))
     line = next(x for x in context.MECHANICS.read_text().splitlines() if "`watch`" in x)
     assert "open them with Read" in line and "are not the video" in line and "says so" in line
+    assert card.step("mcp__yerk__watch", {"url": REEL, "frames": 6}) == "watching a video on www.instagram.com"   # the host, never the link
 
 
 @FFMPEG
