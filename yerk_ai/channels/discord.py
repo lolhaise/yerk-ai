@@ -159,6 +159,11 @@ def message_text(m: Any, files: list[dict[str, Any]] | None = None, reply: str =
     return "\n".join(x for x in lines if x).strip()
 
 
+def shown(user: Any) -> str:
+    """A person's name as the server shows it: their display name, else their handle."""
+    return str(getattr(user, "display_name", None) or getattr(user, "name", None) or words.A_PERSON)
+
+
 def stamp(m: Any, edit: bool = False) -> float:
     """A message's own time (with `edit`, its last edit's) in epoch seconds; now, for one that carries none."""
     at: Any = (getattr(m, "edited_at", None) if edit else None) or getattr(m, "created_at", None)
@@ -207,6 +212,7 @@ class DiscordChannel:
         self.recovered = False
         self.edits: dict[str, str] = {}           # message id -> the edit already taken (its edited_at)
         self.people: dict[int, frozenset[int]] = {}   # channel id -> the user ids answered there besides the owner
+        self.known: dict[int, str] = {}           # user id -> the name the server shows them by (_meet), once fetched
         self.after_recover: list[Callable[[], Awaitable[None]]] = []   # once, after the rooms recovered
         self.typing: dict[str, asyncio.Task[None]] = {}   # room name -> its typing refresh, while nothing is visible
         self.retry: set[int] = set()              # channels read again in RETRY s: a message the ledger could not take
@@ -268,12 +274,34 @@ class DiscordChannel:
     def inbound_text(self, room: Room, m: Any, files: list[dict[str, Any]]) -> str:
         """What the room reads of a message it takes: message_text, and from the channel it watches, a line above it naming who
         the message was sent to there (`watch_assistant`, the channel's name as the client sees it, else its id), so the room
-        reads along and answers NO_REPLY unless his words ask it something. Never on a message in its own channel."""
+        reads along and answers NO_REPLY unless the sender's words ask it something; with `watch_audit` true, so it grades that
+        assistant's answer, never NO_REPLY, naming the sender and who reads the room (_readers). Never in its own channel."""
         text = message_text(m, files, self.reply_line(room.name, m), addons.reads(self.state))
         if m.channel.id == self.names[room.name]:
             return text
-        who, where = self._there(room, m.channel)
-        return f"{words.SENT_THERE.format(who=who, channel=where, quiet=words.NO_REPLY)}\n{text}"
+        (who, where), audit = self._there(room, m.channel), getattr(room, "conf", {}).get("watch_audit") is True
+        line = (words.SENT_THERE_AUDIT if audit else words.SENT_THERE).format(who=who, channel=where, quiet=words.NO_REPLY,
+                                                                             sender=shown(m.author), readers=self._readers(m.channel))
+        return f"{line}\n{text}"
+
+    def _readers(self, ch: Any) -> str:
+        """Who reads the room that watches `ch`: the owner alone, else the owner and its people, each by the name the server
+        shows them by once fetched (`known`, _meet), else in words."""
+        if not (ids := sorted(self.people.get(ch.id, ()))):
+            return words.OWNER
+        names = [self.known.get(self.owner or 0, words.OWNER), *(self.known.get(i, words.A_PERSON) for i in ids)]
+        return f"{', '.join(names[:-1])} and {names[-1]}"
+
+    async def _meet(self, room: Room, ch: Any) -> None:
+        """In a `watch_audit` room with people, the owner's and their names as the server shows them, each fetched once (there
+        is no member cache), so its audit line says who reads the verdict; one that cannot be fetched is tried again next turn."""
+        if getattr(room, "conf", {}).get("watch_audit") is not True or not self.people.get(ch.id):
+            return
+        for i in (x for x in (self.owner, *sorted(self.people[ch.id])) if x is not None and x not in self.known):
+            try:
+                self.known[i] = shown(await asyncio.wait_for(ch.guild.fetch_member(i), 5))
+            except Exception as e:                # a name, never a reason to hold the turn: said in words until fetched
+                log.debug("room %s: no name for %s yet: %s", room.name, i, e)
 
     def _there(self, room: Room, ch: Any) -> tuple[str, Any]:
         """Who the owner talks to in the channel `room` watches (`watch_assistant`), and that channel's name, else its id."""
@@ -429,6 +457,7 @@ class DiscordChannel:
             if ahead is not None:
                 await asyncio.shield(ahead)
             (first, _, extra, _), ids = group[0], [str(m.id) for m, *_ in group]
+            await self._meet(room, first.channel)            # a watch_audit room's readers, by name, before its line is written
             text = "\n".join([self.inbound_text(room, first, staged[0]) + extra,
                               *(message_text(m, f, self.reply_line(room.name, m), addons.reads(self.state)) + x
                                 for (m, _, x, _), f in zip(group[1:], staged[1:])), self._answer_line(h, first.channel)])
@@ -956,8 +985,8 @@ class DiscordChannel:
                         self.ledger.delivery_set(f"{key}:0", state="sent", message_id=str(msg.id), sent=time.time(),
                                                  note="the turn's card, kept")
                         ids = [str(msg.id)]
-                    if kind == "silent":          # kept first, then the quiet line before it goes: one stands
-                        await self._supersede(room, str(msg.id))
+                    if kind == "silent" and card.split("\n")[0] == f"{words.DONE} {words.QUIET}":   # kept first, then the quiet
+                        await self._supersede(room, str(msg.id))   # line before it goes: one stands; a NO_VERDICT card never
                 elif msg is not None:
                     await msg.delete()
                     self.ledger.card_close(str(msg.id), "replaced by the reply")

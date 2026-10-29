@@ -6,6 +6,27 @@ A line that changes a file the install keeps (rooms.toml, yerkd.toml, budgets.to
 newer than the code is refused with one line, never changed); the index chunks every file again when its chunker's
 version changes.
 
+## 2026-10-29
+
+### watch-audit (#?)
+
+- A watching room with `watch_audit = true` grades the other assistant's answer to every message sent there: it posts
+  a verdict in its own channel, first line `🟢 looks good`, `🟠 right but missing something` or `🔴 wrong`, then what is
+  wrong or missing and the fix, written out in full in plain words, and one or two lines when the answer is right. It
+  never goes quiet on one: no more `🟢 read it, nothing to add` there.
+- The room reads each such message, held for the other assistant's answer as before, under a line asking for that
+  verdict, checked against the files and the thread, not recall; the line names who sent the message, by the name the
+  server shows, and who reads the room: the owner, and in a room with `people` each of them by name (fetched once from
+  the server). If the other assistant had not answered within `watch_wait`, the room says so in one line.
+- Should the room still answer NO_REPLY on one, nothing is posted and its card stays as `🔴 no verdict: the room answered
+  nothing`, kept as history: a later quiet line never removes it, and it never removes the quiet line before it. A
+  message in the room's own channel, a worker's relay and every room without the key are unchanged. The code ceiling
+  moves up by 50.
+
+**Upgrading**: the key is opt-in; `watch_audit = true` in a room's rooms.toml block turns it on (docs/settings.md names
+it), and a value that is not true or false stops the start with one line naming the room. budgets.toml moves with the
+code.
+
 ## 2026-10-28
 
 ### need-2026-10-28-26 (#?)

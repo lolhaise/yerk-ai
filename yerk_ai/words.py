@@ -334,6 +334,15 @@ ADDON_READS = "[read by an add-on] {name} is read through {tool}, an installed a
 SENT_THERE = ("[sent to {who} in #{channel}, not to this room: the owner is talking to {who} there. Read along and file what "
               "matters. Answer here only if the owner's words ask this room something, or you have something they would want from this "
               "room that {who} did not give; otherwise answer exactly {quiet}.]")
+# ... in a room with `watch_audit` true: a verdict on that assistant's answer, every time, never NO_REPLY (the owner, 2026-10-29)
+SENT_THERE_AUDIT = ("[sent to {who} in #{channel}, not to this room: {sender} is talking to {who} there. {who}'s answer follows the "
+                    "message. AUDIT it and post your verdict here: check it against the files and the thread, not recall; first line "
+                    + DONE + " looks good, " + WORKING + " right but missing something, or " + NOT_DONE + " wrong, then what is wrong or "
+                    "missing and the fix, written out in full in plain words, because {readers} read this room; one or two lines when "
+                    "it is right. If {who} had not answered within the wait, say that in one line. Never {quiet} on this turn; never "
+                    "redo work {who} got right.]")
+OWNER, A_PERSON = "the owner", "a person this room answers"   # who reads it, by name where the server shows one
+NO_VERDICT = "no verdict: the room answered nothing"   # its card, kept under NOT_DONE, when it answers NO_REPLY all the same
 OTHER_ASSISTANT = "the other assistant"              # `watch_assistant` unset
 # the line under it once that assistant's answer there has settled, a line per file it attached; else once `watch_wait` ran out
 WATCH_ANSWERED, WATCH_ATTACHED = "[{who} answered at {at} in #{channel}: {text}]", '[{who} attached: "{name}"]'
