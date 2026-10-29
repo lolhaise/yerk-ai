@@ -3,9 +3,10 @@
 - Every other channel is ignored before anything is read: no reply, no reaction, no history.
 - A room's `watch` channel is read as its own and never written to: what it sends, its card, its typing
   signal and its reactions go to its own channel only; a slash command there gets one ephemeral line. A message
-  taken there waits (Hold) for the answer of the assistant there (`watch_assistant`), then reaches the room in one
-  turn with it, under a line saying it was sent to that assistant. Another assistant's message there (`[watch]
-  assistants` in yerkd.toml) is filed under its own role once it has settled (SETTLE), and never answered.
+  taken there waits (Hold) for the answer of the assistant there (`watch_assistant`), counted again from its progress
+  card's newest edit while that card is up (CARD_PATIENCE waits at most), then reaches the room in one turn with it,
+  under a line saying it was sent to that assistant. Another assistant's message there (`[watch] assistants` in
+  yerkd.toml) is filed under its own role once it has settled (SETTLE), its progress card never, and never answered.
 - Only the owner, the people a room lists (`people` in rooms.toml), and in test mode the listed webhooks,
   are answered. Webhook senders pass a loop guard (lifted/loopguard.py) so a runaway script cannot run the room.
 - A message is ledgered by its Discord id before anything runs, then acked with a reaction. Its
@@ -85,6 +86,10 @@ RETRY = 60.0          # seconds before a channel is read again after a message t
 SETTLE = 30.0         # seconds another assistant's message sits with no edit or delete before it is filed (its card never is)
 ANSWER_SETTLE = 6.0   # seconds its message sits with no edit before it is the answer a held message waits for
 WATCH_WAIT = 150.0    # rooms.toml `watch_wait` unset: the most seconds a held message waits for that answer
+CARD_PATIENCE = 3     # while that assistant's progress card is up, a held message waits at most this many `watch_wait`s
+CARD_GONE = 30.0      # seconds a held message still waits once that card is deleted with no answer: its turn has ended
+CARD_ROWS = tuple(e.replace("\ufe0f", "") for e in words.OPENCLAW_ROWS.split())   # U+FE0F dropped: Discord may not keep it
+CARD_STEPS = re.compile(re.escape(words.SUB + words.STEP_N.format(n="")) + r"\d+")   # Yerk AI's own card in a room with people
 ANSWER_MAX = 2500     # characters of the answer the room reads, its whitespace folded
 SAID = (discord.MessageType.default, discord.MessageType.reply)   # what a person types; the rest are Discord's lines
 
@@ -170,6 +175,16 @@ def stamp(m: Any, edit: bool = False) -> float:
     return at.timestamp() if hasattr(at, "timestamp") else time.time()
 
 
+def is_card(text: str) -> bool:
+    """A progress card, which says its sender is still at work: a line that starts as an OpenClaw tool row does (CARD_ROWS),
+    or Yerk AI's own card in a room with people (card.py): a state mark and its holding line first, "-# step N" last."""
+    lines = [x.strip() for x in str(text or "").splitlines() if x.strip()]
+    if any(x.replace("\ufe0f", "").startswith(CARD_ROWS) for x in lines):
+        return True
+    mark = lines[0].startswith((words.WORKING, words.DONE, words.NOT_DONE)) if lines else False
+    return mark and len(lines) > 1 and bool(CARD_STEPS.fullmatch(lines[-1]))
+
+
 class Hold:
     """The messages taken in a room's watched channel while one waits for the answer of the assistant there: one turn
     with that answer once it settles, or with the line that it had not come once `watch_wait` (rooms.toml) runs out
@@ -183,6 +198,15 @@ class Hold:
         self.wait = float(wait) if isinstance(wait, (int, float)) else WATCH_WAIT
         self.timer: asyncio.TimerHandle | None = None
         self.judging: dict[str, asyncio.TimerHandle] = {}    # the assistant's message id -> its ANSWER_SETTLE wait
+        self.cards: dict[str, float] = {}                     # its progress card's id -> that card's newest edit, while up
+        self.gone: float | None = None                        # the wait's end once its last card went with no answer
+
+    def due(self) -> float:
+        """When the wait runs out: `wait` after the newest message, or after the newest edit of the assistant's card while one
+        is up, CARD_PATIENCE waits after that message at most; once the card has gone, `gone`."""
+        if self.gone is not None:
+            return self.gone
+        return min(max([self.at, *self.cards.values()]) + self.wait, self.at + CARD_PATIENCE * self.wait)
 
 
 class DiscordChannel:
@@ -332,11 +356,14 @@ class DiscordChannel:
 
     def _assistant(self, room: str, m: Any, settled: bool = False) -> None:
         """Another assistant's message where `room` watches, filed under ASSISTANT with its handle once it has gone SETTLE
-        seconds with no edit and no delete: an edit starts the wait again, a delete ends it (on_raw_message_delete), so a card
-        it edits and deletes is never filed. Filed once by its id, an edit after that is not; read from history, at once."""
+        seconds with no edit and no delete: an edit starts the wait again, a delete ends it (on_raw_message_delete). Its
+        progress card (is_card) never is, settled or not, live or read from history; one edited into a plain message is, once
+        that settles. Filed once by its id, an edit after that is not; read from history, at once."""
         mid, at = str(m.id), getattr(m, "edited_at", None) or getattr(m, "created_at", None)
         if (old := self.settling.pop(mid, None)) is not None:
             old.cancel()
+        if is_card(str(getattr(m, "content", None) or "")):
+            return
         left = SETTLE - (time.time() - at.timestamp()) if at is not None and hasattr(at, "timestamp") else 0.0
         if not settled and left > 0 and self.loop is not None:
             self.settling[mid] = self.loop.call_later(left, self._assistant, room, m, True)
@@ -403,33 +430,55 @@ class DiscordChannel:
         h = self.held.setdefault(room.name, Hold(room))
         h.msgs[str(m.id)] = (m, sender, extra, attempt)
         if int(m.id) > h.bar:
-            h.bar, h.at = int(m.id), stamp(m)
+            h.bar, h.at, h.gone = int(m.id), stamp(m), None
             for mid in [x for x in h.judging if int(x) < h.bar]:   # said before this message: not the answer to it
                 h.judging.pop(mid).cancel()
         if live:
             self._arm(room)
 
     def _arm(self, room: Room) -> None:
-        """The open group's wait, from its newest message's own time: one read from history after a restart waits what is
-        left of it, none once it has passed."""
+        """The open group's wait, to its end (Hold.due): one read from history after a restart waits what is left of it,
+        none once it has passed."""
         if (h := self.held.get(room.name)) is not None:
             if h.timer is not None:
                 h.timer.cancel()
-            h.timer = asyncio.get_running_loop().call_later(max(0.0, h.wait - (time.time() - h.at)), self._close, h)
+            h.timer = asyncio.get_running_loop().call_later(max(0.0, h.due() - time.time()), self._close, h)
 
     def _offer(self, room: str, m: Any) -> None:
         """The watched assistant's message, new or edited, made after the open group's newest: its answer once it has gone
-        ANSWER_SETTLE seconds with no edit and no delete (on_raw_message_delete), whichever settles first. Its card,
-        edited again and again and then deleted, never is; nor is a line of Discord's in its name (SAID); read from history,
-        it has settled already."""
-        if (h := self.held.get(room)) is None or int(m.id) <= h.bar or getattr(m, "type", discord.MessageType.default) not in SAID:
+        ANSWER_SETTLE seconds with no edit and no delete (on_raw_message_delete), whichever settles first. Its progress card
+        (is_card), however long it sits still, never is: while it is up the wait runs from its newest edit, an edit that makes
+        a message one ends its judging, and one edited into a plain message is judged from that edit. Nor is a line of
+        Discord's in its name (SAID); read from history, it has settled already."""
+        if (h := self.held.get(room)) is None or getattr(m, "type", discord.MessageType.default) not in SAID:
             return
-        if (old := h.judging.pop(str(m.id), None)) is not None:
+        if (old := h.judging.pop(mid := str(m.id), None)) is not None:
             old.cancel()
+        if is_card(str(getattr(m, "content", None) or "")):
+            if int(m.id) > h.bar or mid in h.cards:    # after the newest message, or up before it came: at work on the group
+                h.cards[mid], h.gone = stamp(m, edit=True), None
+                if h.timer is not None:                # unarmed while history is read: catch_up arms it after
+                    self._arm(h.room)
+            return
+        self._card_gone(h, mid)
+        if int(m.id) <= h.bar:
+            return
         if (left := ANSWER_SETTLE - (time.time() - stamp(m, edit=True))) > 0:
-            h.judging[str(m.id)] = asyncio.get_running_loop().call_later(left, self._close, h, m)
+            h.judging[mid] = asyncio.get_running_loop().call_later(left, self._close, h, m)
         else:
             self._close(h, m)
+
+    def _card_gone(self, h: Hold, mid: str) -> None:
+        """The assistant's card `mid` deleted, or edited into a plain message: with no other card up its turn has ended, so
+        the wait is what is left of it, CARD_GONE at most, in which a reply posted around then is still judged."""
+        if mid not in h.cards:
+            return
+        left = h.due() - time.time()
+        del h.cards[mid]
+        if not h.cards:
+            h.gone = time.time() + max(0.0, min(left, CARD_GONE))
+        if h.timer is not None:
+            self._arm(h.room)
 
     def _close(self, h: Hold, answer: Any = None) -> None:
         """The answer settled (`answer`), the wait ran out, or the group was left empty: it leaves the hold, and one with a
@@ -553,13 +602,15 @@ class DiscordChannel:
         room.submit(Inbound(mid, sender, f"[an earlier message was edited; it now reads:]\n{text}", files=files))
 
     async def on_raw_message_delete(self, p: Any) -> None:
-        """A message deleted while it still waits (held too) never runs; one already run keeps its answer; another assistant's,
-        still settling, is never filed, nor the answer a held message waits for."""
+        """A message deleted while it still waits (held too) never runs; one already run keeps its answer. Another assistant's,
+        still settling, is never filed, nor the answer a held message waits for; once its card goes, CARD_GONE more at most."""
         room, mid = self.rooms.get(int(p.channel_id)), str(p.message_id)
         if (wait := self.settling.pop(mid, None)) is not None:
             wait.cancel()
         if (h := self.held.get(room.name) if room else None) is not None and (judged := h.judging.pop(mid, None)) is not None:
             judged.cancel()
+        if h is not None:                         # its card: the wait CARD_GONE at most from now
+            self._card_gone(h, mid)
         row = self.ledger.inbound_get(mid) if room else None
         if room is None or row is None:
             return

@@ -348,6 +348,11 @@ OTHER_ASSISTANT = "the other assistant"              # `watch_assistant` unset
 WATCH_ANSWERED, WATCH_ATTACHED = "[{who} answered at {at} in #{channel}: {text}]", '[{who} attached: "{name}"]'
 WATCH_UNANSWERED = "[{who} had not answered in #{channel} within {wait} s of the owner's message]"
 NO_REPLY, QUIET = "NO_REPLY", "read it, nothing to add"   # a final of exactly NO_REPLY posts nothing; its card says QUIET
+# the emoji an OpenClaw progress card's tool row starts with, one per tool kind, "🧩" for any other (an MCP tool's): its
+# TOOL_DISPLAY_CONFIG with the message tool's spec, /usr/lib/node_modules/openclaw/dist/tool-display-zmIG5_OB.mjs, read
+# 2026-10-29; a message with one is that assistant at work, never its answer (channels/discord.py is_card)
+OPENCLAW_ROWS = ("✉️ 🧩 🛠️ 🖱️ 📱 🖥️ ⌨️ 🌐 🧰 📖 ✍️ 📝 📎 🖼️ 📋 ⏰ 🎯 🗺️ ❓ 🔑 ✨ 🗑️ 🦀 🔌 📊 🔀 🔐 🗂️ 💬 📨 ↔️ 🧾 🔎 🎙️ 🧑‍🔧 ⏳ 🤖 🧭 🧠 📓 📄 🧮 "
+                 "🩹 🎨 🎵 🎬 📑 ⏸️ 🔊")
 FILES_PERSON = "{room} is not an owner room: a workbook or a PDF sent there is never read"
 FILES_BACKFILL = "{n} workbook(s) and PDF(s) in {where} with no text beside them or an older one; {done}"
 FILES_WRITTEN, FILES_DRY = "written", "nothing written (--dry-run)"

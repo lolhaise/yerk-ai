@@ -508,6 +508,198 @@ def test_after_a_restart_a_watched_message_with_its_answer_in_history_comes_in_a
     assert dc.held == {} and watched.writes == []
 
 
+# hold-card: a person's question in a watched channel, and the other assistant's progress card
+# there, which sat still 6 s through a web fetch and was read as its answer, then filed as its line once it sat 30 s.
+ASKED = "Should we add the late-fee rule to the club handbook or is it in there already?"
+CARD = ("The current handbook is v53, and its source has 8 late-fee mentions, so it's likely already covered. "
+        "Reading those lines to see what it says.\n"
+        "🛠️ Bash · Show late-fee lines and section headings in the handbook\n"
+        "🛠️ Bash\n"
+        "🧩 Mcp Openclaw Web Search: example club handbook late fee rule wording\n"
+        "🧩 Mcp Openclaw Web Fetch: https://example.org/handbooks/...")
+QUIET_CARD = "🟢 read it, nothing to add\n-# step 2"          # Yerk AI's own quiet card in the watching room, that turn
+REPLY = "It is in there already: section 3 of v53 names the late-fee rule. I checked with Bash and a web search."
+
+
+def test_a_progress_card_is_told_from_a_reply_by_its_tool_rows_or_by_yerks_own_card_shape():
+    """An OpenClaw card has a line that starts with a tool row's emoji (each kind of row on its own, U+FE0F kept or dropped);
+    Yerk AI's own card in a room with people is a holding line under a state mark with "-# step N" last. A reply that only
+    names a tool is neither, nor is a card's narration before its first row lands (the 6 s judge covers that window)."""
+    narration, *rows = CARD.split("\n")
+    assert dmod.is_card(CARD) and dmod.is_card(CARD.replace("️", ""))
+    assert dmod.is_card(f"{narration}\n{rows[0]}") and dmod.is_card(f"{narration}\n{rows[2]}") and dmod.is_card(rows[1])
+    assert QUIET_CARD == f"{words.DONE} {words.QUIET}\n{words.SUB}{words.STEP_N.format(n=2)}" and dmod.is_card(QUIET_CARD)
+    assert dmod.is_card(f"{words.WORKING} looking it up\n{words.SUB}{words.STEP_N.format(n=11)}")
+    for text in (REPLY, narration, f"{words.DONE} {words.QUIET}", "-# step 2", "", "Bash · Show late-fee lines"):
+        assert not dmod.is_card(text), text
+
+
+def test_the_other_assistants_card_is_never_its_answer_however_long_it_sits_still(tmp_path, monkeypatch):
+    """hold-card (a): the card after the held message, edited as its rows come and then still for longer than ANSWER_SETTLE
+    (and SETTLE), as during a long fetch, is never the answer and never filed: the hold stays open, nothing judged."""
+    monkeypatch.setattr(dmod, "ANSWER_SETTLE", 0.1)
+    monkeypatch.setattr(dmod, "SETTLE", 0.15)
+    dc, room, own, watched = watching(tmp_path, {"watch_wait": 2.0})
+    narration, *rows = CARD.split("\n")
+
+    async def run():
+        dc.loop = asyncio.get_running_loop()
+        await dc.on_message(Msg(watched, 1401, ASKED))
+        card = Msg(watched, 1402, f"{narration}\n{rows[0]}", author=HELPER, name="helper-bot")
+        card.created_at = datetime.now(timezone.utc)
+        await dc.on_message(card)
+        await asyncio.sleep(0.05)
+        card.content, card.edited_at = CARD, datetime.now(timezone.utc)
+        await dc.on_raw_message_edit(NS(channel_id=WATCHED, message=card))
+        await asyncio.sleep(0.4)
+        h = dc.held[ROOM]
+        assert room.got == [] and h.answer is None and h.judging == {} and set(h.cards) == {"1402"} and dc.settling == {}
+    asyncio.run(run())
+    assert lines(tmp_path) == [f"owner: {ASKED}"]
+
+
+def test_the_wait_runs_again_from_the_cards_newest_edit_and_three_waits_at_most(tmp_path, monkeypatch):
+    """hold-card (b): while the card is up the wait counts again from its newest edit, so a card that stops moving holds the
+    message one wait past its last edit, not past the message; one edited on and on releases it once CARD_PATIENCE waits
+    from the message have run, with the line that the assistant had not answered."""
+    dc, room, own, watched = watching(tmp_path, {"watch_wait": 0.4})
+    assert dmod.CARD_PATIENCE == 3 and dmod.CARD_GONE == 30.0
+    late = "[Helper had not answered in #lounge within 0.4 s of the owner's message]"
+
+    async def run():
+        dc.loop = asyncio.get_running_loop()
+        for first, edits, held, out in ((1501, [0.2] * 2, 0.15, 0.25), (1511, [0.2] * 5 + [0.1], 0.0, 0.2)):
+            await dc.on_message(Msg(watched, first, ASKED))         # a card still after two edits; one edited on and on
+            card = Msg(watched, first + 1, CARD, author=HELPER, name="helper-bot")
+            card.created_at, got = datetime.now(timezone.utc), len(room.got)
+            await dc.on_message(card)
+            for gap in edits:
+                await asyncio.sleep(gap)
+                card.edited_at = datetime.now(timezone.utc)
+                await dc.on_raw_message_edit(NS(channel_id=WATCHED, message=card))
+            await asyncio.sleep(held)                               # 0.55 s and 1.1 s: past the 0.4 s from the message
+            assert len(room.got) == got and ROOM in dc.held
+            await asyncio.sleep(out)                                # 0.8 s: its last edit's wait; 1.2 s: three waits
+            assert len(room.got) == got + 1 and ROOM not in dc.held
+    asyncio.run(run())
+    assert [(g.id, g.text) for g in room.got] == [("1501", f"{LINE}\n{ASKED}\n{late}"), ("1511", f"{LINE}\n{ASKED}\n{late}")]
+    assert lines(tmp_path) == [f"owner: {ASKED}"] * 2
+
+
+def test_the_reply_after_the_card_is_the_answer_and_comes_in_one_turn_with_the_message(tmp_path, monkeypatch):
+    """hold-card (c): the card goes and the final reply lands as a new message (OpenClaw deletes its card as the turn ends), long
+    after the wait from the message ran out: the reply settles and is the answer, in one turn with the message, its file named;
+    the reply is filed once and the card never."""
+    monkeypatch.setattr(dmod, "ANSWER_SETTLE", 0.1)
+    monkeypatch.setattr(dmod, "SETTLE", 0.15)
+    dc, room, own, watched = watching(tmp_path, {"watch_wait": 0.5})
+
+    async def run():
+        dc.loop = asyncio.get_running_loop()
+        await dc.on_message(Msg(watched, 1601, ASKED, attachments=[Attachment("screenshot.png")]))
+        card = Msg(watched, 1602, CARD, author=HELPER, name="helper-bot")
+        card.created_at = datetime.now(timezone.utc)
+        await dc.on_message(card)
+        for _ in range(3):
+            await asyncio.sleep(0.2)
+            card.edited_at = datetime.now(timezone.utc)
+            await dc.on_raw_message_edit(NS(channel_id=WATCHED, message=card))
+        await asyncio.sleep(0.2)                                    # 0.8 s: still, past ANSWER_SETTLE and the 0.5 s wait
+        assert room.got == []
+        await dc.on_raw_message_delete(NS(channel_id=WATCHED, message_id=1602))
+        reply = Msg(watched, 1603, REPLY, author=HELPER, name="helper-bot", attachments=[Attachment("brief-v54.pdf")])
+        reply.created_at = datetime.now(timezone.utc)
+        await dc.on_message(reply)
+        await asyncio.sleep(0.35)
+        return reply.created_at
+    at = asyncio.run(run())
+    answer = f'[Helper answered at {at:%H:%M} in #lounge: {REPLY}]\n[Helper attached: "brief-v54.pdf"]'
+    assert [g.id for g in room.got] == ["1601"] and room.got[0].text.startswith(f"{LINE}\n{ASKED}\n[attachment] screenshot.png")
+    assert room.got[0].text.endswith(f"\n{answer}") and "late-fee lines" not in room.got[0].text
+    assert lines(tmp_path) == [f"owner: {ASKED}", f"assistant@helper-bot: {REPLY}"] and dc.held == {}
+
+
+def test_the_card_deleted_with_no_reply_releases_the_message_within_card_gone(tmp_path, monkeypatch):
+    """hold-card (d): the assistant's turn ends with no reply (it answered NO_REPLY): its card is deleted and nothing follows, so
+    the message comes in CARD_GONE later with the line that it had not answered, never the rest of a long wait."""
+    monkeypatch.setattr(dmod, "CARD_GONE", 0.2)
+    dc, room, own, watched = watching(tmp_path, {"watch_wait": 5})
+
+    async def run():
+        dc.loop = asyncio.get_running_loop()
+        await dc.on_message(Msg(watched, 1701, ASKED))
+        card = Msg(watched, 1702, CARD, author=HELPER, name="helper-bot")
+        card.created_at = datetime.now(timezone.utc)
+        await dc.on_message(card)
+        await asyncio.sleep(0.1)
+        await dc.on_raw_message_delete(NS(channel_id=WATCHED, message_id=1702))
+        await asyncio.sleep(0.1)
+        assert room.got == [] and dc.held[ROOM].cards == {}
+        await asyncio.sleep(0.25)
+    asyncio.run(run())
+    assert [(g.id, g.text) for g in room.got] == [("1701", f"{LINE}\n{ASKED}\n[Helper had not answered in #lounge within 5 s of the owner's message]")]
+    assert lines(tmp_path) == [f"owner: {ASKED}"] and dc.held == {}
+
+
+def test_a_card_is_never_filed_and_the_plain_message_after_it_is(tmp_path, monkeypatch):
+    """hold-card (e): with no message held, the assistant's card is never filed however long it sits still, live or read from
+    history; a card edited into a plain message is filed once that settles, and its plain message after it is filed too."""
+    monkeypatch.setattr(dmod, "SETTLE", 0.1)
+    dc, room, own, watched = watching(tmp_path)
+    now = datetime.now(timezone.utc)
+
+    async def run():
+        dc.loop = asyncio.get_running_loop()
+        live, turned = (Msg(watched, mid, CARD, author=HELPER, name="helper-bot") for mid in (1801, 1802))
+        live.created_at = turned.created_at = datetime.now(timezone.utc)
+        for m in (live, turned):
+            await dc.on_message(m)
+        await asyncio.sleep(0.05)
+        turned.content, turned.edited_at = "Done: v54 has it on page 2.", datetime.now(timezone.utc)
+        await dc.on_raw_message_edit(NS(channel_id=WATCHED, message=turned))
+        await asyncio.sleep(0.3)
+        assert dc.settling == {}
+        old, after = Msg(watched, 1803, CARD, author=HELPER, name="helper-bot"), Msg(watched, 1804, REPLY, author=HELPER, name="helper-bot")
+        old.created_at = after.created_at = now - timedelta(seconds=120)    # read from history after a restart: at once
+        for m in (old, after):
+            dc.file(ROOM, m)
+    asyncio.run(run())
+    assert lines(tmp_path) == ["assistant@helper-bot: Done: v54 has it on page 2.", f"assistant@helper-bot: {REPLY}"]
+
+
+def test_after_a_restart_a_card_in_history_is_never_the_answer_and_holds_the_wait_from_its_last_edit(tmp_path):
+    """hold-card: a held message left open by a restart, the card after it in history and the reply after that: the reply is
+    the answer, the card is not, nor filed. With only the card there (the assistant still at work), the message waits one
+    wait past the card's last edit, where without it its wait had run out already."""
+    dc, room, own, watched = watching(tmp_path, {"watch_wait": 150})
+    now = datetime.now(timezone.utc)
+
+    def held(mid, ago):
+        dc.ledger.inbound_add(str(mid), ROOM, str(WATCHED), "owner", 5, created=(now - timedelta(seconds=ago)).timestamp())
+        watched.old[mid] = Msg(watched, mid, ASKED)
+        watched.old[mid].created_at = now - timedelta(seconds=ago)
+    held(1901, 300)
+    for mid, text, ago in ((1902, CARD, 290), (1903, REPLY, 280)):
+        watched.past.append(Msg(watched, mid, text, author=HELPER, name="helper-bot"))
+        watched.past[-1].created_at = now - timedelta(seconds=ago)
+
+    async def run():
+        await dc.recover(WATCHED, room)
+        await asyncio.sleep(0.05)
+        said = f"[Helper answered at {now - timedelta(seconds=280):%H:%M} in #lounge: {REPLY}]"
+        assert [(g.id, g.text.splitlines()[-1]) for g in room.got] == [("1901", said)] and dc.held == {}
+        dc.ledger.inbound_set("1901", state="answered")
+        held(1911, 200)
+        watched.past = [Msg(watched, 1912, CARD, author=HELPER, name="helper-bot")]
+        watched.past[0].created_at, watched.past[0].edited_at = now - timedelta(seconds=190), now - timedelta(seconds=40)
+        await dc.recover(WATCHED, room)
+        h = dc.held[ROOM]
+        assert set(h.cards) == {"1912"} and abs(h.due() - (now.timestamp() + 110)) < 1 and len(room.got) == 1
+        h.timer.cancel()
+    asyncio.run(run())
+    assert [x.split(":")[0] for x in lines(tmp_path)] == ["assistant@helper-bot"]
+
+
 def test_a_thread_started_in_the_watched_channel_never_brings_the_other_sides_words(tmp_path):
     """Cold read 33 W2: in discord.py 2.6.4 a thread_created line is in the name of whoever started the thread and its
     text is the thread's name, which can be the other side's words; a rename's text is the new name. In a watched

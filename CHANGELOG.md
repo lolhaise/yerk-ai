@@ -26,6 +26,23 @@ version changes.
 **Upgrading**: the key is opt-in; `watch_audit = true` in a room's rooms.toml block turns it on (docs/settings.md names
 it), and a value that is not true or false stops the start with one line naming the room. budgets.toml moves with the
 code.
+### hold-card (#?)
+
+- A room that watches an OpenClaw bot's channel no longer answers off that bot's progress card. A message with one of
+  OpenClaw's tool rows (a line starting "🛠️ Bash", "🧩 Mcp ...", or any other tool's emoji) or the shape of Yerk AI's
+  own card is never the answer a watched message waits for, however long it sits still while a slow step runs, and it
+  never goes in the room's day log. Before, a card that sat 6 seconds through a web fetch was read as the answer, the
+  room said it had nothing to add, and the card was filed as the bot's line once it sat 30 seconds.
+- While that card is being worked on, the room keeps waiting: `watch_wait` counts again from the card's last edit, up
+  to three times `watch_wait` after the message (a stuck card cannot hold it forever), so the reply a long turn ends
+  with comes in with the message as its answer. When the card is deleted and no reply follows (the bot chose not to
+  answer), the message comes in within 30 seconds with the line that it had not answered. A card edited into a plain
+  reply is the answer once that reply has gone 6 seconds unedited, and is filed once it has gone 30, as any reply.
+- After a restart, a card in the channel's history is skipped the same way: never the answer, never filed, and the
+  wait counts from its last edit. The code ceiling moves up by 57.
+
+**Upgrading**: nothing to change; `watch_wait` keeps its key and default, and docs/settings.md says the new rule.
+budgets.toml moves with the code.
 
 ## 2026-10-28
 
