@@ -43,7 +43,7 @@ One `[rooms.NAME]` table a room; `yerk doctor` names any other key as a typo.
 - `voice`: the room's voice file, the session start's room_voice part
 - `watch`: discord:<channel id> of a channel the room watches: [watch] assistants' messages there go in its day log, never answered
 - `watch_assistant`: the assistant the owner talks to in the watched channel, by name: a message read from there comes in marked as sent to it, not to this room (default: the other assistant)
-- `watch_wait`: seconds the room waits for the watched assistant's answer before it reads a watched message (default 150)
+- `watch_wait`: seconds the room waits for the watched assistant's answer after a watched message, counted again from that assistant's progress card's last edit while the card is up, at most three times this (default 150)
 
 ### [defaults]
 

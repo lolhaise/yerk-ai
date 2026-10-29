@@ -624,4 +624,10 @@ secs = 60
 # twice; one call a post at a time), daemon.py 19 (the tool, the link check, the transcribe call as tool_transcribe makes
 # it, its log line), mcp_server.py 14 (the tool and its description, the protocol line, the module's count of tools),
 # words.py 15 (the refusals, failures and notes in words).
-lines = 22506
+# 2026-10-29: hold-card raised it by 57, the other assistant's progress card never its answer and the wait running while
+# that card is up (a person's message in a watched channel came in with that assistant's card as its
+# answer, and the room said nothing), not folded to fit: discord.py 51 (is_card from OpenClaw's tool-row emoji and Yerk AI's
+# own card shape; the wait from the card's newest edit, CARD_PATIENCE waits at most, CARD_GONE once it goes; a card never
+# test reads it, back as plain text with; one more line for), the.check 0 (While a-second entry waits in
+# file they were read from), config.py 1 (`watch_wait` in ROOM_WORDS).
+lines = 22563
