@@ -3,13 +3,14 @@ import json
 import os
 import re
 import shutil
+import warnings
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
 
 from yerk_ai import cli, context, memindex, memory
-from yerk_ai.config import EXAMPLE_PRIVATE, budgets, rooms, state_dir
+from yerk_ai.config import EXAMPLE_PRIVATE, budgets, load_toml, rooms, state_dir, uncapped
 from yerk_ai.lifted.clock import clock_line
 from yerk_ai.lifted.trim import truncate
 
@@ -17,12 +18,26 @@ PLANTED = Path(__file__).parent / "fixtures" / "over-budget"
 NOW = datetime(2026, 1, 7, 12, 0, tzinfo=timezone.utc)
 
 
+def layer_budgets(private):
+    """budgets.toml as the layer's daemon reads it, its yerkd.toml's [limits] uncapped included."""
+    return budgets(load_toml(private / "yerkd.toml") if (private / "yerkd.toml").is_file() else {})
+
+
+def held(private, bad, where):
+    """The violations that fail the test: an uncapped install's ([limits] uncapped) are each reported, a warning, never a failure."""
+    if not uncapped(layer_budgets(private)):
+        return bad
+    for v in bad:
+        warnings.warn(f"uncapped, past its line: {where} {v}", stacklevel=2)
+    return []
+
+
 def build(private, name, state):
     """A room's parts as the daemon and the morning diff build them: the install's rules file included, Claude Code's parts
     as the room last sent them (context.sent, `yerk map`'s read), at their line for a room with no transcript."""
-    b = budgets()
+    b = layer_budgets(private)
     room = rooms(private)[name]
-    start = context.session_start(private, room, b, rules=memory.settings(private, state).root / memory.RULES)
+    start = context.session_start(private, room, b, rules=memory.settings(private, state).root / memory.RULES, room_name=name)
     msg = context.per_message(name, room, "owner", NOW, NOW - timedelta(minutes=5), b)
     return context.violations(start, msg, b, *context.sent(private, state, name, b)), start
 
@@ -30,7 +45,7 @@ def build(private, name, state):
 @pytest.mark.parametrize("name", sorted(rooms(EXAMPLE_PRIVATE)))
 def test_example_rooms_fit_their_budgets(name, tmp_path):
     bad, _ = build(EXAMPLE_PRIVATE, name, tmp_path)
-    assert bad == []
+    assert held(EXAMPLE_PRIVATE, bad, name) == []
 
 
 def test_planted_over_budget_file_fails_and_is_sent_trimmed(tmp_path):
@@ -39,6 +54,20 @@ def test_planted_over_budget_file_fails_and_is_sent_trimmed(tmp_path):
     persona = next(p for p in start if p.name == "persona")
     assert persona.over and persona.size <= persona.budget
     assert "[...trimmed persona: kept" in persona.text and "Omitted sections:" in persona.text
+
+
+def test_planted_over_budget_file_in_an_uncapped_install_is_sent_whole_and_reported_never_a_failure(tmp_path):
+    """[limits] uncapped (the owner's call: every cap off, in a way that can be reverted at any point):
+    the same planted persona goes out whole, its line kept as a measurement; the fit test reports it and passes."""
+    shutil.copytree(PLANTED, private := tmp_path / "planted")
+    (private / "yerkd.toml").write_text("[limits]\nuncapped = true\n")
+    bad, start = build(private, "planted-room", tmp_path / "state")
+    persona = next(p for p in start if p.name == "persona")
+    assert any(v.startswith("persona:") for v in bad) and persona.over and persona.size == persona.raw > persona.budget
+    assert "[...trimmed" not in context.appended_file(start) and persona.cut == ()
+    with pytest.warns(UserWarning, match=r"^uncapped, past its line: planted-room ") as seen:     # its mechanics too (PAID)
+        assert held(private, bad, "planted-room") == []
+    assert any(str(w.message).startswith("uncapped, past its line: planted-room persona: ") for w in seen)
 
 
 def test_the_code_stays_at_its_ceiling_which_only_goes_down():
@@ -52,7 +81,7 @@ def test_the_code_stays_at_its_ceiling_which_only_goes_down():
 def test_real_private_layer_fits():
     private, state = Path(os.environ["YERK_PRIVATE"]).expanduser(), state_dir()
     for name in rooms(private):
-        bad = build(private, name, state)[0]
+        bad = held(private, build(private, name, state)[0], name)     # an uncapped install's: reported, never a failure
         assert bad == [], f"{name} {'; '.join(bad)}"      # the line `yerk deploy` puts on its card: the room, then its part
 
 
@@ -129,6 +158,10 @@ def test_the_real_layer_test_counts_the_rules_file(tmp_path, monkeypatch):
     monkeypatch.setenv("YERK_STATE", str(tmp_path / "state"))
     with pytest.raises(AssertionError, match=rf"^example-room rules: 17,\d{{3}} > {budgets()['session_start']['appended']['rules']:,} \("):
         test_real_private_layer_fits()
+    (private / "yerkd.toml").write_text("[limits]\nuncapped = true\n")         # the deploy's fast gate on an uncapped install
+    with pytest.warns(UserWarning, match=r"^uncapped, past its line: example-(room|quiet) ") as seen:     # each room, reported
+        test_real_private_layer_fits()
+    assert any(str(w.message).startswith("uncapped, past its line: example-room rules: 17,") for w in seen)
 
 
 def test_the_rules_file_is_a_part_of_its_own_so_a_full_rulebook_never_pushes_a_rule_out(tmp_path):

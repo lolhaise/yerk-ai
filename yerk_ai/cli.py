@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from . import __version__, context, memory, taste
-from .config import EXAMPLE_PRIVATE, budgets, private_dir, rooms, state_dir
+from .config import EXAMPLE_PRIVATE, budgets, private_dir, rooms, state_dir, uncapped
 
 
 def cmd_map(a: argparse.Namespace) -> int:
@@ -18,19 +18,18 @@ def cmd_map(a: argparse.Namespace) -> int:
     if a.room not in rs:
         print(f"no room {a.room!r} in {priv / 'rooms.toml'}; rooms: {', '.join(rs) or 'none'}", file=sys.stderr)
         return 2
-    from . import addons
-    b, root = addons.with_lines(budgets(), state_dir(a.state)), memory.settings(priv, state_dir(a.state)).root
-    start = context.session_start(priv, rs[a.room], b, rules=root / memory.RULES)
-    now = datetime.now(timezone.utc)
-    from . import location
+    from . import addons, location
     from .config import load_toml
     conf = load_toml(priv / "yerkd.toml") if (priv / "yerkd.toml").is_file() else {}
+    b, root = addons.with_lines(budgets(conf), state_dir(a.state)), memory.settings(priv, state_dir(a.state)).root
+    start, whole = context.session_start(priv, rs[a.room], b, rules=root / memory.RULES, room_name=a.room), context.uncapped(b)
+    now = datetime.now(timezone.utc)
     msg = context.per_message(a.room, rs[a.room], "owner", now, now - timedelta(minutes=27), b,
                               location.part(location.settings(conf.get("location"), priv), rs[a.room], now))
     hit = []
     if str(rs[a.room].get("privacy", "owner")) == "owner":         # the taste part: an owner room's, from its layer's file
         cap, path = int(b["per_message"]["on_hit"]["taste"]), taste.kept(priv, rs[a.room])
-        rated = taste.render(taste.load(path), a.room, cap) if path else ""
+        rated = taste.render(taste.load(path), a.room, cap, whole=whole) if path else ""
         hit = [context.Part("taste", rated, cap, context.chars(rated), str(path) if path else f"no {taste.FILE} in the layer")]
     label = "the fake example layer" if priv == EXAMPLE_PRIVATE else str(priv)
     sent, src = context.sent(priv, state_dir(a.state), a.room, b)        # Claude Code's parts as last sent, else at their line
@@ -38,13 +37,14 @@ def cmd_map(a: argparse.Namespace) -> int:
     tier = memory.live_rules(root / memory.TOPIC_RULES)
     mine, (seen, jobs) = [x for x in tier if (sc := memory.scope(x)) is None or a.room in sc], context.rode(state_dir(a.state), a.room)
     print(f"\nTopic rules ({memory.TOPIC_RULES}): {len(tier)}, {sum(context.chars(x) + 1 for x in tier):,} characters, {len(mine)} of them "
-          f"this room's; each rides in a message's `rules` part when the message names its topic, never at session start")
+          f"this room's; " + ("each rides whole in the session start's `rules` part, a message only one filed since the session started"
+                              if whole else "each rides in a message's `rules` part when the message names its topic, never at session start"))
     print(f"  on its last {seen} messages: " + (", ".join(f"{j} ({k})" for j, k in sorted(jobs.items(), key=lambda kv: -kv[1])) or "none rode"))
     if rs[a.room].get("watch"):
         print(f"\nWatches {rs[a.room]['watch']}: read as its own channel, never written to; it answers in {rs[a.room].get('channel')}.")
     bad = context.violations(start, msg, b, sent, src)
     for v in bad:
-        print("OVER BUDGET: " + v)
+        print(("uncapped, past its line: " if whole else "OVER BUDGET: ") + v)
     if a.wire:
         if not (t := context.transcript(priv, state_dir(a.state), a.room)):
             print(f"no transcript for room {a.room} (sessions.json in {state_dir(a.state)})", file=sys.stderr)
@@ -52,7 +52,7 @@ def cmd_map(a: argparse.Namespace) -> int:
         print()
         print(context.render_wire(a.room, context.wire(t), context.chars(context.appended_file(start)), b,
                                   str(rs[a.room].get("timezone", "UTC"))))
-    return 1 if bad else 0
+    return 1 if bad and not whole else 0
 
 
 def cmd_setup_room(a: argparse.Namespace) -> int:
@@ -165,6 +165,7 @@ def cmd_files(a: argparse.Namespace) -> int:
     code (files.write), no model and no yerkd; --dry-run lists each it would write; --root: those under a folder the room
     lists in rooms.toml (`read` or `also`) in place of its inbox. A person room's files are never read: refused."""
     from . import files, memory, pictures, words
+    from .config import load_toml
     priv, state = private_dir(a.private), state_dir(a.state)
     if (conf := rooms(priv).get(a.room)) is None or str(conf.get("privacy", "owner")) != "owner":
         print(words.FILES_PERSON.format(room=a.room) if conf is not None else f"no room {a.room!r} in rooms.toml", file=sys.stderr)
@@ -175,8 +176,9 @@ def cmd_files(a: argparse.Namespace) -> int:
         return 2
     todo = files.pending(root or state / "rooms" / a.room / "work" / "inbox", root is not None)
     tz = None if a.dry_run or not todo else memory.settings(priv, state).tz     # the zone the daemon writes a header in
+    whole = uncapped(budgets(load_toml(priv / "yerkd.toml") if (priv / "yerkd.toml").is_file() else {}))     # [limits] uncapped: no cut
     for p in todo:
-        print(files.sidecar(p) if tz is None else files.write(a.room, p, tz))
+        print(files.sidecar(p) if tz is None else files.write(a.room, p, tz, whole=whole))
     print(words.FILES_BACKFILL.format(n=len(todo), where=root or a.room, done=words.FILES_DRY if a.dry_run else words.FILES_WRITTEN))
     return 0
 

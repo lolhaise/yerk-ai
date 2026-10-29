@@ -58,7 +58,7 @@ import discord
 from discord.http import handle_message_parameters
 
 from .. import addons, files as extracted, status, transcribe, words
-from ..config import EFFORTS
+from ..config import EFFORTS, uncapped
 from ..ledger import Ledger
 from ..lifted.loopguard import LoopGuard
 from ..lifted.split import split_message
@@ -636,7 +636,8 @@ class DiscordChannel:
                 self.ledger.attachment(message_id=str(m.id), room=room.name, name=a.filename, size=f["size"],
                                        type=f["type"], path=str(dest), state="staged")
                 if extracted.kind(dest) and str(getattr(room, "conf", {}).get("privacy", "owner")) == "owner":   # a person's: never
-                    texts.append((f, asyncio.ensure_future(extracted.beside(room.name, dest, self.daemon.memory.tz if self.daemon else None))))
+                    texts.append((f, asyncio.ensure_future(extracted.beside(room.name, dest, self.daemon.memory.tz if self.daemon else None,
+                                                                            bool(self.daemon) and uncapped(self.daemon.budgets)))))
             except (discord.HTTPException, OSError) as e:
                 f.update(ok=False, error=f"{type(e).__name__}: {str(e)[:120]}")
                 self.ledger.attachment(message_id=str(m.id), room=room.name, name=a.filename, size=f["size"],

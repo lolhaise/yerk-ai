@@ -20,7 +20,7 @@ from typing import Any, Callable
 
 from . import context, curate, docs, doctor, jobs, latency, memory, retention, status, words
 from .accounts import Account, Cooldowns
-from .config import budgets, rooms
+from .config import budgets, load_toml, rooms, uncapped
 from .ledger import Ledger
 from .meters import Meters, meter_short
 
@@ -119,7 +119,9 @@ def build(private: Path, state: Path, accounts: list[Account], cooldowns: Cooldo
     if not flags:
         add("", W.PLAIN, W.NO_SHADOW)
     rows += calls(ledger, since, until)                  # claim 19: each call's receipt, and a fix the day after it was filed
-    if (spent := ledger.spent(since, until)).get("n"):   # the paid calls, a spend row each (transcribe, voice_note, plugins/web)
+    if uncapped(budgets(load_toml(private / "yerkd.toml") if (private / "yerkd.toml").is_file() else {})):    # gates lifted: every day
+        add("", W.PLAIN, status.spend_line(status.spend(ledger, since, until, status.midnight(now, 7)), W.YESTERDAY))
+    elif (spent := ledger.spent(since, until)).get("n"):   # the paid calls, a spend row each (transcribe, voice_note, plugins/web)
         add("", W.PLAIN, W.SPENT.format(day=W.YESTERDAY, **spent))
     for d in ledger.deploys(now - DAY):                  # its card may never have reached the machine room
         if d["outcome"] != "proven" or (d["cut"] or 0) > 0:      # a proven one that cut a person's turn too

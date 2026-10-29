@@ -168,6 +168,10 @@ The daemon's settings, in the private folder beside rooms.toml, read when yerkd 
 
 - `growth_mb`: the disk growth a day past which the doctor says so (default 500)
 
+### [limits]
+
+- `uncapped`: true: every character budget in budgets.toml reads as unlimited for what is sent, its number kept as a measurement `yerk map` reports (docs/budgets.md, Uncapped); compact_window and idle_compact_at are not touched by it (default false)
+
 ### [backup]
 
 - `path`: the folder `yerk backup` writes to, in the private folder or absolute (default yerk-backups beside the private folder)

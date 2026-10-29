@@ -32,7 +32,8 @@ from . import (beat, context, deploy, doctor, evidence, gates, hooks, jobs, loca
                status, taste, transcribe, voice_note, watch, workers)
 from .accounts import Account, Cooldowns, from_dir, load_accounts, pick
 from .config import (EFFORTS, REPO, SHELLS, account_and_model, account_named, assistants, budgets, discord_id, flag, load_toml, models,
-                     override, people, pinned, private_dir, read_secret, room_id, room_settings, rooms, state_dir, table, trusted, write_private)
+                     override, people, pinned, private_dir, read_secret, room_id, room_settings, rooms, state_dir, table, trusted, uncapped,
+                     write_private)
 from .engine import RoomSpec, SessionTable
 from .ledger import Ledger
 from .lifted.classify import FailureTable
@@ -98,7 +99,7 @@ class Yerkd:
         words.configure(self.conf.get("presentation"))          # what every card and notice shows (STYLE.md)
         self.port = port or int(self.conf.get("http", {}).get("port", 0)) or free_port()
         self.url = f"http://127.0.0.1:{self.port}"
-        self.budgets, self.room_confs, self.models = addons.with_lines(budgets(), state), rooms(private), models(self.conf)
+        self.budgets, self.room_confs, self.models = addons.with_lines(budgets(self.conf), state), rooms(private), models(self.conf)
         for n, c in self.room_confs.items():               # one string would be read as one folder per letter
             for key in (k for k in ("read", "also") if not isinstance(c.get(k, []), list)):
                 raise SystemExit(f'room {n}: {key} must be a list of folders, like {key} = ["~/notes"], not {c[key]!r}')
@@ -177,7 +178,7 @@ class Yerkd:
         (work := rdir / "work").mkdir(parents=True, exist_ok=True)
         layer = context.layer_dir(self.private, conf)
         self.rules_news(name)          # first, the look a new session starts with: a rule filed meanwhile is told twice, never lost
-        parts = context.session_start(self.private, conf, self.budgets, lambda left: self.room_pack(name, left), self.memory.root / memory.RULES)
+        parts = context.session_start(self.private, conf, self.budgets, lambda left: self.room_pack(name, left), self.memory.root / memory.RULES, name)
         self.cut_said(name, parts)
         ctx = write_private(rdir / "context.md", context.appended_file(parts))      # the owner's lines: 0600, as every private file
         hooks.record(self.state, name, "session_start", "", {p.name: p.size for p in parts},
@@ -314,7 +315,7 @@ class Yerkd:
         if (conf := self.room_confs.get(room)) is None or (path := taste.kept(self.private, conf)) is None:
             return ""
         try:
-            return taste.render(taste.load(path), room, int(self.budgets["per_message"]["on_hit"]["taste"]))
+            return taste.render(taste.load(path), room, int(self.budgets["per_message"]["on_hit"]["taste"]), whole=uncapped(self.budgets))
         except OSError as e:                      # the message goes on without it
             log.warning("room %s: no taste part, %s could not be read: %s", room, path, e)
             return ""
@@ -433,8 +434,10 @@ class Yerkd:
             return {"ok": False, "error": f"{p.name} is outside this room's folders; transcribe reads the files sent to it"}
         if not p.is_file():                           # not audio: ffmpeg says so before anything is paid
             return {"ok": False, "error": f"there is no file {p.name} in this room's folders"}
+        whole, paid = uncapped(self.budgets), list[float]()     # [limits] uncapped: no money gate, the cost in the result instead
         r = await asyncio.to_thread(transcribe.run, p, self.memory.embeddings_key, self.private / transcribe.GROQ_KEY,
-                                    self.booker(room, "transcribe"), owner_yes, self.private / transcribe.META_KEY)
+                                    self.booker(room, "transcribe", paid), owner_yes or whole, self.private / transcribe.META_KEY)
+        r = {**r, "usd": round(sum(paid), 4)} if whole else r
         log.info("transcribe: %s, %s", room, f"{r['segments']} segments, {r['uncertain']} uncertain" if r["ok"] else r["error"][:160])
         return r
 
@@ -620,13 +623,16 @@ class Yerkd:
         if room not in self.rooms:
             return {"ok": False, "error": f"no room {room!r}; rooms: {', '.join(self.rooms)}"}
         r = await asyncio.to_thread(voice_note.run, script, name, self.state / "rooms" / room / "work" / voice_note.FOLDER, self.private,
-                                    self.memory.embeddings_key, self.booker(room, "voice_note"), owner_yes)
+                                    self.memory.embeddings_key, self.booker(room, "voice_note"), owner_yes or uncapped(self.budgets))
         log.info("voice_note: %s, %s", room, f"{r['engine']}, {r['duration_s']} s, US${r['usd']:.4f}" if r["ok"] else r["error"][:160])
         return r
 
-    def booker(self, room: str, tool: str) -> transcribe.Book:
-        """A paid tool's spend writer: one ledger row per paid call (decision 32), the morning diff's day total."""
+    def booker(self, room: str, tool: str, paid: list[float] | None = None) -> transcribe.Book:
+        """A paid tool's spend writer: one ledger row per paid call (decision 32), the morning diff's day total; each call's
+        dollars also into `paid`, the tool result's receipt."""
         def book(engine: str, usd: float, note: str) -> None:
+            if paid is not None:
+                paid.append(usd)
             try:
                 self.ledger.spend(room=room, tool=tool, engine=engine, usd=round(usd, 6), note=note)
             except Exception as e:                    # the ledger never stops a paid call's answer reaching the room
@@ -696,7 +702,7 @@ class Yerkd:
             return await self.tool_remember(room, text, job.strip(" :"), [])
         with self.rooms[room].lock:
             mid = ",".join(m.id for m in self.rooms[room].inflight) or f"x{self.rooms[room].turn_key}"
-        cap = int(self.budgets["session_start"]["appended"]["rules"])
+        cap = 0 if uncapped(self.budgets) else int(self.budgets["session_start"]["appended"]["rules"])     # 0: no strip, no topic filing
         r = await asyncio.to_thread(memory.rule, self.memory, room, mid, job, text, cap, self.daily, context.books(self.private, self.room_confs))
         if not r["ok"]:
             return r
@@ -830,10 +836,15 @@ class Yerkd:
                                    rid=room_id(room, self.room_confs.get(room, {})), owner=self.owner(room))
         return text, str(self.memory.daily)
 
-    def compact_pack(self, room: str) -> str:
-        """The recall pack as session start builds and fits it, for the re-add after a compaction."""
+    def compact_pack(self, room: str, sid: str = "") -> str:
+        """The recall pack as session start builds and fits it, for the re-add after a compaction; an uncapped install's whole,
+        then the topic rules its session start did not carry (context.topics), under Claude Code's hook ceiling (context.ceiling)."""
         conf = self.room_confs[room]
         limit = int(self.budgets["session_start"]["appended"]["recall_pack"])
+        if uncapped(self.budgets):
+            text = context.recall_pack(context.layer_dir(self.private, conf), conf, context.NONE, lambda left: self.room_pack(room, left))[0]
+            text = "\n\n".join(x for x in (text, self.rules_topic(room, sid, None, context.NONE)[0]) if x)
+            return context.ceiling(text, int(self.budgets["hook"]["output_cap"]), self.state / "rooms" / room / "work" / "compact-whole.md")
         text, src = context.recall_pack(context.layer_dir(self.private, conf), conf, limit, lambda left: self.room_pack(room, left))
         return context.fit("recall_pack", text, limit, src)[0]
 
@@ -867,7 +878,8 @@ class Yerkd:
                 absent += [] if got or what in keyed else [what]
         topics = memory.topic_hits(self.memory, room, prompt, mine, rid=room_id(room, conf),
                                    owner=self.owner(room)) if conf.get("topic_recall", True) else []
-        past = [h for h in self.search(room, prompt, PAST_HITS, int(self.budgets["per_message"]["on_hit"]["recall"]), 2.0, 3.0, docs=False)
+        hits = context.NONE if uncapped(self.budgets) else int(self.budgets["per_message"]["on_hit"]["recall"])
+        past = [h for h in self.search(room, prompt, PAST_HITS, hits, 2.0, 3.0, docs=False)
                 .get("hits", []) if not any(f"[m:{m}" in h["text"] for m in mine)] if back else []
         return abilities.asked(prompt, self.memory) + names + deep, topics, past, absent     # "can you do voice": the manifest's answer
 
@@ -876,13 +888,15 @@ class Yerkd:
         if self.reader(room).sealed:        # none, and no rules-seen.json with the rules' text in its folder: no other room's rule
             return ""
         return context.news(self.state / "rooms" / room / "rules-seen.json", sid, self.private, self.room_confs[room],
-                            self.memory.root / memory.RULES, int(self.budgets["per_message"]["on_hit"]["rules"]))
+                            self.memory.root / memory.RULES, context.NONE if uncapped(self.budgets) else int(self.budgets["per_message"]["on_hit"]["rules"]))
 
-    def rules_topic(self, room: str, sid: str, prompt: str, budget: int) -> tuple[str, list[str]]:
-        """The topic rules this message names, the room's own and every room's, each once per session (context.topics); none in a sealed room."""
+    def rules_topic(self, room: str, sid: str, prompt: str | None, budget: int) -> tuple[str, list[str]]:
+        """The topic rules this message names, the room's own and every room's, each once per session (context.topics); none in a sealed room.
+        Uncapped, none its session start file carries (the room's context.md, this process's)."""
         if self.reader(room).sealed:
             return "", []
-        return context.topics(self.state / "rooms" / room / context.TOLD, sid, room, self.memory.root / memory.RULES, prompt, budget)
+        start = (f.read_text() if (f := self.state / "rooms" / room / "context.md").is_file() else "") if uncapped(self.budgets) else None
+        return context.topics(self.state / "rooms" / room / context.TOLD, sid, room, self.memory.root / memory.RULES, prompt, budget, start)
 
     def move_held(self) -> str:
         """At a start: rules-overflow.md's rules into rules-topics.md, once (memory.move_held), and the machine-room line saying so."""
@@ -1091,7 +1105,7 @@ class Yerkd:
             if payload.get("source") == "compact":
                 if name:                          # the topic rules ride again after it, each once (context.topics)
                     (self.state / "rooms" / name / context.TOLD).unlink(missing_ok=True)
-                return await asyncio.to_thread(hooks.session_start, payload, self.state, self.compact_pack, name)
+                return await asyncio.to_thread(hooks.session_start, payload, self.state, lambda r: self.compact_pack(r, sid), name)
             prev = self.was_reset(name, sid) if name and payload.get("source") in ("startup", "clear") else ""
             if name and prev:                 # told only when the replaced session had answered something
                 lost = self.ledger.answered_in(prev)

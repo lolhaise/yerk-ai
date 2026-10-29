@@ -127,13 +127,14 @@ def fit(lines: Iterable[str], cap: int, secs: float = 0) -> list[str]:
     return kept + [CUT.format(cap=cap, left=f"{left:,}")] if left else kept
 
 
-def write(room: str, path: Path, tz: tzinfo, cap: int = 0) -> Path:
+def write(room: str, path: Path, tz: tzinfo, cap: int = 0, whole: bool = False) -> Path:
     """The text beside a workbook or a PDF: its header (pictures.header from FILE_HEAD, then what it holds), then its lines
-    cut at `cap` and `secs` (budgets.toml [files]); a PDF with no text on any page, or a file that does not open, its header alone."""
+    cut at `cap` and `secs` (budgets.toml [files]), or `whole` (an uncapped install) all of them, however long the read; a PDF
+    with no text on any page, or a file that does not open, its header alone."""
     sort, conf = kind(path), budgets()["files"]
     try:
         what, lines = (workbook if sort == "workbook" else pdf)(path)
-        body = fit(lines, cap or int(conf["chars"]), float(conf["secs"]))
+        body = list(lines) if whole else fit(lines, cap or int(conf["chars"]), float(conf["secs"]))
     except ImportError:                          # openpyxl or pypdf not installed (`uv sync`): the file is fine, so nothing is
         raise                                    # written and it stays missing, for the backfill once they are
     except Exception as e:                       # whatever a damaged or locked file raises: said in its header, never a stop
@@ -144,11 +145,11 @@ def write(room: str, path: Path, tz: tzinfo, cap: int = 0) -> Path:
     return write_private(sidecar(path), "\n".join([f"{pictures.header(room, path, tz, FILE_HEAD)}, {what}", *body]) + "\n")
 
 
-async def beside(room: str, path: Path, tz: tzinfo | None = None) -> Path | None:
+async def beside(room: str, path: Path, tz: tzinfo | None = None, whole: bool = False) -> Path | None:
     """On upload: the text written beside it off the event loop, waited on at most WAIT s; a slower file's is written when
     it ends and its message goes in without it. None when it is not there yet or could not be written."""
     try:
-        return await asyncio.wait_for(asyncio.to_thread(write, room, path, tz or ZoneInfo(system_zone())), WAIT)
+        return await asyncio.wait_for(asyncio.to_thread(write, room, path, tz or ZoneInfo(system_zone()), 0, whole), WAIT)
     except Exception as e:                       # a slow file, a full disk: the message goes in all the same
         log.warning("files: %s, its text not written yet: %s", path.name, type(e).__name__)
         return None
