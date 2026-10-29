@@ -8,6 +8,11 @@ version changes.
 
 ## 2026-10-29
 
+### hands-budget (#?)
+
+- A deploy no longer refuses on the size of the hands plug-in's tools: their budget line moves to what a busy
+  room sends since need 27 (7,462, from 7,119) and the session-start total moves with it. Nothing else changes.
+
 ### watch-audit (#?)
 
 - A watching room with `watch_audit = true` grades the other assistant's answer to every message sent there: it posts
