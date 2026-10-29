@@ -584,6 +584,12 @@ class Ledger:
                        key=lambda p: int(p["key"].rsplit(":", 1)[1]))
         return {"id": str(parts[0]["message_id"]), "sent": float(parts[0]["sent"]), "text": "\n".join(str(p["body"]) for p in parts)}
 
+    def last_outbound(self, room: str, besides: str) -> dict[str, Any] | None:
+        """What the room last said, message `besides` left out: its newest outbound row that is not a card's own
+        progress (discord.py: a quiet card goes when the next one stands, if nothing came between them)."""
+        return self._first("SELECT kind, message_id, body FROM outbound WHERE room = ? AND kind NOT IN ('progress', "
+                           "'progress-edit') AND message_id IS NOT ? ORDER BY id DESC LIMIT 1", (room, besides))
+
     def turn_for_key(self, turn_key: str) -> int | None:
         r = self._select("SELECT id FROM turns WHERE turn_key = ? ORDER BY id DESC LIMIT 1", (turn_key,))
         return int(r[0]["id"]) if r else None

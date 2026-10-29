@@ -104,7 +104,7 @@ def padded(tmp: Path) -> Path:
 
 
 def test_capped_is_mains_assembly_byte_for_byte_with_the_switch_absent_or_false(tmp_path):
-    """The fixture is this scenario assembled on the base commit (0967822, PR 134's merge): the start file, both messages,
+    """The fixture is this scenario assembled on the base commit (1ec2592, PR 145's merge): the start file, both messages,
     the compaction, every assembled.jsonl row, the topic rules told and every log line, the same with [limits] absent and false."""
     want = json.loads(FIXTURE.read_text())
     assert assemble(tmp_path / "absent") == want
@@ -241,7 +241,7 @@ def test_an_uncapped_install_lifts_the_money_gates_and_transcribes_result_carrie
     waits for owner_yes, every call still books its spend row, and transcribe's result says what it cost, as voice_note's does."""
     asked: list[bool] = []
 
-    def heard(audio, openai_key, groq_key, book, owner_yes=False):
+    def heard(audio, openai_key, groq_key, book, owner_yes=False, meta_key=None):
         asked.append(owner_yes)
         book("openai/whisper-1", 0.25, "chunk 1 of 2")
         book("openai/whisper-1", 0.125, "chunk 2 of 2")

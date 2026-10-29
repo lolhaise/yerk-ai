@@ -29,6 +29,7 @@ message and a success result echoing the text. Variations:
 - a line containing SLOW: waits up to 1.5 s for another line; if one comes, it is replayed and
   answered in the same result (a fold)
 - a line containing HANG: no answer for 60 s (a turn only /stop ends)
+- a line containing READ_ALONG: the answer is NO_REPLY on a line of its own (a room reading along, nothing to add)
 - a line containing CHATTY: a stream event every 0.3 s for about 2 s, then the answer
 - --resume with FAKE_CLAUDE_MISSING=1: "No conversation found" on stderr, exit 1
 - --model equal to FAKE_CLAUDE_BAD_MODEL: every line fails as model_not_found, "There's an issue
@@ -180,7 +181,7 @@ def answer(text):
     if "HOOK_ERROR" in text:                   # what Claude Code 2.1.301 streams when a hook fails, non-blocking
         out({"type": "system", "subtype": "notification", "session_id": sid, "uuid": str(uuid.uuid4()),
              "key": "stop-hook-error", "text": "Stop hook error occurred \u00b7 ctrl+o to see"})
-    reply = "echo: " + text
+    reply = "\nNO_REPLY\n" if "READ_ALONG" in text else "echo: " + text
     out({"type": "stream_event", "event": {"type": "content_block_delta", "delta": {"type": "text_delta", "text": reply}}})
     n = int(text.split("CONTEXT:")[1].split()[0]) if "CONTEXT:" in text else 0
     out({"type": "assistant", "message": {"content": [{"type": "text", "text": reply}],

@@ -28,8 +28,8 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 from zoneinfo import ZoneInfo
 
-from . import (beat, context, deploy, doctor, evidence, gates, hooks, jobs, location, mcp_server, memory, mentions, needs, pictures, status,
-               taste, transcribe, voice_note, workers)
+from . import (beat, context, deploy, doctor, evidence, gates, hooks, jobs, location, mcp_server, memory, mentions, needs, pictures, render,
+               status, taste, transcribe, voice_note, watch, workers)
 from .accounts import Account, Cooldowns, from_dir, load_accounts, pick
 from .config import (EFFORTS, REPO, SHELLS, account_and_model, account_named, assistants, budgets, discord_id, flag, load_toml, models,
                      override, people, pinned, private_dir, read_secret, room_id, room_settings, rooms, state_dir, table, trusted, uncapped,
@@ -46,7 +46,7 @@ from . import abilities, addons, words   # STYLE.md: what a room reads
 log = logging.getLogger("yerk.daemon")
 YERK_TOOLS = ["mcp__yerk__send", "mcp__yerk__hold", "mcp__yerk__recall", "mcp__yerk__read_memory",
               "mcp__yerk__remember", "mcp__yerk__worker", "mcp__yerk__schedule", "mcp__yerk__settings", "mcp__yerk__transcribe",
-              "mcp__yerk__voice_note", "mcp__yerk__seen", "mcp__yerk__need"]
+              "mcp__yerk__voice_note", "mcp__yerk__seen", "mcp__yerk__render", "mcp__yerk__watch", "mcp__yerk__need"]
 # A shell room's sandbox when rooms.toml gives it no [rooms.NAME.sandbox] table: unsandboxed, a Read deny stops `cat` and
 # the Read tool, but a script, grep or redirect read every secret (Claude Code 2.1.304, PR 66's cold read, 2026-10-21)
 SANDBOX = {"enabled": True, "autoAllowBashIfSandboxed": True}
@@ -427,7 +427,8 @@ class Yerkd:
 
     async def tool_transcribe(self, room: str, path: str, owner_yes: bool = False) -> dict[str, Any]:
         """The `transcribe` tool: an audio file from the calling room's own folders (may_send's rule; its inbox holds what
-        was sent) made text off the loop (transcribe.run) on the install's one OpenAI key, each paid call a spend row."""
+        was sent) made text off the loop (transcribe.run) on the install's one OpenAI key, with who talks when on the Meta
+        key when it is there, each paid call a spend row."""
         p = Path(path).expanduser().resolve()
         if room not in self.rooms or not self.may_send(room, p):
             return {"ok": False, "error": f"{p.name} is outside this room's folders; transcribe reads the files sent to it"}
@@ -435,9 +436,42 @@ class Yerkd:
             return {"ok": False, "error": f"there is no file {p.name} in this room's folders"}
         whole, paid = uncapped(self.budgets), list[float]()     # [limits] uncapped: no money gate, the cost in the result instead
         r = await asyncio.to_thread(transcribe.run, p, self.memory.embeddings_key, self.private / transcribe.GROQ_KEY,
-                                    self.booker(room, "transcribe", paid), owner_yes or whole)
+                                    self.booker(room, "transcribe", paid), owner_yes or whole, self.private / transcribe.META_KEY)
         r = {**r, "usd": round(sum(paid), 4)} if whole else r
         log.info("transcribe: %s, %s", room, f"{r['segments']} segments, {r['uncertain']} uncertain" if r["ok"] else r["error"][:160])
+        return r
+
+    async def tool_render(self, room: str, path: str) -> dict[str, Any]:
+        """The `render` tool: a document from the calling room's own folders (may_send's rule, as transcribe's) made a PDF
+        beside it by LibreOffice off the loop (render.run), one at a time across rooms, and its pages counted; a PDF's
+        pages counted alone. Free: no spend row."""
+        p = Path(path).expanduser().resolve()
+        if room not in self.rooms or not self.may_send(room, p):
+            return {"ok": False, "error": words.RENDER_NOT_HERE.format(name=p.name)}
+        if not p.is_file():
+            return {"ok": False, "error": words.RENDER_NO_FILE.format(name=p.name)}
+        r = await asyncio.to_thread(render.run, p, self.state)
+        said = f"{p.name}, {r['pages']} page(s)" + (f" in {r['seconds']} s" if "seconds" in r else "") if r["ok"] else r["error"][:160]
+        log.info("render: %s, %s", room, said)
+        return r
+
+    async def tool_watch(self, room: str, url: str, frames: int = watch.FRAMES, owner_yes: bool = False) -> dict[str, Any]:
+        """The `watch` tool: a video in a post pulled from its link by yt-dlp into the calling room's work folder off the loop
+        (watch.run), one download at a time across rooms, its frames taken and its sound transcribed as transcribe's is, on
+        the same keys and gate, each paid call a spend row under `watch`; a post pulled before is neither pulled nor paid again."""
+        if room not in self.rooms:
+            return {"ok": False, "error": words.WATCH_NO_ROOM.format(room=room)}
+        if not watch.is_link(url):
+            return {"ok": False, "error": words.WATCH_NOT_LINK.format(given=words.no_paths(url.strip())[:120])}
+
+        def hear(video: Path) -> dict[str, Any]:
+            return transcribe.run(video, self.memory.embeddings_key, self.private / transcribe.GROQ_KEY, self.booker(room, "watch"),
+                                  owner_yes, self.private / transcribe.META_KEY)
+        r, took = await asyncio.to_thread(watch.run, url, frames, self.state / "rooms" / room / "work" / watch.FOLDER, hear)
+        how = "pulled before" if r.get("reused") else f"pulled in {took:.1f} s"
+        said = (f"{r['slug']}, {r['seconds']} s, {len(r['frames'])} frame(s), {'a' if r['transcript'] else 'no'} transcript, {how}"
+                if r["ok"] else r["error"][:160])
+        log.info("watch: %s, %s", room, said)
         return r
 
     async def tool_seen(self, room: str, path: str, text: str, shows: str) -> dict[str, Any]:

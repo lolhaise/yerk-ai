@@ -20,7 +20,7 @@ FAKE = Path(__file__).with_name("fake_claude.py")
 
 class Chan:
     def __init__(self):
-        self.cards, self.replies, self.notices = [], [], []
+        self.cards, self.replies, self.notices, self.silent_ones = [], [], [], []
         self.done = threading.Event()
 
     def open_card(self, room, text, kind="turn"):
@@ -43,6 +43,12 @@ class Chan:
             self.cards.append(card)
         self.done.set()
         return ["n1"]
+
+    def silent(self, room, inbound, card, key=None):
+        self.silent_ones.append(list(inbound))
+        self.cards.append(card)
+        self.done.set()
+        return ["c1"]
 
 
 @pytest.fixture
@@ -278,6 +284,30 @@ def test_an_empty_reply_twice_starts_fresh_through_the_recap(env):
     assert ids == ["2"] and text.startswith("echo: (Yerk AI: the earlier session") and "the day log holds what was said" in text
     assert 'The last reply here began: "echo: hello")' in text and text.endswith("\n\nEMPTY_TWICE please")
     assert f"{words.WORKING} {words.EMPTY_AGAIN}" in chan.cards and f"{words.WORKING} {words.NEW_SESSION}" in chan.cards
+    room.rp.close()
+
+
+def test_a_final_of_exactly_no_reply_posts_nothing_its_card_says_so_and_it_is_ledgered_silent(env):
+    """watch-note (a room reading along where the owner talks to the other assistant only reads):
+    a final that is NO_REPLY once stripped posts nothing, is never bounced or asked again, and its card says the room
+    read the message and had nothing to add; the message is answered, noted silent. One that only holds NO_REPLY is posted as
+    it is, and an empty reply still goes back to the session once, as above."""
+    make, ledger, tmp_path = env
+    chan = Chan()
+    room = make(chan)
+    send(room, ledger, "1", "READ_ALONG the owner, to the other assistant")
+    wait_idle(room)
+    assert chan.replies == [] and chan.notices == [] and chan.silent_ones == [["1"]]
+    assert chan.cards[-1].split("\n")[0] == f"{words.DONE} {words.QUIET}" and room.last_reply == ""
+    assert {k: ledger.inbound_get("1")[k] for k in ("state", "note", "reply_ids")} == {"state": "answered", "note": "silent", "reply_ids": "c1"}
+    assert [r["outcome"] for r in rows_of(ledger)] == ["ok"] and len(argvs(tmp_path)) == 1    # one run: no bounce, no retry
+    send(room, ledger, "2", "is NO_REPLY a word")
+    wait_idle(room)
+    send(room, ledger, "3", "EMPTY_ONCE then")
+    wait_idle(room)
+    assert chan.replies == [("echo: is NO_REPLY a word", ["2"]), ("echo: EMPTY_ONCE then", ["3"])] and chan.silent_ones == [["1"]]
+    assert [r["outcome"] for r in rows_of(ledger)] == ["ok", "ok", "empty", "ok"] and f"{words.WORKING} {words.EMPTY_AGAIN}" in chan.cards
+    assert ledger.inbound_get("2")["note"] is None
     room.rp.close()
 
 

@@ -2,7 +2,7 @@
 
 Written by `yerk docs own` from yerk_ai/mcp_server.py (build) and workers.WORKER_TOOLS; change those and run it again, never this page.
 
-The 12 tools Yerk AI's own MCP server hands every room's Claude Code, preloaded, as mcp__yerk__NAME. Each one's description is the text the model reads, indentation dropped. A worker gets none of them unless [workers] yerk_tools in yerkd.toml names some, and then only recall, read_memory, on its own server.
+The 14 tools Yerk AI's own MCP server hands every room's Claude Code, preloaded, as mcp__yerk__NAME. Each one's description is the text the model reads, indentation dropped. A worker gets none of them unless [workers] yerk_tools in yerkd.toml names some, and then only recall, read_memory, on its own server.
 
 ## send
 
@@ -141,13 +141,44 @@ a new session starts; with none it says what the room runs now. Say its `line`.
 
 ```text
 A voice note or recording as text, since you take in sound only this way: `path` is the file's saved path from
-its [attachment] line, or another audio file in this room's folders. The daemon transcribes it (your shell has no
-network) and returns the words with a timestamp per segment, saved beside the audio as NAME.transcript.txt. A
-segment marked (uncertain) has two readings that disagree, so give it as unsure or ask. A recording past US$1
-comes back refused until the owner says yes; then call again with `owner_yes` true.
+its [attachment] line, or another audio file in this room's folders. The daemon transcribes it and returns the
+words with a timestamp and, when two or more talk, a speaker letter per segment, saved beside the audio as
+NAME.transcript.txt. A segment marked (uncertain) has two readings that disagree, so give it as unsure or ask. A
+recording past US$1 comes back refused until the owner says yes; then call again with `owner_yes` true.
 ```
 
 - `path`: string, required
+- `owner_yes`: boolean, default false
+
+## render
+
+```text
+A document as a PDF and its page count, since LibreOffice does not run in your shell: `path` is a document in this
+room's folders (a .docx, .doc, .odt, .rtf, .xlsx, .pptx or anything LibreOffice opens). The daemon renders it to a PDF
+saved beside it as NAME.pdf (an older NAME.pdf there is replaced) and returns its page count; a .pdf path returns its
+page count alone, nothing rendered. Use it to check a document fits a page count before you send it, and `send` the PDF
+when the owner wants the PDF. The layout is LibreOffice's, not Word's, so a document that fits by a line in one can
+spill in the other: say a result near the edge as near the edge.
+```
+
+- `path`: string, required
+
+## watch
+
+```text
+A video in a post, its frames and its transcript, since your shell has no network to pull it: `url` is the link to
+a post that holds a video (an Instagram reel or post, a TikTok, an X post, a YouTube link, or any page yt-dlp knows).
+The daemon pulls the video into this room's work folder under videos/, takes `frames` still pictures spread evenly
+through it (6 unless you ask for 1 to 12) and transcribes its sound, and returns the file paths and the transcript;
+open the frames with Read to see what is on screen. Use it whenever the owner sends a video link and expects you to
+have watched it, since the caption, the cover picture and the comments are not the video. A page that needs a login,
+a private post or a page with no video comes back as that, in the site's own words. A transcript past US$1 comes back
+refused until the owner says yes; then call again with `owner_yes` true. A video already pulled is not pulled or
+transcribed again.
+```
+
+- `url`: string, required
+- `frames`: integer, default 6
 - `owner_yes`: boolean, default false
 
 ## seen

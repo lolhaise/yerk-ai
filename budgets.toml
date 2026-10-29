@@ -7,7 +7,7 @@
 # The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and
 # Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 [session_start]
-total = 108093
+total = 110959
 
 # Load order, most stable first, so the cached start of the prompt survives.
 # The first parts are Claude Code's own (its default prompt, the built-in tools
@@ -46,10 +46,21 @@ total = 108093
 # that evening, an owner room's new start (the tree of #117) sent Yerk AI's tools at 11,734 (schedule's calendar wording
 # +31 and send's own-channel line +40 on the 11,663 the older starts send), 34 past 11,700: the prompt line pays it, as
 # persona paid for mechanics (10,889 the largest prompt sent, so 10,966), `yerk_tools` 11,734, the total as above.
+# 2026-10-26, tools-line: worker-effort (#129) put `effort` on the room's `worker` tool and no line moved; Yerk AI's tools
+# measured 11,871 as sent in a work room and an owner's room (`yerk map`, Claude Code 2.1.3xx), over the 11,734 line, and
+# the deploy of #134 refused on it; so 11,900, no part could pay, the total rose by the 166.
+# 2026-10-28, need-2026-10-28-24: the `render` tool (a document as a PDF with its page count, since LibreOffice will not
+# run in a room's sandbox) is 852 as this tree builds it on Python 3.13 and 3.14, about 883 as sent (each of Yerk AI's
+# entries goes out 31 over its build: `need` 793 built, 824 sent), so about 12,754 on the 11,871 the rooms send; so
+# 12,800, no part could pay, the total rose by the 900.
+# 2026-10-28, need-2026-10-28-26: the `watch` tool (a video in a post pulled from its link with its frames and its
+# transcript, since a room's shell has no network) is 1,282 as this tree builds it on Python 3.13, about 1,313 as sent
+# (31 over its build, as each of Yerk AI's entries goes out), so about 14,067 on the 12,754 the rooms send with `render`;
+# so 14,100, no part could pay, the total rose by the 1,300.
 [session_start.claude_code]
 claude_code_prompt = 10966
 builtin_tools = 12132
-yerk_tools = 11734
+yerk_tools = 14100
 deferred_tool_names = 3429
 mcp__hands__ = 7119
 mcp__web-ladder__web_image = 913
@@ -98,8 +109,14 @@ skills = 0
 # mechanics to 4,271, so 4,300; no part could pay, so the total rose by the 200, to 96,414 with the tools' 700.
 # Merged 2026-10-23, the train: the place line (#109) and missing-ability's line (#110) both ride, so the mechanics
 # take both raises, 4,500, and the total 96,614 (main's 95,714 plus this PR's 900).
+# 2026-10-28, need-2026-10-28-24: the render line (a document's PDF or page count comes from `render` on its path, never
+# an estimate off the text) took the mechanics to 4,667, so 4,700; no part could pay, so the total rose by the 200, to
+# 109,359 with the tools' 900.
+# 2026-10-28, need-2026-10-28-26: the watch line (a video in a post is watched with `watch` on its link; the caption, the
+# cover picture and the comments are not the video, and an answer given off them says so) took the mechanics to 4,995,
+# so 5,000; no part could pay, so the total rose by the 300, to 110,959 with the tools' 1,300.
 [session_start.appended]
-mechanics = 4500
+mechanics = 5000
 persona = 11800
 rulebook = 14000
 room_voice = 5500
@@ -576,6 +593,52 @@ secs = 60
 # this PR's 3, and 1 for `[workers] effort`'s line in config.YERKD_WORDS (#122's key table, which test_owndocs checks
 # both ways), is 21,780, counted on the merged tree; cli.py and daemon.py, which both changed, merged clean;
 # `yerk docs own` wrote commands.md (--effort), tools.md (the worker tool's effort), settings.md and budgets.md.
+# 2026-10-27: watch-note raised it by 32, a watched channel's message naming who it was sent to and a final of exactly
+# NO_REPLY posting nothing (the owner's ask), not folded to fit: discord.py 16 (the line, one helper for the live,
+# edited and restarted paths; `silent`, the kept card its row), room.py 8 (the silent final, its card and note, the stub
+# rule passing NO_REPLY, the Channel method), words.py 6, config.py 2 (`watch_assistant` in ROOM_WORDS).
+# 2026-10-28: need-2026-10-28-23 raised it by 131, speaker labels on a transcript from Meta's Muse (who is
+# talking, the owner or the other person), not folded to fit:
+# transcribe.py 123 (the overlapping WAV windows, the Muse request and the send it shares with post, its turns, the letters
+# reconciled across windows, a letter per segment, the speakers line, its spend rows and its share of the gate), words.py 7
+# (the speakers line and its three other forms, TRANSCRIBED_NEXT's sentence), daemon.py 1 (the Meta key's path).
+# 2026-10-28: watch-answer raised it by 152, a watched message held for the other assistant's settled answer and read with
+# it in one turn (the room had finished its turn before it saw what the other assistant answered), not
+# folded to fit: discord.py 148 (the Hold, the answer judged by its own 6 s settle and a delete, the group's one turn, its
+# lines and its rows, the wait from the sender's last message and what is left of it after a restart, a held message's edit and
+# delete), words.py 3 (the answer line, its file line, the not-answered line), config.py 1 (`watch_wait` in ROOM_WORDS).
+# 2026-10-28: quiet-card raised it by 25, one quiet line standing in a watching room, not one per message (an owner's
+# room, in eleven minutes: 13 quiet lines in a row), not folded to fit: discord.py 18 (the call in `_finish` once the card
+# is kept, and `_supersede`: the line before, read from the ledger, deleted unless the room said anything since, its
+# card row closed), ledger.py 6 (`last_outbound`, the one SELECT), room.py 1 (the docstring's clause).
+# 2026-10-28: need-2026-10-28-24 raised it by 126, a document as a PDF with its page count for every room (need 24:
+# a room could not check that a document fits on one page, since LibreOffice will not run in its sandbox), not folded to
+# fit: render.py 92 (the soffice run under a fresh profile a call, removed after; one at a time across rooms; the timeout
+# that kills its process group; the page count by pypdf, a PDF counted alone; the owner's own fonts kept for fontconfig),
+# daemon.py 14 (the tool, may_send's rule, the call off the loop, its log line), mcp_server.py 12 (the tool and its
+# description, the protocol line, the module's count of tools), words.py 8 (the refusals and failures in words).
+# Merged 2026-10-28: quiet-card (#140) landed first, need-2026-10-28-24 (#141) carries both raises: 22,095 + 25 + 126.
+# 2026-10-28: need-2026-10-28-26 raised it by 260, a video in a post watched for every room, its frames and its transcript
+# (need 26: a room sent a reel link read only the caption, the cover frame and the comments, since its shell has no
+# network to pull the video), not folded to fit: watch.py 212 (the link's folder and the slug a post, its link kept so
+# another post with the same slug never takes its video, a link the room's shell left there never followed; the yt-dlp run
+# in a clean environment, one at a time across rooms, its process group killed at the timeout, the site's own error line;
+# ffprobe's length and streams; the even frames; the transcript through transcribe.run or read from its file, never paid
+# twice; one call a post at a time), daemon.py 19 (the tool, the link check, the transcribe call as tool_transcribe makes
+# it, its log line), mcp_server.py 14 (the tool and its description, the protocol line, the module's count of tools),
+# words.py 15 (the refusals, failures and notes in words).
+# 2026-10-29: hold-card raised it by 57, the other assistant's progress card never its answer and the wait running while
+# that card is up (a person's message in a watched channel came in with that assistant's card as its
+# answer, and the room said nothing), not folded to fit: discord.py 51 (is_card from OpenClaw's tool-row emoji and Yerk AI's
+# own card shape; the wait from the card's newest edit, CARD_PATIENCE waits at most, CARD_GONE once it goes; a card never
+# test reads it, back as plain text with; one more line for), the.check 0 (While a-second entry waits in
+# file they were read from), config.py 1 (`watch_wait` in ROOM_WORDS).
+# 2026-10-29: watch-audit raised it by 50, a watching room's verdict on the other assistant's answer to every watched
+# message, never silent (it checks the work and says good, bad or in between with the green,
+# orange and red circles), not folded to fit: discord.py 29 (the audit line in inbound_text with its sender and readers,
+# the readers' names fetched once each since there is no member cache, only a quiet card superseding the one before),
+# room.py 8 (a NO_REPLY on a watched turn of a watch_audit room kept as NO_VERDICT, known by its inbound row's channel),
+# words.py 9 (the audit line, the readers' words, NO_VERDICT), config.py 4 (`watch_audit` in ROOM_WORDS, its refusal).
 # 2026-10-26: uncapped raised it by 123, yerkd.toml [limits] uncapped (every cap off, in a way
 # that can be reverted at any point): one switch read where each budget is enforced (context, hooks,
 # daemon, taste, workers, jobs, files, cli, doctor), the hook ceiling's marked cut (context.ceiling) and budgets.md's
@@ -583,4 +646,8 @@ secs = 60
 # that paid calls be tracked and their cost said, not asked first): owner_yes passed, transcribe's `usd`, the mechanics' paid-call line, the
 # status and morning spend line (daemon, context, status, morning, words) and the Uncapped section's sentence on them,
 # 38; not folded to fit. 21,903: main 0967822's 21,780 plus 123.
-lines = 21903
+# 2026-10-29: uncapped merged with main 1ec2592 (#135, #137 to #141, #143 to #145): main's 22,613 plus this PR's 123
+# is 22,736, counted on the merged tree; daemon.py's tool_transcribe keeps both sides in the same three lines (this PR's
+# spend into `paid`, `owner_yes or whole` and the `usd` receipt, #138's Meta key as the call's last argument); config.py,
+# discord.py and words.py, which both changed, merged clean; `yerk docs own` wrote budgets.md.
+lines = 22736

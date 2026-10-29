@@ -96,7 +96,7 @@ def step(name: str, args: dict[str, Any]) -> str:
         what = terms(str(args.get("pattern") or ""))
     elif n == "glob":
         what = " ".join(re.findall(r"\w+", os.path.splitext(str(args.get("pattern") or ""))[1]))   # **/*.md: md
-    elif n in ("webfetch", "web_fetch", "fetch"):
+    elif n in ("webfetch", "web_fetch", "fetch", "watch"):
         what = urlparse(str(args.get("url") or "")).hostname or str(args.get("url") or "")
     elif n == "send":
         what = os.path.basename(path) if path else words.MESSAGE_TO.format(room=args.get("room") or "")

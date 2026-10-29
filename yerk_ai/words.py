@@ -89,7 +89,7 @@ STEP = {"bash": "running a command", "read": "reading {what}", "read_memory": "r
         "webfetch": "reading {what}", "web_fetch": "reading {what}", "fetch": "reading {what}",
         "websearch": "searching the web for {what}", "web_search": "searching the web for {what}", "send": "sending {what}",
         "remember": "filing a note", "hold": "waiting for {what}", "settings": "switching to {what}", "transcribe": "transcribing {what}",
-        "voice_note": "making a voice note", "seen": "filing a picture", "need": "filing what it needs",
+        "voice_note": "making a voice note", "seen": "filing a picture", "need": "filing what it needs", "watch": "watching a video on {what}",
         "todowrite": "updating the plan", "task": "handing off {what}", "agent": "handing off {what}", "toolsearch": "loading a tool"}
 WORKER_STEP = {"start": "starting a worker", "list": "listing the workers", "stop": "stopping worker {id}",
                "report": "reading worker {id}'s report"}
@@ -295,10 +295,35 @@ VOICE_NOTE = ("[voice note] {name} is a recording. You take in sound only as the
               "transcribe on the path above before you answer, then open your reply with what it says, or with the fact that it "
               "could not be transcribed. Call that step transcribing, never listening, since nothing plays the sound to you.")
 TRANSCRIBED_NEXT = ("Open your reply with what the recording says, in your own words. A segment marked (uncertain) has two "
-                    "readings that disagree, so give that part as unsure or ask about it, since either reading may be wrong.")
+                    "readings that disagree, so give that part as unsure or ask about it, since either reading may be wrong. A "
+                    "letter before a line (A:) is a voice told apart by sound, so say which person each letter is as your guess "
+                    "from what they say, unless the owner said who is who.")
 TRANSCRIPT_HEAD, UNCERTAIN, NO_WORDS = "{name}, {minutes} min, {how}", "(uncertain) {first} | second pass: {second}", "(no words)"
 SEEN_NOT_HERE = "{name} is not a picture sent to this room; seen files a picture from its [attachment] line"
 SEEN_NO_SHOWS = "seen needs `shows`: one or two lines of what the picture shows"
+# a document rendered (render.py): why no PDF or page count came back
+RENDER_NOT_HERE = "{name} is outside this room's folders; render reads the files sent to it and this room's own work"
+RENDER_NO_FILE = "there is no file {name} in this room's folders"
+RENDER_NO_SOFFICE = "LibreOffice (soffice) is not on this machine, so no PDF could be made"
+RENDER_FAILED, RENDER_NO_WHY = "LibreOffice could not make a PDF of {name}: {why}", "it gave no reason"
+RENDER_TIMED_OUT = "LibreOffice did not finish {name} in {seconds} s, so it was stopped and no PDF was made"
+RENDER_NOT_PDF = "{name} did not open as a PDF ({why}), so its pages could not be counted"
+RENDER_DAMAGED, RENDER_LOCKED = "it is damaged or not a PDF", "it is locked with a password"
+# a video watched (watch.py): why no video came back, and a result's note on what it has no frames or transcript for
+WATCH_NO_ROOM = "watch puts the video in a room's work folder, and there is no room {room}"
+WATCH_NOT_LINK = "\"{given}\" is not a link: watch takes a post's web address, one that starts http:// or https://"
+WATCH_NO_YTDLP = "yt-dlp is not on this machine, so no video could be pulled"
+WATCH_FAILED, WATCH_NO_WHY = "no video was pulled from that link: {why}", "it gave no reason"
+WATCH_NOTHING = ("no video was pulled from that link: yt-dlp saved nothing, as it does for a video over 300 MB or a page with "
+                 "no video in it")
+WATCH_TIMED_OUT = "the download did not finish in {seconds} s, so it was stopped and no video was saved"
+WATCH_NO_FFMPEG = "ffmpeg and ffprobe are not both on this machine, so the video could not be read"
+WATCH_NOT_READ, WATCH_SLOW = "{name} did not read as a video ({why})", "it took past {seconds} s"
+WATCH_BROKE = "the video could not be watched: {why}"
+WATCH_LINKED = "{name} in this room's work folder is a link, and watch never writes through one, so nothing was pulled"
+WATCH_NO_SOUND, WATCH_NO_PICTURE = "it has no sound, so there is no transcript", "it has no picture, so there are no frames"
+WATCH_NO_TRANSCRIPT = "no transcript: {why}"
+WATCH_FRAMES_LOST = "{got} of {of} frames came, the rest would not: {why}"
 UNSEEN = ("You read {names} and did not file what it shows. Call seen on {paths} with its words and a line "
           "of what it shows, then give your answer again, since only the text after your last tool call reaches the room.")
 PICTURES_PERSON = "{room} is not an owner room: the backfill runs in owner rooms only; a picture sent there is filed by its own room"
@@ -310,6 +335,29 @@ PICTURES_BATCH = "pictures backfill {room}: batch {n} of {of} {how}, {filed} of 
 PICTURES_NEXT, PICTURES_STOP, PICTURES_DONE = "; batch {n} started", "; stopped, {left} left: run it again", "; done"
 FILE_TEXT = "[its text, extracted by code] saved at {path}"     # under a workbook's or a PDF's [attachment] line (files.py)
 ADDON_READS = "[read by an add-on] {name} is read through {tool}, an installed add-on's tool: call it on the path above"   # addons.reads
+# the line above a message from the channel a room watches (rooms.toml `watch`, `watch_assistant`): who it was sent to there
+SENT_THERE = ("[sent to {who} in #{channel}, not to this room: the owner is talking to {who} there. Read along and file what "
+              "matters. Answer here only if the owner's words ask this room something, or you have something they would want from this "
+              "room that {who} did not give; otherwise answer exactly {quiet}.]")
+# ... in a room with `watch_audit` true: a verdict on that assistant's answer, every time, never NO_REPLY (the owner, 2026-10-29)
+SENT_THERE_AUDIT = ("[sent to {who} in #{channel}, not to this room: {sender} is talking to {who} there. {who}'s answer follows the "
+                    "message. AUDIT it and post your verdict here: check it against the files and the thread, not recall; first line "
+                    + DONE + " looks good, " + WORKING + " right but missing something, or " + NOT_DONE + " wrong, then what is wrong or "
+                    "missing and the fix, written out in full in plain words, because {readers} read this room; one or two lines when "
+                    "it is right. If {who} had not answered within the wait, say that in one line. Never {quiet} on this turn; never "
+                    "redo work {who} got right.]")
+OWNER, A_PERSON = "the owner", "a person this room answers"   # who reads it, by name where the server shows one
+NO_VERDICT = "no verdict: the room answered nothing"   # its card, kept under NOT_DONE, when it answers NO_REPLY all the same
+OTHER_ASSISTANT = "the other assistant"              # `watch_assistant` unset
+# the line under it once that assistant's answer there has settled, a line per file it attached; else once `watch_wait` ran out
+WATCH_ANSWERED, WATCH_ATTACHED = "[{who} answered at {at} in #{channel}: {text}]", '[{who} attached: "{name}"]'
+WATCH_UNANSWERED = "[{who} had not answered in #{channel} within {wait} s of the owner's message]"
+NO_REPLY, QUIET = "NO_REPLY", "read it, nothing to add"   # a final of exactly NO_REPLY posts nothing; its card says QUIET
+# the emoji an OpenClaw progress card's tool row starts with, one per tool kind, "🧩" for any other (an MCP tool's): its
+# TOOL_DISPLAY_CONFIG with the message tool's spec, /usr/lib/node_modules/openclaw/dist/tool-display-zmIG5_OB.mjs, read
+# 2026-10-29; a message with one is that assistant at work, never its answer (channels/discord.py is_card)
+OPENCLAW_ROWS = ("✉️ 🧩 🛠️ 🖱️ 📱 🖥️ ⌨️ 🌐 🧰 📖 ✍️ 📝 📎 🖼️ 📋 ⏰ 🎯 🗺️ ❓ 🔑 ✨ 🗑️ 🦀 🔌 📊 🔀 🔐 🗂️ 💬 📨 ↔️ 🧾 🔎 🎙️ 🧑‍🔧 ⏳ 🤖 🧭 🧠 📓 📄 🧮 "
+                 "🩹 🎨 🎵 🎬 📑 ⏸️ 🔊")
 FILES_PERSON = "{room} is not an owner room: a workbook or a PDF sent there is never read"
 FILES_BACKFILL = "{n} workbook(s) and PDF(s) in {where} with no text beside them or an older one; {done}"
 FILES_WRITTEN, FILES_DRY = "written", "nothing written (--dry-run)"
@@ -329,6 +377,11 @@ NEED_BUSY = "need {n} is {state}: one builder a need, so nothing started"
 CHECKED = "checked by a second pass: {n} of {of} segments uncertain"
 PART_CHECKED = "checked by a second pass but for chunk {chunks}, where it failed: {n} of {of} segments uncertain"
 UNCHECKED = "one pass only, so nothing in it was checked: a second pass needs a Groq key at secrets/groq.key"
+# the line under a transcript's head: who talks how long, by Muse's letters reconciled across its windows (transcribe.reconcile)
+SPEAKERS = "speakers: {who} (letters, not names: say who is who as a guess from what is said, unless the owner tells you)"
+UNMATCHED, ONE_VOICE = ", {n} letters could not be matched across windows", "one voice"
+NO_SPEAKERS, NO_META_KEY, NO_TURNS = "speakers: none (Muse: {why})", "no Meta key at secrets/meta.key", "no speech turns in its answer"
+MUSE_FAILED = "window {windows} of {of} failed: {error}"
 MORE_IN_FILE = "(the rest is in the file: Read it from this line on)"
 NO_SPEECH_KEY = "no OpenAI key in the private folder (secrets/openai.key), so the recording could not be transcribed"
 OVER_GATE = ("not transcribed yet, since {minutes} min of audio is about US${usd:.2f}, past the US$1 a call spends only with the "

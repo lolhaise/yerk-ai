@@ -23,7 +23,10 @@ adapter's event loop.
 - Each turn owns one card (card.py), fed from the stream; every outbound part carries the turn's
   key. A turn that was sent an image and never read it is bounced once at Stop, naming the file;
   a working turn answering a person that ends with nothing visible in the room bounces once,
-  naming what is owed (nothing that already landed under the turn's key is sent again); a final
+  naming what is owed (nothing that already landed under the turn's key is sent again); a final of exactly NO_REPLY
+  posts nothing, its card kept saying the room read the message and had nothing to add, ledgered `silent`, and the
+  quiet line before it goes when the room said nothing since, so one stands (a watched message's verdict owed by a
+  `watch_audit` room: the card says none came, and stays); a final
   text that only reports a filing (`remember`, `schedule`, `hold`, `settings`) bounces once (stub); a fenced block the
   room posted on an earlier day is turned back once, in `send` before it posts and in the final text at Stop (paste); a
   document or a pasted block an owner's room ships with no claims sheet written that turn is turned back once the same
@@ -119,6 +122,8 @@ class Channel(Protocol):
               card: str | None = None, key: str | None = None) -> list[str]: ...
     def notice(self, room: str, text: str, inbound: list[str],        # a visible failure: the card kept with
                card: str | None = None, key: str | None = None) -> list[str]: ...  # `card`, else `text` posted
+    def silent(self, room: str, inbound: list[str], card: str,         # a final of exactly NO_REPLY: nothing posted,
+               key: str | None = None) -> list[str]: ...              # the card kept with `card`
 
 
 class Room:
@@ -344,7 +349,8 @@ class Room:
         with self.evidence.lock:
             trail = list(self.evidence.trail)
         calls = [i for i, (kind, _) in enumerate(trail) if kind == "tool"]
-        if active or not text or self.stub_bounced or not calls or (tool := trail[calls[-1]][1].rsplit("__", 1)[-1]) not in FILING:
+        if active or not text or text.strip() == words.NO_REPLY or self.stub_bounced or not calls or (   # NO_REPLY: filed, nothing to say
+                tool := trail[calls[-1]][1].rsplit("__", 1)[-1]) not in FILING:
             return None
         n, above = len(text.strip()), max((len(t.strip()) for kind, t in trail[:calls[-1]] if kind == "text"), default=0)
         found = (f"{above} characters above the {tool} call, {n} after it" if above > STUB_CHARS and above >= 2 * n else
@@ -758,11 +764,16 @@ class Room:
             text = turn.text
             if covered and all(m.cap for m in covered):         # harness messages only: held to their cap
                 text = fit(text, min(m.cap for m in covered), [m.must for m in covered])
-            reply_ids = self.channel.reply(self.name, text, ids, card, key=self.turn_key)
-            self.last_reply = text.strip().split("\n")[0][:160]
+            if quiet := text.strip() == words.NO_REPLY:       # read, nothing to add (a watched channel's message): no post
+                head = f"{words.NOT_DONE} {words.NO_VERDICT}" if self._owed_verdict(ids) else f"{words.DONE} {words.QUIET}"
+                reply_ids = self.channel.silent(self.name, ids, self.card.render(head=head), key=self.turn_key)
+            else:
+                reply_ids = self.channel.reply(self.name, text, ids, card, key=self.turn_key)
+                self.last_reply = text.strip().split("\n")[0][:160]
             now = time.time()
             for m in covered:
-                self.ledger.inbound_set(m.id, state="answered", answered=now, turn_id=turn_id, reply_ids=",".join(reply_ids))
+                self.ledger.inbound_set(m.id, state="answered", answered=now, turn_id=turn_id, reply_ids=",".join(reply_ids),
+                                        **({"note": "silent"} if quiet else {}))
                 self._then(m, "answered", reply_ids, len(text))
             with self.lock:
                 self.inflight = list(self.pending)
@@ -772,6 +783,12 @@ class Room:
                     return ("fresh" if self.pending else "done"), turn
             started, hop, recapped = time.time(), None, False
             self._new_card()
+
+    def _owed_verdict(self, ids: list[str]) -> bool:
+        """A `watch_audit` room's turn on a message its inbound row places in the channel the room watches: a verdict was owed,
+        so a final of NO_REPLY keeps its card as NO_VERDICT, never as QUIET. A relay's row or a note's is in neither channel."""
+        watched = str(self.conf.get("watch") or "").partition(":")[2]
+        return self.conf.get("watch_audit") is True and any((self.ledger.inbound_get(i) or {}).get("channel") == watched for i in ids)
 
     def _then(self, m: Inbound, state: str, ids: list[str], chars: int) -> None:
         if m.then:

@@ -143,6 +143,12 @@ ROOM_WORDS = {
     "topic_recall": "the room's own lines on the message's topic, and the search of a question about the past, in its recall part (default true)",
     "voice": "the room's voice file, the session start's room_voice part",
     "watch": "discord:<channel id> of a channel the room watches: [watch] assistants' messages there go in its day log, never answered",
+    "watch_audit": "true: the room grades the watched assistant's answer to every watched message, a verdict line (🟢 looks good, 🟠 right "
+    "but missing something, 🔴 wrong) then the fix, never silent (default false: read along, answer only when asked)",
+    "watch_assistant": "the assistant the owner talks to in the watched channel, by name: a message read from there comes in marked as sent to it, "
+    "not to this room (default: the other assistant)",
+    "watch_wait": "seconds the room waits for the watched assistant's answer after a watched message, counted again from that assistant's "
+    "progress card's last edit while the card is up, at most three times this (default 150)",
 }
 ROOM_KEYS = frozenset(ROOM_WORDS)
 # The private yerkd.toml's keys by section, in plain words, beside those described where they are read (words.SETTINGS for
@@ -276,6 +282,8 @@ def rooms(private: Path, text: str | None = None, own: bool = False) -> dict[str
         taken[w] = f"which {n} watches too"
     for n, c in rs.items():
         people(n, c)                                    # a `people` that is not a list of ids stops the start here
+        if not isinstance(c.get("watch_audit", False), bool):   # so does a `watch_audit` that is not true or false
+            raise SystemExit(f"rooms.toml: {n}: watch_audit must be true or false, like watch_audit = true, not {c['watch_audit']!r}")
     return rs
 
 

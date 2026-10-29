@@ -6,6 +6,164 @@ A line that changes a file the install keeps (rooms.toml, yerkd.toml, budgets.to
 newer than the code is refused with one line, never changed); the index chunks every file again when its chunker's
 version changes.
 
+## 2026-10-29
+
+### watch-audit (#?)
+
+- A watching room with `watch_audit = true` grades the other assistant's answer to every message sent there: it posts
+  a verdict in its own channel, first line `🟢 looks good`, `🟠 right but missing something` or `🔴 wrong`, then what is
+  wrong or missing and the fix, written out in full in plain words, and one or two lines when the answer is right. It
+  never goes quiet on one: no more `🟢 read it, nothing to add` there.
+- The room reads each such message, held for the other assistant's answer as before, under a line asking for that
+  verdict, checked against the files and the thread, not recall; the line names who sent the message, by the name the
+  server shows, and who reads the room: the owner, and in a room with `people` each of them by name (fetched once from
+  the server). If the other assistant had not answered within `watch_wait`, the room says so in one line.
+- Should the room still answer NO_REPLY on one, nothing is posted and its card stays as `🔴 no verdict: the room answered
+  nothing`, kept as history: a later quiet line never removes it, and it never removes the quiet line before it. A
+  message in the room's own channel, a worker's relay and every room without the key are unchanged. The code ceiling
+  moves up by 50.
+
+**Upgrading**: the key is opt-in; `watch_audit = true` in a room's rooms.toml block turns it on (docs/settings.md names
+it), and a value that is not true or false stops the start with one line naming the room. budgets.toml moves with the
+code.
+### hold-card (#?)
+
+- A room that watches an OpenClaw bot's channel no longer answers off that bot's progress card. A message with one of
+  OpenClaw's tool rows (a line starting "🛠️ Bash", "🧩 Mcp ...", or any other tool's emoji) or the shape of Yerk AI's
+  own card is never the answer a watched message waits for, however long it sits still while a slow step runs, and it
+  never goes in the room's day log. Before, a card that sat 6 seconds through a web fetch was read as the answer, the
+  room said it had nothing to add, and the card was filed as the bot's line once it sat 30 seconds.
+- While that card is being worked on, the room keeps waiting: `watch_wait` counts again from the card's last edit, up
+  to three times `watch_wait` after the message (a stuck card cannot hold it forever), so the reply a long turn ends
+  with comes in with the message as its answer. When the card is deleted and no reply follows (the bot chose not to
+  answer), the message comes in within 30 seconds with the line that it had not answered. A card edited into a plain
+  reply is the answer once that reply has gone 6 seconds unedited, and is filed once it has gone 30, as any reply.
+- After a restart, a card in the channel's history is skipped the same way: never the answer, never filed, and the
+  wait counts from its last edit. The code ceiling moves up by 57.
+
+**Upgrading**: nothing to change; `watch_wait` keeps its key and default, and docs/settings.md says the new rule.
+budgets.toml moves with the code.
+
+## 2026-10-28
+
+### need-2026-10-28-26 (#?)
+
+- Send a room a reel, a TikTok, an X video or a YouTube link and it watches the video, where before it answered off the
+  caption, the cover picture and the comments. The new `watch` tool on Yerk's own server pulls the video from the link
+  into the room's work folder (`videos/<site>-<the post's id>/`), takes still frames spread evenly through it (6, or 1
+  to 12 when asked) that the room opens and looks at, and transcribes its sound, so the answer is about what is on
+  screen and what is said. The turn card reads `watching a video on <the site>`, never the link.
+- The daemon runs yt-dlp for the room, since a room's shell has no network; the sandbox and the wall between rooms are
+  unchanged. A call pulls the best picture at 720 lines or under with its sound, skips a video over 300 MB, runs one
+  download at a time across rooms, and stops one past 300 seconds with everything it started, and the room says so. A
+  page that needs a login, a private post or a page with no video is said in the site's own words; no cookies and no
+  logins are used.
+- The transcript goes through the transcribe engine on the same keys and the same US$1 gate, each paid call a spend row
+  under `watch`; a video with no sound has frames only, and a transcript that fails still leaves the frames, with the
+  reason. A post already pulled is never pulled or paid for again: a second call reads its saved transcript and only
+  makes the frames again. The mechanics gain one line (a video in a post is watched with `watch`; an answer off the
+  caption says so), `yerk explain video-read` and `yerk explain youtube-transcript` name `watch` as their built part,
+  and the code ceiling moves up by 260.
+
+**Upgrading**: install yt-dlp so `yt-dlp` is on yerkd's PATH, beside the ffmpeg and ffprobe transcribe already uses;
+nothing changes in rooms.toml or yerkd.toml, and each room allows `mcp__yerk__watch` from its next process start.
+budgets.toml moves with the code: Yerk AI's tools to 14,100, the mechanics to 5,000, the session-start total to 110,959.
+
+### need-2026-10-28-24 (#141)
+
+- A room can hand back a PDF of a document and say how many pages it is, so "does it fit on one page?" gets a measured
+  answer. The new `render` tool on Yerk's own server takes a document in the room's own folders (a .docx, .doc, .odt,
+  .rtf, .xlsx, .pptx or anything LibreOffice opens), saves its PDF beside it as `NAME.pdf` (an older one there is
+  replaced) and returns the page count; the room `send`s that PDF when you want it. A .pdf is counted as it is, nothing
+  rendered.
+- The daemon runs LibreOffice for the room, since LibreOffice keeps its pipe in /tmp and a room's sandbox has no writable
+  /tmp; the sandbox and the wall between rooms are unchanged. Each call runs `soffice --headless --convert-to pdf` under a
+  fresh profile of its own in the state folder's `render/`, removed after; one conversion runs at a time across rooms, a
+  second call waiting its turn; one past 120 seconds is stopped with everything it started, and the room says so. The
+  fonts in your own `~/.local/share/fonts` are used, so a document set in Arial lays out in its same-width twin where one
+  is installed, not in a wider stand-in that pushes it onto another page.
+- The layout is LibreOffice's, not Word's: a document that fits by a line in one can spill in the other, and the room says
+  a result near the edge as near the edge. Without LibreOffice on the machine the room says no PDF could be made. It is
+  free: no spend row. The mechanics gain one line (a page count comes from `render`, never an estimate off the text), and
+  the code ceiling moves up by 126.
+
+**Upgrading**: for PDFs, install LibreOffice so `soffice` is on yerkd's PATH; nothing changes in rooms.toml or
+yerkd.toml, and each room allows `mcp__yerk__render` from its next process start. budgets.toml moves with the code: Yerk
+AI's tools to 12,800, the mechanics to 4,700, the session-start total to 109,359.
+
+### quiet-card (#140)
+
+- A room that watches another channel keeps one `🟢 read it, nothing to add` line, not one per message. When the room
+  reads a message there and has nothing to add, its new quiet line stands and the quiet line before it is deleted, as
+  long as the room posted nothing else in between: a reply, a notice, a file, a voice note, a worker's card or a card
+  kept to say a turn failed leaves the older line where it is, as history. A conversation in the watched channel now
+  leaves one green line in the room, the newest, where it left one per message before.
+- The line before is found in the ledger, so the rule holds across a restart. One already deleted by hand changes
+  nothing; one Discord will not delete stays and is logged. The code ceiling moves up by 25.
+
+**Upgrading**: nothing to change. budgets.toml moves with the code.
+
+### watch-answer (#?)
+
+- A message the owner sends in a channel a room watches now waits for the other assistant's answer there before the
+  room reads it, so the room no longer says it has nothing to add while the other assistant is still typing. The
+  answer is the first message after his from an id in `[watch] assistants` that goes 6 seconds with no edit and is not
+  deleted, so the other assistant's progress card, edited again and again and then deleted, is never it. The room then
+  reads both in one turn: the line saying who his message was sent to, his message, and `[<assistant> answered at
+  HH:MM in #<channel>: <text>]`, the text's whitespace folded and cut at 2,500 characters, the time in the room's zone,
+  with a `[<assistant> attached: "<name>"]` line per file it sent (named, not fetched).
+- The room waits up to `watch_wait` seconds after his last message (a new rooms.toml key, default 150); past it the
+  turn comes with `[<assistant> had not answered in #<channel> within 150 s of his message]`. Messages he sends there
+  while one waits come in the same turn, each as he last edited it; one he deletes while it waits never comes. The
+  room's own channel never waits behind it, and nothing is posted or typed in the watched channel, as before.
+- After a restart, a watched message whose answer is already in the channel's history comes in at once with it; one
+  without waits what is left of its wait. The answer is still filed in the day log under its own label, as before.
+  With no `[watch] assistants` listed there is nothing to wait for, so a watched message comes in at once, as before.
+  The code ceiling moves up by 152.
+
+**Upgrading**: nothing to change; `watch_wait` is a new optional key beside `watch_assistant` in rooms.toml
+(docs/settings.md names it). budgets.toml moves with the code.
+
+### need-2026-10-28-23 (#138)
+
+- A recording of two or more people comes back saying who talks when. With a Meta key at `secrets/meta.key`, the
+  transcribe tool also sends the recording to Meta's Muse Voice Transcribe in DIARIZATION mode, and each line of the
+  transcript starts with a speaker letter: `[00:14:00 -> 00:14:03] B: then email the vendor`. The words, their times and
+  the uncertain marks are whisper-1's and Groq's as before; Muse only says who. A line under the file's head gives each
+  letter's speaking time and tells the room the letters are not names, so it gives who is who as a guess from what is
+  said unless the owner says; the tool's result carries that line as `speakers_how` and the seconds as `speakers`.
+- Muse takes 10 minutes a request and its letters hold for one request only, so a longer recording goes as 9-minute
+  windows starting every 7.5 minutes, and each window's letters are matched to the ones before by the speaking time
+  they share in the 90 seconds the two overlap. A letter that cannot be matched (its speaker silent through an overlap)
+  gets a new letter, and the speakers line says how many could not be matched.
+- One voice writes no letters, so a voice note's file reads as before. Without the key, or when a Muse window fails,
+  the words come back as before under the line `speakers: none (Muse: why)`.
+- Muse costs US$0.18 an hour of audio sent, about 1.2 times the recording since the windows overlap: a spend row per
+  window in the morning's total, inside the same US$1 gate; a 70-minute meeting is about 72 US cents with all three
+  engines. The code ceiling moves up by 131.
+
+**Upgrading**: for speaker letters, put the Meta key on the first line of `secrets/meta.key` in the private folder,
+0600; the next call reads it, no restart. Without it every transcript says `speakers: none (Muse: no Meta key at
+secrets/meta.key)` under its head and nothing else changes. budgets.toml moves with the code.
+
+## 2026-10-27
+
+### watch-note (#137)
+
+- A message the owner types in a channel a room watches reaches the room under one line saying who it was sent to: the
+  assistant there, by the name `watch_assistant` gives it in rooms.toml (else "the other assistant"), in that channel by
+  its name, not this room. The room reads along, files what matters, and answers only if his words ask it something or
+  it has something he would want that the other assistant did not give; otherwise it answers exactly NO_REPLY. Before,
+  it read the message as its own and answered it as if asked. The line comes on every way a message from there reaches
+  the room: as it lands, edited, and run again after a restart; a message in the room's own channel never carries it.
+- A reply that is exactly NO_REPLY posts nothing. The turn's card stays, saying the room read it and had nothing to
+  add; the message is answered in the ledger with the note `silent`, its row kind `silent`. No Stop rule sends it back.
+  An empty reply still goes back to the session once, as before, and a reply that only contains NO_REPLY is posted as
+  it is. The code ceiling moves up by 32 for both.
+
+**Upgrading**: nothing to change; `watch_assistant` is a new optional key beside `watch` in rooms.toml (docs/settings.md
+names it).
+
 ## 2026-10-26
 
 ### uncapped (#136)
@@ -32,6 +190,14 @@ version changes.
 - **Upgrading:** nothing to change; `[limits] uncapped` is a new optional key in yerkd.toml (docs/settings.md), and
   leaving it out keeps the install capped. budgets.toml: `[code] lines` 21,903, main's 21,780 plus this PR's 123 (a
   dated note).
+
+### tools-line (#135)
+
+- Deploys pass again. The `effort` field #129 put on the room's `worker` tool grew Yerk AI's tool entries to 11,871
+  characters as sent, past the 11,734 line in budgets.toml, and the deploy of #134 refused on the fast tests. The line
+  is 11,900 and the session-start total rose by the same 166; a person running Yerk notices nothing else.
+
+**Upgrading**: budgets.toml moves with the code; nothing to do by hand.
 
 ### note-feedback (#134)
 
