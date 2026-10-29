@@ -25,7 +25,8 @@ adapter's event loop.
   a working turn answering a person that ends with nothing visible in the room bounces once,
   naming what is owed (nothing that already landed under the turn's key is sent again); a final of exactly NO_REPLY
   posts nothing, its card kept saying the room read the message and had nothing to add, ledgered `silent`, and the
-  quiet line before it goes when the room said nothing since, so one stands; a final
+  quiet line before it goes when the room said nothing since, so one stands (a watched message's verdict owed by a
+  `watch_audit` room: the card says none came, and stays); a final
   text that only reports a filing (`remember`, `schedule`, `hold`, `settings`) bounces once (stub); a fenced block the
   room posted on an earlier day is turned back once, in `send` before it posts and in the final text at Stop (paste); a
   document or a pasted block an owner's room ships with no claims sheet written that turn is turned back once the same
@@ -764,7 +765,8 @@ class Room:
             if covered and all(m.cap for m in covered):         # harness messages only: held to their cap
                 text = fit(text, min(m.cap for m in covered), [m.must for m in covered])
             if quiet := text.strip() == words.NO_REPLY:       # read, nothing to add (a watched channel's message): no post
-                reply_ids = self.channel.silent(self.name, ids, self.card.render(head=f"{words.DONE} {words.QUIET}"), key=self.turn_key)
+                head = f"{words.NOT_DONE} {words.NO_VERDICT}" if self._owed_verdict(ids) else f"{words.DONE} {words.QUIET}"
+                reply_ids = self.channel.silent(self.name, ids, self.card.render(head=head), key=self.turn_key)
             else:
                 reply_ids = self.channel.reply(self.name, text, ids, card, key=self.turn_key)
                 self.last_reply = text.strip().split("\n")[0][:160]
@@ -781,6 +783,12 @@ class Room:
                     return ("fresh" if self.pending else "done"), turn
             started, hop, recapped = time.time(), None, False
             self._new_card()
+
+    def _owed_verdict(self, ids: list[str]) -> bool:
+        """A `watch_audit` room's turn on a message its inbound row places in the channel the room watches: a verdict was owed,
+        so a final of NO_REPLY keeps its card as NO_VERDICT, never as QUIET. A relay's row or a note's is in neither channel."""
+        watched = str(self.conf.get("watch") or "").partition(":")[2]
+        return self.conf.get("watch_audit") is True and any((self.ledger.inbound_get(i) or {}).get("channel") == watched for i in ids)
 
     def _then(self, m: Inbound, state: str, ids: list[str], chars: int) -> None:
         if m.then:

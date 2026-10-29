@@ -337,4 +337,6 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-10-29: hold-card raised it by 57, the other assistant's progress card never its answer and the wait running while that card is up (the owner, 10:09: a person's message in a watched channel came in with that assistant's card as its answer, and the room said nothing), not folded to fit: discord.py 51 (is_card from OpenClaw's tool-row emoji and Yerk AI's own card shape; the wait from the card's newest edit, CARD_PATIENCE waits at most, CARD_GONE once it goes; a card never judged nor filed, live or read from history; the docstrings saying so), words.py 5 (OpenClaw's tool-row emoji and the file they were read from), config.py 1 (`watch_wait` in ROOM_WORDS).
 
-- `lines = 22563`
+2026-10-29: watch-audit raised it by 50, a watching room's verdict on the other assistant's answer to every watched message, never silent (it checks the work and says good, bad or in between with the green, orange and red circles), not folded to fit: discord.py 29 (the audit line in inbound_text with its sender and readers, the readers' names fetched once each since there is no member cache, only a quiet card superseding the one before), room.py 8 (a NO_REPLY on a watched turn of a watch_audit room kept as NO_VERDICT, known by its inbound row's channel), words.py 9 (the audit line, the readers' words, NO_VERDICT), config.py 4 (`watch_audit` in ROOM_WORDS, its refusal).
+
+- `lines = 22613`

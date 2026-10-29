@@ -630,4 +630,10 @@ secs = 60
 # own card shape; the wait from the card's newest edit, CARD_PATIENCE waits at most, CARD_GONE once it goes; a card never
 # test reads it, back as plain text with; one more line for), the.check 0 (While a-second entry waits in
 # file they were read from), config.py 1 (`watch_wait` in ROOM_WORDS).
-lines = 22563
+# 2026-10-29: watch-audit raised it by 50, a watching room's verdict on the other assistant's answer to every watched
+# message, never silent (it checks the work and says good, bad or in between with the green,
+# orange and red circles), not folded to fit: discord.py 29 (the audit line in inbound_text with its sender and readers,
+# the readers' names fetched once each since there is no member cache, only a quiet card superseding the one before),
+# room.py 8 (a NO_REPLY on a watched turn of a watch_audit room kept as NO_VERDICT, known by its inbound row's channel),
+# words.py 9 (the audit line, the readers' words, NO_VERDICT), config.py 4 (`watch_audit` in ROOM_WORDS, its refusal).
+lines = 22613
