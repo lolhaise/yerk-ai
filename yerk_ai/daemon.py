@@ -1074,6 +1074,11 @@ class Yerkd:
                     self.ledger.shadow(t=round(time.time(), 3), room=name, session_id=sid, turn=room.turn_key, rule="stub",
                                        detail=found, reply_chars=len(str(said)))
                     log.info("room %s: Stop bounced once: the final text only reports a filing (%s)", name, found)
+                elif (note := room.note_check(active, None if said is None else str(said))):
+                    reason, found = note              # counted the same way as a stub
+                    self.ledger.shadow(t=round(time.time(), 3), room=name, session_id=sid, turn=room.turn_key, rule="note",
+                                       detail=found, reply_chars=len(str(said)))
+                    log.info("room %s: Stop bounced once: a note to yourself before the answer (%s)", name, found)
                 elif (board := room.board_check(active, None if said is None else str(said))):
                     reason, found = board             # counted the same way as a stub
                     self.ledger.shadow(t=round(time.time(), 3), room=name, session_id=sid, turn=room.turn_key, rule="board",

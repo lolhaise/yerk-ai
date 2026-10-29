@@ -230,7 +230,8 @@ def test_claude_codes_parts_as_the_rooms_send_them_fit_their_lines_and_what_is_l
     108,259 (tools-line); the fixture below still sends the 11,734 of the older start. On 2026-10-28 the `render` tool
     (need-2026-10-28-24, about 883 as sent) took the line to 12,800 and the total by the 900, with its mechanics line's 200,
     to 109,359, and the `watch` tool (need-2026-10-28-26, about 1,313 as sent) to 14,100 and the total by the 1,300, with its
-    mechanics line's 300, to 110,959; then (2026-10-29, hands-budget) the hands plug-in's line to 7,462 (need 27), the total by the 343 to 111,302."""
+    mechanics line's 300, to 110,959; then (2026-10-29, hands-budget) the hands plug-in's line to 7,462 (need 27), the total by the 343 to 111,302,
+    and (note-to-self) the note line's 300 on the mechanics to 111,602."""
     shape = {"system": [{"type": "text", "text": "p" * LIVE_PROMPT}, {"type": "text", "text": "# Yerk AI mechanics"}],
              "tools": [entry(n, size) for n, size in LIVE_TOOLS.items()]}
     (t := tmp_path / "sid.jsonl").write_text(json.dumps({"type": "api-request-shape", "shape": shape}) + "\n")
@@ -248,7 +249,7 @@ def test_claude_codes_parts_as_the_rooms_send_them_fit_their_lines_and_what_is_l
     assert all(sent <= line for sent, line in rows.values()), out
     assert all(line <= sent * 1.02 for name, (sent, line) in rows.items() if name != "Yerk AI's tools"), rows
     s = b["session_start"]
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 111302
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 111602
 
 
 def room_sent(tmp_path, tools, file="# Yerk AI mechanics\n- an example line"):
@@ -356,10 +357,11 @@ def test_the_rulebook_line_keeps_about_1000_over_the_largest_room_text_and_what_
     parts read as sent (the hands plug-in, web_image, a person's room's Edit and Write: 9,763, no part could pay) to 108,093.
     On 2026-10-26 Yerk AI's tools, grown by the `worker` tool's `effort` field to 11,871 as sent (166, tools-line, no part
     could pay), to 108,259. On 2026-10-28 the `render` tool (900) and its mechanics line (200), no part could pay, to 109,359;
-    then the `watch` tool (1,300) and its mechanics line (300), no part could pay, to 110,959; then the hands line (343, need 27) to 111,302."""
+    then the `watch` tool (1,300) and its mechanics line (300), no part could pay, to 110,959; then the hands line (343, need 27) to 111,302;
+    then the note line (300, note-to-self) to 111,602."""
     s = budgets()["session_start"]
     assert 900 <= s["appended"]["rulebook"] - LIVE_RULEBOOK <= 1400 and s["appended"]["rules"] == 16000
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 111302
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 111602
     private = tmp_path / "private"
     shutil.copytree(EXAMPLE_PRIVATE, private)
     (private / "rulebook.md").write_text("r" * (LIVE_RULEBOOK - 1) + "\n")
@@ -383,7 +385,7 @@ def test_the_mechanics_say_when_to_use_the_place_unasked_in_one_line_inside_thei
     text = context.MECHANICS.read_text().strip()
     lines = [x for x in text.splitlines() if "`[place]`" in x]
     assert len(lines) == 1 and all(w in lines[0] for w in ("unasked", "gym", "log the session", "work", "commute", "moving", "short"))
-    assert context.chars(text) < budgets()["session_start"]["appended"]["mechanics"] == 5000
+    assert context.chars(text) < budgets()["session_start"]["appended"]["mechanics"] == 5300
 
 
 def test_declared_parts_fit_the_declared_total():

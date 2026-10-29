@@ -159,6 +159,9 @@ FILED = re.compile(r"^\W*(?:filed|saved|from now on,? every room)\b", re.I)   # 
 STUB = ("Only your final message reaches the room, and yours, \"{head}\", reports the filing, not the answer: the answer "
         "is above your last tool call, where the room never sees it, or it was never written. Write the whole answer as "
         "your final message now, first and complete, with the filing one clause at its end at most.")
+# the note rule at Stop (seen live: a reply opened with the model's plan for it, and the room posted both whole)
+NOTE = ("Every word of your final message is posted, and yours opens with a note to yourself (\"{head}\") before the answer. "
+        "Thinking is where that goes. Write the answer alone as your final message now, from its first word.")
 BOARD_LINE = re.compile(r"^[\s>*-]*(?:☑|☐|⛔|🟦|🟨)|\bunblocks?:|🟦 me|🟨 you", re.I | re.M)   # the board's marks (board rule)
 BOARD = ("This room has people, and your final message is the owner rooms' status board ({found}). Say where things "
          "stand in two or three plain sentences, with no checklist marks, colour key, quote rails or what unblocks it, "

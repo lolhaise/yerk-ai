@@ -8,6 +8,24 @@ version changes.
 
 ## 2026-10-29
 
+### note-to-self (#?)
+
+- A room whose final message opens with its own plan for the reply or a note to itself, before the answer, is turned
+  back once at Stop and answers again with the answer alone. A note is a first paragraph of at most 700 characters that
+  holds a rulebook tag (`Landed:` or `Bounced:`), or that has a paragraph after it and tells the room how to reply (a
+  directive such as "Confirm" or "Keep" beside a shape word such as "in a line", "style" or "nuance") with no you or
+  your, since advice to the owner on his own message says those. An empty final, a final of exactly NO_REPLY and a turn
+  already turned back once stand.
+- The mechanics gain one line saying where a note goes: every word of the final message is posted as the answer, so a
+  read of the sender, a plan for the reply or a note to itself goes in thinking.
+- The morning diff counts each such bounce as `note`, a shadow ledger row with the note's length and the signal that
+  fired, never its text. The code ceiling moves up with the rule.
+- Why: on 2026-10-29 an owner's room answered on a turn with no thinking, wrote its plan for the reply above
+  the answer, and the room posted both, so the owner read the plan as the reply.
+
+**Upgrading**: nothing to change by hand; each room has the mechanics line from its next process start. budgets.toml
+moves with the code: the mechanics to 5,300, the session-start total to 111,602.
+
 ### hands-budget (#?)
 
 - A deploy no longer refuses on the size of the hands plug-in's tools: their budget line moves to what a busy

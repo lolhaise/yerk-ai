@@ -27,7 +27,8 @@ adapter's event loop.
   posts nothing, its card kept saying the room read the message and had nothing to add, ledgered `silent`, and the
   quiet line before it goes when the room said nothing since, so one stands (a watched message's verdict owed by a
   `watch_audit` room: the card says none came, and stays); a final
-  text that only reports a filing (`remember`, `schedule`, `hold`, `settings`) bounces once (stub); a fenced block the
+  text that only reports a filing (`remember`, `schedule`, `hold`, `settings`) bounces once (stub); a final opening with
+  a note to itself before the answer (its plan for the reply, a rulebook tag) bounces once (note); a fenced block the
   room posted on an earlier day is turned back once, in `send` before it posts and in the final text at Stop (paste); a
   document or a pasted block an owner's room ships with no claims sheet written that turn is turned back once the same
   way (sheet).
@@ -84,6 +85,12 @@ class Inbound:
 HARNESS = "yerk"                          # the sender of Yerk AI's own messages (a worker's relay)
 FILING = ("remember", "schedule", "hold", "settings")   # Yerk AI's calls that file or set something, answering nothing
 STUB_CHARS = 200                          # the stub rule's size line (Room.stub_check)
+# the note rule's signals (Room.note_check), as measured 2026-10-29 over 2,571 finals: one hit, the reply seen live
+SHAPE = re.compile(r"\b(?:in|to) (?:a|one|two|three) lines?\b|\bkeep it (?:to|short|tight|brief)\b|\b(?:one|two|three)[- ]liner\b|\bno need to\b|\b(?:and|then) move(?: on)?\b|\bstyle\b|\btone\b|\bregister\b|\bthe ask\b|\bthe one correction\b|\bnuance\b", re.I)
+DIRECTIVE = re.compile(r"(?:^|[.;:!?]\s+)(?:Confirm|Keep|Say|Answer|Lead|Open|Close|Give|Tell|Name|Skip|Drop|Add|Use|Match|Mirror|Stay|Hold|Avoid|Don't|Do not|No need)\b")
+YOU = re.compile(r"\b(?:you|your|you're|yours|yourself)\b", re.I)
+RULEQUOTE = re.compile(r"\b(?:Landed|Bounced):")
+NOTE_CHARS = 700                          # a first paragraph longer than this is never a note
 
 
 def fit(text: str, cap: int, must: list[str]) -> str:
@@ -153,6 +160,7 @@ class Room:
         self.bounced = False                      # the unopened-file check bounced this result already
         self.silent_bounced = False               # the silent-ending check bounced this result already
         self.stub_bounced = False                 # the stub check bounced this result already
+        self.note_bounced = False                 # the note check bounced this result already
         self.board_bounced = False                # the board check bounced this result already
         self.paste_bounced = False                # the paste check turned back a send or a final of this result already
         self.sheet_bounced = False                # the sheet check turned back a send or a final of this result already
@@ -358,6 +366,22 @@ class Room:
         self.stub_bounced = bool(found)
         return (words.STUB.format(head=" ".join(text.split())[:80]), found) if found else None
 
+    def note_check(self, active: bool, text: str | None) -> tuple[str, str] | None:
+        """The Stop hook's rule after the stub rule, no judge (seen live: a turn with no thinking wrote its plan for the
+        reply above the answer, and the room posted both whole): the final's first paragraph, at most NOTE_CHARS, is a note to
+        itself when it holds a rulebook tag (RULEQUOTE), or, with a paragraph after it, a directive at a sentence start
+        (DIRECTIVE) and a reply-shape word (SHAPE) and no second-person word (YOU), since advice to the owner on their own
+        message says you or your. It bounces once, quoting the note's start: (the bounce, what was found), or None."""
+        if active or not text or text.strip() == words.NO_REPLY or self.note_bounced:
+            return None
+        p1, *rest = re.split(r"\n\s*\n", text.strip())
+        told = bool(rest) and bool(DIRECTIVE.search(p1) and SHAPE.search(p1)) and not YOU.search(p1)
+        hits = [w for w, hit in (("a directive and a shape word", told), ("a rulebook tag", RULEQUOTE.search(p1))) if hit]
+        if len(p1) > NOTE_CHARS or not hits:
+            return None
+        self.note_bounced = True
+        return words.NOTE.format(head=" ".join(p1.split())[:80]), f"a {len(p1)}-character note before the answer: {', and '.join(hits)}"
+
     def board_check(self, active: bool, text: str | None) -> tuple[str, str] | None:
         """The Stop hook's fourth rule, no judge, in a room with people only (2026-10-21: the owner rooms' status board,
         its ⛔ 🟨 items, "Unblocks: allow workers here" and ☐ lines, went out in a person's room): a final holding the
@@ -436,7 +460,7 @@ class Room:
                          people=self.name if self.conf.get("people") else "")
         self.card.narration = note                # a harness line from the first post, until the model's first words
         self.turn_key, self.bounced, self.silent_bounced, self.stub_bounced = uuid.uuid4().hex[:12], False, False, False
-        self.board_bounced = self.paste_bounced = self.sheet_bounced = self.said_bounced = False
+        self.note_bounced = self.board_bounced = self.paste_bounced = self.sheet_bounced = self.said_bounced = False
         self.channel.open_card(self.name, self.card.render())   # state first from the first post
 
     def meta_for(self, prompt: str) -> tuple[str, float | None]:

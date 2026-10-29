@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 111302`
+- `total = 111602`
 
 ## [session_start.claude_code]
 
@@ -70,7 +70,9 @@ Yerk AI's own parts, joined into the one file passed by --append-system-prompt-f
 
 2026-10-28, need-2026-10-28-26: the watch line (a video in a post is watched with `watch` on its link; the caption, the cover picture and the comments are not the video, and an answer given off them says so) took the mechanics to 4,995, so 5,000; no part could pay, so the total rose by the 300, to 110,959 with the tools' 1,300.
 
-- `mechanics = 5000`
+2026-10-29, note-to-self: the note line (every word of the final message is posted as the answer, so a read of the sender, a plan for the reply or a note to yourself goes in thinking; a reply seen live opened with its own plan) took the mechanics to 5,248, so 5,300; no part was measured again to pay for it, so the total rose by the 300, to 111,602.
+
+- `mechanics = 5300`
 - `persona = 11800`
 - `rulebook = 14000`
 - `room_voice = 5500`
@@ -347,7 +349,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-10-29: uncapped merged with main 1ec2592 (#135, #137 to #141, #143 to #145): main's 22,613 plus this PR's 123 is 22,736, counted on the merged tree; daemon.py's tool_transcribe keeps both sides in the same three lines (this PR's spend into `paid`, `owner_yes or whole` and the `usd` receipt, #138's Meta key as the call's last argument); config.py, discord.py and words.py, which both changed, merged clean; `yerk docs own` wrote budgets.md.
 
-- `lines = 22736`
+2026-10-29: note-to-self raised it by 32, the note rule at Stop (a reply that day, on a turn with no thinking, opened with its plan for the reply and the room posted both), not folded to fit: room.py 24 (the rule's four signals as measured over 2,571 finals and its size line, the flag, note_check, the module's list of Stop rules), daemon.py 5 (its place after the stub rule, the shadow row `note`, the log line), words.py 3 (NOTE), hooks.py 0 (the Stop event's line, rewrapped). 22,768: main 677f838's 22,736 plus 32.
+
+- `lines = 22768`
 
 ## Uncapped
 
