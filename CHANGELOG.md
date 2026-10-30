@@ -20,8 +20,9 @@ version changes.
   file, `staged` or `missing`; after a restart a file already on disk at its size is not fetched again, though its row is
   written once more. A file that will not
   come is never the "could not fetch, send it again" notice a person's gets, since no one in the room sent it, and none
-  is a file the room must open before it may answer. Retention keeps them as it keeps a person's files. The code ceiling
-  moves up by 32.
+  is a file the room must open before it may answer. A save that fails for any other reason is logged, and the turn
+  still gets the file's name and why. Retention keeps them as it keeps a person's files. The code ceiling
+  moves up by 35.
 - Why: on 2026-10-30 a watching room asked to open a PDF the other assistant had attached in its answer minutes before
   found its name and size in the day log and no saved copy, and its shell cannot reach the chat service, so it could
   only ask for the file to be posted again.
@@ -29,7 +30,7 @@ version changes.
 **Upgrading**: nothing to change by hand; files the other assistant attaches from the next start on are saved. At the
 next start, catch-up also saves the other assistant's files posted after each channel's last ledgered message, which
 includes ones from before this deploy. budgets.toml moves with the code: the code
-ceiling to 22,800.
+ceiling to 22,833.
 
 ### deliver-transport-error (#149)
 
