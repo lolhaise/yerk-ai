@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-10-30
 
-### deliver-transport-error (#?)
+### deliver-transport-error (#149)
 
 - A reply whose post dies on the connection (Discord's answer never arrives, as when a TLS read fails) is sent once more
   inside the turn under the same nonce, so the room gets the answer, with no crash footer and no orange card left
@@ -18,6 +18,9 @@ version changes.
   reply, the parts already in the room stay and none after the failed one is posted. A reply Discord refuses with its
   own error is not retried and keeps the old footer. Either way the turn's working card is removed.
 - A room's `send` whose post is lost twice answers the room with ok false and the reason, as a post lost once did.
+- A part Discord did not take twice is `failed` in the ledger, where before it stayed `pending` and the next start's
+  redelivery posted it labelled; a failed part is skipped by every later send under its key, a reply's or any other
+  keyed post (a job's late line, curate's page), which then gets no message id for it.
 - Why: on 2026-10-30 a reply in one of the owner's rooms died in the TLS read of Discord's answer; the turn
   crashed with its working card up, and the crash footer posted the reply under `not answered`.
 

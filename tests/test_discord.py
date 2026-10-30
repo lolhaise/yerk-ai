@@ -289,7 +289,7 @@ def test_a_post_that_dies_on_the_way_back_is_retried_once_with_the_same_nonce(dc
     ch.fail = [lost()]
     ids = run(d._finish("test-room", "the answer", ["5"], DONE, key="t20"))
     card, reply = ch.sent
-    assert ids == [str(reply.id)] and reply.content == "the answer" and ch.nonces == [None, dmod.nonce_for("t20:0"), reply.nonce]
+    assert ids == [str(reply.id)] and reply.content == "the answer" and ch.nonces == [None, dmod.nonce_for("t20:0"), dmod.nonce_for("t20:0")]
     [row] = d.ledger.deliveries("test-room")
     assert (row["state"], row["message_id"], row["attempts"]) == ("sent", str(reply.id), 2)
     assert card.deleted and d.ledger.cards_open("test-room") == [] and ch.reactions == [(5, "-", ACK), (5, "+", DONE)]
