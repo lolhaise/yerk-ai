@@ -395,9 +395,12 @@ class DiscordChannel:
             async def keep() -> list[dict[str, Any]]:
                 try:
                     return await self.stage(room, m, say=False)
-                except Exception:                 # a record, never a reason to hold the turn it answers
+                except Exception as e:            # a record, never a reason to hold the turn it answers; the turn
                     log.exception("room %s: the files of %s's message %s not saved", room.name, getattr(m.author, "name", "?"), mid)
-                    return []
+                    return [{"name": a.filename, "size": int(a.size or 0),   # still gets each file by name, and why
+                             "type": file_type(a.filename, getattr(a, "content_type", None)),
+                             "ok": False, "error": f"{type(e).__name__}: {str(e)[:120]}"}
+                            for a in getattr(m, "attachments", []) or []]
             got = self.kept[mid] = asyncio.ensure_future(keep())
             while len(self.kept) > 200:
                 self.kept.pop(next(iter(self.kept)))

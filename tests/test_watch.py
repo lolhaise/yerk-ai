@@ -820,3 +820,34 @@ def test_map_and_status_say_which_channel_a_room_watches(tmp_path, capsys):
                        {ROOM: r}, units=set, timers=Timers({}))
     lines = status.card(s)
     assert f"- {ROOM}: watches {WATCHED}" in lines and all(words.width(x) <= words.PHONE for x in lines)
+
+
+def test_a_save_that_fails_outside_a_fetch_error_still_names_the_file_and_why_in_the_turn(tmp_path, monkeypatch):
+    """A save that raises anything but a fetch error (a ledger write, a payload cut short) is logged, and the answer line
+    still names each file and why it is not there, where before the turn saw no file at all."""
+    monkeypatch.setattr(dmod, "ANSWER_SETTLE", 0.1)
+    monkeypatch.setattr(dmod, "SETTLE", 0.2)
+    dc, room, own, watched = watching(tmp_path)
+
+    real = dc.stage
+
+    async def broken(room_, m, say=True):          # only the assistant's message fails; the person's own files still stage
+        if str(m.id) == "2202":
+            raise RuntimeError("ledger locked")
+        return await real(room_, m, say=say)
+    monkeypatch.setattr(dc, "stage", broken)
+
+    async def run():
+        dc.loop = asyncio.get_running_loop()
+        await dc.on_message(Msg(watched, 2201, "and the plan"))
+        reply = Msg(watched, 2202, "Here.", author=HELPER, name="helper-bot", attachments=[Attachment("plan.pdf", b"%PDF-1.4")])
+        reply.created_at = datetime.now(timezone.utc)
+        await dc.on_message(reply)
+        for _ in range(200):
+            if room.got and not dc.settling:
+                break
+            await asyncio.sleep(0.05)
+    asyncio.run(run())
+    [got] = room.got
+    assert got.text.endswith('[Helper attached: "plan.pdf", which could not be fetched (RuntimeError: ledger locked)]') and got.files == []
+    assert not (tmp_path / "inbox" / "2202").exists() and own.sent == [] and watched.writes == []
