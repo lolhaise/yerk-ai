@@ -601,13 +601,15 @@ class Room:
                     if rp:                       # process goes and the next message resumes on the new spec
                         rp.close()
                         log.info("room %s: settings changed, process closed, session %s kept", self.name, rp.session_id)
-        except Exception:
+        except Exception as e:
             log.exception("room %s: turn crashed", self.name)
             with self.lock:
                 self.busy = self.reading = False
             if batch and not self.closing:        # said in the room, its rows closed (disk-full drill c: a card left at
                 with contextlib.suppress(Exception):   # "working on it" for good); when the ledger or the channel is what
-                    self._end(batch, words.why(None, "crashed"), "crashed")   # failed, the rows stay open for the next start
+                    from .channels.discord import DeliveryFailed     # failed, the rows stay open for the next start; a reply
+                    why = "undelivered" if isinstance(e, DeliveryFailed) else None   # Discord never took is said so (imported
+                    self._end(batch, words.why(why, "crashed"), "crashed")         # here: discord.py imports this module)
 
     def _on_event(self, turn: Turn, ev: dict[str, Any]) -> None:
         """The card from the stream: narration, thinking line, tool rows."""

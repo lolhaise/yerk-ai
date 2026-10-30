@@ -55,6 +55,7 @@ from types import SimpleNamespace
 from typing import Any, Awaitable, Callable, Coroutine, TypeVar
 from zoneinfo import ZoneInfo
 
+import aiohttp
 import discord
 from discord.http import handle_message_parameters
 
@@ -93,6 +94,11 @@ CARD_ROWS = tuple(e.replace("\ufe0f", "") for e in words.OPENCLAW_ROWS.split()) 
 CARD_STEPS = re.compile(re.escape(words.SUB + words.STEP_N.format(n="")) + r"\d+")   # Yerk AI's own card in a room with people
 ANSWER_MAX = 2500     # characters of the answer the room reads, its whitespace folded
 SAID = (discord.MessageType.default, discord.MessageType.reply)   # what a person types; the rest are Discord's lines
+LOST = (aiohttp.ClientError, OSError, asyncio.TimeoutError)        # a post that died on the connection, taken or not
+
+
+class DeliveryFailed(RuntimeError):
+    """A part Discord did not take: its post lost on the connection, then the one retry under its nonce failed too."""
 
 
 def commands() -> list[dict[str, Any]]:
@@ -1052,7 +1058,14 @@ class DiscordChannel:
                 for i, part in enumerate(split_message(text.strip(), LIMIT)):
                     self.ledger.delivery_plan(f"{key}:{i}", room, kind, part, ",".join(inbound))
             if not instead:
-                ids = await self._deliver(room, key)
+                try:
+                    ids = await self._deliver(room, key)
+                except Exception:                 # no reply: the card goes all the same, never left at its working line
+                    if msg is not None:           # (seen live); a delete that fails leaves it open for the next start
+                        with contextlib.suppress(discord.HTTPException, *LOST):
+                            await msg.delete()
+                            self.ledger.card_close(str(msg.id), "delivery failed")
+                    raise
             try:
                 if card is not None:
                     msg = msg or await (await self._channel(room)).send(card[:MAX])
@@ -1107,26 +1120,40 @@ class DiscordChannel:
             await asyncio.sleep(secs)
 
     async def _deliver(self, room: str, key: str, label: bool = False) -> list[str]:
-        """Post every part of `key` not yet in the room, in order; the caller holds the room's lock."""
+        """Post every part of `key` not yet in the room, in order; the caller holds the room's lock. A post that dies on the
+        connection is sent once more under the same nonce: Discord answers a nonce it already took with that message, never
+        a second one (discord.py sends enforce_nonce). A part that failed, and the parts after it, are never posted again."""
         ch, ids = await self._channel(room), []
         rows = sorted((r for r in self.ledger.deliveries(room) if r["key"].rsplit(":", 1)[0] == key),
                       key=lambda r: int(r["key"].rsplit(":", 1)[1]))
-        for r in rows:
+        for i, r in enumerate(rows):
             if r["state"] == "sent":
                 ids.append(str(r["message_id"]))
                 continue
+            if r["state"] == "failed":            # the turn's notice on this key posts its card, never this under it
+                continue
             body = f"{REDELIVERED}\n{r['body']}" if label else str(r["body"])
             await self._debug_pause("before-post")
-            try:
-                m = await ch.send(body[:MAX], nonce=nonce_for(str(r["key"])))
-            except discord.HTTPException as e:
-                self.ledger.delivery_set(r["key"], state="failed", error=str(e)[:300], attempts=int(r["attempts"] or 0) + 1)
-                self.ledger.outbound(room=room, channel=str(ch.id), kind=r["kind"], chars=len(body), error=str(e)[:300],
-                                     inbound=r["inbound"])
-                raise
+            for tries in (1, 2):
+                try:
+                    m = await ch.send(body[:MAX], nonce=nonce_for(str(r["key"])))
+                    break
+                except (discord.HTTPException, *LOST) as e:
+                    if tries == 1 and not isinstance(e, discord.HTTPException):
+                        log.warning("room %s: %s lost on the connection (%s), posting it once more under its nonce", room, r["key"], e)
+                        continue
+                    err = (str(e) if isinstance(e, discord.HTTPException) else f"{type(e).__name__}: {e}")[:300]
+                    self.ledger.delivery_set(r["key"], state="failed", error=err, attempts=int(r["attempts"] or 0) + tries)
+                    self.ledger.outbound(room=room, channel=str(ch.id), kind=r["kind"], chars=len(body), error=err, inbound=r["inbound"])
+                    for x in rows[i + 1:]:        # a later call never posts the rest of a reply without this part
+                        if x["state"] == "pending":
+                            self.ledger.delivery_set(x["key"], state="failed", error=f"{r['key']} before it failed")
+                    if tries == 1:
+                        raise                     # Discord's own answer: not asked again
+                    raise DeliveryFailed(f"{r['key']}: {err}") from e
             await self._debug_pause("after-post")
             self.ledger.delivery_set(r["key"], state="sent", message_id=str(m.id), sent=time.time(),
-                                     attempts=int(r["attempts"] or 0) + 1, note=REDELIVERED if label else None)
+                                     attempts=int(r["attempts"] or 0) + tries, note=REDELIVERED if label else None)
             self.ledger.outbound(room=room, channel=str(ch.id), kind=r["kind"], message_id=str(m.id), chars=len(body), inbound=r["inbound"])
             self._file(room, str(m.id), "yerk", body)
             ids.append(str(m.id))

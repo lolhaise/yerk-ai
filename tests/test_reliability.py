@@ -90,6 +90,24 @@ def test_a_turn_that_crashes_is_said_in_the_room_and_its_rows_are_closed(env, mo
     assert chan.notices and words.WHY["crashed"] in chan.notices[-1][0] and chan.notices[-1][1] == ["1"]
 
 
+def test_a_reply_discord_never_took_is_said_as_that_in_the_room(env, monkeypatch):
+    """The channel's reply raises DeliveryFailed (lost on the connection, then the retry under its nonce failed too): the
+    turn ends as a crash in the ledger, and the room's card names what failed, never "the harness failed"."""
+    make, ledger, tmp = env
+    chan = Chan()
+    room = make(chan)
+
+    def lost(*a, **k):
+        raise dmod.DeliveryFailed("t:0: ClientOSError: [Errno 1] ssl/tls alert bad record mac")
+    monkeypatch.setattr(chan, "reply", lost)
+    send(room, ledger, "1", "hello")
+    wait_idle(room)
+    row = ledger.inbound_get("1")
+    assert row["state"] == "failed" and row["note"] == "crashed" and chan.notices[-1][1] == ["1"]
+    assert chan.cards[-1].split("\n")[1] == words.WHY["undelivered"] == "Discord did not take the reply"
+    assert words.WHY["crashed"] not in chan.notices[-1][0]
+
+
 def test_a_stream_log_that_cannot_be_written_never_stalls_the_turn(env, tmp_path):
     make, ledger, tmp = env
     chan = Chan()

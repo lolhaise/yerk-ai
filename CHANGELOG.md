@@ -30,6 +30,24 @@ version changes.
 next start, catch-up also saves the other assistant's files posted after each channel's last ledgered message, which
 includes ones from before this deploy. budgets.toml moves with the code: the code
 ceiling to 22,800.
+
+### deliver-transport-error (#149)
+
+- A reply whose post dies on the connection (Discord's answer never arrives, as when a TLS read fails) is sent once more
+  inside the turn under the same nonce, so the room gets the answer, with no crash footer and no orange card left
+  standing. Discord answers a nonce it already took with the message it made, so the retry never posts it twice.
+- Only a reply Discord still did not take after that retry gets a footer, and the footer now says `Discord did not take
+  the reply` where it said `the harness failed`. Nothing of the reply is posted under its `not answered` line; of a long
+  reply, the parts already in the room stay and none after the failed one is posted. A reply Discord refuses with its
+  own error is not retried and keeps the old footer. Either way the turn's working card is removed.
+- A room's `send` whose post is lost twice answers the room with ok false and the reason, as a post lost once did.
+- A part Discord did not take twice is `failed` in the ledger, where before it stayed `pending` and the next start's
+  redelivery posted it labelled; a failed part is skipped by every later send under its key, a reply's or any other
+  keyed post (a job's late line, curate's page), which then gets no message id for it.
+- Why: on 2026-10-30 a reply in one of the owner's rooms died in the TLS read of Discord's answer; the turn
+  crashed with its working card up, and the crash footer posted the reply under `not answered`.
+
+**Upgrading**: nothing to change by hand. budgets.toml moves with the code: the code ceiling to 22,798.
 ### changelog-numbers (#148)
 
 - This file only, nothing in the code: six entries that said `(#?)` now carry their pull request numbers (#139 and
