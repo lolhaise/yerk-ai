@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-10-30
 
-### need-2026-10-30-26 (#?)
+### need-2026-10-30-26 (#150)
 
 - A file another assistant attaches where a room reads is saved in the room's `work/inbox/<message id>/` as a person's
   is, so the room opens it when asked, where before the day log had its name and size and the room had no copy. That is
@@ -16,7 +16,9 @@ version changes.
   answer a held message waits for has its files saved before that turn, and the line under the answer names where each
   was saved (an owner room's PDF or workbook with its text beside it, as a person's has) or that it could not be
   fetched; any other message of theirs has its files saved as it is filed, in the room's own channel as it lands.
-- Once a message, however often it is judged and filed, a ledger row a file, `staged` or `missing`. A file that will not
+- Within one run of the daemon a message's files are fetched once, however often it is judged and filed, a ledger row a
+  file, `staged` or `missing`; after a restart a file already on disk at its size is not fetched again, though its row is
+  written once more. A file that will not
   come is never the "could not fetch, send it again" notice a person's gets, since no one in the room sent it, and none
   is a file the room must open before it may answer. Retention keeps them as it keeps a person's files. The code ceiling
   moves up by 32.
@@ -24,13 +26,20 @@ version changes.
   found its name and size in the day log and no saved copy, and its shell cannot reach the chat service, so it could
   only ask for the file to be posted again.
 
-**Upgrading**: nothing to change by hand; files the other assistant attaches from the next start on are saved. One
-attached before it is not fetched after the fact: post it in the room again. budgets.toml moves with the code: the code
+**Upgrading**: nothing to change by hand; files the other assistant attaches from the next start on are saved. At the
+next start, catch-up also saves the other assistant's files posted after each channel's last ledgered message, which
+includes ones from before this deploy. budgets.toml moves with the code: the code
 ceiling to 22,800.
+### changelog-numbers (#148)
+
+- This file only, nothing in the code: six entries that said `(#?)` now carry their pull request numbers (#139 and
+  #143 to #147), and the uncapped (#136) entry names the fixture's base and the `[code] lines` count as they stood at
+  its merge (1ec2592; 22,736, main's 22,613 plus its 123), the way the docs-from-code and latency-bench entries were
+  brought up to date when they merged.
 
 ## 2026-10-29
 
-### note-to-self (#?)
+### note-to-self (#147)
 
 - A room whose final message opens with its own plan for the reply or a note to itself, before the answer, is turned
   back once at Stop and answers again with the answer alone. A note is a first paragraph of at most 700 characters that
@@ -48,12 +57,12 @@ ceiling to 22,800.
 **Upgrading**: nothing to change by hand; each room has the mechanics line from its next process start. budgets.toml
 moves with the code: the mechanics to 5,300, the session-start total to 111,602.
 
-### hands-budget (#?)
+### hands-budget (#146)
 
 - A deploy no longer refuses on the size of the hands plug-in's tools: their budget line moves to what a busy
   room sends since need 27 (7,462, from 7,119) and the session-start total moves with it. Nothing else changes.
 
-### watch-audit (#?)
+### watch-audit (#145)
 
 - A watching room with `watch_audit = true` grades the other assistant's answer to every message sent there: it posts
   a verdict in its own channel, first line `🟢 looks good`, `🟠 right but missing something` or `🔴 wrong`, then what is
@@ -71,7 +80,7 @@ moves with the code: the mechanics to 5,300, the session-start total to 111,602.
 **Upgrading**: the key is opt-in; `watch_audit = true` in a room's rooms.toml block turns it on (docs/settings.md names
 it), and a value that is not true or false stops the start with one line naming the room. budgets.toml moves with the
 code.
-### hold-card (#?)
+### hold-card (#144)
 
 - A room that watches an OpenClaw bot's channel no longer answers off that bot's progress card. A message with one of
   OpenClaw's tool rows (a line starting "🛠️ Bash", "🧩 Mcp ...", or any other tool's emoji) or the shape of Yerk AI's
@@ -91,7 +100,7 @@ budgets.toml moves with the code.
 
 ## 2026-10-28
 
-### need-2026-10-28-26 (#?)
+### need-2026-10-28-26 (#143)
 
 - Send a room a reel, a TikTok, an X video or a YouTube link and it watches the video, where before it answered off the
   caption, the cover picture and the comments. The new `watch` tool on Yerk's own server pulls the video from the link
@@ -148,7 +157,7 @@ AI's tools to 12,800, the mechanics to 4,700, the session-start total to 109,359
 
 **Upgrading**: nothing to change. budgets.toml moves with the code.
 
-### watch-answer (#?)
+### watch-answer (#139)
 
 - A message the owner sends in a channel a room watches now waits for the other assistant's answer there before the
   room reads it, so the room no longer says it has nothing to add while the other assistant is still typing. The
@@ -223,8 +232,9 @@ names it).
   past its 10,000 characters is cut at a line, its last line naming the file in the room's work folder that holds it
   whole. `yerk map` says `uncapped` where it said OVER and exits 0; the fit tests and the deploy's fast gate report a
   part past its line, never fail on it; `yerk doctor` no longer calls such a part cut. False, or no table, is main's
-  assembly byte for byte, held by a test against a fixture taken on 0967822. compact_window and idle_compact_at are
-  not touched (the 800,000 window is rooms.toml's). docs/budgets.md gains an Uncapped section.
+  assembly byte for byte, held by a test against a fixture retaken from main at each merge (1ec2592 at this PR's).
+  compact_window and idle_compact_at are not touched (the 800,000 window is rooms.toml's). docs/budgets.md gains an
+  Uncapped section.
 - The same switch lifts the money gates and puts a receipt in their place: `transcribe` and `voice_note` no longer
   wait for the owner's yes past US$1, every paid call still books its spend row, transcribe's result carries `usd` as
   voice_note's does, the session start's mechanics tell the room to say a paid call's cost in the same reply (and ask
@@ -233,7 +243,7 @@ names it).
   cap and xhigh's yes) are read from web.json inside plugins/web and stay. budgets.toml's [session] note no longer
   says the first token slows with size: a cold re-read after the cache's hour is where size costs.
 - **Upgrading:** nothing to change; `[limits] uncapped` is a new optional key in yerkd.toml (docs/settings.md), and
-  leaving it out keeps the install capped. budgets.toml: `[code] lines` 21,903, main's 21,780 plus this PR's 123 (a
+  leaving it out keeps the install capped. budgets.toml: `[code] lines` 22,736, main's 22,613 plus this PR's 123 (a
   dated note).
 
 ### tools-line (#135)
