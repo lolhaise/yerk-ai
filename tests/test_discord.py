@@ -6,6 +6,7 @@ import os
 import threading
 from types import SimpleNamespace as NS
 
+import aiohttp
 import discord
 import pytest
 
@@ -49,9 +50,12 @@ class Partial:
 class Chan:
     def __init__(self, cid):
         self.id, self.sent, self.reactions, self.guild, self.n, self.old = cid, [], [], NS(filesize_limit=100), 1000, {}
-        self.deleted, self.past, self.refuse = [], [], None
+        self.deleted, self.past, self.refuse, self.fail, self.nonces = [], [], None, [], []
 
     async def send(self, content=None, file=None, nonce=None):
+        self.nonces.append(nonce)                                    # every attempt's, a failed one's too
+        if self.fail and (e := self.fail.pop(0)) is not None:        # the next sends, in order: raised, or None to go through
+            raise e
         if self.refuse and file is not None:                         # Discord refusing the file only
             raise self.refuse
         self.n += 1
@@ -269,6 +273,87 @@ def test_a_crash_after_the_post_finds_the_reply_and_posts_nothing(dc):
     run(d.recover(ROOM_CH, room))
     assert ch.sent == [] and d.ledger.deliveries("test-room")[0]["message_id"] == "777"
     assert d.ledger.inbound_get("5")["reply_ids"] == "777"
+
+
+def lost():
+    """What a reply's post raised, seen live in an owner's room, in the TLS read of Discord's answer."""
+    return aiohttp.ClientOSError(1, "[SSL: SSLV3_ALERT_BAD_RECORD_MAC] ssl/tls alert bad record mac (_ssl.c:2711)")
+
+
+def test_a_post_that_dies_on_the_way_back_is_retried_once_with_the_same_nonce(dc):
+    """A post lost on the connection, no HTTPException, goes once more inside the turn under the same nonce: Discord
+    answers a nonce it already took with that message (discord.py sends enforce_nonce), so the room gets one post."""
+    d, client, _ = dc
+    ch = client.chans[ROOM_CH]
+    run(d._open("test-room", "working on it", "turn"))
+    ch.fail = [lost()]
+    ids = run(d._finish("test-room", "the answer", ["5"], DONE, key="t20"))
+    card, reply = ch.sent
+    assert ids == [str(reply.id)] and reply.content == "the answer" and ch.nonces == [None, dmod.nonce_for("t20:0"), reply.nonce]
+    [row] = d.ledger.deliveries("test-room")
+    assert (row["state"], row["message_id"], row["attempts"]) == ("sent", str(reply.id), 2)
+    assert card.deleted and d.ledger.cards_open("test-room") == [] and ch.reactions == [(5, "-", ACK), (5, "+", DONE)]
+
+
+def test_a_post_discord_never_took_after_a_retry_fails_the_row_and_the_card_goes(dc):
+    """Lost twice: DeliveryFailed, from the error; the row failed with it; the turn's card deleted and closed all the same,
+    never left at its working line; nothing posted and no done mark."""
+    d, client, _ = dc
+    ch = client.chans[ROOM_CH]
+    run(d._open("test-room", "working on it", "turn"))
+    ch.fail = [lost(), lost()]
+    with pytest.raises(dmod.DeliveryFailed) as raised:
+        run(d._finish("test-room", "the answer", ["5"], DONE, key="t21"))
+    assert isinstance(raised.value.__cause__, aiohttp.ClientOSError)
+    [card], [row] = ch.sent, d.ledger.deliveries("test-room")
+    assert (row["state"], row["attempts"], row["message_id"]) == ("failed", 2, None) and "SSLV3_ALERT_BAD_RECORD_MAC" in row["error"]
+    assert card.deleted and card_hows(d) == {str(card.id): "delivery failed"} and ch.reactions == []
+
+
+def test_a_failed_row_is_not_sent_again_by_the_turns_notice(dc):
+    """room._end's notice comes on the turn's key, so its flush finds the reply's row (its own plan is ignored): a failed
+    row is never posted again, and the room gets the notice's card alone, no reply under "not answered"."""
+    d, client, _ = dc
+    ch, card_up = client.chans[ROOM_CH], on_a_loop(d)
+    card_up()
+    ch.fail = [lost(), lost()]
+    with pytest.raises(dmod.DeliveryFailed):
+        d.reply("test-room", "the answer", ["5"], key="t22")
+    owed = f"{words.NOT_DONE} {words.NOT_ANSWERED}\n{words.WHY['undelivered']}"
+    assert d.notice("test-room", f"{words.NOT_DONE} {words.NOT_ANSWERED}", ["5"], card=owed, key="t22") == []
+    working, notice = ch.sent
+    assert working.deleted and notice.content == owed and "the answer" not in [m.content for m in ch.sent]
+    assert [(r["key"], r["state"]) for r in d.ledger.deliveries("test-room")] == [("t22:0", "failed")]
+    assert ch.reactions == [(5, "-", ACK), (5, "+", dmod.FAILED)]
+    d.loop.call_soon_threadsafe(d.loop.stop)
+
+
+def test_the_parts_after_a_failed_one_are_never_posted(dc):
+    """A long reply whose second part is lost twice: the first stands, the second and third are failed, so the turn's
+    notice posts its card and never the rest of a reply without its middle."""
+    d, client, _ = dc
+    ch = client.chans[ROOM_CH]
+    ch.fail = [None, lost(), lost()]
+    with pytest.raises(dmod.DeliveryFailed):
+        run(d._finish("test-room", "word " * 900, ["5"], DONE, key="t24"))
+    assert [(r["key"], r["state"]) for r in d.ledger.deliveries("test-room")] == [("t24:0", "sent"), ("t24:1", "failed"), ("t24:2", "failed")]
+    run(d._finish("test-room", "not answered", ["5"], dmod.FAILED, kind="notice", card="the owed card", key="t24", instead=True))
+    assert [m.content.split()[0] for m in ch.sent] == ["word", "the"] and len(ch.nonces) == 4
+
+
+def test_a_definitive_http_error_still_fails_at_once(dc):
+    """Discord's own answer (an HTTPException: it said no, nothing was lost) is not asked again: one attempt, the row failed
+    with Discord's words, the error raised as it came; the card goes as on any failed delivery."""
+    d, client, _ = dc
+    ch = client.chans[ROOM_CH]
+    run(d._open("test-room", "working on it", "turn"))
+    ch.fail = [discord.Forbidden(NS(status=403, reason="Forbidden"), {"code": 50013, "message": "Missing Permissions"})]
+    with pytest.raises(discord.Forbidden):
+        run(d._finish("test-room", "the answer", ["5"], DONE, key="t23"))
+    [card], [row] = ch.sent, d.ledger.deliveries("test-room")
+    assert ch.nonces == [None, dmod.nonce_for("t23:0")]
+    assert (row["state"], row["attempts"]) == ("failed", 1) and "Missing Permissions" in row["error"]
+    assert card.deleted and d.ledger.cards_open("test-room") == [] and ch.reactions == []
 
 
 def test_open_messages_run_again_once_then_give_up_visibly(dc):

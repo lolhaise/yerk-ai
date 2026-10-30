@@ -413,13 +413,14 @@ class Yerkd:
             inbound = ",".join(m.id for m in src.inflight) if src.busy else ""
         key = f"{turn}-s{self.sends}"                         # and this send's number: unique across restarts
         voice, why = voice_note.meta(Path(file)) if file else None, ""     # a note voice_note made goes as a voice message
+        from .channels.discord import DeliveryFailed          # a post lost twice is the tool's error, as a lost one was
         try:
             if voice:                                         # Discord takes no words beside one, so they follow it
                 ids, why = await ch.send_voice(room, Path(file), voice, key=key, inbound=inbound)
                 ids += await ch.send_text(room, text, key=f"{key}-t") if text else []
             else:
                 ids = await (ch.send_file(room, Path(file), text, key=key, inbound=inbound) if file else ch.send_text(room, text, key=key))
-        except (OSError, ValueError) as e:
+        except (OSError, ValueError, DeliveryFailed) as e:
             return {"ok": False, "error": str(e)}
         log.info("send: %s -> %s, %d message(s)%s", caller or "?", room, len(ids), f", the voice note as a plain file: {why}" if why else "")
         return {"ok": True, "message_ids": ids, **({"voice_message": not why} if voice else {}),

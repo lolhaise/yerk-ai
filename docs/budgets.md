@@ -351,7 +351,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-10-29: note-to-self raised it by 32, the note rule at Stop (a reply that day, on a turn with no thinking, opened with its plan for the reply and the room posted both), not folded to fit: room.py 24 (the rule's four signals as measured over 2,571 finals and its size line, the flag, note_check, the module's list of Stop rules), daemon.py 5 (its place after the stub rule, the shadow row `note`, the log line), words.py 3 (NOTE), hooks.py 0 (the Stop event's line, rewrapped). 22,768: main 677f838's 22,736 plus 32.
 
-- `lines = 22768`
+2026-10-30: deliver-transport-error raised it by 30, a reply's post that dies on the connection sent once more inside the turn under the same nonce (that day in an owner's room the post died in the TLS read, the turn crashed with its card up and the crash footer posted the reply under "not answered"), not folded to fit: discord.py 27 (the retry, DeliveryFailed, a failed part and the parts after it never posted again, the turn's card removed when the delivery raises), room.py 2 (the room's line for DeliveryFailed), daemon.py 1 (the send tool's error for it), words.py 0 (WHY's `undelivered`). 22,798: main 700f764's 22,768 plus 30.
+
+- `lines = 22798`
 
 ## Uncapped
 
