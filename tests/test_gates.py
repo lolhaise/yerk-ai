@@ -1,8 +1,8 @@
 """Checks the rule-based gates, checks in code, never a model, that block or hold a room's risky commands and send back a reply that
 falls short. The cases (DESIGN 8, decision 18): each gate's control set passes untouched and its blocked case is blocked; the parser
 reads quotes and heredocs the way the shell does; the approval gate holds and releases once; the tamper row; the silent-ending
-bounce on both of 2026-10-21's filed-instead-of-answered turns; the decision 25 rule's fixture; the hooks'
-own time measured over a real local HTTP round trip."""
+bounce once and only once; the stub bounce on both of 2026-10-21's filed-instead-of-answered turns; the note bounce on 2026-10-29's
+reply; the decision 25 rule's fixture; the hooks' own time measured over a real local HTTP round trip."""
 import asyncio
 import json
 import re
@@ -18,7 +18,7 @@ from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai.daemon import Yerkd
 from fake_channel import ConsoleChannel
 from yerk_ai.engine import SessionTable
-from yerk_ai.room import Inbound
+from yerk_ai.room import DIRECTIVE, NOTE_CHARS, SHAPE, YOU, Inbound
 
 S = gates.Settings(trash=("trash",))
 CONTROL_SHELL = [                                   # known-good commands: no gate may touch one
@@ -342,6 +342,55 @@ def test_a_no_reply_final_is_never_bounced_and_an_empty_one_still_is(tmp_path):
     stream(room, *ANSWER_ABOVE)
     assert call(y, {**stop, "last_assistant_message": RULE_LINE})["decision"] == "block"
     assert [r["rule"] for r in y.ledger.rows(5, "gates")] == ["silent-ending"]
+
+
+# The note rule's fixtures, invented in the shapes measured over 2,571 finals: a reply with its plan above the answer, the
+# correction after it, an answer about a colleague (its first two paragraphs), advice to the owner on their own message and a
+# rulebook tag alone. A name is only ever in a second paragraph, and the rule reads the first.
+PLAN_ABOVE = ("They are reading the plan back to check it. Confirm in one line and fix the one slip: the meeting moved to "
+"the east hall, the time stays. Landed: a yes and the fix, nothing more.\n\n"
+             
+             "Nearly. The time is the same, but the meeting is in the east hall now, not the west one, since the west hall "
+             "is booked for the fair that week. So the plan reads right with the hall changed.")
+             OWN_CORRECTION = ("The line above was my own working, sent by mistake; please skip it.\n\n"
+             "Quuxly\\" is a page on the Hub.")
+ABOUT_A_COLLEAGUE = ("They want the parcel sent on Monday to land before Friday. That is all they asked for, start to end.\n\n"
+              "From the shop file: the shop has 300 example boxes and 12 are out.")
+              
+
+                   
+ADVICE_FINAL = "Keep your reply to two lines: the date and the ask, then stop.\n\nHe reads it on his phone between meetings."
+TAG_FINAL = "\"Landed: 'Yes. Save.'\" style: confirm and move."
+
+
+def test_a_note_to_itself_before_the_answer_bounces_once_and_an_answer_that_only_looks_like_one_stands(tmp_path):
+    """The note rule (seen live: a turn with no thinking wrote its plan for the reply above the answer, and the room
+    posted both): the reply bounces once, a shadow row `note` the morning diff counts, and so does a rulebook tag alone; the
+    model's own correction, an answer about a colleague, advice to the owner on their own message and NO_REPLY stand."""
+    y, room, ch = setup(tmp_path)
+    stop = {"hook_event_name": "Stop", "stop_hook_active": False}
+    human_turn(room)
+    assert len(PLAN_ABOVE.split("\n\n")[0]) <= NOTE_CHARS and "\n\n" in PLAN_ABOVE      # a note the rule reads, an answer after it
+    assert call(y, {**stop, "stop_hook_active": True, "last_assistant_message": PLAN_ABOVE}) == {}   # Claude Code's guard
+    out = call(y, {**stop, "last_assistant_message": PLAN_ABOVE})
+    note = PLAN_ABOVE.split("\n\n")[0]
+    assert out["decision"] == "block" and f'("{" ".join(note.split())[:80]}")' in out["reason"]
+    assert "Thinking is where that goes" in out["reason"] and "Write the answer alone as your final message now" in out["reason"]
+    assert call(y, {**stop, "last_assistant_message": PLAN_ABOVE}) == {}                            # and ours: once
+    room._new_card()                                                          # the next result: one paragraph, a tag
+    assert call(y, {**stop, "last_assistant_message": TAG_FINAL})["decision"] == "block"
+    rows = [r["detail"] for r in reversed(y.ledger.rows(20, "shadow")) if r["rule"] == "note"]
+    assert rows == [f"a {len(note)}-character note before the answer: a directive and a shape word, and a rulebook tag",
+                    f"a {len(TAG_FINAL)}-character note before the answer: a rulebook tag"]
+    assert y.ledger.shadow_rules(0, time.time() + 1)["note"] == 2             # the morning diff's count
+    advice = ADVICE_FINAL.split("\n\n")[0]
+    assert DIRECTIVE.search(advice) and SHAPE.search(advice) and YOU.search(advice)   # it stands on "your" alone
+    for steps, final in (([], OWN_CORRECTION), ([("call", "Read")], ABOUT_A_COLLEAGUE),   # that turn read the file it cites
+                         ([], ADVICE_FINAL), ([], words.NO_REPLY), ([], TAG_FINAL + " " + "x" * NOTE_CHARS)):
+        room._new_card()
+        stream(room, *steps)
+        assert call(y, {**stop, "last_assistant_message": final}) == {}, final
+    assert y.ledger.shadow_rules(0, time.time() + 1)["note"] == 2
 
 
 def test_session_start_posts_a_reset_line_only_when_a_new_session_replaced_one(tmp_path):
