@@ -6,6 +6,28 @@ A line that changes a file the install keeps (rooms.toml, yerkd.toml, budgets.to
 newer than the code is refused with one line, never changed); the index chunks every file again when its chunker's
 version changes.
 
+## 2026-10-30
+
+### need-2026-10-30-26 (#?)
+
+- A file another assistant attaches where a room reads is saved in the room's `work/inbox/<message id>/` as a person's
+  is, so the room opens it when asked, where before the day log had its name and size and the room had no copy. That is
+  an assistant `[watch] assistants` lists in yerkd.toml, in the channel the room watches or in the room's own: the
+  answer a held message waits for has its files saved before that turn, and the line under the answer names where each
+  was saved (an owner room's PDF or workbook with its text beside it, as a person's has) or that it could not be
+  fetched; any other message of theirs has its files saved as it is filed, in the room's own channel as it lands.
+- Once a message, however often it is judged and filed, a ledger row a file, `staged` or `missing`. A file that will not
+  come is never the "could not fetch, send it again" notice a person's gets, since no one in the room sent it, and none
+  is a file the room must open before it may answer. Retention keeps them as it keeps a person's files. The code ceiling
+  moves up by 32.
+- Why: on 2026-10-30 a watching room asked to open a PDF the other assistant had attached in its answer minutes before
+  found its name and size in the day log and no saved copy, and its shell cannot reach the chat service, so it could
+  only ask for the file to be posted again.
+
+**Upgrading**: nothing to change by hand; files the other assistant attaches from the next start on are saved. One
+attached before it is not fetched after the fact: post it in the room again. budgets.toml moves with the code: the code
+ceiling to 22,800.
+
 ## 2026-10-29
 
 ### note-to-self (#?)

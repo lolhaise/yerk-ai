@@ -465,6 +465,14 @@ key = "the transcript runs on transcribe's keys, in the private folder's secrets
 free_path = "the frames come without a key; without yt-dlp the room says so"
 asked_as = ["watch this", "what does the video say", "this reel", "this tiktok", "the video he sent", "what happens in it"]
 
+[abilities.assistant-files]
+state = "built"
+what = "A file another assistant attaches where a room reads (the channel it watches or its own, an assistant `[watch] assistants` lists in yerkd.toml) is saved in the room's work/inbox/<message id>/ as a person's file is, so the room opens it when asked, where before it had the file's name and size in the day log and no copy: the answer a held message waits for has its files saved before that turn and named under it with where each was saved (an owner room's PDF or workbook with its text beside it) or why it could not be fetched, any other message has them saved as it is filed, once a message, a ledger row a file and never a notice in the room."
+tier = "free"
+needs = "nothing beyond the Discord adapter and `[watch] assistants` in yerkd.toml"
+free_path = "this is the free path"
+asked_as = ["the file the other assistant attached", "the other assistant's attachment", "open the file it attached"]
+
 [abilities.video-read]
 state = "described"
 what = "Says what is in a short video: the song, the words spoken, the on-screen caption cards, and frames to look at."

@@ -351,7 +351,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-10-29: note-to-self raised it by 32, the note rule at Stop (a reply that day, on a turn with no thinking, opened with its plan for the reply and the room posted both), not folded to fit: room.py 24 (the rule's four signals as measured over 2,571 finals and its size line, the flag, note_check, the module's list of Stop rules), daemon.py 5 (its place after the stub rule, the shadow row `note`, the log line), words.py 3 (NOTE), hooks.py 0 (the Stop event's line, rewrapped). 22,768: main 677f838's 22,736 plus 32.
 
-- `lines = 22768`
+2026-10-30: need-2026-10-30-26 raised it by 32, the other assistant's files saved in the room's inbox for every room (need 26, 14:15: a room asked to open a PDF the other assistant had attached where it watches found its name and size in the day log and no copy, since only a person's files were saved), not folded to fit: discord.py 29 (`_keep`, once a message: a held answer's files before its turn reads them, any other as it is filed, one in the room's own channel as it lands; `stage`'s `say`, so no "send it again" notice for a file no one in the room sent; the answer line naming where each was saved with its text beside it, or why it could not be fetched; the docstrings saying so), words.py 2 (the saved line and the not-fetched line), config.py 1 (`[watch] assistants` in YERKD_WORDS). 22,800: main 30aaa0d's 22,768 plus 32.
+
+- `lines = 22800`
 
 ## Uncapped
 

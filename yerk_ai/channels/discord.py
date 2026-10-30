@@ -6,7 +6,8 @@
   taken there waits (Hold) for the answer of the assistant there (`watch_assistant`), counted again from its progress
   card's newest edit while that card is up (CARD_PATIENCE waits at most), then reaches the room in one turn with it,
   under a line saying it was sent to that assistant. Another assistant's message there (`[watch] assistants` in
-  yerkd.toml) is filed under its own role once it has settled (SETTLE), its progress card never, and never answered.
+  yerkd.toml) is filed under its own role once it has settled (SETTLE), its progress card never, and never answered;
+  its files, there or in the room's own channel, are saved to the room's inbox as a person's are (_keep).
 - Only the owner, the people a room lists (`people` in rooms.toml), and in test mode the listed webhooks,
   are answered. Webhook senders pass a loop guard (lifted/loopguard.py) so a runaway script cannot run the room.
 - A message is ledgered by its Discord id before anything runs, then acked with a reaction. Its
@@ -217,6 +218,7 @@ class DiscordChannel:
         self.token, self.owner, self.test_senders, self.ledger = token, owner, set(test_senders), ledger
         self.assistants = assistants              # other assistants' user ids: filed where a room watches, never answered
         self.settling: dict[str, asyncio.TimerHandle] = {}   # message id -> an assistant's message waiting to settle
+        self.kept: dict[str, asyncio.Future[list[dict[str, Any]]]] = {}   # an assistant's message id -> its files saved (_keep)
         self.held: dict[str, Hold] = {}           # room name -> what its watched channel's messages wait on
         self.state = state
         self.daemon = daemon                      # the slash commands' methods (daemon.Yerkd), or None: off
@@ -344,6 +346,8 @@ class DiscordChannel:
         if m.author.id in self.assistants and m.channel.id != self.names[room]:
             self._offer(room, m)                  # the answer a held message waits for, once it settles
             return self._assistant(room, m)
+        if m.author.id in self.assistants:        # in the room's own channel: its files saved as it lands
+            self._keep(m)
         role = self.sender_of(m)              # watched: blind to anyone else there, so recall never shows their words
         if self.capture is None or m.author.id == self._me() or (role is None and m.channel.id != self.names[room]):
             return
@@ -358,7 +362,8 @@ class DiscordChannel:
         """Another assistant's message where `room` watches, filed under ASSISTANT with its handle once it has gone SETTLE
         seconds with no edit and no delete: an edit starts the wait again, a delete ends it (on_raw_message_delete). Its
         progress card (is_card) never is, settled or not, live or read from history; one edited into a plain message is, once
-        that settles. Filed once by its id, an edit after that is not; read from history, at once."""
+        that settles. Filed once by its id, an edit after that is not; read from history, at once. Its files are saved as it is
+        filed (_keep)."""
         mid, at = str(m.id), getattr(m, "edited_at", None) or getattr(m, "created_at", None)
         if (old := self.settling.pop(mid, None)) is not None:
             old.cancel()
@@ -371,7 +376,26 @@ class DiscordChannel:
         text = "\n".join(x for x in (self.reply_line(room, m), str(getattr(m, "clean_content", None) or m.content or "")) if x)
         files = [(a.filename, file_type(a.filename, getattr(a, "content_type", None)), int(a.size or 0))
                  for a in getattr(m, "attachments", []) or []]
+        self._keep(m)
         self._file(room, mid, ASSISTANT, text, files, getattr(m, "created_at", None), False, str(getattr(m.author, "name", "") or ""))
+
+    def _keep(self, m: Any) -> asyncio.Future[list[dict[str, Any]]] | None:
+        """Another assistant's files where a room reads, saved to its inbox as a person's are (stage), once a message: a held
+        group's answer before its turn reads them (_release), any other as it is filed. A miss is its ledger row and a line in
+        that turn, never a notice in the room, and none is a file the room must open (Inbound.files). None: it has no files."""
+        if not getattr(m, "attachments", None) or (room := self.rooms.get(m.channel.id)) is None:
+            return None
+        if (got := self.kept.get(mid := str(m.id))) is None:
+            async def keep() -> list[dict[str, Any]]:
+                try:
+                    return await self.stage(room, m, say=False)
+                except Exception:                 # a record, never a reason to hold the turn it answers
+                    log.exception("room %s: the files of %s's message %s not saved", room.name, getattr(m.author, "name", "?"), mid)
+                    return []
+            got = self.kept[mid] = asyncio.ensure_future(keep())
+            while len(self.kept) > 200:
+                self.kept.pop(next(iter(self.kept)))
+        return got
 
     def _file(self, room: str, mid: str, role: str, text: str, files: list[tuple[str, str, int]] | None = None,
               when: Any = None, edited: bool = False, who: str = "") -> None:
@@ -503,13 +527,14 @@ class DiscordChannel:
             await self._typing_begin(room.name, await self._channel(room.name))
             group = sorted(h.msgs.values(), key=lambda x: int(x[0].id))
             staged = [await self.stage(room, m) for m, *_ in group]
+            kept = await got if h.answer is not None and (got := self._keep(h.answer)) is not None else []   # the answer's files
             if ahead is not None:
                 await asyncio.shield(ahead)
             (first, _, extra, _), ids = group[0], [str(m.id) for m, *_ in group]
             await self._meet(room, first.channel)            # a watch_audit room's readers, by name, before its line is written
             text = "\n".join([self.inbound_text(room, first, staged[0]) + extra,
                               *(message_text(m, f, self.reply_line(room.name, m), addons.reads(self.state)) + x
-                                for (m, _, x, _), f in zip(group[1:], staged[1:])), self._answer_line(h, first.channel)])
+                                for (m, _, x, _), f in zip(group[1:], staged[1:])), self._answer_line(h, first.channel, kept)])
             note = f"one turn with {', '.join(ids)}" if len(ids) > 1 else ""
 
             def then(state: str, reply: list[str], chars: int) -> None:   # the room's thread, as the turn ends: the rest as its first
@@ -530,9 +555,10 @@ class DiscordChannel:
             if self.order.get(room.name) is mine:
                 del self.order[room.name]
 
-    def _answer_line(self, h: Hold, ch: Any) -> str:
+    def _answer_line(self, h: Hold, ch: Any, kept: list[dict[str, Any]] | None = None) -> str:
         """What the assistant there answered, its whitespace folded and cut at ANSWER_MAX, at its own time in the room's zone,
-        with a line per file it attached (named, never fetched); else that it had not answered within the wait."""
+        with a line per file it attached (`kept`, _keep: where it was saved and its text beside it, or why it could not be
+        fetched); else that it had not answered within the wait."""
         who, where = self._there(h.room, ch)
         if (a := h.answer) is None:
             return words.WATCH_UNANSWERED.format(who=who, channel=where, wait=f"{h.wait:g}")
@@ -540,7 +566,9 @@ class DiscordChannel:
         at = datetime.fromtimestamp(stamp(a), ZoneInfo(str(getattr(h.room, "conf", {}).get("timezone") or "UTC")))
         return "\n".join([words.WATCH_ANSWERED.format(who=who, at=at.strftime("%H:%M"), channel=where, text=said if len(said) <= ANSWER_MAX
                                                       else said[:ANSWER_MAX - 3] + "..."),
-                          *(words.WATCH_ATTACHED.format(who=who, name=x.filename) for x in getattr(a, "attachments", []) or [])])
+                          *(words.WATCH_ATTACHED.format(who=who, **f) + (f"\n{words.FILE_TEXT.format(path=f['text'])}" if f.get("text") else "")
+                            if f.get("ok") else words.WATCH_NOT_KEPT.format(who=who, name=f["name"], why=f.get("error", "unknown"))
+                            for f in kept or [])])
 
     # the typing signal: "heard you", from the moment a message is taken until something is visible
     async def _typing_begin(self, room: str, ch: Any) -> None:
@@ -621,9 +649,9 @@ class DiscordChannel:
         else:
             self.ledger.inbound_set(mid, note=f"deleted by its sender after it ran ({row['state']})")
 
-    async def stage(self, room: Room, m: Any) -> list[dict[str, Any]]:
+    async def stage(self, room: Room, m: Any, say: bool = True) -> list[dict[str, Any]]:
         """Each attachment saved under the room's inbox with its own name, a ledger row each; a
-        visible notice for any that cannot be fetched."""
+        visible notice for any that cannot be fetched (`say` False, another assistant's: none, _keep)."""
         files: list[dict[str, Any]] = []
         texts: list[tuple[dict[str, Any], asyncio.Task[Path | None]]] = []    # each workbook's or PDF's text, read side by side
         for a in getattr(m, "attachments", []) or []:
@@ -642,7 +670,8 @@ class DiscordChannel:
                 f.update(ok=False, error=f"{type(e).__name__}: {str(e)[:120]}")
                 self.ledger.attachment(message_id=str(m.id), room=room.name, name=a.filename, size=f["size"],
                                        type=f["type"], state="missing", error=f["error"])
-                await self._post(room.name, f"{words.NOT_DONE} {words.NOT_FETCHED.format(name=a.filename)}", "notice", [str(m.id)])
+                if say:
+                    await self._post(room.name, f"{words.NOT_DONE} {words.NOT_FETCHED.format(name=a.filename)}", "notice", [str(m.id)])
             files.append(f)
         for f, job in texts:                      # so the message waits files.WAIT once, never once a file
             if side := await job:

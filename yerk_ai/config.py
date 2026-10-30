@@ -163,7 +163,8 @@ YERKD_WORDS = {
                 "commands": "the slash commands (default true)"},
     "http": {"port": "the local port of /mcp, /hook and /control (default: a free one; yerkd --port wins)"},
     "watch": {"assistants": "other assistants' Discord user ids: in a channel a room watches, their messages go in its day log under their "
-              "own label once they stop changing, never answered and never an instruction"},
+              "own label once they stop changing, never answered and never an instruction; their files, there or in the room's own "
+              "channel, are saved in its work/inbox as a person's are"},
     "memory": {"root": "the memory tree, in the private folder (default: its memory/)",
                "also": "more roots the owner's rooms recall, each in the private folder or absolute (a room's own `also` narrows them)",
                "exclude": "paths the index leaves out", "interval": "the least seconds between the index's passes (default 2)",

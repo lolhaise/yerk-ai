@@ -352,8 +352,10 @@ SENT_THERE_AUDIT = ("[sent to {who} in #{channel}, not to this room: {sender} is
 OWNER, A_PERSON = "the owner", "a person this room answers"   # who reads it, by name where the server shows one
 NO_VERDICT = "no verdict: the room answered nothing"   # its card, kept under NOT_DONE, when it answers NO_REPLY all the same
 OTHER_ASSISTANT = "the other assistant"              # `watch_assistant` unset
-# the line under it once that assistant's answer there has settled, a line per file it attached; else once `watch_wait` ran out
-WATCH_ANSWERED, WATCH_ATTACHED = "[{who} answered at {at} in #{channel}: {text}]", '[{who} attached: "{name}"]'
+# the line under it once that assistant's answer there has settled, a line per file it attached (saved to the room's inbox as a
+# person's is, or why not); else once `watch_wait` ran out
+WATCH_ANSWERED, WATCH_ATTACHED = "[{who} answered at {at} in #{channel}: {text}]", '[{who} attached: "{name}", {type}, {size:,} bytes, saved at {path}]'
+WATCH_NOT_KEPT = '[{who} attached: "{name}", which could not be fetched ({why})]'
 WATCH_UNANSWERED = "[{who} had not answered in #{channel} within {wait} s of the owner's message]"
 NO_REPLY, QUIET = "NO_REPLY", "read it, nothing to add"   # a final of exactly NO_REPLY posts nothing; its card says QUIET
 # the emoji an OpenClaw progress card's tool row starts with, one per tool kind, "🧩" for any other (an MCP tool's): its

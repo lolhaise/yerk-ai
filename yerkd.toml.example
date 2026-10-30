@@ -8,6 +8,7 @@ owner = "<your Discord user id>"          # the owner, answered in every room
 [watch]
 # Other assistants' Discord user ids. In a channel a room watches (`watch` in rooms.toml), their messages go in that room's
 # day log under their own label once they stop changing, so the room can read what was already said there; never answered.
+# Their files, there or in the room's own channel, are saved in the room's work/inbox as a person's are.
 assistants = ["<the other assistant's bot user id>"]
 
 [location]

@@ -661,4 +661,11 @@ secs = 60
 # measured over 2,571 finals and its size line, the flag, note_check, the module's list of Stop rules), daemon.py 5 (its
 # place after the stub rule, the shadow row `note`, the log line), words.py 3 (NOTE), hooks.py 0 (the Stop event's line,
 # rewrapped). 22,768: main 677f838's 22,736 plus 32.
-lines = 22768
+# 0000-00-00: next-0000-00-00-00 step and the 00, test reads it back as plain text with one more line for (the
+# 26: a room asked to open a PDF the other assistant had attached where it watches found its name and size in the
+# day log and no copy, since only a person's files were saved), not folded to fit: discord.py 29 (`_keep`, once a message:
+# a held answer's files before its turn reads them, any other as it is filed, one in the room's own channel as it lands;
+# `stage`'s `say`, so no "send it again" notice for a file no one in the room sent; the answer line naming where each was
+# saved with its text beside it, or why it could not be fetched; the docstrings saying so), words.py 2 (the saved line and
+# in the-queue for), its.turn 0 (`[and] the` last Part_Closes). 00,000: the 00case0before 00,000 the 00.
+lines = 22800
