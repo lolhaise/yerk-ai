@@ -14,7 +14,7 @@ import discord
 import pytest
 
 import yerk_ai.channels.discord as dmod
-from yerk_ai import cli, config, memory, status, words
+from yerk_ai import cli, config, files, memory, status, words
 from yerk_ai.accounts import Account, Cooldowns
 from yerk_ai.channels.discord import DiscordChannel
 from yerk_ai.config import EXAMPLE_PRIVATE, rooms
@@ -24,6 +24,7 @@ from yerk_ai.memory import DailyLog
 from yerk_ai.room import Inbound
 
 from test_discord import HOOK, Attachment, Chan, Msg, Room
+from test_files import pdf_bytes
 from test_observe import Timers, busy_room
 from test_slash import It, wait
 
@@ -410,7 +411,7 @@ def lines(tmp_path):
 def test_a_watched_message_waits_for_the_other_assistants_answer_and_comes_in_one_turn_with_it(tmp_path, monkeypatch):
     """watch-answer (seen live: the room had read the owner's message and found nothing to add while the other assistant
     was still typing its answer): a message taken in the watched channel is held until the other assistant's answer there has
-    gone ANSWER_SETTLE with no edit, then comes in once, the answer under it, its file named. Its card, edited again and again
+    gone ANSWER_SETTLE with no edit, then comes in once, the answer under it, its file saved. Its card, edited again and again
     and then deleted, is not the answer; the reply after it is. The room's own channel runs meanwhile without waiting, the
     answer is still filed once under its own role, and nothing is posted or typed in the watched channel."""
     monkeypatch.setattr(dmod, "ANSWER_SETTLE", 0.2)
@@ -438,7 +439,8 @@ def test_a_watched_message_waits_for_the_other_assistants_answer_and_comes_in_on
         await asyncio.sleep(0.6)
         return reply.created_at
     at = asyncio.run(run())
-    answer = f'[Helper answered at {at:%H:%M} in #lounge: Even splits, a faster last mile.]\n[Helper attached: "splits.csv"]'
+    answer = (f'[Helper answered at {at:%H:%M} in #lounge: Even splits, a faster last mile.]\n'
+              f'[Helper attached: "splits.csv", text/csv, 1 bytes, saved at {tmp_path / "inbox" / "1004" / "splits.csv"}]')
     assert [(g.id, g.sender, g.text) for g in room.got] == [("1002", "owner", "and in here"),
                                                             ("1001", "owner", f"{LINE}\nhow did the long run go\n{answer}")]
     assert lines(tmp_path) == ["owner: how did the long run go", "owner: and in here",
@@ -588,7 +590,7 @@ def test_the_wait_runs_again_from_the_cards_newest_edit_and_three_waits_at_most(
 
 def test_the_reply_after_the_card_is_the_answer_and_comes_in_one_turn_with_the_message(tmp_path, monkeypatch):
     """hold-card (c): the card goes and the final reply lands as a new message (OpenClaw deletes its card as the turn ends), long
-    after the wait from the message ran out: the reply settles and is the answer, in one turn with the message, its file named;
+    after the wait from the message ran out: the reply settles and is the answer, in one turn with the message, its file saved;
     the reply is filed once and the card never."""
     monkeypatch.setattr(dmod, "ANSWER_SETTLE", 0.1)
     monkeypatch.setattr(dmod, "SETTLE", 0.15)
@@ -613,7 +615,9 @@ def test_the_reply_after_the_card_is_the_answer_and_comes_in_one_turn_with_the_m
         await asyncio.sleep(0.35)
         return reply.created_at
     at = asyncio.run(run())
-    answer = f'[Helper answered at {at:%H:%M} in #lounge: {REPLY}]\n[Helper attached: "brief-v54.pdf"]'
+    saved = tmp_path / "inbox" / "1603" / "brief-v54.pdf"           # an owner room: its text read beside it
+    answer = (f'[Helper answered at {at:%H:%M} in #lounge: {REPLY}]\n[Helper attached: "brief-v54.pdf", application/pdf, 1 bytes, '
+              f'saved at {saved}]\n{words.FILE_TEXT.format(path=files.sidecar(saved))}')
     assert [g.id for g in room.got] == ["1601"] and room.got[0].text.startswith(f"{LINE}\n{ASKED}\n[attachment] screenshot.png")
     assert room.got[0].text.endswith(f"\n{answer}") and "late-fee lines" not in room.got[0].text
     assert lines(tmp_path) == [f"owner: {ASKED}", f"assistant@helper-bot: {REPLY}"] and dc.held == {}
@@ -722,6 +726,76 @@ def test_a_thread_started_in_the_watched_channel_never_brings_the_other_sides_wo
     assert [g.text for g in room.got] == [f"{SENT}\nok but why", f"{SENT}\nand the deload"]
 
 
+def test_a_file_the_other_assistant_attaches_is_saved_to_the_inbox_and_its_turn_names_where(tmp_path, monkeypatch):
+    """need 26 (2026-10-30): a watching room asked to open a PDF the other assistant had attached in its answer found its name
+    and size in the day log and no copy, since only a person's files were saved. Its files are saved in the room's inbox as a
+    person's are, under the message's id, once however often the answer is judged and filed: the audit turn names where, the
+    PDF's text beside it in an owner room, and the day log's line carries the id the folder is named by. No notice is posted,
+    and none is a file the room must open before it may answer (Inbound.files)."""
+    monkeypatch.setattr(dmod, "ANSWER_SETTLE", 0.1)
+    monkeypatch.setattr(dmod, "SETTLE", 0.2)
+    dc, room, own, watched = watching(tmp_path, {"watch_audit": True})
+    pdf = pdf_bytes(["page one", "page two: the figure"])
+
+    async def run():
+        dc.loop = asyncio.get_running_loop()
+        await dc.on_message(Msg(watched, 2001, "is the brief ready"))
+        reply = Msg(watched, 2002, "Here it is.", author=HELPER, name="helper-bot",
+                    attachments=[Attachment("brief v2.pdf", pdf, "application/pdf")])
+        reply.created_at = datetime.now(timezone.utc)
+        await dc.on_message(reply)
+        for _ in range(200):                                        # its text is read off the loop: polled, never slept on
+            if room.got and not dc.settling:
+                break
+            await asyncio.sleep(0.05)
+        return reply.created_at
+    at = asyncio.run(run())
+    saved = tmp_path / "inbox" / "2002" / "brief v2.pdf"
+    assert saved.read_bytes() == pdf and "page two: the figure" in files.sidecar(saved).read_text()
+    [got] = room.got
+    assert got.text.endswith(f"[Helper answered at {at:%H:%M} in #lounge: Here it is.]\n[Helper attached: \"brief v2.pdf\", "
+                             f"application/pdf, {len(pdf):,} bytes, saved at {saved}]\n"
+                             + words.FILE_TEXT.format(path=files.sidecar(saved))) and got.files == []
+    rows = dc.ledger._select("SELECT * FROM attachments WHERE message_id = ?", ("2002",))
+    assert [(r["name"], r["state"], r["path"]) for r in rows] == [("brief v2.pdf", "staged", str(saved))]   # judged, then filed: once
+    text = "".join(p.read_text() for p in (tmp_path / "daily").glob("*.md"))
+    assert memory.MARK.findall(text) == ["2001", "2002"] and f"  - attachment: brief v2.pdf, application/pdf, {len(pdf):,} bytes" in text
+    assert own.sent == [] and watched.writes == []
+
+
+def test_a_file_it_posts_unasked_or_in_the_rooms_own_channel_is_saved_too_and_one_that_will_not_come_is_never_a_notice(tmp_path, monkeypatch):
+    """Not only an answer: a file the other assistant posts where no message waits is saved once that message is filed, one in
+    the room's own channel as it lands. One that cannot be fetched is a missing row and a line in the turn it answers, never
+    the "send it again" notice a person's gets, since no one in the room sent it."""
+    monkeypatch.setattr(dmod, "ANSWER_SETTLE", 0.1)
+    monkeypatch.setattr(dmod, "SETTLE", 0.2)
+    dc, room, own, watched = watching(tmp_path)
+
+    async def run():
+        dc.loop = asyncio.get_running_loop()
+        unasked = Msg(watched, 2101, "The week's sheet.", author=HELPER, name="helper-bot", attachments=[Attachment("week.csv", b"a,b\n1,2\n")])
+        unasked.created_at = datetime.now(timezone.utc)
+        await dc.on_message(unasked)
+        await dc.on_message(Msg(own, 2102, "", author=HELPER, name="helper-bot", attachments=[Attachment("notes.txt", b"hello")]))
+        await asyncio.sleep(0.05)
+        assert (tmp_path / "inbox" / "2102" / "notes.txt").read_bytes() == b"hello"        # its own channel: as it lands
+        assert not (tmp_path / "inbox" / "2101").exists() and room.got == []               # watched: once it is filed
+        await asyncio.sleep(0.3)
+        await dc.on_message(Msg(watched, 2103, "and the plan"))
+        reply = Msg(watched, 2104, "It would not attach.", author=HELPER, name="helper-bot", attachments=[Attachment("plan.pdf", fail=True)])
+        reply.created_at = datetime.now(timezone.utc)
+        await dc.on_message(reply)
+        await asyncio.sleep(0.4)
+    asyncio.run(run())
+    assert (tmp_path / "inbox" / "2101" / "week.csv").read_bytes() == b"a,b\n1,2\n"
+    assert [g.id for g in room.got] == ["2103"]
+    assert room.got[0].text.endswith('[Helper attached: "plan.pdf", which could not be fetched (OSError: cdn said no)]')
+    rows = dc.ledger._select("SELECT message_id, name, state FROM attachments WHERE room = ?", (ROOM,))
+    assert sorted((r["message_id"], r["name"], r["state"]) for r in rows) == [("2101", "week.csv", "staged"),
+                                                                             ("2102", "notes.txt", "staged"), ("2104", "plan.pdf", "missing")]
+    assert own.sent == [] and watched.writes == []
+
+
 def test_a_watch_on_a_rooms_own_channel_or_another_rooms_watch_is_refused(tmp_path):
     def load(text):
         (tmp_path / "rooms.toml").write_text(text)
@@ -746,3 +820,34 @@ def test_map_and_status_say_which_channel_a_room_watches(tmp_path, capsys):
                        {ROOM: r}, units=set, timers=Timers({}))
     lines = status.card(s)
     assert f"- {ROOM}: watches {WATCHED}" in lines and all(words.width(x) <= words.PHONE for x in lines)
+
+
+def test_a_save_that_fails_outside_a_fetch_error_still_names_the_file_and_why_in_the_turn(tmp_path, monkeypatch):
+    """A save that raises anything but a fetch error (a ledger write, a payload cut short) is logged, and the answer line
+    still names each file and why it is not there, where before the turn saw no file at all."""
+    monkeypatch.setattr(dmod, "ANSWER_SETTLE", 0.1)
+    monkeypatch.setattr(dmod, "SETTLE", 0.2)
+    dc, room, own, watched = watching(tmp_path)
+
+    real = dc.stage
+
+    async def broken(room_, m, say=True):          # only the assistant's message fails; the person's own files still stage
+        if str(m.id) == "2202":
+            raise RuntimeError("ledger locked")
+        return await real(room_, m, say=say)
+    monkeypatch.setattr(dc, "stage", broken)
+
+    async def run():
+        dc.loop = asyncio.get_running_loop()
+        await dc.on_message(Msg(watched, 2201, "and the plan"))
+        reply = Msg(watched, 2202, "Here.", author=HELPER, name="helper-bot", attachments=[Attachment("plan.pdf", b"%PDF-1.4")])
+        reply.created_at = datetime.now(timezone.utc)
+        await dc.on_message(reply)
+        for _ in range(200):
+            if room.got and not dc.settling:
+                break
+            await asyncio.sleep(0.05)
+    asyncio.run(run())
+    [got] = room.got
+    assert got.text.endswith('[Helper attached: "plan.pdf", which could not be fetched (RuntimeError: ledger locked)]') and got.files == []
+    assert not (tmp_path / "inbox" / "2202").exists() and own.sent == [] and watched.writes == []

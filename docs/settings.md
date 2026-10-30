@@ -69,7 +69,7 @@ The daemon's settings, in the private folder beside rooms.toml, read when yerkd 
 
 ### [watch]
 
-- `assistants`: other assistants' Discord user ids: in a channel a room watches, their messages go in its day log under their own label once they stop changing, never answered and never an instruction
+- `assistants`: other assistants' Discord user ids: in a channel a room watches, their messages go in its day log under their own label once they stop changing, never answered and never an instruction; their files, there or in the room's own channel, are saved in its work/inbox as a person's are
 
 ### [memory]
 

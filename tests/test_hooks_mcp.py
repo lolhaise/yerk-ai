@@ -136,6 +136,21 @@ def test_a_send_outside_a_turn_has_a_key_of_its_own_across_restarts(tmp_path):
     assert ch.keys[-1] == ("abc123def456-s2", "501")
 
 
+def test_a_send_discord_never_took_is_the_tools_error(tmp_path):
+    """A send whose post was lost on the connection, then again on its one retry (DeliveryFailed), answers the room's
+    tool with ok false and why, as a post lost once (an OSError) did before the retry."""
+    from yerk_ai.channels.discord import DeliveryFailed
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    ch = KeyedChannel()
+    y.add_room("example-room", ch)
+
+    async def lost(room, text, key=None):
+        raise DeliveryFailed(f"{key}:0: ClientOSError: [Errno 1] ssl/tls alert bad record mac")
+    ch.send_text = lost
+    said = asyncio.run(y.tool_send("example-room", "PING", "", "example-room"))
+    assert said["ok"] is False and "ClientOSError" in said["error"]
+
+
 # the secret header (restart test R3): every endpoint, three keys, identity from the binding
 def guarded(y):
     return mcp_server.app(mcp_server.build(y, y.port, y.hook, y.control), y.check())
