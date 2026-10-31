@@ -3,7 +3,8 @@ changed chunks are embedded (a touch embeds none), a missing key keeps the keywo
 once, a provider timeout and a provider error each fall back and read apart, fusion ranks a paraphrase above a
 keyword-only near miss, the index stays queryable during a backfill, the bench's output shape is unchanged, and
 the manifest and `yerk abilities` show the ability both ways. The pin maps the keyword tables, keeps every lock
-a writer pass's new chunks at its next tick, and goes off only where SQLite has no dbstat. No provider
+the process holds, maps a writer pass's new chunks at its next tick, and goes off only where SQLite has no
+dbstat. yerk-index imports numpy on one BLAS thread unless one is set, and an import of its module sets
 is ever called: a stub stands in. Every value here is a placeholder."""
 import asyncio
 import json
@@ -578,6 +579,33 @@ def test_the_index_units_memory_rule_is_the_one_the_doctor_checks():
     assert "MemoryHigh = 256M + 8.3M per block of 16,384 vectors" in " ".join(x.lstrip("# ") for x in text.splitlines())
     assert embeddings.HIGH_BASE == 256 << 20 and embeddings.BLOCK == 16384
     assert round(embeddings.BLOCK * (2 * 256 + 20) / 2**20, 1) == 8.3
+
+
+def test_yerk_index_imports_numpy_on_one_blas_thread_unless_one_is_set_and_an_import_sets_nothing(tmp_path):
+    names = ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS")
+    code = ("import json, os, sys\nnames, seen = sys.argv[3:], []\n"
+            "class Spy:                                   # what the variables read as numpy is imported, and yerk-index stops there\n"
+            "    def find_spec(self, name, path=None, target=None):\n"
+            "        if name == 'numpy':\n"
+            "            print(json.dumps([*seen, {k: os.environ.get(k) for k in names}]))\n"
+            "            sys.exit(0)\n"
+            "sys.meta_path.insert(0, Spy())\nfrom yerk_ai import memindex\nseen.append({k: os.environ.get(k) for k in names})\n"
+            "memindex.main(['--once', '--private', sys.argv[1], '--state', sys.argv[2]])\n")
+    (tmp_path / "private").mkdir()
+
+    def run(**preset: str) -> list[dict[str, str | None]]:
+        env = {**{k: v for k, v in os.environ.items() if k not in names}, **preset}
+        p = subprocess.run([sys.executable, "-c", code, str(tmp_path / "private"), str(tmp_path / "state"), *names],
+                           cwd=Path(__file__).resolve().parents[1], env=env, capture_output=True, text=True, timeout=60)
+        assert p.returncode == 0, p.stderr
+        return json.loads(p.stdout.splitlines()[-1])
+    unset = dict.fromkeys(names)
+    # an import, as yerkd's (memory), sets nothing; yerk-index's start sets each to 1 before numpy is imported
+    assert run() == [unset, dict.fromkeys(names, "1")]
+    # a count the unit or an operator set is kept
+    assert run(OPENBLAS_NUM_THREADS="4") == [{**unset, "OPENBLAS_NUM_THREADS": "4"}, {**dict.fromkeys(names, "1"), "OPENBLAS_NUM_THREADS": "4"}]
+    lines = (Path(__file__).resolve().parents[1] / "units" / "yerk-index.service").read_text().splitlines()
+    assert [f"Environment={k}=1" in lines for k in names] == [True, True, True]
 
 
 def shared_lock_held(db: Path) -> bool:
