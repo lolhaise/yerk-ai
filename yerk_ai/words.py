@@ -523,6 +523,10 @@ SPEND = "spend {day} US${usd:.2f} ({n} call{s}) · week US${week:.2f}"     # an 
 UNKNOWN, NOT_ANSWERING_WHY = "{what}: unknown, {why}", "yerkd not answering"
 DEAD, NO_YERKD, NO_DEAD = "dead turns: {n}, {name}, last {at}", "no yerkd answers", "dead turns: none in 24h"
 SWEPT, SWEEP_FAILED = "swept: {kinds}", "retention failed: {why}"     # the night's sweep (retention.py)
+SWEPT_FROM, SWEPT_MORE = "; scratch: {rooms}", ", and {n} more"     # the rooms its scratch left and their top folders
+SWEPT_NOTE = ("# What the nightly sweep took\n\nThe sweep of {at} moved these out of this room's scratch, each to where it waits "
+              "in the state folder:\n\n{moved}\n\nThe trash keeps them {days} after that day, then a sweep deletes them for good.\n")
+NEVER_SWEPT = "A folder under work/ with a file named KEEP is never swept."   # RETENTION.md's last line, in a swept room's work/
 DOCTOR_OK, DOCTOR, NO_RUN = "doctor: clean", "doctor: {n} found, {first}", "no run in 24h"  # the daily check (doctor.py)
 DOCS_CHANGED, SHAPE = "docs changed: {slug}", "rule shape: {counts}"         # docs, the weekly rule-shape line
 CURATE_OK, CURATE = "curate: {n} landed, {m} swept", "curate: {n} to read, {first}"     # the night's curation (curate.py)

@@ -6,6 +6,35 @@ A line that changes a file the install keeps (rooms.toml, yerkd.toml, budgets.to
 newer than the code is refused with one line, never changed); the index chunks every file again when its chunker's
 version changes.
 
+## 2026-10-31
+
+### retention-keep (#?)
+
+- A room keeps a folder of its work from the nightly sweep with a file named KEEP: a top folder of work/ holding a
+  regular file named `KEEP` is never scratch, so nothing under it moves, by age or by the 500 MB cap, and its size is
+  not counted toward the cap. Only the top of work/ is read for it, as for inbox/; a KEEP file deeper down, or a KEEP
+  that is a link, keeps nothing. The file's words are for a person (why the folder is kept); only its being there
+  counts. `yerk retention` says the size beside the inbox's: `inbox and KEEP folders: 1.2 MB, kept`.
+- The morning diff's sweep line names what left which room: after the kinds, each room the sweep took scratch from,
+  the biggest first, with its top folders and their file counts, six folders at most and then "and N more", as in
+  `- swept: scratch 11 MB; scratch: example-room offer-2026-10-28 (11 files), videos (3)`. A sweep kept before this
+  change reads as it did.
+- A room the sweep took from finds RETENTION.md at the top of its own work folder: when the sweep ran, each path it
+  lost as the room sees it from work/ (a sent copy as ../outbox/...) and where that waits under the state folder's
+  trash/scratch/, how long the trash keeps it (`scratch_trash`), and that a folder under work/ with a file named KEEP
+  is never swept. It is rewritten whole at each sweep that takes something from that room, never on a dry run or when
+  nothing left, and is never swept itself.
+- Every room's mechanics gain one line saying both: a folder under work/ with a file named KEEP is never swept, and
+  RETENTION.md at the top of work/ says what the sweep took. The code ceiling moves up by 42, to 22,880.
+- Why: on 2026-10-31 the sweep took eleven drafts an owner room had written three days before and cited in its
+  facts, past the shipped two days of scratch; the morning line said `scratch 11 MB` and nothing told the room, so
+  later that day it told the owner the drafts were held. They were copied back from the trash by hand. The shipped days stay
+  as they were (`scratch` 2, `scratch_trash` 1).
+
+**Upgrading**: nothing to change by hand; the sweep reads KEEP and writes RETENTION.md from its next run, and each room
+has the mechanics line from its next process start. budgets.toml moves with the code: the mechanics to 5,500, the
+session-start total to 111,802, the code ceiling to 22,880. units/yerk-retention.service changes its comment only.
+
 ## 2026-10-30
 
 ### index-one-thread (#?)

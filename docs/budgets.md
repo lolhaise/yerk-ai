@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 111602`
+- `total = 111802`
 
 ## [session_start.claude_code]
 
@@ -72,7 +72,9 @@ Yerk AI's own parts, joined into the one file passed by --append-system-prompt-f
 
 2026-10-29, note-to-self: the note line (every word of the final message is posted as the answer, so a read of the sender, a plan for the reply or a note to yourself goes in thinking; a reply seen live opened with its own plan) took the mechanics to 5,248, so 5,300; no part was measured again to pay for it, so the total rose by the 300, to 111,602.
 
-- `mechanics = 5300`
+2026-10-31, retention-keep: the keep line (the nightly sweep moves the work folder's older files to the trash; a folder under work/ with a file named KEEP is never swept, so work still needed goes in one; RETENTION.md at the top of work/ says what the sweep took; that morning a room told the owner its swept offer drafts were held) took the mechanics to 5,476, so 5,500; no part was measured again to pay for it, so the total rose by the 200, to 111,802.
+
+- `mechanics = 5500`
 - `persona = 11800`
 - `rulebook = 14000`
 - `room_voice = 5500`
@@ -357,7 +359,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-10-30: index-one-thread raised it by 5, yerk-index's meaning scan on one BLAS thread (that evening every search took 3.8 to 4.9 s against recall's 5 s wait, a scan 0.6 s on one thread at 1,015,673 vectors), not folded to fit: memindex.py 5 (main sets the three thread variables unless set, before numpy loads, and its comment says why). 22,838: main cbb0ed8's 22,833 plus 5.
 
-- `lines = 22838`
+2026-10-31: retention-keep raised it by 42, a top folder of a room's work/ holding a file named KEEP kept from the sweep, the morning line naming the rooms and top folders the sweep took, and the room's own work/RETENTION.md saying what went where and for how long (that day the sweep took eleven offer drafts a room had written earlier and cited in its facts, and later the room told the owner they were held), not folded to fit: retention.py 36 (kept(), the record per room and top folder, note(), the line's rooms and its "and N more", the docstrings), words.py 4 (SWEPT_FROM, SWEPT_MORE, SWEPT_NOTE, NEVER_SWEPT), cli.py 1 (the command's help), config.py 1 (the scratch setting's words). 22,880: main 33d04d5's 22,838 plus 42.
+
+- `lines = 22880`
 
 ## Uncapped
 

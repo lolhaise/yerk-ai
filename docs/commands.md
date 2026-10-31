@@ -259,7 +259,7 @@ day: the day's places (yerkd.toml [location]) as one line in its day log, place 
 
 ### yerk retention
 
-the daily sweep: logs, transcripts, timing rows, finished workers and rooms' scratch past their days ([retention] in yerkd.toml) into the trash, and the trash past its days deleted
+the daily sweep: logs, transcripts, timing rows, finished workers and rooms' scratch past their days ([retention] in yerkd.toml) into the trash, never a work folder holding a file named KEEP, each swept room told in its work/RETENTION.md, and the trash past its days deleted
 
 - `--dry-run`: say what would move and how much, move nothing
 - `--private PRIVATE`: private folder (default: $YERK_PRIVATE, else the fake example layer)
