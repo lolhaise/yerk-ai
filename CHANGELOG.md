@@ -23,6 +23,8 @@ version changes.
   `Nice=10` and under this box's 300% CPU quota the threads spun, and on 2026-10-30 every search took 3.8 to 4.9 s
   against recall's 5 s wait. The same scan at the store's shape takes 1.4 to 1.8 s on the default threads and 0.6 s on
   one; with the three set in a drop-in the live index answered in 0.85 to 1.15 s and the bench's controls hit 13 of 13.
+- pypdf, the PDF reader behind the attachment sidecars, moves from 6.21.2 to 6.21.4 in uv.lock: `box-ci/audit` named
+  seven advisories against 6.21.2 (CVE-2026-119203 to CVE-2026-119209), four fixed in 6.21.3 and three in 6.21.4.
 
 **Upgrading**: yerk-index sets them itself from its next start. An existing install also adds the three lines
 (`Environment=OPENBLAS_NUM_THREADS=1`, `Environment=OMP_NUM_THREADS=1`, `Environment=MKL_NUM_THREADS=1`) to its copy
