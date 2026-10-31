@@ -719,6 +719,11 @@ def parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # One BLAS thread unless the unit or an operator set one, before numpy loads (embeddings, below): a search is 62 small matvecs
+    # at 1,015,673 vectors, which OpenBLAS fanned over 12 threads that spun against a 300% CPU quota, 3.8 to 4.9 s against recall's
+    # 5 s wait, 0.6 s on one thread (2026-10-30). Here, not at import: yerkd imports this module and its rooms inherit its environment.
+    for k in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS"):
+        os.environ.setdefault(k, "1")
     from . import mentions
     from .config import REPO, head, private_dir, state_dir
     from .memory import settings

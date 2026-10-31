@@ -355,7 +355,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-10-30: need-2026-10-30-26 raised it by 35, the other assistant's files saved in the room's inbox for every room (need 26: a room asked to open a PDF the other assistant had attached where it watches found its name and size in the day log and no copy, since only a person's files were saved), not folded to fit: discord.py 29 (`_keep`, once a message: a held answer's files before its turn reads them, any other as it is filed, one in the room's own channel as it lands; `stage`'s `say`, so no "send it again" notice for a file no one in the room sent; the answer line naming where each was saved with its text beside it, or why it could not be fetched; the docstrings saying so), words.py 2 (the saved line and the not-fetched line), config.py 1 (`[watch] assistants` in YERKD_WORDS). 22,833: main 30aaa0d's 22,768 plus deliver-transport-error's 30 plus 35.
 
-- `lines = 22833`
+2026-10-30: index-one-thread raised it by 5, yerk-index's meaning scan on one BLAS thread (that evening every search took 3.8 to 4.9 s against recall's 5 s wait, a scan 0.6 s on one thread at 1,015,673 vectors), not folded to fit: memindex.py 5 (main sets the three thread variables unless set, before numpy loads, and its comment says why). 22,838: main cbb0ed8's 22,833 plus 5.
+
+- `lines = 22838`
 
 ## Uncapped
 

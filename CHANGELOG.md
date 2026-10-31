@@ -8,6 +8,27 @@ version changes.
 
 ## 2026-10-30
 
+### index-one-thread (#?)
+
+- Meaning search answers in about 1 s instead of 4 to 5 s on a store of a million vectors, so recall stops falling back
+  to keywords only several times a day (`meaning search skipped (index-timeout)` in the daemon's journal, 4 to 8 times a
+  day since 10-24), and `yerk deploy` stops refusing on the recall bench's controls only the meaning half finds (two
+  of them went blind on 10-25 and on 10-30).
+- yerk-index sets OPENBLAS_NUM_THREADS, OMP_NUM_THREADS and MKL_NUM_THREADS to 1 as it starts, before numpy loads,
+  unless the unit or an operator set them, and the shipped unit sets them too. Only yerk-index: yerkd imports the
+  index's module and keeps its own environment, so the rooms it starts and the commands they run keep every core. The
+  code ceiling moves up by 5.
+- Why: a search embeds the query (0.3 to 0.5 s), then scans every stored vector, 62 blocks of 16,384 at 1,015,673
+  vectors, a small matrix-vector product each, and numpy's OpenBLAS spread each one over all 12 cores; at the unit's
+  `Nice=10` and under this box's 300% CPU quota the threads spun, and on 2026-10-30 every search took 3.8 to 4.9 s
+  against recall's 5 s wait. The same scan at the store's shape takes 1.4 to 1.8 s on the default threads and 0.6 s on
+  one; with the three set in a drop-in the live index answered in 0.85 to 1.15 s and the bench's controls hit 13 of 13.
+
+**Upgrading**: yerk-index sets them itself from its next start. An existing install also adds the three lines
+(`Environment=OPENBLAS_NUM_THREADS=1`, `Environment=OMP_NUM_THREADS=1`, `Environment=MKL_NUM_THREADS=1`) to its copy
+of `yerk-index.service`, or puts them in a drop-in (`systemctl --user edit yerk-index`), then runs
+`systemctl --user daemon-reload` and restarts yerk-index. budgets.toml moves with the code: the code ceiling to 22,838.
+
 ### need-2026-10-30-26 (#150)
 
 - A file another assistant attaches where a room reads is saved in the room's `work/inbox/<message id>/` as a person's

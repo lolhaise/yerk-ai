@@ -167,6 +167,12 @@ yerk-index: the memory index in its own process (DESIGN 5). Installed by copying
 - Environment: YERK_STATE
 - Environment: PYTHONUNBUFFERED
 - Environment: MALLOC_ARENA_MAX
+
+One BLAS thread for the meaning scan; why, with the numbers: the comment at the top of main() in yerk_ai/memindex.py.
+
+- Environment: OPENBLAS_NUM_THREADS
+- Environment: OMP_NUM_THREADS
+- Environment: MKL_NUM_THREADS
 - WorkingDirectory: `%h/yerk-ai`
 - ExecStart: `%h/yerk-ai/.venv/bin/python -m yerk_ai.memindex`
 - Restart: `on-failure`

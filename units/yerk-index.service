@@ -25,6 +25,10 @@ Environment=YERK_PRIVATE=%h/yerk-private
 Environment=YERK_STATE=%h/.local/state/yerk
 Environment=PYTHONUNBUFFERED=1
 Environment=MALLOC_ARENA_MAX=2
+# One BLAS thread for the meaning scan; why, with the numbers: the comment at the top of main() in yerk_ai/memindex.py.
+Environment=OPENBLAS_NUM_THREADS=1
+Environment=OMP_NUM_THREADS=1
+Environment=MKL_NUM_THREADS=1
 WorkingDirectory=%h/yerk-ai
 ExecStart=%h/yerk-ai/.venv/bin/python -m yerk_ai.memindex
 Restart=on-failure
