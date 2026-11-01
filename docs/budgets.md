@@ -361,7 +361,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-10-31: retention-keep raised it by 42, a top folder of a room's work/ holding a file named KEEP kept from the sweep, the morning line naming the rooms and top folders the sweep took, and the room's own work/RETENTION.md saying what went where and for how long (that day the sweep took eleven offer drafts a room had written earlier and cited in its facts, and later the room told the owner they were held), not folded to fit: retention.py 36 (kept(), the record per room and top folder, note(), the line's rooms and its "and N more", the docstrings), words.py 4 (SWEPT_FROM, SWEPT_MORE, SWEPT_NOTE, NEVER_SWEPT), cli.py 1 (the command's help), config.py 1 (the scratch setting's words). 22,880: main 33d04d5's 22,838 plus 42.
 
-- `lines = 22880`
+2026-10-31: worker-no-secrets raised it by 13, the private folder's secrets/ not there for a worker's unit but its own account's token, bound back read-only (that evening a worker read three provider keys there and made thirty paid calls outside the daemon's tools, their gates and the ledger), not folded to fit: workers.py 11 (the secrets branch and its "-", the docstrings), daemon.py 2 (the hidden path and its comment). 22,893: main 082b5da's 22,880 plus 13.
+
+- `lines = 22893`
 
 ## Uncapped
 
