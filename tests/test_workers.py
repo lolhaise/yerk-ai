@@ -591,9 +591,26 @@ def test_the_unit_sees_the_state_folder_read_only_its_own_folder_writable_and_no
     from yerk_ai.daemon import Yerkd
     monkeypatch.undo()                                                # the daemon runs git: the real subprocess again
     (tmp_path / "d").mkdir()
-    y = Yerkd(EXAMPLE_PRIVATE, tmp_path / "d")                         # the daemon hands both paths to its launcher
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path / "d")                         # the daemon hands all three paths to its launcher
     assert isinstance(y.workers.launcher, workers.Systemd) and y.workers.launcher.state == tmp_path / "d"
-    assert y.workers.launcher.hidden == (y.secret_file, tmp_path / "d" / "rooms") and (tmp_path / "d" / "rooms").is_dir()
+    assert y.workers.launcher.hidden == (y.secret_file, tmp_path / "d" / "rooms", EXAMPLE_PRIVATE / "secrets")
+    assert (tmp_path / "d" / "rooms").is_dir()
+
+
+def test_the_unit_does_not_see_the_private_layers_secrets_but_its_own_accounts_token(tmp_path):
+    # a worker read the install's provider keys from the private layer's secrets/ and spent with them outside the
+    # daemon's tools, their gates and the ledger (2026-10-31); the folder holds every account's token too
+    state, keys = tmp_path / "state", tmp_path / "private" / "secrets"
+    folder, secret, rooms, own = state / "workers" / "abc123", state / "secrets" / "yerk-http.secret", state / "rooms", keys / "claude-one.token"
+    was, now = workers.Systemd(state, (secret, rooms)), workers.Systemd(state, (secret, rooms, keys))
+    for env in ({}, {"YERK_TOKEN_FILE": str(tmp_path / "tokens" / "claude-one.token")}, {"YERK_TOKEN_FILE": str(own)}):
+        p, before = now.sandbox(folder, env)[1::2], was.sandbox(folder, env)[1::2]
+        assert f"ReadOnlyPaths={state}" in p and f"ReadWritePaths={folder}" in p and f"InaccessiblePaths={secret}" in p
+        assert [x for x in p if str(keys) not in x] == before          # the rest exactly as it was
+        if env.get("YERK_TOKEN_FILE") == str(own):    # its token there, the default: an empty folder but that file, read-only
+            assert [x for x in p if str(keys) in x] == [f"TemporaryFileSystem={keys}:ro", f"BindReadOnlyPaths=-{own}"]
+        else:                                         # no token there: not there at all, and with no secrets/ it still starts
+            assert [x for x in p if str(keys) in x] == [f"InaccessiblePaths=-{keys}"]
 
 
 def test_only_the_owners_rooms_use_workers_each_for_itself_and_the_install_keeps_every_form(tmp_path):

@@ -10,6 +10,10 @@ daemon restarts.
   other; its first step (`python -m yerk_ai.workers run`) reads it the way a room does
   (accounts.account_env) and starts claude with an allowlisted environment. A worker gets no room
   session, no MCP server (so no `worker` tool: no workers spawning workers) and no subagent tool.
+  The unit sees the state folder read-only and its own folder writable; the install's secret, the
+  private layer's secrets/ (its own account's token alone comes back, read-only) and every room's
+  folder are not there at all (Systemd.sandbox), so a worker spends no money outside the daemon's
+  tools, their gates and the ledger.
 - The card: one per worker, in the room that started it or the room named in the call: its state,
   the time so far against the cap ("3 min of 15", refreshed each minute), then one row per TASKS.md
   line, ticked as the worker ticks them. An inotify watch on the folder wakes the daemon when a file
@@ -153,18 +157,25 @@ class Systemd:
     def sandbox(self, folder: Path, env: dict[str, str]) -> list[str]:
         """The state folder read-only; the worker's own folder writable, and its account's config
         folder when that lives under the state folder (Claude Code writes its transcript there); the
-        install's secret and every room's folder (its token, settings and override) not there at all.
-        The worker secret stays readable: a worker's read-only memory tools reach the daemon with it.
-        PrivateUsers is what lets a user manager set up the mounts."""
+        install's secret, the private layer's secrets/ (every provider key and account token but the
+        worker's own token, bound back read-only for its first step) and every room's folder (its
+        token, settings and override) not there at all. The worker secret stays readable: a worker's
+        read-only memory tools reach the daemon with it. PrivateUsers is what lets a user manager set
+        up the mounts."""
         if self.state is None:
             return []
         config = Path(env.get("CLAUDE_CONFIG_DIR") or folder)
         rw = [folder, *([config] if config != folder and config.is_relative_to(self.state) else [])]
         props = ["PrivateUsers=yes", f"ReadOnlyPaths={self.state}", *(f"ReadWritePaths={p}" for p in rw)]
-        rooms = self.state / "rooms"
+        rooms, token = self.state / "rooms", env.get("YERK_TOKEN_FILE", "")
         for p in self.hidden:
-            if p != rooms:
-                props.append(f"InaccessiblePaths={p}")
+            if p != rooms and token and Path(token).is_relative_to(p):
+                # secrets/ holding the worker's own token (secrets/claude-<name>.token, the default): an empty read-only
+                # filesystem with that one file bound back, since nothing comes back inside an InaccessiblePaths (systemd.exec)
+                props += [f"TemporaryFileSystem={p}:ro", f"BindReadOnlyPaths=-{token}"]
+                continue
+            if p != rooms:      # "-": outside the state folder (the private layer's secrets/) a path may not be there
+                props.append(f"InaccessiblePaths={'' if p.is_relative_to(self.state) else '-'}{p}")
                 continue
             # every room's folder (its token, settings, conversation) under an empty read-only filesystem,
             # with the worker's own room's work folder bound back at its own path, read and write: the
@@ -412,7 +423,7 @@ class Workers:
         self.state = state or conf.root.parent             # the daemon's state folder (a worker's tools reach it)
         self.rooms, self.channels, self.room_confs, self.models = rooms, channels, room_confs, models or {}
         # a unit sees the state folder read-only, its own folder writable and `hidden` not at all
-        # (the daemon's: the install's secret, every room's folder); Systemd.sandbox
+        # (the daemon's: the install's secret, every room's folder, the private layer's secrets/); Systemd.sandbox
         self.launcher: Systemd = launcher or Systemd(self.state, hidden)
         self.gate: dict[str, Any] = {}       # the daemon's [gates] for a worker's hook: trash, private, external
         self.watch: Watch | None = None
