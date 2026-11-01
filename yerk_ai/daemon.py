@@ -145,13 +145,15 @@ class Yerkd:
         self.sends = 0
         self.pastes: dict[str, tuple[str, dict[str, tuple[str, str]]]] = {}   # room -> (today, its earlier days' blocks)
         self.paste_lock = threading.Lock()
-        # a worker's unit never sees the install's secret or any room's folder (each room's token, settings
-        # and override): both exist before the first unit, since a hidden path that is missing fails its start
+        # a worker's unit never sees the install's secret, any room's folder (each room's token, settings and override)
+        # or the private layer's secrets/ (every provider key: money is the daemon's to spend, through its tools, their
+        # gates and the ledger). The first two exist before the first unit, since a hidden path that is missing fails its
+        # start; secrets/ may be missing (Systemd.sandbox: a "-", or the worker's own token bound back when it is there)
         (state / "rooms").mkdir(parents=True, exist_ok=True)
         self.workers = workers.Workers(self.ledger, workers.settings(state, dict(self.conf.get("workers", {})),
                                                                      self.budgets),
                                        self.accounts, self.cooldowns, self.rooms, self.channels, self.room_confs,
-                                       state=state, hidden=(self.secret_file, state / "rooms"), models=self.models)
+                                       state=state, hidden=(self.secret_file, state / "rooms", private / "secrets"), models=self.models)
         self.jobs = jobs.Jobs(private, state, self.ledger, dict(self.conf.get("jobs", {})), self.rooms, self.channels,
                               self.room_confs, self.conf, self.workers)
         self.workers.hooks.append(self.pictures_done)            # a pictures backfill batch: its line, then the next batch

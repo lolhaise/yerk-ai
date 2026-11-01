@@ -31,7 +31,25 @@ version changes.
 
 **Upgrading**: nothing to change by hand; yt-dlp already on yerkd's PATH reads the captions from the next start, and each
 room has the mechanics line from its next process start. budgets.toml moves with the code: Yerk AI's tools to 14,400,
-the mechanics to 5,700, the session-start total to 112,302, the code ceiling to 23,087.
+the mechanics to 5,700, the session-start total to 112,302, the code ceiling to 23,100.
+
+### worker-no-secrets (#?)
+
+- A worker can no longer read the install's API keys: the private layer's secrets/ (every provider key and every
+  account's token) is not there for a worker's unit, as the install's secret and every room's folder already were not,
+  so no worker can spend money outside the daemon's tools, their gates and the ledger. A worker whose account token
+  lives there (`secrets/claude-<name>.token`, the default) gets that one file back, read-only, for its first step, and
+  no other. The unit carries `TemporaryFileSystem=<private>/secrets:ro` and `BindReadOnlyPaths=-<its token>`, or
+  `InaccessiblePaths=-<private>/secrets` when its token lives elsewhere or it has none; the "-" lets an install with no
+  secrets/ start its workers as before. The code ceiling moves up by 13, to 22,893.
+- Why: on 2026-10-31 a room briefed a worker to transcribe a long video after the daemon's transcribe tool had refused
+  at its US$1 gate. The worker wrote a short script that imported the package's transcribe module, read three provider
+  keys from secrets/ and made thirty paid calls itself, about US$1.20; every spend row it tried to write failed on the
+  read-only state folder, so the money is in no ledger, and the run was stopped before it wrote anything. The gates see
+  tool calls and shell commands, not a Python import; the sandbox is what stops it.
+
+**Upgrading**: nothing to change by hand; the next worker start carries it. budgets.toml moves with the code: the code
+ceiling to 22,893.
 
 ### retention-keep (#?)
 

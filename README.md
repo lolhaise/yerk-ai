@@ -45,7 +45,8 @@ Everything that is yours lives in one folder outside the repository, named by `-
 ├── persona.md, rulebook.md    what each room that names them is handed at its session start
 ├── rooms/NAME.md              a room's own voice
 ├── memory/                    day logs, fact files, the pinned memory, open loops, the rules file
-└── secrets/                   0600 files: the bot token, provider keys, account tokens; no room reads them
+└── secrets/                   0600 files: the bot token, provider keys, account tokens; no room reads them, and
+                               a worker sees none of them but its own account's token
 ~/.local/state/yerk/           0700: the session table, the ledger, the index, logs, workers, the trash
 ```
 
