@@ -6,7 +6,18 @@ A line that changes a file the install keeps (rooms.toml, yerkd.toml, budgets.to
 newer than the code is refused with one line, never changed); the index chunks every file again when its chunker's
 version changes.
 
-## 2026-10-31
+## 2026-11-01
+
+### dst-night-tests (#?)
+
+- Tests only, nothing in the code: the suite passes on a daylight-saving night. Two tests built the morning diff for
+  "tomorrow" as `time.time() + 86400`, and from 00:00 to 01:00 on a fall-back night that is 23:xx of the same local
+  day, so the diff's window (the local day before it) was the day before and missed the refusals the test had just
+  written. box-ci ran main fdc0db9 from 00:03 EDT on 2026-11-01 and went red on all three Pythons (2 failed); the
+  same sha passed by hand later that night. Both tests now build the diff at noon of the next local day,
+  `status.midnight(time.time()) + 86400 + 43200`: tests/test_said_or_noted.py (the morning diff counts each refusal)
+  and tests/test_sheet_hard.py (the morning diff counts the sheet refusals). The diff's local-day window is unchanged,
+  and so are budgets.toml and the code ceiling (23,100).
 
 ### need-2026-10-31-27 (#?)
 
