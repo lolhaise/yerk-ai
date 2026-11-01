@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 112302`
+- `total = 112740`
 
 ## [session_start.claude_code]
 
@@ -34,11 +34,13 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-10-31, need-2026-10-31-27: the `watch` tool's sentence on captions (the transcript is the video's own captions when the page has them, free, and only a video with none goes to the paid transcription) takes it from 1,282 to 1,545 as this tree builds it on Python 3.13, about 1,576 as sent, so about 14,330 on the 14,067 the rooms send; so 14,400, no part could pay, the total rose by the 300.
 
+2026-11-01, need-2026-11-01-31: the hands plug-in's browser gains `upload` (a file in the room's work folder put on a page's file input, which `set` cannot fill; filed 2026-11-01), its entry 2,827 as the plug-in's branch builds it and about 2,858 as sent (each of the plug-in's five goes out 31 over its build: 7,307 built, 7,462 sent on its main), 438 over the 2,420 the work room sends; so 7,900, no part could pay, the total rose by the 438.
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
 - `yerk_tools = 14400`
 - `deferred_tool_names = 3429`
-- `mcp__hands__ = 7462`
+- `mcp__hands__ = 7900`
 - `mcp__web-ladder__web_image = 913`
 - `skills = 0`
 

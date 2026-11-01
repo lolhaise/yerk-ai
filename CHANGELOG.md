@@ -6,6 +6,26 @@ A line that changes a file the install keeps (rooms.toml, yerkd.toml, budgets.to
 newer than the code is refused with one line, never changed); the index chunks every file again when its chunker's
 version changes.
 
+## 2026-11-01
+
+### need-2026-11-01-31 (#?)
+
+- A room can put a picture on a web form now: the hands plug-in's browser gains `upload`, which puts a file from the
+  room's own work folder (a picture sent to the room, a saved picture, a screenshot) on a page's file input, in the
+  browser on the owner's PC or Mac. A file input takes no typed value, so `set` on one met an InvalidStateError and the
+  form would not send; that error now says to use `upload`. The plug-in copies the file to the browser's own computer
+  first (over ssh to a Mac), a folder per call, kept a day for a form that reads it only when it sends, then sets it
+  over the browser's developer protocol, as picking it in the file dialog would. A file outside the room's work folder,
+  a link out of it, or one past 20 MB is refused; every upload waits for the owner's word, since a page may send the
+  file the moment it is picked, and nothing is put on a payment page.
+- The change itself is on the plug-in's own branch of the same name, which lives outside this repository; here, its
+  tools' budget line and the abilities entry (`yerk explain form-files`).
+- Why: on 2026-11-01 a room filled two listing forms in the browser on the owner's computer, and both came back "fix
+  the errors on the page": the site wants at least one photo, and nothing could put one on the form.
+
+**Upgrading**: nothing to change by hand. budgets.toml moves with it: the hands plug-in's line to 7,900 and the
+session-start total to 112,740, so a deploy after the plug-in's branch is in does not refuse on its size.
+
 ## 2026-10-31
 
 ### need-2026-10-31-27 (#?)

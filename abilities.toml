@@ -280,6 +280,23 @@ free_path = "this is the free path"
 why_not = "After the rooms move; the job-applications and bank-balances abilities wait on it."
 asked_as = ["use my browser", "control my browser", "drive my browser", "use a browser", "browser for me", "open a website for me"]
 
+# need-2026-11-01-31: a form that wants a photo could not be sent, since a file input takes no typed value.
+[abilities.form-files]
+state = "described"
+what = "Puts a file from the room's work folder, such as a picture sent to the room, on a web form's file input in the browser ability's browser, on the owner's PC or Mac."
+how = [
+  "One browser action, upload: the file named by its path in the room's own work folder and checked by its real path, so a link out of the folder is refused.",
+  "Copied first to the computer the browser runs on: a browser reads a file input's file from its own disk, so the box copies it there (over ssh to a Mac), a folder per call, kept a day for a form that reads it only when it sends.",
+  "Set over the browser's developer protocol: DOM.setFileInputFiles, as picking it in the file dialog would; a script that types a value into a file input meets an InvalidStateError.",
+  "The owner's word before each upload: a page may send the file the moment it is picked, and nothing is put on a payment page.",
+]
+tier = "free"
+needs = "the browser ability with an upload action in its plug-in, and a path from the box to the browser's computer to copy a file over"
+price = "none"
+free_path = "this is the free path"
+why_not = "It rides on the browser ability, which is not in this repo; an install whose browser plug-in carries the upload action has it there."
+asked_as = ["attach a photo to the form", "upload a photo to the site", "add photos to the listing", "upload a file to a web form", "attach a file to the form"]
+
 [abilities.pc-control]
 state = "described"
 what = "Hands and eyes on a desktop computer: clicks, keys, windows and screenshots, for what a browser cannot reach."

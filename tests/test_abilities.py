@@ -122,6 +122,22 @@ def test_each_ability_is_found_by_its_own_phrases_and_its_answer_fits_whole(tmp_
             assert hooks.render_recall(mine, [], cap), (name, "its answer must fit the recall cap whole")
 
 
+def test_a_room_asked_to_put_a_photo_on_a_web_form_hears_the_upload_way(tmp_path):
+    """need-2026-11-01-31: a room filled a listing form whose site wants a photo, and the browser's `set` on the file input
+    met an InvalidStateError (a file input takes no typed value), so the form never sent. Asked that way, a room gets
+    form-files whole: the browser plug-in's upload, the file copied to the browser's computer first, the owner's word."""
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    found = abilities.asked("the site says to fix the errors: can you add photos to the listing from the ones I sent?", y.memory, TAB)
+    assert [e["key"] for e in found] == ["form-files"]
+    text = found[0]["text"]
+    assert text.startswith(f"form-files, a Yerk AI ability ({words.ability('described')[1]}): Puts a file from the room's work folder")
+    for want in ("One browser action, upload", "Copied first to the computer the browser runs on", "Set over the browser's "
+                 "developer protocol", "The owner's word before each upload", "whose browser plug-in carries the upload action"):
+        assert want in text, want
+    assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
+    assert not abilities.asked("I sent you two photos of the chair, use them in the ad", y.memory, TAB)
+
+
 def test_ordinary_messages_pull_no_ability_into_the_room(tmp_path):
     y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
     assert {m: [e["key"] for e in abilities.asked(m, y.memory, TAB)] for m in ORDINARY} == {m: [] for m in ORDINARY}

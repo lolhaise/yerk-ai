@@ -58,7 +58,7 @@ Each active room is one `claude -p` process, stream-json in and out, on a sessio
 
 ## Add-ons
 
-What a room can do beyond Claude Code's own tools comes in as add-ons: MCP servers a room attaches in rooms.toml, a `[rooms.NAME.mcp.SERVER]` table each or once for every owner room under `[defaults]`, with their tools in the room's `allow`. One ships here, the web plug-in in `plugins/web`: pages, search and research for a room, kept out of budgets.toml's `[code]` count ([docs/GUIDE.md](docs/GUIDE.md), Web reach).
+What a room can do beyond Claude Code's own tools comes in as add-ons: MCP servers a room attaches in rooms.toml, a `[rooms.NAME.mcp.SERVER]` table each or once for every owner room under `[defaults]`, with their tools in the room's `allow`. One ships here, the web plug-in in `plugins/web`: pages, search and research for a room, kept out of budgets.toml's `[code]` count ([docs/GUIDE.md](docs/GUIDE.md), Web reach). A plug-in kept outside the repository still has its tools measured as the rooms send them, a budgets.toml line each; a browser plug-in's `upload`, for one, puts a file from a room's work folder on a web form's file input by copying it to the browser's own computer first, since a file input takes no typed value (`yerk explain form-files`).
 
 ## The docs
 
