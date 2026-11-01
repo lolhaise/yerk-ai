@@ -363,7 +363,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-10-31: worker-no-secrets raised it by 13, the private folder's secrets/ not there for a worker's unit but its own account's token, bound back read-only (that evening a worker read three provider keys there and made thirty paid calls outside the daemon's tools, their gates and the ledger), not folded to fit: workers.py 11 (the secrets branch and its "-", the docstrings), daemon.py 2 (the hidden path and its comment). 22,893: main 082b5da's 22,880 plus 13.
 
-- `lines = 22893`
+2026-10-31: needs-pipeline raised it by 496, a filed need built, checked, read cold, merged, deployed and live with no person (the harness does it all by itself, with no person needed), not folded to fit: pipeline.py 254 (the queue, the watch, the fix loop, the cold read, the merge, the deploy unit, live), github.py 86 (urllib, every failure as words), git_askpass.py 34, needs.py 53 (the states, their words, the read and fix briefs), daemon.py 18, words.py 14, config.py 8, cli.py 2. 23,389: main 4a3f7f7's 22,893 plus 496.
+
+- `lines = 23389`
 
 ## Uncapped
 

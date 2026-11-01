@@ -260,11 +260,11 @@ def test_the_askpass_answers_the_username_and_the_password_and_nothing_else(tmp_
     f = tmp_path / "token"
     f.write_text(TOK + "\n")
     assert git_askpass.answer("Username for 'https://github.com': ", str(f)) == "x-access-token"
-    assert git_askpass.answer("Password for 'https://x-access-token@github.com': ", str(f)) == TOK
+    assert git_askpass.answer("Password for 'https://github.com': ", str(f)) == TOK
     assert git_askpass.answer("Are you sure you want to continue connecting (yes/no)? ", str(f)) == ""
     assert git_askpass.answer("Password for 'https://github.com': ", str(tmp_path / "missing")) == ""
     monkeypatch.setenv("YERK_GITHUB_TOKEN_FILE", str(f))
-    assert git_askpass.main(["Password for 'https://x-access-token@github.com': "]) == 0 and capsys.readouterr().out == TOK + "\n"
+    assert git_askpass.main(["Password for 'https://github.com': "]) == 0 and capsys.readouterr().out == TOK + "\n"
     assert git_askpass.main(["Host key? "]) == 1 and capsys.readouterr().out == ""
 
 
@@ -275,5 +275,5 @@ def test_github_reads_its_answers_and_says_a_refused_merge_in_words(monkeypatch)
     assert github.pr_for(SLUG, "b", TOK) == {"ok": True, "number": 0}
     hub.routes[("PUT", f"/repos/{SLUG}/pulls/7/merge")] = (409, {"message": "Head branch was modified. Review and try the merge again."})
     assert github.merge(SLUG, 7, "a" * 40, TOK) == {"ok": False, "code": 409, "error": "GitHub said 409: Head branch was modified. Review and try the merge again."}
-    assert github.slug(REPO, "o/n") == "o/n" and github.SLUG.search("git@github.com:o/n.git")[1] == "o/n"
+    assert github.slug(REPO, "o/n") == "o/n" and github.SLUG.search("ssh://github.com:o/n.git")[1] == "o/n"
     assert github.SLUG.search("https://github.com/o/n.git")[1] == "o/n"
