@@ -10,7 +10,7 @@ import stat
 import time
 from pathlib import Path
 
-from yerk_ai import cli, morning, retention, words
+from yerk_ai import cli, context, morning, retention, words
 from yerk_ai.accounts import Cooldowns, load_accounts
 from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai.engine import project_dir
@@ -119,10 +119,10 @@ def test_an_attachment_never_moves_and_its_size_is_said(tmp_path, capsys):
     mem = put(state / "memory" / "daily" / "2025-09-01.md", "- a line\n", days=400)          # the memory tree: never a kind
     assert retention.main(priv, state, now=NOW) == 0
     assert photo.read_text() == "p" * 300 and mem.read_text() == "- a line\n"
-    assert retention.run(priv, state, dry=True, now=NOW)["inbox"] == 300
+    assert retention.run(priv, state, dry=True, now=NOW)["kept"] == 300
     assert cli.main(["retention", "--dry-run", "--private", str(priv), "--state", str(state)]) == 0
     out = capsys.readouterr().out
-    assert "inbox: 300 bytes of attachments, kept" in out and "transcripts: 0 would be moved to the trash, 0 bytes" in out
+    assert "inbox and KEEP folders: 300 bytes, kept" in out and "transcripts: 0 would be moved to the trash, 0 bytes" in out
 
 
 def test_the_trash_empties_after_7_days_a_rooms_scratch_after_1_and_nothing_else_is_deleted(tmp_path):
@@ -286,6 +286,92 @@ def test_a_file_written_in_the_last_hour_stays_whatever_the_cap(tmp_path):
     newest = put(work / "render-2.pgm", "r" * 2000, days=10 / 1440)                         # ten minutes old, over the cap alone
     r = retention.run(priv, state, now=NOW)
     assert not older.exists() and newest.exists() and r["kinds"]["scratch"] == [1, 100]
+
+
+def test_a_folder_with_a_keep_file_never_moves_by_age_or_cap_and_its_size_is_said(tmp_path, capsys):
+    """Seen live: the sweep took the eleven offer drafts a room wrote and cited in its
+    facts, past their two days, and later the room told the owner they were held. A top folder of work/ holding a file named
+    KEEP is the room's own work: never moved by age or by the cap, and not counted toward the cap."""
+    priv, state, projects, led = layer(tmp_path, "[retention]\nscratch_mb = 0.0005\n")             # 500 bytes
+    work = state / "rooms" / "room-a" / "work"
+    why = put(work / "offer-2026-10-28" / "KEEP", "the drafts the owner holds\n", days=3)
+    drafts = [put(work / "offer-2026-10-28" / "FIVERR.md", "f" * 400, days=3),                # 727 bytes kept: past the cap alone
+              put(work / "offer-2026-10-28" / "replies" / "github.txt", "g" * 300, days=5)]
+    old = put(work / "old.bin", "o" * 200, days=3)                                          # past its days: moves as before
+    deeper = [put(work / "renders" / "run1" / "KEEP", "k", days=3), put(work / "renders" / "run1" / "r.pgm", "r" * 100, days=3)]
+    linked = [put(work / "linked-keep" / "a.txt", "a" * 50, days=3), work / "linked-keep" / "KEEP"]
+    linked[1].symlink_to(put(tmp_path / "elsewhere" / "KEEP", "k"))                          # a KEEP that is a link keeps nothing
+    (folder := work / "linked-folder").symlink_to(tmp_path / "elsewhere", target_is_directory=True)   # and a linked folder
+    for link in (linked[1], folder):
+        os.utime(link, (NOW - 3 * DAY, NOW - 3 * DAY), follow_symlinks=False)
+    notes = put(work / "notes.txt", "n" * 300, days=1)        # under the cap once the old ones left, the kept bytes not counted
+    dry = retention.run(priv, state, dry=True, now=NOW)
+    r = retention.run(priv, state, now=NOW)
+    assert "error" not in r and dry["kinds"]["scratch"] == r["kinds"]["scratch"] == [6, 351]
+    assert [p.read_text() for p in (why, *drafts)] == ["the drafts the owner holds\n", "f" * 400, "g" * 300] and notes.exists()
+    assert not any(p.exists() or p.is_symlink() for p in (old, *deeper, *linked, folder))
+    assert r["kept"] == dry["kept"] == 300 + 27 + 400 + 300                              # the inbox's photo and the KEEP folder
+    assert cli.main(["retention", "--dry-run", "--private", str(priv), "--state", str(state)]) == 0
+    assert "inbox and KEEP folders: 1 KB, kept" in capsys.readouterr().out
+
+
+def test_the_morning_line_names_the_rooms_and_top_folders_the_sweep_took(tmp_path):
+    """The same morning's diff said "swept: scratch 11 MB" and no more: which room lost which folder is now on the line,
+    the biggest first, six top folders at most; a sweep kept before that says its kinds as it did."""
+    priv, state, projects, led = layer(tmp_path)
+    a, c = (state / "rooms" / name / "work" for name in ("room-a", "room-c"))
+    for i in range(11):
+        put(a / "offer-2026-10-28" / f"draft-{i}.md", "d" * 100, days=3)
+    for i in range(3):
+        put(a / "videos" / "reel" / f"frame-{i}.jpg", "v" * 1000, days=3)
+    for i in range(31):
+        put(c / "voice" / f"note-{i}.ogg", "o" * 10, days=3)
+    put(c / "young.txt", "y", days=1)
+    assert retention.main(priv, state, now=NOW) == 0
+    assert json.loads((state / retention.LAST).read_text())["scratch"] == {
+        "room-a": {"offer-2026-10-28": [11, 1100], "videos": [3, 3000]}, "room-c": {"voice": [31, 310]}}
+    said = f"{words.PLAIN} swept: scratch 4 KB; scratch: room-a videos (3 files), offer-2026-10-28 (11); room-c voice (31)"
+    accounts, cool = load_accounts(priv / "accounts.toml"), Cooldowns(state / "cooldowns.json")
+    lines, _ = morning.build(priv, state, accounts, cool, led, {"started": NOW - DAY, "units": []}, NOW + 7200)
+    assert retention.line(state, NOW + 60) == ("", said) and said in lines
+    many = {f"room-{k}": {f"folder-{k}{j}": [j + 1, 1000 * (k + 1) + j] for j in range(2)} for k in range(4)}   # eight top folders
+    (state / retention.LAST).write_text(json.dumps({"at": NOW, "dry": False, "kinds": {"scratch": [12, 9000]}, "scratch": many}))
+    assert retention.line(state, NOW + 60) == ("", f"{words.PLAIN} swept: scratch 9 KB; scratch: room-3 folder-31 (2 files), folder-30 (1); "
+                                                   "room-2 folder-21 (2), folder-20 (1); room-1 folder-11 (2), folder-10 (1), and 2 more")
+    (state / retention.LAST).write_text(json.dumps({"at": NOW, "dry": False, "kinds": {"logs": [1, 2048], "scratch": [11, 11 << 20]}, "inbox": 300}))
+    assert retention.line(state, NOW + 60) == ("", f"{words.PLAIN} swept: scratch 11 MB, logs 2 KB")       # as before the rooms
+    (state / retention.LAST).write_text(json.dumps({"at": NOW, "dry": False, "kinds": {k: [1, 1 << 30] for k in retention.DAYS}, "inbox": 0}))
+    assert words.width(retention.line(state, NOW + 60)[1]) <= words.PHONE                                  # and held to a phone line
+
+
+def test_a_swept_room_finds_retention_md_in_its_work_folder_and_an_untouched_room_does_not(tmp_path):
+    """Nothing the room read said what the sweep took, so it told the owner the drafts were held: the room's own work
+    folder now says what went, where it waits and for how long, and how to keep a folder."""
+    priv, state, projects, led = layer(tmp_path, "[retention]\nscratch_trash = 3\n")
+    room, work = state / "rooms" / "room-a", state / "rooms" / "room-a" / "work"
+    put(work / "offer-2026-10-28" / "FIVERR.md", "f" * 100, days=3)
+    sent = put(room / "outbox" / "20261018-090000-k1-s1-offer.pdf", "s" * 50, days=3)       # the copy of a file it sent
+    put(state / "rooms" / "room-c" / "work" / "young.txt", "y", days=1)                     # nothing past its days
+    busy = put(state / "rooms" / "room-b" / "work" / "old.txt", "b", days=5)               # a turn in flight: never swept
+    retention.run(priv, state, dry=True, now=NOW)
+    assert not list(state.glob("rooms/*/work/RETENTION.md"))                                # a dry run writes none
+    retention.run(priv, state, now=NOW)
+    note, today = work / "RETENTION.md", retention.day(NOW)
+    text = note.read_text()
+    assert list(state.glob("rooms/*/work/RETENTION.md")) == [note] and stat.S_IMODE(note.stat().st_mode) == 0o600
+    assert f"The sweep of {time.strftime('%a %Y-%m-%d %H:%M', time.localtime(NOW))} moved these" in text
+    assert f"\n- offer-2026-10-28/FIVERR.md -> trash/scratch/{today}/rooms/room-a/work/offer-2026-10-28/FIVERR.md\n" in text
+    assert f"\n- ../outbox/{sent.name} -> trash/scratch/{today}/rooms/room-a/outbox/{sent.name}\n" in text
+    assert "\nThe trash keeps them 3 days after that day" in text and text.endswith("\nA folder under work/ with a file named KEEP is never swept.\n")
+    assert (state / "trash" / "scratch" / today / "rooms" / "room-a" / "work" / "offer-2026-10-28" / "FIVERR.md").read_text() == "f" * 100
+    before = ago(note, 10).read_text(), note.stat().st_mtime                                # ten days old, and never scratch
+    r = retention.run(priv, state, now=NOW + 60)
+    assert "scratch" not in r["kinds"] and (note.read_text(), note.stat().st_mtime) == before   # moved nothing: left alone
+    put(work / "renders" / "r1.pgm", "r", days=3)
+    retention.run(priv, state, now=NOW + DAY)
+    assert "- renders/r1.pgm -> " in note.read_text() and "FIVERR" not in note.read_text() and busy.exists()   # rewritten whole
+    told = [x for x in context.MECHANICS.read_text().splitlines() if "KEEP" in x]                # and every room is told both
+    assert len(told) == 1 and "a folder under work/ with a file named `KEEP` is never swept, so" in told[0] and "RETENTION.md at the top of work/" in told[0]
 
 
 MB = 1_000_000

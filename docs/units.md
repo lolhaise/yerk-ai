@@ -257,7 +257,7 @@ The weekly retrieval measurement (L63): the fixed question set against the memor
 
 ## yerk-retention.service
 
-The retention sweep (yerk retention): stream and assembled logs gzipped by day, old transcripts, timing rows, finished workers' folders and rooms' scratch past their days ([retention] in yerkd.toml), and a room's scratch past 500 MB oldest first, moved to the state folder's trash, the trash past 7 days deleted (a room's scratch past 1). Prints nothing when nothing moved; a failure exits non-zero and opens the next morning diff. Installed with yerk-retention.timer: copy both to ~/.config/systemd/user/ and `systemctl --user enable --now yerk-retention.timer`.
+The retention sweep (yerk retention): stream and assembled logs gzipped by day, old transcripts, timing rows, finished workers' folders and rooms' scratch past their days ([retention] in yerkd.toml), and a room's scratch past 500 MB oldest first, moved to the state folder's trash, the trash past 7 days deleted (a room's scratch past 1). A top folder of a room's work/ holding a file named KEEP is never scratch, and a room that lost any finds what went where in its work/RETENTION.md. Prints nothing when nothing moved; a failure exits non-zero and opens the next morning diff. Installed with yerk-retention.timer: copy both to ~/.config/systemd/user/ and `systemctl --user enable --now yerk-retention.timer`.
 
 [Unit]
 

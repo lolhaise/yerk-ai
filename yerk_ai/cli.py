@@ -885,7 +885,8 @@ def parser() -> argparse.ArgumentParser:
     lc.add_argument("date", nargs="?", default="", help="the day, YYYY-MM-DD (default: today in [memory] timezone)")
     lc.add_argument("--dry-run", action="store_true", help="print the line, write nothing")
     rt = sub.add_parser("retention", help="the daily sweep: logs, transcripts, timing rows, finished workers and rooms' scratch "
-                        "past their days ([retention] in yerkd.toml) into the trash, and the trash past its days deleted")
+                        "past their days ([retention] in yerkd.toml) into the trash, never a work folder holding a file named KEEP, "
+                        "each swept room told in its work/RETENTION.md, and the trash past its days deleted")
     rt.add_argument("--dry-run", action="store_true", help="say what would move and how much, move nothing")
     bk = sub.add_parser("backup", help="one dated archive with a manifest: the private folder, the state's ledger, sessions and "
                         "index metadata, the units; into [backup] path (yerkd.toml), the last [backup] keep (7) kept")

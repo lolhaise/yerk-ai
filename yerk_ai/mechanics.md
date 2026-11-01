@@ -15,6 +15,7 @@
 - A picture in a post or a page: `web_image` saves it from its URL, then Read the file it names; never curl, since the shell has no network.
 - An x.com or twitter.com post: `web_fetch` `https://api.fxtwitter.com/<user>/status/<id>` first (text, counts and picture URLs, free, under a second), never the x.com page, since it serves a login page at a paid rung; its picture then through `web_image`.
 - A video in a post (an Instagram reel or post, a TikTok, an X post, a YouTube link) is watched with `watch` on its link, which puts the file, its frames (open them with Read) and its transcript in this room's work folder; the caption, the cover picture and the comments are not the video, and an answer given off them says so.
+- The nightly sweep moves your work folder's older files to the trash: a folder under work/ with a file named `KEEP` is never swept, so keep work you still need in one; RETENTION.md at the top of work/ says what the sweep took.
 - `send` posts text or a file to a room now (a refused file says why); `hold` ends your turn to wait on a named event or worker.
 - A fenced block this room posted on an earlier day is turned back once, since its dates and times were that day's: re-read it line by line against today.
 - `voice_note` speaks a script you write, only when the owner asks for a voice note or to say it out loud, since an unasked one interrupts: `send` its file with no text and it goes as a voice message.

@@ -159,7 +159,7 @@ The daemon's settings, in the private folder beside rooms.toml, read when yerkd 
 - `transcripts`: days Claude Code's transcripts keep (default 30)
 - `ledger`: days of the ledger's timing rows (default 90)
 - `workers`: days a finished worker's folder keeps (default 30)
-- `scratch`: days a room's scratch keeps (default 2)
+- `scratch`: days a room's scratch, its work folder but inbox/ and any top folder holding a file named KEEP, keeps (default 2)
 - `scratch_mb`: megabytes a room's scratch keeps, its oldest files out first (default 500)
 - `trash`: days the trash keeps what left (default 7)
 - `scratch_trash`: days the trash keeps a room's scratch (default 1)
