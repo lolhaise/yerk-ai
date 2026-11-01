@@ -4,9 +4,10 @@ and its sound transcribed, so a room answers off the video and not off the capti
 page gives. It is a tool on Yerk's own MCP server because the daemon has the network and a room's shell has none. yt-dlp is
 the program on the daemon's PATH, never imported (Yerk's venv does not carry it), run in a clean environment in a process
 group of its own, one download at a time across rooms, and killed with its group past WATCH_TIMEOUT. ffprobe reads the
-length and the streams, ffmpeg takes the frames, and the transcript is transcribe.run's, on its keys, its US$1 gate and
-its spend rows. A post already pulled is never pulled or transcribed again: its folder keeps the video, the transcript
-beside it and the link it came from, so another post whose slug is the same gets a folder of its own.
+length and the streams, ffmpeg takes the frames, and the transcript is the page's own captions when it has them, read
+free before the download (captions.py), else transcribe.run's, on its keys, its US$1 gate and its spend rows. A post
+already pulled is never pulled or transcribed again: its folder keeps the video, the transcript beside it and the link it
+came from, so another post whose slug is the same gets a folder of its own.
 """
 from __future__ import annotations
 
@@ -24,7 +25,7 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import SplitResult, parse_qs, urlsplit
 
-from . import transcribe, words
+from . import captions, transcribe, words
 from .config import write_private
 
 FOLDER = "videos"            # under a room's work folder: a folder a post
@@ -186,27 +187,63 @@ def heard(video: Path, hear: Hear) -> tuple[str, str, str]:
     return text, str(kept), ""
 
 
+def captioned(exe: str, url: str, video: Path) -> tuple[dict[str, Any], str]:
+    """The captions step, before the download and outside ONE: the page's facts by captions.probe, and its one caption
+    track written as the transcript beside `video`, so heard() reads it and nothing is paid; and the words for the note,
+    what came or why none did. A missing track or a step that fails never stops the call."""
+    info: dict[str, Any] = {}
+    try:
+        info = captions.probe(exe, url, video.parent)
+        kind, key = captions.track(info)
+        if not kind or not key or not (said := captions.lines(captions.pull(exe, video.with_name(captions.INFO), key, video.parent))):
+            return info, words.WATCH_NO_CAPTIONS
+        captions.write(video, said, info, kind)
+        return info, words.WATCH_FROM_CAPTIONS if kind == "manual" else words.WATCH_FROM_AUTO_CAPTIONS
+    except Failed as e:
+        return info, words.WATCH_CAPTIONS_FAILED.format(why=e)
+    except (OSError, ValueError, subprocess.SubprocessError) as e:
+        return info, words.WATCH_CAPTIONS_FAILED.format(why=getattr(e, "strerror", None) or words.WATCH_NO_WHY)
+    finally:
+        video.with_name(captions.INFO).unlink(missing_ok=True)
+
+
 def run(url: str, frames: int, root: Path, hear: Hear) -> tuple[dict[str, Any], float]:
     """The tool's whole call, blocking (the daemon runs it off the loop): {"ok": False, "error"} on any stop, else the
-    video, its length, its frames, its transcript and whether it was pulled before; and the seconds its download took."""
-    url, n, took = url.strip(), max(1, min(MOST, int(frames))), 0.0
+    video, its length, its frames, its transcript, where that came from and whether it was pulled before; and the seconds
+    its download took. With no transcript beside the video, the page's captions are tried first, and a download that
+    fails with a transcript there returns the transcript alone, its note saying why there is no video."""
+    url, n, took, said = url.strip(), max(1, min(MOST, int(frames))), 0.0, ""
+    info: dict[str, Any] = {}
     try:
         with GUARD:
             folder = folder_for(root, url)
             mine = POSTS.setdefault(folder, threading.Lock())
         with mine:
+            kept = folder / "video.transcript.txt"
+            if not kept.is_file() and (exe := shutil.which("yt-dlp")):
+                info, said = captioned(exe, url, saved(folder) or folder / "video.mp4")
             with ONE:
                 reused = (video := saved(folder)) is not None
                 if video is None:
                     if not (exe := shutil.which("yt-dlp")):
                         return {"ok": False, "error": words.WATCH_NO_YTDLP}, took
-                    video, took = pull(exe, url, folder)
+                    try:
+                        video, took = pull(exe, url, folder)
+                    except Failed as e:
+                        if not kept.is_file() or kept.is_symlink():
+                            raise
+                        text, file, _ = heard(folder / "video.mp4", hear)     # the file is there, so nothing is paid
+                        return {"ok": True, "slug": folder.name, "folder": str(folder), "title": str(info.get("title") or ""),
+                                "video": "", "seconds": round(info.get("duration") or 0.0, 1), "frames": [], "transcript": text,
+                                "transcript_file": file, "source": captions.source(text), "reused": False,
+                                "note": "; ".join(x for x in (str(e), said) if x)}, took
             seconds, sound, picture = probe(video)
             shots, lost = stills(video, seconds, n) if picture else ([], words.WATCH_NO_PICTURE)
-            text, file, why = heard(video, hear) if sound else ("", "", words.WATCH_NO_SOUND)
+            text, file, why = heard(video, hear) if sound or kept.is_file() else ("", "", words.WATCH_NO_SOUND)
     except Failed as e:
         return {"ok": False, "error": str(e)}, took
     except (OSError, subprocess.SubprocessError) as e:
         return {"ok": False, "error": words.WATCH_BROKE.format(why=getattr(e, "strerror", None) or words.WATCH_NO_WHY)}, took
-    return {"ok": True, "slug": folder.name, "folder": str(folder), "video": str(video), "seconds": seconds, "frames": shots,
-            "transcript": text, "transcript_file": file, "reused": reused, "note": "; ".join(x for x in (lost, why) if x)}, took
+    return {"ok": True, "slug": folder.name, "folder": str(folder), "title": str(info.get("title") or ""), "video": str(video),
+            "seconds": seconds, "frames": shots, "transcript": text, "transcript_file": file, "source": captions.source(text),
+            "reused": reused, "note": "; ".join(x for x in (lost, said if text else "", why) if x)}, took

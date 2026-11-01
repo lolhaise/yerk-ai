@@ -327,6 +327,15 @@ WATCH_LINKED = "{name} in this room's work folder is a link, and watch never wri
 WATCH_NO_SOUND, WATCH_NO_PICTURE = "it has no sound, so there is no transcript", "it has no picture, so there are no frames"
 WATCH_NO_TRANSCRIPT = "no transcript: {why}"
 WATCH_FRAMES_LOST = "{got} of {of} frames came, the rest would not: {why}"
+WATCH_FROM_CAPTIONS = "the transcript is the video's own captions, read free with their timestamps, so say the words are its captions"
+WATCH_FROM_AUTO_CAPTIONS = ("the transcript is the video's auto-generated captions, read free with their timestamps, so say the words "
+                            "are its auto captions: they carry no punctuation, and a name in them may be misheard")
+WATCH_NO_CAPTIONS = "no captions on that page, so its sound was transcribed"
+WATCH_CAPTIONS_FAILED = "its captions could not be read ({why}), so its sound was transcribed"
+CAPTIONS_LIVE = "it is live now or not started yet, and a live stream has no captions to read"
+# a transcript's head (TRANSCRIPT_HEAD's `how`) when a video's own captions wrote it (captions.py)
+FROM_CAPTIONS = "the video's own captions, free, their timestamps"
+FROM_AUTO_CAPTIONS = "the video's auto-generated captions, free; no punctuation, and a name may be misheard"
 UNSEEN = ("You read {names} and did not file what it shows. Call seen on {paths} with its words and a line "
           "of what it shows, then give your answer again, since only the text after your last tool call reaches the room.")
 PICTURES_PERSON = "{room} is not an owner room: the backfill runs in owner rooms only; a picture sent there is filed by its own room"

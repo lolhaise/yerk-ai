@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 111802`
+- `total = 112302`
 
 ## [session_start.claude_code]
 
@@ -32,9 +32,11 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-10-29, hands-budget: need 27 (the tabs a room sees and the popup a click opens, 2026-10-28) grew the hands plug-in's five tools as a work room sends them to 7,462 on the 7,119 line, and the deploy of #144 and #145 refused on it (the first deploy since); so 7,462, no part could pay, the total rose by the 343.
 
+2026-10-31, need-2026-10-31-27: the `watch` tool's sentence on captions (the transcript is the video's own captions when the page has them, free, and only a video with none goes to the paid transcription) takes it from 1,282 to 1,545 as this tree builds it on Python 3.13, about 1,576 as sent, so about 14,330 on the 14,067 the rooms send; so 14,400, no part could pay, the total rose by the 300.
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
-- `yerk_tools = 14100`
+- `yerk_tools = 14400`
 - `deferred_tool_names = 3429`
 - `mcp__hands__ = 7462`
 - `mcp__web-ladder__web_image = 913`
@@ -74,7 +76,9 @@ Yerk AI's own parts, joined into the one file passed by --append-system-prompt-f
 
 2026-10-31, retention-keep: the keep line (the nightly sweep moves the work folder's older files to the trash; a folder under work/ with a file named KEEP is never swept, so work still needed goes in one; RETENTION.md at the top of work/ says what the sweep took; that morning a room told the owner its swept offer drafts were held) took the mechanics to 5,476, so 5,500; no part was measured again to pay for it, so the total rose by the 200, to 111,802.
 
-- `mechanics = 5500`
+2026-10-31, need-2026-10-31-27: the watch line's clause (its transcript is the video's own captions when it has them, free, and only a video without captions is transcribed from its sound; that evening an owner was quoted US$1.43 for a YouTube video's words YouTube already had) took the mechanics to 5,608, so 5,700; no part was measured again to pay for it, so the total rose by the 200, to 112,302 with the tools' 300.
+
+- `mechanics = 5700`
 - `persona = 11800`
 - `rulebook = 14000`
 - `room_voice = 5500`
@@ -361,7 +365,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-10-31: retention-keep raised it by 42, a top folder of a room's work/ holding a file named KEEP kept from the sweep, the morning line naming the rooms and top folders the sweep took, and the room's own work/RETENTION.md saying what went where and for how long (that day the sweep took eleven offer drafts a room had written earlier and cited in its facts, and later the room told the owner they were held), not folded to fit: retention.py 36 (kept(), the record per room and top folder, note(), the line's rooms and its "and N more", the docstrings), words.py 4 (SWEPT_FROM, SWEPT_MORE, SWEPT_NOTE, NEVER_SWEPT), cli.py 1 (the command's help), config.py 1 (the scratch setting's words). 22,880: main 33d04d5's 22,838 plus 42.
 
-- `lines = 22880`
+2026-10-31: need-2026-10-31-27 raised it by 207, a video's own captions as its transcript, free, before any paid transcription (need 27: a room was quoted US$1.43 to transcribe a 140-minute YouTube video whose auto-generated captions YouTube already had), not folded to fit: captions.py 158 (the -J probe and its one-run helper, the track choice and the one-key rule, the json3 track's run, the rolling cues collapsed and gathered into lines, the transcript written in transcribe's shape, its source read from the head), watch.py 37 (captioned(), run trying the captions before the download outside ONE and returning them when the download fails, `source` and `title`, the docstrings), words.py 9, mcp_server.py 2 (the tool's sentence), daemon.py 1 (the log line's source). 23,087: main 082b5da's 22,880 plus 207.
+
+- `lines = 23087`
 
 ## Uncapped
 
