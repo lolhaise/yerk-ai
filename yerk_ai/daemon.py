@@ -999,11 +999,12 @@ class Yerkd:
         return abilities.asked(prompt, self.memory) + names + deep, topics, past, absent     # "can you do voice": the manifest's answer
 
     def rules_news(self, room: str, sid: str = "") -> str:
-        """The rules block for session `sid` (context.news), under budgets.toml's `rules`; "" records a process start."""
+        """The rules block for session `sid` (context.news), under budgets.toml's `rules`, past it in the work folder; "" records a process start."""
         if self.reader(room).sealed:        # none, and no rules-seen.json with the rules' text in its folder: no other room's rule
             return ""
-        return context.news(self.state / "rooms" / room / "rules-seen.json", sid, self.private, self.room_confs[room],
-                            self.memory.root / memory.RULES, context.NONE if uncapped(self.budgets) else int(self.budgets["per_message"]["on_hit"]["rules"]))
+        rdir = self.state / "rooms" / room
+        return context.news(rdir / "rules-seen.json", sid, self.private, self.room_confs[room], self.memory.root / memory.RULES,
+                            context.NONE if uncapped(self.budgets) else int(self.budgets["per_message"]["on_hit"]["rules"]), rdir / "work" / context.CHANGED)
 
     def rules_topic(self, room: str, sid: str, prompt: str | None, budget: int) -> tuple[str, list[str]]:
         """The topic rules this message names, the room's own and every room's, each once per session (context.topics); none in a sealed room.

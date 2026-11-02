@@ -8,9 +8,10 @@ import shutil
 from pathlib import Path
 
 from yerk_ai import context, memory, words
-from yerk_ai.config import EXAMPLE_PRIVATE, budgets
+from yerk_ai.config import EXAMPLE_PRIVATE, REPO, budgets
 from yerk_ai.daemon import Yerkd
 from fake_channel import ConsoleChannel
+from test_code_read import reaches
 from yerk_ai.lifted.trim import truncate
 from yerk_ai.room import Inbound
 
@@ -92,10 +93,39 @@ def test_the_block_keeps_to_its_budget_and_past_it_gives_the_count_and_where_to_
     assert context.chars(y.rules_news(FAMILY, "sid-f")) <= budget
     for i in range(12):
         rule(y, A, f"Example job {i} is done the example way, " + "with care " * 10, f"example job {i}")
-    note = y.rules_news(FAMILY, "sid-f")
+    note, kept = y.rules_news(FAMILY, "sid-f"), y.state / "rooms" / FAMILY / "work" / context.CHANGED
     assert note == (f"{context.NEWS} 12 lines new or replaced, past the {budget:,} characters this note holds; "
-                    'read them: read_memory("rules.md").') and context.chars(note) <= budget
-    assert memory.read(y.memory, "rules.md", 6, 1, y.reader(FAMILY))["ok"]      # the pointer reads from any room
+                    f"read them: Read {kept}.") and context.chars(note) <= budget
+    assert kept.read_text().count("\nnew in rules.md: example job ") == 12      # each line whole, in the room's own work folder
+
+
+def test_past_its_budget_a_changed_mechanics_line_waits_in_the_rooms_own_work_folder_never_in_the_checkout(tmp_path, monkeypatch):
+    """The wall (2026-10-28): the mechanics changed under a running session, the note past its budget named mechanics.md in
+    Yerk's checkout, and the room's Read of it was refused, since only an owner room's Read reaches the checkout. Every
+    room's note now names one file in its own work folder, where its process runs, holding each new and replaced line
+    whole, 0600, told once: a room whose privacy is not owner reads it as an owner room does."""
+    mech = tmp_path / "harness" / "mechanics.md"
+    mech.parent.mkdir()
+    mech.write_text(context.MECHANICS.read_text())
+    monkeypatch.setattr(context, "MECHANICS", mech)
+    y = daemon(tmp_path)
+    specs = {room: y.spec_for(room) for room in (FAMILY, A)}
+    for room, sid in ((FAMILY, "sid-f"), (A, "sid-a")):
+        y.sessions.bind(room, sid, "one")
+    gone = mech.read_text().splitlines()[2]
+    new = [f"- Example harness rule {i}: do the example step the example way, since the example says so." + " An example why." * 9
+           for i in range(6)]
+    mech.write_text(mech.read_text().replace(gone + "\n", "") + "\n".join(new) + "\n")      # a deploy under both sessions
+    budget, perms = y.budgets["per_message"]["on_hit"]["rules"], specs[FAMILY].settings["permissions"]
+    assert perms["blockReadsOutsideWorkingDirectories"] and not reaches(REPO.resolve() / "yerk_ai" / "mechanics.md", perms["allow"])
+    for room, sid in ((FAMILY, "sid-f"), (A, "sid-a")):
+        block, kept = told(y, sid), specs[room].cwd / context.CHANGED
+        assert (f"{context.NEWS} 7 lines new or replaced, past the {budget:,} characters this note holds; "
+                f"read them: Read {kept}.") in block.splitlines() and str(mech) not in block, room
+        assert kept.read_text().splitlines() == [context.NEWS, *(f"new in mechanics.md: {x.removeprefix('- ')}" for x in new),
+                                                 f"replaced in mechanics.md: {gone.removeprefix('- ')}"], room
+        assert context.chars(kept.read_text()) > budget and kept.stat().st_mode & 0o777 == 0o600, room
+        assert context.NEWS not in told(y, sid), room                                      # once per version
 
 
 EX = " <example>" + "Asked the example question, it gave the example answer first and stopped there. " * 2 + "</example>"
