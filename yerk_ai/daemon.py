@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 from zoneinfo import ZoneInfo
 
-from . import (beat, context, deploy, doctor, evidence, gates, hooks, jobs, location, mcp_server, memory, mentions, needs, pictures, render,
+from . import (beat, context, deploy, doctor, evidence, gates, hooks, jobs, location, mcp_server, memory, mentions, needs, pictures, pipeline, render,
                status, taste, transcribe, voice_note, watch, workers)
 from .accounts import Account, Cooldowns, from_dir, load_accounts, pick
 from .config import (EFFORTS, REPO, SHELLS, account_and_model, account_named, assistants, budgets, discord_id, flag, load_toml, models,
@@ -157,7 +157,8 @@ class Yerkd:
         self.jobs = jobs.Jobs(private, state, self.ledger, dict(self.conf.get("jobs", {})), self.rooms, self.channels,
                               self.room_confs, self.conf, self.workers)
         self.workers.hooks.append(self.pictures_done)            # a pictures backfill batch: its line, then the next batch
-        self.workers.hooks.append(self.need_built)               # a need's builder: its state and its line (needs.py)
+        self.workers.hooks.append(self.need_built)               # a need's builder, cold read or fix: its state and its line
+        self.pipeline = pipeline.Pipeline(self)                  # a need from filed to live with no person (pipeline.py)
         self.gates = gates.settings(self.conf.get("gates"))      # the rule-based gates (DESIGN 8)
         self.workers.gate = {"trash": list(self.gates.trash), "private": str(self.private),   # workers pass them too
                              "external": self.gates.external}
@@ -503,7 +504,9 @@ class Yerkd:
         r = await asyncio.to_thread(needs.file, self.memory, self.state, room, mid, asked, tried, needed, shadow)
         if not r["ok"]:
             return r
-        if not r["again"]:                                # a retried call is said once
+        if not r["again"] and not r["folded"] and self.pipeline.auto():   # [needs] auto: built now, or queued
+            await self.pipeline.filed(r, room)
+        elif not r["again"]:                              # a retried call is said once
             await self.jobs.alert(None, (words.NEED_AGAIN if r["folded"] else words.NEED_FILED).format(
                 n=r["n"], room=room, ability=words.line(r["ability"], 80), day=r["day"], count=r["count"]), 0)
         log.info("need: %s, %s %s, %s", room, r["day"], r["n"], "folded" if r["folded"] else "filed")
@@ -579,27 +582,25 @@ class Yerkd:
     async def need_build(self, req: dict[str, Any]) -> dict[str, Any]:
         """`yerk needs build DAY N`: the need's brief (needs.brief) to a builder worker on [needs] account, else [curate]
         account, else the workers' own pick, its card in the machine room. One builder a need: the need is claimed under the
-        lock, so one that is building, has a PR or a branch, or is merged starts nothing."""
+        lock, so only one filed, queued, held or stuck starts one (the pipeline's road from there, pipeline.py)."""
         day, n = str(req.get("day") or ""), int(req.get("n") or 0)
-        if await asyncio.to_thread(needs.update, self.memory, self.state, day, n, {"state": "building", "worker": ""},
-                                   lambda r: r.get("state", "filed") == "filed") is None:
+        if await asyncio.to_thread(needs.update, self.memory, self.state, day, n, {"state": "building", "worker": "", "fixes": 0},
+                                   lambda r: r.get("state", "filed") in ("filed", "queued", "held", "stuck")) is None:
             row = needs.find(needs.load(self.state), day, n)
             return {"ok": False, "error": words.NEED_NONE.format(day=day, n=n) if row is None else
                     words.NEED_BUSY.format(n=n, state=needs.said(row))}
-        row = needs.find(needs.load(self.state), day, n) or {}
-        card = next((r for r, c in self.room_confs.items() if c.get("role") == "machine" and r in self.channels),
-                    next((r for r in self.rooms if self.owner(r)), ""))
-        conf = dict(self.conf.get("needs", {}))
-        out = await self.workers.start(card, needs.brief(row, REPO), account=str(conf.get("account") or dict(
-            self.conf.get("curate", {})).get("account") or ""), cap_minutes=float(conf.get("cap_minutes") or needs.CAP),
-            tasks=list(needs.TASKS), more={"need": {"day": day, "n": n}})
+        row, conf = needs.find(needs.load(self.state), day, n) or {}, self.pipeline.conf()
+        out = await self.workers.start(self.pipeline.room(), needs.brief(row, REPO, str(conf.get("pr_check") or "")),
+                                       account=self.pipeline.account(), cap_minutes=float(conf.get("cap_minutes") or needs.CAP),
+                                       tasks=list(needs.TASKS), more={"need": {"day": day, "n": n}})
         await asyncio.to_thread(needs.update, self.memory, self.state, day, n, {"worker": out["id"]} if out.get("ok") else {"state": "filed"})
         log.info("needs: build %s %s: %s", day, n, out.get("id") or out.get("error"))
         return {**out, "day": day, "n": n}
 
     async def need_built(self, row: dict[str, Any], end: dict[str, Any]) -> bool:
         """A need's builder ended (workers.hooks): the need's state from its report's first line (needs.ended) and one line to
-        the machine room, never a relay turn; False for any other worker."""
+        the machine room, never a relay turn; under [needs] auto a failed build starts once more, then the need is stuck. A
+        cold read or a fix worker goes to the pipeline (Pipeline.ended); False for any other worker."""
         try:
             job = json.loads((Path(row["staging"]) / "worker.json").read_text()).get("need")
         except (OSError, ValueError):
@@ -607,6 +608,8 @@ class Yerkd:
         if not isinstance(job, dict):
             return False
         day, n = str(job.get("day")), int(job.get("n") or 0)
+        if job.get("role") in ("read", "fix"):
+            return await self.pipeline.ended(row, end, str(job["role"]), day, n)
         how = workers.settled_state(row, workers.tasks_of(Path(row["tasks"])), end)[1]
         r = await asyncio.to_thread(needs.ended, self.memory, self.state, day, n, str(row["id"]), how,
                                     workers.first_line(Path(row["report"])), end["exit"] == "done")
@@ -619,6 +622,11 @@ class Yerkd:
                     await self.channels[to].notify(to, line)
             log.info("%s", line)
         self.ledger.worker_set(str(row["id"]), relay="skipped", relay_note="need build: its line went to the machine room")
+        if r is not None and r.get("state") == "filed" and self.pipeline.auto():     # failed: once more, then stuck
+            if (fails := int(r.get("fails") or 0) + 1) >= 2:
+                await self.pipeline.stop({**r, "fails": fails}, "stuck", f"its builder failed twice, last: {how}")
+            elif await asyncio.to_thread(needs.update, self.memory, self.state, day, n, {"fails": fails}):
+                await self.need_build({"day": day, "n": n})
         return True
 
     async def tool_voice_note(self, room: str, script: str, name: str = "", owner_yes: bool = False) -> dict[str, Any]:
@@ -1388,10 +1396,11 @@ class Yerkd:
         dc.after_recover.append(say_moved)
         dc.after_recover.append(self.workers.reattach)   # their cards are edited, so after the connect
         dc.after_recover.append(self.jobs.reattach)      # a script run that ended with no daemon up: delivered late
+        dc.after_recover.append(self.pipeline.tick)      # the needs pipeline at start: a deploy proven meanwhile is live
         self.write_status("discord")
         self.link = dc
         tasks = [asyncio.create_task(c) for c in (self.serve_http(), self.reap(min(60.0, self.idle_seconds / 2)),
-                                                   self.beat.tick(self.listening), dc.start())]
+                                                   self.beat.tick(self.listening), self.pipeline.watch(), dc.start())]
         await self.until_stopped(tasks, dc.close)
 
 

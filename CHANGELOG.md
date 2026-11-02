@@ -8,6 +8,29 @@ version changes.
 
 ## 2026-11-01
 
+### needs-pipeline (#?)
+
+- A need a room files now builds itself to live with no person in the loop ([needs] auto, on unless set false; false is
+  the hand road exactly). The first need starts its builder at once; one filed while another is in flight is queued and
+  starts when that one is live, held or stuck, since two open PRs that both move the code ceiling conflict. The daemon
+  watches the PR the box's sync opens and the checks the box's CI posts: red checks start a fix worker that adds a new
+  commit (at most [needs] fix_cap, default 2, then held for a person), checks that never all come within
+  [needs] checks_minutes (default 40) make it stuck, and green checks start a fresh cold read worker that says `merge`,
+  `fix first` or `unsure`. On `merge` the daemon merges the PR at the head the read saw (the sha guard), starts
+  `yerk deploy origin/main` in a transient unit `yerk-deploy-<id>` after a fetch through the package's askpass (the token
+  never reaches argv), and once a proven deploy holds the merge says live in the machine room and once in each room that
+  filed it. Every step is one line in the machine room; `yerk needs list` words each state (queued, fixing, cold read,
+  held, stuck, deploying, live). `yerk needs build DAY N` by hand still starts a held or stuck need. A need filed before
+  the pipeline, or while it was off, that no build ever started is queued on the watch's next tick and starts in its
+  turn; one whose build came back to filed stays for a person, as a held one does. The code ceiling moves up by 509, to
+  23,609.
+- Why: on 2026-10-31 need 27 took four hand steps from its PR to live, and a red CI leg had to be noticed by a person.
+
+**Upgrading**: put a GitHub token for the repo at `secrets/github.token` in the private folder (one line, 0600) for the
+merge and the deploy's fetch; without it the builds and PRs still happen and the merge and the deploy wait for a person.
+`[needs] auto` is on unless set false in yerkd.toml. Set `[needs] pr_check` to the install's PR checker if it has one.
+budgets.toml moves with the code: the code ceiling to 23,609.
+
 ### dst-night-tests (#?)
 
 - Tests only, nothing in the code: the suite passes on a daylight-saving night. Two tests built the morning diff for

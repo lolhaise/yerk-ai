@@ -371,7 +371,13 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-10-31: need-2026-10-31-27 merged with main 4a3f7f7 (#153 worker-no-secrets): main's 22,893 plus this PR's 207 is 23,100, counted on the merged tree; daemon.py, which both changed (#153 the worker unit's hidden paths and their comment, this PR the watch tool's docstring and log line), merged with no line in common; `yerk docs own` wrote budgets.md.
 
-- `lines = 23100`
+2026-10-31: needs-pipeline raised it by 496, a filed need built, checked, read cold, merged, deployed and live with no person (the harness does it all by itself, with no person needed), not folded to fit: pipeline.py 254 (the queue, the watch, the fix loop, the cold read, the merge, the deploy unit, live), github.py 86 (urllib, every failure as words), git_askpass.py 34, needs.py 53 (the states, their words, the read and fix briefs), daemon.py 18, words.py 14, config.py 8, cli.py 2. 23,389: main 4a3f7f7's 22,893 plus 496.
+
+2026-11-01: needs-pipeline merged with main a82fc7b (#154 need-2026-10-31-27, #156 dst-night-tests): main's 23,100 plus this PR's 496 is 23,596, counted on the merged tree; daemon.py and words.py, which both changed (#154 the watch tool's docstring and log line and the captions words, this PR the pipeline's hooks and the NEED_* words), merged with no line in common; `yerk docs own` wrote budgets.md.
+
+2026-11-01: needs-pipeline raised it by 13 more, the pickup (needs filed before the pipeline sat at filed with no build ever started, for a person to type `yerk needs build`), not folded to fit: pipeline.py 11 (pickup(), its call in the tick, the docstrings), words.py 1 (NEED_PICKED_UP), config.py 1 (the auto setting's words). 23,609: 23,596 plus 13.
+
+- `lines = 23609`
 
 ## Uncapped
 

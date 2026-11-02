@@ -5,6 +5,7 @@ import argparse
 import json
 import subprocess
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -198,7 +199,7 @@ def cmd_needs(a: argparse.Namespace) -> int:
         print(json.dumps(out))
         return 0 if out.get("ok") else 1
     priv, state = private_dir(a.private), state_dir(a.state)
-    r = needs.update(memory.settings(priv, state), state, a.day, a.n, {"state": "merged", "pr": a.pr})
+    r = needs.update(memory.settings(priv, state), state, a.day, a.n, {"state": "merged", "pr": a.pr, "merged_at": time.time()})
     print(f"need {a.n} of {a.day}: {needs.said(r)}" if r else words.NEED_NONE.format(day=a.day, n=a.n))
     return 0 if r else 2
 

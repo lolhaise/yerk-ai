@@ -29,6 +29,7 @@ def ops(tmp_path: Path, *rooms: str):
     rec = Rec()
     y.add_room("ops-room", rec)
     y.workers.launcher = Units()
+    y.conf["needs"] = {"auto": False}                  # the hand road; the pipeline's own tests are test_needs_pipeline.py
     return y, rec
 
 
@@ -91,7 +92,7 @@ def test_the_brief_from_a_need_carries_every_ask_the_repo_and_the_shape_of_done(
 def test_build_starts_one_builder_on_the_needs_account_and_its_end_sets_the_state_list_and_done_follow(tmp_path, capsys):
     y, rec = ops(tmp_path, "example-room", "her-room")
     units, names = y.workers.launcher, [a.name for a in y.accounts]
-    y.conf["curate"], y.conf["needs"] = {"account": names[0]}, {"account": names[-1]}
+    y.conf["curate"], y.conf["needs"] = {"account": names[0]}, {"account": names[-1], "auto": False}
     day = need(y, "example-room", *ASK)["day"]
     assert listed(tmp_path, capsys) == [f"{day} 1 filed: {ASK[2]} (asked 1 time)"]
     assert asyncio.run(y.control({"needs": {"action": "build", "day": day, "n": 9}})) == {

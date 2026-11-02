@@ -44,6 +44,23 @@ needs = "nothing; `yerk abilities` lists them, `yerk explain NAME` has any one, 
 free_path = "this is the free path"
 asked_as = ["what can you do", "what can u do", "what else can you do", "what are you able to do", "what are you capable of", "what are your abilities", "what abilities do you have", "list your abilities"]
 
+[abilities.needs]
+state = "built"
+what = "A room that hits a wall files what it needed with the `need` tool, and Yerk builds it once for every room. With [needs] auto (on unless set false) the pipeline runs one need at a time from filed to live with no person in the loop; the rest wait in a queue and the oldest starts when the one in flight is live, held or stuck."
+how = [
+  "Auto-start: a new need starts its builder worker when no need is in flight, else it is queued; a builder that fails starts once more, then the need is stuck.",
+  "Outside Yerk: the box's sync pushes the builder's branch and opens its pull request, and the box's CI posts the checks on its head; the daemon only reads them.",
+  "The fix loop: a red check starts a fix worker that adds a new commit to the branch, never an amend; past [needs] fix_cap fixes (default 2) the need is held for a person, and checks that never all come within [needs] checks_minutes make it stuck.",
+  "The cold read: green checks start a fresh worker, never the builder, that reads the diff and says merge, fix first or unsure.",
+  "The merge: the daemon merges the pull request only at the head the read saw (the sha guard); a moved head is checked and read again.",
+  "The deploy: a merged need with no deploy running starts `yerk deploy origin/main` in a transient unit of its own after a fetch through the package's askpass, so the token never reaches a command line.",
+  "Live: a proven deploy that holds the merge makes the need live, one line in the machine room and one in each room that filed it.",
+]
+tier = "free"
+needs = "a GitHub token at secrets/github.token in the private folder, for the merge and the deploy's fetch"
+free_path = "without the token the builds and the pull requests still happen, and the merge and the deploy wait for a person (`yerk needs done`, `yerk deploy`); live still follows the deploy"
+asked_as = ["can you build what you need yourself", "does it auto build", "how do needs get built"]
+
 # The described abilities below are known and not built (decision 26). On a described entry, `upgrade`
 # names the built ability that already ships part of it.
 [abilities.gates]
