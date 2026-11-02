@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 114202`
+- `total = 115102`
 
 ## [session_start.claude_code]
 
@@ -40,9 +40,11 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-02, need-2026-10-25-23: the `delete` tool (a delete the owner orders outside a room's work folder, held with each path shown and run once on the owner's word, for good, by the daemon, since a room asked to free a full disk had its `rm` refused and the rest of the disk read-only in its sandbox) is 605 as this tree builds it on Python 3.13, about 636 as sent (31 over its build, as each of Yerk AI's entries goes out), so about 15,964 on the 15,328 the rooms send; so 16,000, no part could pay, the total rose by the 600.
 
+2026-11-02, need-2026-10-26-22: the `reverse_image_search` tool (a picture in a room's folders looked up on the web by Google Cloud Vision's web detection, since a room asked who made a painting in a photo had only word searches, and six found nothing) is 826 as this tree builds it on Python 3.13, about 857 as sent (31 over its build, as each of Yerk AI's entries goes out), so about 16,821 on the 15,964 the rooms send; so 16,900, no part could pay, the total rose by the 900.
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
-- `yerk_tools = 16000`
+- `yerk_tools = 16900`
 - `deferred_tool_names = 3429`
 - `mcp__hands__ = 7462`
 - `mcp__web-ladder__web_image = 913`
@@ -395,7 +397,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-02: need-2026-10-25-23 raised it by 166, the `delete` tool, a delete the owner orders outside a room's work folder, held with each path shown and run once on the owner's word, for good, by the daemon (need 23 of 2026-10-25: a room asked to free a full disk had its `rm` refused by the trash gate and the rest of the disk read-only in its sandbox, and wrote the lines for the owner to paste), not folded to fit: deletes.py 106 (what is never deleted and why, the mount table, the size on disk, the preview, the delete path by path with what would not go), daemon.py 32 (the tool, its refusal at the gate before the owner is asked, the preview at the hold, the release it deletes on, the way named in an owner room's refusal), words.py 14 (the refusals, the kinds, the way; sizes in GB), mcp_server.py 10 (the tool's sentence), gates.py 4 (the delete-outside rule, the way on the outside refusal). 23,977: main 43b6107's 23,811 plus 166.
 
-- `lines = 23977`
+2026-11-02: need-2026-10-26-22 raised it by 171, the `reverse_image_search` tool, a picture in a room's own folders looked up on the web as Google Lens or TinEye would, through Google Cloud Vision's web detection (need 22 of 2026-10-26: a room asked who made a painting in a photo it was sent tried six word searches and found nothing, since no tool searched the web by picture), not folded to fit: reverse_image.py 133 (the picture as Google reads it, a smaller JPEG by ffmpeg when it must be, the request with the key in a header, three tries on a busy answer, Google's refusal in its own words, the answer's lists, the spend row), daemon.py 14 (the tool on the room's own folders, every room's allow line), words.py 13 (the refusals, the wall's key line, what a result says next, the card's row), mcp_server.py 11 (the tool's sentence). 24,148: main 281b187's 23,977 plus 171.
+
+- `lines = 24148`
 
 ## Uncapped
 

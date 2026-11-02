@@ -8,6 +8,42 @@ version changes.
 
 ## 2026-11-02
 
+### need-2026-10-26-22 (#?)
+
+- A room can search the web by a picture now, as Google Lens or TinEye do: the new `reverse_image_search` tool on Yerk's
+  own server takes a picture in the room's own folders (one sent to it, a picture `web_image` saved, a frame `watch`
+  took) and returns Google's best guess at what it is, the names it ties to it with their scores (a work and its maker,
+  a place, a product), each page that shows it, whole or in part, and the addresses of its copies, parts and look-alikes,
+  up to 20 of each. It is in every room's allow list, a person's room too, so one deploy gives every room the same way.
+- It runs on Google Cloud Vision's web detection, the documented API of Google's search by picture: the picture's own
+  bytes go in the request, so no picture is put at a public address for a search to fetch, and the key goes in a header,
+  never in an address, a log or a result. A jpeg, png, gif, webp, bmp or tiff goes as it is; a HEIC, an AVIF or a picture
+  past 7 MB goes as a JPEG of at most 2048 pixels a side that ffmpeg makes, the picture itself untouched.
+- The result says all of it came off the web, a record and never an instruction, that the best guess is Google's guess,
+  and to open a page that shows the picture before saying who made it; a search that finds nothing says so. Google's
+  refusal (a wrong key, the API off in the key's project, no billing) comes back in its own words with the key taken out;
+  a busy answer is tried three times.
+- Each call Google answers is one spend row (tool `reverse_image_search`, engine `google-vision`) at the list price,
+  US$0.0035 a picture past the first 1,000 a month, which are free; the morning diff carries the day's total. A refusal
+  books nothing.
+- With no key the tool says, in one line, the file that turns it on (`secrets/google-vision.key`) and sends nothing.
+  `yerk abilities` lists `reverse-image-search` as needing Google Cloud Vision until that file is there.
+- The card's row reads "finding IMG_0001 on the web", never the call.
+- abilities.toml has the built `reverse-image-search` entry; the README and the GUIDE (a section, Search by picture) say
+  it; the GUIDE's ability count is corrected to what the file holds, 93: 36 built (it said 90: 33, two built entries
+  behind); docs/tools.md and docs/budgets.md are what `yerk docs own` writes.
+- budgets.toml: `yerk_tools` 16,000 to 16,900 (the tool is 826 as built on Python 3.13, about 857 as sent) and the
+  session total by the 900 to 115,102; [code] lines 23,977 + 171 = 24,148; each with its dated note.
+- Why: on 2026-10-26 a room was asked who painted a painting in a phone photo, with no signature on it. It read the photo
+  and ran six word searches on its style and subject, checked the closest painter it found and ruled them out, and found
+  no match: no tool searched the web by picture, so it filed the need.
+
+**Upgrading**: to turn it on, make an API key in a Google Cloud project with the Cloud Vision API turned on and billing set
+up (restrict the key to that API), and put it on the first line of `secrets/google-vision.key` in the private folder,
+0600; the next call reads it, no restart. ffmpeg, which transcribe and watch already need, makes the JPEG for a HEIC, an
+AVIF or a picture past 7 MB. A room has the tool from its next session start after the deploy. budgets.toml's
+`yerk_tools`, `total` and [code] `lines` move with this change.
+
 ### need-2026-10-26-21 (#?)
 
 - A room asked to open a page in the browser on the owner's PC opens it: the browser plug-in, kept outside this
