@@ -39,6 +39,35 @@ const WALL_TEXT = {
   empty: ["Every rung loaded the page but found no readable text.", "maybe", "The content may be inside an image, a canvas or an app that needs interaction."],
 };
 
+// A Microsoft Bookings page is read as a guest (need 21, 2026-10-24): every share link Microsoft makes for a Bookings
+// with me page carries `anonymous` (.../bookwithme/user/<id>@<domain>?anonymous&ep=pcard), and the same page without it
+// sends a reader to Microsoft's sign-in, so every rung met login_required on a page anyone may book. The flag goes
+// first when it is missing, as Microsoft writes it; the page's owner still decides, and a guest view that asks for a
+// sign-in is named as such. Hosts: Outlook's (office.com, office365.com and the government cloud's) and cloud.microsoft.
+const BOOKINGS_HOSTS = ["office.com", "office365.com", "office365.us", "cloud.microsoft"];
+
+// The guest view itself asked for a sign-in: no saved login is the way to a page its owner keeps to signed-in people.
+const BOOKINGS_SIGNIN = ["This Bookings page asked for a sign-in even in its guest view (anonymous): its owner lets only signed-in people book.", "no", "Ask the page's owner for the share link of a public meeting type, or for the open times in words."];
+
+export function isBookingsPage(url) {
+  try {
+    const u = new URL(url);
+    const h = u.hostname.toLowerCase();
+    return BOOKINGS_HOSTS.some((d) => h === d || h.endsWith(`.${d}`)) && /^\/bookwithme\//i.test(u.pathname);
+  } catch {
+    return false;
+  }
+}
+
+export function bookingsGuestUrl(url) {
+  if (!isBookingsPage(url)) return url;
+  const u = new URL(url);
+  const q = u.search.slice(1);
+  if (q.split("&").some((kv) => kv.split("=")[0].toLowerCase() === "anonymous")) return url;
+  u.search = `?anonymous${q ? `&${q}` : ""}`;
+  return u.toString();
+}
+
 export function wallFromBbError(err) {
   if (!(err instanceof BrowserbaseError)) return "bb_unreachable";
   switch (err.kind) {
@@ -209,6 +238,7 @@ function successPayload({ url, win, attempts, extractMode, startedAt }) {
   const warnings = [];
   if (climbed) warnings.push(`fetch-plus read this at ${win.rung} after ${trail(attempts.slice(0, -1))}`);
   if (win.short) warnings.push("fetch-plus: the rendered page is short; it may be partial");
+  if (isBookingsPage(url)) warnings.push("fetch-plus read this Bookings page as a guest, in the anonymous view its share links open, with no sign-in");
   return {
     url,
     finalUrl: win.finalUrl || url,
@@ -227,7 +257,7 @@ function successPayload({ url, win, attempts, extractMode, startedAt }) {
 }
 
 function failurePayload({ url, wall, attempts, extractMode, startedAt, host, partial, hopeless }) {
-  const [what, retry, next] = describeWall(wall);
+  const [what, retry, next] = /^login(_required)?$/.test(wall) && isBookingsPage(url) ? BOOKINGS_SIGNIN : describeWall(wall); // a free rung names it login
   const lastStatus = [...attempts].reverse().find((a) => typeof a.status === "number")?.status;
   const lines = [
     `fetch-plus could not read this page. wall=${wall} host=${host} rungs=${trail(attempts) || "none"} retry=${retry}`,
@@ -302,7 +332,7 @@ export async function runFetchPlus(args, ctx, executionContext = {}, deps = {}) 
   const clock = () => (typeof settings._now === "function" ? settings._now() : Date.now()); // test seam, as local.js nowOf: budgets and the ledger's ms follow it
   const startedTick = clock();
   const fetchImpl = deps.fetchImpl || fetch;
-  const url = typeof args?.url === "string" ? args.url.trim() : "";
+  const url = bookingsGuestUrl(typeof args?.url === "string" ? args.url.trim() : ""); // a Bookings page as a guest, every rung
   const extractMode = args?.extractMode === "text" ? "text" : "markdown";
   const host = hostOf(url) || "invalid";
   const attempts = [];

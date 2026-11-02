@@ -1216,3 +1216,11 @@ price = "nothing without keys; with them, each provider's own price, paid to it 
 key = "each key in its own file in the private folder's secrets/, 0600: exa.key (search and research), parallel.key (search), browserbase.key and browserbase-project.id (the cloud browser); the next call reads it, no restart"
 free_path = "a plain read and the machine's own browsers for pages, You.com's and Parallel's keyless engines for search; research needs its key"
 asked_as = ["web reach", "blocked page", "bot wall", "captcha page", "page will not load", "search api", "paid search", "search provider", "deep research", "research agent", "web research", "exa agent", "verify and enrich"]
+
+[abilities.bookings-guest]
+state = "built"
+what = "Reads a Microsoft Bookings page (Bookings with me) the way a guest sees it, with no sign-in: web_fetch adds the anonymous flag every share link Microsoft makes carries when a link lacks it, so a page anyone may book shows its meeting types and open times to the plain read on the machine instead of Microsoft's sign-in; a page whose guest view still asks for a sign-in is named so, with the next move, never as a login to save."
+tier = "free"
+needs = "the web ability's plug-in attached to the room; no account, no key and no sign-in"
+free_path = "this is the free path"
+asked_as = ["bookings page", "bookings with me", "bookwithme", "microsoft bookings", "booking page slots"]

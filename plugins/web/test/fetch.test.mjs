@@ -1,6 +1,6 @@
 // The fetch ladder's changes carried from the machine's lib (2026-10-21 and 2026-10-22): F2's readable-stop and its
 // probe's real text length, the challenge kinds that clear on their own, the hopeless skip with its whole-call ceiling,
-// path-class site memory and the modal lift. Run from the plug-in folder: npm test.
+// path-class site memory and the modal lift; a Bookings page read as a guest (need 21). Run from the plug-in folder: npm test.
 // The F2 cases launch the machine's own local browser (skipped when its engine is not installed) on a temp profile
 // against a local http server on 127.0.0.1 (blockPrivateHosts off for that reason). The ladder cases use its seams
 // (deps.localFetchImpl, deps.localBrowserRung, deps.trawlFetchImpl, deps.fetchImpl, settings._now) and never touch the
@@ -13,8 +13,8 @@ import path from "node:path";
 import { after, before, test } from "node:test";
 import { detectChallenge } from "../lib/fetch/detect.js";
 import { extractHtml } from "../lib/fetch/extract.js";
-import { runFetchPlus } from "../lib/fetch/ladder.js";
-import { closeLocalBrowser, localBrowserPresent, localBrowserRung, memoryKey, pathClass, rememberRead, siteMemoryPlan } from "../lib/fetch/local.js";
+import { bookingsGuestUrl, isBookingsPage, runFetchPlus } from "../lib/fetch/ladder.js";
+import { closeLocalBrowser, localBrowserPresent, localBrowserRung, localFetchRung, memoryKey, pathClass, rememberRead, siteMemoryPlan } from "../lib/fetch/local.js";
 import { flushPending, resolveSettings } from "../lib/fetch/util.js";
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "yerk-web-fetch-"));
@@ -317,4 +317,68 @@ test("the ceiling: with hopelessMaxSeconds spent in F2, nothing else runs and th
   assert.equal(row.hopeless, "recaptcha");
   assert.ok(row.ms >= 44_500 && row.ms < 46_000, `ms ${row.ms}`);
   assert.match(p.text, /capped at 45 s/);
+});
+
+// ---- a Bookings page, read as a guest (need 21, 2026-10-24) ------------------------------------------
+// The wall a room met: a Bookings with me link without `anonymous` sends a reader to Microsoft's sign-in, so every rung
+// met login_required on a page anyone may book. Microsoft's own share links carry the flag, and the ladder adds it.
+const BOOKING = "https://outlook.office.com/bookwithme/user/0a1b2c3d4e5f@example/meetingtype/AbC123?ep=mlink";
+const GUEST = "https://outlook.office.com/bookwithme/user/0a1b2c3d4e5f@example/meetingtype/AbC123?anonymous&ep=mlink";
+const SIGNIN = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=example";
+const SLOTS = page("Book time with Example Person", `<main><h1>Example Person</h1><h2>30 minute call</h2>${Array.from({ length: 12 }, (_, i) => `<p>Thursday, open at ${9 + (i % 8)}:${i % 2 ? "30" : "00"}: a 30 minute call on the example meeting app, booked as a guest with a name and an email address, no account needed.</p>`).join("")}</main>`);
+const SIGNIN_PAGE = page("Sign in to your account", `<form><input type="email" name="loginfmt"><input type="password" name="passwd"><p>Sign in to continue.</p></form>`);
+
+function bookingsRig({ guestOpen = true } = {}) {
+  const asked = [];
+  const r = rig({ overrides: { stateDir: path.join(TMP, "state-bookings") } });
+  r.deps.localFetchImpl = async (url) => {
+    asked.push(String(url));
+    if (String(url).startsWith("https://login.microsoftonline.com/")) return html(SIGNIN_PAGE);
+    if (guestOpen && /[?&]anonymous(&|=|$)/.test(String(url))) return html(SLOTS);
+    return new Response("", { status: 302, headers: { location: SIGNIN } });
+  };
+  return { ...r, asked };
+}
+
+test("a Bookings with me link gets the anonymous flag its share links carry, first; any other link is left alone", () => {
+  assert.equal(bookingsGuestUrl(BOOKING), GUEST);
+  assert.equal(bookingsGuestUrl("https://outlook.office.com/bookwithme/user/0a1b@example"), "https://outlook.office.com/bookwithme/user/0a1b@example?anonymous");
+  assert.equal(bookingsGuestUrl("https://bookings.cloud.microsoft/bookwithme/user/0a1b@example?ep=pcard"), "https://bookings.cloud.microsoft/bookwithme/user/0a1b@example?anonymous&ep=pcard");
+  for (const same of [
+    "https://outlook.office365.com/bookwithme/user/0a1b@example?anonymous&ep=pcard", // a share link as Microsoft writes it
+    "https://outlook.office.com/BookWithMe/user/0a1b@example?Anonymous=1", // the flag already there, in any case
+    "https://outlook.office.com/mail/inbox", // a Microsoft page that is not a Bookings page
+    "https://bookings.example/bookwithme/user/0a1b@example", // the same path on another site
+    "not a url",
+  ]) assert.equal(bookingsGuestUrl(same), same);
+  assert.ok(isBookingsPage("https://outlook.office365.us/bookwithme/user/0a1b@example"));
+  assert.ok(!isBookingsPage("https://notoffice.com/bookwithme/user/0a1b@example"));
+});
+
+test("the wall need 21 met: the bare link lands on Microsoft's sign-in; the ladder reads the guest view at F1 instead", async () => {
+  const r = bookingsRig();
+  const bare = await localFetchRung({ url: BOOKING, settings: resolveSettings({}, { stateDir: path.join(TMP, "state-bookings") }), extractMode: "markdown", timeoutMs: 5000, fetchImpl: r.deps.localFetchImpl });
+  assert.equal(bare.verdict, "login"); // what every rung met, as the room filed it
+  r.asked.length = 0;
+  const p = await runFetchPlus({ url: BOOKING }, {}, {}, r.deps);
+  assert.equal(p.extractor, "fetch-plus:F1");
+  assert.match(p.text, /Thursday, open at 9:00/);
+  assert.equal(p.finalUrl, GUEST);
+  assert.deepEqual(r.asked, [GUEST]); // the bare link is never asked, so the sign-in never comes up
+  assert.match(p.warning, /read this Bookings page as a guest, in the anonymous view its share links open, with no sign-in/);
+  assert.equal(r.seen.f2 + r.seen.urls.length, 0, "no other rung ran");
+});
+
+test("a Bookings page whose guest view still asks for a sign-in is named so, with no saved-login advice", async () => {
+  const r = bookingsRig({ guestOpen: false });
+  const p = await runFetchPlus({ url: BOOKING }, {}, {}, r.deps);
+  assert.equal(p.extractor, "fetch-plus:failed:login"); // F1's name for it; L3, when it runs, says login_required
+  assert.match(p.text, /retry=no/);
+  assert.match(p.text, /What stopped it: This Bookings page asked for a sign-in even in its guest view \(anonymous\): its owner lets only signed-in people book\./);
+  assert.match(p.text, /Next move: Ask the page's owner for the share link of a public meeting type, or for the open times in words\./);
+  assert.doesNotMatch(p.text, /fetch-plus context/);
+  assert.deepEqual(r.asked, [GUEST, SIGNIN]);
+  const other = await runFetchPlus({ url: "https://portal.example/reports" }, {}, {}, r.deps); // any other login wall reads as before
+  assert.equal(other.extractor, "fetch-plus:failed:login");
+  assert.doesNotMatch(other.text, /Bookings page/);
 });

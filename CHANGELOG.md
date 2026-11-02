@@ -6,6 +6,27 @@ A line that changes a file the install keeps (rooms.toml, yerkd.toml, budgets.to
 newer than the code is refused with one line, never changed); the index chunks every file again when its chunker's
 version changes.
 
+## 2026-11-02
+
+### need-2026-10-24-21 (#?)
+
+- A room asked to read a Microsoft Bookings page (Bookings with me) now reads it as a guest, with no sign-in:
+  `web_fetch` adds the `anonymous` flag every share link Microsoft makes carries (`.../bookwithme/user/<id>@<domain>?anonymous&ep=pcard`)
+  when a link lacks it, first in the query as Microsoft writes it, on Outlook's hosts and `bookings.cloud.microsoft`, so
+  the free read on the machine gets the page's meeting types and open times instead of Microsoft's sign-in page. The
+  answer says it read the page as a guest. A link that has the flag, and every other page, is read as before.
+- A Bookings page whose guest view still asks for a sign-in (its owner lets only signed-in people book) is named so, with
+  `retry=no` and the next move (ask the page's owner for a public meeting type's link or the times in words), in place of
+  the saved-login advice the login wall gives every other site.
+- `yerk explain bookings-guest` has the ability. Nothing in the harness's code changes, so no budget line moves.
+- Why: on 2026-10-24 a room asked to read a person's Bookings page for their open call slots met `login_required` at
+  every rung, because the link it had carried no `anonymous` flag and the page sent every reader to Microsoft's sign-in;
+  it answered from a read two days old. The browser crash it met the same evening (the PC browser's open call failing
+  with a traceback) was fixed in the hands plug-in on 2026-10-26, outside this repository.
+
+**Upgrading**: nothing to change by hand; every room that attaches the web plug-in reads Bookings pages this way from
+its next call after the deploy.
+
 ## 2026-11-01
 
 ### need-2026-10-24-1 (#?)
