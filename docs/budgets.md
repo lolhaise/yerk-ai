@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 113302`
+- `total = 113602`
 
 ## [session_start.claude_code]
 
@@ -36,9 +36,11 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-01, need-2026-10-24-1: the `text` tool (one text in the owner's name from the Mac, held with its words shown and sent once on the owner's word, since a room asked to text someone for the owner had no tool to) is 688 as this tree builds it on Python 3.13, about 719 as sent (31 over its build, as each of Yerk AI's entries goes out), so about 15,049 on the 14,330 the rooms send; so 15,100, no part could pay, the total rose by the 700.
 
+2026-11-02, need-2026-10-25-22: `remember`'s `triggers` (the words a topic rule loads on, chosen when it is filed, since a room asked to make one load on an everyday word had no way to) takes the tool from 1,625 to 1,904 as this tree builds it on Python 3.13, about 279 more as sent, so about 15,328 on the 15,049 the rooms send; so 15,400, no part could pay, the total rose by the 300.
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
-- `yerk_tools = 15100`
+- `yerk_tools = 15400`
 - `deferred_tool_names = 3429`
 - `mcp__hands__ = 7462`
 - `mcp__web-ladder__web_image = 913`
@@ -387,7 +389,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-02: need-2026-10-25-21 raised it by 10, Yerk's own code open to an owner room's Read, Grep and Glob (on 2026-10-25 a room's Grep of the checkout that runs was refused, and it relayed a worker's claim about Yerk unchecked), not folded to fit: daemon.py 8 (code_reads(): the checkout whole or around the private and state folders it holds, a rule and never an --add-dir, which the sandbox opens for writing; its place in an owner room's allow, the docstring), context.py 2 (the CODE mark and its path in the mechanics a room is handed, the session start's and the news line's). 23,786: main 898ab72's 23,776 plus 10.
 
-- `lines = 23786`
+2026-11-02: need-2026-10-25-22 raised it by 25, the words a topic rule loads on, chosen when it is filed (`remember`'s `triggers`), and the older filing of its job named in `replaced` (on 2026-10-25 a room asked to make a topic rule load on "money" filed it again with the word in its text; the triggers came from its job's words and the names its text held, an everyday word never one, and the filing said replaced: [] though it had marked the older line), not folded to fit: memory.py 23 (the [on: ...] mark, picked() and wants(), a picked trigger riding at a word only its rule says and a phrase on each of its words, a re-filing keeping its job's, the refusal of one naming nothing, `replaced` from either file, the docstrings), daemon.py 1 (the triggers to memory.rule), mcp_server.py 1 (the parameter and its sentence). 23,811: main c0efc6d's 23,786 plus 25.
+
+- `lines = 23811`
 
 ## Uncapped
 

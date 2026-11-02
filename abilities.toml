@@ -1077,6 +1077,14 @@ needs = "nothing; writes <private>/memory/facts/ and the day's log"
 free_path = "this is the free path"
 layer = 4
 
+[abilities.topic-triggers]
+state = "built"
+what = "Chooses the words a topic rule loads on: `remember` with a `job` takes `triggers`, words or short phrases a message on the job holds (the owner's, when named), and a rule the shared rules file has no room for loads on its job's words and those, in place of the names its text holds, each one riding alone as a word only that rule says and a phrase when a message says each of its words; a filing of the job that names none keeps them, and every filing names the older line of its job it marked replaced, in the rules file or the topic rules."
+tier = "free"
+needs = "an owner room; the words are kept on the rule's own line in rules-topics.md, as an [on: ...] mark"
+free_path = "this is the free path"
+asked_as = ["topic rule triggers", "trigger words", "rule fire on", "rule load on", "rule loads on"]
+
 [abilities.embeddings]
 state = "built"
 what = "Meaning search behind the keywords: yerk-index embeds every line of a day log and every bullet of a fact or topic file once (changed lines only, the vector stored next to the line's hash, copied across a rebuild) and answers recall's query by cosine, each hit mapped to its chunk; recall fuses that rank with the keyword rank by reciprocal rank fusion, holds each search's own first hits in the top six and gives a fact or topic file a small edge over a day log, so a paraphrase finds the line its words never name."
