@@ -390,6 +390,25 @@ why_not = "It rides on the browser ability, which is not in this repo; an instal
 asked_as = ["screenshot of the page", "screenshot the page", "screenshot of the tab", "screenshot of your browser", "screenshot your browser",
             "pic of the page", "picture of the page", "picture of your browser"]
 
+# need-2026-11-01-33: a room asked to cancel a booking by the Cancel link in its confirmation mail had the mail's words and
+# no link's address, since the mail tool's text strips the tags, and the mail would not open by its row in the browser.
+[abilities.mail-links]
+state = "described"
+what = "Gives a room each link in one of the owner's emails, its words beside its address, so the room opens the one it was asked for, a Cancel or a Confirm, in the browser ability's browser; the mail reader itself never opens one."
+how = [
+  "One mail read, with its links: each link of the mail's HTML part, web addresses only, in page order, its words beside its address, since the text alone strips the tags and leaves a link's words with nowhere to go.",
+  "Each address whole or not at all: up to the read's size, inside the mail's untrusted wrap; a mail with no HTML part has its addresses in its own text.",
+  "Opened in the browser by its address, never found on the mailbox's web page: no sign-in, no search row to click and no window to show, and the page it lands on keeps every browser guard.",
+  "Only for what the owner asked: opening a link is clicking it in the mail, and a link can act by itself (cancel, confirm, unsubscribe).",
+]
+tier = "free"
+needs = "the email ability's read in a mail plug-in that lists a mail's links, and the browser ability to open one"
+price = "none"
+free_path = "this is the free path"
+why_not = "It rides on the mail tool of the plug-in kept outside this repo, the one that drives the browser; an install whose mail read lists a mail's links has it there, and a room asked to use a link in an email reads the mail, then opens that link's address with the browser."
+asked_as = ["link in the email", "link in that email", "links in the email", "link from the email", "link in the mail", "cancel link",
+            "confirmation link", "unsubscribe link"]
+
 [abilities.pc-control]
 state = "described"
 what = "Hands and eyes on a desktop computer: clicks, keys, windows and screenshots, for what a browser cannot reach."

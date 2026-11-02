@@ -7,7 +7,7 @@
 # The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and
 # Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 [session_start]
-total = 117061
+total = 117105
 
 # Load order, most stable first, so the cached start of the prompt survives.
 # The first parts are Claude Code's own (its default prompt, the built-in tools
@@ -107,12 +107,17 @@ total = 117061
 # their names and no address, and yt-dlp called the message's link "Unsupported URL") takes it from 1,768 to 1,992 as this
 # tree builds it on Python 3.13, all 18 to 17,580, about 18,138 as sent (558 over the build, as on the tree of 9d747cb);
 # so 18,200, no part could pay, the total rose by the 200 (to 117,061).
+# 2026-11-02, need-2026-11-01-33: the hands plug-in's mail `read` gains each link's address (the HTML part's links beside
+# their words, since a room asked to use the Cancel link in a booking mail had "Modify Cancel" as words and no address;
+# filed 2026-11-01): its entry's two clauses take it from 1,150 to 1,194 as the plug-in's branch need-2026-11-01-33
+# (3c3c56c) builds it, 1,225 as sent (31 over, as each of the five goes; all five 8,010 built, 8,165 sent), 44 over the
+# 1,181 it sends on the plug-in's main 6fc2b7a; so 8,165, no part could pay, the total rose by the 44 (to 117,105).
 [session_start.claude_code]
 claude_code_prompt = 10966
 builtin_tools = 12132
 yerk_tools = 18200
 deferred_tool_names = 3429
-mcp__hands__ = 8121
+mcp__hands__ = 8165
 mcp__web-ladder__web_image = 913
 skills = 0
 

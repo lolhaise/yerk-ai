@@ -8,6 +8,38 @@ version changes.
 
 ## 2026-11-02
 
+### need-2026-11-01-33 (#?)
+
+- A room can use a link in one of the owner's emails now: the hands plug-in's mail `read` lists the mail's links after
+  its text, each link's words beside its address (`- Cancel: https://...`), from the mail's HTML part, web addresses
+  only, in page order, each whole or not at all, up to the read's `max_chars` of them, inside the mail's untrusted
+  wrap. The room opens the one it was asked for with the browser's `open`, by its address, so the mailbox's web page is
+  never driven for it: no sign-in, no search row to click, no window to show. The mail's text strips the HTML's tags,
+  so a link's words ("Modify Cancel") came with no address, and a token only the link carries never reached a room.
+- The reader opens none. The read's head counts the links and says that opening one is clicking it in the mail, which
+  can act by itself (cancel, confirm, unsubscribe), so a room opens one only for what the owner asked; the page it
+  lands on keeps every browser guard, a cancel or confirm click there still on the owner's word. A mail with no HTML
+  part has its addresses in its own text: no list, and the head as before.
+- The change itself is in the hands plug-in's own repository (`~/.local/share/hands-mcp`, a local git tree with no
+  remote), on its branch `need-2026-11-01-33` (3c3c56c, cut from its main 6fc2b7a), so its main fast-forwards to it;
+  the plug-in's offline tests there, 44 of 44 green (two new: its real reader against a fake IMAP server on a
+  placeholder booking mail, and the size cap with a link-less control; both fail on its main). Here, its tools'
+  budget line and the abilities entry (`yerk explain mail-links`), with eight phrases ("cancel link", "link in the
+  email", ...) that hand a room asked that way the entry whole; the README says it in Add-ons (five of its clauses a
+  few words shorter, to stay under 12,000 bytes), and the GUIDE's count is what the file holds, 101: 40 built.
+- budgets.toml: the hands line 8,121 to 8,165 (the mail entry 1,194 as the plug-in's branch builds it, 1,225 as sent)
+  and the session-start total by the 44 to 117,105, each with its dated note; docs/budgets.md is what `yerk docs own`
+  writes.
+- Why: on 2026-11-01 a room asked to cancel a booking by the Cancel link in its confirmation mail read the mail and had
+  the link's words and no address; the mailbox's web page in the browser would not open the mail by its row, and the
+  booking site's own cancel page needs the token only that link carries, so the room filed the need (need 33 of
+  2026-11-01).
+
+**Upgrading**: merge this before, or with, the plug-in's deploy, which is fast-forwarding hands-mcp's main to
+`need-2026-11-01-33` (3c3c56c); a room has the links from its next process start after that. budgets.toml's hands line
+and `total` move with this change, so a deploy after the plug-in's branch is in does not refuse on its size; until
+then a room sends the mail entry at its old 1,181, under the new line.
+
 ### need-2026-10-30-25 (#?)
 
 - A room can watch a video attached to a Discord message now: `watch` takes the message's link as its `url`
