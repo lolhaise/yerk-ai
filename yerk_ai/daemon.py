@@ -741,10 +741,10 @@ class Yerkd:
             return {"ok": False, "line": words.WORKER_OWN_ROOM.format(room=named)}
         return None
 
-    async def tool_rule(self, room: str, text: str, job: str) -> dict[str, Any]:
+    async def tool_rule(self, room: str, text: str, job: str, triggers: list[str] | None = None) -> dict[str, Any]:
         """`remember` with a `job`: an owner's room files how it is done from now on (memory.rule) for every room, fitted under
         the rules part's budget; one with no room even with no examples is filed as a topic rule in rules-topics.md and said
-        (`topic`: the reply's clause and one machine-room notice, each naming the words it loads on)."""
+        (`topic`: the reply's clause and one machine-room notice, each naming the words it loads on: `triggers`, when given)."""
         if room not in self.rooms or not self.owner(room):
             return {"ok": False, "line": words.RULES_OWNER_ONLY}
         if self.reader(room).sealed:        # its teaching stays its own day-log note, the job its label, never the shared rules
@@ -752,7 +752,8 @@ class Yerkd:
         with self.rooms[room].lock:
             mid = ",".join(m.id for m in self.rooms[room].inflight) or f"x{self.rooms[room].turn_key}"
         cap = 0 if uncapped(self.budgets) else int(self.budgets["session_start"]["appended"]["rules"])     # 0: no strip, no topic filing
-        r = await asyncio.to_thread(memory.rule, self.memory, room, mid, job, text, cap, self.daily, context.books(self.private, self.room_confs))
+        r = await asyncio.to_thread(memory.rule, self.memory, room, mid, job, text, cap, self.daily, context.books(self.private, self.room_confs),
+                                    tuple(triggers or ()))
         if not r["ok"]:
             return r
         on = words.either(r.get("triggers", []))

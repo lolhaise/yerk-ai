@@ -8,6 +8,31 @@ version changes.
 
 ## 2026-11-02
 
+### need-2026-10-25-22 (#?)
+
+- A room can choose the words a topic rule loads on: `remember` with a `job` takes `triggers`, words or short phrases a
+  message on the job holds (the owner's, when named). A rule the shared rules file has no room for then loads on its
+  job's words and those, in place of what its own text names (a name, a capitalised word mid-sentence), kept on its line
+  in rules-topics.md as an `[on: ...]` mark before its trailer.
+- A picked word rides alone at the weight of a word only that rule says, so an everyday word the extractor never takes
+  ("money") or one every rule says still loads it; a phrase rides when a message says each of its words that names
+  something, in any order. A trigger whose words all name nothing ("how do I") is refused, and nothing is filed.
+- A filing of the job that names no `triggers` keeps the ones its live topic rule has, so a correction to the rule's
+  words never drops the owner's choice; the same call again is a retried one and files nothing.
+- `replaced` names every line of its job a filing marked, in the rules file or the topic rules. A topic filing marked its
+  job's older topic line and said `replaced: []`, and so did a filing into the rules file that marked its job's topic rule.
+- The reply's clause and the machine room's notice name the words picked. `yerk explain topic-triggers` has the ability.
+  `remember` grows by about 279 characters as sent, so `yerk_tools` goes to 15,400 and the session-start total to 113,602;
+  the code ceiling moves up by 25, to 23,811.
+- Why: on 2026-10-25 an owner room asked to make a topic rule load on an everyday word and phrases holding it filed the
+  rule again with those words in its text; its triggers came from its job's words and the names its text held, never the
+  word asked for, and the filing said `replaced: []` though it had marked the older line, so the room could not tell
+  whether two filings of the job sat side by side.
+
+**Upgrading**: nothing to change by hand; every owner room files with `triggers` from its next process start after the
+deploy, and a topic rule filed before it keeps the words its text gives it until it is filed again with `triggers`.
+budgets.toml moves with the code: `yerk_tools` to 15,400, the session-start total to 113,602, the code ceiling to 23,811.
+
 ### need-2026-10-25-21 (#?)
 
 - An owner room can check a worker's claim about Yerk against the code now: every owner room's settings carry a Read

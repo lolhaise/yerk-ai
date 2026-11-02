@@ -1,6 +1,7 @@
 """Checks rules on demand: a rule that does not fit in the rules file loads when a message names its topic, never at session start, and is never
-never held in no room. Its triggers are its job's words and what its own words name, each weighted by its rarity among the
-rules as recall weighs a word; it rides in the per-message rules part beside the news, best first and under that part's
+left where no room gets it. Its triggers are its job's words and what its own words name, or the words it was filed to load on
+(`triggers`), each weighted by its rarity among the rules as recall weighs a word, a picked one as a word only it says; it
+rides in the per-message rules part beside the news, best first and under that part's
 budget, each once per session and again after a compaction, in the rooms its [rooms: ...] names or in every room. yerkd
 moves rules-overflow.md's rules into it once; curate proposes `topic`, `gate` and a promotion from it. Every value here is
 a placeholder (decision 22)."""
@@ -12,9 +13,10 @@ from datetime import datetime, timezone
 
 import pytest
 
-from yerk_ai import context, curate, memory, words
+from yerk_ai import context, curate, mcp_server, memory, words
 from yerk_ai.config import EXAMPLE_PRIVATE
 
+from fake_channel import ConsoleChannel
 from test_curate_rules import NOW, tree  # noqa: F401  (the curate fixture: an example layer, its rules file, the week's evidence)
 from test_rules import A, B, FAMILY, daemon, fill, rule, start
 
@@ -166,6 +168,101 @@ def test_a_topic_filing_supersedes_its_jobs_older_line_in_the_rules_file(tmp_pat
     block = said(y, "sid-b", "draft the widget memo")
     assert f"replaced in rules.md: {was.removeprefix('- ')}" in block and f"{context.TOPICAL}\n- write a widget memo: {body}" in block
     assert rule(y, A, body, "write a widget memo") == {**r, "replaced": []} and path.read_text().splitlines()[-1] == memory.mark(was, "tree/rules-topics.md:3")
+
+
+PLAN = "Draft a widget plan from the example ledger's totals, since Nora at Example Tank reads the totals first."
+MONEY = ["money", "how do I make money", "make us money"]
+
+
+def remember(y, monkeypatch, **args) -> dict:
+    """The room's own `remember` call, through Yerk AI's MCP server as example-room makes it."""
+    monkeypatch.setattr(mcp_server, "caller_room", lambda ctx: A)
+    got = asyncio.run(mcp_server.build(y, y.port, y.hook).call_tool("remember", args))
+    return json.loads((got[0] if isinstance(got, tuple) else got)[0].text)
+
+
+def test_a_topic_rule_loads_on_the_triggers_it_is_filed_with_and_its_older_filing_is_named_replaced(tmp_path, monkeypatch, capsys):
+    """Need 22 of 2026-10-25: asked to make a topic rule load on "money" and "how do I make money", a room filed the rule again with
+    those words in its text; its triggers stayed its job's words and the names its text holds, "money" (an everyday word) never one,
+    and the filing said replaced: [] though it had marked the older topic line. `triggers` picks them: the rule loads on those and its
+    job's words, never on a name its text holds, an [on: ...] mark before its trailer; the older line is marked and named in `replaced`,
+    and the reply's clause and the machine room's notice name the words picked."""
+    y = daemon(tmp_path)
+    y.room_confs["example-machine"] = {**y.room_confs[A], "role": "machine", "id": "example-machine-id"}
+    y.add_room("example-machine", ConsoleChannel())
+    fill(y, y.budgets["session_start"]["appended"]["rules"] - 50)
+    first = remember(y, monkeypatch, text=PLAN, job="write a widget plan")
+    tier = y.memory.root / memory.TOPIC_RULES
+    was = tier.read_text().splitlines()[-1]
+    assert first["topic"] and first["cite"] == "tree/rules-topics.md:3" and "money" not in first["triggers"]
+    start(y, B, "sid-a")
+    assert context.TOPICAL not in said(y, "sid-a", "how do I make money this year")          # the wall: no word of it a trigger
+    assert was in said(y, "sid-a", "lunch with Nora on friday")                                 # a name its text holds is one
+    capsys.readouterr()
+    r = remember(y, monkeypatch, text=PLAN, job="write a widget plan", triggers=MONEY)
+    on = "money, how do I make money or make us money"
+    assert r == {"ok": True, "job": "write a widget plan", "cite": "tree/rules-topics.md:4", "replaced": [first["cite"]], "topic": True,
+                 "triggers": MONEY, "rooms": [], "next": words.FILED_NEXT.format(clause=words.TOPIC_CLAUSE.format(triggers=on))}
+    new = f"- write a widget plan: {PLAN} [on: money, how do I make money, make us money] ({A}, "
+    lines = tier.read_text().splitlines()
+    assert lines[:3] == [*memory.TOPIC_HEAD, memory.mark(was, "tree/rules-topics.md:4")] and lines[3].startswith(new) and len(lines) == 4
+    posts = [json.loads(x) for x in capsys.readouterr().out.splitlines() if x.startswith("{")]
+    assert [p["notice"] for p in posts if p["room"] == "example-machine"] == [f"{words.DONE} " + words.RULE_TOPIC.format(
+        triggers=words.line(on, words.PHONE - 8), job="write a widget plan", room=A, where=words.TOPIC_WHERE[0],
+        cap=y.budgets["session_start"]["appended"]["rules"])]
+    start(y, B, "sid-b")
+    assert f"{context.TOPICAL}\n{lines[3]}" in said(y, "sid-b", "can we make some money?")      # the words picked
+    start(y, B, "sid-c")
+    assert context.TOPICAL not in said(y, "sid-c", "lunch with Nora on friday")                 # never on a name its text holds now
+    assert lines[3] in said(y, "sid-c", "the widget plan for the fall")                         # its job's words still
+    start(y, B, "sid-d")
+    assert lines[3] in said(y, "sid-d", "money")                                                # one word picked, alone
+
+
+def test_a_picked_trigger_weighs_a_word_only_its_rule_says_and_a_phrase_rides_on_every_word_of_it():
+    """A word every rule says weighs next to nothing (rarities), so a rule whose job names "money" never rides on it alone where
+    every rule says money; a rule filed to load on it does, at the weight of a word only that rule says, and on a phrase it
+    picked only when a message says each of that phrase's words that names something, in any order."""
+    corpus = [f"- example job {i}: Count the money twice, since the till is short. {AT} [m:m-{i}]" for i in range(6)]
+    job = f"- count the money: Count it at noon, since the bank closes at one. {AT} [m:m-7]"
+    picked = f"- write a widget plan: Draft it from the ledger, since the buyer reads it. [on: money, break even] {AT} [m:m-8]"
+    rules = [*corpus, job, picked]
+    one = memory.rarities(rules)[1]
+    assert memory.picked(picked) == ["money", "break even"] and memory.picked(job) == [] and "money" in memory.triggers(job).values()
+    assert memory.on_topic("money?", [job, picked], rules) == [(round(one, 2), picked)]
+    assert memory.on_topic("when do we break even", [picked], rules) == [(round(one, 2), picked)]
+    assert memory.on_topic("even so, break the glass", [picked], rules) and not memory.on_topic("break the glass", [picked], rules)
+    assert memory.cue(picked, rules) == ["money", "break even"] and memory.placed(picked, [A]).endswith(f"[on: money, break even] [rooms: {A}] {AT} [m:m-8]")
+
+
+def test_a_re_filing_naming_no_triggers_keeps_the_ones_picked_and_a_trigger_naming_nothing_files_nothing(tmp_path):
+    """The owner's words stay a rule's until others are picked: a correction filed with no `triggers` keeps its job's live topic
+    rule's, the same call again is a retried one, and a trigger whose words all name nothing (a, the, how) is refused whole."""
+    y = daemon(tmp_path)
+    fill(y, y.budgets["session_start"]["appended"]["rules"] - 50)
+    r = rule(y, A, PLAN, "write a widget plan", ["money", "money", "break, even"])
+    assert r["triggers"] == ["money", "break even"]                                             # once each, no mark's own comma
+    assert rule(y, A, PLAN, "write a widget plan", ["money", "break even"]) == r == rule(y, A, PLAN, "write a widget plan")   # retried
+    fixed = rule(y, A, PLAN.replace("first", "before noon"), "write a widget plan")
+    assert fixed["triggers"] == ["money", "break even"] and fixed["replaced"] == [r["cite"]]
+    tier = y.memory.root / memory.TOPIC_RULES
+    before = tier.read_bytes()
+    assert rule(y, A, PLAN, "write a widget plan", ["how do I", "profit"]) == {"ok": False, "error": (
+        "nothing filed: a trigger needs a word that names something, not only words like a, the or how: how do I")}
+    assert tier.read_bytes() == before and [x for x in memory.live_rules(tier) if x.startswith("- write a widget plan: ")] == [
+        tier.read_text().splitlines()[-1]]
+
+
+def test_a_filing_the_rules_file_has_room_for_names_its_jobs_topic_line_replaced(tmp_path):
+    """The other way round: a rule filed into rules.md once it has room again marks its job's topic line superseded, as it did,
+    and names it in `replaced` too, where that said [] before; rules.md never carries the triggers, since every start loads it."""
+    y = daemon(tmp_path)
+    fill(y, y.budgets["session_start"]["appended"]["rules"] - 50)
+    r = rule(y, A, PLAN, "write a widget plan", MONEY)
+    path = fill(y, 3000)
+    back = rule(y, A, PLAN, "write a widget plan", MONEY)
+    assert "topic" not in back and back["replaced"] == [r["cite"]] and "[on: " not in path.read_text()
+    assert memory.live_rules(y.memory.root / memory.TOPIC_RULES) == [] and path.read_text().splitlines()[-1].startswith(f"- write a widget plan: {PLAN} (")
 
 
 TILL ="- close the till: Count the till twice before closing, since one count misses a coin. (example-room, 2026-10-21 08:00:00+00:00) [m:1010]"
