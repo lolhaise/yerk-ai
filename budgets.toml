@@ -7,7 +7,7 @@
 # The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and
 # Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 [session_start]
-total = 113602
+total = 114202
 
 # Load order, most stable first, so the cached start of the prompt survives.
 # The first parts are Claude Code's own (its default prompt, the built-in tools
@@ -72,10 +72,15 @@ total = 113602
 # room asked to make one load on an everyday word had no way to) takes the tool from 1,625 to 1,904 as this tree builds it
 # on Python 3.13, about 279 more as sent, so about 15,328 on the 15,049 the rooms send; so 15,400, no part could pay, the
 # total rose by the 300.
+# 2026-11-02, need-2026-10-25-23: the `delete` tool (a delete the owner orders outside a room's work folder, held with each
+# path shown and run once on the owner's word, for good, by the daemon, since a room asked to free a full disk had its `rm`
+# refused and the rest of the disk read-only in its sandbox) is 605 as this tree builds it on Python 3.13, about 636 as
+# sent (31 over its build, as each of Yerk AI's entries goes out), so about 15,964 on the 15,328 the rooms send; so
+# 16,000, no part could pay, the total rose by the 600.
 [session_start.claude_code]
 claude_code_prompt = 10966
 builtin_tools = 12132
-yerk_tools = 15400
+yerk_tools = 16000
 deferred_tool_names = 3429
 mcp__hands__ = 7462
 mcp__web-ladder__web_image = 913
@@ -763,4 +768,12 @@ secs = 60
 # on each of its words, a re-filing keeping its job's, the refusal of one naming nothing, `replaced` from either file, the
 # docstrings), daemon.py 1 (the triggers to memory.rule), mcp_server.py 1 (the parameter and its sentence). 23,811: main
 # c0efc6d's 23,786 plus 25.
-lines = 23811
+# 2026-11-02: need-2026-10-25-23 raised it by 166, the `delete` tool, a delete the owner orders outside a room's work folder,
+# held with each path shown and run once on the owner's word, for good, by the daemon (need 23 of 2026-10-25: a room asked
+# to free a full disk had its `rm` refused by the trash gate and the rest of the disk read-only in its sandbox, and wrote
+# the lines for the owner to paste), not folded to fit: deletes.py 106 (what is never deleted and why, the mount table,
+# the size on disk, the preview, the delete path by path with what would not go), daemon.py 32 (the tool, its refusal at
+# the gate before the owner is asked, the preview at the hold, the release it deletes on, the way named in an owner room's
+# refusal), words.py 14 (the refusals, the kinds, the way; sizes in GB), mcp_server.py 10 (the tool's sentence), gates.py
+# 4 (the delete-outside rule, the way on the outside refusal). 23,977: main 43b6107's 23,811 plus 166.
+lines = 23977

@@ -2,7 +2,7 @@
 
 Written by `yerk docs own` from yerk_ai/mcp_server.py (build) and workers.WORKER_TOOLS; change those and run it again, never this page.
 
-The 15 tools Yerk AI's own MCP server hands every room's Claude Code, preloaded, as mcp__yerk__NAME. Each one's description is the text the model reads, indentation dropped. A worker gets none of them unless [workers] yerk_tools in yerkd.toml names some, and then only recall, read_memory, on its own server.
+The 16 tools Yerk AI's own MCP server hands every room's Claude Code, preloaded, as mcp__yerk__NAME. Each one's description is the text the model reads, indentation dropped. A worker gets none of them unless [workers] yerk_tools in yerkd.toml names some, and then only recall, read_memory, on its own server.
 
 ## send
 
@@ -224,6 +224,17 @@ and it goes once. A result with `maybe_sent` may have gone out: say so, and neve
 
 - `to`: string, required
 - `text`: string, required
+
+## delete
+
+```text
+Deletes files or folders outside this room's work folder when the owner orders it, since your shell deletes only
+inside it: for good, not to the trash, so the disk space comes back. `paths`: whole, real paths from /. Held for the
+owner to read first: once they say the word, call it again the same and it runs once. Returns what went, what failed
+and why, and the space freed.
+```
+
+- `paths`: list of string, required
 
 ## voice_note
 

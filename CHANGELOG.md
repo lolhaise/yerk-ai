@@ -8,6 +8,34 @@ version changes.
 
 ## 2026-11-02
 
+### need-2026-10-25-23 (#?)
+
+- A room the owner orders to delete files or folders outside its work folder can do it now: the new `delete` tool on
+  Yerk's own server takes their whole paths, and the daemon deletes them, since a room's shell deletes only inside its work
+  folder and Claude Code's sandbox keeps the rest of the disk read-only to it. For good, not to the trash: what the owner
+  orders deleted out there is to free the disk, and the trash frees nothing. A file or a link is unlinked (never the file a
+  link points to), a folder is removed whole without following a link inside it, and the result says what went, what would
+  not and why, and the space freed.
+- Shown first: the new `delete-outside` gate rule holds every call, and the room is shown each path whole with what it is
+  (a file and its size on disk, a folder, a link); the owner's approval word runs that exact call once, and an edit is a new
+  call and a new hold. The tool deletes only what the gate released, so with `delete-outside` in `[gates] off`, or a hook
+  that fails open, nothing goes.
+- Never deleted, approval or not, and refused before the owner is asked: a call from a person's room, a path that is not
+  whole, not there or not its own real path (a link or a `..` on its way, so the path shown is the path deleted), the
+  root, a top folder, the home folder, a mounted disk or a folder holding one, and Yerk AI's own folders (its code, its
+  state and private folders, the memory, an account's folder) or one holding them.
+- A room's own `rm` outside its work folder is still refused, and in an owner room the refusal now names the `delete` tool;
+  a worker and a person's room keep the old refusal. Each delete's outcome is a `delete` row in the ledger's gates table.
+- Sizes of a gigabyte or more read in GB everywhere words.size says one (`yerk retention`, the doctor's growth line).
+- `yerk explain delete-outside` has the ability. Every room is handed the tool's sentence, so `yerk_tools` goes to 16,000
+  and the session-start total to 114,202; the code ceiling moves up by 166, to 23,977.
+- Why: on 2026-10-25 a room the owner asked to delete old junk outside its work folder to free a full disk had its `rm`
+  refused by the trash gate, found the rest of the disk read-only in its sandbox, and wrote the delete lines into a script
+  for the owner to paste and run (need 23 of that day).
+
+**Upgrading**: nothing to change by hand; every owner room has the tool from its next process start. budgets.toml moves
+with the code: `yerk_tools` to 16,000, the session-start total to 114,202, the code ceiling to 23,977.
+
 ### need-2026-10-25-22 (#?)
 
 - A room can choose the words a topic rule loads on: `remember` with a `job` takes `triggers`, words or short phrases a

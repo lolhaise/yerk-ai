@@ -344,6 +344,18 @@ TEXT_AWAY = "the Mac's bridge did not answer (the Mac asleep or away, or the bri
 TEXT_MAYBE = "it may have gone out, and the Mac never confirmed it: tell the owner to check Messages, and never send it again unasked"
 TEXT_WHY = {-32602: "Messages would not take that number or address", -32603: "Messages on the Mac failed or lacks a permission",
             -32000: "the Mac's bridge was busy, so try again in a minute", -32004: "the Mac's bridge was busy, so try again in a minute"}
+# a delete the owner orders outside a room's work folder (deletes.py): why one cannot go, said before the owner is asked
+DELETE_OWNER_ROOMS = "a delete outside the work folder is the owner's to order, so only the owner's own rooms make one"
+DELETE_NO_PATHS, DELETE_NOT_WHOLE = "there is no path to delete", "\"{given}\" is not a whole path from /"
+DELETE_NOT_REAL = "{path} is not its own real path, {real}: name that one, so the path shown is the path deleted"
+DELETE_NOT_THERE = "nothing is at {path}"
+DELETE_TOP = "{path} is the root, a top folder or the home folder, which are never deleted"
+DELETE_MOUNTED = "{path} is a mounted disk or holds one, which is never deleted"
+DELETE_OWN = "{path} is Yerk AI's own or holds it (its code, state or private folder, the memory, an account's folder)"
+DELETE_NOT_RELEASED = "not deleted: a delete runs only as the call the owner was shown held and said the word for, once"
+NOT_DELETED, DELETE_PARTLY = "not deleted: {why}", "{n} could not be deleted, the first {first}"
+DELETE_KIND = {"link": "a link", "folder": "a folder", "file": "a file, {size}"}
+DELETE_WAY = " For a delete the owner orders, call `delete` with the whole paths: it is held for the owner's word, then runs once."
 # a transcript's head (TRANSCRIPT_HEAD's `how`) when a video's own captions wrote it (captions.py)
 FROM_CAPTIONS = "the video's own captions, free, their timestamps"
 FROM_AUTO_CAPTIONS = "the video's auto-generated captions, free; no punctuation, and a name may be misheard"
@@ -444,7 +456,9 @@ VOICE_PLAIN = "Discord took it without the voice message flag"
 
 
 def size(n: int) -> str:
-    """'25 MB', '900 KB', '12 bytes'."""
+    """'2.1 GB', '25 MB', '900 KB', '12 bytes'."""
+    if n >= 1024 ** 3:
+        return f"{n / 1024 ** 3:.1f}".removesuffix(".0") + " GB"
     if n >= 1024 * 1024:
         return f"{n / (1024 * 1024):.1f}".removesuffix(".0") + " MB"
     return f"{n / 1024:.0f} KB" if n >= 1024 else f"{n} bytes"

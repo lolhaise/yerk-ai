@@ -2,10 +2,11 @@
 # official Python SDK) and the send tool's shape are adapted from Hermes Agent v0.22.2,
 # mcp_serve.py (create_mcp_server, messages_send), https://github.com/NousResearch/hermes-agent
 # Copyright (c) 2025 Nous Research. MIT License. See NOTICE.
-"""Yerk AI's own MCP server: fifteen tools (send, hold, recall, read_memory, remember, worker, schedule, settings, transcribe,
-voice_note, seen, render, watch, need, text), local-only HTTP, preloaded in every room; transcribe, voice_note, watch and text are here
-and not plug-ins because the daemon has the network and a room's shell has none, seen because no owner room has a Write tool, and render
-because LibreOffice needs a writable /tmp a room's sandbox does not give. A worker gets none of it: by default no MCP server at all, and with
+"""Yerk AI's own MCP server: sixteen tools (send, hold, recall, read_memory, remember, worker, schedule, settings, transcribe,
+voice_note, seen, render, watch, need, text, delete), local-only HTTP, preloaded in every room; transcribe, voice_note, watch and text are
+here and not plug-ins because the daemon has the network and a room's shell has none, seen because no owner room has a Write tool, render
+because LibreOffice needs a writable /tmp a room's sandbox does not give, and delete because that sandbox mounts all but the room's folders
+read-only. A worker gets none of it: by default no MCP server at all, and with
 [workers] yerk_tools its own stdio server (`worker_server`) carrying recall and read_memory only.
 
 Every endpoint (/mcp, /hook, /control) wants the `x-yerk-secret` header (restart test R3). Three
@@ -58,6 +59,7 @@ class Daemon(Protocol):
     async def tool_seen(self, room: str, path: str, text: str, shows: str) -> dict[str, Any]: ...
     async def tool_need(self, room: str, asked: str, tried: str, needed: str, shadow: str = "") -> dict[str, Any]: ...
     async def tool_text(self, room: str, to: str, text: str) -> dict[str, Any]: ...
+    async def tool_delete(self, room: str, paths: list[str]) -> dict[str, Any]: ...
 
 
 def caller_room(ctx: Context) -> str:
@@ -254,6 +256,14 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         exactly as it should arrive. It is held for the owner to read first: once they say the word, call it again the same
         and it goes once. A result with `maybe_sent` may have gone out: say so, and never send it again unasked."""
         return json.dumps(await daemon.tool_text(caller_room(ctx), to, text))
+
+    @mcp.tool()
+    async def delete(paths: list[str], *, ctx: Context) -> str:
+        """Deletes files or folders outside this room's work folder when the owner orders it, since your shell deletes only
+        inside it: for good, not to the trash, so the disk space comes back. `paths`: whole, real paths from /. Held for the
+        owner to read first: once they say the word, call it again the same and it runs once. Returns what went, what failed
+        and why, and the space freed."""
+        return json.dumps(await daemon.tool_delete(caller_room(ctx), paths))
 
     @mcp.tool()
     async def voice_note(script: str, name: str = "", owner_yes: bool = False, *, ctx: Context) -> str:
