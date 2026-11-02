@@ -27,8 +27,8 @@ version changes.
 - Here, abilities.toml has the described `free-bookings` entry (the browser ability is not in this repo), with six
   phrases ("book a table", "make a reservation", ...) that hand a room asked that way the entry whole
   (`yerk explain free-bookings`); the README says it in Add-ons (its web plug-in aside cut to stay under 12,000 bytes),
-  and the GUIDE's count is what the file holds, 94: 36
-  built. The plug-in's tool text does not change, so no budget line moves.
+  and the GUIDE's count is what the file holds, 94: 36 built. The plug-in's tool text does not change, so no budget
+  line moves.
 - Why: on 2026-10-26 a room the owner told to book a table reached the booking's Confirm page and had its four fields
   and a checkbox refused as a payment page eleven times, once with the owner's confirmation on the call.
 

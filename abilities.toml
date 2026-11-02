@@ -315,8 +315,6 @@ free_path = "none for calls"
 why_not = "Not planned for the public harness: it needs a paid voice vendor and a public tunnel, and most users never need it."
 asked_as = ["call someone for me", "make a call for me", "place a call", "call on my behalf"]
 
-# need-2026-10-26-21: a page asked for in the browser on the PC would not open; that browser had quit with its
-# last tab, its port reset every call, and the error a room read was a stack trace's first line.
 # need-2026-10-26-23: a free table booking's Confirm page sat on a checkout address, and the browser refused every field on it.
 [abilities.free-bookings]
 state = "described"
@@ -334,6 +332,8 @@ free_path = "this is the free path"
 why_not = "It rides on the browser ability, which is not in this repo; an install whose browser plug-in tells a checkout look-alike from a payment page has it there, and a room holding that tool books a free table on the owner's word."
 asked_as = ["book a table", "reserve a table", "make a reservation", "book the reservation", "confirm the reservation", "free booking"]
 
+# need-2026-10-26-21: a page asked for in the browser on the PC would not open; that browser had quit with its
+# last tab, its port reset every call, and the error a room read was a stack trace's first line.
 [abilities.browser]
 state = "described"
 what = "Drives a real browser on a separate profile, so it never takes the owner's mouse and the owner's own windows stay untouched."
