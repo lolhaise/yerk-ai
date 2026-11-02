@@ -306,7 +306,8 @@ CLAUDE = {"Called the Read tool": "Claude Code: files re-read after compaction",
           "Stop hook blocking error": "Stop hook bounce"}
 HEADS_RE = re.compile("(?m)^(?=" + "|".join(map(re.escape, CLAUDE)) + ")")
 OTHER, TOKENS, OWN = "Claude Code: other reminders, wrappers", "Claude Code: token count", "the message's own text"
-IN_TEXT = (("[a reply to ", "reply header"), ("[attachment] ", "attachment lines"), ("[voice note] ", "attachment lines"))
+IN_TEXT = (("[a reply to ", "reply header"), ("[attachment] ", "attachment lines"), ("[voice note] ", "attachment lines"),
+           ("[video] ", "attachment lines"))
 
 
 def _add(into: dict[str, int], parts: dict[str, int]) -> dict[str, int]:

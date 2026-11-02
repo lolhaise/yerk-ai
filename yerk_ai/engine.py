@@ -35,6 +35,7 @@ from .config import write_private
 from .ledger import Ledger
 from .lifted.classify import Failure, FailureTable
 from .transcribe import is_audio
+from .watch import is_video
 
 log = logging.getLogger("yerk.engine")
 STREAM_FLAGS = ["-p", "--input-format", "stream-json", "--output-format", "stream-json",
@@ -375,10 +376,10 @@ class RoomProcess:
             self._note({"e": ev})
             if ev.get("type") == "assistant":
                 for c in (ev.get("message") or {}).get("content") or []:
-                    if c.get("type") == "tool_use" and c.get("name") in ("Read", "mcp__yerk__transcribe"):   # opened, or heard
-                        p = str((c.get("input") or {}).get("file_path") or (c.get("input") or {}).get("path") or "")
-                        if c.get("name") != "Read" or not is_audio(p):      # a recording is heard only by transcribing it
-                            self.read_paths.add(p)
+                    if c.get("type") == "tool_use" and c.get("name") in ("Read", "mcp__yerk__transcribe", "mcp__yerk__watch"):
+                        p = str((c.get("input") or {}).get("file_path") or (c.get("input") or {}).get("path") or "")   # opened, heard, watched
+                        if c.get("name") == "mcp__yerk__watch" or not is_video(p) and (c.get("name") != "Read" or not is_audio(p)):
+                            self.read_paths.add(p)          # a recording is heard only by transcribing it, a video seen only by watching it
             if self.evidence is not None:
                 with contextlib.suppress(Exception):   # the ledger never stops the stream
                     self.evidence.observe(ev)

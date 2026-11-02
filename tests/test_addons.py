@@ -213,13 +213,13 @@ def test_an_attachment_type_it_reads_names_its_tool_under_the_attachment_line_on
 
     def said() -> list[str]:            # the room's text for a message with a video and a picture, as yerkd builds it
         return message_text(NS(clean_content="?", content="?"), files, "", addons.reads(state)).splitlines()
-    assert addons.reads(state) == {} and said() == ["?", *[f"[attachment] {n}, {t}, 10 bytes, saved at /s/inbox/9/{n}" for n, t in
-                                                        (("clip.mp4", "video/mp4"), ("photo.png", "image/png"))]]
+    clip, photo = (f"[attachment] {n}, {t}, 10 bytes, saved at /s/inbox/9/{n}" for n, t in (("clip.mp4", "video/mp4"), ("photo.png", "image/png")))
+    assert addons.reads(state) == {} and said() == ["?", clip, words.VIDEO_FILE.format(name="clip.mp4"), photo]    # watch's own line
     assert addons.add(str(a), priv, state, run=fake(), say=lambda _: None) == 0
     line = words.ADDON_READS.format(name="clip.mp4", tool="mcp__hello__hello")
-    assert addons.reads(state) == {"video/*": "mcp__hello__hello"} and said()[2] == line and len(said()) == 4 and shape.offenses(line) == []
+    assert addons.reads(state) == {"video/*": "mcp__hello__hello"} and said()[3] == line and len(said()) == 5 and shape.offenses(line) == []
     assert addons.remove("hello", priv, state, run=fake(), say=lambda _: None) == 0
-    assert addons.reads(state) == {} and len(said()) == 3
+    assert addons.reads(state) == {} and len(said()) == 4
 
 
 def test_yerk_add_refuses_the_example_layer_and_yerk_status_names_the_installed_add_ons(install, monkeypatch, capsys):

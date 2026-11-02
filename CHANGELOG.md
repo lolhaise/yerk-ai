@@ -8,6 +8,37 @@ version changes.
 
 ## 2026-11-02
 
+### need-2026-10-24-22 (#?)
+
+- A room sent a video file now sees it: `watch` takes `path`, the file's saved path from its `[attachment]` line, in place
+  of a link, and gives what a link gives: frames spread evenly through it (6, or 1 to 12) that the room opens with Read,
+  and a transcript of its sound. Nothing is pulled and yt-dlp never runs. The frames go to
+  `videos/file-<its name>-<10 hex of its path>/` in the room's work folder, so two files of one name never share them, and
+  the nightly sweep may take them, since a later call makes them again; the file stays in the inbox as it was sent. The
+  transcript is saved beside it as `NAME.transcript.txt`, where `transcribe` writes one, on the same keys and US$1 gate,
+  each paid call a spend row under `watch`, and one already there is read, so a video watched or transcribed before is
+  never paid for twice. A video with no sound gives its frames, and a file with no picture gives its words; the note says why.
+- Only the room's own files: a path outside its folders (a link out included, since the path is resolved first), a
+  missing file, and a call with both a link and a path are refused in words. A link the room's shell left where the
+  frames go is never written through.
+- A video's `[attachment]` line gains a `[video]` line: the room sees a video only as the frames `watch` takes, so it
+  calls `watch` on that path before it answers. A turn that ends without that call is bounced once at Stop, naming the
+  file, as a picture never read and a voice note never transcribed are; a Read of a video opens nothing, and `transcribe`
+  on one gives its sound alone, so neither counts. A `.webm` stays a recording, as before, since it can be either.
+- The card says `watching the video clip`, the file's plain name, never its path. The mechanics' watch line names the
+  file's way, the tool gains a sentence, and `yerk explain video-file` has the ability; `yerk explain watch` points to it.
+  The GUIDE has it under Video files, and its count is what the file holds, 96: 38 built; the README, at its 12,000
+  bytes on main, is left as it is.
+- Why: on 2026-10-24 a room asked to say what was in a video file sent to it found Read could not open it, and its two
+  tries at ffmpeg in its shell each waited on an approval no one could give mid-turn; it answered off a thumbnail in a
+  screenshot sent with it. On 2026-10-28 another room asked to watch a 9-second clip, not to listen to it, got the sound
+  alone from `transcribe`, and `watch` took only a link (need 22 of 2026-10-24, filed twice).
+
+**Upgrading**: nothing to change by hand; ffmpeg and ffprobe already on yerkd's PATH serve it from the next start, and
+each room has the mechanics line from its next process start. budgets.toml moves with the code, on main's numbers after
+#161 to #166 and #168: Yerk AI's tools to 18,000, the session-start total to 116,202, the code ceiling to 24,347; the
+mechanics (5,888) stay under their 6,000, which leaves a checkout's path of up to 118 characters.
+
 ### need-2026-10-27-23 (#?)
 
 - An owner's room can see a branch or a pull request of Yerk's own repository as GitHub has it now: the new

@@ -59,7 +59,7 @@ import aiohttp
 import discord
 from discord.http import handle_message_parameters
 
-from .. import addons, files as extracted, status, transcribe, words
+from .. import addons, files as extracted, status, transcribe, watch, words
 from ..config import EFFORTS, uncapped
 from ..ledger import Ledger
 from ..lifted.loopguard import LoopGuard
@@ -154,8 +154,9 @@ def file_type(name: str, given: str | None = None) -> str:
 
 def message_text(m: Any, files: list[dict[str, Any]] | None = None, reply: str = "", reads: dict[str, str] | None = None) -> str:
     """The message body (mentions as names), with what it replies to and its files listed (staged path, or why it is missing)
-    so none is dropped unseen, a voice note with the line that it is heard only through the transcribe tool, a type an installed
-    add-on reads with the line naming its tool (`reads`, addons.reads). Without `files`, the attachments as Discord lists them."""
+    so none is dropped unseen, a voice note with the line that it is heard only through the transcribe tool, a video with the
+    line that it is seen only through the watch tool, a type an installed add-on reads with the line naming its tool (`reads`,
+    addons.reads). Without `files`, the attachments as Discord lists them."""
     lines = [reply, str(getattr(m, "clean_content", None) or m.content or "")]
     if files is None:
         files = [{"name": a.filename, "size": a.size, "type": file_type(a.filename, getattr(a, "content_type", None)),
@@ -164,6 +165,7 @@ def message_text(m: Any, files: list[dict[str, Any]] | None = None, reply: str =
         if f.get("ok"):
             lines.append(f"[attachment] {f['name']}, {f['type']}, {f['size']:,} bytes, saved at {f['path']}")
             lines += [words.VOICE_NOTE.format(name=f["name"])] if transcribe.is_audio(f["name"], f["type"]) else []
+            lines += [words.VIDEO_FILE.format(name=f["name"])] if watch.is_video(f["name"], f["type"]) else []
             lines += [words.ADDON_READS.format(name=f["name"], tool=t) for k, t in (reads or {}).items() if fnmatchcase(f["type"], k)][:1]
             lines += [words.FILE_TEXT.format(path=f["text"])] if f.get("text") else []
         else:
