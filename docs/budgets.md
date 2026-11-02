@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 113002`
+- `total = 113202`
 
 ## [session_start.claude_code]
 
@@ -36,9 +36,11 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-01, need-2026-10-24-1: the `text` tool (one text in the owner's name from the Mac, held with its words shown and sent once on the owner's word, since a room asked to text someone for the owner had no tool to) is 688 as this tree builds it on Python 3.13, about 719 as sent (31 over its build, as each of Yerk AI's entries goes out), so about 15,049 on the 14,330 the rooms send; so 15,100, no part could pay, the total rose by the 700.
 
+2026-11-02, need-2026-10-24-22: the `watch` tool's `path` (a video file sent to a room watched where it is, its frames and its transcript as a link's, since Read opens no video and ffmpeg in a room's shell waits on an approval no one gives mid-turn) takes it from 1,545 to 1,768 as this tree builds it on Python 3.13, about 1,799 as sent, so about 15,272 on the 15,049 the rooms send; so 15,300, no part could pay, the total rose by the 200. The watch line's clause (a video file sent to you: on its `path`) took the mechanics to 5,679, under their 5,700.
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
-- `yerk_tools = 15100`
+- `yerk_tools = 15300`
 - `deferred_tool_names = 3429`
 - `mcp__hands__ = 7462`
 - `mcp__web-ladder__web_image = 913`
@@ -383,7 +385,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-01: need-2026-10-24-1 raised it by 7 more, the preview naming who a text goes to exactly as it is sent (PR 158's cold read: an address shaped like a path was shown by its last name, so the owner could say the word for one person and the text go to another), not folded to fit: texts.py 6 (preview()), daemon.py 1 (its call at the hold). 23,776: 23,769 plus 7.
 
-- `lines = 23776`
+2026-11-02: need-2026-10-24-22 raised it by 70, a video file sent to a room watched for every room, its frames and its transcript as a link's are (need 22 of 2026-10-24: a room sent a .mov could not see it, since Read opens no video, ffmpeg in its shell was held for an approval no one gives mid-turn, transcribe gave its sound alone and watch took only a link), not folded to fit: watch.py 38 (is_video and its kinds; run_file, the frames in a folder of their own under videos/ never through a link, the transcript beside the file read when it is there, one call a file at a time; stills' folder; the docstrings), words.py 11 (the [video] line, the Stop bounce, the refusals, the card's words), daemon.py 9 (`path` under may_send's rule as transcribe's, the call off the loop, its log line), room.py 5 (a video sent in staged for the Stop rule, its bounce), card.py 2 (a watched file by its plain name), discord.py 2 (the [video] line under its attachment line), engine.py 1 (only a watch call sees a video), mcp_server.py 1 (the tool's `path` and its sentence), context.py 1 (the [video] line among `yerk map --wire`'s attachment lines). 23,846: main 898ab72's 23,776 plus 70.
+
+- `lines = 23846`
 
 ## Uncapped
 

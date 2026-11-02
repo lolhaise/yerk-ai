@@ -460,21 +460,30 @@ class Yerkd:
         log.info("render: %s, %s", room, said)
         return r
 
-    async def tool_watch(self, room: str, url: str, frames: int = watch.FRAMES, owner_yes: bool = False) -> dict[str, Any]:
+    async def tool_watch(self, room: str, url: str, frames: int = watch.FRAMES, owner_yes: bool = False, path: str = "") -> dict[str, Any]:
         """The `watch` tool: a video in a post pulled from its link by yt-dlp into the calling room's work folder off the loop
         (watch.run), one download at a time across rooms, its frames taken and its transcript the page's own captions, else
         its sound transcribed as transcribe's is, on the same keys and gate, each paid call a spend row under `watch`; a post
-        pulled before is neither pulled nor paid again."""
+        pulled before is neither pulled nor paid again. With `path`, a video file from the room's own folders (may_send's
+        rule, as transcribe's) watched where it is (watch.run_file): nothing pulled, its frames and transcript the same way."""
         if room not in self.rooms:
             return {"ok": False, "error": words.WATCH_NO_ROOM.format(room=room)}
-        if not watch.is_link(url):
+        p = Path(path).expanduser().resolve() if path.strip() else None
+        if p and url.strip():
+            return {"ok": False, "error": words.WATCH_BOTH}
+        if p and not self.may_send(room, p):
+            return {"ok": False, "error": words.WATCH_NOT_HERE.format(name=p.name)}
+        if p and not p.is_file():
+            return {"ok": False, "error": words.WATCH_NO_FILE.format(name=p.name)}
+        if not p and not watch.is_link(url):
             return {"ok": False, "error": words.WATCH_NOT_LINK.format(given=words.no_paths(url.strip())[:120])}
 
         def hear(video: Path) -> dict[str, Any]:
             return transcribe.run(video, self.memory.embeddings_key, self.private / transcribe.GROQ_KEY, self.booker(room, "watch"),
                                   owner_yes, self.private / transcribe.META_KEY)
-        r, took = await asyncio.to_thread(watch.run, url, frames, self.state / "rooms" / room / "work" / watch.FOLDER, hear)
-        how = "pulled before" if r.get("reused") else f"pulled in {took:.1f} s" if r.get("video") else "not pulled"
+        root = self.state / "rooms" / room / "work" / watch.FOLDER
+        r, took = await (asyncio.to_thread(watch.run_file, p, frames, root, hear) if p else asyncio.to_thread(watch.run, url, frames, root, hear))
+        how = "a file of the room's" if p else "pulled before" if r.get("reused") else f"pulled in {took:.1f} s" if r.get("video") else "not pulled"
         said = (f"{r['slug']}, {r['seconds']} s, {len(r['frames'])} frame(s), {r['source'] or 'no'} transcript, {how}"
                 if r["ok"] else r["error"][:160])
         log.info("watch: %s, %s", room, said)

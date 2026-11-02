@@ -490,6 +490,7 @@ how = [
   "Transcript: a video with no captions has its sound go through the transcribe engine on its keys and its US$1 gate, each paid call a spend row under watch, saved beside the video; with no sound, or a transcript that fails, the frames still come and the result says why.",
   "Never twice: a post already pulled is not pulled again, and its transcript is read from its file, so a second call costs nothing.",
   "In the site's words: a page that needs a login, a private post or a page with no video is said as yt-dlp says it; no cookies and no logins are used.",
+  "A file: a video file sent to a room is watched from its saved path the same way, nothing pulled (yerk explain video-file).",
 ]
 tier = "key"
 keys = ["openai"]
@@ -499,6 +500,25 @@ price = "the download, the frames and a video's own captions are free; a video w
 key = "the transcript runs on transcribe's keys, in the private folder's secrets/: openai.key, and groq.key and meta.key, both optional; the next call reads it, no restart"
 free_path = "the frames, and the words of any video that has captions, come without a key; without yt-dlp the room says so"
 asked_as = ["watch this", "what does the video say", "this reel", "this tiktok", "the video he sent", "what happens in it", "read the whole podcast", "what does he say in this video", "the transcript of this youtube"]
+
+[abilities.video-file]
+state = "built"
+what = "A video file sent to a room (a .mov or .mp4 off a phone, or any video ffmpeg reads) is watched where it is saved, through the watch tool's `path`: still frames the room opens with Read and a transcript of its sound, as a video link gives them, since a room's Read opens no video and ffmpeg in its shell waits on an approval no one gives mid-turn."
+how = [
+  "Arrival: the file's [attachment] line gains a [video] line saying the room sees a video only as the frames watch takes, so it calls watch with the file's saved path before it answers; a .webm stays a recording, transcribe's, since it can be either.",
+  "Frames: ffprobe reads its length and its streams, then ffmpeg takes the frames asked for (6, or 1 to 12) spread evenly through it into videos/file-<its name>-<10 hex of its path>/ in the room's work folder, never through a link the room's shell left there; the file stays in the inbox as it was sent.",
+  "Transcript: its sound goes through the transcribe engine on its keys and its US$1 gate, each paid call a spend row under watch, saved beside the file as NAME.transcript.txt; one already there (watched or transcribed before) is read, never paid twice; a video with no sound, or a file with no picture, gives what it has and the result says why.",
+  "The room's own files: a path outside the room's folders, a missing file, or a link and a path in one call are refused in words, and nothing is pulled from anywhere.",
+  "Stop check: a turn that ends with no watch call on a video it was sent is bounced once, naming the file, since a Read of a video opens nothing and transcribe gives its sound alone.",
+]
+tier = "key"
+keys = ["openai"]
+provider = "OpenAI for the transcript, with transcribe's Groq and Meta keys when they are there"
+needs = "ffmpeg and ffprobe on the machine, on the daemon's PATH; the OpenAI key for the transcript"
+price = "the frames are free; the transcript at transcribe's prices (yerk explain transcribe): a 1-minute clip is about 1 US cent with all three engines"
+key = "the transcript runs on transcribe's keys, in the private folder's secrets/: openai.key, and groq.key and meta.key, both optional; the next call reads it, no restart"
+free_path = "the frames come without a key; without one the room says the video's sound could not be transcribed"
+asked_as = ["the video i sent", "this video file", "the clip i sent", "what's in this video", "look at this video", "frames from a video", "contact sheet"]
 
 [abilities.assistant-files]
 state = "built"

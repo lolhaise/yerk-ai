@@ -105,7 +105,7 @@ def padded(tmp: Path) -> Path:
 
 def test_capped_is_mains_assembly_byte_for_byte_with_the_switch_absent_or_false(tmp_path):
     """The fixture is this scenario assembled on the base commit (1ec2592, PR 145's merge; retaken on note-to-self, on
-    retention-keep and on need-2026-10-31-27, each one's mechanics line its only change): the start file, both messages,
+    retention-keep, on need-2026-10-31-27 and on need-2026-10-24-22, each one's mechanics line its only change): the start file, both messages,
     the compaction, every assembled.jsonl row, the topic rules told and every log line, the same with [limits] absent and
     false."""
     want = json.loads(FIXTURE.read_text())

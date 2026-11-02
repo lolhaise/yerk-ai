@@ -54,7 +54,7 @@ class Daemon(Protocol):
     async def tool_transcribe(self, room: str, path: str, owner_yes: bool = False) -> dict[str, Any]: ...
     async def tool_voice_note(self, room: str, script: str, name: str = "", owner_yes: bool = False) -> dict[str, Any]: ...
     async def tool_render(self, room: str, path: str) -> dict[str, Any]: ...
-    async def tool_watch(self, room: str, url: str, frames: int = 6, owner_yes: bool = False) -> dict[str, Any]: ...
+    async def tool_watch(self, room: str, url: str, frames: int = 6, owner_yes: bool = False, path: str = "") -> dict[str, Any]: ...
     async def tool_seen(self, room: str, path: str, text: str, shows: str) -> dict[str, Any]: ...
     async def tool_need(self, room: str, asked: str, tried: str, needed: str, shadow: str = "") -> dict[str, Any]: ...
     async def tool_text(self, room: str, to: str, text: str) -> dict[str, Any]: ...
@@ -215,7 +215,7 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         return json.dumps(await daemon.tool_render(caller_room(ctx), path))
 
     @mcp.tool()
-    async def watch(url: str, frames: int = 6, owner_yes: bool = False, *, ctx: Context) -> str:
+    async def watch(url: str = "", path: str = "", frames: int = 6, owner_yes: bool = False, *, ctx: Context) -> str:
         """A video in a post, its frames and its transcript, since your shell has no network to pull it: `url` is the link to
         a post that holds a video (an Instagram reel or post, a TikTok, an X post, a YouTube link, or any page yt-dlp knows).
         The daemon pulls the video into this room's work folder under videos/, takes `frames` still pictures spread evenly
@@ -226,8 +226,9 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         a video link and expects you to have watched it, since the caption, the cover picture and the comments are not the
         video. A page that needs a login, a private post or a page with no video comes back as that, in the site's own
         words. A transcript past US$1 comes back refused until the owner says yes; then call again with `owner_yes` true. A
-        video already pulled is not pulled or transcribed again."""
-        return json.dumps(await daemon.tool_watch(caller_room(ctx), url, frames, owner_yes))
+        video already pulled is not pulled or transcribed again. A video file sent to you, which Read cannot open, is watched
+        the same way from `path`, its saved path from its [attachment] line, in place of `url`; nothing is pulled."""
+        return json.dumps(await daemon.tool_watch(caller_room(ctx), url, frames, owner_yes, path))
 
     @mcp.tool()
     async def seen(path: str, text: str, shows: str, *, ctx: Context) -> str:

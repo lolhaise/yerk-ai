@@ -94,6 +94,7 @@ STEP = {"bash": "running a command", "read": "reading {what}", "read_memory": "r
 WORKER_STEP = {"start": "starting a worker", "list": "listing the workers", "stop": "stopping worker {id}",
                "report": "reading worker {id}'s report"}
 JOB_STEP = {"add": "scheduling job {name}", "remove": "removing job {name}", "list": "listing the jobs"}
+WATCH_FILE = "watching the video {what}"  # a watch call on a video file sent to the room, by its plain name
 MESSAGE_TO, NOTES, DAY_NOTES, FACT_FILE = "a message to {room}", "your notes", "the {day} notes", "{name}'s file"
 FILES = {"open-loops.md": "your open items", "MEMORY.md": "the pinned notes", "pinned.md": "the pinned notes", "rules.md": "the rules"}
 ANOTHER_WAY = "that did not work, trying another way"       # two or more failed steps in a row, as one row
@@ -297,6 +298,10 @@ def file_why(kind: str, **say: Any) -> str:
 VOICE_NOTE = ("[voice note] {name} is a recording. You take in sound only as the text the transcribe tool returns, so call "
               "transcribe on the path above before you answer, then open your reply with what it says, or with the fact that it "
               "could not be transcribed. Call that step transcribing, never listening, since nothing plays the sound to you.")
+# a video file (watch.py): the line under its [attachment] line, since Read cannot open a video
+VIDEO_FILE = ("[video] {name} is a video. You see a video only as the still frames the watch tool takes from it, so call watch "
+              "with `path` set to the path above before you answer, then Read its frames and answer with what they show and what "
+              "its transcript says, or with the fact that it could not be watched.")
 TRANSCRIBED_NEXT = ("Open your reply with what the recording says, in your own words. A segment marked (uncertain) has two "
                     "readings that disagree, so give that part as unsure or ask about it, since either reading may be wrong. A "
                     "letter before a line (A:) is a voice told apart by sound, so say which person each letter is as your guess "
@@ -314,7 +319,11 @@ RENDER_NOT_PDF = "{name} did not open as a PDF ({why}), so its pages could not b
 RENDER_DAMAGED, RENDER_LOCKED = "it is damaged or not a PDF", "it is locked with a password"
 # a video watched (watch.py): why no video came back, and a result's note on what it has no frames or transcript for
 WATCH_NO_ROOM = "watch puts the video in a room's work folder, and there is no room {room}"
-WATCH_NOT_LINK = "\"{given}\" is not a link: watch takes a post's web address, one that starts http:// or https://"
+WATCH_NOT_LINK = ("\"{given}\" is not a link: watch takes a post's web address, one that starts http:// or https://, or a video "
+                  "file's saved path as `path`")
+WATCH_BOTH = "watch takes a post's link or a video file's saved path, one of the two"
+WATCH_NOT_HERE = "{name} is outside this room's folders; watch reads the videos sent to it and this room's own work"
+WATCH_NO_FILE = "there is no file {name} in this room's folders"
 WATCH_NO_YTDLP = "yt-dlp is not on this machine, so no video could be pulled"
 WATCH_FAILED, WATCH_NO_WHY = "no video was pulled from that link: {why}", "it gave no reason"
 WATCH_NOTHING = ("no video was pulled from that link: yt-dlp saved nothing, as it does for a video over 300 MB or a page with "
@@ -349,6 +358,8 @@ FROM_CAPTIONS = "the video's own captions, free, their timestamps"
 FROM_AUTO_CAPTIONS = "the video's auto-generated captions, free; no punctuation, and a name may be misheard"
 UNSEEN = ("You read {names} and did not file what it shows. Call seen on {paths} with its words and a line "
           "of what it shows, then give your answer again, since only the text after your last tool call reaches the room.")
+UNWATCHED = ("You were sent {names}, a video, and have not watched it. Call watch with `path` {paths}, since Read cannot open a "
+             "video, then Read its frames and answer with what it shows.")
 PICTURES_PERSON = "{room} is not an owner room: the backfill runs in owner rooms only; a picture sent there is filed by its own room"
 PICTURES_NONE = "{room}: every picture in {where} has its sidecar; nothing to start"
 PICTURES_NOT_LISTED = ("{folder} is not a folder {room} lists in rooms.toml (read or also) outside Yerk's own folders, so "

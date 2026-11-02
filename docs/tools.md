@@ -176,10 +176,12 @@ and only a video with no captions goes to the paid transcription and its US$1 ga
 a video link and expects you to have watched it, since the caption, the cover picture and the comments are not the
 video. A page that needs a login, a private post or a page with no video comes back as that, in the site's own
 words. A transcript past US$1 comes back refused until the owner says yes; then call again with `owner_yes` true. A
-video already pulled is not pulled or transcribed again.
+video already pulled is not pulled or transcribed again. A video file sent to you, which Read cannot open, is watched
+the same way from `path`, its saved path from its [attachment] line, in place of `url`; nothing is pulled.
 ```
 
-- `url`: string, required
+- `url`: string, default ""
+- `path`: string, default ""
 - `frames`: integer, default 6
 - `owner_yes`: boolean, default false
 
