@@ -202,6 +202,29 @@ def test_a_room_asked_for_a_picture_of_its_tab_hears_the_shot_way_never_the_desk
     assert not abilities.asked("the page looks right now, no need for a screenshot", y.memory, TAB)
 
 
+def test_a_room_asked_to_use_a_link_in_an_email_hears_the_links_way_never_the_mailbox_page(tmp_path):
+    """need-2026-11-01-33: a room asked to cancel a booking by the Cancel link in its confirmation mail read the mail and
+    had "Modify Cancel" as words, no address (the mail tool's text strips the tags), and the mail would not open by its
+    row on the mailbox's web page. Asked that way, a room gets mail-links whole: the mail read lists each link's words
+    beside its address, the room opens the one it was asked for in the browser by that address, and opening one is
+    clicking it in the mail, so only for what the owner asked; a mail ask with no link in it still gets the email entry."""
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    found = abilities.asked("can you cancel the table for me with the cancel link in the confirmation email?", y.memory, TAB)
+    assert [e["key"] for e in found] == ["mail-links"]
+    text = found[0]["text"]
+    assert text.startswith(f"mail-links, a Yerk AI ability ({words.ability('described')[1]}): Gives a room each link in one of the "
+                           "owner's emails, its words beside its address")
+    for want in ("One mail read, with its links", "Each address whole or not at all",
+                 "Opened in the browser by its address, never found on the mailbox's web page", "Only for what the owner asked",
+                 "a room asked to use a link in an email reads the mail, then opens that link's address with the browser"):
+        assert want in text, want
+    assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
+    told = abilities.explain("mail-links", TAB["mail-links"], TAB, y.memory)
+    assert next(x for x in told if x.startswith("- Only for what the owner asked:")).endswith("(cancel, confirm, unsubscribe).")
+    assert [e["key"] for e in abilities.asked("search my email for the receipt", y.memory, TAB)] == ["email"]
+    assert not abilities.asked("the table is cancelled, they sent me a cancellation email", y.memory, TAB)
+
+
 def test_ordinary_messages_pull_no_ability_into_the_room(tmp_path):
     y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
     assert {m: [e["key"] for e in abilities.asked(m, y.memory, TAB)] for m in ORDINARY} == {m: [] for m in ORDINARY}
