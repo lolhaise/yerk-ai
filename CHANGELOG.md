@@ -6,6 +6,34 @@ A line that changes a file the install keeps (rooms.toml, yerkd.toml, budgets.to
 newer than the code is refused with one line, never changed); the index chunks every file again when its chunker's
 version changes.
 
+## 2026-11-02
+
+### need-2026-10-24-21 (#?)
+
+- A room asked to read a Microsoft Bookings page (Bookings with me) now reads it as a guest, with no sign-in:
+  `web_fetch` adds the `anonymous` flag every share link Microsoft makes carries (`.../bookwithme/user/<id>@<domain>?anonymous&ep=pcard`)
+  when a link lacks it, first in the query as Microsoft writes it, on Outlook's hosts and `bookings.cloud.microsoft`, so
+  no rung lands on Microsoft's sign-in page. The flagged page opens on "Sign in or continue as guest", and its meeting
+  types and open times show only after a click on Continue as guest: the machine's own browser (F2) makes that click on
+  a Bookings page only, waits for the guest view (the click's own requests done, the text steady) and takes its few
+  hundred chars as the answer; the answer says it read the page as a guest. A plain read gets only the page's app shell,
+  for either link. A link that has the flag, and every other page, is read as before. Read live on 2026-11-02 with no
+  key: `F1:thin:js_shell,F2:ok:short`, the meeting type and the day's open times, in 4.7 s.
+- A read that is still that choice screen is no answer at any rung (`guest_choice`, `retry=maybe`): L3's "a short but
+  real page is still an answer" took it for one. Once F2 has clicked, or met the screen, the climb stops before
+  Browserbase, whose rungs make no click, so no paid read is spent on it.
+- A Bookings page whose guest view goes on to Microsoft's sign-in is named so (what was seen, not a guess at the owner's
+  setting), with `retry=no` and the next move (ask the page's owner for a public meeting type's link or the times in
+  words), in place of the saved-login advice the login wall gives every other site.
+- `yerk explain bookings-guest` has the ability. Nothing in the harness's code changes, so no budget line moves.
+- Why: on 2026-10-24 a room asked to read a person's Bookings page for their open call slots met `login_required` at
+  every rung, because the link it had carried no `anonymous` flag and the page sent every reader to Microsoft's sign-in;
+  it answered from a read two days old. The browser crash it met the same evening (the PC browser's open call failing
+  with a traceback) was fixed in the hands plug-in on 2026-10-26, outside this repository.
+
+**Upgrading**: nothing to change by hand; every room that attaches the web plug-in reads Bookings pages this way from
+its next call after the deploy.
+
 ## 2026-11-01
 
 ### need-2026-10-24-1 (#?)

@@ -36,8 +36,46 @@ const WALL_TEXT = {
   too_large: ["The page is over Browserbase Fetch's 5 MB limit and the browser rung could not read it either.", "no", "Fetch a smaller page or a specific section."],
   binary_content: ["The URL returns a binary file, not a web page.", "no", "An image: use web_image(url), then Read the file it saves; these tools read no other binary file."],
   invalid_url: ["The URL is not a public http(s) address.", "no", "Use a public http or https URL."],
+  guest_choice: ["This Bookings page stayed on Microsoft's \"Sign in or continue as guest\" screen: its meeting types and open times show only after a click on Continue as guest, which only the machine's own browser (F2) makes, and no rung got past it.", "maybe", "Retry in a minute (the machine's browser may have been busy); if it stays, ask the page's owner for the open times in words."],
   empty: ["Every rung loaded the page but found no readable text.", "maybe", "The content may be inside an image, a canvas or an app that needs interaction."],
 };
+
+// A Microsoft Bookings page is read as a guest (need 21, 2026-10-24): every share link Microsoft makes for a Bookings
+// with me page carries `anonymous` (.../bookwithme/user/<id>@<domain>?anonymous&ep=pcard), and the same page without it
+// sends a reader to Microsoft's sign-in, so every rung met login_required on a page anyone may book. The flag goes
+// first when it is missing, as Microsoft writes it; the page's owner still decides, and a guest view that asks for a
+// sign-in is named as such. Hosts: Outlook's (office.com, office365.com and the government cloud's) and cloud.microsoft.
+// Read live on 2026-11-02, the flagged page opens on "Sign in or continue as guest", and its meeting types and open
+// times show only after a click on "Continue as guest": F2 makes it (local.js continueAsGuest), and a read that is
+// still that screen is no answer at any rung (guest_choice; L3's short-page rule took it for one).
+const BOOKINGS_HOSTS = ["office.com", "office365.com", "office365.us", "cloud.microsoft"];
+
+// The guest view went on to a sign-in: no saved login is the way to a page Microsoft shows a guest that way.
+const BOOKINGS_SIGNIN = ["This Bookings page went to Microsoft's sign-in even in its guest view (anonymous).", "no", "Ask the page's owner for the share link of a public meeting type, or for the open times in words."];
+
+export function isBookingsPage(url) {
+  try {
+    const u = new URL(url);
+    const h = u.hostname.toLowerCase();
+    return BOOKINGS_HOSTS.some((d) => h === d || h.endsWith(`.${d}`)) && /^\/bookwithme\//i.test(u.pathname);
+  } catch {
+    return false;
+  }
+}
+
+// The guest choice screen's own words; the guest view past it has no such line.
+export function onGuestChoice(text) {
+  return /\bcontinue as guest\b/i.test(String(text ?? ""));
+}
+
+export function bookingsGuestUrl(url) {
+  if (!isBookingsPage(url)) return url;
+  const u = new URL(url);
+  const q = u.search.slice(1);
+  if (q.split("&").some((kv) => kv.split("=")[0].toLowerCase() === "anonymous")) return url;
+  u.search = `?anonymous${q ? `&${q}` : ""}`;
+  return u.toString();
+}
 
 export function wallFromBbError(err) {
   if (!(err instanceof BrowserbaseError)) return "bb_unreachable";
@@ -209,6 +247,7 @@ function successPayload({ url, win, attempts, extractMode, startedAt }) {
   const warnings = [];
   if (climbed) warnings.push(`fetch-plus read this at ${win.rung} after ${trail(attempts.slice(0, -1))}`);
   if (win.short) warnings.push("fetch-plus: the rendered page is short; it may be partial");
+  if (isBookingsPage(url)) warnings.push(`fetch-plus read this Bookings page as a guest, in the anonymous view its share links open, with no sign-in${win.guest === "clicked" ? ", past its Continue as guest button" : ""}`); // the gate in runFetchPlus keeps its choice screen out of here
   return {
     url,
     finalUrl: win.finalUrl || url,
@@ -227,7 +266,7 @@ function successPayload({ url, win, attempts, extractMode, startedAt }) {
 }
 
 function failurePayload({ url, wall, attempts, extractMode, startedAt, host, partial, hopeless }) {
-  const [what, retry, next] = describeWall(wall);
+  const [what, retry, next] = /^login(_required)?$/.test(wall) && isBookingsPage(url) ? BOOKINGS_SIGNIN : describeWall(wall); // a free rung names it login
   const lastStatus = [...attempts].reverse().find((a) => typeof a.status === "number")?.status;
   const lines = [
     `fetch-plus could not read this page. wall=${wall} host=${host} rungs=${trail(attempts) || "none"} retry=${retry}`,
@@ -270,7 +309,7 @@ function pickWall(attempts) {
   // quota, auth): that is what stopped the ladder. Naming the earlier rung's captcha here
   // would say a solver ran when none did, and would hide a quota or billing problem.
   if (l3 && /^bb_/.test(l3.wall)) return l3.wall;
-  const order = ["login_required", "captcha_unsolved", "geo_blocked", "proxy_restricted", "tls_error", "dns_error", "too_large", "binary_content"];
+  const order = ["guest_choice", "login_required", "captcha_unsolved", "geo_blocked", "proxy_restricted", "tls_error", "dns_error", "too_large", "binary_content"];
   for (const w of order) if (attempts.some((a) => a.wall === w)) return w;
   const http = [...attempts].reverse().find((a) => /^http_\d{3}$/.test(a.wall));
   if (http) return http.wall;
@@ -302,11 +341,20 @@ export async function runFetchPlus(args, ctx, executionContext = {}, deps = {}) 
   const clock = () => (typeof settings._now === "function" ? settings._now() : Date.now()); // test seam, as local.js nowOf: budgets and the ledger's ms follow it
   const startedTick = clock();
   const fetchImpl = deps.fetchImpl || fetch;
-  const url = typeof args?.url === "string" ? args.url.trim() : "";
+  const url = bookingsGuestUrl(typeof args?.url === "string" ? args.url.trim() : ""); // a Bookings page as a guest, every rung
   const extractMode = args?.extractMode === "text" ? "text" : "markdown";
   const host = hostOf(url) || "invalid";
   const attempts = [];
   let partial;
+  // A Bookings page (need 21): F2 is told to take its guest step, and a rung's read that is still the guest choice
+  // screen is no answer; once F2 has clicked, or met that screen, the climb stops: no paid rung clicks.
+  const bookings = isBookingsPage(url);
+  const guestGate = (r) => {
+    if (!bookings || !r) return r;
+    const text = r.ex?.content ?? r.partial?.ex?.content;
+    if (r.guest === "stuck" || (r.guest !== "clicked" && onGuestChoice(text))) return { ...r, ok: false, wall: "guest_choice", outcome: "guest_choice", next: "stop", partial: r.partial || (String(text ?? "").trim() ? { status: r.status, finalUrl: r.finalUrl, ctype: r.ctype || "text/html", ex: r.ex } : undefined) };
+    return r.rung === "F2" && r.guest && !r.ok ? { ...r, next: "stop" } : r;
+  };
 
   let creds = {};
   let memPlan = null; // site memory's plan for this host: { start, bb, probe, remembered }
@@ -386,7 +434,7 @@ export async function runFetchPlus(args, ctx, executionContext = {}, deps = {}) 
   if (!capped) {
     let f1;
     if (cool?.skip !== "F1" && cool?.skip !== "F12" && !memSkipF1) {
-      f1 = await localFetchRung({ url, settings, extractMode, signal, timeoutMs: Math.max(2000, Math.min(settings.localFetchTimeoutMs, left() - 20000)), fetchImpl: deps.localFetchImpl || fetch });
+      f1 = guestGate(await localFetchRung({ url, settings, extractMode, signal, timeoutMs: Math.max(2000, Math.min(settings.localFetchTimeoutMs, left() - 20000)), fetchImpl: deps.localFetchImpl || fetch }));
       attempts.push(f1);
       if (f1.ok) {
         finish(f1);
@@ -399,7 +447,7 @@ export async function runFetchPlus(args, ctx, executionContext = {}, deps = {}) 
     if (f1?.next === "L3") {
       bbFrom = "L3"; // a login wall: the saved login lives in the site's Browserbase context
     } else if (settings.localBrowserEnabled && (deps.localBrowserRung || localBrowserPresent(settings)) && cool?.skip !== "F12" && !memSkipF2 && left() > 20000) {
-      f2 = await (deps.localBrowserRung || localBrowserRung)({ url, settings, extractMode, signal, budgetMs: Math.min(settings.localBrowserMaxSeconds * 1000, left() - 15000) });
+      f2 = guestGate(await (deps.localBrowserRung || localBrowserRung)({ url, settings, extractMode, signal, budgetMs: Math.min(settings.localBrowserMaxSeconds * 1000, left() - 15000), guest: bookings }));
       attempts.push(f2);
       if (f2.ok) {
         if (f1 && isLocalBlock(f1)) markLocalBlocked(settings, hostLc, f1.outcome, "F1");
@@ -416,7 +464,7 @@ export async function runFetchPlus(args, ctx, executionContext = {}, deps = {}) 
     const walled = (f2 && (f2.verdict === "challenge" || f2.verdict === "blocked")) || cool?.skip === "F12" || memSkipF2;
     if (settings.localTrawlEnabled && walled && left() > 25000) {
       if (localBrowserState().active === 0) await closeLocalBrowser();
-      const f3 = await localTrawlRung({ url, settings, extractMode, signal, budgetMs: Math.min(settings.localTrawlMaxSeconds * 1000, left() - 20000), fetchImpl: deps.trawlFetchImpl || fetch });
+      const f3 = guestGate(await localTrawlRung({ url, settings, extractMode, signal, budgetMs: Math.min(settings.localTrawlMaxSeconds * 1000, left() - 20000), fetchImpl: deps.trawlFetchImpl || fetch }));
       if (!f3.skipped) attempts.push(f3);
       if (f3.next === "stop") return fail(pickWall(attempts));
       if (f3.ok) {
@@ -433,7 +481,7 @@ export async function runFetchPlus(args, ctx, executionContext = {}, deps = {}) 
   if (!creds.apiKey) return fail("no_key");
   if (!l3First && bbFrom === "L1") {
   // L1
-  const r1 = await fetchRung({ ...common, rung: "L1", proxies: false, timeoutMs: Math.min(settings.l1TimeoutMs, left()) });
+  const r1 = guestGate(await fetchRung({ ...common, rung: "L1", proxies: false, timeoutMs: Math.min(settings.l1TimeoutMs, left()) }));
   attempts.push(r1);
   if (r1.ok) {
     finish(r1);
@@ -445,7 +493,7 @@ export async function runFetchPlus(args, ctx, executionContext = {}, deps = {}) 
 
   // L2
   if (next === "L2" && settings.l2Proxies && left() > 5000) {
-    const r2 = await fetchRung({ ...common, rung: "L2", proxies: true, timeoutMs: Math.min(settings.l2TimeoutMs, left() - 2000) });
+    const r2 = guestGate(await fetchRung({ ...common, rung: "L2", proxies: true, timeoutMs: Math.min(settings.l2TimeoutMs, left() - 2000) }));
     attempts.push(r2);
     if (r2.ok) {
       finish(r2);
@@ -468,7 +516,7 @@ export async function runFetchPlus(args, ctx, executionContext = {}, deps = {}) 
     // host's memory says proxies were needed (until its daily retry) or the proxied pass would lose its time.
     if (settings.l3NoProxyFirst && !proxiesNeeded && left() > settings.l3NoProxyReserveMs + 15000) {
       const budgetMs = Math.min(settings.l3NoProxyMaxSeconds * 1000, left() - settings.l3NoProxyReserveMs);
-      const r3n = await sessionRung({ url, hostname: parsed.hostname, settings, apiKey: creds.apiKey, projectId: creds.projectId, extractMode, budgetMs, signal, fetchImpl, blockPictures: false, proxies: false });
+      const r3n = guestGate(await sessionRung({ url, hostname: parsed.hostname, settings, apiKey: creds.apiKey, projectId: creds.projectId, extractMode, budgetMs, signal, fetchImpl, blockPictures: false, proxies: false }));
       r3n.rung = "L3n";
       attempts.push(r3n);
       syncProjectUsage(settings, creds, fetchImpl);
@@ -476,13 +524,13 @@ export async function runFetchPlus(args, ctx, executionContext = {}, deps = {}) 
         finish(r3n);
         return successPayload({ url, win: r3n, attempts, extractMode, startedAt });
       }
-      // Browserbase itself refused, or the site says the page does not exist: proxies change neither.
-      if (/^bb_/.test(r3n.wall || "") || /^http_(404|410)$/.test(r3n.wall || "") || signal?.aborted) return fail(pickWall(attempts));
+      // Browserbase itself refused, or the site says the page does not exist: proxies change neither (nor a guest choice).
+      if (/^bb_/.test(r3n.wall || "") || /^http_(404|410)$/.test(r3n.wall || "") || r3n.next === "stop" || signal?.aborted) return fail(pickWall(attempts));
     }
     let blockPictures = settings.l3BlockPictures;
     for (let pass = 0; pass < 2; pass++) {
       const budgetMs = Math.min(settings.l3MaxSeconds * 1000, left() - 1000);
-      const r3 = await sessionRung({ url, hostname: parsed.hostname, settings, apiKey: creds.apiKey, projectId: creds.projectId, extractMode, budgetMs, signal, fetchImpl, blockPictures });
+      const r3 = guestGate(await sessionRung({ url, hostname: parsed.hostname, settings, apiKey: creds.apiKey, projectId: creds.projectId, extractMode, budgetMs, signal, fetchImpl, blockPictures }));
       attempts.push(r3);
       r3.settled?.then(() => syncProjectUsage(settings, creds, fetchImpl)).catch(() => {});
       if (r3.ok) {
@@ -490,7 +538,7 @@ export async function runFetchPlus(args, ctx, executionContext = {}, deps = {}) 
         return successPayload({ url, win: r3, attempts, extractMode, startedAt });
       }
       const picturesMayMatter = /^(challenge|thin|blocked)\b/.test(r3.outcome || "") || r3.captchaSeen;
-      if (!blockPictures || !picturesMayMatter || left() <= 20000 || signal?.aborted) break;
+      if (!blockPictures || !picturesMayMatter || r3.next === "stop" || left() <= 20000 || signal?.aborted) break;
       blockPictures = false;
     }
   }

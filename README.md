@@ -58,7 +58,7 @@ Each active room is one `claude -p` process, stream-json in and out, on a sessio
 
 ## Add-ons
 
-What a room can do beyond Claude Code's own tools comes in as add-ons: MCP servers a room attaches in rooms.toml, a `[rooms.NAME.mcp.SERVER]` table each or once for every owner room under `[defaults]`, with their tools in the room's `allow`. One ships here, the web plug-in in `plugins/web`: pages, search and research for a room, kept out of budgets.toml's `[code]` count ([docs/GUIDE.md](docs/GUIDE.md), Web reach).
+What a room can do beyond Claude Code's own tools comes in as add-ons: MCP servers a room attaches in rooms.toml, a `[rooms.NAME.mcp.SERVER]` table each or once for every owner room under `[defaults]`, with their tools in the room's `allow`. One ships here, the web plug-in in `plugins/web`: pages, search and research for a room (a Microsoft Bookings page read as a guest by the machine's own browser, with no sign-in), kept out of budgets.toml's `[code]` count ([docs/GUIDE.md](docs/GUIDE.md), Web reach).
 
 ## The docs
 

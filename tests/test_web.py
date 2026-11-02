@@ -36,6 +36,16 @@ def test_yerk_explain_web_answers_from_the_abilities_file(tmp_path, capsys):
     assert any(x.startswith("How to add the key: ") and "secrets/" in x and "exa.key" in x and "browserbase.key" in x for x in lines)
 
 
+def test_yerk_explain_bookings_guest_answers_from_the_abilities_file_with_no_key(tmp_path, capsys):
+    """Need 21 (2026-10-24): a Bookings page met login_required at every rung, its link short of the anonymous flag; the
+    plug-in now reads it as a guest (plugins/web/test/fetch.test.mjs has the wall and the read), an ability of its own."""
+    assert cli.main(["explain", "bookings-guest", "--private", str(EXAMPLE_PRIVATE), "--state", str(tmp_path)]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    ab = abilities.manifest()["bookings-guest"]
+    assert lines[:2] == [f"{words.DONE} bookings-guest: {words.ability('on')[1]}", ab["what"]]
+    assert "anonymous flag" in ab["what"] and "no sign-in" in ab["what"] and "key" not in ab
+
+
 def test_the_rooms_template_attaches_the_plug_in_by_its_command_line_under_the_names_the_rooms_allow():
     lines = [x.removeprefix("# ") for x in (REPO / "rooms.toml.example").read_text().splitlines()]
     at = lines.index("[defaults.mcp.web-ladder]")                 # every owner room's, from [defaults] (2026-10-23)

@@ -1,6 +1,6 @@
 // The fetch ladder's changes carried from the machine's lib (2026-10-21 and 2026-10-22): F2's readable-stop and its
 // probe's real text length, the challenge kinds that clear on their own, the hopeless skip with its whole-call ceiling,
-// path-class site memory and the modal lift. Run from the plug-in folder: npm test.
+// path-class site memory and the modal lift; a Bookings page read as a guest (need 21). Run from the plug-in folder: npm test.
 // The F2 cases launch the machine's own local browser (skipped when its engine is not installed) on a temp profile
 // against a local http server on 127.0.0.1 (blockPrivateHosts off for that reason). The ladder cases use its seams
 // (deps.localFetchImpl, deps.localBrowserRung, deps.trawlFetchImpl, deps.fetchImpl, settings._now) and never touch the
@@ -13,8 +13,8 @@ import path from "node:path";
 import { after, before, test } from "node:test";
 import { detectChallenge } from "../lib/fetch/detect.js";
 import { extractHtml } from "../lib/fetch/extract.js";
-import { runFetchPlus } from "../lib/fetch/ladder.js";
-import { closeLocalBrowser, localBrowserPresent, localBrowserRung, memoryKey, pathClass, rememberRead, siteMemoryPlan } from "../lib/fetch/local.js";
+import { bookingsGuestUrl, isBookingsPage, runFetchPlus } from "../lib/fetch/ladder.js";
+import { closeLocalBrowser, localBrowserPresent, localBrowserRung, localFetchRung, memoryKey, pathClass, rememberRead, siteMemoryPlan } from "../lib/fetch/local.js";
 import { flushPending, resolveSettings } from "../lib/fetch/util.js";
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "yerk-web-fetch-"));
@@ -29,6 +29,20 @@ const BEACON = `<script>setInterval(() => fetch("/ping").catch(() => {}), 300);<
 // A listing page with a notice up: every body child but the dialog's portal is aria-hidden (the hide-others pattern).
 const LISTING = `<h1>Two-bedroom flat with a courtyard</h1><p>Entire rental unit. 6 guests, 2 bedrooms, 4 beds, 2 baths.</p>${Array.from({ length: 14 }, (_, i) => `<p>Section ${i + 1}: the main bedroom has a 140 x 200 cm bed, the second bedroom a queen bed, air conditioning in both rooms, an elevator to the third floor and a quiet courtyard. <span aria-hidden="true">icon</span></p>`).join("")}`;
 const DIALOG = `<div><div role="dialog" aria-modal="true" aria-label="Translation on"><h2>Translation on</h2><p>This symbol shows when content from hosts and guests has been automatically translated. Change this setting at any time.</p></div></div>`;
+// A Bookings with me page as a browser gets it with the anonymous flag (read live 2026-11-02): an app that shows "Sign in
+// or continue as guest" and fetches its meeting types and open times only on a click on "Continue as guest", the URL
+// unchanged; a few hundred visible chars after the click, in an app's large document. Under /stuck/ the click brings
+// nothing; under /hang/ the choice screen asks for a script that does not finish, as two did on the live page.
+const GUEST_TIMES = ["8:30 AM", "9:00 AM", "9:30 AM", "10:00 AM", "11:00 AM", "12:30 PM", "2:00 PM", "2:30 PM", "3:00 PM", "3:30 PM", "4:00 PM", "4:30 PM", "5:00 PM", "5:30 PM", "6:00 PM"];
+const GUEST_VIEW = `<h1>Example Person</h1><p>Booking Page</p><h2>Choose a meeting type</h2><p>update call, 20 min. Book time to connect with me.</p><h2>Available times</h2><p>Today, Monday</p><ul>${GUEST_TIMES.map((t) => `<li><button>${t}</button></li>`).join("")}</ul>`;
+const bookingsApp = ({ works = true, hang = false } = {}) => page("Bookings with me", `<div id="app"></div><script>
+  const app = document.getElementById("app");
+  setTimeout(() => {
+    app.innerHTML = '<h1>Example Person</h1><p>Booking Page</p><h2>Sign in or continue as guest</h2><button>Sign in with a Microsoft 365 work or school account</button><button id="guest">Continue as guest</button>';
+    ${hang ? `document.head.appendChild(Object.assign(document.createElement("script"), { src: "/bookwithme-hang.js" }));` : ""}
+    document.getElementById("guest").onclick = () => { ${works ? `fetch("/bookwithme-data").then((r) => r.text()).then((t) => { app.innerHTML = t; });` : ""} };
+  }, 300);
+</script><script>/* ${"the app's bundle ".repeat(700)} */</script>`);
 const roomPage = ({ modal = true } = {}) => `<!doctype html><html><head><title>Two-bedroom flat with a courtyard</title></head><body><div id="skip-links"${modal ? ' aria-hidden="true"' : ""}><a href="#main">Skip to content</a></div><div id="app"${modal ? ' aria-hidden="true"' : ""}><main id="main">${LISTING}</main></div>${modal ? DIALOG : ""}</body></html>`;
 
 const BROWSER = localBrowserPresent(resolveSettings({}, { stateDir: path.join(TMP, "probe") }));
@@ -36,6 +50,7 @@ const needsBrowser = BROWSER ? {} : { skip: "no local browser engine on this mac
 
 let server;
 let base;
+let guestReads = 0;
 before(async () => {
   server = http.createServer((req, res) => {
     const u = new URL(req.url, "http://127.0.0.1");
@@ -44,7 +59,13 @@ before(async () => {
       res.end(body);
     };
     if (u.pathname.startsWith("/rooms/")) return send(roomPage());
+    if (u.pathname.startsWith("/bookwithme/")) return send(bookingsApp({ works: !u.pathname.startsWith("/bookwithme/stuck/"), hang: u.pathname.startsWith("/bookwithme/hang/") }));
     switch (u.pathname) {
+      case "/bookwithme-data":
+        guestReads++;
+        return void setTimeout(() => send(GUEST_VIEW), 800);
+      case "/bookwithme-hang.js":
+        return void setTimeout(() => send("", "application/javascript"), 20000).unref();
       case "/static":
         return send(page("Static article", ARTICLE));
       case "/late":
@@ -317,4 +338,133 @@ test("the ceiling: with hopelessMaxSeconds spent in F2, nothing else runs and th
   assert.equal(row.hopeless, "recaptcha");
   assert.ok(row.ms >= 44_500 && row.ms < 46_000, `ms ${row.ms}`);
   assert.match(p.text, /capped at 45 s/);
+});
+
+// ---- a Bookings page, read as a guest (need 21, 2026-10-24) ------------------------------------------
+// The wall a room met: a Bookings with me link without `anonymous` sends a reader to Microsoft's sign-in, so every rung
+// met login_required on a page anyone may book. Microsoft's own share links carry the flag, and the ladder adds it.
+// As read live on 2026-11-02: a plain read gets the app's shell (HTTP 200) for either link; in a browser the bare link
+// ends on Microsoft's sign-in and the flagged one on "Sign in or continue as guest", whose meeting types and open times
+// show only after a click on "Continue as guest" (F2's guest step, on the fixture at the top).
+const BOOKING = "https://outlook.office.com/bookwithme/user/0a1b2c3d4e5f@example/meetingtype/AbC123?ep=mlink";
+const GUEST = "https://outlook.office.com/bookwithme/user/0a1b2c3d4e5f@example/meetingtype/AbC123?anonymous&ep=mlink";
+const SIGNIN = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=example";
+const APP = "/bookwithme/user/0a1b2c3d4e5f@example/meetingtype/AbC123?anonymous&ep=mlink";
+const SHELL = page("Bookings with me", `<div id="app"></div>${Array.from({ length: 6 }, (_, i) => `<script src="/static/app-${i}.js"></script>`).join("")}`);
+const CHOICE = "# Example Person\n\nBooking Page\n\n## Sign in or continue as guest"; // F2's read of the choice screen, as the live one was
+const SIGNIN_PAGE = page("Sign in to your account", `<form><input type="email" name="loginfmt"><input type="password" name="passwd"><p>Sign in to continue.</p></form>`);
+
+// f2: "app" the machine's browser on the fixture; "thin" the choice screen with nothing clicked; "short" the same screen
+// taken as a short read (what L3's short-page rule made of it); "signin" a click that went on to Microsoft's sign-in.
+let bookingsRuns = 0;
+function bookingsRig({ f2 = "app" } = {}) {
+  const asked = [];
+  const f2Args = [];
+  const r = rig({ overrides: { stateDir: path.join(TMP, `state-bookings-${++bookingsRuns}`) } });
+  r.deps.localFetchImpl = async (url) => {
+    asked.push(String(url));
+    if (String(url).includes("/bookwithme/")) return html(SHELL); // either link, as live
+    if (String(url).startsWith("https://login.microsoftonline.com/")) return html(SIGNIN_PAGE);
+    return new Response("", { status: 302, headers: { location: SIGNIN } });
+  };
+  r.deps.localBrowserRung = async (a) => {
+    r.seen.f2++;
+    f2Args.push(a);
+    if (f2 === "app") return localBrowserRung({ ...a, url: `${base}${APP}`, settings: f2Settings });
+    if (f2 === "signin") return { rung: "F2", ok: false, wall: "login", verdict: "login", outcome: "login:url", status: 200, ms: 0, next: "BB", guest: "clicked" };
+    const choice = { status: 200, finalUrl: a.url, ctype: "text/html", ex: { content: CHOICE } };
+    if (f2 === "short") return { rung: "F2", ok: true, ...choice, outcome: "ok:short", short: true, ms: 0 };
+    return { rung: "F2", ok: false, wall: "thin", verdict: "thin", outcome: "thin:js_shell", status: 200, ms: 0, next: "BB", ex: choice.ex, partial: choice };
+  };
+  return { ...r, asked, f2Args };
+}
+
+test("a Bookings with me link gets the anonymous flag its share links carry, first; any other link is left alone", () => {
+  assert.equal(bookingsGuestUrl(BOOKING), GUEST);
+  assert.equal(bookingsGuestUrl("https://outlook.office.com/bookwithme/user/0a1b@example"), "https://outlook.office.com/bookwithme/user/0a1b@example?anonymous");
+  assert.equal(bookingsGuestUrl("https://bookings.cloud.microsoft/bookwithme/user/0a1b@example?ep=pcard"), "https://bookings.cloud.microsoft/bookwithme/user/0a1b@example?anonymous&ep=pcard");
+  for (const same of [
+    "https://outlook.office365.com/bookwithme/user/0a1b@example?anonymous&ep=pcard", // a share link as Microsoft writes it
+    "https://outlook.office.com/BookWithMe/user/0a1b@example?Anonymous=1", // the flag already there, in any case
+    "https://outlook.office.com/mail/inbox", // a Microsoft page that is not a Bookings page
+    "https://bookings.example/bookwithme/user/0a1b@example", // the same path on another site
+    "not a url",
+  ]) assert.equal(bookingsGuestUrl(same), same);
+  assert.ok(isBookingsPage("https://outlook.office365.us/bookwithme/user/0a1b@example"));
+  assert.ok(!isBookingsPage("https://notoffice.com/bookwithme/user/0a1b@example"));
+});
+
+test("F2 on a Bookings page clicks Continue as guest and reads the meeting types and open times the click brings; without the ladder's word it clicks nothing", needsBrowser, async () => {
+  const before = guestReads;
+  const plain = await localBrowserRung({ url: `${base}${APP}`, settings: f2Settings, extractMode: "markdown", budgetMs: 30000 });
+  assert.equal(plain.ok, false, "the choice screen is no read"); // all F2 did before the guest step, as on the real page
+  assert.match(plain.partial.ex.content, /Sign in or continue as guest/);
+  assert.equal(plain.guest, undefined);
+  assert.equal(guestReads, before, "no click");
+  const r = await localBrowserRung({ url: `${base}${APP}`, settings: f2Settings, extractMode: "markdown", budgetMs: 30000, guest: true });
+  assert.equal(r.ok, true, JSON.stringify(r.outcome));
+  assert.equal(r.guest, "clicked");
+  assert.equal(r.outcome, "ok:short"); // a few hundred chars in an app's large document read as thin, and are the answer
+  assert.match(r.ex.content, /update call, 20 min/);
+  assert.match(r.ex.content, /8:30 AM[\s\S]*6:00 PM/);
+  assert.doesNotMatch(r.ex.content, /continue as guest/i);
+  assert.equal(guestReads, before + 1);
+  assert.ok(r.phases.guest >= 800 && r.phases.guest < 6000, `guest ${r.phases.guest}`);
+});
+
+test("F2's guest step on a choice screen whose click brings nothing ends stuck at localReadableWaitMs, and is no read", needsBrowser, async () => {
+  const r = await localBrowserRung({ url: `${base}/bookwithme/stuck/0a1b@example?anonymous`, settings: { ...f2Settings, localReadableWaitMs: 2500 }, extractMode: "markdown", budgetMs: 30000, guest: true });
+  assert.equal(r.ok, false);
+  assert.equal(r.guest, "stuck");
+  assert.ok(r.phases.guest >= 2000 && r.phases.guest < 4500, `guest ${r.phases.guest}`);
+});
+
+test("the guest step waits on the click's own requests, not on one the choice screen left open", needsBrowser, async () => {
+  const r = await localBrowserRung({ url: `${base}/bookwithme/hang/0a1b@example?anonymous`, settings: { ...f2Settings, localReadableWaitMs: 4000 }, extractMode: "markdown", budgetMs: 30000, guest: true });
+  assert.equal(r.ok, true, JSON.stringify(r.outcome));
+  assert.equal(r.guest, "clicked");
+  assert.match(r.ex.content, /8:30 AM/);
+  assert.ok(r.phases.guest >= 800 && r.phases.guest < 3000, `guest ${r.phases.guest}`); // the ceiling is 4,000
+});
+
+test("the wall need 21 met: the plain read gets the app's shell for either link; F2 clicks Continue as guest and reads the open times", needsBrowser, async () => {
+  const shell = await localFetchRung({ url: BOOKING, settings: resolveSettings({}, { stateDir: path.join(TMP, "state-bookings-f1") }), extractMode: "markdown", timeoutMs: 5000, fetchImpl: bookingsRig().deps.localFetchImpl });
+  assert.equal(shell.verdict, "thin"); // a plain read is no sign-in and no times: only a browser gets either
+  const r = bookingsRig();
+  const p = await runFetchPlus({ url: BOOKING }, {}, {}, r.deps);
+  assert.equal(p.extractor, "fetch-plus:F2", p.text);
+  assert.match(p.text, /update call, 20 min/);
+  assert.match(p.text, /8:30 AM/);
+  assert.deepEqual(r.asked, [GUEST]); // the bare link is never asked, so the sign-in never comes up
+  assert.deepEqual(r.f2Args.map((a) => [a.url, a.guest]), [[GUEST, true]]);
+  assert.match(p.warning, /read this Bookings page as a guest, in the anonymous view its share links open, with no sign-in, past its Continue as guest button/);
+  assert.equal(r.seen.urls.length, 0, "no paid rung ran");
+});
+
+test("a Bookings page left on its choice screen is no answer, thin or taken for a short read, and no paid rung runs for it", async () => {
+  for (const f2 of ["thin", "short"]) {
+    const r = bookingsRig({ f2 });
+    const p = await runFetchPlus({ url: BOOKING }, {}, {}, r.deps);
+    assert.equal(p.extractor, "fetch-plus:failed:guest_choice", f2);
+    assert.match(p.text, /retry=maybe/);
+    assert.match(p.text, /What stopped it: This Bookings page stayed on Microsoft's "Sign in or continue as guest" screen/);
+    assert.match(p.text, /## Sign in or continue as guest/, "the screen itself, as the partial text");
+    assert.doesNotMatch(`${p.text}\n${p.warning}`, /read this Bookings page as a guest/);
+    assert.equal(r.seen.urls.length, 0, `${f2}: no paid rung ran`);
+  }
+});
+
+test("a Bookings page whose guest view went on to Microsoft's sign-in is named so, with no saved-login advice and no paid rung", async () => {
+  const r = bookingsRig({ f2: "signin" });
+  const p = await runFetchPlus({ url: BOOKING }, {}, {}, r.deps);
+  assert.equal(p.extractor, "fetch-plus:failed:login"); // F2's name for it; L3, when it runs, says login_required
+  assert.match(p.text, /retry=no/);
+  assert.match(p.text, /What stopped it: This Bookings page went to Microsoft's sign-in even in its guest view \(anonymous\)\./);
+  assert.match(p.text, /Next move: Ask the page's owner for the share link of a public meeting type, or for the open times in words\./);
+  assert.doesNotMatch(p.text, /fetch-plus context/);
+  assert.equal(r.seen.urls.length, 0, "no paid rung ran");
+  const other = await runFetchPlus({ url: "https://portal.example/reports" }, {}, {}, r.deps); // any other login wall reads as before
+  assert.equal(other.extractor, "fetch-plus:failed:login");
+  assert.doesNotMatch(other.text, /Bookings page/);
+  assert.deepEqual(r.f2Args.map((a) => a.guest), [true], "no guest step for another page");
 });
