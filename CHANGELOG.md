@@ -8,6 +8,32 @@ version changes.
 
 ## 2026-11-01
 
+### need-2026-10-24-1 (#?)
+
+- A room the owner asks to text someone can send it now: the new `text` tool on Yerk's own server sends one text in the
+  owner's name, an iMessage or else an SMS, from the owner's Mac to the person's phone number or email address (a name is
+  refused, so the room recalls the number from the owner's texts or asks). The Mac's bridge, a small app there that holds
+  Messages' grants and serves imsg's JSON-RPC on a socket, is reached by ssh to `[imessage] host` and socat to its
+  `socket`, or by `[imessage] command`; each text is a `status`, then one `send`, on a connection of its own.
+- Preview first: the new `text-out` gate rule holds every call, and the room is shown the text and who it goes to as they
+  will read, never the call's JSON; the owner's approval word sends that exact call once, and an edit is a new call with a
+  new preview. The tool sends only what the gate released, so with `text-out` in `[gates] off`, or a hook that fails open,
+  no text goes. A person's room, an install with no Mac set up, a name in place of a number and an empty text are refused
+  at the gate, before the owner is asked for a word; a worker is refused, as for any outward action.
+- A text the bridge never took is said as not sent; one it took and never confirmed (no answer to the send, or its own
+  may-have-completed answer) is said as maybe sent, and the room tells the owner to check Messages and never sends it again
+  unasked. Each outcome is a `text` row in the ledger's gates table, after the hold, the word and the release.
+- `yerk explain text` has the ability, and `text-as-you` names it as its built part. Every room is handed the tool's
+  sentence, so `yerk_tools` goes to 15,100 and the session-start total to 113,002; the code ceiling moves up by 160, to
+  23,769.
+- Why: on 2026-10-24 a room asked to text a person for the owner had no tool to send one, the Mac's Messages would not
+  answer over plain ssh, and the room wrote the line for the owner to paste and send (need 1 of that day).
+
+**Upgrading**: to text, add `[imessage]` to yerkd.toml with `host` (the Mac's ssh host, reached from the box with a key)
+and `socket` (the bridge's socket on the Mac), and `socat` when it is not at /opt/homebrew/bin/socat; or `command`, a whole
+command whose stdin and stdout are the bridge. Without it the tool says no Mac is set up, and nothing is held. budgets.toml
+moves with the code: `yerk_tools` to 15,100, the session-start total to 113,002, the code ceiling to 23,769.
+
 ### needs-pipeline (#?)
 
 - A need a room files now builds itself to live with no person in the loop ([needs] auto, on unless set false; false is

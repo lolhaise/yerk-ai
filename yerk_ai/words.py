@@ -333,6 +333,17 @@ WATCH_FROM_AUTO_CAPTIONS = ("the transcript is the video's auto-generated captio
 WATCH_NO_CAPTIONS = "no captions on that page, so its sound was transcribed"
 WATCH_CAPTIONS_FAILED = "its captions could not be read ({why}), so its sound was transcribed"
 CAPTIONS_LIVE = "it is live now or not started yet, and a live stream has no captions to read"
+# a text in the owner's name (texts.py): why one cannot go, said before the owner is asked where it can be, and how one went
+TEXT_OWNER_ROOMS = "a text goes out in the owner's name, so only the owner's own rooms send one"
+TEXT_NO_SETUP = "no Mac is set up for texts ([imessage] host and socket in yerkd.toml)"
+TEXT_NO_HANDLE = "\"{given}\" is not a phone number or an email address: recall the person's number from the owner's texts, or ask"
+TEXT_EMPTY = "there is no text to send"
+TEXT_NOT_RELEASED = "not sent: a text goes only as the call the owner was shown held and said the word for, once"
+TEXT_NOT_SENT, TEXT_NO_WHY = "not sent: {why}", "the Mac gave no reason"
+TEXT_AWAY = "the Mac's bridge did not answer (the Mac asleep or away, or the bridge not running)"
+TEXT_MAYBE = "it may have gone out, and the Mac never confirmed it: tell the owner to check Messages, and never send it again unasked"
+TEXT_WHY = {-32602: "Messages would not take that number or address", -32603: "Messages on the Mac failed or lacks a permission",
+            -32000: "the Mac's bridge was busy, so try again in a minute", -32004: "the Mac's bridge was busy, so try again in a minute"}
 # a transcript's head (TRANSCRIPT_HEAD's `how`) when a video's own captions wrote it (captions.py)
 FROM_CAPTIONS = "the video's own captions, free, their timestamps"
 FROM_AUTO_CAPTIONS = "the video's auto-generated captions, free; no punctuation, and a name may be misheard"

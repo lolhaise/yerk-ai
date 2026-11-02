@@ -13,7 +13,7 @@ quotes, in a heredoc body or as a word in a string is not a delete; lifted/shell
   restart of yerkd is refused while the memory index rebuilds or a human turn is running, with one
   plain line to the room;
 - approval: an action named external (a send to another room, a public post, a login, money, a
-  message out through another tool, or a rule in yerkd.toml [gates.external]) is held, one plain
+  message out through another tool, a text in the owner's name, or a rule in yerkd.toml [gates.external]) is held, one plain
   line to the room, until an approver says the word in the room's running turn; then that same call
   (its normalised text and working folder) runs once, and any other call is held again.
 Every hold, release, refusal and rewrite is a row in the ledger's `gates` table.
@@ -53,6 +53,7 @@ EXTERNAL: dict[str, dict[str, str]] = {
     "money-cli": {"tool": r"^Bash$", "command": r"^stripe\b", "what": "money"},
     "message-out": {"tool": r"(?i)^mcp__(?!yerk__).*(?:send|post|publish|tweet|email|message|reply)", "what":
                     "a message to someone"},
+    "text-out": {"tool": r"^mcp__yerk__text$", "what": "a text in your name"},     # the preview: off, no text goes (texts.py)
 }
 
 

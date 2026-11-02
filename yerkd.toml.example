@@ -24,6 +24,13 @@ stale_after = "3h"                       # no part when the newest fix is older 
 account = "<an account name from accounts.toml>"   # the account builders run on; default: [curate] account, else the workers' pick
 cap_minutes = 60                                  # a builder's minutes before it is stopped
 
+[imessage]
+# The `text` tool's way to the owner's Mac (docs/GUIDE.md: Texts in your name): ssh to `host`, then socat to the bridge's socket
+# there. Each text is held in the room for the owner's word first. No table, no texts: the tool says no Mac is set up.
+host = "<the Mac's ssh host, reached from this machine with a key>"
+socket = "<the bridge's socket on the Mac>"
+service = "auto"                         # imessage, sms or auto: iMessage where the person has it, else SMS
+
 [limits]
 # One switch for every character budget in budgets.toml (docs/budgets.md: Uncapped); false, or no table, is the capped install.
 uncapped = false     # true: every character budget in budgets.toml reads as unlimited for what is sent; the numbers stay as measurements

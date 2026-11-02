@@ -7,7 +7,7 @@
 # The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and
 # Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 [session_start]
-total = 112302
+total = 113002
 
 # Load order, most stable first, so the cached start of the prompt survives.
 # The first parts are Claude Code's own (its default prompt, the built-in tools
@@ -64,10 +64,14 @@ total = 112302
 # the page has them, free, and only a video with none goes to the paid transcription) takes it from 1,282 to 1,545 as this
 # tree builds it on Python 3.13, about 1,576 as sent, so about 14,330 on the 14,067 the rooms send; so 14,400, no part
 # could pay, the total rose by the 300.
+# 2026-11-01, need-2026-10-24-1: the `text` tool (one text in the owner's name from the Mac, held with its words
+# shown and sent once on the owner's word, since a room asked to text someone for the owner had no tool to) is 688 as this
+# tree builds it on Python 3.13, about 719 as sent (31 over its build, as each of Yerk AI's entries goes out), so about
+# 15,049 on the 14,330 the rooms send; so 15,100, no part could pay, the total rose by the 700.
 [session_start.claude_code]
 claude_code_prompt = 10966
 builtin_tools = 12132
-yerk_tools = 14400
+yerk_tools = 15100
 deferred_tool_names = 3429
 mcp__hands__ = 7462
 mcp__web-ladder__web_image = 913
@@ -724,4 +728,11 @@ secs = 60
 # 2026-11-01: needs-pipeline raised it by 13 more, the pickup (needs filed before the pipeline sat at filed with no build
 # ever started, for a person to type `yerk needs build`), not folded to fit: pipeline.py 11 (pickup(), its call in the
 # tick, the docstrings), words.py 1 (NEED_PICKED_UP), config.py 1 (the auto setting's words). 23,609: 23,596 plus 13.
-lines = 23609
+# 2026-11-01: need-2026-10-24-1 raised it by 160, the `text` tool, one text in the owner's name from the Mac, held
+# with its words shown and sent once on the owner's word (need 1 of 2026-10-24: a room asked to text someone for the owner
+# had no tool to, and Messages on the Mac would not answer over plain ssh), not folded to fit: texts.py 100 (the way to the
+# Mac's bridge, who a text can go to, the status and the send, each outcome told apart), daemon.py 33 (the tool, its
+# refusal at the gate before the owner is asked, the preview as it reads, the release it sends on), words.py 11,
+# mcp_server.py 9 (the tool's sentence), config.py 6 ([imessage]'s keys), gates.py 1 (the text-out rule). 23,769: main
+# 3de39c9's 23,609 plus 160.
+lines = 23769
