@@ -113,6 +113,25 @@ def test_auto_off_starts_nothing_and_the_line_carries_the_command(pipe):
     assert row(y, day)["state"] == "filed" and hub.calls == []
 
 
+def test_a_need_filed_before_the_pipeline_is_queued_on_a_tick_one_whose_build_came_back_is_not(pipe):
+    y, rec, hub, units, rooms = pipe
+    y.conf["needs"]["auto"] = False                      # before the pipeline: filed by the hand road, one built by hand and back
+    day = need(y, "example-room", *ASK)["day"]
+    need(y, "her-room", "post a reel", "no upload tool", "upload a video")
+    end(y, asyncio.run(y.need_build({"day": day, "n": 2}))["id"], "no branch: the suite would not run", ok=False)
+    need(y, "her-room", "what does this voice memo say", "no audio tool", "hear a voice memo")
+    asyncio.run(y.pipeline.set(row(y, day, 3), {"state": "building", "worker": "w1"}))        # one in flight
+    y.conf["needs"]["auto"] = True
+    asyncio.run(y.pipeline.tick())
+    asyncio.run(y.pipeline.tick())
+    picked = words.NEED_PICKED_UP.format(n=1, day=day, room="example-room", ability=ASK[2])
+    assert row(y, day)["state"] == "queued" and rec.lines.count(picked) == 1 and len(y.workers.launcher.calls) == 1
+    assert row(y, day, 2)["state"] == "filed" and row(y, day, 2)["last"]           # its build came back: a person's call
+    asyncio.run(y.pipeline.stop(row(y, day, 3), "held", "a reason"))               # none in flight now: the queued one starts
+    assert row(y, day)["state"] == "building" and row(y, day)["worker"] and len(y.workers.launcher.calls) == 2
+    assert rec.lines[-1] == words.NEED_STARTS.format(n=1, room="example-room", ability=ASK[2]) and row(y, day, 2)["state"] == "filed"
+
+
 def test_built_pr_checks_pending_then_green_start_a_cold_read_and_its_merge_uses_the_heads_sha(pipe):
     y, rec, hub, units, rooms = pipe
     day = need(y, "example-room", *ASK)["day"]

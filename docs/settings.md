@@ -131,7 +131,7 @@ The daemon's settings, in the private folder beside rooms.toml, read when yerkd 
 
 - `account`: the account `yerk needs build` runs on (default [curate] account, else the workers' pick)
 - `cap_minutes`: a builder's minutes before it is stopped (default 60)
-- `auto`: the pipeline: a filed need is built, checked, read cold, merged, deployed and live with no person, one at a time (default true; false: `yerk needs build` by hand, as before)
+- `auto`: the pipeline: a filed need is built, checked, read cold, merged, deployed and live with no person, one at a time, and one filed before it and never built is queued on its next tick (default true; false: `yerk needs build` by hand, as before)
 - `fix_cap`: fix workers a need's PR gets for red checks or a cold read's fix first before it is held (default 2)
 - `checks_minutes`: minutes a PR's head waits for all its checks before the need is stuck (default 40)
 - `contexts`: how many CI checks a head gets before they count as all in (default 7)

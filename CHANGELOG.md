@@ -20,14 +20,16 @@ version changes.
   `yerk deploy origin/main` in a transient unit `yerk-deploy-<id>` after a fetch through the package's askpass (the token
   never reaches argv), and once a proven deploy holds the merge says live in the machine room and once in each room that
   filed it. Every step is one line in the machine room; `yerk needs list` words each state (queued, fixing, cold read,
-  held, stuck, deploying, live). `yerk needs build DAY N` by hand still starts a held or stuck need. The code ceiling
-  moves up by 496, to 23,596.
+  held, stuck, deploying, live). `yerk needs build DAY N` by hand still starts a held or stuck need. A need filed before
+  the pipeline, or while it was off, that no build ever started is queued on the watch's next tick and starts in its
+  turn; one whose build came back to filed stays for a person, as a held one does. The code ceiling moves up by 509, to
+  23,609.
 - Why: on 2026-10-31 need 27 took four hand steps from its PR to live, and a red CI leg had to be noticed by a person.
 
 **Upgrading**: put a GitHub token for the repo at `secrets/github.token` in the private folder (one line, 0600) for the
 merge and the deploy's fetch; without it the builds and PRs still happen and the merge and the deploy wait for a person.
 `[needs] auto` is on unless set false in yerkd.toml. Set `[needs] pr_check` to the install's PR checker if it has one.
-budgets.toml moves with the code: the code ceiling to 23,596.
+budgets.toml moves with the code: the code ceiling to 23,609.
 
 ### dst-night-tests (#?)
 

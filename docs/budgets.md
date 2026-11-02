@@ -375,7 +375,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-01: needs-pipeline merged with main a82fc7b (#154 need-2026-10-31-27, #156 dst-night-tests): main's 23,100 plus this PR's 496 is 23,596, counted on the merged tree; daemon.py and words.py, which both changed (#154 the watch tool's docstring and log line and the captions words, this PR the pipeline's hooks and the NEED_* words), merged with no line in common; `yerk docs own` wrote budgets.md.
 
-- `lines = 23596`
+2026-11-01: needs-pipeline raised it by 13 more, the pickup (needs filed before the pipeline sat at filed with no build ever started, for a person to type `yerk needs build`), not folded to fit: pipeline.py 11 (pickup(), its call in the tick, the docstrings), words.py 1 (NEED_PICKED_UP), config.py 1 (the auto setting's words). 23,609: 23,596 plus 13.
+
+- `lines = 23609`
 
 ## Uncapped
 

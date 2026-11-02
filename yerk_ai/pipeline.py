@@ -4,7 +4,8 @@ itself this way: one need at a time (two open PRs that both move the code ceilin
 
 - Start ([needs] auto, default true; false is the hand road of needs.py exactly): a new need starts its builder when no need
   is in flight (needs.FLIGHT), else it is queued; a need that reaches live, held or stuck starts the oldest queued one. A
-  builder that fails starts once more; failed twice, the need is stuck.
+  builder that fails starts once more; failed twice, the need is stuck. A need still filed that no build ever claimed (filed
+  before the pipeline, or with auto off) is queued on a tick (`pickup`); one a build came back from stays, a person's call.
 - The watch (`tick`: its own task every EVERY seconds, and once each time the channel connects): built, then its PR
   (github.pr_for), then PR; a PR's head's checks all in ([needs] contexts) and green: the cold read; one red: a fix worker
   while fixes < [needs] fix_cap, else held; not all in within [needs] checks_minutes of the head: stuck; no PR NO_PR after
@@ -109,6 +110,15 @@ class Pipeline:
         if q and (await self.y.need_build({"day": q[0]["day"], "n": q[0]["n"]})).get("ok"):
             await self.say(words.NEED_STARTS.format(n=q[0]["n"], room=q[0]["asks"][0]["room"], ability=words.line(str(q[0]["ability"]), 80)))
 
+    async def pickup(self) -> None:
+        """A need still filed with no `last` (no build came back) and no `worker` (need_build writes one on its claim, so no
+        build ever started) is queued, oldest first, each said once; a filed one with `last` stays, a person's call, as held."""
+        if not self.auto():
+            return
+        for r in sorted(needs.load(self.y.state), key=lambda r: (str(r["day"]), int(r["n"]))):
+            if r.get("state") == "filed" and not r.get("last") and "worker" not in r and await self.set(r, {"state": "queued"}, "filed"):
+                await self.say(words.NEED_PICKED_UP.format(n=r["n"], day=r["day"], room=r["asks"][0]["room"], ability=words.line(str(r["ability"]), 80)))
+
     async def stop(self, r: dict[str, Any], state: str, why: str) -> None:
         """Held (a person decides) or stuck, with why; the next queued need starts."""
         await self.set(r, {"state": state, "why": why, "worker": ""})
@@ -137,6 +147,7 @@ class Pipeline:
                 await self.checked(r, tok, repo)
             elif r.get("state") in ("merged", "deploying") and r.get("merged_at"):
                 await self.ship(r, tok)
+        await self.pickup()
         await self.next()
 
     async def checked(self, r: dict[str, Any], tok: str, repo: str) -> None:

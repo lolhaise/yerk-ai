@@ -391,6 +391,7 @@ NEED_BUSY = "need {n} is {state}: one builder a need, so nothing started"
 # the needs pipeline (pipeline.py): each change one line in the machine room; live also one line in each room that filed it
 NEED_STARTS = WORKING + " need {n} from {room}: {ability}; its builder starts"
 NEED_QUEUED = WORKING + " need {n} from {room}: {ability}; queued behind need {behind}"
+NEED_PICKED_UP = WORKING + " need {n} of {day} from {room}: {ability}; filed and never built, so queued"
 NEED_NO_TOKEN = WORKING + " need {n}: no GitHub token, so the merge waits for a person\nput one at secrets/github.token for the pipeline"
 NEED_SEEN = WORKING + " need {n}: PR {pr} open, waiting on its checks"
 NEED_FIXING = WORKING + " need {n}: PR {pr}, fix {k} of {cap} starts\n{why}"
