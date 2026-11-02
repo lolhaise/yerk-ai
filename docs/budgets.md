@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 113602`
+- `total = 114202`
 
 ## [session_start.claude_code]
 
@@ -38,9 +38,11 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-02, need-2026-10-25-22: `remember`'s `triggers` (the words a topic rule loads on, chosen when it is filed, since a room asked to make one load on an everyday word had no way to) takes the tool from 1,625 to 1,904 as this tree builds it on Python 3.13, about 279 more as sent, so about 15,328 on the 15,049 the rooms send; so 15,400, no part could pay, the total rose by the 300.
 
+2026-11-02, need-2026-10-25-23: the `delete` tool (a delete the owner orders outside a room's work folder, held with each path shown and run once on the owner's word, for good, by the daemon, since a room asked to free a full disk had its `rm` refused and the rest of the disk read-only in its sandbox) is 605 as this tree builds it on Python 3.13, about 636 as sent (31 over its build, as each of Yerk AI's entries goes out), so about 15,964 on the 15,328 the rooms send; so 16,000, no part could pay, the total rose by the 600.
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
-- `yerk_tools = 15400`
+- `yerk_tools = 16000`
 - `deferred_tool_names = 3429`
 - `mcp__hands__ = 7462`
 - `mcp__web-ladder__web_image = 913`
@@ -391,7 +393,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-02: need-2026-10-25-22 raised it by 25, the words a topic rule loads on, chosen when it is filed (`remember`'s `triggers`), and the older filing of its job named in `replaced` (on 2026-10-25 a room asked to make a topic rule load on "money" filed it again with the word in its text; the triggers came from its job's words and the names its text held, an everyday word never one, and the filing said replaced: [] though it had marked the older line), not folded to fit: memory.py 23 (the [on: ...] mark, picked() and wants(), a picked trigger riding at a word only its rule says and a phrase on each of its words, a re-filing keeping its job's, the refusal of one naming nothing, `replaced` from either file, the docstrings), daemon.py 1 (the triggers to memory.rule), mcp_server.py 1 (the parameter and its sentence). 23,811: main c0efc6d's 23,786 plus 25.
 
-- `lines = 23811`
+2026-11-02: need-2026-10-25-23 raised it by 166, the `delete` tool, a delete the owner orders outside a room's work folder, held with each path shown and run once on the owner's word, for good, by the daemon (need 23 of 2026-10-25: a room asked to free a full disk had its `rm` refused by the trash gate and the rest of the disk read-only in its sandbox, and wrote the lines for the owner to paste), not folded to fit: deletes.py 106 (what is never deleted and why, the mount table, the size on disk, the preview, the delete path by path with what would not go), daemon.py 32 (the tool, its refusal at the gate before the owner is asked, the preview at the hold, the release it deletes on, the way named in an owner room's refusal), words.py 14 (the refusals, the kinds, the way; sizes in GB), mcp_server.py 10 (the tool's sentence), gates.py 4 (the delete-outside rule, the way on the outside refusal). 23,977: main 43b6107's 23,811 plus 166.
+
+- `lines = 23977`
 
 ## Uncapped
 
