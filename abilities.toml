@@ -521,6 +521,24 @@ key = "the transcript runs on transcribe's keys, in the private folder's secrets
 free_path = "the frames, and the words of any video that has captions, come without a key; without yt-dlp the room says so"
 asked_as = ["watch this", "what does the video say", "this reel", "this tiktok", "the video he sent", "what happens in it", "read the whole podcast", "what does he say in this video", "the transcript of this youtube"]
 
+[abilities.reverse-image-search]
+state = "built"
+what = "The reverse_image_search tool on Yerk's own MCP server: a picture in a room's own folders (one sent to the room, a picture web_image saved, a frame watch took) is looked up on the web as Google Lens or TinEye would, and the room gets Google's best guess at what it is, the names it ties to it (a work and its maker, a place, a product), the pages that show it, and the copies and look-alikes it found, so a room asked where a picture comes from or who made it searches by the picture, not only by words describing it. The daemon runs it, since a room's shell has no network."
+how = [
+  "Search: Google Cloud Vision's web detection, the documented API of Google's search by picture, one images:annotate request with the picture's own bytes in it, so no picture is put at a public address for a search to fetch; up to 20 of each list.",
+  "Pictures: a jpeg, png, gif, webp, bmp or tiff goes as it is; a HEIC or AVIF, or one past 7 MB (what a 10 MB request carries in base64), goes as a JPEG of at most 2048 pixels a side that ffmpeg makes, the picture itself untouched.",
+  "Records: every title, name and address came off the web, so the result says so, gives the best guess as Google's guess, and tells the room to open a page that shows the picture before it says what it is or who made it; a search that finds nothing says so, and that a photo of a thing finds less than the picture of it a page shows.",
+  "Spend: each call Google answers is one spend row at the list price, and the morning diff says the day's total; a refusal, a key that is wrong or an API not turned on in the key's project is said in Google's own words, the key never in them, and books nothing.",
+]
+tier = "key"
+keys = ["google-vision"]
+provider = "Google Cloud Vision (web detection)"
+needs = "a Google Cloud Vision API key in the private folder (secrets/google-vision.key), from a Google Cloud project with the Cloud Vision API turned on and billing set up; ffmpeg on the machine for a HEIC, an AVIF or a picture past 7 MB"
+price = "the first 1,000 pictures a month free, then US$3.50 a thousand, 0.35 US cents a picture (Cloud Vision's pricing page, read 2026-11-02); each call books 0.35 cents, the list price, not the month's bill"
+key = "make an API key in the Google Cloud project that has the Cloud Vision API turned on (APIs and services, Credentials; restrict it to that API), and put it on the first line of secrets/google-vision.key in the private folder, 0600; the next call reads it, no restart"
+free_path = "none for a search by picture: without the key the tool says which key turns it on, and the room can still Read the picture and search the web by words"
+asked_as = ["reverse image search", "search by image", "who painted this", "where is this picture from", "find this picture online", "google lens", "tineye"]
+
 [abilities.assistant-files]
 state = "built"
 what = "A file another assistant attaches where a room reads (the channel it watches or its own, an assistant `[watch] assistants` lists in yerkd.toml) is saved in the room's work/inbox/<message id>/ as a person's file is, so the room opens it when asked, where before it had the file's name and size in the day log and no copy: the answer a held message waits for has its files saved before that turn and named under it with where each was saved (an owner room's PDF or workbook with its text beside it) or why it could not be fetched, any other message has them saved as it is filed, once a message, a ledger row a file and never a notice in the room."
