@@ -381,7 +381,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-01: need-2026-10-24-1 raised it by 160, the `text` tool, one text in the owner's name from the Mac, held with its words shown and sent once on the owner's word (need 1 of 2026-10-24: a room asked to text someone for the owner had no tool to, and Messages on the Mac would not answer over plain ssh), not folded to fit: texts.py 100 (the way to the Mac's bridge, who a text can go to, the status and the send, each outcome told apart), daemon.py 33 (the tool, its refusal at the gate before the owner is asked, the preview as it reads, the release it sends on), words.py 11, mcp_server.py 9 (the tool's sentence), config.py 6 ([imessage]'s keys), gates.py 1 (the text-out rule). 23,769: main 3de39c9's 23,609 plus 160.
 
-- `lines = 23769`
+2026-11-01: need-2026-10-24-1 raised it by 7 more, the preview naming who a text goes to exactly as it is sent (PR 158's cold read: an address shaped like a path was shown by its last name, so the owner could say the word for one person and the text go to another), not folded to fit: texts.py 6 (preview()), daemon.py 1 (its call at the hold). 23,776: 23,769 plus 7.
+
+- `lines = 23776`
 
 ## Uncapped
 

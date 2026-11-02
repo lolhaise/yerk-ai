@@ -103,7 +103,7 @@ def test_a_text_is_held_with_its_words_shown_and_the_owners_word_sends_it_once(t
     out = pre(y, TEXT)
     assert held(out) and out["hookSpecificOutput"]["permissionDecisionReason"].startswith("Held: a text in your name")
     assert ch.notes == [f"{words.WORKING} held: a text in your name\nsay approve here to let it run once\n"
-                        "```\nto: +1 555 0001111\nRunning late, there by 7.\nSave me a seat?\n```"]   # as it reads, never JSON
+                        "```\nto: +15550001111\nRunning late, there by 7.\nSave me a seat?\n```"]   # as it reads and goes, never JSON
     assert text(y, TEXT) == {"ok": False, "maybe_sent": False, "error": words.TEXT_NOT_RELEASED} and asked(log) == []
     assert "[approval] owner said approve" in word(y, room)["hookSpecificOutput"]["additionalContext"]
     assert pre(y, TEXT) == {}                                                     # the same call, released
@@ -116,10 +116,22 @@ def test_a_text_is_held_with_its_words_shown_and_the_owners_word_sends_it_once(t
     assert "to +15550001111" in y.ledger.rows(10, "gates")[1]["detail"]          # the receipt: who it went to, its id
 
 
+def test_the_preview_names_who_the_text_goes_to_as_it_is_sent_never_as_the_room_wrote_it(tmp_path):
+    """PR 158's cold read: an address shaped like a path was shown by its last name, so the owner said the word for one
+    person and the text went to another; a number broken over two lines read as its first half too."""
+    y, room, ch, log = setup(tmp_path)
+    for to in ("/x/" + at(["y", "example.test"]), "+1 555\n0001111"):
+        assert held(pre(y, {**TEXT, "to": to}))
+        word(y, room)
+        assert pre(y, {**TEXT, "to": to}) == {} and text(y, {**TEXT, "to": to})["ok"]
+    shown = [n.split("```\n")[1].splitlines()[0] for n in ch.notes if "```" in n]       # the preview's first line
+    assert shown == [f"to: {p['to']}" for m, p in asked(log) if m == "send"] == ["to: /x/" + at(["y", "example.test"]), "to: +15550001111"]
+
+
 def test_an_edit_is_a_new_preview_and_the_word_sends_only_the_newest(tmp_path):
     y, room, ch, log = setup(tmp_path)
     edit = {**TEXT, "text": "Running late, there by 8."}
-    assert held(pre(y, TEXT)) and held(pre(y, edit)) and ch.notes[1].endswith("```\nto: +1 555 0001111\nRunning late, there by 8.\n```")
+    assert held(pre(y, TEXT)) and held(pre(y, edit)) and ch.notes[1].endswith("```\nto: +15550001111\nRunning late, there by 8.\n```")
     word(y, room)
     assert held(pre(y, TEXT)) and pre(y, edit) == {}                               # the word was for the text shown last
     assert text(y, TEXT)["error"] == words.TEXT_NOT_RELEASED and text(y, edit)["ok"]

@@ -1207,7 +1207,8 @@ class Yerkd:
         if v is None and (hit := gates.external_hit(tool, ti, name, self.gates, self.room_confs)):
             rule, what, call = hit
             key = gates.call_key(tool, ti)
-            shown = gates.plain(tool, ti) if self.room_confs[name].get("people") or tool == texts.TOOL else key   # no JSON: a text as it reads
+            shown = (texts.preview(ti) if tool == texts.TOOL               # no JSON: a text as it reads, to whom it goes
+                     else gates.plain(tool, ti) if self.room_confs[name].get("people") else key)
             rel = self.ledger.release(name, rule, key, cwd, self.gates.window_s)
             if rel:
                 v = gates.Verdict("approval", "release", detail=f"{what}: {call}; approved by {rel['approved_by']}", rule=rule)

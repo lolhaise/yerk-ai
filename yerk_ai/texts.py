@@ -47,6 +47,12 @@ def handle(to: str) -> str:
     return t if EMAIL.fullmatch(t) else ""
 
 
+def preview(ti: dict[str, Any]) -> str:
+    """A held text as the owner reads it before the word: its first line who it goes to exactly as the send has it (handle,
+    one line), never as the room wrote it or as no_paths would cut a path-shaped address to its name; then its words."""
+    return f"to: {handle(str(ti.get('to') or ''))}\n{ti.get('text') or ''}"
+
+
 async def ask(proc: asyncio.subprocess.Process, rid: int, method: str, params: dict[str, Any], wait: float) -> dict[str, Any] | None:
     """One request on the line and its answer, a result or an error; None when none came in `wait` or the line closed."""
     assert proc.stdin is not None and proc.stdout is not None
