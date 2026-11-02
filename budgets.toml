@@ -7,7 +7,7 @@
 # The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and
 # Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 [session_start]
-total = 116861
+total = 117061
 
 # Load order, most stable first, so the cached start of the prompt survives.
 # The first parts are Claude Code's own (its default prompt, the built-in tools
@@ -102,10 +102,15 @@ total = 116861
 # that browser shows no window; filed 2026-10-28), its entry 3,048 as the plug-in's merge of `shot` onto its main
 # builds it and about 3,079 as sent (all five 7,966 built, 8,121 sent), 221 over the 2,858 of `upload`; so 8,121, no
 # part could pay, the total rose by the 221 (to 116,861).
+# 2026-11-02, need-2026-10-30-25: the `watch` tool's sentence on a Discord message's link (the video attached to it saved
+# to the room's inbox and watched there, since a room asked to watch mp4 files another assistant posted in a channel had
+# their names and no address, and yt-dlp called the message's link "Unsupported URL") takes it from 1,768 to 1,992 as this
+# tree builds it on Python 3.13, all 18 to 17,580, about 18,138 as sent (558 over the build, as on the tree of 9d747cb);
+# so 18,200, no part could pay, the total rose by the 200 (to 117,061).
 [session_start.claude_code]
 claude_code_prompt = 10966
 builtin_tools = 12132
-yerk_tools = 18000
+yerk_tools = 18200
 deferred_tool_names = 3429
 mcp__hands__ = 8121
 mcp__web-ladder__web_image = 913
@@ -853,4 +858,11 @@ secs = 60
 # 2026-11-02: need-2026-10-28-25 merged with main 22876bf (#167): main's 24,363 plus this PR's 5 is 24,368, counted on
 # the merged tree; this PR's context.py and daemon.py and #167's workers.py, no file changed on both sides, merged
 # clean; `yerk docs own` wrote budgets.md.
-lines = 24368
+# 2026-11-02: need-2026-10-30-25 raised it by 64, `watch` on a Discord message's link (need 25 of 2026-10-30: a room asked
+# to watch mp4 files another assistant posted in a channel had their names from a history listing and no address, and
+# yt-dlp called the message's link "Unsupported URL"), not folded to fit: discord.py 31 (pull: the message read through
+# the bot only where the room reads, an owner's room in its own server, its videos saved as a person's files are, and the
+# one read past a room's channels in the module's docstring), words.py 12 (each miss in words), daemon.py 10 (the link
+# handed to the room's adapter, then watched as `path`), watch.py 9 (the link's form and the 300 MB cap in bytes),
+# mcp_server.py 2 (the tool's sentence). 24,432: main 28e69c3's 24,368 plus 64.
+lines = 24432

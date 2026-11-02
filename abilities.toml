@@ -567,6 +567,7 @@ how = [
   "Never twice: a post already pulled is not pulled again, and its transcript is read from its file, so a second call costs nothing.",
   "In the site's words: a page that needs a login, a private post or a page with no video is said as yt-dlp says it; no cookies and no logins are used.",
   "A file: a video file sent to a room is watched from its saved path the same way, nothing pulled (yerk explain video-file).",
+  "Discord: a video attached to a Discord message is watched from the message's link, saved through the daemon's bot, never yt-dlp (yerk explain discord-video).",
 ]
 tier = "key"
 keys = ["openai"]
@@ -595,6 +596,25 @@ price = "the frames are free; the transcript at transcribe's prices (yerk explai
 key = "the transcript runs on transcribe's keys, in the private folder's secrets/: openai.key, and groq.key and meta.key, both optional; the next call reads it, no restart"
 free_path = "the frames come without a key; without one the room says the video's sound could not be transcribed"
 asked_as = ["the video i sent", "this video file", "the clip i sent", "what's in this video", "look at this video", "frames from a video", "contact sheet"]
+
+[abilities.discord-video]
+state = "built"
+what = "A video attached to a Discord message (an mp4 another assistant or a person posted in a channel) is watched from the message's link through the watch tool: the daemon's bot reads that one message, saves its video to the room's inbox as a file sent to the room, and the room gets the frames and the transcript a video file gives, where before a history listing gave the file's name and no address, and yt-dlp could not open a Discord link."
+how = [
+  "Link: the message's own link, as Discord's Copy Message Link gives it, in watch's `url`; the channel and the message are read from it, and the channel's server is the one Discord gives, never the one the link names.",
+  "Where: a room reads a message in its own channel or the one it watches, and an owner's room also one in any channel of its own server; any other is refused in one line, its message never read.",
+  "Save: each video on the message up to 300 MB is saved in the room's work/inbox/<message id>/ under its own name, a ledger row each, as the adapter saves a file sent to the room; the first is watched, the rest named with their saved paths for watch's `path`, and one past 300 MB is named and never fetched.",
+  "Watch: the frames and the transcript as for a video file (yerk explain video-file), the transcript beside the file, so a second call on the same link pays nothing again.",
+  "Misses in words: a message gone, a channel the bot cannot read, a message with no video (its files named) and a room off Discord each come back as one line, and yt-dlp never runs on a Discord link.",
+]
+tier = "key"
+keys = ["openai"]
+provider = "OpenAI for the transcript, with transcribe's Groq and Meta keys when they are there"
+needs = "the Discord adapter, its bot able to read the channel (View Channel and Read Message History); ffmpeg and ffprobe on the machine; the OpenAI key for the transcript"
+price = "reading the message, the save and the frames are free; the transcript at transcribe's prices (yerk explain transcribe): a 1-minute clip is about 1 US cent with all three engines"
+key = "the transcript runs on transcribe's keys, in the private folder's secrets/: openai.key, and groq.key and meta.key, both optional; the next call reads it, no restart"
+free_path = "the frames come without a key; without one the room says the video's sound could not be transcribed"
+asked_as = ["the video posted in the channel", "the mp4 in discord", "the video attached to that message", "watch the videos in the channel", "the discord video"]
 
 [abilities.reverse-image-search]
 state = "built"

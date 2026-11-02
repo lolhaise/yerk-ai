@@ -347,6 +347,18 @@ WATCH_FROM_AUTO_CAPTIONS = ("the transcript is the video's auto-generated captio
                             "are its auto captions: they carry no punctuation, and a name in them may be misheard")
 WATCH_NO_CAPTIONS = "no captions on that page, so its sound was transcribed"
 WATCH_CAPTIONS_FAILED = "its captions could not be read ({why}), so its sound was transcribed"
+# a Discord message's link (the adapter's pull): why no video came from it, and the note on the rest it carries
+WATCH_NO_DISCORD = "this room is not on Discord, so no Discord message can be read for it"
+WATCH_NOT_ITS_CHANNEL = ("that message is outside the channels this room reads: watch takes a Discord message in this room's own "
+                         "channel or the one it watches, and an owner's room one anywhere in its own server")
+WATCH_NO_MESSAGE = "that message is gone from Discord, or its link is cut short"
+WATCH_NOT_READABLE = "Yerk's bot is shut out of that channel: it needs View Channel and Read Message History there"
+WATCH_DISCORD_DOWN = "Discord did not answer, so the message could not be read; try again in a minute"
+WATCH_NO_VIDEO = "that message has no video attached, so there is nothing to watch; its files: {files}"
+WATCH_NO_FILES = "that message has no file attached, so there is nothing to watch"
+WATCH_TOO_BIG = "past the 300 MB a watch takes, so not saved: {names}"
+WATCH_NOT_SAVED = "{name} could not be saved from Discord, so there is nothing to watch ({why})"
+WATCH_MORE = "that message has {n} more video(s), saved: watch each with its path: {paths}"
 CAPTIONS_LIVE = "it is live now or not started yet, and a live stream has no captions to read"
 # a picture looked up on the web (reverse_image.py): why no search was made, and what its result says next
 REVERSE_NOT_HERE = "{name} is outside this room's folders; reverse_image_search reads the pictures sent to it and this room's own work"

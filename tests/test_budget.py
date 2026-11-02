@@ -246,7 +246,8 @@ def test_claude_codes_parts_as_the_rooms_send_them_fit_their_lines_and_what_is_l
     more as sent; all 18 about 17,914 as sent on the tree merged with main 9d747cb), to 18,000 and the total by the 300,
     to 116,202; then (need-2026-11-01-31) the hands line to 7,900 for the browser's `upload` (about 2,858 as
     sent), the total by the 438 to 116,640; then (need-2026-10-28-28) the hands line to 8,121 for the browser's `shot`
-    (about 3,079 as sent), the total by the 221 to 116,861."""
+    (about 3,079 as sent), the total by the 221 to 116,861; then (need-2026-10-30-25) the `watch` tool's sentence on a
+    Discord message's link (about 224 more as sent) to 18,200 and the total by the 200, to 117,061."""
     shape = {"system": [{"type": "text", "text": "p" * LIVE_PROMPT}, {"type": "text", "text": "# Yerk AI mechanics"}],
              "tools": [entry(n, size) for n, size in LIVE_TOOLS.items()]}
     (t := tmp_path / "sid.jsonl").write_text(json.dumps({"type": "api-request-shape", "shape": shape}) + "\n")
@@ -264,7 +265,7 @@ def test_claude_codes_parts_as_the_rooms_send_them_fit_their_lines_and_what_is_l
     assert all(sent <= line for sent, line in rows.values()), out
     assert all(line <= sent * 1.02 for name, (sent, line) in rows.items() if name != "Yerk AI's tools"), rows
     s = b["session_start"]
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 116861
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 117061
 
 
 def room_sent(tmp_path, tools, file="# Yerk AI mechanics\n- an example line"):
@@ -382,10 +383,11 @@ def test_the_rulebook_line_keeps_about_1000_over_the_largest_room_text_and_what_
     (800), no part could pay, to 115,902 (need-2026-10-27-23); then the `watch` tool's `path` (300), no part could pay, to
     116,202 (need-2026-10-24-22); then the hands line (438, the browser's `upload`), no part could pay, to 116,640
     (need-2026-11-01-31); then the hands line (221, the browser's `shot`), no part could pay, to 116,861
-    (need-2026-10-28-28)."""
+    (need-2026-10-28-28); then the `watch` tool's sentence on a Discord message's link (200), no part could pay, to
+    117,061 (need-2026-10-30-25)."""
     s = budgets()["session_start"]
     assert 900 <= s["appended"]["rulebook"] - LIVE_RULEBOOK <= 1400 and s["appended"]["rules"] == 16000
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 116861
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 117061
     private = tmp_path / "private"
     shutil.copytree(EXAMPLE_PRIVATE, private)
     (private / "rulebook.md").write_text("r" * (LIVE_RULEBOOK - 1) + "\n")

@@ -179,7 +179,9 @@ a video link and expects you to have watched it, since the caption, the cover pi
 video. A page that needs a login, a private post or a page with no video comes back as that, in the site's own
 words. A transcript past US$1 comes back refused until the owner says yes; then call again with `owner_yes` true. A
 video already pulled is not pulled or transcribed again. A video file sent to you, which Read cannot open, is watched
-the same way from `path`, its saved path from its [attachment] line, in place of `url`; nothing is pulled.
+the same way from `path`, its saved path from its [attachment] line, in place of `url`; nothing is pulled. A video
+attached to a Discord message is watched from the message's link as `url` (discord.com/channels/SERVER/CHANNEL/MESSAGE),
+saved to this room's inbox first; a message in a channel this room does not read is refused.
 ```
 
 - `url`: string, default ""

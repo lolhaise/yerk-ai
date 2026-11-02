@@ -8,6 +8,34 @@ version changes.
 
 ## 2026-11-02
 
+### need-2026-10-30-25 (#?)
+
+- A room can watch a video attached to a Discord message now: `watch` takes the message's link as its `url`
+  (Discord's Copy Message Link, discord.com/channels/SERVER/CHANNEL/MESSAGE). The daemon's bot reads that one message,
+  saves its video to the room's `work/inbox/<message id>/` as a file sent to the room is saved (its own name, a ledger
+  row), and watches it there as `path` does: the same frames, the transcript beside the file, paid once. A message with
+  more videos has the first watched and the rest saved, named with their paths for `path`; one past 300 MB is named
+  and never fetched. yt-dlp never runs on a Discord link, where it said "Unsupported URL".
+- Where: a room reads a message in its own channel or the one it watches; an owner's room also one in any channel of
+  the server its own channel is in. Any other is refused in one line, and its message is never read; the channel's
+  server is the one Discord gives, never the one the link names. A message gone, a channel the bot cannot read, a
+  message with no video (its files named) and a room off Discord each come back in words.
+- The adapter's docstring names this one read past a room's channels. abilities.toml has the built `discord-video`
+  entry and a line under `watch`; the README says it beside a file sent to the room (three of its clauses a few words
+  shorter, to stay under 12,000 bytes), and the GUIDE's count is what the file holds, 100: 40 built; docs/tools.md and
+  docs/budgets.md are what `yerk docs own` writes.
+- budgets.toml: `yerk_tools` 18,000 to 18,200 (the watch tool's sentence, 1,768 to 1,992 as built, all 18 about 18,138
+  as sent) and the session-start total by the 200 to 117,061; [code] lines 24,368 + 64 = 24,432; each with its dated
+  note.
+- Why: on 2026-10-30 a room asked to watch videos another assistant had posted as mp4 files in a Discord channel read
+  the channel through a plug-in's history, which gave each file's name and no address, and `watch` handed the
+  message's link to yt-dlp, which refused it; the room read the documents the videos were made from instead and filed
+  the need (need 25 of 2026-10-30).
+
+**Upgrading**: nothing to change by hand; every room has it from yerkd's restart at the deploy. The bot reads a
+message outside a room's channels only where it already has View Channel and Read Message History. budgets.toml's
+`yerk_tools`, `total` and [code] `lines` move with this change.
+
 ### need-2026-10-28-28 (#?)
 
 - A room can send a picture of what one of its tabs shows now: the hands plug-in's browser gains `shot`, which saves a

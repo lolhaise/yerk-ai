@@ -9,7 +9,8 @@ free before the download (captions.py), else transcribe.run's, on its keys, its 
 already pulled is never pulled or transcribed again: its folder keeps the video, the transcript beside it and the link it
 came from, so another post whose slug is the same gets a folder of its own. A video file sent to a room (`path`), which a
 room's Read cannot open, is watched where it is (run_file): nothing pulled, the same frames under videos/, the transcript
-beside it as transcribe writes one.
+beside it as transcribe writes one. A Discord message's link (`message`) is watched from the video attached to it, which
+the daemon's bot saves to the room's inbox as a file sent to it (the adapter's pull), then run_file.
 """
 from __future__ import annotations
 
@@ -38,6 +39,8 @@ SLUG = 48                    # the most characters of a post's own id its folder
 CAP = "300M"                 # yt-dlp's --max-filesize: a video past it is skipped, nothing saved
 FORMAT = "bv*[height<=720]+ba/b[height<=720]/b"    # the best picture at 720 lines or under with the best sound, else one file
 SOURCE = "url.txt"           # the link a folder's post was pulled from
+MOST_BYTES = 300 << 20       # CAP in bytes: a video attached to a Discord message past it is not saved
+DISCORD = re.compile(r"https://(?:(?:www|ptb|canary)\.)?discord(?:app)?\.com/channels/(?:\d+|@me)/(\d+)/(\d+)/?")
 KINDS = (".mp4", ".mov", ".m4v", ".mkv", ".avi", ".3gp", ".mpg", ".mpeg", ".wmv")    # a video file as a phone or a camera saves it
 ONE = threading.Lock()       # one download at a time across rooms; a caller waits its turn, never fails for it
 GUARD = threading.Lock()     # held while a call picks its folder
@@ -56,6 +59,12 @@ def is_link(url: str) -> bool:
         return u.scheme in ("http", "https") and bool(u.hostname)
     except ValueError:
         return False
+
+
+def message(url: str) -> tuple[int, int] | None:
+    """A Discord message's link (discord.com/channels/SERVER/CHANNEL/MESSAGE, as Copy Message Link gives it): its channel's
+    id and its own, else None. The server is not read from it: the bot reads the channel's own (the adapter's pull)."""
+    return (int(m[1]), int(m[2])) if (m := DISCORD.fullmatch(url.strip())) else None
 
 
 def is_video(name: str, kind: str = "") -> bool:
