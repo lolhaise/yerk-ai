@@ -8,6 +8,41 @@ version changes.
 
 ## 2026-11-02
 
+### need-2026-10-27-23 (#?)
+
+- An owner's room can see a branch or a pull request of Yerk's own repository as GitHub has it now: the new
+  `github_state` tool on Yerk's own server takes a branch's name (a worker's) or a pull request's number (12, #12, PR 12
+  or its address). The repository is private, so a room's web tools get a 404 there, and no room holds a GitHub login;
+  the daemon asks GitHub's REST API on the token the needs pipeline already uses, `secrets/github.token`, sent in a
+  header and never in a result, a log or a card.
+- It returns the branch's head on GitHub (`github`: its commit and how long ago it was made; null when GitHub has no
+  such branch, as after a merge that deleted it), the same branch in Yerk's checkout against it (`here`: its head,
+  whether GitHub has that same commit, and how many commits each side lacks when both are in the checkout; read only,
+  no fetch and no ref written), and the branch's pull requests, the newest five, each open, draft, merged or closed with
+  when, and an open one's commit statuses (`checks`, and `red` naming each that failed). So "committed, not pushed" and
+  "pushed, its pull request open and green" are read, not guessed.
+- Yerk's own repository only: `[needs] repo` in yerkd.toml, else the checkout's origin; another repository's address is
+  refused in one line. The owner's rooms only, since the repository is the owner's; a person's room hears that in one
+  line. A name that is no branch (an option, a range, a space) is refused before anything is sent.
+- With no token the tool says, in one line, the file that turns it on and asks GitHub nothing; a token that does not
+  reach the repository (GitHub's 401, 403 or 404 on the repository itself), a pull request that is not there and GitHub
+  not answering are each said in words. `yerk abilities` lists `github-state` as needing GitHub until the token file is
+  there (abilities.toml's `github` key is that file). Free: no spend row.
+- The card's row reads "checking need-example-1 on GitHub", never the call.
+- abilities.toml has the built `github-state` entry; the README names it among Yerk's tools (its inbox sentence a clause
+  shorter, to stay under 12,000 bytes), the GUIDE has a section, A branch on GitHub, and its count is what the file
+  holds, 95: 37 built; docs/tools.md and docs/budgets.md are what `yerk docs own` writes.
+- budgets.toml: `yerk_tools` 16,900 to 17,700 (the tool is 822 as built on Python 3.13, about 853 as sent) and the
+  session total by the 800 to 115,902; [code] lines 24,148 + 129 = 24,277; each with its dated note.
+- Why: on 2026-10-27 a room asked to tell a worker's outcome (its branch committed, not pushed), and whether the branch
+  or its pull request had since reached GitHub, fetched the repository's pull requests from GitHub's API and got a 404:
+  the repository is private and the room has no login. It said the push state was unknown from there and filed the need.
+
+**Upgrading**: nothing to change where the needs pipeline already has its token: the tool reads
+`secrets/github.token` in the private folder (one line, 0600), which needs read access to the repository's contents,
+pull requests and commit statuses. A room has the tool from its next session start after the deploy. budgets.toml's
+`yerk_tools`, `total` and [code] `lines` move with this change.
+
 ### need-2026-10-26-23 (#?)
 
 - A room the owner asks to book a free table can fill and confirm its booking page now, though the page's address

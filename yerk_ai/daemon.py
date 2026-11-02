@@ -28,8 +28,8 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 from zoneinfo import ZoneInfo
 
-from . import (beat, context, deletes, deploy, doctor, evidence, gates, hooks, jobs, location, mcp_server, memory, mentions, needs, pictures,
-               pipeline, render, reverse_image, status, taste, texts, transcribe, voice_note, watch, workers)
+from . import (beat, context, deletes, deploy, doctor, evidence, gates, github, hooks, jobs, location, mcp_server, memory, mentions, needs,
+               pictures, pipeline, render, reverse_image, status, taste, texts, transcribe, voice_note, watch, workers)
 from .accounts import Account, Cooldowns, from_dir, load_accounts, pick
 from .config import (EFFORTS, REPO, SHELLS, account_and_model, account_named, assistants, budgets, discord_id, flag, load_toml, models,
                      override, people, pinned, private_dir, read_secret, room_id, room_settings, rooms, state_dir, table, trusted, uncapped,
@@ -47,7 +47,7 @@ log = logging.getLogger("yerk.daemon")
 YERK_TOOLS = ["mcp__yerk__send", "mcp__yerk__hold", "mcp__yerk__recall", "mcp__yerk__read_memory",
               "mcp__yerk__remember", "mcp__yerk__worker", "mcp__yerk__schedule", "mcp__yerk__settings", "mcp__yerk__transcribe",
               "mcp__yerk__voice_note", "mcp__yerk__seen", "mcp__yerk__render", "mcp__yerk__watch", "mcp__yerk__need", texts.TOOL, deletes.TOOL,
-              "mcp__yerk__reverse_image_search"]
+              "mcp__yerk__reverse_image_search", "mcp__yerk__github_state"]
 # A shell room's sandbox when rooms.toml gives it no [rooms.NAME.sandbox] table: unsandboxed, a Read deny stops `cat` and
 # the Read tool, but a script, grep or redirect read every secret (Claude Code 2.1.304, PR 66's cold read, 2026-10-21)
 SANDBOX = {"enabled": True, "autoAllowBashIfSandboxed": True}
@@ -500,6 +500,19 @@ class Yerkd:
             return {"ok": False, "error": words.REVERSE_NO_FILE.format(name=p.name)}
         r = await asyncio.to_thread(reverse_image.run, p, self.private / reverse_image.KEY, self.booker(room, "reverse_image_search"))
         log.info("reverse_image_search: %s, %s", room, f"{p.name}, {len(r['pages'])} page(s)" if r["ok"] else r["error"][:160])
+        return r
+
+    async def tool_github_state(self, room: str, branch_or_pr: str) -> dict[str, Any]:
+        """The `github_state` tool: a branch or a pull request of Yerk's own repository ([needs] repo, else the checkout's
+        origin) as GitHub has it now, read off the loop on the pipeline's token (github.look), from an owner's room only,
+        since the repository is the owner's and private; the token never in the result. Free: no spend row."""
+        if room not in self.rooms or not self.owner(room):
+            return {"ok": False, "error": words.GITHUB_OWNER_ROOMS}
+        if not (tok := await asyncio.to_thread(github.token, self.private)):
+            return {"ok": False, "error": words.GITHUB_NO_TOKEN}
+        repo = await asyncio.to_thread(github.slug, REPO, str(dict(self.conf.get("needs", {})).get("repo") or ""))
+        r = await asyncio.to_thread(github.look, REPO, repo, branch_or_pr, tok)
+        log.info("github_state: %s, %s", room, f"{r['branch']}, {len(r['pull_requests'])} pull request(s)" if r["ok"] else r["error"][:160])
         return r
 
     async def tool_seen(self, room: str, path: str, text: str, shows: str) -> dict[str, Any]:

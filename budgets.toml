@@ -7,7 +7,7 @@
 # The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and
 # Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 [session_start]
-total = 115102
+total = 115902
 
 # Load order, most stable first, so the cached start of the prompt survives.
 # The first parts are Claude Code's own (its default prompt, the built-in tools
@@ -81,10 +81,15 @@ total = 115102
 # Google Cloud Vision's web detection, since a room asked who made a painting in a photo had only word searches, and six
 # found nothing) is 826 as this tree builds it on Python 3.13, about 857 as sent (31 over its build, as each of Yerk AI's
 # entries goes out), so about 16,821 on the 15,964 the rooms send; so 16,900, no part could pay, the total rose by the 900.
+# 2026-11-02, need-2026-10-27-23: the `github_state` tool (a branch or a pull request of Yerk's own repository, private, as
+# GitHub has it now, read on the daemon's token, since a room asked whether a worker's branch had reached GitHub got a 404
+# from its web fetch with no login) is 822 as this tree builds it on Python 3.13, about 853 as sent (31 over its build, as
+# each of Yerk AI's entries goes out), so about 17,674 on the 16,821 the rooms send; so 17,700, no part could pay, the total
+# rose by the 800.
 [session_start.claude_code]
 claude_code_prompt = 10966
 builtin_tools = 12132
-yerk_tools = 16900
+yerk_tools = 17700
 deferred_tool_names = 3429
 mcp__hands__ = 7462
 mcp__web-ladder__web_image = 913
@@ -788,4 +793,13 @@ secs = 60
 # answer's lists, the spend row), daemon.py 14 (the tool on the room's own folders, every room's allow line), words.py 13
 # (the refusals, the wall's key line, what a result says next, the card's row), mcp_server.py 11 (the tool's sentence).
 # 24,148: main 281b187's 23,977 plus 171.
-lines = 24148
+# 2026-11-02: need-2026-10-27-23 raised it by 129, the `github_state` tool, a branch or a pull request of Yerk's own
+# repository, private, as GitHub has it now, read on the daemon's token from an owner's room (need 23 of 2026-10-27: a room
+# asked whether a worker's committed branch had reached GitHub fetched the repository's pull requests and got a 404, since
+# the repository is private and no room holds a GitHub login), not folded to fit: github.py 86 (the name a room gives read
+# as a pull request or a branch, the branch's pull requests, head and checks, the branch in Yerk's checkout against
+# GitHub's head with no fetch, each wall in words), words.py 17 (the refusals, the wall's token line, what a result says
+# next, the card's row, a time in days), daemon.py 13 (the tool for the owner's rooms on the pipeline's token, every room's
+# allow line), mcp_server.py 11 (the tool's sentence), abilities.py 2 (the github key is the pipeline's token file).
+# 24,277: main 947df1f's 24,148 plus 129.
+lines = 24277

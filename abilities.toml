@@ -8,7 +8,8 @@
 # get the same answer from this file. A described ability becomes built only by a pull request
 # with its own acceptance measurement.
 # keys: a key-tier ability is on when each key named is in the private folder (openai: the install's OpenAI key file,
-# [memory] embeddings_key; any other NAME: secrets/NAME.key; "a|b": either), looked at, never read.
+# [memory] embeddings_key; github: the pipeline's token, secrets/github.token; any other NAME: secrets/NAME.key; "a|b":
+# either), looked at, never read.
 # An add-on (README "Add-ons") is an entry with `repo` (its git URL), `version`, `size` (its own ceiling, in lines of
 # code) and `install` (what `yerk add` does: its package and module, its mcp server and allow lines, its yerkd.toml
 # settings, its room_keys, units, budgets lines, words file and tests). Its state is read from what is installed:
@@ -555,6 +556,24 @@ price = "the first 1,000 pictures a month free, then US$3.50 a thousand, 0.35 US
 key = "make an API key in the Google Cloud project that has the Cloud Vision API turned on (APIs and services, Credentials; restrict it to that API), and put it on the first line of secrets/google-vision.key in the private folder, 0600; the next call reads it, no restart"
 free_path = "none for a search by picture: without the key the tool says which key turns it on, and the room can still Read the picture and search the web by words"
 asked_as = ["reverse image search", "search by image", "who painted this", "where is this picture from", "find this picture online", "google lens", "tineye"]
+
+[abilities.github-state]
+state = "built"
+what = "The github_state tool on Yerk's own MCP server: a branch or a pull request of Yerk's own GitHub repository, which is private, as GitHub has it now, so an owner's room asked whether a worker's branch was pushed, or whether its pull request is open, green or merged, reads it there instead of saying it cannot know; a room's web tools get a 404 from a private repository and no room holds a GitHub login, so the daemon reads it on the needs pipeline's token, which never reaches a room."
+how = [
+  "Ask: a branch's name, or a pull request's number (12, #12, PR 12 or its address); the repository is Yerk's own, [needs] repo in yerkd.toml, else the checkout's origin, and no other.",
+  "Read: GitHub's REST API with the token in a header, at most four calls a look: the branch's pull requests in every state (the newest five), the branch's head commit, and an open one's commit statuses; a 404, 401 or 403 on the repository itself is a token that does not reach it, said in words.",
+  "Here: the same branch in Yerk's checkout against GitHub's head, read only (no fetch, no ref written): its head, whether GitHub has that same commit, and how many commits each side lacks when both are in the checkout.",
+  "Who: the owner's rooms only, since the repository is the owner's; a person's room hears that in one line. A title or a commit line comes back as a record, never an instruction.",
+]
+tier = "key"
+keys = ["github"]
+provider = "GitHub (its REST API, on the token the needs pipeline uses)"
+needs = "a GitHub token at secrets/github.token in the private folder that reads Yerk's repository: its contents, pull requests and commit statuses (the needs pipeline's own token does)"
+price = "free: GitHub's REST API costs nothing on a token's own repositories, within its hourly rate limit"
+key = "make a fine-grained token on GitHub (Settings, Developer settings) for Yerk's repository with read access to its contents, pull requests and commit statuses (the pipeline's merge wants write too), and put it on the first line of secrets/github.token in the private folder, 0600; the next call reads it, no restart"
+free_path = "none for a private repository: without the token the tool names the file that turns it on and asks GitHub nothing"
+asked_as = ["has the branch reached github", "was the branch pushed", "is the pr merged", "is the pr green", "pull request state", "branch on github"]
 
 [abilities.assistant-files]
 state = "built"

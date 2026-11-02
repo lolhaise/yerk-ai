@@ -238,7 +238,8 @@ def test_claude_codes_parts_as_the_rooms_send_them_fit_their_lines_and_what_is_l
     to 113,302; then (need-2026-10-25-22) `remember`'s `triggers` (about 279 more as sent) to 15,400 and the total by the
     300, to 113,602; then (need-2026-10-25-23) the `delete` tool (about 636 as sent) to 16,000 and the total by the 600, to
     114,202; then (need-2026-10-26-22) the `reverse_image_search` tool (about 857 as sent) to 16,900 and the total by the
-    900, to 115,102."""
+    900, to 115,102; then (need-2026-10-27-23) the `github_state` tool (about 853 as sent) to 17,700 and the total by the
+    800, to 115,902."""
     shape = {"system": [{"type": "text", "text": "p" * LIVE_PROMPT}, {"type": "text", "text": "# Yerk AI mechanics"}],
              "tools": [entry(n, size) for n, size in LIVE_TOOLS.items()]}
     (t := tmp_path / "sid.jsonl").write_text(json.dumps({"type": "api-request-shape", "shape": shape}) + "\n")
@@ -256,7 +257,7 @@ def test_claude_codes_parts_as_the_rooms_send_them_fit_their_lines_and_what_is_l
     assert all(sent <= line for sent, line in rows.values()), out
     assert all(line <= sent * 1.02 for name, (sent, line) in rows.items() if name != "Yerk AI's tools"), rows
     s = b["session_start"]
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 115102
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 115902
 
 
 def room_sent(tmp_path, tools, file="# Yerk AI mechanics\n- an example line"):
@@ -370,10 +371,11 @@ def test_the_rulebook_line_keeps_about_1000_over_the_largest_room_text_and_what_
     the `text` tool (700), no part could pay, to 113,002 (need-2026-10-24-1); then the code line (300, its checkout's path
     in it), no part could pay, to 113,302 (need-2026-10-25-21); then `remember`'s `triggers` (300), no part could pay, to
     113,602 (need-2026-10-25-22); then the `delete` tool (600), no part could pay, to 114,202 (need-2026-10-25-23); then the
-    `reverse_image_search` tool (900), no part could pay, to 115,102 (need-2026-10-26-22)."""
+    `reverse_image_search` tool (900), no part could pay, to 115,102 (need-2026-10-26-22); then the `github_state` tool
+    (800), no part could pay, to 115,902 (need-2026-10-27-23)."""
     s = budgets()["session_start"]
     assert 900 <= s["appended"]["rulebook"] - LIVE_RULEBOOK <= 1400 and s["appended"]["rules"] == 16000
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 115102
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 115902
     private = tmp_path / "private"
     shutil.copytree(EXAMPLE_PRIVATE, private)
     (private / "rulebook.md").write_text("r" * (LIVE_RULEBOOK - 1) + "\n")
