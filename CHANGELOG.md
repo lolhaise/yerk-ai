@@ -8,6 +8,38 @@ version changes.
 
 ## 2026-11-02
 
+### need-2026-10-28-28 (#?)
+
+- A room can send a picture of what one of its tabs shows now: the hands plug-in's browser gains `shot`, which saves a
+  PNG of a tab or a popup the room opened, the page as rendered and scrolled where it is, in the room's own work folder
+  (`hands-shots/`), and gives back its path; the room opens it with Read and sends it with `send`, which takes any file
+  in its work folder. The browser draws the tab itself over its developer protocol, so a tab with no window on the
+  owner's screen is shot. The desktop's screenshot shoots the screen, where that browser shows nothing; a shot never
+  takes the owner's screen, and the browser's window is never shown for it.
+- A read: no owner's word and no payment check, under every browser call's guards (the room's own tabs, owner rooms
+  only, the brake's lease). A file that did not arrive or is not a PNG is said so and never named, and a second shot in
+  the same second takes a new name, never the first one's. The active tab of a minimized window never paints: after the
+  browser's 25 s wait its words reach the room with the way past them, to open the page again in a background tab and
+  shoot that one.
+- The change itself is in the hands plug-in's own repository (`~/.local/share/hands-mcp`, a local git tree with no
+  remote): `shot` on its branch `need-2026-10-28-28` (06baf79, cut from its 64af176), merged onto the plug-in's main
+  2fc539f, which carries `upload`, on its branch `need-2026-10-28-28-merge` (ee2deda), so its main fast-forwards to
+  both; the plug-in's offline tests there, 40 of 40 green. Here, its tools' budget line and the abilities entry
+  (`yerk explain tab-shots`), with eight phrases ("screenshot of the page", "pic of the page", ...) that hand a room
+  asked that way the entry whole, never the desktop's; the README says it in Add-ons (four of its clauses a few words
+  shorter, to stay under 12,000 bytes), and the GUIDE's count is what the file holds, 99: 39 built.
+- budgets.toml: the hands line 7,900 to 8,121 (the browser 3,048 as the merge builds it, about 3,079 as sent) and the
+  session-start total by the 221 to 116,861, each with its dated note; docs/budgets.md is what `yerk docs own` writes.
+- Why: on 2026-10-28 a room asked to send a picture of the web form it was filling in, in the browser on the owner's
+  PC, found no screenshot among the browser's actions, and the desktop's screenshot shoots the owner's screen, where
+  that browser shows no window; it described the form in words instead and filed the need (need 28 of 2026-10-28).
+
+**Upgrading**: merge this before, or with, the plug-in's deploy, which is fast-forwarding hands-mcp's main to
+`need-2026-10-28-28-merge` (ee2deda); a room has `shot` from its next process start after that. Moving the plug-in's
+main to `need-2026-10-28-28` (06baf79) instead would drop `upload`. budgets.toml's hands line and `total` move with this
+change, so a deploy after the plug-in's merge is in does not refuse on its size. need-2026-10-26-23's plug-in branch
+(e94ce96) still goes live by a merge of its own, as need-2026-11-01-31's block says, now onto ee2deda.
+
 ### need-2026-10-28-25 (#?)
 
 - A room told its rules changed reads every changed line now, whatever its privacy. When the lines new or replaced in

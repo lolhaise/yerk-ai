@@ -183,6 +183,25 @@ def test_a_room_asked_to_put_a_photo_on_a_web_form_hears_the_upload_way(tmp_path
     assert not abilities.asked("the photos are on the listing already, I added them myself", y.memory, TAB)
 
 
+def test_a_room_asked_for_a_picture_of_its_tab_hears_the_shot_way_never_the_desktops(tmp_path):
+    """need-2026-10-28-28: a room asked for a picture of the page it was filling in found no screenshot among the browser's
+    actions, and the desktop's screenshot shoots the owner's screen, where that browser shows no window. Asked that way, a
+    room gets tab-shots whole, never pc-control's screenshot: the browser plug-in's shot, drawn by the browser itself,
+    saved in the room's work folder to Read and send; asked for the screen, it still gets the desktop's entry."""
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    found = abilities.asked("ok, can you send me a pic of the page you're filling in?", y.memory, TAB)
+    assert [e["key"] for e in found] == ["tab-shots"]
+    text = found[0]["text"]
+    assert text.startswith(f"tab-shots, a Yerk AI ability ({words.ability('described')[1]}): Saves a picture of what one of the room's tabs")
+    for want in ("One browser action, shot", "Drawn by the browser itself, so a tab with no window on the owner's screen is shot",
+                 "Saved in the room's own work folder, to open with Read and send with send", "the owner's screen is never shot",
+                 "A tab that never paints is named, with the way past it", "whose browser plug-in carries the shot action"):
+        assert want in text, want
+    assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
+    assert [e["key"] for e in abilities.asked("take a screenshot of my whole screen", y.memory, TAB)] == ["pc-control"]
+    assert not abilities.asked("the page looks right now, no need for a screenshot", y.memory, TAB)
+
+
 def test_ordinary_messages_pull_no_ability_into_the_room(tmp_path):
     y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
     assert {m: [e["key"] for e in abilities.asked(m, y.memory, TAB)] for m in ORDINARY} == {m: [] for m in ORDINARY}

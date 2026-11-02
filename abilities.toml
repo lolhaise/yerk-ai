@@ -370,6 +370,26 @@ free_path = "this is the free path"
 why_not = "It rides on the browser ability, which is not in this repo; an install whose browser plug-in carries the upload action has it there."
 asked_as = ["attach a photo to the form", "upload a photo to the site", "add photos to the listing", "upload a file to a web form", "attach a file to the form"]
 
+# need-2026-10-28-28: a room asked for a picture of the page it was filling in had only the desktop's screenshot, which
+# shoots the owner's screen, and the browser it drives showed no window there to shoot.
+[abilities.tab-shots]
+state = "described"
+what = "Saves a picture of what one of the room's tabs shows in the browser ability's browser, as a PNG in the room's work folder that the room opens with Read and sends with send; the owner's screen is never shot and the browser's window is never shown."
+how = [
+  "One browser action, shot: the tab by the id the room's open gave it, or a popup it opened, the page as rendered and scrolled where it is.",
+  "Drawn by the browser itself, so a tab with no window on the owner's screen is shot: Page.captureScreenshot over the browser's developer protocol, where a desktop screenshot sees nothing.",
+  "Saved in the room's own work folder, to open with Read and send with send: a new name for each shot, never one reused; the path comes back, never the picture, and a file that is not a PNG is never named.",
+  "A read, under every browser call's guards: no owner's word and no payment check; only the room's own tabs, owner rooms only, the brake's lease.",
+  "A tab that never paints is named, with the way past it: the active tab of a minimized window never paints, so after its wait the room is told to open the page again in a background tab and shoot that one.",
+]
+tier = "free"
+needs = "the browser ability with a shot action in its plug-in"
+price = "none"
+free_path = "this is the free path"
+why_not = "It rides on the browser ability, which is not in this repo; an install whose browser plug-in carries the shot action has it there, and a room asked for a picture of its tab shoots the tab, never the owner's screen."
+asked_as = ["screenshot of the page", "screenshot the page", "screenshot of the tab", "screenshot of your browser", "screenshot your browser",
+            "pic of the page", "picture of the page", "picture of your browser"]
+
 [abilities.pc-control]
 state = "described"
 what = "Hands and eyes on a desktop computer: clicks, keys, windows and screenshots, for what a browser cannot reach."
