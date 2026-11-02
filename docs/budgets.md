@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 116640`
+- `total = 116861`
 
 ## [session_start.claude_code]
 
@@ -48,11 +48,13 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-02, need-2026-11-01-31: the hands plug-in's browser gains `upload` (a file in the room's work folder put on a page's file input, which `set` cannot fill; filed 2026-11-01), its entry 2,827 as the plug-in's branch builds it and about 2,858 as sent (each of the plug-in's five goes out 31 over its build: 7,307 built, 7,462 sent on its main), 438 over the 2,420 the work room sends; so 7,900, no part could pay, the total rose by the 438 (to 116,640 on main 22876bf's numbers).
 
+2026-11-02, need-2026-10-28-28: the hands plug-in's browser gains `shot` (a PNG of what a room's tab shows, saved in its work folder to Read and send, since a room asked for a picture of its tab had only the desktop's screenshot, and that browser shows no window; filed 2026-10-28), its entry 3,048 as the plug-in's merge of `shot` onto its main builds it and about 3,079 as sent (all five 7,966 built, 8,121 sent), 221 over the 2,858 of `upload`; so 8,121, no part could pay, the total rose by the 221 (to 116,861).
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
 - `yerk_tools = 18000`
 - `deferred_tool_names = 3429`
-- `mcp__hands__ = 7900`
+- `mcp__hands__ = 8121`
 - `mcp__web-ladder__web_image = 913`
 - `skills = 0`
 
