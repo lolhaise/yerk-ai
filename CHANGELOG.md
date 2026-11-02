@@ -17,9 +17,10 @@ version changes.
   journal has `worker 99319d: lost (the unit is gone and left no exit record)` one second after its `started` line,
   so need 22 was held for a person ("the cold read gave no verdict") and account two, one worker at a time under
   `[workers] per_account` (1 by default), went to the next need's builder, while 99319d, the need's cold read, ran on
-  to its `merge` verdict and exited clean seven minutes later. Now a worker one list missed gets a second look at its unit first, and one under two minutes old
-  is kept for a later pass, its unit maybe not listed yet; a unit both looks miss, with no exit file, in a worker past
-  its first two minutes is lost, as before, and a look that saves one logs `the unit list was stale, re-attached`.
+  to its `merge` verdict and exited clean seven minutes later. Now a worker one list missed gets a second look at its unit
+  first, and one under two minutes old is kept for a later pass, its unit maybe not listed yet; a unit both looks
+  miss, with no exit file, in a worker past its first two minutes is lost, as before, and a look that saves one logs
+  `the unit list was stale, re-attached`.
 
 **Upgrading**: nothing to change by hand; the daemon looks twice from its next start. budgets.toml moves with the code:
 the code ceiling to 24,164.
