@@ -315,6 +315,8 @@ free_path = "none for calls"
 why_not = "Not planned for the public harness: it needs a paid voice vendor and a public tunnel, and most users never need it."
 asked_as = ["call someone for me", "make a call for me", "place a call", "call on my behalf"]
 
+# need-2026-10-26-21: a page asked for in the browser on the PC would not open; that browser had quit with its
+# last tab, its port reset every call, and the error a room read was a stack trace's first line.
 [abilities.browser]
 state = "described"
 what = "Drives a real browser on a separate profile, so it never takes the owner's mouse and the owner's own windows stay untouched."
@@ -322,13 +324,16 @@ how = [
   "A separate browser profile on the owner's computer, signed in where the owner chose, driven over the browser's developer protocol.",
   "A tool server attached to that profile, so a room or a worker can open, read, click and type.",
   "A brake: the owner's stop word ends it at once, and a run lifts the brake for itself with a lease that runs out on its own.",
+  "A relaunch before each call: a browser that quit with its last tab leaves a port that takes a connection and resets it, so the tool starts it again inside the call's lease, and one that will not come back is said to be down in one line with its reason, never a stack trace's first line.",
+  "The computer the owner names: the default one when none is named; another computer's browser is another profile with its own sign-ins, so a read moves there only when the owner names it.",
 ]
 tier = "free"
 needs = "a desktop computer with a Chromium-based browser, a separate profile on it, and a path from the box to its developer port"
 price = "none"
 free_path = "this is the free path"
-why_not = "After the rooms move; the job-applications and bank-balances abilities wait on it."
-asked_as = ["use my browser", "control my browser", "drive my browser", "use a browser", "browser for me", "open a website for me"]
+why_not = "Not in this repo: a browser reaches the rooms as a plug-in an install attaches to every owner room under rooms.toml [defaults] (on the owner's box, hands and its mcp__hands__browser), so a room that holds such a tool opens the page with it, on the computer the owner names, and when the tool says that browser is down the room tells the owner, never reading on another computer unasked. The bank-balances ability builds on it."
+asked_as = ["use my browser", "control my browser", "drive my browser", "use a browser", "browser for me", "open a website for me",
+            "open it in my browser", "open a page in my browser", "browser on my pc"]
 
 [abilities.pc-control]
 state = "described"
