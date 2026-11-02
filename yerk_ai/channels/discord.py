@@ -8,6 +8,8 @@
   under a line saying it was sent to that assistant. Another assistant's message there (`[watch] assistants` in
   yerkd.toml) is filed under its own role once it has settled (SETTLE), its progress card never, and never answered;
   its files, there or in the room's own channel, are saved to the room's inbox as a person's are (_keep).
+- One read past those channels: the message whose link `watch` is handed, in an owner's room anywhere in its own
+  server, read once for the videos attached to it (pull), which are saved as a person's files are.
 - Only the owner, the people a room lists (`people` in rooms.toml), and in test mode the listed webhooks,
   are answered. Webhook senders pass a loop guard (lifted/loopguard.py) so a runaway script cannot run the room.
 - A message is ledgered by its Discord id before anything runs, then acked with a reaction. Its
@@ -688,6 +690,35 @@ class DiscordChannel:
             if side := await job:
                 f["text"] = str(side)
         return files
+
+    async def pull(self, room: str, cid: int, mid: int, wide: bool) -> tuple[Path, str]:
+        """The first video attached to message `mid` in channel `cid`, for `watch` handed its link, and the note on the rest:
+        each saved to `room`'s inbox as a person's files are (stage), but one past watch.MOST_BYTES. Read only where the room
+        reads (its own channel, the one it watches) or, `wide` (an owner's room), in its own server; else watch.Failed."""
+        m, mine = None, getattr(self.rooms.get(cid), "name", None) == room
+        try:
+            if mine or wide:
+                ch = self.client.get_channel(cid) or await self.client.fetch_channel(cid)
+                if mine or getattr(getattr(ch, "guild", None), "id", None) == getattr((await self._channel(room)).guild, "id", 0):
+                    m = await ch.fetch_message(mid)
+        except discord.NotFound:
+            raise watch.Failed(words.WATCH_NO_MESSAGE) from None
+        except discord.Forbidden:
+            raise watch.Failed(words.WATCH_NOT_READABLE) from None
+        except (discord.HTTPException, aiohttp.ClientError, asyncio.TimeoutError):
+            raise watch.Failed(words.WATCH_DISCORD_DOWN) from None
+        if m is None:
+            raise watch.Failed(words.WATCH_NOT_ITS_CHANNEL)
+        given = list(getattr(m, "attachments", None) or [])
+        if not (videos := [a for a in given if watch.is_video(a.filename, getattr(a, "content_type", None) or "")]):
+            raise watch.Failed(words.WATCH_NO_VIDEO.format(files=", ".join(a.filename for a in given)) if given else words.WATCH_NO_FILES)
+        big = ", ".join(a.filename for a in videos if int(a.size or 0) > watch.MOST_BYTES)
+        fit = [a for a in videos if int(a.size or 0) <= watch.MOST_BYTES]      # a save cut off is stage's miss, as a person's
+        kept = await self.stage(self.rooms[self.names[room]], SimpleNamespace(id=m.id, attachments=fit), say=False) if fit else []
+        if not (got := [str(f["path"]) for f in kept if f.get("ok")]):
+            raise watch.Failed(words.WATCH_NOT_SAVED.format(name=kept[0]["name"], why=kept[0].get("error")) if kept else words.WATCH_TOO_BIG.format(names=big))
+        more = (words.WATCH_MORE.format(n=len(got) - 1, paths=", ".join(got[1:])) if got[1:] else "", words.WATCH_TOO_BIG.format(names=big) if big else "")
+        return Path(got[0]), "; ".join(x for x in more if x)
 
     async def on_ready(self) -> None:
         self.loop = asyncio.get_running_loop()

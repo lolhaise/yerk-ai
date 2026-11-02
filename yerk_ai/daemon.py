@@ -474,7 +474,8 @@ class Yerkd:
         (watch.run), one download at a time across rooms, its frames taken and its transcript the page's own captions, else
         its sound transcribed as transcribe's is, on the same keys and gate, each paid call a spend row under `watch`; a post
         pulled before is neither pulled nor paid again. With `path`, a video file from the room's own folders (may_send's
-        rule, as transcribe's) watched where it is (watch.run_file): nothing pulled, its frames and transcript the same way."""
+        rule, as transcribe's) watched where it is (watch.run_file): nothing pulled, its frames and transcript the same way. A
+        Discord message's link (watch.message): its first video saved to the inbox by the room's adapter (pull), then as `path`."""
         if room not in self.rooms:
             return {"ok": False, "error": words.WATCH_NO_ROOM.format(room=room)}
         p = Path(path).expanduser().resolve() if path.strip() else None
@@ -486,12 +487,21 @@ class Yerkd:
             return {"ok": False, "error": words.WATCH_NO_FILE.format(name=p.name)}
         if not p and not watch.is_link(url):
             return {"ok": False, "error": words.WATCH_NOT_LINK.format(given=words.no_paths(url.strip())[:120])}
+        more, at = "", None if p else watch.message(url)
+        if at:
+            if (pull := getattr(self.channels.get(room), "pull", None)) is None:
+                return {"ok": False, "error": words.WATCH_NO_DISCORD}
+            try:
+                p, more = await pull(room, *at, self.owner(room))
+            except watch.Failed as e:
+                return {"ok": False, "error": str(e)}
 
         def hear(video: Path) -> dict[str, Any]:
             return transcribe.run(video, self.memory.embeddings_key, self.private / transcribe.GROQ_KEY, self.booker(room, "watch"),
                                   owner_yes, self.private / transcribe.META_KEY)
         root = self.state / "rooms" / room / "work" / watch.FOLDER
         r, took = await (asyncio.to_thread(watch.run_file, p, frames, root, hear) if p else asyncio.to_thread(watch.run, url, frames, root, hear))
+        r = {**r, "note": "; ".join(x for x in (r["note"], more) if x)} if more and r["ok"] else r
         how = "a file of the room's" if p else "pulled before" if r.get("reused") else f"pulled in {took:.1f} s" if r.get("video") else "not pulled"
         said = (f"{r['slug']}, {r['seconds']} s, {len(r['frames'])} frame(s), {r['source'] or 'no'} transcript, {how}"
                 if r["ok"] else r["error"][:160])

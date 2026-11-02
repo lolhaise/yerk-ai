@@ -9,7 +9,9 @@ holds, a track's run writes its json3, so a page's own captions are the transcri
 is chosen, and a page with none, a failed probe or a video too big to save each go the way they should. A video file sent
 to the room (`path`) comes back the same way with nothing pulled and the fake never run, its frames under videos/ and its
 transcript beside it; a path outside the room's folders, a missing file or a link is refused; the [attachment] line says
-to watch it, and the Stop hook bounces a turn that never did, since only a watch call sees a video.
+to watch it, and the Stop hook bounces a turn that never did, since only a watch call sees a video. A Discord message's
+link is read through the adapter on a fake gateway: its video saved to the room's inbox and watched as a file, the fake
+never run, only where the room reads (an owner's room anywhere in its own server), and every miss said in words.
 (tests/test_watch.py is the channel a room watches, rooms.toml `watch`.)"""
 from __future__ import annotations
 
@@ -29,14 +31,16 @@ from pathlib import Path
 from types import SimpleNamespace as NS
 from typing import Any
 
+import discord
 import pytest
 
 from yerk_ai import captions, card, context, mcp_server, shape, transcribe, watch, words
-from yerk_ai.channels.discord import message_text
+from yerk_ai.channels.discord import DiscordChannel, message_text
 from yerk_ai.daemon import Yerkd
 from yerk_ai.engine import RoomProcess
 from yerk_ai.room import Inbound, Room
 from fake_channel import ConsoleChannel
+from test_discord import Attachment
 
 EXAMPLE_PRIVATE = Path(__file__).resolve().parents[1] / "examples" / "private"
 FFMPEG = pytest.mark.skipif(not (shutil.which("ffmpeg") and shutil.which("ffprobe")), reason="ffmpeg and ffprobe are not installed")
@@ -668,3 +672,137 @@ def test_a_video_sent_in_and_never_watched_bounces_once_at_stop_and_only_a_watch
     assert rp.read_paths == {f"/in/{INBOX}/third.mov", f"/in/{INBOX}/memo.m4a", f"/in/{INBOX}/photo.png"}
     room.bounced, room.rp.read_paths = False, {f"/in/{INBOX}/clip.mov"}         # the engine adds a watch call's path
     assert room.stop_check(active=False) is None
+
+
+SERVER, ELSEWHERE, OWN, NEAR, FAR = 900, 901, 11, 12, 13    # placeholder ids: the room's server, another, and three channels
+
+
+def gone(what: str) -> discord.NotFound:
+    return discord.NotFound(NS(status=404, reason="Not Found"), {"code": 10008, "message": f"Unknown {what}"})
+
+
+class Shelf:
+    """A channel on the fake gateway: its server and its messages by id; one not there is Discord's 404, `shut` its 403."""
+    def __init__(self, cid: int, server: int) -> None:
+        self.id, self.guild, self.msgs, self.shut, self.asked = cid, NS(id=server), dict[int, Any](), False, list[int]()
+
+    async def fetch_message(self, mid: int) -> Any:
+        self.asked.append(mid)
+        if self.shut:
+            raise discord.Forbidden(NS(status=403, reason="Forbidden"), {"code": 50001, "message": "Missing Access"})
+        if mid not in self.msgs:
+            raise gone("Message")
+        return self.msgs[mid]
+
+
+class Gateway:
+    """The bot's view: the channels it has in cache; any other is Discord's 404 when fetched."""
+    def __init__(self, *shelves: Shelf) -> None:
+        self.chans, self.user = {x.id: x for x in shelves}, NS(id=99)
+
+    def event(self, fn: Any) -> Any:
+        return fn
+
+    def get_channel(self, cid: int) -> Shelf | None:
+        return self.chans.get(cid)
+
+    async def fetch_channel(self, cid: int) -> Shelf:
+        raise gone("Channel")
+
+
+def on_discord(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, clips: dict[str, str]) -> tuple[Yerkd, Path, Path, dict[int, Shelf]]:
+    """The example room on the Discord adapter, its own channel OWN in SERVER beside NEAR, and FAR in another server."""
+    y, work, bin_ = room(tmp_path, monkeypatch, clips)
+    shelves = {OWN: Shelf(OWN, SERVER), NEAR: Shelf(NEAR, SERVER), FAR: Shelf(FAR, ELSEWHERE)}
+    d = DiscordChannel("token", 7, [], y.ledger, client=Gateway(*shelves.values()), state=tmp_path)
+    d.add_room(OWN, y.add_room("example-room", d))
+    return y, work, bin_, shelves
+
+
+def link(cid: int, mid: int, server: int = SERVER) -> str:
+    return f"https://discord.com/channels/{server}/{cid}/{mid}"
+
+
+def test_a_discord_messages_link_is_its_channel_and_its_id_in_every_form_discord_gives():
+    for host in ("discord.com", "www.discord.com", "ptb.discord.com", "canary.discord.com", "discordapp.com"):
+        assert watch.message(f" https://{host}/channels/{SERVER}/{NEAR}/501/ ") == (NEAR, 501), host
+    assert watch.message(f"https://discord.com/channels/@me/{NEAR}/501") == (NEAR, 501)     # the bot's own read says no
+    for other in (f"https://discord.com/channels/{SERVER}/{NEAR}", f"https://discord.com.example.org/channels/{SERVER}/{NEAR}/501",
+                  f"http://discord.com/channels/{SERVER}/{NEAR}/501", REEL, f"https://cdn.discordapp.com/attachments/{NEAR}/501/a.mp4"):
+        assert watch.message(other) is None, other
+
+
+@FFMPEG
+def test_a_video_attached_to_a_discord_message_is_watched_from_the_messages_link_and_nothing_is_pulled(tmp_path, monkeypatch, clips):
+    """Need 25 of 2026-10-30: a room asked to watch videos another assistant had posted as mp4 files in a Discord channel
+    had their names from a history listing and no address, and watch took the message's link to yt-dlp, which said
+    "Unsupported URL". The daemon's bot reads the message, saves its video to the room's inbox as a file sent to it, and
+    watches it there: the same frames and transcript as `path`, paid once, saved once."""
+    y, work, bin_, shelves = on_discord(tmp_path, monkeypatch, clips)
+    calls, data = hearing(monkeypatch), Path(clips["sound"]).read_bytes()
+    shelves[NEAR].msgs[501] = NS(id=501, attachments=[Attachment("part-one.mp4", data, "video/mp4")])
+    r = ask(y, link(NEAR, 501))
+    video = work / "inbox" / "501" / "part-one.mp4"
+    assert r == {"ok": True, "slug": frames_of(video), "folder": str(work / "videos" / frames_of(video)), "title": "",
+                 "video": str(video), "seconds": r["seconds"], "frames": r["frames"], "transcript": r["transcript"],
+                 "transcript_file": str(video.with_name("part-one.transcript.txt")), "source": "heard", "reused": False, "note": ""}
+    assert video.read_bytes() == data and len(r["frames"]) == 6 and SAID in r["transcript"] and abs(r["seconds"] - 4) < 0.5
+    assert runs(bin_) == [] and len(calls) == 1                                   # yt-dlp never ran on the link
+    rows = y.ledger._select("SELECT * FROM attachments WHERE message_id = ?", ("501",))
+    assert [(x["name"], x["state"], x["room"]) for x in rows] == [("part-one.mp4", "staged", "example-room")]
+    again = ask(y, link(NEAR, 501, server=ELSEWHERE), frames=2)                  # the link's server is never read
+    assert again["ok"] and again["transcript"] == r["transcript"] and len(again["frames"]) == 2 and len(calls) == 1
+    assert len(y.ledger._select("SELECT * FROM attachments WHERE message_id = ?", ("501",))) == 2 and runs(bin_) == []
+
+
+@FFMPEG
+def test_a_message_with_more_videos_watches_the_first_and_saves_the_rest_and_one_too_big_is_never_saved(tmp_path, monkeypatch, clips):
+    y, work, bin_, shelves = on_discord(tmp_path, monkeypatch, clips)
+    hearing(monkeypatch)
+    data, huge = Path(clips["sound"]).read_bytes(), Attachment("huge.mov", b"x", "video/quicktime")
+    huge.size = watch.MOST_BYTES + 1
+    files = [Attachment("notes.txt", b"x", "text/plain"), Attachment("one.mp4", data, "video/mp4"), huge, Attachment("two.mov", data)]
+    shelves[OWN].msgs[502] = NS(id=502, attachments=files)
+    r = ask(y, link(OWN, 502), frames=1)
+    box = work / "inbox" / "502"
+    assert r["ok"] and r["video"] == str(box / "one.mp4") and sorted(p.name for p in box.iterdir()) == ["one.mp4", "one.transcript.txt", "two.mov"]
+    assert r["note"] == "; ".join((words.WATCH_MORE.format(n=1, paths=box / "two.mov"), words.WATCH_TOO_BIG.format(names="huge.mov")))
+    shelves[OWN].msgs[503] = NS(id=503, attachments=[huge])
+    assert ask(y, link(OWN, 503)) == {"ok": False, "error": words.WATCH_TOO_BIG.format(names="huge.mov")}
+    assert not (work / "inbox" / "503").exists() and runs(bin_) == []
+
+
+def test_a_discord_message_is_read_only_where_the_room_reads_and_an_owners_room_anywhere_in_its_own_server(tmp_path, monkeypatch, clips):
+    y, work, bin_, shelves = on_discord(tmp_path, monkeypatch, clips)
+    calls = hearing(monkeypatch)
+    for shelf in shelves.values():
+        shelf.msgs[7] = NS(id=7, attachments=[Attachment("notes.txt", b"x", "text/plain")])
+    none = {"ok": False, "error": words.WATCH_NO_VIDEO.format(files="notes.txt")}           # read: it has no video
+    refused = {"ok": False, "error": words.WATCH_NOT_ITS_CHANNEL}
+    assert ask(y, link(OWN, 7)) == ask(y, link(NEAR, 7)) == none                            # an owner's room: its server
+    assert ask(y, link(FAR, 7, server=ELSEWHERE)) == refused and shelves[FAR].asked == []    # never another server's
+    y.room_confs["example-room"] = {**y.room_confs["example-room"], "privacy": "family", "people": [31]}
+    assert ask(y, link(NEAR, 7)) == refused and shelves[NEAR].asked == [7]                  # a person's: its own channel
+    assert ask(y, link(OWN, 7)) == none and shelves[OWN].asked == [7, 7]
+    y.channels["example-room"].add_room(OWN, y.rooms["example-room"], NEAR)                 # and the one it watches
+    assert ask(y, link(NEAR, 7)) == none and shelves[NEAR].asked == [7, 7]
+    assert calls == [] and runs(bin_) == [] and not (work / "inbox").exists() and not (work / "videos").exists()
+
+
+def test_a_message_not_there_a_channel_shut_to_the_bot_no_files_and_a_room_off_discord_are_each_said_in_words(tmp_path, monkeypatch, clips):
+    y, work, bin_, shelves = on_discord(tmp_path, monkeypatch, clips)
+    calls = hearing(monkeypatch)
+    shelves[OWN].msgs[8] = NS(id=8, attachments=[])
+    assert ask(y, link(OWN, 404)) == ask(y, link(77, 1)) == {"ok": False, "error": words.WATCH_NO_MESSAGE}   # a channel it lacks too
+    assert ask(y, link(OWN, 8)) == {"ok": False, "error": words.WATCH_NO_FILES}
+    shelves[NEAR].shut = True
+    assert ask(y, link(NEAR, 1)) == {"ok": False, "error": words.WATCH_NOT_READABLE}
+    shelves[OWN].msgs[9] = NS(id=9, attachments=[Attachment("cut.mp4", b"x", "video/mp4", fail=True)])
+    assert ask(y, link(OWN, 9)) == {"ok": False, "error": words.WATCH_NOT_SAVED.format(name="cut.mp4", why="OSError: cdn said no")}
+    y.add_room("example-room", ConsoleChannel())
+    assert ask(y, link(OWN, 8)) == {"ok": False, "error": words.WATCH_NO_DISCORD}
+    assert calls == [] and runs(bin_) == [] and not (work / "videos").exists()
+    for said in (words.WATCH_NO_DISCORD, words.WATCH_NOT_ITS_CHANNEL, words.WATCH_NO_MESSAGE, words.WATCH_NOT_READABLE,
+                 words.WATCH_DISCORD_DOWN, words.WATCH_NO_VIDEO, words.WATCH_NO_FILES, words.WATCH_TOO_BIG, words.WATCH_NOT_SAVED,
+                 words.WATCH_MORE):                                                         # in the prompting guide's shape
+        assert shape.offenses(said) == [], said
