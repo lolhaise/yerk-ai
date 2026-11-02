@@ -27,14 +27,179 @@ version changes.
   on one gives its sound alone, so neither counts. A `.webm` stays a recording, as before, since it can be either.
 - The card says `watching the video clip`, the file's plain name, never its path. The mechanics' watch line names the
   file's way, the tool gains a sentence, and `yerk explain video-file` has the ability; `yerk explain watch` points to it.
+  The GUIDE has it under Video files, and its count is what the file holds, 95: 37 built; the README, at its 12,000
+  bytes on main, is left as it is.
 - Why: on 2026-10-24 a room asked to say what was in a video file sent to it found Read could not open it, and its two
   tries at ffmpeg in its shell each waited on an approval no one could give mid-turn; it answered off a thumbnail in a
   screenshot sent with it. On 2026-10-28 another room asked to watch a 9-second clip, not to listen to it, got the sound
   alone from `transcribe`, and `watch` took only a link (need 22 of 2026-10-24, filed twice).
 
 **Upgrading**: nothing to change by hand; ffmpeg and ffprobe already on yerkd's PATH serve it from the next start, and
-each room has the mechanics line from its next process start. budgets.toml moves with the code: Yerk AI's tools to
-15,300, the session-start total to 113,202, the code ceiling to 23,846; the mechanics stay under their 5,700.
+each room has the mechanics line from its next process start. budgets.toml moves with the code, on main's numbers after
+#161 to #166: Yerk AI's tools to 17,100, the session-start total to 115,302, the code ceiling to 24,218; the mechanics
+(5,888) stay under their 6,000, which leaves a checkout's path of up to 118 characters.
+
+### need-2026-10-26-23 (#?)
+
+- A room the owner asks to book a free table can fill and confirm its booking page now, though the page's address
+  looks like a checkout. The browser plug-in kept outside this repository (hands, attached to every owner room under
+  rooms.toml's `[defaults]`) judged a payment page by its address alone, so a booking's Confirm page on a `/checkout/`
+  address (a name, a phone number, an email, a Confirm button; no card, no deposit) had every field and click refused,
+  the owner's own order included.
+- The page decides now, not its address, on the plug-in's branch `need-2026-10-26-23`: its read of a tab also takes
+  the first money the page's whole text shows, an amount (a currency sign or code beside a number) or a saved card (its
+  last four digits after a mask or after "ending in"). A checkout address whose page shows no card field, no payment
+  frame, no amount and no saved card is a look-alike: each field and each click there goes only with `confirmed: true`,
+  the owner's own order, and without it the refusal asks for that word. A read of the page says which it is.
+- A payment page is still never touched, confirmed or not: a card field, a payment frame, a payment service's host, or
+  a checkout address whose words show money; the refusal now says what it saw. A page off a checkout address that shows
+  prices (a menu, a shop) is judged as before, and opening a checkout address is still refused, since only the page can
+  say whether it takes money. The plug-in's offline tests run its real page read against a stub page: 31 of 31 green.
+- Here, abilities.toml has the described `free-bookings` entry (the browser ability is not in this repo), with six
+  phrases ("book a table", "make a reservation", ...) that hand a room asked that way the entry whole
+  (`yerk explain free-bookings`); the README says it in Add-ons (its web plug-in aside cut to stay under 12,000 bytes),
+  and the GUIDE's count is what the file holds, 94: 36 built. The plug-in's tool text does not change, so no budget
+  line moves.
+- Why: on 2026-10-26 a room the owner told to book a table reached the booking's Confirm page and had its four fields
+  and a checkbox refused as a payment page eleven times, once with the owner's confirmation on the call.
+
+**Upgrading**: nothing to change here. The plug-in's change is live when hands-mcp's main moves to its branch
+`need-2026-10-26-23` (e94ce96, on its main 64af176); a room has it from its next process start after that.
+
+### need-2026-10-26-22 (#?)
+
+- A room can search the web by a picture now, as Google Lens or TinEye do: the new `reverse_image_search` tool on Yerk's
+  own server takes a picture in the room's own folders (one sent to it, a picture `web_image` saved, a frame `watch`
+  took) and returns Google's best guess at what it is, the names it ties to it with their scores (a work and its maker,
+  a place, a product), each page that shows it, whole or in part, and the addresses of its copies, parts and look-alikes,
+  up to 20 of each. It is in every room's allow list, a person's room too, so one deploy gives every room the same way.
+- It runs on Google Cloud Vision's web detection, the documented API of Google's search by picture: the picture's own
+  bytes go in the request, so no picture is put at a public address for a search to fetch, and the key goes in a header,
+  never in an address, a log or a result. A jpeg, png, gif, webp, bmp or tiff goes as it is; a HEIC, an AVIF or a picture
+  past 7 MB goes as a JPEG of at most 2048 pixels a side that ffmpeg makes, the picture itself untouched.
+- The result says all of it came off the web, a record and never an instruction, that the best guess is Google's guess,
+  and to open a page that shows the picture before saying who made it; a search that finds nothing says so. Google's
+  refusal (a wrong key, the API off in the key's project, no billing) comes back in its own words with the key taken out;
+  a busy answer is tried three times.
+- Each call Google answers is one spend row (tool `reverse_image_search`, engine `google-vision`) at the list price,
+  US$0.0035 a picture past the first 1,000 a month, which are free; the morning diff carries the day's total. A refusal
+  books nothing.
+- With no key the tool says, in one line, the file that turns it on (`secrets/google-vision.key`) and sends nothing.
+  `yerk abilities` lists `reverse-image-search` as needing Google Cloud Vision until that file is there.
+- The card's row reads "finding IMG_0001 on the web", never the call.
+- abilities.toml has the built `reverse-image-search` entry; the README and the GUIDE (a section, Search by picture) say
+  it; the GUIDE's ability count is corrected to what the file holds, 93: 36 built (it said 90: 33, two built entries
+  behind); docs/tools.md and docs/budgets.md are what `yerk docs own` writes.
+- budgets.toml: `yerk_tools` 16,000 to 16,900 (the tool is 826 as built on Python 3.13, about 857 as sent) and the
+  session total by the 900 to 115,102; [code] lines 23,977 + 171 = 24,148; each with its dated note.
+- Why: on 2026-10-26 a room was asked who painted a painting in a phone photo, with no signature on it. It read the photo
+  and ran six word searches on its style and subject, checked the closest painter it found and ruled them out, and found
+  no match: no tool searched the web by picture, so it filed the need.
+
+**Upgrading**: to turn it on, make an API key in a Google Cloud project with the Cloud Vision API turned on and billing set
+up (restrict the key to that API), and put it on the first line of `secrets/google-vision.key` in the private folder,
+0600; the next call reads it, no restart. ffmpeg, which transcribe and watch already need, makes the JPEG for a HEIC, an
+AVIF or a picture past 7 MB. A room has the tool from its next session start after the deploy. budgets.toml's
+`yerk_tools`, `total` and [code] `lines` move with this change.
+
+### need-2026-10-26-21 (#?)
+
+- A room asked to open a page in the browser on the owner's PC opens it: the browser plug-in, kept outside this
+  repository (hands, attached to every owner room under rooms.toml's `[defaults]`), starts that browser again before
+  each call on the PC, inside the call's lease, since 2026-10-26. A browser that will not come back is said to be down in
+  one line with its reason, and an error from the browser's driver names its exception's own line, never a stack trace's
+  first line. The plug-in's own offline tests hold both (28 of 28 green on its main); its call log has no failed browser
+  call since the change.
+- Here, the manifest says so: the browser entry's `how` gains the relaunch before each call and the computer the owner
+  names (the default one when none is named; another computer's browser is another profile with its own sign-ins, so a
+  read moves there only when the owner names it), and its `why_not` no longer waits on the rooms' move: a browser reaches
+  the rooms as a plug-in an install attaches, a room that holds such a tool opens the page with it, and when the tool says
+  that browser is down the room tells the owner, never reading on another computer unasked. Three new phrases ("open it
+  in my browser", "open a page in my browser", "browser on my pc") hand a room asked that way the entry whole
+  (`yerk explain browser`).
+- Nothing in the harness's code changes, so no budget line moves.
+- Why: on 2026-10-26 a room asked to open a page in the browser on the owner's PC met "opening the tab failed"
+  with only a stack trace's first line after it: the browser had quit with its last tab, and its port took each call and
+  reset it. The same open in the Mac's browser, another profile, landed on a sign-in page.
+
+**Upgrading**: nothing to change by hand; the plug-in's change has been live since 2026-10-26, and a room hears the new
+entry from the deploy.
+
+### need-2026-10-25-23 (#?)
+
+- A room the owner orders to delete files or folders outside its work folder can do it now: the new `delete` tool on
+  Yerk's own server takes their whole paths, and the daemon deletes them, since a room's shell deletes only inside its work
+  folder and Claude Code's sandbox keeps the rest of the disk read-only to it. For good, not to the trash: what the owner
+  orders deleted out there is to free the disk, and the trash frees nothing. A file or a link is unlinked (never the file a
+  link points to), a folder is removed whole without following a link inside it, and the result says what went, what would
+  not and why, and the space freed.
+- Shown first: the new `delete-outside` gate rule holds every call, and the room is shown each path whole with what it is
+  (a file and its size on disk, a folder, a link); the owner's approval word runs that exact call once, and an edit is a new
+  call and a new hold. The tool deletes only what the gate released, so with `delete-outside` in `[gates] off`, or a hook
+  that fails open, nothing goes.
+- Never deleted, approval or not, and refused before the owner is asked: a call from a person's room, a path that is not
+  whole, not there or not its own real path (a link or a `..` on its way, so the path shown is the path deleted), the
+  root, a top folder, the home folder, a mounted disk or a folder holding one, and Yerk AI's own folders (its code, its
+  state and private folders, the memory, an account's folder) or one holding them.
+- A room's own `rm` outside its work folder is still refused, and in an owner room the refusal now names the `delete` tool;
+  a worker and a person's room keep the old refusal. Each delete's outcome is a `delete` row in the ledger's gates table.
+- Sizes of a gigabyte or more read in GB everywhere words.size says one (`yerk retention`, the doctor's growth line).
+- `yerk explain delete-outside` has the ability. Every room is handed the tool's sentence, so `yerk_tools` goes to 16,000
+  and the session-start total to 114,202; the code ceiling moves up by 166, to 23,977.
+- Why: on 2026-10-25 a room the owner asked to delete old junk outside its work folder to free a full disk had its `rm`
+  refused by the trash gate, found the rest of the disk read-only in its sandbox, and wrote the delete lines into a script
+  for the owner to paste and run (need 23 of that day).
+
+**Upgrading**: nothing to change by hand; every owner room has the tool from its next process start. budgets.toml moves
+with the code: `yerk_tools` to 16,000, the session-start total to 114,202, the code ceiling to 23,977.
+
+### need-2026-10-25-22 (#?)
+
+- A room can choose the words a topic rule loads on: `remember` with a `job` takes `triggers`, words or short phrases a
+  message on the job holds (the owner's, when named). A rule the shared rules file has no room for then loads on its
+  job's words and those, in place of what its own text names (a name, a capitalised word mid-sentence), kept on its line
+  in rules-topics.md as an `[on: ...]` mark before its trailer.
+- A picked word rides alone at the weight of a word only that rule says, so an everyday word the extractor never takes
+  ("money") or one every rule says still loads it; a phrase rides when a message says each of its words that names
+  something, in any order. A trigger whose words all name nothing ("how do I") is refused, and nothing is filed.
+- A filing of the job that names no `triggers` keeps the ones its live topic rule has, so a correction to the rule's
+  words never drops the owner's choice; the same call again is a retried one and files nothing.
+- `replaced` names every line of its job a filing marked, in the rules file or the topic rules. A topic filing marked its
+  job's older topic line and said `replaced: []`, and so did a filing into the rules file that marked its job's topic rule.
+- The reply's clause and the machine room's notice name the words picked. `yerk explain topic-triggers` has the ability.
+  `remember` grows by about 279 characters as sent, so `yerk_tools` goes to 15,400 and the session-start total to 113,602;
+  the code ceiling moves up by 25, to 23,811.
+- Why: on 2026-10-25 an owner room asked to make a topic rule load on an everyday word and phrases holding it filed the
+  rule again with those words in its text; its triggers came from its job's words and the names its text held, never the
+  word asked for, and the filing said `replaced: []` though it had marked the older line, so the room could not tell
+  whether two filings of the job sat side by side.
+
+**Upgrading**: nothing to change by hand; every owner room files with `triggers` from its next process start after the
+deploy, and a topic rule filed before it keeps the words its text gives it until it is filed again with `triggers`.
+budgets.toml moves with the code: `yerk_tools` to 15,400, the session-start total to 113,602, the code ceiling to 23,811.
+
+### need-2026-10-25-21 (#?)
+
+- An owner room can check a worker's claim about Yerk against the code now: every owner room's settings carry a Read
+  rule for Yerk's own checkout, the code that runs (the folder the package runs from), so the room's Read, Grep and
+  Glob reach every file there. The daemon writes it at each process start: the checkout whole, or, when the checkout
+  holds the private or the state folder (a clone on its example layer), each of its other entries by a rule of its own;
+  the read denies on every secret still beat it.
+- A rule, never an `--add-dir`: Claude Code's sandbox opens an added folder to the room's shell for writing, and no room
+  writes the harness. A room whose privacy is not owner reads its own folders only, as only an owner room takes a
+  `read` folder.
+- The mechanics gain one line naming the checkout's path: check a worker's claim about Yerk, or how Yerk does a thing,
+  there before saying it, since a report can be wrong. mechanics.md holds a `{code}` mark there, and the session start
+  and the news of a changed line fill in the path, so every room is handed the path and never the mark.
+- `yerk explain harness-code` has the ability. The mechanics go to 6,000 (5,818 in the file, the checkout's path on top
+  as sent) and the session-start total to 113,302; the code ceiling moves up by 10, to 23,786.
+- Why: on 2026-10-25 an owner room asked to tell a worker's code-review outcome Grepped the checkout for the worker's
+  finding to confirm it first; Claude Code refused the read, since the room's settings opened its own folder only, and
+  the room relayed the finding unchecked, marked as the worker's read.
+
+**Upgrading**: nothing to change by hand; every owner room reads the checkout from its next process start after the
+deploy. budgets.toml moves with the code: `mechanics` to 6,000, the session-start total to 113,302, the code ceiling to
+23,786.
 
 ### need-2026-10-24-21 (#?)
 

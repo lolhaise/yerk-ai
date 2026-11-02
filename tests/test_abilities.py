@@ -122,6 +122,51 @@ def test_each_ability_is_found_by_its_own_phrases_and_its_answer_fits_whole(tmp_
             assert hooks.render_recall(mine, [], cap), (name, "its answer must fit the recall cap whole")
 
 
+def test_a_room_asked_to_open_a_page_in_the_browser_on_the_pc_hears_the_plug_in_way(tmp_path):
+    """need-2026-10-26-21: a room asked to open a tracker in the browser on the PC met that browser down (it had
+    quit with its last tab, and its port reset every call) behind an error that was a stack trace's first line, and read
+    the page in the Mac's browser instead, another profile, which met a sign-in. The plug-in that drives the browser lives
+    outside this repo and starts it again before each call; asked that way, a room gets the browser entry whole: a room
+    holding such a tool opens the page with it on the computer named, a relaunch before each call, a browser still down
+    told to the owner, and no read moved to another computer unasked."""
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    found = abilities.asked("open the team's tracker in my browser on my pc and see whether the hours can be logged there",
+                            y.memory, TAB)
+    assert [e["key"] for e in found] == ["browser"]
+    text = found[0]["text"]
+    assert text.startswith(f"browser, a Yerk AI ability ({words.ability('described')[1]}): Drives a real browser")
+    for want in ("A relaunch before each call", "The computer the owner names", "Why it is not built: Not in this repo",
+                 "a room that holds such a tool opens the page with it, on the computer the owner names",
+                 "when the tool says that browser is down the room tells the owner, never reading on another computer unasked"):
+        assert want in text, want
+    assert text in hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
+    told = abilities.explain("browser", TAB["browser"], TAB, y.memory)
+    assert next(x for x in told if x.startswith("- A relaunch before each call:")).endswith(
+        "is said to be down in one line with its reason, never a stack trace's first line.")
+    assert not abilities.asked("the tracker is open on my pc already, I logged the hours myself", y.memory, TAB)
+
+
+def test_a_room_asked_to_book_a_free_table_hears_the_page_decides_way(tmp_path):
+    """need-2026-10-26-23: a room asked to book a free table filled none of the Confirm page's fields (a name, a phone
+    number, an email, no card, no deposit): the page sat on a checkout address, and the browser refused every field and
+    click on it as a payment page, the owner's own order included. Asked that way, a room gets free-bookings whole: the
+    page decides, not its address; on a look-alike each set and click goes on the owner's word; a page that shows a card
+    field, a payment frame or money is still never touched."""
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    found = abilities.asked("ok book a table for two at the place on the corner, thursday at seven, in my name", y.memory, TAB)
+    assert [e["key"] for e in found] == ["free-bookings"]
+    text = found[0]["text"]
+    assert text.startswith(f"free-bookings, a Yerk AI ability ({words.ability('described')[1]}): Fills and confirms a free "
+                           "booking form")
+    for want in ("The page decides, not its address", "Money read from the page's whole text",
+                 "each field set and each click only on the owner's word", "On a payment page, nothing set or clicked",
+                 "Why it is not built: It rides on the browser ability",
+                 "tells a checkout look-alike from a payment page has it there"):
+        assert want in text, want
+    assert text in hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
+    assert not abilities.asked("the table is booked, they texted me the confirmation", y.memory, TAB)
+
+
 def test_ordinary_messages_pull_no_ability_into_the_room(tmp_path):
     y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
     assert {m: [e["key"] for e in abilities.asked(m, y.memory, TAB)] for m in ORDINARY} == {m: [] for m in ORDINARY}

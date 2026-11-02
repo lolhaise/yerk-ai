@@ -52,18 +52,20 @@ def test_the_hook_endpoint_answers_over_http(tmp_path):
     assert other.json() == {}
 
 
-def test_fifteen_preloaded_tools_with_slim_schemas(tmp_path):
+def test_seventeen_preloaded_tools_with_slim_schemas(tmp_path):
     y = daemon(tmp_path)
     tools = {t.name: t for t in asyncio.run(mcp_server.build(y, y.port, y.hook).list_tools())}
     assert set(tools) == {"send", "hold", "recall", "read_memory", "remember", "worker", "schedule", "settings", "transcribe",
-                          "voice_note", "seen", "render", "watch", "need", "text"}
+                          "voice_note", "seen", "render", "watch", "need", "text", "delete", "reverse_image_search"}
     assert list(tools["text"].inputSchema["properties"]) == ["to", "text"]
+    assert list(tools["reverse_image_search"].inputSchema["properties"]) == ["path"]
+    assert list(tools["delete"].inputSchema["properties"]) == ["paths"]
     assert list(tools["transcribe"].inputSchema["properties"]) == ["path", "owner_yes"]
     assert list(tools["render"].inputSchema["properties"]) == ["path"] and "`render`" in context.MECHANICS.read_text()
     assert list(tools["watch"].inputSchema["properties"]) == ["url", "path", "frames", "owner_yes"] and "`watch`" in context.MECHANICS.read_text()
     assert list(tools["seen"].inputSchema["properties"]) == ["path", "text", "shows"] and "`seen`" in context.MECHANICS.read_text()
     assert list(tools["voice_note"].inputSchema["properties"]) == ["script", "name", "owner_yes"]
-    assert list(tools["remember"].inputSchema["properties"]) == ["text", "about", "replaces", "job", "said", "source"]
+    assert list(tools["remember"].inputSchema["properties"]) == ["text", "about", "replaces", "job", "triggers", "said", "source"]
     assert {f"mcp__yerk__{t}" for t in tools} == set(YERK_TOOLS) and "`remember`" in context.MECHANICS.read_text()
     assert list(tools["settings"].inputSchema["properties"]) == ["model", "effort", "account"]
     assert "the owner asks to change this room's model or thinking level" in str(tools["settings"].description).lower()
@@ -324,12 +326,13 @@ def test_the_secrets_sit_outside_every_rooms_layer(tmp_path):
     assert "layer" not in y.room_confs["example-room"]
     spec = y.spec_for("example-room")
     layer = context.layer_dir(private, y.room_confs["example-room"])
-    rules = [r for r in spec.settings["permissions"]["allow"] if r.startswith("Read(") and r.endswith("/**)")]
+    rules = [r for r in spec.settings["permissions"]["allow"] if r.startswith("Read(") and r.endswith("/**)") and r not in y.code_reads()]
     folders = [layer, *spec.add_dirs] + [Path("/" + r[len("Read("):-len("/**)")].lstrip("/")) for r in rules]
     assert layer == private.resolve() and rules and all(f.resolve() == layer for f in folders)
+    code = [Path("/" + r[len("Read("):-len("/**)")].lstrip("/")) for r in y.code_reads()]     # the checkout that runs, read too
     for secret in (y.secret_file, y.worker_secret_file):
         assert secret.is_relative_to(tmp_path / "state") and oct(secret.stat().st_mode & 0o777) == "0o600"
-        assert not any(secret.resolve().is_relative_to(f.resolve()) for f in folders), secret.name
+        assert not any(secret.resolve().is_relative_to(f.resolve()) for f in [*folders, *code]), secret.name
     assert not (private / "secrets").exists()
 
 

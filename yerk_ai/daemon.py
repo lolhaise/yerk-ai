@@ -28,8 +28,8 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 from zoneinfo import ZoneInfo
 
-from . import (beat, context, deploy, doctor, evidence, gates, hooks, jobs, location, mcp_server, memory, mentions, needs, pictures, pipeline, render,
-               status, taste, texts, transcribe, voice_note, watch, workers)
+from . import (beat, context, deletes, deploy, doctor, evidence, gates, hooks, jobs, location, mcp_server, memory, mentions, needs, pictures,
+               pipeline, render, reverse_image, status, taste, texts, transcribe, voice_note, watch, workers)
 from .accounts import Account, Cooldowns, from_dir, load_accounts, pick
 from .config import (EFFORTS, REPO, SHELLS, account_and_model, account_named, assistants, budgets, discord_id, flag, load_toml, models,
                      override, people, pinned, private_dir, read_secret, room_id, room_settings, rooms, state_dir, table, trusted, uncapped,
@@ -46,7 +46,8 @@ from . import abilities, addons, words   # STYLE.md: what a room reads
 log = logging.getLogger("yerk.daemon")
 YERK_TOOLS = ["mcp__yerk__send", "mcp__yerk__hold", "mcp__yerk__recall", "mcp__yerk__read_memory",
               "mcp__yerk__remember", "mcp__yerk__worker", "mcp__yerk__schedule", "mcp__yerk__settings", "mcp__yerk__transcribe",
-              "mcp__yerk__voice_note", "mcp__yerk__seen", "mcp__yerk__render", "mcp__yerk__watch", "mcp__yerk__need", texts.TOOL]
+              "mcp__yerk__voice_note", "mcp__yerk__seen", "mcp__yerk__render", "mcp__yerk__watch", "mcp__yerk__need", texts.TOOL, deletes.TOOL,
+              "mcp__yerk__reverse_image_search"]
 # A shell room's sandbox when rooms.toml gives it no [rooms.NAME.sandbox] table: unsandboxed, a Read deny stops `cat` and
 # the Read tool, but a script, grep or redirect read every secret (Claude Code 2.1.304, PR 66's cold read, 2026-10-21)
 SANDBOX = {"enabled": True, "autoAllowBashIfSandboxed": True}
@@ -165,7 +166,7 @@ class Yerkd:
         self.rebuild_running = gates.rebuild_running
         self.rewrites: dict[str, tuple[str, str]] = {}           # tool_use id -> (room, the trash command)
         self.worded: set[str] = set()                            # inbound ids whose approval word was used
-        self.texts_ok: set[tuple[str, str]] = set()              # (room, call) the text-out gate released: the text tool's, once
+        self.released: set[tuple[str, str]] = set()              # (room, call) a gate released for a tool the daemon runs (text, delete): once
         self.later: set[asyncio.Task[Any]] = set()               # a gate's notice, posted beside the hook's answer
         self.held_files: dict[str, Path] = {}                    # room -> a held call's exact text too long to show
         self.timing: list[tuple[str, dict[str, Any]]] = []       # hook and tool timings, written in batches
@@ -189,8 +190,9 @@ class Yerkd:
                      next((p.text for p in parts if p.name == "recall_pack"), ""), file=str(ctx))
         token = secrets.token_hex(16)                      # this process's credential, bound with its session
         header = write_private(rdir / "hook-header", f"{mcp_server.HEADER}: {token}\n")    # curl reads it: never in an argv
-        settings: dict[str, Any] = {"permissions": {"allow": [f"Read(/{layer}/**)", *YERK_TOOLS, *conf.get("allow", [])], "deny": self.never_read()},
-                                    "hooks": hooks.settings_for(f"{self.url}/hook", header)}
+        code = self.code_reads() if self.owner(name) else []          # the checkout that runs: an owner room checks a claim there
+        settings: dict[str, Any] = {"permissions": {"allow": [f"Read(/{layer}/**)", *code, *YERK_TOOLS, *conf.get("allow", [])],
+                                                    "deny": self.never_read()}, "hooks": hooks.settings_for(f"{self.url}/hook", header)}
         shell = conf.get("sandbox", dict(SANDBOX) if SHELLS & set(conf.get("tools") or []) else None)   # Claude Code's own
         dirs = [layer, *self.read_dirs.get(name, [])]                       # `read`, as F4 judged it
         if trusted(conf):                    # the daemon's wall; Write and Edit on the room's own folders; its outbox read only
@@ -302,6 +304,13 @@ class Yerkd:
         folders, files = self.secrets_at()
         return ([f"Read(/{d}/**)" for d in folders] + [f"Read(/{f})" for f in files]
                 + [f"Read(/{a.config_dir.expanduser().resolve()}/.*)" for a in self.accounts])
+
+    def code_reads(self) -> list[str]:
+        """Read rules opening Yerk's own code, the checkout that runs (REPO), to an owner room's Read, Grep and Glob (2026-10-25:
+        a room's Grep there was refused, and it relayed a worker's claim about Yerk unchecked): the checkout whole, else its
+        entries around the private and state folders when it holds one (a clone's example layer). Rules, never an --add-dir,
+        which Claude Code's sandbox opens to the room's shell for writing; never_read's denies still beat them."""
+        return [f"Read(/{p}/**)" if p.is_dir() else f"Read(/{p})" for p in around(REPO.resolve(), [self.private.resolve(), self.state.resolve()])]
 
     def owner(self, room: str) -> bool:
         """An owner room (rooms.toml privacy, "owner" when unset); a name that is no room is not one."""
@@ -489,6 +498,19 @@ class Yerkd:
         log.info("watch: %s, %s", room, said)
         return r
 
+    async def tool_reverse_image_search(self, room: str, path: str) -> dict[str, Any]:
+        """The `reverse_image_search` tool: a picture from the calling room's own folders (may_send's rule, as render's) looked
+        up on the web by Google Cloud Vision's web detection off the loop (reverse_image.run), on the key in the private
+        folder, each call Google answers a spend row."""
+        p = Path(path).expanduser().resolve()
+        if room not in self.rooms or not self.may_send(room, p):
+            return {"ok": False, "error": words.REVERSE_NOT_HERE.format(name=p.name)}
+        if not p.is_file():
+            return {"ok": False, "error": words.REVERSE_NO_FILE.format(name=p.name)}
+        r = await asyncio.to_thread(reverse_image.run, p, self.private / reverse_image.KEY, self.booker(room, "reverse_image_search"))
+        log.info("reverse_image_search: %s, %s", room, f"{p.name}, {len(r['pages'])} page(s)" if r["ok"] else r["error"][:160])
+        return r
+
     async def tool_seen(self, room: str, path: str, text: str, shows: str) -> dict[str, Any]:
         """The `seen` tool: what a room read on a picture it was sent, filed beside it (pictures.file) for its recall, in any
         room (a person's: class room, memory.INBOXES). Only a picture in the calling room's own inbox, the header by code."""
@@ -539,15 +561,44 @@ class Yerkd:
         nothing); its outcome a gate row, the receipt after the hold, the word and the release."""
         if why := self.text_refusal(room, to, text) if room in self.rooms else words.TEXT_OWNER_ROOMS:
             return {"ok": False, "maybe_sent": False, "error": words.TEXT_NOT_SENT.format(why=why)}
-        if (room, key := gates.call_key(texts.TOOL, {"to": to, "text": text})) not in self.texts_ok:
+        if (room, key := gates.call_key(texts.TOOL, {"to": to, "text": text})) not in self.released:
             return {"ok": False, "maybe_sent": False, "error": words.TEXT_NOT_RELEASED}
-        self.texts_ok.discard((room, key))
+        self.released.discard((room, key))
         r = await texts.send(dict(self.conf.get("imessage") or {}), to, text)
         how = "sent" if r["ok"] else "maybe sent" if r["maybe_sent"] else "failed"
         rp = self.rooms[room].rp
         self.ledger.gate(room=room, session_id=rp.session_id if rp else "", turn=self.rooms[room].turn_key, gate="text", decision=how,
                          tool=texts.TOOL, rule="text-out", detail=f"to {texts.handle(to)}, {len(text)} characters, {r.get('guid') or r.get('error')}"[:300])
         log.info("text: %s, %s, %d characters", room, how, len(text))
+        return r
+
+    def own_paths(self) -> list[Path]:
+        """Yerk AI's own, which no delete touches: its code, its state and private folders, the memory, each account's folder."""
+        return [REPO, self.private, self.state, self.memory.root, *(a.config_dir for a in self.accounts)]
+
+    def delete_refusal(self, room: str, paths: list[str]) -> str:
+        """Why a delete of `paths` from `room` cannot go, "" when it can: asked at the gate, so the owner is never asked to
+        approve one that would not run, and again by the tool."""
+        if not self.owner(room):
+            return words.DELETE_OWNER_ROOMS
+        mounted, own = deletes.mounts(), self.own_paths()
+        return next((w for p in paths if (w := deletes.why(p, own, Path.home(), mounted))), "" if paths else words.DELETE_NO_PATHS)
+
+    async def tool_delete(self, room: str, paths: list[str]) -> dict[str, Any]:
+        """The `delete` tool: whole paths outside the room's work folder deleted for good by the daemon (deletes.run), whose
+        shell is not the room's sandbox, from an owner's room only, and only as the exact call the delete-outside gate showed
+        the owner and released on their word, once (a hook that failed open deletes nothing); its outcome a gate row."""
+        if why := self.delete_refusal(room, paths) if room in self.rooms else words.DELETE_OWNER_ROOMS:
+            return {"ok": False, "error": words.NOT_DELETED.format(why=why)}
+        if (room, key := gates.call_key(deletes.TOOL, {"paths": paths})) not in self.released:
+            return {"ok": False, "error": words.DELETE_NOT_RELEASED}
+        self.released.discard((room, key))
+        r = await asyncio.to_thread(deletes.run, paths, self.own_paths(), Path.home())
+        how, rp = "deleted" if r["ok"] else "partly" if r["deleted"] else "failed", self.rooms[room].rp
+        self.ledger.gate(room=room, session_id=rp.session_id if rp else "", turn=self.rooms[room].turn_key, gate="delete", decision=how,
+                         tool=deletes.TOOL, rule="delete-outside", detail=f"{len(r['deleted'])} of {len(paths)}, {r['freed']} freed: "
+                         f"{', '.join(paths)}"[:300])
+        log.info("delete: %s, %s, %d of %d path(s), %s freed", room, how, len(r["deleted"]), len(paths), r["freed"])
         return r
 
     async def pictures(self, req: dict[str, Any]) -> dict[str, Any]:
@@ -742,10 +793,10 @@ class Yerkd:
             return {"ok": False, "line": words.WORKER_OWN_ROOM.format(room=named)}
         return None
 
-    async def tool_rule(self, room: str, text: str, job: str) -> dict[str, Any]:
+    async def tool_rule(self, room: str, text: str, job: str, triggers: list[str] | None = None) -> dict[str, Any]:
         """`remember` with a `job`: an owner's room files how it is done from now on (memory.rule) for every room, fitted under
         the rules part's budget; one with no room even with no examples is filed as a topic rule in rules-topics.md and said
-        (`topic`: the reply's clause and one machine-room notice, each naming the words it loads on)."""
+        (`topic`: the reply's clause and one machine-room notice, each naming the words it loads on: `triggers`, when given)."""
         if room not in self.rooms or not self.owner(room):
             return {"ok": False, "line": words.RULES_OWNER_ONLY}
         if self.reader(room).sealed:        # its teaching stays its own day-log note, the job its label, never the shared rules
@@ -753,7 +804,8 @@ class Yerkd:
         with self.rooms[room].lock:
             mid = ",".join(m.id for m in self.rooms[room].inflight) or f"x{self.rooms[room].turn_key}"
         cap = 0 if uncapped(self.budgets) else int(self.budgets["session_start"]["appended"]["rules"])     # 0: no strip, no topic filing
-        r = await asyncio.to_thread(memory.rule, self.memory, room, mid, job, text, cap, self.daily, context.books(self.private, self.room_confs))
+        r = await asyncio.to_thread(memory.rule, self.memory, room, mid, job, text, cap, self.daily, context.books(self.private, self.room_confs),
+                                    tuple(triggers or ()))
         if not r["ok"]:
             return r
         on = words.either(r.get("triggers", []))
@@ -1201,7 +1253,8 @@ class Yerkd:
         v = None
         if tool == "Bash":
             work = self.state / "rooms" / name / "work"
-            v = gates.check_shell(str(ti.get("command") or ""), str(payload.get("cwd") or work), self.gates, root=str(work))
+            v = gates.check_shell(str(ti.get("command") or ""), str(payload.get("cwd") or work), self.gates, root=str(work),
+                                  way=words.DELETE_WAY if self.owner(name) else "")
             if v and v.new_input is not None:
                 v.new_input = {**ti, **v.new_input}
         if v is None and (what := gates.restart_hit(tool, ti, self.private)):
@@ -1212,17 +1265,19 @@ class Yerkd:
                 v = gates.Verdict("restart", "deny", model, line, f"{what}; {why}")
         if v is None and tool == texts.TOOL and (why := self.text_refusal(name, str(ti.get("to") or ""), str(ti.get("text") or ""))):
             v = gates.Verdict("text", "deny", words.TEXT_NOT_SENT.format(why=why), detail=why)    # it could not go: nothing to approve
+        if v is None and tool == deletes.TOOL and (why := self.delete_refusal(name, deletes.paths_of(ti))):
+            v = gates.Verdict("delete", "deny", words.NOT_DELETED.format(why=why), detail=why)    # the same: nothing to approve
         key, shown, cwd = "", "", str(payload.get("cwd") or self.state / "rooms" / name / "work")
         if v is None and (hit := gates.external_hit(tool, ti, name, self.gates, self.room_confs)):
             rule, what, call = hit
             key = gates.call_key(tool, ti)
             shown = (texts.preview(ti) if tool == texts.TOOL               # no JSON: a text as it reads, to whom it goes
-                     else gates.plain(tool, ti) if self.room_confs[name].get("people") else key)
+                     else deletes.preview(ti) if tool == deletes.TOOL else gates.plain(tool, ti) if self.room_confs[name].get("people") else key)
             rel = self.ledger.release(name, rule, key, cwd, self.gates.window_s)
             if rel:
                 v = gates.Verdict("approval", "release", detail=f"{what}: {call}; approved by {rel['approved_by']}", rule=rule)
-                if tool == texts.TOOL:
-                    self.texts_ok.add((name, key))
+                if tool in (texts.TOOL, deletes.TOOL):
+                    self.released.add((name, key))
             else:
                 model, line = gates.held(what, call, self.gates.word, exact=shown)
                 v = gates.Verdict("approval", "hold", model, line, f"{what}: {call}", rule=rule)

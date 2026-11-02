@@ -38,8 +38,8 @@ def told(y: Yerkd, sid: str) -> str:
     return out["hookSpecificOutput"]["additionalContext"]
 
 
-def rule(y: Yerkd, room: str, text: str, job: str = "open web pages") -> dict:
-    return asyncio.run(y.tool_rule(room, text, job))
+def rule(y: Yerkd, room: str, text: str, job: str = "open web pages", triggers: list[str] | None = None) -> dict:
+    return asyncio.run(y.tool_rule(room, text, job, triggers))
 
 
 def test_a_rule_filed_in_one_room_reaches_a_running_room_on_its_next_message_once_per_version(tmp_path):

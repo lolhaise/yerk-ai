@@ -2,7 +2,7 @@
 
 Written by `yerk docs own` from yerk_ai/mcp_server.py (build) and workers.WORKER_TOOLS; change those and run it again, never this page.
 
-The 15 tools Yerk AI's own MCP server hands every room's Claude Code, preloaded, as mcp__yerk__NAME. Each one's description is the text the model reads, indentation dropped. A worker gets none of them unless [workers] yerk_tools in yerkd.toml names some, and then only recall, read_memory, on its own server.
+The 17 tools Yerk AI's own MCP server hands every room's Claude Code, preloaded, as mcp__yerk__NAME. Each one's description is the text the model reads, indentation dropped. A worker gets none of them unless [workers] yerk_tools in yerkd.toml names some, and then only recall, read_memory, on its own server.
 
 ## send
 
@@ -59,16 +59,18 @@ by the name the owner uses (it names the fact file). `replaces`: for a correctio
 next 12 holding those words is marked superseded. Returns the new line's cite. `job`: when the owner
 says how a job is done from now on, or corrects how it was done, the job's short name ("open web pages",
 the rules' own name if it has one): `text` becomes its one rule in every room, the older one marked
-replaced. `said`: when `text` is what a person said or wrote, word for word, their name, with `source`
-(the message id, file path or transcript line holding those words): it is filed as their words.
-Anything else about a person (what they decided or want, in your words) is your note, and is shown
-as your note, never as their words.
+replaced. `triggers`, with `job`: words or short phrases a message on the job holds (the owner's, when
+named); a topic rule loads on them and its job's words. `said`: when `text` is what a person said or
+wrote, word for word, their name, with `source` (the message id, file path or transcript line holding
+those words): it is filed as their words. Anything else about a person (what they decided or want, in
+your words) is your note, and is shown as your note, never as their words.
 ```
 
 - `text`: string, required
 - `about`: string, default ""
 - `replaces`: list of string or null, default null
 - `job`: string, default ""
+- `triggers`: list of string or null, default null
 - `said`: string, default ""
 - `source`: string, default ""
 
@@ -224,6 +226,30 @@ and it goes once. A result with `maybe_sent` may have gone out: say so, and neve
 
 - `to`: string, required
 - `text`: string, required
+
+## delete
+
+```text
+Deletes files or folders outside this room's work folder when the owner orders it, since your shell deletes only
+inside it: for good, not to the trash, so the disk space comes back. `paths`: whole, real paths from /. Held for the
+owner to read first: once they say the word, call it again the same and it runs once. Returns what went, what failed
+and why, and the space freed.
+```
+
+- `paths`: list of string, required
+
+## reverse_image_search
+
+```text
+Searches the web by picture, as Google Lens or TinEye do, since a word search cannot look for a picture: `path` is a
+picture in this room's folders (its [attachment] path, a web_image file, a watch frame). The daemon sends it to Google
+Cloud Vision's web detection and returns Google's best guess at what it is, the names it ties to it (a work and its
+maker, a place, a product), the pages that show it, and the copies and look-alikes it found. Use it when asked where a
+picture comes from, what it is or who made it; open a page that shows it before you say so, and give the best guess
+as a guess.
+```
+
+- `path`: string, required
 
 ## voice_note
 
