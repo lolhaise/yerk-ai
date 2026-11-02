@@ -788,4 +788,9 @@ secs = 60
 # answer's lists, the spend row), daemon.py 14 (the tool on the room's own folders, every room's allow line), words.py 13
 # (the refusals, the wall's key line, what a result says next, the card's row), mcp_server.py 11 (the tool's sentence).
 # 24,148: main 281b187's 23,977 plus 171.
-lines = 24148
+# 2026-11-02: reattach-race raised it by 16, a second look before a worker is settled as lost (seen live: one
+# unit list read before systemd-run had made a cold read's unit settled it as lost a second after its start, its need held
+# and its account given to the next builder while it ran on to its verdict), not folded to fit: workers.py 16 (YOUNG and
+# _gone(): the fresh look, the exit file, the first two minutes, the stale line; reattach and reconcile ask it first).
+# 24,164: main 947df1f's 24,148 plus 16.
+lines = 24164
