@@ -58,7 +58,7 @@ Each active room is one `claude -p` process, stream-json in and out, on a sessio
 
 ## Add-ons
 
-What a room can do beyond Claude Code's own tools comes in as add-ons: MCP servers a room attaches in rooms.toml, a `[rooms.NAME.mcp.SERVER]` table each or once for every owner room under `[defaults]`, with their tools in the room's `allow`. One ships here, the web plug-in in `plugins/web`: pages, search and research (Microsoft Bookings read as a guest), kept out of budgets.toml's `[code]` count ([docs/GUIDE.md](docs/GUIDE.md), Web reach). A browser kept outside is one (`yerk explain browser`); it books free on checkout pages on your word (`free-bookings`).
+What a room can do beyond Claude Code's own tools comes as add-ons: MCP servers in rooms.toml, a `[rooms.NAME.mcp.SERVER]` table each or once for every owner room under `[defaults]`, their tools in the room's `allow`. One ships here, the web plug-in in `plugins/web`: pages, search and research (Microsoft Bookings read as a guest), outside budgets.toml's `[code]` count ([docs/GUIDE.md](docs/GUIDE.md), Web reach). A browser kept outside is one (`yerk explain browser`); on your word it books free on checkout pages (`free-bookings`) and puts a room's file on a form (`form-files`).
 
 ## The docs
 
@@ -69,7 +69,7 @@ What a room can do beyond Claude Code's own tools comes in as add-ons: MCP serve
 - [docs/hooks.md](docs/hooks.md): each Claude Code event Yerk AI handles and what it does
 
 - [docs/GUIDE.md](docs/GUIDE.md): the long form: using it, moving a chat in, importing one, the service, backup and restore, how a room runs, what you see, add-ons, voice notes and who talks in a recording, web reach, the harness docs, the ledgers
-- [docs/STATUS.md](docs/STATUS.md): the build's history layer by layer as it stood on 2026-10-24, kept as a record
+- [docs/STATUS.md](docs/STATUS.md): the build's history layer by layer as it stood on 2026-10-24
 - [CHANGELOG.md](CHANGELOG.md) says what each merge changes, [STYLE.md](STYLE.md) how every card and notice reads, and [NOTICE](NOTICE) where the lifted code comes from.
 
 The first six are written from the code by `yerk docs own`, and a test fails the build when one of them is stale, so they say what the code does. `yerk docs refresh` is the other half: the Claude docs Yerk AI runs on, kept for every room to recall ([docs/GUIDE.md](docs/GUIDE.md), Yerk knows its harness).
