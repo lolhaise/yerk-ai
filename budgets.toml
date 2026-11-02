@@ -7,7 +7,7 @@
 # The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and
 # Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 [session_start]
-total = 113002
+total = 113302
 
 # Load order, most stable first, so the cached start of the prompt survives.
 # The first parts are Claude Code's own (its default prompt, the built-in tools
@@ -137,8 +137,14 @@ skills = 0
 # free, and only a video without captions is transcribed from its sound; that evening an owner was quoted US$1.43 for a
 # YouTube video's words YouTube already had) took the mechanics to 5,608, so 5,700; no part was measured again to pay for
 # it, so the total rose by the 200, to 112,302 with the tools' 300.
+# 2026-11-02, need-2026-10-25-21: the code line (Yerk's own code, the checkout that runs, named by its path and open to an
+# owner room's Read and Grep, so a worker's claim about Yerk is checked there before it is said; on 2026-10-25 a room's
+# Grep of the checkout was refused and it relayed a worker's claim unchecked) took the mechanics file to 5,818, and the
+# path it carries rides in what is sent: 5,831 on the box, 5,859 in a worker's worktree, 5,869 in CI's checkout of a
+# sha; so 6,000, a checkout's path of up to 188 characters. No part was measured again to pay for it, so the total rose
+# by the 300, to 113,302.
 [session_start.appended]
-mechanics = 5700
+mechanics = 6000
 persona = 11800
 rulebook = 14000
 room_voice = 5500
@@ -739,4 +745,10 @@ secs = 60
 # 158's cold read: an address shaped like a path was shown by its last name, so the owner could say the word for one
 # person and the text go to another), not folded to fit: texts.py 6 (preview()), daemon.py 1 (its call at the hold).
 # 23,776: 23,769 plus 7.
-lines = 23776
+# 2026-11-02: need-2026-10-25-21 raised it by 10, Yerk's own code open to an owner room's Read, Grep and Glob
+# (on 2026-10-25 a room's Grep of the checkout that runs was refused, and it relayed a worker's claim about Yerk unchecked),
+# not folded to fit: daemon.py 8 (code_reads(): the checkout whole or around the private and state folders it holds, a
+# rule and never an --add-dir, which the sandbox opens for writing; its place in an owner room's allow, the docstring),
+# context.py 2 (the CODE mark and its path in the mechanics a room is handed, the session start's and the news line's).
+# 23,786: main 898ab72's 23,776 plus 10.
+lines = 23786

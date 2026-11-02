@@ -1198,6 +1198,14 @@ free_path = "this is the free path"
 asked_as = ["claude docs", "what the docs say", "the prompting guide"]
 command = "docs"
 
+[abilities.harness-code]
+state = "built"
+what = "Reads Yerk's own code, the checkout that runs: every owner room's Read, Grep and Glob reach it and the mechanics name its path, so a worker's claim about Yerk (a flag it says is passed, a check it says runs) or a question on how Yerk does a thing is checked against the code before it is said, never relayed on a report's word. The daemon writes the read rule into each owner room's settings at its process start: the checkout whole, or each of its entries around the private and state folders when it holds one, the secrets' denies still beating it; a rule and never an added folder, since Claude Code's sandbox opens an added folder to the room's shell for writing. A room whose privacy is not owner reads its own folders only, as before."
+tier = "free"
+needs = "an owner room with Read, Grep or Glob in its tools; nothing to set"
+free_path = "this is the free path"
+asked_as = ["read your own code", "read the harness code", "check the code yourself", "check a worker's claim", "yerk's code"]
+
 [abilities.rule-shape]
 state = "built"
 what = "Checks how its own rules are written: the doctor scores every rule file a room loads (the mechanics, its persona, rulebook and voice, the rules file) against the prompting guide, counting negatives with no why, shouted words, examples outside example tags, alarm marks on an instruction and topics said in two files. A count past budgets.toml [shape] is a finding, a rule filed in the last day that misses the shape is named by its cite, each room's report is docs/shape/<room>.md, the morning diff carries the totals, and `yerk docs shape` prints the report with each count's exact rule."

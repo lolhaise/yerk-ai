@@ -8,6 +8,29 @@ version changes.
 
 ## 2026-11-02
 
+### need-2026-10-25-21 (#?)
+
+- An owner room can check a worker's claim about Yerk against the code now: every owner room's settings carry a Read
+  rule for Yerk's own checkout, the code that runs (the folder the package runs from), so the room's Read, Grep and
+  Glob reach every file there. The daemon writes it at each process start: the checkout whole, or, when the checkout
+  holds the private or the state folder (a clone on its example layer), each of its other entries by a rule of its own;
+  the read denies on every secret still beat it.
+- A rule, never an `--add-dir`: Claude Code's sandbox opens an added folder to the room's shell for writing, and no room
+  writes the harness. A room whose privacy is not owner reads its own folders only, as only an owner room takes a
+  `read` folder.
+- The mechanics gain one line naming the checkout's path: check a worker's claim about Yerk, or how Yerk does a thing,
+  there before saying it, since a report can be wrong. mechanics.md holds a `{code}` mark there, and the session start
+  and the news of a changed line fill in the path, so every room is handed the path and never the mark.
+- `yerk explain harness-code` has the ability. The mechanics go to 6,000 (5,818 in the file, the checkout's path on top
+  as sent) and the session-start total to 113,302; the code ceiling moves up by 10, to 23,786.
+- Why: on 2026-10-25 an owner room asked to tell a worker's code-review outcome Grepped the checkout for the worker's
+  finding to confirm it first; Claude Code refused the read, since the room's settings opened its own folder only, and
+  the room relayed the finding unchecked, marked as the worker's read.
+
+**Upgrading**: nothing to change by hand; every owner room reads the checkout from its next process start after the
+deploy. budgets.toml moves with the code: `mechanics` to 6,000, the session-start total to 113,302, the code ceiling to
+23,786.
+
 ### need-2026-10-24-21 (#?)
 
 - A room asked to read a Microsoft Bookings page (Bookings with me) now reads it as a guest, with no sign-in:

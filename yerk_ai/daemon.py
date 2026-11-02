@@ -189,8 +189,9 @@ class Yerkd:
                      next((p.text for p in parts if p.name == "recall_pack"), ""), file=str(ctx))
         token = secrets.token_hex(16)                      # this process's credential, bound with its session
         header = write_private(rdir / "hook-header", f"{mcp_server.HEADER}: {token}\n")    # curl reads it: never in an argv
-        settings: dict[str, Any] = {"permissions": {"allow": [f"Read(/{layer}/**)", *YERK_TOOLS, *conf.get("allow", [])], "deny": self.never_read()},
-                                    "hooks": hooks.settings_for(f"{self.url}/hook", header)}
+        code = self.code_reads() if self.owner(name) else []          # the checkout that runs: an owner room checks a claim there
+        settings: dict[str, Any] = {"permissions": {"allow": [f"Read(/{layer}/**)", *code, *YERK_TOOLS, *conf.get("allow", [])],
+                                                    "deny": self.never_read()}, "hooks": hooks.settings_for(f"{self.url}/hook", header)}
         shell = conf.get("sandbox", dict(SANDBOX) if SHELLS & set(conf.get("tools") or []) else None)   # Claude Code's own
         dirs = [layer, *self.read_dirs.get(name, [])]                       # `read`, as F4 judged it
         if trusted(conf):                    # the daemon's wall; Write and Edit on the room's own folders; its outbox read only
@@ -302,6 +303,13 @@ class Yerkd:
         folders, files = self.secrets_at()
         return ([f"Read(/{d}/**)" for d in folders] + [f"Read(/{f})" for f in files]
                 + [f"Read(/{a.config_dir.expanduser().resolve()}/.*)" for a in self.accounts])
+
+    def code_reads(self) -> list[str]:
+        """Read rules opening Yerk's own code, the checkout that runs (REPO), to an owner room's Read, Grep and Glob (2026-10-25:
+        a room's Grep there was refused, and it relayed a worker's claim about Yerk unchecked): the checkout whole, else its
+        entries around the private and state folders when it holds one (a clone's example layer). Rules, never an --add-dir,
+        which Claude Code's sandbox opens to the room's shell for writing; never_read's denies still beat them."""
+        return [f"Read(/{p}/**)" if p.is_dir() else f"Read(/{p})" for p in around(REPO.resolve(), [self.private.resolve(), self.state.resolve()])]
 
     def owner(self, room: str) -> bool:
         """An owner room (rooms.toml privacy, "owner" when unset); a name that is no room is not one."""
