@@ -8,6 +8,29 @@ version changes.
 
 ## 2026-11-02
 
+### need-2026-10-26-21 (#?)
+
+- A room asked to open a page in the browser on the owner's PC opens it: the browser plug-in, kept outside this
+  repository (hands, attached to every owner room under rooms.toml's `[defaults]`), starts that browser again before
+  each call on the PC, inside the call's lease, since 2026-10-26. A browser that will not come back is said to be down in
+  one line with its reason, and an error from the browser's driver names its exception's own line, never a stack trace's
+  first line. The plug-in's own offline tests hold both (28 of 28 green on its main); its call log has no failed browser
+  call since the change.
+- Here, the manifest says so: the browser entry's `how` gains the relaunch before each call and the computer the owner
+  names (the default one when none is named; another computer's browser is another profile with its own sign-ins, so a
+  read moves there only when the owner names it), and its `why_not` no longer waits on the rooms' move: a browser reaches
+  the rooms as a plug-in an install attaches, a room that holds such a tool opens the page with it, and when the tool says
+  that browser is down the room tells the owner, never reading on another computer unasked. Three new phrases ("open it
+  in my browser", "open a page in my browser", "browser on my pc") hand a room asked that way the entry whole
+  (`yerk explain browser`).
+- Nothing in the harness's code changes, so no budget line moves.
+- Why: on 2026-10-26 a room asked to open a page in the browser on the owner's PC met "opening the tab failed"
+  with only a stack trace's first line after it: the browser had quit with its last tab, and its port took each call and
+  reset it. The same open in the Mac's browser, another profile, landed on a sign-in page.
+
+**Upgrading**: nothing to change by hand; the plug-in's change has been live since 2026-10-26, and a room hears the new
+entry from the deploy.
+
 ### need-2026-10-25-23 (#?)
 
 - A room the owner orders to delete files or folders outside its work folder can do it now: the new `delete` tool on
