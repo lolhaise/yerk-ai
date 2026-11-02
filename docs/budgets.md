@@ -413,7 +413,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-02: need-2026-10-24-22 merged with main 9d747cb (#168): main's 24,277 plus this PR's 70 is 24,347, counted on the merged tree; daemon.py, mcp_server.py and words.py, which both changed, merged with no line in common; `yerk docs own` wrote budgets.md.
 
-- `lines = 24347`
+2026-11-02: need-2026-10-28-25 raised it by 5, the rules-changed note's lines past its size written whole to a file in the room's own work folder, which the note names (need 25 of 2026-10-28: a room told the mechanics had changed was pointed at mechanics.md in Yerk's checkout and its Read was refused, since no room's Read reached the checkout then and only an owner room's does now), not folded to fit: context.py 4 (the file's name, its write, the why in the docstring; the old pointer's line gone), daemon.py 1 (the room's work folder handed to context.news). 24,352: main 5b52559's 24,347 plus 5.
+
+- `lines = 24352`
 
 ## Uncapped
 

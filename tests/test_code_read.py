@@ -94,12 +94,13 @@ def test_every_room_is_handed_the_checkouts_path_in_the_mechanics_and_never_the_
     y.spec_for("example-room")
     start = (state / "rooms" / "example-room" / "context.md").read_text()
     assert said in start.splitlines() and context.CODE not in start
-    seen, room, rules = tmp_path / "seen.json", y.room_confs["example-room"], y.memory.root / memory.RULES
-    context.news(seen, "", private, room, rules, 2000)                   # a session that looked before the line came in
+    seen, room, rules, kept = tmp_path / "seen.json", y.room_confs["example-room"], y.memory.root / memory.RULES, tmp_path / context.CHANGED
+    context.news(seen, "", private, room, rules, 2000, kept)             # a session that looked before the line came in
     look = json.loads(seen.read_text())
     look["start"]["mechanics"] = look["start"]["mechanics"].replace("\n" + said, "")
     seen.write_text(json.dumps(look))
-    assert context.news(seen, "s1", private, room, rules, 2000) == f"{context.NEWS}\nnew in mechanics.md: {said.removeprefix('- ')}"
+    assert context.news(seen, "s1", private, room, rules, 2000, kept) == f"{context.NEWS}\nnew in mechanics.md: {said.removeprefix('- ')}"
+    assert not kept.exists()                                             # a note inside its budget leaves no file
 
 
 def test_a_room_asked_whether_it_can_read_yerks_code_answers_from_the_entry(tmp_path):

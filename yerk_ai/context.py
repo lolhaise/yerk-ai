@@ -34,6 +34,7 @@ APPENDED = ("mechanics", "persona", "rulebook", "room_voice", "pinned_memory", "
 TAIL = ("rulebook", "rules")       # one rule a line, the newest last: past its size the newest lines go, never a middle one
 SEP = "\n\n"
 NEWS = "Rules changed since you last looked:"
+CHANGED = "rules-changed.md"       # in a room's work folder: a NEWS note's lines past its budget, whole, where every room's Read reaches
 TOPICAL = "Rules on this message's topic, from rules-topics.md, as binding as the rules file's:"
 TOLD = "topics-told.json"          # in a room's state folder: the topic rules its session was handed, each once until a compaction
 NONE = sys.maxsize                 # an uncapped install's limit for what is sent ([limits] uncapped); the budget's number stays its line
@@ -187,9 +188,11 @@ def per_message(room_name: str, room: dict[str, Any], sender: str, now: datetime
         [Part("place", place, limits.get("place"), chars(place))] if place else [])     # an owner room's: location.part
 
 
-def news(path: Path, sid: str, private: Path, room: dict[str, Any], rules: Path, budget: int) -> str:
+def news(path: Path, sid: str, private: Path, room: dict[str, Any], rules: Path, budget: int, kept: Path) -> str:
     """What changed in the mechanics, the room's rulebook or the rules file since session `sid` last looked (decision 15),
-    once per version: each new line and each line replaced or gone, or past `budget` their count and where to read them.
+    once per version: each new line and each line replaced or gone, or past `budget` their count and `kept`, a file in the
+    room's work folder that holds them whole, since every room's Read reaches that folder and only an owner room's reaches
+    the mechanics' own file (2026-10-28: a note named that file, and a room's Read of it was refused).
     `path` keeps the room's looks; `sid` "" records a process start, a new session's first look (its start file's)."""
     rb = layer_dir(private, room) / str(room["rulebook"]) if room.get("rulebook") else None
     now = {k: ((mechanics() if k == "mechanics" else p.read_text().strip()) if p.is_file() else "", p.resolve()) for k, p in
@@ -213,8 +216,9 @@ def news(path: Path, sid: str, private: Path, room: dict[str, Any], rules: Path,
     out = "\n".join([NEWS, *lines]) if lines else ""
     if chars(out) <= budget:
         return out
-    where = ", ".join(f'read_memory("{now[k][1].name}")' if k == "rules" else f"Read {now[k][1]}" for k, r in rows.items() if r)
-    return f"{NEWS} {len(lines)} lines new or replaced, past the {budget:,} characters this note holds; read them: {where}."
+    kept.parent.mkdir(parents=True, exist_ok=True)
+    write_private(kept, out + "\n")
+    return f"{NEWS} {len(lines)} lines new or replaced, past the {budget:,} characters this note holds; read them: Read {kept}."
 
 
 def books(private: Path, rooms: dict[str, dict[str, Any]]) -> dict[str, str]:

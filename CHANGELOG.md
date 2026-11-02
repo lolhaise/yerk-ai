@@ -8,6 +8,27 @@ version changes.
 
 ## 2026-11-02
 
+### need-2026-10-28-25 (#?)
+
+- A room told its rules changed reads every changed line now, whatever its privacy. When the lines new or replaced in
+  the mechanics, the room's rulebook or the shared rules file since its session last looked are past the note's 1,500
+  characters (budgets.toml `[per_message.on_hit] rules`), the note gives their count and names `rules-changed.md` in
+  the room's own work folder, which holds each of those lines whole, written 0600; told once per version, as before.
+  Every room's Read reaches its work folder, the folder its process runs in. The note used to name the mechanics' own
+  file in Yerk's checkout, which no room's Read reached then and only an owner room's does now, and the rules file by
+  `read_memory`, which gave the file whole rather than what changed.
+- A note inside its size is as it was, the lines themselves, and leaves no file. A sealed room still hears none.
+- abilities.toml has the built `rules-changed` entry; the README names the part among what each message gets (four of
+  its clauses a few words shorter, to stay under 12,000 bytes), the GUIDE has a paragraph under Yerk knows its harness,
+  and its count is what the file holds, 97: 39 built; docs/budgets.md is what `yerk docs own` writes.
+- budgets.toml: [code] lines 24,347 + 5 = 24,352, with its dated note. The capped assembly fixture is retaken, its one
+  change this note's last words.
+- Why: on 2026-10-28 a room handed a rules-changed note naming the mechanics file in Yerk's checkout had its Read of
+  that file refused, kept working on the mechanics its session started with, and filed the need (need 25 of 2026-10-28).
+
+**Upgrading**: nothing to change by hand; every room has it from yerkd's restart at the deploy. budgets.toml's [code]
+`lines` moves with this change.
+
 ### need-2026-10-24-22 (#?)
 
 - A room sent a video file now sees it: `watch` takes `path`, the file's saved path from its `[attachment]` line, in place

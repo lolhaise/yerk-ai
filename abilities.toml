@@ -1180,6 +1180,14 @@ needs = "an owner room; the words are kept on the rule's own line in rules-topic
 free_path = "this is the free path"
 asked_as = ["topic rule triggers", "trigger words", "rule fire on", "rule load on", "rule loads on"]
 
+[abilities.rules-changed]
+state = "built"
+what = "Tells a running room what changed in the rules it runs on: on its next message, once per version, each line new or replaced in the mechanics, its rulebook or the shared rules file since its session last looked (a sealed room, which loads no shared rule, hears none). Past the note's 1,500 characters (budgets.toml [per_message.on_hit] rules) the note gives their count and names rules-changed.md in the room's own work folder, written 0600 with each of those lines whole, so every room reads them with its own Read, whatever its privacy; never the mechanics' own file in Yerk's checkout, which only an owner room's Read reaches."
+tier = "free"
+needs = "nothing; it rides on each room's per-message hook"
+free_path = "this is the free path"
+asked_as = ["rules-changed note", "rules changed note", "read the mechanics", "mechanics file"]
+
 [abilities.embeddings]
 state = "built"
 what = "Meaning search behind the keywords: yerk-index embeds every line of a day log and every bullet of a fact or topic file once (changed lines only, the vector stored next to the line's hash, copied across a rebuild) and answers recall's query by cosine, each hit mapped to its chunk; recall fuses that rank with the keyword rank by reciprocal rank fusion, holds each search's own first hits in the top six and gives a fact or topic file a small edge over a day log, so a paraphrase finds the line its words never name."
