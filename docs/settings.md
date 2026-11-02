@@ -127,6 +127,16 @@ The daemon's settings, in the private folder beside rooms.toml, read when yerkd 
 - `user`: the Gmail address `yerk import gmail` reads
 - `password_file`: a file holding its app password, never printed
 
+### [imessage]
+
+- `host`: the ssh host of the owner's Mac, the `text` tool's way to it (none: no room texts)
+- `socket`: the Mac's bridge socket there, serving imsg's JSON-RPC
+- `socat`: socat on the Mac (default /opt/homebrew/bin/socat)
+- `command`: a whole command whose stdin and stdout are the bridge, in place of host and socket
+- `service`: imessage, sms or auto (default auto: iMessage where the person has it, else SMS)
+- `send_transport`: imsg's own way to drive Messages, auto, bridge or applescript (default: imsg's)
+- `send_timeout`: seconds a text waits on Messages before it may have gone out (default 60)
+
 ### [needs]
 
 - `account`: the account `yerk needs build` runs on (default [curate] account, else the workers' pick)

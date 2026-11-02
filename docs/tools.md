@@ -2,7 +2,7 @@
 
 Written by `yerk docs own` from yerk_ai/mcp_server.py (build) and workers.WORKER_TOOLS; change those and run it again, never this page.
 
-The 14 tools Yerk AI's own MCP server hands every room's Claude Code, preloaded, as mcp__yerk__NAME. Each one's description is the text the model reads, indentation dropped. A worker gets none of them unless [workers] yerk_tools in yerkd.toml names some, and then only recall, read_memory, on its own server.
+The 15 tools Yerk AI's own MCP server hands every room's Claude Code, preloaded, as mcp__yerk__NAME. Each one's description is the text the model reads, indentation dropped. A worker gets none of them unless [workers] yerk_tools in yerkd.toml names some, and then only recall, read_memory, on its own server.
 
 ## send
 
@@ -210,6 +210,18 @@ anything. The same ability filed again is counted on the open one.
 - `tried`: string, required
 - `needed`: string, required
 - `shadow`: string, default ""
+
+## text
+
+```text
+Texts one person as the owner when the owner asks you to: an iMessage, else an SMS, from the owner's Mac. `to` is
+their phone number or email address, never a name (recall it from the owner's texts, or ask); `text` the message
+exactly as it should arrive. It is held for the owner to read first: once they say the word, call it again the same
+and it goes once. A result with `maybe_sent` may have gone out: say so, and never send it again unasked.
+```
+
+- `to`: string, required
+- `text`: string, required
 
 ## voice_note
 

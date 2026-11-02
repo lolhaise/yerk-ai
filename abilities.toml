@@ -174,6 +174,22 @@ why_not = "After the rooms move."
 asked_as = ["stock price", "stock prices", "my stocks", "my portfolio", "stock alert"]
 upgrade = "jobs"
 
+[abilities.text]
+state = "built"
+what = "The text tool on Yerk's own MCP server: a room the owner asks to text someone sends one text in the owner's name, an iMessage or else an SMS, from the owner's own Mac, to that person's phone number or email address. Nothing goes before the owner has seen it: the call is held in the room with its words and who it goes to shown as they will read, and it goes once, on the owner's approval word; an edit is a new preview. The daemon sends it, since a room's shell has no network and plain ssh holds no grant to drive Messages."
+how = [
+  "Preview first: the text-out gate holds each call and shows the room its words and who it goes to, never its JSON; the owner's approval word releases that exact call once, and the daemon sends only a call the gate released, so a rule turned off or a hook that failed open sends nothing.",
+  "Before the ask: a person's room, an install with no Mac set up, a name in place of a number or an address, or an empty text is refused at the gate, so the owner is never asked to approve a text that could not go.",
+  "The way to the Mac: ssh to [imessage] host, then socat to the socket of the Mac's bridge, a small app there that holds Messages' grants and serves imsg's JSON-RPC; a status first, then one send of the number or address, the text and the service (auto by default: iMessage where the person has it, else SMS through the phone), on a connection of its own.",
+  "Told apart: no answer to the status, or an error to the send, is not sent; no answer to the send, or the bridge's own may-have-completed answer, may have gone out, and the room says so and never sends it again unasked.",
+  "Receipt: each text's outcome is a gate row after its hold, the word and the release, with who it went to, its length and the id Messages gave it.",
+]
+tier = "free"
+needs = "a Mac signed into the owner's Messages (the phone's text forwarding on, for SMS), the bridge app on it, and an ssh path from the box: [imessage] host and socket in yerkd.toml"
+price = "none"
+free_path = "this is the free path"
+asked_as = ["text her for me", "text him for me", "text them for me", "send a text for me", "send an imessage", "text from my phone"]
+
 [abilities.text-as-you]
 state = "described"
 what = "Texts people as the owner, in the owner's voice, with a preview and a veto: the owner sees each reply before it goes and can stop it."
@@ -187,9 +203,10 @@ tier = "free"
 needs = "a desktop computer signed into the owner's messaging account, the small signed app on it, and an ssh path from the box"
 price = "none"
 free_path = "this is the free path"
-why_not = "Layer 8a built the iMessage rooms (the owner's own threads), parked outside the package until Layer 8; texting other people in the owner's voice, with the preview and the veto, is not built."
+why_not = "Layer 8a built the iMessage rooms (the owner's own threads), parked outside the package until Layer 8, and the text tool sends one text the owner asked for, previewed and sent on the owner's word; a texting agent that reads other people's texts and drafts the owner's replies to them is not built."
 asked_as = ["text as me", "text people as me", "send texts as me", "text people for me", "reply to my texts", "text messages for me"]
 layer = 8
+upgrade = "text"
 
 [abilities.email]
 state = "described"

@@ -29,7 +29,7 @@ from typing import Any, Awaitable, Callable
 from zoneinfo import ZoneInfo
 
 from . import (beat, context, deploy, doctor, evidence, gates, hooks, jobs, location, mcp_server, memory, mentions, needs, pictures, pipeline, render,
-               status, taste, transcribe, voice_note, watch, workers)
+               status, taste, texts, transcribe, voice_note, watch, workers)
 from .accounts import Account, Cooldowns, from_dir, load_accounts, pick
 from .config import (EFFORTS, REPO, SHELLS, account_and_model, account_named, assistants, budgets, discord_id, flag, load_toml, models,
                      override, people, pinned, private_dir, read_secret, room_id, room_settings, rooms, state_dir, table, trusted, uncapped,
@@ -46,7 +46,7 @@ from . import abilities, addons, words   # STYLE.md: what a room reads
 log = logging.getLogger("yerk.daemon")
 YERK_TOOLS = ["mcp__yerk__send", "mcp__yerk__hold", "mcp__yerk__recall", "mcp__yerk__read_memory",
               "mcp__yerk__remember", "mcp__yerk__worker", "mcp__yerk__schedule", "mcp__yerk__settings", "mcp__yerk__transcribe",
-              "mcp__yerk__voice_note", "mcp__yerk__seen", "mcp__yerk__render", "mcp__yerk__watch", "mcp__yerk__need"]
+              "mcp__yerk__voice_note", "mcp__yerk__seen", "mcp__yerk__render", "mcp__yerk__watch", "mcp__yerk__need", texts.TOOL]
 # A shell room's sandbox when rooms.toml gives it no [rooms.NAME.sandbox] table: unsandboxed, a Read deny stops `cat` and
 # the Read tool, but a script, grep or redirect read every secret (Claude Code 2.1.304, PR 66's cold read, 2026-10-21)
 SANDBOX = {"enabled": True, "autoAllowBashIfSandboxed": True}
@@ -165,6 +165,7 @@ class Yerkd:
         self.rebuild_running = gates.rebuild_running
         self.rewrites: dict[str, tuple[str, str]] = {}           # tool_use id -> (room, the trash command)
         self.worded: set[str] = set()                            # inbound ids whose approval word was used
+        self.texts_ok: set[tuple[str, str]] = set()              # (room, call) the text-out gate released: the text tool's, once
         self.later: set[asyncio.Task[Any]] = set()               # a gate's notice, posted beside the hook's answer
         self.held_files: dict[str, Path] = {}                    # room -> a held call's exact text too long to show
         self.timing: list[tuple[str, dict[str, Any]]] = []       # hook and tool timings, written in batches
@@ -511,6 +512,34 @@ class Yerkd:
                 n=r["n"], room=room, ability=words.line(r["ability"], 80), day=r["day"], count=r["count"]), 0)
         log.info("need: %s, %s %s, %s", room, r["day"], r["n"], "folded" if r["folded"] else "filed")
         return {**r, "next": words.FILED_NEXT.format(clause=words.NEED_CLAUSE)}
+
+    def text_refusal(self, room: str, to: str, text: str) -> str:
+        """Why a text from `room` to `to` cannot go, "" when it can: asked at the gate, so the owner is never asked to approve
+        one that would not go, and again by the tool."""
+        if not self.owner(room):
+            return words.TEXT_OWNER_ROOMS
+        if not texts.transport(dict(self.conf.get("imessage") or {})):
+            return words.TEXT_NO_SETUP
+        if not texts.handle(to):
+            return words.TEXT_NO_HANDLE.format(given=words.line(words.no_paths(to), 60))
+        return "" if text.strip() else words.TEXT_EMPTY
+
+    async def tool_text(self, room: str, to: str, text: str) -> dict[str, Any]:
+        """The `text` tool: one text in the owner's name from the Mac (texts.send), from an owner's room only, and only
+        as the exact call the text-out gate showed the owner and released on their word, once (a hook that failed open sends
+        nothing); its outcome a gate row, the receipt after the hold, the word and the release."""
+        if why := self.text_refusal(room, to, text) if room in self.rooms else words.TEXT_OWNER_ROOMS:
+            return {"ok": False, "maybe_sent": False, "error": words.TEXT_NOT_SENT.format(why=why)}
+        if (room, key := gates.call_key(texts.TOOL, {"to": to, "text": text})) not in self.texts_ok:
+            return {"ok": False, "maybe_sent": False, "error": words.TEXT_NOT_RELEASED}
+        self.texts_ok.discard((room, key))
+        r = await texts.send(dict(self.conf.get("imessage") or {}), to, text)
+        how = "sent" if r["ok"] else "maybe sent" if r["maybe_sent"] else "failed"
+        rp = self.rooms[room].rp
+        self.ledger.gate(room=room, session_id=rp.session_id if rp else "", turn=self.rooms[room].turn_key, gate="text", decision=how,
+                         tool=texts.TOOL, rule="text-out", detail=f"to {texts.handle(to)}, {len(text)} characters, {r.get('guid') or r.get('error')}"[:300])
+        log.info("text: %s, %s, %d characters", room, how, len(text))
+        return r
 
     async def pictures(self, req: dict[str, Any]) -> dict[str, Any]:
         """`yerk pictures backfill ROOM`: the owner room's pictures with no sidecar (at most `limit`), BATCH to a Yerk worker on the
@@ -1172,14 +1201,19 @@ class Yerkd:
             if why:
                 model, line = gates.refused(what, why)
                 v = gates.Verdict("restart", "deny", model, line, f"{what}; {why}")
+        if v is None and tool == texts.TOOL and (why := self.text_refusal(name, str(ti.get("to") or ""), str(ti.get("text") or ""))):
+            v = gates.Verdict("text", "deny", words.TEXT_NOT_SENT.format(why=why), detail=why)    # it could not go: nothing to approve
         key, shown, cwd = "", "", str(payload.get("cwd") or self.state / "rooms" / name / "work")
         if v is None and (hit := gates.external_hit(tool, ti, name, self.gates, self.room_confs)):
             rule, what, call = hit
             key = gates.call_key(tool, ti)
-            shown = gates.plain(tool, ti) if self.room_confs[name].get("people") else key     # a person reads it: no JSON
+            shown = (texts.preview(ti) if tool == texts.TOOL               # no JSON: a text as it reads, to whom it goes
+                     else gates.plain(tool, ti) if self.room_confs[name].get("people") else key)
             rel = self.ledger.release(name, rule, key, cwd, self.gates.window_s)
             if rel:
                 v = gates.Verdict("approval", "release", detail=f"{what}: {call}; approved by {rel['approved_by']}", rule=rule)
+                if tool == texts.TOOL:
+                    self.texts_ok.add((name, key))
             else:
                 model, line = gates.held(what, call, self.gates.word, exact=shown)
                 v = gates.Verdict("approval", "hold", model, line, f"{what}: {call}", rule=rule)

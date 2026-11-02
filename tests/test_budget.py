@@ -233,7 +233,8 @@ def test_claude_codes_parts_as_the_rooms_send_them_fit_their_lines_and_what_is_l
     mechanics line's 300, to 110,959; then (2026-10-29, hands-budget) the hands plug-in's line to 7,462 (need 27), the total by the 343 to 111,302,
     and (note-to-self) the note line's 300 on the mechanics to 111,602; then (2026-10-31, retention-keep) the keep line's 200 to 111,802;
     then (need-2026-10-31-27) the `watch` tool's captions sentence (about 1,576 as sent) to 14,400 and the total by the 300,
-    with the watch line's clause's 200 on the mechanics, to 112,302."""
+    with the watch line's clause's 200 on the mechanics, to 112,302; then (need-2026-10-24-1) the `text` tool (about 719 as
+    sent) to 15,100 and the total by the 700, to 113,002."""
     shape = {"system": [{"type": "text", "text": "p" * LIVE_PROMPT}, {"type": "text", "text": "# Yerk AI mechanics"}],
              "tools": [entry(n, size) for n, size in LIVE_TOOLS.items()]}
     (t := tmp_path / "sid.jsonl").write_text(json.dumps({"type": "api-request-shape", "shape": shape}) + "\n")
@@ -251,7 +252,7 @@ def test_claude_codes_parts_as_the_rooms_send_them_fit_their_lines_and_what_is_l
     assert all(sent <= line for sent, line in rows.values()), out
     assert all(line <= sent * 1.02 for name, (sent, line) in rows.items() if name != "Yerk AI's tools"), rows
     s = b["session_start"]
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 112302
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 113002
 
 
 def room_sent(tmp_path, tools, file="# Yerk AI mechanics\n- an example line"):
@@ -361,10 +362,11 @@ def test_the_rulebook_line_keeps_about_1000_over_the_largest_room_text_and_what_
     could pay), to 108,259. On 2026-10-28 the `render` tool (900) and its mechanics line (200), no part could pay, to 109,359;
     then the `watch` tool (1,300) and its mechanics line (300), no part could pay, to 110,959; then the hands line (343, need 27) to 111,302;
     then the note line (300, note-to-self) to 111,602; then the keep line (200, retention-keep) to 111,802; then the `watch`
-    tool's captions sentence (300) and the watch line's clause (200), no part could pay, to 112,302 (need-2026-10-31-27)."""
+    tool's captions sentence (300) and the watch line's clause (200), no part could pay, to 112,302 (need-2026-10-31-27); then
+    the `text` tool (700), no part could pay, to 113,002 (need-2026-10-24-1)."""
     s = budgets()["session_start"]
     assert 900 <= s["appended"]["rulebook"] - LIVE_RULEBOOK <= 1400 and s["appended"]["rules"] == 16000
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 112302
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 113002
     private = tmp_path / "private"
     shutil.copytree(EXAMPLE_PRIVATE, private)
     (private / "rulebook.md").write_text("r" * (LIVE_RULEBOOK - 1) + "\n")
