@@ -13,11 +13,18 @@ version changes.
 - A room asked to read a Microsoft Bookings page (Bookings with me) now reads it as a guest, with no sign-in:
   `web_fetch` adds the `anonymous` flag every share link Microsoft makes carries (`.../bookwithme/user/<id>@<domain>?anonymous&ep=pcard`)
   when a link lacks it, first in the query as Microsoft writes it, on Outlook's hosts and `bookings.cloud.microsoft`, so
-  the free read on the machine gets the page's meeting types and open times instead of Microsoft's sign-in page. The
-  answer says it read the page as a guest. A link that has the flag, and every other page, is read as before.
-- A Bookings page whose guest view still asks for a sign-in (its owner lets only signed-in people book) is named so, with
-  `retry=no` and the next move (ask the page's owner for a public meeting type's link or the times in words), in place of
-  the saved-login advice the login wall gives every other site.
+  no rung lands on Microsoft's sign-in page. The flagged page opens on "Sign in or continue as guest", and its meeting
+  types and open times show only after a click on Continue as guest: the machine's own browser (F2) makes that click on
+  a Bookings page only, waits for the guest view (the click's own requests done, the text steady) and takes its few
+  hundred chars as the answer; the answer says it read the page as a guest. A plain read gets only the page's app shell,
+  for either link. A link that has the flag, and every other page, is read as before. Read live on 2026-11-02 with no
+  key: `F1:thin:js_shell,F2:ok:short`, the meeting type and the day's open times, in 4.7 s.
+- A read that is still that choice screen is no answer at any rung (`guest_choice`, `retry=maybe`): L3's "a short but
+  real page is still an answer" took it for one. Once F2 has clicked, or met the screen, the climb stops before
+  Browserbase, whose rungs make no click, so no paid read is spent on it.
+- A Bookings page whose guest view goes on to Microsoft's sign-in is named so (what was seen, not a guess at the owner's
+  setting), with `retry=no` and the next move (ask the page's owner for a public meeting type's link or the times in
+  words), in place of the saved-login advice the login wall gives every other site.
 - `yerk explain bookings-guest` has the ability. Nothing in the harness's code changes, so no budget line moves.
 - Why: on 2026-10-24 a room asked to read a person's Bookings page for their open call slots met `login_required` at
   every rung, because the link it had carried no `anonymous` flag and the page sent every reader to Microsoft's sign-in;

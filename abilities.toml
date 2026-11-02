@@ -1219,8 +1219,8 @@ asked_as = ["web reach", "blocked page", "bot wall", "captcha page", "page will 
 
 [abilities.bookings-guest]
 state = "built"
-what = "Reads a Microsoft Bookings page (Bookings with me) the way a guest sees it, with no sign-in: web_fetch adds the anonymous flag every share link Microsoft makes carries when a link lacks it, so a page anyone may book shows its meeting types and open times to the plain read on the machine instead of Microsoft's sign-in; a page whose guest view still asks for a sign-in is named so, with the next move, never as a login to save."
+what = "Reads a Microsoft Bookings page (Bookings with me) the way a guest sees it, with no sign-in: web_fetch adds the anonymous flag every share link Microsoft makes carries when a link lacks it, so no rung lands on Microsoft's sign-in, and the machine's own browser clicks Continue as guest on the page's sign-in-or-guest screen and reads the meeting types and open times that click brings; a page still on that screen, or whose guest view goes on to a sign-in, is named so, with the next move, never as a login to save, and no paid rung runs for it."
 tier = "free"
-needs = "the web ability's plug-in attached to the room; no account, no key and no sign-in"
+needs = "the web ability's plug-in attached to the room and the machine's own browser (F2) installed; no account, no key and no sign-in"
 free_path = "this is the free path"
 asked_as = ["bookings page", "bookings with me", "bookwithme", "microsoft bookings", "booking page slots"]

@@ -616,11 +616,53 @@ async function waitOutLocalChallenge({ page, settings, deadline, seen }) {
   return { sawChallenge: true, why, timedOut: true };
 }
 
+// The guest step (need 21, 2026-11-02), only when the ladder says the page is a Microsoft Bookings page: with the
+// anonymous flag the page opens on "Sign in or continue as guest", and its meeting types and open times show only
+// after a click on "Continue as guest", the URL unchanged (read live: 141 visible chars before the click, 464 after).
+// The control is clicked once when it shows (GUEST_SHOW_MS at most), then the wait runs until it is gone and the text
+// is unchanged across two polls with none of the click's own main-frame requests open, up to localReadableWaitMs: two
+// scripts the choice screen asked for never finished on the live page, its guest view steady 0.5 s after the click.
+// networkidle is no stop here: the page reached it on the choice screen, and a click that navigates nowhere does not
+// start it again.
+// "clicked": the guest view showed; "stuck": the control was still up when the wait ran out; null: nothing to click.
+const GUEST_CONTROL = /^\s*continue as guest\s*$/i;
+const GUEST_SHOW_MS = 5000;
+
+async function continueAsGuest({ page, settings, deadline, inflight }) {
+  const control = page.getByRole("button", { name: GUEST_CONTROL }).or(page.getByRole("link", { name: GUEST_CONTROL })).or(page.getByText(GUEST_CONTROL)).first();
+  const until = Math.min(deadline - 1500, Date.now() + settings.localReadableWaitMs);
+  let older;
+  try {
+    await control.waitFor({ state: "visible", timeout: Math.max(1, Math.min(GUEST_SHOW_MS, until - Date.now())) });
+    older = new Set(inflight);
+    await control.click({ timeout: Math.max(1, until - Date.now()) });
+  } catch {
+    return null; // no such control: the page shows its times already, or went to a sign-in
+  }
+  const shown = () => control.isVisible().catch(() => false);
+  let prev = null;
+  while (Date.now() < until) {
+    await sleep(Math.min(settings.localReadablePollMs, Math.max(1, until - Date.now())));
+    let p;
+    try {
+      p = await page.evaluate(PROBE_JS);
+    } catch {
+      prev = null; // navigating mid-probe: start the two-poll count over
+      continue;
+    }
+    const quiet = [...inflight].every((r) => older.has(r));
+    if (prev?.text === p.text && prev.quiet && quiet && !(await shown())) return "clicked";
+    prev = { text: p.text, quiet };
+  }
+  return (await shown()) ? "stuck" : "clicked";
+}
+
 // phases (2026-10-21): the F2 split in ms, carried on the result and into the call log, so the next
 // measurement of this rung reads off the ledger: take (the page slot), launch (cold true when the
 // browser had to start), page, goto (to domcontentloaded), settle (the quiet wait), challenge (the
-// probe loop, 0 when the page was no challenge), extract (the snapshot), judge (extract.js + detect.js).
-export async function localBrowserRung({ url, settings, extractMode, signal, budgetMs }) {
+// probe loop, 0 when the page was no challenge), guest (the guest step, on a Bookings page only), extract (the
+// snapshot), judge (extract.js + detect.js). `guest` (need 21): the ladder's word that the page is a Bookings page.
+export async function localBrowserRung({ url, settings, extractMode, signal, budgetMs, guest = false }) {
   const t0 = Date.now();
   const deadline = t0 + Math.max(3000, budgetMs);
   const phases = { take: 0, launch: 0, cold: false, page: 0, goto: 0, settle: 0, challenge: 0, extract: 0, judge: 0 };
@@ -671,6 +713,7 @@ export async function localBrowserRung({ url, settings, extractMode, signal, bud
     lap("goto");
     if (signal?.aborted) throw signal.reason ?? new Error("aborted");
     let challengeWait = {};
+    let guestStep = null;
     if (!navError) {
       let settled = await settleReadable({ page, settings, deadline, inflight });
       lap("settle");
@@ -680,6 +723,10 @@ export async function localBrowserRung({ url, settings, extractMode, signal, bud
         if (!challengeWait.timedOut) settled = await settleReadable({ page, settings, deadline, inflight });
       }
       lap("challenge");
+      if (guest) {
+        guestStep = await continueAsGuest({ page, settings, deadline, inflight });
+        lap("guest");
+      }
       phases.stop = settled.stop;
       phases.polls = settled.polls;
       phases.len = settled.len;
@@ -695,9 +742,15 @@ export async function localBrowserRung({ url, settings, extractMode, signal, bud
     const r = await judgeRendered({ p: { status, finalUrl: snap.url, title: snap.title, html: snap.html, innerText: snap.text, challengeWait }, url, settings, extractMode, rung: "F2" });
     lap("judge");
     const ms = Date.now() - t0;
-    if (r.ok) return { ...r, ms, phases };
+    const shown = guestStep ? { guest: guestStep } : {};
+    if (r.ok) return { ...r, ms, phases, ...shown };
+    // Past the guest choice a short but real page is the answer, as at L3: the guest view's meeting types and open
+    // times are a few hundred chars in an app's large document, which reads as thin.
+    if (guestStep === "clicked" && r.verdict === "thin" && String(r.ex?.content ?? "").trim()) {
+      return { rung: "F2", ok: true, status, finalUrl: snap.url, ctype: "text/html", ex: r.ex, outcome: "ok:short", short: true, verdict: r.verdict, ms, phases, ...shown };
+    }
     const next = r.verdict === "not_found" ? "stop" : "BB";
-    return { ...r, wall: r.verdict === "not_found" ? `http_${status}` : r.wall, ms, next, phases, partial: r.ex?.content && String(r.ex.content).trim() && r.verdict === "thin" ? { status, finalUrl: snap.url, ctype: "text/html", ex: r.ex } : undefined };
+    return { ...r, wall: r.verdict === "not_found" ? `http_${status}` : r.wall, ms, next, phases, ...shown, partial: r.ex?.content && String(r.ex.content).trim() && r.verdict === "thin" ? { status, finalUrl: snap.url, ctype: "text/html", ex: r.ex } : undefined };
   } catch (err) {
     if (signal?.aborted) throw err;
     return { rung: "F2", ok: false, wall: "nav_error", outcome: `error:${String(err?.message || err).split("\n")[0].slice(0, 60)}`, ms: Date.now() - t0, next: "BB", phases };
