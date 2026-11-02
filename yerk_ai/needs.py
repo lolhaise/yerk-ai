@@ -15,11 +15,15 @@ for every room, so every room shares the same one best way of doing each thing.
 - `yerk needs list`: each need and its state (`said`); `yerk needs done DAY N PR`: merged by a person.
 - The pipeline (pipeline.py, [needs] auto): one need at a time from filed to live, the rest queued; its states are below
   (FLIGHT, CLOSED) and each one's words are `said`'s.
+- Plug-ins (need 36 of 2026-11-02): an add-on whose code is a git repository of its own (`plugins`, from the rooms' mcp
+  tables) is named in the brief, and a fix living there is built there on a branch of the need's name; the build's end
+  records it (`ahead`), the cold read and a fix worker are handed it, the merge fast-forwards the checkout the rooms run (`land`).
 """
 from __future__ import annotations
 
 import json
 import re
+import subprocess
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -84,13 +88,18 @@ def said(r: dict[str, Any]) -> str:
     """Its state in words: filed, queued, building WORKER, built on branch B (no PR seen yet), PR N and its checks, fixing
     PR N (k of the cap), cold read of PR N, held: why, stuck: why, merged, deploying, live."""
     st, last, pr = str(r.get("state", "filed")), f", last build {r['last']}" if r.get("last") else "", r.get("pr")
-    ran = [v[0] for v in dict(r.get("checks") or {}).values()]
+    ran, plug = [v[0] for v in dict(r.get("checks") or {}).values()], with_plugins(r)
     return {"queued": "queued, it starts when the need in flight is live, held or stuck",
-            "building": f"building {r.get('worker')}", "built": f"built on branch {r.get('branch')}",
-            "pr": f"PR {pr}" + (f", checks {ran.count('success')} of {len(ran)} passed" if ran else ""),
+            "building": f"building {r.get('worker')}", "built": f"built on branch {r.get('branch')}{plug}",
+            "pr": f"PR {pr}" + (f", checks {ran.count('success')} of {len(ran)} passed" if ran else "") + plug,
             "fixing": f"fixing PR {pr}, fix {r.get('fixes')} of {r.get('fix_cap', 2)}, {r.get('worker')}",
-            "reading": f"cold read of PR {pr}, {r.get('worker')}", "held": f"held: {r.get('why')}", "stuck": f"stuck: {r.get('why')}",
+            "reading": f"cold read of PR {pr}{plug}, {r.get('worker')}", "held": f"held: {r.get('why')}", "stuck": f"stuck: {r.get('why')}",
             "merged": f"merged, PR {pr}", "deploying": f"merged, PR {pr}, deploying", "live": f"live, PR {pr}"}.get(st, "filed" + last)
+
+
+def with_plugins(r: dict[str, Any]) -> str:
+    """The plug-in branches a need carries, as a clause: ", and the example plug-in's branch at abc1234"."""
+    return "".join(f", and the {k} plug-in's branch at {str(v.get('head'))[:7]}" for k, v in dict(r.get("plugins") or {}).items())
 
 
 def block(r: dict[str, Any]) -> str:
@@ -171,12 +180,14 @@ def update(s: Settings, state: Path, day: str, n: int, changes: dict[str, Any],
     return r
 
 
-def ended(s: Settings, state: Path, day: str, n: int, wid: str, how: str, first: str, clean: bool) -> dict[str, Any] | None:
+def ended(s: Settings, state: Path, day: str, n: int, wid: str, how: str, first: str, clean: bool,
+          plugs: dict[str, dict[str, str]] | None = None) -> dict[str, Any] | None:
     """A builder's end: PR N when its report's first line names one, else the branch it names, else filed again with how it
     ended, so it can be built again; a need marked merged meanwhile, or built by another worker, stays as it is. A line that
-    starts "no branch" names neither, whatever PR or branch its why mentions."""
+    starts "no branch" names neither, whatever PR or branch its why mentions. `plugs` are the plug-in branches it left
+    (`ahead`), kept with a PR or a branch."""
     pr, branch = (None, None) if NO_BRANCH.match(first) else (PR.search(first), BRANCH.search(first))
-    on = {"branch": branch[1] if branch else f"need-{day}-{n}", "since": round(time.time(), 3)}   # the watcher's clock
+    on = {"branch": branch[1] if branch else f"need-{day}-{n}", "since": round(time.time(), 3), "plugins": dict(plugs or {})}   # since: the watcher's clock
     changes: dict[str, Any] = ({"state": "pr", "pr": int(pr[1]), **on} if pr else {"state": "built", **on} if branch and clean
                                else {"state": "filed", "last": f"{wid}: {how}"})
     return update(s, state, day, n, changes, lambda r: r.get("state") == "building" and r.get("worker") == wid)
@@ -201,8 +212,79 @@ def foreign(texts: list[str], own: Path, others: list[str]) -> str:
     return ""
 
 
-def brief(r: dict[str, Any], repo: Path, check: str = "") -> str:
-    """The builder's brief from a need: every ask as filed, the repo and where to read, and the shape of done (a branch with
+def git(repo: str | Path, *args: str) -> subprocess.CompletedProcess[str]:
+    """git in `repo`; one that could not run (no git, its 30 s gone) answers 127 with why."""
+    try:
+        return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError) as e:
+        return subprocess.CompletedProcess([], 127, "", str(e))
+
+
+def plugins(confs: dict[str, dict[str, Any]], own: Path) -> dict[str, dict[str, str]]:
+    """The add-ons whose code is a local git repository of their own, where a need's fix may live: each room's mcp server
+    whose command or an argument is a file in a checkout that is not Yerk's own, the home folder or the root, as {server:
+    {"repo": its top, "base": the branch that checkout is on, the code the rooms run}}; a repository once, under the first
+    server naming it, and a checkout on no branch never, since nothing could land there."""
+    out: dict[str, dict[str, str]] = {}
+    for name, srv in ((k, v) for c in confs.values() for k, v in dict(c.get("mcp") or {}).items() if isinstance(v, dict) and k not in out):
+        for f in (Path(x).expanduser() for x in [srv.get("command"), *list(srv.get("args") or [])] if isinstance(x, str) and x.startswith(("/", "~"))):
+            top = git(f.parent, "rev-parse", "--show-toplevel").stdout.strip() if f.is_file() else ""
+            base = git(f.parent, "symbolic-ref", "--short", "-q", "HEAD").stdout.strip() if top else ""
+            if base and (t := str(Path(top).resolve())) not in {str(own.resolve()), str(Path.home().resolve()), "/", *(v["repo"] for v in out.values())}:
+                out[str(name)] = {"repo": t, "base": base}
+                break
+    return out
+
+
+def ahead(found: dict[str, dict[str, str]], branch: str) -> dict[str, dict[str, str]]:
+    """The plug-ins in `found` whose repository has `branch` with commits its base lacks: each with the branch and its head."""
+    heads = {k: git(p["repo"], "rev-parse", "-q", "--verify", f"refs/heads/{branch}^{{commit}}").stdout.strip() for k, p in found.items()}
+    return {k: {"repo": p["repo"], "base": p["base"], "branch": branch, "head": heads[k]} for k, p in found.items()
+            if heads[k] and git(p["repo"], "rev-list", "--count", f"{p['base']}..{heads[k]}").stdout.strip() not in ("", "0")}
+
+
+def land(name: str, p: dict[str, str], dry: bool = False) -> str:
+    """A plug-in's branch onto its base in the checkout the rooms run, a fast-forward to the head the cold read saw (the sha
+    guard, as on GitHub): "" when it landed or its base holds it already, else why, in words; `dry` only checks."""
+    repo, base, sha, b = p["repo"], p["base"], p["head"], p["branch"]
+    if (a := git(repo, "merge-base", "--is-ancestor", sha, base)).returncode in (0, 127):
+        return "" if a.returncode == 0 else f"the {name} plug-in did not land: git did not run: {a.stderr}"
+    why = (f"its branch {b} moved off {sha[:7]}" if git(repo, "rev-parse", "-q", "--verify", f"refs/heads/{b}").stdout.strip() != sha
+           else f"its {base} moved since {b} was made, so it is no fast-forward" if git(repo, "merge-base", "--is-ancestor", base, sha).returncode
+           else f"its checkout is not on {base}" if git(repo, "symbolic-ref", "--short", "-q", "HEAD").stdout.strip() != base
+           else "its checkout has changes not committed" if git(repo, "status", "--porcelain", "--untracked-files=no").stdout.strip()
+           else "" if dry else one_line((m := git(repo, "merge", "--ff-only", "--quiet", sha)).stderr or "git refused")[:160] * bool(m.returncode))
+    return why and f"the {name} plug-in did not land: {why}"
+
+
+def plugged(offered: dict[str, dict[str, str]], there: dict[str, dict[str, str]], branch: str) -> str:
+    """The brief's plug-ins part for a builder or a fix worker: each repository a fix may live in, its branch when one is there."""
+    if not (offered := {**offered, **there}):
+        return ""
+    each = "; ".join(f"`{k}` at {v['repo']} (its rooms run its {v['base']}" + (f"; its branch `{branch}` is at {there[k]['head'][:7]}, so "
+                     "build on it" if k in there else "") + ")" for k, v in offered.items())
+    return ("## Plug-ins\nAn add-on whose code is a local git repository of its own is Yerk's too: a fix that lives in its code is built "
+            f"there, never described in abilities.toml as out of reach. Here: {each}. Make its worktree beside yours, `git -C <repo> "
+            f"worktree add <your folder>/<plug-in>-wt -b {branch} <its base>` (no `-b` when the branch is there), run its tests as "
+            f"its README says, and commit on `{branch}`, never on its base: the pipeline finds the branch when you end, the cold read "
+            "reads it and the merge fast-forwards the plug-in's base, the checkout its rooms run. Yerk's branch still carries the "
+            "abilities entry, the CHANGELOG and a budgets.toml line when the plug-in's tool entries grow; name the plug-in's branch "
+            "and its short sha in the report.\n\n")
+
+
+def carried(r: dict[str, Any]) -> str:
+    """The cold read's part: each plug-in branch the need carries, read with the PR and landed by its merge."""
+    return "".join(f"The fix lives in the {k} plug-in's own repository too: its branch `{v['branch']}` at {v['head'][:7]} in {v['repo']}, "
+                   f"its rooms on its {v['base']}. Read `git -C {v['repo']} diff {v['base']}...{v['head']}` and run its tests in a "
+                   f"worktree of that sha under your folder (`git -C {v['repo']} worktree add --detach <your folder>/{k}-wt "
+                   f"{v['head']}`); a `merge` merges the PR and fast-forwards its {v['base']} to that sha.\n\n"
+                   for k, v in dict(r.get("plugins") or {}).items())
+
+
+def brief(r: dict[str, Any], repo: Path, check: str = "", offered: dict[str, dict[str, str]] | None = None,
+          there: dict[str, dict[str, str]] | None = None) -> str:
+    """The builder's brief from a need: every ask as filed, the repo and where to read, the plug-in repositories a fix may
+    live in (`offered`, `plugins`; `there`, a branch an earlier build left in one), and the shape of done (a branch with
     tests, never a merge, a push or a deploy; a report; the last message the deliverable)."""
     branch, k, check = f"need-{r['day']}-{r['n']}", len(r["asks"]), checked(check)
     return (
@@ -216,6 +298,7 @@ def brief(r: dict[str, Any], repo: Path, check: str = "") -> str:
         "README.md, STYLE.md and yerk_ai/words.py (every line a room or a card prints), abilities.toml (the new ability gets its "
         "entry), yerk_ai/mechanics.md (one line, only when every room must know the new way), yerk_ai/mcp_server.py and "
         "yerk_ai/daemon.py (the tools a room calls), budgets.toml (every size line, each raise with its dated reason).\n\n"
+        + plugged(offered or {}, there or {}, branch) +
         "## What done looks like\n"
         "1. The ability built once, the one best way, in Yerk itself, so one deploy gives every room the same way: never a "
         "workaround for one room, a script in a room's folder, or a rule telling rooms to improvise.\n"
@@ -255,16 +338,18 @@ def read_brief(r: dict[str, Any], repo: Path, check: str) -> str:
     """The cold read: a fresh worker, never the builder, reads the pull request against main and says merge, fix first or
     unsure in its report's first line (pipeline.py acts on it)."""
     return (f"# Yerk: the cold read of PR {r.get('pr')}, need {r['n']} of {r['day']}: \"{r['ability']}\"\n\n"
-            "The rooms filed it so:\n\n" + "".join(filed(a) + "\n" for a in r["asks"]) + "\n" + where(r, repo) +
+            "The rooms filed it so:\n\n" + "".join(filed(a) + "\n" for a in r["asks"]) + "\n" + where(r, repo) + carried(r) +
             "Read the diff against main (`git diff origin/main...HEAD` in the worktree) as a reviewer who did not write it: does "
             "it build the ability once for every room, with tests, in the repo's style (README.md, STYLE.md), and break nothing? "
             f"{checked(check)}\n\nYour REPORT.md's first line is exactly one of `merge`, `fix first: <why>`, `unsure: <why>`, "
             "and the rest is what you read. Never merge, push, open a PR or deploy, and change no file in the repo.\n")
 
 
-def fix_brief(r: dict[str, Any], repo: Path, check: str, what: str) -> str:
-    """A fix worker: the failing checks as GitHub gives them, or the cold read's why, fixed with a new commit on the branch."""
+def fix_brief(r: dict[str, Any], repo: Path, check: str, what: str, offered: dict[str, dict[str, str]] | None = None) -> str:
+    """A fix worker: the failing checks as GitHub gives them, or the cold read's why, fixed with a new commit on the branch,
+    or on the plug-in's branch when the fix lives in a plug-in (`plugged`)."""
     return (f"# Yerk: fix PR {r.get('pr')}, need {r['n']} of {r['day']}: \"{r['ability']}\"\n\n" + where(r, repo) +
+            plugged(offered or {}, dict(r.get("plugins") or {}), f"need-{r['day']}-{r['n']}") +
             f"What to fix:\n{what}\n\nReproduce it first (the suite, on that Python through `uv run --python X` when uv has "
             "it). Fold origin/main in first when the branch is behind it. Fix it with a NEW commit on the branch, never an amend, "
             "a squash or a rebase: every commit on the branch is pushed within seconds. Never push, open a PR, merge or deploy.\n"

@@ -13,6 +13,9 @@ itself this way: one need at a time (two open PRs that both move the code ceilin
 - The cold read, a fresh worker and never the builder: `merge` merges with the head's sha (github.merge, the sha guard);
   `fix first: why` is a fix worker (it counts toward the cap) and the checks again; `unsure: why` is held. A fix worker:
   `fixed: sha` is PR again with its new head; `cannot: why` is held.
+- A plug-in branch (need 36 of 2026-11-02, needs.plugins): the cold read and a fix worker are handed the need's branch in
+  a plug-in's own repository at its head then (`heads`); the merge checks each lands as a fast-forward before GitHub's and
+  lands it after (needs.land), in the checkout the rooms run; one that cannot land holds the need, said with why.
 - The deploy: merged, with no deploy running, `yerk deploy origin/main` in a transient unit yerk-deploy-<id> (the restart
   cannot run inside the daemon), after a `git fetch origin` that authenticates through git_askpass; deploying.
 - Live: a proven deploys row after the merge whose commit holds it: live, one line in the machine room and one in each room
@@ -168,9 +171,11 @@ class Pipeline:
         p = await asyncio.to_thread(github.pull, repo, int(r["pr"]), tok)
         if not p["ok"]:
             return log.info("needs: PR %s: %s", r["pr"], p["error"])
-        if p["merged"]:                                  # merged by a person meanwhile: the deploy and live still follow
+        if p["merged"]:                                  # merged by a person meanwhile: its plug-ins land, the deploy and live follow
+            if (why := await self.lands(r)):
+                return await self.stop(r, "held", f"PR {r['pr']} was merged by a person; {why}")
             await self.set(r, {"state": "merged", "merged_at": now, "merge": p.get("sha") or ""}, "pr")
-            return await self.say(words.NEED_MERGED.format(n=r["n"], pr=r["pr"]))
+            return await self.say(self.merged(r))
         if p["head"] != r.get("head"):                   # a new head (a fix commit): its checks' clock starts again
             r = await self.set(r, {"head": p["head"], "since": now, "checks": {}}, "pr") or r
             since = now
@@ -190,6 +195,16 @@ class Pipeline:
             await self.stop(r, "stuck", f"checks never came: {len(ctx)} of {int(self.conf().get('contexts') or 7)} in "
                                         f"{words.span(now - since)} on {str(r['head'])[:7]}")
 
+    async def heads(self, r: dict[str, Any]) -> dict[str, dict[str, str]]:
+        """The need's plug-in branches as they stand: need-DAY-N, the name its briefs give, in each plug-in repository the
+        rooms run or the need names, ahead of its base."""
+        known = {**await asyncio.to_thread(needs.plugins, self.y.room_confs, REPO), **dict(r.get("plugins") or {})}
+        return await asyncio.to_thread(needs.ahead, known, f"need-{r['day']}-{r['n']}")
+
+    async def lands(self, r: dict[str, Any], dry: bool = False) -> str:
+        """Each plug-in branch the need carries landed (needs.land), or only checked; each why, else ""."""
+        return "; ".join([w for k, p in dict(r.get("plugins") or {}).items() if (w := await asyncio.to_thread(needs.land, k, p, dry))])
+
     async def worker(self, r: dict[str, Any], role: str, brief: str, tasks: list[str]) -> dict[str, Any]:
         return dict(await self.y.workers.start(self.room(), brief, account=self.account(), cap_minutes=READ_CAP, tasks=tasks,
                                                more={"need": {"day": r["day"], "n": r["n"], "role": role}}))
@@ -199,7 +214,8 @@ class Pipeline:
         k, cap = int(r.get("fixes") or 0), int(self.conf().get("fix_cap") or 2)
         if k >= cap:
             return await self.stop(r, "held", held)
-        out = await self.worker(r, "fix", needs.fix_brief(r, REPO, str(self.conf().get("pr_check") or ""), what),
+        found, plugs = await asyncio.to_thread(needs.plugins, self.y.room_confs, REPO), await self.heads(r)
+        out = await self.worker(r, "fix", needs.fix_brief({**r, "plugins": plugs}, REPO, str(self.conf().get("pr_check") or ""), what, found),
                                 ["reproduce it", "fix it in a new commit", "the checks green", "REPORT.md"])
         if not out.get("ok"):
             return await self.stop(r, "held", f"the fix worker did not start: {out.get('error')}")
@@ -207,6 +223,7 @@ class Pipeline:
         await self.say(words.NEED_FIXING.format(n=r["n"], pr=r["pr"], k=k + 1, cap=cap, why=words.line(what.splitlines()[0], 120)))
 
     async def read(self, r: dict[str, Any]) -> None:
+        r = await self.set(r, {"plugins": await self.heads(r)}) or r          # what the read reads is what the merge lands
         out = await self.worker(r, "read", needs.read_brief(r, REPO, str(self.conf().get("pr_check") or "")),
                                 ["worktree at the head", "the diff read against main", "the checks run", "REPORT.md: the verdict"])
         if not out.get("ok"):
@@ -242,14 +259,22 @@ class Pipeline:
         repo = await asyncio.to_thread(github.slug, REPO, str(self.conf().get("repo") or "")) if tok else ""
         if not (tok and repo):
             return await self.stop(r, "held", "the cold read said merge; no GitHub token, so a person merges")
+        if (why := await self.lands(r, dry=True)):          # a plug-in that cannot land: nothing merged, a person decides
+            return await self.stop(r, "held", f"the cold read said merge; {why}")
         m = await asyncio.to_thread(github.merge, repo, int(r["pr"]), str(r["head"]), tok)
+        if m["ok"] and (why := await self.lands(r)):
+            return await self.stop(r, "held", f"PR {r['pr']} merged; {why}")
         if m["ok"]:
             await self.set(r, {"state": "merged", "merged_at": self.now(), "merge": m["sha"], "worker": ""})
-            return await self.say(words.NEED_MERGED.format(n=r["n"], pr=r["pr"]))
+            return await self.say(self.merged(r))
         if m.get("code") == 409:                         # the head moved under the read: its checks and a read again
             await self.set(r, {"state": "pr", "worker": ""})
             return await self.say(words.NEED_FIXED.format(n=r["n"], pr=r["pr"]))
         await self.stop(r, "held", f"the merge was refused: {m['error']}")
+
+    def merged(self, r: dict[str, Any]) -> str:
+        plugs = ", ".join(dict(r.get("plugins") or {}))
+        return words.NEED_MERGED.format(n=r["n"], pr=r["pr"]) + (words.NEED_LANDED.format(names=plugs) if plugs else "")
 
     # the deploy, and live
     def holds(self, after: str, r: dict[str, Any]) -> bool:
