@@ -6,7 +6,7 @@ A line that changes a file the install keeps (rooms.toml, yerkd.toml, budgets.to
 newer than the code is refused with one line, never changed); the index chunks every file again when its chunker's
 version changes.
 
-## 2026-10-31
+## 2026-11-01
 
 ### needs-pipeline (#?)
 
@@ -21,13 +21,49 @@ version changes.
   never reaches argv), and once a proven deploy holds the merge says live in the machine room and once in each room that
   filed it. Every step is one line in the machine room; `yerk needs list` words each state (queued, fixing, cold read,
   held, stuck, deploying, live). `yerk needs build DAY N` by hand still starts a held or stuck need. The code ceiling
-  moves up by 496, to 23,389.
+  moves up by 496, to 23,596.
 - Why: on 2026-10-31 need 27 took four hand steps from its PR to live, and a red CI leg had to be noticed by a person.
 
 **Upgrading**: put a GitHub token for the repo at `secrets/github.token` in the private folder (one line, 0600) for the
 merge and the deploy's fetch; without it the builds and PRs still happen and the merge and the deploy wait for a person.
 `[needs] auto` is on unless set false in yerkd.toml. Set `[needs] pr_check` to the install's PR checker if it has one.
-budgets.toml moves with the code: the code ceiling to 23,389.
+budgets.toml moves with the code: the code ceiling to 23,596.
+
+### dst-night-tests (#?)
+
+- Tests only, nothing in the code: the suite passes on a daylight-saving night. Two tests built the morning diff for
+  "tomorrow" as `time.time() + 86400`, and from 00:00 to 01:00 on a fall-back night that is 23:xx of the same local
+  day, so the diff's window (the local day before it) was the day before and missed the refusals the test had just
+  written. box-ci ran main fdc0db9 from 00:03 EDT on 2026-11-01 and went red on all three Pythons (2 failed); the
+  same sha passed by hand later that night. Both tests now build the diff at noon of the next local day,
+  `status.midnight(time.time()) + 86400 + 43200`: tests/test_said_or_noted.py (the morning diff counts each refusal)
+  and tests/test_sheet_hard.py (the morning diff counts the sheet refusals). The diff's local-day window is unchanged,
+  and so are budgets.toml and the code ceiling (23,100).
+
+### need-2026-10-31-27 (#?)
+
+- A YouTube link's transcript is free and comes in seconds when the video has captions: `watch` reads the video's own
+  captions, uploaded or auto-generated, with their timestamps, before it would pay to transcribe the sound. The paid
+  engine and its US$1 gate run only for a video with no captions, and the result's note says which way the words came:
+  the video's own captions, its auto-generated ones (no punctuation, and a name may be misheard), or no captions, so its
+  sound was transcribed. The result gains `source` (captions, auto-captions, heard, or empty with no transcript) and the
+  page's `title`.
+- The daemon asks yt-dlp for the page's facts first (`-J`, about 2 s, nothing downloaded), picks one track (the
+  video's own language, an uploaded track over an auto one, the untranslated auto track over its plain one, never live
+  chat or a translation) and fetches exactly that one key, never a pattern or a list, since those reach YouTube's
+  auto-translated tracks and it answers HTTP 429. The transcript file has the same shape as a paid one, a head line and
+  `[HH:MM:SS -> HH:MM:SS]` lines, so a second call reads it and pays nothing; the caption file and the page's facts are
+  deleted once read.
+- A video too big to save (past the 300 MB cap) still gives its captions: the call comes back with the transcript, no
+  video and no frames, and the note says why there is no video. A failed or live page, or a track that saves nothing,
+  goes the paid way as before. The mechanics' watch line says it, the tool's description gains a sentence, and the code
+  ceiling moves up by 207.
+- Why: on 2026-10-31 a room was quoted US$1.43 to transcribe a 140-minute YouTube podcast whose
+  auto-generated captions YouTube already had; the captions were already the transcript.
+
+**Upgrading**: nothing to change by hand; yt-dlp already on yerkd's PATH reads the captions from the next start, and each
+room has the mechanics line from its next process start. budgets.toml moves with the code: Yerk AI's tools to 14,400,
+the mechanics to 5,700, the session-start total to 112,302, the code ceiling to 23,100.
 
 ### worker-no-secrets (#?)
 
@@ -76,7 +112,7 @@ session-start total to 111,802, the code ceiling to 22,880. units/yerk-retention
 
 ## 2026-10-30
 
-### index-one-thread (#?)
+### index-one-thread (#151)
 
 - Meaning search answers in about 1 s instead of 4 to 5 s on a store of a million vectors, so recall stops falling back
   to keywords only several times a day (`meaning search skipped (index-timeout)` in the daemon's journal, 4 to 8 times a

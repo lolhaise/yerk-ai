@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 111802`
+- `total = 112302`
 
 ## [session_start.claude_code]
 
@@ -32,9 +32,11 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-10-29, hands-budget: need 27 (the tabs a room sees and the popup a click opens, 2026-10-28) grew the hands plug-in's five tools as a work room sends them to 7,462 on the 7,119 line, and the deploy of #144 and #145 refused on it (the first deploy since); so 7,462, no part could pay, the total rose by the 343.
 
+2026-10-31, need-2026-10-31-27: the `watch` tool's sentence on captions (the transcript is the video's own captions when the page has them, free, and only a video with none goes to the paid transcription) takes it from 1,282 to 1,545 as this tree builds it on Python 3.13, about 1,576 as sent, so about 14,330 on the 14,067 the rooms send; so 14,400, no part could pay, the total rose by the 300.
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
-- `yerk_tools = 14100`
+- `yerk_tools = 14400`
 - `deferred_tool_names = 3429`
 - `mcp__hands__ = 7462`
 - `mcp__web-ladder__web_image = 913`
@@ -74,7 +76,9 @@ Yerk AI's own parts, joined into the one file passed by --append-system-prompt-f
 
 2026-10-31, retention-keep: the keep line (the nightly sweep moves the work folder's older files to the trash; a folder under work/ with a file named KEEP is never swept, so work still needed goes in one; RETENTION.md at the top of work/ says what the sweep took; that morning a room told the owner its swept offer drafts were held) took the mechanics to 5,476, so 5,500; no part was measured again to pay for it, so the total rose by the 200, to 111,802.
 
-- `mechanics = 5500`
+2026-10-31, need-2026-10-31-27: the watch line's clause (its transcript is the video's own captions when it has them, free, and only a video without captions is transcribed from its sound; that evening an owner was quoted US$1.43 for a YouTube video's words YouTube already had) took the mechanics to 5,608, so 5,700; no part was measured again to pay for it, so the total rose by the 200, to 112,302 with the tools' 300.
+
+- `mechanics = 5700`
 - `persona = 11800`
 - `rulebook = 14000`
 - `room_voice = 5500`
@@ -363,9 +367,15 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-10-31: worker-no-secrets raised it by 13, the private folder's secrets/ not there for a worker's unit but its own account's token, bound back read-only (that evening a worker read three provider keys there and made thirty paid calls outside the daemon's tools, their gates and the ledger), not folded to fit: workers.py 11 (the secrets branch and its "-", the docstrings), daemon.py 2 (the hidden path and its comment). 22,893: main 082b5da's 22,880 plus 13.
 
+2026-10-31: need-2026-10-31-27 raised it by 207, a video's own captions as its transcript, free, before any paid transcription (need 27: a room was quoted US$1.43 to transcribe a 140-minute YouTube video whose auto-generated captions YouTube already had), not folded to fit: captions.py 158 (the -J probe and its one-run helper, the track choice and the one-key rule, the json3 track's run, the rolling cues collapsed and gathered into lines, the transcript written in transcribe's shape, its source read from the head), watch.py 37 (captioned(), run trying the captions before the download outside ONE and returning them when the download fails, `source` and `title`, the docstrings), words.py 9, mcp_server.py 2 (the tool's sentence), daemon.py 1 (the log line's source). 23,087: main 082b5da's 22,880 plus 207.
+
+2026-10-31: need-2026-10-31-27 merged with main 4a3f7f7 (#153 worker-no-secrets): main's 22,893 plus this PR's 207 is 23,100, counted on the merged tree; daemon.py, which both changed (#153 the worker unit's hidden paths and their comment, this PR the watch tool's docstring and log line), merged with no line in common; `yerk docs own` wrote budgets.md.
+
 2026-10-31: needs-pipeline raised it by 496, a filed need built, checked, read cold, merged, deployed and live with no person (the harness does it all by itself, with no person needed), not folded to fit: pipeline.py 254 (the queue, the watch, the fix loop, the cold read, the merge, the deploy unit, live), github.py 86 (urllib, every failure as words), git_askpass.py 34, needs.py 53 (the states, their words, the read and fix briefs), daemon.py 18, words.py 14, config.py 8, cli.py 2. 23,389: main 4a3f7f7's 22,893 plus 496.
 
-- `lines = 23389`
+2026-11-01: needs-pipeline merged with main a82fc7b (#154 need-2026-10-31-27, #156 dst-night-tests): main's 23,100 plus this PR's 496 is 23,596, counted on the merged tree; daemon.py and words.py, which both changed (#154 the watch tool's docstring and log line and the captions words, this PR the pipeline's hooks and the NEED_* words), merged with no line in common; `yerk docs own` wrote budgets.md.
+
+- `lines = 23596`
 
 ## Uncapped
 

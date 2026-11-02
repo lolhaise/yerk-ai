@@ -15,7 +15,7 @@ from test_gates import Rec, call, human_turn, setup, turn_of
 from test_observe import layer
 from test_remember import daemon, remember
 
-from yerk_ai import evidence, memory, morning, words
+from yerk_ai import evidence, memory, morning, status, words
 from yerk_ai.engine import SessionTable
 
 OWNER = ("Pat",)                     # the name the owner's words go by, as yerkd.toml [import] me gives it
@@ -152,7 +152,8 @@ def test_the_morning_diff_counts_each_refusal(tmp_path):
     room._new_card()
     assert not send(y, QUOTE)["ok"]
     priv, state, accounts, cool = layer(tmp_path / "diff", machine=None)
-    lines, stamp = morning.build(priv, state, accounts, cool, y.ledger, {"started": 0, "units": []}, time.time() + 86400)
+    noon = status.midnight(time.time()) + 86400 + 43200     # noon of the next LOCAL day; now + 86400 is still today at 00:xx on a fall-back night
+    lines, stamp = morning.build(priv, state, accounts, cool, y.ledger, {"started": 0, "units": []}, noon)
     for rule in ("person-refused", "quote-refused"):
         assert f"{words.WORKING} shadow flag {rule}: 1" in lines and f"shadow {rule}" in stamp["findings"]
 

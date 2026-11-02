@@ -15,7 +15,7 @@ import time
 from test_gates import Rec, call, human_turn, setup, turn_of
 from test_observe import layer
 
-from yerk_ai import context, memory, morning, words
+from yerk_ai import context, memory, morning, status, words
 from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai.daemon import Yerkd
 from fake_channel import ConsoleChannel
@@ -139,7 +139,8 @@ def test_one_shadow_row_per_refusal_and_the_morning_diff_counts_them(tmp_path):
     assert call(y, stop)["decision"] == "block"
     assert rows(y) == [SHEET_ROW, PASTE_ROW]                                            # two refusals, two rows
     priv, state, accounts, cool = layer(tmp_path / "diff", machine=None)
-    lines, stamp = morning.build(priv, state, accounts, cool, y.ledger, {"started": 0, "units": []}, time.time() + 86400)
+    noon = status.midnight(time.time()) + 86400 + 43200     # noon of the next LOCAL day; now + 86400 is still today at 00:xx on a fall-back night
+    lines, stamp = morning.build(priv, state, accounts, cool, y.ledger, {"started": 0, "units": []}, noon)
     assert f"{words.WORKING} shadow flag sheet: 2" in lines and "shadow sheet" in stamp["findings"]
 
 

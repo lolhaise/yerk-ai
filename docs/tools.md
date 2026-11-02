@@ -170,11 +170,13 @@ A video in a post, its frames and its transcript, since your shell has no networ
 a post that holds a video (an Instagram reel or post, a TikTok, an X post, a YouTube link, or any page yt-dlp knows).
 The daemon pulls the video into this room's work folder under videos/, takes `frames` still pictures spread evenly
 through it (6 unless you ask for 1 to 12) and transcribes its sound, and returns the file paths and the transcript;
-open the frames with Read to see what is on screen. Use it whenever the owner sends a video link and expects you to
-have watched it, since the caption, the cover picture and the comments are not the video. A page that needs a login,
-a private post or a page with no video comes back as that, in the site's own words. A transcript past US$1 comes back
-refused until the owner says yes; then call again with `owner_yes` true. A video already pulled is not pulled or
-transcribed again.
+open the frames with Read to see what is on screen. The transcript is the video's own captions when the page has
+them (uploaded or auto-generated; YouTube's, and any site's yt-dlp lists in json3), free and with their timestamps,
+and only a video with no captions goes to the paid transcription and its US$1 gate. Use it whenever the owner sends
+a video link and expects you to have watched it, since the caption, the cover picture and the comments are not the
+video. A page that needs a login, a private post or a page with no video comes back as that, in the site's own
+words. A transcript past US$1 comes back refused until the owner says yes; then call again with `owner_yes` true. A
+video already pulled is not pulled or transcribed again.
 ```
 
 - `url`: string, required

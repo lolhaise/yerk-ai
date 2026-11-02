@@ -224,6 +224,7 @@ def said(epoch):
 
 def test_claude_codes_own_usage_on_the_folders_login_is_read_never_the_token(tmp_path, monkeypatch):
     soon, week = (time.time() // 600) * 600 + 3 * H, (time.time() // 3600) * 3600 + 80 * H      # resets sit on 10-minute marks
+    soon, week = (t + H * datetime.fromtimestamp(t, ZoneInfo("America/Toronto")).fold for t in (soon, week))  # the hour a fall-back repeats reads as its first
     (tmp_path / "usage").mkdir()
     (tmp_path / "usage" / "cfg-a.txt").write_text(
         "You are currently using your subscription to power your Claude Code usage\n\n"

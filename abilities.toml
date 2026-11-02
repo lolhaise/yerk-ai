@@ -469,7 +469,8 @@ how = [
   "Pull: `yt-dlp --no-playlist --restrict-filenames --max-filesize 300M -f \"bv*[height<=720]+ba/b[height<=720]/b\" --merge-output-format mp4` into videos/<site>-<the post's id>/ in the room's work folder, run by the daemon off its loop in a clean environment: the best picture at 720 lines or under with its sound, and a video past 300 MB is skipped and said.",
   "One at a time: one download runs at a time across rooms, a second call waiting its turn and never failing for it; one past 300 seconds is killed with its whole process group, and the room is told it did not finish.",
   "Frames: ffprobe reads its length and its streams, then ffmpeg takes the frames asked for (6, or 1 to 12) spread evenly through it, JPEGs at most 1280 wide named by their number and time, an older set replaced; a video with no picture has none.",
-  "Transcript: its sound goes through the transcribe engine on its keys and its US$1 gate, each paid call a spend row under watch, saved beside the video; with no sound, or a transcript that fails, the frames still come and the result says why.",
+  "Captions first: with no transcript beside the video, `yt-dlp -J --skip-download` (about 2 s, nothing downloaded) reads the page's caption tracks, and one is fetched: the video's own language, an uploaded track over an auto-generated one, the untranslated auto track (<lang>-orig) over its plain one, never live chat and never a translation. Exactly one key a call, named only after -J showed it, since a pattern or a list reaches YouTube's auto-translated tracks and it answers HTTP 429. The json3 file it saves is read into the transcript's own lines, [HH:MM:SS -> HH:MM:SS] with the captions' timestamps under the same head line, saved as the transcript beside the video and then deleted; the result's `source` says captions or auto-captions. A video past the size cap still returns its captions, and only a video with no track goes to the paid transcription.",
+  "Transcript: a video with no captions has its sound go through the transcribe engine on its keys and its US$1 gate, each paid call a spend row under watch, saved beside the video; with no sound, or a transcript that fails, the frames still come and the result says why.",
   "Never twice: a post already pulled is not pulled again, and its transcript is read from its file, so a second call costs nothing.",
   "In the site's words: a page that needs a login, a private post or a page with no video is said as yt-dlp says it; no cookies and no logins are used.",
 ]
@@ -477,10 +478,10 @@ tier = "key"
 keys = ["openai"]
 provider = "OpenAI for the transcript, with transcribe's Groq and Meta keys when they are there"
 needs = "yt-dlp, ffmpeg and ffprobe on the machine, on the daemon's PATH; the OpenAI key for the transcript"
-price = "the download and the frames are free; the transcript at transcribe's prices (yerk explain transcribe): a 1-minute reel is about 1 US cent with all three engines, a 10-minute video about 10"
+price = "the download, the frames and a video's own captions are free; a video with no captions at transcribe's prices (yerk explain transcribe): a 1-minute reel is about 1 US cent with all three engines, a 10-minute video about 10"
 key = "the transcript runs on transcribe's keys, in the private folder's secrets/: openai.key, and groq.key and meta.key, both optional; the next call reads it, no restart"
-free_path = "the frames come without a key; without yt-dlp the room says so"
-asked_as = ["watch this", "what does the video say", "this reel", "this tiktok", "the video he sent", "what happens in it"]
+free_path = "the frames, and the words of any video that has captions, come without a key; without yt-dlp the room says so"
+asked_as = ["watch this", "what does the video say", "this reel", "this tiktok", "the video he sent", "what happens in it", "read the whole podcast", "what does he say in this video", "the transcript of this youtube"]
 
 [abilities.assistant-files]
 state = "built"
