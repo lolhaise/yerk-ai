@@ -2,11 +2,11 @@
 # official Python SDK) and the send tool's shape are adapted from Hermes Agent v0.22.2,
 # mcp_serve.py (create_mcp_server, messages_send), https://github.com/NousResearch/hermes-agent
 # Copyright (c) 2025 Nous Research. MIT License. See NOTICE.
-"""Yerk AI's own MCP server: seventeen tools (send, hold, recall, read_memory, remember, worker, schedule, settings, transcribe,
-voice_note, seen, render, watch, need, text, delete, reverse_image_search), local-only HTTP, preloaded in every room; transcribe,
-voice_note, watch, text and reverse_image_search are here and not plug-ins because the daemon has the network and a room's shell has
-none, seen because no owner room has a Write tool, render because LibreOffice needs a writable /tmp a room's sandbox does not give,
-and delete because that sandbox mounts all but the room's folders read-only. A worker gets none of it: by default no MCP server at all, and with
+"""Yerk AI's own MCP server: eighteen tools (send, hold, recall, read_memory, remember, worker, schedule, settings, transcribe,
+voice_note, seen, render, watch, need, text, delete, reverse_image_search, github_state), local-only HTTP, preloaded in every room;
+transcribe, voice_note, watch, text, reverse_image_search and github_state are here and not plug-ins because the daemon has the network
+plug-ins because the daemon has the network (and github_state the token) and a room's shell has none, seen because no owner room has a Write tool, render
+a writable /tmp a room's sandbox does not give, and delete because that sandbox mounts all but the room's folders read-only. A worker gets none of it: by default no MCP server at all, and with
 [workers] yerk_tools its own stdio server (`worker_server`) carrying recall and read_memory only.
 
 Every endpoint (/mcp, /hook, /control) wants the `x-yerk-secret` header (restart test R3). Three
@@ -61,6 +61,7 @@ class Daemon(Protocol):
     async def tool_text(self, room: str, to: str, text: str) -> dict[str, Any]: ...
     async def tool_delete(self, room: str, paths: list[str]) -> dict[str, Any]: ...
     async def tool_reverse_image_search(self, room: str, path: str) -> dict[str, Any]: ...
+    async def tool_github_state(self, room: str, branch_or_pr: str) -> dict[str, Any]: ...
 
 
 def caller_room(ctx: Context) -> str:
@@ -276,6 +277,16 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         picture comes from, what it is or who made it; open a page that shows it before you say so, and give the best guess
         as a guess."""
         return json.dumps(await daemon.tool_reverse_image_search(caller_room(ctx), path))
+
+    @mcp.tool()
+    async def github_state(branch_or_pr: str, *, ctx: Context) -> str:
+        """A branch or a pull request of Yerk's own repository as GitHub has it now, since that repository is private and no
+        room holds a GitHub login (a web fetch there gets a 404): `branch_or_pr` is a branch's name (a worker's) or a pull
+        request's number. Returns the branch's head on GitHub (`github`), the same branch in Yerk's checkout against it
+        (`here`: whether GitHub has its commit, how many commits each side lacks) and its pull requests: open, draft, merged
+        or closed, and an open one's checks. Use it when asked whether a branch was pushed or its pull request is open,
+        green or merged."""
+        return json.dumps(await daemon.tool_github_state(caller_room(ctx), branch_or_pr))
 
     @mcp.tool()
     async def voice_note(script: str, name: str = "", owner_yes: bool = False, *, ctx: Context) -> str:

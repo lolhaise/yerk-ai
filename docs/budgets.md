@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 115302`
+- `total = 116202`
 
 ## [session_start.claude_code]
 
@@ -42,11 +42,13 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-02, need-2026-10-26-22: the `reverse_image_search` tool (a picture in a room's folders looked up on the web by Google Cloud Vision's web detection, since a room asked who made a painting in a photo had only word searches, and six found nothing) is 826 as this tree builds it on Python 3.13, about 857 as sent (31 over its build, as each of Yerk AI's entries goes out), so about 16,821 on the 15,964 the rooms send; so 16,900, no part could pay, the total rose by the 900.
 
-2026-11-02, need-2026-10-24-22: the `watch` tool's `path` (a video file sent to a room watched where it is, its frames and its transcript as a link's, since Read opens no video and ffmpeg in a room's shell waits on an approval no one gives mid-turn) takes it from 1,545 to 1,768 as this tree builds it on Python 3.13, about 223 more as sent, so about 17,044 on the 16,821 the rooms send (all 17 build to 16,534 on the tree merged with main 947df1f, about 17,061 as sent); so 17,100, no part could pay, the total rose by the 200. The watch line's clause is under the mechanics' note.
+2026-11-02, need-2026-10-27-23: the `github_state` tool (a branch or a pull request of Yerk's own repository, private, as GitHub has it now, read on the daemon's token, since a room asked whether a worker's branch had reached GitHub got a 404 from its web fetch with no login) is 822 as this tree builds it on Python 3.13, about 853 as sent (31 over its build, as each of Yerk AI's entries goes out), so about 17,674 on the 16,821 the rooms send; so 17,700, no part could pay, the total rose by the 800.
+
+2026-11-02, need-2026-10-24-22: the `watch` tool's `path` (a video file sent to a room watched where it is, its frames and its transcript as a link's, since Read opens no video and ffmpeg in a room's shell waits on an approval no one gives mid-turn) takes it from 1,545 to 1,768 as this tree builds it on Python 3.13, about 223 more as sent, so about 17,897 on the 17,674 the rooms send after main's github_state (all 18 build to 17,356 on the tree merged with main 9d747cb, about 17,914 as sent); so 18,000, no part could pay, the total rose by the 300. The watch line's clause is under the mechanics' note.
 
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
-- `yerk_tools = 17100`
+- `yerk_tools = 18000`
 - `deferred_tool_names = 3429`
 - `mcp__hands__ = 7462`
 - `mcp__web-ladder__web_image = 913`
@@ -403,11 +405,15 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-02: need-2026-10-26-22 raised it by 171, the `reverse_image_search` tool, a picture in a room's own folders looked up on the web as Google Lens or TinEye would, through Google Cloud Vision's web detection (need 22 of 2026-10-26: a room asked who made a painting in a photo it was sent tried six word searches and found nothing, since no tool searched the web by picture), not folded to fit: reverse_image.py 133 (the picture as Google reads it, a smaller JPEG by ffmpeg when it must be, the request with the key in a header, three tries on a busy answer, Google's refusal in its own words, the answer's lists, the spend row), daemon.py 14 (the tool on the room's own folders, every room's allow line), words.py 13 (the refusals, the wall's key line, what a result says next, the card's row), mcp_server.py 11 (the tool's sentence). 24,148: main 281b187's 23,977 plus 171.
 
+2026-11-02: need-2026-10-27-23 raised it by 129, the `github_state` tool, a branch or a pull request of Yerk's own repository, private, as GitHub has it now, read on the daemon's token from an owner's room (need 23 of 2026-10-27: a room asked whether a worker's committed branch had reached GitHub fetched the repository's pull requests and got a 404, since the repository is private and no room holds a GitHub login), not folded to fit: github.py 86 (the name a room gives read as a pull request or a branch, the branch's pull requests, head and checks, the branch in Yerk's checkout against GitHub's head with no fetch, each wall in words), words.py 17 (the refusals, the wall's token line, what a result says next, the card's row, a time in days), daemon.py 13 (the tool for the owner's rooms on the pipeline's token, every room's allow line), mcp_server.py 11 (the tool's sentence), abilities.py 2 (the github key is the pipeline's token file). 24,277: main 947df1f's 24,148 plus 129.
+
 2026-11-02: need-2026-10-24-22 raised it by 70, a video file sent to a room watched for every room, its frames and its transcript as a link's are (need 22 of 2026-10-24: a room sent a .mov could not see it, since Read opens no video, ffmpeg in its shell was held for an approval no one gives mid-turn, transcribe gave its sound alone and watch took only a link), not folded to fit: watch.py 38 (is_video and its kinds; run_file, the frames in a folder of their own under videos/ never through a link, the transcript beside the file read when it is there, one call a file at a time; stills' folder; the docstrings), words.py 11 (the [video] line, the Stop bounce, the refusals, the card's words), daemon.py 9 (`path` under may_send's rule as transcribe's, the call off the loop, its log line), room.py 5 (a video sent in staged for the Stop rule, its bounce), card.py 2 (a watched file by its plain name), discord.py 2 (the [video] line under its attachment line), engine.py 1 (only a watch call sees a video), mcp_server.py 1 (the tool's `path` and its sentence), context.py 1 (the [video] line among `yerk map --wire`'s attachment lines). 23,846: main 898ab72's 23,776 plus 70.
 
 2026-11-02: need-2026-10-24-22 merged with main 947df1f (#161 to #166): main's 24,148 plus this PR's 70 is 24,218, counted on the merged tree; context.py, daemon.py, mcp_server.py and words.py, which both changed, merged with no line in common; `yerk docs own` wrote budgets.md.
 
-- `lines = 24218`
+2026-11-02: need-2026-10-24-22 merged with main 9d747cb (#168): main's 24,277 plus this PR's 70 is 24,347, counted on the merged tree; daemon.py, mcp_server.py and words.py, which both changed, merged with no line in common; `yerk docs own` wrote budgets.md.
+
+- `lines = 24347`
 
 ## Uncapped
 
