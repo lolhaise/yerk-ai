@@ -18,13 +18,16 @@ version changes.
   over the browser's developer protocol, as picking it in the file dialog would. A file outside the room's work folder,
   a link out of it, or one past 20 MB is refused; every upload waits for the owner's word, since a page may send the
   file the moment it is picked, and nothing is put on a payment page.
-- The change itself is on the plug-in's own branch of the same name, which lives outside this repository; here, its
-  tools' budget line and the abilities entry (`yerk explain form-files`).
+- The change itself is in the hands plug-in's own repository (`~/.local/share/hands-mcp`, a local git tree with no
+  remote), on its branch of the same name; its main was fast-forwarded to that branch (2fc539f) on 2026-11-02 after one
+  real upload on a test page passed in a browser profile on the PC and in one on the Mac, so a room has `upload` from
+  its next session. Here, its tools' budget line and the abilities entry (`yerk explain form-files`).
 - Why: on 2026-11-01 a room filled two listing forms in the browser on the owner's computer, and both came back "fix
   the errors on the page": the site wants at least one photo, and nothing could put one on the form.
 
-**Upgrading**: nothing to change by hand. budgets.toml moves with it: the hands plug-in's line to 7,900 and the
-session-start total to 112,740, so a deploy after the plug-in's branch is in does not refuse on its size.
+**Upgrading**: the hands plug-in's main is already at 2fc539f (fast-forwarded on 2026-11-02, before this merge), so
+nothing to change by hand. budgets.toml moves with it: the hands plug-in's line to 7,900 and the session-start total to
+112,740, so a deploy after the plug-in's branch is in does not refuse on its size.
 
 ## 2026-10-31
 
