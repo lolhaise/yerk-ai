@@ -313,6 +313,17 @@ async function extractHtmlDom(rawHtml, { url, extractMode = "markdown", noLift =
   };
 }
 
+// A part of a page its own script loads after it opens (commons.js, a written question's answer), whole: its DOM and
+// its markdown, with no Readability pick and no chrome strip. domOf is null when linkedom is missing.
+export async function domOf(html) {
+  const { parseHTML } = await loadLibs();
+  return parseHTML ? parseHTML(/<(html|body)[\s>]/i.test(html) ? html : `<html><body>${html}</body></html>`).document : null;
+}
+
+export function markdownOf(node, base) {
+  return mdBlocks(node, base);
+}
+
 // For markdown handed back by Browserbase Fetch Extract.
 export function extractMarkdown(md, { extractMode = "markdown" } = {}) {
   const text = markdownToText(md);

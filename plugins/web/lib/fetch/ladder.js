@@ -8,9 +8,12 @@
 //   L3  Browserbase browser session: proxies, captcha solving, persistent context, pictures off
 //       (retried once with pictures on when it reads as a captcha, a challenge or thin)
 // Site memory (local.js) picks where a remembered host's climb starts; the checks are unchanged.
+// A House of Commons written question's page: F1 also makes the request for the answer the page loads after it opens
+// (commons.js), and site memory never skips F1 there.
 // Success returns the page with extractor "fetch-plus:<rung>"; failure names the wall and every
 // rung tried. Both carry `paid`, the Browserbase calls the read paid for (tools.mjs books them).
 import { BrowserbaseError, bbFetch } from "./browserbase.js";
+import { writtenQuestion } from "./commons.js";
 import { judgePage } from "./detect.js";
 import { collapse, extractHtml, extractMarkdown, markdownToText } from "./extract.js";
 import { runSessionRung, wallFromNavError } from "./l3.js";
@@ -248,6 +251,9 @@ function successPayload({ url, win, attempts, extractMode, startedAt }) {
   if (climbed) warnings.push(`fetch-plus read this at ${win.rung} after ${trail(attempts.slice(0, -1))}`);
   if (win.short) warnings.push("fetch-plus: the rendered page is short; it may be partial");
   if (isBookingsPage(url)) warnings.push(`fetch-plus read this Bookings page as a guest, in the anonymous view its share links open, with no sign-in${win.guest === "clicked" ? ", past its Continue as guest button" : ""}`); // the gate in runFetchPlus keeps its choice screen out of here
+  // A written question (need 37): F1 asks for the answer the page loads after it opens (commons.js); no other rung can.
+  if (win.answers) warnings.push(win.answers.note);
+  else if (writtenQuestion(win.finalUrl || url)) warnings.push(`this is a House of Commons written question: its answer loads after the page opens and only the plain read from this machine (F1) asks for it, so this read at ${win.rung} may hold the question alone`);
   return {
     url,
     finalUrl: win.finalUrl || url,
@@ -370,6 +376,7 @@ export async function runFetchPlus(args, ctx, executionContext = {}, deps = {}) 
       rungs: trail(attempts),
       ...(memPlan ? { mem: `${memPlan.start}/${memPlan.bb}${memPlan.probe ? "/retry" : ""}` } : {}),
       ...(hopeless ? { hopeless, cap: settings.hopelessMaxSeconds } : {}),
+      ...(result.answers ? { answers: result.answers.outcome } : {}), // a written question's answer (commons.js)
       // The F2 split in ms (local.js phases, 2026-10-21): numbers only, so the next measurement reads off this log.
       ...(attempts.find((a) => a.rung === "F2" && a.phases) ? { f2: attempts.find((a) => a.rung === "F2").phases } : {}),
     });
@@ -415,7 +422,7 @@ export async function runFetchPlus(args, ctx, executionContext = {}, deps = {}) 
   memPlan = siteMemoryPlan(settings, hostLc, url); // per host + path class since 2026-10-22 (local.js pathClass)
   const memBb = memPlan?.bb === "L3n" || memPlan?.bb === "L3" ? "L3" : "L1";
   const proxiesNeeded = memPlan?.bb === "L3";
-  const memSkipF1 = memPlan?.start === "F2" || memPlan?.start === "F3";
+  const memSkipF1 = (memPlan?.start === "F2" || memPlan?.start === "F3") && !writtenQuestion(url); // only F1 reads a written question's answer
   const memSkipF2 = memPlan?.start === "F3";
   let bbFrom = memBb;
   // Hopeless (2026-10-21): two free rungs of THIS call met the same challenge kind (F1 and F2, or F2 and F3).

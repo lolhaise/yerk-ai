@@ -36,10 +36,12 @@ why_not = "The owner's call: not worth shipping in the public harness. Realtime 
 asked_as = ["voice", "voice chat", "voice call", "speech", "talk out loud", "phone call"]
 layer = 10
 
-# "What can you do": this entry's room answer carries every ability's name by state, from this file.
+# "What can you do": this entry's room answer carries every ability's name by state, from this file, whole under the
+# per-message recall cap (2,000), so this line is kept short: need-2026-11-02-37 found it at 2,000 to the character and
+# cut "every ability it ships and every one it knows how to build, from this file" to its words now, for that need's name.
 [abilities.abilities]
 state = "built"
-what = "Says what Yerk AI can do: every ability it ships and every one it knows how to build, from this file."
+what = "Says what Yerk AI can do: each ability it ships or knows how to build."
 tier = "free"
 needs = "nothing; `yerk abilities` lists them, `yerk explain NAME` has any one, and a room asking gets the list"
 free_path = "this is the free path"
@@ -1435,3 +1437,11 @@ tier = "free"
 needs = "the web ability's plug-in attached to the room and the machine's own browser (F2) installed; no account, no key and no sign-in"
 free_path = "this is the free path"
 asked_as = ["bookings page", "bookings with me", "bookwithme", "microsoft bookings", "booking page slots"]
+
+[abilities.commons-answers]
+state = "built"
+what = "Reads the answer on a House of Commons written question's page (ourcommons.ca or noscommunes.ca), which the page loads only after it opens: web_fetch makes the page's own request for it, with the token and the cookie the page gives, so each response tabled for the question comes under the question with every section (a cover page, then one per federal institution) and its tables, or only the section a `section` in the address names; a question still awaiting its response says so with the date it is due, an older one whose response is a Library of Parliament sessional paper names the paper and its link, and a request the site refuses is named with its status, never passed off as the whole page."
+tier = "free"
+needs = "the web ability's plug-in attached to the room; no key, no browser and no sign-in, since the plain read from the machine (F1) makes the request"
+free_path = "this is the free path"
+asked_as = ["written question", "written questions", "order paper question", "sessional paper", "ourcommons", "government response tabled"]
