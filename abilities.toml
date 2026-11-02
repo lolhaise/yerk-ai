@@ -315,6 +315,23 @@ free_path = "none for calls"
 why_not = "Not planned for the public harness: it needs a paid voice vendor and a public tunnel, and most users never need it."
 asked_as = ["call someone for me", "make a call for me", "place a call", "call on my behalf"]
 
+# need-2026-10-26-23: a free table booking's Confirm page sat on a checkout address, and the browser refused every field on it.
+[abilities.free-bookings]
+state = "described"
+what = "Fills and confirms a free booking form (a table or an appointment: a name, a phone number, an email, no card) in the browser ability's browser on the owner's order, though the page's address looks like a checkout; a page that takes money is still never touched."
+how = [
+  "The page decides, not its address: a checkout address whose page shows no card field, no payment frame, no amount and no saved card is a look-alike, and one that shows any of them is a payment page.",
+  "Money read from the page's whole text: an amount (a currency sign or code beside a number) or a saved card (its last four digits after a mask or after 'ending in'); a false alarm keeps the refusal, so the list leans wide.",
+  "On a look-alike, each field set and each click only on the owner's word (the browser's confirmed flag), and without it the refusal asks for that word; a read of the page says which of the two it is.",
+  "On a payment page, nothing set or clicked, the owner's word or not, and the refusal says what it saw: a card field, a payment frame, a payment service's host or the money in its words.",
+]
+tier = "free"
+needs = "the browser ability, with a plug-in whose payment check reads the page as well as its address"
+price = "none"
+free_path = "this is the free path"
+why_not = "It rides on the browser ability, which is not in this repo; an install whose browser plug-in tells a checkout look-alike from a payment page has it there, and a room holding that tool books a free table on the owner's word."
+asked_as = ["book a table", "reserve a table", "make a reservation", "book the reservation", "confirm the reservation", "free booking"]
+
 # need-2026-10-26-21: a page asked for in the browser on the PC would not open; that browser had quit with its
 # last tab, its port reset every call, and the error a room read was a stack trace's first line.
 [abilities.browser]

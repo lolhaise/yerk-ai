@@ -8,6 +8,33 @@ version changes.
 
 ## 2026-11-02
 
+### need-2026-10-26-23 (#?)
+
+- A room the owner asks to book a free table can fill and confirm its booking page now, though the page's address
+  looks like a checkout. The browser plug-in kept outside this repository (hands, attached to every owner room under
+  rooms.toml's `[defaults]`) judged a payment page by its address alone, so a booking's Confirm page on a `/checkout/`
+  address (a name, a phone number, an email, a Confirm button; no card, no deposit) had every field and click refused,
+  the owner's own order included.
+- The page decides now, not its address, on the plug-in's branch `need-2026-10-26-23`: its read of a tab also takes
+  the first money the page's whole text shows, an amount (a currency sign or code beside a number) or a saved card (its
+  last four digits after a mask or after "ending in"). A checkout address whose page shows no card field, no payment
+  frame, no amount and no saved card is a look-alike: each field and each click there goes only with `confirmed: true`,
+  the owner's own order, and without it the refusal asks for that word. A read of the page says which it is.
+- A payment page is still never touched, confirmed or not: a card field, a payment frame, a payment service's host, or
+  a checkout address whose words show money; the refusal now says what it saw. A page off a checkout address that shows
+  prices (a menu, a shop) is judged as before, and opening a checkout address is still refused, since only the page can
+  say whether it takes money. The plug-in's offline tests run its real page read against a stub page: 31 of 31 green.
+- Here, abilities.toml has the described `free-bookings` entry (the browser ability is not in this repo), with six
+  phrases ("book a table", "make a reservation", ...) that hand a room asked that way the entry whole
+  (`yerk explain free-bookings`); the README says it in Add-ons (its web plug-in aside cut to stay under 12,000 bytes),
+  and the GUIDE's count is what the file holds, 94: 36 built. The plug-in's tool text does not change, so no budget
+  line moves.
+- Why: on 2026-10-26 a room the owner told to book a table reached the booking's Confirm page and had its four fields
+  and a checkbox refused as a payment page eleven times, once with the owner's confirmation on the call.
+
+**Upgrading**: nothing to change here. The plug-in's change is live when hands-mcp's main moves to its branch
+`need-2026-10-26-23` (e94ce96, on its main 64af176); a room has it from its next process start after that.
+
 ### need-2026-10-26-22 (#?)
 
 - A room can search the web by a picture now, as Google Lens or TinEye do: the new `reverse_image_search` tool on Yerk's
