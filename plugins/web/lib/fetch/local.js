@@ -16,6 +16,7 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { takeWindow } from "../common.mjs";
+import { readAnswers, writtenQuestion } from "./commons.js";
 import { detectChallenge, judgePage } from "./detect.js";
 import { collapse, extractHtml } from "./extract.js";
 import { isPrivateHost, readJson, recordUsage, sleep, writeJsonAtomic } from "./util.js";
@@ -353,9 +354,15 @@ export async function localFetchRung({ url, settings, extractMode, signal, timeo
     const text = collapse(content);
     ex = { title: undefined, content: /json/.test(ctype) ? content : text, visibleText: text, articleChars: text.length, extractor: /json/.test(ctype) ? "json" : "raw", htmlLength: content.length, scriptCount: 0, hasPasswordInput: false, noscriptText: "" };
   }
+  // A House of Commons written question (need 37, commons.js): its answer loads after the page opens, by a request that
+  // needs the page's token and cookie, so F1 makes it here and the answer follows the question; a page it knows is a read.
+  const wq = isHtml && status === 200 ? writtenQuestion(finalUrl) : null;
+  const answers = wq ? await readAnswers({ wq: { ...wq, section: wq.section || writtenQuestion(url)?.section || "" }, html: content, cookies: res.headers.getSetCookie?.() ?? [], headers: browserHeaders(settings), fetchImpl, signal, timeoutMs, read: (r) => readCapped(r, settings.localMaxBytes), extractMode }) : null;
+  if (answers?.calls) recordUsage(settings, { localFetchCalls: answers.calls, localBytes: answers.bytes });
+  if (answers?.text) ex = { ...ex, content: [ex.content, answers.text].filter((s) => String(s ?? "").trim()).join("\n\n"), articleChars: (ex.articleChars || 0) + answers.chars };
   const judged = judgePage({ status, html: isHtml ? content : "", finalUrl, ex, minVisibleChars: isHtml ? settings.minVisibleChars : 0, hardFloor: isHtml ? settings.minVisibleCharsHard : 0 });
   const ms = Date.now() - t0;
-  if (judged.verdict === "ok") return { rung: "F1", ok: true, status, finalUrl, ctype, ex, ms, outcome: "ok" };
+  if (judged.verdict === "ok" || (answers?.page && judged.verdict === "thin")) return { rung: "F1", ok: true, status, finalUrl, ctype, ex, ms, outcome: "ok", ...(answers ? { answers: { note: answers.note, outcome: answers.outcome } } : {}) };
   const outcome = `${judged.verdict}${judged.why ? `:${judged.why}` : ""}`;
   // A 404 or 410 from this machine is the site's answer, as it was at L1. A login wall needs the saved
   // login that lives in the Browserbase context, so it goes straight to L3.

@@ -8,6 +8,40 @@ version changes.
 
 ## 2026-11-02
 
+### need-2026-11-02-37 (#?)
+
+- A room asked about the answer to a House of Commons written question now gets it: `web_fetch` of the question's page
+  (`ourcommons.ca/written-questions/<parliament>-<session>/q-<n>`, or the French site's `noscommunes.ca/questions-ecrites/...`)
+  returns the question, its details line (who asked, the dates, its status) and each response tabled for it, every
+  section (a cover page, then one per federal institution) as markdown with its tables filled, in the page's order. The
+  page loads its responses only after it opens, by a request carrying the token in the page's head and the cookie the
+  page set, and the site sends any other request to its error page, so a plain read had the question alone and a
+  browser at most one section. F1, the plain read from the machine, now makes that request as the page does: one more
+  request a response, free, under a second and a half for the whole read live.
+- A `section` in the address keeps that section (in any case), the rest listed by name and code; one the response
+  lacks gives every section, said so. The full text view's address (`.../q-<n>/<response id>`) reads the same.
+- A question still awaiting its response says so with the date it is due; an older one whose response is a sessional
+  paper the Library of Parliament holds names the paper and its link; a refused or unreadable request is named (`HTTP
+  400`), and the read says its text is the question alone, never passing it off as the whole page. The call log carries
+  the reader's word (`answers`: `read`, `awaiting`, `library`, `http_400` and so on).
+- Only F1 can ask: site memory never skips F1 on such a page, and a read of one at another rung (the machine's browser
+  after F1 failed, or a paid rung) says it may hold the question alone.
+- Here, `yerk explain commons-answers` has the ability, with six phrases ("written question", "sessional paper", ...)
+  that hand a room asked that way the entry whole. The `abilities` entry's lead sentence is 32 characters shorter ("each
+  ability it ships or knows how to build"): its "what can you do" answer, every ability's name whole under the
+  2,000-character recall cap, stood at 2,000 to the character, so the new name did not fit; it is 1,986 now. The README
+  says it in Add-ons (three of its phrases a few words shorter, to stay under 12,000 bytes), the GUIDE's Web reach says
+  how, and its count is what the file holds, 103: 42 built.
+- The plug-in's tests: 8 new in `plugins/web/test/commons.test.mjs`, on a placeholder question page and answer shaped
+  like the live ones and the site's refusal mirrored; 75 in all, 73 pass and the 2 live ones skip. No tool's description
+  grows and nothing in the harness's code changes, so no budget line moves.
+- Why: on 2026-11-02 a room asked about a government answer tabled to a written question; `web_fetch` of the question's
+  page, with and without a `section`, returned only the question's text, the institutions' responses never rendering,
+  and the ladder stopped at F1, which took the page for read; the room filed the need (need 37 of 2026-11-02).
+
+**Upgrading**: nothing to change by hand; every room that attaches the web plug-in reads written questions this way
+from its next call after the deploy.
+
 ### need-2026-11-02-36 (#?)
 
 - A need whose fix lives in a plug-in's own code is built there now. An add-on whose code is a local git repository of

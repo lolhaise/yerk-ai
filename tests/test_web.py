@@ -46,6 +46,21 @@ def test_yerk_explain_bookings_guest_answers_from_the_abilities_file_with_no_key
     assert "anonymous flag" in ab["what"] and "no sign-in" in ab["what"] and "key" not in ab
 
 
+def test_yerk_explain_commons_answers_answers_from_the_abilities_file_with_no_key(tmp_path, capsys):
+    """Need 37 (2026-11-02): web_fetch of a House of Commons written question's page returned the question alone, since
+    each response loads after the page opens, by a request carrying the page's token and cookie; the plug-in's F1 now makes
+    it (plugins/web/test/commons.test.mjs has the wall and the read), an ability of its own, which a room asked about a
+    written question is handed whole."""
+    assert cli.main(["explain", "commons-answers", "--private", str(EXAMPLE_PRIVATE), "--state", str(tmp_path)]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    ab = abilities.manifest()["commons-answers"]
+    assert lines[:2] == [f"{words.DONE} commons-answers: {words.ability('on')[1]}", ab["what"]]
+    assert all(w in ab["what"] for w in ("loads only after it opens", "token and the cookie", "awaiting", "refuses"))
+    assert "key" not in ab and ab["tier"] == "free"
+    found = abilities.asked("what did the government answer to that written question?", None, abilities.manifest())
+    assert [e["key"] for e in found] == ["commons-answers"]
+
+
 def test_the_rooms_template_attaches_the_plug_in_by_its_command_line_under_the_names_the_rooms_allow():
     lines = [x.removeprefix("# ") for x in (REPO / "rooms.toml.example").read_text().splitlines()]
     at = lines.index("[defaults.mcp.web-ladder]")                 # every owner room's, from [defaults] (2026-10-23)
