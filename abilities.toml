@@ -8,7 +8,8 @@
 # get the same answer from this file. A described ability becomes built only by a pull request
 # with its own acceptance measurement.
 # keys: a key-tier ability is on when each key named is in the private folder (openai: the install's OpenAI key file,
-# [memory] embeddings_key; any other NAME: secrets/NAME.key; "a|b": either), looked at, never read.
+# [memory] embeddings_key; github: the pipeline's token, secrets/github.token; any other NAME: secrets/NAME.key; "a|b":
+# either), looked at, never read.
 # An add-on (README "Add-ons") is an entry with `repo` (its git URL), `version`, `size` (its own ceiling, in lines of
 # code) and `install` (what `yerk add` does: its package and module, its mcp server and allow lines, its yerkd.toml
 # settings, its room_keys, units, budgets lines, words file and tests). Its state is read from what is installed:
@@ -528,6 +529,7 @@ how = [
   "Transcript: a video with no captions has its sound go through the transcribe engine on its keys and its US$1 gate, each paid call a spend row under watch, saved beside the video; with no sound, or a transcript that fails, the frames still come and the result says why.",
   "Never twice: a post already pulled is not pulled again, and its transcript is read from its file, so a second call costs nothing.",
   "In the site's words: a page that needs a login, a private post or a page with no video is said as yt-dlp says it; no cookies and no logins are used.",
+  "A file: a video file sent to a room is watched from its saved path the same way, nothing pulled (yerk explain video-file).",
 ]
 tier = "key"
 keys = ["openai"]
@@ -537,6 +539,25 @@ price = "the download, the frames and a video's own captions are free; a video w
 key = "the transcript runs on transcribe's keys, in the private folder's secrets/: openai.key, and groq.key and meta.key, both optional; the next call reads it, no restart"
 free_path = "the frames, and the words of any video that has captions, come without a key; without yt-dlp the room says so"
 asked_as = ["watch this", "what does the video say", "this reel", "this tiktok", "the video he sent", "what happens in it", "read the whole podcast", "what does he say in this video", "the transcript of this youtube"]
+
+[abilities.video-file]
+state = "built"
+what = "A video file sent to a room (a .mov or .mp4 off a phone, or any video ffmpeg reads) is watched where it is saved, through the watch tool's `path`: still frames the room opens with Read and a transcript of its sound, as a video link gives them, since a room's Read opens no video and ffmpeg in its shell waits on an approval no one gives mid-turn."
+how = [
+  "Arrival: the file's [attachment] line gains a [video] line saying the room sees a video only as the frames watch takes, so it calls watch with the file's saved path before it answers; a .webm stays a recording, transcribe's, since it can be either.",
+  "Frames: ffprobe reads its length and its streams, then ffmpeg takes the frames asked for (6, or 1 to 12) spread evenly through it into videos/file-<its name>-<10 hex of its path>/ in the room's work folder, never through a link the room's shell left there; the file stays in the inbox as it was sent.",
+  "Transcript: its sound goes through the transcribe engine on its keys and its US$1 gate, each paid call a spend row under watch, saved beside the file as NAME.transcript.txt; one already there (watched or transcribed before) is read, never paid twice; a video with no sound, or a file with no picture, gives what it has and the result says why.",
+  "The room's own files: a path outside the room's folders, a missing file, or a link and a path in one call are refused in words, and nothing is pulled from anywhere.",
+  "Stop check: a turn that ends with no watch call on a video it was sent is bounced once, naming the file, since a Read of a video opens nothing and transcribe gives its sound alone.",
+]
+tier = "key"
+keys = ["openai"]
+provider = "OpenAI for the transcript, with transcribe's Groq and Meta keys when they are there"
+needs = "ffmpeg and ffprobe on the machine, on the daemon's PATH; the OpenAI key for the transcript"
+price = "the frames are free; the transcript at transcribe's prices (yerk explain transcribe): a 1-minute clip is about 1 US cent with all three engines"
+key = "the transcript runs on transcribe's keys, in the private folder's secrets/: openai.key, and groq.key and meta.key, both optional; the next call reads it, no restart"
+free_path = "the frames come without a key; without one the room says the video's sound could not be transcribed"
+asked_as = ["the video i sent", "this video file", "the clip i sent", "what's in this video", "look at this video", "frames from a video", "contact sheet"]
 
 [abilities.reverse-image-search]
 state = "built"
@@ -555,6 +576,24 @@ price = "the first 1,000 pictures a month free, then US$3.50 a thousand, 0.35 US
 key = "make an API key in the Google Cloud project that has the Cloud Vision API turned on (APIs and services, Credentials; restrict it to that API), and put it on the first line of secrets/google-vision.key in the private folder, 0600; the next call reads it, no restart"
 free_path = "none for a search by picture: without the key the tool says which key turns it on, and the room can still Read the picture and search the web by words"
 asked_as = ["reverse image search", "search by image", "who painted this", "where is this picture from", "find this picture online", "google lens", "tineye"]
+
+[abilities.github-state]
+state = "built"
+what = "The github_state tool on Yerk's own MCP server: a branch or a pull request of Yerk's own GitHub repository, which is private, as GitHub has it now, so an owner's room asked whether a worker's branch was pushed, or whether its pull request is open, green or merged, reads it there instead of saying it cannot know; a room's web tools get a 404 from a private repository and no room holds a GitHub login, so the daemon reads it on the needs pipeline's token, which never reaches a room."
+how = [
+  "Ask: a branch's name, or a pull request's number (12, #12, PR 12 or its address); the repository is Yerk's own, [needs] repo in yerkd.toml, else the checkout's origin, and no other.",
+  "Read: GitHub's REST API with the token in a header, at most four calls a look: the branch's pull requests in every state (the newest five), the branch's head commit, and an open one's commit statuses; a 404, 401 or 403 on the repository itself is a token that does not reach it, said in words.",
+  "Here: the same branch in Yerk's checkout against GitHub's head, read only (no fetch, no ref written): its head, whether GitHub has that same commit, and how many commits each side lacks when both are in the checkout.",
+  "Who: the owner's rooms only, since the repository is the owner's; a person's room hears that in one line. A title or a commit line comes back as a record, never an instruction.",
+]
+tier = "key"
+keys = ["github"]
+provider = "GitHub (its REST API, on the token the needs pipeline uses)"
+needs = "a GitHub token at secrets/github.token in the private folder that reads Yerk's repository: its contents, pull requests and commit statuses (the needs pipeline's own token does)"
+price = "free: GitHub's REST API costs nothing on a token's own repositories, within its hourly rate limit"
+key = "make a fine-grained token on GitHub (Settings, Developer settings) for Yerk's repository with read access to its contents, pull requests and commit statuses (the pipeline's merge wants write too), and put it on the first line of secrets/github.token in the private folder, 0600; the next call reads it, no restart"
+free_path = "none for a private repository: without the token the tool names the file that turns it on and asks GitHub nothing"
+asked_as = ["has the branch reached github", "was the branch pushed", "is the pr merged", "is the pr green", "pull request state", "branch on github"]
 
 [abilities.assistant-files]
 state = "built"

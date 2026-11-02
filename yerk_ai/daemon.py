@@ -28,8 +28,8 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 from zoneinfo import ZoneInfo
 
-from . import (beat, context, deletes, deploy, doctor, evidence, gates, hooks, jobs, location, mcp_server, memory, mentions, needs, pictures,
-               pipeline, render, reverse_image, status, taste, texts, transcribe, voice_note, watch, workers)
+from . import (beat, context, deletes, deploy, doctor, evidence, gates, github, hooks, jobs, location, mcp_server, memory, mentions, needs,
+               pictures, pipeline, render, reverse_image, status, taste, texts, transcribe, voice_note, watch, workers)
 from .accounts import Account, Cooldowns, from_dir, load_accounts, pick
 from .config import (EFFORTS, REPO, SHELLS, account_and_model, account_named, assistants, budgets, discord_id, flag, load_toml, models,
                      override, people, pinned, private_dir, read_secret, room_id, room_settings, rooms, state_dir, table, trusted, uncapped,
@@ -47,7 +47,7 @@ log = logging.getLogger("yerk.daemon")
 YERK_TOOLS = ["mcp__yerk__send", "mcp__yerk__hold", "mcp__yerk__recall", "mcp__yerk__read_memory",
               "mcp__yerk__remember", "mcp__yerk__worker", "mcp__yerk__schedule", "mcp__yerk__settings", "mcp__yerk__transcribe",
               "mcp__yerk__voice_note", "mcp__yerk__seen", "mcp__yerk__render", "mcp__yerk__watch", "mcp__yerk__need", texts.TOOL, deletes.TOOL,
-              "mcp__yerk__reverse_image_search"]
+              "mcp__yerk__reverse_image_search", "mcp__yerk__github_state"]
 # A shell room's sandbox when rooms.toml gives it no [rooms.NAME.sandbox] table: unsandboxed, a Read deny stops `cat` and
 # the Read tool, but a script, grep or redirect read every secret (Claude Code 2.1.304, PR 66's cold read, 2026-10-21)
 SANDBOX = {"enabled": True, "autoAllowBashIfSandboxed": True}
@@ -469,21 +469,30 @@ class Yerkd:
         log.info("render: %s, %s", room, said)
         return r
 
-    async def tool_watch(self, room: str, url: str, frames: int = watch.FRAMES, owner_yes: bool = False) -> dict[str, Any]:
+    async def tool_watch(self, room: str, url: str, frames: int = watch.FRAMES, owner_yes: bool = False, path: str = "") -> dict[str, Any]:
         """The `watch` tool: a video in a post pulled from its link by yt-dlp into the calling room's work folder off the loop
         (watch.run), one download at a time across rooms, its frames taken and its transcript the page's own captions, else
         its sound transcribed as transcribe's is, on the same keys and gate, each paid call a spend row under `watch`; a post
-        pulled before is neither pulled nor paid again."""
+        pulled before is neither pulled nor paid again. With `path`, a video file from the room's own folders (may_send's
+        rule, as transcribe's) watched where it is (watch.run_file): nothing pulled, its frames and transcript the same way."""
         if room not in self.rooms:
             return {"ok": False, "error": words.WATCH_NO_ROOM.format(room=room)}
-        if not watch.is_link(url):
+        p = Path(path).expanduser().resolve() if path.strip() else None
+        if p and url.strip():
+            return {"ok": False, "error": words.WATCH_BOTH}
+        if p and not self.may_send(room, p):
+            return {"ok": False, "error": words.WATCH_NOT_HERE.format(name=p.name)}
+        if p and not p.is_file():
+            return {"ok": False, "error": words.WATCH_NO_FILE.format(name=p.name)}
+        if not p and not watch.is_link(url):
             return {"ok": False, "error": words.WATCH_NOT_LINK.format(given=words.no_paths(url.strip())[:120])}
 
         def hear(video: Path) -> dict[str, Any]:
             return transcribe.run(video, self.memory.embeddings_key, self.private / transcribe.GROQ_KEY, self.booker(room, "watch"),
                                   owner_yes, self.private / transcribe.META_KEY)
-        r, took = await asyncio.to_thread(watch.run, url, frames, self.state / "rooms" / room / "work" / watch.FOLDER, hear)
-        how = "pulled before" if r.get("reused") else f"pulled in {took:.1f} s" if r.get("video") else "not pulled"
+        root = self.state / "rooms" / room / "work" / watch.FOLDER
+        r, took = await (asyncio.to_thread(watch.run_file, p, frames, root, hear) if p else asyncio.to_thread(watch.run, url, frames, root, hear))
+        how = "a file of the room's" if p else "pulled before" if r.get("reused") else f"pulled in {took:.1f} s" if r.get("video") else "not pulled"
         said = (f"{r['slug']}, {r['seconds']} s, {len(r['frames'])} frame(s), {r['source'] or 'no'} transcript, {how}"
                 if r["ok"] else r["error"][:160])
         log.info("watch: %s, %s", room, said)
@@ -500,6 +509,19 @@ class Yerkd:
             return {"ok": False, "error": words.REVERSE_NO_FILE.format(name=p.name)}
         r = await asyncio.to_thread(reverse_image.run, p, self.private / reverse_image.KEY, self.booker(room, "reverse_image_search"))
         log.info("reverse_image_search: %s, %s", room, f"{p.name}, {len(r['pages'])} page(s)" if r["ok"] else r["error"][:160])
+        return r
+
+    async def tool_github_state(self, room: str, branch_or_pr: str) -> dict[str, Any]:
+        """The `github_state` tool: a branch or a pull request of Yerk's own repository ([needs] repo, else the checkout's
+        origin) as GitHub has it now, read off the loop on the pipeline's token (github.look), from an owner's room only,
+        since the repository is the owner's and private; the token never in the result. Free: no spend row."""
+        if room not in self.rooms or not self.owner(room):
+            return {"ok": False, "error": words.GITHUB_OWNER_ROOMS}
+        if not (tok := await asyncio.to_thread(github.token, self.private)):
+            return {"ok": False, "error": words.GITHUB_NO_TOKEN}
+        repo = await asyncio.to_thread(github.slug, REPO, str(dict(self.conf.get("needs", {})).get("repo") or ""))
+        r = await asyncio.to_thread(github.look, REPO, repo, branch_or_pr, tok)
+        log.info("github_state: %s, %s", room, f"{r['branch']}, {len(r['pull_requests'])} pull request(s)" if r["ok"] else r["error"][:160])
         return r
 
     async def tool_seen(self, room: str, path: str, text: str, shows: str) -> dict[str, Any]:

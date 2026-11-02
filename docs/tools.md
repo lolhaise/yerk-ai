@@ -2,7 +2,7 @@
 
 Written by `yerk docs own` from yerk_ai/mcp_server.py (build) and workers.WORKER_TOOLS; change those and run it again, never this page.
 
-The 17 tools Yerk AI's own MCP server hands every room's Claude Code, preloaded, as mcp__yerk__NAME. Each one's description is the text the model reads, indentation dropped. A worker gets none of them unless [workers] yerk_tools in yerkd.toml names some, and then only recall, read_memory, on its own server.
+The 18 tools Yerk AI's own MCP server hands every room's Claude Code, preloaded, as mcp__yerk__NAME. Each one's description is the text the model reads, indentation dropped. A worker gets none of them unless [workers] yerk_tools in yerkd.toml names some, and then only recall, read_memory, on its own server.
 
 ## send
 
@@ -178,10 +178,12 @@ and only a video with no captions goes to the paid transcription and its US$1 ga
 a video link and expects you to have watched it, since the caption, the cover picture and the comments are not the
 video. A page that needs a login, a private post or a page with no video comes back as that, in the site's own
 words. A transcript past US$1 comes back refused until the owner says yes; then call again with `owner_yes` true. A
-video already pulled is not pulled or transcribed again.
+video already pulled is not pulled or transcribed again. A video file sent to you, which Read cannot open, is watched
+the same way from `path`, its saved path from its [attachment] line, in place of `url`; nothing is pulled.
 ```
 
-- `url`: string, required
+- `url`: string, default ""
+- `path`: string, default ""
 - `frames`: integer, default 6
 - `owner_yes`: boolean, default false
 
@@ -248,6 +250,19 @@ as a guess.
 ```
 
 - `path`: string, required
+
+## github_state
+
+```text
+A branch or a pull request of Yerk's own repository as GitHub has it now, since that repository is private and no
+room holds a GitHub login (a web fetch there gets a 404): `branch_or_pr` is a branch's name (a worker's) or a pull
+request's number. Returns the branch's head on GitHub (`github`), the same branch in Yerk's checkout against it
+(`here`: whether GitHub has its commit, how many commits each side lacks) and its pull requests: open, draft, merged
+or closed, and an open one's checks. Use it when asked whether a branch was pushed or its pull request is open,
+green or merged.
+```
+
+- `branch_or_pr`: string, required
 
 ## voice_note
 

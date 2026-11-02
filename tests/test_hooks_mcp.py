@@ -52,17 +52,18 @@ def test_the_hook_endpoint_answers_over_http(tmp_path):
     assert other.json() == {}
 
 
-def test_seventeen_preloaded_tools_with_slim_schemas(tmp_path):
+def test_eighteen_preloaded_tools_with_slim_schemas(tmp_path):
     y = daemon(tmp_path)
     tools = {t.name: t for t in asyncio.run(mcp_server.build(y, y.port, y.hook).list_tools())}
     assert set(tools) == {"send", "hold", "recall", "read_memory", "remember", "worker", "schedule", "settings", "transcribe",
-                          "voice_note", "seen", "render", "watch", "need", "text", "delete", "reverse_image_search"}
+                          "voice_note", "seen", "render", "watch", "need", "text", "delete", "reverse_image_search", "github_state"}
     assert list(tools["text"].inputSchema["properties"]) == ["to", "text"]
     assert list(tools["reverse_image_search"].inputSchema["properties"]) == ["path"]
+    assert list(tools["github_state"].inputSchema["properties"]) == ["branch_or_pr"]
     assert list(tools["delete"].inputSchema["properties"]) == ["paths"]
     assert list(tools["transcribe"].inputSchema["properties"]) == ["path", "owner_yes"]
     assert list(tools["render"].inputSchema["properties"]) == ["path"] and "`render`" in context.MECHANICS.read_text()
-    assert list(tools["watch"].inputSchema["properties"]) == ["url", "frames", "owner_yes"] and "`watch`" in context.MECHANICS.read_text()
+    assert list(tools["watch"].inputSchema["properties"]) == ["url", "path", "frames", "owner_yes"] and "`watch`" in context.MECHANICS.read_text()
     assert list(tools["seen"].inputSchema["properties"]) == ["path", "text", "shows"] and "`seen`" in context.MECHANICS.read_text()
     assert list(tools["voice_note"].inputSchema["properties"]) == ["script", "name", "owner_yes"]
     assert list(tools["remember"].inputSchema["properties"]) == ["text", "about", "replaces", "job", "triggers", "said", "source"]

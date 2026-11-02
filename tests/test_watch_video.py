@@ -6,7 +6,10 @@ a site that wants a login, a run that saves nothing and one that hangs past the 
 with no sound has frames and no transcript; a second call on the same post pulls nothing and pays nothing; two calls at
 once both finish, one after the other. The same fake answers the captions step by its argv: `-J` prints the page knobs.json
 holds, a track's run writes its json3, so a page's own captions are the transcript and nothing is paid, whichever track
-is chosen, and a page with none, a failed probe or a video too big to save each go the way they should.
+is chosen, and a page with none, a failed probe or a video too big to save each go the way they should. A video file sent
+to the room (`path`) comes back the same way with nothing pulled and the fake never run, its frames under videos/ and its
+transcript beside it; a path outside the room's folders, a missing file or a link is refused; the [attachment] line says
+to watch it, and the Stop hook bounces a turn that never did, since only a watch call sees a video.
 (tests/test_watch.py is the channel a room watches, rooms.toml `watch`.)"""
 from __future__ import annotations
 
@@ -15,18 +18,24 @@ import contextlib
 import hashlib
 import json
 import os
+import queue
 import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
+from types import SimpleNamespace as NS
 from typing import Any
 
 import pytest
 
-from yerk_ai import captions, card, context, mcp_server, transcribe, watch, words
+from yerk_ai import captions, card, context, mcp_server, shape, transcribe, watch, words
+from yerk_ai.channels.discord import message_text
 from yerk_ai.daemon import Yerkd
+from yerk_ai.engine import RoomProcess
+from yerk_ai.room import Inbound, Room
 from fake_channel import ConsoleChannel
 
 EXAMPLE_PRIVATE = Path(__file__).resolve().parents[1] / "examples" / "private"
@@ -40,6 +49,7 @@ CUES = {"events": [{"tStartMs": 0, "dDurationMs": 60000, "wpWinPosId": 1},      
                    {"tStartMs": 20000, "dDurationMs": 2500, "segs": [{"utf8": "and a second one"}]}]}
 LINES = ["[00:00:01 -> 00:00:03] a placeholder line", "[00:00:20 -> 00:00:22] and a second one"]
 FRAME = re.compile(r"frame-\d\d-\d\dm\d\ds\.jpg")
+INBOX = "m-1"                              # a placeholder message id: the inbox folder a file sent with it is saved in
 # the fake: what it is told comes from knobs.json beside it, since the tool hands yt-dlp a clean environment
 FAKE = '''
 import json, os, shutil, subprocess, sys, time
@@ -152,22 +162,43 @@ def frames_in(folder: Path) -> list[str]:
     return sorted(p.name for p in folder.glob("frame-*.jpg"))
 
 
+def sent(work: Path, clips: dict[str, str], video: str = "sound", name: str = "clip.mov", mid: str = INBOX) -> Path:
+    """A video file as a room is sent one: saved in its inbox under the message's id (the adapter's stage step)."""
+    (box := work / "inbox" / mid).mkdir(parents=True, exist_ok=True)
+    shutil.copy(clips[video], box / name)
+    return (box / name).resolve()
+
+
+def look(y: Yerkd, path: Path, frames: int = 6, url: str = "") -> dict[str, Any]:
+    """The watch tool on a file's saved path, as a room calls it."""
+    return asyncio.run(y.tool_watch("example-room", url, frames, False, str(path)))
+
+
+def frames_of(video: Path) -> str:
+    """The folder a file's frames go in: its name, then 10 hex of its path's sha1."""
+    return f"file-{video.stem}-{hashlib.sha1(str(video).encode()).hexdigest()[:10]}"
+
+
 def test_the_tool_is_preloaded_allowed_in_every_room_and_the_mechanics_send_a_video_link_to_it(tmp_path):
     y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
     for name in ("example-room", "example-quiet"):
         y.add_room(name, ConsoleChannel())
         assert "mcp__yerk__watch" in y.spec_for(name).settings["permissions"]["allow"], name
     tools = {t.name: t for t in asyncio.run(mcp_server.build(y, y.port, y.hook).list_tools())}
-    assert list(tools["watch"].inputSchema["properties"]) == ["url", "frames", "owner_yes"]
+    assert list(tools["watch"].inputSchema["properties"]) == ["url", "path", "frames", "owner_yes"]
+    assert not tools["watch"].inputSchema.get("required")                    # a link or a file's path, either one
     said = " ".join(str(tools["watch"].description).split())
     assert all(w in said for w in ("an Instagram reel or post, a TikTok, an X post, a YouTube link", "under videos/", "1 to 12",
                                    "open the frames with Read", "are not the video", "`owner_yes` true", "not pulled or transcribed",
                                    "the video's own captions when the page has them", "free and with their timestamps",
-                                   "only a video with no captions goes to the paid transcription"))
+                                   "only a video with no captions goes to the paid transcription", "A video file sent to you, which "
+                                   "Read cannot open, is watched the same way from `path`", "[attachment] line", "nothing is pulled"))
     line = next(x for x in context.MECHANICS.read_text().splitlines() if "`watch`" in x)
     assert "open them with Read" in line and "are not the video" in line and "says so" in line
     assert "the video's own captions when it has them, free" in line and "without captions is transcribed from its sound" in line
+    assert "(a video file sent to you: on its `path`, since Read cannot open one)" in line and shape.offenses(line) == []
     assert card.step("mcp__yerk__watch", {"url": REEL, "frames": 6}) == "watching a video on www.instagram.com"   # the host, never the link
+    assert card.step("mcp__yerk__watch", {"path": f"/s/inbox/{INBOX}/clip.mov"}) == "watching the video clip"   # its name, never its path
 
 
 @FFMPEG
@@ -502,3 +533,138 @@ def test_a_transcript_already_beside_the_video_runs_neither_yt_dlp_nor_the_paid_
     (folder / "video.transcript.txt").write_text(f"{words.TRANSCRIPT_HEAD.format(name='video.mp4', minutes=0.1, how=words.UNCHECKED)}\n{SAID}\n")
     r = ask(y, TALK, frames=1)
     assert r["reused"] and SAID in r["transcript"] and (r["source"], r["note"]) == ("heard", "") and runs(bin_) == [] and calls == []
+
+
+@FFMPEG
+def test_a_video_file_sent_to_the_room_comes_back_as_its_frames_and_its_transcript_and_nothing_is_pulled(tmp_path, monkeypatch, clips):
+    """Need 22 of 2026-10-24: a room sent a .mov could not see it, since Read opens no video, ffmpeg in its shell waits on an
+    approval no one gives mid-turn, transcribe gives the sound alone and watch took only a link. `path` watches the file
+    where it is: the frames under videos/ as a link's are, the transcript beside the file as transcribe writes one."""
+    y, work, bin_ = room(tmp_path, monkeypatch, clips)
+    calls, rows = hearing(monkeypatch), []
+    monkeypatch.setattr(y.ledger, "spend", lambda **row: rows.append(row) or 1)
+    video = sent(work, clips)
+    r = look(y, video)
+    folder = work / "videos" / frames_of(video)
+    assert r == {"ok": True, "slug": frames_of(video), "folder": str(folder), "title": "", "video": str(video),
+                 "seconds": r["seconds"], "frames": r["frames"], "transcript": r["transcript"],
+                 "transcript_file": str(video.with_name("clip.transcript.txt")), "source": "heard", "reused": False, "note": ""}
+    assert abs(r["seconds"] - 4) < 0.5 and runs(bin_) == []                   # no yt-dlp run: there is nothing to pull
+    assert [Path(f["file"]).name for f in r["frames"]] == frames_in(folder) and len(r["frames"]) == 6
+    assert all(FRAME.fullmatch(Path(f["file"]).name) and Path(f["file"]).read_bytes()[:3] == b"\xff\xd8\xff" for f in r["frames"])
+    assert [f["at"] for f in r["frames"]] == ["0m00s", "0m01s", "0m01s", "0m02s", "0m03s", "0m03s"]
+    assert sorted(p.name for p in video.parent.iterdir()) == ["clip.mov", "clip.transcript.txt"]     # the inbox keeps the file
+    assert SAID in r["transcript"] and folder.stat().st_mode & 0o777 == 0o700 and not (folder / "url.txt").exists()
+    [call] = calls                                # transcribe.run as tool_transcribe calls it, its spend rows under `watch`
+    assert call == {"audio": video, "owner_yes": False,
+                    "keys": (y.memory.embeddings_key, y.private / transcribe.GROQ_KEY, y.private / transcribe.META_KEY)}
+    assert rows == [{"room": "example-room", "tool": "watch", "engine": "openai/whisper-1", "usd": 0.0004, "note": "chunk 1 of 1, 4 s"}]
+
+
+@FFMPEG
+def test_a_file_watched_or_transcribed_before_is_never_paid_again_and_two_of_one_name_never_share_their_frames(tmp_path, monkeypatch, clips):
+    y, work, bin_ = room(tmp_path, monkeypatch, clips)
+    calls = hearing(monkeypatch)
+    first, other = sent(work, clips), sent(work, clips, mid="m-2")       # one name, two messages
+    a = look(y, first)
+    again = look(y, first, frames=3)
+    assert len(calls) == 1 and (again["transcript"], again["folder"]) == (a["transcript"], a["folder"])
+    assert len(again["frames"]) == 3 and len(frames_in(Path(a["folder"]))) == 3            # the frames are made again
+    b = look(y, other, frames=1)
+    assert b["folder"] != a["folder"] and len(frames_in(Path(a["folder"]))) == 3 and len(calls) == 2
+    memo = sent(work, clips, name="memo.mov", mid="m-3")
+    head = words.TRANSCRIPT_HEAD.format(name="memo.mov", minutes=0.1, how=words.UNCHECKED)
+    memo.with_name("memo.transcript.txt").write_text(f"{head}\n{SAID}\n")                 # the transcribe tool's, from before
+    r = look(y, memo, frames=1)
+    assert r["ok"] and r["transcript"] == f"{head}\n{SAID}" and r["source"] == "heard" and len(calls) == 2 and runs(bin_) == []
+
+
+def test_a_path_outside_the_rooms_folders_a_missing_file_a_link_out_and_a_path_with_a_link_are_refused_in_words(tmp_path, monkeypatch, clips):
+    y, work, bin_ = room(tmp_path, monkeypatch, clips)
+    calls = hearing(monkeypatch)
+    (theirs := tmp_path / "rooms" / "example-quiet" / "work" / "inbox" / INBOX).mkdir(parents=True)
+    (elsewhere := theirs / "clip.mov").write_bytes(b"\0")                                  # another room's file
+    (box := work / "inbox" / INBOX).mkdir(parents=True)
+    (box / "link.mov").symlink_to(elsewhere)                                                # a link this room's shell left
+    assert look(y, elsewhere) == {"ok": False, "error": words.WATCH_NOT_HERE.format(name="clip.mov")}
+    assert look(y, box / "link.mov") == {"ok": False, "error": words.WATCH_NOT_HERE.format(name="clip.mov")}
+    assert look(y, box / "gone.mov") == {"ok": False, "error": words.WATCH_NO_FILE.format(name="gone.mov")}
+    assert look(y, box / "link.mov", url=REEL) == {"ok": False, "error": words.WATCH_BOTH}
+    assert asyncio.run(y.tool_watch("no-such-room", "", 6, False, str(box / "link.mov")))["error"] == words.WATCH_NO_ROOM.format(room="no-such-room")
+    assert runs(bin_) == [] and calls == [] and not (work / "videos").exists() and elsewhere.read_bytes() == b"\0"
+
+
+@FFMPEG
+def test_a_link_where_a_files_frames_go_is_never_followed(tmp_path, monkeypatch, clips):
+    y, work, bin_ = room(tmp_path, monkeypatch, clips)
+    hearing(monkeypatch)
+    video, secret = sent(work, clips), tmp_path / "secret.txt"
+    secret.write_text("a placeholder secret\n")
+    (folder := work / "videos" / frames_of(video)).mkdir(parents=True)
+    (folder / "frame-01-00m00s.jpg").symlink_to(secret)                  # a frame "made before" that is a file outside the room
+    r = look(y, video)
+    assert r["ok"] and len(r["frames"]) == 6 and not (folder / "frame-01-00m00s.jpg").is_symlink()
+    assert secret.read_text() == "a placeholder secret\n"
+    shutil.rmtree(folder)
+    (elsewhere := tmp_path / "elsewhere").mkdir()
+    folder.symlink_to(elsewhere)                                         # the frames' folder itself a link
+    assert look(y, video) == {"ok": False, "error": words.WATCH_LINKED.format(name=folder.name)} and list(elsewhere.iterdir()) == []
+
+
+@FFMPEG
+def test_a_file_that_is_no_video_is_said_and_one_with_no_picture_or_no_sound_gives_what_it_has(tmp_path, monkeypatch, clips):
+    y, work, bin_ = room(tmp_path, monkeypatch, clips)
+    calls = hearing(monkeypatch)
+    (box := work / "inbox" / INBOX).mkdir(parents=True)
+    (box / "notes.mov").write_text("a placeholder line, not a video\n")
+    r = look(y, box / "notes.mov")
+    assert not r["ok"] and r["error"].startswith(words.WATCH_NOT_READ.split("(")[0].format(name="notes.mov")) and calls == []
+    quiet = look(y, sent(work, clips, video="silent", name="quiet.mov"))
+    assert quiet["ok"] and len(quiet["frames"]) == 6 and (quiet["transcript"], quiet["note"]) == ("", words.WATCH_NO_SOUND) and calls == []
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", clips["sound"], "-vn", "-c:a", "aac", str(box / "tone.m4a")], check=True,
+                   capture_output=True)
+    tone = look(y, box / "tone.m4a")                                     # sound alone: its words, no frames, and why
+    assert tone["ok"] and tone["frames"] == [] and tone["note"] == words.WATCH_NO_PICTURE and SAID in tone["transcript"] and len(calls) == 1
+
+
+def test_a_video_file_is_told_from_a_recording_and_a_picture_by_its_name_or_its_type():
+    assert all(watch.is_video(n) for n in ("clip.mov", "CLIP.MOV", "clip.mp4", "clip.m4v", "clip.mkv", "clip.3gp"))
+    assert watch.is_video("clip", "video/quicktime") and watch.is_video("clip.bin", "video/mp4")
+    assert not any(watch.is_video(n) for n in ("photo.png", "voice-message.ogg", "memo.m4a", "notes.txt", ""))
+    assert not watch.is_video("screen.webm", "video/webm") and transcribe.is_audio("screen.webm")     # a .webm stays transcribe's
+    assert not watch.is_video("memo.mp4", "audio/mp4")
+
+
+def test_a_video_sent_in_arrives_with_the_line_that_it_is_seen_only_through_watch():
+    files = [{"name": "clip.mov", "type": "video/quicktime", "size": 7_900_000, "path": f"/s/inbox/{INBOX}/clip.mov", "ok": True},
+             {"name": "photo.png", "type": "image/png", "size": 10, "path": f"/s/inbox/{INBOX}/photo.png", "ok": True}]
+    text = message_text(NS(clean_content="?", content="?"), files).splitlines()
+    assert text == ["?", f"[attachment] clip.mov, video/quicktime, 7,900,000 bytes, saved at /s/inbox/{INBOX}/clip.mov",
+                    words.VIDEO_FILE.format(name="clip.mov"), f"[attachment] photo.png, image/png, 10 bytes, saved at /s/inbox/{INBOX}/photo.png"]
+    assert "call watch with `path` set to the path above before you answer" in text[2] and "Read its frames" in text[2]
+    assert context.in_text("\n".join(text))["attachment lines"] == sum(context.chars(x) for x in text[1:])    # `yerk map --wire`
+    for said in (text[2], words.UNWATCHED, words.WATCH_BOTH, words.WATCH_NOT_HERE):     # in the prompting guide's shape
+        assert shape.offenses(said) == [], said
+
+
+def test_a_video_sent_in_and_never_watched_bounces_once_at_stop_and_only_a_watch_call_on_it_sees_it(monkeypatch):
+    room = Room.__new__(Room)
+    room.lock, room.pending, room.inflight, room.to_open, room.seen, room.bounced, written = threading.Lock(), [], [], {}, {}, False, []
+    room.rp = NS(read_paths=set(), send=written.append)
+    files = [{"name": "clip.mov", "type": "video/quicktime", "size": 10, "path": f"/in/{INBOX}/clip.mov", "ok": True},
+             {"name": "gone.mov", "type": "video/quicktime", "size": 10, "ok": False, "error": "not staged"}]
+    room._write(Inbound(id=INBOX, sender="owner", text="what is in this one", files=files))
+    assert room.to_open == {f"/in/{INBOX}/clip.mov": "clip.mov"} and written == ["what is in this one"]
+    assert room.stop_check(active=False) == words.UNWATCHED.format(names="clip.mov", paths=f"/in/{INBOX}/clip.mov")
+    assert room.stop_check(active=False) is None                                 # once per result
+    rp = RoomProcess.__new__(RoomProcess)
+    calls = [("Read", {"file_path": f"/in/{INBOX}/clip.mov"}), ("mcp__yerk__transcribe", {"path": f"/in/{INBOX}/other.mp4"}),
+             ("mcp__yerk__watch", {"path": f"/in/{INBOX}/third.mov"}), ("mcp__yerk__watch", {"path": f"/in/{INBOX}/memo.m4a"}),
+             ("Read", {"file_path": f"/in/{INBOX}/photo.png"})]
+    ev = {"type": "assistant", "message": {"content": [{"type": "tool_use", "name": n, "input": i} for n, i in calls]}}
+    rp.proc, rp.read_paths, rp.evidence, rp.events = NS(stdout=[json.dumps(ev).encode()]), set(), None, queue.Queue()
+    monkeypatch.setattr(rp, "_note", lambda obj: None)
+    rp._read()               # a Read of a video opens nothing and transcribe hears only its sound, so both still bounce
+    assert rp.read_paths == {f"/in/{INBOX}/third.mov", f"/in/{INBOX}/memo.m4a", f"/in/{INBOX}/photo.png"}
+    room.bounced, room.rp.read_paths = False, {f"/in/{INBOX}/clip.mov"}         # the engine adds a watch call's path
+    assert room.stop_check(active=False) is None

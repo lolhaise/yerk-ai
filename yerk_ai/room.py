@@ -51,7 +51,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Callable, Protocol
 
-from . import memory, pictures, transcribe, words
+from . import memory, pictures, transcribe, watch, words
 from .accounts import Account, Cooldowns, pick
 from .card import Card
 from .config import flag, override, pinned, write_private
@@ -156,7 +156,7 @@ class Room:
         self.fresh_next: str | None = None        # a recap: the next turn starts a fresh session
         self.card = Card()
         self.turn_key = ""                        # the idempotency key of the result being produced
-        self.to_open: dict[str, str] = {}         # path -> name: images and voice notes sent in since the last result
+        self.to_open: dict[str, str] = {}         # path -> name: images, voice notes and videos sent in since the last result
         self.bounced = False                      # the unopened-file check bounced this result already
         self.silent_bounced = False               # the silent-ending check bounced this result already
         self.stub_bounced = False                 # the stub check bounced this result already
@@ -304,7 +304,8 @@ class Room:
         return d
 
     def unopened(self) -> list[tuple[str, str]]:
-        """(name, path) of the images and voice notes sent in this result that the process never Read or transcribed."""
+        """(name, path) of the images, voice notes and videos sent in this result that the process never Read, transcribed or
+        watched."""
         with self.lock:
             read = self.rp.read_paths if self.rp else set()
             return [(n, p) for p, n in self.to_open.items() if p not in read]
@@ -317,18 +318,21 @@ class Room:
                     and not pictures.sidecar(Path(p)).exists()]
 
     def stop_check(self, active: bool) -> str | None:
-        """The Stop hook's rule, no judge: an image sent in and never read, or a voice note never transcribed, bounces once,
-        naming it, so a room never answers a note it did not hear; so does a picture read and not filed."""
+        """The Stop hook's rule, no judge: an image sent in and never read, a voice note never transcribed or a video never
+        watched bounces once, naming it, so a room never answers a note it did not hear or a video it did not see; so does a
+        picture read and not filed."""
         unread, unfiled = self.unopened(), self.unfiled()
         if not (unread or unfiled) or active or self.bounced:
             return None
         self.bounced = True
-        heard = [x for x in unread if transcribe.is_audio(x[0])]
-        seen = [x for x in unread if x not in heard]
+        heard, watched = [x for x in unread if transcribe.is_audio(x[0])], [x for x in unread if watch.is_video(x[0])]
+        seen = [x for x in unread if x not in heard and x not in watched]
         return " ".join(([f"You were sent {', '.join(n for n, _ in seen)} and have not opened it. Read {' '.join(p for _, p in seen)} "
                           "with the Read tool, then answer with what it shows."] if seen else []) +
                         ([f"You were sent {', '.join(n for n, _ in heard)}, a recording, and have not transcribed it. Call transcribe "
                           f"on {' '.join(p for _, p in heard)}, then open your answer with what it says."] if heard else []) +
+                        ([words.UNWATCHED.format(names=", ".join(n for n, _ in watched), paths=" ".join(p for _, p in watched))]
+                         if watched else []) +
                         ([words.UNSEEN.format(names=", ".join(n for n, _ in unfiled), paths=" ".join(p for _, p in unfiled))]
                          if unfiled else []))
 
@@ -544,8 +548,9 @@ class Room:
         self.pending.append(msg)
         self.inflight.append(msg)
         for f in msg.files:
-            if f.get("ok") and (str(f.get("type", "")).startswith("image/") or transcribe.is_audio(str(f["name"]), str(f.get("type", "")))):
-                self.to_open[str(f["path"])] = str(f["name"])
+            kind, name = str(f.get("type", "")), str(f.get("name", ""))
+            if f.get("ok") and (kind.startswith("image/") or transcribe.is_audio(name, kind) or watch.is_video(name, kind)):
+                self.to_open[str(f["path"])] = name
         text = f"{recap}\n\n{msg.text}" if recap else msg.text
         if recap:
             self.seen[text.strip()] = msg

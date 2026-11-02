@@ -23,7 +23,73 @@ version changes.
   `the unit list was stale, re-attached`.
 
 **Upgrading**: nothing to change by hand; the daemon looks twice from its next start. budgets.toml moves with the code:
-the code ceiling to 24,164.
+the code ceiling to 24,363.
+
+### need-2026-10-24-22 (#?)
+
+- A room sent a video file now sees it: `watch` takes `path`, the file's saved path from its `[attachment]` line, in place
+  of a link, and gives what a link gives: frames spread evenly through it (6, or 1 to 12) that the room opens with Read,
+  and a transcript of its sound. Nothing is pulled and yt-dlp never runs. The frames go to
+  `videos/file-<its name>-<10 hex of its path>/` in the room's work folder, so two files of one name never share them, and
+  the nightly sweep may take them, since a later call makes them again; the file stays in the inbox as it was sent. The
+  transcript is saved beside it as `NAME.transcript.txt`, where `transcribe` writes one, on the same keys and US$1 gate,
+  each paid call a spend row under `watch`, and one already there is read, so a video watched or transcribed before is
+  never paid for twice. A video with no sound gives its frames, and a file with no picture gives its words; the note says why.
+- Only the room's own files: a path outside its folders (a link out included, since the path is resolved first), a
+  missing file, and a call with both a link and a path are refused in words. A link the room's shell left where the
+  frames go is never written through.
+- A video's `[attachment]` line gains a `[video]` line: the room sees a video only as the frames `watch` takes, so it
+  calls `watch` on that path before it answers. A turn that ends without that call is bounced once at Stop, naming the
+  file, as a picture never read and a voice note never transcribed are; a Read of a video opens nothing, and `transcribe`
+  on one gives its sound alone, so neither counts. A `.webm` stays a recording, as before, since it can be either.
+- The card says `watching the video clip`, the file's plain name, never its path. The mechanics' watch line names the
+  file's way, the tool gains a sentence, and `yerk explain video-file` has the ability; `yerk explain watch` points to it.
+  The GUIDE has it under Video files, and its count is what the file holds, 96: 38 built; the README, at its 12,000
+  bytes on main, is left as it is.
+- Why: on 2026-10-24 a room asked to say what was in a video file sent to it found Read could not open it, and its two
+  tries at ffmpeg in its shell each waited on an approval no one could give mid-turn; it answered off a thumbnail in a
+  screenshot sent with it. On 2026-10-28 another room asked to watch a 9-second clip, not to listen to it, got the sound
+  alone from `transcribe`, and `watch` took only a link (need 22 of 2026-10-24, filed twice).
+
+**Upgrading**: nothing to change by hand; ffmpeg and ffprobe already on yerkd's PATH serve it from the next start, and
+each room has the mechanics line from its next process start. budgets.toml moves with the code, on main's numbers after
+#161 to #166 and #168: Yerk AI's tools to 18,000, the session-start total to 116,202, the code ceiling to 24,347; the
+mechanics (5,888) stay under their 6,000, which leaves a checkout's path of up to 118 characters.
+
+### need-2026-10-27-23 (#?)
+
+- An owner's room can see a branch or a pull request of Yerk's own repository as GitHub has it now: the new
+  `github_state` tool on Yerk's own server takes a branch's name (a worker's) or a pull request's number (12, #12, PR 12
+  or its address). The repository is private, so a room's web tools get a 404 there, and no room holds a GitHub login;
+  the daemon asks GitHub's REST API on the token the needs pipeline already uses, `secrets/github.token`, sent in a
+  header and never in a result, a log or a card.
+- It returns the branch's head on GitHub (`github`: its commit and how long ago it was made; null when GitHub has no
+  such branch, as after a merge that deleted it), the same branch in Yerk's checkout against it (`here`: its head,
+  whether GitHub has that same commit, and how many commits each side lacks when both are in the checkout; read only,
+  no fetch and no ref written), and the branch's pull requests, the newest five, each open, draft, merged or closed with
+  when, and an open one's commit statuses (`checks`, and `red` naming each that failed). So "committed, not pushed" and
+  "pushed, its pull request open and green" are read, not guessed.
+- Yerk's own repository only: `[needs] repo` in yerkd.toml, else the checkout's origin; another repository's address is
+  refused in one line. The owner's rooms only, since the repository is the owner's; a person's room hears that in one
+  line. A name that is no branch (an option, a range, a space) is refused before anything is sent.
+- With no token the tool says, in one line, the file that turns it on and asks GitHub nothing; a token that does not
+  reach the repository (GitHub's 401, 403 or 404 on the repository itself), a pull request that is not there and GitHub
+  not answering are each said in words. `yerk abilities` lists `github-state` as needing GitHub until the token file is
+  there (abilities.toml's `github` key is that file). Free: no spend row.
+- The card's row reads "checking need-example-1 on GitHub", never the call.
+- abilities.toml has the built `github-state` entry; the README names it among Yerk's tools (its inbox sentence a clause
+  shorter, to stay under 12,000 bytes), the GUIDE has a section, A branch on GitHub, and its count is what the file
+  holds, 95: 37 built; docs/tools.md and docs/budgets.md are what `yerk docs own` writes.
+- budgets.toml: `yerk_tools` 16,900 to 17,700 (the tool is 822 as built on Python 3.13, about 853 as sent) and the
+  session total by the 800 to 115,902; [code] lines 24,148 + 129 = 24,277; each with its dated note.
+- Why: on 2026-10-27 a room asked to tell a worker's outcome (its branch committed, not pushed), and whether the branch
+  or its pull request had since reached GitHub, fetched the repository's pull requests from GitHub's API and got a 404:
+  the repository is private and the room has no login. It said the push state was unknown from there and filed the need.
+
+**Upgrading**: nothing to change where the needs pipeline already has its token: the tool reads
+`secrets/github.token` in the private folder (one line, 0600), which needs read access to the repository's contents,
+pull requests and commit statuses. A room has the tool from its next session start after the deploy. budgets.toml's
+`yerk_tools`, `total` and [code] `lines` move with this change.
 
 ### need-2026-10-26-23 (#?)
 
