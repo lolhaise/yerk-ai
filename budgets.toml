@@ -827,4 +827,11 @@ secs = 60
 # 2026-11-02: need-2026-10-24-22 merged with main 9d747cb (#168): main's 24,277 plus this PR's 70 is 24,347, counted on
 # the merged tree; daemon.py, mcp_server.py and words.py, which both changed, merged with no line in common; `yerk docs
 # own` wrote budgets.md.
-lines = 24347
+# 2026-11-02: reattach-race raised it by 16, a second look before a worker is settled as lost (seen live: one
+# unit list read before systemd-run had made a cold read's unit settled it as lost a second after its start, its need held
+# and its account given to the next builder while it ran on to its verdict), not folded to fit: workers.py 16 (YOUNG and
+# _gone(): the fresh look, the exit file, the first two minutes, the stale line; reattach and reconcile ask it first).
+# 24,164: main 947df1f's 24,148 plus 16.
+# 2026-11-02: reattach-race merged with main 5b52559 (#160, #168): main's 24,347 plus this PR's 16 is 24,363, counted on
+# the merged tree; workers.py, the one file this PR changes, merged with no line in common; `yerk docs own` wrote budgets.md.
+lines = 24363
