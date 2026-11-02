@@ -15,9 +15,9 @@ version changes.
   list first and the running workers after, and a worker started in between, in the ledger and watched before
   `systemd-run` had made its unit, was in no list and settled as lost on that one read: on 2026-11-02 the
   journal has `worker 99319d: lost (the unit is gone and left no exit record)` one second after its `started` line,
-  so need 22 was held for a person ("the cold read gave no verdict") and account two went to the next need's builder
-  though `[workers] per_account` is 1, while 99319d, the need's cold read, ran on to its `merge` verdict and exited
-  clean at 02:31:52. Now a worker one list missed gets a second look at its unit first, and one under two minutes old
+  so need 22 was held for a person ("the cold read gave no verdict") and account two, one worker at a time under
+  `[workers] per_account` (1 by default), went to the next need's builder, while 99319d, the need's cold read, ran on
+  to its `merge` verdict and exited clean seven minutes later. Now a worker one list missed gets a second look at its unit first, and one under two minutes old
   is kept for a later pass, its unit maybe not listed yet; a unit both looks miss, with no exit file, in a worker past
   its first two minutes is lost, as before, and a look that saves one logs `the unit list was stale, re-attached`.
 

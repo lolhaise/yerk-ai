@@ -399,7 +399,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-02: need-2026-10-26-22 raised it by 171, the `reverse_image_search` tool, a picture in a room's own folders looked up on the web as Google Lens or TinEye would, through Google Cloud Vision's web detection (need 22 of 2026-10-26: a room asked who made a painting in a photo it was sent tried six word searches and found nothing, since no tool searched the web by picture), not folded to fit: reverse_image.py 133 (the picture as Google reads it, a smaller JPEG by ffmpeg when it must be, the request with the key in a header, three tries on a busy answer, Google's refusal in its own words, the answer's lists, the spend row), daemon.py 14 (the tool on the room's own folders, every room's allow line), words.py 13 (the refusals, the wall's key line, what a result says next, the card's row), mcp_server.py 11 (the tool's sentence). 24,148: main 281b187's 23,977 plus 171.
 
-- `lines = 24148`
+2026-11-02: reattach-race raised it by 16, a second look before a worker is settled as lost (seen live: one unit list read before systemd-run had made a cold read's unit settled it as lost a second after its start, its need held and its account given to the next builder while it ran on to its verdict), not folded to fit: workers.py 16 (YOUNG and _gone(): the fresh look, the exit file, the first two minutes, the stale line; reattach and reconcile ask it first). 24,164: main 947df1f's 24,148 plus 16.
+
+- `lines = 24164`
 
 ## Uncapped
 
