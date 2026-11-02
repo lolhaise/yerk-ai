@@ -2,10 +2,11 @@
 # official Python SDK) and the send tool's shape are adapted from Hermes Agent v0.22.2,
 # mcp_serve.py (create_mcp_server, messages_send), https://github.com/NousResearch/hermes-agent
 # Copyright (c) 2025 Nous Research. MIT License. See NOTICE.
-"""Yerk AI's own MCP server: fourteen tools (send, hold, recall, read_memory, remember, worker, schedule, settings, transcribe,
-voice_note, seen, render, watch, need), local-only HTTP, preloaded in every room; transcribe, voice_note and watch are here and not plug-ins
-because the daemon has the network and a room's shell has none, seen because no owner room has a Write tool, and render because LibreOffice
-needs a writable /tmp a room's sandbox does not give. A worker gets none of it: by default no MCP server at all, and with
+"""Yerk AI's own MCP server: eighteen tools (send, hold, recall, read_memory, remember, worker, schedule, settings, transcribe,
+voice_note, seen, render, watch, need, text, delete, reverse_image_search, github_state), local-only HTTP, preloaded in every room;
+transcribe, voice_note, watch, text, reverse_image_search and github_state are here and not plug-ins because the daemon has the network
+plug-ins because the daemon has the network (and github_state the token) and a room's shell has none, seen because no owner room has a Write tool, render
+a writable /tmp a room's sandbox does not give, and delete because that sandbox mounts all but the room's folders read-only. A worker gets none of it: by default no MCP server at all, and with
 [workers] yerk_tools its own stdio server (`worker_server`) carrying recall and read_memory only.
 
 Every endpoint (/mcp, /hook, /control) wants the `x-yerk-secret` header (restart test R3). Three
@@ -47,16 +48,20 @@ class Daemon(Protocol):
     async def tool_recall(self, room: str, query: str, k: int) -> dict[str, Any]: ...
     async def tool_read_memory(self, room: str, path: str, start: int, lines: int) -> dict[str, Any]: ...
     async def tool_remember(self, room: str, text: str, about: str, replaces: list[str], said: str = "", source: str = "") -> dict[str, Any]: ...
-    async def tool_rule(self, room: str, text: str, job: str) -> dict[str, Any]: ...
+    async def tool_rule(self, room: str, text: str, job: str, triggers: list[str] | None = None) -> dict[str, Any]: ...
     async def tool_worker(self, room: str, req: dict[str, Any]) -> dict[str, Any]: ...
     async def tool_schedule(self, room: str, req: dict[str, Any]) -> dict[str, Any]: ...
     async def tool_settings(self, room: str, model: str, effort: str, account: str = "") -> dict[str, Any]: ...
     async def tool_transcribe(self, room: str, path: str, owner_yes: bool = False) -> dict[str, Any]: ...
     async def tool_voice_note(self, room: str, script: str, name: str = "", owner_yes: bool = False) -> dict[str, Any]: ...
     async def tool_render(self, room: str, path: str) -> dict[str, Any]: ...
-    async def tool_watch(self, room: str, url: str, frames: int = 6, owner_yes: bool = False) -> dict[str, Any]: ...
+    async def tool_watch(self, room: str, url: str, frames: int = 6, owner_yes: bool = False, path: str = "") -> dict[str, Any]: ...
     async def tool_seen(self, room: str, path: str, text: str, shows: str) -> dict[str, Any]: ...
     async def tool_need(self, room: str, asked: str, tried: str, needed: str, shadow: str = "") -> dict[str, Any]: ...
+    async def tool_text(self, room: str, to: str, text: str) -> dict[str, Any]: ...
+    async def tool_delete(self, room: str, paths: list[str]) -> dict[str, Any]: ...
+    async def tool_reverse_image_search(self, room: str, path: str) -> dict[str, Any]: ...
+    async def tool_github_state(self, room: str, branch_or_pr: str) -> dict[str, Any]: ...
 
 
 def caller_room(ctx: Context) -> str:
@@ -134,8 +139,8 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         return json.dumps(await daemon.tool_read_memory(caller_room(ctx), path, from_line, lines))
 
     @mcp.tool()
-    async def remember(text: str, about: str = "", replaces: list[str] | None = None, job: str = "", said: str = "", source: str = "",
-                       *, ctx: Context) -> str:
+    async def remember(text: str, about: str = "", replaces: list[str] | None = None, job: str = "", triggers: list[str] | None = None,
+                       said: str = "", source: str = "", *, ctx: Context) -> str:
         """File in memory now, before you write the answer, what you were just told: a new fact, a decision or a
         correction, one line in plain words. `about`: for a fact, the person, place or thing it is about,
         by the name the owner uses (it names the fact file). `replaces`: for a correction, each old line as
@@ -143,11 +148,12 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         next 12 holding those words is marked superseded. Returns the new line's cite. `job`: when the owner
         says how a job is done from now on, or corrects how it was done, the job's short name ("open web pages",
         the rules' own name if it has one): `text` becomes its one rule in every room, the older one marked
-        replaced. `said`: when `text` is what a person said or wrote, word for word, their name, with `source`
-        (the message id, file path or transcript line holding those words): it is filed as their words.
-        Anything else about a person (what they decided or want, in your words) is your note, and is shown
-        as your note, never as their words."""
-        return json.dumps(await (daemon.tool_rule(caller_room(ctx), text, job) if job else
+        replaced. `triggers`, with `job`: words or short phrases a message on the job holds (the owner's, when
+        named); a topic rule loads on them and its job's words. `said`: when `text` is what a person said or
+        wrote, word for word, their name, with `source` (the message id, file path or transcript line holding
+        those words): it is filed as their words. Anything else about a person (what they decided or want, in
+        your words) is your note, and is shown as your note, never as their words."""
+        return json.dumps(await (daemon.tool_rule(caller_room(ctx), text, job, triggers) if job else
                                  daemon.tool_remember(caller_room(ctx), text, about, replaces or [], said, source)))
 
     @mcp.tool()
@@ -214,7 +220,7 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         return json.dumps(await daemon.tool_render(caller_room(ctx), path))
 
     @mcp.tool()
-    async def watch(url: str, frames: int = 6, owner_yes: bool = False, *, ctx: Context) -> str:
+    async def watch(url: str = "", path: str = "", frames: int = 6, owner_yes: bool = False, *, ctx: Context) -> str:
         """A video in a post, its frames and its transcript, since your shell has no network to pull it: `url` is the link to
         a post that holds a video (an Instagram reel or post, a TikTok, an X post, a YouTube link, or any page yt-dlp knows).
         The daemon pulls the video into this room's work folder under videos/, takes `frames` still pictures spread evenly
@@ -225,8 +231,9 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         a video link and expects you to have watched it, since the caption, the cover picture and the comments are not the
         video. A page that needs a login, a private post or a page with no video comes back as that, in the site's own
         words. A transcript past US$1 comes back refused until the owner says yes; then call again with `owner_yes` true. A
-        video already pulled is not pulled or transcribed again."""
-        return json.dumps(await daemon.tool_watch(caller_room(ctx), url, frames, owner_yes))
+        video already pulled is not pulled or transcribed again. A video file sent to you, which Read cannot open, is watched
+        the same way from `path`, its saved path from its [attachment] line, in place of `url`; nothing is pulled."""
+        return json.dumps(await daemon.tool_watch(caller_room(ctx), url, frames, owner_yes, path))
 
     @mcp.tool()
     async def seen(path: str, text: str, shows: str, *, ctx: Context) -> str:
@@ -244,6 +251,42 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         how it failed, `needed` the ability in a few plain words ("see a picture in a post"), `shadow` what you did anyway, if
         anything. The same ability filed again is counted on the open one."""
         return json.dumps(await daemon.tool_need(caller_room(ctx), asked, tried, needed, shadow))
+
+    @mcp.tool()
+    async def text(to: str, text: str, *, ctx: Context) -> str:
+        """Texts one person as the owner when the owner asks you to: an iMessage, else an SMS, from the owner's Mac. `to` is
+        their phone number or email address, never a name (recall it from the owner's texts, or ask); `text` the message
+        exactly as it should arrive. It is held for the owner to read first: once they say the word, call it again the same
+        and it goes once. A result with `maybe_sent` may have gone out: say so, and never send it again unasked."""
+        return json.dumps(await daemon.tool_text(caller_room(ctx), to, text))
+
+    @mcp.tool()
+    async def delete(paths: list[str], *, ctx: Context) -> str:
+        """Deletes files or folders outside this room's work folder when the owner orders it, since your shell deletes only
+        inside it: for good, not to the trash, so the disk space comes back. `paths`: whole, real paths from /. Held for the
+        owner to read first: once they say the word, call it again the same and it runs once. Returns what went, what failed
+        and why, and the space freed."""
+        return json.dumps(await daemon.tool_delete(caller_room(ctx), paths))
+
+    @mcp.tool()
+    async def reverse_image_search(path: str, *, ctx: Context) -> str:
+        """Searches the web by picture, as Google Lens or TinEye do, since a word search cannot look for a picture: `path` is a
+        picture in this room's folders (its [attachment] path, a web_image file, a watch frame). The daemon sends it to Google
+        Cloud Vision's web detection and returns Google's best guess at what it is, the names it ties to it (a work and its
+        maker, a place, a product), the pages that show it, and the copies and look-alikes it found. Use it when asked where a
+        picture comes from, what it is or who made it; open a page that shows it before you say so, and give the best guess
+        as a guess."""
+        return json.dumps(await daemon.tool_reverse_image_search(caller_room(ctx), path))
+
+    @mcp.tool()
+    async def github_state(branch_or_pr: str, *, ctx: Context) -> str:
+        """A branch or a pull request of Yerk's own repository as GitHub has it now, since that repository is private and no
+        room holds a GitHub login (a web fetch there gets a 404): `branch_or_pr` is a branch's name (a worker's) or a pull
+        request's number. Returns the branch's head on GitHub (`github`), the same branch in Yerk's checkout against it
+        (`here`: whether GitHub has its commit, how many commits each side lacks) and its pull requests: open, draft, merged
+        or closed, and an open one's checks. Use it when asked whether a branch was pushed or its pull request is open,
+        green or merged."""
+        return json.dumps(await daemon.tool_github_state(caller_room(ctx), branch_or_pr))
 
     @mcp.tool()
     async def voice_note(script: str, name: str = "", owner_yes: bool = False, *, ctx: Context) -> str:

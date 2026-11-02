@@ -20,7 +20,7 @@ from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
 from .accounts import load_accounts
-from .config import flag, uncapped, write_private
+from .config import REPO, flag, uncapped, write_private
 from .lifted.clock import clock_line, room_voice
 from .lifted.sizemap import fmt, split_sections
 from .lifted.trim import truncate
@@ -29,6 +29,7 @@ from .memory import FRONT, chars, rules_part
 from .mentions import OLD
 
 MECHANICS = Path(__file__).with_name("mechanics.md")
+CODE = "{code}"                    # mechanics.md's mark for the checkout that runs, its path wherever a room is handed the file
 APPENDED = ("mechanics", "persona", "rulebook", "room_voice", "pinned_memory", "rules", "recall_pack")
 TAIL = ("rulebook", "rules")       # one rule a line, the newest last: past its size the newest lines go, never a middle one
 SEP = "\n\n"
@@ -154,8 +155,9 @@ def session_start(private: Path, room: dict[str, Any], budgets: dict[str, Any], 
 
 
 def mechanics(whole: bool = False) -> str:
-    """mechanics.md as a session start sends it; an uncapped install's with no length asked of a worker's relay, and PAID."""
-    text = MECHANICS.read_text().strip()
+    """mechanics.md as a session start sends it, the checkout's path at its CODE mark; an uncapped install's with no length
+    asked of a worker's relay, and PAID."""
+    text = MECHANICS.read_text().strip().replace(CODE, str(REPO))
     return f"{text.replace(', under 1,500 characters,', ',')}\n{PAID}" if whole else text
 
 
@@ -190,7 +192,7 @@ def news(path: Path, sid: str, private: Path, room: dict[str, Any], rules: Path,
     once per version: each new line and each line replaced or gone, or past `budget` their count and where to read them.
     `path` keeps the room's looks; `sid` "" records a process start, a new session's first look (its start file's)."""
     rb = layer_dir(private, room) / str(room["rulebook"]) if room.get("rulebook") else None
-    now = {k: (p.read_text().strip() if p.is_file() else "", p.resolve()) for k, p in
+    now = {k: ((mechanics() if k == "mechanics" else p.read_text().strip()) if p.is_file() else "", p.resolve()) for k, p in
            (("mechanics", MECHANICS), ("rulebook", rb), ("rules", rules)) if p}
     texts = {k: t for k, (t, _) in now.items()}
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -304,7 +306,8 @@ CLAUDE = {"Called the Read tool": "Claude Code: files re-read after compaction",
           "Stop hook blocking error": "Stop hook bounce"}
 HEADS_RE = re.compile("(?m)^(?=" + "|".join(map(re.escape, CLAUDE)) + ")")
 OTHER, TOKENS, OWN = "Claude Code: other reminders, wrappers", "Claude Code: token count", "the message's own text"
-IN_TEXT = (("[a reply to ", "reply header"), ("[attachment] ", "attachment lines"), ("[voice note] ", "attachment lines"))
+IN_TEXT = (("[a reply to ", "reply header"), ("[attachment] ", "attachment lines"), ("[voice note] ", "attachment lines"),
+           ("[video] ", "attachment lines"))
 
 
 def _add(into: dict[str, int], parts: dict[str, int]) -> dict[str, int]:

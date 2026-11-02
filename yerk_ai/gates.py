@@ -8,12 +8,14 @@ quotes, in a heredoc body or as a word in a string is not a delete; lifted/shell
   a disk, a fork bomb, a shutdown; lifted/hardline.py) is denied and no approval releases it;
 - trash: a plain `rm` or `unlink` of named paths is rewritten to the trash command with the same
   paths and runs; the room is not told. A delete in any other shape is denied with the trash line
-  for the model; a trash command that then fails is told to the room in one line;
+  for the model, and one outside the work folder with the way an owner room has (the delete tool);
+  a trash command that then fails is told to the room in one line;
 - restart: a write to a file yerkd reads at start (yerkd.toml, rooms.toml, accounts.toml) or a
   restart of yerkd is refused while the memory index rebuilds or a human turn is running, with one
   plain line to the room;
 - approval: an action named external (a send to another room, a public post, a login, money, a
-  message out through another tool, or a rule in yerkd.toml [gates.external]) is held, one plain
+  message out through another tool, a text in the owner's name, a delete for good outside the work folder, or a rule in
+  yerkd.toml [gates.external]) is held, one plain
   line to the room, until an approver says the word in the room's running turn; then that same call
   (its normalised text and working folder) runs once, and any other call is held again.
 Every hold, release, refusal and rewrite is a row in the ledger's `gates` table.
@@ -53,6 +55,8 @@ EXTERNAL: dict[str, dict[str, str]] = {
     "money-cli": {"tool": r"^Bash$", "command": r"^stripe\b", "what": "money"},
     "message-out": {"tool": r"(?i)^mcp__(?!yerk__).*(?:send|post|publish|tweet|email|message|reply)", "what":
                     "a message to someone"},
+    "text-out": {"tool": r"^mcp__yerk__text$", "what": "a text in your name"},     # the preview: off, no text goes (texts.py)
+    "delete-outside": {"tool": r"^mcp__yerk__delete$", "what": "a delete for good"},   # its paths shown: off, none goes (deletes.py)
 }
 
 
@@ -136,9 +140,10 @@ _MOVERS = {"cd", "pushd", "popd"}
 _PASS_INSIDE = {"git", "rmdir", "rsync", "zip"}
 
 
-def check_shell(command: str, cwd: str, s: Settings, root: str = "") -> Verdict | None:
+def check_shell(command: str, cwd: str, s: Settings, root: str = "", way: str = "") -> Verdict | None:
     """hardline, then the delete rules on what would really run (unwrap), for one Bash command: `cwd`
-    is where it runs, `root` the room's work folder (default `cwd`) that a delete must stay under."""
+    is where it runs, `root` the room's work folder (default `cwd`) that a delete must stay under, `way`
+    what the refusal of a delete outside it adds (an owner room's: the delete tool)."""
     parts = shell(command)
     whole = mask(shellguard.strip_heredocs(command))           # a redirect or a fork bomb spans separators
     for seg, argv, norm in [("", [], ""), *parts]:
@@ -172,7 +177,7 @@ def check_shell(command: str, cwd: str, s: Settings, root: str = "") -> Verdict 
     outside = [t for _, targets in deletes for t in targets if not unwrap.inside([t], root or cwd)]
     if outside:
         return Verdict("trash", "deny", f"Refused: it would delete outside the work folder ({', '.join(outside)[:200]}). "
-                                        "Deletes here stay under the work folder; anything else is the owner's to do.",
+                                        "Deletes here stay under the work folder; anything else is the owner's to do." + way,
                        detail=f"outside {root or cwd}: {', '.join(outside)[:200]}")
     passing = _PASS_INSIDE | ({os.path.basename(s.trash[0])} if s.trash else set())
     if all(os.path.basename(argv[0]) in passing for argv, _ in deletes):

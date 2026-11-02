@@ -2,7 +2,7 @@
 
 Written by `yerk docs own` from yerk_ai/mcp_server.py (build) and workers.WORKER_TOOLS; change those and run it again, never this page.
 
-The 14 tools Yerk AI's own MCP server hands every room's Claude Code, preloaded, as mcp__yerk__NAME. Each one's description is the text the model reads, indentation dropped. A worker gets none of them unless [workers] yerk_tools in yerkd.toml names some, and then only recall, read_memory, on its own server.
+The 18 tools Yerk AI's own MCP server hands every room's Claude Code, preloaded, as mcp__yerk__NAME. Each one's description is the text the model reads, indentation dropped. A worker gets none of them unless [workers] yerk_tools in yerkd.toml names some, and then only recall, read_memory, on its own server.
 
 ## send
 
@@ -59,16 +59,18 @@ by the name the owner uses (it names the fact file). `replaces`: for a correctio
 next 12 holding those words is marked superseded. Returns the new line's cite. `job`: when the owner
 says how a job is done from now on, or corrects how it was done, the job's short name ("open web pages",
 the rules' own name if it has one): `text` becomes its one rule in every room, the older one marked
-replaced. `said`: when `text` is what a person said or wrote, word for word, their name, with `source`
-(the message id, file path or transcript line holding those words): it is filed as their words.
-Anything else about a person (what they decided or want, in your words) is your note, and is shown
-as your note, never as their words.
+replaced. `triggers`, with `job`: words or short phrases a message on the job holds (the owner's, when
+named); a topic rule loads on them and its job's words. `said`: when `text` is what a person said or
+wrote, word for word, their name, with `source` (the message id, file path or transcript line holding
+those words): it is filed as their words. Anything else about a person (what they decided or want, in
+your words) is your note, and is shown as your note, never as their words.
 ```
 
 - `text`: string, required
 - `about`: string, default ""
 - `replaces`: list of string or null, default null
 - `job`: string, default ""
+- `triggers`: list of string or null, default null
 - `said`: string, default ""
 - `source`: string, default ""
 
@@ -176,10 +178,12 @@ and only a video with no captions goes to the paid transcription and its US$1 ga
 a video link and expects you to have watched it, since the caption, the cover picture and the comments are not the
 video. A page that needs a login, a private post or a page with no video comes back as that, in the site's own
 words. A transcript past US$1 comes back refused until the owner says yes; then call again with `owner_yes` true. A
-video already pulled is not pulled or transcribed again.
+video already pulled is not pulled or transcribed again. A video file sent to you, which Read cannot open, is watched
+the same way from `path`, its saved path from its [attachment] line, in place of `url`; nothing is pulled.
 ```
 
-- `url`: string, required
+- `url`: string, default ""
+- `path`: string, default ""
 - `frames`: integer, default 6
 - `owner_yes`: boolean, default false
 
@@ -210,6 +214,55 @@ anything. The same ability filed again is counted on the open one.
 - `tried`: string, required
 - `needed`: string, required
 - `shadow`: string, default ""
+
+## text
+
+```text
+Texts one person as the owner when the owner asks you to: an iMessage, else an SMS, from the owner's Mac. `to` is
+their phone number or email address, never a name (recall it from the owner's texts, or ask); `text` the message
+exactly as it should arrive. It is held for the owner to read first: once they say the word, call it again the same
+and it goes once. A result with `maybe_sent` may have gone out: say so, and never send it again unasked.
+```
+
+- `to`: string, required
+- `text`: string, required
+
+## delete
+
+```text
+Deletes files or folders outside this room's work folder when the owner orders it, since your shell deletes only
+inside it: for good, not to the trash, so the disk space comes back. `paths`: whole, real paths from /. Held for the
+owner to read first: once they say the word, call it again the same and it runs once. Returns what went, what failed
+and why, and the space freed.
+```
+
+- `paths`: list of string, required
+
+## reverse_image_search
+
+```text
+Searches the web by picture, as Google Lens or TinEye do, since a word search cannot look for a picture: `path` is a
+picture in this room's folders (its [attachment] path, a web_image file, a watch frame). The daemon sends it to Google
+Cloud Vision's web detection and returns Google's best guess at what it is, the names it ties to it (a work and its
+maker, a place, a product), the pages that show it, and the copies and look-alikes it found. Use it when asked where a
+picture comes from, what it is or who made it; open a page that shows it before you say so, and give the best guess
+as a guess.
+```
+
+- `path`: string, required
+
+## github_state
+
+```text
+A branch or a pull request of Yerk's own repository as GitHub has it now, since that repository is private and no
+room holds a GitHub login (a web fetch there gets a 404): `branch_or_pr` is a branch's name (a worker's) or a pull
+request's number. Returns the branch's head on GitHub (`github`), the same branch in Yerk's checkout against it
+(`here`: whether GitHub has its commit, how many commits each side lacks) and its pull requests: open, draft, merged
+or closed, and an open one's checks. Use it when asked whether a branch was pushed or its pull request is open,
+green or merged.
+```
+
+- `branch_or_pr`: string, required
 
 ## voice_note
 

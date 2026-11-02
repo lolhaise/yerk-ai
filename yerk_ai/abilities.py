@@ -11,7 +11,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from . import addons, words
+from . import addons, github, words
 from .config import load_toml, table
 
 log = logging.getLogger("yerk.abilities")
@@ -30,10 +30,12 @@ def has(key: Path | None) -> bool:
 
 
 def key(name: str, s: Any) -> Path | None:
-    """A key an entry's `keys` names: openai is the install's one OpenAI key file ([memory] embeddings_key), any other
-    secrets/NAME.key in the private folder."""
+    """A key an entry's `keys` names: openai is the install's one OpenAI key file ([memory] embeddings_key), github the
+    pipeline's token (github.TOKEN), any other secrets/NAME.key in the private folder."""
     private = getattr(s, "private", None)
-    return getattr(s, "embeddings_key", None) if name == "openai" else private / "secrets" / f"{name}.key" if private else None
+    if name == "openai" or not private:
+        return getattr(s, "embeddings_key", None) if name == "openai" else None
+    return private / (github.TOKEN if name == "github" else Path("secrets") / f"{name}.key")
 
 
 def state(name: str, ab: dict[str, Any], tab: dict[str, dict[str, Any]], s: Any) -> tuple[str, str]:

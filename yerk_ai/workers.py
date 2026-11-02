@@ -74,6 +74,7 @@ ENV_KEEP = ("PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "LC_CT
 TICK = re.compile(r"^\s*[-*+]\s*\[([ xX])\]\s*(.+?)\s*$")
 WORKER_TOOLS = ("recall", "read_memory")       # the only Yerk AI tools a worker may get: read-only
 PUMP_EVERY = 5.0                               # seconds between looks for an idle room with a relay waiting
+YOUNG = 120.0                                  # seconds after its start a worker missing from the unit list is not lost yet
 
 
 @dataclass
@@ -774,7 +775,7 @@ class Workers:
                     self.watch.add(d)
                 log.info("worker %s: back in line for account %s", row["id"], row["account"])
                 continue
-            if (units is None or row["unit"] in units) and not (d / EXIT).is_file():
+            if not (d / EXIT).is_file() and (units is None or row["unit"] in units or not await self._gone(row)):
                 self.live[row["id"]] = row
                 if self.watch:
                     self.watch.add(d)
@@ -812,9 +813,24 @@ class Workers:
                 continue
             if (d / EXIT).is_file():
                 await self.complete(wid)
-            elif row["unit"] not in units:
+            elif row["unit"] not in units and await self._gone(row):
                 await self.complete(wid, lost=True)
         await self.next_in_line()
+
+    async def _gone(self, row: dict[str, Any]) -> bool:
+        """A worker one unit list missed is lost only when a fresh look misses its unit too, it left no exit file and it
+        started over YOUNG s ago: a row is in the ledger and live before systemd-run makes its unit, so one stale list
+        settled a running cold read as lost a second after its start (seen live)."""
+        try:
+            listed = row["unit"] in await asyncio.to_thread(self.launcher.running)
+        except (OSError, subprocess.SubprocessError):
+            listed = True                                # unreadable is not empty: nobody is declared lost on it
+        if (Path(row["staging"]) / EXIT).is_file():
+            return False                                 # it ended meanwhile: its exit file completes it
+        if listed or time.time() - float(row.get("started") or 0) < YOUNG:
+            log.info("worker %s: the unit list was stale, re-attached", row["id"])
+            return False
+        return True
 
 
 def listing(ledger: Ledger, limit: int = 20) -> list[dict[str, Any]]:

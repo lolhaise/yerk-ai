@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 112740`
+- `total = 116640`
 
 ## [session_start.claude_code]
 
@@ -34,11 +34,23 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-10-31, need-2026-10-31-27: the `watch` tool's sentence on captions (the transcript is the video's own captions when the page has them, free, and only a video with none goes to the paid transcription) takes it from 1,282 to 1,545 as this tree builds it on Python 3.13, about 1,576 as sent, so about 14,330 on the 14,067 the rooms send; so 14,400, no part could pay, the total rose by the 300.
 
-2026-11-01, need-2026-11-01-31: the hands plug-in's browser gains `upload` (a file in the room's work folder put on a page's file input, which `set` cannot fill; filed 2026-11-01), its entry 2,827 as the plug-in's branch builds it and about 2,858 as sent (each of the plug-in's five goes out 31 over its build: 7,307 built, 7,462 sent on its main), 438 over the 2,420 the work room sends; so 7,900, no part could pay, the total rose by the 438.
+2026-11-01, need-2026-10-24-1: the `text` tool (one text in the owner's name from the Mac, held with its words shown and sent once on the owner's word, since a room asked to text someone for the owner had no tool to) is 688 as this tree builds it on Python 3.13, about 719 as sent (31 over its build, as each of Yerk AI's entries goes out), so about 15,049 on the 14,330 the rooms send; so 15,100, no part could pay, the total rose by the 700.
+
+2026-11-02, need-2026-10-25-22: `remember`'s `triggers` (the words a topic rule loads on, chosen when it is filed, since a room asked to make one load on an everyday word had no way to) takes the tool from 1,625 to 1,904 as this tree builds it on Python 3.13, about 279 more as sent, so about 15,328 on the 15,049 the rooms send; so 15,400, no part could pay, the total rose by the 300.
+
+2026-11-02, need-2026-10-25-23: the `delete` tool (a delete the owner orders outside a room's work folder, held with each path shown and run once on the owner's word, for good, by the daemon, since a room asked to free a full disk had its `rm` refused and the rest of the disk read-only in its sandbox) is 605 as this tree builds it on Python 3.13, about 636 as sent (31 over its build, as each of Yerk AI's entries goes out), so about 15,964 on the 15,328 the rooms send; so 16,000, no part could pay, the total rose by the 600.
+
+2026-11-02, need-2026-10-26-22: the `reverse_image_search` tool (a picture in a room's folders looked up on the web by Google Cloud Vision's web detection, since a room asked who made a painting in a photo had only word searches, and six found nothing) is 826 as this tree builds it on Python 3.13, about 857 as sent (31 over its build, as each of Yerk AI's entries goes out), so about 16,821 on the 15,964 the rooms send; so 16,900, no part could pay, the total rose by the 900.
+
+2026-11-02, need-2026-10-27-23: the `github_state` tool (a branch or a pull request of Yerk's own repository, private, as GitHub has it now, read on the daemon's token, since a room asked whether a worker's branch had reached GitHub got a 404 from its web fetch with no login) is 822 as this tree builds it on Python 3.13, about 853 as sent (31 over its build, as each of Yerk AI's entries goes out), so about 17,674 on the 16,821 the rooms send; so 17,700, no part could pay, the total rose by the 800.
+
+2026-11-02, need-2026-10-24-22: the `watch` tool's `path` (a video file sent to a room watched where it is, its frames and its transcript as a link's, since Read opens no video and ffmpeg in a room's shell waits on an approval no one gives mid-turn) takes it from 1,545 to 1,768 as this tree builds it on Python 3.13, about 223 more as sent, so about 17,897 on the 17,674 the rooms send after main's github_state (all 18 build to 17,356 on the tree merged with main 9d747cb, about 17,914 as sent); so 18,000, no part could pay, the total rose by the 300. The watch line's clause is under the mechanics' note.
+
+2026-11-02, need-2026-11-01-31: the hands plug-in's browser gains `upload` (a file in the room's work folder put on a page's file input, which `set` cannot fill; filed 2026-11-01), its entry 2,827 as the plug-in's branch builds it and about 2,858 as sent (each of the plug-in's five goes out 31 over its build: 7,307 built, 7,462 sent on its main), 438 over the 2,420 the work room sends; so 7,900, no part could pay, the total rose by the 438 (to 116,640 on main 22876bf's numbers).
 
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
-- `yerk_tools = 14400`
+- `yerk_tools = 18000`
 - `deferred_tool_names = 3429`
 - `mcp__hands__ = 7900`
 - `mcp__web-ladder__web_image = 913`
@@ -80,7 +92,11 @@ Yerk AI's own parts, joined into the one file passed by --append-system-prompt-f
 
 2026-10-31, need-2026-10-31-27: the watch line's clause (its transcript is the video's own captions when it has them, free, and only a video without captions is transcribed from its sound; that evening an owner was quoted US$1.43 for a YouTube video's words YouTube already had) took the mechanics to 5,608, so 5,700; no part was measured again to pay for it, so the total rose by the 200, to 112,302 with the tools' 300.
 
-- `mechanics = 5700`
+2026-11-02, need-2026-10-25-21: the code line (Yerk's own code, the checkout that runs, named by its path and open to an owner room's Read and Grep, so a worker's claim about Yerk is checked there before it is said; on 2026-10-25 a room's Grep of the checkout was refused and it relayed a worker's claim unchecked) took the mechanics file to 5,818, and the path it carries rides in what is sent: 5,831 on the box, 5,859 in a worker's worktree, 5,869 in CI's checkout of a sha; so 6,000, a checkout's path of up to 188 characters. No part was measured again to pay for it, so the total rose by the 300, to 113,302.
+
+2026-11-02, need-2026-10-24-22: the watch line's clause (a video file sent to you: on its `path`, since Read cannot open one) took the mechanics file to 5,888: 5,901 on the box, 5,929 in a worker's worktree, 5,939 in CI's checkout of a sha; still under 6,000, which now leaves a checkout's path of up to 118 characters. No line moved.
+
+- `mechanics = 6000`
 - `persona = 11800`
 - `rulebook = 14000`
 - `room_voice = 5500`
@@ -373,7 +389,37 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-10-31: need-2026-10-31-27 merged with main 4a3f7f7 (#153 worker-no-secrets): main's 22,893 plus this PR's 207 is 23,100, counted on the merged tree; daemon.py, which both changed (#153 the worker unit's hidden paths and their comment, this PR the watch tool's docstring and log line), merged with no line in common; `yerk docs own` wrote budgets.md.
 
-- `lines = 23100`
+2026-10-31: needs-pipeline raised it by 496, a filed need built, checked, read cold, merged, deployed and live with no person (the harness does it all by itself, with no person needed), not folded to fit: pipeline.py 254 (the queue, the watch, the fix loop, the cold read, the merge, the deploy unit, live), github.py 86 (urllib, every failure as words), git_askpass.py 34, needs.py 53 (the states, their words, the read and fix briefs), daemon.py 18, words.py 14, config.py 8, cli.py 2. 23,389: main 4a3f7f7's 22,893 plus 496.
+
+2026-11-01: needs-pipeline merged with main a82fc7b (#154 need-2026-10-31-27, #156 dst-night-tests): main's 23,100 plus this PR's 496 is 23,596, counted on the merged tree; daemon.py and words.py, which both changed (#154 the watch tool's docstring and log line and the captions words, this PR the pipeline's hooks and the NEED_* words), merged with no line in common; `yerk docs own` wrote budgets.md.
+
+2026-11-01: needs-pipeline raised it by 13 more, the pickup (needs filed before the pipeline sat at filed with no build ever started, for a person to type `yerk needs build`), not folded to fit: pipeline.py 11 (pickup(), its call in the tick, the docstrings), words.py 1 (NEED_PICKED_UP), config.py 1 (the auto setting's words). 23,609: 23,596 plus 13.
+
+2026-11-01: need-2026-10-24-1 raised it by 160, the `text` tool, one text in the owner's name from the Mac, held with its words shown and sent once on the owner's word (need 1 of 2026-10-24: a room asked to text someone for the owner had no tool to, and Messages on the Mac would not answer over plain ssh), not folded to fit: texts.py 100 (the way to the Mac's bridge, who a text can go to, the status and the send, each outcome told apart), daemon.py 33 (the tool, its refusal at the gate before the owner is asked, the preview as it reads, the release it sends on), words.py 11, mcp_server.py 9 (the tool's sentence), config.py 6 ([imessage]'s keys), gates.py 1 (the text-out rule). 23,769: main 3de39c9's 23,609 plus 160.
+
+2026-11-01: need-2026-10-24-1 raised it by 7 more, the preview naming who a text goes to exactly as it is sent (PR 158's cold read: an address shaped like a path was shown by its last name, so the owner could say the word for one person and the text go to another), not folded to fit: texts.py 6 (preview()), daemon.py 1 (its call at the hold). 23,776: 23,769 plus 7.
+
+2026-11-02: need-2026-10-25-21 raised it by 10, Yerk's own code open to an owner room's Read, Grep and Glob (on 2026-10-25 a room's Grep of the checkout that runs was refused, and it relayed a worker's claim about Yerk unchecked), not folded to fit: daemon.py 8 (code_reads(): the checkout whole or around the private and state folders it holds, a rule and never an --add-dir, which the sandbox opens for writing; its place in an owner room's allow, the docstring), context.py 2 (the CODE mark and its path in the mechanics a room is handed, the session start's and the news line's). 23,786: main 898ab72's 23,776 plus 10.
+
+2026-11-02: need-2026-10-25-22 raised it by 25, the words a topic rule loads on, chosen when it is filed (`remember`'s `triggers`), and the older filing of its job named in `replaced` (on 2026-10-25 a room asked to make a topic rule load on "money" filed it again with the word in its text; the triggers came from its job's words and the names its text held, an everyday word never one, and the filing said replaced: [] though it had marked the older line), not folded to fit: memory.py 23 (the [on: ...] mark, picked() and wants(), a picked trigger riding at a word only its rule says and a phrase on each of its words, a re-filing keeping its job's, the refusal of one naming nothing, `replaced` from either file, the docstrings), daemon.py 1 (the triggers to memory.rule), mcp_server.py 1 (the parameter and its sentence). 23,811: main c0efc6d's 23,786 plus 25.
+
+2026-11-02: need-2026-10-25-23 raised it by 166, the `delete` tool, a delete the owner orders outside a room's work folder, held with each path shown and run once on the owner's word, for good, by the daemon (need 23 of 2026-10-25: a room asked to free a full disk had its `rm` refused by the trash gate and the rest of the disk read-only in its sandbox, and wrote the lines for the owner to paste), not folded to fit: deletes.py 106 (what is never deleted and why, the mount table, the size on disk, the preview, the delete path by path with what would not go), daemon.py 32 (the tool, its refusal at the gate before the owner is asked, the preview at the hold, the release it deletes on, the way named in an owner room's refusal), words.py 14 (the refusals, the kinds, the way; sizes in GB), mcp_server.py 10 (the tool's sentence), gates.py 4 (the delete-outside rule, the way on the outside refusal). 23,977: main 43b6107's 23,811 plus 166.
+
+2026-11-02: need-2026-10-26-22 raised it by 171, the `reverse_image_search` tool, a picture in a room's own folders looked up on the web as Google Lens or TinEye would, through Google Cloud Vision's web detection (need 22 of 2026-10-26: a room asked who made a painting in a photo it was sent tried six word searches and found nothing, since no tool searched the web by picture), not folded to fit: reverse_image.py 133 (the picture as Google reads it, a smaller JPEG by ffmpeg when it must be, the request with the key in a header, three tries on a busy answer, Google's refusal in its own words, the answer's lists, the spend row), daemon.py 14 (the tool on the room's own folders, every room's allow line), words.py 13 (the refusals, the wall's key line, what a result says next, the card's row), mcp_server.py 11 (the tool's sentence). 24,148: main 281b187's 23,977 plus 171.
+
+2026-11-02: need-2026-10-27-23 raised it by 129, the `github_state` tool, a branch or a pull request of Yerk's own repository, private, as GitHub has it now, read on the daemon's token from an owner's room (need 23 of 2026-10-27: a room asked whether a worker's committed branch had reached GitHub fetched the repository's pull requests and got a 404, since the repository is private and no room holds a GitHub login), not folded to fit: github.py 86 (the name a room gives read as a pull request or a branch, the branch's pull requests, head and checks, the branch in Yerk's checkout against GitHub's head with no fetch, each wall in words), words.py 17 (the refusals, the wall's token line, what a result says next, the card's row, a time in days), daemon.py 13 (the tool for the owner's rooms on the pipeline's token, every room's allow line), mcp_server.py 11 (the tool's sentence), abilities.py 2 (the github key is the pipeline's token file). 24,277: main 947df1f's 24,148 plus 129.
+
+2026-11-02: need-2026-10-24-22 raised it by 70, a video file sent to a room watched for every room, its frames and its transcript as a link's are (need 22 of 2026-10-24: a room sent a .mov could not see it, since Read opens no video, ffmpeg in its shell was held for an approval no one gives mid-turn, transcribe gave its sound alone and watch took only a link), not folded to fit: watch.py 38 (is_video and its kinds; run_file, the frames in a folder of their own under videos/ never through a link, the transcript beside the file read when it is there, one call a file at a time; stills' folder; the docstrings), words.py 11 (the [video] line, the Stop bounce, the refusals, the card's words), daemon.py 9 (`path` under may_send's rule as transcribe's, the call off the loop, its log line), room.py 5 (a video sent in staged for the Stop rule, its bounce), card.py 2 (a watched file by its plain name), discord.py 2 (the [video] line under its attachment line), engine.py 1 (only a watch call sees a video), mcp_server.py 1 (the tool's `path` and its sentence), context.py 1 (the [video] line among `yerk map --wire`'s attachment lines). 23,846: main 898ab72's 23,776 plus 70.
+
+2026-11-02: need-2026-10-24-22 merged with main 947df1f (#161 to #166): main's 24,148 plus this PR's 70 is 24,218, counted on the merged tree; context.py, daemon.py, mcp_server.py and words.py, which both changed, merged with no line in common; `yerk docs own` wrote budgets.md.
+
+2026-11-02: need-2026-10-24-22 merged with main 9d747cb (#168): main's 24,277 plus this PR's 70 is 24,347, counted on the merged tree; daemon.py, mcp_server.py and words.py, which both changed, merged with no line in common; `yerk docs own` wrote budgets.md.
+
+2026-11-02: reattach-race raised it by 16, a second look before a worker is settled as lost (seen live: one unit list read before systemd-run had made a cold read's unit settled it as lost a second after its start, its need held and its account given to the next builder while it ran on to its verdict), not folded to fit: workers.py 16 (YOUNG and _gone(): the fresh look, the exit file, the first two minutes, the stale line; reattach and reconcile ask it first). 24,164: main 947df1f's 24,148 plus 16.
+
+2026-11-02: reattach-race merged with main 5b52559 (#160, #168): main's 24,347 plus this PR's 16 is 24,363, counted on the merged tree; workers.py, the one file this PR changes, merged with no line in common; `yerk docs own` wrote budgets.md.
+
+- `lines = 24363`
 
 ## Uncapped
 

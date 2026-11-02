@@ -28,8 +28,8 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 from zoneinfo import ZoneInfo
 
-from . import (beat, context, deploy, doctor, evidence, gates, hooks, jobs, location, mcp_server, memory, mentions, needs, pictures, render,
-               status, taste, transcribe, voice_note, watch, workers)
+from . import (beat, context, deletes, deploy, doctor, evidence, gates, github, hooks, jobs, location, mcp_server, memory, mentions, needs,
+               pictures, pipeline, render, reverse_image, status, taste, texts, transcribe, voice_note, watch, workers)
 from .accounts import Account, Cooldowns, from_dir, load_accounts, pick
 from .config import (EFFORTS, REPO, SHELLS, account_and_model, account_named, assistants, budgets, discord_id, flag, load_toml, models,
                      override, people, pinned, private_dir, read_secret, room_id, room_settings, rooms, state_dir, table, trusted, uncapped,
@@ -46,7 +46,8 @@ from . import abilities, addons, words   # STYLE.md: what a room reads
 log = logging.getLogger("yerk.daemon")
 YERK_TOOLS = ["mcp__yerk__send", "mcp__yerk__hold", "mcp__yerk__recall", "mcp__yerk__read_memory",
               "mcp__yerk__remember", "mcp__yerk__worker", "mcp__yerk__schedule", "mcp__yerk__settings", "mcp__yerk__transcribe",
-              "mcp__yerk__voice_note", "mcp__yerk__seen", "mcp__yerk__render", "mcp__yerk__watch", "mcp__yerk__need"]
+              "mcp__yerk__voice_note", "mcp__yerk__seen", "mcp__yerk__render", "mcp__yerk__watch", "mcp__yerk__need", texts.TOOL, deletes.TOOL,
+              "mcp__yerk__reverse_image_search", "mcp__yerk__github_state"]
 # A shell room's sandbox when rooms.toml gives it no [rooms.NAME.sandbox] table: unsandboxed, a Read deny stops `cat` and
 # the Read tool, but a script, grep or redirect read every secret (Claude Code 2.1.304, PR 66's cold read, 2026-10-21)
 SANDBOX = {"enabled": True, "autoAllowBashIfSandboxed": True}
@@ -157,13 +158,15 @@ class Yerkd:
         self.jobs = jobs.Jobs(private, state, self.ledger, dict(self.conf.get("jobs", {})), self.rooms, self.channels,
                               self.room_confs, self.conf, self.workers)
         self.workers.hooks.append(self.pictures_done)            # a pictures backfill batch: its line, then the next batch
-        self.workers.hooks.append(self.need_built)               # a need's builder: its state and its line (needs.py)
+        self.workers.hooks.append(self.need_built)               # a need's builder, cold read or fix: its state and its line
+        self.pipeline = pipeline.Pipeline(self)                  # a need from filed to live with no person (pipeline.py)
         self.gates = gates.settings(self.conf.get("gates"))      # the rule-based gates (DESIGN 8)
         self.workers.gate = {"trash": list(self.gates.trash), "private": str(self.private),   # workers pass them too
                              "external": self.gates.external}
         self.rebuild_running = gates.rebuild_running
         self.rewrites: dict[str, tuple[str, str]] = {}           # tool_use id -> (room, the trash command)
         self.worded: set[str] = set()                            # inbound ids whose approval word was used
+        self.released: set[tuple[str, str]] = set()              # (room, call) a gate released for a tool the daemon runs (text, delete): once
         self.later: set[asyncio.Task[Any]] = set()               # a gate's notice, posted beside the hook's answer
         self.held_files: dict[str, Path] = {}                    # room -> a held call's exact text too long to show
         self.timing: list[tuple[str, dict[str, Any]]] = []       # hook and tool timings, written in batches
@@ -187,8 +190,9 @@ class Yerkd:
                      next((p.text for p in parts if p.name == "recall_pack"), ""), file=str(ctx))
         token = secrets.token_hex(16)                      # this process's credential, bound with its session
         header = write_private(rdir / "hook-header", f"{mcp_server.HEADER}: {token}\n")    # curl reads it: never in an argv
-        settings: dict[str, Any] = {"permissions": {"allow": [f"Read(/{layer}/**)", *YERK_TOOLS, *conf.get("allow", [])], "deny": self.never_read()},
-                                    "hooks": hooks.settings_for(f"{self.url}/hook", header)}
+        code = self.code_reads() if self.owner(name) else []          # the checkout that runs: an owner room checks a claim there
+        settings: dict[str, Any] = {"permissions": {"allow": [f"Read(/{layer}/**)", *code, *YERK_TOOLS, *conf.get("allow", [])],
+                                                    "deny": self.never_read()}, "hooks": hooks.settings_for(f"{self.url}/hook", header)}
         shell = conf.get("sandbox", dict(SANDBOX) if SHELLS & set(conf.get("tools") or []) else None)   # Claude Code's own
         dirs = [layer, *self.read_dirs.get(name, [])]                       # `read`, as F4 judged it
         if trusted(conf):                    # the daemon's wall; Write and Edit on the room's own folders; its outbox read only
@@ -300,6 +304,13 @@ class Yerkd:
         folders, files = self.secrets_at()
         return ([f"Read(/{d}/**)" for d in folders] + [f"Read(/{f})" for f in files]
                 + [f"Read(/{a.config_dir.expanduser().resolve()}/.*)" for a in self.accounts])
+
+    def code_reads(self) -> list[str]:
+        """Read rules opening Yerk's own code, the checkout that runs (REPO), to an owner room's Read, Grep and Glob (2026-10-25:
+        a room's Grep there was refused, and it relayed a worker's claim about Yerk unchecked): the checkout whole, else its
+        entries around the private and state folders when it holds one (a clone's example layer). Rules, never an --add-dir,
+        which Claude Code's sandbox opens to the room's shell for writing; never_read's denies still beat them."""
+        return [f"Read(/{p}/**)" if p.is_dir() else f"Read(/{p})" for p in around(REPO.resolve(), [self.private.resolve(), self.state.resolve()])]
 
     def owner(self, room: str) -> bool:
         """An owner room (rooms.toml privacy, "owner" when unset); a name that is no room is not one."""
@@ -458,24 +469,59 @@ class Yerkd:
         log.info("render: %s, %s", room, said)
         return r
 
-    async def tool_watch(self, room: str, url: str, frames: int = watch.FRAMES, owner_yes: bool = False) -> dict[str, Any]:
+    async def tool_watch(self, room: str, url: str, frames: int = watch.FRAMES, owner_yes: bool = False, path: str = "") -> dict[str, Any]:
         """The `watch` tool: a video in a post pulled from its link by yt-dlp into the calling room's work folder off the loop
         (watch.run), one download at a time across rooms, its frames taken and its transcript the page's own captions, else
         its sound transcribed as transcribe's is, on the same keys and gate, each paid call a spend row under `watch`; a post
-        pulled before is neither pulled nor paid again."""
+        pulled before is neither pulled nor paid again. With `path`, a video file from the room's own folders (may_send's
+        rule, as transcribe's) watched where it is (watch.run_file): nothing pulled, its frames and transcript the same way."""
         if room not in self.rooms:
             return {"ok": False, "error": words.WATCH_NO_ROOM.format(room=room)}
-        if not watch.is_link(url):
+        p = Path(path).expanduser().resolve() if path.strip() else None
+        if p and url.strip():
+            return {"ok": False, "error": words.WATCH_BOTH}
+        if p and not self.may_send(room, p):
+            return {"ok": False, "error": words.WATCH_NOT_HERE.format(name=p.name)}
+        if p and not p.is_file():
+            return {"ok": False, "error": words.WATCH_NO_FILE.format(name=p.name)}
+        if not p and not watch.is_link(url):
             return {"ok": False, "error": words.WATCH_NOT_LINK.format(given=words.no_paths(url.strip())[:120])}
 
         def hear(video: Path) -> dict[str, Any]:
             return transcribe.run(video, self.memory.embeddings_key, self.private / transcribe.GROQ_KEY, self.booker(room, "watch"),
                                   owner_yes, self.private / transcribe.META_KEY)
-        r, took = await asyncio.to_thread(watch.run, url, frames, self.state / "rooms" / room / "work" / watch.FOLDER, hear)
-        how = "pulled before" if r.get("reused") else f"pulled in {took:.1f} s" if r.get("video") else "not pulled"
+        root = self.state / "rooms" / room / "work" / watch.FOLDER
+        r, took = await (asyncio.to_thread(watch.run_file, p, frames, root, hear) if p else asyncio.to_thread(watch.run, url, frames, root, hear))
+        how = "a file of the room's" if p else "pulled before" if r.get("reused") else f"pulled in {took:.1f} s" if r.get("video") else "not pulled"
         said = (f"{r['slug']}, {r['seconds']} s, {len(r['frames'])} frame(s), {r['source'] or 'no'} transcript, {how}"
                 if r["ok"] else r["error"][:160])
         log.info("watch: %s, %s", room, said)
+        return r
+
+    async def tool_reverse_image_search(self, room: str, path: str) -> dict[str, Any]:
+        """The `reverse_image_search` tool: a picture from the calling room's own folders (may_send's rule, as render's) looked
+        up on the web by Google Cloud Vision's web detection off the loop (reverse_image.run), on the key in the private
+        folder, each call Google answers a spend row."""
+        p = Path(path).expanduser().resolve()
+        if room not in self.rooms or not self.may_send(room, p):
+            return {"ok": False, "error": words.REVERSE_NOT_HERE.format(name=p.name)}
+        if not p.is_file():
+            return {"ok": False, "error": words.REVERSE_NO_FILE.format(name=p.name)}
+        r = await asyncio.to_thread(reverse_image.run, p, self.private / reverse_image.KEY, self.booker(room, "reverse_image_search"))
+        log.info("reverse_image_search: %s, %s", room, f"{p.name}, {len(r['pages'])} page(s)" if r["ok"] else r["error"][:160])
+        return r
+
+    async def tool_github_state(self, room: str, branch_or_pr: str) -> dict[str, Any]:
+        """The `github_state` tool: a branch or a pull request of Yerk's own repository ([needs] repo, else the checkout's
+        origin) as GitHub has it now, read off the loop on the pipeline's token (github.look), from an owner's room only,
+        since the repository is the owner's and private; the token never in the result. Free: no spend row."""
+        if room not in self.rooms or not self.owner(room):
+            return {"ok": False, "error": words.GITHUB_OWNER_ROOMS}
+        if not (tok := await asyncio.to_thread(github.token, self.private)):
+            return {"ok": False, "error": words.GITHUB_NO_TOKEN}
+        repo = await asyncio.to_thread(github.slug, REPO, str(dict(self.conf.get("needs", {})).get("repo") or ""))
+        r = await asyncio.to_thread(github.look, REPO, repo, branch_or_pr, tok)
+        log.info("github_state: %s, %s", room, f"{r['branch']}, {len(r['pull_requests'])} pull request(s)" if r["ok"] else r["error"][:160])
         return r
 
     async def tool_seen(self, room: str, path: str, text: str, shows: str) -> dict[str, Any]:
@@ -503,11 +549,70 @@ class Yerkd:
         r = await asyncio.to_thread(needs.file, self.memory, self.state, room, mid, asked, tried, needed, shadow)
         if not r["ok"]:
             return r
-        if not r["again"]:                                # a retried call is said once
+        if not r["again"] and not r["folded"] and self.pipeline.auto():   # [needs] auto: built now, or queued
+            await self.pipeline.filed(r, room)
+        elif not r["again"]:                              # a retried call is said once
             await self.jobs.alert(None, (words.NEED_AGAIN if r["folded"] else words.NEED_FILED).format(
                 n=r["n"], room=room, ability=words.line(r["ability"], 80), day=r["day"], count=r["count"]), 0)
         log.info("need: %s, %s %s, %s", room, r["day"], r["n"], "folded" if r["folded"] else "filed")
         return {**r, "next": words.FILED_NEXT.format(clause=words.NEED_CLAUSE)}
+
+    def text_refusal(self, room: str, to: str, text: str) -> str:
+        """Why a text from `room` to `to` cannot go, "" when it can: asked at the gate, so the owner is never asked to approve
+        one that would not go, and again by the tool."""
+        if not self.owner(room):
+            return words.TEXT_OWNER_ROOMS
+        if not texts.transport(dict(self.conf.get("imessage") or {})):
+            return words.TEXT_NO_SETUP
+        if not texts.handle(to):
+            return words.TEXT_NO_HANDLE.format(given=words.line(words.no_paths(to), 60))
+        return "" if text.strip() else words.TEXT_EMPTY
+
+    async def tool_text(self, room: str, to: str, text: str) -> dict[str, Any]:
+        """The `text` tool: one text in the owner's name from the Mac (texts.send), from an owner's room only, and only
+        as the exact call the text-out gate showed the owner and released on their word, once (a hook that failed open sends
+        nothing); its outcome a gate row, the receipt after the hold, the word and the release."""
+        if why := self.text_refusal(room, to, text) if room in self.rooms else words.TEXT_OWNER_ROOMS:
+            return {"ok": False, "maybe_sent": False, "error": words.TEXT_NOT_SENT.format(why=why)}
+        if (room, key := gates.call_key(texts.TOOL, {"to": to, "text": text})) not in self.released:
+            return {"ok": False, "maybe_sent": False, "error": words.TEXT_NOT_RELEASED}
+        self.released.discard((room, key))
+        r = await texts.send(dict(self.conf.get("imessage") or {}), to, text)
+        how = "sent" if r["ok"] else "maybe sent" if r["maybe_sent"] else "failed"
+        rp = self.rooms[room].rp
+        self.ledger.gate(room=room, session_id=rp.session_id if rp else "", turn=self.rooms[room].turn_key, gate="text", decision=how,
+                         tool=texts.TOOL, rule="text-out", detail=f"to {texts.handle(to)}, {len(text)} characters, {r.get('guid') or r.get('error')}"[:300])
+        log.info("text: %s, %s, %d characters", room, how, len(text))
+        return r
+
+    def own_paths(self) -> list[Path]:
+        """Yerk AI's own, which no delete touches: its code, its state and private folders, the memory, each account's folder."""
+        return [REPO, self.private, self.state, self.memory.root, *(a.config_dir for a in self.accounts)]
+
+    def delete_refusal(self, room: str, paths: list[str]) -> str:
+        """Why a delete of `paths` from `room` cannot go, "" when it can: asked at the gate, so the owner is never asked to
+        approve one that would not run, and again by the tool."""
+        if not self.owner(room):
+            return words.DELETE_OWNER_ROOMS
+        mounted, own = deletes.mounts(), self.own_paths()
+        return next((w for p in paths if (w := deletes.why(p, own, Path.home(), mounted))), "" if paths else words.DELETE_NO_PATHS)
+
+    async def tool_delete(self, room: str, paths: list[str]) -> dict[str, Any]:
+        """The `delete` tool: whole paths outside the room's work folder deleted for good by the daemon (deletes.run), whose
+        shell is not the room's sandbox, from an owner's room only, and only as the exact call the delete-outside gate showed
+        the owner and released on their word, once (a hook that failed open deletes nothing); its outcome a gate row."""
+        if why := self.delete_refusal(room, paths) if room in self.rooms else words.DELETE_OWNER_ROOMS:
+            return {"ok": False, "error": words.NOT_DELETED.format(why=why)}
+        if (room, key := gates.call_key(deletes.TOOL, {"paths": paths})) not in self.released:
+            return {"ok": False, "error": words.DELETE_NOT_RELEASED}
+        self.released.discard((room, key))
+        r = await asyncio.to_thread(deletes.run, paths, self.own_paths(), Path.home())
+        how, rp = "deleted" if r["ok"] else "partly" if r["deleted"] else "failed", self.rooms[room].rp
+        self.ledger.gate(room=room, session_id=rp.session_id if rp else "", turn=self.rooms[room].turn_key, gate="delete", decision=how,
+                         tool=deletes.TOOL, rule="delete-outside", detail=f"{len(r['deleted'])} of {len(paths)}, {r['freed']} freed: "
+                         f"{', '.join(paths)}"[:300])
+        log.info("delete: %s, %s, %d of %d path(s), %s freed", room, how, len(r["deleted"]), len(paths), r["freed"])
+        return r
 
     async def pictures(self, req: dict[str, Any]) -> dict[str, Any]:
         """`yerk pictures backfill ROOM`: the owner room's pictures with no sidecar (at most `limit`), BATCH to a Yerk worker on the
@@ -579,27 +684,25 @@ class Yerkd:
     async def need_build(self, req: dict[str, Any]) -> dict[str, Any]:
         """`yerk needs build DAY N`: the need's brief (needs.brief) to a builder worker on [needs] account, else [curate]
         account, else the workers' own pick, its card in the machine room. One builder a need: the need is claimed under the
-        lock, so one that is building, has a PR or a branch, or is merged starts nothing."""
+        lock, so only one filed, queued, held or stuck starts one (the pipeline's road from there, pipeline.py)."""
         day, n = str(req.get("day") or ""), int(req.get("n") or 0)
-        if await asyncio.to_thread(needs.update, self.memory, self.state, day, n, {"state": "building", "worker": ""},
-                                   lambda r: r.get("state", "filed") == "filed") is None:
+        if await asyncio.to_thread(needs.update, self.memory, self.state, day, n, {"state": "building", "worker": "", "fixes": 0},
+                                   lambda r: r.get("state", "filed") in ("filed", "queued", "held", "stuck")) is None:
             row = needs.find(needs.load(self.state), day, n)
             return {"ok": False, "error": words.NEED_NONE.format(day=day, n=n) if row is None else
                     words.NEED_BUSY.format(n=n, state=needs.said(row))}
-        row = needs.find(needs.load(self.state), day, n) or {}
-        card = next((r for r, c in self.room_confs.items() if c.get("role") == "machine" and r in self.channels),
-                    next((r for r in self.rooms if self.owner(r)), ""))
-        conf = dict(self.conf.get("needs", {}))
-        out = await self.workers.start(card, needs.brief(row, REPO), account=str(conf.get("account") or dict(
-            self.conf.get("curate", {})).get("account") or ""), cap_minutes=float(conf.get("cap_minutes") or needs.CAP),
-            tasks=list(needs.TASKS), more={"need": {"day": day, "n": n}})
+        row, conf = needs.find(needs.load(self.state), day, n) or {}, self.pipeline.conf()
+        out = await self.workers.start(self.pipeline.room(), needs.brief(row, REPO, str(conf.get("pr_check") or "")),
+                                       account=self.pipeline.account(), cap_minutes=float(conf.get("cap_minutes") or needs.CAP),
+                                       tasks=list(needs.TASKS), more={"need": {"day": day, "n": n}})
         await asyncio.to_thread(needs.update, self.memory, self.state, day, n, {"worker": out["id"]} if out.get("ok") else {"state": "filed"})
         log.info("needs: build %s %s: %s", day, n, out.get("id") or out.get("error"))
         return {**out, "day": day, "n": n}
 
     async def need_built(self, row: dict[str, Any], end: dict[str, Any]) -> bool:
         """A need's builder ended (workers.hooks): the need's state from its report's first line (needs.ended) and one line to
-        the machine room, never a relay turn; False for any other worker."""
+        the machine room, never a relay turn; under [needs] auto a failed build starts once more, then the need is stuck. A
+        cold read or a fix worker goes to the pipeline (Pipeline.ended); False for any other worker."""
         try:
             job = json.loads((Path(row["staging"]) / "worker.json").read_text()).get("need")
         except (OSError, ValueError):
@@ -607,6 +710,8 @@ class Yerkd:
         if not isinstance(job, dict):
             return False
         day, n = str(job.get("day")), int(job.get("n") or 0)
+        if job.get("role") in ("read", "fix"):
+            return await self.pipeline.ended(row, end, str(job["role"]), day, n)
         how = workers.settled_state(row, workers.tasks_of(Path(row["tasks"])), end)[1]
         r = await asyncio.to_thread(needs.ended, self.memory, self.state, day, n, str(row["id"]), how,
                                     workers.first_line(Path(row["report"])), end["exit"] == "done")
@@ -619,6 +724,11 @@ class Yerkd:
                     await self.channels[to].notify(to, line)
             log.info("%s", line)
         self.ledger.worker_set(str(row["id"]), relay="skipped", relay_note="need build: its line went to the machine room")
+        if r is not None and r.get("state") == "filed" and self.pipeline.auto():     # failed: once more, then stuck
+            if (fails := int(r.get("fails") or 0) + 1) >= 2:
+                await self.pipeline.stop({**r, "fails": fails}, "stuck", f"its builder failed twice, last: {how}")
+            elif await asyncio.to_thread(needs.update, self.memory, self.state, day, n, {"fails": fails}):
+                await self.need_build({"day": day, "n": n})
         return True
 
     async def tool_voice_note(self, room: str, script: str, name: str = "", owner_yes: bool = False) -> dict[str, Any]:
@@ -696,10 +806,10 @@ class Yerkd:
             return {"ok": False, "line": words.WORKER_OWN_ROOM.format(room=named)}
         return None
 
-    async def tool_rule(self, room: str, text: str, job: str) -> dict[str, Any]:
+    async def tool_rule(self, room: str, text: str, job: str, triggers: list[str] | None = None) -> dict[str, Any]:
         """`remember` with a `job`: an owner's room files how it is done from now on (memory.rule) for every room, fitted under
         the rules part's budget; one with no room even with no examples is filed as a topic rule in rules-topics.md and said
-        (`topic`: the reply's clause and one machine-room notice, each naming the words it loads on)."""
+        (`topic`: the reply's clause and one machine-room notice, each naming the words it loads on: `triggers`, when given)."""
         if room not in self.rooms or not self.owner(room):
             return {"ok": False, "line": words.RULES_OWNER_ONLY}
         if self.reader(room).sealed:        # its teaching stays its own day-log note, the job its label, never the shared rules
@@ -707,7 +817,8 @@ class Yerkd:
         with self.rooms[room].lock:
             mid = ",".join(m.id for m in self.rooms[room].inflight) or f"x{self.rooms[room].turn_key}"
         cap = 0 if uncapped(self.budgets) else int(self.budgets["session_start"]["appended"]["rules"])     # 0: no strip, no topic filing
-        r = await asyncio.to_thread(memory.rule, self.memory, room, mid, job, text, cap, self.daily, context.books(self.private, self.room_confs))
+        r = await asyncio.to_thread(memory.rule, self.memory, room, mid, job, text, cap, self.daily, context.books(self.private, self.room_confs),
+                                    tuple(triggers or ()))
         if not r["ok"]:
             return r
         on = words.either(r.get("triggers", []))
@@ -1155,7 +1266,8 @@ class Yerkd:
         v = None
         if tool == "Bash":
             work = self.state / "rooms" / name / "work"
-            v = gates.check_shell(str(ti.get("command") or ""), str(payload.get("cwd") or work), self.gates, root=str(work))
+            v = gates.check_shell(str(ti.get("command") or ""), str(payload.get("cwd") or work), self.gates, root=str(work),
+                                  way=words.DELETE_WAY if self.owner(name) else "")
             if v and v.new_input is not None:
                 v.new_input = {**ti, **v.new_input}
         if v is None and (what := gates.restart_hit(tool, ti, self.private)):
@@ -1164,14 +1276,21 @@ class Yerkd:
             if why:
                 model, line = gates.refused(what, why)
                 v = gates.Verdict("restart", "deny", model, line, f"{what}; {why}")
+        if v is None and tool == texts.TOOL and (why := self.text_refusal(name, str(ti.get("to") or ""), str(ti.get("text") or ""))):
+            v = gates.Verdict("text", "deny", words.TEXT_NOT_SENT.format(why=why), detail=why)    # it could not go: nothing to approve
+        if v is None and tool == deletes.TOOL and (why := self.delete_refusal(name, deletes.paths_of(ti))):
+            v = gates.Verdict("delete", "deny", words.NOT_DELETED.format(why=why), detail=why)    # the same: nothing to approve
         key, shown, cwd = "", "", str(payload.get("cwd") or self.state / "rooms" / name / "work")
         if v is None and (hit := gates.external_hit(tool, ti, name, self.gates, self.room_confs)):
             rule, what, call = hit
             key = gates.call_key(tool, ti)
-            shown = gates.plain(tool, ti) if self.room_confs[name].get("people") else key     # a person reads it: no JSON
+            shown = (texts.preview(ti) if tool == texts.TOOL               # no JSON: a text as it reads, to whom it goes
+                     else deletes.preview(ti) if tool == deletes.TOOL else gates.plain(tool, ti) if self.room_confs[name].get("people") else key)
             rel = self.ledger.release(name, rule, key, cwd, self.gates.window_s)
             if rel:
                 v = gates.Verdict("approval", "release", detail=f"{what}: {call}; approved by {rel['approved_by']}", rule=rule)
+                if tool in (texts.TOOL, deletes.TOOL):
+                    self.released.add((name, key))
             else:
                 model, line = gates.held(what, call, self.gates.word, exact=shown)
                 v = gates.Verdict("approval", "hold", model, line, f"{what}: {call}", rule=rule)
@@ -1388,10 +1507,11 @@ class Yerkd:
         dc.after_recover.append(say_moved)
         dc.after_recover.append(self.workers.reattach)   # their cards are edited, so after the connect
         dc.after_recover.append(self.jobs.reattach)      # a script run that ended with no daemon up: delivered late
+        dc.after_recover.append(self.pipeline.tick)      # the needs pipeline at start: a deploy proven meanwhile is live
         self.write_status("discord")
         self.link = dc
         tasks = [asyncio.create_task(c) for c in (self.serve_http(), self.reap(min(60.0, self.idle_seconds / 2)),
-                                                   self.beat.tick(self.listening), dc.start())]
+                                                   self.beat.tick(self.listening), self.pipeline.watch(), dc.start())]
         await self.until_stopped(tasks, dc.close)
 
 

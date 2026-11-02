@@ -7,7 +7,9 @@ group of its own, one download at a time across rooms, and killed with its group
 length and the streams, ffmpeg takes the frames, and the transcript is the page's own captions when it has them, read
 free before the download (captions.py), else transcribe.run's, on its keys, its US$1 gate and its spend rows. A post
 already pulled is never pulled or transcribed again: its folder keeps the video, the transcript beside it and the link it
-came from, so another post whose slug is the same gets a folder of its own.
+came from, so another post whose slug is the same gets a folder of its own. A video file sent to a room (`path`), which a
+room's Read cannot open, is watched where it is (run_file): nothing pulled, the same frames under videos/, the transcript
+beside it as transcribe writes one.
 """
 from __future__ import annotations
 
@@ -36,6 +38,7 @@ SLUG = 48                    # the most characters of a post's own id its folder
 CAP = "300M"                 # yt-dlp's --max-filesize: a video past it is skipped, nothing saved
 FORMAT = "bv*[height<=720]+ba/b[height<=720]/b"    # the best picture at 720 lines or under with the best sound, else one file
 SOURCE = "url.txt"           # the link a folder's post was pulled from
+KINDS = (".mp4", ".mov", ".m4v", ".mkv", ".avi", ".3gp", ".mpg", ".mpeg", ".wmv")    # a video file as a phone or a camera saves it
 ONE = threading.Lock()       # one download at a time across rooms; a caller waits its turn, never fails for it
 GUARD = threading.Lock()     # held while a call picks its folder
 POSTS: dict[Path, threading.Lock] = {}     # one call at a time a post, so two at once never pay twice for its transcript
@@ -53,6 +56,11 @@ def is_link(url: str) -> bool:
         return u.scheme in ("http", "https") and bool(u.hostname)
     except ValueError:
         return False
+
+
+def is_video(name: str, kind: str = "") -> bool:
+    """A video file by its name or its type, never one transcribe takes for a recording (a .webm can be either)."""
+    return (Path(name).suffix.lower() in KINDS or kind.startswith("video/")) and not transcribe.is_audio(name, kind)
 
 
 def site(u: SplitResult) -> str:
@@ -147,17 +155,18 @@ def probe(video: Path) -> tuple[float, bool, bool]:
     raise Failed(words.WATCH_NOT_READ.format(name=video.name, why=why))
 
 
-def stills(video: Path, seconds: float, n: int) -> tuple[list[dict[str, str]], str]:
-    """`n` still pictures spread evenly through the video, at seconds * (i + 0.5) / n, the ones an earlier call left there
-    removed first: each a JPEG at most 1280 wide, named by its number and its time; and the note for any that did not come."""
+def stills(video: Path, seconds: float, n: int, into: Path | None = None) -> tuple[list[dict[str, str]], str]:
+    """`n` still pictures spread evenly through the video, at seconds * (i + 0.5) / n, in `into` (else the video's folder),
+    the ones an earlier call left there removed first: each a JPEG at most 1280 wide, named by its number and its time; and
+    the note for any that did not come."""
     if not (exe := shutil.which("ffmpeg")):
         raise Failed(words.WATCH_NO_FFMPEG)
-    for old in video.parent.glob("frame-*.jpg"):
+    for old in (into := into or video.parent).glob("frame-*.jpg"):
         old.unlink()
     out, why = [], ""
     for i in range(n):
         t = seconds * (i + 0.5) / n
-        f = video.parent / f"frame-{i + 1:02d}-{int(t) // 60:02d}m{int(t) % 60:02d}s.jpg"
+        f = into / f"frame-{i + 1:02d}-{int(t) // 60:02d}m{int(t) % 60:02d}s.jpg"
         try:
             p = subprocess.run([exe, "-y", "-v", "error", "-ss", f"{t:.3f}", "-i", str(video), "-frames:v", "1", "-vf",
                                 "scale='min(1280,iw)':-2", "-q:v", "4", str(f)], capture_output=True, text=True, timeout=FRAME_TIMEOUT)
@@ -247,3 +256,32 @@ def run(url: str, frames: int, root: Path, hear: Hear) -> tuple[dict[str, Any], 
     return {"ok": True, "slug": folder.name, "folder": str(folder), "title": str(info.get("title") or ""), "video": str(video),
             "seconds": seconds, "frames": shots, "transcript": text, "transcript_file": file, "source": captions.source(text),
             "reused": reused, "note": "; ".join(x for x in (lost, said if text else "", why) if x)}, took
+
+
+def run_file(video: Path, frames: int, root: Path, hear: Hear) -> tuple[dict[str, Any], float]:
+    """The tool's call on a video file in the room's own folders (`path`, checked by the daemon), blocking, in run's shape:
+    nothing pulled, so no captions and no seconds of download; its frames in a folder of their own under `root`, file-<its
+    name>-<10 hex of its path's sha1>, so two files of one name never share one, and a link there stops the call as in
+    folder_for; its transcript beside it, where transcribe writes one, read from that file when it is there, so a video
+    transcribed or watched before is never paid for twice."""
+    n = max(1, min(MOST, int(frames)))
+    folder = root / f"file-{re.sub(r'[^A-Za-z0-9_-]', '', video.stem)[:SLUG] or 'video'}-{hashlib.sha1(str(video).encode()).hexdigest()[:10]}"
+    try:
+        root.mkdir(mode=0o700, parents=True, exist_ok=True)
+        if linked := next((p for p in (root, folder) if p.is_symlink()), None):
+            raise Failed(words.WATCH_LINKED.format(name=linked.name))
+        folder.mkdir(mode=0o700, exist_ok=True)
+        with GUARD:
+            mine = POSTS.setdefault(folder, threading.Lock())
+        with mine:
+            seconds, sound, picture = probe(video)
+            shots, lost = stills(video, seconds, n, folder) if picture else ([], words.WATCH_NO_PICTURE)
+            kept = video.with_name(f"{video.stem}.transcript.txt").is_file()
+            text, file, why = heard(video, hear) if sound or kept else ("", "", words.WATCH_NO_SOUND)
+    except Failed as e:
+        return {"ok": False, "error": str(e)}, 0.0
+    except (OSError, subprocess.SubprocessError) as e:
+        return {"ok": False, "error": words.WATCH_BROKE.format(why=getattr(e, "strerror", None) or words.WATCH_NO_WHY)}, 0.0
+    return {"ok": True, "slug": folder.name, "folder": str(folder), "title": "", "video": str(video), "seconds": seconds,
+            "frames": shots, "transcript": text, "transcript_file": file, "source": captions.source(text), "reused": False,
+            "note": "; ".join(x for x in (lost, why) if x)}, 0.0

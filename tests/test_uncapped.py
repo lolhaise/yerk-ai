@@ -22,6 +22,7 @@ FIXTURE = Path(__file__).parent / "fixtures" / "uncapped-capped-assembly.json"
 NOW = datetime(2026, 10, 26, 19, 0, tzinfo=timezone.utc)
 ROOM = "example-room"
 PAD = 220
+CODE = Path("/srv/yerk-ai")      # the checkout that runs, as the mechanics name it: one path wherever the test runs
 PROMPT = "how do we do the deploy card for the northwind launch tomorrow?"
 TOPICS = ["# Topic rules: each loads on a message that names its topic, in the rooms its [rooms: ...] names, else in every room", "",
           "- deploy card: the card names the commit, the tests and the restart, one line each (example-room, 2026-10-20 10:00:00+00:00) [m:t1]",
@@ -63,13 +64,15 @@ def recall(room: str, prompt: str) -> tuple[list, list, list, list]:
 def assemble(tmp: Path, yerkd: str | None = None) -> dict:
     """A process start, a message after the rules file grew, and a compaction, as the daemon assembles each: the start file,
     the hook texts, every row assembled.jsonl got (its time out), the topic rules told and every log line; the layer's
-    folder written TMP, at one length wherever the test runs (PAD): a part's size counts the path in its `[from` line."""
+    folder written TMP, at one length wherever the test runs (PAD): a part's size counts the path in its `[from` line, and
+    the mechanics' the checkout's (CODE)."""
     tmp = tmp.resolve() / ("p" * (PAD - len(str(tmp.resolve())) - 1))
     private, state = layer(tmp, yerkd)
     seen: list[str] = []
     handler = logging.Handler()
     handler.emit = lambda r: seen.append(f"{r.name} {r.levelname} {r.getMessage()}")    # type: ignore[method-assign]
     logging.getLogger().addHandler(handler)
+    repo, context.REPO = context.REPO, CODE
     try:
         y = Yerkd(private, state)
         y.spec_for(ROOM)
@@ -84,6 +87,7 @@ def assemble(tmp: Path, yerkd: str | None = None) -> dict:
         compact = asyncio.run(y._hook("SessionStart", ROOM, {"hook_event_name": "SessionStart", "source": "compact", "session_id": "s1"}))
     finally:
         logging.getLogger().removeHandler(handler)
+        context.REPO = repo
     rdir = state / "rooms" / ROOM
     rows = [json.loads(x) for x in (rdir / "assembled.jsonl").read_text().splitlines()]
     for r in rows:
@@ -105,7 +109,8 @@ def padded(tmp: Path) -> Path:
 
 def test_capped_is_mains_assembly_byte_for_byte_with_the_switch_absent_or_false(tmp_path):
     """The fixture is this scenario assembled on the base commit (1ec2592, PR 145's merge; retaken on note-to-self, on
-    retention-keep and on need-2026-10-31-27, each one's mechanics line its only change): the start file, both messages,
+    retention-keep, on need-2026-10-31-27, on need-2026-10-25-21 and on need-2026-10-24-22, each one's mechanics line its
+    only change, need-2026-10-25-21's with the checkout's path, CODE): the start file, both messages,
     the compaction, every assembled.jsonl row, the topic rules told and every log line, the same with [limits] absent and
     false."""
     want = json.loads(FIXTURE.read_text())
@@ -270,7 +275,7 @@ def test_an_uncapped_install_lifts_the_money_gates_and_transcribes_result_carrie
 
 def test_an_uncapped_start_has_the_room_say_a_paid_calls_cost_and_asks_no_relay_length(tmp_path):
     capped, lifted = context.mechanics(), context.mechanics(True)
-    assert capped == context.MECHANICS.read_text().strip() and ", under 1,500 characters," in capped
+    assert capped == context.MECHANICS.read_text().strip().replace(context.CODE, str(context.REPO)) and ", under 1,500 characters," in capped
     assert lifted == capped.replace(", under 1,500 characters,", ",") + "\n" + context.PAID
     assert "only when the owner asks for a voice note or to say it out loud" in lifted and shape.offenses(context.PAID) == []
     start = assemble(tmp_path, ON)["start"]

@@ -8,7 +8,8 @@
 # get the same answer from this file. A described ability becomes built only by a pull request
 # with its own acceptance measurement.
 # keys: a key-tier ability is on when each key named is in the private folder (openai: the install's OpenAI key file,
-# [memory] embeddings_key; any other NAME: secrets/NAME.key; "a|b": either), looked at, never read.
+# [memory] embeddings_key; github: the pipeline's token, secrets/github.token; any other NAME: secrets/NAME.key; "a|b":
+# either), looked at, never read.
 # An add-on (README "Add-ons") is an entry with `repo` (its git URL), `version`, `size` (its own ceiling, in lines of
 # code) and `install` (what `yerk add` does: its package and module, its mcp server and allow lines, its yerkd.toml
 # settings, its room_keys, units, budgets lines, words file and tests). Its state is read from what is installed:
@@ -44,11 +45,28 @@ needs = "nothing; `yerk abilities` lists them, `yerk explain NAME` has any one, 
 free_path = "this is the free path"
 asked_as = ["what can you do", "what can u do", "what else can you do", "what are you able to do", "what are you capable of", "what are your abilities", "what abilities do you have", "list your abilities"]
 
+[abilities.needs]
+state = "built"
+what = "A room that hits a wall files what it needed with the `need` tool, and Yerk builds it once for every room. With [needs] auto (on unless set false) the pipeline runs one need at a time from filed to live with no person in the loop; the rest wait in a queue and the oldest starts when the one in flight is live, held or stuck."
+how = [
+  "Auto-start: a new need starts its builder worker when no need is in flight, else it is queued; a builder that fails starts once more, then the need is stuck.",
+  "Outside Yerk: the box's sync pushes the builder's branch and opens its pull request, and the box's CI posts the checks on its head; the daemon only reads them.",
+  "The fix loop: a red check starts a fix worker that adds a new commit to the branch, never an amend; past [needs] fix_cap fixes (default 2) the need is held for a person, and checks that never all come within [needs] checks_minutes make it stuck.",
+  "The cold read: green checks start a fresh worker, never the builder, that reads the diff and says merge, fix first or unsure.",
+  "The merge: the daemon merges the pull request only at the head the read saw (the sha guard); a moved head is checked and read again.",
+  "The deploy: a merged need with no deploy running starts `yerk deploy origin/main` in a transient unit of its own after a fetch through the package's askpass, so the token never reaches a command line.",
+  "Live: a proven deploy that holds the merge makes the need live, one line in the machine room and one in each room that filed it.",
+]
+tier = "free"
+needs = "a GitHub token at secrets/github.token in the private folder, for the merge and the deploy's fetch"
+free_path = "without the token the builds and the pull requests still happen, and the merge and the deploy wait for a person (`yerk needs done`, `yerk deploy`); live still follows the deploy"
+asked_as = ["can you build what you need yourself", "does it auto build", "how do needs get built"]
+
 # The described abilities below are known and not built (decision 26). On a described entry, `upgrade`
 # names the built ability that already ships part of it.
 [abilities.gates]
 state = "built"
-what = "Rule-based gates on a room's tool calls, decided by code, so they block. A delete (rm, rm -r, unlink) runs as the trash with the same paths and the room is not told unless the trash fails; a command that never runs (a delete of the root, home or a system folder, mkfs, dd onto a disk, a fork bomb, a shutdown) is refused; shell text is read quote-aware first, so a rm in quotes, in a heredoc or in a sentence is not a delete. A write to yerkd.toml, rooms.toml or accounts.toml, or a restart of yerkd, is refused with one line while a person is mid-conversation or the memory index rebuilds. An external action (a send to another room, a public post, a login, money, a message out through another tool, or a rule in yerkd.toml [gates.external]) is held with one line until the owner says approve in the room, then that same call runs once. A working turn that ends with nothing in the room bounces once, naming what it owes, and so does a final message that only reports a filing (remember, schedule, hold, settings) while the answer sits above the call or was never written, each such bounce a `stub` row the morning diff counts; a session that replaced another says so in the room; a changed settings file is a tamper row. Every decision, each tool call's time and failure and each hook call's own time are ledgered. The five judge-model reply gates (a model reading a reply before it goes out) are shadow-only: they ledger what they would bounce and block nothing until one shows under 1 in 10 false alarms on 100 cases and a known-good control passes. The first shadow rule is the check-is-the-read one: a claim about code, what is running, a decision or a file's contents with no run or read behind it in the turn is ledgered with the sentence and the tools the turn ran."
+what = "Rule-based gates on a room's tool calls, decided by code, so they block. A delete (rm, rm -r, unlink) runs as the trash with the same paths and the room is not told unless the trash fails; a command that never runs (a delete of the root, home or a system folder, mkfs, dd onto a disk, a fork bomb, a shutdown) is refused; shell text is read quote-aware first, so a rm in quotes, in a heredoc or in a sentence is not a delete. A write to yerkd.toml, rooms.toml or accounts.toml, or a restart of yerkd, is refused with one line while a person is mid-conversation or the memory index rebuilds. An external action (a send to another room, a public post, a login, money, a message out through another tool, a delete for good outside the work folder through the delete tool, or a rule in yerkd.toml [gates.external]) is held with one line until the owner says approve in the room, then that same call runs once. A working turn that ends with nothing in the room bounces once, naming what it owes, and so does a final message that only reports a filing (remember, schedule, hold, settings) while the answer sits above the call or was never written, each such bounce a `stub` row the morning diff counts; a session that replaced another says so in the room; a changed settings file is a tamper row. Every decision, each tool call's time and failure and each hook call's own time are ledgered. The five judge-model reply gates (a model reading a reply before it goes out) are shadow-only: they ledger what they would bounce and block nothing until one shows under 1 in 10 false alarms on 100 cases and a known-good control passes. The first shadow rule is the check-is-the-read one: a claim about code, what is running, a decision or a file's contents with no run or read behind it in the turn is ledgered with the sentence and the tools the turn ran."
 tier = "free"
 needs = "nothing; a trash command (trash-cli or gio) for the rewrite, else a delete is refused with the trash line; the approval word, the approvers and extra external rules in yerkd.toml [gates]"
 free_path = "this is the free path"
@@ -157,6 +175,38 @@ why_not = "After the rooms move."
 asked_as = ["stock price", "stock prices", "my stocks", "my portfolio", "stock alert"]
 upgrade = "jobs"
 
+[abilities.text]
+state = "built"
+what = "The text tool on Yerk's own MCP server: a room the owner asks to text someone sends one text in the owner's name, an iMessage or else an SMS, from the owner's own Mac, to that person's phone number or email address. Nothing goes before the owner has seen it: the call is held in the room with its words and who it goes to shown as they will read, and it goes once, on the owner's approval word; an edit is a new preview. The daemon sends it, since a room's shell has no network and plain ssh holds no grant to drive Messages."
+how = [
+  "Preview first: the text-out gate holds each call and shows the room its words and who it goes to, never its JSON; the owner's approval word releases that exact call once, and the daemon sends only a call the gate released, so a rule turned off or a hook that failed open sends nothing.",
+  "Before the ask: a person's room, an install with no Mac set up, a name in place of a number or an address, or an empty text is refused at the gate, so the owner is never asked to approve a text that could not go.",
+  "The way to the Mac: ssh to [imessage] host, then socat to the socket of the Mac's bridge, a small app there that holds Messages' grants and serves imsg's JSON-RPC; a status first, then one send of the number or address, the text and the service (auto by default: iMessage where the person has it, else SMS through the phone), on a connection of its own.",
+  "Told apart: no answer to the status, or an error to the send, is not sent; no answer to the send, or the bridge's own may-have-completed answer, may have gone out, and the room says so and never sends it again unasked.",
+  "Receipt: each text's outcome is a gate row after its hold, the word and the release, with who it went to, its length and the id Messages gave it.",
+]
+tier = "free"
+needs = "a Mac signed into the owner's Messages (the phone's text forwarding on, for SMS), the bridge app on it, and an ssh path from the box: [imessage] host and socket in yerkd.toml"
+price = "none"
+free_path = "this is the free path"
+asked_as = ["text her for me", "text him for me", "text them for me", "send a text for me", "send an imessage", "text from my phone"]
+
+[abilities.delete-outside]
+state = "built"
+what = "The delete tool on Yerk's own MCP server: a room the owner orders to delete files or folders outside its work folder (old crash dumps, a full trash, old backups, to free the disk) names their whole paths, and the daemon deletes them for good, not to the trash, once the owner has read each path in the room and said the approval word; a room's shell deletes only inside its work folder, and Claude Code's sandbox keeps the rest of the disk read-only to it."
+how = [
+  "Shown first: the delete-outside gate holds each call and shows the room every path whole with what it is (a file and its size on disk, a folder, a link); the owner's approval word releases that exact call once, and the daemon deletes only a call the gate released, so a rule turned off or a hook that failed open deletes nothing.",
+  "Before the ask: a person's room, a path that is not whole, not there or not its own real path (a link or a `..` on its way, so the path shown is the path deleted), the root, a top folder, the home folder, a mounted disk or a folder holding one, and Yerk AI's own folders (its code, its state and private folders, the memory, an account's folder) or one holding them are refused at the gate, so the owner is never asked to approve a delete that would not run.",
+  "The delete: each path checked again, a file or a link unlinked (never the file a link points to), a folder removed whole without following a link inside it; what each took on disk counted, so the result says the space freed, and anything that would not go is named with the reason.",
+  "The wall: a room's own `rm` outside its work folder is still refused, and in an owner room the refusal names the delete tool; a worker and a person's room keep the old refusal.",
+  "Receipt: each delete's outcome is a gate row after its hold, the word and the release, with how many paths went, the space freed and the paths.",
+]
+tier = "free"
+needs = "nothing"
+price = "none"
+free_path = "this is the free path"
+asked_as = ["delete files outside", "free up disk space", "clean up my disk", "delete old backups", "empty the trash", "delete crash dumps"]
+
 [abilities.text-as-you]
 state = "described"
 what = "Texts people as the owner, in the owner's voice, with a preview and a veto: the owner sees each reply before it goes and can stop it."
@@ -170,9 +220,10 @@ tier = "free"
 needs = "a desktop computer signed into the owner's messaging account, the small signed app on it, and an ssh path from the box"
 price = "none"
 free_path = "this is the free path"
-why_not = "Layer 8a built the iMessage rooms (the owner's own threads), parked outside the package until Layer 8; texting other people in the owner's voice, with the preview and the veto, is not built."
+why_not = "Layer 8a built the iMessage rooms (the owner's own threads), parked outside the package until Layer 8, and the text tool sends one text the owner asked for, previewed and sent on the owner's word; a texting agent that reads other people's texts and drafts the owner's replies to them is not built."
 asked_as = ["text as me", "text people as me", "send texts as me", "text people for me", "reply to my texts", "text messages for me"]
 layer = 8
+upgrade = "text"
 
 [abilities.email]
 state = "described"
@@ -265,6 +316,25 @@ free_path = "none for calls"
 why_not = "Not planned for the public harness: it needs a paid voice vendor and a public tunnel, and most users never need it."
 asked_as = ["call someone for me", "make a call for me", "place a call", "call on my behalf"]
 
+# need-2026-10-26-23: a free table booking's Confirm page sat on a checkout address, and the browser refused every field on it.
+[abilities.free-bookings]
+state = "described"
+what = "Fills and confirms a free booking form (a table or an appointment: a name, a phone number, an email, no card) in the browser ability's browser on the owner's order, though the page's address looks like a checkout; a page that takes money is still never touched."
+how = [
+  "The page decides, not its address: a checkout address whose page shows no card field, no payment frame, no amount and no saved card is a look-alike, and one that shows any of them is a payment page.",
+  "Money read from the page's whole text: an amount (a currency sign or code beside a number) or a saved card (its last four digits after a mask or after 'ending in'); a false alarm keeps the refusal, so the list leans wide.",
+  "On a look-alike, each field set and each click only on the owner's word (the browser's confirmed flag), and without it the refusal asks for that word; a read of the page says which of the two it is.",
+  "On a payment page, nothing set or clicked, the owner's word or not, and the refusal says what it saw: a card field, a payment frame, a payment service's host or the money in its words.",
+]
+tier = "free"
+needs = "the browser ability, with a plug-in whose payment check reads the page as well as its address"
+price = "none"
+free_path = "this is the free path"
+why_not = "It rides on the browser ability, which is not in this repo; an install whose browser plug-in tells a checkout look-alike from a payment page has it there, and a room holding that tool books a free table on the owner's word."
+asked_as = ["book a table", "reserve a table", "make a reservation", "book the reservation", "confirm the reservation", "free booking"]
+
+# need-2026-10-26-21: a page asked for in the browser on the PC would not open; that browser had quit with its
+# last tab, its port reset every call, and the error a room read was a stack trace's first line.
 [abilities.browser]
 state = "described"
 what = "Drives a real browser on a separate profile, so it never takes the owner's mouse and the owner's own windows stay untouched."
@@ -272,13 +342,16 @@ how = [
   "A separate browser profile on the owner's computer, signed in where the owner chose, driven over the browser's developer protocol.",
   "A tool server attached to that profile, so a room or a worker can open, read, click and type.",
   "A brake: the owner's stop word ends it at once, and a run lifts the brake for itself with a lease that runs out on its own.",
+  "A relaunch before each call: a browser that quit with its last tab leaves a port that takes a connection and resets it, so the tool starts it again inside the call's lease, and one that will not come back is said to be down in one line with its reason, never a stack trace's first line.",
+  "The computer the owner names: the default one when none is named; another computer's browser is another profile with its own sign-ins, so a read moves there only when the owner names it.",
 ]
 tier = "free"
 needs = "a desktop computer with a Chromium-based browser, a separate profile on it, and a path from the box to its developer port"
 price = "none"
 free_path = "this is the free path"
-why_not = "After the rooms move; the job-applications and bank-balances abilities wait on it."
-asked_as = ["use my browser", "control my browser", "drive my browser", "use a browser", "browser for me", "open a website for me"]
+why_not = "Not in this repo: a browser reaches the rooms as a plug-in an install attaches to every owner room under rooms.toml [defaults] (on the owner's box, hands and its mcp__hands__browser), so a room that holds such a tool opens the page with it, on the computer the owner names, and when the tool says that browser is down the room tells the owner, never reading on another computer unasked. The bank-balances ability builds on it."
+asked_as = ["use my browser", "control my browser", "drive my browser", "use a browser", "browser for me", "open a website for me",
+            "open it in my browser", "open a page in my browser", "browser on my pc"]
 
 # need-2026-11-01-31: a form that wants a photo could not be sent, since a file input takes no typed value.
 [abilities.form-files]
@@ -473,6 +546,7 @@ how = [
   "Transcript: a video with no captions has its sound go through the transcribe engine on its keys and its US$1 gate, each paid call a spend row under watch, saved beside the video; with no sound, or a transcript that fails, the frames still come and the result says why.",
   "Never twice: a post already pulled is not pulled again, and its transcript is read from its file, so a second call costs nothing.",
   "In the site's words: a page that needs a login, a private post or a page with no video is said as yt-dlp says it; no cookies and no logins are used.",
+  "A file: a video file sent to a room is watched from its saved path the same way, nothing pulled (yerk explain video-file).",
 ]
 tier = "key"
 keys = ["openai"]
@@ -482,6 +556,61 @@ price = "the download, the frames and a video's own captions are free; a video w
 key = "the transcript runs on transcribe's keys, in the private folder's secrets/: openai.key, and groq.key and meta.key, both optional; the next call reads it, no restart"
 free_path = "the frames, and the words of any video that has captions, come without a key; without yt-dlp the room says so"
 asked_as = ["watch this", "what does the video say", "this reel", "this tiktok", "the video he sent", "what happens in it", "read the whole podcast", "what does he say in this video", "the transcript of this youtube"]
+
+[abilities.video-file]
+state = "built"
+what = "A video file sent to a room (a .mov or .mp4 off a phone, or any video ffmpeg reads) is watched where it is saved, through the watch tool's `path`: still frames the room opens with Read and a transcript of its sound, as a video link gives them, since a room's Read opens no video and ffmpeg in its shell waits on an approval no one gives mid-turn."
+how = [
+  "Arrival: the file's [attachment] line gains a [video] line saying the room sees a video only as the frames watch takes, so it calls watch with the file's saved path before it answers; a .webm stays a recording, transcribe's, since it can be either.",
+  "Frames: ffprobe reads its length and its streams, then ffmpeg takes the frames asked for (6, or 1 to 12) spread evenly through it into videos/file-<its name>-<10 hex of its path>/ in the room's work folder, never through a link the room's shell left there; the file stays in the inbox as it was sent.",
+  "Transcript: its sound goes through the transcribe engine on its keys and its US$1 gate, each paid call a spend row under watch, saved beside the file as NAME.transcript.txt; one already there (watched or transcribed before) is read, never paid twice; a video with no sound, or a file with no picture, gives what it has and the result says why.",
+  "The room's own files: a path outside the room's folders, a missing file, or a link and a path in one call are refused in words, and nothing is pulled from anywhere.",
+  "Stop check: a turn that ends with no watch call on a video it was sent is bounced once, naming the file, since a Read of a video opens nothing and transcribe gives its sound alone.",
+]
+tier = "key"
+keys = ["openai"]
+provider = "OpenAI for the transcript, with transcribe's Groq and Meta keys when they are there"
+needs = "ffmpeg and ffprobe on the machine, on the daemon's PATH; the OpenAI key for the transcript"
+price = "the frames are free; the transcript at transcribe's prices (yerk explain transcribe): a 1-minute clip is about 1 US cent with all three engines"
+key = "the transcript runs on transcribe's keys, in the private folder's secrets/: openai.key, and groq.key and meta.key, both optional; the next call reads it, no restart"
+free_path = "the frames come without a key; without one the room says the video's sound could not be transcribed"
+asked_as = ["the video i sent", "this video file", "the clip i sent", "what's in this video", "look at this video", "frames from a video", "contact sheet"]
+
+[abilities.reverse-image-search]
+state = "built"
+what = "The reverse_image_search tool on Yerk's own MCP server: a picture in a room's own folders (one sent to the room, a picture web_image saved, a frame watch took) is looked up on the web as Google Lens or TinEye would, and the room gets Google's best guess at what it is, the names it ties to it (a work and its maker, a place, a product), the pages that show it, and the copies and look-alikes it found, so a room asked where a picture comes from or who made it searches by the picture, not only by words describing it. The daemon runs it, since a room's shell has no network."
+how = [
+  "Search: Google Cloud Vision's web detection, the documented API of Google's search by picture, one images:annotate request with the picture's own bytes in it, so no picture is put at a public address for a search to fetch; up to 20 of each list.",
+  "Pictures: a jpeg, png, gif, webp, bmp or tiff goes as it is; a HEIC or AVIF, or one past 7 MB (what a 10 MB request carries in base64), goes as a JPEG of at most 2048 pixels a side that ffmpeg makes, the picture itself untouched.",
+  "Records: every title, name and address came off the web, so the result says so, gives the best guess as Google's guess, and tells the room to open a page that shows the picture before it says what it is or who made it; a search that finds nothing says so, and that a photo of a thing finds less than the picture of it a page shows.",
+  "Spend: each call Google answers is one spend row at the list price, and the morning diff says the day's total; a refusal, a key that is wrong or an API not turned on in the key's project is said in Google's own words, the key never in them, and books nothing.",
+]
+tier = "key"
+keys = ["google-vision"]
+provider = "Google Cloud Vision (web detection)"
+needs = "a Google Cloud Vision API key in the private folder (secrets/google-vision.key), from a Google Cloud project with the Cloud Vision API turned on and billing set up; ffmpeg on the machine for a HEIC, an AVIF or a picture past 7 MB"
+price = "the first 1,000 pictures a month free, then US$3.50 a thousand, 0.35 US cents a picture (Cloud Vision's pricing page, read 2026-11-02); each call books 0.35 cents, the list price, not the month's bill"
+key = "make an API key in the Google Cloud project that has the Cloud Vision API turned on (APIs and services, Credentials; restrict it to that API), and put it on the first line of secrets/google-vision.key in the private folder, 0600; the next call reads it, no restart"
+free_path = "none for a search by picture: without the key the tool says which key turns it on, and the room can still Read the picture and search the web by words"
+asked_as = ["reverse image search", "search by image", "who painted this", "where is this picture from", "find this picture online", "google lens", "tineye"]
+
+[abilities.github-state]
+state = "built"
+what = "The github_state tool on Yerk's own MCP server: a branch or a pull request of Yerk's own GitHub repository, which is private, as GitHub has it now, so an owner's room asked whether a worker's branch was pushed, or whether its pull request is open, green or merged, reads it there instead of saying it cannot know; a room's web tools get a 404 from a private repository and no room holds a GitHub login, so the daemon reads it on the needs pipeline's token, which never reaches a room."
+how = [
+  "Ask: a branch's name, or a pull request's number (12, #12, PR 12 or its address); the repository is Yerk's own, [needs] repo in yerkd.toml, else the checkout's origin, and no other.",
+  "Read: GitHub's REST API with the token in a header, at most four calls a look: the branch's pull requests in every state (the newest five), the branch's head commit, and an open one's commit statuses; a 404, 401 or 403 on the repository itself is a token that does not reach it, said in words.",
+  "Here: the same branch in Yerk's checkout against GitHub's head, read only (no fetch, no ref written): its head, whether GitHub has that same commit, and how many commits each side lacks when both are in the checkout.",
+  "Who: the owner's rooms only, since the repository is the owner's; a person's room hears that in one line. A title or a commit line comes back as a record, never an instruction.",
+]
+tier = "key"
+keys = ["github"]
+provider = "GitHub (its REST API, on the token the needs pipeline uses)"
+needs = "a GitHub token at secrets/github.token in the private folder that reads Yerk's repository: its contents, pull requests and commit statuses (the needs pipeline's own token does)"
+price = "free: GitHub's REST API costs nothing on a token's own repositories, within its hourly rate limit"
+key = "make a fine-grained token on GitHub (Settings, Developer settings) for Yerk's repository with read access to its contents, pull requests and commit statuses (the pipeline's merge wants write too), and put it on the first line of secrets/github.token in the private folder, 0600; the next call reads it, no restart"
+free_path = "none for a private repository: without the token the tool names the file that turns it on and asks GitHub nothing"
+asked_as = ["has the branch reached github", "was the branch pushed", "is the pr merged", "is the pr green", "pull request state", "branch on github"]
 
 [abilities.assistant-files]
 state = "built"
@@ -1060,6 +1189,14 @@ needs = "nothing; writes <private>/memory/facts/ and the day's log"
 free_path = "this is the free path"
 layer = 4
 
+[abilities.topic-triggers]
+state = "built"
+what = "Chooses the words a topic rule loads on: `remember` with a `job` takes `triggers`, words or short phrases a message on the job holds (the owner's, when named), and a rule the shared rules file has no room for loads on its job's words and those, in place of the names its text holds, each one riding alone as a word only that rule says and a phrase when a message says each of its words; a filing of the job that names none keeps them, and every filing names the older line of its job it marked replaced, in the rules file or the topic rules."
+tier = "free"
+needs = "an owner room; the words are kept on the rule's own line in rules-topics.md, as an [on: ...] mark"
+free_path = "this is the free path"
+asked_as = ["topic rule triggers", "trigger words", "rule fire on", "rule load on", "rule loads on"]
+
 [abilities.embeddings]
 state = "built"
 what = "Meaning search behind the keywords: yerk-index embeds every line of a day log and every bullet of a fact or topic file once (changed lines only, the vector stored next to the line's hash, copied across a rebuild) and answers recall's query by cosine, each hit mapped to its chunk; recall fuses that rank with the keyword rank by reciprocal rank fusion, holds each search's own first hits in the top six and gives a fact or topic file a small edge over a day log, so a paraphrase finds the line its words never name."
@@ -1181,6 +1318,14 @@ free_path = "this is the free path"
 asked_as = ["claude docs", "what the docs say", "the prompting guide"]
 command = "docs"
 
+[abilities.harness-code]
+state = "built"
+what = "Reads Yerk's own code, the checkout that runs: every owner room's Read, Grep and Glob reach it and the mechanics name its path, so a worker's claim about Yerk (a flag it says is passed, a check it says runs) or a question on how Yerk does a thing is checked against the code before it is said, never relayed on a report's word. The daemon writes the read rule into each owner room's settings at its process start: the checkout whole, or each of its entries around the private and state folders when it holds one, the secrets' denies still beating it; a rule and never an added folder, since Claude Code's sandbox opens an added folder to the room's shell for writing. A room whose privacy is not owner reads its own folders only, as before."
+tier = "free"
+needs = "an owner room with Read, Grep or Glob in its tools; nothing to set"
+free_path = "this is the free path"
+asked_as = ["read your own code", "read the harness code", "check the code yourself", "check a worker's claim", "yerk's code"]
+
 [abilities.rule-shape]
 state = "built"
 what = "Checks how its own rules are written: the doctor scores every rule file a room loads (the mechanics, its persona, rulebook and voice, the rules file) against the prompting guide, counting negatives with no why, shouted words, examples outside example tags, alarm marks on an instruction and topics said in two files. A count past budgets.toml [shape] is a finding, a rule filed in the last day that misses the shape is named by its cite, each room's report is docs/shape/<room>.md, the morning diff carries the totals, and `yerk docs shape` prints the report with each count's exact rule."
@@ -1199,3 +1344,11 @@ price = "nothing without keys; with them, each provider's own price, paid to it 
 key = "each key in its own file in the private folder's secrets/, 0600: exa.key (search and research), parallel.key (search), browserbase.key and browserbase-project.id (the cloud browser); the next call reads it, no restart"
 free_path = "a plain read and the machine's own browsers for pages, You.com's and Parallel's keyless engines for search; research needs its key"
 asked_as = ["web reach", "blocked page", "bot wall", "captcha page", "page will not load", "search api", "paid search", "search provider", "deep research", "research agent", "web research", "exa agent", "verify and enrich"]
+
+[abilities.bookings-guest]
+state = "built"
+what = "Reads a Microsoft Bookings page (Bookings with me) the way a guest sees it, with no sign-in: web_fetch adds the anonymous flag every share link Microsoft makes carries when a link lacks it, so no rung lands on Microsoft's sign-in, and the machine's own browser clicks Continue as guest on the page's sign-in-or-guest screen and reads the meeting types and open times that click brings; a page still on that screen, or whose guest view goes on to a sign-in, is named so, with the next move, never as a login to save, and no paid rung runs for it."
+tier = "free"
+needs = "the web ability's plug-in attached to the room and the machine's own browser (F2) installed; no account, no key and no sign-in"
+free_path = "this is the free path"
+asked_as = ["bookings page", "bookings with me", "bookwithme", "microsoft bookings", "booking page slots"]

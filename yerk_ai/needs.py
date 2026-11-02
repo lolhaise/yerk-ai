@@ -12,7 +12,9 @@ for every room, so every room shares the same one best way of doing each thing.
   account (default: [curate] account), its card in the machine room. A worker never pushes or opens a PR (gates.EXTERNAL), so
   it commits a branch; the push and the PR come from outside it and the owner's cold read merges, so one deploy gives every
   room the same way. Its end sets the state from its report's first line (`ended`).
-- `yerk needs list`: each need and its state (filed, building WORKER, PR N, merged); `yerk needs done DAY N PR`: merged.
+- `yerk needs list`: each need and its state (`said`); `yerk needs done DAY N PR`: merged by a person.
+- The pipeline (pipeline.py, [needs] auto): one need at a time from filed to live, the rest queued; its states are below
+  (FLIGHT, CLOSED) and each one's words are `said`'s.
 """
 from __future__ import annotations
 
@@ -37,6 +39,8 @@ BLOCK = re.compile(r"\n## \d+\. need: .*?(?=\n## |\Z)", re.S)    # a need's bloc
 PR = re.compile(r"\bPR\s*#?(\d+)\b")
 NO_BRANCH = re.compile(r"\W*no branch\b", re.I)                   # the brief's third first line: it built nothing
 BRANCH = re.compile(r"\bbranch\s+`?([\w./-]+?)`?(?=[\s,:;]|$)")
+FLIGHT = ("building", "built", "pr", "fixing", "reading", "merged", "deploying")   # one need at a time is in one of these
+CLOSED = ("merged", "deploying", "live")           # a filing of the same ability after these is a new need
 TOKEN = re.compile(r"[^\s'\"`;,()<>]+")
 TASKS = ["worktree on its own branch", "the ability, with its tests", "the full suite green", "README, CHANGELOG, abilities",
          "committed, REPORT.md"]
@@ -77,10 +81,16 @@ def filed(a: dict[str, Any]) -> str:
 
 
 def said(r: dict[str, Any]) -> str:
-    """Its state in words: filed, building WORKER, PR N, built on branch B (no PR seen yet), merged."""
-    st, last = str(r.get("state", "filed")), f", last build {r['last']}" if r.get("last") else ""
-    return {"building": f"building {r.get('worker')}", "pr": f"PR {r.get('pr')}", "built": f"built on branch {r.get('branch')}",
-            "merged": f"merged, PR {r.get('pr')}"}.get(st, "filed" + last)
+    """Its state in words: filed, queued, building WORKER, built on branch B (no PR seen yet), PR N and its checks, fixing
+    PR N (k of the cap), cold read of PR N, held: why, stuck: why, merged, deploying, live."""
+    st, last, pr = str(r.get("state", "filed")), f", last build {r['last']}" if r.get("last") else "", r.get("pr")
+    ran = [v[0] for v in dict(r.get("checks") or {}).values()]
+    return {"queued": "queued, it starts when the need in flight is live, held or stuck",
+            "building": f"building {r.get('worker')}", "built": f"built on branch {r.get('branch')}",
+            "pr": f"PR {pr}" + (f", checks {ran.count('success')} of {len(ran)} passed" if ran else ""),
+            "fixing": f"fixing PR {pr}, fix {r.get('fixes')} of {r.get('fix_cap', 2)}, {r.get('worker')}",
+            "reading": f"cold read of PR {pr}, {r.get('worker')}", "held": f"held: {r.get('why')}", "stuck": f"stuck: {r.get('why')}",
+            "merged": f"merged, PR {pr}", "deploying": f"merged, PR {pr}, deploying", "live": f"live, PR {pr}"}.get(st, "filed" + last)
 
 
 def block(r: dict[str, Any]) -> str:
@@ -131,7 +141,7 @@ def file(s: Settings, state: Path, room: str, mid: str, asked: str, tried: str, 
     a |= {"room": room, "at": f"{at:%Y-%m-%d %H:%M}", "mid": mid}
     with daily_lock(s.daily):                          # the memory writers' lock: curate's rewrite of the page waits on it too
         rows = load(state)
-        r = next((x for x in rows if x.get("state") != "merged" and same(str(x["ability"]), a["needed"])), None)
+        r = next((x for x in rows if x.get("state") not in CLOSED and same(str(x["ability"]), a["needed"])), None)
         again = r is not None and any((x["room"], x["mid"], x["needed"]) == (room, mid, a["needed"]) for x in r["asks"])
         if r is None:
             day, p = at.date().isoformat(), s.root / FOLDER / f"{at.date().isoformat()}.md"
@@ -166,14 +176,15 @@ def ended(s: Settings, state: Path, day: str, n: int, wid: str, how: str, first:
     ended, so it can be built again; a need marked merged meanwhile, or built by another worker, stays as it is. A line that
     starts "no branch" names neither, whatever PR or branch its why mentions."""
     pr, branch = (None, None) if NO_BRANCH.match(first) else (PR.search(first), BRANCH.search(first))
-    changes: dict[str, Any] = ({"state": "pr", "pr": int(pr[1])} if pr else {"state": "built", "branch": branch[1]} if branch and clean
+    on = {"branch": branch[1] if branch else f"need-{day}-{n}", "since": round(time.time(), 3)}   # the watcher's clock
+    changes: dict[str, Any] = ({"state": "pr", "pr": int(pr[1]), **on} if pr else {"state": "built", **on} if branch and clean
                                else {"state": "filed", "last": f"{wid}: {how}"})
     return update(s, state, day, n, changes, lambda r: r.get("state") == "building" and r.get("worker") == wid)
 
 
 def listing(state: Path) -> list[str]:
     """`yerk needs list`: a line a need, the open ones first and the oldest first: its day and number, state, count, ability."""
-    rows = sorted(load(state), key=lambda r: (r.get("state") == "merged", str(r.get("day")), int(r.get("n", 0))))
+    rows = sorted(load(state), key=lambda r: (r.get("state") in ("merged", "live"), str(r.get("day")), int(r.get("n", 0))))
     return [f"{r['day']} {r['n']} {said(r)}: {r['ability']} (asked {len(r['asks'])} time{'s' * (len(r['asks']) != 1)})"
             for r in rows]
 
@@ -190,10 +201,10 @@ def foreign(texts: list[str], own: Path, others: list[str]) -> str:
     return ""
 
 
-def brief(r: dict[str, Any], repo: Path) -> str:
+def brief(r: dict[str, Any], repo: Path, check: str = "") -> str:
     """The builder's brief from a need: every ask as filed, the repo and where to read, and the shape of done (a branch with
     tests, never a merge, a push or a deploy; a report; the last message the deliverable)."""
-    branch, k = f"need-{r['day']}-{r['n']}", len(r["asks"])
+    branch, k, check = f"need-{r['day']}-{r['n']}", len(r["asks"]), checked(check)
     return (
         f"# Yerk: build \"{r['ability']}\" for every room (need {r['n']} of {r['day']})\n\n"
         f"A room could not do what it was asked and filed what it needed instead of improvising a way of its own, {k} "
@@ -220,4 +231,41 @@ def brief(r: dict[str, Any], repo: Path) -> str:
         "## Leave alone\n"
         "The owner's private folder and Yerk's state folder, every room's files, other branches, the running daemon. Surgical "
         "edits, never a whole file rewritten. Your last message is the deliverable: REPORT.md's first line and the test "
-        "counts, with no tool call after it.\n")
+        "counts, with no tool call after it.\n" + RULES.format(check=check))
+
+
+RULES = ("\n## Every commit\n"
+         "- {check}\n- Never amend, squash or rebase a commit once it is made: every commit is pushed within seconds.\n"
+         "- No Agent tool and no subagents: read with grep and sed yourself.\n")
+
+
+def checked(tool: str) -> str:
+    """The pr-check line every brief carries: [needs] pr_check names the install's checker, else the checks by hand."""
+    return (f"Before your last commit run `{tool} <your worktree>` and fix until it prints ALL PASS." if tool else
+            "Before your last commit run the full suite, ruff and mypy in your worktree and fix until all three are clean.")
+
+
+def where(r: dict[str, Any], repo: Path) -> str:
+    return (f"Repo {repo}, pull request {r.get('pr')} from branch `{r.get('branch') or ''}` at {str(r.get('head') or '')[:7]}. "
+            f"Make your own worktree at that head under your folder: `git -C {repo} fetch origin` then `git -C {repo} worktree "
+            f"add <your folder>/wt {r.get('branch') or r.get('head')}`.\n\n")
+
+
+def read_brief(r: dict[str, Any], repo: Path, check: str) -> str:
+    """The cold read: a fresh worker, never the builder, reads the pull request against main and says merge, fix first or
+    unsure in its report's first line (pipeline.py acts on it)."""
+    return (f"# Yerk: the cold read of PR {r.get('pr')}, need {r['n']} of {r['day']}: \"{r['ability']}\"\n\n"
+            "The rooms filed it so:\n\n" + "".join(filed(a) + "\n" for a in r["asks"]) + "\n" + where(r, repo) +
+            "Read the diff against main (`git diff origin/main...HEAD` in the worktree) as a reviewer who did not write it: does "
+            "it build the ability once for every room, with tests, in the repo's style (README.md, STYLE.md), and break nothing? "
+            f"{checked(check)}\n\nYour REPORT.md's first line is exactly one of `merge`, `fix first: <why>`, `unsure: <why>`, "
+            "and the rest is what you read. Never merge, push, open a PR or deploy, and change no file in the repo.\n")
+
+
+def fix_brief(r: dict[str, Any], repo: Path, check: str, what: str) -> str:
+    """A fix worker: the failing checks as GitHub gives them, or the cold read's why, fixed with a new commit on the branch."""
+    return (f"# Yerk: fix PR {r.get('pr')}, need {r['n']} of {r['day']}: \"{r['ability']}\"\n\n" + where(r, repo) +
+            f"What to fix:\n{what}\n\nReproduce it first (the suite, on that Python through `uv run --python X` when uv has "
+            "it). Fold origin/main in first when the branch is behind it. Fix it with a NEW commit on the branch, never an amend, "
+            "a squash or a rebase: every commit on the branch is pushed within seconds. Never push, open a PR, merge or deploy.\n"
+            + RULES.format(check=checked(check)) + "\nYour REPORT.md's first line is `fixed: <short sha>` or `cannot: <why>`.\n")

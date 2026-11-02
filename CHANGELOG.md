@@ -6,7 +6,7 @@ A line that changes a file the install keeps (rooms.toml, yerkd.toml, budgets.to
 newer than the code is refused with one line, never changed); the index chunks every file again when its chunker's
 version changes.
 
-## 2026-11-01
+## 2026-11-02
 
 ### need-2026-11-01-31 (#?)
 
@@ -27,9 +27,341 @@ version changes.
 
 **Upgrading**: the hands plug-in's main is already at 2fc539f (fast-forwarded on 2026-11-02, before this merge), so
 nothing to change by hand. budgets.toml moves with it: the hands plug-in's line to 7,900 and the session-start total to
-112,740, so a deploy after the plug-in's branch is in does not refuse on its size.
+116,640, so a deploy after the plug-in's branch is in does not refuse on its size.
 
-## 2026-10-31
+### reattach-race (#?)
+
+- A worker is no longer settled as lost a second after its start while its unit runs. The minute's backstop pass
+  (`Workers.reconcile`, which made the call that night) and a start's re-attach (`Workers.reattach`) each read the unit
+  list first and the running workers after, and a worker started in between, in the ledger and watched before
+  `systemd-run` had made its unit, was in no list and settled as lost on that one read: on 2026-11-02 the
+  journal has `worker 99319d: lost (the unit is gone and left no exit record)` one second after its `started` line,
+  so need 22 was held for a person ("the cold read gave no verdict") and account two, one worker at a time under
+  `[workers] per_account` (1 by default), went to the next need's builder, while 99319d, the need's cold read, ran on
+  to its `merge` verdict and exited clean seven minutes later. Now a worker one list missed gets a second look at its unit
+  first, and one under two minutes old is kept for a later pass, its unit maybe not listed yet; a unit both looks
+  miss, with no exit file, in a worker past its first two minutes is lost, as before, and a look that saves one logs
+  `the unit list was stale, re-attached`.
+
+**Upgrading**: nothing to change by hand; the daemon looks twice from its next start. budgets.toml moves with the code:
+the code ceiling to 24,363.
+
+### need-2026-10-24-22 (#?)
+
+- A room sent a video file now sees it: `watch` takes `path`, the file's saved path from its `[attachment]` line, in place
+  of a link, and gives what a link gives: frames spread evenly through it (6, or 1 to 12) that the room opens with Read,
+  and a transcript of its sound. Nothing is pulled and yt-dlp never runs. The frames go to
+  `videos/file-<its name>-<10 hex of its path>/` in the room's work folder, so two files of one name never share them, and
+  the nightly sweep may take them, since a later call makes them again; the file stays in the inbox as it was sent. The
+  transcript is saved beside it as `NAME.transcript.txt`, where `transcribe` writes one, on the same keys and US$1 gate,
+  each paid call a spend row under `watch`, and one already there is read, so a video watched or transcribed before is
+  never paid for twice. A video with no sound gives its frames, and a file with no picture gives its words; the note says why.
+- Only the room's own files: a path outside its folders (a link out included, since the path is resolved first), a
+  missing file, and a call with both a link and a path are refused in words. A link the room's shell left where the
+  frames go is never written through.
+- A video's `[attachment]` line gains a `[video]` line: the room sees a video only as the frames `watch` takes, so it
+  calls `watch` on that path before it answers. A turn that ends without that call is bounced once at Stop, naming the
+  file, as a picture never read and a voice note never transcribed are; a Read of a video opens nothing, and `transcribe`
+  on one gives its sound alone, so neither counts. A `.webm` stays a recording, as before, since it can be either.
+- The card says `watching the video clip`, the file's plain name, never its path. The mechanics' watch line names the
+  file's way, the tool gains a sentence, and `yerk explain video-file` has the ability; `yerk explain watch` points to it.
+  The GUIDE has it under Video files, and its count is what the file holds, 96: 38 built; the README, at its 12,000
+  bytes on main, is left as it is.
+- Why: on 2026-10-24 a room asked to say what was in a video file sent to it found Read could not open it, and its two
+  tries at ffmpeg in its shell each waited on an approval no one could give mid-turn; it answered off a thumbnail in a
+  screenshot sent with it. On 2026-10-28 another room asked to watch a 9-second clip, not to listen to it, got the sound
+  alone from `transcribe`, and `watch` took only a link (need 22 of 2026-10-24, filed twice).
+
+**Upgrading**: nothing to change by hand; ffmpeg and ffprobe already on yerkd's PATH serve it from the next start, and
+each room has the mechanics line from its next process start. budgets.toml moves with the code, on main's numbers after
+#161 to #166 and #168: Yerk AI's tools to 18,000, the session-start total to 116,202, the code ceiling to 24,347; the
+mechanics (5,888) stay under their 6,000, which leaves a checkout's path of up to 118 characters.
+
+### need-2026-10-27-23 (#?)
+
+- An owner's room can see a branch or a pull request of Yerk's own repository as GitHub has it now: the new
+  `github_state` tool on Yerk's own server takes a branch's name (a worker's) or a pull request's number (12, #12, PR 12
+  or its address). The repository is private, so a room's web tools get a 404 there, and no room holds a GitHub login;
+  the daemon asks GitHub's REST API on the token the needs pipeline already uses, `secrets/github.token`, sent in a
+  header and never in a result, a log or a card.
+- It returns the branch's head on GitHub (`github`: its commit and how long ago it was made; null when GitHub has no
+  such branch, as after a merge that deleted it), the same branch in Yerk's checkout against it (`here`: its head,
+  whether GitHub has that same commit, and how many commits each side lacks when both are in the checkout; read only,
+  no fetch and no ref written), and the branch's pull requests, the newest five, each open, draft, merged or closed with
+  when, and an open one's commit statuses (`checks`, and `red` naming each that failed). So "committed, not pushed" and
+  "pushed, its pull request open and green" are read, not guessed.
+- Yerk's own repository only: `[needs] repo` in yerkd.toml, else the checkout's origin; another repository's address is
+  refused in one line. The owner's rooms only, since the repository is the owner's; a person's room hears that in one
+  line. A name that is no branch (an option, a range, a space) is refused before anything is sent.
+- With no token the tool says, in one line, the file that turns it on and asks GitHub nothing; a token that does not
+  reach the repository (GitHub's 401, 403 or 404 on the repository itself), a pull request that is not there and GitHub
+  not answering are each said in words. `yerk abilities` lists `github-state` as needing GitHub until the token file is
+  there (abilities.toml's `github` key is that file). Free: no spend row.
+- The card's row reads "checking need-example-1 on GitHub", never the call.
+- abilities.toml has the built `github-state` entry; the README names it among Yerk's tools (its inbox sentence a clause
+  shorter, to stay under 12,000 bytes), the GUIDE has a section, A branch on GitHub, and its count is what the file
+  holds, 95: 37 built; docs/tools.md and docs/budgets.md are what `yerk docs own` writes.
+- budgets.toml: `yerk_tools` 16,900 to 17,700 (the tool is 822 as built on Python 3.13, about 853 as sent) and the
+  session total by the 800 to 115,902; [code] lines 24,148 + 129 = 24,277; each with its dated note.
+- Why: on 2026-10-27 a room asked to tell a worker's outcome (its branch committed, not pushed), and whether the branch
+  or its pull request had since reached GitHub, fetched the repository's pull requests from GitHub's API and got a 404:
+  the repository is private and the room has no login. It said the push state was unknown from there and filed the need.
+
+**Upgrading**: nothing to change where the needs pipeline already has its token: the tool reads
+`secrets/github.token` in the private folder (one line, 0600), which needs read access to the repository's contents,
+pull requests and commit statuses. A room has the tool from its next session start after the deploy. budgets.toml's
+`yerk_tools`, `total` and [code] `lines` move with this change.
+
+### need-2026-10-26-23 (#?)
+
+- A room the owner asks to book a free table can fill and confirm its booking page now, though the page's address
+  looks like a checkout. The browser plug-in kept outside this repository (hands, attached to every owner room under
+  rooms.toml's `[defaults]`) judged a payment page by its address alone, so a booking's Confirm page on a `/checkout/`
+  address (a name, a phone number, an email, a Confirm button; no card, no deposit) had every field and click refused,
+  the owner's own order included.
+- The page decides now, not its address, on the plug-in's branch `need-2026-10-26-23`: its read of a tab also takes
+  the first money the page's whole text shows, an amount (a currency sign or code beside a number) or a saved card (its
+  last four digits after a mask or after "ending in"). A checkout address whose page shows no card field, no payment
+  frame, no amount and no saved card is a look-alike: each field and each click there goes only with `confirmed: true`,
+  the owner's own order, and without it the refusal asks for that word. A read of the page says which it is.
+- A payment page is still never touched, confirmed or not: a card field, a payment frame, a payment service's host, or
+  a checkout address whose words show money; the refusal now says what it saw. A page off a checkout address that shows
+  prices (a menu, a shop) is judged as before, and opening a checkout address is still refused, since only the page can
+  say whether it takes money. The plug-in's offline tests run its real page read against a stub page: 31 of 31 green.
+- Here, abilities.toml has the described `free-bookings` entry (the browser ability is not in this repo), with six
+  phrases ("book a table", "make a reservation", ...) that hand a room asked that way the entry whole
+  (`yerk explain free-bookings`); the README says it in Add-ons (its web plug-in aside cut to stay under 12,000 bytes),
+  and the GUIDE's count is what the file holds, 94: 36 built. The plug-in's tool text does not change, so no budget
+  line moves.
+- Why: on 2026-10-26 a room the owner told to book a table reached the booking's Confirm page and had its four fields
+  and a checkbox refused as a payment page eleven times, once with the owner's confirmation on the call.
+
+**Upgrading**: nothing to change here. The plug-in's change is live when hands-mcp's main moves to its branch
+`need-2026-10-26-23` (e94ce96, on its main 64af176); a room has it from its next process start after that.
+
+### need-2026-10-26-22 (#?)
+
+- A room can search the web by a picture now, as Google Lens or TinEye do: the new `reverse_image_search` tool on Yerk's
+  own server takes a picture in the room's own folders (one sent to it, a picture `web_image` saved, a frame `watch`
+  took) and returns Google's best guess at what it is, the names it ties to it with their scores (a work and its maker,
+  a place, a product), each page that shows it, whole or in part, and the addresses of its copies, parts and look-alikes,
+  up to 20 of each. It is in every room's allow list, a person's room too, so one deploy gives every room the same way.
+- It runs on Google Cloud Vision's web detection, the documented API of Google's search by picture: the picture's own
+  bytes go in the request, so no picture is put at a public address for a search to fetch, and the key goes in a header,
+  never in an address, a log or a result. A jpeg, png, gif, webp, bmp or tiff goes as it is; a HEIC, an AVIF or a picture
+  past 7 MB goes as a JPEG of at most 2048 pixels a side that ffmpeg makes, the picture itself untouched.
+- The result says all of it came off the web, a record and never an instruction, that the best guess is Google's guess,
+  and to open a page that shows the picture before saying who made it; a search that finds nothing says so. Google's
+  refusal (a wrong key, the API off in the key's project, no billing) comes back in its own words with the key taken out;
+  a busy answer is tried three times.
+- Each call Google answers is one spend row (tool `reverse_image_search`, engine `google-vision`) at the list price,
+  US$0.0035 a picture past the first 1,000 a month, which are free; the morning diff carries the day's total. A refusal
+  books nothing.
+- With no key the tool says, in one line, the file that turns it on (`secrets/google-vision.key`) and sends nothing.
+  `yerk abilities` lists `reverse-image-search` as needing Google Cloud Vision until that file is there.
+- The card's row reads "finding IMG_0001 on the web", never the call.
+- abilities.toml has the built `reverse-image-search` entry; the README and the GUIDE (a section, Search by picture) say
+  it; the GUIDE's ability count is corrected to what the file holds, 93: 36 built (it said 90: 33, two built entries
+  behind); docs/tools.md and docs/budgets.md are what `yerk docs own` writes.
+- budgets.toml: `yerk_tools` 16,000 to 16,900 (the tool is 826 as built on Python 3.13, about 857 as sent) and the
+  session total by the 900 to 115,102; [code] lines 23,977 + 171 = 24,148; each with its dated note.
+- Why: on 2026-10-26 a room was asked who painted a painting in a phone photo, with no signature on it. It read the photo
+  and ran six word searches on its style and subject, checked the closest painter it found and ruled them out, and found
+  no match: no tool searched the web by picture, so it filed the need.
+
+**Upgrading**: to turn it on, make an API key in a Google Cloud project with the Cloud Vision API turned on and billing set
+up (restrict the key to that API), and put it on the first line of `secrets/google-vision.key` in the private folder,
+0600; the next call reads it, no restart. ffmpeg, which transcribe and watch already need, makes the JPEG for a HEIC, an
+AVIF or a picture past 7 MB. A room has the tool from its next session start after the deploy. budgets.toml's
+`yerk_tools`, `total` and [code] `lines` move with this change.
+
+### need-2026-10-26-21 (#?)
+
+- A room asked to open a page in the browser on the owner's PC opens it: the browser plug-in, kept outside this
+  repository (hands, attached to every owner room under rooms.toml's `[defaults]`), starts that browser again before
+  each call on the PC, inside the call's lease, since 2026-10-26. A browser that will not come back is said to be down in
+  one line with its reason, and an error from the browser's driver names its exception's own line, never a stack trace's
+  first line. The plug-in's own offline tests hold both (28 of 28 green on its main); its call log has no failed browser
+  call since the change.
+- Here, the manifest says so: the browser entry's `how` gains the relaunch before each call and the computer the owner
+  names (the default one when none is named; another computer's browser is another profile with its own sign-ins, so a
+  read moves there only when the owner names it), and its `why_not` no longer waits on the rooms' move: a browser reaches
+  the rooms as a plug-in an install attaches, a room that holds such a tool opens the page with it, and when the tool says
+  that browser is down the room tells the owner, never reading on another computer unasked. Three new phrases ("open it
+  in my browser", "open a page in my browser", "browser on my pc") hand a room asked that way the entry whole
+  (`yerk explain browser`).
+- Nothing in the harness's code changes, so no budget line moves.
+- Why: on 2026-10-26 a room asked to open a page in the browser on the owner's PC met "opening the tab failed"
+  with only a stack trace's first line after it: the browser had quit with its last tab, and its port took each call and
+  reset it. The same open in the Mac's browser, another profile, landed on a sign-in page.
+
+**Upgrading**: nothing to change by hand; the plug-in's change has been live since 2026-10-26, and a room hears the new
+entry from the deploy.
+
+### need-2026-10-25-23 (#?)
+
+- A room the owner orders to delete files or folders outside its work folder can do it now: the new `delete` tool on
+  Yerk's own server takes their whole paths, and the daemon deletes them, since a room's shell deletes only inside its work
+  folder and Claude Code's sandbox keeps the rest of the disk read-only to it. For good, not to the trash: what the owner
+  orders deleted out there is to free the disk, and the trash frees nothing. A file or a link is unlinked (never the file a
+  link points to), a folder is removed whole without following a link inside it, and the result says what went, what would
+  not and why, and the space freed.
+- Shown first: the new `delete-outside` gate rule holds every call, and the room is shown each path whole with what it is
+  (a file and its size on disk, a folder, a link); the owner's approval word runs that exact call once, and an edit is a new
+  call and a new hold. The tool deletes only what the gate released, so with `delete-outside` in `[gates] off`, or a hook
+  that fails open, nothing goes.
+- Never deleted, approval or not, and refused before the owner is asked: a call from a person's room, a path that is not
+  whole, not there or not its own real path (a link or a `..` on its way, so the path shown is the path deleted), the
+  root, a top folder, the home folder, a mounted disk or a folder holding one, and Yerk AI's own folders (its code, its
+  state and private folders, the memory, an account's folder) or one holding them.
+- A room's own `rm` outside its work folder is still refused, and in an owner room the refusal now names the `delete` tool;
+  a worker and a person's room keep the old refusal. Each delete's outcome is a `delete` row in the ledger's gates table.
+- Sizes of a gigabyte or more read in GB everywhere words.size says one (`yerk retention`, the doctor's growth line).
+- `yerk explain delete-outside` has the ability. Every room is handed the tool's sentence, so `yerk_tools` goes to 16,000
+  and the session-start total to 114,202; the code ceiling moves up by 166, to 23,977.
+- Why: on 2026-10-25 a room the owner asked to delete old junk outside its work folder to free a full disk had its `rm`
+  refused by the trash gate, found the rest of the disk read-only in its sandbox, and wrote the delete lines into a script
+  for the owner to paste and run (need 23 of that day).
+
+**Upgrading**: nothing to change by hand; every owner room has the tool from its next process start. budgets.toml moves
+with the code: `yerk_tools` to 16,000, the session-start total to 114,202, the code ceiling to 23,977.
+
+### need-2026-10-25-22 (#?)
+
+- A room can choose the words a topic rule loads on: `remember` with a `job` takes `triggers`, words or short phrases a
+  message on the job holds (the owner's, when named). A rule the shared rules file has no room for then loads on its
+  job's words and those, in place of what its own text names (a name, a capitalised word mid-sentence), kept on its line
+  in rules-topics.md as an `[on: ...]` mark before its trailer.
+- A picked word rides alone at the weight of a word only that rule says, so an everyday word the extractor never takes
+  ("money") or one every rule says still loads it; a phrase rides when a message says each of its words that names
+  something, in any order. A trigger whose words all name nothing ("how do I") is refused, and nothing is filed.
+- A filing of the job that names no `triggers` keeps the ones its live topic rule has, so a correction to the rule's
+  words never drops the owner's choice; the same call again is a retried one and files nothing.
+- `replaced` names every line of its job a filing marked, in the rules file or the topic rules. A topic filing marked its
+  job's older topic line and said `replaced: []`, and so did a filing into the rules file that marked its job's topic rule.
+- The reply's clause and the machine room's notice name the words picked. `yerk explain topic-triggers` has the ability.
+  `remember` grows by about 279 characters as sent, so `yerk_tools` goes to 15,400 and the session-start total to 113,602;
+  the code ceiling moves up by 25, to 23,811.
+- Why: on 2026-10-25 an owner room asked to make a topic rule load on an everyday word and phrases holding it filed the
+  rule again with those words in its text; its triggers came from its job's words and the names its text held, never the
+  word asked for, and the filing said `replaced: []` though it had marked the older line, so the room could not tell
+  whether two filings of the job sat side by side.
+
+**Upgrading**: nothing to change by hand; every owner room files with `triggers` from its next process start after the
+deploy, and a topic rule filed before it keeps the words its text gives it until it is filed again with `triggers`.
+budgets.toml moves with the code: `yerk_tools` to 15,400, the session-start total to 113,602, the code ceiling to 23,811.
+
+### need-2026-10-25-21 (#?)
+
+- An owner room can check a worker's claim about Yerk against the code now: every owner room's settings carry a Read
+  rule for Yerk's own checkout, the code that runs (the folder the package runs from), so the room's Read, Grep and
+  Glob reach every file there. The daemon writes it at each process start: the checkout whole, or, when the checkout
+  holds the private or the state folder (a clone on its example layer), each of its other entries by a rule of its own;
+  the read denies on every secret still beat it.
+- A rule, never an `--add-dir`: Claude Code's sandbox opens an added folder to the room's shell for writing, and no room
+  writes the harness. A room whose privacy is not owner reads its own folders only, as only an owner room takes a
+  `read` folder.
+- The mechanics gain one line naming the checkout's path: check a worker's claim about Yerk, or how Yerk does a thing,
+  there before saying it, since a report can be wrong. mechanics.md holds a `{code}` mark there, and the session start
+  and the news of a changed line fill in the path, so every room is handed the path and never the mark.
+- `yerk explain harness-code` has the ability. The mechanics go to 6,000 (5,818 in the file, the checkout's path on top
+  as sent) and the session-start total to 113,302; the code ceiling moves up by 10, to 23,786.
+- Why: on 2026-10-25 an owner room asked to tell a worker's code-review outcome Grepped the checkout for the worker's
+  finding to confirm it first; Claude Code refused the read, since the room's settings opened its own folder only, and
+  the room relayed the finding unchecked, marked as the worker's read.
+
+**Upgrading**: nothing to change by hand; every owner room reads the checkout from its next process start after the
+deploy. budgets.toml moves with the code: `mechanics` to 6,000, the session-start total to 113,302, the code ceiling to
+23,786.
+
+### need-2026-10-24-21 (#?)
+
+- A room asked to read a Microsoft Bookings page (Bookings with me) now reads it as a guest, with no sign-in:
+  `web_fetch` adds the `anonymous` flag every share link Microsoft makes carries (`.../bookwithme/user/<id>@<domain>?anonymous&ep=pcard`)
+  when a link lacks it, first in the query as Microsoft writes it, on Outlook's hosts and `bookings.cloud.microsoft`, so
+  no rung lands on Microsoft's sign-in page. The flagged page opens on "Sign in or continue as guest", and its meeting
+  types and open times show only after a click on Continue as guest: the machine's own browser (F2) makes that click on
+  a Bookings page only, waits for the guest view (the click's own requests done, the text steady) and takes its few
+  hundred chars as the answer; the answer says it read the page as a guest. A plain read gets only the page's app shell,
+  for either link. A link that has the flag, and every other page, is read as before. Read live on 2026-11-02 with no
+  key: `F1:thin:js_shell,F2:ok:short`, the meeting type and the day's open times, in 4.7 s.
+- A read that is still that choice screen is no answer at any rung (`guest_choice`, `retry=maybe`): L3's "a short but
+  real page is still an answer" took it for one. Once F2 has clicked, or met the screen, the climb stops before
+  Browserbase, whose rungs make no click, so no paid read is spent on it.
+- A Bookings page whose guest view goes on to Microsoft's sign-in is named so (what was seen, not a guess at the owner's
+  setting), with `retry=no` and the next move (ask the page's owner for a public meeting type's link or the times in
+  words), in place of the saved-login advice the login wall gives every other site.
+- `yerk explain bookings-guest` has the ability. Nothing in the harness's code changes, so no budget line moves.
+- Why: on 2026-10-24 a room asked to read a person's Bookings page for their open call slots met `login_required` at
+  every rung, because the link it had carried no `anonymous` flag and the page sent every reader to Microsoft's sign-in;
+  it answered from a read two days old. The browser crash it met the same evening (the PC browser's open call failing
+  with a traceback) was fixed in the hands plug-in on 2026-10-26, outside this repository.
+
+**Upgrading**: nothing to change by hand; every room that attaches the web plug-in reads Bookings pages this way from
+its next call after the deploy.
+
+## 2026-11-01
+
+### need-2026-10-24-1 (#?)
+
+- A room the owner asks to text someone can send it now: the new `text` tool on Yerk's own server sends one text in the
+  owner's name, an iMessage or else an SMS, from the owner's Mac to the person's phone number or email address (a name is
+  refused, so the room recalls the number from the owner's texts or asks). The Mac's bridge, a small app there that holds
+  Messages' grants and serves imsg's JSON-RPC on a socket, is reached by ssh to `[imessage] host` and socat to its
+  `socket`, or by `[imessage] command`; each text is a `status`, then one `send`, on a connection of its own.
+- Preview first: the new `text-out` gate rule holds every call, and the room is shown the text as it will read and who
+  it goes to exactly as it is sent (a number by its digits, an address whole, never cut to a name), never the call's
+  JSON; the owner's approval word sends that exact call once, and an edit is a new call with a new preview. The tool
+  sends only what the gate released, so with `text-out` in `[gates] off`, or a hook that fails open, no text goes. A
+  person's room, an install with no Mac set up, a name in place of a number and an empty text are refused at the gate,
+  before the owner is asked for a word; a worker is refused, as for any outward action.
+- A text the bridge never took is said as not sent; one it took and never confirmed (no answer to the send, or its own
+  may-have-completed answer) is said as maybe sent, and the room tells the owner to check Messages and never sends it again
+  unasked. Each outcome is a `text` row in the ledger's gates table, after the hold, the word and the release.
+- `yerk explain text` has the ability, and `text-as-you` names it as its built part. Every room is handed the tool's
+  sentence, so `yerk_tools` goes to 15,100 and the session-start total to 113,002; the code ceiling moves up by 167, to
+  23,776.
+- Why: on 2026-10-24 a room asked to text a person for the owner had no tool to send one, the Mac's Messages would not
+  answer over plain ssh, and the room wrote the line for the owner to paste and send (need 1 of that day).
+
+**Upgrading**: to text, add `[imessage]` to yerkd.toml with `host` (the Mac's ssh host, reached from the box with a key)
+and `socket` (the bridge's socket on the Mac), and `socat` when it is not at /opt/homebrew/bin/socat; or `command`, a whole
+command whose stdin and stdout are the bridge. Without it the tool says no Mac is set up, and nothing is held. budgets.toml
+moves with the code: `yerk_tools` to 15,100, the session-start total to 113,002, the code ceiling to 23,776.
+
+### needs-pipeline (#?)
+
+- A need a room files now builds itself to live with no person in the loop ([needs] auto, on unless set false; false is
+  the hand road exactly). The first need starts its builder at once; one filed while another is in flight is queued and
+  starts when that one is live, held or stuck, since two open PRs that both move the code ceiling conflict. The daemon
+  watches the PR the box's sync opens and the checks the box's CI posts: red checks start a fix worker that adds a new
+  commit (at most [needs] fix_cap, default 2, then held for a person), checks that never all come within
+  [needs] checks_minutes (default 40) make it stuck, and green checks start a fresh cold read worker that says `merge`,
+  `fix first` or `unsure`. On `merge` the daemon merges the PR at the head the read saw (the sha guard), starts
+  `yerk deploy origin/main` in a transient unit `yerk-deploy-<id>` after a fetch through the package's askpass (the token
+  never reaches argv), and once a proven deploy holds the merge says live in the machine room and once in each room that
+  filed it. Every step is one line in the machine room; `yerk needs list` words each state (queued, fixing, cold read,
+  held, stuck, deploying, live). `yerk needs build DAY N` by hand still starts a held or stuck need. A need filed before
+  the pipeline, or while it was off, that no build ever started is queued on the watch's next tick and starts in its
+  turn; one whose build came back to filed stays for a person, as a held one does. The code ceiling moves up by 509, to
+  23,609.
+- Why: on 2026-10-31 need 27 took four hand steps from its PR to live, and a red CI leg had to be noticed by a person.
+
+**Upgrading**: put a GitHub token for the repo at `secrets/github.token` in the private folder (one line, 0600) for the
+merge and the deploy's fetch; without it the builds and PRs still happen and the merge and the deploy wait for a person.
+`[needs] auto` is on unless set false in yerkd.toml. Set `[needs] pr_check` to the install's PR checker if it has one.
+budgets.toml moves with the code: the code ceiling to 23,609.
+
+### dst-night-tests (#?)
+
+- Tests only, nothing in the code: the suite passes on a daylight-saving night. Two tests built the morning diff for
+  "tomorrow" as `time.time() + 86400`, and from 00:00 to 01:00 on a fall-back night that is 23:xx of the same local
+  day, so the diff's window (the local day before it) was the day before and missed the refusals the test had just
+  written. box-ci ran main fdc0db9 from 00:03 EDT on 2026-11-01 and went red on all three Pythons (2 failed); the
+  same sha passed by hand later that night. Both tests now build the diff at noon of the next local day,
+  `status.midnight(time.time()) + 86400 + 43200`: tests/test_said_or_noted.py (the morning diff counts each refusal)
+  and tests/test_sheet_hard.py (the morning diff counts the sheet refusals). The diff's local-day window is unchanged,
+  and so are budgets.toml and the code ceiling (23,100).
 
 ### need-2026-10-31-27 (#?)
 
