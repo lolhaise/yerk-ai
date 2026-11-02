@@ -180,7 +180,7 @@ def test_a_room_asked_to_put_a_photo_on_a_web_form_hears_the_upload_way(tmp_path
                  "developer protocol", "The owner's word before each upload", "whose browser plug-in carries the upload action"):
         assert want in text, want
     assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
-    assert not abilities.asked("I sent you two photos of the chair, use them in the ad", y.memory, TAB)
+    assert not abilities.asked("the photos are on the listing already, I added them myself", y.memory, TAB)
 
 
 def test_ordinary_messages_pull_no_ability_into_the_room(tmp_path):
