@@ -8,6 +8,32 @@ version changes.
 
 ## 2026-11-02
 
+### need-2026-11-02-36 (#?)
+
+- A need whose fix lives in a plug-in's own code is built there now. An add-on whose code is a local git repository of
+  its own (a room's mcp server whose command or an argument is a file in a git checkout other than Yerk's, the home
+  folder or the root) is named in the builder's brief, with its path and the branch that checkout is on, the code its
+  rooms run, and the brief says a fix living there is built there, on a branch of the need's name, with the plug-in's
+  own tests, never described in abilities.toml as out of reach. Nothing to set: the repositories come from rooms.toml's
+  mcp tables.
+- The pipeline carries that branch to live. The build's end finds it (the machine room's line says so, and `yerk needs
+  list` names its head); a fix worker is pointed at it; the cold read gets its diff and its tests at its head as it
+  stands when the read starts; and the merge checks it lands as a fast-forward of the checkout the rooms run (the
+  branch not moved since the read, that checkout on its branch, nothing uncommitted) before it merges the pull request,
+  then fast-forwards that checkout to the head the read saw. One that cannot land holds the need with why, nothing
+  merged; a pull request a person merges lands it the same way, and `yerk needs done` lands it on the hand road. A room
+  runs it from its next session.
+- budgets.toml: `[code]` lines 24,432 to 24,550, with its dated note; docs/budgets.md is what `yerk docs own` writes.
+  The abilities entry `plugin-builds` (`yerk explain plugin-builds`); the README says it in Add-ons (three of its
+  sentences a few words shorter, to stay under 12,000 bytes), and the GUIDE's count is what the file holds, 102: 41
+  built.
+- Why: a room's wall was a gate in a plug-in's own code, the browser plug-in kept in a git repository outside this one;
+  the builder only ever edited Yerk's repo, so a first build described the fix as out of reach, the wall came back
+  twice, and the plug-in's changes were landed by hand (need 36 of 2026-11-02).
+
+**Upgrading**: nothing to set. For the merge to land a fix in a plug-in, the checkout its rooms run stays on its branch
+with its changes committed; one that is not holds the need, said in the machine room with why.
+
 ### need-2026-11-01-33 (#?)
 
 - A room can use a link in one of the owner's emails now: the hands plug-in's mail `read` lists the mail's links after

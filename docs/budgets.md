@@ -431,7 +431,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-02: need-2026-10-30-25 raised it by 64, `watch` on a Discord message's link (need 25 of 2026-10-30: a room asked to watch mp4 files another assistant posted in a channel had their names from a history listing and no address, and yt-dlp called the message's link "Unsupported URL"), not folded to fit: discord.py 31 (pull: the message read through the bot only where the room reads, an owner's room in its own server, its videos saved as a person's files are, and the one read past a room's channels in the module's docstring), words.py 12 (each miss in words), daemon.py 10 (the link handed to the room's adapter, then watched as `path`), watch.py 9 (the link's form and the 300 MB cap in bytes), mcp_server.py 2 (the tool's sentence). 24,432: main 28e69c3's 24,368 plus 64.
 
-- `lines = 24432`
+2026-11-02: need-2026-11-02-36 raised it by 118, the needs builder building into a plug-in's own git repository (need 36 of 2026-11-02: a browser gate in a plug-in's own repo came back twice, since the builder only ever edited Yerk's and described the rest as out of reach, and that repo's changes were landed by hand), not folded to fit: needs.py 85 (the plug-in repositories from the rooms' mcp tables, the branch a build left in one, its fast-forward landing with each why in words, and each brief's part on it), pipeline.py 25 (the cold read and a fix worker handed the plug-in's branch at its head, the landing checked before GitHub's merge and done after, a person's merge landing it too), daemon.py 4 (the brief and the build's end), cli.py 2 (`yerk needs done` lands it), words.py 2. 24,550: main 1fa315a's 24,432 plus 118.
+
+- `lines = 24550`
 
 ## Uncapped
 

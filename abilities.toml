@@ -62,6 +62,22 @@ needs = "a GitHub token at secrets/github.token in the private folder, for the m
 free_path = "without the token the builds and the pull requests still happen, and the merge and the deploy wait for a person (`yerk needs done`, `yerk deploy`); live still follows the deploy"
 asked_as = ["can you build what you need yourself", "does it auto build", "how do needs get built"]
 
+# need-2026-11-02-36: a room's wall was a gate in a plug-in's own code, a local git repository outside this one, and the
+# builder only ever edited Yerk's repo, so it described the fix as out of reach and the wall came back twice.
+[abilities.plugin-builds]
+state = "built"
+what = "A need whose fix lives in a plug-in's own code is built there: an add-on whose code is a local git repository of its own (the browser plug-in kept outside this repo, say) is named in the builder's brief, the fix goes on a branch of the need's name in that repository, the cold read reads it with the pull request, and the merge lands it in the checkout the rooms run."
+how = [
+  "Found, not configured: each room's mcp server whose command or an argument is a file in a git checkout other than Yerk's own (nor the home folder) is a plug-in repository, on the branch that checkout is on.",
+  "The build: the brief names each one and says a fix living in its code is built there, on the need's branch, with the plug-in's own tests, never described in abilities.toml as out of reach; the build's end finds the branch it left and the machine room's line says so.",
+  "The read and the fixes: the cold read gets the plug-in branch's diff at its head and its tests to run, and a fix worker the branch to add a commit to; what the read read is what lands.",
+  "The landing: the merge checks the branch is a fast-forward of the checkout the rooms run (the branch not moved, that checkout on its branch with nothing uncommitted) before it merges the pull request, then fast-forwards the checkout to the head the read saw; one that cannot land holds the need with why, and `yerk needs done` lands it on the hand road.",
+]
+tier = "free"
+needs = "a plug-in attached in rooms.toml whose code is a local git repository, and the needs pipeline"
+free_path = "this is the free path"
+asked_as = ["fix the plug-in", "build it in the plug-in", "plug-in repo", "change the plug-in's code"]
+
 # The described abilities below are known and not built (decision 26). On a described entry, `upgrade`
 # names the built ability that already ships part of it.
 [abilities.gates]

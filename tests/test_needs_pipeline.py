@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import subprocess
 import time
 from pathlib import Path
 
@@ -259,6 +260,126 @@ def test_no_token_skips_github_says_so_once_and_done_still_closes_it_by_hand(pip
     assert capsys.readouterr().out.strip() == f"need 1 of {day}: merged, PR 7"
     asyncio.run(y.pipeline.tick())
     assert units.argv == [] and row(y, day)["state"] == "merged"        # no token, no fetch: a person deploys, live follows
+
+
+ID = ("-c", "user.name=Example Builder", "-c", "user.email=builder-placeholder", "-c", "commit.gpgsign=false")
+
+
+def git(repo: Path, *args: str) -> str:
+    return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, check=True).stdout.strip()
+
+
+def attach(y, tmp_path: Path) -> Path:
+    """A plug-in kept in a local git repository of its own, on main, that example-room runs as an mcp server, beside Yerk's
+    own web plug-in (in Yerk's checkout, so never a plug-in repository of its own)."""
+    p = tmp_path / "example-plugin"
+    p.mkdir()
+    git(p, "init", "-q", "-b", "main")
+    (p / "server.mjs").write_text("export const gate = 'the address';\n")
+    git(p, "add", ".")
+    git(p, *ID, "commit", "-q", "-m", "baseline")
+    y.room_confs["example-room"]["mcp"] = {
+        "example-plugin": {"type": "stdio", "command": "/usr/bin/node", "args": [str(p / "server.mjs")]},
+        "web": {"type": "stdio", "command": "/usr/bin/node", "args": [str(REPO / "plugins" / "web" / "server.mjs")]}}
+    return p
+
+
+def commit_on(p: Path, wt: Path, branch: str, text: str) -> str:
+    """A worker's commit on `branch` in the plug-in's repository, in a worktree of its own: the checkout the rooms run untouched."""
+    if not wt.exists():
+        git(p, "worktree", "add", "-q", str(wt), *(["-b", branch, "main"] if not git(p, "branch", "--list", branch) else [branch]))
+    (wt / "server.mjs").write_text(text)
+    git(wt, *ID, "commit", "-q", "-am", "the page decides")
+    return git(wt, "rev-parse", "HEAD")
+
+
+def staged(y, wid: str) -> str:
+    return (Path(y.ledger.worker_get(wid)["staging"]) / "BRIEF.md").read_text()
+
+
+def test_a_plugin_kept_in_its_own_git_repository_is_named_in_the_builders_brief_from_the_rooms_mcp_tables(pipe, tmp_path):
+    """need 36 (2026-11-02): a browser gate in a plug-in's own repository came back twice, since the builder only ever edited
+    Yerk's repo and described the rest as out of reach; the brief now names each add-on whose code is a git repository of
+    its own, where the fix is built on a branch of the need's name. Yerk's own web plug-in is not one."""
+    y, rec, hub, units, rooms = pipe
+    p = attach(y, tmp_path)
+    assert needs.plugins(y.room_confs, REPO) == {"example-plugin": {"repo": str(p.resolve()), "base": "main"}}
+    day = need(y, "example-room", *ASK)["day"]
+    brief = staged(y, row(y, day)["worker"])
+    assert "\n## Plug-ins\n" in brief and f"`example-plugin` at {p.resolve()} (its rooms run its main)" in brief
+    assert f"worktree add <your folder>/<plug-in>-wt -b need-{day}-1 <its base>`" in brief and "\N{EM DASH}" not in brief
+    assert "never described in abilities.toml as out of reach" in brief and brief.index("## Plug-ins") < brief.index("## What done")
+    assert "## Plug-ins" not in needs.brief(row(y, day), REPO)                     # no plug-in repository: the brief as before
+
+
+def test_a_fix_built_in_a_plugins_repository_rides_the_pr_through_the_fix_and_the_read_and_the_merge_lands_it(pipe, tmp_path):
+    """The wall itself: the fix lives in the plug-in (its gate read the page's address alone). The builder's branch there is
+    found when it ends, a fix worker is pointed at it, the cold read reads its newest head, and the merge fast-forwards the
+    plug-in's main, the checkout its rooms run, to exactly that head."""
+    y, rec, hub, units, rooms = pipe
+    p, wt, branch = attach(y, tmp_path), tmp_path / "worker-plugin-wt", f"need-{need(y, 'example-room', *ASK)['day']}-1"
+    day = branch[5:-2]
+    sha = commit_on(p, wt, branch, "export const gate = 'the page marks';\n")
+    r = to_pr(y, hub, day)
+    assert r["plugins"] == {"example-plugin": {"repo": str(p.resolve()), "base": "main", "branch": branch, "head": sha}}
+    assert words.NEED_BRANCH.format(n=1, branch=branch, ability=ASK[2]) + words.NEED_PLUGIN.format(names="example-plugin") in rec.lines
+    assert needs.said(r) == f"PR 7, and the example-plugin plug-in's branch at {sha[:7]}"
+    hub.routes[("GET", f"/repos/{SLUG}/commits/{'a' * 40}/status")] = (200, {"state": "success", "statuses": GREEN})
+    asyncio.run(y.pipeline.tick())
+    end(y, row(y, day)["worker"], "fix first: the gate still calls a look-alike a payment page")
+    fixer = row(y, day)["worker"]
+    assert f"`example-plugin` at {p.resolve()} (its rooms run its main; its branch `{branch}` is at {sha[:7]}, so build on it)" in staged(y, fixer)
+    sha2 = commit_on(p, wt, branch, "export const gate = 'the page marks, a look-alike on confirmed';\n")
+    end(y, fixer, f"fixed: {sha2[:7]}")
+    asyncio.run(y.pipeline.tick())                       # the same Yerk head, still green: read again, at the plug-in's new head
+    r = row(y, day)
+    assert r["state"] == "reading" and r["plugins"]["example-plugin"]["head"] == sha2
+    read = staged(y, r["worker"])
+    assert f"`git -C {p.resolve()} diff main...{sha2}`" in read and "fast-forwards its main to that sha" in read
+    hub.routes[("PUT", f"/repos/{SLUG}/pulls/7/merge")] = (200, {"merged": True, "sha": "c" * 40})
+    end(y, r["worker"], "merge")
+    assert hub.calls[-1] == ("PUT", f"/repos/{SLUG}/pulls/7/merge", {"sha": "a" * 40, "merge_method": "merge"})
+    assert git(p, "rev-parse", "main") == sha2 and "a look-alike on confirmed" in (p / "server.mjs").read_text()
+    assert row(y, day)["state"] == "merged" and rec.lines[-1] == words.NEED_MERGED.format(n=1, pr=7) + words.NEED_LANDED.format(
+        names="example-plugin")
+
+
+def test_a_plugin_branch_that_cannot_land_holds_the_need_and_nothing_is_merged(pipe, tmp_path):
+    y, rec, hub, units, rooms = pipe
+    p, wt = attach(y, tmp_path), tmp_path / "worker-plugin-wt"
+    day = need(y, "example-room", *ASK)["day"]
+    sha = commit_on(p, wt, f"need-{day}-1", "export const gate = 'the page marks';\n")
+    to_pr(y, hub, day)
+    plug = row(y, day)["plugins"]["example-plugin"]
+    (p / "server.mjs").write_text("a change by hand\n")                         # each why in words, nothing landed
+    assert needs.land("example-plugin", plug, dry=True) == "the example-plugin plug-in did not land: its checkout has changes not committed"
+    git(p, "checkout", "-q", "--", "server.mjs")
+    assert needs.land("example-plugin", {**plug, "head": "0" * 40}) == (
+        f"the example-plugin plug-in did not land: its branch need-{day}-1 moved off 0000000")
+    assert needs.land("example-plugin", plug, dry=True) == "" and git(p, "rev-parse", "main") != sha
+    (p / "notes.md").write_text("main moved on\n")                               # its main moved after the branch was made
+    git(p, "add", "notes.md")
+    git(p, *ID, "commit", "-q", "-m", "a commit on main")
+    hub.routes[("GET", f"/repos/{SLUG}/commits/{'a' * 40}/status")] = (200, {"state": "success", "statuses": GREEN})
+    hub.routes[("PUT", f"/repos/{SLUG}/pulls/7/merge")] = (200, {"merged": True, "sha": "c" * 40})
+    asyncio.run(y.pipeline.tick())
+    end(y, row(y, day)["worker"], "merge")
+    why = f"the cold read said merge; the example-plugin plug-in did not land: its main moved since need-{day}-1 was made, so it is no fast-forward"
+    assert (row(y, day)["state"], row(y, day)["why"]) == ("held", why) and not [c for c in hub.calls if c[0] == "PUT"]
+    assert rec.lines[-1] == words.NEED_HELD.format(n=1, ability=ASK[2], why=why) and not git(p, "branch", "--contains", sha, "main")
+
+
+def test_done_by_hand_lands_the_needs_plugin_branch_too(pipe, tmp_path, monkeypatch, capsys):
+    y, rec, hub, units, rooms = pipe
+    monkeypatch.setattr(github, "token", lambda private: "")
+    p = attach(y, tmp_path)
+    day = need(y, "example-room", *ASK)["day"]
+    sha = commit_on(p, tmp_path / "worker-plugin-wt", f"need-{day}-1", "export const gate = 'the page marks';\n")
+    end(y, row(y, day)["worker"], f"branch need-{day}-1 at 1234567: it reads pictures")
+    capsys.readouterr()
+    assert cli.main(["needs", "done", day, "1", "7", "--state", str(y.state), "--private", str(EXAMPLE_PRIVATE)]) == 0
+    assert capsys.readouterr().out == f"need 1 of {day}: merged, PR 7\nthe example-plugin plug-in landed\n"
+    assert git(p, "rev-parse", "main") == sha and "the page marks" in (p / "server.mjs").read_text()
 
 
 def test_the_list_words_every_state(tmp_path, capsys):

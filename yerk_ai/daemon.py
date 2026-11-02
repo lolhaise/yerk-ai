@@ -702,7 +702,9 @@ class Yerkd:
             return {"ok": False, "error": words.NEED_NONE.format(day=day, n=n) if row is None else
                     words.NEED_BUSY.format(n=n, state=needs.said(row))}
         row, conf = needs.find(needs.load(self.state), day, n) or {}, self.pipeline.conf()
-        out = await self.workers.start(self.pipeline.room(), needs.brief(row, REPO, str(conf.get("pr_check") or "")),
+        found = await asyncio.to_thread(needs.plugins, self.room_confs, REPO)      # the plug-in repositories a fix may live in
+        there = await asyncio.to_thread(needs.ahead, found, f"need-{day}-{n}")
+        out = await self.workers.start(self.pipeline.room(), needs.brief(row, REPO, str(conf.get("pr_check") or ""), found, there),
                                        account=self.pipeline.account(), cap_minutes=float(conf.get("cap_minutes") or needs.CAP),
                                        tasks=list(needs.TASKS), more={"need": {"day": day, "n": n}})
         await asyncio.to_thread(needs.update, self.memory, self.state, day, n, {"worker": out["id"]} if out.get("ok") else {"state": "filed"})
@@ -723,12 +725,14 @@ class Yerkd:
         if job.get("role") in ("read", "fix"):
             return await self.pipeline.ended(row, end, str(job["role"]), day, n)
         how = workers.settled_state(row, workers.tasks_of(Path(row["tasks"])), end)[1]
+        plugs = await self.pipeline.heads({"day": day, "n": n})                   # a plug-in branch the builder left
         r = await asyncio.to_thread(needs.ended, self.memory, self.state, day, n, str(row["id"]), how,
-                                    workers.first_line(Path(row["report"])), end["exit"] == "done")
+                                    workers.first_line(Path(row["report"])), end["exit"] == "done", plugs)
         if r is not None:
             ab, st = words.line(str(r["ability"]), 80), r.get("state")
             line = (words.NEED_PR.format(n=n, pr=r.get("pr"), ability=ab) if st == "pr" else words.NEED_BRANCH.format(
                 n=n, branch=r.get("branch"), ability=ab) if st == "built" else words.NEED_FAILED.format(n=n, how=how, ability=ab))
+            line += words.NEED_PLUGIN.format(names=", ".join(r.get("plugins") or ())) * bool(st in ("pr", "built") and r.get("plugins"))
             if (to := str(row["room"])) in self.channels:
                 with contextlib.suppress(Exception):
                     await self.channels[to].notify(to, line)
