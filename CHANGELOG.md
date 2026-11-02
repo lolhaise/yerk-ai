@@ -8,6 +8,32 @@ version changes.
 
 ## 2026-11-02
 
+### need-2026-11-01-31 (#?)
+
+- A room can put a picture on a web form now: the hands plug-in's browser gains `upload`, which puts a file from the
+  room's own work folder (a picture sent to the room, a saved picture, a screenshot) on a page's file input, in the
+  browser on the owner's PC or Mac. A file input takes no typed value, so `set` on one met an InvalidStateError and the
+  form would not send; that error now says to use `upload`. The plug-in copies the file to the browser's own computer
+  first (over ssh to a Mac), a folder per call, kept a day for a form that reads it only when it sends, then sets it
+  over the browser's developer protocol, as picking it in the file dialog would. A file outside the room's work folder,
+  a link out of it, or one past 20 MB is refused; every upload waits for the owner's word, since a page may send the
+  file the moment it is picked, and nothing is put on a payment page.
+- The change itself is in the hands plug-in's own repository (`~/.local/share/hands-mcp`, a local git tree with no
+  remote), on its branch of the same name; its main was fast-forwarded to that branch (2fc539f) on 2026-11-02 after one
+  real upload on a test page passed in a browser profile on the PC and in one on the Mac, so a room has `upload` from
+  its next session. Here, its tools' budget line and the abilities entry (`yerk explain form-files`); the README says
+  it in Add-ons, and the GUIDE's count is what the file holds, 97: 38 built.
+- Why: on 2026-11-01 a room filled two listing forms in the browser on the owner's computer, and both came back "fix
+  the errors on the page": the site wants at least one photo, and nothing could put one on the form.
+
+**Upgrading**: the hands plug-in's main is already at 2fc539f (fast-forwarded on 2026-11-02, before this merge), so
+nothing to change by hand. budgets.toml moves with it: the hands plug-in's line to 7,900 and the session-start total to
+116,640, so a deploy after the plug-in's branch is in does not refuse on its size. need-2026-10-26-23's plug-in branch
+(e94ce96, cut from the plug-in's 64af176) is no longer a fast-forward of that main: both change the payment-page guard
+in tools.mjs (`set and click` there, `set, click and upload` here) and the plug-in README's test count, so
+free-bookings goes live by merging that branch onto 2fc539f, its look-alike rule covering `upload` too, and running the
+plug-in's tests again; moving the plug-in's main to e94ce96, as that block's Upgrading reads, would drop `upload`.
+
 ### reattach-race (#?)
 
 - A worker is no longer settled as lost a second after its start while its unit runs. The minute's backstop pass
