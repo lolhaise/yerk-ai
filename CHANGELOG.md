@@ -21,13 +21,30 @@ version changes.
 - abilities.toml has the built `rules-changed` entry; the README names the part among what each message gets (four of
   its clauses a few words shorter, to stay under 12,000 bytes), the GUIDE has a paragraph under Yerk knows its harness,
   and its count is what the file holds, 97: 39 built; docs/budgets.md is what `yerk docs own` writes.
-- budgets.toml: [code] lines 24,347 + 5 = 24,352, with its dated note. The capped assembly fixture is retaken, its one
-  change this note's last words.
+- budgets.toml: [code] lines 24,363 + 5 = 24,368 on main after #167, with its dated note and a merge note. The capped
+  assembly fixture is retaken, its one change this note's last words.
 - Why: on 2026-10-28 a room handed a rules-changed note naming the mechanics file in Yerk's checkout had its Read of
   that file refused, kept working on the mechanics its session started with, and filed the need (need 25 of 2026-10-28).
 
 **Upgrading**: nothing to change by hand; every room has it from yerkd's restart at the deploy. budgets.toml's [code]
 `lines` moves with this change.
+
+### reattach-race (#?)
+
+- A worker is no longer settled as lost a second after its start while its unit runs. The minute's backstop pass
+  (`Workers.reconcile`, which made the call that night) and a start's re-attach (`Workers.reattach`) each read the unit
+  list first and the running workers after, and a worker started in between, in the ledger and watched before
+  `systemd-run` had made its unit, was in no list and settled as lost on that one read: on 2026-11-02 the
+  journal has `worker 99319d: lost (the unit is gone and left no exit record)` one second after its `started` line,
+  so need 22 was held for a person ("the cold read gave no verdict") and account two, one worker at a time under
+  `[workers] per_account` (1 by default), went to the next need's builder, while 99319d, the need's cold read, ran on
+  to its `merge` verdict and exited clean seven minutes later. Now a worker one list missed gets a second look at its unit
+  first, and one under two minutes old is kept for a later pass, its unit maybe not listed yet; a unit both looks
+  miss, with no exit file, in a worker past its first two minutes is lost, as before, and a look that saves one logs
+  `the unit list was stale, re-attached`.
+
+**Upgrading**: nothing to change by hand; the daemon looks twice from its next start. budgets.toml moves with the code:
+the code ceiling to 24,363.
 
 ### need-2026-10-24-22 (#?)
 

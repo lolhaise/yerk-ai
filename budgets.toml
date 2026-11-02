@@ -827,10 +827,20 @@ secs = 60
 # 2026-11-02: need-2026-10-24-22 merged with main 9d747cb (#168): main's 24,277 plus this PR's 70 is 24,347, counted on
 # the merged tree; daemon.py, mcp_server.py and words.py, which both changed, merged with no line in common; `yerk docs
 # own` wrote budgets.md.
+# 2026-11-02: reattach-race raised it by 16, a second look before a worker is settled as lost (seen live: one
+# unit list read before systemd-run had made a cold read's unit settled it as lost a second after its start, its need held
+# and its account given to the next builder while it ran on to its verdict), not folded to fit: workers.py 16 (YOUNG and
+# _gone(): the fresh look, the exit file, the first two minutes, the stale line; reattach and reconcile ask it first).
+# 24,164: main 947df1f's 24,148 plus 16.
+# 2026-11-02: reattach-race merged with main 5b52559 (#160, #168): main's 24,347 plus this PR's 16 is 24,363, counted on
+# the merged tree; workers.py, the one file this PR changes, merged with no line in common; `yerk docs own` wrote budgets.md.
 # 2026-11-02: need-2026-10-28-25 raised it by 5, the rules-changed note's lines past its size written whole to a file in
 # the room's own work folder, which the note names (need 25 of 2026-10-28: a room told the mechanics had changed was
 # pointed at mechanics.md in Yerk's checkout and its Read was refused, since no room's Read reached the checkout then and
 # only an owner room's does now), not folded to fit: context.py 4 (the file's name, its write, the why in the docstring;
 # the old pointer's line gone), daemon.py 1 (the room's work folder handed to context.news). 24,352: main 5b52559's
 # 24,347 plus 5.
-lines = 24352
+# 2026-11-02: need-2026-10-28-25 merged with main 22876bf (#167): main's 24,363 plus this PR's 5 is 24,368, counted on
+# the merged tree; this PR's context.py and daemon.py and #167's workers.py, no file changed on both sides, merged
+# clean; `yerk docs own` wrote budgets.md.
+lines = 24368

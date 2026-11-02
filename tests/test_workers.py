@@ -258,9 +258,9 @@ def test_a_restart_reattaches_from_the_ledger_and_completion_still_relays(setup)
         card = s.ledger.worker_get(out["id"])["card"]
         loop.remove_reader(a.watch.fd)                  # the old daemon is gone; its unit is not
         os.close(a.watch.fd)
-        gone = s.tmp / "workers" / "0ld0ne"           # a row whose unit vanished with no exit record
+        gone = s.tmp / "workers" / "0ld0ne"           # a row whose unit vanished with no exit record, ten minutes in
         lost = dict(s.ledger.worker_get(out["id"]), id="0ld0ne", unit="yerk-worker-0ld0ne", room="q", card=None,
-                    staging=str(gone), report=str(gone / "REPORT.md"), tasks=str(gone / "TASKS.md"))
+                    staging=str(gone), report=str(gone / "REPORT.md"), tasks=str(gone / "TASKS.md"), started=time.time() - 600)
         s.ledger.worker_add(**{k: v for k, v in lost.items() if k != "finished"})
         b = s.make({"r": room})
         b.begin(loop)
@@ -273,6 +273,115 @@ def test_a_restart_reattaches_from_the_ledger_and_completion_still_relays(setup)
     assert (row["exit"], row["result"], row["relay"]) == ("done", "Survived the restart", "relayed")
     assert lost["exit"] == "lost" and lost["exit_detail"] == "the unit is gone and left no exit record"
     assert lost["relay"] == "skipped" and lost["relay_note"] == "no such room in this daemon"
+
+
+def need_hook(w):
+    """The need pipeline's `ended`, as Yerkd.need_built hands it a worker's end (workers.hooks): each (id, exit) it heard,
+    in order; True, so no relay runs."""
+    seen = []
+
+    async def hook(row, end):
+        seen.append((row["id"], end["exit"]))
+        return True
+    w.hooks.append(hook)
+    return seen
+
+
+def stale_first(units):
+    """The unit list as systemctl gave it in the live case: the first read taken before a unit just started was listed
+    (empty), every read after it as it is. Returns each read, in order."""
+    reads = []
+
+    def running():
+        reads.append(set(units.procs) if reads else set())
+        return reads[-1]
+    units.running = running
+    return reads
+
+
+def unlisted(s, wid, age, exit=None):
+    """A row the ledger has running, `age` seconds after its start, its unit in no list; with `exit`, the exit file its
+    unit's ExecStopPost wrote and the report's first line."""
+    d = s.tmp / "workers" / wid
+    d.mkdir(parents=True)
+    s.ledger.worker_add(id=wid, room="r", account="one", unit=f"yerk-worker-{wid}", model="m", staging=str(d),
+                        report=str(d / "REPORT.md"), tasks=str(d / "TASKS.md"), cap=1800.0, started=time.time() - age)
+    if exit:
+        (d / "REPORT.md").write_text("merge\n")
+        (d / "exit.json").write_text(json.dumps(exit))
+
+
+@pytest.mark.parametrize("look", ["reattach", "reconcile"])
+def test_a_unit_the_first_list_missed_is_looked_at_again_and_kept_never_settled_as_lost(setup, caplog, look):
+    """Seen live: need 22's cold read was settled as lost a second after its start on one unit list read before
+    its unit was listed; the need was held and its account given to the next builder while the read ran on to its
+    verdict. A start's reattach and the minute's reconcile look again first: the second look finds the unit, the worker
+    is kept, and its need hears nothing until it really ends."""
+    caplog.set_level("INFO", logger="yerk.workers")
+    s = setup
+
+    async def go():
+        loop = asyncio.get_running_loop()
+        w = s.make({"r": Busy()})
+        w.begin(loop)
+        wid = (await w.start("r", 'FAKE sleep=1.0 report="merge"'))["id"]
+        s.ledger.worker_set(wid, started=time.time() - 600)          # past YOUNG: the second look alone keeps it
+        w.live[wid]["started"] = time.time() - 600
+        reads = stale_first(s.units)
+        if look == "reattach":                                       # a new daemon: the old one's watch is gone, its unit is not
+            loop.remove_reader(w.watch.fd)
+            os.close(w.watch.fd)
+            w = s.make({"r": Busy()})
+            w.begin(loop)
+        seen = need_hook(w)
+        await getattr(w, look)()
+        assert wid in w.live and seen == [] and s.ledger.worker_get(wid)["finished"] is None
+        assert len(reads) == 2 and f"yerk-worker-{wid}" in reads[1]
+        return wid, seen, await ended(s.ledger, wid, relay=False)
+    wid, seen, row = asyncio.run(go())
+    assert row["exit"] == "done" and seen == [(wid, "done")]          # it ends once, as it really did
+    assert f"worker {wid}: the unit list was stale, re-attached" in caplog.text
+
+
+def test_a_unit_both_looks_miss_with_no_exit_file_is_lost_as_before_once_past_its_first_two_minutes(setup):
+    """A unit gone with no exit record still settles as lost, its need told so, when the second look misses it too; a
+    worker under YOUNG s old is kept for a later pass instead, since its unit may not be listed yet."""
+    s = setup
+
+    async def go():
+        unlisted(s, "0ld0ne", 600)
+        unlisted(s, "n3w0ne", 1)
+        w = s.make({"r": Busy()})
+        w.begin(asyncio.get_running_loop())
+        seen = need_hook(w)
+        await w.reattach()
+        assert seen == [("0ld0ne", "lost")] and list(w.live) == ["n3w0ne"]
+        w.live["n3w0ne"]["started"] = time.time() - workers.YOUNG    # two minutes on, still in no list
+        await w.reconcile()
+        return seen, w.live
+    seen, live = asyncio.run(go())
+    assert seen == [("0ld0ne", "lost"), ("n3w0ne", "lost")] and live == {}
+    row = s.ledger.worker_get("0ld0ne")
+    assert (row["exit"], row["exit_detail"]) == ("lost", "the unit is gone and left no exit record")
+
+
+def test_a_unit_that_ended_while_no_list_had_it_completes_from_its_exit_file(setup):
+    """A worker whose unit ended and was collected (in no list, its exit file there) completes as it ended, report line
+    and all, its need told it is done, though it is under YOUNG s old: the exit file is enough, no second look."""
+    s = setup
+    reads = stale_first(s.units)
+
+    async def go():
+        unlisted(s, "d0ne01", 30, exit={"result": "success", "code": "exited", "status": "0", "ended": time.time()})
+        w = s.make({"r": Busy()})
+        w.begin(asyncio.get_running_loop())
+        seen = need_hook(w)
+        await w.reattach()
+        return seen
+    seen = asyncio.run(go())
+    row = s.ledger.worker_get("d0ne01")
+    assert seen == [("d0ne01", "done")] and len(reads) == 1
+    assert (row["exit"], row["exit_detail"], row["result"]) == ("done", "success, exited 0", "merge")
 
 
 def test_a_relay_left_open_by_a_crash_is_ledgered_as_what_happened(setup):
