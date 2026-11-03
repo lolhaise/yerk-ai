@@ -443,7 +443,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-03: silent-worker-card raised it by 6, a worker whose last message is exactly NO_REPLY settling its card quiet, the done mark and "finished clean, nothing to add" over the footer, never the token and no rows (live that day: a scheduled job's eight silent runs since Nov 1 each left a card reading NO_REPLY under "finished clean" and every step row, and the owner replied to one asking what it did), not folded to fit: workers.py 5 (the reading in complete() and its comment, 2 in card_text, 1 of the docstring's sentence), words.py 1 (QUIET_WORKER); last_message moved from jobs.py to workers.py, 16 lines out of one and into the other. 24,578: main 64b7953's 24,572 plus 6.
 
-- `lines = 24578`
+2026-11-03: first-run raised it by 8, the daemon's first run refusing with one plain line when yerkd.toml has no [discord] token_file or the file is missing or empty (a clean clone that day hit a KeyError traceback on the README's install block), not folded to fit: daemon.py 8 (run_discord). 24,586: main 3dbf0a3's 24,578 plus 8.
+
+- `lines = 24586`
 
 ## Uncapped
 
