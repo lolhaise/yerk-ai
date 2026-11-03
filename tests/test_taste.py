@@ -23,23 +23,23 @@ FIXTURE = Path(__file__).parent / "fixtures" / "taste.jsonl"
 PERSON_ID = 31         # the family room's one person, a stand-in
 
 
-# And the last part (closes/the-case), before the next run.
+# Invented messages, one for each shape the box's selftest (tools/taste-ledger) checks.
 KNOWN = [
     ("Yo that was good", "pos"),
     ("Ayy that's hype that's a way better plan", "pos"),
     ("The ending is dope actually ngl", "pos"),
     ("You a funny guy fr", "pos"),
-    ("Reads It Back as plain text with one", "neg"),
-    ("Case Before the next run starts the example note says 0 the sample 00 item moved to", "neg"),
-    ("Example note Says the sample item moved to the next step and", "neg"),
+    ("Ok bro I ain't reading all that tonight", "neg"),
+    ("Bro you have said that the bus was late like 20 times like ok", "neg"),
+    ("Bro like I want to know your opinion for once not the specs", "neg"),
     ("Right so guess what", "neg"),
     ("A goof tho", None),                       # an insult is banter, never a verdict
     ("You a goof then bro just send it", None),
-    ("The example note says the sample item moved to the next step and the Test", None),     # a question
+    ("Ok so is any of this a problem like look at the whole list bro", None),    # a question
     ("", None),
     ("that was good but way too long", "neg"),  # praise with a complaint is the complaint
     ("Idk man feel like you don't think I cooked anything decent", "neg"),        # the register shapes
-    ("The sample item moved to the next step and the test reads it back as plain text with one more", "neg"),
+    ("YOOOOO bro i feel like you dont even think this is a good plan bro like you arent even excited", "neg"),
     ("Man like I feel like you gotta be more like chill like don't make your responses to me so stiff bro", "neg"),
     ("i feel like you don\u2019t care about the playlist at all", "neg"),
     ("you're a clown", None),

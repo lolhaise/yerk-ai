@@ -903,4 +903,8 @@ secs = 60
 # 2026-11-03: first-run raised it by 8, the daemon's first run refusing with one plain line when yerkd.toml has no
 # [discord] token_file or the file is missing or empty (a clean clone that day hit a KeyError traceback on the README's
 # install block), not folded to fit: daemon.py 8 (run_discord). 24,586: main 3dbf0a3's 24,578 plus 8.
-lines = 24586
+# 2026-11-03: dialect raised it by 30, the owner's filler words out of the package: words.dialect() compiles the four
+# lists (pushback, lead, past, asked and the name cut) from neutral words plus `[style] dialect` at daemon start, with
+# dialect_alt() for the one taste exception; the daemon reads and checks the key. Not folded to fit: words.py 24,
+# daemon.py 4, taste.py 1, config.py 1. 24,616: main 1fa656b's 24,586 plus 30.
+lines = 24616

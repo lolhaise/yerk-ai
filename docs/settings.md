@@ -68,6 +68,10 @@ The daemon's settings, in the private folder beside rooms.toml, read when yerkd 
 
 - `port`: the local port of /mcp, /hook and /control (default: a free one; yerkd --port wins)
 
+### [style]
+
+- `dialect`: the owner's own filler words (their slang), joined after the neutral ones to the pushback, lead, trailing and name-cut word lists; the package ships none
+
 ### [watch]
 
 - `assistants`: other assistants' Discord user ids: in a channel a room watches, their messages go in its day log under their own label once they stop changing, never answered and never an instruction; their files, there or in the room's own channel, are saved in its work/inbox as a person's are

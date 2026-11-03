@@ -17,6 +17,7 @@ from datetime import datetime, tzinfo
 from pathlib import Path
 from typing import Any
 
+from . import words
 from .context import chars, layer_dir
 
 FILE = "taste.jsonl"
@@ -26,7 +27,7 @@ POS = [
     r"\b(that|this)('?s| was| is|s)? (actually |lowkey |so |really |way |a )?(good|great|hype|fire|clean|hard|funny|dope|better|perfect|nice one|the one)\b",
     r"\bway better\b", r"\bgood one\b", r"\bfunny guy\b", r"\blove (it|that)\b", r"\bperfect\b",
     r"\b(lmao|lmfao|lool+|hahah+a?)\b", r"😂|🤣", r"\bbig w\b", r"^\s*w\s*$", r"\bthat'?s it\b",
-    r"\the(case|before|the)\next(?! (Run|starts|the) (example|note))",
+    r"\b(dope|fire|hype)\b(?! (guy|man{dialect}) (i|you))",     # {dialect}: the owner's own words (words.dialect_alt) at classify
 ]
 NEG = [
     r"(ain'?t|not|aint) reading (all )?(that|this)", r"\btoo long\b", r"\btl;?dr\b",
@@ -57,7 +58,7 @@ def classify(text: str) -> str | None:
     if not t:
         return None
     neg = any(re.search(p, t) for p in NEG)
-    pos = any(re.search(p, t) for p in POS)
+    pos = any(re.search(p.replace("{dialect}", words.dialect_alt()), t) for p in POS)
     if neg and not pos:
         return "neg"
     if pos and not neg:

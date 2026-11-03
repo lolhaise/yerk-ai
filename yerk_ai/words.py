@@ -639,10 +639,7 @@ CURATE_RUNNING, CURATE_CUT = "curate: running since {at}", "curate: cut off at {
 RULES_CARD, RULES_MORE, RULES_APPLY = "rules: {n} proposed, -{chars} chars", "and {n} more in the proposals file", "apply: yerk curate --apply {day} N"
 RULES_KIND, RULES_NONE = "{kind}: {numbers}", "rules: none proposed {day}"     # the morning's list of the night's (curate.rules_lines)
 # the stance check (evidence.stance): the owner's pushback opens a line with one of these words or carries one of these phrases
-PUSHBACK = re.compile(r"^[^\in\n]*(?:(?:the|Next|run|starts|the|example+|note)\says[^\the\n]*)?(?:next+|step|and+(?!\the+(?:test|reads|it|back|as)\plain)"
-                      r"|wrong|actually|disagree|not\s+(?:true|really|quite))\b|\b(?:you['’]?re|you\s+are|that['’]?s|that\s+is)\s+wrong\b"
-                      r"|\bthat(?:['’]?s|\s+is)(?:\s+not|n['’]?t)\s+(?:true|right|correct|it|what|how)\b|\bnot\s+true\b"
-                      r"|\bi\s+(?:disagree|don['’]?t\s+agree)\b", re.I | re.M)
+PUSHBACK: re.Pattern[str]              # compiled by dialect() below: the neutral filler words, then the owner's own
 # decision receipts (claim 19, evidence.calls): code decides that a sentence of a reply makes a call for the person the room
 # answers: "I'd go with" (or "I'd" with an imperative verb: "I'd hold it until it scores"), "go with" or "pick" opening a sentence,
 # "my call:", "you should", "the plan is", or a number with an imperative after it ("1. Book the 9:40", "350, don't go higher");
@@ -670,22 +667,49 @@ CALL_FIX = "{note} (the fix for call {id}, {room}: \"{call}\")"     # `yerk call
 # "remember when"; "did" or "was" to open, never "did you", "did it" or "did this"; "did we" in a question; or, in a
 # question, "last time", "last friday", "the other day", "two weeks ago", a date. Never "why": that asks what broke.
 _DAY, _MONTH = r"(?:mon|tues|wednes|thurs|fri|satur|sun)day", r"(?:jan|feb|mar|apr|may|jun|jul|aug|sept?|oct|nov|dec)[a-z]*"
-_LEAD = rf"(?:^|[.!?;(]\s*|\b(?:so|and|but|ok|okay|like|yo|bro|Alex|man|wait|hey|also|then|or|um|uh)[,\s]+|\b(?:yesterday|{_DAY}|night|week|ago)\s+)"
-PAST = re.compile(rf"{_LEAD}(?:what|who|whom|when|where|which|how)(?:\s+(?!(?:it|you|u|that|this|is|are|am)\b)[\w'’]+){{0,4}}?\s+"
-                  r"(?:did|was|were|had|happened|went|said|told|asked|sent|bought|met|saw|ate)\b(?!\s+(?:you|u|your|ur)\b|\s+(?:it|that|this)\s*(?:[?.!,]|$)|:)"
-                  r"|\b(?:do|did|can)\s+(?:you|u)\s+(?:remember|recall)\b|\bremember\s+(?:when|the\s+(?:time|day|night))\b"
-                  r"|^\W*(?:did|was|were)\s+(?!(?:you|u|it|this)\b)\w|^\W*have\s+(?:i|we)\b|\b(?:did|have)\s+(?:i|we)\b(?=[^.!\n]*\?)"
-                  rf"|\b(?:last\s+(?:time|{_DAY}|week|weekend|month|year|night)"
-                  r"|the\s+other\s+(?:day|night)|(?:a|one|two|three|few|couple|\d+)\s+(?:days?|weeks?|months?|years?)\s+ago"
-                  rf"|on\s+(?:{_MONTH}\s+\d{{1,2}}|\d{{4}}-\d\d-\d\d))\b(?=[^.!\n]*\?)", re.I | re.M)
+_LEAD: str
+PAST: re.Pattern[str]                  # both compiled by dialect() below
 # a name or topic a message asks about ("who is X" with X one or two words ending the question, "what do you know about X",
 # "tell me about X", "do you remember X"): X's best lines from the room's whole scope come in before the answer, or, when
 # it has none, the absence line, code's word (claim 3)
-ASKED = re.compile(r"\bwho(?:\s+(?:is|was)|['’]s)\s+(?P<who>[\w'’.-]+(?:\s+[\w'’.-]+)?)(?=\s*(?:(?:bro|Alex|man|dude|Alex|lol)\b\s*)?(?:[?.!,;:]|$))|\b(?:what\s+do\s+(?:you|u|we)"
-                   r"\s+know\s+about|tell\s+me\s+(?:more\s+)?about|do\s+(?:you|u)\s+(?:know|remember))\s+(?P<what>[^?.!,;:\n]+)", re.I | re.M)
+ASKED: re.Pattern[str]                 # compiled by dialect() below
+_SPLIT: re.Pattern[str]                # asked(): the fillers a name is cut at, compiled by dialect() below
 NOT_ASKED = frozenset("it he she they we i you u me us him them this that these those what who where when why how which there "
                       "here up out in on at off your ur his her their guy girl one person dude".split())
 ABSENT = "[named, nothing on file: {what}]"
+_DIALECT: tuple[str, ...] = ()
+
+
+def dialect_alt() -> str:
+    """The owner's dialect words as a regex tail, "|word" each, for a list that ends on its neutral words."""
+    return "".join("|" + re.escape(w) for w in _DIALECT)
+
+
+def dialect(words: list[str] | tuple[str, ...] = ()) -> None:
+    """[style] dialect in yerkd.toml, read at daemon start: the owner's own filler words, their slang, join the pushback,
+    lead, trailing and name-cut lists after the neutral words. The package ships none of them, so a stranger's install
+    reads a stranger's words; called with nothing, the lists are the neutral ones."""
+    global _DIALECT, PUSHBACK, _LEAD, PAST, ASKED, _SPLIT
+    _DIALECT = tuple(dict.fromkeys(w.strip().lower() for w in words if w and w.strip()))
+    f = dialect_alt()
+    PUSHBACK = re.compile(rf"^[^\w\n]*(?:(?:bro|dude|man|yo|hmm+|eh{f})\b[^\w\n]*)?(?:nah+|nope|no+(?!\s+(?:problem|worries|rush|idea|thanks)\b)"
+                          r"|wrong|actually|disagree|not\s+(?:true|really|quite))\b|\b(?:you['’]?re|you\s+are|that['’]?s|that\s+is)\s+wrong\b"
+                          r"|\bthat(?:['’]?s|\s+is)(?:\s+not|n['’]?t)\s+(?:true|right|correct|it|what|how)\b|\bnot\s+true\b"
+                          r"|\bi\s+(?:disagree|don['’]?t\s+agree)\b", re.I | re.M)
+    _LEAD = rf"(?:^|[.!?;(]\s*|\b(?:so|and|but|ok|okay|like|yo|bro|man|wait|hey|also|then|or|um|uh{f})[,\s]+|\b(?:yesterday|{_DAY}|night|week|ago)\s+)"
+    PAST = re.compile(rf"{_LEAD}(?:what|who|whom|when|where|which|how)(?:\s+(?!(?:it|you|u|that|this|is|are|am)\b)[\w'’]+){{0,4}}?\s+"
+                      r"(?:did|was|were|had|happened|went|said|told|asked|sent|bought|met|saw|ate)\b(?!\s+(?:you|u|your|ur)\b|\s+(?:it|that|this)\s*(?:[?.!,]|$)|:)"
+                      r"|\b(?:do|did|can)\s+(?:you|u)\s+(?:remember|recall)\b|\bremember\s+(?:when|the\s+(?:time|day|night))\b"
+                      r"|^\W*(?:did|was|were)\s+(?!(?:you|u|it|this)\b)\w|^\W*have\s+(?:i|we)\b|\b(?:did|have)\s+(?:i|we)\b(?=[^.!\n]*\?)"
+                      rf"|\b(?:last\s+(?:time|{_DAY}|week|weekend|month|year|night)"
+                      r"|the\s+other\s+(?:day|night)|(?:a|one|two|three|few|couple|\d+)\s+(?:days?|weeks?|months?|years?)\s+ago"
+                      rf"|on\s+(?:{_MONTH}\s+\d{{1,2}}|\d{{4}}-\d\d-\d\d))\b(?=[^.!\n]*\?)", re.I | re.M)
+    ASKED = re.compile(rf"\bwho(?:\s+(?:is|was)|['’]s)\s+(?P<who>[\w'’.-]+(?:\s+[\w'’.-]+)?)(?=\s*(?:(?:bro|man|dude|lol{f})\b\s*)?(?:[?.!,;:]|$))|\b(?:what\s+do\s+(?:you|u|we)"
+                       r"\s+know\s+about|tell\s+me\s+(?:more\s+)?about|do\s+(?:you|u)\s+(?:know|remember))\s+(?P<what>[^?.!,;:\n]+)", re.I | re.M)
+    _SPLIT = re.compile(rf"\s+(?:and|or|but|so|if|when|because|cuz|lol|lmao|bro|man|dude|fr|tho{f})\b", re.I)
+
+
+dialect()
 
 
 def asked(text: str) -> list[str]:
@@ -693,7 +717,7 @@ def asked(text: str) -> list[str]:
     article or possessive dropped; none when it opens on a pronoun, a question word or an -ing verb ("who is coming")."""
     out = []
     for m in ASKED.finditer(text):
-        w = re.split(r"\s+(?:and|or|but|so|if|when|because|cuz|lol|lmao|bro|Alex|man|dude|Alex|fr|tho)\b", (m.group("who") or m.group("what")).strip(), maxsplit=1, flags=re.I)[0].split()
+        w = _SPLIT.split((m.group("who") or m.group("what")).strip(), maxsplit=1)[0].split()
         w = (w[1:] if w and w[0].lower() in ("the", "a", "an", "my", "our") else w)[:4]
         if w and re.split(r"['’]", w[0].lower())[0] not in NOT_ASKED and not w[0].lower().endswith("ing"):
             out.append(" ".join(w).strip("'’\""))
