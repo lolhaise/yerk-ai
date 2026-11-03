@@ -8,6 +8,16 @@ version changes.
 
 ## 2026-11-03
 
+### first-run (#?)
+
+- A first run of yerkd without yerkd.toml's `[discord]` table, or with a token file that is missing or empty, ends in one
+  plain line naming what to write (the README's three-line table, the token in a 0600 file under secrets/) instead of a
+  Python traceback. The README's install block runs yerkd before a new user has written that file, and every other
+  config miss already failed this way.
+- README, Install: says Linux with systemd (the jobs and workers are user units) and that `yerk abilities` names the
+  tools some abilities add (ffmpeg, yt-dlp, LibreOffice, node); the yerkd line's comment says it refuses until
+  yerkd.toml names the token. No setting changes.
+
 ### silent-worker-card (#?)
 
 - A worker that ends with nothing to say (its last message exactly NO_REPLY, as a scheduled job's is when it has nothing

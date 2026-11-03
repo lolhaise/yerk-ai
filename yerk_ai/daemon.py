@@ -1496,7 +1496,15 @@ class Yerkd:
     async def run_discord(self) -> None:
         from .channels.discord import DiscordChannel
         d = self.conf.get("discord", {})
-        token = (self.private / d["token_file"]).read_text().strip()
+        if not isinstance(d, dict) or not d.get("token_file"):   # the first yerkd.toml is the README's three-line [discord] table
+            raise SystemExit("yerkd.toml: no [discord] token_file; write the [discord] table from README.md, Install, with the "
+                             "bot's token in a 0600 file under the private folder's secrets/")
+        token_path = self.private / str(d["token_file"])
+        if not token_path.is_file():
+            raise SystemExit(f"yerkd.toml: [discord] token_file {d['token_file']} is not a file under the private folder")
+        token = token_path.read_text().strip()
+        if not token:
+            raise SystemExit(f"yerkd.toml: [discord] token_file {d['token_file']} is empty; put the bot's token in it")
         guard = LoopGuard(max_events=int(d.get("webhook_burst", 100)))   # per 5 minutes, then 10 off
         owner = discord_id(d.get("owner"))
         if owner is None:                        # the rooms still start; every command names the setting
