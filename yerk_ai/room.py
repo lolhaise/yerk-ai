@@ -6,9 +6,9 @@ adapter's event loop.
 
 - A message for an idle room starts a turn; a message for a busy room goes straight to the
   process's stdin (the fold) and is answered inside the running turn.
-- Each `result` answers the messages Claude Code replayed (accepted) before it. A message that
-  was written but not yet accepted when a result lands gets the next result, which Claude Code
-  starts by itself.
+- Each `result` covers every message Claude Code replayed (accepted) before it, and one replay may
+  carry several waiting messages joined with newlines (seen live on 2.1.316). A message written
+  but not yet accepted when a result lands gets the next result, which Claude Code starts by itself.
 - A failed turn takes the action failures.toml gives it: a transient failure reruns the same
   session; an overflow compacts it and runs the turn again; an auth or quota failure rests the
   account and continues the same turn on the next one, resuming the same session under the same
@@ -80,6 +80,7 @@ class Inbound:
                                           # batched with another message (a relay, a note); in a
                                           # closed room it resumes the room's session, as any message does
     after: bool = False                   # it folded into a turn that failed: it runs next as its own turn, and its card says so
+    sent: str = ""                        # the exact text written to stdin (a recap ahead of it too): what its replay carries
 
 
 HARNESS = "yerk"                          # the sender of Yerk AI's own messages (a worker's relay)
@@ -113,6 +114,19 @@ def fit(text: str, cap: int, must: list[str]) -> str:
         body = cut(text, cap - len(tail) - 1)
         tail = missing(body)
     return f"{body}\n{tail}" if tail else body
+
+
+def covered_by(replays: list[str], sent: list[str]) -> int:
+    """How many of the messages written to stdin (`sent`, oldest first, as `_write` handed them) a turn's replays carry: one
+    replay may carry every line waiting when a turn ends, joined with newlines (seen live on 2.1.316).
+    A replay that matches nothing at the cursor counts as one, as before; a message no replay carries is never counted."""
+    i = 0
+    for r in replays:
+        j = i
+        while r and j < len(sent) and (r == sent[j] or r.startswith(sent[j] + "\n")):
+            r, j = r[len(sent[j]) + 1:], j + 1      # one message taken: the rest of the replay is the next one's
+        i = max(j, i + 1)                          # nothing matched at the cursor: one, today's count
+    return i
 
 
 RESUME_RECAP = ("(Yerk AI: the earlier session of this room could not be resumed, so this is a new one; the day log "
@@ -554,6 +568,7 @@ class Room:
         text = f"{recap}\n\n{msg.text}" if recap else msg.text
         if recap:
             self.seen[text.strip()] = msg
+        msg.sent = text
         self.rp.send(text)
 
     def _start(self, account: Account, fresh: bool = False) -> None:
@@ -773,7 +788,7 @@ class Room:
             if self.stopped and turn.outcome != "ok":
                 turn.outcome, turn.failure = "stopped", None
             with self.lock:
-                n = len(turn.accepted) or (1 if turn.outcome == "ok" else 0)
+                n = max(covered_by(turn.replayed, [m.sent for m in self.pending]), len(turn.accepted)) or (1 if turn.outcome == "ok" else 0)
                 covered = [self.pending.popleft() for _ in range(min(n, len(self.pending)))]
             ids = [m.id for m in covered]
             turn_id = self.rp.record(turn, ids, hop=hop, recap=1 if recapped else None, turn_key=self.turn_key, out_of=self.out_of or None)

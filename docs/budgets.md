@@ -433,7 +433,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-02: need-2026-11-02-36 raised it by 118, the needs builder building into a plug-in's own git repository (need 36 of 2026-11-02: a browser gate in a plug-in's own repo came back twice, since the builder only ever edited Yerk's and described the rest as out of reach, and that repo's changes were landed by hand), not folded to fit: needs.py 85 (the plug-in repositories from the rooms' mcp tables, the branch a build left in one, its fast-forward landing with each why in words, and each brief's part on it), pipeline.py 25 (the cold read and a fix worker handed the plug-in's branch at its head, the landing checked before GitHub's merge and done after, a person's merge landing it too), daemon.py 4 (the brief and the build's end), cli.py 2 (`yerk needs done` lands it), words.py 2. 24,550: main 1fa315a's 24,432 plus 118.
 
-- `lines = 24550`
+2026-11-02: merged-replay raised it by 18, a result covering every message Claude Code merged into one replay (2.1.316, seen live that day: four question marks sent while the room was answering, the last three replayed as one message, then every result went to a message two back, each reply left a "working on it" card and only /stop ended the turn), not folded to fit: room.py 15 (covered_by, the walk of a turn's replays over the messages written, 13; Inbound.sent, the text as written, and its one assignment), engine.py 3 (Turn.replayed, each replay's text). 24,568: main e6128e1's 24,550 plus 18.
+
+- `lines = 24568`
 
 ## Uncapped
 
