@@ -7,7 +7,7 @@
 # The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and
 # Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 [session_start]
-total = 117105
+total = 118555
 
 # Load order, most stable first, so the cached start of the prompt survives.
 # The first parts are Claude Code's own (its default prompt, the built-in tools
@@ -112,10 +112,15 @@ total = 117105
 # filed 2026-11-01): its entry's two clauses take it from 1,150 to 1,194 as the plug-in's branch need-2026-11-01-33
 # (3c3c56c) builds it, 1,225 as sent (31 over, as each of the five goes; all five 8,010 built, 8,165 sent), 44 over the
 # 1,181 it sends on the plug-in's main 6fc2b7a; so 8,165, no part could pay, the total rose by the 44 (to 117,105).
+# 2026-11-03, need-2026-11-03-43: the `page` tool (what a room draws on its live page: a new program or tests, line marks,
+# a hint, the bar, a countdown and the stall wait, since a room asked for a page on the owner's monitor whose typing and
+# drawing reach it as messages had Discord as its only way in; filed 2026-11-03) is 1,447 as this tree builds it on
+# Python 3.13, all 19 to 19,027, about 19,616 as sent (558 over the build as the 18 go, and 31 for the new entry); so
+# 19,650, no part could pay, the total rose by the 1,450 (to 118,555).
 [session_start.claude_code]
 claude_code_prompt = 10966
 builtin_tools = 12132
-yerk_tools = 18200
+yerk_tools = 19650
 deferred_tool_names = 3429
 mcp__hands__ = 8165
 mcp__web-ladder__web_image = 913
@@ -907,4 +912,12 @@ secs = 60
 # lists (pushback, lead, past, asked and the name cut) from neutral words plus `[style] dialect` at daemon start, with
 # dialect_alt() for the one taste exception; the daemon reads and checks the key. Not folded to fit: words.py 24,
 # daemon.py 4, taste.py 1, config.py 1. 24,616: main 1fa656b's 24,586 plus 30.
-lines = 24616
+# 2026-11-03: need-2026-11-03-43 raised it by 580, a room's live page (a browser tab on the owner's monitor whose typing,
+# drawing and test runs reach the room as the owner's messages, mid-turn too, and where its replies and the `page` tool
+# render, since a room asked for one had Discord as its only way in), not folded to fit:
+# channels/page.py 470 (the hub: the page's key, its events and their file, the quiet-gap message, the test runner under
+# `python3 -I` with its caps, the tool's drawing, the tabs' feed and its end at a stop, the Mirror and the address),
+# mcp_server.py 61 (the tool, the page's routes and its key in the guard), words.py 22, daemon.py 20 (the hub, the
+# Mirror on a `page` room, the tool's run of what it drew, the keys' folder hidden from workers, the feeds closed at a
+# stop), cli.py 5 (`yerk room page`), config.py 2 (the `page` key). 25,196: main d093323's 24,616 plus 580.
+lines = 25196

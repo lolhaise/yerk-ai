@@ -443,6 +443,28 @@ WATCH_ANSWERED, WATCH_ATTACHED = "[{who} answered at {at} in #{channel}: {text}]
 WATCH_NOT_KEPT = '[{who} attached: "{name}", which could not be fetched ({why})]'
 WATCH_UNANSWERED = "[{who} had not answered in #{channel} within {wait} s of the owner's message]"
 NO_REPLY, QUIET = "NO_REPLY", "read it, nothing to add"   # a final of exactly NO_REPLY posts nothing; its card says QUIET
+# The live page (channels/page.py): what a room reads of what the owner did on its page, and the page's own lines.
+PAGE_FROM = "[from the owner's live page]"
+PAGE_TYPED = "typed in {name}:\n{diff}"
+PAGE_DIFF_CUT = "... {n} more changed lines: the whole {name} is in the page folder of your work folder"
+PAGE_RUN = "tests: {passed} of {ran} pass"
+PAGE_RUN_FAILED = "{name} fails{line}: {message}"
+PAGE_RUN_ERROR = "the tests did not load: {error}{line}"
+PAGE_RAN_PAST = "the tests ran past {n} s and were stopped (a loop that never ends?)"
+PAGE_RUN_DIED = "the tests stopped before they finished, with nothing said why"
+PAGE_STROKE = "drew on {where} ({n} points)"
+PAGE_LINES = "lines {first} to {last} of the {pane}"
+PAGE_LINE = "line {line} of the {pane}"
+PAGE_NO_LINE = "the page, away from the code"
+PAGE_SAID = "said on the page: {text}"
+PAGE_TIMER_DONE = "the timer ran out"
+PAGE_STALL = "no typing for {n} s"
+PAGE_KIND = "the page sent an event yerkd does not know: {kind}"
+PAGE_NONE = "room {room} has no live page: page = true in its rooms.toml table turns one on"
+PAGE_NOTHING = "nothing to draw: give code, tests, marks, hint, bar, timer or stall"
+PAGE_NO_TAB = "no tab is open on the page now; it shows this when one opens"
+PAGE_NO_DAEMON = "yerkd is not running here (no yerkd.json in the state folder); start it, then ask again"
+PAGE_NO_KEY = "room {room} has no live page yet: set page = true in its rooms.toml table and restart yerkd"
 QUIET_WORKER = "finished clean, nothing to add"   # a worker's last message of exactly NO_REPLY: its card's head ("nothing to post" ran past PHONE)
 # the emoji an OpenClaw progress card's tool row starts with, one per tool kind, "🧩" for any other (an MCP tool's): its
 # TOOL_DISPLAY_CONFIG with the message tool's spec, /usr/lib/node_modules/openclaw/dist/tool-display-zmIG5_OB.mjs, read

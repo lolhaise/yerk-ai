@@ -2,8 +2,8 @@
 # official Python SDK) and the send tool's shape are adapted from Hermes Agent v0.22.2,
 # mcp_serve.py (create_mcp_server, messages_send), https://github.com/NousResearch/hermes-agent
 # Copyright (c) 2025 Nous Research. MIT License. See NOTICE.
-"""Yerk AI's own MCP server: eighteen tools (send, hold, recall, read_memory, remember, worker, schedule, settings, transcribe,
-voice_note, seen, render, watch, need, text, delete, reverse_image_search, github_state), local-only HTTP, preloaded in every room;
+"""Yerk AI's own MCP server: nineteen tools (send, hold, recall, read_memory, remember, worker, schedule, settings, transcribe,
+voice_note, seen, render, watch, need, text, delete, reverse_image_search, github_state, page), local-only HTTP, preloaded in every room;
 transcribe, voice_note, watch, text, reverse_image_search and github_state are here and not plug-ins because the daemon has the network
 plug-ins because the daemon has the network (and github_state the token) and a room's shell has none, seen because no owner room has a Write tool, render
 a writable /tmp a room's sandbox does not give, and delete because that sandbox mounts all but the room's folders read-only. A worker gets none of it: by default no MCP server at all, and with
@@ -13,7 +13,9 @@ Every endpoint (/mcp, /hook, /control) wants the `x-yerk-secret` header (restart
 values open it: the install's secret (the CLI, the job units, the tests: everything), a room process's
 own token (minted per process start and bound with its session in sessions.json: /hook and /mcp, and
 the room's identity IS that binding, never a header a caller picks), and the worker secret (/control,
-recall and read_memory only, so a worker holds nothing that starts a worker or schedules a job).
+recall and read_memory only, so a worker holds nothing that starts a worker or schedules a job). A room's live page
+(channels/page.py) is the one other caller: GET /page is the page itself, no data in it, open to a browser with no header,
+and its calls under /page/ open with that room's page key only, which opens nothing else.
 Each room's process gets a config naming this one server with `alwaysLoad: true` and its token as the
 header, passed with --strict-mcp-config. The same HTTP app answers the hooks.
 """
@@ -27,12 +29,13 @@ from typing import Any, Awaitable, Callable, Protocol
 
 from mcp.server.fastmcp import Context, FastMCP
 from starlette.requests import Request
-from starlette.responses import JSONResponse, Response
+from starlette.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 
 from .memory import READ_LINES
 
 log = logging.getLogger("yerk.http")
 HEADER = "x-yerk-secret"
+PAGE = "/page"                             # a room's live page (channels/page.py); its calls under PAGE + "/"
 Auth = dict[str, str]                      # {"kind": install | room | worker, "room": the bound room or ""}
 RECALL = ("Search the owner's memory (daily logs, fact files, the curated file, open loops) by keywords\n"
           "and, where the install has a provider key, by meaning too, so a paraphrase finds the line.\n"
@@ -62,6 +65,7 @@ class Daemon(Protocol):
     async def tool_delete(self, room: str, paths: list[str]) -> dict[str, Any]: ...
     async def tool_reverse_image_search(self, room: str, path: str) -> dict[str, Any]: ...
     async def tool_github_state(self, room: str, branch_or_pr: str) -> dict[str, Any]: ...
+    async def tool_page(self, room: str, req: dict[str, Any]) -> dict[str, Any]: ...
 
 
 def caller_room(ctx: Context) -> str:
@@ -75,10 +79,18 @@ Handler = Callable[[dict[str, Any], Auth], Awaitable[dict[str, Any]]]
 Check = Callable[[str, str], Auth | None]   # (path, header value) -> who this is, or None: refused
 
 
-def checker(install: str, worker: str, room_of_token: Callable[[str], str | None]) -> Check:
+def checker(install: str, worker: str, room_of_token: Callable[[str], str | None],
+            page_of_key: Callable[[str], str | None] | None = None) -> Check:
     """The one rule for every endpoint, compared in constant time; an empty secret never matches. A
-    room's own token opens /hook and /mcp only: /control and /status show every room, not a room's to read."""
+    room's own token opens /hook and /mcp only: /control and /status show every room, not a room's to read.
+    A page's calls (/page/...) open with that room's page key and nothing else, and the key opens nothing but them;
+    /page itself, the page with no data in it, opens with no header."""
     def check(path: str, value: str) -> Auth | None:
+        if path == PAGE:
+            return {"kind": "open", "room": ""}
+        if path.startswith(PAGE + "/"):
+            room = page_of_key(value) if value and page_of_key is not None else None
+            return {"kind": "page", "room": room} if room else None
         if value and install and hmac.compare_digest(value, install):
             return {"kind": "install", "room": ""}
         if value and worker and path.startswith("/control") and hmac.compare_digest(value, worker):
@@ -114,7 +126,8 @@ def app(mcp: FastMCP, check: Check) -> Any:
     return Guard(mcp.streamable_http_app(), check)
 
 
-def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = None, status: Handler | None = None) -> FastMCP:
+def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = None, status: Handler | None = None,
+          live: Any = None) -> FastMCP:
     mcp = FastMCP("yerk", host="127.0.0.1", port=port, stateless_http=True, json_response=True, log_level="WARNING")
 
     @mcp.tool()
@@ -299,6 +312,19 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         refused until the owner says yes; then call again with `owner_yes` true."""
         return json.dumps(await daemon.tool_voice_note(caller_room(ctx), script, name, owner_yes))
 
+    @mcp.tool()
+    async def page(code: str = "", tests: str = "", marks: list[dict[str, Any]] | None = None, hint: str | None = None,
+                   bar: dict[str, str] | None = None, timer: int = -1, stall: int = -1, *, ctx: Context) -> str:
+        """Draws on this room's live page, where the owner types, draws and runs tests in a browser; each part given replaces
+        what it shows. `code` a new program (solution.py); `tests` its unittest file (it imports solution), which the page
+        runs on every pause in typing; `marks` line marks, each {"line": N, "kind": "highlight" or "arrow", "text": a note},
+        [] clears; `hint` one line under the program; `bar` labels and values on top; `timer` seconds to count down, 0 stops;
+        `stall` seconds of no typing before the page tells you, 0 off. Your replies show there too. What the owner types,
+        draws and says there comes to you as messages, mid-turn too; each keystroke is in page/events.jsonl."""
+        req = {k: v for k, v in {"code": code or None, "tests": tests or None, "marks": marks, "hint": hint, "bar": bar,
+                                 "timer": timer if timer >= 0 else None, "stall": stall if stall >= 0 else None}.items() if v is not None}
+        return json.dumps(await daemon.tool_page(caller_room(ctx), req))
+
     def route(path: str, handler: Handler) -> None:
         @mcp.custom_route(path, methods=["POST"])
         async def _route(request: Request) -> Response:
@@ -314,7 +340,42 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         route("/control", control)      # `yerk room close`, `yerk worker`, the job units, a worker's reads
     if status:
         route("/status", status)        # `yerk status`: what runs now (status.py), local only the same way
+    if live is not None:                # the rooms' live pages (channels/page.py)
+        pages(mcp, live)
     return mcp
+
+
+def pages(mcp: FastMCP, page: Any) -> None:
+    """A room's live page (channels/page.py): the page itself, then its feed, its events and its test runs, each under
+    the room its key opens (Guard)."""
+    def room_of(request: Request) -> str:
+        auth = getattr(request.state, "yerk_auth", None)
+        return str(auth.get("room", "")) if isinstance(auth, dict) and auth.get("kind") == "page" else ""
+
+    @mcp.custom_route(PAGE, methods=["GET"])
+    async def _page(request: Request) -> Response:
+        return HTMLResponse(page.html(), headers={"cache-control": "no-store", "referrer-policy": "no-referrer"})
+
+    @mcp.custom_route(PAGE + "/stream", methods=["GET"])
+    async def _stream(request: Request) -> Response:
+        if not (room := room_of(request)):
+            return JSONResponse({"ok": False}, status_code=401)
+        return StreamingResponse(page.stream(room), media_type="application/x-ndjson", headers={"cache-control": "no-store"})
+
+    for name in ("event", "run"):
+        def bind(name: str) -> None:
+            @mcp.custom_route(f"{PAGE}/{name}", methods=["POST"])
+            async def _call(request: Request) -> Response:
+                if not (room := room_of(request)):
+                    return JSONResponse({"ok": False}, status_code=401)
+                try:
+                    payload = await request.json()
+                except ValueError:
+                    return JSONResponse({}, status_code=400)
+                if not isinstance(payload, dict):
+                    return JSONResponse({}, status_code=400)
+                return JSONResponse(await getattr(page, name)(room, payload))
+        bind(name)
 
 
 def room_config(url: str, room: str, path: Path, token: str = "", servers: dict[str, Any] | None = None) -> Path:

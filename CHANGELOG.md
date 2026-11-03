@@ -8,6 +8,26 @@ version changes.
 
 ## 2026-11-03
 
+### need-2026-11-03-43 (#?)
+
+- A room can be a live page: `page = true` in its rooms.toml table gives it a browser tab, opened at the address
+  `yerk room page NAME` prints, with a program in an editor, its unittest tests beside it, a bar on top and a draw
+  layer. yerkd serves it on its own local port beside /mcp and /hook; the room and its key ride in the address's
+  fragment, and the key opens that room's page calls and nothing else.
+- What the owner does there reaches the room as the owner's messages, folded into a running turn as a Discord message
+  is: each keystroke is a line in the room's `work/page/events.jsonl` at once, with the program and its tests beside it;
+  a 1.5 s pause in typing sends one message with the change as a diff and the tests' newest result; a stroke (the lines
+  it covers), a line said on the page, the countdown's end or a stall goes at once.
+- The tests run on the page's call, never the model's: in a fresh folder under `python3 -I`, capped at 10 s and 1 GB,
+  red to green on every pause in typing, each failure with its line.
+- The room's replies, notices and sends to itself render on every open tab beside Discord, and a new `page` tool draws:
+  a new program or tests, marks on lines (a highlight, an arrow, each with a note), a hint, the bar's labels and values,
+  a countdown and the stall wait. A tab that reconnects after a restart gets the whole state first.
+- `yerk_tools` in budgets.toml goes to 19,650 and the session start's total to 118,555 (the tool is 1,447 as built), and
+  the `[code]` ceiling to 25,196; the abilities entry is live-page.
+- Upgrading: a room that wants a page adds `page = true` to its table in rooms.toml and yerkd restarts; set `port` in
+  yerkd.toml so the page's address stays the same across restarts. Rooms without the key see no change.
+
 ### changelog-numbers-2 (#?)
 
 - Every entry since Oct 24 that read `(#?)` carries its pull request number, read from GitHub for the branch each
