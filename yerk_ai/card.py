@@ -6,7 +6,8 @@ line holds to phone width (words.PHONE); the newest rows win. The room swaps the
 end, or edits it to say what was owed when a turn ends with nothing to show. (Ideas from OpenClaw's cards.)
 Waits in the queue for its turn and: the last part closes the (case before the next run starts) the example note
 count, never a step'the example, note says-the sample item moved to's narration (2026-10-21: a person's card listed
-the steps of a file build; the owner: "The test reads it back as").
+the steps of a file build; the owner: "Run starts the example note says"), unless its block says card = "steps": then the
+owner rooms' and, the last part (0000-00-00, closes the's room: "Example note says the sample item moved to the").
 """
 from __future__ import annotations
 

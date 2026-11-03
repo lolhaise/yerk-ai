@@ -6,6 +6,25 @@ A line that changes a file the install keeps (rooms.toml, yerkd.toml, budgets.to
 newer than the code is refused with one line, never changed); the index chunks every file again when its chunker's
 version changes.
 
+## 2026-11-03
+
+### card-steps (#?)
+
+- A room with people can show its steps on its progress card now: `card = "steps"` in its block in rooms.toml gives it
+  an owner room's card, the model's newest line and one row per step, each marked done or not done, two or more failed
+  steps in a row folded into one and the oldest rows counted on an "N earlier steps" line, as the owner's rooms show
+  them. Before, every room with people showed its newest holding line and "step 1", "step 2" and so on, never a row; the
+  owner preferred the rows once he saw them in a room with people.
+- Every other room with people keeps the card it has had since 2026-10-21 (a person's card listed the steps of a file
+  build): with the key unset, or set to any other value, it shows its holding line and a step count, unchanged. The
+  thinking line stays an owner room's alone; a room that shows the rows shows the model's newest line, not its holding
+  line. An owner room's card is unchanged, with or without the key.
+- budgets.toml: `[code]` lines 24,568 to 24,571, with its dated note; docs/settings.md (the key's line) and
+  docs/budgets.md are what `yerk docs own` writes, the GUIDE's "How a room runs" and rooms.toml.example say it.
+
+**Upgrading**: to show the rows in a person room, add `card = "steps"` to its block in rooms.toml; rooms.toml is read
+at yerkd's start, so the rows show from the next restart. Nothing to change for any other room.
+
 ## 2026-11-02
 
 ### need-2026-11-02-38 (#?)

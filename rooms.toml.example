@@ -51,6 +51,7 @@ open_loops = "memory/open-loops.md"
 # shell = "trusted"          # a room with people that runs the owner rooms' tools, as tools = ["Read", "Grep", "Glob", "Bash", "Write", "Edit"]:
 #                             # its shell inside the daemon's wall (`yerk explain trusted`), Write and Edit on its layer and work folder only;
 #                             # its [rooms.NAME.sandbox] may add filesystem.denyRead, filesystem.denyWrite and the network allowlist, no other key
+# card = "steps"              # a room with people: its card as an owner room's, one row per step; unset: its holding line and a step count
 thinking_panel = false        # owner-only rooms: a "thinking" line on the card (costs about 5 s a reply)
 # allow_remove = ["mcp__hands__mail"]   # tools this room does without, out of the allow it inherits from [defaults]
 

@@ -435,7 +435,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-02: merged-replay raised it by 18, a result covering every message Claude Code merged into one replay (2.1.316, seen live that day: four question marks sent while the room was answering, the last three replayed as one message, then every result went to a message two back, each reply left a "working on it" card and only /stop ended the turn), not folded to fit: room.py 15 (covered_by, the walk of a turn's replays over the messages written, 13; Inbound.sent, the text as written, and its one assignment), engine.py 3 (Turn.replayed, each replay's text). 24,568: main e6128e1's 24,550 plus 18.
 
-- `lines = 24568`
+2026-11-03: card-steps raised it by 3, a room with people showing an owner room's progress card, a row per step, when its block says card = "steps" (the owner preferred it shown in one room with people; every other room with people keeps the 2026-10-21 card), not folded to fit: config.py 2 (`card` in ROOM_WORDS), card.py 1 (the docstring's line on it), room.py 0 (_new_card's people line reads it). 24,571: main d76fadf's 24,568 plus 3.
+
+- `lines = 24571`
 
 ## Uncapped
 
