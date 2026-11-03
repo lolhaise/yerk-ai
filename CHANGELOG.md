@@ -14,7 +14,7 @@ version changes.
   the check mark lands on the message that reply answers, its card closes, and once the last is answered the room goes
   idle (idle close and idle compaction run again). Claude Code 2.1.316 takes the messages still waiting when a reply
   ends as one message and answers them once; the room counted that one as a single message. Before, when
-  #Plain 00:00 text with (one "?" more line for), the check while a "second entry waits", in the queue for its
+  four one-character messages came in two seconds, the room stayed at "working on it", each reply left a fresh
   "working on it" card, every later reply was credited to the message two back, and only /stop cleared it, marking two
   messages that had been answered "not answered".
 - A message written after the last of a turn's replays still waits for the next reply, as before.

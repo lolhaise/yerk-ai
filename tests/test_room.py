@@ -102,7 +102,7 @@ def test_mid_turn_message_folds_into_the_running_turn(env):
 
 
 def test_messages_queued_during_a_turn_and_merged_by_claude_code_are_all_covered(env):
-    # 0.0.000, #moved-to 0000-00-00 00:00: the next step and the test reads it back as Plain text; with
+    # seen live on 2.1.316: the lines waiting when a turn ended came back as ONE replay; one
     # message counted per replay left two pending, so every later result went to a message two back and the turn never ended
     make, ledger, _ = env
     chan = Chan()

@@ -878,7 +878,7 @@ secs = 60
 # head, the landing checked before GitHub's merge and done after, a person's merge landing it too), daemon.py 4 (the brief
 # and the build's end), cli.py 2 (`yerk needs done` lands it), words.py 2. 24,550: main 1fa315a's 24,432 plus 118.
 # 2026-11-02: merged-replay raised it by 18, a result covering every message Claude Code merged into one replay (2.1.316,
-# #the-check while 00:00 a second: entry "?" waits in the queue for its, turn and the last part closes the,
+# seen live that day: four question marks sent while the room was answering, the last three replayed as one message,
 # then every result went to a message two back, each reply left a "working on it" card and only /stop ended the turn),
 # not folded to fit: room.py 15 (covered_by, the walk of a turn's replays over the messages written, 13; Inbound.sent, the
 # text as written, and its one assignment), engine.py 3 (Turn.replayed, each replay's text). 24,568: main e6128e1's

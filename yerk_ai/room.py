@@ -118,7 +118,7 @@ def fit(text: str, cap: int, must: list[str]) -> str:
 
 def covered_by(replays: list[str], sent: list[str]) -> int:
     """How many of the messages written to stdin (`sent`, oldest first, as `_write` handed them) a turn's replays carry: one
-    replay may carry every line waiting when a turn ended, joined with newlines (2.1.316, #To 0000-00-00 00:00).
+    replay may carry every line waiting when a turn ends, joined with newlines (seen live on 2.1.316).
     A replay that matches nothing at the cursor counts as one, as before; a message no replay carries is never counted."""
     i = 0
     for r in replays:

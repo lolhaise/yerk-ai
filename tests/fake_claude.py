@@ -32,7 +32,7 @@ message and a success result echoing the text. Variations:
 - a line containing MERGE: replayed, then up to 0.5 s for more lines (0.2 s more once one comes, unread), then answered
   as usual; every line then waiting on stdin is replayed as ONE user message, their texts joined with newlines (one
   replay event, one uuid), and answered once with "echo: " plus that text: the stream Claude Code 2.1.316 gave for the
-  lines waiting when a turn ended (#The, 0000-00-00 00:00: check "?" while a second)
+  lines waiting when a turn ended (seen live once: three one-character messages in one replay)
 - a line containing READ_ALONG: the answer is NO_REPLY on a line of its own (a room reading along, nothing to add)
 - a line containing CHATTY: a stream event every 0.3 s for about 2 s, then the answer
 - --resume with FAKE_CLAUDE_MISSING=1: "No conversation found" on stderr, exit 1
