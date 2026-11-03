@@ -8,6 +8,29 @@ version changes.
 
 ## 2026-11-03
 
+### silent-worker-card (#?)
+
+- A worker that ends with nothing to say (its last message exactly NO_REPLY, as a scheduled job's is when it has nothing
+  for the room) now settles its card as one line, `🟢 worker finished clean, nothing to add`, over the time it took and
+  "report saved" with `yerk worker report <id>`. Before, the card read `🟢 worker finished clean`, then the word NO_REPLY
+  itself, then every step row: one scheduled job that runs three times a day had left eight such cards since Nov 1, and
+  the owner replied to the latest asking what it did.
+- What stays: the steps are in the worker's TASKS.md and its report, behind `yerk worker report <id>`; the footer shows
+  the account when the install has more than one and the report's path under presentation.paths = owner, as before. The
+  card is never deleted: a turn that ends silent keeps its one line, and a worker does the same. A job's silence is as
+  it was, no relay turn and its run's ledger row saying no_reply, silent (NO_REPLY). A worker that dies, times out or is
+  stopped after saying NO_REPLY still shows how it ended, and every other end settles exactly as before.
+- The card settles quiet both when the daemon sees the worker end and when a restart finds one that ended while the
+  daemon was away.
+- The tests: 2 new in tests/test_workers.py (a NO_REPLY end settling quiet live and at a re-attach, read the way the job
+  hook reads it, and a death after NO_REPLY still a death; every other end rendering as main rendered it, line for line,
+  and the quiet card keeping the account and the path), the quiet card held to the style rules in tests/test_style.py
+  and a silent job's card checked in tests/test_jobs.py; 1,458 in all. budgets.toml [code] lines 24,572 + 6 = 24,578,
+  with its dated note; docs/budgets.md is what `yerk docs own` writes.
+
+**Upgrading**: nothing to change; a worker that ends after the deploy's restart settles this way. A card that already
+settled keeps its text.
+
 ### card-steps (#?)
 
 - A room with people can show its steps on its progress card now: `card = "steps"` in its block in rooms.toml gives it

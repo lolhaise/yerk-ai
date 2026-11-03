@@ -109,7 +109,8 @@ def test_every_worker_card_running_and_settled_is_state_first_with_no_path_and_n
     cards += [workers.card_text(row, items, settled(st, row)) for st in ENDS]
     cards += [workers.card_text(row, [(True, x) for _, x in items], settled("done", row)),
               workers.card_text(row, items, settled("done", row, has_report=False))]
-    for text in cards:
+    quiet = workers.card_text(row, items, {**settled("done", row), "result": words.NO_REPLY, "quiet": True})
+    for text in [*cards, quiet]:
         assert state_first(text) and not room_safe(text), (text, room_safe(text))
         assert all(words.width(x) <= words.PHONE for x in text.splitlines()), text
         assert "account" not in text and "a-model" not in text            # one account here: no account line
@@ -121,6 +122,7 @@ def test_every_worker_card_running_and_settled_is_state_first_with_no_path_and_n
                      f"{words.DONE} worker finished clean", f"{words.WORKING} worker finished, no report"]
     assert cards[0].splitlines()[-1] == "-# worker abc123, 3 min of 15"
     assert cards[-2].splitlines()[-2:] == ["-# done in 3 min", "-# report saved: `yerk worker report abc123`"]
+    assert quiet.splitlines() == [f"{words.DONE} worker {words.QUIET_WORKER}", *cards[-2].splitlines()[-2:]]   # no token, no rows
     assert "-# no report: `yerk worker report abc123`" in cards[-1]
     assert cards[7].splitlines()[-1] == "-# no report: `yerk worker report abc123`" or "ran" not in cards[7]
     assert " ran " not in cards[7] and "of 15" not in cards[7] and "-# \n" not in cards[7] + "\n"   # never ran

@@ -384,6 +384,68 @@ def test_a_unit_that_ended_while_no_list_had_it_completes_from_its_exit_file(set
     assert (row["exit"], row["exit_detail"], row["result"]) == ("done", "success, exited 0", "merge")
 
 
+def test_a_last_message_of_exactly_no_reply_settles_a_quiet_card_live_and_at_a_re_attach(setup):
+    """A worker whose last message is exactly NO_REPLY, read as jobs.py's worker_done reads it (its last result event, else
+    the report's first line), settles quiet when the daemon sees its exit file and when a restart finds it ended: the done
+    mark and QUIET_WORKER, never the token, no rows, the footer as ever. Any other last message settles as before."""
+    s = setup
+
+    def away(wid, report, last=None):                    # it ended while no daemon was up: its exit file, report and rows
+        unlisted(s, wid, 30, exit={"result": "success", "code": "exited", "status": "0", "ended": time.time()})
+        d = s.tmp / "workers" / wid
+        (d / "REPORT.md").write_text(f"{report}\n")
+        (d / "TASKS.md").write_text("- [x] look at the feed\n- [ ] decide\n")
+        if last is not None:
+            (d / "stdout.jsonl").write_text(json.dumps({"type": "result", "result": last}) + "\n")
+
+    async def go():
+        w = s.make({"r": Busy()})
+        w.begin(asyncio.get_running_loop())
+        out = await w.start("r", 'FAKE ticks=1 report="NO_REPLY" result="NO_REPLY"', tasks=["look at the feed", "decide"])
+        died = await w.start("r", 'FAKE report="NO_REPLY" result="NO_REPLY" exit=3')   # only a clean end is quiet
+        await ended(s.ledger, out["id"], relay="waiting")
+        await ended(s.ledger, died["id"], relay="waiting")
+        away("qu1e70", "NO_REPLY")                       # no result event: the report's first line is read
+        away("qu1e71", "merge", last=" NO_REPLY\n")      # the last message wins over the report, stripped
+        away("n0rma1", "merge", last="merged it")
+        await w.reattach()
+        return out["id"], died["id"]
+    live, died = asyncio.run(go())
+    cards = {k.removeprefix("worker:"): t for k, t, _, _ in s.chan.settled}
+    assert cards[died].splitlines()[:2] == [f"{W.NOT_DONE} worker died: it ended with an error", W.NO_REPLY]
+    for wid, result in ((live, W.NO_REPLY), ("qu1e70", W.NO_REPLY), ("qu1e71", "merge")):
+        head, *foot = cards[wid].splitlines()
+        assert head == f"{W.DONE} worker {W.QUIET_WORKER}" and len(foot) == 2 and foot[0].startswith("-# done in ")
+        assert foot[1] == f"-# report saved: `yerk worker report {wid}`" and all(W.width(x) <= W.PHONE for x in foot)
+        assert W.NO_REPLY not in cards[wid] and "look at the feed" not in cards[wid] and "merge" not in cards[wid]
+        assert (s.ledger.worker_get(wid)["exit"], s.ledger.worker_get(wid)["result"]) == ("done", result)   # the row as ever
+    assert cards["n0rma1"].splitlines()[:4] == [f"{W.WORKING} worker finished, 1 of 2 ticked", "merge",
+                                                f"{W.DONE} look at the feed", f"{W.WAITING} decide"]
+    assert cards["n0rma1"].splitlines()[-1] == "-# report saved: `yerk worker report n0rma1`"
+
+
+def test_a_settled_card_reads_as_before_for_any_other_end_and_the_quiet_one_keeps_its_footer_and_path():
+    """card_text on fixed ends: every end but a quiet one renders as main 64b7953 rendered it, with end["quiet"] false or
+    absent; a quiet one keeps the footer as ever: the time, the account when there are two, the path under paths = owner."""
+    row = {"id": "abc123", "cap": 900.0, "started": 1000.0, "account": "one", "report": "/w/abc123/REPORT.md",
+           "tasks": "/w/abc123/TASKS.md", "room": "r"}
+    items, saved = [(True, "look at the feed"), (False, "decide")], "-# report saved: `yerk worker report abc123`"
+
+    def end(state="done", result="Three things happened", **more):
+        return {"exit": state, "finished": 1181.0, "result": result, "has_report": True,
+                "result_code": "exit-code" if state == "died" else "success", **more}
+    before = {"done": [f"{W.WORKING} worker finished, 1 of 2 ticked", "Three things happened", f"{W.DONE} look at the feed",
+                       f"{W.WAITING} decide", "-# done in 3 min", saved],
+              "died": [f"{W.NOT_DONE} worker died: it ended with an error", "Three things happened",
+                       f"{W.DONE} look at the feed", f"{W.NOT_DONE} decide", "-# ran 3 min of 15", saved]}
+    for state, lines in before.items():
+        for more in ({}, {"quiet": False}):
+            assert workers.card_text(row, items, end(state, **more), now=2000.0).splitlines() == lines, (state, more)
+    quiet = workers.card_text(row, items, end(result=W.NO_REPLY, quiet=True), accounts=2, look=W.Look(paths="owner"))
+    assert quiet.splitlines() == [f"{W.DONE} worker finished clean, nothing to add", "-# done in 3 min, account one", saved,
+                                  "-# /w/abc123/REPORT.md"]
+
+
 def test_a_relay_left_open_by_a_crash_is_ledgered_as_what_happened(setup):
     s = setup
     for wid, posted in (("aaa111", True), ("bbb222", False)):

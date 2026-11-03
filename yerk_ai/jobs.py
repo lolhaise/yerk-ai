@@ -57,7 +57,7 @@ from .ledger import Ledger
 from .lifted.killtree import stop_group
 from .room import HARNESS, Inbound
 from .words import DONE, NOT_DONE, NOTHING, PHONE
-from .workers import ENV_KEEP, Workers, systemctl, took, unit_line
+from .workers import ENV_KEEP, Workers, last_message, systemctl, took, unit_line
 
 log = logging.getLogger("yerk.jobs")
 FILE = "jobs.toml"
@@ -714,22 +714,6 @@ def run(name: str, private: Path, state: Path, units: Systemd | None = None,
         except (OSError, subprocess.SubprocessError, JobError) as e:
             print(f"job {name}: fired, but could not be removed from the file: {e}", file=sys.stderr)
     return rc
-
-
-def last_message(folder: Path) -> str:
-    """A worker's last message: the `result` of the last result event in its stdout.jsonl."""
-    try:
-        lines = (folder / "stdout.jsonl").read_text(errors="replace").splitlines()
-    except OSError:
-        return ""
-    for line in reversed(lines):
-        try:
-            ev = json.loads(line)
-        except ValueError:
-            continue
-        if isinstance(ev, dict) and ev.get("type") == "result":
-            return str(ev.get("result") or "").strip()
-    return ""
 
 
 def brief_for(job: Job, run_id: int, fired: float) -> str:

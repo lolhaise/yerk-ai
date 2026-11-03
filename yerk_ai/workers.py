@@ -28,7 +28,8 @@ daemon restarts.
   the settled card carries the result meanwhile), runs alone (never folded into another turn, never
   merged with another relay; two completions are two relays, in order), and in a room whose process
   is closed it resumes the room's own session, as any message does. The raw report never goes to
-  the room.
+  the room. A last message of exactly NO_REPLY settles the card quiet, live or at a re-attach: the
+  done mark and "finished clean, nothing to add", no token, no rows, the footer as ever.
 - One heavy worker per account ([workers] per_account, default 1): a worker whose account is busy
   waits in line, its card saying "waiting for an account" and its place; the daemon starts it when
   the account frees. A worker that moves account mid-run is not built.
@@ -306,6 +307,22 @@ def first_line(path: Path) -> str:
     return ""
 
 
+def last_message(folder: Path) -> str:
+    """A worker's last message: the `result` of the last result event in its stdout.jsonl."""
+    try:
+        lines = (folder / "stdout.jsonl").read_text(errors="replace").splitlines()
+    except OSError:
+        return ""
+    for line in reversed(lines):
+        try:
+            ev = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(ev, dict) and ev.get("type") == "result":
+            return str(ev.get("result") or "").strip()
+    return ""
+
+
 def took(seconds: float) -> str:
     s = max(0, int(seconds))
     return f"{s // 3600}h {s % 3600 // 60:02d}m" if s >= 3600 else f"{s // 60}m {s % 60:02d}s"
@@ -327,9 +344,9 @@ def card_text(row: dict[str, Any], items: list[tuple[bool, str]], end: dict[str,
               now: float | None = None) -> str:
     """The worker's card, state first (STYLE.md). Running: its state and its rows, then the time so
     far against the cap. Settled: the outcome in plain words, the report's first line, the rows as
-    they were, then how long it ran and "report saved" with the command that opens it. The account
-    shows only when the install has more than one; the path only under presentation.paths = owner,
-    in an owner room."""
+    they were, then how long it ran and "report saved" with the command that opens it; settled quiet
+    (end["quiet"]), the done mark, QUIET_WORKER and that footer alone. The account shows only when
+    the install has more than one; the path only under presentation.paths = owner, in an owner room."""
     look = look or words.LOOK
     now = time.time() if now is None else now
     ticked = sum(1 for t, _ in items if t)
@@ -347,12 +364,14 @@ def card_text(row: dict[str, Any], items: list[tuple[bool, str]], end: dict[str,
                 else f"started {words.clock(started, now)}, cap {words.span(cap)}")
     else:
         mark, state = settled_state(row, items, end)
+        if end.get("quiet"):                             # its last message was exactly NO_REPLY: no token, no rows
+            mark, state, items = words.DONE, words.QUIET_WORKER, []
         ran = float(end["finished"]) - started
         when = ((f"done in {words.span(ran)}" if end["exit"] == "done" else f"ran {words.of_cap(ran, cap)}")
                 if look.times == "relative" else f"ended {words.clock(float(end['finished']), now)}, "
                                                   f"after {words.span(ran)}")
     lines = [words.line(f"{mark} {words.WORKER_HEAD.format(state=state)}")]
-    if end is not None and end.get("result") and end.get("has_report"):
+    if end is not None and end.get("result") and end.get("has_report") and not end.get("quiet"):
         lines.append(words.line(str(end["result"])))
     current = next((i for i, (t, _) in enumerate(items) if not t), None)
     stuck = words.WORKING if end is None else words.NOT_DONE if mark == words.NOT_DONE else words.WAITING
@@ -663,6 +682,8 @@ class Workers:
         end: dict[str, Any] = {"exit": state, "detail": detail, "finished": float(x.get("ended") or time.time()),
                "result": first_line(report) or ("no report file" if state == "done" else ""),
                "has_report": report.is_file(), "result_code": x.get("result") or ""}
+        # its last message read as jobs.py's worker_done reads it: exactly NO_REPLY settles the card quiet (card_text)
+        end["quiet"] = state == "done" and (last_message(Path(row["staging"])) or end["result"]).strip() == words.NO_REPLY
         self.ledger.worker_set(wid, finished=round(end["finished"], 3), exit=state, exit_detail=detail, result=end["result"])
         row["card"] = row.get("card") or fresh.get("card")
         row["job"] = row.get("job") or fresh.get("job")
