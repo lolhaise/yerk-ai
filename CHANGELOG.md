@@ -6,6 +6,31 @@ A line that changes a file the install keeps (rooms.toml, yerkd.toml, budgets.to
 newer than the code is refused with one line, never changed); the index chunks every file again when its chunker's
 version changes.
 
+## 2026-11-03
+
+### trusted-wall (#?)
+
+- A trusted room's shell now reads nothing of the owner's home but the room's own folders (its layer, its work folder
+  and the files people send it) and the Python user site-packages, read only: every entry of the home that holds none
+  of the room's own folders is denied to the shell whole, for reading and writing, and one that holds one is walked the
+  same way, its other entries denied. Before, only the folders the daemon knew were denied (the private and state
+  folders around the room's own, the memory roots, the other rooms' layers and `read` folders, `projects/` under each
+  account's folder, and the home's folders that hold one of those), and Claude Code's sandbox reads the whole computer
+  but what is denied: on 2026-11-03 the one trusted room's 88 denies left `~/.ssh`, every account's token file, the daily
+  backup archives, the shell history and `~/.claude.json` readable to its shell. Around the home alone, that box's wall
+  is 164 denies now.
+- The explicit roots stay, for a private, state or memory folder outside the home; a layer set directly in the home
+  stays open to its room; a home entry that is a link is denied by its target, as before. `yerk explain trusted` and
+  docs/GUIDE.md ("How a room runs") say it.
+- The tests: 3 new in tests/test_trusted_room.py (a fake home's key, token file, backup and shell history walled, the
+  room's own folders open and a sibling room's layer walled; a layer directly in the home kept; each deny once and a
+  parent's taking its children's), 1,454 in all. budgets.toml [code] lines 24,568 + 1 = 24,569, with its dated note.
+- Why: a read of the one trusted room's live settings found what the deny list did not name open to its shell; a
+  stopgap `denyRead` of the home's other entries went into the install's rooms.toml, and this is the fix that lets it go.
+
+**Upgrading**: nothing to change in rooms.toml; every trusted room has the wall from its next process start after the
+deploy. A `[rooms.NAME.sandbox.filesystem] denyRead` list that only repeated home folders can be removed.
+
 ## 2026-11-02
 
 ### need-2026-11-02-38 (#?)

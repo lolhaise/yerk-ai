@@ -78,6 +78,48 @@ def test_a_trusted_people_room_starts_with_the_owner_tools_and_its_shell_inside_
     assert "sandbox" in y.spec_for("work-room").settings and "allowRead" not in y.spec_for("work-room").settings["sandbox"].get("filesystem", {})
 
 
+def test_a_trusted_rooms_wall_takes_the_whole_home_but_its_own_folders(tmp_path, monkeypatch):
+    """Live 2026-11-03: a wall of the roots the daemon knew left the rest of the home open to the shell (a private key, every
+    account's token file, the backups, the shell history). The home is walled around the room's own folders now."""
+    home, private, state = layout(tmp_path, monkeypatch)
+    strays = [home / ".ssh" / "id", home / ".claude-x" / ".credentials.json", home / "backups" / "a.tar", home / ".bash_history"]
+    for f in strays:
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text("x\n")
+    fs = Yerkd(private, state).spec_for("family-room").settings["sandbox"]["filesystem"]
+    for p in strays:
+        assert covered(p.resolve(), fs["denyRead"]) and covered(p.resolve(), fs["denyWrite"]), p
+    for p in (private / "mom", state / "rooms" / "family-room"):                                   # its layer and its state
+        assert not covered(p.resolve(), fs["denyRead"]), p
+    assert covered((private / "main").resolve(), fs["denyRead"])                                    # a sibling room's layer
+    site = (home / ".local" / "lib" / "python3.14" / "site-packages").resolve()
+    assert covered(site, fs["denyRead"]) and fs["allowRead"] == [str(site)]                        # walled, re-opened read only
+
+
+def test_a_trusted_room_whose_layer_sits_in_the_home_itself_keeps_it(tmp_path, monkeypatch):
+    """A layer at ~/notes: the home is walked around it, never denied whole; the private folder it left is walled whole."""
+    home, private, state = layout(tmp_path, monkeypatch)
+    (private / "rooms.toml").write_text((private / "rooms.toml").read_text().replace('layer = "mom"', f'layer = "{home / "notes"}"'))
+    (home / "notes").mkdir()
+    (home / ".bash_history").write_text("x\n")
+    walled = [str(p) for p in Yerkd(private, state).walled("family-room")]
+    for p in (home / "notes", state / "rooms" / "family-room"):
+        assert not covered(p.resolve(), walled), p
+    for p in (private, home / ".bash_history", home / ".openclaw", home / "staging", home / ".local" / "lib"):
+        assert covered(p.resolve(), walled), p
+
+
+def test_the_walls_denies_are_each_once_and_a_parents_deny_takes_its_childrens(tmp_path, monkeypatch):
+    """projects/ under an account folder is a root of its own and the account folder an entry of the home: one deny, the
+    folder's. The private and state folders, walked as roots and again as entries of the home, give each deny once."""
+    home, private, state = layout(tmp_path, monkeypatch)
+    walled = Yerkd(private, state).walled("family-room")
+    assert len(walled) == len(set(walled)) and (private / "main").resolve() in walled
+    assert not [(p, q) for p in walled for q in walled if p != q and p.is_relative_to(q)]
+    for acct in (home / ".claude-acct2", home / ".claude-acct4"):
+        assert acct.resolve() in walled and acct.resolve() / "projects" not in walled
+
+
 @pytest.mark.parametrize("mom,line", [
     (f'shell = "trusted"\ntools = {TOOLS}\n[rooms.family-room.sandbox]\nenabled = false\n', "its sandbox sets enabled"),
     (f'shell = "trusted"\ntools = {TOOLS}\n[rooms.family-room.sandbox]\nallowUnsandboxedCommands = true\n', "its sandbox sets allowUnsandboxedCommands"),

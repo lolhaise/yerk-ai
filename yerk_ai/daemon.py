@@ -80,7 +80,7 @@ def around(root: Path, own: list[Path]) -> list[Path]:
 
 def site_packages() -> list[Path]:
     """The owner's Python user site-packages (the libraries installed with pip --user, python-docx among them): a
-    trusted room's shell reads them, since under blockReadsOutsideWorkingDirectories it reads nothing else in the home."""
+    trusted room's shell reads them, re-opened (allowRead) inside its wall, which denies it the rest of the home (Yerkd.walled)."""
     home = Path.home()
     return sorted({p.resolve() for g in (".local/lib/python3*/site-packages", "Library/Python/3*/lib/python/site-packages")
                    for p in home.glob(g) if p.is_dir()})
@@ -248,12 +248,13 @@ class Yerkd:
             asyncio.run(post(machine))
 
     def walled(self, name: str) -> list[Path]:
-        """What a trusted room's shell never reads or writes, from what the daemon knows, at each process start: every entry
-        of the private and state folders but the room's own (the other layers, the memory folder, rooms.toml, imports and
-        backups; every other room's folder, the ledger, the logs, the index), every memory root, every other room's layer
-        and `read` folders, projects/ under every account's config folder (each room's transcripts), and each folder of the
-        owner's home that holds a memory root, a layer or a `read` folder (on the box, its workspace and its staging).
-        One of those inside the room's own folders stops the start with one line."""
+        """What a trusted room's shell never reads or writes, at each process start: the owner's home around the room's own
+        folders (each entry of it that holds none of them whole, so a key, a token, a backup or a history file no list names
+        is walled too), and wherever they are, every entry of the private and state folders but the room's own (the other
+        layers, the memory folder, rooms.toml, imports and backups; every other room's folder, the ledger, the logs, the
+        index), every memory root, every other room's layer and `read` folders, projects/ under every account's config
+        folder (each room's transcripts), and each folder of the home that holds a memory root, a layer or a `read` folder
+        (a link, by its target). One of those inside the room's own folders stops the start with one line."""
         conf, home = self.room_confs[name], Path.home().resolve()
         own = [context.layer_dir(self.private, conf), (self.state / "rooms" / name).resolve()]
         inbox = (self.state / "rooms" / name / "work" / "inbox").resolve()     # its own uploads, a memory root of its own
@@ -265,7 +266,7 @@ class Yerkd:
             raise SystemExit(f'room {name}: shell = "trusted" cannot wall {inside}: it is inside the room\'s own folders')
         tops = sorted({(home / p.relative_to(home).parts[0]).resolve() for p in theirs if p.is_relative_to(home) and p != home})
         out: list[Path] = []
-        for p in (q for root in (*known, *tops) for q in around(root, own)):
+        for p in (q for root in (*known, *tops, home) for q in around(root, own)):
             if not any(p.is_relative_to(q) for q in out):
                 out = [q for q in out if not q.is_relative_to(p)] + [p]
         return out
