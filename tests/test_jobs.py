@@ -412,6 +412,9 @@ def test_an_agent_job_becomes_a_worker_with_the_right_account_and_cap_and_relays
     # NO_REPLY: nothing in the room, ledgered as silent; deliver = silent likewise; a death alerts
     assert (hush["relay"], hush["relay_note"]) == ("skipped", "the job answered NO_REPLY")
     assert (s.ledger.job_run_get(run_hush)["result"], s.ledger.job_run_get(run_hush)["delivery"]) == ("no_reply", "silent (NO_REPLY)")
+    card = {k.removeprefix("worker:"): t for k, t, _, _ in rec.settled}     # its card settles quiet, never the token
+    assert card[hush["id"]].splitlines()[0] == f"{W.DONE} worker {W.QUIET_WORKER}" and W.NO_REPLY not in card[hush["id"]]
+    assert card[brief["id"]].splitlines()[:2] == [f"{W.DONE} worker finished clean", "Three things happened"]   # as before
     assert (mute["relay"], s.ledger.job_run_get(run_mute)["delivery"]) == ("skipped", "silent (deliver = silent)")
     assert crash["exit"] == "died" and s.ledger.job_run_get(run_crash)["delivery"] == "alert"
     assert rec.notified == [("r", f"{W.NOT_DONE} job crash failed: it ended with an error")]

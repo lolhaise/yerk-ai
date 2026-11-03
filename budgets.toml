@@ -894,4 +894,10 @@ secs = 60
 # 2026-11-03: card-steps merged with main 8c0eb0d (#180): main's 24,569 plus this PR's 3 is 24,572, counted on the
 # merged tree; this PR's config.py, card.py and room.py and #180's daemon.py, no file changed on both sides, merged
 # clean; `yerk docs own` wrote budgets.md.
-lines = 24572
+# 2026-11-03: silent-worker-card raised it by 6, a worker whose last message is exactly NO_REPLY settling its card quiet,
+# the done mark and "finished clean, nothing to add" over the footer, never the token and no rows (live that day: a
+# scheduled job's eight silent runs since Nov 1 each left a card reading NO_REPLY under "finished clean" and every step
+# row, and the owner replied to one asking what it did), not folded to fit: workers.py 5 (the reading in complete() and
+# its comment, 2 in card_text, 1 of the docstring's sentence), words.py 1 (QUIET_WORKER); last_message moved from
+# jobs.py to workers.py, 16 lines out of one and into the other. 24,578: main 64b7953's 24,572 plus 6.
+lines = 24578
