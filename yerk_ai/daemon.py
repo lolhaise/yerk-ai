@@ -118,6 +118,10 @@ class Yerkd:
         self.ledger, self.failures = Ledger(state / "ledger.sqlite"), FailureTable.load(table("failures.toml"))
         self.cooldowns = Cooldowns(state / "cooldowns.json")
         self.meters = Meters(state / "meters.json")
+        style = self.conf.get("style", {})
+        if not isinstance(style, dict) or not isinstance(style.get("dialect", []), list) or not all(isinstance(w, str) for w in style.get("dialect", [])):
+            raise SystemExit('yerkd.toml: [style] dialect must be a list of words, like dialect = ["bruv", "innit"]')
+        words.dialect(style.get("dialect", []))     # the owner's own filler words join the neutral lists; the package ships none
         self.memory = memory.settings(private, state, dict(self.conf.get("memory", {})))
         self.location = location.settings(self.conf.get("location"), private)     # None: no room gets a place part
         me = str(self.conf.get("import", {}).get("me") or "")       # the name the owner's own words go by (decision 22: never in code)

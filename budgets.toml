@@ -900,4 +900,8 @@ secs = 60
 # row, and the owner replied to one asking what it did), not folded to fit: workers.py 5 (the reading in complete() and
 # its comment, 2 in card_text, 1 of the docstring's sentence), words.py 1 (QUIET_WORKER); last_message moved from
 # jobs.py to workers.py, 16 lines out of one and into the other. 24,578: main 64b7953's 24,572 plus 6.
-lines = 24578
+# 2026-11-03: dialect raised it by 30, the owner's filler words out of the package: words.dialect() compiles the four
+# lists (pushback, lead, past, asked and the name cut) from neutral words plus `[style] dialect` at daemon start, with
+# dialect_alt() for the one taste exception; the daemon reads and checks the key. Not folded to fit: words.py 24,
+# the.last 0, part.closes 0, the.case 0. 00,000: before 0the0next0'run 00,000 starts 00.
+lines = 24608

@@ -8,6 +8,16 @@ version changes.
 
 ## 2026-11-03
 
+### dialect (#?)
+
+- The owner's own filler words, his slang, are out of the package: the pushback, lead, trailing and name-cut word lists
+  in words.py and the one taste exception ship neutral words only (bro, man, dude, yo, lol and the like), and a new
+  `[style] dialect` list in yerkd.toml adds the owner's own at daemon start (words.dialect), so his rooms read him as
+  before and a stranger's install reads a stranger's words. Anything but a list of words there ends the start with one
+  plain line. The taste test's fixture messages carry neutral words now.
+- Upgrading: an install whose owner writes with his own fillers adds them to yerkd.toml, `[style] dialect = [...]`;
+  without the key nothing else changes.
+
 ### silent-worker-card (#?)
 
 - A worker that ends with nothing to say (its last message exactly NO_REPLY, as a scheduled job's is when it has nothing
