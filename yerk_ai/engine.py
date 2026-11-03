@@ -211,6 +211,7 @@ class Turn:
     first_visible: float | None = None
     ended: float | None = None
     accepted: list[float] = field(default_factory=list)      # times our user lines were replayed
+    replayed: list[str] = field(default_factory=list)         # their texts: one replay may carry several lines joined with "\n"
     text: str = ""
     subtype: str = ""
     is_error: bool = False
@@ -232,6 +233,8 @@ class Turn:
         kind = ev.get("type")
         if kind == "user" and ev.get("isReplay"):
             self.accepted.append(t)
+            c = (ev.get("message") or {}).get("content")
+            self.replayed.append(c if isinstance(c, str) else "".join(str(b.get("text") or "") for b in c or [] if b.get("type") == "text"))
         elif kind == "stream_event":
             if self.first_visible is None and visible(ev.get("event") or {}):
                 self.first_visible = t

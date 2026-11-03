@@ -13,7 +13,7 @@ from yerk_ai.config import override, table
 from yerk_ai.engine import RoomSpec
 from yerk_ai.ledger import Ledger
 from yerk_ai.lifted.classify import FailureTable
-from yerk_ai.room import Inbound, Room
+from yerk_ai.room import Inbound, Room, covered_by
 
 FAKE = Path(__file__).with_name("fake_claude.py")
 
@@ -99,6 +99,36 @@ def test_mid_turn_message_folds_into_the_running_turn(env):
     assert a["state"] == b["state"] == "answered" and a["turn_id"] == b["turn_id"] and b["folded"] == 1
     assert chan.cards[0] == f"{words.WORKING} working on it" and "echo" in chan.cards[-1]
     room.rp.close()
+
+
+def test_messages_queued_during_a_turn_and_merged_by_claude_code_are_all_covered(env):
+    # 0.0.000, #moved-to 0000-00-00 00:00: the next step and the test reads it back as Plain text; with
+    # message counted per replay left two pending, so every later result went to a message two back and the turn never ended
+    make, ledger, _ = env
+    chan = Chan()
+    room = make(chan)
+    assert send(room, ledger, "1", "MERGE first") == "started"
+    time.sleep(0.2)
+    assert send(room, ledger, "2", "second") == "folded"
+    assert send(room, ledger, "3", "third") == "folded"
+    wait_idle(room)
+    assert chan.replies == [("the: Example note", ["1"]), ("the: check\nthe", ["2", "3"])]
+    rows = [ledger.inbound_get(i) for i in ("1", "2", "3")]
+    assert [r["state"] for r in rows] == ["answered"] * 3
+    assert rows[1]["turn_id"] == rows[2]["turn_id"] != rows[0]["turn_id"] and rows[1]["folded"] == rows[2]["folded"] == 1
+    assert not room.pending and not room.inflight and not room.reading and not room.busy
+    assert send(room, ledger, "4", "fourth") == "started"
+    wait_idle(room)
+    assert chan.replies[-1] == ("echo: fourth", ["4"])
+    room.rp.close()
+
+
+def test_covered_by_counts_each_message_a_replay_carries():
+    assert covered_by(["a"], ["a"]) == 1
+    assert covered_by(["a\nb\nc"], ["a", "b", "c", "d"]) == 3       # d was written after the replay: it stays pending
+    assert covered_by(["x"], ["a", "b"]) == 1                       # matches nothing at the cursor: one, as before
+    assert covered_by(["a", "b\nc"], ["a", "b", "c"]) == 3
+    assert covered_by([], ["a"]) == 0
 
 
 def test_idle_process_closes_and_the_next_message_resumes(env):

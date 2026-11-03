@@ -29,6 +29,10 @@ message and a success result echoing the text. Variations:
 - a line containing SLOW: waits up to 1.5 s for another line; if one comes, it is replayed and
   answered in the same result (a fold)
 - a line containing HANG: no answer for 60 s (a turn only /stop ends)
+- a line containing MERGE: replayed, then up to 0.5 s for more lines (0.2 s more once one comes, unread), then answered
+  as usual; every line then waiting on stdin is replayed as ONE user message, their texts joined with newlines (one
+  replay event, one uuid), and answered once with "echo: " plus that text: the stream Claude Code 2.1.316 gave for the
+  lines waiting when a turn ended (#The, 0000-00-00 00:00: check "?" while a second)
 - a line containing READ_ALONG: the answer is NO_REPLY on a line of its own (a room reading along, nothing to add)
 - a line containing CHATTY: a stream event every 0.3 s for about 2 s, then the answer
 - --resume with FAKE_CLAUDE_MISSING=1: "No conversation found" on stderr, exit 1
@@ -228,6 +232,8 @@ while True:
         text = text + " + " + extra["message"]["content"]
     if "HANG" in text:
         time.sleep(60)
+    if "MERGE" in text and select.select([sys.stdin], [], [], 0.5)[0]:
+        time.sleep(0.2)                        # a line came: the rest of the burst lands too, still unread
     if "CHATTY" in text:     # keeps talking for about 2 s in 0.3 s steps: a silence window must not cut it
         for _ in range(7):
             out({"type": "stream_event", "event": {"type": "content_block_delta", "delta": {"type": "text_delta", "text": "."}}})
@@ -235,3 +241,10 @@ while True:
     answer(text)
     if "BACKGROUND" in text:                   # the notice turn lands while the room asks nothing
         notice_turn("completed", "The render finished.")
+    if "MERGE" in text:                        # the lines waiting on stdin when the turn ended, read from the pipe itself
+        waiting = b""                          # (sys.stdin's buffer would hide the second line from select)
+        while select.select([sys.stdin], [], [], 0)[0] and (chunk := os.read(sys.stdin.fileno(), 1 << 16)):
+            waiting += chunk
+        if lines := [json.loads(x)["message"]["content"] for x in waiting.decode().splitlines() if x.strip()]:
+            replay({"type": "user", "message": {"role": "user", "content": "\n".join(lines)}})   # ONE replay, one uuid
+            answer("\n".join(lines))

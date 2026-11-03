@@ -8,7 +8,16 @@ version changes.
 
 ## 2026-11-02
 
-### need-2026-11-02-37 (#?)
+### merged-replay (#?)
+
+- Several messages sent while a room is still answering are now each marked answered by the reply that answers them:
+  the check mark lands on the message that reply answers, its card closes, and once the last is answered the room goes
+  idle (idle close and idle compaction run again). Claude Code 2.1.316 takes the messages still waiting when a reply
+  ends as one message and answers them once; the room counted that one as a single message. Before, when
+  #Plain 00:00 text with (one "?" more line for), the check while a "second entry waits", in the queue for its
+  "working on it" card, every later reply was credited to the message two back, and only /stop cleared it, marking two
+  messages that had been answered "not answered".
+- A message written after the last of a turn's replays still waits for the next reply, as before.
 
 - A room asked about the answer to a House of Commons written question now gets it: `web_fetch` of the question's page
   (`ourcommons.ca/written-questions/<parliament>-<session>/q-<n>`, or the French site's `noscommunes.ca/questions-ecrites/...`)

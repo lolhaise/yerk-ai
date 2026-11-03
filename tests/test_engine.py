@@ -153,6 +153,15 @@ def test_turn_records_fallback_and_first_visible():
     assert (t.fallback_model, t.ms(t.first_visible), t.outcome, t.models) == ("other", 3000, "ok", ["a", "other"])
 
 
+def test_a_replays_text_lands_in_replayed_in_order_whatever_its_content_shape():
+    t = Turn(started=100.0)
+    t.observe(101.0, {"type": "user", "isReplay": True, "message": {"role": "user", "content": "?"}})
+    t.observe(102.0, {"type": "user", "message": {"content": [{"type": "tool_result", "content": "x"}]}})   # not a replay
+    t.observe(103.0, {"type": "user", "isReplay": True, "message": {"role": "user", "content": [
+        {"type": "text", "text": "?\n"}, {"type": "image", "source": {}}, {"type": "text", "text": "?"}]}})
+    assert t.replayed == ["?", "?\n?"] and t.accepted == [101.0, 103.0]
+
+
 def test_a_rejected_rate_limit_event_names_when_its_limit_resets():
     t = Turn(started=100.0)
     t.observe(101.0, {"type": "rate_limit_event", "rate_limit_info": {"status": "allowed_warning", "resetsAt": 5,
