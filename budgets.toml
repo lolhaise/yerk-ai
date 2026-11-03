@@ -883,8 +883,15 @@ secs = 60
 # not folded to fit: room.py 15 (covered_by, the walk of a turn's replays over the messages written, 13; Inbound.sent, the
 # text as written, and its one assignment), engine.py 3 (Turn.replayed, each replay's text). 24,568: main e6128e1's
 # 24,550 plus 18.
+# 2026-11-03: trusted-wall raised it by 1, a trusted room's wall taking the owner's whole home around the room's own
+# folders (live that day: the denies of the roots the daemon knew left a key, every account's token file and the backups
+# readable to its shell), not folded to fit: daemon.py 1 (Yerkd.walled's docstring, a line longer for what it walls now;
+# the home joins its roots in the same line). 24,569: main d76fadf's 24,568 plus 1.
 # 2026-11-03: card-steps raised it by 3, a room with people showing an owner room's progress card, a row per step, when
 # its block says card = "steps" (the owner preferred it shown in one room with people; every other room with people keeps the 2026-10-21 card), not folded to fit: config.py 2 (`card` in ROOM_WORDS), card.py
 
 # 1 (the docstring's line on it), room.py 0 (_new_card's people line reads it). 24,571: main d76fadf's 24,568 plus 3.
-lines = 24571
+# 2026-11-03: card-steps merged with main 8c0eb0d (#180): main's 24,569 plus this PR's 3 is 24,572, counted on the
+# merged tree; this PR's config.py, card.py and room.py and #180's daemon.py, no file changed on both sides, merged
+# clean; `yerk docs own` wrote budgets.md.
+lines = 24572
