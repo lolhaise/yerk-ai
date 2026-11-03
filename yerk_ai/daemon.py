@@ -194,12 +194,12 @@ class Yerkd:
         settings: dict[str, Any] = {"permissions": {"allow": [f"Read(/{layer}/**)", *code, *YERK_TOOLS, *conf.get("allow", [])],
                                                     "deny": self.never_read()}, "hooks": hooks.settings_for(f"{self.url}/hook", header)}
         shell = conf.get("sandbox", dict(SANDBOX) if SHELLS & set(conf.get("tools") or []) else None)   # Claude Code's own
-        dirs = [layer, *self.read_dirs.get(name, [])]                       # `read`, as F4 judged it
-        if trusted(conf):                    # the daemon's wall; Write and Edit on the room's own folders; its outbox read only
-            shell = self.wall(name)
-            settings["permissions"]["allow"] += [f"Edit(/{p}/**)" for p in (layer, work.resolve())]
+        dirs, writes = [layer, *self.read_dirs.get(name, [])], [work.resolve()]      # `read`, as F4 judged it; where Write, Edit and a redirect land
+        if trusted(conf):                    # the daemon's wall; Write and Edit on its layer too; its outbox read only
+            shell, writes = self.wall(name), [layer, *writes]
             (outbox := rdir / "outbox").mkdir(parents=True, exist_ok=True)
             dirs.append(outbox.resolve())
+        settings["permissions"]["allow"] += [f"Edit(/{p}/**)" for p in writes]   # every room's, else Claude Code asks with nobody at the keyboard (need 38)
         settings.update({"sandbox": shell} if shell is not None else {})    # shell sandbox: a shell room's is on unless its table says
         settings.update({"autoCompactWindow": w} if (w := self.window(name)) else {})
         settings["permissions"].update({} if self.owner(name) else {"blockReadsOutsideWorkingDirectories": True})   # file tools, every mode

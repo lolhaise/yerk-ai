@@ -1445,3 +1445,11 @@ tier = "free"
 needs = "the web ability's plug-in attached to the room; no key, no browser and no sign-in, since the plain read from the machine (F1) makes the request"
 free_path = "this is the free path"
 asked_as = ["written question", "written questions", "order paper question", "sessional paper", "ourcommons", "government response tabled"]
+
+[abilities.work-writes]
+state = "built"
+what = "Writes a text file in the room's own work folder with no approval asked: every room's settings carry one Edit rule on its work folder, so Claude Code's Write and Edit tools and a shell redirect there run as called, where Claude Code asked for each one its sandbox did not auto-allow (\"Output redirection ... needs approval\") with nobody at the keyboard to say yes. A write anywhere else is asked as before; a trusted room keeps Write and Edit on its layer too."
+tier = "free"
+needs = "Write or Edit in the room's tools, or a shell; nothing to set"
+free_path = "this is the free path"
+asked_as = ["write a file", "save a file", "write to the work folder", "output redirection", "redirect needs approval"]
