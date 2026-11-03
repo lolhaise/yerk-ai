@@ -435,7 +435,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-02: merged-replay raised it by 18, a result covering every message Claude Code merged into one replay (2.1.316, seen live that day: four question marks sent while the room was answering, the last three replayed as one message, then every result went to a message two back, each reply left a "working on it" card and only /stop ended the turn), not folded to fit: room.py 15 (covered_by, the walk of a turn's replays over the messages written, 13; Inbound.sent, the text as written, and its one assignment), engine.py 3 (Turn.replayed, each replay's text). 24,568: main e6128e1's 24,550 plus 18.
 
-- `lines = 24568`
+2026-11-03: trusted-wall raised it by 1, a trusted room's wall taking the owner's whole home around the room's own folders (live that day: the denies of the roots the daemon knew left a key, every account's token file and the backups readable to its shell), not folded to fit: daemon.py 1 (Yerkd.walled's docstring, a line longer for what it walls now; the home joins its roots in the same line). 24,569: main d76fadf's 24,568 plus 1.
+
+- `lines = 24569`
 
 ## Uncapped
 
