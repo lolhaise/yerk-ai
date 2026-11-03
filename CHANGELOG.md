@@ -8,7 +8,14 @@ version changes.
 
 ## 2026-11-03
 
-### dialect (#?)
+### changelog-numbers-2 (#?)
+
+- Every entry since Oct 24 that read `(#?)` carries its pull request number, read from GitHub for the branch each
+  entry names. Numbers up to #183 refer to the private archive repository, the repository as it was before the
+  public cut of 2026-11-03 (its history rewritten for the cut, its pull requests kept there); later numbers refer
+  to this repository. Nothing in the code changes.
+
+### dialect (#183)
 
 - The owner's own filler words, his slang, are out of the package: the pushback, lead, trailing and name-cut word lists
   in words.py and the one taste exception ship neutral words only (bro, man, dude, yo, lol and the like), and a new
@@ -18,7 +25,7 @@ version changes.
 - Upgrading: an install whose owner writes with his own fillers adds them to yerkd.toml, `[style] dialect = [...]`;
   without the key nothing else changes.
 
-### first-run (#?)
+### first-run (#182)
 
 - A first run of yerkd without yerkd.toml's `[discord]` table, or with a token file that is missing or empty, ends in one
   plain line naming what to write (the README's three-line table, the token in a 0600 file under secrets/) instead of a
@@ -28,7 +35,7 @@ version changes.
   tools some abilities add (ffmpeg, yt-dlp, LibreOffice, node); the yerkd line's comment says it refuses until
   yerkd.toml names the token. No setting changes.
 
-### silent-worker-card (#?)
+### silent-worker-card (#181)
 
 - A worker that ends with nothing to say (its last message exactly NO_REPLY, as a scheduled job's is when it has nothing
   for the room) now settles its card as one line, `🟢 worker finished clean, nothing to add`, over the time it took and
@@ -51,7 +58,7 @@ version changes.
 **Upgrading**: nothing to change; a worker that ends after the deploy's restart settles this way. A card that already
 settled keeps its text.
 
-### card-steps (#?)
+### card-steps (#179)
 
 - A room with people can show its steps on its progress card now: `card = "steps"` in its block in rooms.toml gives it
   an owner room's card, the model's newest line and one row per step, each marked done or not done, two or more failed
@@ -69,7 +76,7 @@ settled keeps its text.
 **Upgrading**: to show the rows in a person room, add `card = "steps"` to its block in rooms.toml; rooms.toml is read
 at yerkd's start, so the rows show from the next restart. Nothing to change for any other room.
 
-### trusted-wall (#?)
+### trusted-wall (#180)
 
 - A trusted room's shell now reads nothing of the owner's home but the room's own folders (its layer, its work folder
   and the files people send it) and the Python user site-packages, read only: every entry of the home that holds none
@@ -94,7 +101,7 @@ deploy. A `[rooms.NAME.sandbox.filesystem] denyRead` list that only repeated hom
 
 ## 2026-11-02
 
-### need-2026-11-02-38 (#?)
+### need-2026-11-02-38 (#178)
 
 - Every room now writes a text file in its own work folder without waiting on a prompt: its Write and Edit tools, and a
   shell redirect like `printf ... > <work folder>/sheet.md`, land there as called. Before, an owner room asked to write a
@@ -108,7 +115,7 @@ deploy. A `[rooms.NAME.sandbox.filesystem] denyRead` list that only repeated hom
   read only. Here, `yerk explain work-writes` has the ability. Nothing to set: the next process start of each room
   carries the rule.
 
-### merged-replay (#?)
+### merged-replay (#177)
 
 - Several messages sent while a room is still answering are now each marked answered by the reply that answers them:
   the check mark lands on the message that reply answers, its card closes, and once the last is answered the room goes
@@ -151,7 +158,7 @@ deploy. A `[rooms.NAME.sandbox.filesystem] denyRead` list that only repeated hom
 **Upgrading**: nothing to change by hand; every room that attaches the web plug-in reads written questions this way
 from its next call after the deploy.
 
-### need-2026-11-02-36 (#?)
+### need-2026-11-02-36 (#175)
 
 - A need whose fix lives in a plug-in's own code is built there now. An add-on whose code is a local git repository of
   its own (a room's mcp server whose command or an argument is a file in a git checkout other than Yerk's, the home
@@ -177,7 +184,7 @@ from its next call after the deploy.
 **Upgrading**: nothing to set. For the merge to land a fix in a plug-in, the checkout its rooms run stays on its branch
 with its changes committed; one that is not holds the need, said in the machine room with why.
 
-### need-2026-11-01-33 (#?)
+### need-2026-11-01-33 (#173)
 
 - A room can use a link in one of the owner's emails now: the hands plug-in's mail `read` lists the mail's links after
   its text, each link's words beside its address (`- Cancel: https://...`), from the mail's HTML part, web addresses
@@ -209,7 +216,7 @@ with its changes committed; one that is not holds the need, said in the machine 
 and `total` move with this change, so a deploy after the plug-in's branch is in does not refuse on its size; until
 then a room sends the mail entry at its old 1,181, under the new line.
 
-### need-2026-10-30-25 (#?)
+### need-2026-10-30-25 (#171)
 
 - A room can watch a video attached to a Discord message now: `watch` takes the message's link as its `url`
   (Discord's Copy Message Link, discord.com/channels/SERVER/CHANNEL/MESSAGE). The daemon's bot reads that one message,
@@ -237,7 +244,7 @@ then a room sends the mail entry at its old 1,181, under the new line.
 message outside a room's channels only where it already has View Channel and Read Message History. budgets.toml's
 `yerk_tools`, `total` and [code] `lines` move with this change.
 
-### need-2026-10-28-28 (#?)
+### need-2026-10-28-28 (#170)
 
 - A room can send a picture of what one of its tabs shows now: the hands plug-in's browser gains `shot`, which saves a
   PNG of a tab or a popup the room opened, the page as rendered and scrolled where it is, in the room's own work folder
@@ -269,7 +276,7 @@ main to `need-2026-10-28-28` (06baf79) instead would drop `upload`. budgets.toml
 change, so a deploy after the plug-in's merge is in does not refuse on its size. need-2026-10-26-23's plug-in branch
 (e94ce96) still goes live by a merge of its own, as need-2026-11-01-31's block says, now onto ee2deda.
 
-### need-2026-10-28-25 (#?)
+### need-2026-10-28-25 (#169)
 
 - A room told its rules changed reads every changed line now, whatever its privacy. When the lines new or replaced in
   the mechanics, the room's rulebook or the shared rules file since its session last looked are past the note's 1,500
@@ -290,7 +297,7 @@ change, so a deploy after the plug-in's merge is in does not refuse on its size.
 **Upgrading**: nothing to change by hand; every room has it from yerkd's restart at the deploy. budgets.toml's [code]
 `lines` moves with this change.
 
-### need-2026-11-01-31 (#?)
+### need-2026-11-01-31 (#157)
 
 - A room can put a picture on a web form now: the hands plug-in's browser gains `upload`, which puts a file from the
   room's own work folder (a picture sent to the room, a saved picture, a screenshot) on a page's file input, in the
@@ -316,7 +323,7 @@ in tools.mjs (`set and click` there, `set, click and upload` here) and the plug-
 free-bookings goes live by merging that branch onto 2fc539f, its look-alike rule covering `upload` too, and running the
 plug-in's tests again; moving the plug-in's main to e94ce96, as that block's Upgrading reads, would drop `upload`.
 
-### reattach-race (#?)
+### reattach-race (#167)
 
 - A worker is no longer settled as lost a second after its start while its unit runs. The minute's backstop pass
   (`Workers.reconcile`, which made the call that night) and a start's re-attach (`Workers.reattach`) each read the unit
@@ -333,7 +340,7 @@ plug-in's tests again; moving the plug-in's main to e94ce96, as that block's Upg
 **Upgrading**: nothing to change by hand; the daemon looks twice from its next start. budgets.toml moves with the code:
 the code ceiling to 24,363.
 
-### need-2026-10-24-22 (#?)
+### need-2026-10-24-22 (#160)
 
 - A room sent a video file now sees it: `watch` takes `path`, the file's saved path from its `[attachment]` line, in place
   of a link, and gives what a link gives: frames spread evenly through it (6, or 1 to 12) that the room opens with Read,
@@ -364,7 +371,7 @@ each room has the mechanics line from its next process start. budgets.toml moves
 #161 to #166 and #168: Yerk AI's tools to 18,000, the session-start total to 116,202, the code ceiling to 24,347; the
 mechanics (5,888) stay under their 6,000, which leaves a checkout's path of up to 118 characters.
 
-### need-2026-10-27-23 (#?)
+### need-2026-10-27-23 (#168)
 
 - An owner's room can see a branch or a pull request of Yerk's own repository as GitHub has it now: the new
   `github_state` tool on Yerk's own server takes a branch's name (a worker's) or a pull request's number (12, #12, PR 12
@@ -399,7 +406,7 @@ mechanics (5,888) stay under their 6,000, which leaves a checkout's path of up t
 pull requests and commit statuses. A room has the tool from its next session start after the deploy. budgets.toml's
 `yerk_tools`, `total` and [code] `lines` move with this change.
 
-### need-2026-10-26-23 (#?)
+### need-2026-10-26-23 (#166)
 
 - A room the owner asks to book a free table can fill and confirm its booking page now, though the page's address
   looks like a checkout. The browser plug-in kept outside this repository (hands, attached to every owner room under
@@ -426,7 +433,7 @@ pull requests and commit statuses. A room has the tool from its next session sta
 **Upgrading**: nothing to change here. The plug-in's change is live when hands-mcp's main moves to its branch
 `need-2026-10-26-23` (e94ce96, on its main 64af176); a room has it from its next process start after that.
 
-### need-2026-10-26-22 (#?)
+### need-2026-10-26-22 (#165)
 
 - A room can search the web by a picture now, as Google Lens or TinEye do: the new `reverse_image_search` tool on Yerk's
   own server takes a picture in the room's own folders (one sent to it, a picture `web_image` saved, a frame `watch`
@@ -462,7 +469,7 @@ up (restrict the key to that API), and put it on the first line of `secrets/goog
 AVIF or a picture past 7 MB. A room has the tool from its next session start after the deploy. budgets.toml's
 `yerk_tools`, `total` and [code] `lines` move with this change.
 
-### need-2026-10-26-21 (#?)
+### need-2026-10-26-21 (#164)
 
 - A room asked to open a page in the browser on the owner's PC opens it: the browser plug-in, kept outside this
   repository (hands, attached to every owner room under rooms.toml's `[defaults]`), starts that browser again before
@@ -485,7 +492,7 @@ AVIF or a picture past 7 MB. A room has the tool from its next session start aft
 **Upgrading**: nothing to change by hand; the plug-in's change has been live since 2026-10-26, and a room hears the new
 entry from the deploy.
 
-### need-2026-10-25-23 (#?)
+### need-2026-10-25-23 (#163)
 
 - A room the owner orders to delete files or folders outside its work folder can do it now: the new `delete` tool on
   Yerk's own server takes their whole paths, and the daemon deletes them, since a room's shell deletes only inside its work
@@ -513,7 +520,7 @@ entry from the deploy.
 **Upgrading**: nothing to change by hand; every owner room has the tool from its next process start. budgets.toml moves
 with the code: `yerk_tools` to 16,000, the session-start total to 114,202, the code ceiling to 23,977.
 
-### need-2026-10-25-22 (#?)
+### need-2026-10-25-22 (#162)
 
 - A room can choose the words a topic rule loads on: `remember` with a `job` takes `triggers`, words or short phrases a
   message on the job holds (the owner's, when named). A rule the shared rules file has no room for then loads on its
@@ -538,7 +545,7 @@ with the code: `yerk_tools` to 16,000, the session-start total to 114,202, the c
 deploy, and a topic rule filed before it keeps the words its text gives it until it is filed again with `triggers`.
 budgets.toml moves with the code: `yerk_tools` to 15,400, the session-start total to 113,602, the code ceiling to 23,811.
 
-### need-2026-10-25-21 (#?)
+### need-2026-10-25-21 (#161)
 
 - An owner room can check a worker's claim about Yerk against the code now: every owner room's settings carry a Read
   rule for Yerk's own checkout, the code that runs (the folder the package runs from), so the room's Read, Grep and
@@ -561,7 +568,7 @@ budgets.toml moves with the code: `yerk_tools` to 15,400, the session-start tota
 deploy. budgets.toml moves with the code: `mechanics` to 6,000, the session-start total to 113,302, the code ceiling to
 23,786.
 
-### need-2026-10-24-21 (#?)
+### need-2026-10-24-21 (#159)
 
 - A room asked to read a Microsoft Bookings page (Bookings with me) now reads it as a guest, with no sign-in:
   `web_fetch` adds the `anonymous` flag every share link Microsoft makes carries (`.../bookwithme/user/<id>@<domain>?anonymous&ep=pcard`)
@@ -589,7 +596,7 @@ its next call after the deploy.
 
 ## 2026-11-01
 
-### need-2026-10-24-1 (#?)
+### need-2026-10-24-1 (#158)
 
 - A room the owner asks to text someone can send it now: the new `text` tool on Yerk's own server sends one text in the
   owner's name, an iMessage or else an SMS, from the owner's Mac to the person's phone number or email address (a name is
@@ -616,7 +623,7 @@ and `socket` (the bridge's socket on the Mac), and `socat` when it is not at /op
 command whose stdin and stdout are the bridge. Without it the tool says no Mac is set up, and nothing is held. budgets.toml
 moves with the code: `yerk_tools` to 15,100, the session-start total to 113,002, the code ceiling to 23,776.
 
-### needs-pipeline (#?)
+### needs-pipeline (#155)
 
 - A need a room files now builds itself to live with no person in the loop ([needs] auto, on unless set false; false is
   the hand road exactly). The first need starts its builder at once; one filed while another is in flight is queued and
@@ -639,7 +646,7 @@ merge and the deploy's fetch; without it the builds and PRs still happen and the
 `[needs] auto` is on unless set false in yerkd.toml. Set `[needs] pr_check` to the install's PR checker if it has one.
 budgets.toml moves with the code: the code ceiling to 23,609.
 
-### dst-night-tests (#?)
+### dst-night-tests (#156)
 
 - Tests only, nothing in the code: the suite passes on a daylight-saving night. Two tests built the morning diff for
   "tomorrow" as `time.time() + 86400`, and from 00:00 to 01:00 on a fall-back night that is 23:xx of the same local
@@ -650,7 +657,7 @@ budgets.toml moves with the code: the code ceiling to 23,609.
   and tests/test_sheet_hard.py (the morning diff counts the sheet refusals). The diff's local-day window is unchanged,
   and so are budgets.toml and the code ceiling (23,100).
 
-### need-2026-10-31-27 (#?)
+### need-2026-10-31-27 (#154)
 
 - A YouTube link's transcript is free and comes in seconds when the video has captions: `watch` reads the video's own
   captions, uploaded or auto-generated, with their timestamps, before it would pay to transcribe the sound. The paid
@@ -675,7 +682,7 @@ budgets.toml moves with the code: the code ceiling to 23,609.
 room has the mechanics line from its next process start. budgets.toml moves with the code: Yerk AI's tools to 14,400,
 the mechanics to 5,700, the session-start total to 112,302, the code ceiling to 23,100.
 
-### worker-no-secrets (#?)
+### worker-no-secrets (#153)
 
 - A worker can no longer read the install's API keys: the private layer's secrets/ (every provider key and every
   account's token) is not there for a worker's unit, as the install's secret and every room's folder already were not,
@@ -693,7 +700,7 @@ the mechanics to 5,700, the session-start total to 112,302, the code ceiling to 
 **Upgrading**: nothing to change by hand; the next worker start carries it. budgets.toml moves with the code: the code
 ceiling to 22,893.
 
-### retention-keep (#?)
+### retention-keep (#152)
 
 - A room keeps a folder of its work from the nightly sweep with a file named KEEP: a top folder of work/ holding a
   regular file named `KEEP` is never scratch, so nothing under it moves, by age or by the 500 MB cap, and its size is
