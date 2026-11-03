@@ -105,7 +105,8 @@ def test_a_people_room_without_the_key_is_as_it_was(tmp_path, monkeypatch):
     y = Yerkd(private, state)
     spec = y.spec_for("family-room")
     assert "sandbox" not in spec.settings and spec.add_dirs == [(private / "mom").resolve()]
-    assert not [r for r in spec.settings["permissions"]["allow"] if r.startswith(("Edit", "Write"))]
+    work = (state / "rooms" / "family-room" / "work").resolve()      # its work folder only, as every room's (need 38 of 2026-11-02)
+    assert [r for r in spec.settings["permissions"]["allow"] if r.startswith(("Edit", "Write"))] == [f"Edit(/{work}/**)"]
     for i, (mom, line) in enumerate(((f"tools = {TOOLS}\n", 'people needs tools without "Bash" and no `read`'),
                                      (f'shell = "yes"\ntools = {TOOLS}\n', 'shell must be "trusted" or unset'),
                                      (f'shell = "trusted"\ntools = {TOOLS}\nread = ["~/notes"]\n', 'people needs tools without "Bash" and no `read`'))):

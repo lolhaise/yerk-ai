@@ -8,6 +8,20 @@ version changes.
 
 ## 2026-11-02
 
+### need-2026-11-02-38 (#?)
+
+- Every room now writes a text file in its own work folder without waiting on a prompt: its Write and Edit tools, and a
+  shell redirect like `printf ... > <work folder>/sheet.md`, land there as called. Before, an owner room asked to write a
+  sheet in its work folder got "Output redirection to '...' needs approval" from Claude Code three times, with nobody
+  at the keyboard to say yes, and handed its work over without the sheet. Claude Code 2.1.316 auto-allows a command its
+  sandbox runs, but asks in a room's default mode for every Write and Edit, and for any shell write its sandbox does not
+  auto-allow, unless a rule covers the path; the daemon now writes that one rule, `Edit` on the room's own work folder,
+  into every room's settings, as a trusted room already had. Proven on 2.1.316 by a scratch probe: without the rule the
+  redirect and the Write tool asked inside the work folder; with it both landed, and both still asked outside it.
+- A write anywhere else is asked as before; a trusted room keeps Write and Edit on its layer too, and its outbox stays
+  read only. Here, `yerk explain work-writes` has the ability. Nothing to set: the next process start of each room
+  carries the rule.
+
 ### merged-replay (#?)
 
 - Several messages sent while a room is still answering are now each marked answered by the reply that answers them:
