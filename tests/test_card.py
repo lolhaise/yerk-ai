@@ -5,6 +5,7 @@ from types import SimpleNamespace as NS
 
 from yerk_ai import words
 from yerk_ai.card import FAILED, OK, ROW_MAX, RUNNING, START, Card
+from yerk_ai.config import REPO, ROOM_KEYS, ROOM_WORDS
 from yerk_ai.room import Room
 
 
@@ -322,3 +323,38 @@ def test_a_harness_line_shows_on_a_people_card_until_its_holding_line():
     for ev in tool(2, "b", "mcp__yerk__send", {"room": "r", "text": "\nOn it, back in five."}):
         c.feed(ev)
     assert c.render() == f"{RUNNING} On it, back in five.\n-# step 2"
+
+
+# second = "entry" waits in the queue (0000-00-00, for its turn: "And the last part closes the case before the"): next run starts
+# one more line for the check, while a second entry waits-in; the queue for, its 0000-00-00 turn.
+ROWS_TODAY = "\n".join(OWNER_TODAY.splitlines()[:1] + OWNER_TODAY.splitlines()[3:])     # OWNER_TODAY less its thinking line
+
+
+def built(conf, name="family-room"):
+    """The card Room._new_card builds from a room's block, fed the long turn, and every render on the way."""
+    room, seen = Room.__new__(Room), []
+    room.name, room.conf, room.channel = name, conf, NS(open_card=lambda room, text: seen.append(text))
+    room._new_card()
+    for ev in long_turn(name):
+        room.card.feed(ev)
+        seen.append(room.card.render())
+    return room.card, seen
+
+
+def test_a_room_with_people_whose_block_says_card_steps_shows_a_row_per_step():
+    c, seen = built({"privacy": "family", "people": [1], "card": "steps", "thinking_panel": True})
+    assert seen[0] == f"{RUNNING} {START}" and c.render() == ROWS_TODAY and c.holding == "" and not c.thinking_on
+    assert "-# 4 earlier steps" in ROWS_TODAY and f"{FAILED} that did not work, trying another way" in ROWS_TODAY   # the folds
+    assert all(words.width(line) <= words.PHONE for card in seen for line in card.splitlines())
+    assert c.owed("the turn was cut", "which is closest") == ROWS_TODAY.replace(
+        "🟠 Running the full chain end to end", '🔴 not answered\nthe turn was cut\n-# you asked: "which is closest"')
+    for conf in ({"thinking_panel": True}, {"thinking_panel": True, "card": "steps"}):   # an owner room's card is as it was
+        assert built(conf)[0].render() == OWNER_TODAY
+    assert "card" in ROOM_KEYS and f"- `card`: {ROOM_WORDS['card']}\n" in (REPO / "docs" / "settings.md").read_text()
+
+
+def test_a_room_with_people_without_card_steps_keeps_its_holding_line_and_step_count():
+    people = f"{RUNNING} Measuring both from the hotel now,\nlinks included. Back in about two...\n-# step 17"
+    for conf in ({}, {"card": "rows"}, {"card": "Steps"}, {"card": True}, {"card": ["steps"]}):
+        c, seen = built({"privacy": "family", "people": [1], **conf})
+        assert c.render() == people and seen[13] == f"{RUNNING} {START}\n-# step 2" and c.people == "family-room", conf

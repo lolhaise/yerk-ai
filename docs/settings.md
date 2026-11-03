@@ -12,6 +12,7 @@ One `[rooms.NAME]` table a room; `yerk doctor` names any other key as a typo.
 - `allow`: permission rules beyond Read (the tool goes in `tools` too); the gates run first. An owner room carries [defaults] allow unless it sets its own
 - `allow_remove`: tools an owner room does without, out of the allow it inherits from [defaults]
 - `also`: which of yerkd.toml's [memory] also roots reach the room's recall, read_memory and names (unset: all of them)
+- `card`: steps: a room with people shows the owner rooms' progress card, the model's newest line and one row per step, done or not done (unset or any other value: its newest holding line and a step count)
 - `channel`: the chat the room is, discord:<channel id>
 - `class`: the class the room's day-log lines carry: private, room or shared (default: private in an owner room, room in any other)
 - `compact_window`: tokens the session keeps before Claude Code compacts (unset: budgets.toml [session]; 0: the model's own)
