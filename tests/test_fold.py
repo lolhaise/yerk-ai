@@ -87,3 +87,6 @@ def test_lines_the_harness_wrote_into_a_message_are_not_the_persons_and_its_own_
     assert call(y, {**STOP, "last_assistant_message": WRONG}) == {}
     turn(room, "41", sender=HARNESS)
     assert call(y, {**STOP, "last_assistant_message": WRONG}) == {} and fold_rows(y) == []
+    there, = turn(room, words.SENT_THERE.format(who="the other assistant", channel="elsewhere", quiet=words.NO_REPLY) + "\n41")
+    assert there.sent == there.text and room.folds == []          # its own line says how it is answered: no line ahead, no rule
+    assert call(y, {**STOP, "last_assistant_message": WRONG}) == {} and fold_rows(y) == []
