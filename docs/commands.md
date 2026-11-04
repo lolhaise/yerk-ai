@@ -40,6 +40,7 @@ act on a running yerkd's room (close, compact), add one (a Discord chat moved in
 - `--since SINCE`: add: the history from this day on, YYYY-MM-DD (default: all of it)
 - `--like LIKE`: add: the room it is made like (default: the last of its kind in rooms.toml)
 - `--dry-run`: add: read and print; write and send nothing
+- `--here`: page: the box's own 127.0.0.1 address, where [page] listen or address names the host other screens reach
 - `--private PRIVATE`: add: private folder (default: $YERK_PRIVATE, else the fake example layer)
 - `--state STATE`: state folder (default: $YERK_STATE, else ~/.local/state/yerk)
 

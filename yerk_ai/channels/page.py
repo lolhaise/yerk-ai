@@ -27,13 +27,19 @@
   mac it opens on the Mac instead (mac): ssh to it runs `open` there on the address as the Mac reaches yerkd,
   handed on ssh's stdin, so not even the ticket is on a command line. A tab keeps its room and key in its own session
   storage (gone when the tab closes), so a reload of a page whose address bar lost them opens it again.
+- yerkd serves loopback alone unless [page] listen names the box's tailnet or LAN address (listen): then the page's
+  routes, and nothing else (mcp_server.Guard), are on that address too, on yerkd's port (bind), so the owner's Mac and
+  phone open it, and the address `yerk room page` prints and the Mac's open carry that host (reach), the key still only
+  in the fragment.
 """
 from __future__ import annotations
 
 import asyncio
 import contextlib
 import difflib
+import errno
 import hmac
+import ipaddress
 import json
 import logging
 import os
@@ -42,6 +48,7 @@ import secrets
 import shlex
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
@@ -75,6 +82,10 @@ OPEN_SECONDS = 15         # an opener's wall clock: it hands the address to the 
 # no command line of the box's, where every local user reads it (/proc); `open` there hands it to the Mac's default browser
 MAC_SSH = ("ssh", "-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10")
 MAC_OPEN = "open {url}\n"
+# [page] listen's socket binds before its address is up (tailscale at boot), so the page is there once it is: IP_FREEBIND,
+# Linux's 15, which some Pythons do not name; the tailnet's own ranges, encrypted end to end, where a LAN carries it plain
+FREEBIND = getattr(socket, "IP_FREEBIND", 15 if sys.platform == "linux" else 0)
+TAILNET = (ipaddress.ip_network("100.64.0.0/10"), ipaddress.ip_network("fd7a:115c:a1e0::/48"))
 # Windows' own opener under WSL (a Windows browser reaches the box's local address): it hands the address whole to the
 # default browser, where cmd.exe's start would split it at its `&`
 WSL_OPEN = ("/mnt/c/Windows/System32/rundll32.exe", "url.dll,FileProtocolHandler")
@@ -735,21 +746,91 @@ def opener(conf: dict[str, Any]) -> list[str]:
 
 def mac(conf: dict[str, Any], port: int) -> tuple[list[str], str] | str:
     """The way to the Mac for an open there (where mac): the ssh command whose stdin is the Mac's script (MAC_SSH to
-    [page] mac, else [imessage] host, the text tool's way to the same Mac) and yerkd's address as the Mac reaches it ([page]
-    address: the box's tailnet or LAN host, yerkd's own port when it names none), since 127.0.0.1 there is the Mac; else
-    why not, in words."""
+    [page] mac, else [imessage] host, the text tool's way to the same Mac) and yerkd's address as the Mac reaches it
+    (reach), since 127.0.0.1 there is the Mac; else why not, in words."""
     pg = dict(conf.get("page") or {})
     if not (host := str(pg.get("mac") or dict(conf.get("imessage") or {}).get("host") or "").strip()):
         return words.PAGE_NO_MAC
-    said = str(pg.get("address") or "").strip()
-    u = urlsplit(said if "://" in said else f"http://{said}")
     try:
-        if not said or u.scheme not in ("http", "https") or not u.hostname or u.path not in ("", "/") or u.query:
-            return words.PAGE_NO_ADDRESS
-        name = f"[{u.hostname}]" if ":" in u.hostname else u.hostname
-        return [*MAC_SSH, host, "/bin/bash", "-s"], f"{u.scheme}://{name}:{u.port or port}"
-    except ValueError:                        # a port that is not one
-        return words.PAGE_NO_ADDRESS
+        base = reach(conf, port)
+    except ValueError as e:
+        return str(e)
+    return ([*MAC_SSH, host, "/bin/bash", "-s"], base) if base else words.PAGE_NO_ADDRESS
+
+
+def listen(conf: dict[str, Any]) -> str:
+    """[page] listen: the box's tailnet or LAN address yerkd also serves the page's routes on, beside loopback; "" when it
+    names none or loopback (the default: the page on loopback alone, as /mcp and /hook always are). ValueError in words for
+    one that is not such an address: a wildcard (every network the box is on), a public one (the page on the internet in
+    plain text) or a host name (it could resolve elsewhere; `tailscale ip -4` prints the address)."""
+    said = str(dict(conf.get("page") or {}).get("listen") or "").strip()
+    try:
+        ip = ipaddress.ip_address(said.strip("[]") if said not in ("", "localhost") else "127.0.0.1")
+    except ValueError:
+        raise ValueError(words.PAGE_LISTEN_NAME.format(x=said[:60])) from None
+    if ip.is_unspecified or ip.is_global or ip.is_multicast:
+        raise ValueError((words.PAGE_LISTEN_EVERY if ip.is_unspecified else words.PAGE_LISTEN_PUBLIC).format(x=said))
+    return "" if ip.is_loopback else str(ip)
+
+
+def reach(conf: dict[str, Any], port: int) -> str:
+    """yerkd as another screen reaches it (a Mac, a phone), the base of the page's address there: [page] address,
+    the box's tailnet or LAN host (yerkd's port when it names none), else [page] listen's address on yerkd's port; "" when
+    neither names one. ValueError in words for one that is not an address."""
+    if not (said := str(dict(conf.get("page") or {}).get("address") or "").strip()):
+        return f"http://[{ip}]:{port}" if ":" in (ip := listen(conf)) else f"http://{ip}:{port}" if ip else ""
+    try:
+        u = urlsplit(said if "://" in said else f"http://{said}")
+        at = u.port or port
+    except ValueError:                        # a port that is not one, or a bracket left open
+        raise ValueError(words.PAGE_NO_ADDRESS) from None
+    if u.scheme not in ("http", "https") or not u.hostname or u.path not in ("", "/") or u.query:
+        raise ValueError(words.PAGE_NO_ADDRESS)
+    return f"{u.scheme}://{f'[{u.hostname}]' if ':' in u.hostname else u.hostname}:{at}"
+
+
+def bind(host: str, port: int, free: bool = False) -> tuple[socket.socket, bool]:
+    """A socket of yerkd's HTTP server on host:port (SO_REUSEADDR, as uvicorn binds its own), for its serve to listen on, and
+    whether the box has that address now: one it lacks yet (its tailnet still coming up at boot) is bound all the same,
+    `free` (FREEBIND), so the page is served there the moment the address comes up, with no restart. OSError if it will not."""
+    ip = ipaddress.ip_address(host)
+    s = socket.socket(socket.AF_INET6 if ip.version == 6 else socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        if free:
+            s.setsockopt(socket.SOL_IP, FREEBIND, 1)
+        s.bind((str(ip), port))
+    except OSError as e:
+        s.close()
+        if free or e.errno != errno.EADDRNOTAVAIL or not FREEBIND:
+            raise
+        return bind(host, port, True)
+    return s, not free
+
+
+def sockets(conf: dict[str, Any], port: int) -> list[socket.socket]:
+    """yerkd's own sockets when [page] listen names the box's tailnet or LAN address (listen): loopback's, which serves all
+    of yerkd, then that address's on the same port, which serves the page's routes alone (mcp_server.Guard's `beside`), so
+    the Mac and phone reach the page and nothing else; [] (uvicorn binds loopback alone, as ever) when it names
+    none, or one that is not such an address or will not bind, said in the log, the page then on loopback alone."""
+    try:
+        if not (host := listen(conf)):
+            return []
+        far, up = bind(host, port)
+    except (ValueError, OSError) as e:
+        log.warning("page: on loopback alone: %s", f"{host} will not take port {port}: {e.strerror or e}" if isinstance(e, OSError) else e)
+        return []
+    try:
+        near, _ = bind("127.0.0.1", port)
+    except OSError as e:
+        far.close()
+        raise SystemExit(f"yerkd: port {port} on 127.0.0.1 will not bind: {e.strerror or e}") from None
+    log.info("page: on %s port %d too, its routes alone, beside loopback", host, port)
+    if not up:
+        log.warning("page: the box has no address %s yet (its tailnet still coming up, or not this box's); the page is there once it has", host)
+    if not any(ipaddress.ip_address(host) in n for n in TAILNET):
+        log.warning("page: %s is not a tailnet address, so the page and its key cross that network unencrypted", host)
+    return [near, far]
 
 
 def open_on_screen(cmd: list[str], url: str, seconds: float = OPEN_SECONDS, script: str = "") -> str:
@@ -770,12 +851,14 @@ def open_on_screen(cmd: list[str], url: str, seconds: float = OPEN_SECONDS, scri
     return "" if p.returncode == 0 else words.PAGE_OPEN_FAILED.format(why=said or words.PAGE_OPEN_SILENT)
 
 
-def address(state: Path, room: str) -> str:
-    """The address a room's page opens at: yerkd's port from its yerkd.json, the room and its key in the fragment."""
+def address(state: Path, room: str, here: bool = False) -> str:
+    """The address a room's page opens at, the room and its key in the fragment: yerkd's port from its yerkd.json, on the
+    host other screens reach it at when yerkd names one there (its `page`, reach), else, or `here`, the box's 127.0.0.1."""
     try:
-        port = int(json.loads((state / "yerkd.json").read_text())["port"])
+        port = int((st := json.loads((state / "yerkd.json").read_text()))["port"])
     except (OSError, ValueError, KeyError, TypeError):
         raise SystemExit(words.PAGE_NO_DAEMON) from None
     if not (key := read_secret(state / "secrets" / "pages" / f"{room}.secret")):
         raise SystemExit(words.PAGE_NO_KEY.format(room=room))
-    return f"http://127.0.0.1:{port}{PATH}#room={room}&key={key}"
+    base = "" if here else str(st.get("page") or "")
+    return f"{base or f'http://127.0.0.1:{port}'}{PATH}#room={room}&key={key}"

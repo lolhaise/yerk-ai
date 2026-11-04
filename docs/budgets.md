@@ -475,7 +475,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-04, need-2026-11-03-49: 54 lines for the live page's open on the Mac (a room asked for the page by the owner on the Mac had it opened on the PC, and a reload there lost the page's key), not folded to fit: channels/page.py 31 (mac: the ssh host, [page] mac else [imessage] host, and yerkd's address as the Mac reaches it, [page] address, each refused in words; open_on_screen's script on stdin, so the one-time address is on no command line, and ssh's own failure said as the Mac not answering; the ticket's base; the module's words), daemon.py 10 (the open's `where`, refused in words when it is neither pc nor mac), words.py 8, config.py 4 (the two keys' words) and mcp_server.py 1. The key kept in the tab's session storage is page.html, outside this count. 25,626.
 
-- `lines = 25626`
+2026-11-04, need-2026-11-03-45: 113 lines for the live page reached from the Mac and phone (a room asked for the page on the Mac found yerkd served it on 127.0.0.1 alone and built its address with that host; filed 2026-11-03), not folded to fit: channels/page.py 83 (listen: [page] listen, one tailnet or LAN address, a wildcard, a public address or a host name refused in words; reach: the page's base on another screen, [page] address else listen's, which the Mac's open and the printed address carry; bind: the socket, IP_FREEBIND while the box lacks the address, so a tailnet up after yerkd needs no restart; sockets: loopback's and that address's on yerkd's port, a failure logged and the page left on loopback; the printed address's host from yerkd.json; the module's words), mcp_server.py 11 (the guard: the page's routes alone on that address, anything else not found whatever secret comes), daemon.py 9 (serve_http on both sockets, yerkd.json's page), words.py 4, config.py 4 (the key's words) and cli.py 2 (--here). 25,739.
+
+- `lines = 25739`
 
 ## Uncapped
 

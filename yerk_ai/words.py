@@ -482,9 +482,13 @@ PAGE_WHERE = "where is pc (the box's own screen, the default) or mac (the owner'
 PAGE_OPENED_MAC = "opened on the owner's Mac"
 PAGE_NOT_OPENED_MAC = "not opened on the owner's Mac: {why}; the page is on, and where pc opens it on the box's own screen"
 PAGE_NO_MAC = "no Mac is set up for the page: [page] mac in yerkd.toml names its ssh host ([imessage] host does too)"
-PAGE_NO_ADDRESS = ("the Mac has no address for the page: [page] address in yerkd.toml names the box as the Mac reaches yerkd's port, "
-                   "its tailnet or LAN host")
+PAGE_NO_ADDRESS = ("the Mac has no address for the page: [page] listen in yerkd.toml serves it on the box's tailnet or LAN address "
+                   "([page] address names another way to yerkd's port)")
 PAGE_MAC_SSH = "the Mac did not answer over ssh: {why}"
+# [page] listen (channels/page.py listen): the box's one tailnet or LAN address the page is also served on, or why not
+PAGE_LISTEN_EVERY = "[page] listen {x} is every network the box is on, a café's too: name its tailnet or LAN address"
+PAGE_LISTEN_PUBLIC = "[page] listen {x} is a public address, the page on the internet in plain text: name the box's tailnet or LAN one"
+PAGE_LISTEN_NAME = "[page] listen {x} is not an address: name the box's tailnet or LAN one (tailscale ip -4 prints the tailnet's)"
 PAGE_TICKET_SPENT = "This address was opened once already or is over a minute old; ask the room to open the page again."
 PAGE_NO_TAB = "no tab is open on the page now; it shows this when one opens"
 PAGE_UNPADDED = "the page spaces the bar's cells itself, so the padding in their words was dropped"
