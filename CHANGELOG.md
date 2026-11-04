@@ -30,6 +30,12 @@ version changes.
 - The `[code]` ceiling in budgets.toml goes to 25,560 (main's 25,451 plus 109); the abilities entry is page-chat, and
   the "what can you do" answer's own line drops ", built or known" (its census already says which) so it keeps every
   name under its 2,000.
+- One long line on the chat no longer freezes yerkd: a mark that is never closed (`*`, `**`, `***`, `_`, `__`, `~~`, a
+  link's `[`) is read only up to its own next mark, so a line costs time in step with its length (a 100,000-character row
+  of `*a ` took 27 s on yerkd's only loop, every room's hooks and tools waiting; now well under a second), and each line
+  is read once, kept beside its words and never in `chat.json`, not again for all 200 kept lines whenever a tab opens. A
+  room's line is cut at the say box's 100,000 characters. Two marked words no longer read as one run (`**a** and **b**`
+  was bold from the first `a` to the last `b`). The `[code]` ceiling goes to 25,568.
 - Upgrading: nothing to set. An open page picks up the chat pane when its tab is reloaded.
 
 ### need-2026-11-03-47 (#?)

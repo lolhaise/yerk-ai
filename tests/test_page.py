@@ -340,6 +340,39 @@ def test_a_line_said_reads_the_way_discord_reads_it_bold_gaps_links_code_lists_a
     assert all("href" not in r or r["href"].startswith(("http://", "https://")) for b in rich(reply) for r in b.get("runs", []))
 
 
+def test_a_long_line_said_is_read_in_step_with_its_length_and_once_so_it_never_holds_the_owner_s_rooms(tmp_path, monkeypatch):
+    """The wall the cold read hit: a mark never closed was read to the end of its row, and each one again, so one row of
+    100,000 characters of `*a ` took 27 s on yerkd's only loop, every room's hooks and tools waiting, and again for all
+    200 kept lines each time a tab opened. Now a mark is read only up to its own next one, and a line once."""
+    took = time.perf_counter()
+    for row in ("**a ", "***a ", " _a", "__a ", "~~a ", "[a"):
+        rich(row * (100_000 // len(row)))
+    assert rich(line := "*a " * 33_334) == [{"kind": "p", "runs": [{"text": line, "looks": ""}]}]   # never closed: words
+    assert time.perf_counter() - took < 1
+    assert rich("**a** and **b**")[0]["runs"] == [{"text": "a", "looks": "b"}, {"text": " and ", "looks": ""}, {"text": "b", "looks": "b"}]
+    assert rich("~~a~~ _b_ __c__")[0]["runs"] == [{"text": "a", "looks": "s"}, {"text": " ", "looks": ""}, {"text": "b", "looks": "i"},
+                                                  {"text": " ", "looks": ""}, {"text": "c", "looks": "u"}]   # one word each, never one run
+    assert rich("**a **b**")[0]["runs"] == [{"text": "**a ", "looks": ""}, {"text": "b", "looks": "b"}]
+    chat = tmp_path / "rooms" / "r" / "work" / "page" / pagemod.CHAT
+    chat.parent.mkdir(parents=True)
+    chat.write_text(json.dumps([{"text": "hi", "kind": "reply", "n": 0, "parts": [{"kind": "p", "runs": [{"text": "x", "href": "javascript:x"}]}]}]))
+    p, _ = hub(tmp_path, quiet=60)
+    assert p.sheets["r"].state()["state"]["lines"][0]["parts"] == rich("hi")                 # parts in the file are never read
+    read: list[str] = []
+    monkeypatch.setattr(pagemod, "rich", lambda text: read.append(text) or [])
+    p.said("r", "x" * (pagemod.TEXT_MAX + 1))
+    p.said("r", "two")
+    for _ in range(3):                                                                       # three tabs open
+        p.sheets["r"].state()
+    assert read == ["x" * pagemod.TEXT_MAX, "two"]                                           # each line once, when said
+    assert all("parts" not in x for x in json.loads(chat.read_text()))
+    again = Page(tmp_path, p.ledger)
+    again.add_room(Taken())
+    for _ in range(3):
+        again.sheets["r"].state()
+    assert read[2:] == ["hi", "x" * pagemod.TEXT_MAX, "two"]                                 # after a restart, once, for the first tab
+
+
 def test_the_chat_keeps_both_sides_numbered_time_stamped_and_read_and_comes_back_after_a_restart(tmp_path):
     """The wall the ask hit: the talk was a footer strip of plain text, the owner's own lines only in the tab that typed
     them. Now a line said on the page is the chat's on every tab, beside the room's, each with its time and its parts."""

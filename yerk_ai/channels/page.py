@@ -60,7 +60,7 @@ QUIET = 1.5              # seconds with no keystroke before the typing goes to t
 RUN_SECONDS = 10         # a test run's wall clock, and its CPU seconds
 RUN_MEMORY = 1 << 30     # a test run's address space, in bytes
 OUTPUT_MAX = 4000        # characters of what a run printed that come back
-TEXT_MAX = 100_000       # characters of a program or its tests the page may send
+TEXT_MAX = 100_000       # characters of a program or its tests the page may send, and of a chat line, either side's
 DIFF_LINES = 60          # lines of the change one message carries; the whole program is in work/page/
 LINES_KEPT = 200         # the chat's newest lines, the owner's and the room's, a tab shows when it opens
 POINTS_MAX = 400         # points of one stroke kept in the events file
@@ -83,14 +83,16 @@ METER, PERCENT = re.compile(rf"{NUM}\s*(?:/|of|out of)\s*{NUM}{UNIT}", re.I), re
 NUMBER = re.compile(rf"([+\-−]?){NUM}{UNIT}")
 # a line said, read the way Discord reads a message (rich): a fenced block, else a row a line, its look from its start
 # (a heading, subtext, a quote, a list item), and in a row its runs: code, an escape, a link (masked or bare), then the
-# marks, each a letter of the run's look (bold, underline, italic, strike, a spoiler hidden until it is clicked)
+# marks, each a letter of the run's look (bold, underline, italic, strike, a spoiler hidden until it is clicked). A mark's
+# words, and a link's, never run past its own mark: one never closed is read only up to the next, so a row costs time in
+# step with its length, never its square (a row of 100,000 characters of `*a ` took 27 s on yerkd's only loop)
 FENCE = re.compile(r"```(?:([\w+#.-]*)\n)?(.*?)```", re.S)
 ROW = re.compile(r"(?P<h>#{1,3}) (?=\S)|-# (?=\S)|(?P<all>>>> ?)|> |(?P<in>\s*)(?P<li>[-*•]|\d{1,3}\.) (?=\S)")
 INLINE = re.compile("|".join((r"`(?P<code>[^`\n]+)`", r"\\(?P<esc>[\\*_~`|>#\[\]()-])",
-                              r"\[(?P<label>[^\]\n]+)\]\(<?(?P<to>https?://[^\s<>()]+)>?\)", r"<?(?P<url>https?://[^\s<>]*[^\s<>.,:;!?'\")\]])>?",
-                              r"\*\*\*(?P<bi>\S(?:.*?\S)?)\*\*\*", r"\*\*(?P<b>\S(?:.*?\S)?)\*\*", r"__(?P<u>\S(?:.*?\S)?)__",
-                              r"\*(?P<i>[^\s*](?:.*?[^\s*])?)\*", r"(?<!\w)_(?P<i_>\S(?:.*?\S)?)_(?!\w)", r"~~(?P<s>\S(?:.*?\S)?)~~",
-                              r"\|\|(?P<h>.+?)\|\|")))
+                              r"\[(?P<label>[^\[\]\n]+)\]\(<?(?P<to>https?://[^\s<>()]+)>?\)", r"<?(?P<url>https?://[^\s<>]*[^\s<>.,:;!?'\")\]])>?",
+                              r"\*\*\*(?P<bi>\S(?:(?:(?!\*\*\*).)*?\S)?)\*\*\*", r"\*\*(?P<b>\S(?:(?:(?!\*\*).)*?\S)?)\*\*",
+                              r"__(?P<u>\S(?:(?:(?!__).)*?\S)?)__", r"\*(?P<i>[^\s*](?:[^*]*?[^\s*])?)\*", r"(?<!\w)_(?P<i_>\S(?:[^_]*?\S)?)_(?!\w)",
+                              r"~~(?P<s>\S(?:(?:(?!~~).)*?\S)?)~~", r"\|\|(?P<h>.+?)\|\|")))
 LOOKS = {"bi": "bi", "b": "b", "u": "u", "i": "i", "i_": "i", "s": "s", "h": "h"}
 # blanks str.split() keeps that a room could pad the bar's words with (plain): fillers read as a space, zero-width ones go
 BLANKS = str.maketrans("\u2800\u3164\uffa0", "   ", "\u200b\u2060\ufeff")
@@ -376,8 +378,11 @@ class Sheet:
 
 
 def shown(line: dict[str, Any]) -> dict[str, Any]:
-    """A chat line as a tab gets it: its words, and beside them their parts as Discord would show them (rich)."""
-    return {**line, "parts": rich(line["text"])}
+    """A chat line as a tab gets it: its words, and beside them their parts as Discord would show them (rich), read once and
+    kept with the line (never in chat.json), so a tab that opens or reconnects reads none of the kept lines again."""
+    if "parts" not in line:
+        line["parts"] = rich(line["text"])
+    return line
 
 
 class Page:
@@ -405,7 +410,8 @@ class Page:
             s.tests = (folder / TESTS).read_text()
         s.heard = (s.code, s.tests)
         with contextlib.suppress(OSError, ValueError, TypeError):
-            s.lines = [x for x in json.loads((folder / CHAT).read_text()) if isinstance(x, dict) and isinstance(x.get("text"), str)][-LINES_KEPT:]
+            s.lines = [{k: v for k, v in x.items() if k != "parts"} for x in json.loads((folder / CHAT).read_text())   # parts: rich's alone
+                       if isinstance(x, dict) and isinstance(x.get("text"), str)][-LINES_KEPT:]
             s.said_n = max((x.get("n", 0) for x in s.lines if isinstance(x.get("n"), int)), default=0) + 1
         for row in self.ledger.inbound_open(room.name):
             if row["channel"] == CHANNEL:
@@ -617,10 +623,11 @@ class Page:
         return {"ok": True, "tabs": len(s.tabs), **({"note": "; ".join(notes)} if notes else {})}
 
     def said(self, room: str, text: str, kind: str = "reply") -> None:
-        """A line the room said, from any thread: kept for a tab that opens later and shown on every open one."""
+        """A line the room said, from any thread, its first TEXT_MAX characters as the say box's: kept for a tab that opens
+        later and shown on every open one."""
         if (s := self.sheets.get(room)) is None or not text.strip() or text.strip() == words.NO_REPLY:
             return
-        line = {"text": text, "kind": kind, "t": round(time.time(), 3)}
+        line = {"text": text[:TEXT_MAX], "kind": kind, "t": round(time.time(), 3)}
         if self.loop is not None and self.loop.is_running():
             self.loop.call_soon_threadsafe(self._said, s, line)
         else:
@@ -631,12 +638,13 @@ class Page:
         chat already has replaces that line (a comment still being typed)."""
         if "n" not in line:
             line, s.said_n = {**line, "n": s.said_n}, s.said_n + 1
+        line = {**line, "parts": rich(line["text"])}           # read here once, for every tab now and each one that opens later
         s.lines = [*[x for x in s.lines if x.get("n") != line["n"]], line][-LINES_KEPT:]
         try:
-            write_private(s.folder / CHAT, json.dumps(s.lines, ensure_ascii=False))
+            write_private(s.folder / CHAT, json.dumps([{k: v for k, v in x.items() if k != "parts"} for x in s.lines], ensure_ascii=False))
         except OSError as e:
             log.warning("page %s: the chat not written: %s", s.room.name, e)
-        self._push(s, {"line": shown(line)})
+        self._push(s, {"line": line})
 
     def _push(self, s: Sheet, op: dict[str, Any]) -> None:
         for q in list(s.tabs):

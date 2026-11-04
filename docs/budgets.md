@@ -465,7 +465,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-03: need-2026-11-03-48 raised it by 109, the live page's chat a pane of its own for every room, where the owner talks to the room in place of Discord (a room asked for it had a strip of plain text under the program, the owner's own lines only in the tab that typed them, and no way to change it, the page being Yerk's; filed 2026-11-03), not folded to fit: channels/page.py 108 (a line said read the way Discord reads a message into parts beside its words: a fenced block, a heading, subtext, a quote, a list item, and in a row code, a link only to http or https, bold, underline, italic, strike and a spoiler; the owner's say and each # comment line typed in the program a chat line beside the room's, the comment also said to the room; the chat numbered, time-stamped and its newest 200 lines kept in the room's page folder across a restart), words.py 1 (the comment's said line). The pane, its grip, its two buttons and its say box are page.html, outside this count. 25,547: main 8a222d9's 25,438 plus 109; 25,560 with main 7ef0ed9's 25,451 (need-2026-11-03-47) merged in.
 
-- `lines = 25560`
+2026-11-04: need-2026-11-03-48's fix raised it by 8, from its cold read: channels/page.py's chat line read once, kept with the line and never in chat.json (shown 3, _said 1, add_room 1), a room's line cut at the say box's TEXT_MAX (said's docstring 1), and the marks' comment (2): a mark never read past its own next one, so one long line never holds yerkd's loop. 25,568.
+
+- `lines = 25568`
 
 ## Uncapped
 

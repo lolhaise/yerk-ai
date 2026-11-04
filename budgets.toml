@@ -966,4 +966,8 @@ secs = 60
 # room's page folder across a restart), words.py 1 (the comment's said line). The pane, its grip, its two buttons and its
 # say box are page.html, outside this count. 25,547: main 8a222d9's 25,438 plus 109; 25,560 with main 7ef0ed9's 25,451
 # (need-2026-11-03-47) merged in.
-lines = 25560
+# 2026-11-04: need-2026-11-03-48's fix raised it by 8, from its cold read: channels/page.py's chat line read once, kept
+# with the line and never in chat.json (shown 3, _said 1, add_room 1), a room's line cut at the say box's TEXT_MAX (said's
+# docstring 1), and the marks' comment (2): a mark never read past its own next one, so one long line never holds yerkd's
+# loop. 25,568.
+lines = 25568
