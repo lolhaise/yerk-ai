@@ -363,7 +363,8 @@ class Yerkd:
         named = [a for n in conf.get("accounts") or [] for a in self.accounts if a.name == n]
         accts = named + [a for a in self.accounts if a not in named]
         s = {**self.budgets.get("session", {}), **conf}          # the room's idle compaction keys over the budget's
-        if (paged := flag(conf.get("page"))) and not self.owner(name):   # it runs code the room draws, as the owner's user
+        paged = flag(override(self.state, name).get("page", conf.get("page")))   # the page tool's switch over rooms.toml
+        if paged and not self.owner(name):                       # it runs code the room draws, as the owner's user
             log.warning("page: room %s is not an owner room; its page = true is refused", name)
             paged = False
         if paged:                                                # its replies render on its page too
@@ -458,17 +459,55 @@ class Yerkd:
         return {"ok": True, "message_ids": ids, **({"voice_message": not why} if voice else {}),
                 **({"note": words.VOICE_AS_FILE.format(why=why)} if why else {})}
 
+    def page_switch(self, name: str, on: bool) -> bool:
+        """The room's live page on or off now, with no restart, so no turn is cut: what add_room does at a start (its key,
+        its channel mirrored to it) or its undoing, and `page` in the room's override, the daemon's own file over rooms.toml
+        (which is never written), only while it differs from rooms.toml's, so the next start keeps it. True when it changed."""
+        over = override(self.state, name)
+        want = {k: v for k, v in over.items() if k != "page"} | ({"page": on} if on != flag(self.room_confs[name].get("page")) else {})
+        if want != over:
+            (self.state / "rooms" / name).mkdir(parents=True, exist_ok=True)
+            write_private(self.state / "rooms" / name / "override.json", json.dumps(want))
+        if (name in self.page.sheets) == on or name not in self.rooms:
+            return False
+        room, ch = self.rooms[name], self.channels[name]
+        if on:
+            room.channel = self.channels[name] = self.page.mirror(ch)
+            self.page.add_room(room)
+        else:
+            self.page.drop_room(name)
+            room.channel = self.channels[name] = ch.inner if isinstance(ch, page.Mirror) else ch
+        log.info("page: room %s switched %s by its page tool, no restart", name, "on" if on else "off")
+        return True
+
+    async def page_open(self, room: str) -> dict[str, Any]:
+        """The `page` tool's open: the room's page on (page_switch), then opened on the owner's screen by the box's opener
+        at a one-time address (Page.ticket), never the key, which no room holds and no command line carries."""
+        lines = [words.PAGE_ON if self.page_switch(room, True) else words.PAGE_WAS_ON]
+        if not await asyncio.to_thread(page.sandbox_starts):
+            lines.append(words.PAGE_NO_SANDBOX)
+        why = await asyncio.to_thread(page.open_on_screen, page.opener(self.conf), self.page.ticket(room, self.port))
+        log.info("page: room %s, %s", room, why or "opened on the owner's screen")
+        return {"ok": True, "opened": not why, "line": "; ".join([*lines, words.PAGE_NOT_OPENED.format(why=why, room=room) if why else words.PAGE_OPENED])}
+
     async def tool_page(self, room: str, req: dict[str, Any]) -> dict[str, Any]:
-        """The `page` tool: what the calling room draws on its own live page (channels/page.py), shown on every open tab now;
-        a new program or tests run at once, their result in the answer, so the page's own run of them wakes no turn;
-        the owner's rooms only (add_room gives no other room a page)."""
+        """The `page` tool: `open` turns the calling room's live page on and opens it on the owner's screen (page_open), `off`
+        turns it off; what it draws goes on the page (channels/page.py), shown on every open tab now; a new program or tests
+        run at once, their result in the answer, so the page's own run of them wakes no turn; the owner's rooms only
+        (add_room and page_switch give no other room a page)."""
         if not self.owner(room):
             return {"ok": False, "error": words.PAGE_OWNER_ONLY}
+        if req.pop("off", False):
+            self.page_switch(room, False)
+            return {"ok": True, "line": words.PAGE_OFF}
+        opened = await self.page_open(room) if req.pop("open", False) else None
+        if opened is not None and not req:
+            return opened
         r = self.page.draw(room, req)
         if r["ok"] and ("code" in req or "tests" in req):
             r["tests"] = page.run_line(await self.page.run(room, {}, heard=True))
         log.info("page: %s, %s", room or "?", f"{', '.join(sorted(req))} to {r['tabs']} tab(s)" if r["ok"] else r["error"][:160])
-        return r
+        return {**r, "opened": opened} if opened is not None else r
 
     async def tool_transcribe(self, room: str, path: str, owner_yes: bool = False) -> dict[str, Any]:
         """The `transcribe` tool: an audio file from the calling room's own folders (may_send's rule; its inbox holds what

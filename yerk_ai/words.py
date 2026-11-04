@@ -463,11 +463,23 @@ PAGE_SAID = "said on the page: {text}"
 PAGE_TIMER_DONE = "the timer ran out"
 PAGE_STALL = "no typing for {n} s"
 PAGE_KIND = "the page sent an event yerkd does not know: {kind}"
-PAGE_NONE = "room {room} has no live page: page = true in its rooms.toml table turns one on"
+PAGE_NONE = "room {room} has no live page: the page tool with open true turns it on and opens it on the owner's screen"
 PAGE_NOTHING = "nothing to draw: give code, tests, marks, hint, bar, timer or stall"
+# the `page` tool's open and off (Yerkd.page_switch): the page switched with no restart, and opened on the owner's screen
+PAGE_ON = "page on, with no restart; it stays on across restarts"
+PAGE_WAS_ON = "page already on"
+PAGE_OPENED = "opened on the owner's screen"
+PAGE_NOT_OPENED = "not opened on the owner's screen: {why}; `yerk room page {room}` on the box prints its address"
+PAGE_OFF = "page off, with no restart, and it stays off across restarts; open true brings it back at the same address"
+PAGE_NO_SCREEN = "this box has no screen yerkd can open a page on; [page] open in yerkd.toml names the command that does"
+PAGE_OPEN_SLOW = "the opener ran past {n} s and was stopped"
+PAGE_OPEN_FAILED = "the opener failed: {why}"
+PAGE_OPEN_SILENT = "it said nothing"
+PAGE_TICKET_SPENT = "This address was opened once already or is over a minute old; ask the room to open the page again."
 PAGE_NO_TAB = "no tab is open on the page now; it shows this when one opens"
 PAGE_NO_DAEMON = "yerkd is not running here (no yerkd.json in the state folder); start it, then ask again"
-PAGE_NO_KEY = "room {room} has no live page yet: set page = true in its rooms.toml table and restart yerkd"
+PAGE_NO_KEY = ("room {room} has no live page yet: ask for it in the room, whose page tool turns it on, or set page = true in its "
+               "rooms.toml table and restart yerkd")
 QUIET_WORKER = "finished clean, nothing to add"   # a worker's last message of exactly NO_REPLY: its card's head ("nothing to post" ran past PHONE)
 # the emoji an OpenClaw progress card's tool row starts with, one per tool kind, "🧩" for any other (an MCP tool's): its
 # TOOL_DISPLAY_CONFIG with the message tool's spec, /usr/lib/node_modules/openclaw/dist/tool-display-zmIG5_OB.mjs, read

@@ -8,6 +8,27 @@ version changes.
 
 ## 2026-11-03
 
+### need-2026-11-03-44 (#?)
+
+- The owner can ask a room for its live page ("open my page") and it comes up on the owner's screen: the `page` tool's
+  new `open` turns the page on in the running yerkd with no restart, so the room's live turn and every other room go on
+  untouched, and yerkd opens it with the box's own opener. Nobody edits rooms.toml, restarts yerkd or pastes an address.
+- The switch is kept across restarts in the room's override, the daemon's own file in the state folder (the one the
+  settings tool keeps the model in), over rooms.toml, which is never written. `off` turns the page off the same way:
+  its open tabs' feeds end, and back on it has the same address.
+- The address yerkd opens carries a one-time ticket in place of the key, since an opener's command line is readable by
+  every local user: the page trades the ticket once, within a minute, for its key and takes it out of the address bar,
+  and a used or older ticket gets nothing. No room ever holds the address or the key.
+- The opener: `[page] open` in yerkd.toml (a list, the address added last), else `wslview` or Windows'
+  `rundll32.exe url.dll,FileProtocolHandler` under WSL, `open` on a Mac, `xdg-open` on a Linux desktop with a display.
+  Where nothing opens it, the page is still on and the room says `yerk room page NAME` on the box prints the address.
+- Owner rooms only, as the page is: any other room's `open` is refused, with nothing written and nothing opened.
+- `yerk_tools` in budgets.toml goes to 19,900 and the session start's total to 118,805 (the tool is 1,700 as built,
+  253 more), and the `[code]` ceiling to 25,385; the abilities entry is page-switch, and the abilities line is cut by 14
+  so the "what can you do" answer keeps every name under its 2,000.
+- Upgrading: nothing to set. Under WSL the default opener needs Windows interop (on unless turned off in wsl.conf); a
+  box with another way to its screen names it in `[page] open`.
+
 ### approve-first-word (#?)
 
 - The owner's approval counts when `approve` is the first word of the message, with anything after it

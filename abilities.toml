@@ -40,10 +40,11 @@ layer = 10
 # per-message recall cap (2,000), so this line is kept short: need-2026-11-02-37 found it at 2,000 to the character and
 # cut "every ability it ships and every one it knows how to build, from this file" to its words now, for that need's name;
 # need-2026-11-03-43 found it at 2,010 with live-page's name and cut "each ability it ships or knows how to build" to
-# "each ability, built or known" (15 fewer).
+# "each ability, built or known" (15 fewer); need-2026-11-03-44 found it at 2,010 with page-switch's name and cut
+# ": each ability, built or known" to ", built or known" (14 fewer).
 [abilities.abilities]
 state = "built"
-what = "Says what Yerk AI can do: each ability, built or known."
+what = "Says what Yerk AI can do, built or known."
 tier = "free"
 needs = "nothing; `yerk abilities` lists them, `yerk explain NAME` has any one, and a room asking gets the list"
 free_path = "this is the free path"
@@ -1452,7 +1453,7 @@ asked_as = ["written question", "written questions", "order paper question", "se
 state = "built"
 what = "A room's live page: a browser tab on the owner's monitor that is the room, served by yerkd on the box's own local address, with a program in an editor, its unittest tests beside it re-run on every pause in typing with no model call, a bar on top and a draw layer. What the owner types, draws and says there reaches the room as the owner's messages the instant the typing pauses, mid-turn too, as a Discord message does, each keystroke in a file the room reads; the room's replies render there, and its `page` tool puts a new program or tests, marks on lines, a hint, the bar and a countdown on it, with no screenshot and nobody touching Discord."
 how = [
-  "On: `page = true` in the room's rooms.toml table; the next start gives it its page and a key, and `yerk room page NAME` prints the address to open, the room and its key in the address's fragment, which a browser never sends. The key opens that room's page calls and nothing else, and no other secret opens them.",
+  "On: `page = true` in the room's rooms.toml table, and the next start gives it its page and a key, or the owner's ask in the room, with no restart (page-switch); `yerk room page NAME` prints the address to open, the room and its key in the address's fragment, which a browser never sends. The key opens that room's page calls and nothing else, and no other secret opens them.",
   "In: each keystroke is a line in work/page/events.jsonl at once (where it changed and what it took out and put in), the program and its tests in work/page/; a pause of 1.5 s sends one message with the change as a diff and the tests' newest result, and a stroke (the lines it covers), a said line, the timer's end or a stall goes at once.",
   "Tests: run with no model call in a fresh folder under `python3 -I`, capped at 10 s and 1 GB, killed past the cap, inside bubblewrap (no network, no home, state or private folder, only its own folder writable, its own PID namespace), since the `page` tool hands it code a model wrote; each test red or green with the line it failed at, a syntax error with its line, back to the page at once. No bwrap that starts: nothing runs, and the run says so.",
   "Owner rooms only: `page = true` in any other room is refused at the start and logged, and the tool refuses there.",
@@ -1463,6 +1464,24 @@ needs = "an owner room; bubblewrap (`bwrap`) on the box, with user namespaces al
 price = "none"
 free_path = "this is the free path"
 asked_as = ["live page", "a page on my monitor", "a page that is a room", "coding practice page", "see my typing live", "draw on the page"]
+
+# need-2026-11-03-44: a room asked for its live page had it off, and turning it on took `page = true` in rooms.toml,
+# outside the room's write path, and a yerkd restart, which would have cut the room's live turn; two held sends to the
+# build room later the owner was still waiting.
+[abilities.page-switch]
+state = "built"
+what = "The owner asks a room for its live page (\"open my page\") and it comes up on the owner's screen: the room's `page` tool with `open` turns the page on with no restart, so no turn is cut, keeps it on across restarts in the room's override (the daemon's own file over rooms.toml, which is never written), and yerkd opens it on the screen itself at a one-time address, so nobody pastes it; `off` turns it off the same way."
+how = [
+  "The switch: what a start does for a `page = true` room (its key, its replies mirrored to the page) done in the running daemon, or undone for `off`, the open tabs' feeds ending; `page` in the room's override wins over rooms.toml's at every start after, and back on the page has the same address.",
+  "The screen: the box's own opener, `[page] open` in yerkd.toml (a list, the address added last), else wslview or Windows' url.dll under WSL, open on a Mac, xdg-open on a Linux desktop with a display; with none, or one that fails, the page is still on and the room says `yerk room page NAME` on the box prints the address.",
+  "The address: a one-time ticket where the key would be, since an opener's command line is readable by every local user; the page trades it once, within a minute, for its key and takes it out of the address bar, and a used or older ticket gets nothing. No room holds the address or the key.",
+  "Owner rooms only, as the page is: any other room's open is refused, nothing written and nothing opened.",
+]
+tier = "free"
+needs = "the live-page ability; an owner room; a screen on the box yerkd runs on (under WSL, the Windows browser reaches the box's local address)"
+price = "none"
+free_path = "this is the free path"
+asked_as = ["open my page", "turn my page on", "turn on the page", "switch the page on", "turn the page off", "open the live page"]
 
 [abilities.work-writes]
 state = "built"

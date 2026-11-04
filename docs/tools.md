@@ -288,7 +288,8 @@ what it shows. `code` a new program (solution.py); `tests` its unittest file (it
 runs on every pause in typing; `marks` line marks, each {"line": N, "kind": "highlight" or "arrow", "text": a note},
 [] clears; `hint` one line under the program; `bar` labels and values on top; `timer` seconds to count down, 0 stops;
 `stall` seconds of no typing before the page tells you, 0 off. Your replies show there too. What the owner types,
-draws and says there comes to you as messages, mid-turn too; each keystroke is in page/events.jsonl.
+draws and says there comes to you as messages, mid-turn too; each keystroke is in page/events.jsonl. `open` true
+(the owner asked for the page) turns it on, with no restart, and opens it on the owner's screen; `off` true: off.
 ```
 
 - `code`: string, default ""
@@ -298,3 +299,5 @@ draws and says there comes to you as messages, mid-turn too; each keystroke is i
 - `bar`: object or null, default null
 - `timer`: integer, default -1
 - `stall`: integer, default -1
+- `open`: boolean, default false
+- `off`: boolean, default false
