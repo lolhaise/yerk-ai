@@ -94,10 +94,25 @@ def test_mid_turn_message_folds_into_the_running_turn(env):
     time.sleep(0.4)
     assert send(room, ledger, "2", "second") == "folded"
     wait_idle(room)
-    assert chan.replies == [("echo: SLOW first + second", ["1", "2"])]
+    one, two = room.seen["SLOW first"], room.seen["second"]
+    assert one.sent == "SLOW first" and two.sent == f"{words.FOLDED.format(n=round(two.received - one.received))}\n\nsecond"
+    assert chan.replies == [(f"echo: SLOW first + {two.sent}", ["1", "2"])]      # the stdin line: the fold's line, then the text
     a, b = ledger.inbound_get("1"), ledger.inbound_get("2")
     assert a["state"] == b["state"] == "answered" and a["turn_id"] == b["turn_id"] and b["folded"] == 1
-    assert chan.cards[0] == f"{words.WORKING} working on it" and "echo" in chan.cards[-1]
+    assert chan.cards[0] == f"{words.WORKING} working on it" and "echo" in chan.cards[-1] and not room.folds
+    room.rp.close()
+
+
+def test_a_message_from_the_watched_channel_folds_with_no_line_ahead_since_its_own_line_says_how_it_is_answered(env):
+    make, ledger, _ = env
+    chan = Chan()
+    room = make(chan)
+    there = words.SENT_THERE.format(who="the other assistant", channel="elsewhere", quiet=words.NO_REPLY) + "\nwhat about EX-41?"
+    assert send(room, ledger, "1", "SLOW first") == "started"
+    time.sleep(0.4)
+    assert send(room, ledger, "2", there) == "folded"
+    wait_idle(room)
+    assert chan.replies == [(f"echo: SLOW first + {there}", ["1", "2"])] and ledger.inbound_get("2")["folded"] == 1
     room.rp.close()
 
 
@@ -112,11 +127,13 @@ def test_messages_queued_during_a_turn_and_merged_by_claude_code_are_all_covered
     assert send(room, ledger, "2", "second") == "folded"
     assert send(room, ledger, "3", "third") == "folded"
     wait_idle(room)
-    assert chan.replies == [("the: Example note", ["1"]), ("the: check\nthe", ["2", "3"])]
+    two, three = room.seen["second"].sent, room.seen["third"].sent     # each written with the fold's line ahead of it
+    assert two.startswith("[sent ") and two.endswith("\n\nsecond") and three.startswith("[sent ") and three.endswith("\n\nthird")
+    assert chan.replies == [("echo: MERGE first", ["1"]), (f"echo: {two}\n{three}", ["2", "3"])]
     rows = [ledger.inbound_get(i) for i in ("1", "2", "3")]
     assert [r["state"] for r in rows] == ["answered"] * 3
     assert rows[1]["turn_id"] == rows[2]["turn_id"] != rows[0]["turn_id"] and rows[1]["folded"] == rows[2]["folded"] == 1
-    assert not room.pending and not room.inflight and not room.reading and not room.busy
+    assert not room.pending and not room.inflight and not room.reading and not room.busy and not room.folds
     assert send(room, ledger, "4", "fourth") == "started"
     wait_idle(room)
     assert chan.replies[-1] == ("echo: fourth", ["4"])
@@ -371,7 +388,9 @@ def test_a_message_folded_into_a_turn_that_dies_gets_its_own_turn(env):
     time.sleep(0.4)
     assert send(room, ledger, "2", "hello") == "folded"
     wait_idle(room)
-    assert [ids for _, ids in chan.notices] == [["1"]] and chan.replies == [("echo: hello", ["2"])]
+    assert [ids for _, ids in chan.notices] == [["1"]] and chan.replies == [("echo: hello", ["2"])]   # its own turn: no line ahead
+    folded = room.seen["hello"].sent                         # as it folded (the message its own turn ran is a copy, written bare)
+    assert folded.startswith("[sent ") and folded.endswith("\n\nhello") and room.seen[folded] is room.seen["hello"]
     assert (ledger.inbound_get("1")["state"], ledger.inbound_get("2")["state"]) == ("failed", "answered")
     rows = rows_of(ledger)
     assert [(r["outcome"], r["failure"]) for r in rows] == [("timeout", "fatal"), ("ok", None)]

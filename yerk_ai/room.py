@@ -5,7 +5,8 @@ adapter's `progress`, `reply` and `notice`. Turns run on one thread per busy roo
 adapter's event loop.
 
 - A message for an idle room starts a turn; a message for a busy room goes straight to the
-  process's stdin (the fold) and is answered inside the running turn.
+  process's stdin (the fold) and is answered inside the running turn, a line ahead of it saying it
+  came in while the room was answering and that the reply names it (words.FOLDED).
 - Each `result` covers every message Claude Code replayed (accepted) before it, and one replay may
   carry several waiting messages joined with newlines (seen live on 2.1.316). A message written
   but not yet accepted when a result lands gets the next result, which Claude Code starts by itself.
@@ -31,7 +32,8 @@ adapter's event loop.
   a note to itself before the answer (its plan for the reply, a rulebook tag) bounces once (note); a fenced block the
   room posted on an earlier day is turned back once, in `send` before it posts and in the final text at Stop (paste); a
   document or a pasted block an owner's room ships with no claims sheet written that turn is turned back once the same
-  way (sheet).
+  way (sheet); a person's message that folded into the result and was taken in, whose content (its numbers, a short
+  one's words) the final never names, bounces once (fold).
 - A message from the harness itself (sender `yerk`: a worker's relay) runs like any other but is
   not a human message for the clock line or the idle rule; it may cap its reply and name a line the
   reply must carry, and it hears how its turn ended.
@@ -80,7 +82,7 @@ class Inbound:
                                           # batched with another message (a relay, a note); in a
                                           # closed room it resumes the room's session, as any message does
     after: bool = False                   # it folded into a turn that failed: it runs next as its own turn, and its card says so
-    sent: str = ""                        # the exact text written to stdin (a recap ahead of it too): what its replay carries
+    sent: str = ""                        # the exact text written to stdin (a recap or the fold's line ahead of it too): what its replay carries
 
 
 HARNESS = "yerk"                          # the sender of Yerk AI's own messages (a worker's relay)
@@ -129,6 +131,24 @@ def covered_by(replays: list[str], sent: list[str]) -> int:
     return i
 
 
+def own_words(text: str) -> str:
+    """A person's message without the lines the harness wrote into it ([attachment], [a reply to ...], the edit mark)."""
+    return " ".join(x for x in text.splitlines() if not x.lstrip().startswith("["))
+
+
+def fold_tokens(text: str) -> set[str]:
+    """The fold rule's content tokens of a person's message (Room.fold_check): its numbers (41 in "EX-41") and, in a message
+    of at most three words, its words of three or more letters less words.FILLER, lower case."""
+    said = own_words(text)
+    found = set(re.findall(r"\d+", said))
+    return found | ({w.lower() for w in re.findall(r"[^\W\d_]{3,}", said)} - words.FILLER if len(said.split()) <= 3 else set())
+
+
+def carries(text: str, token: str) -> bool:
+    """A content token in a final text, case aside: a number as a whole number (41 in "EX-41", never in 410), a word at a word's start."""
+    return re.search(rf"(?<!\d){token}(?!\d)" if token.isdigit() else rf"\b{re.escape(token)}", text, re.I) is not None
+
+
 RESUME_RECAP = ("(Yerk AI: the earlier session of this room could not be resumed, so this is a new one; the day log "
                 "holds what was said. The last reply here began: \"{last}\")")
 REFUSAL_RECAP = ("(Yerk AI: this is a new session. The previous one was moved to another model after a block, "
@@ -162,6 +182,8 @@ class Room:
         self.queue: deque[Inbound] = deque()      # waiting for a process
         self.pending: deque[Inbound] = deque()    # written to stdin, not yet accepted
         self.inflight: list[Inbound] = []         # written since the last delivered result
+        self.folds: list[Inbound] = []            # of those, folded into the result being read, marked (the fold rule's)
+        self.replays: list[str] = []              # the replays of the result being read, as the stream gives them
         self.last_active = time.time()
         self.last_human: float | None = ledger.last_received(name)   # survives a daemon restart
         self.seen: dict[str, Inbound] = {}        # by text, for the hook's metadata line
@@ -179,6 +201,7 @@ class Room:
         self.paste_bounced = False                # the paste check turned back a send or a final of this result already
         self.sheet_bounced = False                # the sheet check turned back a send or a final of this result already
         self.said_bounced = False                 # the person and quote check turned back a send or a final of this result already
+        self.fold_bounced = False                 # the fold check bounced this result already
         self.evidence = Evidence(on_call=self._ledger_call)   # every tool call of the turn and what it read
         self.answering: set[str] = set()                      # ids of the batch the turn answers
         self.stale = False                        # the settings changed mid-turn: the process closes at its end
@@ -281,7 +304,7 @@ class Room:
             while len(self.seen) > 200:
                 self.seen.pop(next(iter(self.seen)))
             if self.reading and self.rp and self.rp.alive() and not self.queue and not msg.alone:
-                self._write(msg)
+                self._write(msg, folded=True)
                 self.ledger.inbound_set(msg.id, state="running", folded=1, attempts=msg.attempt + 1)
                 return "folded"
             self.queue.append(msg)
@@ -472,13 +495,31 @@ class Room:
         who, rule, detail = found[0]
         return (words.SAID if mine else words.SAID_HERE).format(name=who[:1].upper() + who[1:]), rule, detail
 
+    def fold_check(self, active: bool, text: str | None) -> tuple[str, str] | None:
+        """The Stop hook's last rule, no judge (seen live: a number fixed 0.8 s after the question it corrected folded
+        into that turn, and the one reply covering both answered the first and never said the second): a person's message
+        that folded into this result and was taken in (its marked text in a replay of the result being read), whose content
+        tokens (fold_tokens) the final carries none of, bounces once, quoting it: (the bounce, what was found), or None. A
+        fold Claude Code runs as its next result is that result's own message, never checked; nor is a final of NO_REPLY."""
+        if active or not text or text.strip() == words.NO_REPLY or self.fold_bounced:
+            return None
+        with self.lock:
+            taken = [f"\n{r}\n" for r in self.replays]
+            folds = [m for m in self.folds if m.sender != HARNESS and any(f"\n{m.sent}\n" in r for r in taken)]
+        for m in folds:
+            if (tokens := fold_tokens(m.text)) and not any(carries(text, t) for t in tokens):
+                self.fold_bounced = True
+                return (words.FOLD.format(text=" ".join(own_words(m.text).split())[:60]),
+                        f"message {m.id} folded in with {', '.join(sorted(tokens)[:5])}, and the final names none of it")
+        return None
+
     def _new_card(self, note: str = "") -> None:
         privacy = str(self.conf.get("privacy", "owner"))
         self.card = Card(thinking=flag(self.conf.get("thinking_panel")) and privacy == "owner",
                          people=self.name if self.conf.get("people") and self.conf.get("card") != "steps" else "")   # "steps": the rows
         self.card.narration = note                # a harness line from the first post, until the model's first words
         self.turn_key, self.bounced, self.silent_bounced, self.stub_bounced = uuid.uuid4().hex[:12], False, False, False
-        self.note_bounced = self.board_bounced = self.paste_bounced = self.sheet_bounced = self.said_bounced = False
+        self.note_bounced = self.board_bounced = self.paste_bounced = self.sheet_bounced = self.said_bounced = self.fold_bounced = False
         self.channel.open_card(self.name, self.card.render())   # state first from the first post
 
     def meta_for(self, prompt: str) -> tuple[str, float | None]:
@@ -557,8 +598,16 @@ class Room:
         return busy
 
     # the room's thread
-    def _write(self, msg: Inbound, recap: str | None = None) -> None:
+    def _write(self, msg: Inbound, recap: str | None = None, folded: bool = False) -> None:
+        """`folded`: submit's path, a turn being read. The fold's line goes ahead of the text, decided here and never kept on
+        the message, so the same message written again (a rerun, its own turn after a failed one) goes bare; a message from
+        the channel the room watches says how it is answered (words.THERE) and goes bare too. Its seconds are since the
+        message written before it (the person's previous one, unless the turn is a relay's)."""
         assert self.rp
+        if folded and not msg.text.startswith(words.THERE):
+            above = self.inflight[-1].received if self.inflight else (msg.prev_human or msg.received)
+            recap = words.FOLDED.format(n=max(round(msg.received - above), 0))      # placed as a recap is
+            self.folds.append(msg)
         self.pending.append(msg)
         self.inflight.append(msg)
         for f in msg.files:
@@ -632,7 +681,8 @@ class Room:
                     self._end(batch, words.why(why, "crashed"), "crashed")         # here: discord.py imports this module)
 
     def _on_event(self, turn: Turn, ev: dict[str, Any]) -> None:
-        """The card from the stream: narration, thinking line, tool rows."""
+        """The card from the stream: narration, thinking line, tool rows; the result's replays, for the fold rule."""
+        self.replays = turn.replayed
         if self.card.feed(ev):
             self.channel.progress(self.name, self.card.render())
 
@@ -679,7 +729,7 @@ class Room:
                 halted = self.stopped             # and TERMs the process, or nothing is written here
                 if not halted:
                     self.pending.clear()
-                    self.inflight = []
+                    self.inflight, self.folds = [], []    # written now, with no turn read: none of these is a fold
                     for i, m in enumerate(resend):
                         self._write(m, note if i == 0 else None)
                         self.ledger.inbound_set(m.id, state="running", attempts=m.attempt + 1)
@@ -756,7 +806,7 @@ class Room:
             self.ledger.inbound_set(m.id, state=state, note=why, reply_ids=",".join(notice_ids))
             self._then(m, "failed", notice_ids, 0)
         with self.lock:
-            old, self.rp, self.inflight = self.rp, None, []
+            old, self.rp, self.inflight, self.folds = self.rp, None, [], []
             self.pending.clear()
             self.queue.extendleft(reversed([replace(m, after=True) for m in resend if m not in own]))
         if old:
@@ -790,6 +840,7 @@ class Room:
             with self.lock:
                 n = max(covered_by(turn.replayed, [m.sent for m in self.pending]), len(turn.accepted)) or (1 if turn.outcome == "ok" else 0)
                 covered = [self.pending.popleft() for _ in range(min(n, len(self.pending)))]
+                self.folds = []                   # its Stop has run: a fold it did not take opens the next result
             ids = [m.id for m in covered]
             turn_id = self.rp.record(turn, ids, hop=hop, recap=1 if recapped else None, turn_key=self.turn_key, out_of=self.out_of or None)
             if turn.outcome != "ok":

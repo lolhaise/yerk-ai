@@ -224,7 +224,7 @@ def test_a_page_message_folds_into_the_running_turn_and_the_reply_renders_on_the
     wait_idle(room)
     mid = next(r["message_id"] for r in ledger.rows(10, "inbound") if r["channel"] == pagemod.CHANNEL)
     assert len(chan.replies) == 1 and chan.replies[0][1] == ["1", mid]
-    assert "echo: SLOW first + [from the owner's live page]" in chan.replies[0][0]
+    assert chan.replies[0][0].startswith("echo: SLOW first + [sent ") and "]\n\n[from the owner's live page]" in chan.replies[0][0]   # the fold's line ahead
     row = ledger.inbound_get(mid)
     assert row["folded"] == 1 and row["state"] == "answered"
     assert [(x["text"], x["kind"]) for x in p.sheets["r"].lines] == [("second", "me"), (chan.replies[0][0], "reply")]   # both, on the page

@@ -187,6 +187,16 @@ SAID = ("{name} is quoted or paraphrased here and nothing was read this turn. Re
 SAID_HERE = ("{name} is quoted or paraphrased here and nothing was read this turn. Read where their words are in this room's own "
              "lines (recall or read_memory: its day log, a file sent here, a recording's transcript) and cite it, or write it as: "
              "from my notes, not their words.")      # a person's room: its own sources only, never a file outside its layer
+# the fold (seen live: a number fixed 0.8 s after the question it corrected folded into that turn, and the one reply
+# covering both answered the first and never said the second): the line ahead of a person's message written into a running
+# turn (Room._write), and the Stop rule's bounce when the reply covering it names none of its content (Room.fold_check)
+FOLDED = ("[sent {n} s after the message above, while you were answering it: answer it in this same reply; a correction replaces "
+          "the question it corrects, and whichever you answer, name it (the number, the name, the thing), since the person "
+          "cannot see it was read]")
+FOLD = ("\"{text}\" came in while you were answering, and your reply does not say which message it answers. Write your whole "
+        "reply again as your final message, naming in its first words what that message asked or changed (the number, the "
+        "name, the thing), so the person can see it was read; a correction replaces the question it corrects.")
+FILLER = frozenset("yes no ok okay yeah yep nah nope ty thx thanks pls lol nvm sure cool bet idk wait hmm same".split())   # no content
 WORKER_OWN_ROOM = "a room starts workers for itself only, not for {room}"
 GONE, STRAY, NONE_RUNNING = "gone, no result", "unknown worker {id} running", "workers: none running"
 
@@ -440,6 +450,7 @@ SENT_THERE_AUDIT = ("[sent to {who} in #{channel}, not to this room: {sender} is
                     "missing and the fix, written out in full in plain words, because {readers} read this room; one or two lines when "
                     "it is right. If {who} had not answered within the wait, say that in one line. Never {quiet} on this turn; never "
                     "redo work {who} got right.]")
+THERE = SENT_THERE.split("{", 1)[0]       # both lines' head: such a message says how it is answered, so it folds with no mark
 OWNER, A_PERSON = "the owner", "a person this room answers"   # who reads it, by name where the server shows one
 NO_VERDICT = "no verdict: the room answered nothing"   # its card, kept under NOT_DONE, when it answers NO_REPLY all the same
 OTHER_ASSISTANT = "the other assistant"              # `watch_assistant` unset
