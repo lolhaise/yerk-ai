@@ -92,6 +92,8 @@ INLINE = re.compile("|".join((r"`(?P<code>[^`\n]+)`", r"\\(?P<esc>[\\*_~`|>#\[\]
                               r"\*(?P<i>[^\s*](?:.*?[^\s*])?)\*", r"(?<!\w)_(?P<i_>\S(?:.*?\S)?)_(?!\w)", r"~~(?P<s>\S(?:.*?\S)?)~~",
                               r"\|\|(?P<h>.+?)\|\|")))
 LOOKS = {"bi": "bi", "b": "b", "u": "u", "i": "i", "i_": "i", "s": "s", "h": "h"}
+# blanks str.split() keeps that a room could pad the bar's words with (plain): fillers read as a space, zero-width ones go
+BLANKS = str.maketrans("\u2800\u3164\uffa0", "   ", "\u200b\u2060\ufeff")
 RUNNER = '''import importlib, json, os, resource, sys, traceback, unittest
 here, cap, mem = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
 resource.setrlimit(resource.RLIMIT_CPU, (cap + 1, cap + 1))
@@ -236,6 +238,12 @@ def span(lines: Any) -> tuple[int, int] | None:
         first, last = sorted(lines)
         return (first, last) if first >= 1 else None
     return None
+
+
+def plain(said: str) -> str:
+    """One of the bar's labels or values as its words alone: a run of spaces of any kind one space, none at either end, since
+    the page spaces its cells itself and padding only shows as a blank in a cell, or keeps a tier word from its division."""
+    return " ".join(said.translate(BLANKS).split())
 
 
 def cell(label: str, value: str) -> dict[str, Any]:
@@ -590,9 +598,12 @@ class Page:
                                      for m in req["marks"] if isinstance(m, dict) and isinstance(m.get("line"), int) and m["line"] >= 1]
         if isinstance(req.get("hint"), str):
             s.hint = op["hint"] = req["hint"].strip()[:NOTE_MAX]
-        if isinstance(req.get("bar"), dict):
-            s.bar = op["bar"] = {str(k)[:24]: str(v)[:40] for k, v in list(req["bar"].items())[:8]}
-            op["board"] = board(s.bar)
+        padded = False
+        if isinstance(req.get("bar"), dict):     # its words alone (plain), then cut; a cell left with none, a spacer, goes
+            given = [(str(k), str(v)) for k, v in req["bar"].items()]
+            kept = [(plain(k), plain(v)) for k, v in given]
+            s.bar = op["bar"] = {k[:24]: v[:40] for k, v in [c for c in kept if any(c)][:8]}
+            op["board"], padded = board(s.bar), kept != given
         if isinstance(req.get("timer"), int) and req["timer"] >= 0:
             s.timer = op["timer"] = {"seconds": req["timer"], "from": round(time.time(), 3)} if req["timer"] else {}
         if isinstance(req.get("stall"), int) and req["stall"] >= 0:
@@ -602,7 +613,8 @@ class Page:
         self._log(s, {"kind": "drawn", **{k: v for k, v in op.items() if k not in ("code", "tests", "board")},
                       **{k: len(v) for k, v in op.items() if k in ("code", "tests")}})
         self._push(s, {"draw": op})
-        return {"ok": True, "tabs": len(s.tabs), **({} if s.tabs else {"note": words.PAGE_NO_TAB})}
+        notes = ([] if s.tabs else [words.PAGE_NO_TAB]) + ([words.PAGE_UNPADDED] if padded else [])
+        return {"ok": True, "tabs": len(s.tabs), **({"note": "; ".join(notes)} if notes else {})}
 
     def said(self, room: str, text: str, kind: str = "reply") -> None:
         """A line the room said, from any thread: kept for a tab that opens later and shown on every open one."""

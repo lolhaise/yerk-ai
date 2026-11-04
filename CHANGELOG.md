@@ -25,10 +25,27 @@ version changes.
   grows its own line) and goes to the room as said, beside the typing's diff.
 - The newest 200 chat lines, yours and the room's, are kept in the room's `work/page/chat.json`, so a reload or a
   restart shows the night's talk again.
-- Need 46's scoreboard, tiles and spacing are kept as they are; the bar spans the code, the grip and the chat.
-- The `[code]` ceiling in budgets.toml goes to 25,547; the abilities entry is page-chat, and the "what can you do"
-  answer's own line drops ", built or known" (its census already says which) so it keeps every name under its 2,000.
+- Need 46's scoreboard and tiles and need 47's spaced bar cells are kept as they are; the bar spans the code, the grip
+  and the chat.
+- The `[code]` ceiling in budgets.toml goes to 25,560 (main's 25,451 plus 109); the abilities entry is page-chat, and
+  the "what can you do" answer's own line drops ", built or known" (its census already says which) so it keeps every
+  name under its 2,000.
 - Upgrading: nothing to set. An open page picks up the chat pane when its tab is reloaded.
+
+### need-2026-11-03-47 (#?)
+
+- A live page's top bar shows each label and value as a cell of its own, spaced from the next, in every room: the cells
+  are a row with its own gap, wrapping on a narrow screen, each a box with its label over its value. A test now holds
+  that layout, so the cells cannot run together again as they did when every one sat inside one span.
+- A room never pads the bar's words to keep them apart: yerkd keeps each label and value as its words alone (a run of
+  spaces of any kind, a no-break, thin or wide one, a tab or a blank filler, is one space, and none is kept at either
+  end) before the 24 and 40 character caps, and drops a cell left with no words, a spacer, which no longer takes one of
+  the 8. A padded bar reads and shows as the plain words: no blank inside a cell, and a tier word kept from its division
+  by a no-break space is a rank badge in its tier's colour again.
+- The `page` tool's answer says when it dropped padding, so the room stops putting it in.
+- The `[code]` ceiling in budgets.toml goes to 25,451; the abilities entry is page-cells, and the "what can you do"
+  answer's last line is cut to "`yerk explain NAME` has any one." (21 fewer) so it keeps every name under its 2,000.
+- Upgrading: nothing to set. An open page shows the plain words from the room's next draw.
 
 ### need-2026-11-03-46 (#?)
 
