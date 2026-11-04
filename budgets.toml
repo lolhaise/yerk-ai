@@ -1023,4 +1023,8 @@ secs = 60
 # name, `yerk`, with Artifacts off (unset, a `claude -p` run is `sdk-cli`, which a plan's meters were measured counting
 # heavier for the same work), not folded to fit: accounts.py 4 (account_env's two variables and the two clauses of its
 # docstring that say why). 25,940.
-lines = 25940
+# 2026-11-04, need-2026-11-04-49: 1 line fewer: abilities.py's "what can you do" answer drops its closing "`yerk explain
+# NAME` has one." (the cite after it, "(yerk explain abilities)", names the command), so research-ids' "needs Exa" group
+# fits under the 2,000 recall cap (1,998 as before); the fix itself is in plugins/web, outside this count. 25,935.
+# 2026-11-04, need-2026-11-04-49 with main folded in (entrypoint-name's 4 lines and this branch's 1 line fewer): 25,939.
+lines = 25939

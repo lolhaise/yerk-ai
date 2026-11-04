@@ -87,7 +87,8 @@ def test_nineteen_preloaded_tools_with_slim_schemas(tmp_path):
     web = {"type": "stdio", "command": "/usr/bin/node", "args": ["server.mjs"], "timeout": 180000}   # a room's `mcp` table
     cfg = json.loads(mcp_server.room_config("http://127.0.0.1:1/mcp", "example-room", tmp_path / "m.json", "t",
                                             {"web-ladder": web, "yerk": {"type": "stdio", "command": "x"}}).read_text())
-    assert cfg["mcpServers"]["web-ladder"] == web and cfg["mcpServers"]["yerk"]["type"] == "http"   # yerk is never replaced
+    assert cfg["mcpServers"]["web-ladder"] == {**web, "env": {"YERK_TOOL_TIMEOUT": "180000"}}   # its own limit, told it (need 49)
+    assert cfg["mcpServers"]["yerk"]["type"] == "http"   # yerk is never replaced
 
 
 def test_send_and_hold(tmp_path, capsys):

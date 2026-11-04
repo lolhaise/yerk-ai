@@ -110,8 +110,7 @@ def brief(name: str, ab: dict[str, Any], tab: dict[str, dict[str, Any]], s: Any)
     step by its lead words (what comes before its colon); `yerk explain NAME` has the rest."""
     _, said = state(name, ab, tab, s)
     if name == SELF:
-        return " ".join([f"{name}, a Yerk AI ability ({said}): {ab['what']}", *census(tab, s),
-                         "`yerk explain NAME` has one."])
+        return " ".join([f"{name}, a Yerk AI ability ({said}): {ab['what']}", *census(tab, s)])
     how = "; ".join(str(x).split(":", 1)[0] for x in ab.get("how", []))
     up = built_part(ab, tab)
     parts = [f"{name}, a Yerk AI ability ({said}): {ab['what']}", f"{HOW[ab.get('state', 'built')]} {how}." if how else "",
