@@ -8,10 +8,11 @@ import subprocess
 import time
 from pathlib import Path
 
+import httpx
 import pytest
 from starlette.testclient import TestClient
 
-from yerk_ai import mcp_server, words
+from yerk_ai import cli, mcp_server, words
 from yerk_ai.channels import page as pagemod
 from yerk_ai.channels.page import Mirror, Page, address, board, cell, change, comments, plain, rich, run_line, run_tests
 from yerk_ai.config import EXAMPLE_PRIVATE
@@ -921,3 +922,144 @@ def test_a_tab_with_no_key_says_its_typed_line_reached_no_room_and_keeps_the_wor
     stranded = script.split("const STRANDED = ", 1)[1].split(";\n", 1)[0]
     assert "open my page on my Mac" in stranded and "yerk room page ROOM on the box" in stranded
     assert "else if (!KEY) line({ text: STRANDED" in script
+
+
+async def served(y, calls):
+    """yerkd's own HTTP server as its start runs it (serve_http), on real sockets, while `calls` speaks to it; then its stop."""
+    y.http = None                                                    # a server stopped before stays `started`
+    task = asyncio.create_task(y.serve_http())
+    for _ in range(250):
+        if y.listening() or task.done():
+            break
+        await asyncio.sleep(0.02)
+    try:
+        async with httpx.AsyncClient(timeout=10) as c:
+            await calls(c)
+    finally:
+        y.http.should_exit = True
+        await asyncio.wait_for(task, 10)
+
+
+def test_the_page_is_on_loopback_alone_until_page_listen_names_the_box_s_address_then_its_routes_alone_are_there_too(tmp_path, monkeypatch):
+    """need-2026-11-03-45, the wall a room hit: the owner, on the Mac and on the phone, could not open the live page, since
+    yerkd served it on 127.0.0.1 alone. With [page] listen naming the box's tailnet or LAN address, yerkd serves the page's
+    routes there too, on its own port, the key still the only way into them, and nothing else: /mcp, /hook, /control and
+    /status are not found there whatever secret comes. 127.0.0.2 stands in for that address, a second one of the box's."""
+    y, _ = page_daemon(tmp_path)
+    key, taken = y.page.sheets["example-room"].key, []
+    y.rooms["example-room"].submit = taken.append                    # no Claude Code here: what would reach the room
+    near, far = f"http://127.0.0.1:{y.port}", f"http://127.0.0.2:{y.port}"
+
+    async def loopback_alone(c):
+        assert (await c.get(near + "/page")).status_code == 200
+        with pytest.raises(httpx.ConnectError):                      # the default: nothing listens past loopback
+            await c.get(far + "/page")
+    asyncio.run(served(y, loopback_alone))
+
+    monkeypatch.setattr(pagemod, "listen", lambda conf: "127.0.0.2")
+
+    async def beside(c):
+        shown = await c.get(far + "/page")
+        assert shown.status_code == 200 and key not in shown.text and "example-room" not in shown.text
+        said = await c.post(far + "/page/event", json={"kind": "say", "text": "a line from the phone"}, headers={"x-yerk-secret": key})
+        assert said.status_code == 200 and said.json() == {"ok": True}
+        assert (await c.post(far + "/page/event", json={"kind": "say", "text": "x"})).status_code == 401            # no key
+        assert (await c.post(far + "/page/event", json={"kind": "say", "text": "x"}, headers={"x-yerk-secret": y.secret})).status_code == 401
+        ticket = y.page.ticket("example-room", y.port, far).rpartition("open=")[2]
+        traded = await c.post(far + "/page/open", json={"ticket": ticket})
+        assert traded.status_code == 200 and traded.json() == {"ok": True, "room": "example-room", "key": key}
+        async with c.stream("GET", far + "/page/stream", headers={"x-yerk-secret": key}) as feed:
+            first = json.loads(await feed.aiter_lines().__anext__())
+        assert first["state"]["room"] == "example-room" and first["state"]["lines"][-1]["text"] == "a line from the phone"
+        for path in ("/control", "/status", "/hook", "/mcp"):                   # nothing but the page there, the install's secret or not
+            assert (await c.post(far + path, json={}, headers={"x-yerk-secret": y.secret})).status_code == 404, path
+        assert (await c.get(far + "/", headers={"x-yerk-secret": y.secret})).status_code == 404
+        assert (await c.post(near + "/control", json={}, headers={"x-yerk-secret": y.secret})).status_code == 200   # loopback as ever
+        assert (await c.get(near + "/page")).status_code == 200
+    asyncio.run(served(y, beside))
+    assert len(taken) == 1 and words.PAGE_SAID.format(text="a line from the phone") in taken[0].text
+
+
+def test_the_address_printed_and_the_mac_s_open_carry_the_box_s_host_the_key_only_in_the_fragment(tmp_path, monkeypatch, capsys):
+    """need-2026-11-03-45: the address `yerk room page` printed and the one the Mac's open carried were built on 127.0.0.1,
+    which on the Mac or the phone is that device itself. With [page] listen they carry the box's host and yerkd's port, the
+    key in the printed address's fragment only (a browser never sends it) and never in the opened one, which holds a
+    one-time ticket; [page] address, when set, is the host both carry; --here prints the box's own."""
+    y, state = page_daemon(tmp_path)
+    key = y.page.sheets["example-room"].key
+    y.conf["page"] = {"listen": "100.64.0.1"}
+    y.write_status("discord")
+    assert json.loads((state / "yerkd.json").read_text())["page"] == f"http://100.64.0.1:{y.port}"
+    assert address(state, "example-room") == f"http://100.64.0.1:{y.port}/page#room=example-room&key={key}"
+    assert address(state, "example-room", here=True) == f"http://127.0.0.1:{y.port}/page#room=example-room&key={key}"
+    assert cli.main(["room", "page", "example-room", "--state", str(state)]) == 0
+    printed = capsys.readouterr().out.strip()
+    assert printed == f"http://100.64.0.1:{y.port}/page#room=example-room&key={key}" and "?" not in printed   # no query: the key rides the fragment
+    assert cli.main(["room", "page", "example-room", "--here", "--state", str(state)]) == 0
+    assert capsys.readouterr().out.strip().startswith(f"http://127.0.0.1:{y.port}/page#")
+    args, opened = mac_box(tmp_path, monkeypatch)
+    y.conf["page"] = {"listen": "100.64.0.1", "mac": "owner-mac"}               # no [page] address: listen's host, yerkd's port
+    got = asyncio.run(y.tool_page("example-room", {"open": True, "where": "mac"}))
+    assert got["line"].endswith(words.PAGE_OPENED_MAC)
+    url = opened.read_text().strip()
+    assert url.startswith(f"http://100.64.0.1:{y.port}/page?room=example-room&open=") and key not in url and key not in args.read_text()
+    y.conf["page"] = {"listen": "fd7a:115c:a1e0::1"}
+    assert pagemod.reach(y.conf, 8787) == "http://[fd7a:115c:a1e0::1]:8787"
+    y.conf["page"] = {"listen": "100.64.0.1", "address": "box.example.ts.net"}   # the name the Mac knows the box by wins
+    y.write_status("discord")
+    assert address(state, "example-room") == f"http://box.example.ts.net:{y.port}/page#room=example-room&key={key}"
+    y.conf["page"] = {}
+    y.write_status("discord")
+    assert "page" not in json.loads((state / "yerkd.json").read_text())       # the default: the box's own address alone
+    assert address(state, "example-room") == f"http://127.0.0.1:{y.port}/page#room=example-room&key={key}"
+
+
+def test_page_listen_takes_one_tailnet_or_lan_address_and_says_in_words_why_not_any_other(tmp_path, monkeypatch, caplog):
+    """A wildcard would put the page on every network the box joins, a public address on the internet in plain text, and a
+    host name could resolve elsewhere: each is refused in words, yerkd starts on loopback alone and the Mac's open says why."""
+    for said, want in ((None, ""), ("", ""), ("127.0.0.1", ""), ("::1", ""), ("localhost", ""), ("100.64.0.1", "100.64.0.1"),
+                       ("192.168.1.20", "192.168.1.20"), (" 10.0.0.5 ", "10.0.0.5"), ("[fd7a:115c:a1e0::1]", "fd7a:115c:a1e0::1")):
+        assert pagemod.listen({"page": {"listen": said}} if said is not None else {}) == want, said
+    for said, why in (("0.0.0.0", words.PAGE_LISTEN_EVERY), ("::", words.PAGE_LISTEN_EVERY), ("203.0.113.300", words.PAGE_LISTEN_NAME),
+                      ("8.8.8.8", words.PAGE_LISTEN_PUBLIC), ("2606:4700::1", words.PAGE_LISTEN_PUBLIC), ("224.0.0.1", words.PAGE_LISTEN_PUBLIC),
+                      ("box.example.ts.net", words.PAGE_LISTEN_NAME), (["100.64.0.1"], words.PAGE_LISTEN_NAME)):
+        with pytest.raises(ValueError) as e:
+            pagemod.listen({"page": {"listen": said}})
+        assert str(e.value) == why.format(x=str(said).strip()[:60]), said
+        with caplog.at_level("WARNING", logger="yerk.page"):
+            assert pagemod.sockets({"page": {"listen": said}}, 1) == []
+        assert str(e.value) in caplog.text
+    y, _, state = plain_daemon(tmp_path)
+    mac_box(tmp_path, monkeypatch)
+    y.conf["page"] = {"listen": "0.0.0.0", "mac": "owner-mac"}
+    got = asyncio.run(y.tool_page("example-room", {"open": True, "where": "mac"}))
+    assert got["line"].endswith(words.PAGE_NOT_OPENED_MAC.format(why=words.PAGE_LISTEN_EVERY.format(x="0.0.0.0"))) and y.page.tickets == {}
+    y.write_status("discord")
+    assert "page" not in json.loads((state / "yerkd.json").read_text())
+
+
+def test_an_address_the_box_has_not_got_yet_is_bound_all_the_same_so_a_tailnet_up_after_yerkd_needs_no_restart(tmp_path, caplog):
+    """At boot yerkd can start before the box's tailnet is up, when its address is not yet the box's: the page's socket binds
+    it all the same (IP_FREEBIND), so the page is served there the moment it comes up, and the log says it is not up yet;
+    an address off the tailnet is said to carry the page and its key unencrypted. A port taken there leaves loopback alone."""
+    lent, up = pagemod.bind("127.0.0.1", 0)
+    assert up and lent.getsockname()[0] == "127.0.0.1"
+    port = lent.getsockname()[1]
+    lent.close()
+    with caplog.at_level("INFO", logger="yerk.page"):
+        socks = pagemod.sockets({"page": {"listen": "192.0.2.10"}}, port)    # an address of the documentation's, on no box
+    try:
+        assert [s.getsockname()[:2] for s in socks] == [("127.0.0.1", port), ("192.0.2.10", port)]
+        assert "the box has no address 192.0.2.10 yet" in caplog.text and "192.0.2.10 is not a tailnet address" in caplog.text
+        caplog.clear()
+        for s in socks:
+            s.listen()                                                   # as yerkd's server does with them
+        with caplog.at_level("WARNING", logger="yerk.page"):
+            assert pagemod.sockets({"page": {"listen": "192.0.2.10"}}, port) == []          # its port there is taken
+        assert f"page: on loopback alone: 192.0.2.10 will not take port {port}" in caplog.text
+    finally:
+        for s in socks:
+            s.close()
+    six, up = pagemod.bind("2001:db8::10", 0)
+    assert not up and six.family == pagemod.socket.AF_INET6
+    six.close()

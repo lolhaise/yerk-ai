@@ -1516,17 +1516,26 @@ class Yerkd:
                 "rebuilding": await asyncio.to_thread(self.rebuild_running)}   # deploy waits it out, as the gate does
 
     def write_status(self, mode: str) -> None:
-        """state/yerkd.json: what is running, for `yerk room close` and the probes."""
+        """state/yerkd.json: what is running, for `yerk room close` and the probes, and the page as other screens reach it
+        (page.reach), the host `yerk room page` prints."""
+        try:
+            far = page.reach(self.conf, self.port)
+        except ValueError:                        # not an address: the Mac's open says why
+            far = ""
         write_private(self.state / "yerkd.json", json.dumps({
             "pid": os.getpid(), "port": self.port, "mode": mode, "started": round(time.time(), 3),
             "rooms": sorted(self.rooms), "secret_file": str(self.secret_file),      # paths, never values
-            "worker_secret_file": str(self.worker_secret_file)}))
+            "worker_secret_file": str(self.worker_secret_file), **({"page": far} if far else {})}))
 
     async def serve_http(self) -> None:
+        """/mcp, /hook, /control and the pages on loopback, and with [page] listen the page's routes alone on the box's
+        tailnet or LAN address too, on the same port (page.sockets), so the Mac and phone open the page."""
         import uvicorn
-        app = mcp_server.app(mcp_server.build(self, self.port, self.hook, self.control, self.status_now, self.page), self.check())
+        socks = page.sockets(self.conf, self.port)
+        app = mcp_server.app(mcp_server.build(self, self.port, self.hook, self.control, self.status_now, self.page), self.check(),
+                             frozenset(str(s.getsockname()[0]) for s in socks[1:]))
         self.http = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=self.port, log_level="warning"))
-        await self.http.serve()
+        await self.http.serve(sockets=socks or None)
 
     def listening(self) -> bool:
         """The HTTP port is bound: READY=1 may go out (a start counts only when it can answer)."""

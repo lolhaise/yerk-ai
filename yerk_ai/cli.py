@@ -92,7 +92,7 @@ def cmd_room(a: argparse.Namespace) -> int:
         return asyncio.run(move.imports(a) if a.cmd == "import" else move.add(a))
     if a.action == "page":                      # the room's live page: its address, the key in the fragment (channels/page.py)
         from .channels.page import address
-        print(address(state_dir(a.state), a.room))
+        print(address(state_dir(a.state), a.room, a.here))
         return 0
     out = _control(a.state, {a.action: a.room}, 900 if a.action == "compact" else 60)
     print(json.dumps(out))
@@ -765,6 +765,8 @@ def parser() -> argparse.ArgumentParser:
     r.add_argument("--since", help="add: the history from this day on, YYYY-MM-DD (default: all of it)")
     r.add_argument("--like", help="add: the room it is made like (default: the last of its kind in rooms.toml)")
     r.add_argument("--dry-run", action="store_true", help="add: read and print; write and send nothing")
+    r.add_argument("--here", action="store_true", help="page: the box's own 127.0.0.1 address, where [page] listen or address "
+                   "names the host other screens reach")
     r.add_argument("--private", help="add: private folder (default: $YERK_PRIVATE, else the fake example layer)")
     r.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
     im = sub.add_parser("import", help="a chat's whole history into the day logs, no room made: discord:<channel or thread id>, "

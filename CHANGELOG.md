@@ -8,6 +8,29 @@ version changes.
 
 ## 2026-11-04
 
+### need-2026-11-03-45 (#?)
+
+- The live page opens on your Mac and your phone, not only on the PC that hosts the box. Set `[page] listen` in
+  yerkd.toml to the box's tailnet address (`tailscale ip -4` on the box prints it) or its LAN one, and yerkd serves the
+  page there too, on its own port, beside loopback. Until you set it, nothing changes: the page stays on 127.0.0.1.
+- Only the page is served there. `/page` and its calls answer on that address; `/mcp`, `/hook`, `/control` and
+  `/status` are not found there whatever secret is sent, and the page's calls still open only with its room's key.
+- The address carries that host. `yerk room page NAME` prints `http://<the box's address>:<port>/page#room=NAME&key=...`,
+  the key still only in the fragment, which a browser never sends, so you can paste it on the Mac or the phone;
+  `--here` prints the box's own 127.0.0.1 one. The page tool's open on the Mac now needs no `[page] address`: it carries
+  the same host, with a one-time ticket, never the key. `[page] address`, when set, still wins for both, so a name
+  the Mac knows the box by (`box.example.ts.net`) is the one printed and opened.
+- yerkd binds the address even while the box does not have it yet, as at boot before tailscale is up, so the page is
+  there the moment the tailnet comes up, with no restart; its log says so. A wildcard (`0.0.0.0`), a public address or
+  a host name is refused, said in yerkd's log and in the room when the Mac's open needs it, and the page stays on
+  loopback. An address off the tailnet is logged as carrying the page and its key unencrypted on that network.
+- "What can you do" no longer lists `abilities` among the abilities, since the line before it names it; that makes room
+  for the new entry under the per-message cap. The `[code]` ceiling goes to 25,739; the abilities entry is page-reach.
+- Upgrading: to open the page from the Mac or the phone, set `listen = "<the box's tailnet address>"` under `[page]` in
+  yerkd.toml and restart yerkd once. Set `[http] port` too, so the address stays the same across restarts. Tailscale on
+  the box, the Mac and the phone is the encrypted way; a LAN address works without it, unencrypted. The forward that
+  need-2026-11-03-49's notes asked for is no longer needed when yerkd runs tailscale itself.
+
 ### need-2026-11-03-49 (#?)
 
 - The live page opens on the screen you are at: ask the room for the page on your Mac and the `page` tool's open, with

@@ -65,10 +65,10 @@ def line(name: str, ab: dict[str, Any], tab: dict[str, dict[str, Any]], s: Any) 
 
 
 def census(tab: dict[str, dict[str, Any]], s: Any) -> list[str]:
-    """Every ability's name grouped by its state here, built ones first, a line per state: the
+    """Every other ability's name grouped by its state here, built ones first, a line per state: the
     answer to "what can you do", short enough to ride whole under the per-message recall cap."""
     groups: dict[str, list[str]] = {}
-    for name, ab in sorted(tab.items(), key=lambda kv: kv[1].get("state", "built") == "described"):
+    for name, ab in sorted(((n, a) for n, a in tab.items() if n != SELF), key=lambda kv: kv[1].get("state", "built") == "described"):
         groups.setdefault(state(name, ab, tab, s)[1], []).append(name)
     return [f"{said} ({len(names)}): {', '.join(names)}." for said, names in groups.items()]
 

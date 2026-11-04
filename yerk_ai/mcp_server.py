@@ -16,7 +16,8 @@ the room's identity IS that binding, never a header a caller picks), and the wor
 recall and read_memory only, so a worker holds nothing that starts a worker or schedules a job). A room's live page
 (channels/page.py) is the one other caller: GET /page is the page itself, no data in it, open to a browser with no header,
 and its calls under /page/ open with that room's page key only, which opens nothing else; /page/open, with no header,
-trades a one-time ticket yerkd put in the address it opened on the owner's screen for that key, once.
+trades a one-time ticket yerkd put in the address it opened on the owner's screen for that key, once. All of it is on
+loopback; with [page] listen the page's routes alone are on the box's tailnet or LAN address too (Guard's `beside`).
 Each room's process gets a config naming this one server with `alwaysLoad: true` and its token as the
 header, passed with --strict-mcp-config. The same HTTP app answers the hooks.
 """
@@ -103,12 +104,22 @@ def checker(install: str, worker: str, room_of_token: Callable[[str], str | None
 
 class Guard:
     """ASGI middleware: refuses a request without a valid x-yerk-secret (401, one warning line), else
-    hands the request on with who it is in `request.state.yerk_auth`."""
+    hands the request on with who it is in `request.state.yerk_auth`. A request that came in on one of the
+    `beside` addresses, the box's tailnet or LAN one the page is also served on ([page] listen), gets the page's
+    routes and nothing else: any other path is not found there (404), whatever secret it carries."""
 
-    def __init__(self, app: Any, check: Check):
-        self.app, self.check = app, check
+    def __init__(self, app: Any, check: Check, beside: frozenset[str] = frozenset()):
+        self.app, self.check, self.beside = app, check, beside
 
     async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        path = str(scope.get("path", ""))
+        if scope["type"] != "lifespan" and (scope.get("server") or ("",))[0] in self.beside and not (path == PAGE or path.startswith(PAGE + "/")):
+            log.warning("http: refused %s %s on the page's own address: only the page is served there", scope.get("method", "?"), path)
+            if scope["type"] == "http":
+                await JSONResponse({"ok": False}, status_code=404)(scope, receive, send)
+            else:                               # a websocket's handshake, refused before it opens
+                await send({"type": "websocket.close", "code": 1008})
+            return
         if scope["type"] == "http":
             headers = {k.decode().lower(): v.decode() for k, v in scope.get("headers") or []}
             auth = self.check(str(scope.get("path", "")), headers.get(HEADER, ""))
@@ -122,9 +133,9 @@ class Guard:
         await self.app(scope, receive, send)
 
 
-def app(mcp: FastMCP, check: Check) -> Any:
-    """The HTTP app every client speaks to: the MCP server's, behind the guard."""
-    return Guard(mcp.streamable_http_app(), check)
+def app(mcp: FastMCP, check: Check, beside: frozenset[str] = frozenset()) -> Any:
+    """The HTTP app every client speaks to: the MCP server's, behind the guard; on the `beside` addresses, the page's alone."""
+    return Guard(mcp.streamable_http_app(), check, beside)
 
 
 def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = None, status: Handler | None = None,
