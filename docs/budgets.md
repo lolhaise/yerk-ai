@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 119205`
+- `total = 119405`
 
 ## [session_start.claude_code]
 
@@ -116,7 +116,9 @@ Yerk AI's own parts, joined into the one file passed by --append-system-prompt-f
 
 2026-11-02, need-2026-10-24-22: the watch line's clause (a video file sent to you: on its `path`, since Read cannot open one) took the mechanics file to 5,888: 5,901 on the box, 5,929 in a worker's worktree, 5,939 in CI's checkout of a sha; still under 6,000, which now leaves a checkout's path of up to 118 characters. No line moved.
 
-- `mechanics = 6000`
+2026-11-04, fold-named-2026-11-04: the fold line's clause (a message arriving mid-turn comes marked as sent while you were answering, and is answered in this same reply, by name; that afternoon a number fixed 0.8 s after the question it corrected folded into its turn, and the one reply covering both answered the first and never said the second) took the mechanics file to 6,077: 6,091 on the box, 6,119 in a worker's worktree, 6,129 in CI's checkout of a sha; so 6,200, a checkout's path of up to 129 characters. No part was measured again to pay for it, so the total rose by the 200, to 119,405.
+
+- `mechanics = 6200`
 - `persona = 11800`
 - `rulebook = 14000`
 - `room_voice = 5500`
@@ -483,9 +485,11 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-04, need-2026-11-04-47: 130 lines for a .tex compiled to a PDF and its pages counted (a room asked to edit a resume in LaTeX found no TeX in its shell and render taking LibreOffice's formats alone; filed 2026-11-04), not folded to fit: render.py 120 (engine: the file's own `% !TEX program` line, else lualatex or xelatex by what it or a class beside it loads, else pdflatex; box: the bubblewrap command, no network, no home, state or private folder, the document's folder read-only, a fresh build folder the one thing writable; first_error: TeX's first error and its line; compile_tex: latexmk with shell escape off, only a clean run's PDF copied out, a link at its name replaced, never written through; latex, the OSError's words and the module's words), words.py 6, daemon.py 3 (a .tex from the room's work folder only, since the layer can be the private folder itself) and mcp_server.py 1. 25,869.
 
-2026-11-04, entrypoint-name-2026-11-04: 4 lines for every Claude Code process Yerk AI starts going out under its own name, `yerk`, with Artifacts off (unset, a `claude -p` run is `sdk-cli`, which a plan's meters were measured counting heavier for the same work), not folded to fit: accounts.py 4 (account_env's two variables and the two clauses of its docstring that say why). 25,873.
+2026-11-04, fold-named-2026-11-04: 67 lines for a message folded into a running turn and answered by name, for every room (a number fixed 0.8 s after the question it corrected folded into that turn, the one reply covering both answered the first and never said the second, and the owner sent it again 70 s later), not folded to fit: room.py 51 (the fold's line ahead of the message, decided at the write and never kept on it, none on a watched channel's message; own_words, fold_tokens and carries; fold_check, the Stop hook's last rule, on the result's folds whose replay was seen; the folds and replays per result and their resets), words.py 11 (the line, the bounce, the filler, THERE), daemon.py 5 (the Stop rung and its `fold` shadow row; the approval word read in the message's own words, the message found by the text the room wrote, so a fold's line never hides the word). 25,936.
 
-- `lines = 25873`
+2026-11-04, entrypoint-name-2026-11-04: 4 lines for every Claude Code process Yerk AI starts going out under its own name, `yerk`, with Artifacts off (unset, a `claude -p` run is `sdk-cli`, which a plan's meters were measured counting heavier for the same work), not folded to fit: accounts.py 4 (account_env's two variables and the two clauses of its docstring that say why). 25,940.
+
+- `lines = 25940`
 
 ## Uncapped
 

@@ -268,7 +268,7 @@ def test_claude_codes_parts_as_the_rooms_send_them_fit_their_lines_and_what_is_l
     assert all(sent <= line for sent, line in rows.values()), out
     assert all(line <= sent * 1.02 for name, (sent, line) in rows.items() if name != "Yerk AI's tools"), rows
     s = b["session_start"]
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 119205
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 119405
 
 
 def room_sent(tmp_path, tools, file="# Yerk AI mechanics\n- an example line"):
@@ -392,10 +392,11 @@ def test_the_rulebook_line_keeps_about_1000_over_the_largest_room_text_and_what_
     and `off` (250), no part could pay, to 118,805 (need-2026-11-03-44); then its words for the scoreboard (100), no part
     could pay, to 118,905 (need-2026-11-03-46); then its `where`, an open on the Mac (100), no part could pay, to
     119,005 (need-2026-11-03-49); then the `render` tool's sentence on a .tex (200), no part could pay, to 119,205
-    (need-2026-11-04-47)."""
+    (need-2026-11-04-47); then the fold line's clause (200, a message arriving mid-turn answered by name), no part could
+    pay, to 119,405 (fold-named-2026-11-04)."""
     s = budgets()["session_start"]
     assert 900 <= s["appended"]["rulebook"] - LIVE_RULEBOOK <= 1400 and s["appended"]["rules"] == 16000
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 119205
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 119405
     private = tmp_path / "private"
     shutil.copytree(EXAMPLE_PRIVATE, private)
     (private / "rulebook.md").write_text("r" * (LIVE_RULEBOOK - 1) + "\n")
@@ -419,7 +420,17 @@ def test_the_mechanics_say_when_to_use_the_place_unasked_in_one_line_inside_thei
     text = context.MECHANICS.read_text().strip()
     lines = [x for x in text.splitlines() if "`[place]`" in x]
     assert len(lines) == 1 and all(w in lines[0] for w in ("unasked", "gym", "log the session", "work", "commute", "moving", "short"))
-    assert context.chars(text) < budgets()["session_start"]["appended"]["mechanics"] == 6000
+    assert context.chars(text) < budgets()["session_start"]["appended"]["mechanics"] == 6200
+
+
+def test_the_mechanics_say_a_message_arriving_mid_turn_is_answered_by_name_in_one_line_inside_their_budget():
+    """Seen live: a number fixed 0.8 s after the question it corrected folded into that turn, and the one reply
+    covering both never said it; the fold's line ahead of such a message is explained here, once."""
+    text = context.MECHANICS.read_text().strip()
+    lines = [x for x in text.splitlines() if "mid-turn" in x]
+    assert len(lines) == 1 and all(w in lines[0] for w in ("marked as sent while you were answering", "this same reply", "by name",
+                                                           "a correction replaces the question", "cannot see it was read"))
+    assert context.chars(text.replace(context.CODE, "x" * 129)) <= budgets()["session_start"]["appended"]["mechanics"]
 
 
 def test_declared_parts_fit_the_declared_total():

@@ -14,7 +14,27 @@ version changes.
   goes out under Yerk AI's own name, `yerk`, where it used to carry Claude Code's headless default, `sdk-cli`, which
   a plan's meters were measured counting heavier for the same work. Artifacts stay off, since any name but `sdk-*`
   would turn them on and add a Scratchpad line to every request. Nothing else changes and nothing needs doing: every
-  room has it from yerkd's restart at the deploy. The `[code]` ceiling goes to 25,873.
+  room has it from yerkd's restart at the deploy. The `[code]` ceiling goes to 25,940.
+
+### fold-named-2026-11-04 (#?)
+
+- A message you send while a room is still answering is answered by name, in every room. Yerk writes it into the
+  running turn with one line ahead of it: sent so many seconds after the message above, while the room was answering,
+  to be answered in that same reply, a correction replacing the question it corrects, and named whichever it answers
+  (the number, the name, the thing), since you cannot see it was read. Before this, a quick fix ("41" a second after
+  "who opened 40?") went into the turn with nothing saying so, and the one reply covering both answered the first and
+  never said the second, so on a phone the second message read as unanswered.
+- A reply that covers such a message and names none of its content bounces once at Stop, and the room writes the whole
+  reply again naming it in its first words. Its content is its numbers (41 in "EX-41", never inside 410) and, in a
+  message of three words or fewer, its words of three letters or more, filler such as "okay", "thanks" or "wait" aside.
+  Never bounced: a message with no number and more than three words, a filler one, the turn's own first message, a
+  reply of exactly NO_REPLY, Yerk's own messages, and a message Claude Code had not taken into that reply yet (it is
+  answered as the next one). Each bounce is a `fold` row in the shadow ledger.
+- A message from the channel a room watches goes in with no line ahead, since its own line says how it is answered,
+  and so does a message that ran as its own turn after the turn it folded into failed. An "approve" typed while a turn
+  runs still counts with the line ahead of it.
+- The mechanics' line on a message arriving mid-turn says the same, so `mechanics` in budgets.toml goes to 6,200 and
+  the session start's total to 119,405; the `[code]` ceiling goes to 25,936.
 
 ### need-2026-11-04-47 (#?)
 

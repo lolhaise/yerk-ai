@@ -609,11 +609,12 @@ def test_a_human_message_during_the_relay_turn_is_answered_inside_it(setup):
     assert room.submit(relay) == "started"
     time.sleep(0.4)
     s.ledger.inbound_add("h2", "r", "c", "owner", 5)
-    assert room.submit(Inbound("h2", "owner", "and?")) == "folded"
+    assert room.submit(h2 := Inbound("h2", "owner", "and?")) == "folded"
     while room.busy:
         time.sleep(0.05)
     (text, inbound), = s.chan.replies
-    assert inbound == ["relay-ccc333", "h2"] and text == "echo: SLOW [worker ccc333 finished] done + and?"
+    assert inbound == ["relay-ccc333", "h2"] and text == f"echo: SLOW [worker ccc333 finished] done + {h2.sent}"
+    assert h2.sent == f"{W.FOLDED.format(n=round(h2.received - relay.received))}\n\nand?"     # its seconds since the relay above it
     assert seen == [("answered", ["m1"])] and s.ledger.inbound_get("h2")["state"] == "answered"
     assert room.last_human is not None and s.ledger.last_received("r") == s.ledger.inbound_get("h2")["received"]
 
