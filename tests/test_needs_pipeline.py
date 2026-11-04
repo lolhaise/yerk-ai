@@ -57,6 +57,7 @@ def pipe(tmp_path, monkeypatch):
     monkeypatch.setattr(github, "api", hub)
     monkeypatch.setattr(github, "token", lambda private: TOK)
     y.pipeline.units = units
+    y.pipeline.tree = tmp_path / "no-checkout"            # a need going live never deletes a branch in the checkout under test
     rooms = {r: Rec() for r in ("example-room", "her-room")}
     y.channels.update(rooms)
     return y, rec, hub, units, rooms
@@ -380,6 +381,114 @@ def test_done_by_hand_lands_the_needs_plugin_branch_too(pipe, tmp_path, monkeypa
     assert cli.main(["needs", "done", day, "1", "7", "--state", str(y.state), "--private", str(EXAMPLE_PRIVATE)]) == 0
     assert capsys.readouterr().out == f"need 1 of {day}: merged, PR 7\nthe example-plugin plug-in landed\n"
     assert git(p, "rev-parse", "main") == sha and "the page marks" in (p / "server.mjs").read_text()
+
+
+def shipped(y, tmp_path: Path, branch: str, merged: bool = True) -> Path:
+    """The checkout a need's merge leaves: on main, the need's branch there with a finished worker's worktree still on it,
+    merged as GitHub merges, by a merge commit (or, `merged` False, not)."""
+    tree = tmp_path / "checkout"
+    tree.mkdir()
+    git(tree, "init", "-q", "-b", "main")
+    (tree / "server.mjs").write_text("baseline\n")
+    git(tree, "add", ".")
+    git(tree, *ID, "commit", "-q", "-m", "baseline")
+    commit_on(tree, tmp_path / "worker-wt", branch, "the need\n")
+    if merged:
+        git(tree, *ID, "merge", "-q", "--no-ff", "--no-edit", branch)
+    y.pipeline.tree = tree
+    return tree
+
+
+def test_live_drops_the_needs_branch_here_then_on_github_and_frees_the_worktrees_its_workers_left_on_it(pipe, tmp_path, monkeypatch):
+    y, rec, hub, units, rooms = pipe
+    day = need(y, "example-room", *ASK)["day"]
+    branch, wt, wt2 = f"need-{day}-1", tmp_path / "worker-wt", tmp_path / "fixer-wt"
+    tree = shipped(y, tmp_path, branch)
+    git(tree, "worktree", "add", "-q", "--force", str(wt2), branch)    # a fix worker on the same branch: git takes it with --force
+    git(tree, "worktree", "add", "-q", str(tmp_path / "next-wt"), "-b", f"{branch}0", "main")    # the next need's builder, a name this one starts
+    sha, route, here = git(tree, "rev-parse", branch), f"/repos/{SLUG}/git/refs/heads/{branch}", []
+    hub.routes[("DELETE", route)] = (204, None)
+
+    def spy(method, path, tok, body=None):
+        here.append(git(tree, "branch", "--list", branch))             # what the checkout has when GitHub is called
+        return hub(method, path, tok, body)
+    monkeypatch.setattr(github, "api", spy)
+    asyncio.run(y.pipeline.live(row(y, day)))
+    assert here == [""] and hub.calls == [("DELETE", route, None)]     # gone here first, and GitHub's once
+    assert row(y, day)["state"] == "live" and rec.lines[-1] == words.NEED_LIVE.format(n=1, ability=ASK[2])
+    for w in (wt, wt2):                                                # each detached where it stood, its files as they were
+        assert git(w, "rev-parse", "HEAD") == sha and (w / "server.mjs").read_text() == "the need\n"
+        assert subprocess.run(["git", "-C", str(w), "symbolic-ref", "-q", "HEAD"]).returncode == 1
+    assert git(tmp_path / "next-wt", "symbolic-ref", "--short", "HEAD") == f"{branch}0"
+
+
+def test_a_branch_head_does_not_hold_stays_with_its_worktree_and_github_is_not_called(pipe, tmp_path, caplog):
+    y, rec, hub, units, rooms = pipe
+    caplog.set_level("INFO", logger="yerk.needs")
+    day = need(y, "example-room", *ASK)["day"]
+    branch = f"need-{day}-1"
+    tree = shipped(y, tmp_path, branch, merged=False)
+    asyncio.run(y.pipeline.live(row(y, day)))
+    assert git(tree, "branch", "--list", branch) and git(tmp_path / "worker-wt", "symbolic-ref", "--short", "HEAD") == branch
+    assert f"needs: branch {branch} stays: its HEAD does not hold it" in caplog.messages and hub.calls == []
+    assert row(y, day)["state"] == "live" and rec.lines[-1] == words.NEED_LIVE.format(n=1, ability=ASK[2])
+
+
+def test_git_refusing_the_delete_keeps_githubs_too_and_the_main_checkout_is_never_detached(pipe, tmp_path, caplog):
+    y, rec, hub, units, rooms = pipe
+    caplog.set_level("INFO", logger="yerk.needs")
+    day = need(y, "example-room", *ASK)["day"]
+    branch = f"need-{day}-1"
+    tree = shipped(y, tmp_path, branch)
+    git(tree, "checkout", "-q", "--ignore-other-worktrees", branch)     # the checkout itself on the need's branch: -d refuses
+    asyncio.run(y.pipeline.live(row(y, day)))
+    assert git(tree, "symbolic-ref", "--short", "HEAD") == branch and git(tree, "branch", "--list", branch) and hub.calls == []
+    assert any(m.startswith(f"needs: branch {branch} stays: ") for m in caplog.messages) and row(y, day)["state"] == "live"
+
+
+def test_a_plugin_branch_goes_in_its_own_repository_and_never_on_github(pipe, tmp_path, caplog):
+    y, rec, hub, units, rooms = pipe
+    caplog.set_level("INFO", logger="yerk.needs")
+    p = attach(y, tmp_path)
+    day = need(y, "example-room", *ASK)["day"]
+    branch = f"need-{day}-1"
+    sha = commit_on(p, tmp_path / "worker-plugin-wt", branch, "export const gate = 'the page marks';\n")
+    plugs = asyncio.run(y.pipeline.heads(row(y, day)))
+    assert needs.land("example-plugin", plugs["example-plugin"]) == ""
+    asyncio.run(y.pipeline.set(row(y, day), {"plugins": plugs}))
+    tree = shipped(y, tmp_path, branch)
+    asyncio.run(y.pipeline.live(row(y, day)))
+    assert not git(p, "branch", "--list", branch) and git(p, "rev-parse", "main") == sha and not git(tree, "branch", "--list", branch)
+    assert hub.calls == [("DELETE", f"/repos/{SLUG}/git/refs/heads/{branch}", None)]       # Yerk's own alone
+    assert f"needs: branch {branch} on GitHub: GitHub said 404: Not Found" in caplog.messages and row(y, day)["state"] == "live"
+
+
+def test_the_hand_road_reaches_the_same_drop_and_with_no_token_github_is_never_called(pipe, tmp_path, monkeypatch, caplog):
+    y, rec, hub, units, rooms = pipe
+    caplog.set_level("INFO", logger="yerk.needs")
+    monkeypatch.setattr(github, "token", lambda private: "")
+    day = need(y, "example-room", *ASK)["day"]
+    tree = shipped(y, tmp_path, f"need-{day}-1")
+    end(y, row(y, day)["worker"], f"branch need-{day}-1 at 1234567: it reads pictures")
+    assert cli.main(["needs", "done", day, "1", "7", "--state", str(y.state), "--private", str(EXAMPLE_PRIVATE)]) == 0
+    sha = head(REPO)
+    asyncio.run(y.pipeline.set(row(y, day), {"merge": sha}))
+    y.ledger.deploy(kind="deploy", unit="yerkd", before="0" * 7, after=sha, outcome="proven")
+    asyncio.run(y.pipeline.tick())
+    assert row(y, day)["state"] == "live" and not git(tree, "branch", "--list", f"need-{day}-1") and hub.calls == []
+    assert not [m for m in caplog.messages if "branches:" in m]         # the fake GitHub refuses an empty token: never asked, no error
+
+
+def test_an_error_in_the_drop_is_one_log_line_and_the_need_is_live_with_its_lines(pipe, tmp_path, monkeypatch, caplog):
+    y, rec, hub, units, rooms = pipe
+    caplog.set_level("INFO", logger="yerk.needs")
+    day = need(y, "example-room", *ASK)["day"]
+    shipped(y, tmp_path, f"need-{day}-1")
+    monkeypatch.setattr(github, "api", lambda *a, **k: 1 / 0)
+    asyncio.run(y.pipeline.live(row(y, day)))
+    assert [m for m in caplog.messages if "branches:" in m] == ["needs: need 1's branches: ZeroDivisionError('division by zero')"]
+    assert row(y, day)["state"] == "live" and rec.lines[-1] == words.NEED_LIVE.format(n=1, ability=ASK[2])
+    assert rooms["example-room"].lines == [words.NEED_LIVE_ROOM.format(n=1, ability=ASK[2])]
 
 
 def test_the_list_words_every_state(tmp_path, capsys):
