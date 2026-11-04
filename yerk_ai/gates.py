@@ -13,7 +13,8 @@ quotes, in a heredoc body or as a word in a string is not a delete; lifted/shell
 - restart: a write to a file yerkd reads at start (yerkd.toml, rooms.toml, accounts.toml) or a
   restart of yerkd is refused while the memory index rebuilds or a human turn is running, with one
   plain line to the room;
-- approval: an action named external (a send to another room, a public post, a login, money, a
+- approval: an action named external (a send to another room, an owner room's line to the machine
+  room excepted, a public post, a login, money, a
   message out through another tool, a text in the owner's name, a delete for good outside the work folder, or a rule in
   yerkd.toml [gates.external]) is held, one plain
   line to the room, until an approver says the word in the room's running turn; then that same call
@@ -231,6 +232,14 @@ def room_named(value: str, rooms: dict[str, dict[str, Any]]) -> str | None:
     return None
 
 
+def machine_room(frm: str, to: str, rooms: dict[str, dict[str, Any]]) -> bool:
+    """An owner room's send to the machine room (rooms.toml role = "machine") stays in the in-group: the owner, their
+    agents and the daemon's own cards read it, and the `need` tool already reaches it with no word. A family room's
+    send there, and any send to any other room, still hold for the word."""
+    return (str(rooms.get(to, {}).get("role") or "") == "machine"
+            and str(rooms.get(frm, {}).get("privacy") or "owner") == "owner")
+
+
 def external_hit(tool: str, ti: dict[str, Any], room: str, s: Settings,
                  rooms: dict[str, dict[str, Any]] | None = None) -> tuple[str, str, str] | None:
     """(rule, what in plain words, the call in one line) for an action named external, else None. With `rooms`
@@ -241,6 +250,8 @@ def external_hit(tool: str, ti: dict[str, Any], room: str, s: Settings,
             continue
         to = room_named(str(ti.get("room") or room), rooms or {room: {}}) if rule.get("room") == "other" else None
         if rule.get("room") == "other" and to == room:      # its own name or channel: never another room
+            continue
+        if rule.get("room") == "other" and to and machine_room(room, to, rooms or {}):   # the owner's own line to the machine room
             continue
         what = rule.get("what", name)
         if rule.get("command"):

@@ -24,10 +24,16 @@ version changes.
   Where nothing opens it, the page is still on and the room says `yerk room page NAME` on the box prints the address.
 - Owner rooms only, as the page is: any other room's `open` is refused, with nothing written and nothing opened.
 - `yerk_tools` in budgets.toml goes to 19,900 and the session start's total to 118,805 (the tool is 1,700 as built,
-  253 more), and the `[code]` ceiling to 25,385; the abilities entry is page-switch, and the abilities line is cut by 14
+  253 more), and the `[code]` ceiling to 25,396; the abilities entry is page-switch, and the abilities line is cut by 14
   so the "what can you do" answer keeps every name under its 2,000.
 - Upgrading: nothing to set. Under WSL the default opener needs Windows interop (on unless turned off in wsl.conf); a
   box with another way to its screen names it in `[page] open`.
+
+### machine-room-send (#?)
+
+- An owner room's send to the machine room (rooms.toml `role = "machine"`) no longer holds for the approval
+  word: that line stays in the in-group, and the `need` tool already reaches the same room with no word. A
+  family room's send there, and any send to any other room, hold as before.
 
 ### approve-first-word (#?)
 

@@ -937,5 +937,6 @@ secs = 60
 # run in words, a page dropped live with its last typing sent), daemon.py 39 (the switch: what a start does for a page
 # room, or its undoing, and `page` in the room's override while it differs from rooms.toml's; the tool's open and off),
 # mcp_server.py 13 (the tool's two flags, the ticket's route and its place in the guard), words.py 12, config.py 3 (the
-# `[page] open` key). 25,385: main ed9e586's 25,248 plus 137.
-lines = 25385
+# `[page] open` key). 25,385: main ed9e586's 25,248 plus 137; 25,396 with main 1543849's 25,259 (machine-room-send)
+# merged in.
+lines = 25396
