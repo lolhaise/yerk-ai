@@ -8,6 +8,14 @@ version changes.
 
 ## 2026-11-04
 
+### entrypoint-name-2026-11-04 (#?)
+
+- Every Claude Code process Yerk AI starts (each room's, each worker's, the nightly curation's and the account checks)
+  goes out under Yerk AI's own name, `yerk`, where it used to carry Claude Code's headless default, `sdk-cli`, which
+  a plan's meters were measured counting heavier for the same work. Artifacts stay off, since any name but `sdk-*`
+  would turn them on and add a Scratchpad line to every request. Nothing else changes and nothing needs doing: every
+  room has it from yerkd's restart at the deploy. The `[code]` ceiling goes to 25,940.
+
 ### fold-named-2026-11-04 (#?)
 
 - A message you send while a room is still answering is answered by name, in every room. Yerk writes it into the
