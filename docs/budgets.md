@@ -451,7 +451,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-03: need-2026-11-03-43 raised it by 580, a room's live page (a browser tab on the owner's monitor whose typing, drawing and test runs reach the room as the owner's messages, mid-turn too, and where its replies and the `page` tool render, since a room asked for one had Discord as its only way in), not folded to fit: channels/page.py 470 (the hub: the page's key, its events and their file, the quiet-gap message, the test runner under `python3 -I` with its caps, the tool's drawing, the tabs' feed and its end at a stop, the Mirror and the address), mcp_server.py 61 (the tool, the page's routes and its key in the guard), words.py 22, daemon.py 20 (the hub, the Mirror on a `page` room, the tool's run of what it drew, the keys' folder hidden from workers, the feeds closed at a stop), cli.py 5 (`yerk room page`), config.py 2 (the `page` key). 25,196: main d093323's 24,616 plus 580.
 
-- `lines = 25196`
+2026-11-03: the fix of need-2026-11-03-43 (PR 185's cold read) raised it by 49, not folded to fit: channels/page.py 38 (the test runner in bubblewrap, no network, no home, state or private folder, its own PID namespace, and nothing run with no bwrap that starts, since the `page` tool hands it code a model wrote), daemon.py 8 (`page = true` refused outside the owner's rooms, at the start and in the tool; a page room's start says when the sandbox cannot start), words.py 3. 25,245.
+
+- `lines = 25245`
 
 ## Uncapped
 
