@@ -8,6 +8,21 @@ version changes.
 
 ## 2026-11-03
 
+### need-2026-11-03-47 (#?)
+
+- A live page's top bar shows each label and value as a cell of its own, spaced from the next, in every room: the cells
+  are a row with its own gap, wrapping on a narrow screen, each a box with its label over its value. A test now holds
+  that layout, so the cells cannot run together again as they did when every one sat inside one span.
+- A room never pads the bar's words to keep them apart: yerkd keeps each label and value as its words alone (a run of
+  spaces of any kind, a no-break, thin or wide one, a tab or a blank filler, is one space, and none is kept at either
+  end) before the 24 and 40 character caps, and drops a cell left with no words, a spacer, which no longer takes one of
+  the 8. A padded bar reads and shows as the plain words: no blank inside a cell, and a tier word kept from its division
+  by a no-break space is a rank badge in its tier's colour again.
+- The `page` tool's answer says when it dropped padding, so the room stops putting it in.
+- The `[code]` ceiling in budgets.toml goes to 25,451; the abilities entry is page-cells, and the "what can you do"
+  answer's last line is cut to "`yerk explain NAME` has any one." (21 fewer) so it keeps every name under its 2,000.
+- Upgrading: nothing to set. An open page shows the plain words from the room's next draw.
+
 ### need-2026-11-03-46 (#?)
 
 - A room's live page looks like a game, not a form, the same for every room, and the room still sets only the words:

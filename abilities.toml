@@ -43,7 +43,9 @@ layer = 10
 # "each ability, built or known" (15 fewer); need-2026-11-03-44 found it at 2,010 with page-switch's name and cut
 # ": each ability, built or known" to ", built or known" (14 fewer); need-2026-11-03-46 found it at 2,005 with page-look's
 # name and cut the answer's last line (abilities.brief) from "says what any one does, needs and costs" to "says what one
-# does, needs, costs" (7 fewer), so it ends at 1,998.
+# does, needs, costs" (7 fewer), so it ends at 1,998; need-2026-11-03-47 found it at 2,010 with page-cells' name and cut
+# that line's "says what one does, needs, costs" to "has any one", this entry's own words for it (21 fewer), so it ends
+# at 1,989.
 [abilities.abilities]
 state = "built"
 what = "Says what Yerk AI can do, built or known."
@@ -1502,6 +1504,24 @@ price = "none"
 free_path = "this is the free path"
 asked_as = ["top bar look better", "make the page look better", "make my page look better", "page look like a game", "page looks like a form",
             "scoreboard on the page"]
+
+# need-2026-11-03-47: on a live page whose top bar's cells ran into each other (every cell inside one span, so the bar's
+# gap never fell between them), a room could not space them, the layout being the page's own, and padded its values with
+# no-break spaces instead; filed 2026-11-03.
+[abilities.page-cells]
+state = "built"
+what = "A live page's top bar shows each label and value as a cell of its own, spaced from the next, for every room, so no room pads its words to keep them apart: the page lays the cells out itself, and yerkd keeps the bar's words plain, so padding put in them is dropped and they read and show as the words alone."
+how = [
+  "The page: the bar's cells are a row of their own with its own gap, wrapping on a narrow screen, each cell a box with its label over its value (channels/page.html).",
+  "The words: yerkd keeps each of the bar's labels and values as its words alone (channels/page.py, plain): a run of spaces of any kind (no-break, thin or wide, a tab, a blank filler) one space, none at either end and no zero-width one, before the length cap; a cell left with no words, a spacer, goes and takes none of the 8. A tier word kept from its division by a no-break space reads as its rank again.",
+  "Told: the `page` tool's answer says when it dropped padding, so the room stops putting it in.",
+]
+tier = "free"
+needs = "the live-page ability"
+price = "none"
+free_path = "this is the free path"
+asked_as = ["top bar spacing", "spacing on the page", "cells run into each other", "cells run together", "labels and values run together",
+            "space out the cells"]
 
 [abilities.work-writes]
 state = "built"

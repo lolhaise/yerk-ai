@@ -477,6 +477,7 @@ PAGE_OPEN_FAILED = "the opener failed: {why}"
 PAGE_OPEN_SILENT = "it said nothing"
 PAGE_TICKET_SPENT = "This address was opened once already or is over a minute old; ask the room to open the page again."
 PAGE_NO_TAB = "no tab is open on the page now; it shows this when one opens"
+PAGE_UNPADDED = "the page spaces the bar's cells itself, so the padding in their words was dropped"
 PAGE_NO_DAEMON = "yerkd is not running here (no yerkd.json in the state folder); start it, then ask again"
 PAGE_NO_KEY = ("room {room} has no live page yet: ask for it in the room, whose page tool turns it on, or set page = true in its "
                "rooms.toml table and restart yerkd")
