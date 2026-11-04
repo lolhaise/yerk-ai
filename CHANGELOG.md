@@ -39,6 +39,11 @@ version changes.
 - Why: on 2026-11-04 a room's `web_research` at medium came back after 60 s as a timeout with no run id (the plug-in cut
   each request to Exa at a minute, the run's create too), so `web_research_result` had nothing to collect and the room
   did the research by hand with `web_search` and `web_fetch`; the room filed the need (need 49 of 2026-11-04).
+- Tests only: the page test of the address printed and the Mac's open no longer fails now and then (box-ci red on
+  py3.14 at this branch's first head). An earlier test, the owner's ask turns the page on, typed a line on the page
+  and left that turn running on the real Claude Code; its "not answered" notice, printed about two seconds later,
+  could land in the later test's captured output. That test now keeps what reaches the room, as the listen test
+  does, and checks the line got there (the same change as need-2026-11-04-48's).
 
 **Upgrading**: nothing to change by hand; every room that attaches the web plug-in starts its runs this way from its
 next session after the deploy (a session already running keeps the plug-in process it started with).
