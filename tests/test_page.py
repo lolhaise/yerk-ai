@@ -372,7 +372,7 @@ def test_the_chat_keeps_both_sides_numbered_time_stamped_and_read_and_comes_back
     assert len(again.sheets["r"].lines) == pagemod.LINES_KEPT and again.sheets["r"].lines[-1]["text"] == f"line {pagemod.LINES_KEPT + 4}"
 
 
-def test_a_comment_typed_in_the_program_is_his_talk_on_the_chat_and_said_to_the_room(tmp_path):
+def test_a_comment_typed_in_the_program_is_the_owner_s_talk_on_the_chat_and_said_to_the_room(tmp_path):
     p, room = hub(tmp_path, quiet=60)
     p.draw("r", {"code": "# the room's own note\ndef add(a, b):\n    return a - b\n"})
 
