@@ -15,8 +15,10 @@
   state or private folder, nothing writable but the run's own folder, a PID namespace of its own that dies with the run.
   The room's `page` tool hands it code too, so it is code a model wrote: with no bwrap that starts, nothing runs and the
   run says so. The result goes back to the page at once and rides in the next message.
-- What the room says renders on the page: its replies, its notices and its sends to itself (Mirror), and what the
-  `page` tool draws: a new program or tests, marks on lines (a highlight, an arrow, each with a note), a one-line hint,
+- What the room says renders on the page's chat, a pane of its own beside the program, beside what the owner said there
+  (a line in its say box, or a # comment line typed in the program, which also reaches the room as said), each line
+  time-stamped and read the way Discord reads a message (rich), the newest LINES_KEPT kept in work/page/ across a
+  restart: its replies, its notices and its sends to itself (Mirror), and what the `page` tool draws: a new program or tests, marks on lines (a highlight, an arrow, each with a note), a one-line hint,
   the bar (labels and values, a countdown) and the stall wait. A tab that opens or reconnects gets the whole state first.
 - On the owner's ask the room's `page` tool turns its page on with no restart (Yerkd.page_switch) and yerkd opens it on
   the owner's screen with the box's own opener (opener): the address it opens holds a one-time ticket, never the key,
@@ -60,7 +62,7 @@ RUN_MEMORY = 1 << 30     # a test run's address space, in bytes
 OUTPUT_MAX = 4000        # characters of what a run printed that come back
 TEXT_MAX = 100_000       # characters of a program or its tests the page may send
 DIFF_LINES = 60          # lines of the change one message carries; the whole program is in work/page/
-LINES_KEPT = 50          # the room's newest lines a tab shows when it opens
+LINES_KEPT = 200         # the chat's newest lines, the owner's and the room's, a tab shows when it opens
 POINTS_MAX = 400         # points of one stroke kept in the events file
 NOTE_MAX = 200           # characters of a mark's note or the hint
 TICKET_SECONDS = 60       # a one-time address opened on the owner's screen is good this long, and once
@@ -68,7 +70,7 @@ OPEN_SECONDS = 15         # an opener's wall clock: it hands the address to the 
 # Windows' own opener under WSL (a Windows browser reaches the box's local address): it hands the address whole to the
 # default browser, where cmd.exe's start would split it at its `&`
 WSL_OPEN = ("/mnt/c/Windows/System32/rundll32.exe", "url.dll,FileProtocolHandler")
-PROGRAM, TESTS = "solution.py", "test_solution.py"
+PROGRAM, TESTS, CHAT = "solution.py", "test_solution.py", "chat.json"
 MARKS = ("highlight", "arrow")
 # the bar as a scoreboard, read from the room's words alone (cell): a rank's tiers, low to high, each its colour on the
 # page (.tier-NAME in page.html); the labels whose value is a rank; a division after a tier; a number and a short unit
@@ -79,6 +81,17 @@ NUM = r"(\d[\d,]*(?:\.\d+)?)"
 UNIT = r"(?:\s*([^\d\s/%:.,][^\s]{0,7}))?"
 METER, PERCENT = re.compile(rf"{NUM}\s*(?:/|of|out of)\s*{NUM}{UNIT}", re.I), re.compile(rf"{NUM}\s*%")
 NUMBER = re.compile(rf"([+\-−]?){NUM}{UNIT}")
+# a line said, read the way Discord reads a message (rich): a fenced block, else a row a line, its look from its start
+# (a heading, subtext, a quote, a list item), and in a row its runs: code, an escape, a link (masked or bare), then the
+# marks, each a letter of the run's look (bold, underline, italic, strike, a spoiler hidden until it is clicked)
+FENCE = re.compile(r"```(?:([\w+#.-]*)\n)?(.*?)```", re.S)
+ROW = re.compile(r"(?P<h>#{1,3}) (?=\S)|-# (?=\S)|(?P<all>>>> ?)|> |(?P<in>\s*)(?P<li>[-*•]|\d{1,3}\.) (?=\S)")
+INLINE = re.compile("|".join((r"`(?P<code>[^`\n]+)`", r"\\(?P<esc>[\\*_~`|>#\[\]()-])",
+                              r"\[(?P<label>[^\]\n]+)\]\(<?(?P<to>https?://[^\s<>()]+)>?\)", r"<?(?P<url>https?://[^\s<>]*[^\s<>.,:;!?'\")\]])>?",
+                              r"\*\*\*(?P<bi>\S(?:.*?\S)?)\*\*\*", r"\*\*(?P<b>\S(?:.*?\S)?)\*\*", r"__(?P<u>\S(?:.*?\S)?)__",
+                              r"\*(?P<i>[^\s*](?:.*?[^\s*])?)\*", r"(?<!\w)_(?P<i_>\S(?:.*?\S)?)_(?!\w)", r"~~(?P<s>\S(?:.*?\S)?)~~",
+                              r"\|\|(?P<h>.+?)\|\|")))
+LOOKS = {"bi": "bi", "b": "b", "u": "u", "i": "i", "i_": "i", "s": "s", "h": "h"}
 RUNNER = '''import importlib, json, os, resource, sys, traceback, unittest
 here, cap, mem = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
 resource.setrlimit(resource.RLIMIT_CPU, (cap + 1, cap + 1))
@@ -254,6 +267,76 @@ def board(bar: dict[str, str]) -> list[dict[str, Any]]:
     return [cell(k, v) for k, v in bar.items()]
 
 
+def runs(text: str, looks: str = "") -> list[dict[str, str]]:
+    """A row's words as runs of one look each (INLINE): `code` in code marks, a backslash's mark kept a mark, a link
+    ([words](address), a bare address, or one in <>) only to http or https, and **bold**, __underline__, *italic* or
+    _italic_, ~~strike~~ and ||a spoiler|| around words read in turn, so marks nest."""
+    out: list[dict[str, str]] = []
+
+    def add(text: str, looks: str, href: str = "") -> None:
+        if text and out and out[-1]["looks"] == looks and out[-1].get("href", "") == href:
+            out[-1]["text"] += text
+        elif text:
+            out.append({"text": text, "looks": looks, **({"href": href} if href else {})})
+    at = 0
+    for m in INLINE.finditer(text):
+        add(text[at:m.start()], looks)
+        at, kind = m.end(), m.lastgroup or ""
+        if kind in ("code", "esc", "url"):
+            add(m[kind], looks + "c" if kind == "code" else looks, m[kind] if kind == "url" else "")
+        else:
+            for r in runs(m["label"] if kind == "to" else m[kind], looks if kind == "to" else looks + LOOKS[kind]):
+                add(r["text"], r["looks"], m["to"] if kind == "to" else r.get("href", ""))
+    add(text[at:], looks)
+    return out
+
+
+def rich(text: str) -> list[dict[str, Any]]:
+    """A line said, as the page's chat draws it, read the way Discord reads a message, since the owner reads the room
+    there in place of Discord: a fenced block code in a box of its own (its language named after the fence), every other
+    line a row and a blank line one gap between thoughts; a row's look from its start (ROW: #, ## or ### a heading, -#
+    subtext, > a quote and >>> every row after it, a dash, a star or a number and a full stop a list item, its depth from
+    its indent) and its words as runs (runs). Words only: the page puts each run in as text, never as markup."""
+    out: list[dict[str, Any]] = []
+    quoted, at, fences = False, 0, list(FENCE.finditer(text))
+    for n, m in enumerate([*fences, None]):
+        rows = text[at:m.start() if m else len(text)].split("\n")
+        rows = rows[1:] if n and rows[0] == "" else rows                 # the line break after a fence
+        rows = rows[:-1] if m and len(rows) > 1 and rows[-1] == "" else rows   # the one before it
+        for row in rows:
+            if not row.strip():
+                if out and out[-1]["kind"] != "gap":
+                    out.append({"kind": "gap"})
+                continue
+            r = ROW.match(row)
+            head, quoted = r.group(0) if r else "", quoted or bool(r and r["all"])
+            block: dict[str, Any] = ({"kind": "quote"} if quoted or head.startswith(">") else {"kind": "h" + str(len(r["h"]))} if r and r["h"]
+                                     else {"kind": "sub"} if head.startswith("-#") else {"kind": "p"} if not (r and r["li"])
+                                     else {"kind": "li", "mark": "•" if r["li"] in "-*•" else r["li"], "depth": min(len(r["in"].expandtabs(4)) // 2, 4)})
+            out.append(block | {"runs": runs(row if block["kind"] == "p" or (quoted and not head.startswith(">")) else row[len(head):])})
+        if m:
+            out.append({"kind": "code", "lang": m[1] or "", "text": m[2].removesuffix("\n")})
+            at = m.end()
+    return out[:-1] if out and out[-1]["kind"] == "gap" else out
+
+
+def comments(old: str, new: str) -> list[tuple[int, str]]:
+    """The # comment lines the owner typed in the program since the room last heard it, the owner's talk as a said line is (a
+    whole line a comment, new or changed, never a #! line or one the program already had): each run of them as its
+    first line, from 1, and its words, a line each."""
+    had, rows, out = {x.strip() for x in old.splitlines()}, new.splitlines(), list[tuple[int, str]]()
+    for tag, _, _, j1, j2 in difflib.SequenceMatcher(None, old.splitlines(), rows, autojunk=False).get_opcodes():
+        for j in range(j1, j2) if tag in ("insert", "replace") else ():
+            said = rows[j].strip()
+            if not said.startswith("#") or said.startswith("#!") or said in had or not (talk := said.lstrip("#").strip()):
+                continue
+            if out and out[-1][0] + out[-1][1].count("\n") == j:          # the next line of the same comment
+                out[-1] = (out[-1][0], out[-1][1] + "\n" + talk)
+            else:
+                out.append((j + 1, talk))
+    return out
+
+
 @dataclass
 class Sheet:
     """One room's page: what it shows, what waits to go to the room, and the tabs open on it."""
@@ -268,7 +351,8 @@ class Sheet:
     bar: dict[str, str] = field(default_factory=dict)
     timer: dict[str, float] = field(default_factory=dict)   # {"seconds": n, "from": when it was set}, while it runs
     stall: int = 0
-    lines: list[dict[str, Any]] = field(default_factory=list)   # the room's newest lines
+    lines: list[dict[str, Any]] = field(default_factory=list)   # the chat's newest lines, the owner's and the room's
+    said_n: int = 0                                           # the number the chat's next line gets
     run: dict[str, Any] | None = None
     run_heard: bool = True
     waiting: list[str] = field(default_factory=list)          # lines for the next message: a stroke, a said line, an event
@@ -279,8 +363,13 @@ class Sheet:
     def state(self) -> dict[str, Any]:
         """Everything a tab shows, for one that opens or reconnects."""
         return {"state": {"room": self.room.name, "code": self.code, "tests": self.tests, "marks": self.marks, "hint": self.hint,
-                          "bar": self.bar, "board": board(self.bar), "timer": self.timer, "stall": self.stall, "lines": self.lines,
-                          "run": self.run}}
+                          "bar": self.bar, "board": board(self.bar), "timer": self.timer, "stall": self.stall,
+                          "lines": [shown(x) for x in self.lines], "run": self.run}}
+
+
+def shown(line: dict[str, Any]) -> dict[str, Any]:
+    """A chat line as a tab gets it: its words, and beside them their parts as Discord would show them (rich)."""
+    return {**line, "parts": rich(line["text"])}
 
 
 class Page:
@@ -307,6 +396,9 @@ class Page:
         with contextlib.suppress(OSError):
             s.tests = (folder / TESTS).read_text()
         s.heard = (s.code, s.tests)
+        with contextlib.suppress(OSError, ValueError, TypeError):
+            s.lines = [x for x in json.loads((folder / CHAT).read_text()) if isinstance(x, dict) and isinstance(x.get("text"), str)][-LINES_KEPT:]
+            s.said_n = max((x.get("n", 0) for x in s.lines if isinstance(x.get("n"), int)), default=0) + 1
         for row in self.ledger.inbound_open(room.name):
             if row["channel"] == CHANNEL:
                 self.ledger.inbound_set(row["message_id"], state="abandoned", note="a page message cut by a restart; its keystrokes are in the room's file")
@@ -397,6 +489,7 @@ class Page:
                 return {"ok": True}
             self._log(s, {"kind": "say", "text": said})
             s.waiting.append(words.PAGE_SAID.format(text=said))
+            self._said(s, {"text": said, "kind": "me", "t": round(time.time(), 3)})
         elif kind == "timer":
             self._log(s, {"kind": "timer"})
             s.timer = {}
@@ -438,13 +531,15 @@ class Page:
         if (s := self.sheets.get(room)) is not None and not s.running.locked():   # a page turned off since: nothing
             self.flush(room)
 
-    def message(self, s: Sheet) -> str:
+    def message(self, s: Sheet, talk: list[tuple[int, str]] | None = None) -> str:
         """What waits to go to the room, as one message: the change to the program and its tests since it last heard them,
-        the newest run when it says something new, and each stroke, said line and event in order; "" when nothing waits."""
+        each # comment line typed in the program as said (`talk`, comments), the newest run when it says something new,
+        and each stroke, said line and event in order; "" when nothing waits."""
         parts = []
         for (old, new, name) in ((s.heard[0], s.code, PROGRAM), (s.heard[1], s.tests, TESTS)):
             if old != new:
                 parts.append(words.PAGE_TYPED.format(name=name, diff=diff(old, new, name)))
+        parts += [words.PAGE_COMMENT.format(name=PROGRAM, line=at, text=said) for at, said in talk or []]
         if s.run is not None and not s.run_heard:
             parts.append(run_line(s.run))
         parts += s.waiting
@@ -457,9 +552,14 @@ class Page:
         if s.quiet is not None:
             s.quiet.cancel()
             s.quiet = None
-        if not (text := self.message(s)):
+        talk = comments(s.heard[0], s.code)
+        if not (text := self.message(s, talk)):
             return ""
         s.heard, s.run_heard, s.waiting = (s.code, s.tests), True, []
+        for at, said in talk:              # the owner's talk on the chat too: a comment still typed replaces its line
+            last = s.lines[-1] if s.lines else {}
+            again = last.get("at") == at and (said.startswith(last["text"]) or last["text"].startswith(said))
+            self._said(s, {**(last if again else {}), "text": said, "kind": "me", "t": round(time.time(), 3), "at": at})
         mid = f"page-{room}-{time.time_ns() // 1000}"
         self.ledger.inbound_add(mid, room, CHANNEL, "owner", len(text), created=time.time())
         if self.capture is not None:
@@ -515,8 +615,16 @@ class Page:
             self._said(s, line)
 
     def _said(self, s: Sheet, line: dict[str, Any]) -> None:
-        s.lines = [*s.lines, line][-LINES_KEPT:]
-        self._push(s, {"line": line})
+        """A chat line kept, numbered, written to the room's page folder and shown on every open tab; one whose number the
+        chat already has replaces that line (a comment still being typed)."""
+        if "n" not in line:
+            line, s.said_n = {**line, "n": s.said_n}, s.said_n + 1
+        s.lines = [*[x for x in s.lines if x.get("n") != line["n"]], line][-LINES_KEPT:]
+        try:
+            write_private(s.folder / CHAT, json.dumps(s.lines, ensure_ascii=False))
+        except OSError as e:
+            log.warning("page %s: the chat not written: %s", s.room.name, e)
+        self._push(s, {"line": shown(line)})
 
     def _push(self, s: Sheet, op: dict[str, Any]) -> None:
         for q in list(s.tabs):

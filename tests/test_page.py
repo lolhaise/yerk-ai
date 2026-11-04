@@ -12,7 +12,7 @@ from starlette.testclient import TestClient
 
 from yerk_ai import mcp_server, words
 from yerk_ai.channels import page as pagemod
-from yerk_ai.channels.page import Mirror, Page, address, board, cell, change, run_line, run_tests
+from yerk_ai.channels.page import Mirror, Page, address, board, cell, change, comments, rich, run_line, run_tests
 from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai.daemon import Yerkd
 from yerk_ai.ledger import Ledger
@@ -215,7 +215,7 @@ def test_a_page_message_folds_into_the_running_turn_and_the_reply_renders_on_the
     assert "echo: SLOW first + [from the owner's live page]" in chan.replies[0][0]
     row = ledger.inbound_get(mid)
     assert row["folded"] == 1 and row["state"] == "answered"
-    assert [x["text"] for x in p.sheets["r"].lines] == [chan.replies[0][0]]   # the reply, on the page
+    assert [(x["text"], x["kind"]) for x in p.sheets["r"].lines] == [("second", "me"), (chan.replies[0][0], "reply")]   # both, on the page
 
 
 def test_what_the_room_draws_goes_to_every_open_tab_and_a_new_tab_gets_the_whole_state(tmp_path):
@@ -301,6 +301,86 @@ def test_the_room_sets_only_the_words_and_every_tab_gets_the_scoreboard_read_fro
     assert logged["bar"] == bar and "board" not in logged                         # the file keeps the room's words
 
 
+def test_a_line_said_reads_the_way_discord_reads_it_bold_gaps_links_code_lists_and_words_kept_words():
+    reply = ("**Close.** The sign is off.\n\n\nSee https://docs.example.org/a_b_c. or [the guide](https://example.org/g) and `x - y`.\n"
+             "```python\nreturn a + b\n```\n# Next\n- first *one*\n  - under it\n2. then __this__ ~~not~~ ||later||\n> quoted\n-# small print\n"
+             "<b>kept</b> \\*not italic\\* [bad](javascript:alert(1)) snake_case_name ***both***")
+    assert rich(reply) == [
+        {"kind": "p", "runs": [{"text": "Close.", "looks": "b"}, {"text": " The sign is off.", "looks": ""}]},
+        {"kind": "gap"},                                                            # blank lines between thoughts: one gap
+        {"kind": "p", "runs": [{"text": "See ", "looks": ""}, {"text": "https://docs.example.org/a_b_c", "looks": "", "href": "https://docs.example.org/a_b_c"},
+                               {"text": ". or ", "looks": ""}, {"text": "the guide", "looks": "", "href": "https://example.org/g"},
+                               {"text": " and ", "looks": ""}, {"text": "x - y", "looks": "c"}, {"text": ".", "looks": ""}]},
+        {"kind": "code", "lang": "python", "text": "return a + b"},
+        {"kind": "h1", "runs": [{"text": "Next", "looks": ""}]},
+        {"kind": "li", "mark": "•", "depth": 0, "runs": [{"text": "first ", "looks": ""}, {"text": "one", "looks": "i"}]},
+        {"kind": "li", "mark": "•", "depth": 1, "runs": [{"text": "under it", "looks": ""}]},
+        {"kind": "li", "mark": "2.", "depth": 0, "runs": [{"text": "then ", "looks": ""}, {"text": "this", "looks": "u"}, {"text": " ", "looks": ""},
+                                                         {"text": "not", "looks": "s"}, {"text": " ", "looks": ""}, {"text": "later", "looks": "h"}]},
+        {"kind": "quote", "runs": [{"text": "quoted", "looks": ""}]},
+        {"kind": "sub", "runs": [{"text": "small print", "looks": ""}]},
+        {"kind": "p", "runs": [{"text": "<b>kept</b> *not italic* [bad](javascript:alert(1)) snake_case_name ", "looks": ""},
+                               {"text": "both", "looks": "bi"}]}]
+    assert rich("**bold *both* bold**")[0]["runs"] == [{"text": "bold ", "looks": "b"}, {"text": "both", "looks": "bi"}, {"text": " bold", "looks": "b"}]
+    assert rich(">>> all of it\n- still quoted") == [{"kind": "quote", "runs": [{"text": "all of it", "looks": ""}]},
+                                                     {"kind": "quote", "runs": [{"text": "- still quoted", "looks": ""}]}]
+    assert rich("```one line```") == [{"kind": "code", "lang": "", "text": "one line"}] and rich("") == []
+    assert rich("a ``` never closed")[0]["runs"][0]["text"] == "a ``` never closed"
+    assert all("href" not in r or r["href"].startswith(("http://", "https://")) for b in rich(reply) for r in b.get("runs", []))
+
+
+def test_the_chat_keeps_both_sides_numbered_time_stamped_and_read_and_comes_back_after_a_restart(tmp_path):
+    """The wall the ask hit: the talk was a footer strip of plain text, the owner's own lines only in the tab that typed
+    them. Now a line said on the page is the chat's on every tab, beside the room's, each with its time and its parts."""
+    p, room = hub(tmp_path, quiet=60)
+
+    async def go():
+        tab = p.stream("r", beat=0.05)
+        await tab.__anext__()
+        await p.event("r", {"kind": "say", "text": "  why is **this** red?\nline two  "})
+        mine = json.loads(await tab.__anext__())
+        p.said("r", "**Close.**\n\nLook at https://example.org/x")
+        theirs = json.loads(await tab.__anext__())
+        await tab.aclose()
+        return mine["line"], theirs["line"]
+    mine, theirs = asyncio.run(go())
+    assert room.got[0].text.splitlines()[1:] == ["said on the page: why is **this** red?", "line two"]
+    assert {k: mine[k] for k in ("text", "kind", "n")} == {"text": "why is **this** red?\nline two", "kind": "me", "n": 0}
+    assert mine["parts"][0]["runs"][1] == {"text": "this", "looks": "b"} and time.time() - mine["t"] < 60
+    assert (theirs["kind"], theirs["n"]) == ("reply", 1) and [b["kind"] for b in theirs["parts"]] == ["p", "gap", "p"]
+    assert theirs["parts"][2]["runs"][1]["href"] == "https://example.org/x"
+    again = Page(tmp_path, p.ledger)
+    again.add_room(Taken())
+    late = again.sheets["r"].state()["state"]["lines"]
+    assert [(x["kind"], x["n"]) for x in late] == [("me", 0), ("reply", 1)] and late[1]["parts"] == theirs["parts"]
+    again.said("r", "after the restart")
+    assert again.sheets["r"].lines[-1]["n"] == 2
+    assert all("parts" not in x for x in json.loads((tmp_path / "rooms" / "r" / "work" / "page" / pagemod.CHAT).read_text()))
+    for i in range(pagemod.LINES_KEPT + 5):
+        again.said("r", f"line {i}")
+    assert len(again.sheets["r"].lines) == pagemod.LINES_KEPT and again.sheets["r"].lines[-1]["text"] == f"line {pagemod.LINES_KEPT + 4}"
+
+
+def test_a_comment_typed_in_the_program_is_his_talk_on_the_chat_and_said_to_the_room(tmp_path):
+    p, room = hub(tmp_path, quiet=60)
+    p.draw("r", {"code": "# the room's own note\ndef add(a, b):\n    return a - b\n"})
+
+    async def go():
+        await p.event("r", {"kind": "edit", "pane": "code", "text": "# the room's own note\n# can you\ndef add(a, b):\n    return a - b\n"})
+        p.flush("r")
+        await p.event("r", {"kind": "edit", "pane": "code",
+                            "text": "# the room's own note\n# can you explain\n# the minus?\ndef add(a, b):\n    return a - b  # here\n"})
+        p.flush("r")
+    asyncio.run(go())
+    first, second = (m.text.splitlines() for m in room.got)
+    assert "said in solution.py at line 2, as a # comment: can you" in first and "+# can you" in first
+    assert second[-2:] == ["said in solution.py at line 2, as a # comment: can you explain", "the minus?"]
+    lines = p.sheets["r"].lines
+    assert [(x["text"], x["kind"], x["at"], x["n"]) for x in lines] == [("can you explain\nthe minus?", "me", 2, 0)]   # the same line, grown
+    assert comments("x = 1\n# had\n", "#!/usr/bin/env python3\nx = 1  # trailing\n# had\n#\n  # an indented one\n") == [(5, "an indented one")]
+    assert comments("", "# one\n# two\nx = 1\n# three\n") == [(1, "one\ntwo"), (4, "three")]
+
+
 def test_the_look_is_the_page_s_own_a_scoreboard_a_clock_tiles_that_pop_a_hint_card_and_a_chat_column_dark():
     html = pagemod.HTML.read_text()
     css, body = html.split("</style>", 1)
@@ -315,6 +395,24 @@ def test_the_look_is_the_page_s_own_a_scoreboard_a_clock_tiles_that_pop_a_hint_c
     script = body.split("<script>", 1)[1]
     assert not [w for w in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write") if w in script]   # a word stays a word
     assert "state.board" in script and "c.tier" in script and "passedBefore" in script
+
+
+def test_the_chat_is_a_pane_of_its_own_beside_the_code_wide_either_way_with_a_say_box_of_many_lines():
+    """The wall the ask hit: the talk was a footer under the program, plain text over a one-line input. Now it is a
+    column of its own: a grip and two buttons set how wide, its lines drawn from yerkd's parts, its box many lines."""
+    html = pagemod.HTML.read_text()
+    css, body = html.split("</style>", 1)
+    script = body.split("<script>", 1)[1]
+    assert '"main grip chat"' in css and "var(--chat, 38%)" in css and "#grip {" in css and "main.narrow" in css
+    for rule in (".body strong", ".body a {", ".body pre {", ".body code", ".body .gap", ".body .quote", ".body .li", ".body .spoiler", ".who time"):
+        assert rule in css, rule
+    at = body.index('id="grip"')
+    assert body.index("</main>") < at < body.index('id="chat"')                     # between the program and the chat
+    chat = body.split('id="chat"', 1)[1].split("</aside>", 1)[0]
+    assert 'id="wide-chat"' in chat and 'id="wide-code"' in chat and '<textarea id="say"' in chat and "<input" not in chat
+    assert "e.shiftKey" in script and "say.focus()" in script and "localStorage" in script and "setPointerCapture" in script
+    assert "l.parts" in script and 'a.rel = "noopener noreferrer"' in script and "/^https?:" in script and "toLocaleTimeString" in script
+    assert 'line({ text: e.target.value, kind: "me" })' not in script                # the owner's line comes from yerkd, on every tab
 
 
 @pytest.mark.skipif(not shutil.which("node"), reason="node checks the page's script; it is not on this box")

@@ -461,7 +461,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-03: need-2026-11-03-46 raised it by 42, a live page that looks like a game for every room while the room sets only the words (a room asked to make its page's top bar look better could change only its words, the look being the page's own styling; filed 2026-11-03), not folded to fit: channels/page.py 41 (the bar's words read into scoreboard cells: a rank badge and its tier, a bar and how full, a big number and its sign, else words; the cells in a tab's state and in what the room draws, the events file keeping the words), mcp_server.py 1 (the tool's words for them). The look itself is page.html, outside this count. 25,438: main 7df1562's 25,396 plus 42.
 
-- `lines = 25438`
+2026-11-03: need-2026-11-03-48 raised it by 109, the live page's chat a pane of its own for every room, where the owner talks to the room in place of Discord (a room asked for it had a strip of plain text under the program, the owner's own lines only in the tab that typed them, and no way to change it, the page being Yerk's; filed 2026-11-03), not folded to fit: channels/page.py 108 (a line said read the way Discord reads a message into parts beside its words: a fenced block, a heading, subtext, a quote, a list item, and in a row code, a link only to http or https, bold, underline, italic, strike and a spoiler; the owner's say and each # comment line typed in the program a chat line beside the room's, the comment also said to the room; the chat numbered, time-stamped and its newest 200 lines kept in the room's page folder across a restart), words.py 1 (the comment's said line). The pane, its grip, its two buttons and its say box are page.html, outside this count. 25,547: main 8a222d9's 25,438 plus 109.
+
+- `lines = 25547`
 
 ## Uncapped
 

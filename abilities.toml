@@ -43,10 +43,12 @@ layer = 10
 # "each ability, built or known" (15 fewer); need-2026-11-03-44 found it at 2,010 with page-switch's name and cut
 # ": each ability, built or known" to ", built or known" (14 fewer); need-2026-11-03-46 found it at 2,005 with page-look's
 # name and cut the answer's last line (abilities.brief) from "says what any one does, needs and costs" to "says what one
-# does, needs, costs" (7 fewer), so it ends at 1,998.
+# does, needs, costs" (7 fewer), so it ends at 1,998; need-2026-11-03-48 found it at 2,009 with page-chat's name and cut
+# ", built or known" from this entry's own line, since the census under it already names each ability by its state (16
+# fewer), so it ends at 1,993.
 [abilities.abilities]
 state = "built"
-what = "Says what Yerk AI can do, built or known."
+what = "Says what Yerk AI can do."
 tier = "free"
 needs = "nothing; `yerk abilities` lists them, `yerk explain NAME` has any one, and a room asking gets the list"
 free_path = "this is the free path"
@@ -1502,6 +1504,27 @@ price = "none"
 free_path = "this is the free path"
 asked_as = ["top bar look better", "make the page look better", "make my page look better", "page look like a game", "page looks like a form",
             "scoreboard on the page"]
+
+# need-2026-11-03-48: the owner, talking to a room on its live page, asked for the page to be where they talk to it, not
+# Discord; the talk there was a strip of plain text under the program over a one-line box (no bold, no gaps, no links,
+# the owner's own lines only in the tab that typed them), and the page is Yerk's code, outside every room's hands; filed
+# 2026-11-03.
+[abilities.page-chat]
+state = "built"
+what = "A room's live page holds the whole conversation, so a night on it needs no Discord open: the chat is a pane of its own beside the program and its tests, the owner's lines and the room's replies as a readable chat, each reply shown the way Discord shows it (bold, a gap between thoughts, links that open, code in a box), long ones wrapped, every line time-stamped and the newest at the bottom; a say box that takes many lines and keeps the focus; a grip and two buttons that make the chat wide or the code wide; and a # comment line the owner types in the program is talk too."
+how = [
+  "Read as Discord reads it: yerkd reads each line said into parts beside its words (channels/page.py, rich): a fenced block code in a box of its own, a heading, subtext, a quote, a list item, every other line a row and a blank line a gap; in a row, code, a link only to http or https, bold, underline, italic, strike and a spoiler. The page draws the parts as elements, each word as text, never markup, and a link opens in a tab of its own.",
+  "Both sides: a line the owner says on the page is the chat's on every open tab, beside the room's replies, notices and sends; each line has its time, and the newest 200 are kept in the room's page folder, so a reload or a restart shows the night's talk.",
+  "Comments are talk: each whole-line # comment the owner types in the program since the room last heard it is a line of theirs on the chat, a comment still being typed growing its own line, and goes to the room as said, beside the typing's diff.",
+  "The say box: Enter sends, Shift+Enter a new line, it grows to a few lines then scrolls, keeps the focus after a send, and puts back words yerkd did not take.",
+  "The split: drag the grip between the code and the chat (a double click evens them, the arrow keys move it), or `wide chat` and `wide code`; the browser keeps the split. On a narrow screen the chat goes under the code.",
+]
+tier = "free"
+needs = "the live-page ability"
+price = "none"
+free_path = "this is the free path"
+asked_as = ["talk to you on the page", "chat on the page", "talk on the page", "redo the page ui", "redo the ui", "page chat",
+            "dont want to talk to you in this chat", "chat column"]
 
 [abilities.work-writes]
 state = "built"

@@ -8,6 +8,28 @@ version changes.
 
 ## 2026-11-03
 
+### need-2026-11-03-48 (#?)
+
+- A room's live page holds the whole conversation, so a night on it needs no Discord open: the chat is a pane of its
+  own beside the program and its tests, with the owner's lines and the room's replies as a readable chat, each line
+  time-stamped and the newest at the bottom; the column stays where you scrolled, with a button to the newest.
+- Each reply is shown the way Discord shows it: bold, italic, underline, strike, spoilers, code and fenced blocks in a
+  box of their own, headings, subtext, quotes, lists, a gap between thoughts and links that open in a tab of their own
+  (http and https only). yerkd reads each line into parts and the page draws them, every word as text, never markup.
+- The say box takes many lines: Enter sends, Shift+Enter starts a new line, it keeps the focus after a send, and words
+  yerkd did not take go back in the box. A line said there shows on every open tab, not just the one that typed it.
+- Drag the grip between the code and the chat, or press `wide chat` or `wide code`; a double click evens them, the
+  arrow keys move the grip, and the browser keeps the split. On a narrow screen the chat goes under the code, and a
+  narrow code side stacks the program over the tests.
+- A whole-line `#` comment typed in the program is talk too: it shows as your line on the chat (one still being typed
+  grows its own line) and goes to the room as said, beside the typing's diff.
+- The newest 200 chat lines, yours and the room's, are kept in the room's `work/page/chat.json`, so a reload or a
+  restart shows the night's talk again.
+- Need 46's scoreboard, tiles and spacing are kept as they are; the bar spans the code, the grip and the chat.
+- The `[code]` ceiling in budgets.toml goes to 25,547; the abilities entry is page-chat, and the "what can you do"
+  answer's own line drops ", built or known" (its census already says which) so it keeps every name under its 2,000.
+- Upgrading: nothing to set. An open page picks up the chat pane when its tab is reloaded.
+
 ### need-2026-11-03-46 (#?)
 
 - A room's live page looks like a game, not a form, the same for every room, and the room still sets only the words:
