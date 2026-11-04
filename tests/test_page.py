@@ -2,6 +2,7 @@
 as messages, mid-turn too, the tests run when the page asks with no model, and what the room says and draws shows on the page."""
 import asyncio
 import json
+import re
 import shutil
 import subprocess
 import time
@@ -12,7 +13,7 @@ from starlette.testclient import TestClient
 
 from yerk_ai import mcp_server, words
 from yerk_ai.channels import page as pagemod
-from yerk_ai.channels.page import Mirror, Page, address, board, cell, change, run_line, run_tests
+from yerk_ai.channels.page import Mirror, Page, address, board, cell, change, plain, run_line, run_tests
 from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai.daemon import Yerkd
 from yerk_ai.ledger import Ledger
@@ -50,6 +51,16 @@ def hub(tmp_path, quiet=0.05, capture=None):
 
 def events(tmp_path, room="r"):
     return [json.loads(x) for x in (tmp_path / "rooms" / room / "work" / "page" / "events.jsonl").read_text().splitlines()]
+
+
+def styles(css):
+    """The page's CSS, each selector's declarations (a rule inside @media or @keyframes read as its own)."""
+    out = {}
+    for sels, body in re.findall(r"([^{}]+)\{([^{}]*)\}", css):
+        for sel in sels.split(","):
+            out.setdefault(" ".join(sel.split()), {}).update(
+                {k.strip(): v.strip() for k, _, v in (d.partition(":") for d in body.split(";")) if k.strip()})
+    return out
 
 
 @boxed
@@ -315,6 +326,54 @@ def test_the_look_is_the_page_s_own_a_scoreboard_a_clock_tiles_that_pop_a_hint_c
     script = body.split("<script>", 1)[1]
     assert not [w for w in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write") if w in script]   # a word stays a word
     assert "state.board" in script and "c.tier" in script and "passedBefore" in script
+
+
+def test_the_bar_s_cells_are_spaced_as_cells_each_its_own_box_in_a_row_with_its_own_gap():
+    """need-2026-11-03-47, the wall a room hit: the bar's cells ran into each other, every one put inside one span, so the
+    bar's gap never fell between them and only a margin on the value kept a label off its value; the room padded the
+    values with no-break spaces. The page spaces them itself, for every room: each cell its own box in a row with its own
+    gap, wrapping on a narrow screen, its label over its value."""
+    css, body = pagemod.HTML.read_text().split("<style>", 1)[1].split("</style>", 1)
+    row, box = styles(css)["#cells"], styles(css)[".cell"]
+    assert row["display"] == "flex" and row["flex-wrap"] == "wrap" and int(row["gap"].removesuffix("px")) >= 8
+    assert box["display"] == "flex" and box["flex-direction"] == "column" and int(box["gap"].removesuffix("px")) > 0
+    assert int(box["padding"].split()[-1].removesuffix("px")) > 0 and box["border"].startswith("1px solid")   # a box
+    assert '<div id="cells"></div>' in body.split('id="bar"', 1)[1].split("</header>", 1)[0]      # a row of its own
+    bar = body.split("function showBar()", 1)[1].split("\nfunction ", 1)[0]
+    assert 'make("div", "cell "' in bar and "cells.appendChild(d)" in bar         # each cell its own element in the row
+    assert 'make("span", "label", c.label)' in bar and 'make("span", "value", c.value)' in bar
+
+
+def test_padding_in_the_bar_s_words_is_dropped_so_a_padded_bar_reads_and_shows_as_the_plain_one(tmp_path):
+    """need-2026-11-03-47: what the room did anyway, no-break spaces after the values, is no way now: yerkd keeps the bar's
+    words alone, so a padded bar reads and shows as the plain one (no blank in a cell, and a tier word kept from its
+    division by a no-break space reads as its rank again), a cell of padding alone, a spacer, goes and leaves its place to
+    a cell with words, padding before the words takes none of the length cap, and the tool's answer says the page spaces
+    the cells itself."""
+    nb = "\u00a0"
+    assert plain(f"\u3000{nb}Gold{nb}{nb}II\u2003\t\u200b") == "Gold II" and plain("\u2800two  pointers\u2800") == "two pointers"
+    clean = {"Rank": "Gold II", "LP": "75", "Solved": "12/40", "Topic": "two pointers"}
+    padded = {f"Rank{nb}{nb}": f"Gold{nb}II{nb * 3}", "LP": f"{nb * 2}75{nb * 3}", nb: nb * 4,
+              "Solved": "12/40\u2003\u200b", "\u3000Topic\t": "\u2800two  pointers\u2800"}
+    p, _ = hub(tmp_path)
+
+    async def go():
+        tab = p.stream("r", beat=0.05)
+        await tab.__anext__()
+        got = p.draw("r", {"bar": padded})
+        drawn = json.loads(await tab.__anext__())["draw"]
+        await tab.aclose()
+        return got, drawn, json.loads(await p.stream("r").__anext__())["state"]
+    got, drawn, late = asyncio.run(go())
+    assert got == {"ok": True, "tabs": 1, "note": words.PAGE_UNPADDED}
+    assert drawn["bar"] == late["bar"] == clean and drawn["board"] == late["board"] == board(clean)
+    assert drawn["board"][0] == {"label": "Rank", "value": "Gold II", "shape": "rank", "tier": "gold", "name": "Gold", "division": "II"}
+    assert [e for e in events(tmp_path) if e["kind"] == "drawn"][-1]["bar"] == clean
+    assert p.draw("r", {"bar": clean}) == {"ok": True, "tabs": 0, "note": words.PAGE_NO_TAB}      # no padding, no word on it
+    assert p.draw("r", {"bar": {"Rank": nb * 50 + "Silver I"}})["note"] == f"{words.PAGE_NO_TAB}; {words.PAGE_UNPADDED}"
+    assert p.sheets["r"].bar == {"Rank": "Silver I"}                          # the cap counts the words, not the padding
+    p.draw("r", {"bar": {k: v for i in range(8) for k, v in ((f"c{i}", str(i)), (nb * (i + 1), nb))}})
+    assert p.sheets["r"].bar == {f"c{i}": str(i) for i in range(8)}        # a spacer takes none of the 8 cells
 
 
 @pytest.mark.skipif(not shutil.which("node"), reason="node checks the page's script; it is not on this box")

@@ -950,4 +950,10 @@ secs = 60
 # scoreboard cells: a rank badge and its tier, a bar and how full, a big number and its sign, else words; the cells in
 # a tab's state and in what the room draws, the events file keeping the words), mcp_server.py 1 (the tool's words for
 # them). The look itself is page.html, outside this count. 25,438: main 7df1562's 25,396 plus 42.
-lines = 25438
+# 2026-11-03: need-2026-11-03-47 raised it by 13, a live page's bar cells spaced as cells for every room with no padding
+# in a room's words (on a page whose top bar's cells ran into each other, a room could not space them, the layout being
+# the page's own, and padded its values with no-break spaces instead; filed 2026-11-03), not folded to fit:
+# channels/page.py 12 (the bar's labels and values kept as their words alone, a run of spaces of any kind one space and
+# none at either end, before the length cap; a spacer cell dropped; the tool's answer saying the padding was dropped),
+# words.py 1 (that answer). The spacing itself is page.html's, outside this count. 25,451: main 8a222d9's 25,438 plus 13.
+lines = 25451
