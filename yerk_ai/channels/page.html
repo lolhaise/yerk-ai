@@ -181,8 +181,16 @@
 <script>
 "use strict";
 const args = new URLSearchParams(location.hash.slice(1) || location.search.slice(1));   // yerkd's opener: a query
-const ROOM = args.get("room") || "", OPEN = args.get("open") || "";
-let KEY = args.get("key") || "";
+// this tab's room and key, kept for a reload, a retyped /page or a restored tab: session storage is this tab's alone and
+// goes when it closes, never the address bar, the history or a bookmark; an address that brings a key or a ticket wins
+const KEPT = "yerk-page-key";
+function kept() { try { return JSON.parse(sessionStorage.getItem(KEPT) || "{}") || {}; } catch (e) { return {}; } }
+function keepKey(room, key) { try { sessionStorage.setItem(KEPT, JSON.stringify({ room, key })); } catch (e) { /* no storage */ } }
+const OPEN = args.get("open") || "", given = args.get("key") || "", saved = OPEN || given ? {} : kept();
+const held = !args.get("room") || saved.room === args.get("room") ? saved : {};      // another room's key opens none of this
+const ROOM = args.get("room") || held.room || "";
+let KEY = given || held.key || "";
+if (given) keepKey(ROOM, KEY);
 history.replaceState(null, "", location.pathname);          // the key, or the one-time ticket, leaves the address bar
 document.title = ROOM ? ROOM + ": Yerk page" : "Yerk page";
 const $ = s => document.querySelector(s);
@@ -401,6 +409,7 @@ setInterval(() => {                                           // the countdown a
 // the say box: as many lines as the owner types (Shift+Enter a new one), Enter sends, and it keeps the focus; the line
 // shows when yerkd has it (on every tab), and words yerkd did not take go back in the box
 const say = $("#say");
+const STRANDED = "This page needs its address: ask the room to open the page (on a Mac, \"open my page on my Mac\"), or yerk room page ROOM on the box prints it.";
 function fit() { say.style.height = "auto"; say.style.height = Math.min(say.scrollHeight + 2, innerHeight * 0.4) + "px"; }
 say.addEventListener("input", fit);
 say.addEventListener("keydown", e => {
@@ -408,6 +417,10 @@ say.addEventListener("keydown", e => {
   e.preventDefault();
   const text = say.value;
   if (!text.trim()) return;
+  if (!KEY) {                                                 // no key, no room hears it: said here, the words kept in the box
+    line({ text: "Not sent: no room hears this tab yet. " + STRANDED, kind: "notice", t: Date.now() / 1000 });
+    return;
+  }
   say.value = ""; fit(); say.focus();
   post("event", { kind: "say", text }).then(r => {
     if (r && r.ok) return;
@@ -473,9 +486,10 @@ ink.addEventListener("pointerup", () => {
 });
 if (OPEN) fetch("/page/open", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ticket: OPEN }) })
   .then(r => r.json()).catch(() => ({})).then(d => {          // the ticket, once, for the key, which never was in the address
-    if (d.key) { KEY = d.key; listen(); } else line({ text: d.error || "The page did not open; ask the room again.", kind: "notice" });
+    if (d.key) { KEY = d.key; keepKey(d.room || ROOM, d.key); listen(); }
+    else line({ text: d.error || "The page did not open; ask the room again.", kind: "notice" });
   });
-else if (!KEY) line({ text: "This page needs its address: ask the room to open the page, or yerk room page ROOM prints it.", kind: "notice" });
+else if (!KEY) line({ text: STRANDED, kind: "notice" });
 else listen();
 </script>
 </body>

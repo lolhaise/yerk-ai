@@ -6,6 +6,32 @@ A line that changes a file the install keeps (rooms.toml, yerkd.toml, budgets.to
 newer than the code is refused with one line, never changed); the index chunks every file again when its chunker's
 version changes.
 
+## 2026-11-04
+
+### need-2026-11-03-49 (#?)
+
+- The live page opens on the screen you are at: ask the room for the page on your Mac and the `page` tool's open, with
+  its new `where` set to `mac`, opens it there, not in the box's own browser. `pc`, the box's own screen, stays the
+  default, so an ask with no screen named opens where it did.
+- yerkd reaches the Mac by ssh and runs `open` there on the page's one-time address, which it hands over on ssh's
+  input, so neither the key nor the ticket is ever on a command line, the box's or the Mac's ssh. The address is yerkd as
+  the Mac reaches it (`[page] address`), since 127.0.0.1 on the Mac is the Mac itself.
+- A reload no longer strands the page. The page takes its key out of the address bar on load, so a reload or a retyped
+  address used to come back as a bare `/page` that said it needs its address. Now the tab keeps its room and key in its
+  own session storage: a reload or a retyped `/page` in that tab opens it again. The key is never in the address bar,
+  the history or a bookmark, and it goes when the tab closes.
+- A line typed on a page with no key no longer goes to yerkd only to come back as a refusal about a header: the tab says
+  no room heard it, keeps the words in the box and says how to open the page (on a Mac, "open my page on my Mac").
+- Said in words when it cannot open on the Mac: no Mac named, no address set, a Mac that does not answer over ssh, or a
+  `where` that is neither `pc` nor `mac`. The page is on all the same.
+- `yerk_tools` in budgets.toml goes to 20,100 and the session start's total to 119,005 (the tool is 1,901 as built, 110
+  more), and the `[code]` ceiling to 25,626; the abilities entry is page-mac.
+- Upgrading: to open the page on your Mac, set `[page] address` in yerkd.toml to yerkd as the Mac reaches it, the box's
+  tailnet or LAN host and port (`"http://box.example.ts.net:8787"`; with no port, yerkd's own). Set `[page] mac` to the
+  Mac's ssh host, unless `[imessage] host` is already that Mac. The box needs key-based ssh to the Mac (no password
+  prompt) and a forward that reaches yerkd's port from the Mac. A tab opened before this change has no kept key: open
+  the page once more and it keeps it from then on.
+
 ## 2026-11-03
 
 ### need-2026-11-03-48 (#?)

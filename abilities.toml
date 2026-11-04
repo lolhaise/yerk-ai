@@ -1545,6 +1545,25 @@ free_path = "this is the free path"
 asked_as = ["talk to you on the page", "chat on the page", "talk on the page", "redo the page ui", "redo the ui", "page chat",
             "dont want to talk to you in this chat", "chat column"]
 
+# need-2026-11-03-49: the owner, on the Mac, asked for the live page there; the page tool's open put it in the box's own
+# browser on the PC (the box's opener was its only way), and a reload of the page on the Mac came back as /page alone,
+# its key gone from the address by design, so a line typed under it reached no room.
+[abilities.page-mac]
+state = "built"
+what = "The live page opens on the screen the owner is at: the `page` tool's open takes `where`, pc (the default, the box's own screen) or mac, and yerkd opens it on the owner's Mac over ssh at a one-time address, the ticket on no command line; a reload of the page there keeps it, since the tab keeps its key in its own session storage."
+how = [
+  "The Mac: ssh to [page] mac in yerkd.toml (else [imessage] host, the text tool's Mac) runs `open` there on the page's one-time address, handed on ssh's stdin, so neither the key nor the ticket is on a command line; the address is [page] address, yerkd as the Mac reaches it (the box's tailnet or LAN host, its port yerkd's when it names none), since 127.0.0.1 on the Mac is the Mac.",
+  "Told in words: no Mac named, no address set, a Mac that does not answer over ssh or a `where` that is neither pc nor mac; the page is on all the same, and where pc opens it on the box's own screen.",
+  "The reload: the tab keeps its room and key in its own session storage, never the address bar, the history or a bookmark, and gone when the tab closes, so a reload or a retyped /page in it opens the page again; an address that brings a ticket or a key wins.",
+  "A tab with no key says a line typed there reached no room, keeps the words in the box and says how to open the page.",
+]
+tier = "free"
+needs = "the page-switch ability; ssh from the box to the Mac with a key (BatchMode), and the box's port reachable from the Mac (a tailnet or LAN forward), named in [page] address"
+price = "none"
+free_path = "this is the free path"
+asked_as = ["page on my mac", "open it on my mac", "open my page on my mac", "i need it on my mac", "not my pc", "page on the mac",
+            "page needs its address", "reload lost the page"]
+
 [abilities.work-writes]
 state = "built"
 what = "Writes a text file in the room's own work folder with no approval asked: every room's settings carry one Edit rule on its work folder, so Claude Code's Write and Edit tools and a shell redirect there run as called, where Claude Code asked for each one its sandbox did not auto-allow (\"Output redirection ... needs approval\") with nobody at the keyboard to say yes. A write anywhere else is asked as before; a trusted room keeps Write and Edit on its layer too."

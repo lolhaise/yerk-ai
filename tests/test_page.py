@@ -801,3 +801,123 @@ def test_a_page_turned_on_where_nothing_opens_it_is_on_and_the_room_is_told_the_
     assert got["ok"] and got["opened"]["ok"] and got["opened"]["opened"] is False and "example-room" in y.page.sheets
     assert "`yerk room page example-room` on the box prints its address" in got["opened"]["line"]
     assert y.page.sheets["example-room"].hint == "start at line 1"              # what it drew in the same call is on the page
+
+
+def mac_box(tmp_path, monkeypatch, ssh_body='shift 6\nexec "$@"'):
+    """A stand-in for the Mac: `ssh` first on PATH writes what its command line carried to `ssh-args` and its
+    stdin goes on to the command after the host (/bin/bash -s, as the Mac runs it), where `open` writes what it was handed
+    to `mac-opened`; `ssh_body` replaces the run of that command (a Mac that does not answer)."""
+    bin_ = tmp_path / "mac-bin"
+    bin_.mkdir(exist_ok=True)
+    (ssh := bin_ / "ssh").write_text(f'#!/bin/sh\nprintf \'%s\\n\' "$@" > "{tmp_path}/ssh-args"\n{ssh_body}\n')
+    (mac_open := bin_ / "open").write_text(f'#!/bin/sh\nprintf \'%s\\n\' "$@" > "{tmp_path}/mac-opened"\n')
+    ssh.chmod(0o700)
+    mac_open.chmod(0o700)
+    monkeypatch.setenv("PATH", f"{bin_}:{pagemod.os.environ['PATH']}")
+    return tmp_path / "ssh-args", tmp_path / "mac-opened"
+
+
+def test_the_owner_on_the_mac_gets_the_page_there_by_ssh_its_one_time_address_on_no_command_line(tmp_path, monkeypatch):
+    """need-2026-11-03-49, the wall a room hit: the owner, on the Mac, asked for the page, and the open put it in the box's
+    own browser on the PC in the other room, since the box's opener was the only way. `where` mac opens it on the Mac:
+    ssh to it runs `open` on the address as the Mac reaches yerkd, the one-time ticket handed on ssh's stdin, so neither
+    the key nor the ticket is on any command line, and the PC's opener is never run."""
+    y, _, state = plain_daemon(tmp_path)
+    args, opened = mac_box(tmp_path, monkeypatch)
+    y.conf["page"] = {"open": [str(opener_script(tmp_path))], "mac": "owner-mac", "address": "box.example.ts.net:8787"}
+    got = asyncio.run(y.tool_page("example-room", {"open": True, "where": "mac"}))
+    assert got == {"ok": True, "opened": True, "line": f"{words.PAGE_ON}; {words.PAGE_OPENED_MAC}"}
+    assert not (tmp_path / "opened").exists()                                    # the PC's opener never ran
+    key = (state / "secrets" / "pages" / "example-room.secret").read_text().strip()
+    assert args.read_text().splitlines() == [*pagemod.MAC_SSH[1:], "owner-mac", "/bin/bash", "-s"]   # nothing secret on it
+    url = opened.read_text().strip()                                             # what `open` on the Mac was handed, whole
+    assert url.startswith("http://box.example.ts.net:8787/page?room=example-room&open=") and key not in url
+    app = mcp_server.app(mcp_server.build(y, y.port, y.hook, y.control, y.status_now, y.page), y.check())
+    with TestClient(app) as c:
+        first = c.post("/page/open", json={"ticket": url.rpartition("open=")[2]})
+        assert first.status_code == 200 and first.json() == {"ok": True, "room": "example-room", "key": key}
+        assert c.post("/page/open", json={"ticket": url.rpartition("open=")[2]}).status_code == 401     # once only
+    y.conf["page"] = {"open": [str(opener_script(tmp_path))], "address": "https://box.example.ts.net:9443/"}
+    y.conf["imessage"] = {"host": "texts-mac"}                                   # no [page] mac: the text tool's Mac
+    got = asyncio.run(y.tool_page("example-room", {"where": "MAC", "hint": "line 3"}))      # a `where` alone opens too
+    assert got["opened"]["line"] == f"{words.PAGE_WAS_ON}; {words.PAGE_OPENED_MAC}" and got["ok"] and got["tabs"] == 0
+    assert "texts-mac" in args.read_text().splitlines() and opened.read_text().startswith("https://box.example.ts.net:9443/page?room=")
+    assert asyncio.run(y.tool_page("example-room", {"open": True, "where": "pc"}))["line"].endswith(words.PAGE_OPENED)
+    assert (tmp_path / "opened").read_text().startswith(f"http://127.0.0.1:{y.port}/page?room=example-room&open=")
+
+
+def test_an_open_on_the_mac_says_in_words_what_it_lacks_and_mints_no_ticket_it_cannot_send(tmp_path, monkeypatch):
+    y, _, _ = plain_daemon(tmp_path)
+    args, _ = mac_box(tmp_path, monkeypatch, ssh_body='echo "ssh: connect to host owner-mac port 22: Operation timed out" >&2\nexit 255')
+    assert asyncio.run(y.tool_page("example-room", {"open": True, "where": "phone"})) == {
+        "ok": False, "error": words.PAGE_WHERE.format(where="phone")}
+    assert "example-room" not in y.page.sheets                                   # a `where` it does not know switches nothing on
+    got = asyncio.run(y.tool_page("example-room", {"open": True, "where": "mac"}))
+    assert got == {"ok": True, "opened": False, "line": f"{words.PAGE_ON}; {words.PAGE_NOT_OPENED_MAC.format(why=words.PAGE_NO_MAC)}"}
+    assert y.page.tickets == {} and not args.exists()                            # no Mac named: no ticket, no ssh
+    y.conf["imessage"] = {"host": "owner-mac"}
+    assert asyncio.run(y.tool_page("example-room", {"where": "mac"}))["line"].endswith(words.PAGE_NOT_OPENED_MAC.format(why=words.PAGE_NO_ADDRESS))
+    y.conf["page"] = {"address": "box.example.ts.net"}
+    got = asyncio.run(y.tool_page("example-room", {"where": "mac"}))
+    why = words.PAGE_MAC_SSH.format(why="ssh: connect to host owner-mac port 22: Operation timed out")
+    assert got["line"] == f"{words.PAGE_WAS_ON}; {words.PAGE_NOT_OPENED_MAC.format(why=why)}" and "open=" not in got["line"]
+    for said in ("ftp://box.example.ts.net", "http://box.example.ts.net:port", "http://box.example.ts.net/yerk", "http://", " "):
+        assert pagemod.mac({"page": {"mac": "m", "address": said}}, 1) == words.PAGE_NO_ADDRESS, said
+    assert pagemod.mac({"page": {"mac": "m", "address": "box.example.ts.net"}, "imessage": {"host": "other"}}, 4321) == (
+        [*pagemod.MAC_SSH, "m", "/bin/bash", "-s"], "http://box.example.ts.net:4321")    # [page] mac first; yerkd's port
+    assert pagemod.mac({"page": {"address": "100.64.0.1:8787"}}, 1) == words.PAGE_NO_MAC
+
+
+def page_head(**given):
+    """The page script's first lines, before it touches the document, run by node with a tab's address and its session
+    storage: what it read (its room, key and ticket), what its address bar was left as, and the storage after."""
+    script = pagemod.HTML.read_text().split("<script>", 1)[1].split("document.title", 1)[0]
+    harness = ("const tab = JSON.parse(process.argv.at(-1)), box = tab.storage;\n"
+               "const store = { getItem: k => { if (box === 'none') throw new Error('denied'); return box[k] ?? null; },\n"
+               "  setItem: (k, v) => { if (box === 'none') throw new Error('denied'); box[k] = v; } };\n"
+               "let bar = '';\n"
+               "const page = new Function('location', 'history', 'sessionStorage',\n"
+               f"  {json.dumps(script)} + '\\nreturn {{ ROOM, KEY, OPEN, keepKey }};');\n"
+               "const got = page({ hash: tab.hash || '', search: tab.search || '', pathname: '/page' },\n"
+               "                 { replaceState: (a, b, to) => { bar = to; } }, store);\n"
+               "if (tab.traded) got.keepKey(tab.traded.room, tab.traded.key);\n"
+               "console.log(JSON.stringify({ room: got.ROOM, key: got.KEY, open: got.OPEN, bar, storage: box }));\n")
+    done = subprocess.run(["node", "-e", harness, json.dumps({"storage": {}, **given})], capture_output=True, text=True, timeout=60)
+    assert done.returncode == 0, done.stderr
+    return json.loads(done.stdout)
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="node runs the page's script; it is not on this box")
+def test_a_reload_on_the_mac_keeps_the_page_its_key_in_the_tab_s_own_session_storage_never_in_the_address(tmp_path):
+    """need-2026-11-03-49, the other wall: the page takes its key or ticket out of the address bar on load, by design, so
+    a reload of the page opened on the Mac came back as /page alone and said it needs its address, and a line typed under
+    it reached no room. The tab now keeps its room and key in its own session storage: a reload or a retyped /page in it
+    opens the page again, and nothing puts the key back in the address, the history or a bookmark."""
+    ticketed = page_head(search="?room=example-room&open=t1")
+    assert ticketed == {"room": "example-room", "key": "", "open": "t1", "bar": "/page", "storage": {}}     # the trade gets the key
+    traded = page_head(search="?room=example-room&open=t1", traded={"room": "example-room", "key": "k1"})
+    kept = traded["storage"]
+    assert kept == {"yerk-page-key": json.dumps({"room": "example-room", "key": "k1"}, separators=(",", ":"))}
+    assert page_head(storage=kept) == {"room": "example-room", "key": "k1", "open": "", "bar": "/page", "storage": kept}   # the reload
+    assert page_head(storage=kept, search="?room=example-room")["key"] == "k1"
+    assert page_head(storage=kept, search="?room=other-room")["key"] == ""       # another room's key is not this page's
+    assert page_head(storage=kept, search="?room=example-room&open=t2")["key"] == ""    # a new ticket wins: it is traded
+    fresh = page_head(storage=kept, hash="#room=example-room&key=k2")             # `yerk room page`'s address wins and is kept
+    assert fresh["key"] == "k2" and json.loads(fresh["storage"]["yerk-page-key"]) == {"room": "example-room", "key": "k2"}
+    assert fresh["bar"] == "/page"
+    assert page_head(storage="none") == {"room": "", "key": "", "open": "", "bar": "/page", "storage": "none"}  # no storage
+    script = pagemod.HTML.read_text().split("<script>", 1)[1]
+    assert "keepKey(d.room || ROOM, d.key)" in script.split('fetch("/page/open"', 1)[1]          # the trade keeps it
+    assert "localStorage.setItem(KEPT" not in script and "localStorage.getItem(KEPT" not in script   # never past the tab
+
+
+def test_a_tab_with_no_key_says_its_typed_line_reached_no_room_and_keeps_the_words():
+    """need-2026-11-03-49: a line typed on a page with no key went to yerkd with none, which refused it in its own words
+    (a header it wants); now the tab says so in plain words, keeps the words in the box and says how to open the page."""
+    script = pagemod.HTML.read_text().split("<script>", 1)[1]
+    send = script.split('say.addEventListener("keydown"', 1)[1].split("\n});", 1)[0]
+    assert send.index("if (!KEY)") < send.index('say.value = ""') < send.index('post("event"')    # nothing posted, nothing cleared
+    assert '"Not sent: no room hears this tab yet. " + STRANDED' in send
+    stranded = script.split("const STRANDED = ", 1)[1].split(";\n", 1)[0]
+    assert "open my page on my Mac" in stranded and "yerk room page ROOM on the box" in stranded
+    assert "else if (!KEY) line({ text: STRANDED" in script

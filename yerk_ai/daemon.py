@@ -480,27 +480,37 @@ class Yerkd:
         log.info("page: room %s switched %s by its page tool, no restart", name, "on" if on else "off")
         return True
 
-    async def page_open(self, room: str) -> dict[str, Any]:
-        """The `page` tool's open: the room's page on (page_switch), then opened on the owner's screen by the box's opener
-        at a one-time address (Page.ticket), never the key, which no room holds and no command line carries."""
+    async def page_open(self, room: str, where: str = "pc") -> dict[str, Any]:
+        """The `page` tool's open: the room's page on (page_switch), then opened at a one-time address (Page.ticket), never
+        the key, which no room holds and no command line carries: on the owner's screen by the box's opener, or, `where`
+        mac, on the owner's Mac by ssh to it ([page] mac and address, page.mac), the address on ssh's stdin."""
         lines = [words.PAGE_ON if self.page_switch(room, True) else words.PAGE_WAS_ON]
         if not await asyncio.to_thread(page.sandbox_starts):
             lines.append(words.PAGE_NO_SANDBOX)
-        why = await asyncio.to_thread(page.open_on_screen, page.opener(self.conf), self.page.ticket(room, self.port))
-        log.info("page: room %s, %s", room, why or "opened on the owner's screen")
-        return {"ok": True, "opened": not why, "line": "; ".join([*lines, words.PAGE_NOT_OPENED.format(why=why, room=room) if why else words.PAGE_OPENED])}
+        if where == "mac":                    # its address is the Mac's way to yerkd: 127.0.0.1 there is the Mac itself
+            way = page.mac(self.conf, self.port)
+            why = way if isinstance(way, str) else await asyncio.to_thread(page.open_on_screen, way[0], self.page.ticket(room, self.port, way[1]),
+                                                                           script=page.MAC_OPEN)
+            done, failed = words.PAGE_OPENED_MAC, words.PAGE_NOT_OPENED_MAC.format(why=why)
+        else:
+            why = await asyncio.to_thread(page.open_on_screen, page.opener(self.conf), self.page.ticket(room, self.port))
+            done, failed = words.PAGE_OPENED, words.PAGE_NOT_OPENED.format(why=why, room=room)
+        log.info("page: room %s, %s", room, why or f"opened on the owner's {'Mac' if where == 'mac' else 'screen'}")
+        return {"ok": True, "opened": not why, "line": "; ".join([*lines, failed if why else done])}
 
     async def tool_page(self, room: str, req: dict[str, Any]) -> dict[str, Any]:
-        """The `page` tool: `open` turns the calling room's live page on and opens it on the owner's screen (page_open), `off`
-        turns it off; what it draws goes on the page (channels/page.py), shown on every open tab now; a new program or tests
-        run at once, their result in the answer, so the page's own run of them wakes no turn; the owner's rooms only
-        (add_room and page_switch give no other room a page)."""
+        """The `page` tool: `open` turns the calling room's live page on and opens it on the owner's screen (page_open), or
+        on the Mac with `where` mac (a `where` alone opens too), `off` turns it off; what it draws goes on the page
+        (channels/page.py), shown on every open tab now; a new program or tests run at once, their result in the answer, so
+        the page's own run of them wakes no turn; the owner's rooms only (add_room and page_switch give no other room a page)."""
         if not self.owner(room):
             return {"ok": False, "error": words.PAGE_OWNER_ONLY}
         if req.pop("off", False):
             self.page_switch(room, False)
             return {"ok": True, "line": words.PAGE_OFF}
-        opened = await self.page_open(room) if req.pop("open", False) else None
+        if (where := str(req.pop("where", "") or "").strip().lower()) not in ("", "pc", "mac"):
+            return {"ok": False, "error": words.PAGE_WHERE.format(where=words.no_paths(where)[:40])}
+        opened = await self.page_open(room, where or "pc") if req.pop("open", False) or where else None
         if opened is not None and not req:
             return opened
         r = self.page.draw(room, req)

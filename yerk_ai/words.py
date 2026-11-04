@@ -477,6 +477,14 @@ PAGE_NO_SCREEN = "this box has no screen yerkd can open a page on; [page] open i
 PAGE_OPEN_SLOW = "the opener ran past {n} s and was stopped"
 PAGE_OPEN_FAILED = "the opener failed: {why}"
 PAGE_OPEN_SILENT = "it said nothing"
+# the open's `where` (Yerkd.page_open): mac opens the page on the Mac over ssh, pc (the default) on the box's own screen
+PAGE_WHERE = "where is pc (the box's own screen, the default) or mac (the owner's Mac), not {where}"
+PAGE_OPENED_MAC = "opened on the owner's Mac"
+PAGE_NOT_OPENED_MAC = "not opened on the owner's Mac: {why}; the page is on, and where pc opens it on the box's own screen"
+PAGE_NO_MAC = "no Mac is set up for the page: [page] mac in yerkd.toml names its ssh host ([imessage] host does too)"
+PAGE_NO_ADDRESS = ("the Mac has no address for the page: [page] address in yerkd.toml names the box as the Mac reaches yerkd's port, "
+                   "its tailnet or LAN host")
+PAGE_MAC_SSH = "the Mac did not answer over ssh: {why}"
 PAGE_TICKET_SPENT = "This address was opened once already or is over a minute old; ask the room to open the page again."
 PAGE_NO_TAB = "no tab is open on the page now; it shows this when one opens"
 PAGE_UNPADDED = "the page spaces the bar's cells itself, so the padding in their words was dropped"
