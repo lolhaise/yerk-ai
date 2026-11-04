@@ -111,7 +111,7 @@ def brief(name: str, ab: dict[str, Any], tab: dict[str, dict[str, Any]], s: Any)
     _, said = state(name, ab, tab, s)
     if name == SELF:
         return " ".join([f"{name}, a Yerk AI ability ({said}): {ab['what']}", *census(tab, s),
-                         "`yerk explain NAME` has any one."])
+                         "`yerk explain NAME` has one."])
     how = "; ".join(str(x).split(":", 1)[0] for x in ab.get("how", []))
     up = built_part(ab, tab)
     parts = [f"{name}, a Yerk AI ability ({said}): {ab['what']}", f"{HOW[ab.get('state', 'built')]} {how}." if how else "",

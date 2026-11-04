@@ -158,7 +158,8 @@ recording past US$1 comes back refused until the owner says yes; then call again
 A document as a PDF and its page count, since LibreOffice does not run in your shell: `path` is a document in this
 room's folders (a .docx, .doc, .odt, .rtf, .xlsx, .pptx or anything LibreOffice opens). The daemon renders it to a PDF
 saved beside it as NAME.pdf (an older NAME.pdf there is replaced) and returns its page count; a .pdf path returns its
-page count alone, nothing rendered. Use it to check a document fits a page count before you send it, and `send` the PDF
+page count alone, nothing rendered. A .tex in your work folder is compiled by LaTeX (latexmk; pdflatex unless it
+loads fontspec or has a `% !TEX program` line); a failed compile says TeX's first error and its line. Use it to check a document fits a page count before you send it, and `send` the PDF
 when the owner wants the PDF. The layout is LibreOffice's, not Word's, so a document that fits by a line in one can
 spill in the other: say a result near the edge as near the edge.
 ```

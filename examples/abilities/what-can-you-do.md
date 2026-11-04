@@ -15,7 +15,7 @@ every ability by its state on this install, shortened here):
 ```
 - abilities, a Yerk AI ability (on): Says what Yerk AI can do ... on (12): abilities, workers,
   capture, ... runs on the free path (1): recall. needs OpenAI (1): embeddings. known, not built
-  (61): voice, job-search, job-applications, ... `yerk explain NAME` has any one.
+  (59): voice, bank-balances, spending, ... `yerk explain NAME` has one.
   (yerk explain abilities)
 ```
 

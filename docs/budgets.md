@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 119005`
+- `total = 119205`
 
 ## [session_start.claude_code]
 
@@ -64,9 +64,13 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-03) takes it from 1,791 to 1,901 as this tree builds it on Python 3.13, all 19 to 19,481, about 20,070 as sent (589 over the build, as on need 46's tree); so 20,100, no part could pay, the total rose by the 100 (to 119,005).
 
+2026-11-04, need-2026-11-04-47: the `render` tool's sentence on a .tex (compiled by LaTeX in the room's work folder, since a room asked to edit a resume in LaTeX found render took only LibreOffice's formats and no TeX in its shell; filed
+
+2026-11-04) takes it from 852 to 1,032 as this tree builds it on Python 3.13, all 19 to 19,661, about 20,250 as sent (589 over the build, as on need 49's tree); so 20,300, no part could pay, the total rose by the 200 (to 119,205).
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
-- `yerk_tools = 20100`
+- `yerk_tools = 20300`
 - `deferred_tool_names = 3429`
 - `mcp__hands__ = 8165`
 - `mcp__web-ladder__web_image = 913`
@@ -477,7 +481,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-04, need-2026-11-03-45: 113 lines for the live page reached from the Mac and phone (a room asked for the page on the Mac found yerkd served it on 127.0.0.1 alone and built its address with that host; filed 2026-11-03), not folded to fit: channels/page.py 83 (listen: [page] listen, one tailnet or LAN address, a wildcard, a public address or a host name refused in words; reach: the page's base on another screen, [page] address else listen's, which the Mac's open and the printed address carry; bind: the socket, IP_FREEBIND while the box lacks the address, so a tailnet up after yerkd needs no restart; sockets: loopback's and that address's on yerkd's port, a failure logged and the page left on loopback; the printed address's host from yerkd.json; the module's words), mcp_server.py 11 (the guard: the page's routes alone on that address, anything else not found whatever secret comes), daemon.py 9 (serve_http on both sockets, yerkd.json's page), words.py 4, config.py 4 (the key's words) and cli.py 2 (--here). 25,739.
 
-- `lines = 25739`
+2026-11-04, need-2026-11-04-47: 130 lines for a .tex compiled to a PDF and its pages counted (a room asked to edit a resume in LaTeX found no TeX in its shell and render taking LibreOffice's formats alone; filed 2026-11-04), not folded to fit: render.py 120 (engine: the file's own `% !TEX program` line, else lualatex or xelatex by what it or a class beside it loads, else pdflatex; box: the bubblewrap command, no network, no home, state or private folder, the document's folder read-only, a fresh build folder the one thing writable; first_error: TeX's first error and its line; compile_tex: latexmk with shell escape off, only a clean run's PDF copied out, a link at its name replaced, never written through; latex, the OSError's words and the module's words), words.py 6, daemon.py 3 (a .tex from the room's work folder only, since the layer can be the private folder itself) and mcp_server.py 1. 25,869.
+
+- `lines = 25869`
 
 ## Uncapped
 

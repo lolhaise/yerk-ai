@@ -268,7 +268,7 @@ def test_claude_codes_parts_as_the_rooms_send_them_fit_their_lines_and_what_is_l
     assert all(sent <= line for sent, line in rows.values()), out
     assert all(line <= sent * 1.02 for name, (sent, line) in rows.items() if name != "Yerk AI's tools"), rows
     s = b["session_start"]
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 119005
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 119205
 
 
 def room_sent(tmp_path, tools, file="# Yerk AI mechanics\n- an example line"):
@@ -391,10 +391,11 @@ def test_the_rulebook_line_keeps_about_1000_over_the_largest_room_text_and_what_
     (need-2026-11-01-33); then the `page` tool (1,450), no part could pay, to 118,555 (need-2026-11-03-43); then its `open`
     and `off` (250), no part could pay, to 118,805 (need-2026-11-03-44); then its words for the scoreboard (100), no part
     could pay, to 118,905 (need-2026-11-03-46); then its `where`, an open on the Mac (100), no part could pay, to
-    119,005 (need-2026-11-03-49)."""
+    119,005 (need-2026-11-03-49); then the `render` tool's sentence on a .tex (200), no part could pay, to 119,205
+    (need-2026-11-04-47)."""
     s = budgets()["session_start"]
     assert 900 <= s["appended"]["rulebook"] - LIVE_RULEBOOK <= 1400 and s["appended"]["rules"] == 16000
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 119005
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 119205
     private = tmp_path / "private"
     shutil.copytree(EXAMPLE_PRIVATE, private)
     (private / "rulebook.md").write_text("r" * (LIVE_RULEBOOK - 1) + "\n")

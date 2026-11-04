@@ -6,7 +6,7 @@
 voice_note, seen, render, watch, need, text, delete, reverse_image_search, github_state, page), local-only HTTP, preloaded in every room;
 transcribe, voice_note, watch, text, reverse_image_search and github_state are here and not plug-ins because the daemon has the network
 plug-ins because the daemon has the network (and github_state the token) and a room's shell has none, seen because no owner room has a Write tool, render
-a writable /tmp a room's sandbox does not give, and delete because that sandbox mounts all but the room's folders read-only. A worker gets none of it: by default no MCP server at all, and with
+a writable /tmp a room's sandbox does not give (and LaTeX a sandbox of its own, a shell or none), and delete because that sandbox mounts all but the room's folders read-only. A worker gets none of it: by default no MCP server at all, and with
 [workers] yerk_tools its own stdio server (`worker_server`) carrying recall and read_memory only.
 
 Every endpoint (/mcp, /hook, /control) wants the `x-yerk-secret` header (restart test R3). Three
@@ -239,7 +239,8 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         """A document as a PDF and its page count, since LibreOffice does not run in your shell: `path` is a document in this
         room's folders (a .docx, .doc, .odt, .rtf, .xlsx, .pptx or anything LibreOffice opens). The daemon renders it to a PDF
         saved beside it as NAME.pdf (an older NAME.pdf there is replaced) and returns its page count; a .pdf path returns its
-        page count alone, nothing rendered. Use it to check a document fits a page count before you send it, and `send` the PDF
+        page count alone, nothing rendered. A .tex in your work folder is compiled by LaTeX (latexmk; pdflatex unless it
+        loads fontspec or has a `% !TEX program` line); a failed compile says TeX's first error and its line. Use it to check a document fits a page count before you send it, and `send` the PDF
         when the owner wants the PDF. The layout is LibreOffice's, not Word's, so a document that fits by a line in one can
         spill in the other: say a result near the edge as near the edge."""
         return json.dumps(await daemon.tool_render(caller_room(ctx), path))

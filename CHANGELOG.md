@@ -8,6 +8,26 @@ version changes.
 
 ## 2026-11-04
 
+### need-2026-11-04-47 (#?)
+
+- A room can compile LaTeX. The `render` tool takes a `.tex` in the room's work folder, compiles it with TeX Live's
+  latexmk and returns the PDF, saved beside it as `NAME.pdf`, with its page count, so a room editing a resume in LaTeX
+  can say whether it fits a page and send the PDF, with no trip through an online editor. Every room gets it, with a
+  shell or without one. Before this, render took only LibreOffice's formats, and a room's shell had no TeX.
+- The program is the one the file asks for: its `% !TEX program = xelatex` line, else xelatex or lualatex when the
+  document (or a class file beside it) loads fontspec, unicode-math, polyglossia or Lua, else pdflatex.
+- A compile that fails says TeX's first error and the line it stopped at (`resume.tex:12: Undefined control sequence.`),
+  so the room can fix the source and run it again; an older `NAME.pdf` is kept until a run is clean.
+- LaTeX runs in a sandbox of its own (bubblewrap): no network, nothing of your home, private or state folder, the
+  document's folder read-only and shell escape off, since a `.tex` can name any file and yerkd can read your secrets.
+  A `.tex` outside the room's work folder is refused in words, and with no bubblewrap that starts nothing runs.
+- "What can you do" ends with "`yerk explain NAME` has one." (4 fewer) so the new entry's name fits under its cap.
+  `yerk_tools` in budgets.toml goes to 20,300 and the session start's total to 119,205 (the render tool is 1,032 as
+  built, 180 more), and the `[code]` ceiling to 25,869; the abilities entry is latex.
+- Upgrading: install TeX Live on the box, latexmk and the programs (Debian or Ubuntu: `sudo apt install latexmk
+  texlive-latex-extra texlive-fonts-extra texlive-xetex texlive-luatex`), and bubblewrap if it is not there already
+  (a room's shell sandbox needs it too). Until then, render on a `.tex` says TeX Live is not on the machine.
+
 ### need-2026-11-03-45 (#?)
 
 - The live page opens on your Mac and your phone, not only on the PC that hosts the box. Set `[page] listen` in

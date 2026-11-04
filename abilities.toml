@@ -48,7 +48,8 @@ layer = 10
 # at 1,989; need-2026-11-03-48 found it at 2,000 with page-chat's name and cut ", built or known" from this entry's own
 # line, since the census under it already names each ability by its state (16 fewer), so it ends at 1,984;
 # need-2026-11-03-45 found it at 2,006 with page-mac's and page-reach's names and left this entry out of its own census
-# (abilities.census), the line before it naming it already (11 fewer), so it ends at 1,995.
+# (abilities.census), the line before it naming it already (11 fewer), so it ends at 1,995; need-2026-11-04-47 found it
+# at 2,002 with latex's name and cut the answer's last line from "has any one" to "has one" (4 fewer), so it ends at 1,998.
 [abilities.abilities]
 state = "built"
 what = "Says what Yerk AI can do."
@@ -595,12 +596,31 @@ how = [
   "Timeout: a conversion past 120 seconds is killed with its whole process group, and the room is told LibreOffice did not finish.",
   "Count: pypdf counts the PDF's pages; a .pdf path is counted alone, nothing run.",
   "Layout: LibreOffice's, not Word's, so a document that fits by a line in one can spill in the other; a result near the edge is said as near the edge.",
+  "A .tex: LaTeX's, never LibreOffice's, which would typeset its source as text (yerk explain latex).",
 ]
 tier = "free"
 needs = "LibreOffice on the machine: `soffice` on PATH"
 price = "none"
 free_path = "none: without LibreOffice the room says so"
 asked_as = ["render to pdf", "docx to pdf", "how many pages", "does it fit on one page", "page count"]
+
+[abilities.latex]
+state = "built"
+what = "A .tex in a room's work folder becomes a PDF through the render tool on Yerk's own MCP server: LaTeX compiles it beside it as NAME.pdf and its page count comes back, so a room editing a resume or a paper in LaTeX can say whether it fits a page count and send the PDF, with no round trip through an online editor; a failed compile comes back as TeX's first error and its line, to fix and run again. The daemon runs it for every room, a shell or none, in a sandbox of its own."
+how = [
+  "Compile: `latexmk -norc -pdf -interaction=nonstopmode -halt-on-error -file-line-error -no-shell-escape -outdir=<a fresh build folder> NAME.tex` from the document's folder, reruns, cross-references and the bibliography included, run by the daemon off its loop; only a clean run's PDF is copied out beside the .tex, over any older NAME.pdf, a link left at that name replaced and never written through.",
+  "Program: the file's own `% !TEX program =` line (pdflatex, xelatex or lualatex), else lualatex when it or a class or package file beside it runs Lua, xelatex when one loads fontspec, unicode-math or polyglossia, else pdflatex, the online editors' default.",
+  "Sandbox: bubblewrap, as the live page's tests run: no network, no home, state or private folder, the document's folder read-only, a fresh build folder under the state folder's render/ the one thing writable and removed after, shell escape off; with no bwrap that starts nothing runs, and the room is told.",
+  "Work folder only: a .tex elsewhere in a room's folders is refused in words, since its folder is what the sandbox shows and a room's layer can be the private folder itself.",
+  "Errors: a failed run comes back as TeX's first error with its file and line (`NAME.tex:12: Undefined control sequence. (l.12 ...)`), never a path.",
+  "One at a time: with LibreOffice's conversions, across rooms; a run past 120 seconds is killed with its sandbox, and the room is told LaTeX did not finish.",
+  "Count: pypdf counts the PDF's pages, as for any render.",
+]
+tier = "free"
+needs = "TeX Live on the machine, on the daemon's PATH: latexmk and pdflatex, with xelatex or lualatex for documents that ask for them (Debian or Ubuntu: `apt install latexmk texlive-latex-extra texlive-fonts-extra texlive-xetex texlive-luatex`); and bubblewrap (`bwrap`), which a room's shell sandbox needs anyway"
+price = "none"
+free_path = "none: without TeX Live or bubblewrap the room says so"
+asked_as = ["compile latex", "compile the latex", "compile my latex", "latex to pdf", "tex to pdf", "compile the tex", "overleaf", "pdflatex", "xelatex", "latex resume"]
 
 [abilities.watch]
 state = "built"
