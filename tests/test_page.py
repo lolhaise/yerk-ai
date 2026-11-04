@@ -425,6 +425,44 @@ def test_a_comment_typed_in_the_program_is_the_owner_s_talk_on_the_chat_and_said
     assert comments("", "# one\n# two\nx = 1\n# three\n") == [(1, "one\ntwo"), (4, "three")]
 
 
+def test_a_program_of_repeated_lines_costs_the_owner_s_message_time_in_step_with_its_length_so_it_never_holds_the_rooms(tmp_path):
+    """The wall the cold read hit: the comments were found by a diff (SequenceMatcher, autojunk off) over the whole program at
+    every message, even with the program unchanged, the square of its lines when they repeat: a line said beside 8,000 blank
+    lines took 5 s on yerkd's only loop, every room's hooks and tools waiting. Now a line the program had is never talk, so
+    none is diffed, and an unchanged program is not read at all. And a paste of 25,000 comments was 25,000 chat lines and
+    said lines, 10 s and a 1.3 MB message: now DIFF_LINES of them are said, the rest counted."""
+    p, room = hub(tmp_path, quiet=60)
+    p.draw("r", {"code": "\n" * 8000})
+
+    async def go():
+        took = time.perf_counter()
+        await p.event("r", {"kind": "say", "text": "one"})                                 # the program unchanged
+        await p.event("r", {"kind": "edit", "pane": "code", "text": "\n" * 4000 + "# two\n" + "\n" * 4000})
+        p.flush("r")
+        return time.perf_counter() - took
+    assert asyncio.run(go()) < 1
+    assert [m.text.splitlines()[-1] for m in room.got] == ["said on the page: one", "said in solution.py at line 4001, as a # comment: two"]
+    assert [(x["text"], x.get("at")) for x in p.sheets["r"].lines] == [("one", None), ("two", 4001)]
+    took, blank, n = time.perf_counter(), "\n" * pagemod.TEXT_MAX, pagemod.TEXT_MAX // 4
+    assert comments(blank, blank) == [] and comments(blank + "x\n", "y\n" + blank) == []
+    assert comments(blank, blank[:50_000] + "# three\n" + blank[50_000:]) == [(50_001, "three")]
+    assert comments("", "#a\n\n" * n) == [(2 * i + 1, "a") for i in range(n)]               # a comment each
+    assert comments("x\n", "x\n" + "#a\n" * n) == [(2, "\n".join(["a"] * n))]                 # one comment, grown
+    assert time.perf_counter() - took < 1
+
+    async def paste():                    # a comment each: DIFF_LINES of them said and on the chat, the rest counted
+        await p.event("r", {"kind": "edit", "pane": "code", "text": "#a\n\n" * n})
+        took = time.perf_counter()
+        p.flush("r")
+        return time.perf_counter() - took
+    assert asyncio.run(paste()) < 1
+    said = room.got[-1].text.splitlines()
+    assert said.count("said in solution.py at line 1, as a # comment: a") == 1 and len(room.got[-1].text) < 10_000
+    assert sum(x.startswith("said in solution.py at line") for x in said) == pagemod.DIFF_LINES
+    assert said[-1] == words.PAGE_COMMENT_CUT.format(n=n - pagemod.DIFF_LINES, name="solution.py")
+    assert [x.get("at") for x in p.sheets["r"].lines[2:]] == [2 * i + 1 for i in range(pagemod.DIFF_LINES)]
+
+
 def test_the_look_is_the_page_s_own_a_scoreboard_a_clock_tiles_that_pop_a_hint_card_and_a_chat_column_dark():
     html = pagemod.HTML.read_text()
     css, body = html.split("</style>", 1)

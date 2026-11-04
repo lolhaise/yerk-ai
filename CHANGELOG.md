@@ -36,6 +36,11 @@ version changes.
   is read once, kept beside its words and never in `chat.json`, not again for all 200 kept lines whenever a tab opens. A
   room's line is cut at the say box's 100,000 characters. Two marked words no longer read as one run (`**a** and **b**`
   was bold from the first `a` to the last `b`). The `[code]` ceiling goes to 25,568.
+- A program of repeated lines no longer freezes yerkd: the `#` comments are found without a diff of the whole program
+  (a line the program already had is never talk, so none is needed), and an unchanged program is not read at all; a
+  line said beside 8,000 blank lines took 5 s on yerkd's only loop, now a few milliseconds. One message says the first
+  60 comments typed, the most a message carries of the diff too, and counts the rest, so a paste of 25,000 comment
+  lines no longer takes 10 s and sends the room a 1.3 MB message. The `[code]` ceiling goes to 25,572.
 - Upgrading: nothing to set. An open page picks up the chat pane when its tab is reloaded.
 
 ### need-2026-11-03-47 (#?)

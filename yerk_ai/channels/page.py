@@ -61,7 +61,7 @@ RUN_SECONDS = 10         # a test run's wall clock, and its CPU seconds
 RUN_MEMORY = 1 << 30     # a test run's address space, in bytes
 OUTPUT_MAX = 4000        # characters of what a run printed that come back
 TEXT_MAX = 100_000       # characters of a program or its tests the page may send, and of a chat line, either side's
-DIFF_LINES = 60          # lines of the change one message carries; the whole program is in work/page/
+DIFF_LINES = 60          # lines of the change one message carries, and # comments said; the whole program is in work/page/
 LINES_KEPT = 200         # the chat's newest lines, the owner's and the room's, a tab shows when it opens
 POINTS_MAX = 400         # points of one stroke kept in the events file
 NOTE_MAX = 200           # characters of a mark's note or the hint
@@ -332,19 +332,21 @@ def rich(text: str) -> list[dict[str, Any]]:
 
 def comments(old: str, new: str) -> list[tuple[int, str]]:
     """The # comment lines the owner typed in the program since the room last heard it, the owner's talk as a said line is (a
-    whole line a comment, new or changed, never a #! line or one the program already had): each run of them as its
+    whole line a comment, new or changed, never a #! line or one the program already had: so no diff is needed, whose time
+    grew with the square of the lines when they repeat, and an unchanged program is not read): each run of them as its
     first line, from 1, and its words, a line each."""
-    had, rows, out = {x.strip() for x in old.splitlines()}, new.splitlines(), list[tuple[int, str]]()
-    for tag, _, _, j1, j2 in difflib.SequenceMatcher(None, old.splitlines(), rows, autojunk=False).get_opcodes():
-        for j in range(j1, j2) if tag in ("insert", "replace") else ():
-            said = rows[j].strip()
-            if not said.startswith("#") or said.startswith("#!") or said in had or not (talk := said.lstrip("#").strip()):
-                continue
-            if out and out[-1][0] + out[-1][1].count("\n") == j:          # the next line of the same comment
-                out[-1] = (out[-1][0], out[-1][1] + "\n" + talk)
-            else:
-                out.append((j + 1, talk))
-    return out
+    if old == new:
+        return []
+    had, out = {x.strip() for x in old.splitlines()}, list[tuple[int, list[str]]]()
+    for j, row in enumerate(new.splitlines()):
+        said = row.strip()
+        if not said.startswith("#") or said.startswith("#!") or said in had or not (talk := said.lstrip("#").strip()):
+            continue
+        if out and out[-1][0] + len(out[-1][1]) == j + 1:           # the next line of the same comment
+            out[-1][1].append(talk)
+        else:
+            out.append((j + 1, [talk]))
+    return [(at, "\n".join(said)) for at, said in out]
 
 
 @dataclass
@@ -547,13 +549,14 @@ class Page:
 
     def message(self, s: Sheet, talk: list[tuple[int, str]] | None = None) -> str:
         """What waits to go to the room, as one message: the change to the program and its tests since it last heard them,
-        each # comment line typed in the program as said (`talk`, comments), the newest run when it says something new,
-        and each stroke, said line and event in order; "" when nothing waits."""
+        each # comment line typed in the program as said (`talk`, comments, DIFF_LINES of them, the rest counted), the newest
+        run when it says something new, and each stroke, said line and event in order; "" when nothing waits."""
         parts = []
         for (old, new, name) in ((s.heard[0], s.code, PROGRAM), (s.heard[1], s.tests, TESTS)):
             if old != new:
                 parts.append(words.PAGE_TYPED.format(name=name, diff=diff(old, new, name)))
-        parts += [words.PAGE_COMMENT.format(name=PROGRAM, line=at, text=said) for at, said in talk or []]
+        parts += [words.PAGE_COMMENT.format(name=PROGRAM, line=at, text=said) for at, said in (talk or [])[:DIFF_LINES]]
+        parts += [words.PAGE_COMMENT_CUT.format(n=len(talk) - DIFF_LINES, name=PROGRAM)] if talk and len(talk) > DIFF_LINES else []
         if s.run is not None and not s.run_heard:
             parts.append(run_line(s.run))
         parts += s.waiting
@@ -570,7 +573,7 @@ class Page:
         if not (text := self.message(s, talk)):
             return ""
         s.heard, s.run_heard, s.waiting = (s.code, s.tests), True, []
-        for at, said in talk:              # the owner's talk on the chat too: a comment still typed replaces its line
+        for at, said in talk[:DIFF_LINES]:   # the owner's talk on the chat too: a comment still typed replaces its line
             last = s.lines[-1] if s.lines else {}
             again = last.get("at") == at and (said.startswith(last["text"]) or last["text"].startswith(said))
             self._said(s, {**(last if again else {}), "text": said, "kind": "me", "t": round(time.time(), 3), "at": at})

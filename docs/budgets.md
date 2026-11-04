@@ -467,7 +467,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-04: need-2026-11-03-48's fix raised it by 8, from its cold read: channels/page.py's chat line read once, kept with the line and never in chat.json (shown 3, _said 1, add_room 1), a room's line cut at the say box's TEXT_MAX (said's docstring 1), and the marks' comment (2): a mark never read past its own next one, so one long line never holds yerkd's loop. 25,568.
 
-- `lines = 25568`
+2026-11-04: need-2026-11-03-48's second fix raised it by 4, from its second cold read: channels/page.py's comments found with no diff (an unchanged program not read, 2; its docstring 1), so a program of repeated lines never holds yerkd's loop (8,000 blank lines took 5 s at every message), and the comments one message says cut at DIFF_LINES, the rest counted (message 1, words.py 1), so a paste of 25,000 never does either (10 s and a 1.3 MB message). 25,572.
+
+- `lines = 25572`
 
 ## Uncapped
 
