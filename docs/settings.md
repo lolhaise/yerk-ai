@@ -26,6 +26,7 @@ One `[rooms.NAME]` table a room; `yerk doctor` names any other key as a typo.
 - `mention_recall`: the people and things a message names, with their best lines, in its recall part (default true)
 - `model`: the model the room runs on, an alias or id from the install's model list; also what a turn runs on while every account is out of the one the settings tool put it on
 - `open_loops`: the open commitments file, kept whole in the recall pack at a session start
+- `page`: true: a live page for the room, a browser tab at the address `yerk room page NAME` prints, where the owner's typing, drawing and test runs reach the room as the owner's messages and its replies and the page tool render (default false)
 - `people`: Discord user ids answered in the room besides the owner, as sender person (unset: the owner only); needs privacy family or shared
 - `persona`: the persona file, the session start's persona part
 - `pinned_memory`: the pinned memory file, the session start's pinned_memory part

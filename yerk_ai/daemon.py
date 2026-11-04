@@ -31,6 +31,8 @@ from zoneinfo import ZoneInfo
 from . import (beat, context, deletes, deploy, doctor, evidence, gates, github, hooks, jobs, location, mcp_server, memory, mentions, needs,
                pictures, pipeline, render, reverse_image, status, taste, texts, transcribe, voice_note, watch, workers)
 from .accounts import Account, Cooldowns, from_dir, load_accounts, pick
+from .channels import page
+from .channels.page import Page
 from .config import (EFFORTS, REPO, SHELLS, account_and_model, account_named, assistants, budgets, discord_id, flag, load_toml, models,
                      override, people, pinned, private_dir, read_secret, room_id, room_settings, rooms, state_dir, table, trusted, uncapped,
                      write_private)
@@ -47,7 +49,7 @@ log = logging.getLogger("yerk.daemon")
 YERK_TOOLS = ["mcp__yerk__send", "mcp__yerk__hold", "mcp__yerk__recall", "mcp__yerk__read_memory",
               "mcp__yerk__remember", "mcp__yerk__worker", "mcp__yerk__schedule", "mcp__yerk__settings", "mcp__yerk__transcribe",
               "mcp__yerk__voice_note", "mcp__yerk__seen", "mcp__yerk__render", "mcp__yerk__watch", "mcp__yerk__need", texts.TOOL, deletes.TOOL,
-              "mcp__yerk__reverse_image_search", "mcp__yerk__github_state"]
+              "mcp__yerk__reverse_image_search", "mcp__yerk__github_state", "mcp__yerk__page"]
 # A shell room's sandbox when rooms.toml gives it no [rooms.NAME.sandbox] table: unsandboxed, a Read deny stops `cat` and
 # the Read tool, but a script, grep or redirect read every secret (Claude Code 2.1.304, PR 66's cold read, 2026-10-21)
 SANDBOX = {"enabled": True, "autoAllowBashIfSandboxed": True}
@@ -146,6 +148,7 @@ class Yerkd:
         self.idle_seconds, self.log_dir = idle_minutes * 60, log_dir
         self.rooms: dict[str, Room] = {}
         self.channels: dict[str, Any] = {}       # room -> its channel adapter
+        self.page = Page(state, self.ledger, capture=self.daily.capture)   # rooms with page = true: a live page each (channels/page.py)
         self.http: Any = None
         self.sends = 0
         self.pastes: dict[str, tuple[str, dict[str, tuple[str, str]]]] = {}   # room -> (today, its earlier days' blocks)
@@ -155,10 +158,12 @@ class Yerkd:
         # gates and the ledger). The first two exist before the first unit, since a hidden path that is missing fails its
         # start; secrets/ may be missing (Systemd.sandbox: a "-", or the worker's own token bound back when it is there)
         (state / "rooms").mkdir(parents=True, exist_ok=True)
+        (sdir / "pages").mkdir(mode=0o700, parents=True, exist_ok=True)     # each live page's key (channels/page.py), a worker's never
         self.workers = workers.Workers(self.ledger, workers.settings(state, dict(self.conf.get("workers", {})),
                                                                      self.budgets),
                                        self.accounts, self.cooldowns, self.rooms, self.channels, self.room_confs,
-                                       state=state, hidden=(self.secret_file, state / "rooms", private / "secrets"), models=self.models)
+                                       state=state, hidden=(self.secret_file, state / "rooms", private / "secrets", sdir / "pages"),
+                                       models=self.models)
         self.jobs = jobs.Jobs(private, state, self.ledger, dict(self.conf.get("jobs", {})), self.rooms, self.channels,
                               self.room_confs, self.conf, self.workers)
         self.workers.hooks.append(self.pictures_done)            # a pictures backfill batch: its line, then the next batch
@@ -349,7 +354,7 @@ class Yerkd:
                              self.owner(room), flag(self.room_confs.get(room, {}).get("sealed")))
 
     def check(self) -> mcp_server.Check:
-        return mcp_server.checker(self.secret, self.worker_secret, self.sessions.by_token)
+        return mcp_server.checker(self.secret, self.worker_secret, self.sessions.by_token, self.page.room_of)
 
     def add_room(self, name: str, channel: Channel) -> Room:
         conf = self.room_confs[name]
@@ -358,10 +363,19 @@ class Yerkd:
         named = [a for n in conf.get("accounts") or [] for a in self.accounts if a.name == n]
         accts = named + [a for a in self.accounts if a not in named]
         s = {**self.budgets.get("session", {}), **conf}          # the room's idle compaction keys over the budget's
+        if (paged := flag(conf.get("page"))) and not self.owner(name):   # it runs code the room draws, as the owner's user
+            log.warning("page: room %s is not an owner room; its page = true is refused", name)
+            paged = False
+        if paged:                                                # its replies render on its page too
+            channel = self.page.mirror(channel)
         room = Room(name, conf, lambda: self.spec_for(name), accts, channel, self.state, self.ledger,
                     self.failures, self.cooldowns, idle_seconds=self.idle_seconds, log_dir=self.log_dir, meters=self.meters,
                     compact=(self.window(name), float(s.get("idle_compact_at", 0)), 60 * float(s.get("idle_compact_after", 0))))
         self.rooms[name], self.channels[name] = room, channel
+        if paged:
+            self.page.add_room(room)
+            if not page.sandbox_starts():
+                log.warning("page: room %s: %s", name, words.PAGE_NO_SANDBOX)
         return room
 
     # the MCP tools
@@ -443,6 +457,18 @@ class Yerkd:
         log.info("send: %s -> %s, %d message(s)%s", caller or "?", room, len(ids), f", the voice note as a plain file: {why}" if why else "")
         return {"ok": True, "message_ids": ids, **({"voice_message": not why} if voice else {}),
                 **({"note": words.VOICE_AS_FILE.format(why=why)} if why else {})}
+
+    async def tool_page(self, room: str, req: dict[str, Any]) -> dict[str, Any]:
+        """The `page` tool: what the calling room draws on its own live page (channels/page.py), shown on every open tab now;
+        a new program or tests run at once, their result in the answer, so the page's own run of them wakes no turn;
+        the owner's rooms only (add_room gives no other room a page)."""
+        if not self.owner(room):
+            return {"ok": False, "error": words.PAGE_OWNER_ONLY}
+        r = self.page.draw(room, req)
+        if r["ok"] and ("code" in req or "tests" in req):
+            r["tests"] = page.run_line(await self.page.run(room, {}, heard=True))
+        log.info("page: %s, %s", room or "?", f"{', '.join(sorted(req))} to {r['tabs']} tab(s)" if r["ok"] else r["error"][:160])
+        return r
 
     async def tool_transcribe(self, room: str, path: str, owner_yes: bool = False) -> dict[str, Any]:
         """The `transcribe` tool: an audio file from the calling room's own folders (may_send's rule; its inbox holds what
@@ -1449,7 +1475,7 @@ class Yerkd:
 
     async def serve_http(self) -> None:
         import uvicorn
-        app = mcp_server.app(mcp_server.build(self, self.port, self.hook, self.control, self.status_now), self.check())
+        app = mcp_server.app(mcp_server.build(self, self.port, self.hook, self.control, self.status_now, self.page), self.check())
         self.http = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=self.port, log_level="warning"))
         await self.http.serve()
 
@@ -1475,6 +1501,7 @@ class Yerkd:
             return
         notify("STOPPING=1")
         cut = await asyncio.gather(*(asyncio.to_thread(r.shutdown) for r in self.rooms.values()))
+        self.page.close()                         # every live page's feed ends, so an open tab never holds the stop
         log.info("stopping: %d room(s) closed, %d turn(s) cut; a cut turn's messages run again once at the next start",
                  len(cut), sum(cut))
         with contextlib.suppress(Exception):
@@ -1527,6 +1554,7 @@ class Yerkd:
         if not dc.rooms:
             raise SystemExit("no room has a discord:<channel id> in rooms.toml")
         self.workers.begin(asyncio.get_running_loop())
+        self.page.begin(asyncio.get_running_loop())
         moved = self.move_held()                         # before any room starts; said after the connect
 
         async def say_moved() -> None:

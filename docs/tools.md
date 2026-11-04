@@ -2,7 +2,7 @@
 
 Written by `yerk docs own` from yerk_ai/mcp_server.py (build) and workers.WORKER_TOOLS; change those and run it again, never this page.
 
-The 18 tools Yerk AI's own MCP server hands every room's Claude Code, preloaded, as mcp__yerk__NAME. Each one's description is the text the model reads, indentation dropped. A worker gets none of them unless [workers] yerk_tools in yerkd.toml names some, and then only recall, read_memory, on its own server.
+The 19 tools Yerk AI's own MCP server hands every room's Claude Code, preloaded, as mcp__yerk__NAME. Each one's description is the text the model reads, indentation dropped. A worker gets none of them unless [workers] yerk_tools in yerkd.toml names some, and then only recall, read_memory, on its own server.
 
 ## send
 
@@ -279,3 +279,22 @@ refused until the owner says yes; then call again with `owner_yes` true.
 - `script`: string, required
 - `name`: string, default ""
 - `owner_yes`: boolean, default false
+
+## page
+
+```text
+Draws on this room's live page, where the owner types, draws and runs tests in a browser; each part given replaces
+what it shows. `code` a new program (solution.py); `tests` its unittest file (it imports solution), which the page
+runs on every pause in typing; `marks` line marks, each {"line": N, "kind": "highlight" or "arrow", "text": a note},
+[] clears; `hint` one line under the program; `bar` labels and values on top; `timer` seconds to count down, 0 stops;
+`stall` seconds of no typing before the page tells you, 0 off. Your replies show there too. What the owner types,
+draws and says there comes to you as messages, mid-turn too; each keystroke is in page/events.jsonl.
+```
+
+- `code`: string, default ""
+- `tests`: string, default ""
+- `marks`: list of object or null, default null
+- `hint`: string or null, default null
+- `bar`: object or null, default null
+- `timer`: integer, default -1
+- `stall`: integer, default -1

@@ -30,9 +30,9 @@ find or make a Discord room's test webhook (URL to a 0600 file)
 
 ### yerk room ACTION ROOM
 
-act on a running yerkd's room (close, compact), or add one: a Discord chat moved in
+act on a running yerkd's room (close, compact), add one (a Discord chat moved in), or print the address of its live page (page)
 
-- `ACTION`: one of close, compact, add
+- `ACTION`: one of close, compact, add, page
 - `ROOM`: the room; add: NAME, for a room NAME-on-yerk
 - `--from SOURCE`: add: discord:<channel or thread id>, the chat that moves in
 - `--person PERSON`: add: a person room, for this Discord user id, behind the wall

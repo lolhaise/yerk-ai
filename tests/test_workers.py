@@ -762,10 +762,11 @@ def test_the_unit_sees_the_state_folder_read_only_its_own_folder_writable_and_no
     from yerk_ai.daemon import Yerkd
     monkeypatch.undo()                                                # the daemon runs git: the real subprocess again
     (tmp_path / "d").mkdir()
-    y = Yerkd(EXAMPLE_PRIVATE, tmp_path / "d")                         # the daemon hands all three paths to its launcher
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path / "d")                         # the daemon hands all four paths to its launcher
     assert isinstance(y.workers.launcher, workers.Systemd) and y.workers.launcher.state == tmp_path / "d"
-    assert y.workers.launcher.hidden == (y.secret_file, tmp_path / "d" / "rooms", EXAMPLE_PRIVATE / "secrets")
-    assert (tmp_path / "d" / "rooms").is_dir()
+    assert y.workers.launcher.hidden == (y.secret_file, tmp_path / "d" / "rooms", EXAMPLE_PRIVATE / "secrets",
+                                         tmp_path / "d" / "secrets" / "pages")   # the live pages' keys: each opens a room as the owner
+    assert (tmp_path / "d" / "rooms").is_dir() and (tmp_path / "d" / "secrets" / "pages").is_dir()   # there before a unit starts
 
 
 def test_the_unit_does_not_see_the_private_layers_secrets_but_its_own_accounts_token(tmp_path):

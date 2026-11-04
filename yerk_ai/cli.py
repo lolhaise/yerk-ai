@@ -90,6 +90,10 @@ def cmd_room(a: argparse.Namespace) -> int:
         import asyncio
         from . import move
         return asyncio.run(move.imports(a) if a.cmd == "import" else move.add(a))
+    if a.action == "page":                      # the room's live page: its address, the key in the fragment (channels/page.py)
+        from .channels.page import address
+        print(address(state_dir(a.state), a.room))
+        return 0
     out = _control(a.state, {a.action: a.room}, 900 if a.action == "compact" else 60)
     print(json.dumps(out))
     return 0 if out.get("ok") else 1
@@ -751,8 +755,9 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("--private", help="private folder (default: $YERK_PRIVATE)")
     s.add_argument("--channel", help="the channel id, when rooms.toml has none yet")
     s.add_argument("--webhook", default="yerk-test-sender")
-    r = sub.add_parser("room", help="act on a running yerkd's room (close, compact), or add one: a Discord chat moved in")
-    r.add_argument("action", choices=["close", "compact", "add"])
+    r = sub.add_parser("room", help="act on a running yerkd's room (close, compact), add one (a Discord chat moved in), or print "
+                       "the address of its live page (page)")
+    r.add_argument("action", choices=["close", "compact", "add", "page"])
     r.add_argument("room", help="the room; add: NAME, for a room NAME-on-yerk")
     r.add_argument("--from", dest="source", default="", help="add: discord:<channel or thread id>, the chat that moves in")
     r.add_argument("--person", type=int, default=0, help="add: a person room, for this Discord user id, behind the wall")

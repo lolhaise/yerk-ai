@@ -38,10 +38,12 @@ layer = 10
 
 # "What can you do": this entry's room answer carries every ability's name by state, from this file, whole under the
 # per-message recall cap (2,000), so this line is kept short: need-2026-11-02-37 found it at 2,000 to the character and
-# cut "every ability it ships and every one it knows how to build, from this file" to its words now, for that need's name.
+# cut "every ability it ships and every one it knows how to build, from this file" to its words now, for that need's name;
+# need-2026-11-03-43 found it at 2,010 with live-page's name and cut "each ability it ships or knows how to build" to
+# "each ability, built or known" (15 fewer).
 [abilities.abilities]
 state = "built"
-what = "Says what Yerk AI can do: each ability it ships or knows how to build."
+what = "Says what Yerk AI can do: each ability, built or known."
 tier = "free"
 needs = "nothing; `yerk abilities` lists them, `yerk explain NAME` has any one, and a room asking gets the list"
 free_path = "this is the free path"
@@ -1445,6 +1447,22 @@ tier = "free"
 needs = "the web ability's plug-in attached to the room; no key, no browser and no sign-in, since the plain read from the machine (F1) makes the request"
 free_path = "this is the free path"
 asked_as = ["written question", "written questions", "order paper question", "sessional paper", "ourcommons", "government response tabled"]
+
+[abilities.live-page]
+state = "built"
+what = "A room's live page: a browser tab on the owner's monitor that is the room, served by yerkd on the box's own local address, with a program in an editor, its unittest tests beside it re-run on every pause in typing with no model call, a bar on top and a draw layer. What the owner types, draws and says there reaches the room as the owner's messages the instant the typing pauses, mid-turn too, as a Discord message does, each keystroke in a file the room reads; the room's replies render there, and its `page` tool puts a new program or tests, marks on lines, a hint, the bar and a countdown on it, with no screenshot and nobody touching Discord."
+how = [
+  "On: `page = true` in the room's rooms.toml table; the next start gives it its page and a key, and `yerk room page NAME` prints the address to open, the room and its key in the address's fragment, which a browser never sends. The key opens that room's page calls and nothing else, and no other secret opens them.",
+  "In: each keystroke is a line in work/page/events.jsonl at once (where it changed and what it took out and put in), the program and its tests in work/page/; a pause of 1.5 s sends one message with the change as a diff and the tests' newest result, and a stroke (the lines it covers), a said line, the timer's end or a stall goes at once.",
+  "Tests: run with no model call in a fresh folder under `python3 -I`, capped at 10 s and 1 GB, killed past the cap, inside bubblewrap (no network, no home, state or private folder, only its own folder writable, its own PID namespace), since the `page` tool hands it code a model wrote; each test red or green with the line it failed at, a syntax error with its line, back to the page at once. No bwrap that starts: nothing runs, and the run says so.",
+  "Owner rooms only: `page = true` in any other room is refused at the start and logged, and the tool refuses there.",
+  "Out: the room's replies, notices and sends to itself render on every open tab beside Discord, and the `page` tool draws; a tab that opens or reconnects after a restart gets the whole state first.",
+]
+tier = "free"
+needs = "an owner room; bubblewrap (`bwrap`) on the box, with user namespaces allowed; a browser on the same machine (on Windows with WSL, Chrome reaches the box's local address); set `port` in yerkd.toml so the address stays the same across restarts"
+price = "none"
+free_path = "this is the free path"
+asked_as = ["live page", "a page on my monitor", "a page that is a room", "coding practice page", "see my typing live", "draw on the page"]
 
 [abilities.work-writes]
 state = "built"
