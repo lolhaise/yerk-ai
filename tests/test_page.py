@@ -3,6 +3,7 @@ as messages, mid-turn too, the tests run when the page asks with no model, and w
 import asyncio
 import json
 import shutil
+import subprocess
 import time
 from pathlib import Path
 
@@ -11,7 +12,7 @@ from starlette.testclient import TestClient
 
 from yerk_ai import mcp_server, words
 from yerk_ai.channels import page as pagemod
-from yerk_ai.channels.page import Mirror, Page, address, change, run_line, run_tests
+from yerk_ai.channels.page import Mirror, Page, address, board, cell, change, run_line, run_tests
 from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai.daemon import Yerkd
 from yerk_ai.ledger import Ledger
@@ -254,6 +255,73 @@ def test_the_page_tool_says_what_is_wrong_in_words(tmp_path):
     assert p.draw("other", {"hint": "x"}) == {"ok": False, "error": words.PAGE_NONE.format(room="other")}
     assert p.draw("r", {"hint": "x"}) == {"ok": True, "tabs": 0, "note": words.PAGE_NO_TAB}
     assert asyncio.run(p.event("other", {"kind": "say", "text": "x"}))["error"] == words.PAGE_NONE.format(room="other")
+
+
+def test_the_bar_s_words_read_as_a_scoreboard_a_rank_badge_an_lp_bar_big_numbers_and_words():
+    shapes = {k: {x: v for x, v in c.items() if x not in ("label", "value")} for k, c in
+              ((c["label"], c) for c in board({"Rank": "Silver II", "LP": "40", "Streak": "3", "Solved": "12/40", "Last": "+15 LP",
+                                               "Miss": "−12", "Done": "50%", "Topic": "two pointers"}))}
+    assert shapes == {"Rank": {"shape": "rank", "tier": "silver", "name": "Silver", "division": "II"},
+                      "LP": {"shape": "meter", "big": "40", "unit": "/100", "fill": 0.4},
+                      "Streak": {"shape": "number", "big": "3", "unit": "", "sign": ""},
+                      "Solved": {"shape": "meter", "big": "12", "unit": "/40", "fill": 0.3},
+                      "Last": {"shape": "number", "big": "+15", "unit": "LP", "sign": "up"},
+                      "Miss": {"shape": "number", "big": "−12", "unit": "", "sign": "down"},
+                      "Done": {"shape": "meter", "big": "50", "unit": "%", "fill": 0.5},
+                      "Topic": {"shape": "text"}}
+    assert [c["label"] for c in board({"b": "1", "a": "2", "1": "3"})] == ["b", "a", "1"]          # the room's order, kept
+    assert cell("medal", "gold")["tier"] == "gold" and cell("x", "Diamond 4")["division"] == "4"       # a tier word, any case
+    assert cell("tier", "Unranked") == {"label": "tier", "value": "Unranked", "shape": "rank", "tier": "", "name": "Unranked", "division": ""}
+    assert cell("goal", "Master recursion")["shape"] == "text"          # a tier word with words after it, outside a rank label
+    assert cell("points", "75 LP")["fill"] == 0.75 and cell("LP", "130")["fill"] == 1.0 and cell("x", "0/0")["fill"] == 0.0
+    assert cell("left", "3 of 4")["fill"] == 0.75 and cell("score", "1,240")["big"] == "1,240" and cell("clock", "12:30")["shape"] == "text"
+    assert {c["tier"] for c in board({t: t.title() for t in pagemod.TIERS})} == set(pagemod.TIERS)
+
+
+def test_the_room_sets_only_the_words_and_every_tab_gets_the_scoreboard_read_from_them(tmp_path):
+    """The wall a room hit: asked to make the bar look better, it could change only its words, the look being the page's.
+    The look is now the page's for every room: what the room gives is still labels and values, and the tab gets them read
+    as the scoreboard's cells, with a word that is markup kept a word."""
+    p, _ = hub(tmp_path)
+    bar = {"Rank": "Gold I", "LP": "75", "Streak": "4", "Note": '<b style="color:red">big</b>'}
+
+    async def go():
+        tab = p.stream("r", beat=0.05)
+        await tab.__anext__()
+        assert p.draw("r", {"bar": bar})["ok"]
+        drawn = json.loads(await tab.__anext__())
+        await tab.aclose()
+        return drawn["draw"], json.loads(await p.stream("r").__anext__())["state"]
+    drawn, late = asyncio.run(go())
+    assert drawn["bar"] == late["bar"] == bar and drawn["board"] == late["board"] == board(bar)
+    assert [c["shape"] for c in drawn["board"]] == ["rank", "meter", "number", "text"]
+    assert drawn["board"][0]["tier"] == "gold" and drawn["board"][1]["fill"] == 0.75
+    assert drawn["board"][3]["value"] == bar["Note"]                              # words, as the room wrote them
+    logged = [e for e in events(tmp_path) if e["kind"] == "drawn"][-1]
+    assert logged["bar"] == bar and "board" not in logged                         # the file keeps the room's words
+
+
+def test_the_look_is_the_page_s_own_a_scoreboard_a_clock_tiles_that_pop_a_hint_card_and_a_chat_column_dark():
+    html = pagemod.HTML.read_text()
+    css, body = html.split("</style>", 1)
+    assert "color-scheme: dark" in css and "—" not in html
+    assert all(f".tier-{t} {{" in css for t in pagemod.TIERS)                 # each tier the board reads has its colour
+    for rule in (".cell.rank", ".badge", ".cell.meter", ".track i", ".cell.number.up", ".cell.number.down", ".cell .big", ".cell .value",
+                 "#clock.low", "#clock.crit", ".tile.ok", ".tile.bad", ".tile.pop", "@keyframes pop", "#hint {", "#chat {", "#lines .me"):
+        assert rule in css, rule
+    code = body.split('data-pane="code"', 1)[1].split("</section>", 1)[0]
+    assert 'id="hint"' in code and 'id="lines"' in body.split('id="chat"', 1)[1]    # the hint under the program; the lines a column
+    assert 'id="clock"' in body.split('id="bar"', 1)[1].split("</header>", 1)[0]
+    script = body.split("<script>", 1)[1]
+    assert not [w for w in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write") if w in script]   # a word stays a word
+    assert "state.board" in script and "c.tier" in script and "passedBefore" in script
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="node checks the page's script; it is not on this box")
+def test_the_page_s_script_parses(tmp_path):
+    (js := tmp_path / "page.js").write_text(pagemod.HTML.read_text().split("<script>", 1)[1].split("</script>", 1)[0])
+    done = subprocess.run(["node", "--check", str(js)], capture_output=True, text=True, timeout=60)
+    assert done.returncode == 0, done.stderr
 
 
 def test_a_page_message_a_restart_cut_is_closed_and_what_the_page_showed_comes_back(tmp_path):
