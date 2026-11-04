@@ -315,8 +315,8 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
 
     @mcp.tool()
     async def page(code: str = "", tests: str = "", marks: list[dict[str, Any]] | None = None, hint: str | None = None,
-                   bar: dict[str, str] | None = None, timer: int = -1, stall: int = -1, open: bool = False, off: bool = False,
-                   *, ctx: Context) -> str:
+                   bar: dict[str, str] | None = None, timer: int = -1, stall: int = -1, open: bool = False, where: str = "",
+                   off: bool = False, *, ctx: Context) -> str:
         """Draws on this room's live page, where the owner types, draws and runs tests in a browser; each part given replaces
         what it shows. `code` a new program (solution.py); `tests` its unittest file (it imports solution), which the page
         runs on every pause in typing; `marks` line marks, each {"line": N, "kind": "highlight" or "arrow", "text": a note},
@@ -324,10 +324,11 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         "12/40" or a number under LP a bar, a number big); `timer` seconds on its clock, 0 stops;
         `stall` seconds of no typing before the page tells you, 0 off. Your replies show there too. What the owner types,
         draws and says there comes to you as messages, mid-turn too; each keystroke is in page/events.jsonl. `open` true
-        (the owner asked for the page) turns it on, with no restart, and opens it on the owner's screen; `off` true: off."""
+        (the owner asked for the page) turns it on, with no restart, and opens it on the owner's screen, `where` "mac" on
+        their Mac (default "pc"); `off` true: off."""
         req = {k: v for k, v in {"code": code or None, "tests": tests or None, "marks": marks, "hint": hint, "bar": bar,
                                  "timer": timer if timer >= 0 else None, "stall": stall if stall >= 0 else None,
-                                 "open": open or None, "off": off or None}.items() if v is not None}
+                                 "open": open or None, "where": where or None, "off": off or None}.items() if v is not None}
         return json.dumps(await daemon.tool_page(caller_room(ctx), req))
 
     def route(path: str, handler: Handler) -> None:

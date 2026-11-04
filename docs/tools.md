@@ -290,7 +290,8 @@ runs on every pause in typing; `marks` line marks, each {"line": N, "kind": "hig
 "12/40" or a number under LP a bar, a number big); `timer` seconds on its clock, 0 stops;
 `stall` seconds of no typing before the page tells you, 0 off. Your replies show there too. What the owner types,
 draws and says there comes to you as messages, mid-turn too; each keystroke is in page/events.jsonl. `open` true
-(the owner asked for the page) turns it on, with no restart, and opens it on the owner's screen; `off` true: off.
+(the owner asked for the page) turns it on, with no restart, and opens it on the owner's screen, `where` "mac" on
+their Mac (default "pc"); `off` true: off.
 ```
 
 - `code`: string, default ""
@@ -301,4 +302,5 @@ draws and says there comes to you as messages, mid-turn too; each keystroke is i
 - `timer`: integer, default -1
 - `stall`: integer, default -1
 - `open`: boolean, default false
+- `where`: string, default ""
 - `off`: boolean, default false

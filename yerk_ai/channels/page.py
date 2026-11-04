@@ -23,7 +23,10 @@
 - On the owner's ask the room's `page` tool turns its page on with no restart (Yerkd.page_switch) and yerkd opens it on
   the owner's screen with the box's own opener (opener): the address it opens holds a one-time ticket, never the key,
   since an opener's command line is readable by every local user (/proc); the page trades the ticket once, within
-  TICKET_SECONDS, for its room and key (redeem), so nobody pastes the address and no room ever holds it.
+  TICKET_SECONDS, for its room and key (redeem), so nobody pastes the address and no room ever holds it. With `where`
+  mac it opens on the Mac instead (mac): ssh to it runs `open` there on the address as the Mac reaches yerkd,
+  handed on ssh's stdin, so not even the ticket is on a command line. A tab keeps its room and key in its own session
+  storage (gone when the tab closes), so a reload of a page whose address bar lost them opens it again.
 """
 from __future__ import annotations
 
@@ -36,6 +39,7 @@ import logging
 import os
 import re
 import secrets
+import shlex
 import shutil
 import signal
 import subprocess
@@ -45,7 +49,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, AsyncIterator, Callable
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 from .. import words
 from ..config import read_secret, write_private
@@ -66,7 +70,11 @@ LINES_KEPT = 200         # the chat's newest lines, the owner's and the room's, 
 POINTS_MAX = 400         # points of one stroke kept in the events file
 NOTE_MAX = 200           # characters of a mark's note or the hint
 TICKET_SECONDS = 60       # a one-time address opened on the owner's screen is good this long, and once
-OPEN_SECONDS = 15         # an opener's wall clock: it hands the address to the browser and ends
+OPEN_SECONDS = 15         # an opener's wall clock: it hands the address to the browser and ends (ssh to the Mac too)
+# the Mac's opener: ssh to it, its script on stdin (as the hands plug-in's mac tool runs one), so the one-time address is on
+# no command line of the box's, where every local user reads it (/proc); `open` there hands it to the Mac's default browser
+MAC_SSH = ("ssh", "-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10")
+MAC_OPEN = "open {url}\n"
 # Windows' own opener under WSL (a Windows browser reaches the box's local address): it hands the address whole to the
 # default browser, where cmd.exe's start would split it at its `&`
 WSL_OPEN = ("/mnt/c/Windows/System32/rundll32.exe", "url.dll,FileProtocolHandler")
@@ -437,15 +445,15 @@ class Page:
             self.flush(name)
             self._push(self.sheets.pop(name), {"closing": True})
 
-    def ticket(self, room: str, port: int) -> str:
+    def ticket(self, room: str, port: int, base: str = "") -> str:
         """A one-time address of the room's page, for the opener: a ticket good once within TICKET_SECONDS where the key
         would be, since the opener's command line is readable by every local user; a query, not a fragment, since every
-        opener hands a query on whole."""
+        opener hands a query on whole. `base`: yerkd as another screen reaches it (mac), else the box's own address."""
         now = time.monotonic()
         self.tickets = {t: v for t, v in self.tickets.items() if v[1] > now}
         t = secrets.token_urlsafe(24)
         self.tickets[t] = (room, now + TICKET_SECONDS)
-        return f"http://127.0.0.1:{port}{PATH}?{urlencode({'room': room, 'open': t})}"
+        return f"{base or f'http://127.0.0.1:{port}'}{PATH}?{urlencode({'room': room, 'open': t})}"
 
     def redeem(self, ticket: str) -> dict[str, Any]:
         """The page's trade of a one-time ticket for its room and key: once, within TICKET_SECONDS, while the page is on;
@@ -725,17 +733,40 @@ def opener(conf: dict[str, Any]) -> list[str]:
     return [x] if x and (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")) else []
 
 
-def open_on_screen(cmd: list[str], url: str, seconds: float = OPEN_SECONDS) -> str:
-    """`url` opened with the opener `cmd` (opener): "" when it opened, else why not, in words."""
+def mac(conf: dict[str, Any], port: int) -> tuple[list[str], str] | str:
+    """The way to the Mac for an open there (where mac): the ssh command whose stdin is the Mac's script (MAC_SSH to
+    [page] mac, else [imessage] host, the text tool's way to the same Mac) and yerkd's address as the Mac reaches it ([page]
+    address: the box's tailnet or LAN host, yerkd's own port when it names none), since 127.0.0.1 there is the Mac; else
+    why not, in words."""
+    pg = dict(conf.get("page") or {})
+    if not (host := str(pg.get("mac") or dict(conf.get("imessage") or {}).get("host") or "").strip()):
+        return words.PAGE_NO_MAC
+    said = str(pg.get("address") or "").strip()
+    u = urlsplit(said if "://" in said else f"http://{said}")
+    try:
+        if not said or u.scheme not in ("http", "https") or not u.hostname or u.path not in ("", "/") or u.query:
+            return words.PAGE_NO_ADDRESS
+        name = f"[{u.hostname}]" if ":" in u.hostname else u.hostname
+        return [*MAC_SSH, host, "/bin/bash", "-s"], f"{u.scheme}://{name}:{u.port or port}"
+    except ValueError:                        # a port that is not one
+        return words.PAGE_NO_ADDRESS
+
+
+def open_on_screen(cmd: list[str], url: str, seconds: float = OPEN_SECONDS, script: str = "") -> str:
+    """`url` opened with the opener `cmd` (opener), the address added last, or, with `script` (MAC_OPEN), in that script on
+    cmd's stdin (the Mac's ssh, mac), on no command line: "" when it opened, else why not, in words."""
     if not cmd:
         return words.PAGE_NO_SCREEN
+    how: dict[str, Any] = {"input": script.format(url=shlex.quote(url))} if script else {"stdin": subprocess.DEVNULL}
     try:
-        p = subprocess.run([*cmd, url], stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=seconds)
+        p = subprocess.run(cmd if script else [*cmd, url], capture_output=True, text=True, timeout=seconds, **how)
     except subprocess.TimeoutExpired:
         return words.PAGE_OPEN_SLOW.format(n=round(seconds))
     except OSError as e:
         return words.PAGE_OPEN_FAILED.format(why=e.strerror or type(e).__name__)
     said = (p.stderr or p.stdout).strip().replace(url, "the address")[-200:]
+    if p.returncode == 255 and script:        # ssh's own: the Mac asleep, off the network or refusing the key
+        return words.PAGE_MAC_SSH.format(why=said.splitlines()[-1] if said else words.PAGE_OPEN_SILENT)
     return "" if p.returncode == 0 else words.PAGE_OPEN_FAILED.format(why=said or words.PAGE_OPEN_SILENT)
 
 

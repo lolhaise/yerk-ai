@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 118905`
+- `total = 119005`
 
 ## [session_start.claude_code]
 
@@ -60,9 +60,13 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-03, need-2026-11-03-46: the `page` tool's words for the scoreboard (which of the bar's words the page shows as a rank badge, a bar or a big number, since a room asked to make its page's top bar look better could change only the words, the look being the page's own; filed 2026-11-03) take it from 1,700 to 1,791 as this tree builds it on Python 3.13, all 19 to 19,371, about 19,960 as sent (589 over the build, as on need 44's tree); so 20,000, no part could pay, the total rose by the 100 (to 118,905).
 
+2026-11-04, need-2026-11-03-49: the `page` tool's `where` (an open on the Mac, by ssh to it, since a room asked for the page by the owner on the Mac had it opened in the box's own browser on the PC, the opener's only way; filed
+
+2026-11-03) takes it from 1,791 to 1,901 as this tree builds it on Python 3.13, all 19 to 19,481, about 20,070 as sent (589 over the build, as on need 46's tree); so 20,100, no part could pay, the total rose by the 100 (to 119,005).
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
-- `yerk_tools = 20000`
+- `yerk_tools = 20100`
 - `deferred_tool_names = 3429`
 - `mcp__hands__ = 8165`
 - `mcp__web-ladder__web_image = 913`
@@ -469,7 +473,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-04: need-2026-11-03-48's second fix raised it by 4, from its second cold read: channels/page.py's comments found with no diff (an unchanged program not read, 2; its docstring 1), so a program of repeated lines never holds yerkd's loop (8,000 blank lines took 5 s at every message), and the comments one message says cut at DIFF_LINES, the rest counted (message 1, words.py 1), so a paste of 25,000 never does either (10 s and a 1.3 MB message). 25,572.
 
-- `lines = 25572`
+2026-11-04, need-2026-11-03-49: 54 lines for the live page's open on the Mac (a room asked for the page by the owner on the Mac had it opened on the PC, and a reload there lost the page's key), not folded to fit: channels/page.py 31 (mac: the ssh host, [page] mac else [imessage] host, and yerkd's address as the Mac reaches it, [page] address, each refused in words; open_on_screen's script on stdin, so the one-time address is on no command line, and ssh's own failure said as the Mac not answering; the ticket's base; the module's words), daemon.py 10 (the open's `where`, refused in words when it is neither pc nor mac), words.py 8, config.py 4 (the two keys' words) and mcp_server.py 1. The key kept in the tab's session storage is page.html, outside this count. 25,626.
+
+- `lines = 25626`
 
 ## Uncapped
 
