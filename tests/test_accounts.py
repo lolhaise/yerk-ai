@@ -21,7 +21,16 @@ three = { config_dir = "/x/three", order = 4 }
 def test_env_pins_the_config_dir_and_drops_inherited_logins():
     env = account_env(A[1], {"PATH": "/bin", "CLAUDE_CONFIG_DIR": "/x/one", "CLAUDECODE": "1", "ANTHROPIC_X": "y",
                              TOKEN_ENV: "inherited"})
-    assert env == {"PATH": "/bin", "CLAUDE_CONFIG_DIR": "/x/two", "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1"}
+    assert env == {"PATH": "/bin", "CLAUDE_CONFIG_DIR": "/x/two", "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
+                   "CLAUDE_CODE_ENTRYPOINT": "yerk", "CLAUDE_CODE_DISABLE_ARTIFACT": "1"}
+
+
+def test_an_inherited_entrypoint_or_artifact_setting_is_replaced_not_kept(monkeypatch):
+    inherited = {"CLAUDE_CODE_ENTRYPOINT": "sdk-cli", "CLAUDE_CODE_DISABLE_ARTIFACT": "0"}
+    for k, v in inherited.items():
+        monkeypatch.setenv(k, v)                    # the daemon's own environment, which a room's process starts from
+    for env in (account_env(A[1], {"PATH": "/bin", **inherited}), account_env(A[1])):
+        assert (env["CLAUDE_CODE_ENTRYPOINT"], env["CLAUDE_CODE_DISABLE_ARTIFACT"]) == ("yerk", "1")
 
 
 def test_a_stored_token_goes_to_the_child_and_its_file_is_private(tmp_path):

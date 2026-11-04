@@ -483,7 +483,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-04, need-2026-11-04-47: 130 lines for a .tex compiled to a PDF and its pages counted (a room asked to edit a resume in LaTeX found no TeX in its shell and render taking LibreOffice's formats alone; filed 2026-11-04), not folded to fit: render.py 120 (engine: the file's own `% !TEX program` line, else lualatex or xelatex by what it or a class beside it loads, else pdflatex; box: the bubblewrap command, no network, no home, state or private folder, the document's folder read-only, a fresh build folder the one thing writable; first_error: TeX's first error and its line; compile_tex: latexmk with shell escape off, only a clean run's PDF copied out, a link at its name replaced, never written through; latex, the OSError's words and the module's words), words.py 6, daemon.py 3 (a .tex from the room's work folder only, since the layer can be the private folder itself) and mcp_server.py 1. 25,869.
 
-- `lines = 25869`
+2026-11-04, entrypoint-name-2026-11-04: 4 lines for every Claude Code process Yerk AI starts going out under its own name, `yerk`, with Artifacts off (unset, a `claude -p` run is `sdk-cli`, which a plan's meters were measured counting heavier for the same work), not folded to fit: accounts.py 4 (account_env's two variables and the two clauses of its docstring that say why). 25,873.
+
+- `lines = 25873`
 
 ## Uncapped
 

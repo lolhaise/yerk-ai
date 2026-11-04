@@ -164,10 +164,14 @@ def account_env(account: Account, base: Mapping[str, str] | None = None) -> dict
     ANTHROPIC* variables are dropped, CLAUDE_CONFIG_DIR is set explicitly, and the account's
     one-year token, when its file exists, goes in CLAUDE_CODE_OAUTH_TOKEN (it outranks the config
     folder's own login); else the folder's login is used. Auto memory stays off: memory is
-    Yerk AI's job."""
+    Yerk AI's job. Its requests go out under Yerk AI's own name, `yerk`, not the `claude -p`
+    default `sdk-cli`, which a plan's meters count heavier for the same work. Artifacts stay off:
+    any name but `sdk-*` would turn them on, adding a Scratchpad line to every request."""
     env = {k: v for k, v in (os.environ if base is None else base).items() if not k.startswith(DROP_PREFIXES)}
     env["CLAUDE_CONFIG_DIR"] = str(account.config_dir)
     env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] = "1"
+    env["CLAUDE_CODE_ENTRYPOINT"] = "yerk"
+    env["CLAUDE_CODE_DISABLE_ARTIFACT"] = "1"
     tok, _ = read_token(account)
     if tok:
         env[TOKEN_ENV] = tok
