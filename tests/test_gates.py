@@ -638,3 +638,16 @@ def test_the_owners_word_counts_alone_or_as_the_first_word_and_never_inside_a_se
     assert all(gates.is_word(p, "owner", s) for p in yes)
     assert not any(gates.is_word(p, "owner", s) for p in no)
     assert not gates.is_word("approve the post", "test-webhook", s)      # not an approver
+
+
+def test_an_owner_rooms_send_to_the_machine_room_needs_no_word_and_a_family_rooms_still_does():
+    d = gates.Settings()
+    rooms = {"main": {"privacy": "owner"}, "family-room": {"privacy": "family"}, "ops": {"role": "machine"}, "other": {}}
+
+    def send(frm, to, r=rooms):
+        return gates.external_hit("mcp__yerk__send", {"room": to, "text": "x"}, frm, d, r)
+
+    assert send("main", "ops") is None                          # the owner's own line to the machine room
+    assert send("family-room", "ops")[0] == "send-elsewhere"              # a family room's still holds
+    assert send("main", "other")[0] == "send-elsewhere"         # any other room still holds
+    assert send("main", "ops", None)[0] == "send-elsewhere"     # no rooms.toml in hand: unchanged

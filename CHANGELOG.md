@@ -8,6 +8,12 @@ version changes.
 
 ## 2026-11-03
 
+### machine-room-send (#?)
+
+- An owner room's send to the machine room (rooms.toml `role = "machine"`) no longer holds for the approval
+  word: that line stays in the in-group, and the `need` tool already reaches the same room with no word. A
+  family room's send there, and any send to any other room, hold as before.
+
 ### approve-first-word (#?)
 
 - The owner's approval counts when `approve` is the first word of the message, with anything after it

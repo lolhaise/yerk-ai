@@ -925,4 +925,4 @@ secs = 60
 # with no bwrap that starts, since the `page` tool hands it code a model wrote), daemon.py 8 (`page = true` refused
 # outside the owner's rooms, at the start and in the tool; a page room's start says when the sandbox cannot start),
 # words.py 3. 25,245.
-lines = 25248
+lines = 25259

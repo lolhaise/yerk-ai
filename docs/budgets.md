@@ -453,7 +453,7 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-03: the fix of need-2026-11-03-43 (PR 185's cold read) raised it by 49, not folded to fit: channels/page.py 38 (the test runner in bubblewrap, no network, no home, state or private folder, its own PID namespace, and nothing run with no bwrap that starts, since the `page` tool hands it code a model wrote), daemon.py 8 (`page = true` refused outside the owner's rooms, at the start and in the tool; a page room's start says when the sandbox cannot start), words.py 3. 25,245.
 
-- `lines = 25248`
+- `lines = 25259`
 
 ## Uncapped
 
