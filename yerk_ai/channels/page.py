@@ -18,6 +18,10 @@
 - What the room says renders on the page: its replies, its notices and its sends to itself (Mirror), and what the
   `page` tool draws: a new program or tests, marks on lines (a highlight, an arrow, each with a note), a one-line hint,
   the bar (labels and values, a countdown) and the stall wait. A tab that opens or reconnects gets the whole state first.
+- On the owner's ask the room's `page` tool turns its page on with no restart (Yerkd.page_switch) and yerkd opens it on
+  the owner's screen with the box's own opener (opener): the address it opens holds a one-time ticket, never the key,
+  since an opener's command line is readable by every local user (/proc); the page trades the ticket once, within
+  TICKET_SECONDS, for its room and key (redeem), so nobody pastes the address and no room ever holds it.
 """
 from __future__ import annotations
 
@@ -28,6 +32,7 @@ import hmac
 import json
 import logging
 import os
+import secrets
 import shutil
 import signal
 import subprocess
@@ -37,6 +42,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, AsyncIterator, Callable
+from urllib.parse import urlencode
 
 from .. import words
 from ..config import read_secret, write_private
@@ -56,6 +62,11 @@ DIFF_LINES = 60          # lines of the change one message carries; the whole pr
 LINES_KEPT = 50          # the room's newest lines a tab shows when it opens
 POINTS_MAX = 400         # points of one stroke kept in the events file
 NOTE_MAX = 200           # characters of a mark's note or the hint
+TICKET_SECONDS = 60       # a one-time address opened on the owner's screen is good this long, and once
+OPEN_SECONDS = 15         # an opener's wall clock: it hands the address to the browser and ends
+# Windows' own opener under WSL (a Windows browser reaches the box's local address): it hands the address whole to the
+# default browser, where cmd.exe's start would split it at its `&`
+WSL_OPEN = ("/mnt/c/Windows/System32/rundll32.exe", "url.dll,FileProtocolHandler")
 PROGRAM, TESTS = "solution.py", "test_solution.py"
 MARKS = ("highlight", "arrow")
 RUNNER = '''import importlib, json, os, resource, sys, traceback, unittest
@@ -238,6 +249,7 @@ class Page:
     def __init__(self, state: Path, ledger: Ledger, capture: Callable[..., Any] | None = None, quiet: float = QUIET):
         self.state, self.ledger, self.capture, self.quiet = state, ledger, capture, quiet
         self.sheets: dict[str, Sheet] = {}
+        self.tickets: dict[str, tuple[str, float]] = {}     # one-time ticket -> (its room, when it runs out)
         self.loop: asyncio.AbstractEventLoop | None = None
         self.closing = False
 
@@ -269,6 +281,35 @@ class Page:
             if key and s.key and hmac.compare_digest(key, s.key):
                 found = name
         return found
+
+    def drop_room(self, name: str) -> None:
+        """The room's page off now: what the owner typed last goes to the room, its tabs' feeds end and its key opens
+        nothing; the key file stays, so the address is the same when it comes back on."""
+        if name in self.sheets:
+            self.flush(name)
+            self._push(self.sheets.pop(name), {"closing": True})
+
+    def ticket(self, room: str, port: int) -> str:
+        """A one-time address of the room's page, for the opener: a ticket good once within TICKET_SECONDS where the key
+        would be, since the opener's command line is readable by every local user; a query, not a fragment, since every
+        opener hands a query on whole."""
+        now = time.monotonic()
+        self.tickets = {t: v for t, v in self.tickets.items() if v[1] > now}
+        t = secrets.token_urlsafe(24)
+        self.tickets[t] = (room, now + TICKET_SECONDS)
+        return f"http://127.0.0.1:{port}{PATH}?{urlencode({'room': room, 'open': t})}"
+
+    def redeem(self, ticket: str) -> dict[str, Any]:
+        """The page's trade of a one-time ticket for its room and key: once, within TICKET_SECONDS, while the page is on;
+        a used, old or unknown ticket gets nothing."""
+        found = None
+        for t in list(self.tickets):
+            if ticket and hmac.compare_digest(ticket, t):
+                found = self.tickets.pop(t)
+        if found is None or found[1] <= time.monotonic() or (s := self.sheets.get(found[0])) is None:
+            log.warning("page: a one-time address was refused: used once already, past its minute, never made or its page off")
+            return {"ok": False, "error": words.PAGE_TICKET_SPENT}
+        return {"ok": True, "room": found[0], "key": s.key}
 
     def mirror(self, channel: Any) -> Mirror:
         return Mirror(channel, self)
@@ -354,7 +395,7 @@ class Page:
     def _paused(self, room: str) -> None:
         """The typing paused: what waits goes, unless the tests still run, whose end arms the wait again, so a pause is one
         message with its run in it."""
-        if not self.sheets[room].running.locked():
+        if (s := self.sheets.get(room)) is not None and not s.running.locked():   # a page turned off since: nothing
             self.flush(room)
 
     def message(self, s: Sheet) -> str:
@@ -495,6 +536,35 @@ class Mirror:
         ids: list[str] = await self.inner.send_text(room, text, key)
         self.page.said(room, text)
         return ids
+
+
+def opener(conf: dict[str, Any]) -> list[str]:
+    """The command that opens an address on the owner's screen, the address added last: [page] open in yerkd.toml (a list:
+    the command and its arguments), else the box's own: wslview or Windows' url.dll under WSL, open on a Mac, xdg-open on a
+    Linux desktop with a display; [] on a box with no screen to open it on."""
+    own = dict(conf.get("page") or {}).get("open")
+    if isinstance(own, list) and own and all(isinstance(x, str) and x for x in own):
+        return list(own)
+    if sys.platform == "darwin":
+        return ["open"]
+    if any(os.path.exists(f"/proc/sys/fs/binfmt_misc/{n}") for n in ("WSLInterop", "WSLInterop-late")):
+        return [w] if (w := shutil.which("wslview")) else list(WSL_OPEN) if os.path.exists(WSL_OPEN[0]) else []
+    x = shutil.which("xdg-open")
+    return [x] if x and (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")) else []
+
+
+def open_on_screen(cmd: list[str], url: str, seconds: float = OPEN_SECONDS) -> str:
+    """`url` opened with the opener `cmd` (opener): "" when it opened, else why not, in words."""
+    if not cmd:
+        return words.PAGE_NO_SCREEN
+    try:
+        p = subprocess.run([*cmd, url], stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=seconds)
+    except subprocess.TimeoutExpired:
+        return words.PAGE_OPEN_SLOW.format(n=round(seconds))
+    except OSError as e:
+        return words.PAGE_OPEN_FAILED.format(why=e.strerror or type(e).__name__)
+    said = (p.stderr or p.stdout).strip().replace(url, "the address")[-200:]
+    return "" if p.returncode == 0 else words.PAGE_OPEN_FAILED.format(why=said or words.PAGE_OPEN_SILENT)
 
 
 def address(state: Path, room: str) -> str:

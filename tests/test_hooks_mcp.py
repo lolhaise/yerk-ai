@@ -58,7 +58,7 @@ def test_nineteen_preloaded_tools_with_slim_schemas(tmp_path):
     assert set(tools) == {"send", "hold", "recall", "read_memory", "remember", "worker", "schedule", "settings", "transcribe",
                           "voice_note", "seen", "render", "watch", "need", "text", "delete", "reverse_image_search", "github_state",
                           "page"}
-    assert list(tools["page"].inputSchema["properties"]) == ["code", "tests", "marks", "hint", "bar", "timer", "stall"]
+    assert list(tools["page"].inputSchema["properties"]) == ["code", "tests", "marks", "hint", "bar", "timer", "stall", "open", "off"]
     assert list(tools["text"].inputSchema["properties"]) == ["to", "text"]
     assert list(tools["reverse_image_search"].inputSchema["properties"]) == ["path"]
     assert list(tools["github_state"].inputSchema["properties"]) == ["branch_or_pr"]

@@ -15,7 +15,8 @@ own token (minted per process start and bound with its session in sessions.json:
 the room's identity IS that binding, never a header a caller picks), and the worker secret (/control,
 recall and read_memory only, so a worker holds nothing that starts a worker or schedules a job). A room's live page
 (channels/page.py) is the one other caller: GET /page is the page itself, no data in it, open to a browser with no header,
-and its calls under /page/ open with that room's page key only, which opens nothing else.
+and its calls under /page/ open with that room's page key only, which opens nothing else; /page/open, with no header,
+trades a one-time ticket yerkd put in the address it opened on the owner's screen for that key, once.
 Each room's process gets a config naming this one server with `alwaysLoad: true` and its token as the
 header, passed with --strict-mcp-config. The same HTTP app answers the hooks.
 """
@@ -84,9 +85,9 @@ def checker(install: str, worker: str, room_of_token: Callable[[str], str | None
     """The one rule for every endpoint, compared in constant time; an empty secret never matches. A
     room's own token opens /hook and /mcp only: /control and /status show every room, not a room's to read.
     A page's calls (/page/...) open with that room's page key and nothing else, and the key opens nothing but them;
-    /page itself, the page with no data in it, opens with no header."""
+    /page itself, the page with no data in it, and /page/open, whose route checks its one-time ticket, open with no header."""
     def check(path: str, value: str) -> Auth | None:
-        if path == PAGE:
+        if path in (PAGE, PAGE + "/open"):          # the page itself, and its one-time ticket's trade, which its route checks
             return {"kind": "open", "room": ""}
         if path.startswith(PAGE + "/"):
             room = page_of_key(value) if value and page_of_key is not None else None
@@ -314,15 +315,18 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
 
     @mcp.tool()
     async def page(code: str = "", tests: str = "", marks: list[dict[str, Any]] | None = None, hint: str | None = None,
-                   bar: dict[str, str] | None = None, timer: int = -1, stall: int = -1, *, ctx: Context) -> str:
+                   bar: dict[str, str] | None = None, timer: int = -1, stall: int = -1, open: bool = False, off: bool = False,
+                   *, ctx: Context) -> str:
         """Draws on this room's live page, where the owner types, draws and runs tests in a browser; each part given replaces
         what it shows. `code` a new program (solution.py); `tests` its unittest file (it imports solution), which the page
         runs on every pause in typing; `marks` line marks, each {"line": N, "kind": "highlight" or "arrow", "text": a note},
         [] clears; `hint` one line under the program; `bar` labels and values on top; `timer` seconds to count down, 0 stops;
         `stall` seconds of no typing before the page tells you, 0 off. Your replies show there too. What the owner types,
-        draws and says there comes to you as messages, mid-turn too; each keystroke is in page/events.jsonl."""
+        draws and says there comes to you as messages, mid-turn too; each keystroke is in page/events.jsonl. `open` true
+        (the owner asked for the page) turns it on, with no restart, and opens it on the owner's screen; `off` true: off."""
         req = {k: v for k, v in {"code": code or None, "tests": tests or None, "marks": marks, "hint": hint, "bar": bar,
-                                 "timer": timer if timer >= 0 else None, "stall": stall if stall >= 0 else None}.items() if v is not None}
+                                 "timer": timer if timer >= 0 else None, "stall": stall if stall >= 0 else None,
+                                 "open": open or None, "off": off or None}.items() if v is not None}
         return json.dumps(await daemon.tool_page(caller_room(ctx), req))
 
     def route(path: str, handler: Handler) -> None:
@@ -355,6 +359,15 @@ def pages(mcp: FastMCP, page: Any) -> None:
     @mcp.custom_route(PAGE, methods=["GET"])
     async def _page(request: Request) -> Response:
         return HTMLResponse(page.html(), headers={"cache-control": "no-store", "referrer-policy": "no-referrer"})
+
+    @mcp.custom_route(PAGE + "/open", methods=["POST"])
+    async def _open(request: Request) -> Response:
+        try:                                    # the address yerkd opened on the owner's screen: its ticket, once, for the key
+            payload = await request.json()
+        except ValueError:
+            payload = None
+        r = page.redeem(str(payload.get("ticket") or "")) if isinstance(payload, dict) else {"ok": False}
+        return JSONResponse(r, status_code=200 if r["ok"] else 401)
 
     @mcp.custom_route(PAGE + "/stream", methods=["GET"])
     async def _stream(request: Request) -> Response:

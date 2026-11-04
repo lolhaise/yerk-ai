@@ -61,9 +61,10 @@
 <canvas id="ink"></canvas>
 <script>
 "use strict";
-const args = new URLSearchParams(location.hash.slice(1));
-const ROOM = args.get("room") || "", KEY = args.get("key") || "";
-history.replaceState(null, "", location.pathname);          // the key leaves the address bar
+const args = new URLSearchParams(location.hash.slice(1) || location.search.slice(1));   // yerkd's opener: a query
+const ROOM = args.get("room") || "", OPEN = args.get("open") || "";
+let KEY = args.get("key") || "";
+history.replaceState(null, "", location.pathname);          // the key, or the one-time ticket, leaves the address bar
 document.title = ROOM ? ROOM + ": Yerk page" : "Yerk page";
 const $ = s => document.querySelector(s);
 const panes = {};
@@ -230,7 +231,11 @@ ink.addEventListener("pointerup", () => {
   post("event", { kind: "stroke", pane: where.pane, lines: where.lines, points: stroke.filter((_, i) => i % every === 0).map(p => p.map(Math.round)) });
   stroke = null;
 });
-if (!KEY) line({ text: "This page needs its address with the key: yerk room page ROOM prints it.", kind: "notice" });
+if (OPEN) fetch("/page/open", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ticket: OPEN }) })
+  .then(r => r.json()).catch(() => ({})).then(d => {          // the ticket, once, for the key, which never was in the address
+    if (d.key) { KEY = d.key; listen(); } else line({ text: d.error || "The page did not open; ask the room again.", kind: "notice" });
+  });
+else if (!KEY) line({ text: "This page needs its address: ask the room to open the page, or yerk room page ROOM prints it.", kind: "notice" });
 else listen();
 </script>
 </body>

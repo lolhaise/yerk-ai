@@ -381,3 +381,127 @@ def test_a_stop_ends_every_tab_s_feed(tmp_path):
             await tab.__anext__()
     asyncio.run(go())
     assert p.sheets["r"].tabs == []
+
+
+def opener_script(tmp_path, body="printf '%s\\n' \"$@\" > \"$(dirname \"$0\")/opened\""):
+    """A stand-in for the box's opener: what it was handed lands in `opened` beside it."""
+    (s := tmp_path / "opener").write_text(f"#!/bin/sh\n{body}\n")
+    s.chmod(0o700)
+    return s
+
+
+def plain_daemon(tmp_path, family=False):
+    """Example rooms with no `page` in rooms.toml; `family`: example-quiet is not an owner room."""
+    private, state = tmp_path / "private", tmp_path / "state"
+    shutil.copytree(EXAMPLE_PRIVATE, private)
+    state.mkdir(exist_ok=True)
+    if family:
+        head, _, rest = (private / "rooms.toml").read_text().partition("[rooms.example-quiet]")
+        (private / "rooms.toml").write_text(head + "[rooms.example-quiet]" + rest.replace('privacy = "owner"', 'privacy = "family"', 1))
+    y = Yerkd(private, state)
+    y.add_room("example-room", ConsoleChannel())
+    y.add_room("example-quiet", ConsoleChannel())
+    return y, private, state
+
+
+def test_the_owner_s_ask_turns_the_page_on_with_no_restart_and_opens_it_on_the_screen_at_a_one_time_address(tmp_path):
+    y, private, state = plain_daemon(tmp_path)
+    toml, room = (private / "rooms.toml").read_bytes(), y.rooms["example-room"]
+    y.conf["page"] = {"open": [str(opener_script(tmp_path))]}
+    (state / "rooms" / "example-room").mkdir(parents=True, exist_ok=True)
+    (state / "rooms" / "example-room" / "override.json").write_text('{"effort": "high"}')     # the settings tool's, kept
+    cut = []
+    room.shutdown, room.respec = (lambda: cut.append("shutdown")), (lambda: cut.append("respec"))   # what a restart would do to the turn
+    assert asyncio.run(y.tool_page("example-room", {"hint": "x"}))["error"] == words.PAGE_NONE.format(room="example-room")
+    got = asyncio.run(y.tool_page("example-room", {"open": True}))
+    assert got["ok"] and got["opened"] and got["line"].startswith(words.PAGE_ON) and got["line"].endswith(words.PAGE_OPENED)
+    assert y.rooms["example-room"] is room and cut == []                        # the same room, its process and turn untouched
+    assert isinstance(room.channel, Mirror) and room.channel is y.channels["example-room"] and "example-room" in y.page.sheets
+    key = (state / "secrets" / "pages" / "example-room.secret").read_text().strip()
+    url = (tmp_path / "opened").read_text().strip()                              # what the opener's command line carried
+    assert key not in url and url.startswith(f"http://127.0.0.1:{y.port}/page?room=example-room&open=")
+    assert (private / "rooms.toml").read_bytes() == toml                         # rooms.toml is never written
+    over = state / "rooms" / "example-room" / "override.json"
+    assert json.loads(over.read_text()) == {"effort": "high", "page": True} and over.stat().st_mode & 0o077 == 0
+    app = mcp_server.app(mcp_server.build(y, y.port, y.hook, y.control, y.status_now, y.page), y.check())
+    with TestClient(app) as c:
+        first = c.post("/page/open", json={"ticket": url.rpartition("open=")[2]})
+        assert first.status_code == 200 and first.json() == {"ok": True, "room": "example-room", "key": key}
+        again = c.post("/page/open", json={"ticket": url.rpartition("open=")[2]})
+        assert again.status_code == 401 and again.json()["error"] == words.PAGE_TICKET_SPENT     # once only
+        assert c.post("/page/event", json={"kind": "say", "text": "hi"}, headers={"x-yerk-secret": key}).json() == {"ok": True}
+    assert asyncio.run(y.tool_page("example-room", {"open": True}))["line"].startswith(words.PAGE_WAS_ON)
+    y2 = Yerkd(private, state)                                                  # the next start keeps it on
+    y2.add_room("example-room", ConsoleChannel())
+    assert isinstance(y2.channels["example-room"], Mirror) and y2.page.sheets["example-room"].key == key
+
+
+def test_the_page_turns_off_with_no_restart_stays_off_and_comes_back_at_the_same_address(tmp_path):
+    y, state = page_daemon(tmp_path)
+    y.conf["page"] = {"open": [str(opener_script(tmp_path))]}
+    key, inner = y.page.sheets["example-room"].key, y.channels["example-room"].inner
+
+    async def off_with_a_tab_open():
+        tab = y.page.stream("example-room", beat=10)
+        await tab.__anext__()
+        got = await y.tool_page("example-room", {"off": True})
+        with pytest.raises(StopAsyncIteration):                                 # the open tab's feed ends
+            await tab.__anext__()
+        return got
+    assert asyncio.run(off_with_a_tab_open()) == {"ok": True, "line": words.PAGE_OFF}
+    assert y.channels["example-room"] is inner and y.rooms["example-room"].channel is inner and "example-room" not in y.page.sheets
+    assert y.page.room_of(key) is None                                          # its key opens nothing now
+    y2 = Yerkd(y.private, state)                                                # rooms.toml still says page = true: off wins
+    y2.add_room("example-room", ConsoleChannel())
+    assert not isinstance(y2.channels["example-room"], Mirror) and "example-room" not in y2.page.sheets
+    assert asyncio.run(y.tool_page("example-room", {"open": True}))["ok"] and y.page.sheets["example-room"].key == key
+    assert json.loads((state / "rooms" / "example-room" / "override.json").read_text()) == {}   # back to rooms.toml's say
+
+
+def test_a_ticket_opens_nothing_used_old_or_unknown_and_no_room_but_the_owner_s_switches_a_page(tmp_path, monkeypatch):
+    y, _, state = plain_daemon(tmp_path, family=True)
+    y.conf["page"] = {"open": [str(opener_script(tmp_path))]}
+    assert asyncio.run(y.tool_page("example-quiet", {"open": True})) == {"ok": False, "error": words.PAGE_OWNER_ONLY}
+    assert not (tmp_path / "opened").exists() and not (state / "rooms" / "example-quiet" / "override.json").exists()
+    assert "example-quiet" not in y.page.sheets
+    y.page_switch("example-room", True)
+    monkeypatch.setattr(pagemod, "TICKET_SECONDS", -1)                          # a ticket past its minute
+    old = y.page.ticket("example-room", y.port).rpartition("open=")[2]
+    assert y.page.redeem(old) == {"ok": False, "error": words.PAGE_TICKET_SPENT}
+    assert y.page.redeem("") == y.page.redeem("no-such-ticket") == {"ok": False, "error": words.PAGE_TICKET_SPENT}
+    monkeypatch.setattr(pagemod, "TICKET_SECONDS", 60)
+    live = y.page.ticket("example-room", y.port).rpartition("open=")[2]
+    y.page_switch("example-room", False)                                        # the page went off before the tab opened
+    assert y.page.redeem(live)["ok"] is False
+
+
+def test_the_opener_is_the_owner_s_command_else_the_box_s_own_and_says_why_not_in_words(tmp_path, monkeypatch):
+    assert pagemod.opener({"page": {"open": ["my-opener", "--new-tab"]}}) == ["my-opener", "--new-tab"]
+    monkeypatch.setattr(pagemod.sys, "platform", "linux")
+    monkeypatch.setattr(pagemod.os.path, "exists", lambda p: p in ("/proc/sys/fs/binfmt_misc/WSLInterop", pagemod.WSL_OPEN[0]))
+    monkeypatch.setattr(pagemod.shutil, "which", lambda name: None)
+    assert pagemod.opener({}) == list(pagemod.WSL_OPEN)                         # WSL: Windows' own, the address whole
+    monkeypatch.setattr(pagemod.shutil, "which", lambda name: f"/usr/bin/{name}")
+    assert pagemod.opener({}) == ["/usr/bin/wslview"]
+    monkeypatch.setattr(pagemod.os.path, "exists", lambda p: False)
+    monkeypatch.delenv("DISPLAY", raising=False)
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
+    assert pagemod.opener({}) == []                                             # a box with no screen
+    monkeypatch.setenv("DISPLAY", ":0")
+    assert pagemod.opener({}) == ["/usr/bin/xdg-open"]
+    url = "http://127.0.0.1:1/page?room=r&open=secret-ticket"
+    assert pagemod.open_on_screen([], url) == words.PAGE_NO_SCREEN
+    failed = pagemod.open_on_screen([str(opener_script(tmp_path, 'echo "no browser for $1" >&2; exit 3'))], url)
+    assert failed == words.PAGE_OPEN_FAILED.format(why="no browser for the address") and "secret-ticket" not in failed
+    assert pagemod.open_on_screen([str(tmp_path / "missing")], url) == words.PAGE_OPEN_FAILED.format(why="No such file or directory")
+    slow = opener_script(tmp_path, "sleep 5")
+    assert pagemod.open_on_screen([str(slow)], url, seconds=0.2) == words.PAGE_OPEN_SLOW.format(n=0)
+
+
+def test_a_page_turned_on_where_nothing_opens_it_is_on_and_the_room_is_told_the_way_in(tmp_path):
+    y, _, _ = plain_daemon(tmp_path)
+    y.conf["page"] = {"open": [str(tmp_path / "missing")]}
+    got = asyncio.run(y.tool_page("example-room", {"open": True, "hint": "start at line 1"}))
+    assert got["ok"] and got["opened"]["ok"] and got["opened"]["opened"] is False and "example-room" in y.page.sheets
+    assert "`yerk room page example-room` on the box prints its address" in got["opened"]["line"]
+    assert y.page.sheets["example-room"].hint == "start at line 1"              # what it drew in the same call is on the page

@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 118555`
+- `total = 118805`
 
 ## [session_start.claude_code]
 
@@ -56,9 +56,11 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-03, need-2026-11-03-43: the `page` tool (what a room draws on its live page: a new program or tests, line marks, a hint, the bar, a countdown and the stall wait, since a room asked for a page on the owner's monitor whose typing and drawing reach it as messages had Discord as its only way in; filed 2026-11-03) is 1,447 as this tree builds it on Python 3.13, all 19 to 19,027, about 19,616 as sent (558 over the build as the 18 go, and 31 for the new entry); so 19,650, no part could pay, the total rose by the 1,450 (to 118,555).
 
+2026-11-03, need-2026-11-03-44: the `page` tool's `open` and `off` (the owner's ask turns the room's live page on with no restart and yerkd opens it on the owner's screen, since a room asked for its page had it off, and turning it on took rooms.toml, outside the room's write path, and a restart that would cut its turn) take it from 1,447 to 1,700 as this tree builds it on Python 3.13, all 19 to 19,280, about 19,869 as sent (589 over the build, as on need 43's tree); so 19,900, no part could pay, the total rose by the 250 (to 118,805).
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
-- `yerk_tools = 19650`
+- `yerk_tools = 19900`
 - `deferred_tool_names = 3429`
 - `mcp__hands__ = 8165`
 - `mcp__web-ladder__web_image = 913`
@@ -453,7 +455,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-03: the fix of need-2026-11-03-43 (PR 185's cold read) raised it by 49, not folded to fit: channels/page.py 38 (the test runner in bubblewrap, no network, no home, state or private folder, its own PID namespace, and nothing run with no bwrap that starts, since the `page` tool hands it code a model wrote), daemon.py 8 (`page = true` refused outside the owner's rooms, at the start and in the tool; a page room's start says when the sandbox cannot start), words.py 3. 25,245.
 
-- `lines = 25259`
+2026-11-03: need-2026-11-03-44 raised it by 137, the owner's ask turning a room's live page on or off with no restart and the page opened on the owner's screen (a room asked for its page had it off, and turning it on took rooms.toml, outside its write path, and a restart that would cut its turn; filed 2026-11-03), not folded to fit: channels/page.py 70 (the one-time ticket and its trade for the key, a refused one logged, the box's opener and its run in words, a page dropped live with its last typing sent), daemon.py 39 (the switch: what a start does for a page room, or its undoing, and `page` in the room's override while it differs from rooms.toml's; the tool's open and off), mcp_server.py 13 (the tool's two flags, the ticket's route and its place in the guard), words.py 12, config.py 3 (the `[page] open` key). 25,385: main ed9e586's 25,248 plus 137; 25,396 with main 1543849's 25,259 (machine-room-send) merged in.
+
+- `lines = 25396`
 
 ## Uncapped
 
