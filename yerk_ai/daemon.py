@@ -1313,6 +1313,11 @@ class Yerkd:
                                        detail=found, reply_chars=len(str(said)))
                     log.info("room %s: Stop bounced once: %s", name, found)
                     refused = True
+                elif (fold := room.fold_check(active, None if said is None else str(said))):
+                    reason, found = fold              # counted the same way as a stub
+                    self.ledger.shadow(t=round(time.time(), 3), room=name, session_id=sid, turn=room.turn_key, rule="fold",
+                                       detail=found, reply_chars=len(str(said)))
+                    log.info("room %s: Stop bounced once: a folded message the reply never names (%s)", name, found)
             if room and name:
                 try:
                     await asyncio.to_thread(self.shadow_stop, name, room, str(payload.get("last_assistant_message") or ""), sid, refused, not reason)
@@ -1344,7 +1349,7 @@ class Yerkd:
         if out and "hookSpecificOutput" in out and name in self.rooms:
             prompt = str(payload.get("prompt", ""))
             said = self.said_in_turn(name, sid, prompt)
-            if said and said.id not in self.worded and gates.is_word(prompt, said.sender, self.gates):
+            if said and said.id not in self.worded and gates.is_word(said.text, said.sender, self.gates):   # its words, no line ahead
                 self.worded.add(said.id)                  # one message, one approval
                 sender = said.sender
                 row = self.ledger.approve(name, sender, self.gates.window_s)
@@ -1411,13 +1416,13 @@ class Yerkd:
     def said_in_turn(self, name: str, sid: str, prompt: str) -> Inbound | None:
         """The message behind a prompt, for the approval word: the hook call must carry the room's bound
         session id (the cwd fallback is not enough), and the prompt must be a message the room itself
-        wrote into its running turn. /hook has no secret yet (restart test R3), so this binding is what
-        keeps a posted "approve" from counting."""
+        wrote into its running turn, as it wrote it (a recap or the fold's line ahead of it too). /hook has
+        no secret yet (restart test R3), so this binding is what keeps a posted "approve" from counting."""
         if self.sessions.by_session(sid) != name:
             return None
         room = self.rooms[name]
         with room.lock:
-            return next((m for m in room.inflight if m.text.strip() == prompt.strip()), None)
+            return next((m for m in room.inflight if prompt.strip() in (m.text.strip(), m.sent.strip() or m.text.strip())), None)
 
     def trash_failed(self, name: str, room: Room, sid: str, payload: dict[str, Any]) -> str:
         """A rewritten delete whose trash command failed: ledgered, and one line for the room."""
