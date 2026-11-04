@@ -15,8 +15,8 @@ every ability by its state on this install, shortened here):
 ```
 - abilities, a Yerk AI ability (on): Says what Yerk AI can do ... on (12): abilities, workers,
   capture, ... runs on the free path (1): recall. needs OpenAI (1): embeddings. known, not built
-  (61): voice, job-search, job-applications, ... `yerk explain NAME` says what any one does,
-  needs and costs. (yerk explain abilities)
+  (61): voice, job-search, job-applications, ... `yerk explain NAME` says what one does,
+  needs, costs. (yerk explain abilities)
 ```
 
 The room answers in its own voice, state first, from that line and nothing else:

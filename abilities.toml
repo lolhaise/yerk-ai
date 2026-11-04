@@ -41,7 +41,9 @@ layer = 10
 # cut "every ability it ships and every one it knows how to build, from this file" to its words now, for that need's name;
 # need-2026-11-03-43 found it at 2,010 with live-page's name and cut "each ability it ships or knows how to build" to
 # "each ability, built or known" (15 fewer); need-2026-11-03-44 found it at 2,010 with page-switch's name and cut
-# ": each ability, built or known" to ", built or known" (14 fewer).
+# ": each ability, built or known" to ", built or known" (14 fewer); need-2026-11-03-46 found it at 2,005 with page-look's
+# name and cut the answer's last line (abilities.brief) from "says what any one does, needs and costs" to "says what one
+# does, needs, costs" (7 fewer), so it ends at 1,998.
 [abilities.abilities]
 state = "built"
 what = "Says what Yerk AI can do, built or known."
@@ -1482,6 +1484,24 @@ needs = "the live-page ability; an owner room; a screen on the box yerkd runs on
 price = "none"
 free_path = "this is the free path"
 asked_as = ["open my page", "turn my page on", "turn on the page", "switch the page on", "turn the page off", "open the live page"]
+
+# need-2026-11-03-46: asked to make a live page's top bar look better, a room could change only the bar's words, since the
+# look was the page's own styling (channels/page.html), outside every room's hands.
+[abilities.page-look]
+state = "built"
+what = "A room's live page looks like a game, not a form, the same for every room, while the room still sets only the words: the bar on top is a scoreboard read from its labels and values (a rank badge in its tier's colour, an LP bar, big numbers, the countdown as a clock), each test is a red or green tile that pops when it flips, the hint is a card under the program and the chat lines are a readable column, on a dark theme."
+how = [
+  "Read from the words: yerkd reads each of the bar's labels and values into a scoreboard cell (channels/page.py, cell). A tier word, Iron to Challenger, with a division or none, or any value under a rank label is a rank badge in its tier's colour; N/M, N of M, N% or a number under LP or before LP is a bar filled that far (LP of 100); a number is big, a signed one green or red; anything else stays words.",
+  "The look is the page's: page.html draws each cell by its shape and each tier in its colour, and the countdown as a clock, amber in its last minute and red in its last 10 s. Every word goes on the page as text, never markup, so no room's words restyle it.",
+  "The tests: a tile a test, green or red, a red one with the line it failed at and its message; a tile that is new or flipped pops, and the count pops when all pass.",
+  "The page: the hint a card under the program, the chat a column of its own beside the editors (under them on a narrow screen), a dark theme throughout.",
+]
+tier = "free"
+needs = "the live-page ability"
+price = "none"
+free_path = "this is the free path"
+asked_as = ["top bar look better", "make the page look better", "make my page look better", "page look like a game", "page looks like a form",
+            "scoreboard on the page"]
 
 [abilities.work-writes]
 state = "built"

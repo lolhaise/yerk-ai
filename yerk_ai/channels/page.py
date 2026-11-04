@@ -32,6 +32,7 @@ import hmac
 import json
 import logging
 import os
+import re
 import secrets
 import shutil
 import signal
@@ -69,6 +70,15 @@ OPEN_SECONDS = 15         # an opener's wall clock: it hands the address to the 
 WSL_OPEN = ("/mnt/c/Windows/System32/rundll32.exe", "url.dll,FileProtocolHandler")
 PROGRAM, TESTS = "solution.py", "test_solution.py"
 MARKS = ("highlight", "arrow")
+# the bar as a scoreboard, read from the room's words alone (cell): a rank's tiers, low to high, each its colour on the
+# page (.tier-NAME in page.html); the labels whose value is a rank; a division after a tier; a number and a short unit
+TIERS = ("iron", "bronze", "silver", "gold", "platinum", "emerald", "diamond", "master", "grandmaster", "challenger")
+RANKS = ("rank", "tier", "league", "division")
+DIVISION = re.compile(r"(?:[1-5]|I{1,3}|IV|V)?", re.I)
+NUM = r"(\d[\d,]*(?:\.\d+)?)"
+UNIT = r"(?:\s*([^\d\s/%:.,][^\s]{0,7}))?"
+METER, PERCENT = re.compile(rf"{NUM}\s*(?:/|of|out of)\s*{NUM}{UNIT}", re.I), re.compile(rf"{NUM}\s*%")
+NUMBER = re.compile(rf"([+\-−]?){NUM}{UNIT}")
 RUNNER = '''import importlib, json, os, resource, sys, traceback, unittest
 here, cap, mem = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
 resource.setrlimit(resource.RLIMIT_CPU, (cap + 1, cap + 1))
@@ -215,6 +225,35 @@ def span(lines: Any) -> tuple[int, int] | None:
     return None
 
 
+def cell(label: str, value: str) -> dict[str, Any]:
+    """One of the bar's labels and values as the page's scoreboard shows it, read from the words alone, since a room sets
+    only the words and the look is the page's: a tier word (TIERS) with a division or none after it, or any value under a
+    rank label (RANKS), a rank badge in its tier's colour; N/M, N of M, N% or a number under LP or before LP, a bar filled
+    that far (LP of 100); a number, big, a signed one up or down; anything else, words."""
+    out: dict[str, Any] = {"label": label, "value": value, "shape": "text"}
+    said, ranked = value.strip(), label.strip().lower() in RANKS
+    first, _, rest = said.partition(" ")
+    if first.lower() in TIERS and (ranked or DIVISION.fullmatch(rest.strip())):
+        return out | {"shape": "rank", "tier": first.lower(), "name": first, "division": rest.strip()}
+    if ranked:
+        return out | {"shape": "rank", "tier": "", "name": said, "division": ""}
+    if m := METER.fullmatch(said) or PERCENT.fullmatch(said):
+        n, of = float(m[1].replace(",", "")), float(m[2].replace(",", "")) if m.re is METER else 100.0
+        unit = f"/{m[2]}" + (f" {m[3]}" if m[3] else "") if m.re is METER else "%"
+        return out | {"shape": "meter", "big": m[1], "unit": unit, "fill": round(min(1.0, n / of), 3) if of > 0 else 0.0}
+    if m := NUMBER.fullmatch(said):
+        sign, unit = m[1], m[3] or ""
+        if not sign and (label.strip().lower() == "lp" or unit.lower() == "lp"):
+            return out | {"shape": "meter", "big": m[2], "unit": unit or "/100", "fill": round(min(1.0, float(m[2].replace(",", "")) / 100), 3)}
+        return out | {"shape": "number", "big": sign + m[2], "unit": unit, "sign": "up" if sign == "+" else "down" if sign else ""}
+    return out
+
+
+def board(bar: dict[str, str]) -> list[dict[str, Any]]:
+    """The bar's labels and values as the scoreboard's cells, in the room's order (cell)."""
+    return [cell(k, v) for k, v in bar.items()]
+
+
 @dataclass
 class Sheet:
     """One room's page: what it shows, what waits to go to the room, and the tabs open on it."""
@@ -240,7 +279,8 @@ class Sheet:
     def state(self) -> dict[str, Any]:
         """Everything a tab shows, for one that opens or reconnects."""
         return {"state": {"room": self.room.name, "code": self.code, "tests": self.tests, "marks": self.marks, "hint": self.hint,
-                          "bar": self.bar, "timer": self.timer, "stall": self.stall, "lines": self.lines, "run": self.run}}
+                          "bar": self.bar, "board": board(self.bar), "timer": self.timer, "stall": self.stall, "lines": self.lines,
+                          "run": self.run}}
 
 
 class Page:
@@ -452,13 +492,14 @@ class Page:
             s.hint = op["hint"] = req["hint"].strip()[:NOTE_MAX]
         if isinstance(req.get("bar"), dict):
             s.bar = op["bar"] = {str(k)[:24]: str(v)[:40] for k, v in list(req["bar"].items())[:8]}
+            op["board"] = board(s.bar)
         if isinstance(req.get("timer"), int) and req["timer"] >= 0:
             s.timer = op["timer"] = {"seconds": req["timer"], "from": round(time.time(), 3)} if req["timer"] else {}
         if isinstance(req.get("stall"), int) and req["stall"] >= 0:
             s.stall = op["stall"] = req["stall"]
         if not op:
             return {"ok": False, "error": words.PAGE_NOTHING}
-        self._log(s, {"kind": "drawn", **{k: v for k, v in op.items() if k not in ("code", "tests")},
+        self._log(s, {"kind": "drawn", **{k: v for k, v in op.items() if k not in ("code", "tests", "board")},
                       **{k: len(v) for k, v in op.items() if k in ("code", "tests")}})
         self._push(s, {"draw": op})
         return {"ok": True, "tabs": len(s.tabs), **({} if s.tabs else {"note": words.PAGE_NO_TAB})}

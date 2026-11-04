@@ -8,6 +8,24 @@ version changes.
 
 ## 2026-11-03
 
+### need-2026-11-03-46 (#?)
+
+- A room's live page looks like a game, not a form, the same for every room, and the room still sets only the words:
+  the bar on top is a scoreboard, each test a tile, the hint a card under the program and the chat lines a readable
+  column of their own beside the editors (under them on a narrow screen), all on a dark theme.
+- The scoreboard is read from the bar's labels and values: a tier word, Iron to Challenger, with its division or none
+  ("Gold II"), or any value under a rank label, is a rank badge in its tier's colour; `N/M`, `N of M`, `N%` or a number
+  under LP or before LP is a bar filled that far (LP of 100) that slides when it moves; a number is big, a signed one
+  green or red; anything else stays words. The countdown is a clock, amber in its last minute and red in its last 10 s.
+- Each test is a green or red tile, a red one with the line it failed at and its message; a tile that is new or
+  flipped pops, and the count pops when every test passes.
+- Every word goes on the page as text, never markup, so no room's words restyle it. The `page` tool's own words say
+  which words become a badge, a bar or a big number.
+- `yerk_tools` in budgets.toml goes to 20,000 and the session start's total to 118,905 (the tool is 1,791 as built, 91
+  more), and the `[code]` ceiling to 25,438; the abilities entry is page-look, and the "what can you do" answer's last
+  line is cut by 7 so it keeps every name under its 2,000.
+- Upgrading: nothing to set. An open page picks up the new look when its tab is reloaded.
+
 ### need-2026-11-03-44 (#?)
 
 - The owner can ask a room for its live page ("open my page") and it comes up on the owner's screen: the `page` tool's

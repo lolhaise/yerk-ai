@@ -4,60 +4,134 @@
 <meta charset="utf-8">
 <title>Yerk page</title>
 <style>
-  :root { --lh: 20px; --bg: #111418; --fg: #e6e6e6; --dim: #8a929c; --red: #e5534b; --green: #57ab5a; --amber: #c69026; }
+  /* the look is the page's, the same for every room: the room sets only the words (the bar's cells come read from them) */
+  :root { color-scheme: dark; --lh: 20px; --bg: #0b0f16; --panel: #111823; --panel2: #18212f; --line: #243042; --fg: #e6edf3;
+          --dim: #8592a3; --red: #f85149; --green: #3fb950; --amber: #e3b341; --blue: #58a6ff; }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 14px system-ui, sans-serif; }
-  body { display: grid; grid-template-rows: 44px 1fr 34px 150px; height: 100vh; }
-  #bar { display: flex; gap: 18px; align-items: center; padding: 0 14px; background: #1a1f26; border-bottom: 1px solid #2a313b; }
-  #bar .cell b { color: var(--amber); margin-left: 4px; }
-  #bar .right { margin-left: auto; display: flex; gap: 12px; align-items: center; }
-  #dot { width: 10px; height: 10px; border-radius: 50%; background: var(--red); }
-  #dot.on { background: var(--green); }
-  #timer { font: 600 18px ui-monospace, monospace; }
-  button { background: #2a313b; color: var(--fg); border: 1px solid #3a434f; border-radius: 4px; padding: 4px 10px; cursor: pointer; }
-  button.on { background: var(--amber); color: #000; }
-  main { display: grid; grid-template-columns: 3fr 2fr; min-height: 0; }
-  .pane { position: relative; display: grid; grid-template-rows: 26px 1fr; min-height: 0; border-right: 1px solid #2a313b; }
-  .head { padding: 4px 10px; color: var(--dim); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+  body { display: grid; grid-template: "bar bar" auto "main chat" minmax(0, 1fr) / minmax(0, 1fr) minmax(300px, 26%); height: 100vh;
+         background: radial-gradient(1200px 500px at 15% -20%, #1a2436, var(--bg) 70%); }
+  #bar { grid-area: bar; display: flex; gap: 12px; align-items: stretch; padding: 10px 16px; z-index: 2;
+         background: linear-gradient(180deg, #172131, #10161f); border-bottom: 1px solid var(--line); box-shadow: 0 4px 18px rgba(0,0,0,.45); }
+  #cells { display: flex; gap: 12px; align-items: stretch; flex-wrap: wrap; min-width: 0; }
+  .cell { display: flex; flex-direction: column; justify-content: center; gap: 4px; min-width: 84px; padding: 6px 14px; border-radius: 12px;
+          background: rgba(255,255,255,.035); border: 1px solid var(--line); }
+  .cell .label { font: 700 10px/1 system-ui; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); white-space: nowrap; }
+  .cell .big { font: 800 30px/1 system-ui; font-variant-numeric: tabular-nums; letter-spacing: -.02em; white-space: nowrap; }
+  .cell .big small { font: 600 13px/1 system-ui; color: var(--dim); margin-left: 3px; letter-spacing: 0; }
+  .cell .value { font: 600 16px/1.2 system-ui; max-width: 22ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cell.number.up .big { color: var(--green); text-shadow: 0 0 14px rgba(63,185,80,.45); }
+  .cell.number.down .big { color: var(--red); text-shadow: 0 0 14px rgba(248,81,73,.45); }
+  .cell.meter { min-width: 150px; }
+  .track { display: block; height: 8px; border-radius: 99px; background: #070a0f; border: 1px solid var(--line); overflow: hidden; }
+  .track i { display: block; height: 100%; width: 0; border-radius: inherit; background: linear-gradient(90deg, #2f81f7, #79c0ff);
+             box-shadow: 0 0 10px rgba(88,166,255,.6); transition: width .8s cubic-bezier(.2,.9,.3,1); }
+  .cell.rank { border-color: var(--t2, var(--line)); background: linear-gradient(135deg, rgba(255,255,255,.07), rgba(255,255,255,.01)); }
+  .badge { display: inline-flex; align-items: baseline; gap: 5px; align-self: flex-start; padding: 5px 12px; border-radius: 8px; color: #0b0f16;
+           background: linear-gradient(135deg, var(--t1, #c9d1d9), var(--t2, #57606a));
+           box-shadow: 0 0 16px var(--glow, rgba(139,148,158,.35)), inset 0 1px 0 rgba(255,255,255,.5); }
+  .badge b { font: 900 18px/1 system-ui; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; }
+  .badge small { font: 800 14px/1 system-ui; opacity: .78; white-space: nowrap; }
+  .tier-iron { --t1: #b3aea5; --t2: #5b5650; --glow: rgba(161,157,148,.3); }
+  .tier-bronze { --t1: #eab07c; --t2: #8a4b22; --glow: rgba(205,127,50,.45); }
+  .tier-silver { --t1: #f4f7fb; --t2: #8d99a8; --glow: rgba(200,210,222,.45); }
+  .tier-gold { --t1: #ffe08a; --t2: #c8901a; --glow: rgba(242,193,78,.55); }
+  .tier-platinum { --t1: #9ff5e7; --t2: #23917f; --glow: rgba(79,209,197,.5); }
+  .tier-emerald { --t1: #8af5ab; --t2: #12894a; --glow: rgba(46,204,113,.5); }
+  .tier-diamond { --t1: #c4dbff; --t2: #4b6fe0; --glow: rgba(122,167,255,.6); }
+  .tier-master { --t1: #e8bfff; --t2: #8a3fd1; --glow: rgba(179,102,255,.6); }
+  .tier-grandmaster { --t1: #ffaaaa; --t2: #c42b2b; --glow: rgba(255,77,77,.6); }
+  .tier-challenger { --t1: #fff1b8; --t2: #3aa6d9; --glow: rgba(90,216,255,.65); }
+  #bar .right { margin-left: auto; display: flex; gap: 10px; align-items: center; }
+  #clock { min-width: 128px; background: #06090e; box-shadow: inset 0 0 18px rgba(0,0,0,.7); }
+  #clock[hidden] { display: none; }
+  #timer { font: 700 30px/1 ui-monospace, Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; letter-spacing: .04em; color: #dbe7ff;
+           text-shadow: 0 0 12px rgba(88,166,255,.45); }
+  #clock .track i { transition: width .25s linear; }
+  #clock.low #timer { color: var(--amber); text-shadow: 0 0 12px rgba(227,179,65,.55); }
+  #clock.low .track i { background: var(--amber); box-shadow: 0 0 10px rgba(227,179,65,.6); }
+  #clock.crit #timer { color: var(--red); text-shadow: 0 0 14px rgba(248,81,73,.7); animation: beat 1s ease-in-out infinite; }
+  #clock.crit .track i { background: var(--red); box-shadow: 0 0 10px rgba(248,81,73,.7); }
+  #dot { width: 10px; height: 10px; border-radius: 50%; background: var(--red); box-shadow: 0 0 8px var(--red); }
+  #dot.on { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  button { background: var(--panel2); color: var(--fg); border: 1px solid var(--line); border-radius: 99px; padding: 5px 12px;
+           font: 600 12px system-ui; white-space: nowrap; cursor: pointer; }
+  button:hover { border-color: var(--dim); }
+  button.on { background: var(--amber); border-color: var(--amber); color: #111; }
+  main { grid-area: main; display: grid; grid-template-columns: 3fr 2fr; min-height: 0; }
+  .pane { position: relative; display: grid; grid-template-rows: 28px 1fr; min-height: 0; border-right: 1px solid var(--line); background: var(--panel); }
+  .pane[data-pane="code"] { grid-template-rows: 28px minmax(0, 1fr) auto; }
+  .head { padding: 8px 12px; color: var(--dim); font: 700 10px/12px system-ui; text-transform: uppercase; letter-spacing: .14em; }
   .ed { position: relative; overflow: hidden; display: grid; grid-template-columns: 44px 1fr; min-height: 0; }
   .gutter { overflow: hidden; color: var(--dim); text-align: right; padding: 8px 6px 8px 0; font: 14px/var(--lh) ui-monospace, monospace; white-space: pre; }
   .wrap { position: relative; overflow: hidden; }
   .marks { position: absolute; inset: 0; pointer-events: none; }
-  .mark { position: absolute; left: 0; right: 0; height: var(--lh); background: rgba(198,144,38,.22); }
-  .mark.arrow { background: rgba(229,83,75,.16); border-left: 3px solid var(--red); }
+  .mark { position: absolute; left: 0; right: 0; height: var(--lh); background: rgba(227,179,65,.2); }
+  .mark.arrow { background: rgba(248,81,73,.16); border-left: 3px solid var(--red); }
   .mark span { position: absolute; right: 12px; top: 0; font: 600 12px/var(--lh) system-ui; color: var(--amber); }
   .mark.arrow span { color: var(--red); }
   .mark.arrow span::before { content: "\2190  "; }
   textarea { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 8px 10px; border: 0; resize: none; outline: none;
              background: transparent; color: var(--fg); font: 14px/var(--lh) ui-monospace, monospace; white-space: pre; overflow: auto; tab-size: 4; }
   #right { display: grid; grid-template-rows: 1fr 1fr; min-height: 0; }
-  #results { overflow: auto; padding: 6px 10px; font: 13px/1.5 ui-monospace, monospace; border-top: 1px solid #2a313b; }
-  .t { display: flex; gap: 8px; }
-  .ok { color: var(--green); } .bad { color: var(--red); } .muted { color: var(--dim); }
-  #sum { font: 600 15px system-ui; margin-bottom: 4px; }
-  #hint { padding: 6px 14px; color: var(--amber); border-top: 1px solid #2a313b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  footer { display: grid; grid-template-rows: 1fr 32px; border-top: 1px solid #2a313b; min-height: 0; }
-  #lines { overflow: auto; padding: 6px 14px; }
-  #lines div { margin: 2px 0; white-space: pre-wrap; } #lines .notice { color: var(--red); } #lines .me { color: var(--dim); }
-  #say { width: 100%; background: #1a1f26; color: var(--fg); border: 0; border-top: 1px solid #2a313b; padding: 0 14px; font: 14px system-ui; outline: none; }
+  #results { overflow: auto; padding: 10px 12px; border-top: 1px solid var(--line); border-right: 1px solid var(--line); background: var(--bg); }
+  .muted { color: var(--dim); }
+  #sum { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; font: 600 13px system-ui; color: var(--dim); }
+  #sum b { font: 800 28px/1 system-ui; font-variant-numeric: tabular-nums; color: var(--fg); }
+  #sum.ok b { color: var(--green); text-shadow: 0 0 14px rgba(63,185,80,.5); }
+  #sum.bad b { color: var(--red); text-shadow: 0 0 14px rgba(248,81,73,.45); }
+  #sum.error { display: block; padding: 10px 12px; border-radius: 10px; color: #ffc1bc; background: rgba(248,81,73,.12);
+               border: 1px solid rgba(248,81,73,.55); font: 13px/1.45 ui-monospace, monospace; white-space: pre-wrap; }
+  #sum.win { animation: pop .5s cubic-bezier(.2,1.6,.4,1); }
+  #rows { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); align-items: start; gap: 8px; }
+  .tile { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: 10px; border: 1px solid; font: 700 13px system-ui;
+          overflow-wrap: anywhere; }
+  .tile.ok { color: #b6f7bb; background: linear-gradient(135deg, rgba(63,185,80,.3), rgba(63,185,80,.1)); border-color: rgba(63,185,80,.7);
+             box-shadow: 0 0 14px rgba(63,185,80,.2); }
+  .tile.bad { color: #ffc6c1; background: linear-gradient(135deg, rgba(248,81,73,.32), rgba(248,81,73,.1)); border-color: rgba(248,81,73,.75);
+              box-shadow: 0 0 14px rgba(248,81,73,.22); }
+  .tile .why { font: 12px/1.4 ui-monospace, monospace; color: var(--fg); opacity: .85; }
+  .tile.pop, .cell.pop { animation: pop .45s cubic-bezier(.2,1.6,.4,1); }
+  #rows pre { grid-column: 1 / -1; margin: 4px 0 0; color: var(--dim); font: 12px/1.45 ui-monospace, monospace; white-space: pre-wrap; }
+  #hint { margin: 0 10px 10px; padding: 9px 12px 10px; border-radius: 10px; border: 1px solid rgba(227,179,65,.45); border-left: 4px solid var(--amber);
+          background: linear-gradient(135deg, rgba(227,179,65,.17), rgba(227,179,65,.05)); color: #f5dfa0; line-height: 1.45; white-space: pre-wrap;
+          overflow-wrap: anywhere; box-shadow: 0 6px 18px rgba(0,0,0,.35); }
+  #hint::before { content: "hint"; display: block; margin-bottom: 4px; font: 800 10px/1 system-ui; letter-spacing: .14em; text-transform: uppercase;
+                  color: var(--amber); }
+  #hint:empty { display: none; }
+  #chat { grid-area: chat; display: grid; grid-template-rows: 28px minmax(0, 1fr) 44px; min-height: 0; background: var(--panel); }
+  #lines { overflow: auto; padding: 10px 14px 14px; display: flex; flex-direction: column; gap: 8px; }
+  #lines div { max-width: 62ch; align-self: flex-start; padding: 8px 12px; border-radius: 12px 12px 12px 4px; background: var(--panel2);
+               border: 1px solid var(--line); font-size: 14.5px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+  #lines .me { align-self: flex-end; border-radius: 12px 12px 4px 12px; background: rgba(88,166,255,.16); border-color: rgba(88,166,255,.4); }
+  #lines .notice { color: #ffc1bc; background: rgba(248,81,73,.1); border-color: rgba(248,81,73,.5); }
+  #say { width: 100%; background: var(--panel2); color: var(--fg); border: 0; border-top: 1px solid var(--line); padding: 0 14px; font: 14px system-ui;
+         outline: none; }
+  #say:focus { box-shadow: inset 0 0 0 1px var(--blue); }
   #ink { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
   #ink.on { pointer-events: auto; cursor: crosshair; }
+  @keyframes pop { 0% { transform: scale(.86); } 55% { transform: scale(1.07); } 100% { transform: scale(1); } }
+  @keyframes beat { 50% { opacity: .5; } }
+  @media (max-width: 1100px) { body { grid-template: "bar" auto "main" minmax(0, 1fr) "chat" 220px / minmax(0, 1fr); } }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 </style>
 </head>
 <body>
-<div id="bar"><span id="cells"></span><div class="right"><span id="timer"></span>
-  <button id="draw" title="draw on the page (Esc ends)">draw</button><button id="wipe">clear ink</button><span id="dot" title="connection"></span></div></div>
+<header id="bar"><div id="cells"></div><div class="right">
+  <div id="clock" class="cell" hidden><span class="label">time left</span><span id="timer"></span><span class="track"><i></i></span></div>
+  <button id="draw" title="draw on the page (Esc ends)">draw</button><button id="wipe">clear ink</button><span id="dot" title="connection"></span></div></header>
 <main>
   <section class="pane" data-pane="code"><div class="head">program</div>
-    <div class="ed"><div class="gutter"></div><div class="wrap"><div class="marks"></div><textarea spellcheck="false" autofocus></textarea></div></div></section>
+    <div class="ed"><div class="gutter"></div><div class="wrap"><div class="marks"></div><textarea spellcheck="false" autofocus></textarea></div></div>
+    <div id="hint"></div></section>
   <section id="right">
     <section class="pane" data-pane="tests"><div class="head">tests</div>
       <div class="ed"><div class="gutter"></div><div class="wrap"><div class="marks"></div><textarea spellcheck="false"></textarea></div></div></section>
     <div id="results"><div id="sum" class="muted">no run yet</div><div id="rows"></div></div>
   </section>
 </main>
-<div id="hint"></div>
-<footer><div id="lines"></div><input id="say" placeholder="say something to the room, Enter sends" autocomplete="off"></footer>
+<aside id="chat"><div class="head">chat</div><div id="lines"></div>
+  <input id="say" placeholder="say something to the room, Enter sends" autocomplete="off"></aside>
 <canvas id="ink"></canvas>
 <script>
 "use strict";
@@ -81,7 +155,14 @@ for (const el of document.querySelectorAll(".pane")) {
     typed(name);
   });
 }
-let state = { marks: [], bar: {}, timer: {}, stall: 0 }, runTimer = 0, lastKey = Date.now(), stallSaid = false, timerSaid = false;
+let state = { marks: [], bar: {}, board: [], timer: {}, stall: 0 }, runTimer = 0, lastKey = Date.now(), stallSaid = false, timerSaid = false;
+let shownBoard = "", cellsBefore = {}, passedBefore = {}, allBefore = false;     // what the bar and the tiles showed last: a change pops
+function make(tag, cls, text) {                               // every word on the page goes in as text, never as markup
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
 
 function post(path, body) {
   return fetch("/page/" + path, { method: "POST", headers: { "content-type": "application/json", "x-yerk-secret": KEY },
@@ -107,19 +188,24 @@ function typed(name) {
 function run() {
   post("run", { code: panes.code.ta.value, tests: panes.tests.ta.value }).then(showRun);
 }
-function showRun(r) {
-  const sum = $("#sum"), rows = $("#rows");
+function showRun(r) {                                         // a tile a test, green or red; one that is new or flipped pops
+  const sum = $("#sum"), rows = $("#rows"), now = {};
   rows.textContent = "";
-  if (!r || r.ran === undefined) { sum.className = "muted"; sum.textContent = "no run yet"; return; }
-  if (r.error) { sum.className = "bad"; sum.textContent = r.error; }
-  else { sum.className = r.ok ? "ok" : "bad"; sum.textContent = r.passed + " of " + r.ran + " pass" + (r.seconds !== undefined ? "  (" + r.seconds + " s)" : ""); }
-  for (const t of r.tests || []) {
-    const d = document.createElement("div");
-    d.className = "t " + (t.ok ? "ok" : "bad");
-    d.textContent = (t.ok ? "✓ " : "✗ ") + t.name + (t.ok ? "" : (t.line ? "  line " + t.line : "") + "  " + (t.message || "").split("\n").pop());
-    rows.appendChild(d);
+  if (!r || r.ran === undefined) { sum.className = "muted"; sum.textContent = "no run yet"; passedBefore = {}; allBefore = false; return; }
+  if (r.error) { sum.className = "bad error"; sum.textContent = r.error + (r.line ? "  (line " + r.line + ")" : ""); }
+  else {
+    sum.className = (r.ok ? "ok" : "bad") + (r.ok && !allBefore ? " win" : ""); sum.textContent = "";
+    sum.append(make("b", "", r.passed + "/" + r.ran), "pass");
+    if (r.seconds !== undefined) sum.append(make("span", "muted", r.seconds + " s"));
   }
-  if (r.output) { const o = document.createElement("pre"); o.className = "muted"; o.textContent = r.output; rows.appendChild(o); }
+  for (const t of r.tests || []) {
+    const d = make("div", "tile " + (t.ok ? "ok" : "bad") + (passedBefore[t.name] !== t.ok ? " pop" : ""));
+    d.append(make("span", "name", (t.ok ? "✓\u00a0" : "✗\u00a0") + t.name));
+    if (!t.ok) d.append(make("span", "why", (t.line ? "line " + t.line + ": " : "") + (t.message || t.kind || "").split("\n").pop()));
+    rows.appendChild(d); now[t.name] = t.ok;
+  }
+  passedBefore = now; allBefore = !!r.ok;
+  if (r.output) rows.appendChild(make("pre", "", r.output));
 }
 function showMarks() {
   for (const name in panes) panes[name].marks.textContent = "";
@@ -131,12 +217,31 @@ function showMarks() {
     panes.code.marks.appendChild(d);
   }
 }
-function showBar() {
+function showBar() {                                          // the scoreboard: each cell as yerkd read the room's words (page.py, cell)
+  const board = state.board || Object.entries(state.bar || {}).map(([label, value]) => ({ label, value, shape: "text" }));   // a yerkd older than the page
+  const key = JSON.stringify(board), before = cellsBefore;
+  if (key === shownBoard) return;
+  shownBoard = key; cellsBefore = {};
   const cells = $("#cells");
   cells.textContent = "";
-  for (const [k, v] of Object.entries(state.bar || {})) {
-    const c = document.createElement("span"); c.className = "cell"; c.textContent = k;
-    const b = document.createElement("b"); b.textContent = v; c.appendChild(b); cells.appendChild(c);
+  for (const c of board) {
+    const was = before[c.label], d = make("div", "cell " + c.shape + (c.tier ? " tier-" + c.tier : "") + (c.sign ? " " + c.sign : ""));
+    d.appendChild(make("span", "label", c.label));
+    if (c.shape === "rank") {
+      const b = make("span", "badge");
+      b.appendChild(make("b", "", c.name));
+      if (c.division) b.appendChild(make("small", "", c.division));
+      d.appendChild(b);
+    } else if (c.shape === "text") d.appendChild(make("span", "value", c.value));
+    else { const big = make("span", "big", c.big); if (c.unit) big.appendChild(make("small", "", c.unit)); d.appendChild(big); }
+    if (c.shape === "meter") {                                  // the bar slides from where it was, or from empty
+      const track = make("span", "track"), fill = make("i");
+      track.appendChild(fill); d.appendChild(track);
+      fill.style.width = 100 * (was && was.shape === "meter" ? was.fill : 0) + "%";
+      requestAnimationFrame(() => requestAnimationFrame(() => { fill.style.width = 100 * c.fill + "%"; }));
+    }
+    if (was && was.value !== c.value) d.classList.add("pop");
+    cellsBefore[c.label] = c; cells.appendChild(d);
   }
 }
 function line(l) {
@@ -159,6 +264,7 @@ function apply(op) {
     if (d.marks) state.marks = d.marks;
     if (typeof d.hint === "string") $("#hint").textContent = d.hint;
     if (d.bar) state.bar = d.bar;
+    if (d.board) state.board = d.board;
     if (d.timer) { state.timer = d.timer; timerSaid = false; }
     if (typeof d.stall === "number") state.stall = d.stall;
     if (typeof d.code === "string" || typeof d.tests === "string") setTimeout(run, 50);
@@ -192,12 +298,14 @@ async function listen() {
   }
 }
 setInterval(() => {                                           // the countdown and the stall wait: on the page, no model call
-  const t = state.timer || {};
-  if (t.seconds) {
-    const left = Math.max(0, Math.round(t.seconds - (Date.now() / 1000 - t.from)));
-    $("#timer").textContent = Math.floor(left / 60) + ":" + String(left % 60).padStart(2, "0");
+  const t = state.timer || {}, clock = $("#clock"), two = n => String(n).padStart(2, "0");
+  if (t.seconds) {                                            // the clock: amber in its last minute, red and beating in its last 10 s
+    const left = Math.max(0, Math.round(t.seconds - (Date.now() / 1000 - t.from))), h = Math.floor(left / 3600);
+    $("#timer").textContent = (h ? h + ":" : "") + two(Math.floor(left % 3600 / 60)) + ":" + two(left % 60);
+    clock.hidden = false; clock.classList.toggle("low", left <= 60 && left > 10); clock.classList.toggle("crit", left <= 10);
+    clock.querySelector(".track i").style.width = Math.min(100, 100 * left / t.seconds) + "%";
     if (!left && !timerSaid) { timerSaid = true; post("event", { kind: "timer" }); }
-  } else $("#timer").textContent = "";
+  } else { $("#timer").textContent = ""; clock.hidden = true; }
   if (state.stall && !stallSaid && Date.now() - lastKey > state.stall * 1000) { stallSaid = true; post("event", { kind: "stall" }); }
 }, 250);
 $("#say").addEventListener("keydown", e => {

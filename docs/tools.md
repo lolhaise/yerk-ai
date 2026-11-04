@@ -286,7 +286,8 @@ refused until the owner says yes; then call again with `owner_yes` true.
 Draws on this room's live page, where the owner types, draws and runs tests in a browser; each part given replaces
 what it shows. `code` a new program (solution.py); `tests` its unittest file (it imports solution), which the page
 runs on every pause in typing; `marks` line marks, each {"line": N, "kind": "highlight" or "arrow", "text": a note},
-[] clears; `hint` one line under the program; `bar` labels and values on top; `timer` seconds to count down, 0 stops;
+[] clears; `hint` a card under the program; `bar` labels and values, a scoreboard on top ("Gold II" a rank badge,
+"12/40" or a number under LP a bar, a number big); `timer` seconds on its clock, 0 stops;
 `stall` seconds of no typing before the page tells you, 0 off. Your replies show there too. What the owner types,
 draws and says there comes to you as messages, mid-turn too; each keystroke is in page/events.jsonl. `open` true
 (the owner asked for the page) turns it on, with no restart, and opens it on the owner's screen; `off` true: off.
