@@ -12,7 +12,7 @@ import { IMAGE_CAP, IMAGE_TYPES, imageInfo, imageWall, runImage } from "./fetch/
 import { runFetchPlus } from "./fetch/ladder.js";
 import { closeLocalBrowser } from "./fetch/local.js";
 import { flushPending, resolveSettings } from "./fetch/util.js";
-import { formatRun, research, researchResult } from "./research.mjs";
+import { formatRun, research, researchResult, waitIn } from "./research.mjs";
 import { runSearchPlus } from "./search/provider.js";
 import { resolvePluginSettings } from "./search/util.js";
 import { truncateSanitized, wrapWebContent } from "./untrusted.mjs";
@@ -267,14 +267,14 @@ export async function webResearch(args, { signal, at = AT, deps = {} } = {}) {
   if (schema !== undefined && (!schema || typeof schema !== "object" || Array.isArray(schema))) return refuse("web_research refused: schema must be a JSON Schema object.");
   if (system !== undefined && typeof system !== "string") return refuse("web_research refused: system must be a string.");
   const conf = section(readSettings(at).conf, "research");
-  const r = await research({ query, effort, schema, system: system?.trim() || undefined }, { signal, at, conf, ...deps });
+  const r = await research({ query, effort, schema, system: system?.trim() || undefined }, { signal, at, conf, wait: waitIn(at.limit), ...deps });
   return researchReply("web_research", r, effort);
 }
 
 export async function webResearchResult(args, { signal, at = AT, deps = {} } = {}) {
   const bad = badArgs("web_research_result", args, ["run_id"]);
   if (bad) return refuse(bad);
-  const r = await researchResult(typeof args.run_id === "string" ? args.run_id.trim() : "", { signal, at, ...deps });
+  const r = await researchResult(typeof args.run_id === "string" ? args.run_id.trim() : "", { signal, at, wait: waitIn(at.limit), ...deps });
   return researchReply("web_research_result", r);
 }
 

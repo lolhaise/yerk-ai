@@ -1476,13 +1476,14 @@ needs = "the web ability's plug-in attached to the room; no key, no browser and 
 free_path = "this is the free path"
 asked_as = ["written question", "written questions", "order paper question", "sessional paper", "ourcommons", "government response tabled"]
 
-# need-2026-11-04-49: a room's web_research at medium came back after 60 s as a timeout with no run id (the plug-in cut
-# every request to Exa at a minute, the run's create too), so web_research_result had nothing to collect and the room did
-# the research by hand; filed 2026-11-04.
+# need-2026-11-04-49: a room's web_research at medium came back after 60 s as a timeout with no run id (Claude Code cut the
+# call at the room's own one-minute limit on the server while the plug-in waited up to 170 s), so web_research_result had
+# nothing to collect and the room did the research by hand.
 [abilities.research-ids]
 state = "built"
 what = "A web_research run always comes back with something to collect it by: every start carries a reference of Yerk's own in the run's metadata and may take the call's whole wait, and when Exa's answer to it is late, lost or a server error, the run is found among Exa's newest runs by that reference and comes back with its id or its answer; one Exa has not listed yet comes back as the reference, which web_research_result takes as it takes a run id."
 how = [
+  "The call's wait: 10 s under the room's own limit on the server (its rooms.toml table's timeout, which Yerk hands the plug-in as YERK_TOOL_TIMEOUT), 170 s at most, so the run, its id or its reference is back before Claude Code cuts the call; in a room at a minute a run still going comes back as its id at 50 s, collected in calls as long.",
   "The reference: yerk_, the moment the start went out, then 16 random hex, sent in the create's metadata, which Exa keeps in the run's request; nothing of the room or the query goes with it.",
   "The start's wait: the create may take the call's wait but its last 30 s (about 2 min 20 s of the 2 min 50 s), where every request to Exa once stopped at a minute; a 4xx answer is still Exa's refusal, its booking given back to the daily cap.",
   "The lookup: a start that ends with no run (no answer in time, a dropped connection, a 5xx such as a gateway's 504, an answer with no id) reads Exa's newest runs for the reference every few seconds, up to 30 s; the run found is polled to its end like any other, its booking kept and its rows written once.",

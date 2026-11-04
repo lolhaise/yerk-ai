@@ -17,7 +17,7 @@ import { imageInfo } from "../lib/fetch/image.js";
 import { wallFromNavError } from "../lib/fetch/l3.js";
 import { _test as local, claimSlot, markLocalBlocked } from "../lib/fetch/local.js";
 import { flushPending, resolveSettings } from "../lib/fetch/util.js";
-import { REF, dayStamp, findRun, newRef } from "../lib/research.mjs";
+import { REF, dayStamp, findRun, newRef, waitIn } from "../lib/research.mjs";
 import { resetCooldowns } from "../lib/search/provider.js";
 import { TOOLS, callTool, fetchRows, searchRows, webFetch, webImage, webResearch, webResearchResult, webSearch } from "../lib/tools.mjs";
 
@@ -112,7 +112,7 @@ after(() => fs.rmSync(TMP, { recursive: true, force: true })); // the test's own
 // ---- where, keys and settings -------------------------------------------------------------------
 test("the command line names the private folder; the state folder and the room follow Yerk's own rules", () => {
   const w = where(["--private", "/srv/p", "--state", "/srv/s"], {}, "/anywhere");
-  assert.deepEqual(w, { private: "/srv/p", state: "/srv/s", web: "/srv/s/web", room: null, work: "/anywhere" });
+  assert.deepEqual(w, { private: "/srv/p", state: "/srv/s", web: "/srv/s/web", room: null, work: "/anywhere", limit: null });
   const r = where([], { YERK_STATE: "/srv/s2" }, "/srv/s2/rooms/gym-room/work");
   assert.deepEqual([r.private, r.state, r.room, r.work], ["", "/srv/s2", "gym-room", "/srv/s2/rooms/gym-room/work"]);
   assert.equal(where([], { XDG_STATE_HOME: "/x" }, "/").state, "/x/yerk");
@@ -702,6 +702,46 @@ test("a reference is looked for page by page, newest first, back to a minute bef
   try {
     assert.equal(await findRun(FAKE_EXA, ref, { deadline: Date.now() + 5000 }), null);
     assert.equal(g.seen.length, 1); // that page already reached runs older than the reference
+  } finally {
+    g.restore();
+  }
+});
+
+// need 49's wall as the room met it (the PR's cold read, 2026-11-04): Claude Code cut the call at the room's own limit on
+// the server, a minute, `timeout = 60000` in its rooms.toml table, and dropped what came after; the plug-in waited 170 s.
+// `room` stands in for Claude Code: the call races the limit and is cut when it loses, its answer lost.
+async function room(limit, call) {
+  const stop = new AbortController();
+  let t;
+  const cut = new Promise((resolve) => (t = setTimeout(() => resolve({ cut: `timed out after ${limit} ms` }), limit)));
+  try {
+    return await Promise.race([call(stop.signal), cut]);
+  } finally {
+    clearTimeout(t);
+    stop.abort();
+  }
+}
+
+test("the wall: a room whose limit on the server is short gets its run id, or its reference, back inside that limit, and collects the run within it too", async () => {
+  assert.deepEqual([waitIn(60000), waitIn(180000), waitIn(600000), waitIn(null), waitIn(12000)], [50000, 170000, 170000, 170000, 6000]);
+  assert.deepEqual([where([], { YERK_TOOL_TIMEOUT: "60000" }).limit, where([], { YERK_TOOL_TIMEOUT: "500" }).limit, where([], {}).limit, where([], { YERK_TOOL_TIMEOUT: "x" }).limit], [60000, null, null, null]);
+  const at = { ...WITH_EXA, limit: 3000 }; // a minute in the room: the plug-in's wait is 1.5 s, the limit halved under 20 s
+  const f = exaRuns({ created: RUN("agent_run_t14", "queued"), reads: [RUN("agent_run_t14", "running")] });
+  try {
+    const out = await room(at.limit, (signal) => webResearch({ query: "x" }, { signal, at, deps: { every: 50 } }));
+    assert.equal(out.cut, undefined, "the room's limit cut web_research before its run id came back");
+    assert.equal(textOf(out), "web_research is still running: run agent_run_t14; call web_research_result with that run_id in a minute or two (a run can take up to 15 minutes).");
+    const again = await room(at.limit, (signal) => webResearchResult({ run_id: "agent_run_t14" }, { signal, at, deps: { every: 50 } }));
+    assert.equal(again.cut, undefined, "the room's limit cut web_research_result");
+    assert.match(textOf(again), /^web_research_result is still running: run agent_run_t14;/);
+  } finally {
+    f.restore();
+  }
+  const g = exaLost({}); // and a start Exa never answers: its reference, inside the limit
+  try {
+    const out = await room(at.limit, (signal) => webResearch({ query: "x", effort: "minimal" }, { signal, at, deps: { every: 50 } }));
+    assert.equal(out.cut, undefined, "the room's limit cut web_research before its reference came back");
+    assert.match(textOf(out), new RegExp(`^web_research is still starting: Exa had not answered its start after \\d+ s, .*run_id ${g.ref()} in a minute or two`));
   } finally {
     g.restore();
   }

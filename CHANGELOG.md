@@ -17,6 +17,13 @@ version changes.
   run, the plug-in reads Exa's newest runs for that reference every few seconds, up to 30 s, and the run it finds goes
   on as any other: polled to its end, its answer returned, or its run id for `web_research_result` when it is still
   going, with a line saying it was found by its reference.
+- The call's wait now fits the room's own limit on the plug-in's server, so a run's id comes back before Claude Code
+  cuts the call. Yerk writes each stdio server's `timeout` from rooms.toml into that server's environment in the room's
+  mcp.json (`YERK_TOOL_TIMEOUT`, beside the table's own `env`; an HTTP server and one with no `timeout` are left as they
+  are), and `web_research` and `web_research_result` wait 10 s less than it, 170 s at most (half of it under 20 s). In a
+  room whose web-ladder table says `timeout = 60000`, a run still going after 50 s comes back as its run id, or its
+  reference, where the call used to be cut at 60 s with nothing to collect, and `web_research_result` collects it in
+  calls as long; a room at 180 s waits 170 s, as before. A lookup by reference begins no page of Exa's runs past the wait.
 - A run Exa has not listed by the end of the wait comes back as its reference ("still starting", with the reason), and
   `web_research_result` takes the reference as it takes a run id: it finds the run among Exa's newest, page by page back
   to a minute before the reference was made, and returns it, or says none carries it yet; 15 minutes after the start
@@ -31,14 +38,21 @@ version changes.
   lower, to 25,939 with entrypoint-name's 4 lines in. The README says it in Add-ons (a few words shorter elsewhere on that line, to stay under 12,000 bytes) and the
   GUIDE's Web reach says how.
 - No tool's description changes (the reference is "the run id web_research gave" as far as the room is concerned), so
-  the web plug-in's tool entries and their budget line do not move. The plug-in's tests: 4 new in
-  `plugins/web/test/tools.test.mjs` (the wall: a create that never answers, found by its reference; a 504 at the create
-  and a run Exa lists late; a run never listed, its reference collected later and refused when stale; the lookup's
-  paging and where it stops), 2 changed (the create's body carries the reference; the run_id refusal names both forms);
-  79 in all, 77 pass and the 2 live ones skip.
-- Why: on 2026-11-04 a room's `web_research` at medium came back after 60 s as a timeout with no run id (the plug-in cut
-  each request to Exa at a minute, the run's create too), so `web_research_result` had nothing to collect and the room
-  did the research by hand with `web_search` and `web_fetch`; the room filed the need (need 49 of 2026-11-04).
+  the web plug-in's tool entries and their budget line do not move. The plug-in's tests: 5 new in
+  `plugins/web/test/tools.test.mjs` (the wall as the room met it: a call raced against a room's short limit, as Claude
+  Code cuts it, gets its run id, its reference and its collected run back inside it (the same race is cut on the PR's
+  first head, whose call waits 170 s);
+  a create that never answers, found by its reference; a 504 at the create and a run Exa lists late; a run never
+  listed, its reference collected later and refused when stale; the lookup's paging and where it stops), 3 changed (the
+  create's body carries the reference; the run_id refusal names both forms; the command line's place has the limit);
+  80 in all, 78 pass and the 2 live ones skip. Here, `tests/test_web.py` checks a person room's own 60 s table reaches
+  its server as `YERK_TOOL_TIMEOUT` (it fails on the first head), and `tests/test_hooks_mcp.py` the 180 s one.
+- Why: on 2026-11-04 a room's `web_research` at medium came back after 60 s as a timeout with no run id: Claude Code
+  cut the call at that room's own limit on the server, a minute (a person room's own web-ladder table, which takes
+  nothing from `[defaults]`; the box's carry `timeout = 60000`), while the plug-in waited up to 170 s, so
+  `web_research_result` had nothing to collect and the room did the research by hand with `web_search` and `web_fetch`;
+  the room filed the need (need 49 of 2026-11-04). This PR's first head blamed the plug-in's own minute on the create,
+  which the reference still covers; its cold read found the room's limit.
 - Tests only: the page test of the address printed and the Mac's open no longer fails now and then (box-ci red on
   py3.14 at this branch's first head). An earlier test, the owner's ask turns the page on, typed a line on the page
   and left that turn running on the real Claude Code; its "not answered" notice, printed about two seconds later,
@@ -46,7 +60,8 @@ version changes.
   does, and checks the line got there (the same change as need-2026-11-04-48's).
 
 **Upgrading**: nothing to change by hand; every room that attaches the web plug-in starts its runs this way from its
-next session after the deploy (a session already running keeps the plug-in process it started with).
+next session after the deploy, its mcp.json written with each stdio server's limit then (a session already running
+keeps the plug-in process it started with).
 
 ### entrypoint-name-2026-11-04 (#?)
 
