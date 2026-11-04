@@ -18,14 +18,19 @@ version changes.
   is: each keystroke is a line in the room's `work/page/events.jsonl` at once, with the program and its tests beside it;
   a 1.5 s pause in typing sends one message with the change as a diff and the tests' newest result; a stroke (the lines
   it covers), a line said on the page, the countdown's end or a stall goes at once.
-- The tests run on the page's call, never the model's: in a fresh folder under `python3 -I`, capped at 10 s and 1 GB,
-  red to green on every pause in typing, each failure with its line.
+- The tests run with no model call, in a fresh folder under `python3 -I`, capped at 10 s and 1 GB, red to green on every
+  pause in typing, each failure with its line. The `page` tool hands the runner code a model wrote, so every run goes in
+  bubblewrap: no network, no home, state or private folder, nothing writable but its own folder, and a PID namespace that
+  dies with it; with no bwrap that starts nothing runs and the run says so (the cold read read a dummy 0600 file, wrote
+  outside and reached 1.1.1.1 through one tool call before it). `page = true` outside the owner's rooms is refused at
+  the start, logged, and the tool refuses there too.
 - The room's replies, notices and sends to itself render on every open tab beside Discord, and a new `page` tool draws:
   a new program or tests, marks on lines (a highlight, an arrow, each with a note), a hint, the bar's labels and values,
   a countdown and the stall wait. A tab that reconnects after a restart gets the whole state first.
 - `yerk_tools` in budgets.toml goes to 19,650 and the session start's total to 118,555 (the tool is 1,447 as built), and
-  the `[code]` ceiling to 25,196; the abilities entry is live-page.
-- Upgrading: a room that wants a page adds `page = true` to its table in rooms.toml and yerkd restarts; set `port` in
+  the `[code]` ceiling to 25,245; the abilities entry is live-page.
+- Upgrading: the box needs bubblewrap (`bwrap`, already there for Claude Code's sandbox) for the page's tests to run; a
+  room that wants a page, an owner room, adds `page = true` to its table in rooms.toml and yerkd restarts; set `port` in
   yerkd.toml so the page's address stays the same across restarts. Rooms without the key see no change.
 
 ### changelog-numbers-2 (#?)

@@ -4,6 +4,7 @@ import asyncio
 import json
 import shutil
 import time
+from pathlib import Path
 
 import pytest
 from starlette.testclient import TestClient
@@ -22,6 +23,11 @@ BROKEN = "def add(a, b):\n    return a - b\n"
 FIXED = "def add(a, b):\n    return a + b\n"
 TESTS = ("import unittest\nfrom solution import add\n\n\nclass T(unittest.TestCase):\n    def test_add(self):\n"
          "        self.assertEqual(add(2, 2), 4)\n\n    def test_zero(self):\n        self.assertEqual(add(0, 0), 0)\n")
+
+
+# a run goes in bubblewrap or not at all: where it cannot start (no bwrap, or user namespaces refused), these tests have
+# nothing to run on, and test_with_no_sandbox_nothing_runs_and_the_run_says_so covers that box
+boxed = pytest.mark.skipif(not pagemod.sandbox_starts(), reason="bubblewrap is missing or cannot start here")
 
 
 class Taken:
@@ -45,6 +51,7 @@ def events(tmp_path, room="r"):
     return [json.loads(x) for x in (tmp_path / "rooms" / room / "work" / "page" / "events.jsonl").read_text().splitlines()]
 
 
+@boxed
 def test_the_tests_run_on_the_box_red_then_green_with_no_model(tmp_path):
     red = run_tests(BROKEN, TESTS)
     assert (red["ok"], red["ran"], red["passed"]) == (False, 2, 1)
@@ -59,6 +66,7 @@ def test_the_tests_run_on_the_box_red_then_green_with_no_model(tmp_path):
     assert "hello from the program" in said["output"]
 
 
+@boxed
 def test_a_program_that_will_not_load_or_never_ends_is_said_in_words(tmp_path):
     bad = run_tests("def add(a, b:\n    return a\n", TESTS)
     assert not bad["ok"] and bad["line"] == 1 and "SyntaxError" in bad["error"] and "yerk-page-" not in bad["error"]
@@ -68,11 +76,59 @@ def test_a_program_that_will_not_load_or_never_ends_is_said_in_words(tmp_path):
     assert time.monotonic() - start < 5 and loop["error"] == words.PAGE_RAN_PAST.format(n=1) and not loop["ok"]
 
 
+@boxed
 def test_the_tests_run_isolated_from_the_folder_and_the_environment(tmp_path, monkeypatch):
     (tmp_path / "unittest.py").write_text("raise SystemExit('planted')\n")      # a planted module where the daemon runs
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("PYTHONPATH", str(tmp_path))
     assert run_tests(FIXED, TESTS)["ok"]
+
+
+WALLS = """import os, socket, subprocess, sys, unittest
+class T(unittest.TestCase):
+    def test_walls(self):
+        said = []
+        try:
+            said.append("read " + open(SECRET).read().strip())
+        except OSError:
+            said.append("no read")
+        try:
+            open(OUTSIDE, "w").write("x")
+            said.append("wrote")
+        except OSError:
+            said.append("no write")
+        s = socket.socket()
+        s.settimeout(2)
+        try:
+            s.connect(("1.1.1.1", 53))
+            said.append("network")
+        except OSError:
+            said.append("no network")
+        subprocess.Popen([sys.executable, "-c", "import os, time; os.setsid(); time.sleep(30)", MARK], start_new_session=True)
+        self.fail(" / ".join(said))
+"""
+
+
+@boxed
+def test_a_run_reads_no_file_outside_its_folder_writes_none_reaches_no_network_and_leaves_nothing_running(tmp_path):
+    secret, outside, mark = tmp_path / "token.secret", tmp_path / "outside.txt", f"yerk-page-orphan-{time.time_ns()}"
+    secret.write_text("FAKE-TOKEN-123\n")
+    secret.chmod(0o600)
+    tests = WALLS.replace("SECRET", repr(str(secret))).replace("OUTSIDE", repr(str(outside))).replace("MARK", repr(mark))
+    r = run_tests(FIXED, tests)
+    assert r["tests"][0]["message"] == "AssertionError: no read / no write / no network", r
+    assert "FAKE-TOKEN" not in run_line(r) and not outside.exists()
+    time.sleep(0.3)
+    alive = [c for c in Path("/proc").glob("[0-9]*/cmdline") if mark.encode() in (c.read_bytes() if c.exists() else b"")]
+    assert not alive                     # a child that left the run's session died with the run's PID namespace
+
+
+def test_with_no_sandbox_nothing_runs_and_the_run_says_so(tmp_path, monkeypatch):
+    monkeypatch.setattr(pagemod.shutil, "which", lambda name: None)
+    ran = tmp_path / "ran"
+    r = run_tests(f"open({str(ran)!r}, 'w').write('x')\n" + FIXED, TESTS)
+    assert r["error"] == words.PAGE_NO_SANDBOX and not r["ok"] and not ran.exists() and not pagemod.sandbox_starts()
+    assert run_line(r).startswith("the tests did not load: the tests did not run: their sandbox")
 
 
 def test_a_keystroke_lands_in_the_room_file_at_once_and_the_typing_goes_as_one_message_on_a_pause(tmp_path):
@@ -117,6 +173,7 @@ def test_a_stroke_a_said_line_the_timer_and_a_stall_go_at_once(tmp_path):
     assert stroke["lines"] == [4, 6] and stroke["points"] == [[1, 2], [3, 4]]
 
 
+@boxed
 def test_a_run_rides_in_the_next_message_only_when_it_says_something_new(tmp_path):
     p, room = hub(tmp_path)
 
@@ -252,6 +309,23 @@ def test_a_room_with_page_true_gets_its_page_and_the_tool_and_no_other_room_does
         address(state, "example-quiet")
 
 
+def test_page_true_outside_the_owner_s_rooms_gives_no_page_no_key_and_no_tool(tmp_path, caplog):
+    private, state = tmp_path / "private", tmp_path / "state"
+    shutil.copytree(EXAMPLE_PRIVATE, private)
+    state.mkdir()
+    t = (private / "rooms.toml").read_text()
+    t = t.replace('[rooms.example-quiet]\n', '[rooms.example-quiet]\npage = true\n', 1)
+    head, _, rest = t.partition("[rooms.example-quiet]")
+    (private / "rooms.toml").write_text(head + "[rooms.example-quiet]" + rest.replace('privacy = "owner"', 'privacy = "family"', 1))
+    y = Yerkd(private, state)
+    with caplog.at_level("WARNING", logger="yerk.daemon"):
+        y.add_room("example-quiet", ConsoleChannel())
+    assert "room example-quiet is not an owner room; its page = true is refused" in caplog.text
+    assert not isinstance(y.channels["example-quiet"], Mirror) and "example-quiet" not in y.page.sheets
+    assert not (state / "secrets" / "pages" / "example-quiet.secret").exists()
+    assert asyncio.run(y.tool_page("example-quiet", {"hint": "x", "code": FIXED}))["error"] == words.PAGE_OWNER_ONLY
+
+
 def test_the_page_opens_with_no_key_and_its_calls_only_with_its_own_room_s_key(tmp_path):
     y, state = page_daemon(tmp_path)
     key = y.page.sheets["example-room"].key
@@ -278,6 +352,7 @@ def test_change_finds_the_one_span_a_keystroke_changed():
     assert change("x = 1\n", "x = 2\n") == {"line": 1, "col": 5, "del": "1", "ins": "2"}
 
 
+@boxed
 def test_a_drawn_program_runs_at_once_and_the_page_s_own_run_of_it_wakes_no_turn(tmp_path):
     y, _ = page_daemon(tmp_path)
     y.page.quiet = 0.05

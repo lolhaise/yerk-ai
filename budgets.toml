@@ -920,4 +920,9 @@ secs = 60
 # mcp_server.py 61 (the tool, the page's routes and its key in the guard), words.py 22, daemon.py 20 (the hub, the
 # Mirror on a `page` room, the tool's run of what it drew, the keys' folder hidden from workers, the feeds closed at a
 # stop), cli.py 5 (`yerk room page`), config.py 2 (the `page` key). 25,196: main d093323's 24,616 plus 580.
-lines = 25196
+# 2026-11-03: the fix of need-2026-11-03-43 (PR 185's cold read) raised it by 49, not folded to fit: channels/page.py 38
+# (the test runner in bubblewrap, no network, no home, state or private folder, its own PID namespace, and nothing run
+# with no bwrap that starts, since the `page` tool hands it code a model wrote), daemon.py 8 (`page = true` refused
+# outside the owner's rooms, at the start and in the tool; a page room's start says when the sandbox cannot start),
+# words.py 3. 25,245.
+lines = 25245

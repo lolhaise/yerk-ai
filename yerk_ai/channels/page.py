@@ -10,9 +10,11 @@
   line each) and the program and its tests in work/page/, for the room to Read mid-turn; a stroke drawn on the page, a
   line said, the timer's end or a stall goes at once as a message, and typing goes as one message once QUIET seconds pass
   with none (the change since the last message as a diff, and the tests' newest result).
-- The tests run on the page's call, never the model's: the program and its unittest file in a fresh folder under
-  `python3 -I`, capped in CPU, memory and wall clock (RUN_SECONDS), one run at a time a room; the result goes back to the
-  page at once and rides in the next message.
+- The tests run with no model call: the program and its unittest file in a fresh folder under `python3 -I`, capped in
+  CPU, memory and wall clock (RUN_SECONDS), one run at a time a room, inside bubblewrap (sandbox): no network, no home,
+  state or private folder, nothing writable but the run's own folder, a PID namespace of its own that dies with the run.
+  The room's `page` tool hands it code too, so it is code a model wrote: with no bwrap that starts, nothing runs and the
+  run says so. The result goes back to the page at once and rides in the next message.
 - What the room says renders on the page: its replies, its notices and its sends to itself (Mirror), and what the
   `page` tool draws: a new program or tests, marks on lines (a highlight, an arrow, each with a note), a one-line hint,
   the bar (labels and values, a countdown) and the stall wait. A tab that opens or reconnects gets the whole state first.
@@ -26,6 +28,7 @@ import hmac
 import json
 import logging
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -90,17 +93,51 @@ write()
 '''
 
 
+def sandbox(python: str, here: str) -> list[str] | None:
+    """The bubblewrap command a run goes in: every namespace its own (no network; its own PID namespace, so whatever it
+    starts dies when it ends or with yerkd's kill of it), the system's /usr and the Python's own install read-only, the
+    run's folder the one thing writable, an empty /tmp, no home, state or private folder, and no environment but PATH and
+    HOME (the run's folder). None: no bwrap on the box, so nothing runs (a room hands the runner code: never bare)."""
+    if (bwrap := shutil.which("bwrap")) is None:
+        return None
+    real = os.path.realpath(python)
+    args = [bwrap, "--unshare-all", "--die-with-parent", "--new-session", "--clearenv", "--setenv", "PATH", os.defpath,
+            "--setenv", "HOME", here, "--ro-bind", "/usr", "/usr", "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp"]
+    for top in ("/bin", "/sbin", "/lib", "/lib32", "/lib64"):            # a merged /usr links these; an older system has them
+        if os.path.islink(top):
+            args += ["--symlink", os.readlink(top), top]
+        elif os.path.isdir(top):
+            args += ["--ro-bind", top, top]
+    if not real.startswith("/usr/"):          # a Python outside /usr (uv's, CI's): its binary and its lib folder, read-only
+        args += ["--ro-bind", real, real] + [a for lib in (str(Path(real).parents[1] / "lib"),) if os.path.isdir(lib) for a in ("--ro-bind", lib, lib)]
+    return args + ["--bind", here, here, "--chdir", here, real]
+
+
+def sandbox_starts(python: str = sys.executable) -> bool:
+    """Whether the sandbox starts on this box (bwrap there, and user namespaces let it): said at a page room's start."""
+    with tempfile.TemporaryDirectory(prefix="yerk-page-") as d:
+        if (box := sandbox(python, d)) is None:
+            return False
+        try:
+            return subprocess.run(box + ["-I", "-c", "pass"], capture_output=True, timeout=RUN_SECONDS).returncode == 0
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+
+
 def run_tests(code: str, tests: str, seconds: int = RUN_SECONDS, python: str = sys.executable) -> dict[str, Any]:
-    """The program and its unittest file run in a fresh folder under `python -I`, capped (RUN_SECONDS of wall clock, a second
-    more of CPU behind it, and RUN_MEMORY), killed with its whole group past the cap: each test passed or failed with its message and the program's line
-    it failed at, or the error that stopped the tests loading (a syntax error, a failed import) with its line."""
+    """The program and its unittest file run in a fresh folder under `python -I`, in the sandbox (bubblewrap) and capped
+    (RUN_SECONDS of wall clock, a second more of CPU behind it, and RUN_MEMORY), killed with its whole group past the cap:
+    each test passed or failed with its message and the program's line it failed at, or the error that stopped the tests
+    loading (a syntax error, a failed import) with its line. No sandbox that starts: nothing ran, and the error says so."""
     with tempfile.TemporaryDirectory(prefix="yerk-page-") as d:
         here = Path(d)
         (here / PROGRAM).write_text(code)
         (here / TESTS).write_text(tests)
         (here / "run.py").write_text(RUNNER)
+        if (box := sandbox(python, d)) is None:
+            return {"ok": False, "ran": 0, "passed": 0, "tests": [], "error": words.PAGE_NO_SANDBOX, "line": 0, "output": "", "seconds": 0}
         start = time.monotonic()
-        p = subprocess.Popen([python, "-I", str(here / "run.py"), d, str(seconds), str(RUN_MEMORY)], cwd=d, start_new_session=True,
+        p = subprocess.Popen(box + ["-I", str(here / "run.py"), d, str(seconds), str(RUN_MEMORY)], cwd=d, start_new_session=True,
                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, env={"PATH": os.defpath, "HOME": d})
         try:
             printed, _ = p.communicate(timeout=seconds)
@@ -114,9 +151,10 @@ def run_tests(code: str, tests: str, seconds: int = RUN_SECONDS, python: str = s
         try:
             out = json.loads((here / "result.json").read_text())
         except (OSError, ValueError):
-            past = p.returncode in (-signal.SIGXCPU, -signal.SIGKILL)     # the CPU cap, the backstop behind the clock
+            past = p.returncode in (-signal.SIGXCPU, -signal.SIGKILL, 128 + signal.SIGXCPU, 128 + signal.SIGKILL)   # the CPU cap
+            boxed = printed_text.startswith("bwrap:")                    # the sandbox would not start: nothing ran in it
             return {"ok": False, "ran": 0, "passed": 0, "tests": [], "line": 0,
-                    "error": words.PAGE_RAN_PAST.format(n=seconds) if past else words.PAGE_RUN_DIED,
+                    "error": words.PAGE_NO_SANDBOX if boxed else words.PAGE_RAN_PAST.format(n=seconds) if past else words.PAGE_RUN_DIED,
                     "output": printed_text, "seconds": took}
     ran, passed = len(out["tests"]), sum(1 for t in out["tests"] if t["ok"])
     return {"ok": not out["error"] and ran > 0 and passed == ran, "ran": ran, "passed": passed, "tests": out["tests"],

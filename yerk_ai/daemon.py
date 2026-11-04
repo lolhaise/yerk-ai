@@ -363,7 +363,10 @@ class Yerkd:
         named = [a for n in conf.get("accounts") or [] for a in self.accounts if a.name == n]
         accts = named + [a for a in self.accounts if a not in named]
         s = {**self.budgets.get("session", {}), **conf}          # the room's idle compaction keys over the budget's
-        if paged := flag(conf.get("page")):                      # its replies render on its page too
+        if (paged := flag(conf.get("page"))) and not self.owner(name):   # it runs code the room draws, as the owner's user
+            log.warning("page: room %s is not an owner room; its page = true is refused", name)
+            paged = False
+        if paged:                                                # its replies render on its page too
             channel = self.page.mirror(channel)
         room = Room(name, conf, lambda: self.spec_for(name), accts, channel, self.state, self.ledger,
                     self.failures, self.cooldowns, idle_seconds=self.idle_seconds, log_dir=self.log_dir, meters=self.meters,
@@ -371,6 +374,8 @@ class Yerkd:
         self.rooms[name], self.channels[name] = room, channel
         if paged:
             self.page.add_room(room)
+            if not page.sandbox_starts():
+                log.warning("page: room %s: %s", name, words.PAGE_NO_SANDBOX)
         return room
 
     # the MCP tools
@@ -455,7 +460,10 @@ class Yerkd:
 
     async def tool_page(self, room: str, req: dict[str, Any]) -> dict[str, Any]:
         """The `page` tool: what the calling room draws on its own live page (channels/page.py), shown on every open tab now;
-        a new program or tests run at once, their result in the answer, so the page's own run of them wakes no turn."""
+        a new program or tests run at once, their result in the answer, so the page's own run of them wakes no turn;
+        the owner's rooms only (add_room gives no other room a page)."""
+        if not self.owner(room):
+            return {"ok": False, "error": words.PAGE_OWNER_ONLY}
         r = self.page.draw(room, req)
         if r["ok"] and ("code" in req or "tests" in req):
             r["tests"] = page.run_line(await self.page.run(room, {}, heard=True))

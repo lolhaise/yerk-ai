@@ -1454,11 +1454,12 @@ what = "A room's live page: a browser tab on the owner's monitor that is the roo
 how = [
   "On: `page = true` in the room's rooms.toml table; the next start gives it its page and a key, and `yerk room page NAME` prints the address to open, the room and its key in the address's fragment, which a browser never sends. The key opens that room's page calls and nothing else, and no other secret opens them.",
   "In: each keystroke is a line in work/page/events.jsonl at once (where it changed and what it took out and put in), the program and its tests in work/page/; a pause of 1.5 s sends one message with the change as a diff and the tests' newest result, and a stroke (the lines it covers), a said line, the timer's end or a stall goes at once.",
-  "Tests: run on the page's call in a fresh folder under `python3 -I`, capped at 10 s and 1 GB, killed past the cap; each test red or green with the line it failed at, a syntax error with its line, back to the page at once.",
+  "Tests: run with no model call in a fresh folder under `python3 -I`, capped at 10 s and 1 GB, killed past the cap, inside bubblewrap (no network, no home, state or private folder, only its own folder writable, its own PID namespace), since the `page` tool hands it code a model wrote; each test red or green with the line it failed at, a syntax error with its line, back to the page at once. No bwrap that starts: nothing runs, and the run says so.",
+  "Owner rooms only: `page = true` in any other room is refused at the start and logged, and the tool refuses there.",
   "Out: the room's replies, notices and sends to itself render on every open tab beside Discord, and the `page` tool draws; a tab that opens or reconnects after a restart gets the whole state first.",
 ]
 tier = "free"
-needs = "a browser on the same machine (on Windows with WSL, Chrome reaches the box's local address); set `port` in yerkd.toml so the address stays the same across restarts"
+needs = "an owner room; bubblewrap (`bwrap`) on the box, with user namespaces allowed; a browser on the same machine (on Windows with WSL, Chrome reaches the box's local address); set `port` in yerkd.toml so the address stays the same across restarts"
 price = "none"
 free_path = "this is the free path"
 asked_as = ["live page", "a page on my monitor", "a page that is a room", "coding practice page", "see my typing live", "draw on the page"]
