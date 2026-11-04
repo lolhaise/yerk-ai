@@ -9,7 +9,8 @@
           --dim: #8592a3; --red: #f85149; --green: #3fb950; --amber: #e3b341; --blue: #58a6ff; }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 14px system-ui, sans-serif; }
-  body { display: grid; grid-template: "bar bar" auto "main chat" minmax(0, 1fr) / minmax(0, 1fr) minmax(300px, 26%); height: 100vh;
+  body { display: grid; grid-template: "bar bar bar" auto "main grip chat" minmax(0, 1fr) / minmax(0, 1fr) 10px
+         clamp(280px, var(--chat, 38%), calc(100vw - 400px)); height: 100vh;
          background: radial-gradient(1200px 500px at 15% -20%, #1a2436, var(--bg) 70%); }
   #bar { grid-area: bar; display: flex; gap: 12px; align-items: stretch; padding: 10px 16px; z-index: 2;
          background: linear-gradient(180deg, #172131, #10161f); border-bottom: 1px solid var(--line); box-shadow: 0 4px 18px rgba(0,0,0,.45); }
@@ -58,7 +59,8 @@
            font: 600 12px system-ui; white-space: nowrap; cursor: pointer; }
   button:hover { border-color: var(--dim); }
   button.on { background: var(--amber); border-color: var(--amber); color: #111; }
-  main { grid-area: main; display: grid; grid-template-columns: 3fr 2fr; min-height: 0; }
+  main { grid-area: main; display: grid; grid-template-columns: 3fr 2fr; min-height: 0; min-width: 0; }
+  main.narrow { grid-template: minmax(0, 3fr) minmax(0, 2fr) / minmax(0, 1fr); }
   .pane { position: relative; display: grid; grid-template-rows: 28px 1fr; min-height: 0; border-right: 1px solid var(--line); background: var(--panel); }
   .pane[data-pane="code"] { grid-template-rows: 28px minmax(0, 1fr) auto; }
   .head { padding: 8px 12px; color: var(--dim); font: 700 10px/12px system-ui; text-transform: uppercase; letter-spacing: .14em; }
@@ -71,7 +73,7 @@
   .mark span { position: absolute; right: 12px; top: 0; font: 600 12px/var(--lh) system-ui; color: var(--amber); }
   .mark.arrow span { color: var(--red); }
   .mark.arrow span::before { content: "\2190  "; }
-  textarea { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 8px 10px; border: 0; resize: none; outline: none;
+  .wrap textarea { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 8px 10px; border: 0; resize: none; outline: none;
              background: transparent; color: var(--fg); font: 14px/var(--lh) ui-monospace, monospace; white-space: pre; overflow: auto; tab-size: 4; }
   #right { display: grid; grid-template-rows: 1fr 1fr; min-height: 0; }
   #results { overflow: auto; padding: 10px 12px; border-top: 1px solid var(--line); border-right: 1px solid var(--line); background: var(--bg); }
@@ -99,20 +101,58 @@
   #hint::before { content: "hint"; display: block; margin-bottom: 4px; font: 800 10px/1 system-ui; letter-spacing: .14em; text-transform: uppercase;
                   color: var(--amber); }
   #hint:empty { display: none; }
-  #chat { grid-area: chat; display: grid; grid-template-rows: 28px minmax(0, 1fr) 44px; min-height: 0; background: var(--panel); }
-  #lines { overflow: auto; padding: 10px 14px 14px; display: flex; flex-direction: column; gap: 8px; }
-  #lines div { max-width: 62ch; align-self: flex-start; padding: 8px 12px; border-radius: 12px 12px 12px 4px; background: var(--panel2);
-               border: 1px solid var(--line); font-size: 14.5px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
-  #lines .me { align-self: flex-end; border-radius: 12px 12px 4px 12px; background: rgba(88,166,255,.16); border-color: rgba(88,166,255,.4); }
+  /* the chat, a pane of its own: a message a bubble, the room's read as Discord reads it (yerkd's parts), the newest at the bottom */
+  #grip { grid-area: grip; position: relative; cursor: col-resize; touch-action: none; background: var(--bg); border-left: 1px solid var(--line); }
+  #grip::after { content: ""; position: absolute; left: 3px; right: 3px; top: 50%; height: 48px; margin-top: -24px; border-radius: 99px;
+                 background: var(--line); transition: background .15s; }
+  #grip:hover::after, #grip.on::after, #grip:focus-visible::after { background: var(--blue); }
+  body.dragging { user-select: none; cursor: col-resize; }
+  #chat { grid-area: chat; position: relative; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-height: 0; min-width: 0;
+          background: var(--panel); border-left: 1px solid var(--line); }
+  #chat .head { display: flex; align-items: center; gap: 6px; padding: 6px 10px 6px 14px; border-bottom: 1px solid var(--line); }
+  #chat .head span { margin-right: auto; }
+  #chat .head button { padding: 3px 10px; font-size: 11px; letter-spacing: 0; text-transform: none; }
+  #lines { overflow-y: auto; overflow-x: hidden; padding: 14px 16px 18px; display: flex; flex-direction: column; gap: 10px; overscroll-behavior: contain; }
+  #lines .msg { max-width: 100%; min-width: 0; align-self: flex-start; padding: 8px 13px 10px; border-radius: 12px 12px 12px 4px;
+                background: var(--panel2); border: 1px solid var(--line); font-size: 14.5px; line-height: 1.5; overflow-wrap: anywhere; }
+  #lines .me { align-self: flex-end; max-width: 88%; border-radius: 12px 12px 4px 12px; background: rgba(88,166,255,.16); border-color: rgba(88,166,255,.4); }
   #lines .notice { color: #ffc1bc; background: rgba(248,81,73,.1); border-color: rgba(248,81,73,.5); }
-  #say { width: 100%; background: var(--panel2); color: var(--fg); border: 0; border-top: 1px solid var(--line); padding: 0 14px; font: 14px system-ui;
-         outline: none; }
-  #say:focus { box-shadow: inset 0 0 0 1px var(--blue); }
+  #lines .msg.next { margin-top: -5px; }
+  .who { display: flex; align-items: baseline; gap: 8px; margin-bottom: 3px; font: 700 12.5px/1.2 system-ui; color: #9ecbff; }
+  .me .who { justify-content: flex-end; }
+  .notice .who { color: #ffc1bc; }
+  .who time, .who .where { font: 500 11px/1.2 system-ui; color: var(--dim); }
+  .body .p, .body .li, .body .quote, .body .sub, .body .h1, .body .h2, .body .h3 { white-space: pre-wrap; }
+  .body .gap { height: .7em; }
+  .body .h1 { font: 800 20px/1.35 system-ui; margin: 4px 0 2px; }
+  .body .h2 { font: 800 17px/1.35 system-ui; margin: 4px 0 2px; }
+  .body .h3 { font: 700 15.5px/1.35 system-ui; margin: 2px 0; }
+  .body .sub { font-size: 12px; color: var(--dim); }
+  .body .quote { border-left: 4px solid #4b5668; padding-left: 10px; }
+  .body .li { position: relative; padding-left: calc(22px + var(--depth, 0) * 18px); }
+  .body .li .dot { position: absolute; left: calc(var(--depth, 0) * 18px); min-width: 18px; color: var(--dim); }
+  .body strong { font-weight: 800; color: #fff; }
+  .body code { font: 13px/1.4 ui-monospace, monospace; padding: 1px 5px; border-radius: 5px; background: #0b111a; border: 1px solid var(--line); }
+  .body pre { margin: 6px 0; padding: 10px 12px; max-height: 60vh; overflow: auto; border-radius: 8px; background: #0b111a; border: 1px solid var(--line);
+              font: 13px/1.45 ui-monospace, monospace; white-space: pre; overflow-wrap: normal; }
+  .body pre code { padding: 0; border: 0; background: none; }
+  .body a { color: var(--blue); text-decoration: none; word-break: break-all; }
+  .body a:hover { text-decoration: underline; }
+  .body .spoiler { border-radius: 4px; background: #2d3748; color: transparent; cursor: pointer; }
+  .body .spoiler.open { background: rgba(255,255,255,.08); color: inherit; }
+  #more { position: absolute; left: 50%; bottom: 84px; z-index: 1; transform: translateX(-50%); box-shadow: 0 4px 14px rgba(0,0,0,.5); }
+  #more[hidden] { display: none; }
+  #sayrow { padding: 10px 12px 12px; border-top: 1px solid var(--line); }
+  #say { display: block; width: 100%; min-height: 44px; max-height: 40vh; padding: 11px 13px; border-radius: 10px; border: 1px solid var(--line);
+         background: var(--panel2); color: var(--fg); font: 14.5px/1.45 system-ui, sans-serif; resize: none; outline: none; overflow-y: auto;
+         white-space: pre-wrap; overflow-wrap: anywhere; }
+  #say:focus { border-color: var(--blue); box-shadow: 0 0 0 1px var(--blue); }
   #ink { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
   #ink.on { pointer-events: auto; cursor: crosshair; }
   @keyframes pop { 0% { transform: scale(.86); } 55% { transform: scale(1.07); } 100% { transform: scale(1); } }
   @keyframes beat { 50% { opacity: .5; } }
-  @media (max-width: 1100px) { body { grid-template: "bar" auto "main" minmax(0, 1fr) "chat" 220px / minmax(0, 1fr); } }
+  @media (max-width: 1100px) { body { grid-template: "bar" auto "main" minmax(0, 1fr) "chat" minmax(0, 45vh) / minmax(0, 1fr); }
+                               #grip, #chat .head button { display: none; } }
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 </style>
 </head>
@@ -130,8 +170,13 @@
     <div id="results"><div id="sum" class="muted">no run yet</div><div id="rows"></div></div>
   </section>
 </main>
-<aside id="chat"><div class="head">chat</div><div id="lines"></div>
-  <input id="say" placeholder="say something to the room, Enter sends" autocomplete="off"></aside>
+<div id="grip" role="separator" aria-orientation="vertical" aria-label="drag to make the chat or the code wider" tabindex="0"
+  title="drag to make the chat or the code wider; a double click evens them"></div>
+<aside id="chat"><div class="head"><span>chat</span><button id="wide-chat" title="the chat wide">wide chat</button>
+  <button id="wide-code" title="the program and tests wide">wide code</button></div><div id="lines"></div>
+  <button id="more" hidden>newer messages below</button>
+  <div id="sayrow"><textarea id="say" rows="1" spellcheck="true" autocomplete="off"
+    placeholder="say something to the room (Enter sends, Shift+Enter a new line)"></textarea></div></aside>
 <canvas id="ink"></canvas>
 <script>
 "use strict";
@@ -244,17 +289,62 @@ function showBar() {                                          // the scoreboard:
     cellsBefore[c.label] = c; cells.appendChild(d);
   }
 }
-function line(l) {
-  const d = document.createElement("div");
-  d.className = l.kind || "reply"; d.textContent = l.text;
-  $("#lines").appendChild(d); $("#lines").scrollTop = 1e9;
+// the chat: a message a bubble, its words as yerkd read them the way Discord does (page.py, rich), each part as elements
+// and each word as text; time-stamped; the newest at the bottom, where the column stays unless the owner scrolled up
+const WHO = { me: "you", reply: ROOM || "room", notice: "Yerk" }, LOOK = { b: "strong", i: "em", u: "u", s: "s", c: "code", h: "span" };
+function stamp(t) {
+  const d = new Date(t * 1000), at = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return d.toDateString() === new Date().toDateString() ? at : d.toLocaleDateString([], { month: "short", day: "numeric" }) + ", " + at;
 }
+function runs(el, list) {
+  for (const r of list || []) {
+    let node = document.createTextNode(r.text);
+    for (const ch of r.looks || "") {
+      if (!LOOK[ch]) continue;
+      const w = make(LOOK[ch], ch === "h" ? "spoiler" : "");
+      if (ch === "h") w.onclick = () => w.classList.toggle("open");
+      w.appendChild(node); node = w;
+    }
+    if (r.href && /^https?:\/\//i.test(r.href)) {                // a link opens in a tab of its own, never this one
+      const a = make("a"); a.href = r.href; a.target = "_blank"; a.rel = "noopener noreferrer"; a.title = r.href;
+      a.appendChild(node); node = a;
+    }
+    el.appendChild(node);
+  }
+}
+function body(l) {
+  const out = make("div", "body");
+  const parts = l.parts || String(l.text || "").split("\n").map(x => x.trim() ? { kind: "p", runs: [{ text: x, looks: "" }] } : { kind: "gap" });
+  for (const b of parts) {
+    if (b.kind === "code") { const pre = make("pre"); pre.appendChild(make("code", "", b.text)); out.appendChild(pre); continue; }
+    const d = make("div", b.kind);
+    if (b.kind === "li") { d.style.setProperty("--depth", b.depth || 0); d.appendChild(make("span", "dot", b.mark)); }
+    runs(d, b.runs); out.appendChild(d);
+  }
+  return out;
+}
+function line(l) {
+  const lines = $("#lines"), atEnd = lines.scrollHeight - lines.scrollTop - lines.clientHeight < 60, kind = l.kind || "reply";
+  const old = l.n !== undefined ? lines.querySelector('[data-n="' + CSS.escape(String(l.n)) + '"]') : null;   // a comment still typed
+  const prev = old ? old.previousElementSibling : lines.lastElementChild, d = make("div", "msg " + kind), who = make("div", "who");
+  const same = prev && prev.dataset.kind === kind && l.t && !l.at && Math.abs(l.t - Number(prev.dataset.t)) < 300;
+  if (l.n !== undefined) d.dataset.n = l.n;
+  d.dataset.kind = kind; d.dataset.t = l.t || 0;
+  if (!same) who.appendChild(make("b", "", WHO[kind] || kind)); else d.classList.add("next");
+  if (l.at) who.appendChild(make("span", "where", "# in the program, line " + l.at));
+  if (l.t) { const tm = make("time", "", stamp(l.t)); tm.dateTime = new Date(l.t * 1000).toISOString(); who.appendChild(tm); }
+  d.append(who, body(l));
+  if (old) old.replaceWith(d); else lines.appendChild(d);
+  if (atEnd || kind === "me") lines.scrollTop = lines.scrollHeight; else $("#more").hidden = false;
+}
+$("#lines").addEventListener("scroll", e => { const l = e.target; if (l.scrollHeight - l.scrollTop - l.clientHeight < 60) $("#more").hidden = true; });
+$("#more").onclick = () => { $("#lines").scrollTop = $("#lines").scrollHeight; $("#more").hidden = true; };
 function apply(op) {
   if (op.state) {
     const s = op.state;
     state = s;
     for (const name of ["code", "tests"]) if (document.activeElement !== panes[name].ta || !panes[name].ta.value) panes[name].ta.value = s[name] || "";
-    $("#lines").textContent = ""; (s.lines || []).forEach(line);
+    $("#lines").textContent = ""; (s.lines || []).forEach(line); $("#lines").scrollTop = $("#lines").scrollHeight; $("#more").hidden = true;
     $("#hint").textContent = s.hint || ""; timerSaid = false;
     showRun(s.run);
   }
@@ -308,11 +398,53 @@ setInterval(() => {                                           // the countdown a
   } else { $("#timer").textContent = ""; clock.hidden = true; }
   if (state.stall && !stallSaid && Date.now() - lastKey > state.stall * 1000) { stallSaid = true; post("event", { kind: "stall" }); }
 }, 250);
-$("#say").addEventListener("keydown", e => {
-  if (e.key !== "Enter" || !e.target.value.trim()) return;
-  post("event", { kind: "say", text: e.target.value });
-  line({ text: e.target.value, kind: "me" }); e.target.value = "";
+// the say box: as many lines as the owner types (Shift+Enter a new one), Enter sends, and it keeps the focus; the line
+// shows when yerkd has it (on every tab), and words yerkd did not take go back in the box
+const say = $("#say");
+function fit() { say.style.height = "auto"; say.style.height = Math.min(say.scrollHeight + 2, innerHeight * 0.4) + "px"; }
+say.addEventListener("input", fit);
+say.addEventListener("keydown", e => {
+  if (e.key !== "Enter" || e.shiftKey || e.isComposing || e.keyCode === 229) return;
+  e.preventDefault();
+  const text = say.value;
+  if (!text.trim()) return;
+  say.value = ""; fit(); say.focus();
+  post("event", { kind: "say", text }).then(r => {
+    if (r && r.ok) return;
+    if (!say.value) { say.value = text; fit(); }
+    line({ text: (r && r.error) || "Not sent: yerkd did not answer. Your words are back in the box.", kind: "notice", t: Date.now() / 1000 });
+  });
 });
+// the split: the chat's share of the width, dragged on the grip or set by its buttons, kept in this browser; a button
+// never takes the focus from where the owner types
+const SPLIT = "yerk-page-chat", WIDE = { chat: 62, code: 26 };
+function keep(v) { try { if (v === null) localStorage.removeItem(SPLIT); else localStorage.setItem(SPLIT, v); } catch (e) { /* no storage */ } }
+function split(pct, save = true) {
+  if (pct === null || isNaN(pct)) { document.body.style.removeProperty("--chat"); pct = null; }
+  else { pct = Math.min(80, Math.max(15, pct)); document.body.style.setProperty("--chat", pct.toFixed(1) + "%"); }
+  if (save) keep(pct === null ? null : pct.toFixed(1));
+  for (const w in WIDE) $("#wide-" + w).classList.toggle("on", pct !== null && Math.abs(pct - WIDE[w]) < 0.5);
+}
+for (const w in WIDE) {
+  const b = $("#wide-" + w);
+  b.onmousedown = e => e.preventDefault();
+  b.onclick = () => split(b.classList.contains("on") ? null : WIDE[w]);
+}
+const grip = $("#grip");
+grip.onmousedown = e => e.preventDefault();
+grip.addEventListener("pointerdown", e => { grip.setPointerCapture(e.pointerId); grip.classList.add("on"); document.body.classList.add("dragging"); });
+grip.addEventListener("pointermove", e => { if (grip.classList.contains("on")) split(100 * (innerWidth - e.clientX - 5) / innerWidth, false); });
+grip.addEventListener("pointerup", () => {
+  grip.classList.remove("on"); document.body.classList.remove("dragging");
+  split(100 * $("#chat").offsetWidth / innerWidth);
+});
+grip.addEventListener("dblclick", () => split(null));
+grip.addEventListener("keydown", e => {
+  const step = { ArrowLeft: 3, ArrowRight: -3 }[e.key];
+  if (step) { e.preventDefault(); split(100 * $("#chat").offsetWidth / innerWidth + step); }
+});
+try { split(parseFloat(localStorage.getItem(SPLIT) || "x"), false); } catch (e) { /* no storage */ }
+new ResizeObserver(() => { $("main").classList.toggle("narrow", $("main").clientWidth < 760); for (const name in panes) sync(name); }).observe($("main"));
 // the draw layer: a stroke goes to the room as the lines it covers, and its points
 const ink = $("#ink"), pen = ink.getContext("2d");
 let stroke = null;

@@ -13,7 +13,7 @@ from starlette.testclient import TestClient
 
 from yerk_ai import mcp_server, words
 from yerk_ai.channels import page as pagemod
-from yerk_ai.channels.page import Mirror, Page, address, board, cell, change, plain, run_line, run_tests
+from yerk_ai.channels.page import Mirror, Page, address, board, cell, change, comments, plain, rich, run_line, run_tests
 from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai.daemon import Yerkd
 from yerk_ai.ledger import Ledger
@@ -226,7 +226,7 @@ def test_a_page_message_folds_into_the_running_turn_and_the_reply_renders_on_the
     assert "echo: SLOW first + [from the owner's live page]" in chan.replies[0][0]
     row = ledger.inbound_get(mid)
     assert row["folded"] == 1 and row["state"] == "answered"
-    assert [x["text"] for x in p.sheets["r"].lines] == [chan.replies[0][0]]   # the reply, on the page
+    assert [(x["text"], x["kind"]) for x in p.sheets["r"].lines] == [("second", "me"), (chan.replies[0][0], "reply")]   # both, on the page
 
 
 def test_what_the_room_draws_goes_to_every_open_tab_and_a_new_tab_gets_the_whole_state(tmp_path):
@@ -312,6 +312,157 @@ def test_the_room_sets_only_the_words_and_every_tab_gets_the_scoreboard_read_fro
     assert logged["bar"] == bar and "board" not in logged                         # the file keeps the room's words
 
 
+def test_a_line_said_reads_the_way_discord_reads_it_bold_gaps_links_code_lists_and_words_kept_words():
+    reply = ("**Close.** The sign is off.\n\n\nSee https://docs.example.org/a_b_c. or [the guide](https://example.org/g) and `x - y`.\n"
+             "```python\nreturn a + b\n```\n# Next\n- first *one*\n  - under it\n2. then __this__ ~~not~~ ||later||\n> quoted\n-# small print\n"
+             "<b>kept</b> \\*not italic\\* [bad](javascript:alert(1)) snake_case_name ***both***")
+    assert rich(reply) == [
+        {"kind": "p", "runs": [{"text": "Close.", "looks": "b"}, {"text": " The sign is off.", "looks": ""}]},
+        {"kind": "gap"},                                                            # blank lines between thoughts: one gap
+        {"kind": "p", "runs": [{"text": "See ", "looks": ""}, {"text": "https://docs.example.org/a_b_c", "looks": "", "href": "https://docs.example.org/a_b_c"},
+                               {"text": ". or ", "looks": ""}, {"text": "the guide", "looks": "", "href": "https://example.org/g"},
+                               {"text": " and ", "looks": ""}, {"text": "x - y", "looks": "c"}, {"text": ".", "looks": ""}]},
+        {"kind": "code", "lang": "python", "text": "return a + b"},
+        {"kind": "h1", "runs": [{"text": "Next", "looks": ""}]},
+        {"kind": "li", "mark": "•", "depth": 0, "runs": [{"text": "first ", "looks": ""}, {"text": "one", "looks": "i"}]},
+        {"kind": "li", "mark": "•", "depth": 1, "runs": [{"text": "under it", "looks": ""}]},
+        {"kind": "li", "mark": "2.", "depth": 0, "runs": [{"text": "then ", "looks": ""}, {"text": "this", "looks": "u"}, {"text": " ", "looks": ""},
+                                                         {"text": "not", "looks": "s"}, {"text": " ", "looks": ""}, {"text": "later", "looks": "h"}]},
+        {"kind": "quote", "runs": [{"text": "quoted", "looks": ""}]},
+        {"kind": "sub", "runs": [{"text": "small print", "looks": ""}]},
+        {"kind": "p", "runs": [{"text": "<b>kept</b> *not italic* [bad](javascript:alert(1)) snake_case_name ", "looks": ""},
+                               {"text": "both", "looks": "bi"}]}]
+    assert rich("**bold *both* bold**")[0]["runs"] == [{"text": "bold ", "looks": "b"}, {"text": "both", "looks": "bi"}, {"text": " bold", "looks": "b"}]
+    assert rich(">>> all of it\n- still quoted") == [{"kind": "quote", "runs": [{"text": "all of it", "looks": ""}]},
+                                                     {"kind": "quote", "runs": [{"text": "- still quoted", "looks": ""}]}]
+    assert rich("```one line```") == [{"kind": "code", "lang": "", "text": "one line"}] and rich("") == []
+    assert rich("a ``` never closed")[0]["runs"][0]["text"] == "a ``` never closed"
+    assert all("href" not in r or r["href"].startswith(("http://", "https://")) for b in rich(reply) for r in b.get("runs", []))
+
+
+def test_a_long_line_said_is_read_in_step_with_its_length_and_once_so_it_never_holds_the_owner_s_rooms(tmp_path, monkeypatch):
+    """The wall the cold read hit: a mark never closed was read to the end of its row, and each one again, so one row of
+    100,000 characters of `*a ` took 27 s on yerkd's only loop, every room's hooks and tools waiting, and again for all
+    200 kept lines each time a tab opened. Now a mark is read only up to its own next one, and a line once."""
+    took = time.perf_counter()
+    for row in ("**a ", "***a ", " _a", "__a ", "~~a ", "[a"):
+        rich(row * (100_000 // len(row)))
+    assert rich(line := "*a " * 33_334) == [{"kind": "p", "runs": [{"text": line, "looks": ""}]}]   # never closed: words
+    assert time.perf_counter() - took < 1
+    assert rich("**a** and **b**")[0]["runs"] == [{"text": "a", "looks": "b"}, {"text": " and ", "looks": ""}, {"text": "b", "looks": "b"}]
+    assert rich("~~a~~ _b_ __c__")[0]["runs"] == [{"text": "a", "looks": "s"}, {"text": " ", "looks": ""}, {"text": "b", "looks": "i"},
+                                                  {"text": " ", "looks": ""}, {"text": "c", "looks": "u"}]   # one word each, never one run
+    assert rich("**a **b**")[0]["runs"] == [{"text": "**a ", "looks": ""}, {"text": "b", "looks": "b"}]
+    chat = tmp_path / "rooms" / "r" / "work" / "page" / pagemod.CHAT
+    chat.parent.mkdir(parents=True)
+    chat.write_text(json.dumps([{"text": "hi", "kind": "reply", "n": 0, "parts": [{"kind": "p", "runs": [{"text": "x", "href": "javascript:x"}]}]}]))
+    p, _ = hub(tmp_path, quiet=60)
+    assert p.sheets["r"].state()["state"]["lines"][0]["parts"] == rich("hi")                 # parts in the file are never read
+    read: list[str] = []
+    monkeypatch.setattr(pagemod, "rich", lambda text: read.append(text) or [])
+    p.said("r", "x" * (pagemod.TEXT_MAX + 1))
+    p.said("r", "two")
+    for _ in range(3):                                                                       # three tabs open
+        p.sheets["r"].state()
+    assert read == ["x" * pagemod.TEXT_MAX, "two"]                                           # each line once, when said
+    assert all("parts" not in x for x in json.loads(chat.read_text()))
+    again = Page(tmp_path, p.ledger)
+    again.add_room(Taken())
+    for _ in range(3):
+        again.sheets["r"].state()
+    assert read[2:] == ["hi", "x" * pagemod.TEXT_MAX, "two"]                                 # after a restart, once, for the first tab
+
+
+def test_the_chat_keeps_both_sides_numbered_time_stamped_and_read_and_comes_back_after_a_restart(tmp_path):
+    """The wall the ask hit: the talk was a footer strip of plain text, the owner's own lines only in the tab that typed
+    them. Now a line said on the page is the chat's on every tab, beside the room's, each with its time and its parts."""
+    p, room = hub(tmp_path, quiet=60)
+
+    async def go():
+        tab = p.stream("r", beat=0.05)
+        await tab.__anext__()
+        await p.event("r", {"kind": "say", "text": "  why is **this** red?\nline two  "})
+        mine = json.loads(await tab.__anext__())
+        p.said("r", "**Close.**\n\nLook at https://example.org/x")
+        theirs = json.loads(await tab.__anext__())
+        await tab.aclose()
+        return mine["line"], theirs["line"]
+    mine, theirs = asyncio.run(go())
+    assert room.got[0].text.splitlines()[1:] == ["said on the page: why is **this** red?", "line two"]
+    assert {k: mine[k] for k in ("text", "kind", "n")} == {"text": "why is **this** red?\nline two", "kind": "me", "n": 0}
+    assert mine["parts"][0]["runs"][1] == {"text": "this", "looks": "b"} and time.time() - mine["t"] < 60
+    assert (theirs["kind"], theirs["n"]) == ("reply", 1) and [b["kind"] for b in theirs["parts"]] == ["p", "gap", "p"]
+    assert theirs["parts"][2]["runs"][1]["href"] == "https://example.org/x"
+    again = Page(tmp_path, p.ledger)
+    again.add_room(Taken())
+    late = again.sheets["r"].state()["state"]["lines"]
+    assert [(x["kind"], x["n"]) for x in late] == [("me", 0), ("reply", 1)] and late[1]["parts"] == theirs["parts"]
+    again.said("r", "after the restart")
+    assert again.sheets["r"].lines[-1]["n"] == 2
+    assert all("parts" not in x for x in json.loads((tmp_path / "rooms" / "r" / "work" / "page" / pagemod.CHAT).read_text()))
+    for i in range(pagemod.LINES_KEPT + 5):
+        again.said("r", f"line {i}")
+    assert len(again.sheets["r"].lines) == pagemod.LINES_KEPT and again.sheets["r"].lines[-1]["text"] == f"line {pagemod.LINES_KEPT + 4}"
+
+
+def test_a_comment_typed_in_the_program_is_the_owner_s_talk_on_the_chat_and_said_to_the_room(tmp_path):
+    p, room = hub(tmp_path, quiet=60)
+    p.draw("r", {"code": "# the room's own note\ndef add(a, b):\n    return a - b\n"})
+
+    async def go():
+        await p.event("r", {"kind": "edit", "pane": "code", "text": "# the room's own note\n# can you\ndef add(a, b):\n    return a - b\n"})
+        p.flush("r")
+        await p.event("r", {"kind": "edit", "pane": "code",
+                            "text": "# the room's own note\n# can you explain\n# the minus?\ndef add(a, b):\n    return a - b  # here\n"})
+        p.flush("r")
+    asyncio.run(go())
+    first, second = (m.text.splitlines() for m in room.got)
+    assert "said in solution.py at line 2, as a # comment: can you" in first and "+# can you" in first
+    assert second[-2:] == ["said in solution.py at line 2, as a # comment: can you explain", "the minus?"]
+    lines = p.sheets["r"].lines
+    assert [(x["text"], x["kind"], x["at"], x["n"]) for x in lines] == [("can you explain\nthe minus?", "me", 2, 0)]   # the same line, grown
+    assert comments("x = 1\n# had\n", "#!/usr/bin/env python3\nx = 1  # trailing\n# had\n#\n  # an indented one\n") == [(5, "an indented one")]
+    assert comments("", "# one\n# two\nx = 1\n# three\n") == [(1, "one\ntwo"), (4, "three")]
+
+
+def test_a_program_of_repeated_lines_costs_the_owner_s_message_time_in_step_with_its_length_so_it_never_holds_the_rooms(tmp_path):
+    """The wall the cold read hit: the comments were found by a diff (SequenceMatcher, autojunk off) over the whole program at
+    every message, even with the program unchanged, the square of its lines when they repeat: a line said beside 8,000 blank
+    lines took 5 s on yerkd's only loop, every room's hooks and tools waiting. Now a line the program had is never talk, so
+    none is diffed, and an unchanged program is not read at all. And a paste of 25,000 comments was 25,000 chat lines and
+    said lines, 10 s and a 1.3 MB message: now DIFF_LINES of them are said, the rest counted."""
+    p, room = hub(tmp_path, quiet=60)
+    p.draw("r", {"code": "\n" * 8000})
+
+    async def go():
+        took = time.perf_counter()
+        await p.event("r", {"kind": "say", "text": "one"})                                 # the program unchanged
+        await p.event("r", {"kind": "edit", "pane": "code", "text": "\n" * 4000 + "# two\n" + "\n" * 4000})
+        p.flush("r")
+        return time.perf_counter() - took
+    assert asyncio.run(go()) < 1
+    assert [m.text.splitlines()[-1] for m in room.got] == ["said on the page: one", "said in solution.py at line 4001, as a # comment: two"]
+    assert [(x["text"], x.get("at")) for x in p.sheets["r"].lines] == [("one", None), ("two", 4001)]
+    took, blank, n = time.perf_counter(), "\n" * pagemod.TEXT_MAX, pagemod.TEXT_MAX // 4
+    assert comments(blank, blank) == [] and comments(blank + "x\n", "y\n" + blank) == []
+    assert comments(blank, blank[:50_000] + "# three\n" + blank[50_000:]) == [(50_001, "three")]
+    assert comments("", "#a\n\n" * n) == [(2 * i + 1, "a") for i in range(n)]               # a comment each
+    assert comments("x\n", "x\n" + "#a\n" * n) == [(2, "\n".join(["a"] * n))]                 # one comment, grown
+    assert time.perf_counter() - took < 1
+
+    async def paste():                    # a comment each: DIFF_LINES of them said and on the chat, the rest counted
+        await p.event("r", {"kind": "edit", "pane": "code", "text": "#a\n\n" * n})
+        took = time.perf_counter()
+        p.flush("r")
+        return time.perf_counter() - took
+    assert asyncio.run(paste()) < 1
+    said = room.got[-1].text.splitlines()
+    assert said.count("said in solution.py at line 1, as a # comment: a") == 1 and len(room.got[-1].text) < 10_000
+    assert sum(x.startswith("said in solution.py at line") for x in said) == pagemod.DIFF_LINES
+    assert said[-1] == words.PAGE_COMMENT_CUT.format(n=n - pagemod.DIFF_LINES, name="solution.py")
+    assert [x.get("at") for x in p.sheets["r"].lines[2:]] == [2 * i + 1 for i in range(pagemod.DIFF_LINES)]
+
+
 def test_the_look_is_the_page_s_own_a_scoreboard_a_clock_tiles_that_pop_a_hint_card_and_a_chat_column_dark():
     html = pagemod.HTML.read_text()
     css, body = html.split("</style>", 1)
@@ -326,6 +477,24 @@ def test_the_look_is_the_page_s_own_a_scoreboard_a_clock_tiles_that_pop_a_hint_c
     script = body.split("<script>", 1)[1]
     assert not [w for w in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write") if w in script]   # a word stays a word
     assert "state.board" in script and "c.tier" in script and "passedBefore" in script
+
+
+def test_the_chat_is_a_pane_of_its_own_beside_the_code_wide_either_way_with_a_say_box_of_many_lines():
+    """The wall the ask hit: the talk was a footer under the program, plain text over a one-line input. Now it is a
+    column of its own: a grip and two buttons set how wide, its lines drawn from yerkd's parts, its box many lines."""
+    html = pagemod.HTML.read_text()
+    css, body = html.split("</style>", 1)
+    script = body.split("<script>", 1)[1]
+    assert '"main grip chat"' in css and "var(--chat, 38%)" in css and "#grip {" in css and "main.narrow" in css
+    for rule in (".body strong", ".body a {", ".body pre {", ".body code", ".body .gap", ".body .quote", ".body .li", ".body .spoiler", ".who time"):
+        assert rule in css, rule
+    at = body.index('id="grip"')
+    assert body.index("</main>") < at < body.index('id="chat"')                     # between the program and the chat
+    chat = body.split('id="chat"', 1)[1].split("</aside>", 1)[0]
+    assert 'id="wide-chat"' in chat and 'id="wide-code"' in chat and '<textarea id="say"' in chat and "<input" not in chat
+    assert "e.shiftKey" in script and "say.focus()" in script and "localStorage" in script and "setPointerCapture" in script
+    assert "l.parts" in script and 'a.rel = "noopener noreferrer"' in script and "/^https?:" in script and "toLocaleTimeString" in script
+    assert 'line({ text: e.target.value, kind: "me" })' not in script                # the owner's line comes from yerkd, on every tab
 
 
 def test_the_bar_s_cells_are_spaced_as_cells_each_its_own_box_in_a_row_with_its_own_gap():

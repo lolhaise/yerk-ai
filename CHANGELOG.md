@@ -8,6 +8,41 @@ version changes.
 
 ## 2026-11-03
 
+### need-2026-11-03-48 (#?)
+
+- A room's live page holds the whole conversation, so a night on it needs no Discord open: the chat is a pane of its
+  own beside the program and its tests, with the owner's lines and the room's replies as a readable chat, each line
+  time-stamped and the newest at the bottom; the column stays where you scrolled, with a button to the newest.
+- Each reply is shown the way Discord shows it: bold, italic, underline, strike, spoilers, code and fenced blocks in a
+  box of their own, headings, subtext, quotes, lists, a gap between thoughts and links that open in a tab of their own
+  (http and https only). yerkd reads each line into parts and the page draws them, every word as text, never markup.
+- The say box takes many lines: Enter sends, Shift+Enter starts a new line, it keeps the focus after a send, and words
+  yerkd did not take go back in the box. A line said there shows on every open tab, not just the one that typed it.
+- Drag the grip between the code and the chat, or press `wide chat` or `wide code`; a double click evens them, the
+  arrow keys move the grip, and the browser keeps the split. On a narrow screen the chat goes under the code, and a
+  narrow code side stacks the program over the tests.
+- A whole-line `#` comment typed in the program is talk too: it shows as your line on the chat (one still being typed
+  grows its own line) and goes to the room as said, beside the typing's diff.
+- The newest 200 chat lines, yours and the room's, are kept in the room's `work/page/chat.json`, so a reload or a
+  restart shows the night's talk again.
+- Need 46's scoreboard and tiles and need 47's spaced bar cells are kept as they are; the bar spans the code, the grip
+  and the chat.
+- The `[code]` ceiling in budgets.toml goes to 25,560 (main's 25,451 plus 109); the abilities entry is page-chat, and
+  the "what can you do" answer's own line drops ", built or known" (its census already says which) so it keeps every
+  name under its 2,000.
+- One long line on the chat no longer freezes yerkd: a mark that is never closed (`*`, `**`, `***`, `_`, `__`, `~~`, a
+  link's `[`) is read only up to its own next mark, so a line costs time in step with its length (a 100,000-character row
+  of `*a ` took 27 s on yerkd's only loop, every room's hooks and tools waiting; now well under a second), and each line
+  is read once, kept beside its words and never in `chat.json`, not again for all 200 kept lines whenever a tab opens. A
+  room's line is cut at the say box's 100,000 characters. Two marked words no longer read as one run (`**a** and **b**`
+  was bold from the first `a` to the last `b`). The `[code]` ceiling goes to 25,568.
+- A program of repeated lines no longer freezes yerkd: the `#` comments are found without a diff of the whole program
+  (a line the program already had is never talk, so none is needed), and an unchanged program is not read at all; a
+  line said beside 8,000 blank lines took 5 s on yerkd's only loop, now a few milliseconds. One message says the first
+  60 comments typed, the most a message carries of the diff too, and counts the rest, so a paste of 25,000 comment
+  lines no longer takes 10 s and sends the room a 1.3 MB message. The `[code]` ceiling goes to 25,572.
+- Upgrading: nothing to set. An open page picks up the chat pane when its tab is reloaded.
+
 ### need-2026-11-03-47 (#?)
 
 - A live page's top bar shows each label and value as a cell of its own, spaced from the next, in every room: the cells
