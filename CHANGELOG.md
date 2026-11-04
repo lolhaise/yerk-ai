@@ -27,8 +27,8 @@ version changes.
 - Here, `yerk explain research-ids` has the ability (tier key, on with the Exa key web_research runs on), with six
   phrases ("research timed out", "no run id", ...) that hand a room asked that way the entry whole. The "what can you
   do" answer drops its closing "`yerk explain NAME` has one." (the cite after it names the command) so the new
-  "needs Exa" group fits under the 2,000-character recall cap, 1,998 as before; the `[code]` ceiling goes to 25,935 (1
-  fewer). The README says it in Add-ons (a few words shorter elsewhere on that line, to stay under 12,000 bytes) and the
+  "needs Exa" group fits under the 2,000-character recall cap, 1,998 as before; the `[code]` ceiling goes 1
+  lower, to 25,939 with entrypoint-name's 4 lines in. The README says it in Add-ons (a few words shorter elsewhere on that line, to stay under 12,000 bytes) and the
   GUIDE's Web reach says how.
 - No tool's description changes (the reference is "the run id web_research gave" as far as the room is concerned), so
   the web plug-in's tool entries and their budget line do not move. The plug-in's tests: 4 new in
@@ -42,6 +42,14 @@ version changes.
 
 **Upgrading**: nothing to change by hand; every room that attaches the web plug-in starts its runs this way from its
 next session after the deploy (a session already running keeps the plug-in process it started with).
+
+### entrypoint-name-2026-11-04 (#?)
+
+- Every Claude Code process Yerk AI starts (each room's, each worker's, the nightly curation's and the account checks)
+  goes out under Yerk AI's own name, `yerk`, where it used to carry Claude Code's headless default, `sdk-cli`, which
+  a plan's meters were measured counting heavier for the same work. Artifacts stay off, since any name but `sdk-*`
+  would turn them on and add a Scratchpad line to every request. Nothing else changes and nothing needs doing: every
+  room has it from yerkd's restart at the deploy. The `[code]` ceiling goes to 25,940.
 
 ### fold-named-2026-11-04 (#?)
 
