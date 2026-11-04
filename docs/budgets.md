@@ -487,7 +487,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-04, fold-named-2026-11-04: 67 lines for a message folded into a running turn and answered by name, for every room (a number fixed 0.8 s after the question it corrected folded into that turn, the one reply covering both answered the first and never said the second, and the owner sent it again 70 s later), not folded to fit: room.py 51 (the fold's line ahead of the message, decided at the write and never kept on it, none on a watched channel's message; own_words, fold_tokens and carries; fold_check, the Stop hook's last rule, on the result's folds whose replay was seen; the folds and replays per result and their resets), words.py 11 (the line, the bounce, the filler, THERE), daemon.py 5 (the Stop rung and its `fold` shadow row; the approval word read in the message's own words, the message found by the text the room wrote, so a fold's line never hides the word). 25,936.
 
-- `lines = 25936`
+2026-11-04, need-2026-11-04-49: 1 line fewer: abilities.py's "what can you do" answer drops its closing "`yerk explain NAME` has one." (the cite after it, "(yerk explain abilities)", names the command), so research-ids' "needs Exa" group fits under the 2,000 recall cap (1,998 as before); the fix itself is in plugins/web, outside this count. 25,935.
+
+- `lines = 25935`
 
 ## Uncapped
 

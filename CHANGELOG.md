@@ -8,6 +8,41 @@ version changes.
 
 ## 2026-11-04
 
+### need-2026-11-04-49 (#?)
+
+- A `web_research` run always comes back with something to collect it by. Every start now carries a reference of
+  Yerk's own (`yerk_`, the moment it went out, 16 random hex) in the run's metadata, which Exa keeps with the run, and
+  the start may take the call's whole wait but its last 30 s (about 2 min 20 s), where every request to Exa used to stop
+  at a minute. When Exa's answer to the start is late, lost, a server error (a gateway's 504 at a minute) or names no
+  run, the plug-in reads Exa's newest runs for that reference every few seconds, up to 30 s, and the run it finds goes
+  on as any other: polled to its end, its answer returned, or its run id for `web_research_result` when it is still
+  going, with a line saying it was found by its reference.
+- A run Exa has not listed by the end of the wait comes back as its reference ("still starting", with the reason), and
+  `web_research_result` takes the reference as it takes a run id: it finds the run among Exa's newest, page by page back
+  to a minute before the reference was made, and returns it, or says none carries it yet; 15 minutes after the start
+  with none, it says Exa never started that run and there is nothing to collect.
+- The day's booking against the US$2 research cap stays on a start whose answer was lost, since Exa may have started
+  and billed the run; a 4xx answer is still Exa's refusal and gives its booking back, as before. A run found by its
+  reference writes its run row and its spend row once, when it is first seen finished.
+- Here, `yerk explain research-ids` has the ability (tier key, on with the Exa key web_research runs on), with six
+  phrases ("research timed out", "no run id", ...) that hand a room asked that way the entry whole. The "what can you
+  do" answer drops its closing "`yerk explain NAME` has one." (the cite after it names the command) so the new
+  "needs Exa" group fits under the 2,000-character recall cap, 1,998 as before; the `[code]` ceiling goes to 25,935 (1
+  fewer). The README says it in Add-ons (a few words shorter elsewhere on that line, to stay under 12,000 bytes) and the
+  GUIDE's Web reach says how.
+- No tool's description changes (the reference is "the run id web_research gave" as far as the room is concerned), so
+  the web plug-in's tool entries and their budget line do not move. The plug-in's tests: 4 new in
+  `plugins/web/test/tools.test.mjs` (the wall: a create that never answers, found by its reference; a 504 at the create
+  and a run Exa lists late; a run never listed, its reference collected later and refused when stale; the lookup's
+  paging and where it stops), 2 changed (the create's body carries the reference; the run_id refusal names both forms);
+  79 in all, 77 pass and the 2 live ones skip.
+- Why: on 2026-11-04 a room's `web_research` at medium came back after 60 s as a timeout with no run id (the plug-in cut
+  each request to Exa at a minute, the run's create too), so `web_research_result` had nothing to collect and the room
+  did the research by hand with `web_search` and `web_fetch`; the room filed the need (need 49 of 2026-11-04).
+
+**Upgrading**: nothing to change by hand; every room that attaches the web plug-in starts its runs this way from its
+next session after the deploy (a session already running keeps the plug-in process it started with).
+
 ### fold-named-2026-11-04 (#?)
 
 - A message you send while a room is still answering is answered by name, in every room. Yerk writes it into the

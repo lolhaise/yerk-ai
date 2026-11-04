@@ -16,6 +16,13 @@
 // - Ledger: one row per finished run in <dir>/runs.jsonl: {ts, id, effort, status, cost, q (16 hex of
 //   the query's sha256, never the query), room?}, written the first time the run is seen finished and
 //   never twice (the ids in the file); the same moment books its spend row in Yerk's ledger (common.mjs).
+// - A run's reference: every create carries one of Yerk's own in its metadata, which Exa keeps in the run's
+//   request (exa-spec.yaml, read 2026-11-04): yerk_, the moment it went out in base 36 ms, then 16 random hex.
+//   The create may take the call's whole wait but the lookup's share, where it once had a minute; when its
+//   answer is late, lost, a server error or names no run, Exa's newest runs are read for the reference, so a
+//   run Exa started comes back with its id, and one Exa has not listed yet comes back as the reference, which
+//   web_research_result takes as it takes a run id (need 49, 2026-11-04: a create cut at 60 s with no answer
+//   left a room nothing to collect, though Exa may have started and billed the run).
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -29,6 +36,13 @@ export const DAILY_USD = 2;
 export const filesOf = (at) => ({ ledger: path.join(at.web, "research", "runs.jsonl"), daily: path.join(at.web, "research", "daily") });
 const TERMINAL = new Set(["completed", "failed", "cancelled"]);
 const RUN_ID = /^[A-Za-z0-9_.:-]{1,200}$/; // the spec's AgentRunId
+// A run's reference (above): the metadata key it goes under, its shape, and how long a create that ended
+// with no run is looked for by it (the create's share of the wait is the rest, but never under three quarters).
+export const META = "yerk_ref";
+export const REF = /^yerk_([0-9a-z]{6,10})_[0-9a-f]{16}$/;
+export const LOOK = 30000;
+export const newRef = (now = Date.now()) => `yerk_${now.toString(36)}_${crypto.randomBytes(8).toString("hex")}`;
+const madeAt = (ref) => parseInt(REF.exec(ref)?.[1] ?? "", 36);
 
 const usd = (n) => `US$${Math.round(n * 1000) % 10 ? n.toFixed(3) : n.toFixed(2)}`;
 const firstLine = (err) => String(err?.message || err).split("\n")[0].slice(0, 300);
@@ -97,10 +111,10 @@ export function trueUp(run, effort, { file, now = new Date() } = {}) {
 }
 
 // ---- Exa's API ------------------------------------------------------------------------------
-// A request ends by `deadline` plus 5 s at the latest (a minute at most), so a call inside the room's
-// 180 s MCP limit never outlives it.
-async function call(key, method, p, body, { signal, deadline } = {}) {
-  const timeout = AbortSignal.timeout(deadline ? Math.min(60000, Math.max(5000, deadline - Date.now() + 5000)) : 60000);
+// A request ends by `deadline` plus 5 s at the latest (a minute at most, `cap` ms for the create), so a
+// call inside the room's 180 s MCP limit never outlives it.
+async function call(key, method, p, body, { signal, deadline, cap = 60000 } = {}) {
+  const timeout = AbortSignal.timeout(deadline ? Math.min(cap, Math.max(5000, deadline - Date.now() + 5000)) : cap);
   const res = await fetch(API + p, {
     method,
     headers: { "x-api-key": key, "Content-Type": "application/json", Accept: "application/json" },
@@ -122,14 +136,31 @@ async function call(key, method, p, body, { signal, deadline } = {}) {
   return j;
 }
 
-export function createRun(key, { query, effort, schema, system }, opts) {
+export function createRun(key, { query, effort, schema, system, ref }, opts) {
   const body = { query, effort };
   if (schema) body.outputSchema = schema;
   if (system) body.systemPrompt = system;
+  if (ref) body.metadata = { [META]: ref };
   return call(key, "POST", "/agent/runs", body, opts);
 }
 
 export const getRun = (key, id, opts) => call(key, "GET", `/agent/runs/${encodeURIComponent(id)}`, undefined, opts);
+
+// The run whose request carries `ref`, among Exa's newest (20 a page, newest first, `pages` at most), read
+// back to a minute before the reference was made; null when none does.
+export async function findRun(key, ref, { signal, deadline, pages = 5 } = {}) {
+  const since = madeAt(ref) - 60000;
+  let cursor = "";
+  for (let i = 0; i < pages; i++) {
+    const list = await call(key, "GET", `/agent/runs?limit=20${cursor && `&cursor=${encodeURIComponent(cursor)}`}`, undefined, { signal, deadline });
+    const runs = Array.isArray(list?.data) ? list.data : [];
+    const run = runs.find((r) => r?.request?.metadata?.[META] === ref);
+    if (run) return run;
+    if (!list?.hasMore || !list.nextCursor || !(Date.parse(runs.at(-1)?.createdAt) >= since)) return null;
+    cursor = String(list.nextCursor);
+  }
+  return null;
+}
 
 const delay = (ms, signal) =>
   new Promise((resolve) => {
@@ -246,9 +277,33 @@ async function settle(key, run, { effort, query, at, every, deadline, signal, fi
   return { run, finished, note: notes.join(" ") };
 }
 
+// After a create that ended with no run: Exa's newest runs read for its reference every `every` ms until
+// `until` (one read at least); the run, else null with the last read's failure, if it failed.
+async function lookFor(key, ref, { every, until, deadline, signal }) {
+  for (;;) {
+    let failed = "";
+    try {
+      const run = await findRun(key, ref, { signal, deadline });
+      if (run) return { run };
+    } catch (err) {
+      failed = scrub(firstLine(err), [key]);
+    }
+    if (signal?.aborted || Date.now() + every > until) return { run: null, failed };
+    await delay(every, signal);
+  }
+}
+
+// Why a create brought no run, as the reply says it.
+function noAnswer(err, ms) {
+  if (err?.status) return `Exa answered its start with HTTP ${err.status}`;
+  if (err?.name === "TimeoutError") return `Exa had not answered its start after ${Math.round(ms / 1000)} s`;
+  return `its start got no answer from Exa (${firstLine(err)})`;
+}
+
 // One research call. Refuses in one line before anything is spent (effort, key, cap), else books the
 // day, starts the run and polls it until it finishes or `wait` ms run out. Returns {refused, kind},
-// {error} or {run, finished, note}; a refusal or a failed request never throws.
+// {error}, {pending: the run's reference, why, note} when Exa named no run and lists none with the
+// reference yet, or {run, finished, note}; a refusal or a failed request never throws.
 export async function research({ query, effort = "medium", schema, system }, o = {}) {
   const { xhigh = false, wait = 170000, every = 4000, signal, at, files = filesOf(at), conf = {}, onStart } = o;
   const no = effortRefusal(effort, { xhigh });
@@ -264,34 +319,50 @@ export async function research({ query, effort = "medium", schema, system }, o =
   }
   if (full) return { refused: full, kind: "cap" };
   onStart?.(effort, price);
-  const deadline = Date.now() + wait;
+  const start = Date.now();
+  const deadline = start + wait;
+  const ref = newRef(start);
   let run;
+  let why = "";
   try {
-    run = await createRun(key.value, { query, effort, schema, system }, { signal, deadline });
+    run = await createRun(key.value, { query, effort, schema, system, ref }, { signal, deadline, cap: Math.round(wait - Math.min(LOOK, wait / 4)) });
+    if (!run?.id) why = "Exa answered its start with no run id";
   } catch (err) {
-    if (err?.status) {
+    if (err?.status && err.status < 500) {
+      // Exa refused it: no run started, so nothing is billed
       try {
         unbook(price, { file: files.daily });
       } catch {}
+      return { error: scrub(firstLine(err), [key.value]) };
     }
-    return { error: scrub(firstLine(err), [key.value]) };
+    why = scrub(noAnswer(err, Date.now() - start), [key.value]);
   }
-  if (!run?.id) return { error: "Exa answered the create without a run id." };
-  return settle(key.value, run, { effort, query, at, every, deadline, signal, files });
+  if (why) {
+    // the run may be on Exa's side all the same, booked and billing: found by its reference, or the reference given
+    const found = await lookFor(key.value, ref, { every, until: Math.min(deadline, Date.now() + LOOK), deadline, signal });
+    if (!found.run?.id) return { pending: ref, why, note: found.failed ? `Its last lookup failed: ${found.failed}.` : "" };
+    run = found.run;
+  }
+  const r = await settle(key.value, run, { effort, query, at, every, deadline, signal, files });
+  return why ? { ...r, note: [`Found by its reference: ${why}.`, r.note].filter(Boolean).join(" ") } : r;
 }
 
-// web_research_result: one run by its id, polled until `wait` ms run out (0: one read).
+// web_research_result: one run by its id, or by the reference web_research gave while Exa had not named
+// it, polled until `wait` ms run out (0: one read). A reference no run carries is {unknown, old}: old
+// once it is 15 minutes past its start, when Exa never started that run.
 export async function researchResult(id, o = {}) {
   const { wait = 170000, every = 4000, signal, at, files = filesOf(at) } = o;
-  if (typeof id !== "string" || !RUN_ID.test(id)) return { refused: "run_id must be an Exa Agent run id, as web_research gave it (it starts agent_run_).", kind: "args" };
+  const byRef = typeof id === "string" && REF.test(id);
+  if (!byRef && (typeof id !== "string" || !RUN_ID.test(id))) return { refused: "run_id must be what web_research gave: an Exa Agent run id (it starts agent_run_) or a run's reference (it starts yerk_).", kind: "args" };
   const key = readKey(at, "exa");
   if (!key.value) return { refused: `no Exa key (${key.why}).`, kind: "key" };
   const deadline = Date.now() + wait;
   let run;
   try {
-    run = await getRun(key.value, id, { signal, deadline });
+    run = byRef ? await findRun(key.value, id, { signal, deadline }) : await getRun(key.value, id, { signal, deadline });
   } catch (err) {
     return { error: scrub(firstLine(err), [key.value]) };
   }
+  if (byRef && !run?.id) return { unknown: id, old: Date.now() - madeAt(id) > 900000 };
   return settle(key.value, run, { at, every, deadline, signal, files });
 }

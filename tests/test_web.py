@@ -4,6 +4,7 @@ by its command line, and the shipped mechanics send a picture on the web to its 
 tests: `npm test` in its folder."""
 import tomllib
 from pathlib import Path
+from types import SimpleNamespace
 
 from test_observe import NOW, layer
 
@@ -59,6 +60,29 @@ def test_yerk_explain_commons_answers_answers_from_the_abilities_file_with_no_ke
     assert "key" not in ab and ab["tier"] == "free"
     found = abilities.asked("what did the government answer to that written question?", None, abilities.manifest())
     assert [e["key"] for e in found] == ["commons-answers"]
+
+
+def test_yerk_explain_research_ids_answers_from_the_abilities_file_on_with_the_exa_key(tmp_path, capsys):
+    """Need 49 (2026-11-04): a room's web_research came back after 60 s as a timeout with no run id, the plug-in cutting
+    every request to Exa at a minute, the run's create too, so web_research_result had nothing to collect. Each start now
+    carries a reference of Yerk's own and a run whose create went unanswered is found by it (plugins/web/test/
+    tools.test.mjs has the wall and the way), an ability of its own, on with the Exa key the research runs on."""
+    assert cli.main(["explain", "research-ids", "--private", str(EXAMPLE_PRIVATE), "--state", str(tmp_path)]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    tab = abilities.manifest()
+    ab = tab["research-ids"]
+    assert lines[:2] == [f"{words.WORKING} research-ids: {words.ability('needs', provider='Exa')[1]}", ab["what"]]
+    assert all(w in ab["what"] for w in ("reference", "whole wait", "web_research_result", "run id"))
+    found = abilities.asked("the web research timed out after a minute with no run id", None, tab)
+    assert "research-ids" in [e["key"] for e in found]
+    priv = tmp_path / "private"
+    (priv / "secrets").mkdir(parents=True)
+    off = SimpleNamespace(private=priv, embeddings_key=None)
+    assert abilities.state("research-ids", ab, tab, off) == words.ability("needs", provider="Exa")
+    (priv / "secrets" / "exa.key").write_text("exa-placeholder-key\n")
+    assert abilities.state("research-ids", ab, tab, off) == words.ability("on")
+    code = (REPO / "plugins" / "web" / "lib" / "research.mjs").read_text()
+    assert "body.metadata = { [META]: ref }" in code and "findRun(key.value, id" in code   # the reference sent, and taken back
 
 
 def test_the_rooms_template_attaches_the_plug_in_by_its_command_line_under_the_names_the_rooms_allow():

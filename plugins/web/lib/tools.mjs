@@ -246,6 +246,12 @@ const asWeb = (s) => wrapWebContent(s, "web_search");
 function researchReply(tool, r, effort) {
   if (r.refused) return refuse(`${tool} refused: ${r.refused}`);
   if (r.error) return refuse(`${tool} could not run: ${r.error}`);
+  if (r.unknown && r.old) return refuse(`${tool} found no run: Exa lists none with the reference ${r.unknown}, 15 minutes after its start, so Exa never started it and there is nothing to collect; call web_research again.`);
+  if (r.unknown) return { content: [{ type: "text", text: `${tool} found no run yet: Exa lists none with the reference ${r.unknown}; call web_research_result with it again in a minute or two (15 minutes after its start with none, Exa never started it).` }] };
+  if (r.pending) {
+    const text = `${tool} is still starting: ${r.why}, and Exa lists no run with this one's reference yet; call web_research_result with run_id ${r.pending} in a minute or two, which finds the run by it (a run can take up to 15 minutes).`;
+    return { content: [{ type: "text", text: [text, r.note].filter(Boolean).join("\n\n") }] };
+  }
   const text = r.finished
     ? formatRun(r.run, effort, { wrap: asWeb })
     : `${tool} is still running: run ${r.run.id}; call web_research_result with that run_id in a minute or two (a run can take up to 15 minutes).`;

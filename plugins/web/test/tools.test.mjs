@@ -17,7 +17,7 @@ import { imageInfo } from "../lib/fetch/image.js";
 import { wallFromNavError } from "../lib/fetch/l3.js";
 import { _test as local, claimSlot, markLocalBlocked } from "../lib/fetch/local.js";
 import { flushPending, resolveSettings } from "../lib/fetch/util.js";
-import { dayStamp } from "../lib/research.mjs";
+import { REF, dayStamp, findRun, newRef } from "../lib/research.mjs";
 import { resetCooldowns } from "../lib/search/provider.js";
 import { TOOLS, callTool, fetchRows, searchRows, webFetch, webImage, webResearch, webResearchResult, webSearch } from "../lib/tools.mjs";
 
@@ -414,7 +414,9 @@ test("web_research starts a run, polls it twice and returns the answer, the JSON
     const t = textOf(out);
     assert.equal(out.isError, undefined);
     assert.deepEqual(f.seen.map((s) => `${s.method} ${s.url.replace("https://api.exa.ai", "")}`), ["POST /agent/runs", "GET /agent/runs/agent_run_t1", "GET /agent/runs/agent_run_t1"]);
-    assert.deepEqual(JSON.parse(f.seen[0].body), { query, effort: "medium", outputSchema: schema, systemPrompt: "This city only." });
+    const body = JSON.parse(f.seen[0].body);
+    assert.match(body.metadata?.yerk_ref ?? "", REF); // the run's reference, Yerk's own: it finds the run when the create's answer never comes
+    assert.deepEqual(body, { query, effort: "medium", outputSchema: schema, systemPrompt: "This city only.", metadata: { yerk_ref: body.metadata.yerk_ref } });
     assert.ok(f.seen.every((s) => s.key === FAKE_EXA));
     assert.match(t, /EXTERNAL_UNTRUSTED_CONTENT/);
     assert.match(t, /Two cafes run weekly board game nights\./);
@@ -578,6 +580,133 @@ test("a run still going when the wait runs out comes back as its run id for web_
   }
 });
 
+// need 49 (2026-11-04): a room's web_research came back after 60 s as a timeout with no run id, its create cut at the
+// minute every request had, so web_research_result had nothing to collect though Exa may have started and billed the run.
+// Exa's Agent endpoints with its run list too: the create answers `create` (a Response), or never when it is "hang" (it
+// gives up only when the request's own signal ends it); the list holds `listed(ref)` from its `from`th read on, `ref` the
+// reference the create carried; each read of one run is the next of `reads`.
+function exaLost({ create = "hang", listed = () => [], from = 1, reads = [] } = {}) {
+  let ref = "";
+  let lists = 0;
+  let n = 0;
+  const f = stubFetch((url, init) => {
+    if (url === "https://api.exa.ai/agent/runs" && init.method === "POST") {
+      ref = JSON.parse(init.body).metadata?.yerk_ref ?? "";
+      if (create !== "hang") return create;
+      return new Promise((_, reject) => init.signal.addEventListener("abort", () => reject(init.signal.reason), { once: true }));
+    }
+    if (url.startsWith("https://api.exa.ai/agent/runs?")) return json({ object: "list", data: ++lists >= from ? listed(ref) : [], hasMore: false, nextCursor: null });
+    if (url.startsWith("https://api.exa.ai/agent/runs/")) return json(reads[Math.min(n++, reads.length - 1)]);
+    return json({ error: { message: "unexpected" } }, 500);
+  });
+  return Object.assign(f, { ref: () => ref, lists: () => lists });
+}
+const NOW_ISO = () => new Date().toISOString();
+
+test("the wall: a create Exa never answers in time is no longer a timeout with no run id; the run is found by its reference and comes back whole, booked and counted once", async () => {
+  const query = "Which student clubs at the example university suit a graduate engineering student?";
+  const done = (ref) => RUN("agent_run_t10", "completed", {
+    createdAt: NOW_ISO(), request: { query, effort: "medium", metadata: { yerk_ref: ref } },
+    output: { text: "Three clubs suit it.", structured: null, grounding: [{ field: "text", citations: [{ url: "https://clubs.example/" }] }] }, costDollars: COST(0.1),
+  });
+  const f = exaLost({ listed: (ref) => [RUN("agent_run_other", "running", { createdAt: NOW_ISO(), request: { query: "another room's", effort: "low", metadata: { yerk_ref: newRef() } } }), done(ref)] });
+  try {
+    const began = Date.now();
+    const out = await webResearch({ query }, { at: WITH_EXA, deps: rdeps({ wait: 400, every: 5 }) });
+    const t = textOf(out);
+    assert.ok(Date.now() - began < 5000); // the create had the call's wait, not a minute of its own
+    assert.equal(out.isError, undefined);
+    assert.doesNotMatch(t, /could not run|aborted/);
+    assert.match(f.ref(), REF);
+    assert.match(t, /Three clubs suit it\.\n\nSources:\n- https:\/\/clubs\.example\//);
+    assert.match(t, /\[run agent_run_t10 · completed · effort medium · cost US\$0\.100\]\n\nFound by its reference: Exa had not answered its start after \d+ s\.$/);
+    assert.deepEqual(f.seen.map((s) => `${s.method} ${s.url.replace("https://api.exa.ai", "")}`), ["POST /agent/runs", "GET /agent/runs?limit=20"]);
+    assert.equal(fs.readFileSync(EXA_FILES.daily, "utf8"), `${dayStamp()} 0.1\n`); // kept: the run was started and billed
+    assert.deepEqual(jsonl(EXA_FILES.ledger).map((r) => [r.id, r.effort, r.status, r.cost, r.q]), [["agent_run_t10", "medium", "completed", 0.1, hash16(query)]]);
+    assert.deepEqual(spendRows(), [{ room: "test-room", tool: "web_research", engine: "exa-agent", usd: 0.1, note: "effort medium, completed, billed" }]);
+    assert.ok(!t.includes(FAKE_EXA));
+  } finally {
+    f.restore();
+  }
+});
+
+test("a server error or a gateway's timeout on the create is looked up by the reference too; a run Exa lists late comes back as its run id, the day still booked", async () => {
+  const f = exaLost({
+    create: json({ error: { message: "Gateway Timeout" } }, 504),
+    from: 3,
+    listed: (ref) => [RUN("agent_run_t11", "running", { createdAt: NOW_ISO(), request: { query: "x", effort: "low", metadata: { yerk_ref: ref } } })],
+    reads: [RUN("agent_run_t11", "running")],
+  });
+  try {
+    const out = await webResearch({ query: "x", effort: "low" }, { at: WITH_EXA, deps: rdeps({ wait: 400, every: 5 }) });
+    assert.equal(out.isError, undefined);
+    assert.equal(textOf(out), "web_research is still running: run agent_run_t11; call web_research_result with that run_id in a minute or two (a run can take up to 15 minutes).\n\nFound by its reference: Exa answered its start with HTTP 504.");
+    assert.ok(f.lists() >= 3);
+    assert.equal(fs.readFileSync(EXA_FILES.daily, "utf8"), `${dayStamp()} 0.025\n`);
+    assert.ok(!fs.existsSync(EXA_FILES.ledger)); // no row until the run is finished
+  } finally {
+    f.restore();
+  }
+});
+
+test("a run Exa has not listed by the end of the wait comes back as its reference; web_research_result finds it by that reference, and says when no run carries one", async () => {
+  const query = "What do the example city's libraries lend besides books?";
+  const f = exaLost({});
+  let ref;
+  try {
+    const out = await webResearch({ query, effort: "minimal" }, { at: WITH_EXA, deps: rdeps({ wait: 200, every: 5 }) });
+    ref = f.ref();
+    assert.match(ref, REF);
+    assert.equal(out.isError, undefined);
+    assert.match(textOf(out), new RegExp(`^web_research is still starting: Exa had not answered its start after \\d+ s, and Exa lists no run with this one's reference yet; call web_research_result with run_id ${ref} in a minute or two, which finds the run by it \\(a run can take up to 15 minutes\\)\\.$`));
+    assert.equal(fs.readFileSync(EXA_FILES.daily, "utf8"), `${dayStamp()} 0.012\n`); // kept: Exa may have started it
+    assert.ok(!fs.existsSync(EXA_FILES.ledger));
+  } finally {
+    f.restore();
+  }
+  const done = RUN("agent_run_t12", "completed", { createdAt: NOW_ISO(), request: { query, effort: "minimal", metadata: { yerk_ref: ref } }, output: { text: "Tools and seeds.", structured: null, grounding: [] }, costDollars: COST(0.012) });
+  const g = exaLost({ listed: () => [done] });
+  try {
+    const t = textOf(await webResearchResult({ run_id: ref }, { at: WITH_EXA, deps: rdeps() }));
+    assert.match(t, /Tools and seeds\./);
+    assert.equal(t.split("\n").at(-1), "[run agent_run_t12 · completed · effort minimal · cost US$0.012]");
+    assert.equal(textOf(await webResearchResult({ run_id: ref }, { at: WITH_EXA, deps: rdeps() })).split("\n").at(-1), t.split("\n").at(-1));
+    assert.deepEqual(jsonl(EXA_FILES.ledger).map((r) => [r.id, r.status, r.q]), [["agent_run_t12", "completed", hash16(query)]]);
+    assert.equal(spendRows().length, 1);
+    const fresh = newRef();
+    const young = await webResearchResult({ run_id: fresh }, { at: WITH_EXA, deps: rdeps() });
+    assert.equal(young.isError, undefined);
+    assert.equal(textOf(young), `web_research_result found no run yet: Exa lists none with the reference ${fresh}; call web_research_result with it again in a minute or two (15 minutes after its start with none, Exa never started it).`);
+    const stale = newRef(Date.now() - 20 * 60000);
+    const old = await webResearchResult({ run_id: stale }, { at: WITH_EXA, deps: rdeps() });
+    assert.equal(old.isError, true);
+    assert.equal(textOf(old), `web_research_result found no run: Exa lists none with the reference ${stale}, 15 minutes after its start, so Exa never started it and there is nothing to collect; call web_research again.`);
+  } finally {
+    g.restore();
+  }
+});
+
+test("a reference is looked for page by page, newest first, back to a minute before it was made, and no further", async () => {
+  const ref = newRef();
+  const mine = RUN("agent_run_t13", "running", { createdAt: NOW_ISO(), request: { query: "x", effort: "low", metadata: { yerk_ref: ref } } });
+  const other = (id, ms) => RUN(id, "completed", { createdAt: new Date(Date.now() - ms).toISOString(), request: { query: "y", effort: "low" } });
+  const pages = { "": { data: [other("agent_run_a", 1000)], hasMore: true, nextCursor: "agent_run_a" }, agent_run_a: { data: [other("agent_run_b", 2000), mine], hasMore: false, nextCursor: null } };
+  const f = stubFetch((url) => json({ object: "list", ...pages[new URL(url).searchParams.get("cursor") ?? ""] }));
+  try {
+    assert.equal((await findRun(FAKE_EXA, ref, { deadline: Date.now() + 5000 }))?.id, "agent_run_t13");
+    assert.deepEqual(f.seen.map((s) => s.url.replace("https://api.exa.ai", "")), ["/agent/runs?limit=20", "/agent/runs?limit=20&cursor=agent_run_a"]);
+  } finally {
+    f.restore();
+  }
+  const g = stubFetch(() => json({ object: "list", data: [other("agent_run_c", 5 * 60000)], hasMore: true, nextCursor: "agent_run_c" }));
+  try {
+    assert.equal(await findRun(FAKE_EXA, ref, { deadline: Date.now() + 5000 }), null);
+    assert.equal(g.seen.length, 1); // that page already reached runs older than the reference
+  } finally {
+    g.restore();
+  }
+});
+
 test("the server lists five tools under the names the rooms call, and bad research arguments are refused before any work", async () => {
   assert.deepEqual(TOOLS.map((t) => t.name), ["web_fetch", "web_search", "web_research", "web_research_result", "web_image"]);
   assert.deepEqual(TOOLS.map((t) => Object.keys(t.inputSchema.properties)), [["url", "max_chars"], ["query", "count"], ["query", "effort", "schema", "system"], ["run_id"], ["url", "max_bytes"]]);
@@ -589,7 +718,7 @@ test("the server lists five tools under the names the rooms call, and bad resear
     assert.equal(textOf(await webResearch({ q: "x" }, { at: WITH_EXA, deps: rdeps() })), "web_research refused: unknown argument q; it takes query, effort, schema and system.");
     assert.equal(textOf(await webResearch({ query: " " }, { at: WITH_EXA, deps: rdeps() })), "web_research refused: query must be a non-empty string.");
     assert.equal(textOf(await webResearch({ query: "x", schema: [1] }, { at: WITH_EXA, deps: rdeps() })), "web_research refused: schema must be a JSON Schema object.");
-    assert.equal(textOf(await webResearchResult({ run_id: "../../etc" }, { at: WITH_EXA, deps: rdeps() })), "web_research_result refused: run_id must be an Exa Agent run id, as web_research gave it (it starts agent_run_).");
+    assert.equal(textOf(await webResearchResult({ run_id: "../../etc" }, { at: WITH_EXA, deps: rdeps() })), "web_research_result refused: run_id must be what web_research gave: an Exa Agent run id (it starts agent_run_) or a run's reference (it starts yerk_).");
     assert.equal(textOf(await callTool("web_nope", {})), "There is no tool named web_nope; this server has web_fetch, web_search, web_research, web_research_result and web_image.");
     assert.equal(f.seen.length, 0);
   } finally {
