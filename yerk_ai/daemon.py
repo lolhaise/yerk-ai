@@ -538,12 +538,15 @@ class Yerkd:
     async def tool_render(self, room: str, path: str) -> dict[str, Any]:
         """The `render` tool: a document from the calling room's own folders (may_send's rule, as transcribe's) made a PDF
         beside it by LibreOffice off the loop (render.run), one at a time across rooms, and its pages counted; a PDF's
-        pages counted alone. Free: no spend row."""
+        pages counted alone; a .tex compiled by LaTeX in its sandbox, from the room's work folder only, since its folder is
+        what the sandbox shows and the layer can be the private folder itself. Free: no spend row."""
         p = Path(path).expanduser().resolve()
         if room not in self.rooms or not self.may_send(room, p):
             return {"ok": False, "error": words.RENDER_NOT_HERE.format(name=p.name)}
         if not p.is_file():
             return {"ok": False, "error": words.RENDER_NO_FILE.format(name=p.name)}
+        if p.suffix.lower() == ".tex" and not p.is_relative_to((self.state / "rooms" / room / "work").resolve()):
+            return {"ok": False, "error": words.RENDER_TEX_NOT_WORK.format(name=p.name)}
         r = await asyncio.to_thread(render.run, p, self.state)
         said = f"{p.name}, {r['pages']} page(s)" + (f" in {r['seconds']} s" if "seconds" in r else "") if r["ok"] else r["error"][:160]
         log.info("render: %s, %s", room, said)

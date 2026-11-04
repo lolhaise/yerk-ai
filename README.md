@@ -12,7 +12,7 @@ Yerk AI turns chat rooms into long-lived Claude Code sessions. It is a small Pyt
 
 ## Install
 
-You need Linux with systemd (the jobs and workers are user units), Python 3.12 or newer, [uv](https://docs.astral.sh/uv/), Claude Code logged in on each account you will name, and a Discord bot (below); `yerk abilities` names what some abilities add (ffmpeg, yt-dlp, LibreOffice, node).
+You need Linux with systemd (the jobs and workers are user units), Python 3.12 or newer, [uv](https://docs.astral.sh/uv/), Claude Code logged in on each account you will name, and a Discord bot (below); `yerk abilities` names what some add (ffmpeg, yt-dlp, LibreOffice, TeX Live, node).
 
 ```sh
 git clone <this repository's URL> yerk-ai && cd yerk-ai

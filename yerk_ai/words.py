@@ -323,6 +323,12 @@ RENDER_FAILED, RENDER_NO_WHY = "LibreOffice could not make a PDF of {name}: {why
 RENDER_TIMED_OUT = "LibreOffice did not finish {name} in {seconds} s, so it was stopped and no PDF was made"
 RENDER_NOT_PDF = "{name} did not open as a PDF ({why}), so its pages could not be counted"
 RENDER_DAMAGED, RENDER_LOCKED = "it is damaged or not a PDF", "it is locked with a password"
+# a .tex compiled (render.py's latex): why no PDF came back
+RENDER_TEX_NOT_WORK = "{name} is not in this room's work folder; a .tex compiles only there, so save it in the work folder first"
+RENDER_NO_LATEX = "LaTeX (latexmk, from TeX Live) is not on this machine, so no PDF could be made"
+RENDER_NO_TEX_BOX = "LaTeX runs only in its sandbox (bubblewrap, `bwrap`), which is missing or would not start here, so no PDF was made"
+RENDER_TEX_FAILED = "LaTeX ({engine}) could not make a PDF of {name}: {why}"
+RENDER_TEX_TIMED_OUT = "LaTeX did not finish {name} in {seconds} s, so it was stopped and no PDF was made"
 # a video watched (watch.py): why no video came back, and a result's note on what it has no frames or transcript for
 WATCH_NO_ROOM = "watch puts the video in a room's work folder, and there is no room {room}"
 WATCH_NOT_LINK = ("\"{given}\" is not a link: watch takes a post's web address, one that starts http:// or https://, or a video "
