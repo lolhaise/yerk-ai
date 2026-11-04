@@ -296,7 +296,10 @@ def refused(what: str, why: str) -> tuple[str, str]:
 
 
 def is_word(prompt: str, sender: str, s: Settings) -> bool:
-    return sender in s.approvers and prompt.strip().lower().rstrip(".!") == s.word
+    """The owner's word alone or as the first word ("approve", "Approve.", "approve the post, go"), never inside
+    a sentence ("I approve", "don't approve"): a reply that leads with the word and carries a remark counts."""
+    head = prompt.strip().lower().split(None, 1)
+    return sender in s.approvers and bool(head) and head[0].strip(".,!:;") == s.word
 
 
 def worker_check(payload: dict[str, Any], folder: Path, spec: dict[str, Any]) -> dict[str, Any]:

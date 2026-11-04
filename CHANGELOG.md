@@ -8,6 +8,12 @@ version changes.
 
 ## 2026-11-03
 
+### approve-first-word (#?)
+
+- The owner's approval counts when `approve` is the first word of the message, with anything after it
+  ("Approve, go ahead"), not only when it is the whole message. A sentence that merely contains the word
+  ("I don't approve") still releases nothing.
+
 ### need-2026-11-03-43 (#?)
 
 - A room can be a live page: `page = true` in its rooms.toml table gives it a browser tab, opened at the address

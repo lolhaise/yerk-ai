@@ -213,7 +213,8 @@ def test_an_approval_releases_exactly_the_held_call_once_and_a_word_without_the_
 def test_approvers_and_external_rules_come_from_yerkd_toml(tmp_path):
     s = gates.settings({"approvers": ["owner", "test-webhook"], "word": "Go", "off": ["public-post"],
                         "external": {"deploy": {"tool": "^Bash$", "command": r"^fly\s+deploy\b", "what": "a deploy"}}})
-    assert gates.is_word("go!", "test-webhook", s) and not gates.is_word("go now", "owner", s)
+    assert gates.is_word("go!", "test-webhook", s) and gates.is_word("go now", "owner", s)     # the word leads
+    assert not gates.is_word("now go", "owner", s) and not gates.is_word("go", "stranger", s)
     assert gates.external_hit("Bash", {"command": "git push"}, "r", s) is None
     assert gates.external_hit("Bash", {"command": "fly deploy --now"}, "r", s)[:2] == ("deploy", "a deploy")
     d = gates.Settings()
@@ -628,3 +629,12 @@ def test_a_status_board_in_a_room_with_people_bounces_once_and_never_in_an_owner
         assert words.BOARD_LINE.search(line), line
     for line in ("> The prints are saved in your notes", "Book it in mid-July, about two months ahead.", "A 🟦 blue door"):
         assert not words.BOARD_LINE.search(line), line
+
+
+def test_the_owners_word_counts_alone_or_as_the_first_word_and_never_inside_a_sentence():
+    s = gates.settings({})
+    yes = ("approve", "Approve.", "APPROVE!", "approve the post", "Approve, go ahead")
+    no = ("", "I approve", "don't approve", "approved", "approves it", "the approve")
+    assert all(gates.is_word(p, "owner", s) for p in yes)
+    assert not any(gates.is_word(p, "owner", s) for p in no)
+    assert not gates.is_word("approve the post", "test-webhook", s)      # not an approver
