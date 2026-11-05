@@ -780,7 +780,7 @@ def addon_mac(servers: Any, state: Path | None = None) -> str:
             try:
                 st = f.stat()
                 g = grp.getgrgid(st.st_gid)
-                shared = st.st_mode & 0o020 and (g.gr_mem or g.gr_name != pwd.getpwuid(st.st_uid).pw_name)    # a group not his own
+                shared = st.st_mode & 0o020 and (g.gr_mem or g.gr_name != pwd.getpwuid(st.st_uid).pw_name)    # a group not the owner's own
                 if st.st_uid != os.getuid() or st.st_mode & 0o002 or shared or state is not None and f.resolve().is_relative_to(state.resolve()):
                     continue
                 host = str(json.loads(f.read_text()).get("ssh") or "").strip()

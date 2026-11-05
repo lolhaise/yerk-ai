@@ -709,8 +709,9 @@ def test_the_owner_s_ask_turns_the_page_on_with_no_restart_and_opens_it_on_the_s
     y.conf["page"] = {"open": [str(opener_script(tmp_path))]}
     (state / "rooms" / "example-room").mkdir(parents=True, exist_ok=True)
     (state / "rooms" / "example-room" / "override.json").write_text('{"effort": "high"}')     # the settings tool's, kept
-    cut = []
+    cut, taken = [], []
     room.shutdown, room.respec = (lambda: cut.append("shutdown")), (lambda: cut.append("respec"))   # what a restart would do to the turn
+    room.submit = taken.append              # no Claude Code here: a real turn outlived the test and printed into a later one's capsys
     assert asyncio.run(y.tool_page("example-room", {"hint": "x"}))["error"] == words.PAGE_NONE.format(room="example-room")
     got = asyncio.run(y.tool_page("example-room", {"open": True}))
     assert got["ok"] and got["opened"] and got["line"].startswith(words.PAGE_ON) and got["line"].endswith(words.PAGE_OPENED)
@@ -729,6 +730,7 @@ def test_the_owner_s_ask_turns_the_page_on_with_no_restart_and_opens_it_on_the_s
         again = c.post("/page/open", json={"ticket": url.rpartition("open=")[2]})
         assert again.status_code == 401 and again.json()["error"] == words.PAGE_TICKET_SPENT     # once only
         assert c.post("/page/event", json={"kind": "say", "text": "hi"}, headers={"x-yerk-secret": key}).json() == {"ok": True}
+    assert len(taken) == 1 and words.PAGE_SAID.format(text="hi") in taken[0].text
     assert asyncio.run(y.tool_page("example-room", {"open": True}))["line"].startswith(words.PAGE_WAS_ON)
     y2 = Yerkd(private, state)                                                  # the next start keeps it on
     y2.add_room("example-room", ConsoleChannel())
@@ -974,7 +976,7 @@ def test_an_add_on_s_mac_is_taken_only_from_a_file_of_the_owner_s_no_one_else_wr
     shared = add_on(tmp_path, mode=0o664)
     me = pagemod.pwd.getpwuid(pagemod.os.getuid()).pw_name
     monkeypatch.setattr(pagemod.grp, "getgrgid", lambda gid: SimpleNamespace(gr_name=me, gr_mem=[]))
-    assert pagemod.addon_mac([shared]) == "owner@owner-mac"                  # his own group's: only he writes it
+    assert pagemod.addon_mac([shared]) == "owner@owner-mac"                  # the owner's own group: only the owner writes it
     monkeypatch.setattr(pagemod.grp, "getgrgid", lambda gid: SimpleNamespace(gr_name=me, gr_mem=["someone-else"]))
     assert pagemod.addon_mac([shared]) == ""
     monkeypatch.setattr(pagemod.grp, "getgrgid", lambda gid: SimpleNamespace(gr_name="staff", gr_mem=[]))

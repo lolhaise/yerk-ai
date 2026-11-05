@@ -12,7 +12,7 @@ import { IMAGE_CAP, IMAGE_TYPES, imageInfo, imageWall, runImage } from "./fetch/
 import { runFetchPlus } from "./fetch/ladder.js";
 import { closeLocalBrowser } from "./fetch/local.js";
 import { flushPending, resolveSettings } from "./fetch/util.js";
-import { formatRun, research, researchResult } from "./research.mjs";
+import { formatRun, research, researchResult, waitIn } from "./research.mjs";
 import { runSearchPlus } from "./search/provider.js";
 import { resolvePluginSettings } from "./search/util.js";
 import { truncateSanitized, wrapWebContent } from "./untrusted.mjs";
@@ -246,6 +246,12 @@ const asWeb = (s) => wrapWebContent(s, "web_search");
 function researchReply(tool, r, effort) {
   if (r.refused) return refuse(`${tool} refused: ${r.refused}`);
   if (r.error) return refuse(`${tool} could not run: ${r.error}`);
+  if (r.unknown && r.old) return refuse(`${tool} found no run: Exa lists none with the reference ${r.unknown}, 15 minutes after its start, so Exa never started it and there is nothing to collect; call web_research again.`);
+  if (r.unknown) return { content: [{ type: "text", text: `${tool} found no run yet: Exa lists none with the reference ${r.unknown}; call web_research_result with it again in a minute or two (15 minutes after its start with none, Exa never started it).` }] };
+  if (r.pending) {
+    const text = `${tool} is still starting: ${r.why}, and Exa lists no run with this one's reference yet; call web_research_result with run_id ${r.pending} in a minute or two, which finds the run by it (a run can take up to 15 minutes).`;
+    return { content: [{ type: "text", text: [text, r.note].filter(Boolean).join("\n\n") }] };
+  }
   const text = r.finished
     ? formatRun(r.run, effort, { wrap: asWeb })
     : `${tool} is still running: run ${r.run.id}; call web_research_result with that run_id in a minute or two (a run can take up to 15 minutes).`;
@@ -261,14 +267,14 @@ export async function webResearch(args, { signal, at = AT, deps = {} } = {}) {
   if (schema !== undefined && (!schema || typeof schema !== "object" || Array.isArray(schema))) return refuse("web_research refused: schema must be a JSON Schema object.");
   if (system !== undefined && typeof system !== "string") return refuse("web_research refused: system must be a string.");
   const conf = section(readSettings(at).conf, "research");
-  const r = await research({ query, effort, schema, system: system?.trim() || undefined }, { signal, at, conf, ...deps });
+  const r = await research({ query, effort, schema, system: system?.trim() || undefined }, { signal, at, conf, wait: waitIn(at.limit), ...deps });
   return researchReply("web_research", r, effort);
 }
 
 export async function webResearchResult(args, { signal, at = AT, deps = {} } = {}) {
   const bad = badArgs("web_research_result", args, ["run_id"]);
   if (bad) return refuse(bad);
-  const r = await researchResult(typeof args.run_id === "string" ? args.run_id.trim() : "", { signal, at, ...deps });
+  const r = await researchResult(typeof args.run_id === "string" ? args.run_id.trim() : "", { signal, at, wait: waitIn(at.limit), ...deps });
   return researchReply("web_research_result", r);
 }
 

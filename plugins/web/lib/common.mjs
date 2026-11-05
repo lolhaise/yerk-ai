@@ -12,7 +12,9 @@ import path from "node:path";
 // $XDG_STATE_HOME/yerk, else ~/.local/state/yerk, as yerk_ai/config.py finds it. --room, else YERK_ROOM, else the room
 // whose work folder this process runs in (Claude Code starts a room's servers in <state>/rooms/<room>/work). `work`, where
 // web_image saves a picture for the room's Read: the folder this process runs in when it is that room's work folder, else
-// <state>/rooms/<room>/work; with no room, the folder it runs in.
+// <state>/rooms/<room>/work; with no room, the folder it runs in. `limit`: the room's own limit on a call to this server,
+// in ms, from YERK_TOOL_TIMEOUT, which Yerk sets from the server's `timeout` in rooms.toml (Claude Code cuts a call there
+// and drops its answer, and ignores one under a second); null when none is set.
 export function where(argv = process.argv.slice(2), env = process.env, cwd = process.cwd()) {
   const arg = (name) => {
     const i = argv.indexOf(`--${name}`);
@@ -25,7 +27,8 @@ export function where(argv = process.argv.slice(2), env = process.env, cwd = pro
   const own = /\/rooms\/([^/]+)\/work\/?$/.exec(base)?.[1];
   const room = arg("room") ?? env.YERK_ROOM ?? own;
   const work = path.resolve(room && own !== room ? path.join(state, "rooms", room, "work") : base);
-  return { private: priv ? path.resolve(priv) : "", state, web: path.join(state, "web"), room: room || null, work };
+  const limit = Number(env.YERK_TOOL_TIMEOUT);
+  return { private: priv ? path.resolve(priv) : "", state, web: path.join(state, "web"), room: room || null, work, limit: Number.isInteger(limit) && limit >= 1000 ? limit : null };
 }
 
 // ---- keys and settings, read on every call --------------------------------------------------------

@@ -489,9 +489,15 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-04, entrypoint-name-2026-11-04: 4 lines for every Claude Code process Yerk AI starts going out under its own name, `yerk`, with Artifacts off (unset, a `claude -p` run is `sdk-cli`, which a plan's meters were measured counting heavier for the same work), not folded to fit: accounts.py 4 (account_env's two variables and the two clauses of its docstring that say why). 25,940.
 
+2026-11-04, need-2026-11-04-49: 1 line fewer: abilities.py's "what can you do" answer drops its closing "`yerk explain NAME` has one." (the cite after it, "(yerk explain abilities)", names the command), so research-ids' "needs Exa" group fits under the 2,000 recall cap (1,998 as before); the fix itself is in plugins/web, outside this count. 25,935.
+
+2026-11-04, need-2026-11-04-49 with main folded in (entrypoint-name's 4 lines and this branch's 1 line fewer): 25,939.
+
 2026-11-04, need-2026-11-04-50: 53 lines for the live page's open on the Mac with nothing set in yerkd.toml, for every room (a room asked for the page on the Mac got "no Mac is set up for the page" and would have got no address next, though the box reached the Mac by ssh for the hands plug-in's mac tool and sat on the tailnet, and a room cannot set yerkd.toml while a conversation runs; filed 2026-11-04), not folded to fit: channels/page.py 48 (addon_mac: the Mac an owner room's add-on names in the mac.json beside its server, a host or user@host only, from a file of the owner's no one else writes and none under the state folder; tailnet: the box's own address as `tailscale ip -4` prints it, asked once a run, a tailnet one only; listen's default that address, loopback named kept alone; mac's last fallback; the module's words), config.py 2 and words.py 1 (the keys' and the refusals' words), daemon.py 2 (the owner rooms' servers and the state folder handed to the open). 25,993.
 
-- `lines = 25993`
+2026-11-04, need-2026-11-04-50 with main folded in (need-2026-11-04-49's 1 line fewer): 25,992.
+
+- `lines = 25992`
 
 ## Uncapped
 

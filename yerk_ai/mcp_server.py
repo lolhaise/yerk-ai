@@ -406,14 +406,14 @@ def pages(mcp: FastMCP, page: Any) -> None:
 
 
 def room_config(url: str, room: str, path: Path, token: str = "", servers: dict[str, Any] | None = None) -> Path:
-    """The per-room --mcp-config file (0600): this server, preloaded, the process's own token as its secret header
-    (the daemon knows the room by the token's binding), and the room's `mcp` servers from rooms.toml, never as yerk. Its
-    `timeout` (10 min, inside a turn's 15 min of silence) is what lets a transcribe call run past 60 s: without one,
-    Claude Code drops an HTTP tool call that has not answered in 60 s, and this server answers only when the tool is done."""
+    """The per-room --mcp-config file (0600): this server, preloaded, its token as its secret header (the daemon knows the room by
+    the token's binding), its `timeout` (10 min) letting a call that answers when done, as transcribe, past Claude Code's 60 s for HTTP;
+    and the room's `mcp` servers from rooms.toml, never as yerk, each stdio one told its own `timeout` in YERK_TOOL_TIMEOUT (need 49)."""
     from .config import write_private
     yerk = {"type": "http", "url": url, "headers": {HEADER: token}, "alwaysLoad": True, "timeout": 600_000}
-    cfg = {"mcpServers": {**dict(servers or {}), "yerk": yerk}}
-    write_private(path, json.dumps(cfg, indent=1))
+    own = {s: {**v, "env": {**v.get("env", {}), "YERK_TOOL_TIMEOUT": str(v["timeout"])}} if v.get("type", "stdio") == "stdio"
+           and isinstance(v.get("timeout"), int) and isinstance(v.get("env", {}), dict) else v for s, v in dict(servers or {}).items()}
+    write_private(path, json.dumps({"mcpServers": {**own, "yerk": yerk}}, indent=1))
     return path
 
 
