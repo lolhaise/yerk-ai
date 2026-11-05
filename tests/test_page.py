@@ -1288,21 +1288,23 @@ def test_into_puts_the_lines_under_the_comment_said_last_at_its_indent_after_ear
     assert len(cut) == pagemod.DIFF_LINES and cut[-1] == "#> " + words.PAGE_TALK_CUT.format(n=100 - pagemod.DIFF_LINES + 1)
 
 
-def tab_talk(text, caret, op, marks=()):
+def tab_talk(text, caret, op, marks=(), pending=1):
     """The page's own talk(), run by node on a stand-in textarea that does setRangeText as a browser does ("preserve"):
     the text after, the caret after, the edit it posted and the room's marks after (`marks` before), under the page's own
-    TEXT_MAX."""
+    TEXT_MAX; `pending` the tab's edits on their way to yerkd, not answered yet (1: the tab the owner types in, 0: an idle
+    one)."""
     script = pagemod.HTML.read_text().split("<script>", 1)[1]
     fns = "".join(f"function {name}(" + script.split(f"\nfunction {name}(", 1)[1].split("\n}\n", 1)[0] + "\n}\n" for name in ("owned", "talk"))
     cap = re.search(r"const TEXT_MAX = (\d+);", script)
     harness = (f"const TEXT_MAX = {cap[1] if cap else pagemod.TEXT_MAX};\n"
-               "const [text, caret, op, marks] = JSON.parse(process.argv.at(-1)); const posted = []; const state = { marks };\n"
+               "let [text, caret, op, marks, pending] = JSON.parse(process.argv.at(-1)); const posted = []; const state = { marks };\n"
                "const ta = { value: text, selectionStart: caret, selectionEnd: caret, setRangeText(r, a, b, mode) {\n"
                "  const d = r.length - (b - a); this.value = this.value.slice(0, a) + r + this.value.slice(b);\n"
                "  const s = this.selectionStart; this.selectionStart = this.selectionEnd = s > b ? s + d : s > a ? a : s; } };\n"
-               "const panes = { code: { ta } }, gutter = () => {}, sync = () => {}, roomLines = () => {}, post = (p, b) => posted.push(b);\n"
+               "const panes = { code: { ta } }, gutter = () => {}, sync = () => {}, roomLines = () => {};\n"
+               "const post = (p, b) => (posted.push(b), Promise.resolve({ ok: true }));\n"
                + fns + "talk(op); console.log(JSON.stringify({ text: ta.value, caret: ta.selectionStart, posted, marks: state.marks }));\n")
-    done = subprocess.run(["node", "-e", harness, json.dumps([text, caret, op, list(marks)])], capture_output=True, text=True, timeout=60)
+    done = subprocess.run(["node", "-e", harness, json.dumps([text, caret, op, list(marks), pending])], capture_output=True, text=True, timeout=60)
     assert done.returncode == 0, done.stderr
     return json.loads(done.stdout)
 
@@ -1326,6 +1328,46 @@ def test_the_tab_writes_the_room_s_lines_in_its_own_text_keeping_the_caret_and_w
     indented = "def f():\n    # here?\n    return 1\n"
     want, at, anchor = into(indented, (2, "# here?"), ["#> yes"])
     assert tab_talk(indented, 0, {"line": at, "text": anchor, "lines": ["#> yes"]})["text"] == want == indented.replace("?\n", "?\n    #> yes\n")
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="node runs the page's script; it is not on this box")
+def test_a_tab_the_owner_is_not_typing_in_posts_nothing_after_the_room_s_lines_so_what_he_typed_in_another_stays(tmp_path):
+    """need-2026-11-04-51, the third cold read's find: tabs never get each other's edits, so of two open tabs an idle one
+    holds the program as of its last connect or draw, and with the chat closed each reply made every tab post its whole
+    text with the room's lines. The post that landed last became yerkd's copy and solution.py: the idle tab's took away
+    what the owner typed in the other, and the room was told he deleted it. A tab posts after the room's lines only with an
+    edit of its own still on its way, which may have crossed them in yerkd: the idle tab writes them in its own text and
+    posts nothing, and the tab he types in posts his typing again with them, his caret kept."""
+    p, room = hub(tmp_path, quiet=60)
+    drawn = "# why minus?\ndef add(a, b):\n    return a - b\n"
+    p.draw("r", {"code": drawn})                                   # both tabs show this; the idle one hears no edit after
+    typed = drawn + "\ndef mul(a, b):\n    return a * b\n"          # typed in the other tab, the room heard it at the pause
+    more = typed + "print(mul(2, 3))"                               # and a keystroke on its way as the room's reply lands
+    s = p.sheets["r"]
+
+    async def go():
+        await p.event("r", {"kind": "talk", "on": True})
+        await p.event("r", {"kind": "edit", "pane": "code", "text": typed})
+        p.flush("r")
+        q: asyncio.Queue = asyncio.Queue()
+        s.tabs.append(q)
+        p.said("r", "Make it a plus.")
+        await asyncio.sleep(0)
+        op = next(o["talk"] for o in [q.get_nowait() for _ in range(q.qsize())] if "talk" in o)
+        await p.event("r", {"kind": "edit", "pane": "code", "text": more})    # posted before his tab had the lines
+        mine, idle = tab_talk(more, len(more), op), tab_talk(drawn, 0, op, pending=0)
+        for edit in mine["posted"] + idle["posted"]:              # the idle tab's would land last: the farther one
+            await p.event("r", edit)
+        return op, mine, idle
+    op, mine, idle = asyncio.run(go())
+    want = into(more, (1, "# why minus?"), ["#> Make it a plus."])[0]    # his text with the room's lines, mul() and all
+    assert op["line"] == 1 and s.code == want and (tmp_path / "rooms" / "r" / "work" / "page" / "solution.py").read_text() == want
+    assert idle["posted"] == [] and idle["text"] == into(drawn, (1, "# why minus?"), op["lines"])[0]   # in its own text alone
+    assert mine["text"] == want and mine["caret"] == len(want) and mine["posted"] == [{"kind": "edit", "pane": "code", "text": want}]
+    p.flush("r")
+    assert "+print(mul(2, 3))" in room.got[-1].text and "-def mul" not in room.got[-1].text      # never told he deleted it
+    typing = pagemod.HTML.read_text().split("\nfunction typed(", 1)[1].split("\nfunction ", 1)[0]
+    assert typing.index("pending++") < typing.index('post("event"') and ".then(() => pending--)" in typing   # each edit counted till answered
 
 
 @boxed

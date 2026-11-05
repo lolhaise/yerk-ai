@@ -225,6 +225,7 @@ for (const el of document.querySelectorAll(".pane")) {
 }
 let state = { marks: [], bar: {}, board: [], timer: {}, stall: 0 }, runTimer = 0, lastKey = Date.now(), stallSaid = false, timerSaid = false;
 let enter = false, roomKey = "", chatless = false, talkOn = false, opened = null;   // the talk in the program (page.py, talk)
+let pending = 0;                                              // this tab's edits on their way to yerkd, not answered yet (talk)
 const TEXT_MAX = 100000;                                      // page.py's: yerkd cuts a program posted past it, so the room's lines stop under it
 let shownBoard = "", cellsBefore = {}, passedBefore = {}, allBefore = false;     // what the bar and the tiles showed last: a change pops
 function make(tag, cls, text) {                               // every word on the page goes in as text, never as markup
@@ -258,7 +259,8 @@ function typed(name, e) {
   const ta = panes[name].ta, before = ta.value.slice(0, ta.selectionStart).split("\n");
   const ended = (enter || /^insert(LineBreak|Paragraph)$/.test((e && e.inputType) || "")) && before.length > 1 && owned(before[before.length - 2]);
   enter = false;                                              // a # line ended with Enter: the talk goes now, not at the pause
-  post("event", { kind: "edit", pane: name, text: ta.value, ...(name === "code" && ended ? { send: true } : {}) });
+  pending++;
+  post("event", { kind: "edit", pane: name, text: ta.value, ...(name === "code" && ended ? { send: true } : {}) }).then(() => pending--);
   if (name === "code") roomLines();
   clearTimeout(runTimer);
   runTimer = setTimeout(run, 600);                           // the tests re-run on every pause in typing
@@ -278,7 +280,9 @@ function talk(t) {           // the room's #> lines under the owner's # line yer
   ta.setRangeText(i < 0 ? words + "\n" : "\n" + words, at, at, "preserve");       // the caret and what was typed since keep their place
   state.marks = (state.marks || []).map(m => m.line > i + 1 ? { ...m, line: m.line + lines.length } : m);   // the room's marks with their lines
   gutter("code"); sync("code"); roomLines();
-  post("event", { kind: "edit", pane: "code", text: ta.value });
+  if (!pending) return;            // no edit of this tab's on its way: yerkd's copy has the lines, and an idle tab's older text would go over another's
+  pending++;                       // else one may have crossed them in yerkd: what he typed goes again, with them
+  post("event", { kind: "edit", pane: "code", text: ta.value }).then(() => pending--);
 }
 function roomLines() {                                        // the bands of the room's #> lines, drawn again only when they move
   const key = panes.code.ta.value.split("\n").map((r, j) => r.trimStart().startsWith("#>") ? j : -1).filter(j => j >= 0).join(",");
