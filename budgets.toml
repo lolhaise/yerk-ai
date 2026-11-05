@@ -316,6 +316,7 @@ duplicated_topics = 0
 slack = 1
 drops = [
     "2026-10-22: 116 to 98, the index grew under the bench from Oct 19 to Oct 21 (the import put 259 days of old chats in the day logs, 126,415 chunks; the texts, mail, wiki and Workbot roots and five more): 18 answers crowded out of the top six, every one still whole in one chunk; Oct 19's code scores today's index the same 99 of 164 as today's; the record weight gives 6 back",
+    "2026-11-04: 105 to 103, the index grew under the bench from Nov 1 to Nov 4: 2 answers crowded out of the top six by day-log lines written since the Nov 1 run, one by two lines of Nov 4 on the same event (written that evening: the same commit had passed this test at a deploy that afternoon), one by a line of Nov 1 that shares its word; both still whole in one chunk, fifth and eighth when twelve are asked for; the commit the daemon ran before the change under test scores the index the same 103 of 164",
 ]
 
 [files]

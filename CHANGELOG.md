@@ -32,6 +32,15 @@ version changes.
 - The hands plug-in keeps its Mac in `mac.json` beside server.mjs, where its `mac` tool and the browser's Mac read it
   (its branch `need-2026-11-04-50`); its rooms have it at their next session.
 
+### recall-drop-2026-11-04 (#?)
+
+- `yerk deploy` goes through again on the install it was written on. On Nov 4 it refused need-2026-11-04-49
+  at the fast tests, merged and not deployed, and it would have refused any change after it: the recall bench read 103
+  of 164 in the top six where the run of Nov 1 read 105, one under what the ratchet lets by. The index did that, not a
+  change: two answers were crowded out of the top six by day-log lines written since, both still found whole, and the
+  commit that passed this test at a deploy that afternoon read 103 that evening. A dated note under `[recall]` `drops` in
+  budgets.toml names the drop, as the ratchet asks. Nothing changes for a room.
+
 ### need-2026-11-04-49 (#?)
 
 - A `web_research` run always comes back with something to collect it by. Every start now carries a reference of
