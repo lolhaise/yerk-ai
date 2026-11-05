@@ -22,8 +22,9 @@
   the bar (labels and values, a countdown) and the stall wait. A tab that opens or reconnects gets the whole state first.
 - The talk can live in the program instead (talk): with the page's chat closed to nothing, the room's lines also go into the
   program as #> comment lines under the owner's last # line (into), which yerkd writes in its copy and every open tab writes
-  in its own text at the same line, so the owner's caret and typing since stay; a # line ended with Enter goes at
-  once, and a program whose tests are blank runs alone, its prints shown large and said to the room.
+  in its own text at the same line, so the owner's caret and typing since stay, no more than TEXT_MAX holds, the room's
+  marks under them moved down; a # line ended with Enter goes at once, and a program whose tests are blank runs alone,
+  its prints shown large and said to the room.
 - On the owner's ask the room's `page` tool turns its page on with no restart (Yerkd.page_switch) and yerkd opens it on
   the owner's screen with the box's own opener (opener): the address it opens holds a one-time ticket, never the key,
   since an opener's command line is readable by every local user (/proc); the page trades the ticket once, within
@@ -403,26 +404,30 @@ def owned(row: str) -> bool:
     return said.startswith("#") and not said.startswith(("#!", "#>")) and bool(said.lstrip("#").strip())
 
 
-def talk_lines(text: str) -> list[str]:
+def talk_lines(text: str, room: int = TEXT_MAX, indent: int = 0) -> list[str]:
     """A line the room said as the program's #> comment lines: a row each, a long one wrapped at TALK_WIDTH with its words
-    whole (a link never cut) and a fenced block's rows kept whole; DIFF_LINES at most, the rest named as on the chat."""
+    whole (a link never cut) and a fenced block's rows kept whole; DIFF_LINES at most, and no more characters than `room`
+    (what the program has left under TEXT_MAX) at `indent`, a line its newline too, the rest named as on the chat; none
+    when not even that fits."""
     rows: list[str] = []
     fenced = False
     for row in text.replace("\r", "").strip("\n").split("\n"):
         fence = row.lstrip().startswith("```")
         rows += [row] if fenced or fence or len(row) <= TALK_WIDTH else textwrap.wrap(row, TALK_WIDTH, break_long_words=False, break_on_hyphens=False)
         fenced ^= fence
-    if len(rows) > DIFF_LINES:
-        rows = [*rows[:DIFF_LINES - 1], words.PAGE_TALK_CUT.format(n=len(rows) - DIFF_LINES + 1)]
-    return [f"#> {x}".rstrip() for x in rows]
+    lines = [f"#> {x}".rstrip() for x in rows]
+    for n in range(min(len(lines), DIFF_LINES), 0, -1):          # all of it, else n - 1 lines and the count of the rest
+        kept = lines if n == len(lines) else [*lines[:n - 1], f"#> {words.PAGE_TALK_CUT.format(n=len(lines) - n + 1)}"]
+        if sum(indent + len(x) + 1 for x in kept) <= room:
+            return kept
+    return []
 
 
-def into(code: str, asked: tuple[int, str], lines: list[str]) -> tuple[str, int, str]:
-    """`lines` written into the program under the owner's last # line (talk), and that line, from 1 (0: none), and its words:
-    the comment said last (`asked`, its line and words), the copy nearest its line, else the lowest # line of the owner's;
-    under the #> lines already under it, at its indent; with none, after the program's last line. A tab does the same in its
-    own text with the line this found (page.html, talk), so what the owner typed since keeps its place, and the caret too."""
-    rows = code.split("\n")
+def spot(rows: list[str], asked: tuple[int, str]) -> tuple[int, str, tuple[int, str]]:
+    """Where the room's lines go in the program's rows (talk): the row they go after, from 0 (-1: on top), their indent,
+    and the owner's # line they go under, from 1 (0: none), and its words: the comment said last (`asked`, its line and
+    words), the copy nearest its line, else the lowest # line of the owner's; under the #> lines already under it, at its
+    indent; with none, after the program's last line."""
     hits = [i for i, r in enumerate(rows) if asked[1] and r.strip() == asked[1]]
     i = min(hits, key=lambda j: abs(j - asked[0] + 1)) if hits else next((j for j in range(len(rows) - 1, -1, -1) if owned(rows[j])), -1)
     anchor, indent = (i + 1, rows[i].strip()), rows[i][:len(rows[i]) - len(rows[i].lstrip())] if i >= 0 else ""
@@ -430,6 +435,15 @@ def into(code: str, asked: tuple[int, str], lines: list[str]) -> tuple[str, int,
         anchor, i = (0, ""), len(rows) - 2 if rows[-1] == "" else len(rows) - 1
     while i + 1 < len(rows) and rows[i + 1].lstrip().startswith("#>"):
         i += 1
+    return i, indent, anchor
+
+
+def into(code: str, asked: tuple[int, str], lines: list[str]) -> tuple[str, int, str]:
+    """`lines` written into the program where the room's go (spot), and the owner's # line they went under, from 1 (0:
+    none), and its words. A tab does the same in its own text with the line this found (page.html, talk), so what the owner
+    typed since keeps its place, and the caret too."""
+    rows = code.split("\n")
+    i, indent, anchor = spot(rows, asked)
     rows[i + 1:i + 1] = [indent + x for x in lines]
     return "\n".join(rows), *anchor
 
@@ -742,12 +756,22 @@ class Page:
     def _talk(self, s: Sheet, line: dict[str, Any]) -> None:
         """A line the room said, as #> lines in the program under the owner's last # line (into) while the page's chat is
         closed: in yerkd's copy and the room's last heard one alike, so the room is never told it typed them, and to every
-        open tab as that line and the words, which it writes in its own text there, the owner's caret and typing kept."""
+        open tab as that line and the words, which it writes in its own text there, the owner's caret and typing kept. No
+        more than the program holds under TEXT_MAX, the rest named as on the chat and the room told once in its next
+        message (past it, the next keystroke posted cut the owner's code); the room's marks under them move down with
+        their lines (the tab moves its own)."""
         if not s.talk:
             return
-        lines = talk_lines(line["text"])
-        s.code, at, anchor = into(s.code, s.asked, lines)
-        s.heard = (into(s.heard[0], s.asked, lines)[0], s.heard[1])
+        rows = s.code.split("\n")
+        i, indent, (at, anchor) = spot(rows, s.asked)
+        lines = talk_lines(line["text"], TEXT_MAX - len(s.code), len(indent))
+        if lines != talk_lines(line["text"], indent=len(indent)) and (full := words.PAGE_TALK_FULL.format(n=TEXT_MAX)) not in s.waiting:
+            s.waiting.append(full)
+        if not lines:                                  # the program full: the chat alone has it
+            return
+        rows[i + 1:i + 1] = [indent + x for x in lines]
+        s.code, s.heard = "\n".join(rows), (into(s.heard[0], s.asked, lines)[0], s.heard[1])
+        s.marks = [{**m, "line": m["line"] + len(lines)} if m["line"] > i + 1 else m for m in s.marks]
         write_private(s.folder / PROGRAM, s.code)
         self._log(s, {"kind": "talked", "under": at, "lines": len(lines)})
         self._push(s, {"talk": {"line": at, "text": anchor, "lines": lines}})

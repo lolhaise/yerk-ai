@@ -499,7 +499,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-04, need-2026-11-04-51: 105 lines for the talk in the program on the live page (a room asked to talk with the owner inside the program had replies only in the chat pane, a pane that could not be closed, and rewrote the whole program with #> lines, which threw the caret to the end; filed 2026-11-04), not folded to fit: channels/page.py 97 (owned, talk_lines and into: the room's lines as #> lines under the owner's last # line, wrapped, cut at DIFF_LINES; the chat closed kept in talk.json and said in the next message; a # line ended with Enter sent at once; the reply written in yerkd's copy and the room's last heard one alike and handed to every tab; the runner's alone run of a program with blank tests, its error's line, and the end of what a run printed said to the room), words.py 7 and mcp_server.py 1. The closed chat, the tab's own insertion with its caret kept, the room's bands and the large output are page.html, outside this count. 26,044.
 
-- `lines = 26044`
+2026-11-04, need-2026-11-04-51's cold read, fixed: 25 lines, not folded to fit: channels/page.py 22 (spot, where the room's lines go, out of into so _talk knows the row they go after; talk_lines cuts at what the program has left under TEXT_MAX as well as at DIFF_LINES, with one count of the rest; _talk tells the room once when the program is full and moves the room's marks under the new lines down with them) and words.py 3 (PAGE_TALK_FULL, and PAGE_TALK_ON saying the lines under a reply move down). The tab's own cap and marks are page.html, outside this count. 26,069.
+
+- `lines = 26069`
 
 ## Uncapped
 

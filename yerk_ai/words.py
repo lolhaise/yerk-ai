@@ -514,7 +514,8 @@ PAGE_NO_KEY = ("room {room} has no live page yet: ask for it in the room, whose 
                "rooms.toml table and restart yerkd")
 # talk in the program (channels/page.py talk): the chat closed or opened, a reply's cut, and a program run alone, its prints
 PAGE_TALK_ON = ("the owner closed the page's chat: your replies now go into the program as #> lines under the owner's last "
-                "# line, so write them as short plain lines")
+                "# line, so write them as short plain lines; the lines under them move down, your marks with them")
+PAGE_TALK_FULL = "the program is at the page's cap of {n:,} characters: what did not fit of your reply is on the page's chat alone"
 PAGE_TALK_OFF = "the owner opened the page's chat again: your replies show there, not in the program"
 PAGE_TALK_CUT = "... {n} more lines on the page's chat"
 PAGE_MAIN, PAGE_MAIN_ERROR = "ran solution.py alone (no tests)", "ran solution.py alone (no tests), and it stopped: {error}{line}"

@@ -1141,18 +1141,21 @@ def test_into_puts_the_lines_under_the_comment_said_last_at_its_indent_after_ear
     assert len(cut) == pagemod.DIFF_LINES and cut[-1] == "#> " + words.PAGE_TALK_CUT.format(n=100 - pagemod.DIFF_LINES + 1)
 
 
-def tab_talk(text, caret, op):
+def tab_talk(text, caret, op, marks=()):
     """The page's own talk(), run by node on a stand-in textarea that does setRangeText as a browser does ("preserve"):
-    the text after, the caret after and the edit it posted."""
+    the text after, the caret after, the edit it posted and the room's marks after (`marks` before), under the page's own
+    TEXT_MAX."""
     script = pagemod.HTML.read_text().split("<script>", 1)[1]
     fns = "".join(f"function {name}(" + script.split(f"\nfunction {name}(", 1)[1].split("\n}\n", 1)[0] + "\n}\n" for name in ("owned", "talk"))
-    harness = ("const [text, caret, op] = JSON.parse(process.argv.at(-1)); const posted = [];\n"
+    cap = re.search(r"const TEXT_MAX = (\d+);", script)
+    harness = (f"const TEXT_MAX = {cap[1] if cap else pagemod.TEXT_MAX};\n"
+               "const [text, caret, op, marks] = JSON.parse(process.argv.at(-1)); const posted = []; const state = { marks };\n"
                "const ta = { value: text, selectionStart: caret, selectionEnd: caret, setRangeText(r, a, b, mode) {\n"
                "  const d = r.length - (b - a); this.value = this.value.slice(0, a) + r + this.value.slice(b);\n"
                "  const s = this.selectionStart; this.selectionStart = this.selectionEnd = s > b ? s + d : s > a ? a : s; } };\n"
                "const panes = { code: { ta } }, gutter = () => {}, sync = () => {}, roomLines = () => {}, post = (p, b) => posted.push(b);\n"
-               + fns + "talk(op); console.log(JSON.stringify({ text: ta.value, caret: ta.selectionStart, posted }));\n")
-    done = subprocess.run(["node", "-e", harness, json.dumps([text, caret, op])], capture_output=True, text=True, timeout=60)
+               + fns + "talk(op); console.log(JSON.stringify({ text: ta.value, caret: ta.selectionStart, posted, marks: state.marks }));\n")
+    done = subprocess.run(["node", "-e", harness, json.dumps([text, caret, op, list(marks)])], capture_output=True, text=True, timeout=60)
     assert done.returncode == 0, done.stderr
     return json.loads(done.stdout)
 
@@ -1223,3 +1226,81 @@ def test_the_chat_closes_to_nothing_and_the_page_remembers_it(tmp_path):
     assert "if (talkOn !== chatless) split(talkOn ? 0 : opened, true, false);" in script        # the tab shows what yerkd keeps
     assert "if (op.talk) talk(op.talk);" in script and "put(name, d[name])" in script        # a drawn program keeps the caret
     assert ".mark.room {" in css and 'make("div", "mark room")' in script                    # the room's lines in its colour
+
+
+def test_the_room_s_replies_never_grow_the_program_past_its_cap_so_a_keystroke_cuts_none_of_it(tmp_path):
+    """need-2026-11-04-51, the cold read's first find: _talk wrote the room's #> lines into yerkd's copy with no cap, where
+    every other way in (an edit, a draw) cuts at TEXT_MAX, so with the chat closed long replies grew the program past it
+    (25 replies of 60 lines: 124,532 characters, with no tab open) and the next keystroke a tab posted cut it, and
+    solution.py, to TEXT_MAX: the end of the owner's code gone under replies written above it, and the room told he deleted
+    it. Now what fits goes in, the rest named as on the chat, and the room hears once that the program is full."""
+    p, room = hub(tmp_path, quiet=60)
+    body = "".join(f"x{i} = {i}\n" for i in range(7600))
+    code = "# why?\n" + body + "# end of the owner's code\n"
+    assert pagemod.TEXT_MAX - 5000 < len(code) < pagemod.TEXT_MAX
+    p.draw("r", {"code": code})
+    reply = "\n".join("word " * 16 for _ in range(60))             # 60 lines of 80 characters, about 4,900 a reply
+
+    async def go():
+        await p.event("r", {"kind": "talk", "on": True})
+        p.sheets["r"].asked = (1, "# why?")
+        for _ in range(3):
+            p.said("r", reply)
+        await asyncio.sleep(0)                                     # said() hands its steps to the loop
+        s = p.sheets["r"]
+        assert len(s.code) <= pagemod.TEXT_MAX and s.code.endswith(body + "# end of the owner's code\n")
+        assert (tmp_path / "rooms" / "r" / "work" / "page" / "solution.py").read_text() == s.code and s.heard[0] == s.code
+        talk = s.code.split("\n")[1:s.code.split("\n").index("x0 = 0")]           # the first reply's head, then its count
+        assert talk == ["#> " + "word " * 15 + "word"] * (len(talk) - 1) + ["#> " + words.PAGE_TALK_CUT.format(n=60 - len(talk) + 1)]
+        assert pagemod.TEXT_MAX - len(s.code) < len(talk[-1]) + 1                 # filled: the next two, not even their count
+        typed = s.code + "y = 1\n"                                 # the owner's next keystroke, posted whole
+        await p.event("r", {"kind": "edit", "pane": "code", "text": typed, "send": True})
+        return s, typed
+    s, typed = asyncio.run(go())
+    assert s.code == typed and (tmp_path / "rooms" / "r" / "work" / "page" / "solution.py").read_text() == typed   # nothing cut
+    said = room.got[-1].text.splitlines()
+    assert not [x for x in said if x.startswith("-")] and "+y = 1" in said                # no line of his told as deleted
+    assert said.count(words.PAGE_TALK_FULL.format(n=pagemod.TEXT_MAX)) == 1               # once, for the three replies
+    more = "one more, longer than the room left"                  # no room for it nor its count: the chat alone has it
+    p.said("r", more)
+    assert s.code == typed and s.lines[-1]["text"] == more and s.waiting == [words.PAGE_TALK_FULL.format(n=pagemod.TEXT_MAX)]
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="node runs the page's script; it is not on this box")
+def test_the_tab_writes_no_more_of_the_room_s_lines_than_its_cap_holds():
+    """need-2026-11-04-51: a tab whose text is longer than yerkd's copy (typed since) writes only the room's lines that fit
+    under the page's TEXT_MAX, which is page.py's, so its next post is never cut; none fit, it writes and posts nothing."""
+    text = "# q?\n" + "x" * (pagemod.TEXT_MAX - 25)
+    got = tab_talk(text, 2, {"line": 1, "text": "# q?", "lines": ["#> short", "#> " + "a" * 30]})
+    assert got["text"] == "# q?\n#> short\n" + "x" * (pagemod.TEXT_MAX - 25) and len(got["text"]) <= pagemod.TEXT_MAX
+    assert got["caret"] == 2 and got["posted"] == [{"kind": "edit", "pane": "code", "text": got["text"]}]
+    full = tab_talk(text, 2, {"line": 1, "text": "# q?", "lines": ["#> " + "a" * 30]})
+    assert full["text"] == text and full["posted"] == []
+    script = pagemod.HTML.read_text().split("<script>", 1)[1]
+    assert re.search(r"const TEXT_MAX = (\d+);", script)[1] == str(pagemod.TEXT_MAX)
+
+
+def test_the_room_s_marks_move_down_with_their_lines_when_its_reply_goes_in_above_them(tmp_path):
+    """need-2026-11-04-51, the cold read's second find: the room's arrow on line 3 ("this subtracts") stayed on line 3 when
+    its two-line reply went in under the owner's question on line 1, so it pointed at a #> line. Marks under the lines
+    written move down by as many, in yerkd's copy (what a tab that opens shows) and in every open tab's; one above stays."""
+    p, room = hub(tmp_path, quiet=60)
+    code = "# why minus?\ndef add(a, b):\n    return a - b\n"
+    marks = [{"line": 3, "kind": "arrow", "text": "this subtracts"}, {"line": 1, "kind": "highlight", "text": "asked"}]
+    p.draw("r", {"code": code, "marks": marks})
+
+    async def go():
+        await p.event("r", {"kind": "talk", "on": True})
+        p.sheets["r"].asked = (1, "# why minus?")
+        p.said("r", "Look at the arrow: it subtracts.\nMake it a plus.")
+        await asyncio.sleep(0)
+    asyncio.run(go())
+    s = p.sheets["r"]
+    rows = s.code.split("\n")
+    assert [(m["line"], rows[m["line"] - 1]) for m in s.marks] == [(5, "    return a - b"), (1, "# why minus?")]
+    assert s.state()["state"]["marks"] == s.marks
+    if shutil.which("node"):                                       # the tab moves its own the same, for its own text
+        op = {"line": 1, "text": "# why minus?", "lines": ["#> Look at the arrow: it subtracts.", "#> Make it a plus."]}
+        got = tab_talk(code, 0, op, marks)
+        assert got["text"] == s.code and [m["line"] for m in got["marks"]] == [5, 1]
+        assert got["marks"][0] == {**marks[0], "line": 5}

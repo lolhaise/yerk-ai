@@ -17,11 +17,16 @@ version changes.
   the owner's last # line, in the room's colour and marked as its own. The tab writes them in its own text, so the
   caret stays where it was and what was typed since is kept; the room is told in its next message when the chat closes
   or opens, and never reads its own #> lines as typed by the owner.
+- The room's #> lines stop at the program's 100,000-character cap, in yerkd's copy and in every tab: what fits goes
+  in, the rest is counted as on the chat ("... 20 more lines on the page's chat"), and the room hears once in its next
+  message that the program is full. Before, replies grew the program past the cap with no tab open, and the next
+  keystroke cut it on disk, the end of the owner's code with it. The room's marks under its new lines move down with
+  them, so an arrow stays on the code it points at and no longer lands on a #> line.
 - What a run prints shows large, above the tests' tiles, and its end rides in the room's next message. A program whose
   tests are blank runs alone, as a script, in the same sandbox, so a game or a script the room writes for a `#make`
   line runs on the page. A program the room draws whole keeps the caret where it was.
 - **Upgrading**: budgets.toml raises `yerk_tools` to 20,400 and the session-start `total` to 119,505 (the `page` tool's
-  two new clauses) and `[code] lines` to 26,044, each with its dated note; nothing to set.
+  two new clauses) and `[code] lines` to 26,069, each with its dated note; nothing to set.
 
 ### recall-drop-2026-11-04 (#?)
 

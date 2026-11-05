@@ -225,6 +225,7 @@ for (const el of document.querySelectorAll(".pane")) {
 }
 let state = { marks: [], bar: {}, board: [], timer: {}, stall: 0 }, runTimer = 0, lastKey = Date.now(), stallSaid = false, timerSaid = false;
 let enter = false, roomKey = "", chatless = false, talkOn = false, opened = null;   // the talk in the program (page.py, talk)
+const TEXT_MAX = 100000;                                      // page.py's: yerkd cuts a program posted past it, so the room's lines stop under it
 let shownBoard = "", cellsBefore = {}, passedBefore = {}, allBefore = false;     // what the bar and the tiles showed last: a change pops
 function make(tag, cls, text) {                               // every word on the page goes in as text, never as markup
   const e = document.createElement(tag);
@@ -270,8 +271,12 @@ function talk(t) {           // the room's #> lines under the owner's # line yer
   const indent = i >= 0 ? rows[i].slice(0, rows[i].length - rows[i].trimStart().length) : "";
   if (i < 0) i = rows[rows.length - 1] === "" ? rows.length - 2 : rows.length - 1;     // no # line of the owner's: after the last
   while (i + 1 < rows.length && rows[i + 1].trimStart().startsWith("#>")) i++;
-  const words = t.lines.map(x => indent + x).join("\n"), at = i < 0 ? 0 : rows.slice(0, i + 1).join("\n").length;
+  const lines = t.lines.map(x => indent + x);                 // what fits under TEXT_MAX with what was typed since, a line its newline too
+  while (lines.length && ta.value.length + lines.reduce((n, x) => n + x.length + 1, 0) > TEXT_MAX) lines.pop();
+  if (!lines.length) return;
+  const words = lines.join("\n"), at = i < 0 ? 0 : rows.slice(0, i + 1).join("\n").length;
   ta.setRangeText(i < 0 ? words + "\n" : "\n" + words, at, at, "preserve");       // the caret and what was typed since keep their place
+  state.marks = (state.marks || []).map(m => m.line > i + 1 ? { ...m, line: m.line + lines.length } : m);   // the room's marks with their lines
   gutter("code"); sync("code"); roomLines();
   post("event", { kind: "edit", pane: "code", text: ta.value });
 }
