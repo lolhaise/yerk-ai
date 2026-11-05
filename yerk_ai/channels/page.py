@@ -579,8 +579,8 @@ class Page:
 
     async def event(self, room: str, ev: dict[str, Any]) -> dict[str, Any]:
         """One thing the owner did on the page: logged at once, then a message to the room now (a stroke, a said line, the
-        timer's end, a stall, a # line ended with Enter: an edit with `send`) or once the typing pauses (an edit); the chat
-        closed or opened (talk) rides in the next."""
+        timer's end, a stall, a # line ended with Enter, an edit with `send`, whose talk the room has not heard) or once the
+        typing pauses (an edit, an Enter after a comment it heard too); the chat closed or opened (talk) rides in the next."""
         if (s := self.sheets.get(room)) is None:
             return {"ok": False, "error": words.PAGE_NONE.format(room=room)}
         self.loop = asyncio.get_running_loop()
@@ -593,9 +593,9 @@ class Page:
                 s.tests, s.code = (new, s.code) if pane == "tests" else (s.tests, new)
                 write_private(s.folder / (TESTS if pane == "tests" else PROGRAM), new)
                 self._log(s, {"kind": "edit", "pane": pane, **change(old, new)})
-            if ev.get("send") is True:                 # a # line ended with Enter: the talk goes now, not at the pause
+            if ev.get("send") is True and comments(s.heard[0], s.code):   # a # line ended with Enter, talk the room has not heard: now
                 self.flush(room)
-            elif new != old:
+            elif new != old:                           # else at the pause, as typing: an Enter after a comment the room heard too
                 self._arm(s)
             return {"ok": True}
         if kind == "stroke":

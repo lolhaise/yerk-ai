@@ -21,7 +21,10 @@ version changes.
   in, the rest is counted as on the chat ("... 20 more lines on the page's chat"), and the room hears once in its next
   message that the program is full. Before, replies grew the program past the cap with no tab open, and the next
   keystroke cut it on disk, the end of the owner's code with it. The room's marks under its new lines move down with
-  them, so an arrow stays on the code it points at and no longer lands on a #> line.
+  them, so an arrow stays on the code it points at and no longer lands on a #> line. An Enter after a comment the
+  room has already heard, such as a drill's header or a question the pause already sent, waits for the pause like any
+  typing, so the line typed under it goes in the same message; before, it sent the room a message at once that held
+  only a blank line.
 - What a run prints shows large, above the tests' tiles, and its end rides in the room's next message. A program whose
   tests are blank runs alone, as a script, in the same sandbox, so a game or a script the room writes for a `#make`
   line runs on the page. A program the room draws whole keeps the caret where it was.

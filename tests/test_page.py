@@ -1127,6 +1127,37 @@ def test_a_comment_line_ended_with_enter_goes_at_once_not_after_the_pause(tmp_pa
     assert 'if (e.key === "Enter" && !e.isComposing) enter = true;' in script
 
 
+def test_an_enter_after_a_comment_the_room_has_heard_waits_for_the_pause_like_any_typing(tmp_path):
+    """need-2026-11-04-51, the first cold read's third find, which 9966df9 left out: the tab marks an edit `send` whenever
+    the line above the caret is a # line of the owner's, and yerkd sent on `send` alone, so an Enter at the end of a
+    comment the room had already heard (a drill's header it drew, or the owner's question the pause had sent) sent the room
+    a message at once whose whole content was one blank line: a room turn for nothing, the code typed next a second message,
+    and the owner's question told twice. Now `send` goes at once only with talk the room has not heard (comments); else the
+    edit waits for the pause like any other, and goes in one message with what is typed next."""
+    p, room = hub(tmp_path)                                       # a pause of 0.05 s
+    p.draw("r", {"code": "# sum two numbers\n" + FIXED})
+    s = p.sheets["r"]
+
+    async def go():
+        await p.event("r", {"kind": "edit", "pane": "code", "text": "# sum two numbers\n\n" + FIXED, "send": True})
+        assert room.got == [] and s.quiet is not None             # Enter after the room's own comment: nothing now, the pause armed
+        await p.event("r", {"kind": "edit", "pane": "code", "text": "# sum two numbers\nimport math\n" + FIXED})
+        await asyncio.sleep(0.2)                                   # the pause: the new line and its code, one message
+        await p.event("r", {"kind": "edit", "pane": "code", "text": "# why math?\n# sum two numbers\nimport math\n" + FIXED})
+        await asyncio.sleep(0.2)                                   # the owner's question, said at the pause
+        await p.event("r", {"kind": "edit", "pane": "code", "text": "# why math?\n\n# sum two numbers\nimport math\n" + FIXED, "send": True})
+        assert len(room.got) == 2 and s.quiet is not None         # Enter after it: not said again
+        await p.event("r", {"kind": "edit", "pane": "code", "send": True,
+                            "text": "# why math?\n# and not a plus?\n\n# sum two numbers\nimport math\n" + FIXED})
+        assert len(room.got) == 3 and s.quiet is None             # a new one ended with Enter: at once, as before
+    asyncio.run(go())
+    first, second, third = (m.text.splitlines()[1:] for m in room.got)
+    assert first == ["typed in solution.py:", "@@ -1,2 +1,3 @@", " # sum two numbers", "+import math", " def add(a, b):"]
+    assert second[-1] == "said in solution.py at line 1, as a # comment: why math?"
+    assert "+# and not a plus?" in third and third[-1] == "said in solution.py at line 2, as a # comment: and not a plus?"
+    assert [x["text"] for x in s.lines] == ["why math?", "and not a plus?"]                # each said once on the chat
+
+
 def test_into_puts_the_lines_under_the_comment_said_last_at_its_indent_after_earlier_replies_else_at_the_end():
     code = "# one\nx = 1\ndef f():\n    # why this?\n    #> earlier\n    return x\n# one\n"
     assert into(code, (4, "# why this?"), ["#> now"]) == (code.replace("#> earlier\n", "#> earlier\n    #> now\n"), 4, "# why this?")
@@ -1254,7 +1285,8 @@ def test_the_room_s_replies_never_grow_the_program_past_its_cap_so_a_keystroke_c
         assert talk == ["#> " + "word " * 15 + "word"] * (len(talk) - 1) + ["#> " + words.PAGE_TALK_CUT.format(n=60 - len(talk) + 1)]
         assert pagemod.TEXT_MAX - len(s.code) < len(talk[-1]) + 1                 # filled: the next two, not even their count
         typed = s.code + "y = 1\n"                                 # the owner's next keystroke, posted whole
-        await p.event("r", {"kind": "edit", "pane": "code", "text": typed, "send": True})
+        await p.event("r", {"kind": "edit", "pane": "code", "text": typed})
+        p.flush("r")                                               # the pause: a line of code is no # line ended with Enter
         return s, typed
     s, typed = asyncio.run(go())
     assert s.code == typed and (tmp_path / "rooms" / "r" / "work" / "page" / "solution.py").read_text() == typed   # nothing cut
