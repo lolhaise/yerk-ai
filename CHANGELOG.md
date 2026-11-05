@@ -72,7 +72,7 @@ version changes.
   tests are blank runs alone, as a script, in the same sandbox, so a game or a script the room writes for a `#make`
   line runs on the page. A program the room draws whole keeps the caret where it was.
 - **Upgrading**: budgets.toml raises `yerk_tools` to 21,500 and the session-start `total` to 120,605 (the `page` tool's
-  two new clauses) and `[code] lines` to 26,354, each with its dated note; nothing to set.
+  two new clauses) and `[code] lines` to 26,396, each with its dated note; nothing to set.
 
 ### need-2026-11-04-50 (#?)
 

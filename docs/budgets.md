@@ -517,7 +517,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-05, need-2026-11-04-51 with main folded in again (need-2026-11-04-53's 194 lines and need-branch-drop's 38): main's 26,224 plus this branch's 130, 26,354.
 
-- `lines = 26354`
+2026-11-05, need-2026-11-04-51's fourth cold read, fixed: 42 lines, not folded to fit: channels/page.py 40 (each reply in the program numbered and the newest TALK_KEPT kept in talk.json across a restart, handed to a tab with the state; a post whose number is behind gets the replies it lacks written in, caught_up, or is not kept when yerkd no longer has them) and words.py 2 (PAGE_TALK_BEHIND). The tab's catch-up and the number on its posts are page.html, outside this count. 26,396.
+
+- `lines = 26396`
 
 ## Uncapped
 

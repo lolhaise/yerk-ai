@@ -226,6 +226,7 @@ for (const el of document.querySelectorAll(".pane")) {
 let state = { marks: [], bar: {}, board: [], timer: {}, stall: 0 }, runTimer = 0, lastKey = Date.now(), stallSaid = false, timerSaid = false;
 let enter = false, roomKey = "", chatless = false, talkOn = false, opened = null;   // the talk in the program (page.py, talk)
 let pending = 0;                                              // this tab's edits on their way to yerkd, not answered yet (talk)
+let talked = 0;          // the number of the room's last reply this tab's program has (page.py, Sheet.talked): every post of it says it
 const TEXT_MAX = 100000;                                      // page.py's: yerkd cuts a program posted past it, so the room's lines stop under it
 let shownBoard = "", cellsBefore = {}, passedBefore = {}, allBefore = false;     // what the bar and the tiles showed last: a change pops
 function make(tag, cls, text) {                               // every word on the page goes in as text, never as markup
@@ -260,12 +261,14 @@ function typed(name, e) {
   const ended = (enter || /^insert(LineBreak|Paragraph)$/.test((e && e.inputType) || "")) && before.length > 1 && owned(before[before.length - 2]);
   enter = false;                                              // a # line ended with Enter: the talk goes now, not at the pause
   pending++;
-  post("event", { kind: "edit", pane: name, text: ta.value, ...(name === "code" && ended ? { send: true } : {}) }).then(() => pending--);
+  post("event", { kind: "edit", pane: name, text: ta.value, talked, ...(name === "code" && ended ? { send: true } : {}) }).then(() => pending--);
   if (name === "code") roomLines();
   clearTimeout(runTimer);
   runTimer = setTimeout(run, 600);                           // the tests re-run on every pause in typing
 }
 function talk(t) {           // the room's #> lines under the owner's # line yerkd found (page.py, into), written in this tab's own text
+  if (t.n !== talked + 1) return;                            // once: one it has, or one after a gap, which a reconnect brings
+  talked = t.n;
   const ta = panes.code.ta, rows = ta.value.split("\n");
   let i = -1;
   rows.forEach((r, j) => { if (t.text && r.trim() === t.text && (i < 0 || Math.abs(j - t.line + 1) < Math.abs(i - t.line + 1))) i = j; });
@@ -282,7 +285,7 @@ function talk(t) {           // the room's #> lines under the owner's # line yer
   gutter("code"); sync("code"); roomLines();
   if (!pending) return;            // no edit of this tab's on its way: yerkd's copy has the lines, and an idle tab's older text would go over another's
   pending++;                       // else one may have crossed them in yerkd: what he typed goes again, with them
-  post("event", { kind: "edit", pane: "code", text: ta.value }).then(() => pending--);
+  post("event", { kind: "edit", pane: "code", text: ta.value, talked }).then(() => pending--);
 }
 function roomLines() {                                        // the bands of the room's #> lines, drawn again only when they move
   const key = panes.code.ta.value.split("\n").map((r, j) => r.trimStart().startsWith("#>") ? j : -1).filter(j => j >= 0).join(",");
@@ -295,7 +298,7 @@ function put(name, text) {                                    // a program yerkd
   ta.scrollTop = top;
 }
 function run() {
-  post("run", { code: panes.code.ta.value, tests: panes.tests.ta.value }).then(showRun);
+  post("run", { code: panes.code.ta.value, tests: panes.tests.ta.value, talked }).then(showRun);
 }
 function showRun(r) {             // a tile a test, green or red; one that is new or flipped pops; what it printed large, above them
   const sum = $("#sum"), rows = $("#rows"), out = $("#out"), now = {};
@@ -415,9 +418,12 @@ $("#lines").addEventListener("scroll", e => { const l = e.target; if (l.scrollHe
 $("#more").onclick = () => { $("#lines").scrollTop = $("#lines").scrollHeight; $("#more").hidden = true; };
 function apply(op) {
   if (op.state) {
-    const s = op.state;
+    const s = op.state, code = panes.code.ta, talks = s.talks || [];   // a tab that keeps its own text writes the replies it missed
+    const mine = document.activeElement === code && code.value && talked >= s.talked - talks.length && talked <= s.talked;
+    if (mine) talks.forEach(talk); else talked = s.talked;     // else (or past what yerkd keeps) it takes yerkd's, which has them
     state = s;
-    for (const name of ["code", "tests"]) if (document.activeElement !== panes[name].ta || !panes[name].ta.value) panes[name].ta.value = s[name] || "";
+    for (const name of ["code", "tests"])
+      if (name === "code" ? !mine : document.activeElement !== panes[name].ta || !panes[name].ta.value) panes[name].ta.value = s[name] || "";
     $("#lines").textContent = ""; (s.lines || []).forEach(line); $("#lines").scrollTop = $("#lines").scrollHeight; $("#more").hidden = true;
     $("#hint").textContent = s.hint || ""; timerSaid = false;
     showRun(s.run);
@@ -427,6 +433,7 @@ function apply(op) {
   if (op.draw) {
     const d = op.draw;
     for (const name of ["code", "tests"]) if (typeof d[name] === "string") { put(name, d[name]); showRun(null); }
+    if (typeof d.code === "string") talked = d.talked;        // a drawn program has every reply so far
     if (d.marks) state.marks = d.marks;
     if (typeof d.hint === "string") $("#hint").textContent = d.hint;
     if (d.bar) state.bar = d.bar;

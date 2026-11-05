@@ -525,6 +525,8 @@ PAGE_TALK_ON = ("the owner closed the page's chat: your replies now go into the 
 PAGE_TALK_FULL = "the program is at the page's cap of {n:,} characters: what did not fit of your reply is on the page's chat alone"
 PAGE_TALK_OFF = "the owner opened the page's chat again: your replies show there, not in the program"
 PAGE_TALK_CUT = "... {n} more lines on the page's chat"
+PAGE_TALK_BEHIND = ("not kept: this tab missed more of the room's lines than yerkd keeps; when its feed is back it takes the "
+                    "program as yerkd has it")
 PAGE_MAIN, PAGE_MAIN_ERROR = "ran solution.py alone (no tests)", "ran solution.py alone (no tests), and it stopped: {error}{line}"
 PAGE_PRINTED = "it printed:\n{output}"
 QUIET_WORKER = "finished clean, nothing to add"   # a worker's last message of exactly NO_REPLY: its card's head ("nothing to post" ran past PHONE)
