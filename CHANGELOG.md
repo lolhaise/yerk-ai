@@ -6,6 +6,49 @@ A line that changes a file the install keeps (rooms.toml, yerkd.toml, budgets.to
 newer than the code is refused with one line, never changed); the index chunks every file again when its chunker's
 version changes.
 
+## 2026-11-05
+
+### workflow-truth (#?)
+
+- The GitHub Actions workflow runs the checks the project's own test machine runs, in its order, so a fork's CI is the
+  real one: `uv lock --check` and the system tools the tests use (bubblewrap, ffmpeg) are new, and the line counts leave
+  it. The web plug-in's job stays as it was. Nothing in the code changes.
+
+### need-branch-drop (#?)
+
+- A need's branch goes when the need goes live, on the pipeline's road and the hand road alike: deleted in the checkout,
+  then on GitHub, and a plug-in branch it carried deleted in that plug-in's own repository, never on a remote. A shipped
+  need no longer leaves a branch behind for a person to drop.
+- A worktree a finished worker left on the branch is detached first, its files untouched, since git will not delete a
+  branch a worktree is on. A branch the deployed commit does not hold stays, with its worktree and its branch on GitHub,
+  and so does one git refuses; each is one log line and the need is live regardless. With no GitHub token the branch on
+  GitHub stays. The `[code]` ceiling goes to 26,224.
+
+### need-2026-11-04-53 (#?)
+
+- A room can now say whether someone has texted you, or what a text said, even while your Mac is asleep. Before, a room
+  read your Messages live over ssh, and a room asked one night whether a text had come in could not answer: your Mac had
+  slept with its lid shut on battery, as it does every night by your own rule, and the read timed out.
+- The `texts` tool reads your own recent texts (iMessage and SMS) from your Mac, newest first, in your own rooms only; it
+  only reads and never sends one (that is `text`). Each message carries who it was with, when, which way it went and the
+  words.
+- Because the Mac sleeps, the newest texts are kept as a private copy under the state folder (0600, as private as the
+  rest of it). A light daemon check reads them whenever the Mac answers, its own short wakes included, so the copy is no
+  older than the Mac's last wake. A room asked while the Mac is asleep answers from the last copy and says that copy's
+  time, so a stale answer is never passed off as a fresh one; with no copy made yet it says so rather than guess.
+- Nothing here keeps the Mac awake or wakes it: ssh to a sleeping Mac fails fast and nothing is retried. The check reads
+  the same Mac the `text` tool reaches (`[imessage] host`, else an owner room's `mac` add-on), by a read-only sqlite of
+  the Messages database, so no Messages grant is needed, only an ssh login that can read that file. The `[code]` ceiling
+  goes to 26,186.
+
+**Upgrading**
+
+- yerkd.toml: with a Mac set up for texts, the copy runs every 120 seconds by default. Set `[imessage] poll_seconds` to
+  change the cadence, or `0` to turn the copy off (the tool then answers only while the Mac is awake). Reading needs the
+  Mac's ssh login to have full-disk access to its Messages database; sending is unchanged.
+- budgets.toml: `[session_start] yerk_tools` goes to 21,300 and `total` to 120,405 for the new tool, re-measured as sent
+  on deploy.
+
 ## 2026-11-04
 
 ### need-2026-11-04-51 (#?)
@@ -28,8 +71,8 @@ version changes.
 - What a run prints shows large, above the tests' tiles, and its end rides in the room's next message. A program whose
   tests are blank runs alone, as a script, in the same sandbox, so a game or a script the room writes for a `#make`
   line runs on the page. A program the room draws whole keeps the caret where it was.
-- **Upgrading**: budgets.toml raises `yerk_tools` to 20,400 and the session-start `total` to 119,505 (the `page` tool's
-  two new clauses) and `[code] lines` to 26,122, each with its dated note; nothing to set.
+- **Upgrading**: budgets.toml raises `yerk_tools` to 21,500 and the session-start `total` to 120,605 (the `page` tool's
+  two new clauses) and `[code] lines` to 26,354, each with its dated note; nothing to set.
 
 ### need-2026-11-04-50 (#?)
 

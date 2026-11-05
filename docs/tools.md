@@ -2,7 +2,7 @@
 
 Written by `yerk docs own` from yerk_ai/mcp_server.py (build) and workers.WORKER_TOOLS; change those and run it again, never this page.
 
-The 19 tools Yerk AI's own MCP server hands every room's Claude Code, preloaded, as mcp__yerk__NAME. Each one's description is the text the model reads, indentation dropped. A worker gets none of them unless [workers] yerk_tools in yerkd.toml names some, and then only recall, read_memory, on its own server.
+The 20 tools Yerk AI's own MCP server hands every room's Claude Code, preloaded, as mcp__yerk__NAME. Each one's description is the text the model reads, indentation dropped. A worker gets none of them unless [workers] yerk_tools in yerkd.toml names some, and then only recall, read_memory, on its own server.
 
 ## send
 
@@ -229,6 +229,20 @@ and it goes once. A result with `maybe_sent` may have gone out: say so, and neve
 
 - `to`: string, required
 - `text`: string, required
+
+## texts
+
+```text
+The owner's own recent texts (iMessage and SMS), newest first, read from the owner's Mac: use it to answer
+whether someone has texted, or what a text said. This only reads; it never sends one (that is `text`). `limit` how
+many to return (12 unless you ask, up to 40). Each message has `who` (the other person's number or address, empty
+for one the owner sent), `from_me`, `at` (epoch seconds) and `text`. The owner's Mac sleeps when its lid is shut on
+battery, so the texts are kept as a copy on the box, refreshed whenever the Mac is awake: `as_of` says where this
+answer comes from. With `awake` true it was just read from the Mac; with it false the Mac is asleep or away and the
+answer is the last copy, whose age `as_of` gives, so say that time and do not pass a stale answer off as fresh.
+```
+
+- `limit`: integer, default 0
 
 ## delete
 

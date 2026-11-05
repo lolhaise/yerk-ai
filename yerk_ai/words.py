@@ -90,7 +90,7 @@ STEP = {"bash": "running a command", "read": "reading {what}", "read_memory": "r
         "websearch": "searching the web for {what}", "web_search": "searching the web for {what}", "send": "sending {what}",
         "remember": "filing a note", "hold": "waiting for {what}", "settings": "switching to {what}", "transcribe": "transcribing {what}",
         "voice_note": "making a voice note", "seen": "filing a picture", "need": "filing what it needs", "watch": "watching a video on {what}",
-        "reverse_image_search": "finding {what} on the web", "github_state": "checking {what} on GitHub",
+        "reverse_image_search": "finding {what} on the web", "github_state": "checking {what} on GitHub", "texts": "reading the owner's texts",
         "todowrite": "updating the plan", "task": "handing off {what}", "agent": "handing off {what}", "toolsearch": "loading a tool"}
 WORKER_STEP = {"start": "starting a worker", "list": "listing the workers", "stop": "stopping worker {id}",
                "report": "reading worker {id}'s report"}
@@ -411,6 +411,12 @@ TEXT_AWAY = "the Mac's bridge did not answer (the Mac asleep or away, or the bri
 TEXT_MAYBE = "it may have gone out, and the Mac never confirmed it: tell the owner to check Messages, and never send it again unasked"
 TEXT_WHY = {-32602: "Messages would not take that number or address", -32603: "Messages on the Mac failed or lacks a permission",
             -32000: "the Mac's bridge was busy, so try again in a minute", -32004: "the Mac's bridge was busy, so try again in a minute"}
+# the texts tool (inbox.py): the owner's recent texts, read live when the Mac answers, else from the last copy on the box
+TEXTS_OWNER_ROOMS = "the owner's texts are read in the owner's own rooms only"
+TEXTS_NO_SETUP = "no Mac is set up to read the owner's texts from ([imessage] host in yerkd.toml, or an owner room's mac add-on)"
+TEXTS_NONE = "no copy of the texts yet, and the Mac did not answer to make one (it is asleep or away)"
+TEXTS_LIVE = "read from the Mac just now"
+TEXTS_FROM_COPY = "from the last copy, made {when}; the Mac is asleep or away, so a newer text is out of reach until it wakes"
 # a delete the owner orders outside a room's work folder (deletes.py): why one cannot go, said before the owner is asked
 DELETE_OWNER_ROOMS = "a delete outside the work folder is the owner's to order, so only the owner's own rooms make one"
 DELETE_NO_PATHS, DELETE_NOT_WHOLE = "there is no path to delete", "\"{given}\" is not a whole path from /"
