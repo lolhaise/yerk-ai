@@ -216,7 +216,10 @@ YERKD_WORDS = {
                  "command": "a whole command whose stdin and stdout are the bridge, in place of host and socket",
                  "service": "imessage, sms or auto (default auto: iMessage where the person has it, else SMS)",
                  "send_transport": "imsg's own way to drive Messages, auto, bridge or applescript (default: imsg's)",
-                 "send_timeout": "seconds a text waits on Messages before it may have gone out (default 60)"},
+                 "send_timeout": "seconds a text waits on Messages before it may have gone out (default 60)",
+                 "poll_seconds": "seconds between the light checks that copy the owner's newest texts to the box whenever the "
+                                 "Mac answers, so the `texts` tool can read them while the Mac sleeps (default 120; 0 turns the "
+                                 "copy off and the tool answers only when the Mac is awake)"},
     "needs": {"account": "the account `yerk needs build` runs on (default [curate] account, else the workers' pick)",
               "cap_minutes": "a builder's minutes before it is stopped (default 60)",
               "auto": "the pipeline: a filed need is built, checked, read cold, merged, deployed and live with no person, one at a "
