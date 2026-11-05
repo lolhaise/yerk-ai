@@ -8,6 +8,30 @@ version changes.
 
 ## 2026-11-04
 
+### need-2026-11-04-50 (#?)
+
+- Asking a room for the live page on your Mac works with nothing set in yerkd.toml, in every room. Before, the page
+  tool's open with `where` mac said no Mac was set up for the page, and then would have said the Mac had no address,
+  even on a box that already reached the Mac by ssh for the hands plug-in's `mac` tool and sat on your tailnet; and a
+  room cannot set yerkd.toml while a conversation runs.
+- The Mac: `[page] mac`, else `[imessage] host`, as before, else the Mac an owner room's add-on reaches: `ssh` in the
+  `mac.json` beside its server's script (`{"ssh": "user@host"}`). It is read only from a file of yours that no other
+  user may write and none under Yerk's state folder, where each room's folder is, and only as a host or user@host,
+  never an ssh option, since the open hands the page's one-time address to that Mac.
+- The address: with `[page] listen` unset, yerkd serves the page's routes on the box's own tailnet address too, as
+  `tailscale ip -4` prints it at yerkd's start, and the Mac's open and `yerk room page` carry it. A LAN address is never
+  taken unasked, since a LAN carries the page and its key in plain text. A box on no tailnet stays on loopback alone,
+  and the Mac's open says the box has no address, naming `[page] listen` for a LAN address and `[page] address` for a
+  WSL forward when Tailscale runs on Windows alone. The `[code]` ceiling goes to 25,993.
+
+**Upgrading**
+
+- yerkd.toml: on a box with Tailscale, the page's routes (and nothing else of yerkd's) are now on its tailnet address
+  with nothing set, each still opened only with its room's key. To keep the page on loopback alone, set
+  `[page] listen = "127.0.0.1"`. `[page] mac`, `[page] address` and `[page] listen` set to an address win as before.
+- The hands plug-in keeps its Mac in `mac.json` beside server.mjs, where its `mac` tool and the browser's Mac read it
+  (its branch `need-2026-11-04-50`); its rooms have it at their next session.
+
 ### entrypoint-name-2026-11-04 (#?)
 
 - Every Claude Code process Yerk AI starts (each room's, each worker's, the nightly curation's and the account checks)
