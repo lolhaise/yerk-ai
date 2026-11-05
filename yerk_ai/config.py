@@ -170,13 +170,15 @@ YERKD_WORDS = {
     "page": {"open": "the command that opens a room's live page on the owner's screen, a list, the address added last (default: the "
                      "box's own: wslview or Windows' url.dll under WSL, open on a Mac, xdg-open with a display)",
              "mac": "the ssh host of the owner's Mac, where the page tool's open with where mac runs `open` on the page's one-time "
-                    "address, handed on ssh's stdin (default: [imessage] host)",
+                    "address, handed on ssh's stdin (default: [imessage] host, else `ssh` in a mac.json beside an owner room's "
+                    "add-on's server, the hands plug-in's, a file of the owner's no one else writes)",
              "address": "yerkd as the owner's Mac reaches it, the box's tailnet or LAN host and its port (http://box.example.ts.net:8787; "
                         "no port: yerkd's), the address an open on the Mac carries and `yerk room page` prints (none: listen's, else "
                         "no page opens on the Mac)",
              "listen": "the box's tailnet or LAN address (100.64.0.1; `tailscale ip -4` prints the tailnet's) where yerkd also serves "
-                       "the page's routes, and nothing else, on its port, so the owner's Mac and phone open the page (default: none, "
-                       "loopback alone); a wildcard, a public address or a host name is refused"},
+                       "the page's routes, and nothing else, on its port, so the owner's Mac and phone open the page (default: the "
+                       "box's own tailnet address, as `tailscale ip -4` prints it at yerkd's start, else loopback alone; 127.0.0.1 "
+                       "keeps it on loopback alone); a wildcard, a public address or a host name is refused"},
     "style": {"dialect": "the owner's own filler words (their slang), joined after the neutral ones to the pushback, lead, trailing and name-cut word lists; the package ships none"},
     "watch": {"assistants": "other assistants' Discord user ids: in a channel a room watches, their messages go in its day log under their "
               "own label once they stop changing, never answered and never an instruction; their files, there or in the room's own "

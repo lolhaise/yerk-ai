@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -16,6 +17,7 @@ from yerk_ai import cli, mcp_server, words
 from yerk_ai.channels import page as pagemod
 from yerk_ai.channels.page import (Mirror, Page, address, board, cell, change, comments, into, plain, rich, run_line, run_tests,
                                    talk_lines)
+from yerk_ai.channels.page import tailnet as real_tailnet     # before conftest's no_tailnet puts its stand-in there
 from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai.daemon import Yerkd
 from yerk_ai.ledger import Ledger
@@ -870,6 +872,120 @@ def test_an_open_on_the_mac_says_in_words_what_it_lacks_and_mints_no_ticket_it_c
     assert pagemod.mac({"page": {"mac": "m", "address": "box.example.ts.net"}, "imessage": {"host": "other"}}, 4321) == (
         [*pagemod.MAC_SSH, "m", "/bin/bash", "-s"], "http://box.example.ts.net:4321")    # [page] mac first; yerkd's port
     assert pagemod.mac({"page": {"address": "100.64.0.1:8787"}}, 1) == words.PAGE_NO_MAC
+
+
+def add_on(tmp_path, ssh="owner@owner-mac", mode=0o644, name="addon"):
+    """An add-on's folder as the hands plug-in keeps it: its server's script and, beside it, the Mac its mac tool reaches."""
+    (folder := tmp_path / name).mkdir(exist_ok=True)
+    (folder / "server.mjs").write_text("// an add-on's MCP server\n")
+    (f := folder / pagemod.MAC_FILE).write_text(json.dumps({"ssh": ssh}))
+    f.chmod(mode)
+    return {"type": "stdio", "command": "/usr/bin/node", "args": [str(folder / "server.mjs")], "env": {"YERK_ROOM": "example-room"}}
+
+
+def test_the_mac_s_open_works_with_nothing_set_in_yerkd_toml_the_add_on_s_mac_and_the_box_s_tailnet(tmp_path, monkeypatch):
+    """need-2026-11-04-50, the wall a room hit: asked for the page on the Mac, it drew the page and the open came back
+    "no Mac is set up for the page", then would have said the Mac had no address, though the box reached the Mac by ssh for
+    the hands plug-in's mac tool and sat on the tailnet; a room cannot set yerkd.toml mid-conversation. With neither key set,
+    the Mac is the one an owner room's add-on names in its mac.json and the address is the box's own tailnet one, so one
+    deploy lands the page on the Mac; no family room's add-on is read, and a box on no tailnet still says so."""
+    y, _, state = plain_daemon(tmp_path)
+    args, opened = mac_box(tmp_path, monkeypatch)
+    y.conf.pop("page", None)
+    y.conf.pop("imessage", None)
+    got = asyncio.run(y.tool_page("example-room", {"open": True, "where": "mac"}))
+    assert got["line"] == f"{words.PAGE_ON}; {words.PAGE_NOT_OPENED_MAC.format(why=words.PAGE_NO_MAC)}" and not args.exists()
+    y.room_confs["example-quiet"]["privacy"] = "family"
+    y.room_confs["example-quiet"]["mcp"] = {"hands": add_on(tmp_path, "family@family-mac", name="family-addon")}
+    no_mac = words.PAGE_NOT_OPENED_MAC.format(why=words.PAGE_NO_MAC)
+    assert asyncio.run(y.tool_page("example-room", {"where": "mac"}))["line"].endswith(no_mac)     # an owner room's add-on only
+    y.room_confs["example-room"]["mcp"] = {"hands": add_on(tmp_path)}
+    got = asyncio.run(y.tool_page("example-room", {"where": "mac"}))
+    assert got["line"].endswith(words.PAGE_NOT_OPENED_MAC.format(why=words.PAGE_NO_ADDRESS)) and y.page.tickets == {}   # no tailnet
+    monkeypatch.setattr(pagemod, "tailnet", lambda: "100.64.0.9")
+    got = asyncio.run(y.tool_page("example-room", {"where": "mac"}))
+    assert got == {"ok": True, "opened": True, "line": f"{words.PAGE_WAS_ON}; {words.PAGE_OPENED_MAC}"}
+    assert args.read_text().splitlines() == [*pagemod.MAC_SSH[1:], "owner@owner-mac", "/bin/bash", "-s"]
+    key = (state / "secrets" / "pages" / "example-room.secret").read_text().strip()
+    url = opened.read_text().strip()
+    assert url.startswith(f"http://100.64.0.9:{y.port}/page?room=example-room&open=") and key not in url and key not in args.read_text()
+    y.write_status("discord")
+    assert json.loads((state / "yerkd.json").read_text())["page"] == f"http://100.64.0.9:{y.port}"      # `yerk room page` prints it
+    y.conf["page"] = {"mac": "owner-mac", "address": "box.example.ts.net"}     # either key set wins, as before
+    assert asyncio.run(y.tool_page("example-room", {"where": "mac"}))["line"].endswith(words.PAGE_OPENED_MAC)
+    assert "owner-mac" in args.read_text().splitlines() and opened.read_text().startswith(f"http://box.example.ts.net:{y.port}/page?")
+
+
+def test_the_page_is_on_the_box_s_own_tailnet_with_no_page_listen_and_loopback_alone_when_listen_says_so(tmp_path, monkeypatch):
+    """With [page] listen unset the page's routes are on the box's own tailnet address too (as `tailscale ip -4` prints it,
+    asked once a run), never a LAN address unasked, which would carry the page plain; listen naming an address wins, and
+    listen naming loopback keeps the page on loopback alone."""
+    assert pagemod.listen({}) == "" and pagemod.reach({}, 4321) == ""                # a box on no tailnet: loopback alone, as ever
+    monkeypatch.setattr(pagemod, "tailnet", lambda: "100.64.0.9")
+    for said, want in ((None, "100.64.0.9"), ("", "100.64.0.9"), ("127.0.0.1", ""), ("localhost", ""), ("::1", ""),
+                       ("192.168.1.20", "192.168.1.20")):
+        assert pagemod.listen({"page": {"listen": said}} if said is not None else {}) == want, said
+    assert pagemod.reach({}, 4321) == "http://100.64.0.9:4321"
+    assert pagemod.reach({"page": {"address": "box.example.ts.net"}}, 4321) == "http://box.example.ts.net:4321"
+    lent, _ = pagemod.bind("127.0.0.1", 0)
+    port = lent.getsockname()[1]
+    lent.close()
+    socks = pagemod.sockets({}, port)
+    try:
+        assert [s.getsockname()[:2] for s in socks] == [("127.0.0.1", port), ("100.64.0.9", port)]
+    finally:
+        for s in socks:
+            s.close()
+    assert pagemod.sockets({"page": {"listen": "127.0.0.1"}}, port) == []
+    bin_ = tmp_path / "bin"
+    bin_.mkdir()
+    (ts := bin_ / "tailscale").write_text(f'#!/bin/sh\necho "$@" >> "{tmp_path}/asked"\ncat "{tmp_path}/says"\n')
+    ts.chmod(0o700)
+    monkeypatch.setenv("PATH", f"{bin_}:/usr/bin:/bin")
+    for says, want in (("100.64.0.9\n", "100.64.0.9"), ("192.168.1.20\n", ""), ("", ""), ("not an address\n", "")):
+        (tmp_path / "says").write_text(says)
+        assert real_tailnet.__wrapped__() == want, says
+    assert (tmp_path / "asked").read_text().splitlines() == ["ip -4"] * 4
+    (tmp_path / "says").write_text("100.64.0.9\n")
+    real_tailnet.cache_clear()
+    try:
+        assert real_tailnet() == real_tailnet() == "100.64.0.9" and len((tmp_path / "asked").read_text().splitlines()) == 5   # once a run
+    finally:
+        real_tailnet.cache_clear()
+    monkeypatch.setenv("PATH", str(tmp_path / "nowhere"))
+    assert real_tailnet.__wrapped__() == ""                                     # no tailscale on the box
+
+
+def test_an_add_on_s_mac_is_taken_only_from_a_file_of_the_owner_s_no_one_else_writes_and_only_as_a_host(tmp_path, monkeypatch):
+    """The Mac an add-on names carries the one-time address on ssh's stdin, so only a mac.json of the owner's that no other
+    user may write and none under Yerk's state folder, where each room's folder is, is read, and only a host or user@host,
+    never an option; yerkd.toml's keys win over it."""
+    state = tmp_path / "state"
+    assert pagemod.addon_mac([add_on(tmp_path)], state) == "owner@owner-mac"
+    assert pagemod.addon_mac([{"command": str(tmp_path / "addon" / "server.mjs")}]) == "owner@owner-mac"      # the script as command
+    assert pagemod.addon_mac(["not a table", {"command": "node", "args": "server.mjs"}, {"args": [3]}, {}]) == ""
+    assert pagemod.addon_mac([{"command": "/usr/bin/node"}, add_on(tmp_path, "second@second-mac", name="b"), add_on(tmp_path)]) == "second@second-mac"
+    for ssh in ("-oProxyCommand=touch x", "owner@owner-mac -p 2", "", "owner@", "@owner-mac", "owner@owner;mac"):
+        assert pagemod.addon_mac([add_on(tmp_path, ssh)]) == "", ssh
+    assert pagemod.addon_mac([add_on(tmp_path, mode=0o646)]) == ""              # any user may write it
+    assert pagemod.addon_mac([add_on(tmp_path, ssh="mac")]) == "mac"            # an ssh config's own name for it
+    (state / "rooms" / "example-room" / "work").mkdir(parents=True)
+    under = add_on(state / "rooms" / "example-room" / "work")                    # a room could write this one
+    assert pagemod.addon_mac([under], state) == "" and pagemod.addon_mac([under]) == "owner@owner-mac"
+    (tmp_path / "addon" / pagemod.MAC_FILE).write_text("[not, json")
+    assert pagemod.addon_mac([{"command": str(tmp_path / "addon" / "server.mjs")}]) == ""
+    shared = add_on(tmp_path, mode=0o664)
+    me = pagemod.pwd.getpwuid(pagemod.os.getuid()).pw_name
+    monkeypatch.setattr(pagemod.grp, "getgrgid", lambda gid: SimpleNamespace(gr_name=me, gr_mem=[]))
+    assert pagemod.addon_mac([shared]) == "owner@owner-mac"                  # the owner's own group: only the owner writes it
+    monkeypatch.setattr(pagemod.grp, "getgrgid", lambda gid: SimpleNamespace(gr_name=me, gr_mem=["someone-else"]))
+    assert pagemod.addon_mac([shared]) == ""
+    monkeypatch.setattr(pagemod.grp, "getgrgid", lambda gid: SimpleNamespace(gr_name="staff", gr_mem=[]))
+    assert pagemod.addon_mac([shared]) == ""
+    servers = [add_on(tmp_path)]
+    assert pagemod.mac({"page": {"mac": "owner-mac", "listen": "100.64.0.1"}}, 1, servers)[0][-3] == "owner-mac"
+    assert pagemod.mac({"imessage": {"host": "texts-mac"}, "page": {"listen": "100.64.0.1"}}, 1, servers)[0][-3] == "texts-mac"
+    assert pagemod.mac({"page": {"listen": "100.64.0.1"}}, 1, servers) == ([*pagemod.MAC_SSH, "owner@owner-mac", "/bin/bash", "-s"], "http://100.64.0.1:1")
 
 
 def page_head(**given):

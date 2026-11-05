@@ -498,9 +498,10 @@ PAGE_OPEN_SILENT = "it said nothing"
 PAGE_WHERE = "where is pc (the box's own screen, the default) or mac (the owner's Mac), not {where}"
 PAGE_OPENED_MAC = "opened on the owner's Mac"
 PAGE_NOT_OPENED_MAC = "not opened on the owner's Mac: {why}; the page is on, and where pc opens it on the box's own screen"
-PAGE_NO_MAC = "no Mac is set up for the page: [page] mac in yerkd.toml names its ssh host ([imessage] host does too)"
-PAGE_NO_ADDRESS = ("the Mac has no address for the page: [page] listen in yerkd.toml serves it on the box's tailnet or LAN address "
-                   "([page] address names another way to yerkd's port)")
+PAGE_NO_MAC = ("no Mac is set up for the page: [page] mac in yerkd.toml names its ssh host ([imessage] host does too, and so "
+               "does a mac.json beside an owner room's add-on, the hands plug-in's)")
+PAGE_NO_ADDRESS = ("the Mac has no address for the page: yerkd serves it on the box's tailnet when tailscale is up at its start, "
+                   "else [page] listen in yerkd.toml names the box's LAN address ([page] address names another way to yerkd's port, a WSL forward's)")
 PAGE_MAC_SSH = "the Mac did not answer over ssh: {why}"
 # [page] listen (channels/page.py listen): the box's one tailnet or LAN address the page is also served on, or why not
 PAGE_LISTEN_EVERY = "[page] listen {x} is every network the box is on, a café's too: name its tailnet or LAN address"
