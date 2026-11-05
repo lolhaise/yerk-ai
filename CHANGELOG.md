@@ -8,6 +8,12 @@ version changes.
 
 ## 2026-11-05
 
+### workflow-truth (#?)
+
+- The GitHub Actions workflow runs the checks the project's own test machine runs, in its order, so a fork's CI is the
+  real one: `uv lock --check` and the system tools the tests use (bubblewrap, ffmpeg) are new, and the line counts leave
+  it. The web plug-in's job stays as it was. Nothing in the code changes.
+
 ### need-branch-drop (#?)
 
 - A need's branch goes when the need goes live, on the pipeline's road and the hand road alike: deleted in the checkout,
