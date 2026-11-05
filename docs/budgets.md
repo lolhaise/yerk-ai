@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 119405`
+- `total = 120405`
 
 ## [session_start.claude_code]
 
@@ -68,9 +68,11 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-04) takes it from 852 to 1,032 as this tree builds it on Python 3.13, all 19 to 19,661, about 20,250 as sent (589 over the build, as on need 49's tree); so 20,300, no part could pay, the total rose by the 200 (to 119,205).
 
+2026-11-05, need-2026-11-04-53: the `texts` tool (the owner's recent texts read from the Mac, kept as a copy on the box so a room asked whether someone has texted answers from the last copy and says its time while the Mac sleeps, since a room asked whether a text had come in could not read the owner's Messages over ssh with the Mac asleep) is 987 as this tree builds it on Python 3.13, all 20 to 20,648, about 21,268 as sent (620 over the build, 31 a tool as on the others); so 21,300, no part could pay, the total rose by the 1,000 (to 120,405, re-measured as sent on deploy).
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
-- `yerk_tools = 20300`
+- `yerk_tools = 21300`
 - `deferred_tool_names = 3429`
 - `mcp__hands__ = 8165`
 - `mcp__web-ladder__web_image = 913`
@@ -497,7 +499,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-04, need-2026-11-04-50 with main folded in (need-2026-11-04-49's 1 line fewer): 25,992.
 
-- `lines = 25992`
+2026-11-05, need-2026-11-04-53 raised it by 194, the `texts` tool: the owner's recent texts read from the Mac's Messages database over ssh (a read-only sqlite, no Messages grant) and kept as a private copy under the state folder, with a light daemon check that refreshes the copy whenever the Mac is awake, its own short wakes included, so a room asked whether someone has texted answers from the last copy and says its time while the Mac sleeps, with nothing that keeps it awake or wakes it (inbox.py 132: the read, the parse, the copy and the refresh; daemon.py 41: the tool, the mac-host resolve and the light-check loop; mcp_server.py 12, words.py 6 and config.py 3: the tool, its words and the poll key); the night a room could not say whether a text had come in, not folded to fit. 26,186.
+
+- `lines = 26186`
 
 ## Uncapped
 

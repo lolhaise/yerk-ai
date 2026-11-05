@@ -52,14 +52,15 @@ def test_the_hook_endpoint_answers_over_http(tmp_path):
     assert other.json() == {}
 
 
-def test_nineteen_preloaded_tools_with_slim_schemas(tmp_path):
+def test_twenty_preloaded_tools_with_slim_schemas(tmp_path):
     y = daemon(tmp_path)
     tools = {t.name: t for t in asyncio.run(mcp_server.build(y, y.port, y.hook).list_tools())}
     assert set(tools) == {"send", "hold", "recall", "read_memory", "remember", "worker", "schedule", "settings", "transcribe",
                           "voice_note", "seen", "render", "watch", "need", "text", "delete", "reverse_image_search", "github_state",
-                          "page"}
+                          "page", "texts"}
     assert list(tools["page"].inputSchema["properties"]) == ["code", "tests", "marks", "hint", "bar", "timer", "stall", "open", "where", "off"]
     assert list(tools["text"].inputSchema["properties"]) == ["to", "text"]
+    assert list(tools["texts"].inputSchema["properties"]) == ["limit"]
     assert list(tools["reverse_image_search"].inputSchema["properties"]) == ["path"]
     assert list(tools["github_state"].inputSchema["properties"]) == ["branch_or_pr"]
     assert list(tools["delete"].inputSchema["properties"]) == ["paths"]

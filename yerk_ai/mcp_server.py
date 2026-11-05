@@ -2,8 +2,8 @@
 # official Python SDK) and the send tool's shape are adapted from Hermes Agent v0.22.2,
 # mcp_serve.py (create_mcp_server, messages_send), https://github.com/NousResearch/hermes-agent
 # Copyright (c) 2025 Nous Research. MIT License. See NOTICE.
-"""Yerk AI's own MCP server: nineteen tools (send, hold, recall, read_memory, remember, worker, schedule, settings, transcribe,
-voice_note, seen, render, watch, need, text, delete, reverse_image_search, github_state, page), local-only HTTP, preloaded in every room;
+"""Yerk AI's own MCP server: twenty tools (send, hold, recall, read_memory, remember, worker, schedule, settings, transcribe,
+voice_note, seen, render, watch, need, text, delete, reverse_image_search, github_state, page, texts), local-only HTTP, preloaded in every room;
 transcribe, voice_note, watch, text, reverse_image_search and github_state are here and not plug-ins because the daemon has the network
 plug-ins because the daemon has the network (and github_state the token) and a room's shell has none, seen because no owner room has a Write tool, render
 a writable /tmp a room's sandbox does not give (and LaTeX a sandbox of its own, a shell or none), and delete because that sandbox mounts all but the room's folders read-only. A worker gets none of it: by default no MCP server at all, and with
@@ -68,6 +68,7 @@ class Daemon(Protocol):
     async def tool_reverse_image_search(self, room: str, path: str) -> dict[str, Any]: ...
     async def tool_github_state(self, room: str, branch_or_pr: str) -> dict[str, Any]: ...
     async def tool_page(self, room: str, req: dict[str, Any]) -> dict[str, Any]: ...
+    async def tool_texts(self, room: str, limit: int) -> dict[str, Any]: ...
 
 
 def caller_room(ctx: Context) -> str:
@@ -287,6 +288,17 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         exactly as it should arrive. It is held for the owner to read first: once they say the word, call it again the same
         and it goes once. A result with `maybe_sent` may have gone out: say so, and never send it again unasked."""
         return json.dumps(await daemon.tool_text(caller_room(ctx), to, text))
+
+    @mcp.tool()
+    async def texts(limit: int = 0, *, ctx: Context) -> str:
+        """The owner's own recent texts (iMessage and SMS), newest first, read from the owner's Mac: use it to answer
+        whether someone has texted, or what a text said. This only reads; it never sends one (that is `text`). `limit` how
+        many to return (12 unless you ask, up to 40). Each message has `who` (the other person's number or address, empty
+        for one the owner sent), `from_me`, `at` (epoch seconds) and `text`. The owner's Mac sleeps when its lid is shut on
+        battery, so the texts are kept as a copy on the box, refreshed whenever the Mac is awake: `as_of` says where this
+        answer comes from. With `awake` true it was just read from the Mac; with it false the Mac is asleep or away and the
+        answer is the last copy, whose age `as_of` gives, so say that time and do not pass a stale answer off as fresh."""
+        return json.dumps(await daemon.tool_texts(caller_room(ctx), limit))
 
     @mcp.tool()
     async def delete(paths: list[str], *, ctx: Context) -> str:

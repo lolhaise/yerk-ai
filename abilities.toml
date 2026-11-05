@@ -206,19 +206,22 @@ upgrade = "jobs"
 
 [abilities.text]
 state = "built"
-what = "The text tool on Yerk's own MCP server: a room the owner asks to text someone sends one text in the owner's name, an iMessage or else an SMS, from the owner's own Mac, to that person's phone number or email address. Nothing goes before the owner has seen it: the call is held in the room with its words and who it goes to shown as they will read, and it goes once, on the owner's approval word; an edit is a new preview. The daemon sends it, since a room's shell has no network and plain ssh holds no grant to drive Messages."
+what = "Two tools on Yerk's own MCP server for the owner's Messages on his own Mac: text sends one, texts reads his recent ones. Sending: a room the owner asks to text someone sends one text in the owner's name, an iMessage or else an SMS, to that person's phone number or email address, held in the room with its words and who it goes to shown as they will read and sent once on the owner's approval word; an edit is a new preview. Reading: a room asked whether someone has texted, or what a text said, reads his recent texts newest first and never sends; his Mac sleeps when its lid is shut on battery, so they are kept as a private copy on the box, refreshed whenever the Mac is awake, and a room asked while the Mac sleeps answers from the last copy and says that copy's time. The daemon does both, since a room's shell has no network and plain ssh holds no grant to drive Messages."
 how = [
-  "Preview first: the text-out gate holds each call and shows the room its words and who it goes to, never its JSON; the owner's approval word releases that exact call once, and the daemon sends only a call the gate released, so a rule turned off or a hook that failed open sends nothing.",
+  "Preview first: the text-out gate holds each send and shows the room its words and who it goes to, never its JSON; the owner's approval word releases that exact call once, and the daemon sends only a call the gate released, so a rule turned off or a hook that failed open sends nothing.",
   "Before the ask: a person's room, an install with no Mac set up, a name in place of a number or an address, or an empty text is refused at the gate, so the owner is never asked to approve a text that could not go.",
   "The way to the Mac: ssh to [imessage] host, then socat to the socket of the Mac's bridge, a small app there that holds Messages' grants and serves imsg's JSON-RPC; a status first, then one send of the number or address, the text and the service (auto by default: iMessage where the person has it, else SMS through the phone), on a connection of its own.",
   "Told apart: no answer to the status, or an error to the send, is not sent; no answer to the send, or the bridge's own may-have-completed answer, may have gone out, and the room says so and never sends it again unasked.",
-  "Receipt: each text's outcome is a gate row after its hold, the word and the release, with who it went to, its length and the id Messages gave it.",
+  "Reading: a read-only sqlite of the Mac's Messages database over plain ssh (no Messages grant, unlike the send), the newest messages of who, when, which way and the words, from an owner's room only; it never writes, installs, deletes or sends.",
+  "The copy: a light daemon check reads the newest texts whenever the Mac answers, its own short wakes included (a shut Mac still wakes itself for a minute or two to take a message), and writes them under the state folder, 0600, as private as the rest of it; ssh to a sleeping Mac fails fast and nothing is retried, so it never keeps the Mac awake or wakes it, and with the Mac away a read answers from the last copy and gives its age, or says there is no copy yet rather than guess.",
+  "Receipt: each send's outcome is a gate row after its hold, the word and the release, with who it went to, its length and the id Messages gave it; a read is never gated and leaves no text on a command line.",
 ]
 tier = "free"
-needs = "a Mac signed into the owner's Messages (the phone's text forwarding on, for SMS), the bridge app on it, and an ssh path from the box: [imessage] host and socket in yerkd.toml"
+needs = "a Mac signed into the owner's Messages (the phone's text forwarding on, for SMS) and an ssh path from the box: [imessage] host in yerkd.toml; sending also needs the bridge app on the Mac and its socket, reading the ssh login's full-disk access to read the Messages database"
 price = "none"
 free_path = "this is the free path"
-asked_as = ["text her for me", "text him for me", "text them for me", "send a text for me", "send an imessage", "text from my phone"]
+asked_as = ["text her for me", "text him for me", "text them for me", "send a text for me", "send an imessage", "text from my phone",
+            "did she text me back", "has he texted me", "check my texts", "read my texts", "any new texts", "did i get a text"]
 
 [abilities.delete-outside]
 state = "built"

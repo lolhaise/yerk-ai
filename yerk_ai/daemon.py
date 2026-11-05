@@ -28,8 +28,8 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 from zoneinfo import ZoneInfo
 
-from . import (beat, context, deletes, deploy, doctor, evidence, gates, github, hooks, jobs, location, mcp_server, memory, mentions, needs,
-               pictures, pipeline, render, reverse_image, status, taste, texts, transcribe, voice_note, watch, workers)
+from . import (beat, context, deletes, deploy, doctor, evidence, gates, github, hooks, inbox, jobs, location, mcp_server, memory, mentions,
+               needs, pictures, pipeline, render, reverse_image, status, taste, texts, transcribe, voice_note, watch, workers)
 from .accounts import Account, Cooldowns, from_dir, load_accounts, pick
 from .channels import page
 from .channels.page import Page
@@ -49,7 +49,7 @@ log = logging.getLogger("yerk.daemon")
 YERK_TOOLS = ["mcp__yerk__send", "mcp__yerk__hold", "mcp__yerk__recall", "mcp__yerk__read_memory",
               "mcp__yerk__remember", "mcp__yerk__worker", "mcp__yerk__schedule", "mcp__yerk__settings", "mcp__yerk__transcribe",
               "mcp__yerk__voice_note", "mcp__yerk__seen", "mcp__yerk__render", "mcp__yerk__watch", "mcp__yerk__need", texts.TOOL, deletes.TOOL,
-              "mcp__yerk__reverse_image_search", "mcp__yerk__github_state", "mcp__yerk__page"]
+              "mcp__yerk__reverse_image_search", "mcp__yerk__github_state", "mcp__yerk__page", "mcp__yerk__texts"]
 # A shell room's sandbox when rooms.toml gives it no [rooms.NAME.sandbox] table: unsandboxed, a Read deny stops `cat` and
 # the Read tool, but a script, grep or redirect read every secret (Claude Code 2.1.304, PR 66's cold read, 2026-10-21)
 SANDBOX = {"enabled": True, "autoAllowBashIfSandboxed": True}
@@ -679,6 +679,32 @@ class Yerkd:
                          tool=texts.TOOL, rule="text-out", detail=f"to {texts.handle(to)}, {len(text)} characters, {r.get('guid') or r.get('error')}"[:300])
         log.info("text: %s, %s, %d characters", room, how, len(text))
         return r
+
+    def mac_host(self) -> str:
+        """The Mac for reading the owner's texts, the one the `text` tool and the mac tool reach: [imessage] host, else the
+        Mac an owner room's add-on reaches by ssh (page.addon_mac, the hands plug-in's mac.json); "" when none is named."""
+        if host := str(dict(self.conf.get("imessage") or {}).get("host") or "").strip():
+            return host
+        servers = [s for n, c in self.room_confs.items() if self.owner(n) for s in dict(c.get("mcp") or {}).values()]
+        return page.addon_mac(servers, self.state)
+
+    async def tool_texts(self, room: str, limit: int = 0) -> dict[str, Any]:
+        """The `texts` tool: the owner's recent texts, read from the Mac's Messages database (inbox.read), from an owner's
+        room only. With the Mac awake the copy on the box is refreshed first and the answer is live; with it asleep the
+        answer is the last copy and says that copy's time, so a stale answer is never passed off as a fresh one."""
+        if not self.owner(room) or room not in self.rooms:
+            return {"ok": False, "error": words.TEXTS_OWNER_ROOMS}
+        if not (host := self.mac_host()):
+            return {"ok": False, "error": words.TEXTS_NO_SETUP}
+        n = min(limit or inbox.SHOW, inbox.LIMIT)
+        fresh = await asyncio.to_thread(inbox.refresh, self.state, host)    # try the Mac now; it copies when awake
+        copy = fresh or await asyncio.to_thread(inbox.read_copy, self.state)
+        if copy is None:
+            return {"ok": False, "awake": fresh is not None, "error": words.TEXTS_NONE}
+        awake, at = fresh is not None, float(copy.get("at") or 0.0)
+        note = words.TEXTS_LIVE if awake else words.TEXTS_FROM_COPY.format(when=words.since(max(0.0, time.time() - at)))
+        log.info("texts: %s, %s, %d message(s)", room, "live" if awake else "from the copy", len(copy["messages"]))
+        return {"ok": True, "awake": awake, "at": at, "as_of": note, "messages": copy["messages"][:n]}
 
     def own_paths(self) -> list[Path]:
         """Yerk AI's own, which no delete touches: its code, its state and private folders, the memory, each account's folder."""
@@ -1592,6 +1618,19 @@ class Yerkd:
             except Exception:
                 log.exception("workers: the reconcile pass failed")
 
+    async def refresh_inbox(self, every: float) -> None:
+        """The light check behind the `texts` tool: every `every` seconds, read the owner's newest texts off the Mac if it
+        answers and copy them to the box, its own short wakes included, so a room asked while the Mac sleeps answers from a
+        copy no older than the Mac's last wake. Never a busy loop (it sleeps between checks) and never a keep-awake or a
+        wake: ssh fails fast on a shut Mac and nothing is retried. [imessage] poll_seconds = 0 turns it off (not started)."""
+        while True:
+            await asyncio.sleep(every)
+            if host := self.mac_host():
+                try:
+                    await asyncio.to_thread(inbox.refresh, self.state, host)
+                except Exception:
+                    log.exception("inbox: the light check failed")
+
     async def run_discord(self) -> None:
         from .channels.discord import DiscordChannel
         d = self.conf.get("discord", {})
@@ -1634,8 +1673,10 @@ class Yerkd:
         dc.after_recover.append(self.pipeline.tick)      # the needs pipeline at start: a deploy proven meanwhile is live
         self.write_status("discord")
         self.link = dc
+        poll = float(dict(self.conf.get("imessage") or {}).get("poll_seconds", inbox.POLL))
+        checks = [self.refresh_inbox(poll)] if poll > 0 else []      # [imessage] poll_seconds = 0: the texts copy is off
         tasks = [asyncio.create_task(c) for c in (self.serve_http(), self.reap(min(60.0, self.idle_seconds / 2)),
-                                                   self.beat.tick(self.listening), self.pipeline.watch(), dc.start())]
+                                                   self.beat.tick(self.listening), self.pipeline.watch(), *checks, dc.start())]
         await self.until_stopped(tasks, dc.close)
 
 
