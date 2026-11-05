@@ -14,7 +14,8 @@ from starlette.testclient import TestClient
 
 from yerk_ai import cli, mcp_server, words
 from yerk_ai.channels import page as pagemod
-from yerk_ai.channels.page import Mirror, Page, address, board, cell, change, comments, plain, rich, run_line, run_tests
+from yerk_ai.channels.page import (Mirror, Page, address, board, cell, change, comments, into, plain, rich, run_line, run_tests,
+                                   talk_lines)
 from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai.daemon import Yerkd
 from yerk_ai.ledger import Ledger
@@ -1065,3 +1066,160 @@ def test_an_address_the_box_has_not_got_yet_is_bound_all_the_same_so_a_tailnet_u
     six, up = pagemod.bind("2001:db8::10", 0)
     assert not up and six.family == pagemod.socket.AF_INET6
     six.close()
+
+
+def test_with_the_chat_closed_the_room_s_replies_go_into_the_program_under_the_owner_s_last_comment(tmp_path):
+    """need-2026-11-04-51, the wall the ask hit: the room's replies rendered only in the chat pane, so a room talking to the
+    owner in the program rewrote the whole program with #> lines, which threw the caret to the end and would overwrite what
+    was typed between its read and its write. With the chat closed the page itself writes each reply into the program as
+    #> lines under the owner's last # line, in yerkd's copy and the room's last heard one alike (the room is never told it
+    typed them, and a #> line is never the owner's talk), and every tab gets the line and the words to write in its own
+    text; the switch rides in the next message and is kept across a restart."""
+    p, room = hub(tmp_path, quiet=60)
+    p.draw("r", {"code": "def add(a, b):\n    return a - b\n"})
+
+    async def go():
+        tab = p.stream("r", beat=0.05)
+        await tab.__anext__()
+        p.said("r", "said with the chat open")                     # the chat open: the chat alone
+        await tab.__anext__()
+        await p.event("r", {"kind": "talk", "on": True})
+        await p.event("r", {"kind": "edit", "pane": "code", "text": "# why minus?\ndef add(a, b):\n    return a - b\n", "send": True})
+        p.said("r", "**Look** at line 3: it subtracts.\n\nMake it a plus.")
+        ops = [json.loads(await tab.__anext__()) for _ in range(3)]
+        await tab.aclose()
+        return ops
+    mine, said, talk = asyncio.run(go())
+    assert room.got[0].text.splitlines()[1:] == ["typed in solution.py:", "@@ -1 +1,2 @@", "+# why minus?", " def add(a, b):",
+                                                 "said in solution.py at line 1, as a # comment: why minus?", words.PAGE_TALK_ON]
+    lines = ["#> **Look** at line 3: it subtracts.", "#>", "#> Make it a plus."]
+    want = "# why minus?\n" + "\n".join(lines) + "\ndef add(a, b):\n    return a - b\n"
+    s = p.sheets["r"]
+    assert mine["line"]["at"] == 1 and said["line"]["text"].startswith("**Look**") and talk == {"talk": {"line": 1, "text": "# why minus?", "lines": lines}}
+    assert s.code == s.heard[0] == want and (tmp_path / "rooms" / "r" / "work" / "page" / "solution.py").read_text() == want
+    assert [x["text"] for x in s.lines] == ["said with the chat open", "why minus?", "**Look** at line 3: it subtracts.\n\nMake it a plus."]
+    assert "#> " not in "".join(s.code.split("\n")[:1]) and comments("", want) == [(1, "why minus?")]   # #> is never his talk
+    assert p.flush("r") == ""                                    # nothing typed since: nothing goes, the room never typed #>
+    assert {"kind": "talked", "under": 1, "lines": 3} == {k: v for k, v in events(tmp_path)[-1].items() if k != "t"}
+    again = Page(tmp_path, p.ledger)
+    again.add_room(Taken())
+    assert again.sheets["r"].talk and again.sheets["r"].state()["state"]["talk"] is True     # kept across a restart
+    asyncio.run(again.event("r", {"kind": "talk", "on": False}))
+    again.said("r", "back on the chat")
+    assert again.sheets["r"].code == want and again.sheets["r"].waiting == [words.PAGE_TALK_OFF]
+
+
+def test_a_comment_line_ended_with_enter_goes_at_once_not_after_the_pause(tmp_path):
+    """need-2026-11-04-51: a # line the owner ends with Enter goes to the room now, not after the 1.5 s pause."""
+    p, room = hub(tmp_path, quiet=60)
+
+    async def go():
+        await p.event("r", {"kind": "edit", "pane": "code", "text": "# make a snake game"})
+        assert room.got == []                                    # still typing on it: waits for the pause
+        await p.event("r", {"kind": "edit", "pane": "code", "text": "# make a snake game\n", "send": True})
+        await p.event("r", {"kind": "edit", "pane": "code", "text": "# make a snake game\n", "send": True})   # nothing new
+    asyncio.run(go())
+    assert len(room.got) == 1 and room.got[0].text.splitlines()[-1] == "said in solution.py at line 1, as a # comment: make a snake game"
+    assert p.sheets["r"].asked == (1, "# make a snake game") and p.sheets["r"].quiet is None
+    script = pagemod.HTML.read_text().split("<script>", 1)[1]
+    typed = script.split("function typed(", 1)[1].split("\nfunction ", 1)[0]
+    assert "insert(LineBreak|Paragraph)" in typed and "owned(before[before.length - 2])" in typed and "send: true" in typed
+    assert 'if (e.key === "Enter" && !e.isComposing) enter = true;' in script
+
+
+def test_into_puts_the_lines_under_the_comment_said_last_at_its_indent_after_earlier_replies_else_at_the_end():
+    code = "# one\nx = 1\ndef f():\n    # why this?\n    #> earlier\n    return x\n# one\n"
+    assert into(code, (4, "# why this?"), ["#> now"]) == (code.replace("#> earlier\n", "#> earlier\n    #> now\n"), 4, "# why this?")
+    assert into(code, (7, "# one"), ["#> b"])[1:] == (7, "# one") and into(code, (2, "# one"), ["#> a"])[1:] == (1, "# one")   # the nearest
+    assert into(code, (9, "# gone"), ["#> c"])[1:] == (7, "# one")                 # deleted since: the owner's lowest # line
+    assert into("x = 1\n", (0, ""), ["#> d"]) == ("x = 1\n#> d\n", 0, "") and into("x = 1", (0, ""), ["#> d"])[0] == "x = 1\n#> d"
+    assert into("", (0, ""), ["#> e"]) == ("#> e\n", 0, "") and into("#!/bin/env python3\n#> f\n", (0, ""), ["#> g"])[0] == "#!/bin/env python3\n#> f\n#> g\n"
+    url = "https://example.org/" + "a" * 100
+    wide = talk_lines("word " * 40 + "\n" + url + "\n```\n" + "y" * 120 + "\n```")
+    assert all(len(x) <= pagemod.TALK_WIDTH + 3 for x in wide[:3]) and f"#> {url}" in wide and f"#> {'y' * 120}" in wide
+    cut = talk_lines("\n".join(f"line {i}" for i in range(100)))
+    assert len(cut) == pagemod.DIFF_LINES and cut[-1] == "#> " + words.PAGE_TALK_CUT.format(n=100 - pagemod.DIFF_LINES + 1)
+
+
+def tab_talk(text, caret, op):
+    """The page's own talk(), run by node on a stand-in textarea that does setRangeText as a browser does ("preserve"):
+    the text after, the caret after and the edit it posted."""
+    script = pagemod.HTML.read_text().split("<script>", 1)[1]
+    fns = "".join(f"function {name}(" + script.split(f"\nfunction {name}(", 1)[1].split("\n}\n", 1)[0] + "\n}\n" for name in ("owned", "talk"))
+    harness = ("const [text, caret, op] = JSON.parse(process.argv.at(-1)); const posted = [];\n"
+               "const ta = { value: text, selectionStart: caret, selectionEnd: caret, setRangeText(r, a, b, mode) {\n"
+               "  const d = r.length - (b - a); this.value = this.value.slice(0, a) + r + this.value.slice(b);\n"
+               "  const s = this.selectionStart; this.selectionStart = this.selectionEnd = s > b ? s + d : s > a ? a : s; } };\n"
+               "const panes = { code: { ta } }, gutter = () => {}, sync = () => {}, roomLines = () => {}, post = (p, b) => posted.push(b);\n"
+               + fns + "talk(op); console.log(JSON.stringify({ text: ta.value, caret: ta.selectionStart, posted }));\n")
+    done = subprocess.run(["node", "-e", harness, json.dumps([text, caret, op])], capture_output=True, text=True, timeout=60)
+    assert done.returncode == 0, done.stderr
+    return json.loads(done.stdout)
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="node runs the page's script; it is not on this box")
+def test_the_tab_writes_the_room_s_lines_in_its_own_text_keeping_the_caret_and_what_was_typed_since(tmp_path):
+    """need-2026-11-04-51: the tab writes the room's #> lines at the line yerkd found, in its own text, so a line the owner
+    typed after yerkd's copy keeps its place and the caret moves down with its line; the same lines as yerkd's copy."""
+    code = "x = 1\n# why?\n"
+    new, at, anchor = into(code, (2, "# why?"), ["#> because"])
+    op = {"line": at, "text": anchor, "lines": ["#> because"]}
+    got = tab_talk(code, len(code), op)                                       # the caret on the line under his comment
+    assert got["text"] == new and got["caret"] == len(new) and got["posted"] == [{"kind": "edit", "pane": "code", "text": new}]
+    typed = "x = 1\n# why?\nprint(x)"                                       # typed since yerkd's copy: kept, the caret with it
+    got = tab_talk(typed, len(typed), op)
+    assert got["text"] == "x = 1\n# why?\n#> because\nprint(x)" and got["caret"] == len(got["text"])
+    got = tab_talk("x = 1\n# why?", 3, op)                                  # a caret above: where it was
+    assert got["text"] == "x = 1\n# why?\n#> because" and got["caret"] == 3
+    moved = "# new line on top\n" + code                                     # lines added above: found by its words
+    assert tab_talk(moved, 0, op)["text"] == into(moved, (2, "# why?"), ["#> because"])[0]
+    indented = "def f():\n    # here?\n    return 1\n"
+    want, at, anchor = into(indented, (2, "# here?"), ["#> yes"])
+    assert tab_talk(indented, 0, {"line": at, "text": anchor, "lines": ["#> yes"]})["text"] == want == indented.replace("?\n", "?\n    #> yes\n")
+
+
+@boxed
+def test_a_program_with_blank_tests_runs_alone_and_its_prints_are_shown_large_and_said(tmp_path):
+    """need-2026-11-04-51: the run's print output shown large, so one surface holds code, talk, output and ink; a program
+    with no tests (one the room made on a #make line) runs alone, as a script, in the same sandbox."""
+    r = run_tests('print("hello")\nif __name__ == "__main__":\n    print("as a script")\n', "")
+    assert r["ok"] and r["main"] and r["output"] == "hello\nas a script\n" and r["ran"] == 0
+    assert run_line(r) == f"{words.PAGE_MAIN}\n{words.PAGE_PRINTED.format(output='hello' + chr(10) + 'as a script')}"
+    bad = run_tests("print(1)\nprint(1 / 0)\n", "\n")
+    assert not bad["ok"] and bad["line"] == 2 and run_line(bad).startswith(words.PAGE_MAIN_ERROR.format(error="ZeroDivisionError: division by zero", line=" (line 2)"))
+    p, room = hub(tmp_path)
+
+    async def go():
+        await p.run("r", {"code": 'print("one")\n', "tests": ""})
+        await asyncio.sleep(0.2)
+        await p.run("r", {"code": 'print("two")\n'})              # a new print is news
+        await asyncio.sleep(0.2)
+    asyncio.run(go())
+    assert [m.text.splitlines()[-1] for m in room.got] == ["one", "two"]
+    css, body = pagemod.HTML.read_text().split("</style>", 1)
+    out = next(v for k, v in styles(css).items() if k.endswith("*/ #out"))      # the rule under its comment
+    assert int(re.search(r"(\d+)px", out["font"])[1]) >= 16 and out["white-space"] == "pre-wrap"     # large, its lines kept
+    results = body.split('id="results"', 1)[1].split("</div></div>", 1)[0]
+    assert results.index('id="sum"') < results.index('<pre id="out" hidden>') < results.index('id="rows"')
+    show = body.split("function showRun(", 1)[1].split("\nfunction ", 1)[0]
+    assert "out.textContent = (r && r.output)" in show and "r.main" in show and 'make("pre"' not in show
+
+
+def test_the_chat_closes_to_nothing_and_the_page_remembers_it(tmp_path):
+    """need-2026-11-04-51, the other wall: the chat's split was clamped to 15 to 80 of the width, so it could not be closed.
+    Under CLOSE it is 0: the chat closed to nothing, the program the whole width, kept in the browser and by yerkd (talk),
+    which every tab that opens shows; a button closes it and one on the bar brings it back."""
+    css, body = pagemod.HTML.read_text().split("</style>", 1)
+    rules = styles(css)
+    wide = next(v for k, v in rules.items() if k.endswith("*/ body.chatless"))      # the wide screen's, under its comment
+    assert wide["grid-template"] == '"bar bar" auto "main grip" minmax(0, 1fr) / minmax(0, 1fr) 10px'
+    assert rules["body.chatless"]["grid-template"] == '"bar" auto "main" minmax(0, 1fr) / minmax(0, 1fr)'     # a narrow one's
+    assert rules["body.chatless #chat"]["display"] == "none" and "#chat .head button:not(#close-chat)" in css
+    assert 'id="close-chat"' in body.split('id="chat"', 1)[1] and 'id="open-chat"' in body.split('id="bar"', 1)[1].split("</header>", 1)[0]
+    script = body.split("<script>", 1)[1]
+    split = script.split("function split(", 1)[1].split("\n}\n", 1)[0]
+    assert "pct < CLOSE" in split and "pct = 0" in split and 'post("event", { kind: "talk", on: chatless })' in split
+    assert "keep(pct === null ? null : pct.toFixed(1))" in split and "Math.max(15, pct)" in split
+    assert "if (talkOn !== chatless) split(talkOn ? 0 : opened, true, false);" in script        # the tab shows what yerkd keeps
+    assert "if (op.talk) talk(op.talk);" in script and "put(name, d[name])" in script        # a drawn program keeps the caret
+    assert ".mark.room {" in css and 'make("div", "mark room")' in script                    # the room's lines in its colour

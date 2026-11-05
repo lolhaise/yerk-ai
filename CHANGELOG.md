@@ -8,6 +8,21 @@ version changes.
 
 ## 2026-11-04
 
+### need-2026-11-04-51 (#?)
+
+- A live page can be one surface for code, talk, output and ink. Its chat now closes to nothing: drag the grip to the
+  edge or press `close` on the chat, and `chat` on the bar brings it back; yerkd keeps the closed chat across restarts
+  and every tab that opens shows it. While it is closed the talk lives in the program: a # line ended with Enter goes
+  to the room at once (not after the 1.5 s pause), and the room's replies come back as #> lines the page writes under
+  the owner's last # line, in the room's colour and marked as its own. The tab writes them in its own text, so the
+  caret stays where it was and what was typed since is kept; the room is told in its next message when the chat closes
+  or opens, and never reads its own #> lines as typed by the owner.
+- What a run prints shows large, above the tests' tiles, and its end rides in the room's next message. A program whose
+  tests are blank runs alone, as a script, in the same sandbox, so a game or a script the room writes for a `#make`
+  line runs on the page. A program the room draws whole keeps the caret where it was.
+- **Upgrading**: budgets.toml raises `yerk_tools` to 20,400 and the session-start `total` to 119,505 (the `page` tool's
+  two new clauses) and `[code] lines` to 26,044, each with its dated note; nothing to set.
+
 ### recall-drop-2026-11-04 (#?)
 
 - `yerk deploy` goes through again on the install it was written on. On Nov 4 it refused need-2026-11-04-49

@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 119405`
+- `total = 119505`
 
 ## [session_start.claude_code]
 
@@ -68,9 +68,13 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-04) takes it from 852 to 1,032 as this tree builds it on Python 3.13, all 19 to 19,661, about 20,250 as sent (589 over the build, as on need 49's tree); so 20,300, no part could pay, the total rose by the 200 (to 119,205).
 
+2026-11-04, need-2026-11-04-51: the `page` tool's two clauses on the talk in the program (blank tests run the program alone, its prints shown large; with the page's chat closed the room's replies go into the program as #> lines, since a room asked to talk with the owner in the program had its replies only in a chat pane that could not close; filed
+
+2026-11-04) take it from 1,901 to 2,045 as this tree builds it on Python 3.13, all 19 to 19,805, about 20,394 as sent (589 over the build, as on need 47's tree); so 20,400, no part could pay, the total rose by the 100 (to 119,505).
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
-- `yerk_tools = 20300`
+- `yerk_tools = 20400`
 - `deferred_tool_names = 3429`
 - `mcp__hands__ = 8165`
 - `mcp__web-ladder__web_image = 913`
@@ -493,7 +497,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-04, need-2026-11-04-49 with main folded in (entrypoint-name's 4 lines and this branch's 1 line fewer): 25,939.
 
-- `lines = 25939`
+2026-11-04, need-2026-11-04-51: 105 lines for the talk in the program on the live page (a room asked to talk with the owner inside the program had replies only in the chat pane, a pane that could not be closed, and rewrote the whole program with #> lines, which threw the caret to the end; filed 2026-11-04), not folded to fit: channels/page.py 97 (owned, talk_lines and into: the room's lines as #> lines under the owner's last # line, wrapped, cut at DIFF_LINES; the chat closed kept in talk.json and said in the next message; a # line ended with Enter sent at once; the reply written in yerkd's copy and the room's last heard one alike and handed to every tab; the runner's alone run of a program with blank tests, its error's line, and the end of what a run printed said to the room), words.py 7 and mcp_server.py 1. The closed chat, the tab's own insertion with its caret kept, the room's bands and the large output are page.html, outside this count. 26,044.
+
+- `lines = 26044`
 
 ## Uncapped
 
