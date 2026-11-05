@@ -501,7 +501,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-05, need-2026-11-04-53 raised it by 194, the `texts` tool: the owner's recent texts read from the Mac's Messages database over ssh (a read-only sqlite, no Messages grant) and kept as a private copy under the state folder, with a light daemon check that refreshes the copy whenever the Mac is awake, its own short wakes included, so a room asked whether someone has texted answers from the last copy and says its time while the Mac sleeps, with nothing that keeps it awake or wakes it (inbox.py 132: the read, the parse, the copy and the refresh; daemon.py 41: the tool, the mac-host resolve and the light-check loop; mcp_server.py 12, words.py 6 and config.py 3: the tool, its words and the poll key); the night a room could not say whether a text had come in, not folded to fit. 26,186.
 
-- `lines = 26186`
+2026-11-05: need-branch-drop raised it by 38, a need's branch deleted when the need goes live (nothing deleted one, so every shipped need left a branch here and on GitHub until a hand detached its workers' worktrees and dropped it), not folded to fit: pipeline.py 38 (`drop_local`, `drop` and its call in `live`). 26,224: main 18df63c's 26,186 plus 38.
+
+- `lines = 26224`
 
 ## Uncapped
 

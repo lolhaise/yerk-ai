@@ -18,8 +18,8 @@ itself this way: one need at a time (two open PRs that both move the code ceilin
   lands it after (needs.land), in the checkout the rooms run; one that cannot land holds the need, said with why.
 - The deploy: merged, with no deploy running, `yerk deploy origin/main` in a transient unit yerk-deploy-<id> (the restart
   cannot run inside the daemon), after a `git fetch origin` that authenticates through git_askpass; deploying.
-- Live: a proven deploys row after the merge whose commit holds it: live, one line in the machine room and one in each room
-  that filed it, each once; a deploy row that failed: held.
+- Live: a proven deploys row after the merge whose commit holds it: live, its branches dropped (`drop`), one line in the
+  machine room and one in each room that filed it, each once; a deploy row that failed: held.
 Every change is one line in the machine room, never a relay turn. With no GitHub token every GitHub step is skipped and one
 line says so; a person merges, runs `yerk needs done` and deploys, and live still follows the proven deploy."""
 from __future__ import annotations
@@ -60,9 +60,26 @@ class Units:
         return {r[0].removesuffix(".service") for r in rows if len(r) > 2 and r[2] not in ("inactive", "failed")}
 
 
+def drop_local(repo: str | Path, branch: str) -> str:
+    """`branch` deleted in `repo`: "" when it is gone or never was, else why it stays. Only once HEAD holds it (-d alone would
+    go by an upstream the branch has), and git's own -d does it. -d also refuses a branch a worktree is on, and a worker's
+    worktree stays on its branch when the worker ends, so each linked one on it is detached first, its files untouched;
+    the main checkout, first in git's list, never."""
+    ref = f"refs/heads/{branch}"
+    if needs.git(repo, "show-ref", "--verify", "--quiet", ref).returncode == 1:
+        return ""
+    if (held := needs.git(repo, "merge-base", "--is-ancestor", ref, "HEAD")).returncode:
+        return words.line(held.stderr or "its HEAD does not hold it", 200)
+    for block in needs.git(repo, "worktree", "list", "--porcelain").stdout.split("\n\n")[1:]:
+        if f"branch {ref}" in (lines := block.splitlines()):
+            needs.git(lines[0].removeprefix("worktree "), "checkout", "--quiet", "--detach")
+    p = needs.git(repo, "branch", "-d", branch)
+    return words.line(p.stderr or "git refused", 200) if p.returncode else ""
+
+
 class Pipeline:
     def __init__(self, y: Any) -> None:
-        self.y, self.units, self.now = y, Units(), time.time
+        self.y, self.units, self.now, self.tree = y, Units(), time.time, REPO
         self.lock = asyncio.Lock()
 
     def conf(self) -> dict[str, Any]:
@@ -324,6 +341,7 @@ class Pipeline:
     async def live(self, r: dict[str, Any]) -> None:
         """Live: one line in the machine room, one in each room that filed it (each once), never a relay turn."""
         await self.set(r, {"state": "live", "live_at": self.now(), "worker": ""})
+        await self.drop(r)
         ab = words.line(str(r["ability"]), 80)
         await self.say(words.NEED_LIVE.format(n=r["n"], ability=ab))
         for room in dict.fromkeys(str(a["room"]) for a in r["asks"]):
@@ -331,4 +349,24 @@ class Pipeline:
                 with contextlib.suppress(Exception):
                     await ch.notify(room, words.NEED_LIVE_ROOM.format(n=r["n"], ability=ab))
         await self.next()
+
+    async def drop(self, r: dict[str, Any]) -> None:
+        """A live need's branches dropped, never in its way: one that stays, or an error, is one log line. Yerk's own goes here
+        first and from GitHub only once it is gone here, since the box's sync pushes a local branch GitHub lacks and a branch
+        that stays here keeps its pair (no token: GitHub's stays). A plug-in's goes in its own repository only."""
+        try:
+            name = f"need-{r['day']}-{r['n']}"
+            for k, p in dict(r.get("plugins") or {}).items():
+                if (why := await asyncio.to_thread(drop_local, p["repo"], p["branch"])):
+                    log.info("needs: the %s plug-in's branch %s stays: %s", k, p["branch"], why)
+            if (why := await asyncio.to_thread(drop_local, self.tree, name)):
+                return log.info("needs: branch %s stays: %s", name, why)
+            tok = await asyncio.to_thread(github.token, self.y.private)
+            repo = await asyncio.to_thread(github.slug, REPO, str(self.conf().get("repo") or "")) if tok else ""
+            if tok and repo:
+                code, out = await asyncio.to_thread(github.api, "DELETE", f"/repos/{repo}/git/refs/heads/{name}", tok)
+                if code != 204:
+                    log.info("needs: branch %s on GitHub: %s", name, github.said(code, out))
+        except Exception as e:
+            log.info("needs: need %s's branches: %r", r.get("n"), e)
 

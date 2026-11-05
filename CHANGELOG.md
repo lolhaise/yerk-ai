@@ -8,6 +8,16 @@ version changes.
 
 ## 2026-11-05
 
+### need-branch-drop (#?)
+
+- A need's branch goes when the need goes live, on the pipeline's road and the hand road alike: deleted in the checkout,
+  then on GitHub, and a plug-in branch it carried deleted in that plug-in's own repository, never on a remote. A shipped
+  need no longer leaves a branch behind for a person to drop.
+- A worktree a finished worker left on the branch is detached first, its files untouched, since git will not delete a
+  branch a worktree is on. A branch the deployed commit does not hold stays, with its worktree and its branch on GitHub,
+  and so does one git refuses; each is one log line and the need is live regardless. With no GitHub token the branch on
+  GitHub stays. The `[code]` ceiling goes to 26,224.
+
 ### need-2026-11-04-53 (#?)
 
 - A room can now say whether someone has texted you, or what a text said, even while your Mac is asleep. Before, a room
