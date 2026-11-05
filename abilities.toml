@@ -1592,36 +1592,40 @@ asked_as = ["talk to you on the page", "chat on the page", "talk on the page", "
 # need-2026-11-03-49: the owner, on the Mac, asked for the live page there; the page tool's open put it in the box's own
 # browser on the PC (the box's opener was its only way), and a reload of the page on the Mac came back as /page alone,
 # its key gone from the address by design, so a line typed under it reached no room.
+# need-2026-11-04-50: asked for the page on the Mac, a room got "no Mac is set up for the page" and would have got
+# no address next, though the box reached the Mac by ssh for the hands plug-in's mac tool and sat on the tailnet, and a
+# room cannot set yerkd.toml while a conversation runs. Nothing to set now.
 [abilities.page-mac]
 state = "built"
-what = "The live page opens on the screen the owner is at: the `page` tool's open takes `where`, pc (the default, the box's own screen) or mac, and yerkd opens it on the owner's Mac over ssh at a one-time address, the ticket on no command line; a reload of the page there keeps it, since the tab keeps its key in its own session storage."
+what = "The live page opens on the screen the owner is at: the `page` tool's open takes `where`, pc (the default, the box's own screen) or mac, and yerkd opens it on the owner's Mac over ssh at a one-time address, the ticket on no command line, with nothing set in yerkd.toml when an owner room's add-on reaches the Mac and the box is on the tailnet; a reload of the page there keeps it, since the tab keeps its key in its own session storage."
 how = [
   "The Mac: ssh to [page] mac in yerkd.toml (else [imessage] host, the text tool's Mac) runs `open` there on the page's one-time address, handed on ssh's stdin, so neither the key nor the ticket is on a command line; the address is [page] address, yerkd as the Mac reaches it (the box's tailnet or LAN host, its port yerkd's when it names none), else [page] listen's (page-reach), since 127.0.0.1 on the Mac is the Mac.",
+  "Nothing set: with neither key, the Mac is the one an owner room's add-on reaches, `ssh` in the mac.json beside its server (the hands plug-in's, its mac tool's host), a host or user@host only, from a file of the owner's no other user writes and none under Yerk's state folder, where each room's folder is; the address is the box's own tailnet one (page-reach), so one restart of yerkd at a deploy lands the page on the Mac.",
   "Told in words: no Mac named, no address set, a Mac that does not answer over ssh or a `where` that is neither pc nor mac; the page is on all the same, and where pc opens it on the box's own screen.",
   "The reload: the tab keeps its room and key in its own session storage, never the address bar, the history or a bookmark, and gone when the tab closes, so a reload or a retyped /page in it opens the page again; an address that brings a ticket or a key wins.",
   "A tab with no key says a line typed there reached no room, keeps the words in the box and says how to open the page.",
 ]
 tier = "free"
-needs = "the page-switch ability; ssh from the box to the Mac with a key (BatchMode), and the page served where the Mac reaches it (page-reach's [page] listen, or a forward named in [page] address)"
+needs = "the page-switch ability; ssh from the box to the Mac with a key (BatchMode), named by [page] mac or an add-on's mac.json, and the page served where the Mac reaches it (the box's tailnet, page-reach's [page] listen, or a forward named in [page] address)"
 price = "none"
 free_path = "this is the free path"
 asked_as = ["page on my mac", "open it on my mac", "open my page on my mac", "i need it on my mac", "not my pc", "page on the mac",
-            "page needs its address", "reload lost the page"]
+            "page needs its address", "reload lost the page", "coding page on my mac", "no mac is set up"]
 
 # need-2026-11-03-45: the owner, on the Mac, asked for the live page there; yerkd served it on 127.0.0.1 alone and built its
 # address with that host, which on the Mac or a phone is that device itself, so the page opened only on the PC that hosts
 # the box; filed 2026-11-03.
 [abilities.page-reach]
 state = "built"
-what = "The live page opens on the owner's Mac and phone, not only on the PC that hosts the box: with [page] listen set to the box's tailnet or LAN address, yerkd serves the page there too, beside loopback, and nothing else of its own; the address `yerk room page` prints and the Mac's open carry that host, the key still only in the address's fragment."
+what = "The live page opens on the owner's Mac and phone, not only on the PC that hosts the box: yerkd serves the page on the box's own tailnet address too, or the tailnet or LAN address [page] listen names, beside loopback, and nothing else of its own; the address `yerk room page` prints and the Mac's open carry that host, the key still only in the address's fragment."
 how = [
-  "The setting: [page] listen in yerkd.toml, one address of the box's (100.64.0.1; `tailscale ip -4` prints the tailnet's); none, the default, keeps the page on loopback alone. A wildcard (every network the box is on), a public address (the page on the internet in plain text) or a host name is refused in words, and the page stays on loopback.",
+  "The setting: [page] listen in yerkd.toml, one address of the box's (100.64.0.1); none, the default, is the box's own tailnet address, as `tailscale ip -4` prints it at yerkd's start (never a LAN one unasked, which carries the page plain), else loopback alone, and 127.0.0.1 keeps it on loopback alone. A wildcard (every network the box is on), a public address (the page on the internet in plain text) or a host name is refused in words, and the page stays on loopback.",
   "The page's routes alone: on that address, on yerkd's own port, /page and its calls are served and nothing else; /mcp, /hook, /control and /status are not found there whatever secret comes, and the page's calls still open only with its room's key.",
   "The address: `yerk room page NAME` prints it with that host ([page] address when set, the name the Mac knows the box by, else listen's), the room and its key in the fragment, which a browser never sends; --here prints the box's own. The Mac's open carries the same host with a one-time ticket, never the key.",
   "At boot the address is bound before the box has it (its tailnet still coming up), so the page is there the moment it comes up, with no restart; the log says so, and says when an address off the tailnet carries the page and its key unencrypted.",
 ]
 tier = "free"
-needs = "the live-page ability; [page] listen set to the box's tailnet address (tailscale on the box, the Mac and the phone) or its LAN one, and yerkd restarted once"
+needs = "the live-page ability; tailscale on the box (a WSL box's own, or a forward from Windows named in [page] address), the Mac and the phone, else [page] listen set to the box's LAN address and yerkd restarted once"
 price = "none"
 free_path = "this is the free path"
 asked_as = ["page on my phone", "page from my phone", "page from my mac", "page on tailscale", "page over tailscale", "page on the lan",

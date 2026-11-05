@@ -483,12 +483,14 @@ class Yerkd:
     async def page_open(self, room: str, where: str = "pc") -> dict[str, Any]:
         """The `page` tool's open: the room's page on (page_switch), then opened at a one-time address (Page.ticket), never
         the key, which no room holds and no command line carries: on the owner's screen by the box's opener, or, `where`
-        mac, on the owner's Mac by ssh to it ([page] mac and address, page.mac), the address on ssh's stdin."""
+        mac, on the Mac by ssh to it ([page] mac and address, else an owner room's add-on's Mac and the box's tailnet,
+        page.mac), the address on ssh's stdin."""
         lines = [words.PAGE_ON if self.page_switch(room, True) else words.PAGE_WAS_ON]
         if not await asyncio.to_thread(page.sandbox_starts):
             lines.append(words.PAGE_NO_SANDBOX)
         if where == "mac":                    # its address is the Mac's way to yerkd: 127.0.0.1 there is the Mac itself
-            way = page.mac(self.conf, self.port)
+            way = page.mac(self.conf, self.port, [s for n, c in self.room_confs.items() if self.owner(n) for s in dict(c.get("mcp") or {}).values()],
+                           self.state)
             why = way if isinstance(way, str) else await asyncio.to_thread(page.open_on_screen, way[0], self.page.ticket(room, self.port, way[1]),
                                                                            script=page.MAC_OPEN)
             done, failed = words.PAGE_OPENED_MAC, words.PAGE_NOT_OPENED_MAC.format(why=why)

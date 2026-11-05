@@ -27,10 +27,11 @@
   mac it opens on the Mac instead (mac): ssh to it runs `open` there on the address as the Mac reaches yerkd,
   handed on ssh's stdin, so not even the ticket is on a command line. A tab keeps its room and key in its own session
   storage (gone when the tab closes), so a reload of a page whose address bar lost them opens it again.
-- yerkd serves loopback alone unless [page] listen names the box's tailnet or LAN address (listen): then the page's
-  routes, and nothing else (mcp_server.Guard), are on that address too, on yerkd's port (bind), so the owner's Mac and
-  phone open it, and the address `yerk room page` prints and the Mac's open carry that host (reach), the key still only
-  in the fragment.
+- yerkd serves the page's routes, and nothing else (mcp_server.Guard), on the box's tailnet or LAN address too, on yerkd's
+  port (bind), when [page] listen names one, else on the box's own tailnet address when it has one (tailnet), so the
+  owner's Mac and phone open it, and the address `yerk room page` prints and the Mac's open carry that host (reach), the
+  key still only in the fragment; listen naming loopback keeps it on loopback alone. The Mac is [page] mac, else
+  [imessage] host, else the one an owner room's add-on reaches by ssh (addon_mac: the hands plug-in's mac.json).
 """
 from __future__ import annotations
 
@@ -38,11 +39,14 @@ import asyncio
 import contextlib
 import difflib
 import errno
+import functools
+import grp
 import hmac
 import ipaddress
 import json
 import logging
 import os
+import pwd
 import re
 import secrets
 import shlex
@@ -82,6 +86,12 @@ OPEN_SECONDS = 15         # an opener's wall clock: it hands the address to the 
 # no command line of the box's, where every local user reads it (/proc); `open` there hands it to the Mac's default browser
 MAC_SSH = ("ssh", "-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10")
 MAC_OPEN = "open {url}\n"
+# with neither key set, the Mac an owner room's add-on reaches by ssh: `ssh` in the file of this name beside its server's
+# script (the hands plug-in's, its mac tool's host), a host or user@host, never an option; the box's own tailnet address,
+# as tailscale itself prints it, for the page's routes beside loopback
+MAC_FILE = "mac.json"
+SSH_HOST = re.compile(r"(?:[\w.-]+@)?\w[\w.-]*", re.ASCII)
+TAILSCALE_IP = ("tailscale", "ip", "-4")
 # [page] listen's socket binds before its address is up (tailscale at boot), so the page is there once it is: IP_FREEBIND,
 # Linux's 15, which some Pythons do not name; the tailnet's own ranges, encrypted end to end, where a LAN carries it plain
 FREEBIND = getattr(socket, "IP_FREEBIND", 15 if sys.platform == "linux" else 0)
@@ -744,12 +754,12 @@ def opener(conf: dict[str, Any]) -> list[str]:
     return [x] if x and (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")) else []
 
 
-def mac(conf: dict[str, Any], port: int) -> tuple[list[str], str] | str:
+def mac(conf: dict[str, Any], port: int, servers: Any = (), state: Path | None = None) -> tuple[list[str], str] | str:
     """The way to the Mac for an open there (where mac): the ssh command whose stdin is the Mac's script (MAC_SSH to
-    [page] mac, else [imessage] host, the text tool's way to the same Mac) and yerkd's address as the Mac reaches it
-    (reach), since 127.0.0.1 there is the Mac; else why not, in words."""
+    [page] mac, else [imessage] host, the text tool's way to the same Mac, else the Mac an owner room's add-on reaches,
+    addon_mac) and yerkd's address as the Mac reaches it (reach), since 127.0.0.1 there is the Mac; else why not, in words."""
     pg = dict(conf.get("page") or {})
-    if not (host := str(pg.get("mac") or dict(conf.get("imessage") or {}).get("host") or "").strip()):
+    if not (host := str(pg.get("mac") or dict(conf.get("imessage") or {}).get("host") or "").strip() or addon_mac(servers, state)):
         return words.PAGE_NO_MAC
     try:
         base = reach(conf, port)
@@ -758,14 +768,52 @@ def mac(conf: dict[str, Any], port: int) -> tuple[list[str], str] | str:
     return ([*MAC_SSH, host, "/bin/bash", "-s"], base) if base else words.PAGE_NO_ADDRESS
 
 
-def listen(conf: dict[str, Any]) -> str:
-    """[page] listen: the box's tailnet or LAN address yerkd also serves the page's routes on, beside loopback; "" when it
-    names none or loopback (the default: the page on loopback alone, as /mcp and /hook always are). ValueError in words for
-    one that is not such an address: a wildcard (every network the box is on), a public one (the page on the internet in
-    plain text) or a host name (it could resolve elsewhere; `tailscale ip -4` prints the address)."""
-    said = str(dict(conf.get("page") or {}).get("listen") or "").strip()
+def addon_mac(servers: Any, state: Path | None = None) -> str:
+    """The owner's Mac as an owner room's add-on reaches it by ssh, for an open there with neither key set: `ssh` in the
+    MAC_FILE beside a server's script (`servers`: those rooms' MCP tables; the hands plug-in keeps its mac tool's host
+    there), a host or user@host (SSH_HOST), never an option. Only a file of the owner's that no other user may write (its
+    group the owner's own) and none under Yerk's state folder, where each room's folder is, so neither a room nor another
+    user steers the ssh and the one-time address it carries; "" when none names one."""
+    for srv in (x for x in servers if isinstance(x, dict)):
+        said = [srv.get("command"), *(a if isinstance(a := srv.get("args"), list) else [])]
+        for f in (Path(x).parent / MAC_FILE for x in said if isinstance(x, str) and x.startswith("/")):
+            try:
+                st = f.stat()
+                g = grp.getgrgid(st.st_gid)
+                shared = st.st_mode & 0o020 and (g.gr_mem or g.gr_name != pwd.getpwuid(st.st_uid).pw_name)    # a group not the owner's own
+                if st.st_uid != os.getuid() or st.st_mode & 0o002 or shared or state is not None and f.resolve().is_relative_to(state.resolve()):
+                    continue
+                host = str(json.loads(f.read_text()).get("ssh") or "").strip()
+            except (OSError, ValueError, KeyError, AttributeError):
+                continue
+            if SSH_HOST.fullmatch(host):
+                return host
+    return ""
+
+
+@functools.lru_cache(maxsize=1)
+def tailnet() -> str:
+    """The box's own tailnet address as `tailscale ip -4` prints it, "" when it is on none (no tailscale, or it is down):
+    asked once a run, since yerkd binds its sockets once; only an address in the tailnet's own range (TAILNET) is taken,
+    never a LAN's, which would carry the page and its key plain."""
     try:
-        ip = ipaddress.ip_address(said.strip("[]") if said not in ("", "localhost") else "127.0.0.1")
+        said = subprocess.run(TAILSCALE_IP, capture_output=True, text=True, timeout=5, stdin=subprocess.DEVNULL).stdout
+        ip = ipaddress.ip_address(said.split()[0])
+    except (OSError, subprocess.SubprocessError, ValueError, IndexError):
+        return ""
+    return str(ip) if any(ip in n for n in TAILNET) else ""
+
+
+def listen(conf: dict[str, Any]) -> str:
+    """[page] listen: the box's tailnet or LAN address yerkd also serves the page's routes on, beside loopback, else, when it
+    names none, the box's own tailnet address (tailnet); "" when it names loopback (the page on loopback alone, as /mcp and
+    /hook always are) or names none on a box on no tailnet. ValueError in words for one that is not such an address: a
+    wildcard (every network the box is on), a public one (the page on the internet in plain text) or a host name (it could
+    resolve elsewhere; `tailscale ip -4` prints the address)."""
+    if not (said := str(dict(conf.get("page") or {}).get("listen") or "").strip()):
+        return tailnet()
+    try:
+        ip = ipaddress.ip_address(said.strip("[]") if said != "localhost" else "127.0.0.1")
     except ValueError:
         raise ValueError(words.PAGE_LISTEN_NAME.format(x=said[:60])) from None
     if ip.is_unspecified or ip.is_global or ip.is_multicast:
