@@ -8,7 +8,8 @@ pack alone proposes lines, a second knocks them down (curate.md), code checks sh
 of the pack, and the lines land, appended with a backup, only when the bench does not fall. A correction to a line on file is
 the morning diff. Each run is kept in <state>/curate.json. Then the rule files (`--rules`): merges, cuts, condensations
 and promotions proposed, numbered, into <memory>/rules-proposals/<day>.md; a rule file changes only by the owner's
-`--apply DAY N[,N...]`, backed up first and fitted to its line in budgets.toml, its lines blanked rather than cut."""
+file changes only by the owner's `--apply DAY N[,N...]`, backed up first and fitted to its line in budgets.toml, its lines
+none written that a rule's filing would turn back (shape.filing)."""
 from __future__ import annotations
 
 import difflib
@@ -28,7 +29,7 @@ from typing import Any, Callable
 
 from . import context, doctor, memindex, memory, mentions, needs, shape, taste, words
 from .accounts import account_env, load_accounts
-from .config import budgets, load_toml, rooms, write_private
+from .config import budgets, flag, load_toml, rooms, write_private
 from .engine import claude_bin
 
 LAST, RUN, PROMPTS = "curate.json", "curate-run.json", Path(__file__).with_name("curate.md")   # RUN: this run, its lines on trial
@@ -570,6 +571,111 @@ def overlap(a: str, b: str) -> bool:
     return bool(x & y) and 2 * len(x & y) >= min(len(x), len(y))
 
 
+# A rule about to be filed and the live lines on the same thing (Daemon.tool_rule): a word or token said in more than SAME_MOST
+# lines names no one thing and links none, since a filing that lists every loosely related line gets worked around
+SAME_MOST = 5
+SIGN = re.compile(r"[\u25a0-\u27bf\u2b00-\u2bff\U0001F000-\U0001FAFF]|\[[a-z][a-z -]{1,30}\]")     # a mark: a symbol, a [mark]
+NAMED = re.compile(r"`([^`]{2,60})`|\"([^\"]{3,80})\"|(?<![\w&/])(#[a-z][\w-]+)|\b([\w-]+\.(?:md|txt|jsonl?|toml|py|pdf|docx|xlsx|csv))\b")
+BANS = re.compile(r"\b(?:no|never|not|without|nothing|avoid|don't)\s+((?:[\w'-]+ ){0,3}[\w'-]+)", re.I)    # what a line says no to
+LEAD_IN = frozenset("a an the any its their his her your my our this that these those".split())    # before what it says no to
+
+
+def says(t: str, x: str) -> bool:
+    """`x` (lower case, quotes straight) holds `t`: a word or phrase whole, or its plural; a mark or code anywhere."""
+    return bool(re.search(rf"(?<![\w-]){re.escape(t)}(?:e?s)?(?![\w-])", x)) if t[:1].isalnum() and t[-1:].isalnum() else t in x
+
+
+def tokens(text: str) -> set[str]:
+    """What names one thing in a line, lower case: a mark (a symbol, a [mark]), code or a tool in backticks, a quoted phrase
+    of two words or more, a #channel, a file."""
+    t = flat(text)
+    return {m[0].lower() for m in SIGN.finditer(t)} | {x.lower().strip() for m in NAMED.finditer(t) for i, x in enumerate(m.groups())
+                                                       if x and (i != 1 or len(x.split()) > 1)}
+
+
+def bans(text: str) -> set[str]:
+    """What a line says no to: the last word of the run of words right after its no, never, not, without... (an article or
+    a possessive skipped, a stop word ending it), a plural's s off, no everyday word ("never the old fetcher": fetcher)."""
+    out = set[str]()
+    for m in BANS.finditer(shape.QUOTED.sub(" ", flat(text))):
+        said = [x.strip("'-") for x in m[1].lower().split()]
+        said = said[next((i for i, x in enumerate(said) if x not in LEAD_IN), len(said)):]
+        run = said[:next((i for i, x in enumerate(said) if x in memindex.STOP), len(said))]
+        w = run[-1] if run else ""
+        w = w[:-1] if len(w) > 4 and w.endswith("s") and not w.endswith("ss") else w
+        if len(w) > 3 and not w.isdigit() and w not in mentions.KEY_STOP:
+            out.add(w)
+    return out
+
+
+def held(private: Path, s: memory.Settings, confs: dict[str, dict[str, Any]]) -> list[tuple[str, Path, str]]:
+    """(kind, path, its name in a cite) of each file the owner rooms load a rule may be said in, once: the rules file and the
+    topic rules, a filing's to mark, then each owner room's rulebook, persona and voice, which the person keeping them changes."""
+    rules = s.root / memory.RULES
+    out = {p.resolve(): (k, memory.cite(s, p)) for k, p in (("rules", rules), ("topics", s.root / memory.TOPIC_RULES)) if p.is_file()}
+    for conf in confs.values():
+        if str(conf.get("privacy", "owner")) == "owner" and not flag(conf.get("sealed")):
+            for k, p in shape.files(private, conf, rules):
+                if k in ("persona", "rulebook", "voice"):
+                    out.setdefault(p.resolve(), (k, shape.label(private, s, k, p)))
+    return [(k, p, name) for p, (k, name) in out.items()]
+
+
+def same(private: Path, s: memory.Settings, confs: dict[str, dict[str, Any]], job: str, text: str,
+         topics: dict[str, str] | None = None) -> list[dict[str, Any]]:
+    """The live lines on the same thing as a rule about to be filed (`job`: `text`) in the files the owner rooms load (held), its
+    own job's lines out (the filing marks those), each {cite, text, kind, path, line, shares}, in file order. What links one: a topic
+    of the twice count both say (`topics`, shape.TOPICS by default), near-duplicate words (near), a mark, code, a quoted phrase, a
+    channel or a file both name, a word one says no to that the other names, or either's job named by the other; then a line naming
+    the job of a rules line so linked. Examples are no one's words here, and a word or token more than SAME_MOST lines say links none."""
+    job, mine = memory.one_line(job).strip(" :").lower(), " ".join(memory.EXAMPLE.sub("", memory.one_line(text)).split())
+    rows: list[dict[str, Any]] = []
+    for kind, p, name in held(private, s, confs):
+        rule = kind in ("rules", "topics")
+        for n, raw, ex in shape.lines(p.read_text(encoding="utf-8", errors="replace"), rule):
+            w = memory.EXAMPLE.sub("", raw)
+            w = w[:o.start()] if (o := shape.OPEN.search(w)) else w            # a block opening on the line: the words before it
+            if ex and w == raw or not w.strip() or mentions.OLD in raw or rule and (not raw.startswith("- ") or raw.lower().startswith(f"- {job}: ")):
+                continue
+            w = memory.ON.sub("", memory.SCOPE.sub("", TRAILER.sub("", w))) if rule else w
+            rows.append({"cite": f"{name}:{n}", "text": raw.strip(), "kind": kind, "path": p, "line": n, "low": flat(w).lower(),
+                         "said": split(w)[1] if rule else w, "job": memory.topic(raw).lower() if rule else ""})
+    new, rx = flat(f"{job}: {mine}").lower(), {t: re.compile(v, re.I) for t, v in (topics or shape.TOPICS).items()}
+    count: dict[str, int] = {}
+
+    def rare(t: str) -> bool:
+        return count.setdefault(t, sum(says(t, r["low"]) for r in rows)) <= SAME_MOST
+    on = {t: [i for i, r in enumerate(rows) if x.search(shape.QUOTED.sub(" ", r["said"]))] for t, x in rx.items()
+          if x.search(shape.QUOTED.sub(" ", f"{job}: {mine}"))}
+    hits: dict[int, list[str]] = {}
+    for i, r in enumerate(rows):
+        why = [f"the topic {t}" for t, at in on.items() if i in at and len(at) <= SAME_MOST]
+        why += ["near-duplicate words"] if near(bare(mine), bare(r["said"])) else []
+        why += [f"both name {t}" for t in sorted(tokens(mine) | tokens(r["said"])) if says(t, r["low"]) and says(t, new) and rare(t)]
+        why += [f"it names {t}, which this rule says no to" for t in sorted(bans(mine)) if says(t, r["low"]) and rare(t)]
+        why += [f"it says no to {t}, which this rule names" for t in sorted(bans(r["said"])) if says(t, new) and rare(t)]
+        why += ["it names this rule's job"] if says(job, r["low"]) and rare(job) else []
+        why += [f"this rule names its job, {r['job']}"] if r["job"] and says(r["job"], new) and rare(r["job"]) else []
+        if why:
+            hits[i] = why
+    for i in [i for i in hits if rows[i]["job"] and rare(rows[i]["job"])]:     # one hop: a line that says as that job says
+        for k, r in enumerate(rows):
+            if k not in hits and says(rows[i]["job"], r["low"]):
+                hits[k] = [f"it names {rows[i]['job']}, the job of {rows[i]['cite']}"]
+    return [{**{k: rows[i][k] for k in ("cite", "text", "kind", "path", "line")}, "shares": "; ".join(why)} for i, why in sorted(hits.items())]
+
+
+def settled(older: list[str] | None) -> dict[str, tuple[str, str]]:
+    """`remember`'s `older`, each `cite | superseded: why` or `cite | kept: why`, as cite -> (verdict, why); one with no
+    reason of two words or more settles nothing."""
+    out = {}
+    for x in older or []:
+        c, _, v = str(x).partition("|")
+        if (m := re.match(r"\s*(superseded|kept)\b[\s:,;.-]*(.*)", v, re.I | re.S)) and c.strip() and len(m[2].split()) > 1:
+            out[c.strip()] = (m[1].lower(), " ".join(m[2].split())[:200])
+    return out
+
+
 def trailer(*xs: str) -> str:
     """The trailers of `xs` as one: every room and time, every message, each once."""
     ms = [m for x in xs if (m := TRAILER.search(x))]
@@ -979,6 +1085,10 @@ def apply(private: Path, state: Path, day: str, which: str, now: float | None = 
         raise RuntimeError(f"no proposal {bad[0] if want and bad else which} of {day}")
     if gate := [n for n in want if props[n]["kind"] == "gate"]:
         raise RuntimeError(f"{gate[0]} is a gate: it names a check a reply would need, which curate never builds; nothing applied")
+    acronyms = shape.install(dict(conf.get("docs") or {}))[1]           # a line it writes passes the check a filing does
+    if off := [(n, o) for n in want for e in props[n]["edits"] if isinstance(e[3], str) and e[3].startswith("- ") and (o := shape.filing(e[3], acronyms))]:
+        raise RuntimeError(f"{off[0][0]} would write a line with {' and '.join(shape.NAMES[k] for k in off[0][1])}, which a rule's filing "
+                           "turns back, so file it again with `remember` and its job: nothing applied")
     files, rows, tier = rule_files(private, s), dict[str, list[str]](), (s.root / memory.TOPIC_RULES).resolve()
     with memory.daily_lock(s.daily):                     # the writers' lock: memory.rule files under it too
         if not tier.is_file() and any(e[0] == str(tier) for n in want for e in props[n]["edits"]):

@@ -155,6 +155,19 @@ RULE_STRIPPED = "the example in rule \"{job}\" taken out so rules.md fits its ca
 RULE_TOPIC_LOG = "rule \"{job}\" filed as a topic rule in {file}: rules.md is full at its cap of {cap:,}; it loads when {triggers} come up"
 RULE_TOPIC = "filed as a topic rule: loads when\n{triggers} come up\n\"{job}\"\nfrom {room}\n{where}\nrules.md is full at its cap of {cap:,}"
 TOPIC_WHERE = ("for every room", "for {rooms} only")
+# a rule a filing turns back (memory.unshaped, Daemon.tool_rule), with what a rule holds and why, so the room rewrites and calls again
+RULE_SHAPE = ("not filed: every room follows a rule as written, and follows it best in the prompting guide's shape (what to do "
+              "with its reason, calm words, an example inside <example> tags); rewrite what each line of `fix` names and call again")
+RULE_FIX = {"no why": "say what to do instead, or give it its reason with because, since or so that, since a model generalises from a reason",
+            "loud": "write it in normal case, since a shouted word makes a model overreact",
+            "untagged": "put the exchange inside <example> tags, marked landed or bounced, so a model tells it from the instruction",
+            "alarm": "say in words why it matters, since an alarm mark reads as urgency with no reason"}
+RULE_OFFENCE = "{name}: {said}; {fix}"
+RULE_SAME = ("not filed yet: each line in `older` is live and speaks about the same thing, and one left saying the old way keeps "
+             "it alive in every room that loads it; call again with `older` settling each, `cite | superseded: why` or "
+             "`cite | kept: why`, one clause")
+RULE_SETTLED = "rule \"{job}\" ({cite}) and {old}: {verdict}, {why}"      # the room's day log, a verdict a line, for a person to audit
+RULE_TELL = "a new rule outdates {old}\n\"{line}\"\nrule \"{job}\": {cite}, from {room}\nwhoever keeps {file} fixes it there"
 TOPICS_MOVED = "{n} rule{s} moved to rules-topics.md\nfrom rules-overflow.md, once\neach loads when its topic comes up"
 PART_CUT = "{part}: {n} line{s} dropped\nto fit its {cap:,} in {room}"     # at session start: whole lines of its own, no framing
 FILED = re.compile(r"^\W*(?:filed|saved|from now on,? every room)\b", re.I)   # a final reporting a filing (stub)

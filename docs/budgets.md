@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 121605`
+- `total = 122605`
 
 ## [session_start.claude_code]
 
@@ -80,9 +80,11 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-06, need-2026-11-04-51 with main folded in again (need-2026-11-05-59's `email` tool): the `page` tool at 2,045 and `email` at 974 as this tree builds them on Python 3.13, all 21 to 21,766, about 22,417 as sent (651 over the build, as on need 59's tree); so 22,500, no part could pay, the total rose by the 200 over main's 121,405 (to 121,605).
 
+2026-11-06, rule-filing-check-2026-11-06: `remember`'s `older` (the live lines of other jobs on the same thing that a rule's filing lists, each settled as superseded or kept with its reason) and its sentence on what a rule holds take the tool from 1,904 to 2,304 as this tree builds it, all 21 to 22,166, about 22,817 as sent (651 over the build, as on need 59's tree); so 22,900, no part could pay, the total rose by the 400 (to 122,005).
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
-- `yerk_tools = 22500`
+- `yerk_tools = 22900`
 - `deferred_tool_names = 3429`
 - `mcp__hands__ = 8165`
 - `mcp__web-ladder__web_image = 913`
@@ -130,7 +132,9 @@ Yerk AI's own parts, joined into the one file passed by --append-system-prompt-f
 
 2026-11-04, fold-named-2026-11-04: the fold line's clause (a message arriving mid-turn comes marked as sent while you were answering, and is answered in this same reply, by name; that afternoon a number fixed 0.8 s after the question it corrected folded into its turn, and the one reply covering both answered the first and never said the second) took the mechanics file to 6,077: 6,091 on the box, 6,119 in a worker's worktree, 6,129 in CI's checkout of a sha; so 6,200, a checkout's path of up to 129 characters. No part was measured again to pay for it, so the total rose by the 200, to 119,405.
 
-- `mechanics = 6200`
+2026-11-06, rule-filing-check-2026-11-06: the filing line's new text (literal words, an example a real exchange from the day log, the older line's examples carried forward, and the filing's check of the wording and its list of older lines on the same thing) and four wording-only rewrites (the fold, attachment, paste and recall-pack lines) took the mechanics file to 6,676: 6,689 on the box, 6,799 with a checkout's path of 129 characters; so 6,800, a checkout's path of up to 130. No part was measured again to pay for it, so the total rose by the 600, to 122,605 with the tools' 400.
+
+- `mechanics = 6800`
 - `persona = 11800`
 - `rulebook = 14000`
 - `room_voice = 5500`
@@ -529,7 +533,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-06, need-2026-11-04-51 with main folded in again (need-2026-11-05-59's 187 and 51 lines): main's 26,462 plus this branch's 172, 26,634.
 
-- `lines = 26634`
+2026-11-06, rule-filing-check-2026-11-06: 187 lines, not folded to fit: curate.py 110 (same, held, says, tokens, bans and settled: the live lines of other jobs on the same thing a rule's filing lists, and the room's verdict on each; apply's check of each line it writes), daemon.py 20 (tool_rule turns back a line out of the shape, then one with lines to settle; marks, logs and tells), shape.py 15 (tripped, the words behind each count, with offenses read from it; filing; install), memory.py 23 (unshaped, and rule's `also`), words.py 13, mcp_server.py 4 and config.py 2 ([docs] topics and acronyms described, which the daemon now reads). 26,821.
+
+- `lines = 26821`
 
 ## Uncapped
 

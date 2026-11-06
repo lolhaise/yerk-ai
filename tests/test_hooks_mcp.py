@@ -70,7 +70,7 @@ def test_twenty_one_preloaded_tools_with_slim_schemas(tmp_path):
     assert list(tools["watch"].inputSchema["properties"]) == ["url", "path", "frames", "owner_yes"] and "`watch`" in context.MECHANICS.read_text()
     assert list(tools["seen"].inputSchema["properties"]) == ["path", "text", "shows"] and "`seen`" in context.MECHANICS.read_text()
     assert list(tools["voice_note"].inputSchema["properties"]) == ["script", "name", "owner_yes"]
-    assert list(tools["remember"].inputSchema["properties"]) == ["text", "about", "replaces", "job", "triggers", "said", "source"]
+    assert list(tools["remember"].inputSchema["properties"]) == ["text", "about", "replaces", "job", "triggers", "said", "source", "older"]
     assert {f"mcp__yerk__{t}" for t in tools} == set(YERK_TOOLS) and "`remember`" in context.MECHANICS.read_text()
     assert list(tools["settings"].inputSchema["properties"]) == ["model", "effort", "account"]
     assert "the owner asks to change this room's model or thinking level" in str(tools["settings"].description).lower()

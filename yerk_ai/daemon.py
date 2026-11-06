@@ -28,8 +28,8 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 from zoneinfo import ZoneInfo
 
-from . import (beat, context, deletes, deploy, doctor, emails, evidence, gates, github, hooks, inbox, jobs, location, mcp_server, memory, mentions,
-               needs, pictures, pipeline, render, reverse_image, status, taste, texts, transcribe, voice_note, watch, workers)
+from . import (beat, context, curate, deletes, deploy, doctor, emails, evidence, gates, github, hooks, inbox, jobs, location, mcp_server, memory,
+               mentions, needs, pictures, pipeline, render, reverse_image, shape, status, taste, texts, transcribe, voice_note, watch, workers)
 from .accounts import Account, Cooldowns, from_dir, load_accounts, pick
 from .channels import page
 from .channels.page import Page
@@ -960,21 +960,41 @@ class Yerkd:
             return {"ok": False, "line": words.WORKER_OWN_ROOM.format(room=named)}
         return None
 
-    async def tool_rule(self, room: str, text: str, job: str, triggers: list[str] | None = None) -> dict[str, Any]:
+    async def tool_rule(self, room: str, text: str, job: str, triggers: list[str] | None = None, older: list[str] | None = None) -> dict[str, Any]:
         """`remember` with a `job`: an owner's room files how it is done from now on (memory.rule) for every room, fitted under
         the rules part's budget; one with no room even with no examples is filed as a topic rule in rules-topics.md and said
-        (`topic`: the reply's clause and one machine-room notice, each naming the words it loads on: `triggers`, when given)."""
+        (`topic`: the reply's clause and one machine-room notice, each naming the words it loads on: `triggers`, when given).
+        Turned back first, nothing written: a line out of the prompting guide's shape (memory.unshaped), then one with live lines
+        of other jobs on the same thing (curate.same) until `older` settles each (curate.settled). Each verdict is a line in the
+        room's day log; a line superseded in the rules file or the topic rules is marked by the new one, and one in a rulebook,
+        persona or voice file, which no room changes, is one notice in the machine room for whoever keeps that file."""
         if room not in self.rooms or not self.owner(room):
             return {"ok": False, "line": words.RULES_OWNER_ONLY}
         if self.reader(room).sealed:        # its teaching stays its own day-log note, the job its label, never the shared rules
             return await self.tool_remember(room, text, job.strip(" :"), [])
+        topics, acronyms = shape.install(dict(self.conf.get("docs") or {}))
+        if refused := memory.unshaped(job, text, acronyms):
+            return refused
+        listed, said = await asyncio.to_thread(curate.same, self.private, self.memory, self.room_confs, job, text, topics), curate.settled(older)
+        if open_ := [x for x in listed if x["cite"] not in said]:
+            return {"ok": False, "error": words.RULE_SAME, "older": [{k: x[k] for k in ("cite", "text", "shares")} for x in open_]}
         with self.rooms[room].lock:
             mid = ",".join(m.id for m in self.rooms[room].inflight) or f"x{self.rooms[room].turn_key}"
         cap = 0 if uncapped(self.budgets) else int(self.budgets["session_start"]["appended"]["rules"])     # 0: no strip, no topic filing
+        also = tuple((x["path"], x["line"], x["text"]) for x in listed if x["kind"] in ("rules", "topics") and said[x["cite"]][0] == "superseded")
         r = await asyncio.to_thread(memory.rule, self.memory, room, mid, job, text, cap, self.daily, context.books(self.private, self.room_confs),
-                                    tuple(triggers or ()))
+                                    tuple(triggers or ()), also, acronyms)
         if not r["ok"]:
             return r
+        for x in listed:                    # each verdict where a person can read it; a hand-kept file's line to its keeper, once
+            verdict, why = said[x["cite"]]
+            key = f"{mid}.o{hashlib.sha1(' '.join([r['cite'], x['cite'], verdict]).encode()).hexdigest()[:8]}"
+            if self.daily.capture(room, key, "yerk", words.RULE_SETTLED.format(job=r["job"], cite=r["cite"], old=x["cite"], verdict=verdict,
+                                  why=why)) and verdict == "superseded" and x["kind"] not in ("rules", "topics"):
+                await self.jobs.alert(None, f"{words.WORKING} " + words.RULE_TELL.format(old=x["cite"], line=words.line(x["text"], 200),
+                                      job=r["job"], cite=r["cite"], room=room, file=x["cite"].rpartition(":")[0]), 0)
+        r |= {k: v for k, v in (("kept", [x["cite"] for x in listed if said[x["cite"]][0] == "kept"]), ("told", [
+            x["cite"] for x in listed if said[x["cite"]][0] == "superseded" and x["kind"] not in ("rules", "topics")])) if v}
         on = words.either(r.get("triggers", []))
         if r.get("topic") and not r.pop("again", False):       # a retried call: filed and said already
             where = words.TOPIC_WHERE[1].format(rooms=", ".join(r["rooms"])) if r["rooms"] else words.TOPIC_WHERE[0]

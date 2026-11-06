@@ -173,6 +173,8 @@ The daemon's settings, in the private folder beside rooms.toml, read when yerkd 
 - `fetch`: the doctor's weekly fetch of the Claude docs (default true)
 - `refresh_days`: days between fetches (default 7)
 - `pages`: the pages kept, slug = URL (default config.DOCS_PAGES)
+- `topics`: the install's own topics the rule-shape check reads, name = "regex", beside shape.TOPICS
+- `acronyms`: words in capitals the rule-shape check and a rule's filing read as names, not shouting
 
 ### [deploy]
 

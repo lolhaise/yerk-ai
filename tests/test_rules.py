@@ -39,23 +39,24 @@ def told(y: Yerkd, sid: str) -> str:
     return out["hookSpecificOutput"]["additionalContext"]
 
 
-def rule(y: Yerkd, room: str, text: str, job: str = "open web pages", triggers: list[str] | None = None) -> dict:
-    return asyncio.run(y.tool_rule(room, text, job, triggers))
+def rule(y: Yerkd, room: str, text: str, job: str = "open web pages", triggers: list[str] | None = None,
+         older: list[str] | None = None) -> dict:
+    return asyncio.run(y.tool_rule(room, text, job, triggers, older))
 
 
 def test_a_rule_filed_in_one_room_reaches_a_running_room_on_its_next_message_once_per_version(tmp_path):
     y = daemon(tmp_path)
     start(y, B, "sid-b")
     assert context.NEWS not in told(y, "sid-b")                         # nothing changed since its start
-    r = rule(y, A, "Open web pages with the example browser, never the example fetcher.", "Open web pages:")
+    r = rule(y, A, "Open web pages with the example browser, never the example fetcher, since it misses what a page draws.", "Open web pages:")
     assert r == {"ok": True, "job": "open web pages", "cite": "tree/rules.md:6", "replaced": [],
                  "next": words.FILED_NEXT.format(clause=words.RULE_CLAUSE.format(job="open web pages"))}
     assert r["next"].endswith("the filing is one clause at its end, this one: every room now does open web pages this way.")
     block = told(y, "sid-b")
     assert block.count(f"{context.NEWS}\nnew in rules.md: open web pages: Open web pages with the example browser, never "
-                       "the example fetcher. (example-room, ") == 1 and "[m:m-1]" in block
+                       "the example fetcher, since it misses what a page draws. (example-room, ") == 1 and "[m:m-1]" in block
     assert context.NEWS not in told(y, "sid-b")                         # once per version, then never again for it
-    assert rule(y, A, "Open web pages with the example browser, never the example fetcher.")["cite"] == r["cite"]
+    assert rule(y, A, "Open web pages with the example browser, never the example fetcher, since it misses what a page draws.")["cite"] == r["cite"]
     assert context.NEWS not in told(y, "sid-b")                         # a retried call files nothing new
     assert memory.file_class(y.memory.root / memory.RULES) == ("shared", "")      # every room may read it
 
@@ -91,8 +92,8 @@ def test_the_block_keeps_to_its_budget_and_past_it_gives_the_count_and_where_to_
     budget = y.budgets["per_message"]["on_hit"]["rules"]
     rule(y, A, "Example job one is done the example way.", "example job one")
     assert context.chars(y.rules_news(FAMILY, "sid-f")) <= budget
-    for i in range(12):
-        rule(y, A, f"Example job {i} is done the example way, " + "with care " * 10, f"example job {i}")
+    for i, w in enumerate("amber birch cedar delta quartz fjord grove heron iris juniper kestrel lumen".split()):
+        rule(y, A, f"Example job {i} is done the example way, " + f"{w} " * 20, f"example job {i}")   # no two on one thing
     note, kept = y.rules_news(FAMILY, "sid-f"), y.state / "rooms" / FAMILY / "work" / context.CHANGED
     assert note == (f"{context.NEWS} 12 lines new or replaced, past the {budget:,} characters this note holds; "
                     f"read them: Read {kept}.") and context.chars(note) <= budget

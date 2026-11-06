@@ -59,7 +59,10 @@ by the name the owner uses (it names the fact file). `replaces`: for a correctio
 next 12 holding those words is marked superseded. Returns the new line's cite. `job`: when the owner
 says how a job is done from now on, or corrects how it was done, the job's short name ("open web pages",
 the rules' own name if it has one): `text` becomes its one rule in every room, the older one marked
-replaced. `triggers`, with `job`: words or short phrases a message on the job holds (the owner's, when
+replaced. A rule holds its reasons in calm words, examples in <example> tags, since every room follows it as
+written; one that does not comes back with each fix, and so do live lines of other jobs on the same thing,
+settled in `older`: `cite | superseded: why` or `cite | kept: why`.
+`triggers`, with `job`: words or short phrases a message on the job holds (the owner's, when
 named); a topic rule loads on them and its job's words. `said`: when `text` is what a person said or
 wrote, word for word, their name, with `source` (the message id, file path or transcript line holding
 those words): it is filed as their words. Anything else about a person (what they decided or want, in
@@ -73,6 +76,7 @@ your words) is your note, and is shown as your note, never as their words.
 - `triggers`: list of string or null, default null
 - `said`: string, default ""
 - `source`: string, default ""
+- `older`: list of string or null, default null
 
 ## worker
 

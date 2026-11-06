@@ -109,7 +109,8 @@ def padded(tmp: Path) -> Path:
 
 def test_capped_is_mains_assembly_byte_for_byte_with_the_switch_absent_or_false(tmp_path):
     """The fixture is this scenario assembled on the base commit (1ec2592, PR 145's merge; retaken on note-to-self, on
-    retention-keep, on need-2026-10-31-27, on need-2026-10-25-21, on need-2026-10-24-22 and on fold-named-2026-11-04, each
+    retention-keep, on need-2026-10-31-27, on need-2026-10-25-21, on need-2026-10-24-22, on fold-named-2026-11-04 and on
+    rule-filing-check-2026-11-06, each
     one's mechanics line its only change, need-2026-10-25-21's with the checkout's path, CODE; and on need-2026-10-28-25, its only change the rules
     note past its size naming the room's work folder file, context.CHANGED): the start file, both messages,
     the compaction, every assembled.jsonl row, the topic rules told and every log line, the same with [limits] absent and
