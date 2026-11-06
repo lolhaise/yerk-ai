@@ -440,6 +440,29 @@ def test_an_overflow_compacts_then_runs_the_turn_again(env):
     room.rp.close()
 
 
+def test_claude_codes_own_compaction_in_a_turn_is_on_its_card_until_the_models_next_words(env):
+    """2026-11-05: Claude Code compacted 2 min inside the owner's turn and the card said only that it was working on it. Its
+    status event now puts words.COMPACTING on the card, at the turn's start (the fake's AUTO_COMPACT) and in its middle (a
+    fixture: words, a tool row, the compaction, a silent thinking block, the next words)."""
+    make, ledger, _ = env
+    chan = Chan()
+    room = make(chan)
+    send(room, ledger, "1", "AUTO_COMPACT hello")
+    wait_idle(room)
+    shortening = f"{words.WORKING} {words.COMPACTING}"
+    assert chan.cards == [f"{words.WORKING} {words.START}", shortening, f"{words.WORKING} echo: AUTO_COMPACT hello"]
+    assert chan.replies == [("echo: AUTO_COMPACT hello", ["1"])] and ledger.rows(1)[0]["context"] == 20000
+    chan.cards.clear()
+    send(room, ledger, "2", "FIXTURE:compact_mid_turn")
+    wait_idle(room)
+    row = f"{words.DONE} reading the pinned notes"
+    at = chan.cards.index(f"{shortening}\n{row}")
+    assert chan.cards[at - 1:] == [f"{words.WORKING} Checking the notes first\n{row}", f"{shortening}\n{row}",
+                                   f"{words.WORKING} The pinned notes say yes.\n{row}"]
+    assert chan.replies[-1] == ("The pinned notes say yes.", ["2"]) and room.context == 16003
+    room.rp.close()
+
+
 def test_a_rejected_rate_limit_event_hops_like_a_quota_failure(env):
     make, ledger, _ = env
     chan = Chan()

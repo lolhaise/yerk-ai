@@ -8,6 +8,13 @@ version changes.
 
 ## 2026-11-05
 
+### compact-visible-2026-11-05 (#?)
+
+- When Claude Code shortens a room's conversation by itself inside a turn, the card now says "shortening the
+  conversation first" from the moment it starts until the model's next words, at the start of a turn or in its middle.
+  Before, that wait (2 minutes in the one room on Nov 5) showed only "working on it".
+- The `[code]` ceiling goes to 26,465.
+
 ### need-2026-11-05-59 (#?)
 
 - A room can now email someone for you from your own Gmail, with a file attached. Before, a room asked to send a

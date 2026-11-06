@@ -1,5 +1,6 @@
 """Builds the live progress card a room shows while it works, from Claude Code's stream events. One card per turn of every kind: the state and the
-waits in (the queue for its), turn and the last (part-closes the case before the next; run
+narration line (the model'says the sample; item Moved To's own compaction start, words.COMPACTING until the model's
+moved to, the Next._step and the), test reads it back (as-plain text with one more line; for
 start of the summary, then "..."), then one row per tool call saying what the step is FOR in plain words
 (words.STEP), marked done or not done by its result, two or more failures in a row folded into one. Every
 line holds to phone width (words.PHONE); the newest rows win. The room swaps the card for the reply at the
@@ -152,6 +153,8 @@ class Card:
             for c in content if isinstance(content, list) else []:
                 if c.get("type") == "tool_result" and (hit := self.by_id.get(str(c.get("tool_use_id")))):
                     hit.state = FAILED if c.get("is_error") or tool_name(hit.name) == "send" and refused(c.get("content")) else OK
+        elif kind == "system" and ev.get("subtype") == "status" and ev.get("status") == "compacting":   # 2.1.316, at its start (status
+            self.narration = words.COMPACTING     # null at its end): said from here until the model's next words, as Room._note
         return self.render() != before
 
     def _row(self, rid: str, name: str) -> Row:

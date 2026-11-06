@@ -93,6 +93,37 @@ def test_a_card_with_nothing_to_show_says_what_was_owed():
     assert first.splitlines()[3] == f"{RUNNING} reading units"
 
 
+def status(state="compacting", **extra):
+    return {"type": "system", "subtype": "status", "status": state, **extra}
+
+
+def text(i, said):
+    return [se({"type": "content_block_start", "index": i, "content_block": {"type": "text", "text": ""}}),
+            se({"type": "content_block_delta", "index": i, "delta": {"type": "text_delta", "text": said}})]
+
+
+def test_claude_codes_own_compaction_is_said_from_its_start_until_the_models_next_words():
+    """2026-11-05: Claude Code's own compaction ran 2 min inside the owner's turn under the bare start line. The stream
+    says when one starts (2.1.316: status compacting, then status null at its end) and the card says so from there until
+    the model's next words, at a turn's start and in its middle."""
+    c = Card()
+    assert c.feed(status()) is True and c.render() == f"{RUNNING} {words.COMPACTING}"
+    for ev in (status(), status(None, compact_result="success"), {"type": "system", "subtype": "compact_boundary"},
+               status("requesting")):
+        assert c.feed(ev) is False                                      # said again, its end, the next call: it holds
+    for ev in text(0, "Here is the plan") + tool(1, "a", "Read", {"file_path": "/x/memory/pinned.md"}) + [result("a")]:
+        c.feed(ev)
+    assert c.render() == f"{RUNNING} Here is the plan\n{OK} reading the pinned notes"
+    c.feed(status())                                                    # in the middle of the turn
+    assert c.render() == f"{RUNNING} {words.COMPACTING}\n{OK} reading the pinned notes"
+    for ev in text(2, "Found it"):
+        c.feed(ev)
+    assert c.render() == f"{RUNNING} Found it\n{OK} reading the pinned notes"
+    people = Card(people="r")                                           # a room with people: until its holding line
+    people.feed(status())
+    assert people.render() == f"{RUNNING} {words.COMPACTING}"
+
+
 def test_an_image_never_read_bounces_once_at_stop(tmp_path):
     room = Room.__new__(Room)
     room.lock, room.rp, room.bounced = __import__("threading").Lock(), NS(read_paths=set()), False
