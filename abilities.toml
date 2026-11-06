@@ -49,7 +49,9 @@ layer = 10
 # line, since the census under it already names each ability by its state (16 fewer), so it ends at 1,984;
 # need-2026-11-03-45 found it at 2,006 with page-mac's and page-reach's names and left this entry out of its own census
 # (abilities.census), the line before it naming it already (11 fewer), so it ends at 1,995; need-2026-11-04-47 found it
-# at 2,002 with latex's name and cut the answer's last line from "has any one" to "has one" (4 fewer), so it ends at 1,998.
+# at 2,002 with latex's name and cut the answer's last line from "has any one" to "has one" (4 fewer), so it ends at 1,998;
+# need-2026-11-04-51 found it at 2,009 with page-talk's name and cut the three video abilities' shared provider words
+# from "keys when they are there" to "keys if there" (11 fewer), so it ends at 1,998.
 [abilities.abilities]
 state = "built"
 what = "Says what Yerk AI can do."
@@ -649,7 +651,7 @@ how = [
 ]
 tier = "key"
 keys = ["openai"]
-provider = "OpenAI for the transcript, with transcribe's Groq and Meta keys when they are there"
+provider = "OpenAI for the transcript, with transcribe's Groq and Meta keys if there"
 needs = "yt-dlp, ffmpeg and ffprobe on the machine, on the daemon's PATH; the OpenAI key for the transcript"
 price = "the download, the frames and a video's own captions are free; a video with no captions at transcribe's prices (yerk explain transcribe): a 1-minute reel is about 1 US cent with all three engines, a 10-minute video about 10"
 key = "the transcript runs on transcribe's keys, in the private folder's secrets/: openai.key, and groq.key and meta.key, both optional; the next call reads it, no restart"
@@ -668,7 +670,7 @@ how = [
 ]
 tier = "key"
 keys = ["openai"]
-provider = "OpenAI for the transcript, with transcribe's Groq and Meta keys when they are there"
+provider = "OpenAI for the transcript, with transcribe's Groq and Meta keys if there"
 needs = "ffmpeg and ffprobe on the machine, on the daemon's PATH; the OpenAI key for the transcript"
 price = "the frames are free; the transcript at transcribe's prices (yerk explain transcribe): a 1-minute clip is about 1 US cent with all three engines"
 key = "the transcript runs on transcribe's keys, in the private folder's secrets/: openai.key, and groq.key and meta.key, both optional; the next call reads it, no restart"
@@ -687,7 +689,7 @@ how = [
 ]
 tier = "key"
 keys = ["openai"]
-provider = "OpenAI for the transcript, with transcribe's Groq and Meta keys when they are there"
+provider = "OpenAI for the transcript, with transcribe's Groq and Meta keys if there"
 needs = "the Discord adapter, its bot able to read the channel (View Channel and Read Message History); ffmpeg and ffprobe on the machine; the OpenAI key for the transcript"
 price = "reading the message, the save and the frames are free; the transcript at transcribe's prices (yerk explain transcribe): a 1-minute clip is about 1 US cent with all three engines"
 key = "the transcript runs on transcribe's keys, in the private folder's secrets/: openai.key, and groq.key and meta.key, both optional; the next call reads it, no restart"
@@ -1641,6 +1643,27 @@ price = "none"
 free_path = "this is the free path"
 asked_as = ["page on my phone", "page from my phone", "page from my mac", "page on tailscale", "page over tailscale", "page on the lan",
             "page only on the pc", "cant reach the page", "page wont load on my mac"]
+
+# need-2026-11-04-51: the owner asked to talk with a room inside the program on the live page, no chat column at all; the
+# room's replies rendered only in the chat pane, which could not close (its split clamped 15 to 80), and the room rewrote
+# the whole program with #> lines, which threw the owner's caret to the end.
+[abilities.page-talk]
+state = "built"
+what = "A room's live page holds code, talk, output and ink on one surface, for every room: the chat closes to nothing and the talk lives in the program, the owner's # lines going to the room and its replies coming back as #> lines the page itself writes under the owner's last # line, with the owner's caret and typing kept; a # line ended with Enter goes at once, and what a run prints shows large."
+how = [
+  "The chat closed: drag the grip to the edge or press `close` on the chat; the split is 0, kept in the browser and by yerkd across restarts, and every tab that opens shows it; `chat` on the bar brings it back. The room is told in its next message, both ways.",
+  "The room's lines: while the chat is closed, each reply, notice and send of the room's goes into the program as #> lines, wrapped at 88 columns with a link or a fenced line kept whole, 60 at most, under the # line the owner said last (else the owner's lowest # line, else after the last line), after the #> lines already there, at its indent; the chat keeps them too.",
+  "Caret kept: yerkd writes the lines in its copy and in the one the room last heard, so the room is never told it typed them, and hands every tab the line and the words; the tab writes them in its own text at that line, so what the owner typed since keeps its place and the caret moves down with its line. A program the room draws keeps the caret where it was.",
+  "Marked as the room's: each #> line has a band in the room's colour, its name by the first line of a run, and is never read as the owner's talk.",
+  "Enter sends: a # line the owner ends with Enter goes to the room at once, not after the 1.5 s pause; an Enter after one the room already heard waits for the pause, as typing does; #run, #hint, #next or #make <anything> are talk the room acts on with its page tool.",
+  "Output: what a run prints shows large above the tests' tiles, and its end rides in the room's next message; a program with blank tests runs alone, as a script, in the same sandbox, so a game or a script the room writes on a #make line runs there.",
+]
+tier = "free"
+needs = "the live-page ability"
+price = "none"
+free_path = "this is the free path"
+asked_as = ["talk in the code", "talk to you in the code", "talk through comments", "talk via comments", "chat in the code",
+            "dont want the chatbox", "close the chat", "no chat column", "replies in the code", "print output bigger"]
 
 [abilities.work-writes]
 state = "built"

@@ -2,6 +2,7 @@
 as messages, mid-turn too, the tests run when the page asks with no model, and what the room says and draws shows on the page."""
 import asyncio
 import json
+import random
 import re
 import shutil
 import subprocess
@@ -15,7 +16,8 @@ from starlette.testclient import TestClient
 
 from yerk_ai import cli, mcp_server, words
 from yerk_ai.channels import page as pagemod
-from yerk_ai.channels.page import Mirror, Page, address, board, cell, change, comments, plain, rich, run_line, run_tests
+from yerk_ai.channels.page import (Mirror, Page, address, board, cell, change, comments, into, plain, rich, run_line, run_tests,
+                                   talk_lines)
 from yerk_ai.channels.page import tailnet as real_tailnet     # before conftest's no_tailnet puts its stand-in there
 from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai.daemon import Yerkd
@@ -1181,3 +1183,812 @@ def test_an_address_the_box_has_not_got_yet_is_bound_all_the_same_so_a_tailnet_u
     six, up = pagemod.bind("2001:db8::10", 0)
     assert not up and six.family == pagemod.socket.AF_INET6
     six.close()
+
+
+def test_with_the_chat_closed_the_room_s_replies_go_into_the_program_under_the_owner_s_last_comment(tmp_path):
+    """need-2026-11-04-51, the wall the ask hit: the room's replies rendered only in the chat pane, so a room talking to the
+    owner in the program rewrote the whole program with #> lines, which threw the caret to the end and would overwrite what
+    was typed between its read and its write. With the chat closed the page itself writes each reply into the program as
+    #> lines under the owner's last # line, in yerkd's copy and the room's last heard one alike (the room is never told it
+    typed them, and a #> line is never the owner's talk), and every tab gets the line and the words to write in its own
+    text; the switch rides in the next message and is kept across a restart."""
+    p, room = hub(tmp_path, quiet=60)
+    p.draw("r", {"code": "def add(a, b):\n    return a - b\n"})
+
+    async def go():
+        tab = p.stream("r", beat=0.05)
+        await tab.__anext__()
+        p.said("r", "said with the chat open")                     # the chat open: the chat alone
+        await tab.__anext__()
+        await p.event("r", {"kind": "talk", "on": True})
+        await p.event("r", {"kind": "edit", "pane": "code", "text": "# why minus?\ndef add(a, b):\n    return a - b\n", "send": True})
+        p.said("r", "**Look** at line 3: it subtracts.\n\nMake it a plus.")
+        ops = [json.loads(await tab.__anext__()) for _ in range(3)]
+        await tab.aclose()
+        return ops
+    mine, said, talk = asyncio.run(go())
+    assert room.got[0].text.splitlines()[1:] == ["typed in solution.py:", "@@ -1 +1,2 @@", "+# why minus?", " def add(a, b):",
+                                                 "said in solution.py at line 1, as a # comment: why minus?", words.PAGE_TALK_ON]
+    lines = ["#> **Look** at line 3: it subtracts.", "#>", "#> Make it a plus."]
+    want = "# why minus?\n" + "\n".join(lines) + "\ndef add(a, b):\n    return a - b\n"
+    s = p.sheets["r"]
+    assert mine["line"]["at"] == 1 and said["line"]["text"].startswith("**Look**") and talk == {"talk": {"n": s.talked, "line": 1, "text": "# why minus?", "lines": lines}}
+    assert s.code == s.heard[0] == want and (tmp_path / "rooms" / "r" / "work" / "page" / "solution.py").read_text() == want
+    assert [x["text"] for x in s.lines] == ["said with the chat open", "why minus?", "**Look** at line 3: it subtracts.\n\nMake it a plus."]
+    assert "#> " not in "".join(s.code.split("\n")[:1]) and comments("", want) == [(1, "why minus?")]   # #> is never his talk
+    assert p.flush("r") == ""                                    # nothing typed since: nothing goes, the room never typed #>
+    assert {"kind": "talked", "under": 1, "lines": 3} == {k: v for k, v in events(tmp_path)[-1].items() if k != "t"}
+    again = Page(tmp_path, p.ledger)
+    again.add_room(Taken())
+    assert again.sheets["r"].talk and again.sheets["r"].state()["state"]["talk"] is True     # kept across a restart
+    asyncio.run(again.event("r", {"kind": "talk", "on": False}))
+    again.said("r", "back on the chat")
+    assert again.sheets["r"].code == want and again.sheets["r"].waiting == [words.PAGE_TALK_OFF]
+
+
+def test_a_comment_line_ended_with_enter_goes_at_once_not_after_the_pause(tmp_path):
+    """need-2026-11-04-51: a # line the owner ends with Enter goes to the room now, not after the 1.5 s pause."""
+    p, room = hub(tmp_path, quiet=60)
+
+    async def go():
+        await p.event("r", {"kind": "edit", "pane": "code", "text": "# make a snake game"})
+        assert room.got == []                                    # still typing on it: waits for the pause
+        await p.event("r", {"kind": "edit", "pane": "code", "text": "# make a snake game\n", "send": True})
+        await p.event("r", {"kind": "edit", "pane": "code", "text": "# make a snake game\n", "send": True})   # nothing new
+    asyncio.run(go())
+    assert len(room.got) == 1 and room.got[0].text.splitlines()[-1] == "said in solution.py at line 1, as a # comment: make a snake game"
+    assert p.sheets["r"].asked == (1, "# make a snake game") and p.sheets["r"].quiet is None
+    script = pagemod.HTML.read_text().split("<script>", 1)[1]
+    typed = script.split("function typed(", 1)[1].split("\nfunction ", 1)[0]
+    assert "insert(LineBreak|Paragraph)" in typed and "owned(before[before.length - 2])" in typed and "send: true" in typed
+    assert 'if (e.key === "Enter" && !e.isComposing) enter = true;' in script
+
+
+def test_an_enter_after_a_comment_the_room_has_heard_waits_for_the_pause_like_any_typing(tmp_path):
+    """need-2026-11-04-51, the first cold read's third find, which 9966df9 left out: the tab marks an edit `send` whenever
+    the line above the caret is a # line of the owner's, and yerkd sent on `send` alone, so an Enter at the end of a
+    comment the room had already heard (a drill's header it drew, or the owner's question the pause had sent) sent the room
+    a message at once whose whole content was one blank line: a room turn for nothing, the code typed next a second message,
+    and the owner's question told twice. Now `send` goes at once only with talk the room has not heard (comments); else the
+    edit waits for the pause like any other, and goes in one message with what is typed next."""
+    p, room = hub(tmp_path)                                       # a pause of 0.05 s
+    p.draw("r", {"code": "# sum two numbers\n" + FIXED})
+    s = p.sheets["r"]
+
+    async def go():
+        await p.event("r", {"kind": "edit", "pane": "code", "text": "# sum two numbers\n\n" + FIXED, "send": True})
+        assert room.got == [] and s.quiet is not None             # Enter after the room's own comment: nothing now, the pause armed
+        await p.event("r", {"kind": "edit", "pane": "code", "text": "# sum two numbers\nimport math\n" + FIXED})
+        await asyncio.sleep(0.2)                                   # the pause: the new line and its code, one message
+        await p.event("r", {"kind": "edit", "pane": "code", "text": "# why math?\n# sum two numbers\nimport math\n" + FIXED})
+        await asyncio.sleep(0.2)                                   # the owner's question, said at the pause
+        await p.event("r", {"kind": "edit", "pane": "code", "text": "# why math?\n\n# sum two numbers\nimport math\n" + FIXED, "send": True})
+        assert len(room.got) == 2 and s.quiet is not None         # Enter after it: not said again
+        await p.event("r", {"kind": "edit", "pane": "code", "send": True,
+                            "text": "# why math?\n# and not a plus?\n\n# sum two numbers\nimport math\n" + FIXED})
+        assert len(room.got) == 3 and s.quiet is None             # a new one ended with Enter: at once, as before
+    asyncio.run(go())
+    first, second, third = (m.text.splitlines()[1:] for m in room.got)
+    assert first == ["typed in solution.py:", "@@ -1,2 +1,3 @@", " # sum two numbers", "+import math", " def add(a, b):"]
+    assert second[-1] == "said in solution.py at line 1, as a # comment: why math?"
+    assert "+# and not a plus?" in third and third[-1] == "said in solution.py at line 2, as a # comment: and not a plus?"
+    assert [x["text"] for x in s.lines] == ["why math?", "and not a plus?"]                # each said once on the chat
+
+
+def test_into_puts_the_lines_under_the_comment_said_last_at_its_indent_after_earlier_replies_else_at_the_end():
+    code = "# one\nx = 1\ndef f():\n    # why this?\n    #> earlier\n    return x\n# one\n"
+    assert into(code, (4, "# why this?"), ["#> now"]) == (code.replace("#> earlier\n", "#> earlier\n    #> now\n"), 4, "# why this?")
+    assert into(code, (7, "# one"), ["#> b"])[1:] == (7, "# one") and into(code, (2, "# one"), ["#> a"])[1:] == (1, "# one")   # the nearest
+    assert into(code, (9, "# gone"), ["#> c"])[1:] == (7, "# one")                 # deleted since: the owner's lowest # line
+    assert into("x = 1\n", (0, ""), ["#> d"]) == ("x = 1\n#> d\n", 0, "") and into("x = 1", (0, ""), ["#> d"])[0] == "x = 1\n#> d"
+    assert into("", (0, ""), ["#> e"]) == ("#> e\n", 0, "") and into("#!/bin/env python3\n#> f\n", (0, ""), ["#> g"])[0] == "#!/bin/env python3\n#> f\n#> g\n"
+    url = "https://example.org/" + "a" * 100
+    wide = talk_lines("word " * 40 + "\n" + url + "\n```\n" + "y" * 120 + "\n```")
+    assert all(len(x) <= pagemod.TALK_WIDTH + 3 for x in wide[:3]) and f"#> {url}" in wide and f"#> {'y' * 120}" in wide
+    cut = talk_lines("\n".join(f"line {i}" for i in range(100)))
+    assert len(cut) == pagemod.DIFF_LINES and cut[-1] == "#> " + words.PAGE_TALK_CUT.format(n=100 - pagemod.DIFF_LINES + 1)
+
+
+def tab_talk(text, caret, op, marks=(), pending=1, talked=None):
+    """The page's own talk(), run by node on a stand-in textarea that does setRangeText as a browser does ("preserve"):
+    the text after, the caret after, the edit it posted and the room's marks after (`marks` before), under the page's own
+    TEXT_MAX; `pending` the tab's edits on their way to yerkd, not answered yet (1: the tab the owner types in, 0: an idle
+    one); `talked` the number of the room's last reply the tab had, by default the one before `op`'s (1 when it has none)."""
+    op = {"n": 1, **op}
+    talked = op["n"] - 1 if talked is None else talked
+    script = pagemod.HTML.read_text().split("<script>", 1)[1]
+    fns = "".join(f"function {name}(" + script.split(f"\nfunction {name}(", 1)[1].split("\n}\n", 1)[0] + "\n}\n" for name in ("owned", "talk"))
+    cap = re.search(r"const TEXT_MAX = (\d+);", script)
+    harness = (f"const TEXT_MAX = {cap[1] if cap else pagemod.TEXT_MAX};\n"
+               "let [text, caret, op, marks, pending, talked] = JSON.parse(process.argv.at(-1)); const posted = []; const state = { marks };\n"
+               "const ta = { value: text, selectionStart: caret, selectionEnd: caret, setRangeText(r, a, b, mode) {\n"
+               "  const d = r.length - (b - a); this.value = this.value.slice(0, a) + r + this.value.slice(b);\n"
+               "  const s = this.selectionStart; this.selectionStart = this.selectionEnd = s > b ? s + d : s > a ? a : s; } };\n"
+               "const panes = { code: { ta } }, gutter = () => {}, sync = () => {}, roomLines = () => {};\n"
+               "const post = (p, b) => (posted.push(b), Promise.resolve({ ok: true }));\n"
+               + fns + "talk(op); console.log(JSON.stringify({ text: ta.value, caret: ta.selectionStart, posted, marks: state.marks, talked }));\n")
+    done = subprocess.run(["node", "-e", harness, json.dumps([text, caret, op, list(marks), pending, talked])], capture_output=True, text=True, timeout=60)
+    assert done.returncode == 0, done.stderr
+    return json.loads(done.stdout)
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="node runs the page's script; it is not on this box")
+def test_the_tab_writes_the_room_s_lines_in_its_own_text_keeping_the_caret_and_what_was_typed_since(tmp_path):
+    """need-2026-11-04-51: the tab writes the room's #> lines at the line yerkd found, in its own text, so a line the owner
+    typed after yerkd's copy keeps its place and the caret moves down with its line; the same lines as yerkd's copy."""
+    code = "x = 1\n# why?\n"
+    new, at, anchor = into(code, (2, "# why?"), ["#> because"])
+    op = {"line": at, "text": anchor, "lines": ["#> because"]}
+    got = tab_talk(code, len(code), op)                                       # the caret on the line under his comment
+    assert got["text"] == new and got["caret"] == len(new) and got["posted"] == [{"kind": "edit", "pane": "code", "text": new, "talked": 1}]
+    typed = "x = 1\n# why?\nprint(x)"                                       # typed since yerkd's copy: kept, the caret with it
+    got = tab_talk(typed, len(typed), op)
+    assert got["text"] == "x = 1\n# why?\n#> because\nprint(x)" and got["caret"] == len(got["text"])
+    got = tab_talk("x = 1\n# why?", 3, op)                                  # a caret above: where it was
+    assert got["text"] == "x = 1\n# why?\n#> because" and got["caret"] == 3
+    moved = "# new line on top\n" + code                                     # lines added above: found by its words
+    assert tab_talk(moved, 0, op)["text"] == into(moved, (2, "# why?"), ["#> because"])[0]
+    indented = "def f():\n    # here?\n    return 1\n"
+    want, at, anchor = into(indented, (2, "# here?"), ["#> yes"])
+    assert tab_talk(indented, 0, {"line": at, "text": anchor, "lines": ["#> yes"]})["text"] == want == indented.replace("?\n", "?\n    #> yes\n")
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="node runs the page's script; it is not on this box")
+def test_a_tab_the_owner_is_not_typing_in_posts_nothing_after_the_room_s_lines_so_what_he_typed_in_another_stays(tmp_path):
+    """need-2026-11-04-51, the third cold read's find: tabs never get each other's edits, so of two open tabs an idle one
+    holds the program as of its last connect or draw, and with the chat closed each reply made every tab post its whole
+    text with the room's lines. The post that landed last became yerkd's copy and solution.py: the idle tab's took away
+    what the owner typed in the other, and the room was told he deleted it. A tab posts after the room's lines only with an
+    edit of its own still on its way, which may have crossed them in yerkd: the idle tab writes them in its own text and
+    posts nothing, and the tab he types in posts his typing again with them, his caret kept."""
+    p, room = hub(tmp_path, quiet=60)
+    drawn = "# why minus?\ndef add(a, b):\n    return a - b\n"
+    p.draw("r", {"code": drawn})                                   # both tabs show this; the idle one hears no edit after
+    typed = drawn + "\ndef mul(a, b):\n    return a * b\n"          # typed in the other tab, the room heard it at the pause
+    more = typed + "print(mul(2, 3))"                               # and a keystroke on its way as the room's reply lands
+    s = p.sheets["r"]
+
+    async def go():
+        await p.event("r", {"kind": "talk", "on": True})
+        await p.event("r", {"kind": "edit", "pane": "code", "text": typed})
+        p.flush("r")
+        q: asyncio.Queue = asyncio.Queue()
+        s.tabs.append(q)
+        p.said("r", "Make it a plus.")
+        await asyncio.sleep(0)
+        op = next(o["talk"] for o in [q.get_nowait() for _ in range(q.qsize())] if "talk" in o)
+        await p.event("r", {"kind": "edit", "pane": "code", "text": more})    # posted before his tab had the lines
+        mine, idle = tab_talk(more, len(more), op), tab_talk(drawn, 0, op, pending=0)
+        for edit in mine["posted"] + idle["posted"]:              # the idle tab's would land last: the farther one
+            await p.event("r", edit)
+        return op, mine, idle
+    op, mine, idle = asyncio.run(go())
+    want = into(more, (1, "# why minus?"), ["#> Make it a plus."])[0]    # his text with the room's lines, mul() and all
+    assert op["line"] == 1 and s.code == want and (tmp_path / "rooms" / "r" / "work" / "page" / "solution.py").read_text() == want
+    assert idle["posted"] == [] and idle["text"] == into(drawn, (1, "# why minus?"), op["lines"])[0]   # in its own text alone
+    assert mine["text"] == want and mine["caret"] == len(want) and mine["posted"] == [{"kind": "edit", "pane": "code", "text": want, "talked": op["n"]}]
+    p.flush("r")
+    assert "+print(mul(2, 3))" in room.got[-1].text and "-def mul" not in room.got[-1].text      # never told he deleted it
+    typing = pagemod.HTML.read_text().split("\nfunction typed(", 1)[1].split("\nfunction ", 1)[0]
+    assert typing.index("pending++") < typing.index('post("event"') and ".then(() => pending--)" in typing   # each edit counted till answered
+
+
+@boxed
+def test_a_program_with_blank_tests_runs_alone_and_its_prints_are_shown_large_and_said(tmp_path):
+    """need-2026-11-04-51: the run's print output shown large, so one surface holds code, talk, output and ink; a program
+    with no tests (one the room made on a #make line) runs alone, as a script, in the same sandbox."""
+    r = run_tests('print("hello")\nif __name__ == "__main__":\n    print("as a script")\n', "")
+    assert r["ok"] and r["main"] and r["output"] == "hello\nas a script\n" and r["ran"] == 0
+    assert run_line(r) == f"{words.PAGE_MAIN}\n{words.PAGE_PRINTED.format(output='hello' + chr(10) + 'as a script')}"
+    bad = run_tests("print(1)\nprint(1 / 0)\n", "\n")
+    assert not bad["ok"] and bad["line"] == 2 and run_line(bad).startswith(words.PAGE_MAIN_ERROR.format(error="ZeroDivisionError: division by zero", line=" (line 2)"))
+    p, room = hub(tmp_path)
+
+    async def go():
+        await p.run("r", {"code": 'print("one")\n', "tests": ""})
+        await asyncio.sleep(0.2)
+        await p.run("r", {"code": 'print("two")\n'})              # a new print is news
+        await asyncio.sleep(0.2)
+    asyncio.run(go())
+    assert [m.text.splitlines()[-1] for m in room.got] == ["one", "two"]
+    css, body = pagemod.HTML.read_text().split("</style>", 1)
+    out = next(v for k, v in styles(css).items() if k.endswith("*/ #out"))      # the rule under its comment
+    assert int(re.search(r"(\d+)px", out["font"])[1]) >= 16 and out["white-space"] == "pre-wrap"     # large, its lines kept
+    results = body.split('id="results"', 1)[1].split("</div></div>", 1)[0]
+    assert results.index('id="sum"') < results.index('<pre id="out" hidden>') < results.index('id="rows"')
+    show = body.split("function showRun(", 1)[1].split("\nfunction ", 1)[0]
+    assert "out.textContent = (r && r.output)" in show and "r.main" in show and 'make("pre"' not in show
+
+
+def test_the_chat_closes_to_nothing_and_the_page_remembers_it(tmp_path):
+    """need-2026-11-04-51, the other wall: the chat's split was clamped to 15 to 80 of the width, so it could not be closed.
+    Under CLOSE it is 0: the chat closed to nothing, the program the whole width, kept in the browser and by yerkd (talk),
+    which every tab that opens shows; a button closes it and one on the bar brings it back."""
+    css, body = pagemod.HTML.read_text().split("</style>", 1)
+    rules = styles(css)
+    wide = next(v for k, v in rules.items() if k.endswith("*/ body.chatless"))      # the wide screen's, under its comment
+    assert wide["grid-template"] == '"bar bar" auto "main grip" minmax(0, 1fr) / minmax(0, 1fr) 10px'
+    assert rules["body.chatless"]["grid-template"] == '"bar" auto "main" minmax(0, 1fr) / minmax(0, 1fr)'     # a narrow one's
+    assert rules["body.chatless #chat"]["display"] == "none" and "#chat .head button:not(#close-chat)" in css
+    assert 'id="close-chat"' in body.split('id="chat"', 1)[1] and 'id="open-chat"' in body.split('id="bar"', 1)[1].split("</header>", 1)[0]
+    script = body.split("<script>", 1)[1]
+    split = script.split("function split(", 1)[1].split("\n}\n", 1)[0]
+    assert "pct < CLOSE" in split and "pct = 0" in split and 'post("event", { kind: "talk", on: chatless })' in split
+    assert "keep(pct === null ? null : pct.toFixed(1))" in split and "Math.max(15, pct)" in split
+    assert "if (talkOn !== chatless) split(talkOn ? 0 : opened, true, false);" in script        # the tab shows what yerkd keeps
+    assert "if (op.talk) talk(op.talk);" in script and "put(name, d[name])" in script        # a drawn program keeps the caret
+    assert ".mark.room {" in css and 'make("div", "mark room")' in script                    # the room's lines in its colour
+
+
+def test_the_room_s_replies_never_grow_the_program_past_its_cap_so_a_keystroke_cuts_none_of_it(tmp_path):
+    """need-2026-11-04-51, the cold read's first find: _talk wrote the room's #> lines into yerkd's copy with no cap, where
+    every other way in (an edit, a draw) cuts at TEXT_MAX, so with the chat closed long replies grew the program past it
+    (25 replies of 60 lines: 124,532 characters, with no tab open) and the next keystroke a tab posted cut it, and
+    solution.py, to TEXT_MAX: the end of the owner's code gone under replies written above it, and the room told he deleted
+    it. Now what fits goes in, the rest named as on the chat, and the room hears once that the program is full."""
+    p, room = hub(tmp_path, quiet=60)
+    body = "".join(f"x{i} = {i}\n" for i in range(7600))
+    code = "# why?\n" + body + "# end of the owner's code\n"
+    assert pagemod.TEXT_MAX - 5000 < len(code) < pagemod.TEXT_MAX
+    p.draw("r", {"code": code})
+    reply = "\n".join("word " * 16 for _ in range(60))             # 60 lines of 80 characters, about 4,900 a reply
+
+    async def go():
+        await p.event("r", {"kind": "talk", "on": True})
+        p.sheets["r"].asked = (1, "# why?")
+        for _ in range(3):
+            p.said("r", reply)
+        await asyncio.sleep(0)                                     # said() hands its steps to the loop
+        s = p.sheets["r"]
+        assert len(s.code) <= pagemod.TEXT_MAX and s.code.endswith(body + "# end of the owner's code\n")
+        assert (tmp_path / "rooms" / "r" / "work" / "page" / "solution.py").read_text() == s.code and s.heard[0] == s.code
+        talk = s.code.split("\n")[1:s.code.split("\n").index("x0 = 0")]           # the first reply's head, then its count
+        assert talk == ["#> " + "word " * 15 + "word"] * (len(talk) - 1) + ["#> " + words.PAGE_TALK_CUT.format(n=60 - len(talk) + 1)]
+        assert pagemod.TEXT_MAX - len(s.code) < len(talk[-1]) + 1                 # filled: the next two, not even their count
+        typed = s.code + "y = 1\n"                                 # the owner's next keystroke, posted whole
+        await p.event("r", {"kind": "edit", "pane": "code", "text": typed})
+        p.flush("r")                                               # the pause: a line of code is no # line ended with Enter
+        return s, typed
+    s, typed = asyncio.run(go())
+    assert s.code == typed and (tmp_path / "rooms" / "r" / "work" / "page" / "solution.py").read_text() == typed   # nothing cut
+    said = room.got[-1].text.splitlines()
+    assert not [x for x in said if x.startswith("-")] and "+y = 1" in said                # no line of his told as deleted
+    assert said.count(words.PAGE_TALK_FULL.format(n=pagemod.TEXT_MAX)) == 1               # once, for the three replies
+    more = "one more, longer than the room left"                  # no room for it nor its count: the chat alone has it
+    p.said("r", more)
+    assert s.code == typed and s.lines[-1]["text"] == more and s.waiting == [words.PAGE_TALK_FULL.format(n=pagemod.TEXT_MAX)]
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="node runs the page's script; it is not on this box")
+def test_the_tab_writes_no_more_of_the_room_s_lines_than_its_cap_holds():
+    """need-2026-11-04-51: a tab whose text is longer than yerkd's copy (typed since) writes only the room's lines that fit
+    under the page's TEXT_MAX, which is page.py's, so its next post is never cut; none fit, it writes and posts nothing."""
+    text = "# q?\n" + "x" * (pagemod.TEXT_MAX - 25)
+    got = tab_talk(text, 2, {"line": 1, "text": "# q?", "lines": ["#> short", "#> " + "a" * 30]})
+    assert got["text"] == "# q?\n#> short\n" + "x" * (pagemod.TEXT_MAX - 25) and len(got["text"]) <= pagemod.TEXT_MAX
+    assert got["caret"] == 2 and got["posted"] == [{"kind": "edit", "pane": "code", "text": got["text"], "talked": 1}]
+    full = tab_talk(text, 2, {"line": 1, "text": "# q?", "lines": ["#> " + "a" * 30]})
+    assert full["text"] == text and full["posted"] == []
+    script = pagemod.HTML.read_text().split("<script>", 1)[1]
+    assert re.search(r"const TEXT_MAX = (\d+);", script)[1] == str(pagemod.TEXT_MAX)
+
+
+def test_the_room_s_marks_move_down_with_their_lines_when_its_reply_goes_in_above_them(tmp_path):
+    """need-2026-11-04-51, the cold read's second find: the room's arrow on line 3 ("this subtracts") stayed on line 3 when
+    its two-line reply went in under the owner's question on line 1, so it pointed at a #> line. Marks under the lines
+    written move down by as many, in yerkd's copy (what a tab that opens shows) and in every open tab's; one above stays."""
+    p, room = hub(tmp_path, quiet=60)
+    code = "# why minus?\ndef add(a, b):\n    return a - b\n"
+    marks = [{"line": 3, "kind": "arrow", "text": "this subtracts"}, {"line": 1, "kind": "highlight", "text": "asked"}]
+    p.draw("r", {"code": code, "marks": marks})
+
+    async def go():
+        await p.event("r", {"kind": "talk", "on": True})
+        p.sheets["r"].asked = (1, "# why minus?")
+        p.said("r", "Look at the arrow: it subtracts.\nMake it a plus.")
+        await asyncio.sleep(0)
+    asyncio.run(go())
+    s = p.sheets["r"]
+    rows = s.code.split("\n")
+    assert [(m["line"], rows[m["line"] - 1]) for m in s.marks] == [(5, "    return a - b"), (1, "# why minus?")]
+    assert s.state()["state"]["marks"] == s.marks
+    if shutil.which("node"):                                       # the tab moves its own the same, for its own text
+        op = {"line": 1, "text": "# why minus?", "lines": ["#> Look at the arrow: it subtracts.", "#> Make it a plus."]}
+        got = tab_talk(code, 0, op, marks)
+        assert got["text"] == s.code and [m["line"] for m in got["marks"]] == [5, 1]
+        assert got["marks"][0] == {**marks[0], "line": 5}
+
+
+# need-2026-11-04-51, no room line ever lost: a tab posts its whole text and yerkd took it as the truth, so a reply of the
+# room's the tab had not written yet (its feed down, a sleep, a restart, a post on its way) left yerkd's copy and
+# solution.py, and the room was told the owner deleted it. Each reply is numbered now (Sheet.talked); a tab writes each once,
+# the ones it missed when its feed is back (apply, `state`), and every post says the number it had, so yerkd writes in what
+# a post built before a reply lacks (caught_up). The rows below run the page's own script for each tab (Tabs) against a real
+# Page (World), every order of a post, its answer and a feed's op set by hand.
+TABS_JS = r"""
+const tabs = {}, waiting = {};
+let ids = 0;
+function made(focused) {
+  let state = { marks: [] }, talked = 0, pending = 0, enter = false, lastKey = 0, stallSaid = false, runTimer = 0, timerSaid = false;
+  let talkOn = true, chatless = true, opened = null;
+  const box = () => { let v = "", a = 0, b = 0; return {           // a textarea: a new value puts the caret at its end, as a browser does
+    get value() { return v; }, set value(x) { v = x; a = b = x.length; },
+    get selectionStart() { return a; }, set selectionStart(x) { a = x; }, get selectionEnd() { return b; }, set selectionEnd(x) { b = x; },
+    scrollTop: 0, setSelectionRange(x, y) { a = x; b = y; },
+    setRangeText(r, x, y) { const d = r.length - (y - x), s = a; v = v.slice(0, x) + r + v.slice(y); a = b = s > y ? s + d : s > x ? x : s; } }; };
+  const panes = { code: { ta: box() }, tests: { ta: box() } }, document = { activeElement: focused ? panes.code.ta : null };
+  const el = () => ({ textContent: "", scrollTop: 0, scrollHeight: 0, hidden: false, className: "" }), $ = () => el();
+  const sent = [], post = (path, body) => new Promise(res => { const id = ++ids; waiting[id] = res; sent.push({ id, path, body }); });
+  const gutter = () => {}, sync = () => {}, showMarks = () => {}, showBar = () => {}, roomLines = () => {}, line = () => {}, showRun = () => {};
+  const split = () => {}, setTimeout = () => 0, clearTimeout = () => {}, TEXT_MAX = /*CAP*/;
+  /*FNS*/
+  const ta = panes.code.ta;
+  return { sent, apply, run, document, ta, view: () => ({ text: ta.value, caret: ta.selectionStart, talked, pending }),
+           edit(from, to, text) { ta.value = ta.value.slice(0, from) + text + ta.value.slice(to); ta.selectionStart = ta.selectionEnd = from + text.length;
+                                  typed("code", { inputType: "insertText" }); } };
+}
+require("readline").createInterface({ input: process.stdin }).on("line", async one => {
+  const c = JSON.parse(one), t = tabs[c.tab] || (tabs[c.tab] = made(c.focused));
+  if (c.focused !== undefined) t.document.activeElement = c.focused ? t.ta : null;
+  if (c.answer) waiting[c.answer](c.r);
+  if (c.op) t.apply(c.op);
+  if (c.edit) t.edit(...c.edit);
+  if (c.run) t.run();
+  await new Promise(r => setImmediate(r));                         // the answers' then()s run, as a browser runs them
+  process.stdout.write(JSON.stringify({ ...t.view(), posts: t.sent.splice(0) }) + "\n");
+});
+"""
+DRAWN = "# why minus?\ndef add(a, b):\n    return a - b\n"
+RAN = {"ok": True, "ran": 0, "passed": 0, "tests": [], "error": "", "line": 0, "output": "", "seconds": 0.0}
+node = pytest.mark.skipif(not shutil.which("node"), reason="node runs the page's script; it is not on this box")
+
+
+class Tabs:
+    """Tabs running the page's own talk(), typed(), run(), apply() and put() in one node process, each with its own text,
+    caret, number and edits on their way: a call names the tab and what happens to it, and answers its text, caret, number,
+    edits counted and what it posted, each post with its id."""
+    def __init__(self):
+        script = pagemod.HTML.read_text().split("<script>", 1)[1]
+        fns = "".join(f"function {n}(" + script.split(f"\nfunction {n}(", 1)[1].split("\n}\n", 1)[0] + "\n}\n"
+                      for n in ("owned", "talk", "typed", "run", "apply", "put"))
+        js = TABS_JS.replace("/*CAP*/", str(pagemod.TEXT_MAX)).replace("/*FNS*/", fns)
+        self.node = subprocess.Popen(["node", "-e", js], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+        self.worlds = []                       # each World on these tabs not closed yet
+
+    def __call__(self, **c):
+        self.node.stdin.write(json.dumps(c) + "\n")
+        self.node.stdin.flush()
+        return json.loads(self.node.stdout.readline())
+
+    def close(self):
+        self.node.stdin.close()
+        self.node.wait(10)
+
+
+@pytest.fixture
+def tabs():
+    t = Tabs()
+    yield t
+    while t.worlds:                            # a World its test left open, the test passed or failed
+        t.worlds[0].close()
+    t.close()
+
+
+class World:
+    """yerkd, a real Page whose folder a restart keeps, the program drawn and the chat closed, and tabs of the page's own
+    script wired to it by hand: a tab's feed is a queue in the sheet's tabs while it is up, the whole state first as
+    stream() sends it; a post reaches yerkd, and its answer the tab, when the test says."""
+    def __init__(self, tmp_path, tabs):
+        self.tmp, self.tabs = tmp_path, tabs
+        self.p, self.room = hub(tmp_path, quiet=60)
+        tabs.worlds.append(self)
+        self.p.draw("r", {"code": DRAWN})
+        self.feeds, self.posts, self.answers, self.views = {}, [], [], {}
+
+    @property
+    def s(self):
+        return self.p.sheets["r"]
+
+    def disk(self):
+        return (self.tmp / "rooms" / "r" / "work" / "page" / "solution.py").read_text()
+
+    def got(self, tab, view):
+        self.posts += [(tab, x) for x in view.pop("posts")]
+        self.views[tab] = view
+        return view
+
+    def open(self, tab, focused=True):
+        self.got(tab, self.tabs(tab=tab, focused=focused))
+        self.up(tab)
+        self.feed(tab)
+
+    def up(self, tab):
+        if tab not in self.feeds:
+            self.feeds[tab] = q = asyncio.Queue()
+            q.put_nowait(self.s.state())
+            self.s.tabs.append(q)
+
+    def down(self, tab):                       # the feed lost, with what was on its way in it
+        if (q := self.feeds.pop(tab, None)) is not None and q in self.s.tabs:
+            self.s.tabs.remove(q)
+
+    def feed(self, tab, n=None):               # what its feed holds reaches the tab: all of it, or the first n
+        q = self.feeds.get(tab)
+        while q is not None and not q.empty() and n != 0:
+            self.got(tab, self.tabs(tab=tab, op=q.get_nowait()))
+            n = None if n is None else n - 1
+
+    async def say(self, text):
+        self.p.said("r", text)
+        await asyncio.sleep(0)
+
+    def type(self, tab, text):                 # at the caret; the tab posts its text
+        at = self.views[tab]["caret"]
+        return self.got(tab, self.tabs(tab=tab, edit=[at, at, text]))
+
+    async def deliver(self, i=0):              # a post on its way reaches yerkd; its answer starts back
+        tab, x = self.posts.pop(i)
+        r = await (self.p.event("r", x["body"]) if x["path"] == "event" else self.p.run("r", x["body"]))
+        self.answers.append((tab, x["id"], r))
+        return r
+
+    def answer(self, i=0):
+        tab, n, r = self.answers.pop(i)
+        self.got(tab, self.tabs(tab=tab, answer=n, r=r))
+
+    async def settle(self):                    # every feed up and everything on its way delivered, till nothing moves
+        for tab in self.views:
+            self.up(tab)
+        while self.posts or self.answers or any(not q.empty() for q in self.feeds.values()):
+            while self.posts:
+                await self.deliver()
+            while self.answers:
+                self.answer()
+            for tab in list(self.feeds):
+                self.feed(tab)
+
+    def restart(self):                         # yerkd stops and starts on its folder: every feed drops, a post on its way fails
+        self.p = Page(self.tmp, self.p.ledger, quiet=60)
+        self.p.add_room(self.room)
+        failed, self.posts, self.feeds = self.posts, [], {}
+        for tab, x in failed:
+            self.got(tab, self.tabs(tab=tab, answer=x["id"], r={"ok": False}))
+
+    def close(self):
+        """The ledger hub() opened, which restart() hands on, closed now and not when the collector gets to it (Ledger.close):
+        its database, -wal and -shm files are three descriptors, and 400 sequences of them passed the box's cap of 1,024."""
+        self.tabs.worlds.remove(self)
+        self.p.ledger.close()
+
+
+def told(room):
+    """The room's lines its messages told it were typed or deleted: none, unless the owner deleted one he had seen."""
+    return [x for m in room.got for x in m.text.splitlines() if x.startswith(("-#>", "+#>"))]
+
+
+def once(text, line):
+    return text.split("\n").count(line) == 1
+
+
+@node
+def test_a_reply_that_lands_with_no_tab_connected_shows_in_a_focused_tab_that_reconnects_and_his_keystroke_keeps_it(tmp_path, tabs):
+    """Row a, the fourth cold read's find: the reply landed while the tab's feed was down; at the reconnect a tab whose
+    editor has the focus kept its own text without it, and his next keystroke took it out of yerkd's copy and solution.py,
+    the room told `-#> Make it a plus.`. Now the tab writes the replies it missed from `state`, the caret kept."""
+    async def go():
+        w = World(tmp_path, tabs)
+        await w.p.event("r", {"kind": "talk", "on": True})
+        w.open("A")
+        w.down("A")
+        await w.say("Make it a plus.")
+        w.up("A")
+        w.feed("A")
+        shown = dict(w.views["A"])
+        w.type("A", "x = 1\n")
+        while w.posts:
+            await w.deliver()
+        w.p.flush("r")
+        return w, shown
+    w, shown = asyncio.run(go())
+    want = DRAWN.replace("?\n", "?\n#> Make it a plus.\n")
+    assert shown["text"] == want and shown["caret"] == len(want)              # shown at the reconnect, his caret with its line
+    assert w.s.code == w.disk() == want + "x = 1\n"
+    assert told(w.room) == [] and "+x = 1" in w.room.got[-1].text
+
+
+@node
+def test_a_reply_that_lands_with_no_tab_connected_shows_in_an_unfocused_tab_that_reconnects(tmp_path, tabs):
+    """Row b: the same with the editor not focused at the reconnect: the tab takes yerkd's copy, which has the reply."""
+    async def go():
+        w = World(tmp_path, tabs)
+        await w.p.event("r", {"kind": "talk", "on": True})
+        w.open("A")
+        w.down("A")
+        await w.say("Make it a plus.")
+        w.tabs(tab="A", focused=False)
+        w.up("A")
+        w.feed("A")
+        shown = dict(w.views["A"])
+        w.tabs(tab="A", focused=True)
+        w.type("A", "x = 1\n")
+        while w.posts:
+            await w.deliver()
+        w.p.flush("r")
+        return w, shown
+    w, shown = asyncio.run(go())
+    want = DRAWN.replace("?\n", "?\n#> Make it a plus.\n")
+    assert shown["text"] == want and w.s.code == w.disk() == want + "x = 1\n" and told(w.room) == []
+
+
+@node
+def test_his_typing_while_the_feed_is_down_keeps_the_reply_he_has_not_seen_and_the_tab_shows_it_once_when_back(tmp_path, tabs):
+    """Row c: the reply lands while the tab's feed is down and he types before it is back, so his post is built without
+    it: yerkd writes it into what he posted, and when the feed is back the tab writes it once, his typing kept."""
+    async def go():
+        w = World(tmp_path, tabs)
+        await w.p.event("r", {"kind": "talk", "on": True})
+        w.open("A")
+        w.down("A")
+        await w.say("Make it a plus.")
+        w.type("A", "x = 1\n")
+        await w.deliver()
+        kept = (w.s.code, w.disk())
+        w.answer()
+        w.up("A")
+        w.feed("A")
+        w.p.flush("r")
+        return w, kept
+    w, (code, disk) = asyncio.run(go())
+    want = DRAWN.replace("?\n", "?\n#> Make it a plus.\n") + "x = 1\n"
+    assert code == disk == want and w.views["A"]["text"] == want and w.views["A"]["caret"] == len(want)
+    assert told(w.room) == [] and "+x = 1" in w.room.got[-1].text
+
+
+@node
+def test_a_run_post_that_crosses_a_reply_keeps_the_reply(tmp_path, tabs, monkeypatch):
+    """Row d, the fourth read's first window: the run's post (not counted in `pending`) is on its way as the reply lands;
+    it lands after, without the reply, and the tab with nothing counted posted nothing after writing it."""
+    monkeypatch.setattr(pagemod, "run_tests", lambda code, tests, *a, **k: dict(RAN))
+
+    async def go():
+        w = World(tmp_path, tabs)
+        await w.p.event("r", {"kind": "talk", "on": True})
+        w.open("A")
+        w.type("A", "x = 1\n")
+        await w.deliver()
+        w.answer()
+        w.p.flush("r")
+        w.got("A", w.tabs(tab="A", run=True))                    # the pause's run, on its way
+        await w.say("Make it a plus.")
+        await w.deliver()                                        # then the run's post, built before the reply
+        kept = (w.s.code, w.disk())
+        w.feed("A")
+        w.answer()
+        assert w.posts == []
+        w.p.flush("r")
+        return w, kept
+    w, (code, disk) = asyncio.run(go())
+    want = DRAWN.replace("?\n", "?\n#> Make it a plus.\n") + "x = 1\n"
+    assert code == disk == w.s.code == w.views["A"]["text"] == want and told(w.room) == []
+
+
+@node
+def test_an_edit_whose_answer_beats_the_reply_s_op_keeps_the_reply(tmp_path, tabs):
+    """Row e, the fourth read's second window: his keystroke's post lands after the reply, and its answer reaches the tab
+    before the op yerkd sent first, so the tab had nothing counted when it wrote the reply and posted nothing."""
+    async def go():
+        w = World(tmp_path, tabs)
+        await w.p.event("r", {"kind": "talk", "on": True})
+        w.open("A")
+        w.type("A", "x = 1\n")
+        await w.say("Make it a plus.")
+        await w.deliver()
+        w.answer()
+        w.feed("A")
+        assert w.posts == [] and w.views["A"]["pending"] == 0
+        w.p.flush("r")
+        return w
+    w = asyncio.run(go())
+    want = DRAWN.replace("?\n", "?\n#> Make it a plus.\n") + "x = 1\n"
+    assert w.s.code == w.disk() == w.views["A"]["text"] == want and told(w.room) == []
+
+
+@node
+def test_two_replies_missed_in_a_row_show_in_order_once_at_the_reconnect(tmp_path, tabs):
+    """Row f: two replies land while the feed is down; at the reconnect both show, in order, once, and stay once."""
+    async def go():
+        w = World(tmp_path, tabs)
+        await w.p.event("r", {"kind": "talk", "on": True})
+        w.open("A")
+        w.down("A")
+        await w.say("one")
+        await w.say("two")
+        w.up("A")
+        w.feed("A")
+        shown = dict(w.views["A"])
+        w.type("A", "x = 1\n")
+        await w.settle()
+        w.p.flush("r")
+        return w, shown
+    w, shown = asyncio.run(go())
+    want = DRAWN.replace("?\n", "?\n#> one\n#> two\n")
+    assert shown["text"] == want and shown["caret"] == len(want) and shown["talked"] == w.s.talks[-1]["n"]
+    assert w.s.code == w.disk() == w.views["A"]["text"] == want + "x = 1\n" and told(w.room) == []
+
+
+@node
+def test_a_reply_before_a_restart_is_kept_after_his_keystroke_and_shows_when_the_feed_is_back(tmp_path, tabs):
+    """Row g, a deploy: yerkd restarts between the reply and the tab's reconnect. The numbering and the newest replies are
+    in talk.json, so his keystroke before the feed is back keeps the reply, and the feed back shows it, once."""
+    async def go():
+        w = World(tmp_path, tabs)
+        await w.p.event("r", {"kind": "talk", "on": True})
+        w.open("A")
+        w.down("A")
+        await w.say("Make it a plus.")
+        w.restart()
+        w.type("A", "x = 1\n")
+        await w.deliver()
+        kept = w.disk()
+        w.answer()
+        w.up("A")
+        w.feed("A")
+        shown = dict(w.views["A"])
+        w.type("A", "y = 2\n")
+        await w.settle()
+        w.p.flush("r")
+        return w, kept, shown
+    w, kept, shown = asyncio.run(go())
+    want = DRAWN.replace("?\n", "?\n#> Make it a plus.\n") + "x = 1\n"
+    assert kept == want and shown["text"] == want and w.s.code == w.disk() == want + "y = 2\n" and told(w.room) == []
+
+
+@node
+def test_a_tab_that_missed_more_replies_than_yerkd_keeps_takes_yerkd_s_copy_and_no_reply_is_lost(tmp_path, tabs, monkeypatch):
+    """Row h: yerkd keeps the newest TALK_KEPT replies for a tab that missed them. A tab that missed more cannot be caught
+    up, so a post of its text is not kept (yerkd answers so) and at the reconnect it takes yerkd's copy whole, focused
+    or not: every reply is there. What it typed while its feed was down and its posts were refused is lost; no reply is."""
+    monkeypatch.setattr(pagemod, "TALK_KEPT", 2, raising=False)
+
+    async def go():
+        w = World(tmp_path, tabs)
+        await w.p.event("r", {"kind": "talk", "on": True})
+        w.open("A")
+        w.down("A")
+        for x in ("one", "two", "three"):
+            await w.say(x)
+        w.type("A", "x = 1\n")
+        r = await w.deliver()
+        kept = w.disk()
+        w.answer()
+        w.up("A")
+        w.feed("A")
+        shown = dict(w.views["A"])
+        w.type("A", "y = 2\n")
+        await w.settle()
+        w.p.flush("r")
+        return w, r, kept, shown
+    w, r, kept, shown = asyncio.run(go())
+    want = DRAWN.replace("?\n", "?\n#> one\n#> two\n#> three\n")
+    assert kept == want and shown["text"] == want and w.s.code == w.disk() == want + "y = 2\n" and told(w.room) == []
+    assert r == {"ok": False, "error": words.PAGE_TALK_BEHIND}
+
+
+@node
+def test_two_tabs_one_that_missed_a_reply_and_one_that_wrote_it_then_typing_in_each_keeps_it_once(tmp_path, tabs):
+    """Row i: tab B's feed is down as the reply lands and tab A writes it; then he types in A, in B, in A again: B's posts
+    are built without the reply and never take it out; when B's feed is back it writes it once."""
+    async def go():
+        w = World(tmp_path, tabs)
+        await w.p.event("r", {"kind": "talk", "on": True})
+        w.open("A")
+        w.open("B")
+        w.down("B")
+        await w.say("Make it a plus.")
+        w.feed("A")
+        seen = []
+        for tab, typed in (("A", "a = 1\n"), ("B", "b = 2\n"), ("A", "c = 3\n")):
+            w.type(tab, typed)
+            await w.deliver()
+            w.answer()
+            seen.append(w.s.code)
+        w.up("B")
+        w.feed("B")
+        w.type("B", "d = 4\n")
+        await w.settle()
+        w.p.flush("r")
+        return w, seen
+    w, seen = asyncio.run(go())
+    line = "#> Make it a plus."
+    assert all(once(x, line) for x in seen) and once(w.s.code, line) and once(w.disk(), line)
+    assert once(w.views["A"]["text"], line) and once(w.views["B"]["text"], line)
+    assert w.s.code == DRAWN.replace("?\n", f"?\n{line}\n") + "b = 2\nd = 4\n" and told(w.room) == []
+
+
+@node
+def test_a_reply_he_had_shown_and_then_deleted_leaves_yerkd_s_copy_and_the_room_is_told(tmp_path, tabs):
+    """Row j: a deliberate delete still works: a line the tab had written, which he then deletes, leaves yerkd's copy and
+    solution.py, and the room's next message says so."""
+    async def go():
+        w = World(tmp_path, tabs)
+        await w.p.event("r", {"kind": "talk", "on": True})
+        w.open("A")
+        await w.say("Make it a plus.")
+        w.feed("A")
+        text = w.views["A"]["text"]
+        at = text.index("#> Make it a plus.\n")
+        w.got("A", w.tabs(tab="A", edit=[at, at + len("#> Make it a plus.\n"), ""]))
+        await w.settle()
+        w.p.flush("r")
+        return w
+    w = asyncio.run(go())
+    assert w.s.code == w.disk() == w.views["A"]["text"] == DRAWN and told(w.room) == ["-#> Make it a plus."]
+
+
+SEED, SEQUENCES, STEPS = 20261105, 400, 32
+EVENTS = {"type": 4, "reply": 2, "down": 1, "up": 1, "run": 1, "restart": 0.4, "deliver": 4, "answer": 3, "feed": 4, "pause": 1}
+
+
+def rules_1_and_3(w, said):
+    """No reply leaves yerkd's copy or solution.py (no tab here deletes one), none is in them or in a tab twice, and the room
+    is never told its lines were typed or deleted."""
+    code, disk = w.s.code, w.disk()
+    assert all(once(code, x) and once(disk, x) for x in said), (said, code)
+    assert all(v["text"].split("\n").count(x) <= 1 for v in w.views.values() for x in said)
+    assert told(w.room) == []
+
+
+async def sequence(tmp_path, tabs, rng, n):
+    tmp_path.mkdir()
+    w = World(tmp_path, tabs)
+    await w.p.event("r", {"kind": "talk", "on": True})
+    names, said, typed = [f"A{n}", f"B{n}"], [], {}
+    for tab in names:
+        w.open(tab)
+        typed[tab] = []
+    for step in range(STEPS):
+        e, tab = rng.choices(list(EVENTS), list(EVENTS.values()))[0], rng.choice(names)
+        if e == "type":
+            typed[tab].append(f"v{step} = {step}")
+            w.type(tab, typed[tab][-1] + "\n")
+        elif e == "reply":
+            await w.say(f"reply {step}")
+            said.append(f"#> reply {step}")
+        elif e == "down":
+            w.down(tab)
+        elif e == "up":
+            w.up(tab)
+        elif e == "run":
+            w.got(tab, tabs(tab=tab, run=True))
+        elif e == "restart":
+            w.restart()
+        elif e == "deliver" and w.posts:
+            await w.deliver(rng.randrange(len(w.posts)))
+        elif e == "answer" and w.answers:
+            w.answer(rng.randrange(len(w.answers)))
+        elif e == "feed":
+            w.feed(tab, 1)
+        elif e == "pause":
+            w.p.flush("r")
+        rules_1_and_3(w, said)
+    await w.settle()
+    w.p.flush("r")
+    rules_1_and_3(w, said)
+    for tab in names:                            # rule 2, settled: every reply shown once, his typing and his caret kept
+        v = w.views[tab]
+        assert all(once(v["text"], x) for x in said) and all(x in v["text"].split("\n") for x in typed[tab]), (said, v)
+        assert v["caret"] == len(v["text"])
+    w.close()                                    # a sequence that fails ends its test, and the tabs fixture closes it
+    return len(said)
+
+
+@node
+def test_in_every_order_of_typing_in_two_tabs_replies_feeds_lost_and_back_runs_and_restarts_no_reply_is_lost_or_doubled(tmp_path, tabs, monkeypatch):
+    """The seeded interleaving: SEQUENCES random sequences of STEPS events each, from SEED: he types in tab A or B, the
+    room replies, a tab's feed goes down or comes back, a tab's run posts, yerkd restarts, and the network's own order: a
+    post reaching yerkd, its answer reaching the tab, an op of a feed reaching its tab, each one picked at random among
+    those on their way; and the pause. Rules 1 and 3 after every step, rule 2 once everything has settled."""
+    monkeypatch.setattr(pagemod, "run_tests", lambda code, tests, *a, **k: dict(RAN))
+    rng = random.Random(SEED)
+    replies = sum(asyncio.run(sequence(tmp_path / str(n), tabs, rng, n)) for n in range(SEQUENCES))
+    assert replies > SEQUENCES                                   # the room said something in most of them

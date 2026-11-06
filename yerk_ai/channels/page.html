@@ -73,6 +73,9 @@
   .mark span { position: absolute; right: 12px; top: 0; font: 600 12px/var(--lh) system-ui; color: var(--amber); }
   .mark.arrow span { color: var(--red); }
   .mark.arrow span::before { content: "\2190  "; }
+  /* the room's #> lines in the program (talk): a band of the room's colour behind each, its name by the first of a run */
+  .mark.room { background: rgba(88,166,255,.1); border-left: 3px solid var(--blue); }
+  .mark.room span { color: #9ecbff; font-weight: 700; }
   .wrap textarea { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 8px 10px; border: 0; resize: none; outline: none;
              background: transparent; color: var(--fg); font: 14px/var(--lh) ui-monospace, monospace; white-space: pre; overflow: auto; tab-size: 4; }
   #right { display: grid; grid-template-rows: 1fr 1fr; min-height: 0; }
@@ -94,7 +97,13 @@
               box-shadow: 0 0 14px rgba(248,81,73,.22); }
   .tile .why { font: 12px/1.4 ui-monospace, monospace; color: var(--fg); opacity: .85; }
   .tile.pop, .cell.pop { animation: pop .45s cubic-bezier(.2,1.6,.4,1); }
-  #rows pre { grid-column: 1 / -1; margin: 4px 0 0; color: var(--dim); font: 12px/1.45 ui-monospace, monospace; white-space: pre-wrap; }
+  /* what the run printed, large: the program's own output beside its code, talk and ink */
+  #out { margin: 0 0 12px; padding: 12px 14px; max-height: 60vh; overflow: auto; border-radius: 10px; background: #05080c;
+         border: 1px solid var(--line); color: var(--fg); font: 600 18px/1.45 ui-monospace, Menlo, Consolas, monospace;
+         white-space: pre-wrap; overflow-wrap: anywhere; box-shadow: inset 0 0 18px rgba(0,0,0,.6); }
+  #out::before { content: "output"; display: block; margin-bottom: 6px; font: 800 10px/1 system-ui; letter-spacing: .14em;
+                 text-transform: uppercase; color: var(--dim); }
+  #out[hidden] { display: none; }
   #hint { margin: 0 10px 10px; padding: 9px 12px 10px; border-radius: 10px; border: 1px solid rgba(227,179,65,.45); border-left: 4px solid var(--amber);
           background: linear-gradient(135deg, rgba(227,179,65,.17), rgba(227,179,65,.05)); color: #f5dfa0; line-height: 1.45; white-space: pre-wrap;
           overflow-wrap: anywhere; box-shadow: 0 6px 18px rgba(0,0,0,.35); }
@@ -107,6 +116,9 @@
                  background: var(--line); transition: background .15s; }
   #grip:hover::after, #grip.on::after, #grip:focus-visible::after { background: var(--blue); }
   body.dragging { user-select: none; cursor: col-resize; }
+  /* the chat closed to nothing (a split of 0, kept): the program the whole width, the grip at its edge to drag it back */
+  body.chatless { grid-template: "bar bar" auto "main grip" minmax(0, 1fr) / minmax(0, 1fr) 10px; }
+  body.chatless #chat, #open-chat[hidden] { display: none; }
   #chat { grid-area: chat; position: relative; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-height: 0; min-width: 0;
           background: var(--panel); border-left: 1px solid var(--line); }
   #chat .head { display: flex; align-items: center; gap: 6px; padding: 6px 10px 6px 14px; border-bottom: 1px solid var(--line); }
@@ -152,14 +164,15 @@
   @keyframes pop { 0% { transform: scale(.86); } 55% { transform: scale(1.07); } 100% { transform: scale(1); } }
   @keyframes beat { 50% { opacity: .5; } }
   @media (max-width: 1100px) { body { grid-template: "bar" auto "main" minmax(0, 1fr) "chat" minmax(0, 45vh) / minmax(0, 1fr); }
-                               #grip, #chat .head button { display: none; } }
+                               body.chatless { grid-template: "bar" auto "main" minmax(0, 1fr) / minmax(0, 1fr); }
+                               #grip, #chat .head button:not(#close-chat) { display: none; } }
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 </style>
 </head>
 <body>
 <header id="bar"><div id="cells"></div><div class="right">
   <div id="clock" class="cell" hidden><span class="label">time left</span><span id="timer"></span><span class="track"><i></i></span></div>
-  <button id="draw" title="draw on the page (Esc ends)">draw</button><button id="wipe">clear ink</button><span id="dot" title="connection"></span></div></header>
+  <button id="open-chat" title="the chat back beside the program" hidden>chat</button><button id="draw" title="draw on the page (Esc ends)">draw</button><button id="wipe">clear ink</button><span id="dot" title="connection"></span></div></header>
 <main>
   <section class="pane" data-pane="code"><div class="head">program</div>
     <div class="ed"><div class="gutter"></div><div class="wrap"><div class="marks"></div><textarea spellcheck="false" autofocus></textarea></div></div>
@@ -167,13 +180,14 @@
   <section id="right">
     <section class="pane" data-pane="tests"><div class="head">tests</div>
       <div class="ed"><div class="gutter"></div><div class="wrap"><div class="marks"></div><textarea spellcheck="false"></textarea></div></div></section>
-    <div id="results"><div id="sum" class="muted">no run yet</div><div id="rows"></div></div>
+    <div id="results"><div id="sum" class="muted">no run yet</div><pre id="out" hidden></pre><div id="rows"></div></div>
   </section>
 </main>
 <div id="grip" role="separator" aria-orientation="vertical" aria-label="drag to make the chat or the code wider" tabindex="0"
   title="drag to make the chat or the code wider; a double click evens them"></div>
 <aside id="chat"><div class="head"><span>chat</span><button id="wide-chat" title="the chat wide">wide chat</button>
-  <button id="wide-code" title="the program and tests wide">wide code</button></div><div id="lines"></div>
+  <button id="wide-code" title="the program and tests wide">wide code</button>
+  <button id="close-chat" title="close the chat: the talk lives in the program, your # lines out and the room's #> lines back">close</button></div><div id="lines"></div>
   <button id="more" hidden>newer messages below</button>
   <div id="sayrow"><textarea id="say" rows="1" spellcheck="true" autocomplete="off"
     placeholder="say something to the room (Enter sends, Shift+Enter a new line)"></textarea></div></aside>
@@ -199,8 +213,9 @@ for (const el of document.querySelectorAll(".pane")) {
   const name = el.dataset.pane, ta = el.querySelector("textarea");
   panes[name] = { el, ta, gutter: el.querySelector(".gutter"), marks: el.querySelector(".marks") };
   ta.addEventListener("scroll", () => sync(name));
-  ta.addEventListener("input", () => typed(name));
+  ta.addEventListener("input", e => typed(name, e));
   ta.addEventListener("keydown", e => {
+    if (e.key === "Enter" && !e.isComposing) enter = true;
     if (e.key !== "Tab") return;
     e.preventDefault();
     const s = ta.selectionStart;
@@ -209,6 +224,10 @@ for (const el of document.querySelectorAll(".pane")) {
   });
 }
 let state = { marks: [], bar: {}, board: [], timer: {}, stall: 0 }, runTimer = 0, lastKey = Date.now(), stallSaid = false, timerSaid = false;
+let enter = false, roomKey = "", chatless = false, talkOn = false, opened = null;   // the talk in the program (page.py, talk)
+let pending = 0;                                              // this tab's edits on their way to yerkd, not answered yet (talk)
+let talked = 0;          // the number of the room's last reply this tab's program has (page.py, Sheet.talked): every post of it says it
+const TEXT_MAX = 100000;                                      // page.py's: yerkd cuts a program posted past it, so the room's lines stop under it
 let shownBoard = "", cellsBefore = {}, passedBefore = {}, allBefore = false;     // what the bar and the tiles showed last: a change pops
 function make(tag, cls, text) {                               // every word on the page goes in as text, never as markup
   const e = document.createElement(tag);
@@ -231,22 +250,65 @@ function sync(name) {
   p.gutter.scrollTop = p.ta.scrollTop;
   p.marks.style.transform = "translateY(" + (-p.ta.scrollTop) + "px)";
 }
-function typed(name) {
+function owned(row) {                                         // a whole line the owner's # comment: never #!, nor the room's #>
+  const r = row.trim();
+  return r.startsWith("#") && !r.startsWith("#!") && !r.startsWith("#>") && r.replace(/^#+/, "").trim() !== "";
+}
+function typed(name, e) {
   gutter(name); sync(name);
   lastKey = Date.now(); stallSaid = false;
-  post("event", { kind: "edit", pane: name, text: panes[name].ta.value });
+  const ta = panes[name].ta, before = ta.value.slice(0, ta.selectionStart).split("\n");
+  const ended = (enter || /^insert(LineBreak|Paragraph)$/.test((e && e.inputType) || "")) && before.length > 1 && owned(before[before.length - 2]);
+  enter = false;                                              // a # line ended with Enter: the talk goes now, not at the pause
+  pending++;
+  post("event", { kind: "edit", pane: name, text: ta.value, talked, ...(name === "code" && ended ? { send: true } : {}) }).then(() => pending--);
+  if (name === "code") roomLines();
   clearTimeout(runTimer);
   runTimer = setTimeout(run, 600);                           // the tests re-run on every pause in typing
 }
-function run() {
-  post("run", { code: panes.code.ta.value, tests: panes.tests.ta.value }).then(showRun);
+function talk(t) {           // the room's #> lines under the owner's # line yerkd found (page.py, into), written in this tab's own text
+  if (t.n !== talked + 1) return;                            // once: one it has, or one after a gap, which a reconnect brings
+  talked = t.n;
+  const ta = panes.code.ta, rows = ta.value.split("\n");
+  let i = -1;
+  rows.forEach((r, j) => { if (t.text && r.trim() === t.text && (i < 0 || Math.abs(j - t.line + 1) < Math.abs(i - t.line + 1))) i = j; });
+  for (let j = rows.length - 1; i < 0 && j >= 0; j--) if (owned(rows[j])) i = j;
+  const indent = i >= 0 ? rows[i].slice(0, rows[i].length - rows[i].trimStart().length) : "";
+  if (i < 0) i = rows[rows.length - 1] === "" ? rows.length - 2 : rows.length - 1;     // no # line of the owner's: after the last
+  while (i + 1 < rows.length && rows[i + 1].trimStart().startsWith("#>")) i++;
+  const lines = t.lines.map(x => indent + x);                 // what fits under TEXT_MAX with what was typed since, a line its newline too
+  while (lines.length && ta.value.length + lines.reduce((n, x) => n + x.length + 1, 0) > TEXT_MAX) lines.pop();
+  if (!lines.length) return;
+  const words = lines.join("\n"), at = i < 0 ? 0 : rows.slice(0, i + 1).join("\n").length;
+  ta.setRangeText(i < 0 ? words + "\n" : "\n" + words, at, at, "preserve");       // the caret and what was typed since keep their place
+  state.marks = (state.marks || []).map(m => m.line > i + 1 ? { ...m, line: m.line + lines.length } : m);   // the room's marks with their lines
+  gutter("code"); sync("code"); roomLines();
+  if (!pending) return;            // no edit of this tab's on its way: yerkd's copy has the lines, and an idle tab's older text would go over another's
+  pending++;                       // else one may have crossed them in yerkd: what he typed goes again, with them
+  post("event", { kind: "edit", pane: "code", text: ta.value, talked }).then(() => pending--);
 }
-function showRun(r) {                                         // a tile a test, green or red; one that is new or flipped pops
-  const sum = $("#sum"), rows = $("#rows"), now = {};
-  rows.textContent = "";
+function roomLines() {                                        // the bands of the room's #> lines, drawn again only when they move
+  const key = panes.code.ta.value.split("\n").map((r, j) => r.trimStart().startsWith("#>") ? j : -1).filter(j => j >= 0).join(",");
+  if (key !== roomKey) { roomKey = key; showMarks(); }
+}
+function put(name, text) {                                    // a program yerkd drew: the caret and the scroll stay where they were
+  const ta = panes[name].ta, a = ta.selectionStart, b = ta.selectionEnd, top = ta.scrollTop;
+  ta.value = text;
+  if (document.activeElement === ta) ta.setSelectionRange(Math.min(a, text.length), Math.min(b, text.length));
+  ta.scrollTop = top;
+}
+function run() {
+  post("run", { code: panes.code.ta.value, tests: panes.tests.ta.value, talked }).then(showRun);
+}
+function showRun(r) {             // a tile a test, green or red; one that is new or flipped pops; what it printed large, above them
+  const sum = $("#sum"), rows = $("#rows"), out = $("#out"), now = {};
+  rows.textContent = ""; out.textContent = (r && r.output) || ""; out.hidden = !(r && r.output);
   if (!r || r.ran === undefined) { sum.className = "muted"; sum.textContent = "no run yet"; passedBefore = {}; allBefore = false; return; }
   if (r.error) { sum.className = "bad error"; sum.textContent = r.error + (r.line ? "  (line " + r.line + ")" : ""); }
-  else {
+  else if (r.main) {                                          // blank tests: the program ran alone, as a script
+    sum.className = "ok"; sum.textContent = ""; sum.append(make("b", "", "ran"), "the program alone, no tests");
+    if (r.seconds !== undefined) sum.append(make("span", "muted", r.seconds + " s"));
+  } else {
     sum.className = (r.ok ? "ok" : "bad") + (r.ok && !allBefore ? " win" : ""); sum.textContent = "";
     sum.append(make("b", "", r.passed + "/" + r.ran), "pass");
     if (r.seconds !== undefined) sum.append(make("span", "muted", r.seconds + " s"));
@@ -258,7 +320,6 @@ function showRun(r) {                                         // a tile a test, 
     rows.appendChild(d); now[t.name] = t.ok;
   }
   passedBefore = now; allBefore = !!r.ok;
-  if (r.output) rows.appendChild(make("pre", "", r.output));
 }
 function showMarks() {
   for (const name in panes) panes[name].marks.textContent = "";
@@ -269,6 +330,14 @@ function showMarks() {
     if (m.text) { const s = document.createElement("span"); s.textContent = m.text; d.appendChild(s); }
     panes.code.marks.appendChild(d);
   }
+  const rows = panes.code.ta.value.split("\n");
+  rows.forEach((r, j) => {                                    // the room's #> lines: its colour, its name by the first of a run
+    if (!r.trimStart().startsWith("#>")) return;
+    const d = make("div", "mark room");
+    d.style.top = (8 + j * lh()) + "px";
+    if (!j || !rows[j - 1].trimStart().startsWith("#>")) d.appendChild(make("span", "", ROOM || "room"));
+    panes.code.marks.appendChild(d);
+  });
 }
 function showBar() {                                          // the scoreboard: each cell as yerkd read the room's words (page.py, cell)
   const board = state.board || Object.entries(state.bar || {}).map(([label, value]) => ({ label, value, shape: "text" }));   // a yerkd older than the page
@@ -349,16 +418,22 @@ $("#lines").addEventListener("scroll", e => { const l = e.target; if (l.scrollHe
 $("#more").onclick = () => { $("#lines").scrollTop = $("#lines").scrollHeight; $("#more").hidden = true; };
 function apply(op) {
   if (op.state) {
-    const s = op.state;
+    const s = op.state, code = panes.code.ta, talks = s.talks || [];   // a tab that keeps its own text writes the replies it missed
+    const mine = document.activeElement === code && code.value && talked >= s.talked - talks.length && talked <= s.talked;
+    if (mine) talks.forEach(talk); else talked = s.talked;     // else (or past what yerkd keeps) it takes yerkd's, which has them
     state = s;
-    for (const name of ["code", "tests"]) if (document.activeElement !== panes[name].ta || !panes[name].ta.value) panes[name].ta.value = s[name] || "";
+    for (const name of ["code", "tests"])
+      if (name === "code" ? !mine : document.activeElement !== panes[name].ta || !panes[name].ta.value) panes[name].ta.value = s[name] || "";
     $("#lines").textContent = ""; (s.lines || []).forEach(line); $("#lines").scrollTop = $("#lines").scrollHeight; $("#more").hidden = true;
     $("#hint").textContent = s.hint || ""; timerSaid = false;
     showRun(s.run);
+    talkOn = !!s.talk;                                        // yerkd keeps whether the chat is closed: this tab shows it so
+    if (talkOn !== chatless) split(talkOn ? 0 : opened, true, false);
   }
   if (op.draw) {
     const d = op.draw;
-    for (const name of ["code", "tests"]) if (typeof d[name] === "string") { panes[name].ta.value = d[name]; showRun(null); }
+    for (const name of ["code", "tests"]) if (typeof d[name] === "string") { put(name, d[name]); showRun(null); }
+    if (typeof d.code === "string") talked = d.talked;        // a drawn program has every reply so far
     if (d.marks) state.marks = d.marks;
     if (typeof d.hint === "string") $("#hint").textContent = d.hint;
     if (d.bar) state.bar = d.bar;
@@ -368,6 +443,7 @@ function apply(op) {
     if (typeof d.code === "string" || typeof d.tests === "string") setTimeout(run, 50);
   }
   if (op.line) line(op.line);
+  if (op.talk) talk(op.talk);
   for (const name in panes) { gutter(name); sync(name); }
   showMarks(); showBar();
 }
@@ -429,12 +505,19 @@ say.addEventListener("keydown", e => {
   });
 });
 // the split: the chat's share of the width, dragged on the grip or set by its buttons, kept in this browser; a button
-// never takes the focus from where the owner types
-const SPLIT = "yerk-page-chat", WIDE = { chat: 62, code: 26 };
+// never takes the focus from where the owner types. Under CLOSE it is 0, the chat closed to nothing: the talk lives in the
+// program, and yerkd is told (talk), which keeps it across restarts and has every tab show it
+const SPLIT = "yerk-page-chat", WIDE = { chat: 62, code: 26 }, CLOSE = 8;
 function keep(v) { try { if (v === null) localStorage.removeItem(SPLIT); else localStorage.setItem(SPLIT, v); } catch (e) { /* no storage */ } }
-function split(pct, save = true) {
-  if (pct === null || isNaN(pct)) { document.body.style.removeProperty("--chat"); pct = null; }
+function split(pct, save = true, told = true) {
+  if (pct !== null && pct < CLOSE) {
+    if (!chatless) { const was = parseFloat(document.body.style.getPropertyValue("--chat")); opened = isNaN(was) ? null : was; }
+    pct = 0; document.body.style.removeProperty("--chat");
+  } else if (pct === null || isNaN(pct)) { document.body.style.removeProperty("--chat"); pct = null; }
   else { pct = Math.min(80, Math.max(15, pct)); document.body.style.setProperty("--chat", pct.toFixed(1) + "%"); }
+  chatless = pct === 0;
+  document.body.classList.toggle("chatless", chatless); $("#open-chat").hidden = !chatless;
+  if (told && KEY && chatless !== talkOn) { talkOn = chatless; post("event", { kind: "talk", on: chatless }); }
   if (save) keep(pct === null ? null : pct.toFixed(1));
   for (const w in WIDE) $("#wide-" + w).classList.toggle("on", pct !== null && Math.abs(pct - WIDE[w]) < 0.5);
 }
@@ -443,10 +526,15 @@ for (const w in WIDE) {
   b.onmousedown = e => e.preventDefault();
   b.onclick = () => split(b.classList.contains("on") ? null : WIDE[w]);
 }
+for (const [id, to] of [["close-chat", () => 0], ["open-chat", () => opened]]) {
+  const b = $("#" + id);
+  b.onmousedown = e => e.preventDefault();
+  b.onclick = () => split(to());
+}
 const grip = $("#grip");
 grip.onmousedown = e => e.preventDefault();
 grip.addEventListener("pointerdown", e => { grip.setPointerCapture(e.pointerId); grip.classList.add("on"); document.body.classList.add("dragging"); });
-grip.addEventListener("pointermove", e => { if (grip.classList.contains("on")) split(100 * (innerWidth - e.clientX - 5) / innerWidth, false); });
+grip.addEventListener("pointermove", e => { if (grip.classList.contains("on")) split(100 * (innerWidth - e.clientX - 5) / innerWidth, false, false); });
 grip.addEventListener("pointerup", () => {
   grip.classList.remove("on"); document.body.classList.remove("dragging");
   split(100 * $("#chat").offsetWidth / innerWidth);
@@ -454,9 +542,9 @@ grip.addEventListener("pointerup", () => {
 grip.addEventListener("dblclick", () => split(null));
 grip.addEventListener("keydown", e => {
   const step = { ArrowLeft: 3, ArrowRight: -3 }[e.key];
-  if (step) { e.preventDefault(); split(100 * $("#chat").offsetWidth / innerWidth + step); }
+  if (step) { e.preventDefault(); split(chatless ? (step > 0 ? 15 : 0) : 100 * $("#chat").offsetWidth / innerWidth + step); }
 });
-try { split(parseFloat(localStorage.getItem(SPLIT) || "x"), false); } catch (e) { /* no storage */ }
+try { split(parseFloat(localStorage.getItem(SPLIT) || "x"), false, false); } catch (e) { /* no storage */ }
 new ResizeObserver(() => { $("main").classList.toggle("narrow", $("main").clientWidth < 760); for (const name in panes) sync(name); }).observe($("main"));
 // the draw layer: a stroke goes to the room as the lines it covers, and its points
 const ink = $("#ink"), pen = ink.getContext("2d");

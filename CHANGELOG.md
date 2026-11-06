@@ -77,6 +77,29 @@ private folder holding a Gmail app password, 0600; Google makes one under 2-Step
 
 ## 2026-11-04
 
+### need-2026-11-04-51 (#?)
+
+- A live page can be one surface for code, talk, output and ink. Its chat now closes to nothing: drag the grip to the
+  edge or press `close` on the chat, and `chat` on the bar brings it back; yerkd keeps the closed chat across restarts
+  and every tab that opens shows it. While it is closed the talk lives in the program: a # line ended with Enter goes
+  to the room at once (not after the 1.5 s pause), and the room's replies come back as #> lines the page writes under
+  the owner's last # line, in the room's colour and marked as its own. The tab writes them in its own text, so the
+  caret stays where it was and what was typed since is kept; the room is told in its next message when the chat closes
+  or opens, and never reads its own #> lines as typed by the owner.
+- The room's #> lines stop at the program's 100,000-character cap, in yerkd's copy and in every tab: what fits goes
+  in, the rest is counted as on the chat ("... 20 more lines on the page's chat"), and the room hears once in its next
+  message that the program is full. Before, replies grew the program past the cap with no tab open, and the next
+  keystroke cut it on disk, the end of the owner's code with it. The room's marks under its new lines move down with
+  them, so an arrow stays on the code it points at and no longer lands on a #> line. An Enter after a comment the
+  room has already heard, such as a drill's header or a question the pause already sent, waits for the pause like any
+  typing, so the line typed under it goes in the same message; before, it sent the room a message at once that held
+  only a blank line.
+- What a run prints shows large, above the tests' tiles, and its end rides in the room's next message. A program whose
+  tests are blank runs alone, as a script, in the same sandbox, so a game or a script the room writes for a `#make`
+  line runs on the page. A program the room draws whole keeps the caret where it was.
+- **Upgrading**: budgets.toml raises `yerk_tools` to 22,500 and the session-start `total` to 121,605 (the `page` tool's
+  two new clauses) and `[code] lines` to 26,634, each with its dated note; nothing to set.
+
 ### need-2026-11-04-50 (#?)
 
 - Asking a room for the live page on your Mac works with nothing set in yerkd.toml, in every room. Before, the page

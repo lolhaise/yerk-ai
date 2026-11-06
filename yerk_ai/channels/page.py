@@ -20,6 +20,12 @@
   time-stamped and read the way Discord reads a message (rich), the newest LINES_KEPT kept in work/page/ across a
   restart: its replies, its notices and its sends to itself (Mirror), and what the `page` tool draws: a new program or tests, marks on lines (a highlight, an arrow, each with a note), a one-line hint,
   the bar (labels and values, a countdown) and the stall wait. A tab that opens or reconnects gets the whole state first.
+- The talk can live in the program instead (talk): with the page's chat closed to nothing, the room's lines also go into the
+  program as #> comment lines under the owner's last # line (into), which yerkd writes in its copy and every open tab writes
+  in its own text at the same line, so the owner's caret and typing since stay, no more than TEXT_MAX holds, the room's
+  marks under them moved down; each reply numbered, so a tab whose feed was down writes the ones it missed when it is back,
+  and a post built before one never takes it out (caught_up); a # line ended with Enter goes at once, and a program whose
+  tests are blank runs alone, its prints shown large and said to the room.
 - On the owner's ask the room's `page` tool turns its page on with no restart (Yerkd.page_switch) and yerkd opens it on
   the owner's screen with the box's own opener (opener): the address it opens holds a one-time ticket, never the key,
   since an opener's command line is readable by every local user (/proc); the page trades the ticket once, within
@@ -56,6 +62,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import textwrap
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -75,9 +82,12 @@ QUIET = 1.5              # seconds with no keystroke before the typing goes to t
 RUN_SECONDS = 10         # a test run's wall clock, and its CPU seconds
 RUN_MEMORY = 1 << 30     # a test run's address space, in bytes
 OUTPUT_MAX = 4000        # characters of what a run printed that come back
+PRINTED = 1000           # characters of what a run printed, its end, that the room reads in the next message
+TALK_WIDTH = 88          # columns of one #> line the room's words are wrapped to in the program (a fenced line kept whole)
 TEXT_MAX = 100_000       # characters of a program or its tests the page may send, and of a chat line, either side's
 DIFF_LINES = 60          # lines of the change one message carries, and # comments said; the whole program is in work/page/
 LINES_KEPT = 200         # the chat's newest lines, the owner's and the room's, a tab shows when it opens
+TALK_KEPT = 100          # the room's newest replies in the program a tab that missed them gets (talk), kept in talk.json too
 POINTS_MAX = 400         # points of one stroke kept in the events file
 NOTE_MAX = 200           # characters of a mark's note or the hint
 TICKET_SECONDS = 60       # a one-time address opened on the owner's screen is good this long, and once
@@ -99,7 +109,7 @@ TAILNET = (ipaddress.ip_network("100.64.0.0/10"), ipaddress.ip_network("fd7a:115
 # Windows' own opener under WSL (a Windows browser reaches the box's local address): it hands the address whole to the
 # default browser, where cmd.exe's start would split it at its `&`
 WSL_OPEN = ("/mnt/c/Windows/System32/rundll32.exe", "url.dll,FileProtocolHandler")
-PROGRAM, TESTS, CHAT = "solution.py", "test_solution.py", "chat.json"
+PROGRAM, TESTS, CHAT, TALK = "solution.py", "test_solution.py", "chat.json", "talk.json"
 MARKS = ("highlight", "arrow")
 # the bar as a scoreboard, read from the room's words alone (cell): a rank's tiers, low to high, each its colour on the
 # page (.tier-NAME in page.html); the labels whose value is a rank; a division after a tier; a number and a short unit
@@ -138,6 +148,19 @@ def said(kind, e):
 def write():
     with open(here + "/result.json", "w") as f:
         json.dump(out, f)
+if not open(here + "/test_solution.py").read().strip():
+    out["main"] = True
+    try:
+        import runpy
+        runpy.run_path(here + "/solution.py", run_name="__main__")
+    except SystemExit:
+        pass
+    except BaseException as e:
+        out["error"] = said(type(e), e)
+        out["line"] = getattr(e, "lineno", 0) if isinstance(e, SyntaxError) else at(e.__traceback__, "solution.py")
+    sys.stdout.flush()
+    write()
+    sys.exit(0)
 try:
     mod = importlib.import_module("test_solution")
 except BaseException as e:
@@ -195,7 +218,8 @@ def run_tests(code: str, tests: str, seconds: int = RUN_SECONDS, python: str = s
     """The program and its unittest file run in a fresh folder under `python -I`, in the sandbox (bubblewrap) and capped
     (RUN_SECONDS of wall clock, a second more of CPU behind it, and RUN_MEMORY), killed with its whole group past the cap:
     each test passed or failed with its message and the program's line it failed at, or the error that stopped the tests
-    loading (a syntax error, a failed import) with its line. No sandbox that starts: nothing ran, and the error says so."""
+    loading (a syntax error, a failed import) with its line; blank tests, the program run alone as a script (`main`), and
+    the error that stopped it with its line. No sandbox that starts: nothing ran, and the error says so."""
     with tempfile.TemporaryDirectory(prefix="yerk-page-") as d:
         here = Path(d)
         (here / PROGRAM).write_text(code)
@@ -223,16 +247,24 @@ def run_tests(code: str, tests: str, seconds: int = RUN_SECONDS, python: str = s
             return {"ok": False, "ran": 0, "passed": 0, "tests": [], "line": 0,
                     "error": words.PAGE_NO_SANDBOX if boxed else words.PAGE_RAN_PAST.format(n=seconds) if past else words.PAGE_RUN_DIED,
                     "output": printed_text, "seconds": took}
-    ran, passed = len(out["tests"]), sum(1 for t in out["tests"] if t["ok"])
-    return {"ok": not out["error"] and ran > 0 and passed == ran, "ran": ran, "passed": passed, "tests": out["tests"],
-            "error": out["error"], "line": out.get("line", 0), "output": printed_text, "seconds": took}
+    ran, passed, main = len(out["tests"]), sum(1 for t in out["tests"] if t["ok"]), bool(out.get("main"))
+    return {"ok": not out["error"] and (main or ran > 0 and passed == ran), "ran": ran, "passed": passed, "tests": out["tests"],
+            "error": out["error"], "line": out.get("line", 0), "output": printed_text, "seconds": took, **({"main": True} if main else {})}
 
 
 def run_line(r: dict[str, Any]) -> str:
     """A run as the room reads it: how many passed, then the first failure and the program's line it failed at, or the error
-    that stopped the tests loading."""
+    that stopped the tests loading (the program run alone: that it ran, or what stopped it); then the end of what it printed."""
+    printed = r.get("output", "").strip()[-PRINTED:]
+    return run_said(r) + ("\n" + words.PAGE_PRINTED.format(output=printed) if printed else "")
+
+
+def run_said(r: dict[str, Any]) -> str:
+    where = f" (line {r['line']})" if r.get("line") else ""
+    if r.get("main"):
+        return words.PAGE_MAIN_ERROR.format(error=r["error"], line=where) if r.get("error") else words.PAGE_MAIN
     if r.get("error"):
-        return words.PAGE_RUN_ERROR.format(error=r["error"], line=f" (line {r['line']})" if r.get("line") else "")
+        return words.PAGE_RUN_ERROR.format(error=r["error"], line=where)
     first = next((t for t in r.get("tests", []) if not t["ok"]), None)
     line = words.PAGE_RUN.format(passed=r.get("passed", 0), ran=r.get("ran", 0))
     if first is None:
@@ -361,7 +393,7 @@ def rich(text: str) -> list[dict[str, Any]]:
 
 def comments(old: str, new: str) -> list[tuple[int, str]]:
     """The # comment lines the owner typed in the program since the room last heard it, the owner's talk as a said line is (a
-    whole line a comment, new or changed, never a #! line or one the program already had: so no diff is needed, whose time
+    whole line a comment, new or changed, never a #! line, a #> line (the room's, talk) or one the program already had: so no diff is needed, whose time
     grew with the square of the lines when they repeat, and an unchanged program is not read): each run of them as its
     first line, from 1, and its words, a line each."""
     if old == new:
@@ -369,13 +401,78 @@ def comments(old: str, new: str) -> list[tuple[int, str]]:
     had, out = {x.strip() for x in old.splitlines()}, list[tuple[int, list[str]]]()
     for j, row in enumerate(new.splitlines()):
         said = row.strip()
-        if not said.startswith("#") or said.startswith("#!") or said in had or not (talk := said.lstrip("#").strip()):
+        if not owned(said) or said in had or not (talk := said.lstrip("#").strip()):
             continue
         if out and out[-1][0] + len(out[-1][1]) == j + 1:           # the next line of the same comment
             out[-1][1].append(talk)
         else:
             out.append((j + 1, [talk]))
     return [(at, "\n".join(said)) for at, said in out]
+
+
+def owned(row: str) -> bool:
+    """A whole line the owner's # comment: never a #! line, nor a #> line, the room's own (talk)."""
+    said = row.strip()
+    return said.startswith("#") and not said.startswith(("#!", "#>")) and bool(said.lstrip("#").strip())
+
+
+def talk_lines(text: str, room: int = TEXT_MAX, indent: int = 0) -> list[str]:
+    """A line the room said as the program's #> comment lines: a row each, a long one wrapped at TALK_WIDTH with its words
+    whole (a link never cut) and a fenced block's rows kept whole; DIFF_LINES at most, and no more characters than `room`
+    (what the program has left under TEXT_MAX) at `indent`, a line its newline too, the rest named as on the chat; none
+    when not even that fits."""
+    rows: list[str] = []
+    fenced = False
+    for row in text.replace("\r", "").strip("\n").split("\n"):
+        fence = row.lstrip().startswith("```")
+        rows += [row] if fenced or fence or len(row) <= TALK_WIDTH else textwrap.wrap(row, TALK_WIDTH, break_long_words=False, break_on_hyphens=False)
+        fenced ^= fence
+    lines = [f"#> {x}".rstrip() for x in rows]
+    for n in range(min(len(lines), DIFF_LINES), 0, -1):          # all of it, else n - 1 lines and the count of the rest
+        kept = lines if n == len(lines) else [*lines[:n - 1], f"#> {words.PAGE_TALK_CUT.format(n=len(lines) - n + 1)}"]
+        if sum(indent + len(x) + 1 for x in kept) <= room:
+            return kept
+    return []
+
+
+def spot(rows: list[str], asked: tuple[int, str]) -> tuple[int, str, tuple[int, str]]:
+    """Where the room's lines go in the program's rows (talk): the row they go after, from 0 (-1: on top), their indent,
+    and the owner's # line they go under, from 1 (0: none), and its words: the comment said last (`asked`, its line and
+    words), the copy nearest its line, else the lowest # line of the owner's; under the #> lines already under it, at its
+    indent; with none, after the program's last line."""
+    hits = [i for i, r in enumerate(rows) if asked[1] and r.strip() == asked[1]]
+    i = min(hits, key=lambda j: abs(j - asked[0] + 1)) if hits else next((j for j in range(len(rows) - 1, -1, -1) if owned(rows[j])), -1)
+    anchor, indent = (i + 1, rows[i].strip()), rows[i][:len(rows[i]) - len(rows[i].lstrip())] if i >= 0 else ""
+    if i < 0:                                      # no # line of the owner's: after the last line
+        anchor, i = (0, ""), len(rows) - 2 if rows[-1] == "" else len(rows) - 1
+    while i + 1 < len(rows) and rows[i + 1].lstrip().startswith("#>"):
+        i += 1
+    return i, indent, anchor
+
+
+def into(code: str, asked: tuple[int, str], lines: list[str]) -> tuple[str, int, str]:
+    """`lines` written into the program where the room's go (spot), and the owner's # line they went under, from 1 (0:
+    none), and its words. A tab does the same in its own text with the line this found (page.html, talk), so what the owner
+    typed since keeps its place, and the caret too."""
+    rows = code.split("\n")
+    i, indent, anchor = spot(rows, asked)
+    rows[i + 1:i + 1] = [indent + x for x in lines]
+    return "\n".join(rows), *anchor
+
+
+def caught_up(code: str, missed: list[dict[str, Any]]) -> str:
+    """A program a tab posted, with the room's replies it had not written yet (`missed`, in order) written in as its talk()
+    writes them: under the line each found (spot), at its indent, the last lines dropped past TEXT_MAX. So a post built
+    before a reply reached the tab never takes that reply out (talk)."""
+    for t in missed:
+        rows = code.split("\n")
+        i, indent, _ = spot(rows, (t["line"], t["text"]))
+        lines = [indent + x for x in t["lines"]]
+        while lines and len(code) + sum(len(x) + 1 for x in lines) > TEXT_MAX:
+            lines.pop()
+        rows[i + 1:i + 1] = lines
+        code = "\n".join(rows)
+    return code
 
 
 @dataclass
@@ -396,6 +493,10 @@ class Sheet:
     said_n: int = 0                                           # the number the chat's next line gets
     run: dict[str, Any] | None = None
     run_heard: bool = True
+    talk: bool = False                                        # the page's chat closed: the room's lines go in the program too
+    asked: tuple[int, str] = (0, "")                          # the # line the owner said last: its line and its words
+    talked: int = 0                                           # the number of the room's last reply in the program: a tab posts its own
+    talks: list[dict[str, Any]] = field(default_factory=list) # the newest TALK_KEPT of them, each with its number
     waiting: list[str] = field(default_factory=list)          # lines for the next message: a stroke, a said line, an event
     tabs: list[asyncio.Queue[dict[str, Any]]] = field(default_factory=list)
     quiet: asyncio.TimerHandle | None = None
@@ -405,7 +506,12 @@ class Sheet:
         """Everything a tab shows, for one that opens or reconnects."""
         return {"state": {"room": self.room.name, "code": self.code, "tests": self.tests, "marks": self.marks, "hint": self.hint,
                           "bar": self.bar, "board": board(self.bar), "timer": self.timer, "stall": self.stall,
-                          "lines": [shown(x) for x in self.lines], "run": self.run}}
+                          "lines": [shown(x) for x in self.lines], "run": self.run, "talk": self.talk,
+                          "talked": self.talked, "talks": self.talks}}
+
+    def keep(self) -> None:
+        """talk.json: the chat closed or not, and the room's replies in the program with their numbering, for after a restart."""
+        write_private(self.folder / TALK, json.dumps({"on": self.talk, "n": self.talked, "ops": self.talks}, ensure_ascii=False))
 
 
 def shown(line: dict[str, Any]) -> dict[str, Any]:
@@ -439,6 +545,17 @@ class Page:
             s.code = (folder / PROGRAM).read_text()
         with contextlib.suppress(OSError):
             s.tests = (folder / TESTS).read_text()
+        kept: Any = {}
+        with contextlib.suppress(OSError, ValueError):
+            kept = json.loads((folder / TALK).read_text())
+        s.talk = isinstance(kept, dict) and kept.get("on") is True
+        ops = kept.get("ops") if isinstance(kept, dict) and type(kept.get("n")) is int and isinstance(kept.get("ops"), list) else None
+        if ops is not None and [t.get("n") if isinstance(t, dict) else None for t in ops] == list(range(kept["n"] - len(ops) + 1, kept["n"] + 1)):
+            s.talked, s.talks = kept["n"], ops[-TALK_KEPT:]
+        else:     # a numbering of its own, kept now: above any an older one's tab holds, which so reads as having missed too many
+            s.talked = time.time_ns() // 1_000_000
+            with contextlib.suppress(OSError):
+                s.keep()
         s.heard = (s.code, s.tests)
         with contextlib.suppress(OSError, ValueError, TypeError):
             s.lines = [{k: v for k, v in x.items() if k != "parts"} for x in json.loads((folder / CHAT).read_text())   # parts: rich's alone
@@ -505,7 +622,8 @@ class Page:
 
     async def event(self, room: str, ev: dict[str, Any]) -> dict[str, Any]:
         """One thing the owner did on the page: logged at once, then a message to the room now (a stroke, a said line, the
-        timer's end, a stall) or once the typing pauses (an edit)."""
+        timer's end, a stall, a # line ended with Enter, an edit with `send`, whose talk the room has not heard) or once the
+        typing pauses (an edit, an Enter after a comment it heard too); the chat closed or opened (talk) rides in the next."""
         if (s := self.sheets.get(room)) is None:
             return {"ok": False, "error": words.PAGE_NONE.format(room=room)}
         self.loop = asyncio.get_running_loop()
@@ -513,13 +631,19 @@ class Page:
         if kind == "edit":
             pane = "tests" if ev.get("pane") == "tests" else "code"
             new = str(ev.get("text") or "")[:TEXT_MAX]
+            if pane == "code" and type(had := ev.get("talked")) is int and had != s.talked:   # built before the room's newest reply
+                if not s.talked - len(s.talks) <= had < s.talked:      # one yerkd keeps no more (TALK_KEPT), or another numbering's
+                    return {"ok": False, "error": words.PAGE_TALK_BEHIND}
+                new = caught_up(new, s.talks[len(s.talks) - (s.talked - had):])      # written in, so the post never takes them out
             old = s.tests if pane == "tests" else s.code
-            if new == old:
-                return {"ok": True}
-            s.tests, s.code = (new, s.code) if pane == "tests" else (s.tests, new)
-            write_private(s.folder / (TESTS if pane == "tests" else PROGRAM), new)
-            self._log(s, {"kind": "edit", "pane": pane, **change(old, new)})
-            self._arm(s)
+            if new != old:
+                s.tests, s.code = (new, s.code) if pane == "tests" else (s.tests, new)
+                write_private(s.folder / (TESTS if pane == "tests" else PROGRAM), new)
+                self._log(s, {"kind": "edit", "pane": pane, **change(old, new)})
+            if ev.get("send") is True and comments(s.heard[0], s.code):   # a # line ended with Enter, talk the room has not heard: now
+                self.flush(room)
+            elif new != old:                           # else at the pause, as typing: an Enter after a comment the room heard too
+                self._arm(s)
             return {"ok": True}
         if kind == "stroke":
             lines, pane = span(ev.get("lines")), "tests" if ev.get("pane") == "tests" else "program"
@@ -542,6 +666,13 @@ class Page:
         elif kind == "stall":
             self._log(s, {"kind": "stall", "seconds": s.stall})
             s.waiting.append(words.PAGE_STALL.format(n=s.stall))
+        elif kind == "talk":                           # the chat closed to nothing, or open again: said in the next message
+            if (on := ev.get("on") is True) != s.talk:
+                s.talk = on
+                s.keep()
+                self._log(s, {"kind": "talk", "on": on})
+                s.waiting.append(words.PAGE_TALK_ON if on else words.PAGE_TALK_OFF)
+            return {"ok": True}
         else:
             return {"ok": False, "error": words.PAGE_KIND.format(kind=kind[:40])}
         self.flush(room)
@@ -554,11 +685,11 @@ class Page:
             return {"ok": False, "error": words.PAGE_NONE.format(room=room)}
         self.loop = asyncio.get_running_loop()
         if isinstance(req.get("code"), str) or isinstance(req.get("tests"), str):     # what the tab shows, as it ran
-            await self.event(room, {"kind": "edit", "pane": "code", "text": req.get("code", s.code)})
+            await self.event(room, {"kind": "edit", "pane": "code", "text": req.get("code", s.code), "talked": req.get("talked")})
             await self.event(room, {"kind": "edit", "pane": "tests", "text": req.get("tests", s.tests)})
         async with s.running:
             r = await asyncio.to_thread(run_tests, s.code, s.tests)
-        changed = s.run is None or (s.run.get("passed"), s.run.get("ran"), s.run.get("error")) != (r["passed"], r["ran"], r["error"])
+        changed = s.run is None or [s.run.get(k) for k in ("passed", "ran", "error", "output")] != [r[k] for k in ("passed", "ran", "error", "output")]
         s.run, s.run_heard = r, heard or (s.run_heard and not changed)
         self._log(s, {"kind": "run", "passed": r["passed"], "ran": r["ran"], "error": r["error"][:300], "seconds": r["seconds"]})
         if not s.run_heard or (s.code, s.tests) != s.heard:
@@ -602,6 +733,9 @@ class Page:
         if not (text := self.message(s, talk)):
             return ""
         s.heard, s.run_heard, s.waiting = (s.code, s.tests), True, []
+        if talk:                                 # the # line said last, where the room's next lines go (into)
+            at = talk[-1][0] + talk[-1][1].count("\n")
+            s.asked = (at, s.code.split("\n")[at - 1].strip() if at <= s.code.count("\n") + 1 else "")
         for at, said in talk[:DIFF_LINES]:   # the owner's talk on the chat too: a comment still typed replaces its line
             last = s.lines[-1] if s.lines else {}
             again = last.get("at") == at and (said.startswith(last["text"]) or last["text"].startswith(said))
@@ -650,20 +784,47 @@ class Page:
             return {"ok": False, "error": words.PAGE_NOTHING}
         self._log(s, {"kind": "drawn", **{k: v for k, v in op.items() if k not in ("code", "tests", "board")},
                       **{k: len(v) for k, v in op.items() if k in ("code", "tests")}})
-        self._push(s, {"draw": op})
+        self._push(s, {"draw": {**op, "talked": s.talked} if "code" in op else op})     # a drawn program has every reply so far
         notes = ([] if s.tabs else [words.PAGE_NO_TAB]) + ([words.PAGE_UNPADDED] if padded else [])
         return {"ok": True, "tabs": len(s.tabs), **({"note": "; ".join(notes)} if notes else {})}
 
     def said(self, room: str, text: str, kind: str = "reply") -> None:
         """A line the room said, from any thread, its first TEXT_MAX characters as the say box's: kept for a tab that opens
-        later and shown on every open one."""
+        later and shown on every open one; with the page's chat closed, written into the program too (_talk)."""
         if (s := self.sheets.get(room)) is None or not text.strip() or text.strip() == words.NO_REPLY:
             return
         line = {"text": text[:TEXT_MAX], "kind": kind, "t": round(time.time(), 3)}
-        if self.loop is not None and self.loop.is_running():
-            self.loop.call_soon_threadsafe(self._said, s, line)
-        else:
-            self._said(s, line)
+        for step in (self._said, self._talk):
+            if self.loop is not None and self.loop.is_running():
+                self.loop.call_soon_threadsafe(step, s, line)
+            else:
+                step(s, line)
+
+    def _talk(self, s: Sheet, line: dict[str, Any]) -> None:
+        """A line the room said, as #> lines in the program under the owner's last # line (into) while the page's chat is
+        closed: in yerkd's copy and the room's last heard one alike, so the room is never told it typed them, and to every
+        open tab as that line and the words, which it writes in its own text there, the owner's caret and typing kept. No
+        more than the program holds under TEXT_MAX, the rest named as on the chat and the room told once in its next
+        message (past it, the next keystroke posted cut the owner's code); the room's marks under them move down with
+        their lines (the tab moves its own). Numbered and the newest TALK_KEPT kept, for a tab that missed them."""
+        if not s.talk:
+            return
+        rows = s.code.split("\n")
+        i, indent, (at, anchor) = spot(rows, s.asked)
+        lines = talk_lines(line["text"], TEXT_MAX - len(s.code), len(indent))
+        if lines != talk_lines(line["text"], indent=len(indent)) and (full := words.PAGE_TALK_FULL.format(n=TEXT_MAX)) not in s.waiting:
+            s.waiting.append(full)
+        if not lines:                                  # the program full: the chat alone has it
+            return
+        rows[i + 1:i + 1] = [indent + x for x in lines]
+        s.code, s.heard = "\n".join(rows), (into(s.heard[0], s.asked, lines)[0], s.heard[1])
+        s.marks = [{**m, "line": m["line"] + len(lines)} if m["line"] > i + 1 else m for m in s.marks]
+        s.talked += 1                                  # numbered: a tab writes each once, and gets the ones it missed
+        s.talks = [*s.talks, {"n": s.talked, "line": at, "text": anchor, "lines": lines}][-TALK_KEPT:]
+        s.keep()                                       # first: a stop between the two never leaves the program's lines unnumbered
+        write_private(s.folder / PROGRAM, s.code)
+        self._log(s, {"kind": "talked", "under": at, "lines": len(lines)})
+        self._push(s, {"talk": s.talks[-1]})
 
     def _said(self, s: Sheet, line: dict[str, Any]) -> None:
         """A chat line kept, numbered, written to the room's page folder and shown on every open tab; one whose number the
