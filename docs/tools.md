@@ -2,7 +2,7 @@
 
 Written by `yerk docs own` from yerk_ai/mcp_server.py (build) and workers.WORKER_TOOLS; change those and run it again, never this page.
 
-The 21 tools Yerk AI's own MCP server hands every room's Claude Code, preloaded, as mcp__yerk__NAME. Each one's description is the text the model reads, indentation dropped. A worker gets none of them unless [workers] yerk_tools in yerkd.toml names some, and then only recall, read_memory, on its own server.
+The 22 tools Yerk AI's own MCP server hands every room's Claude Code, preloaded, as mcp__yerk__NAME. Each one's description is the text the model reads, indentation dropped. A worker gets none of them unless [workers] yerk_tools in yerkd.toml names some, and then only recall, read_memory, on its own server.
 
 ## send
 
@@ -335,3 +335,16 @@ their Mac (default "pc"); `off` true: off.
 - `open`: boolean, default false
 - `where`: string, default ""
 - `off`: boolean, default false
+
+## attachments
+
+```text
+The files an earlier Discord message carries, saved again to this room's inbox, since your shell has no network: a
+file this room posted whose copy is gone (the sweep took it), or one sent here. `message` its id (the [m:] of its
+day-log line; in this room's channel or the one it watches) or its link (discord.com/channels/SERVER/CHANNEL/MESSAGE;
+an owner's room, any channel of its server); `name` a file's name: with `message`, that file only; alone, the newest
+file this room posted under it. Returns each saved path: `send` it again, Read it or attach it.
+```
+
+- `message`: string, default ""
+- `name`: string, default ""

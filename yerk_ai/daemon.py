@@ -16,6 +16,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import secrets
 import signal
 import socket
@@ -49,7 +50,8 @@ log = logging.getLogger("yerk.daemon")
 YERK_TOOLS = ["mcp__yerk__send", "mcp__yerk__hold", "mcp__yerk__recall", "mcp__yerk__read_memory",
               "mcp__yerk__remember", "mcp__yerk__worker", "mcp__yerk__schedule", "mcp__yerk__settings", "mcp__yerk__transcribe",
               "mcp__yerk__voice_note", "mcp__yerk__seen", "mcp__yerk__render", "mcp__yerk__watch", "mcp__yerk__need", texts.TOOL, deletes.TOOL, emails.TOOL,
-              "mcp__yerk__reverse_image_search", "mcp__yerk__github_state", "mcp__yerk__page", "mcp__yerk__texts"]
+              "mcp__yerk__reverse_image_search", "mcp__yerk__github_state", "mcp__yerk__page", "mcp__yerk__texts",
+              "mcp__yerk__attachments"]
 # A shell room's sandbox when rooms.toml gives it no [rooms.NAME.sandbox] table: unsandboxed, a Read deny stops `cat` and
 # the Read tool, but a script, grep or redirect read every secret (Claude Code 2.1.304, PR 66's cold read, 2026-10-21)
 SANDBOX = {"enabled": True, "autoAllowBashIfSandboxed": True}
@@ -592,6 +594,34 @@ class Yerkd:
                 if r["ok"] else r["error"][:160])
         log.info("watch: %s, %s", room, said)
         return r
+
+    async def tool_attachments(self, room: str, message: str, name: str) -> dict[str, Any]:
+        """The `attachments` tool: the files an earlier Discord message carries saved again to the calling room's inbox by its
+        adapter's bot (files), so a room posts again, reads or attaches a file whose copy is gone (its outbox copy swept): the
+        message by its id (the room's own channel, then the one it watches) or its link (watch.message), or with `name` alone
+        the newest message this room posted a file of that name in (Ledger.posted). Free: no spend row."""
+        if room not in self.rooms:
+            return {"ok": False, "error": words.ATTACH_NO_ROOM.format(room=room)}
+        given, name = message.strip(), name.strip()
+        at = watch.message(given) or ((None, int(given)) if re.fullmatch(r"\d{1,20}", given) else None)
+        if not given and not name:
+            return {"ok": False, "error": words.ATTACH_NOTHING}
+        if given and at is None:
+            return {"ok": False, "error": words.ATTACH_NOT_MESSAGE.format(given=words.no_paths(given)[:120])}
+        if (files := getattr(self.channels.get(room), "files", None)) is None:
+            return {"ok": False, "error": words.WATCH_NO_DISCORD}
+        try:
+            mid, kept, big = await files(room, at, name, self.owner(room))
+        except watch.Failed as e:
+            log.info("attachments: %s, %s", room, str(e)[:160])
+            return {"ok": False, "error": str(e)}
+        saved = [{k: f[k] for k in ("name", "path", "size", "type")} for f in kept if f.get("ok")]
+        missed = [words.ATTACH_NOT_SAVED.format(name=f["name"], why=f.get("error")) for f in kept if not f.get("ok")]
+        note = "; ".join([*missed, *([words.ATTACH_TOO_BIG.format(names=big)] if big else [])])
+        log.info("attachments: %s, message %s, %d file(s) saved%s", room, mid, len(saved), f"; {note[:160]}" if note else "")
+        if not saved:
+            return {"ok": False, "error": note}
+        return {"ok": True, "message": mid, "files": saved, "note": note, "next": words.ATTACH_NEXT}
 
     async def tool_reverse_image_search(self, room: str, path: str) -> dict[str, Any]:
         """The `reverse_image_search` tool: a picture from the calling room's own folders (may_send's rule, as render's) looked
