@@ -1553,6 +1553,7 @@ class Tabs:
                       for n in ("owned", "talk", "typed", "run", "apply", "put"))
         js = TABS_JS.replace("/*CAP*/", str(pagemod.TEXT_MAX)).replace("/*FNS*/", fns)
         self.node = subprocess.Popen(["node", "-e", js], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+        self.worlds = []                       # each World on these tabs not closed yet
 
     def __call__(self, **c):
         self.node.stdin.write(json.dumps(c) + "\n")
@@ -1568,6 +1569,8 @@ class Tabs:
 def tabs():
     t = Tabs()
     yield t
+    while t.worlds:                            # a World its test left open, the test passed or failed
+        t.worlds[0].close()
     t.close()
 
 
@@ -1578,6 +1581,7 @@ class World:
     def __init__(self, tmp_path, tabs):
         self.tmp, self.tabs = tmp_path, tabs
         self.p, self.room = hub(tmp_path, quiet=60)
+        tabs.worlds.append(self)
         self.p.draw("r", {"code": DRAWN})
         self.feeds, self.posts, self.answers, self.views = {}, [], [], {}
 
@@ -1649,6 +1653,12 @@ class World:
         failed, self.posts, self.feeds = self.posts, [], {}
         for tab, x in failed:
             self.got(tab, self.tabs(tab=tab, answer=x["id"], r={"ok": False}))
+
+    def close(self):
+        """The ledger hub() opened, which restart() hands on, closed now and not when the collector gets to it (Ledger.close):
+        its database, -wal and -shm files are three descriptors, and 400 sequences of them passed the box's cap of 1,024."""
+        self.tabs.worlds.remove(self)
+        self.p.ledger.close()
 
 
 def told(room):
@@ -1968,6 +1978,7 @@ async def sequence(tmp_path, tabs, rng, n):
         v = w.views[tab]
         assert all(once(v["text"], x) for x in said) and all(x in v["text"].split("\n") for x in typed[tab]), (said, v)
         assert v["caret"] == len(v["text"])
+    w.close()                                    # a sequence that fails ends its test, and the tabs fixture closes it
     return len(said)
 
 
