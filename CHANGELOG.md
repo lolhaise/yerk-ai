@@ -8,6 +8,35 @@ version changes.
 
 ## 2026-11-06
 
+### rule-filing-check-2026-11-06 (#?)
+
+- A rule a room files with `remember` and a `job` is checked before anything is written. Its words are read by the
+  counts `yerk doctor` scores the rule files with (a no with no reason, a shouted word, an example outside `<example>`
+  tags, an alarm mark), its examples left out. A rule that misses one is not filed: the room hears each count, the words
+  that tripped it and the prompting guide's fix in one line, rewrites the rule and files it again. Before, the doctor
+  named such a line the day after it was filed, and every room had loaded it by then.
+- Then the filing lists the live lines of other jobs that speak about the same thing, in the rules file, the topic rules
+  and each owner room's rulebook, persona and voice: a topic of the doctor's said-twice count, near-duplicate words, a
+  mark, code, a quoted phrase, a channel or a file both name, a thing one says no to that the other names, or one's job
+  named in the other, and then any line naming the job of a line so found. A line that says no to the same thing as the
+  new rule agrees with it, so that thing links neither of them. A word more than five lines say links none,
+  so the list stays short. Nothing is filed until the room's next call settles each line, superseded or kept, with a
+  one-clause reason. Before, a new rule could land while older lines of other jobs still asked for the opposite, and
+  every room that loaded them kept the old way.
+- A line superseded in the rules file or the topic rules is marked by the new rule, as its own job's older line is. A
+  line in a rulebook, persona or voice file, which no room changes, stays as it is, and the machine room gets one notice
+  naming the file, the line and the new rule, for whoever keeps that file. Each verdict and its reason is a line in the
+  room's day log.
+- `yerk curate --apply` writes no rule line a filing would turn back, and says which proposal and why.
+- The mechanics' line on filing a job now asks for literal words, an example that is a real exchange from the day log,
+  and the older line's examples carried forward, and says the filing checks the wording and lists older lines on the
+  same thing; four other mechanics lines are reworded with no change in what they ask. The mechanics' line goes to
+  6,800, `yerk_tools` to 23,700, the session total to 123,405 and the `[code]` ceiling to 26,968.
+
+**Upgrading**: budgets.toml's `yerk_tools` is 23,700 and the session `total` 123,405; keep yours at least that, or the
+deploy's fit check refuses on the longer `remember`. A script that files rules through `memory.rule` gets the same
+wording check.
+
 ### retired-marks-2026-11-06 (#?)
 
 - A reply shape you retired can now be held by code, not only asked for by a rule. Rule text is a request, so a room

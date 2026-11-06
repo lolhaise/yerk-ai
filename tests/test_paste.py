@@ -178,4 +178,4 @@ def test_11_the_card_row_of_a_turned_back_send_reads_not_done_and_the_next_one_d
         c.feed({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": tid, "content": said}]}})
     assert c.render().splitlines()[1:] == [f"{FAILED} sending a message to example-room", f"{OK} sending a message to example-room"]
     m = (REPO / "yerk_ai" / "mechanics.md").read_text()
-    assert "A fenced block this room posted on an earlier day is turned back once" in m
+    assert "A fenced block this room posted on an earlier day, sent again word for word, is refused once" in m

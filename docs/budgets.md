@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 122405`
+- `total = 123405`
 
 ## [session_start.claude_code]
 
@@ -82,9 +82,13 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-06, need-2026-11-06-69: the `attachments` tool (the files an earlier Discord message carries, saved again to the room's inbox by the daemon's bot, by the message's id, its link, or a file's name alone through the ledger's outbound rows, since a room asked to post again a file it had posted two weeks before found its outbox copy swept and the trash emptied, a history listing that named the file with no address, and no network in its shell; filed 2026-11-06) is 827 as this tree builds it on Python 3.13, all 22 to 22,593, about 23,275 as sent (682 over the build, 31 a tool as on the others); so 23,300, no part could pay, the total rose by the 800 (to 122,405).
 
+2026-11-06, rule-filing-check-2026-11-06: `remember`'s `older` (the live lines of other jobs on the same thing that a rule's filing lists, each settled as superseded or kept with its reason) and its sentence on what a rule holds take the tool from 1,904 to 2,304 as this tree builds it, all 21 to 22,166, about 22,817 as sent (651 over the build, as on need 59's tree); so 22,900, no part could pay, the total rose by the 400 (to 122,005).
+
+2026-11-06, rule-filing-check-2026-11-06 with main folded in (need-2026-11-06-69's `attachments` tool): `remember` at 2,304 and `attachments` at 827 as this tree builds them, all 22 to 22,993, about 23,675 as sent (682 over the build, 31 a tool as on need 69's tree); so 23,700, no part could pay, the total rose by this branch's 1,000 (400 here, 600 on the mechanics) over main's 122,405 (to 123,405).
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
-- `yerk_tools = 23300`
+- `yerk_tools = 23700`
 - `deferred_tool_names = 3429`
 - `mcp__hands__ = 8165`
 - `mcp__web-ladder__web_image = 913`
@@ -132,7 +136,9 @@ Yerk AI's own parts, joined into the one file passed by --append-system-prompt-f
 
 2026-11-04, fold-named-2026-11-04: the fold line's clause (a message arriving mid-turn comes marked as sent while you were answering, and is answered in this same reply, by name; that afternoon a number fixed 0.8 s after the question it corrected folded into its turn, and the one reply covering both answered the first and never said the second) took the mechanics file to 6,077: 6,091 on the box, 6,119 in a worker's worktree, 6,129 in CI's checkout of a sha; so 6,200, a checkout's path of up to 129 characters. No part was measured again to pay for it, so the total rose by the 200, to 119,405.
 
-- `mechanics = 6200`
+2026-11-06, rule-filing-check-2026-11-06: the filing line's new text (literal words, an example a real exchange from the day log, the older line's examples carried forward, and the filing's check of the wording and its list of older lines on the same thing) and four wording-only rewrites (the fold, attachment, paste and recall-pack lines) took the mechanics file to 6,676: 6,689 on the box, 6,799 with a checkout's path of 129 characters; so 6,800, a checkout's path of up to 130. No part was measured again to pay for it, so the total rose by the 600, to 122,605 with the tools' 400.
+
+- `mechanics = 6800`
 - `persona = 11800`
 - `rulebook = 14000`
 - `room_voice = 5500`
@@ -537,7 +543,13 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-06, retired-marks-2026-11-06 with main folded in (need-2026-11-06-69's 95 lines): main's 26,729 plus this branch's 51, 26,780.
 
-- `lines = 26780`
+2026-11-06, rule-filing-check-2026-11-06: 187 lines, not folded to fit: curate.py 110 (same, held, says, tokens, bans and settled: the live lines of other jobs on the same thing a rule's filing lists, and the room's verdict on each; apply's check of each line it writes), daemon.py 20 (tool_rule turns back a line out of the shape, then one with lines to settle; marks, logs and tells), shape.py 15 (tripped, the words behind each count, with offenses read from it; filing; install), memory.py 23 (unshaped, and rule's `also`), words.py 13, mcp_server.py 4 and config.py 2 ([docs] topics and acronyms described, which the daemon now reads). 26,821.
+
+2026-11-06, rule-filing-check-2026-11-06's precision fix raised it by 1: a line that says no to the same word as the rule being filed agrees with it, so `same` links neither of them through that word (curate.py 1, its docstring's line); the older-lines list named such lines as lines to settle, not folded to fit. 26,822.
+
+2026-11-06, rule-filing-check-2026-11-06 with main folded in (need-2026-11-06-69's 95 lines and retired-marks-2026-11-06's 51): main's 26,780 plus this branch's 188, 26,968.
+
+- `lines = 26968`
 
 ## Uncapped
 

@@ -268,7 +268,7 @@ def test_claude_codes_parts_as_the_rooms_send_them_fit_their_lines_and_what_is_l
     assert all(sent <= line for sent, line in rows.values()), out
     assert all(line <= sent * 1.02 for name, (sent, line) in rows.items() if name != "Yerk AI's tools"), rows
     s = b["session_start"]
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 122405
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 123405
 
 
 def room_sent(tmp_path, tools, file="# Yerk AI mechanics\n- an example line"):
@@ -398,10 +398,12 @@ def test_the_rulebook_line_keeps_about_1000_over_the_largest_room_text_and_what_
     in the owner's name from their own Gmail with the room's files attached), no part could pay, to 121,405 (need-2026-11-05-59);
     then the `page` tool's clauses on the talk in the program (200 with main folded in), no part could pay, to 121,605
     (need-2026-11-04-51); then the `attachments` tool (800, the files an earlier Discord message carries saved again to the
-    room's inbox), no part could pay, to 122,405 (need-2026-11-06-69)."""
+    room's inbox), no part could pay, to 122,405 (need-2026-11-06-69); then `remember`'s `older` (400) and the filing
+    line's new text with four wording-only rewrites on the mechanics (600), no part could pay, to 123,405
+    (rule-filing-check-2026-11-06)."""
     s = budgets()["session_start"]
     assert 900 <= s["appended"]["rulebook"] - LIVE_RULEBOOK <= 1400 and s["appended"]["rules"] == 16000
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 122405
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 123405
     private = tmp_path / "private"
     shutil.copytree(EXAMPLE_PRIVATE, private)
     (private / "rulebook.md").write_text("r" * (LIVE_RULEBOOK - 1) + "\n")
@@ -425,7 +427,7 @@ def test_the_mechanics_say_when_to_use_the_place_unasked_in_one_line_inside_thei
     text = context.MECHANICS.read_text().strip()
     lines = [x for x in text.splitlines() if "`[place]`" in x]
     assert len(lines) == 1 and all(w in lines[0] for w in ("unasked", "gym", "log the session", "work", "commute", "moving", "short"))
-    assert context.chars(text) < budgets()["session_start"]["appended"]["mechanics"] == 6200
+    assert context.chars(text) < budgets()["session_start"]["appended"]["mechanics"] == 6800
 
 
 def test_the_mechanics_say_a_message_arriving_mid_turn_is_answered_by_name_in_one_line_inside_their_budget():
@@ -433,7 +435,7 @@ def test_the_mechanics_say_a_message_arriving_mid_turn_is_answered_by_name_in_on
     covering both never said it; the fold's line ahead of such a message is explained here, once."""
     text = context.MECHANICS.read_text().strip()
     lines = [x for x in text.splitlines() if "mid-turn" in x]
-    assert len(lines) == 1 and all(w in lines[0] for w in ("marked as sent while you were answering", "this same reply", "by name",
+    assert len(lines) == 1 and all(w in lines[0] for w in ("marked as sent while you were answering", "this same reply", "name the message",
                                                            "a correction replaces the question", "cannot see it was read"))
     assert context.chars(text.replace(context.CODE, "x" * 129)) <= budgets()["session_start"]["appended"]["mechanics"]
 

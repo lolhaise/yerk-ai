@@ -98,8 +98,8 @@ def test_a_person_in_a_photo_the_owner_sends_in_his_own_room_is_the_owner_and_no
     One mechanics line where `seen` is, the tool's own description and the backfill brief say the same."""
     text = context.MECHANICS.read_text().strip()
     line = next(x for x in text.splitlines() if "`seen`" in x)
-    assert ("`seen` a picture, its `shows` calling a person in it the owner (in a person's room, the sender) unless its own text "
-            "says otherwise") in line
+    assert ("filed with `seen`, whose `shows` calls a person in it the owner (in a person's room, the sender) unless the picture's "
+            "own text says otherwise") in line
     assert shape.offenses(line) == [] and context.chars(text) < budgets()["session_start"]["appended"]["mechanics"]
     y = daemon(tmp_path)
     tools = {t.name: t for t in asyncio.run(mcp_server.build(y, y.port, y.hook).list_tools())}
