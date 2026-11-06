@@ -535,7 +535,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-06, rule-filing-check-2026-11-06: 187 lines, not folded to fit: curate.py 110 (same, held, says, tokens, bans and settled: the live lines of other jobs on the same thing a rule's filing lists, and the room's verdict on each; apply's check of each line it writes), daemon.py 20 (tool_rule turns back a line out of the shape, then one with lines to settle; marks, logs and tells), shape.py 15 (tripped, the words behind each count, with offenses read from it; filing; install), memory.py 23 (unshaped, and rule's `also`), words.py 13, mcp_server.py 4 and config.py 2 ([docs] topics and acronyms described, which the daemon now reads). 26,821.
 
-- `lines = 26821`
+2026-11-06, rule-filing-check-2026-11-06's precision fix raised it by 1: a line that says no to the same word as the rule being filed agrees with it, so `same` links neither of them through that word (curate.py 1, its docstring's line); the older-lines list named such lines as lines to settle, not folded to fit. 26,822.
+
+- `lines = 26822`
 
 ## Uncapped
 

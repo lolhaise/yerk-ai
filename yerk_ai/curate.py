@@ -626,8 +626,9 @@ def same(private: Path, s: memory.Settings, confs: dict[str, dict[str, Any]], jo
     """The live lines on the same thing as a rule about to be filed (`job`: `text`) in the files the owner rooms load (held), its
     own job's lines out (the filing marks those), each {cite, text, kind, path, line, shares}, in file order. What links one: a topic
     of the twice count both say (`topics`, shape.TOPICS by default), near-duplicate words (near), a mark, code, a quoted phrase, a
-    channel or a file both name, a word one says no to that the other names, or either's job named by the other; then a line naming
-    the job of a rules line so linked. Examples are no one's words here, and a word or token more than SAME_MOST lines say links none."""
+    channel or a file both name, a word one says no to that the other names but does not say no to as well (two lines that say no to
+    one word agree on it), or either's job named by the other; then a line naming the job of a rules line so linked. Examples are no
+    one's words here, and a word or token more than SAME_MOST lines say links none."""
     job, mine = memory.one_line(job).strip(" :").lower(), " ".join(memory.EXAMPLE.sub("", memory.one_line(text)).split())
     rows: list[dict[str, Any]] = []
     for kind, p, name in held(private, s, confs):
@@ -652,8 +653,8 @@ def same(private: Path, s: memory.Settings, confs: dict[str, dict[str, Any]], jo
         why = [f"the topic {t}" for t, at in on.items() if i in at and len(at) <= SAME_MOST]
         why += ["near-duplicate words"] if near(bare(mine), bare(r["said"])) else []
         why += [f"both name {t}" for t in sorted(tokens(mine) | tokens(r["said"])) if says(t, r["low"]) and says(t, new) and rare(t)]
-        why += [f"it names {t}, which this rule says no to" for t in sorted(bans(mine)) if says(t, r["low"]) and rare(t)]
-        why += [f"it says no to {t}, which this rule names" for t in sorted(bans(r["said"])) if says(t, new) and rare(t)]
+        why += [f"it names {t}, which this rule says no to" for t in sorted(bans(mine) - bans(r["said"])) if says(t, r["low"]) and rare(t)]
+        why += [f"it says no to {t}, which this rule names" for t in sorted(bans(r["said"]) - bans(mine)) if says(t, new) and rare(t)]
         why += ["it names this rule's job"] if says(job, r["low"]) and rare(job) else []
         why += [f"this rule names its job, {r['job']}"] if r["job"] and says(r["job"], new) and rare(r["job"]) else []
         if why:

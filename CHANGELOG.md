@@ -18,7 +18,8 @@ version changes.
 - Then the filing lists the live lines of other jobs that speak about the same thing, in the rules file, the topic rules
   and each owner room's rulebook, persona and voice: a topic of the doctor's said-twice count, near-duplicate words, a
   mark, code, a quoted phrase, a channel or a file both name, a thing one says no to that the other names, or one's job
-  named in the other, and then any line naming the job of a line so found. A word more than five lines say links none,
+  named in the other, and then any line naming the job of a line so found. A line that says no to the same thing as the
+  new rule agrees with it, so that thing links neither of them. A word more than five lines say links none,
   so the list stays short. Nothing is filed until the room's next call settles each line, superseded or kept, with a
   one-clause reason. Before, a new rule could land while older lines of other jobs still asked for the opposite, and
   every room that loaded them kept the old way.
@@ -30,7 +31,7 @@ version changes.
 - The mechanics' line on filing a job now asks for literal words, an example that is a real exchange from the day log,
   and the older line's examples carried forward, and says the filing checks the wording and lists older lines on the
   same thing; four other mechanics lines are reworded with no change in what they ask. The mechanics' line goes to
-  6,800, `yerk_tools` to 22,900, the session total to 122,605 and the `[code]` ceiling to 26,821.
+  6,800, `yerk_tools` to 22,900, the session total to 122,605 and the `[code]` ceiling to 26,822.
 
 **Upgrading**: nothing to change. A script that files rules through `memory.rule` gets the same wording check.
 

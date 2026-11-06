@@ -146,6 +146,19 @@ def test_a_line_naming_a_listed_job_is_listed_with_it_and_a_topic_of_the_twice_c
     assert [(x["cite"], x["shares"]) for x in tables] == [("rulebook.md:8", "the topic tables; it says no to table, which this rule names")]
 
 
+def test_a_line_that_says_no_to_the_same_word_agrees_and_is_listed_only_through_another_link(tmp_path):
+    y = install(tmp_path)
+    rules, (a, b, book) = y.memory.root / memory.RULES, cites(y)
+    agrees = "The digest is plain prose with no marks, since it is read aloud."
+    rules.write_text(rules.read_text() + f"- weekly digest: {agrees} ({A}, {AT}) [m:m-8]\n")
+    assert [x["cite"] for x in curate.same(y.private, y.memory, y.room_confs, "plans", C_SAID)] == [a, b, book]   # no clash on marks
+    rules.write_text(rules.read_text().replace(agrees, "The digest names the week's plans in plain prose with no marks, since it is read aloud."))
+    found = curate.same(y.private, y.memory, y.room_confs, "plans", C_SAID)
+    assert [(x["cite"], x["shares"]) for x in found] == [(a, "it names mark, which this rule says no to"), (b, "it names mark, which this "
+                                                         "rule says no to"), (f"{a[:-2]}:8", "it names this rule's job"), (book, "it names "
+                                                         "mark, which this rule says no to")]
+
+
 @pytest.mark.parametrize("bad", [True, False])
 def test_curate_writes_no_line_a_filing_would_turn_back(tree, bad):  # noqa: F811
     priv, state, s = tree
