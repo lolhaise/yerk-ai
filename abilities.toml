@@ -257,20 +257,27 @@ asked_as = ["text as me", "text people as me", "send texts as me", "text people 
 layer = 8
 upgrade = "text"
 
+# need-2026-11-05-59: a room asked to send a written statement and a document to a person whose only contact was an email
+# address had a mail tool that reads only, a text tool that reaches phone numbers, and a browser not signed into the owner's Gmail.
+# The send is what is built here; this entry was "described" (reads, searches and sends) and keeps its name, so the
+# "what can you do" census (abilities.abilities) carries no new name past its 2,000 cap.
 [abilities.email]
-state = "described"
-what = "Reads, searches and sends email from the owner's mailbox; a send in the owner's name is shown to the owner first."
+state = "built"
+what = "The email tool on Yerk's own MCP server: a room the owner asks to email someone sends one email in the owner's name from the owner's own Gmail, to their email addresses, with files from the room's own folders attached (a document sent to the room, one it made), held in the room with who it goes to, its subject, each file by its name and size, and its words shown as they will read, and sent once on the owner's approval word; an edit is a new preview. The daemon sends it, since a room's shell has no network. Reading and searching the owner's mail is the mail tool of the plug-in kept outside this repo, the one that drives the browser, read only."
 how = [
-  "Mailbox access: the mail provider's standard mail protocol with an app password in the private folder.",
-  "Search that matches the provider's own rules, so a partial word never returns a false zero.",
-  "A send path that shows the final text to the owner first and sends only on the owner's word.",
+  "Preview first: the email-out gate holds each send and shows the room who it is from and goes to, its subject, its files and its words, never its JSON or a path; the owner's approval word releases that exact call once, and the daemon sends only a call the gate released, so a rule turned off or a hook that failed open sends nothing.",
+  "Before the ask: a person's room, an install with no Gmail set up, a name in place of an address, no subject and no text, a file outside the room's own folders or not there, or files past 18 MB (Gmail takes 25 MB a message, the files grown by its encoding) are refused at the gate, so the owner is never asked to approve an email that could not go.",
+  "The way out: Gmail's SMTP over TLS as [gmail] user, on the app password `yerk import gmail` reads from [gmail] password_file, so the owner's Gmail is named once; plain text, each file attached by its name and type, and Gmail keeps a copy in Sent Mail.",
+  "Told apart: no connection, a refused login, or a sender, addresses or message Gmail refused is not sent; a line that dropped once the message was under way may have gone out, and the room says so and never sends it again unasked; addresses Gmail would not take of several are named.",
+  "Receipt: each send's outcome is a gate row after its hold, the word and the release, with who it went to, its length, how many files and the id it went out under.",
 ]
 tier = "free"
-needs = "an app password for the mailbox in the private folder"
+needs = "the owner's Gmail with 2-Step Verification on and an app password for it: [gmail] user and password_file in yerkd.toml, the password in that file in the private folder; reading needs the plug-in's mail tool"
 price = "none"
 free_path = "this is the free path"
-why_not = "After the rooms move."
-asked_as = ["my email", "my inbox", "send an email", "read my email", "search my email"]
+asked_as = ["my email", "my inbox", "send an email", "read my email", "search my email", "email him for me", "email her for me",
+            "email them for me", "send an email for me", "email this to", "email it to", "send it by email", "attach it to an email",
+            "email from my gmail"]
 
 [abilities.mail-watch]
 state = "described"

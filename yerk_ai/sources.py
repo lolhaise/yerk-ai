@@ -38,7 +38,7 @@ from fnmatch import fnmatch
 from pathlib import Path
 from typing import Any, Iterator
 
-from . import memindex, memory
+from . import emails, memindex, memory
 from .config import REPO, load_toml, private_dir, state_dir, toml_value, write_private
 
 # A security mail, by the words on its subject or anywhere in its fetched text: its body is written as its kind only.
@@ -466,13 +466,11 @@ def mail(g: dict[str, Any], priv: Path, tz: tzinfo, since: datetime | None, have
     user, now = str(g["user"]), datetime.now(tz)
 
     def connect() -> tuple[imaplib.IMAP4, str]:
-        text = (priv / Path(str(g["password_file"])).expanduser()).read_text()
-        # the rest of the line after an "App password ...:" label, else a file of one line; Google's four groups are one password
-        if not (m := re.search(r"(?im)^\W*app password[^:\n]*:\s*(\S[^\n]*)", text) or re.fullmatch(r"\s*(\S[^\n]*?)\s*", text)):
+        if not (pw := emails.app_password((priv / Path(str(g["password_file"])).expanduser()).read_text())):
             raise SystemExit("gmail: no app password in [gmail] password_file (alone on its one line, or after 'App password:'); nothing sent")
         c = imaplib.IMAP4_SSL(str(g.get("host", "imap.gmail.com")), 993, timeout=180)
         try:
-            c.login(user, "".join(m.group(1).split()))
+            c.login(user, pw)
         except (imaplib.IMAP4.error, UnicodeError):     # a refusal's text, or a character LOGIN cannot send, is never said
             raise SystemExit(f"gmail: Gmail said no to {user}'s login: [gmail] user and the app password in its file") from None
         boxes = [b.decode("utf-8", "replace") for b in c.list()[1] if isinstance(b, bytes) and b"\\All" in b]

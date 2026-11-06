@@ -15,7 +15,7 @@ quotes, in a heredoc body or as a word in a string is not a delete; lifted/shell
   plain line to the room;
 - approval: an action named external (a send to another room, an owner room's line to the machine
   room excepted, a public post, a login, money, a
-  message out through another tool, a text in the owner's name, a delete for good outside the work folder, or a rule in
+  message out through another tool, a text or an email in the owner's name, a delete for good outside the work folder, or a rule in
   yerkd.toml [gates.external]) is held, one plain
   line to the room, until an approver says the word in the room's running turn; then that same call
   (its normalised text and working folder) runs once, and any other call is held again.
@@ -57,6 +57,7 @@ EXTERNAL: dict[str, dict[str, str]] = {
     "message-out": {"tool": r"(?i)^mcp__(?!yerk__).*(?:send|post|publish|tweet|email|message|reply)", "what":
                     "a message to someone"},
     "text-out": {"tool": r"^mcp__yerk__text$", "what": "a text in your name"},     # the preview: off, no text goes (texts.py)
+    "email-out": {"tool": r"^mcp__yerk__email$", "what": "an email in your name"},  # the same: off, no email goes (emails.py)
     "delete-outside": {"tool": r"^mcp__yerk__delete$", "what": "a delete for good"},   # its paths shown: off, none goes (deletes.py)
 }
 

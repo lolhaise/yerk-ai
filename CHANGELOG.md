@@ -8,6 +8,27 @@ version changes.
 
 ## 2026-11-05
 
+### need-2026-11-05-59 (#?)
+
+- A room can now email someone for you from your own Gmail, with a file attached. Before, a room asked to send a
+  statement and a document to a person whose only contact was an email address had no way to: the mail tool reads only,
+  the `text` tool reaches phone numbers, and the browser is not signed into your Gmail, so it handed you the words to
+  paste into an email yourself.
+- The new `email` tool takes the addresses, a subject, the words and the files (whole paths in the room's own folders,
+  a file you sent the room included). It is held in the room first, showing who it is from and goes to, the subject,
+  each file by its name and size, and the words, never a path; your word sends that exact email once, and an edit is a
+  new preview. A person's room never sends one, and neither does a worker.
+- What cannot go is said before you are asked: no Gmail set up, a name in place of an address, nothing to send, a file
+  outside the room's folders or missing, or files past 18 MB. A send that may have gone out (the line dropped mid-way)
+  says so and is never sent again unasked. Each outcome is a gate row with who it went to and the id it went under.
+- `yerk import gmail` and the tool read the app password the same way. The `[code]` ceiling goes to 26,411, and
+  `yerk_tools` to 22,300 with the session total to 121,405.
+
+**Upgrading**: to send, yerkd.toml needs `[gmail]` with `user` (your Gmail address) and `password_file` (a file in your
+private folder holding a Gmail app password, 0600; Google makes one under 2-Step Verification), the same table
+`yerk import gmail` reads; `name` sets the name your email goes out under. Restart yerkd for the new tool. With no
+`[gmail]`, a room asked to email says what is missing and sends nothing.
+
 ### workflow-truth (#?)
 
 - The GitHub Actions workflow runs the checks the project's own test machine runs, in its order, so a fork's CI is the

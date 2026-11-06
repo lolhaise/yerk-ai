@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 from zoneinfo import ZoneInfo
 
-from . import (beat, context, deletes, deploy, doctor, evidence, gates, github, hooks, inbox, jobs, location, mcp_server, memory, mentions,
+from . import (beat, context, deletes, deploy, doctor, emails, evidence, gates, github, hooks, inbox, jobs, location, mcp_server, memory, mentions,
                needs, pictures, pipeline, render, reverse_image, status, taste, texts, transcribe, voice_note, watch, workers)
 from .accounts import Account, Cooldowns, from_dir, load_accounts, pick
 from .channels import page
@@ -48,7 +48,7 @@ from . import abilities, addons, words   # STYLE.md: what a room reads
 log = logging.getLogger("yerk.daemon")
 YERK_TOOLS = ["mcp__yerk__send", "mcp__yerk__hold", "mcp__yerk__recall", "mcp__yerk__read_memory",
               "mcp__yerk__remember", "mcp__yerk__worker", "mcp__yerk__schedule", "mcp__yerk__settings", "mcp__yerk__transcribe",
-              "mcp__yerk__voice_note", "mcp__yerk__seen", "mcp__yerk__render", "mcp__yerk__watch", "mcp__yerk__need", texts.TOOL, deletes.TOOL,
+              "mcp__yerk__voice_note", "mcp__yerk__seen", "mcp__yerk__render", "mcp__yerk__watch", "mcp__yerk__need", texts.TOOL, deletes.TOOL, emails.TOOL,
               "mcp__yerk__reverse_image_search", "mcp__yerk__github_state", "mcp__yerk__page", "mcp__yerk__texts"]
 # A shell room's sandbox when rooms.toml gives it no [rooms.NAME.sandbox] table: unsandboxed, a Read deny stops `cat` and
 # the Read tool, but a script, grep or redirect read every secret (Claude Code 2.1.304, PR 66's cold read, 2026-10-21)
@@ -175,7 +175,7 @@ class Yerkd:
         self.rebuild_running = gates.rebuild_running
         self.rewrites: dict[str, tuple[str, str]] = {}           # tool_use id -> (room, the trash command)
         self.worded: set[str] = set()                            # inbound ids whose approval word was used
-        self.released: set[tuple[str, str]] = set()              # (room, call) a gate released for a tool the daemon runs (text, delete): once
+        self.released: set[tuple[str, str]] = set()              # (room, call) a gate released for a tool the daemon runs (text, email, delete): once
         self.later: set[asyncio.Task[Any]] = set()               # a gate's notice, posted beside the hook's answer
         self.held_files: dict[str, Path] = {}                    # room -> a held call's exact text too long to show
         self.timing: list[tuple[str, dict[str, Any]]] = []       # hook and tool timings, written in batches
@@ -678,6 +678,32 @@ class Yerkd:
         self.ledger.gate(room=room, session_id=rp.session_id if rp else "", turn=self.rooms[room].turn_key, gate="text", decision=how,
                          tool=texts.TOOL, rule="text-out", detail=f"to {texts.handle(to)}, {len(text)} characters, {r.get('guid') or r.get('error')}"[:300])
         log.info("text: %s, %s, %d characters", room, how, len(text))
+        return r
+
+    def email_refusal(self, room: str, c: dict[str, Any]) -> str:
+        """Why the email `c` (emails.normal) from `room` cannot go, "" when it can: asked at the gate, so the owner is never asked
+        to approve one that would not go, and again by the tool."""
+        if not self.owner(room) or room not in self.rooms:
+            return words.EMAIL_OWNER_ROOMS
+        if not emails.password(dict(self.conf.get("gmail") or {}), self.private):
+            return words.EMAIL_NO_SETUP
+        return emails.why(c, lambda p: self.may_send(room, p))
+
+    async def tool_email(self, room: str, ti: dict[str, Any]) -> dict[str, Any]:
+        """The `email` tool: one email in the owner's name from the owner's Gmail (emails.send), from an owner's room only, and only
+        as the exact call the email-out gate showed the owner and released on their word, once (a hook that failed open sends
+        nothing); its outcome a gate row, the receipt after the hold, the word and the release."""
+        if why := self.email_refusal(room, c := emails.normal(ti)):
+            return {"ok": False, "maybe_sent": False, "error": words.EMAIL_NOT_SENT.format(why=why)}
+        if (room, key := gates.call_key(emails.TOOL, c)) not in self.released:
+            return {"ok": False, "maybe_sent": False, "error": words.EMAIL_NOT_RELEASED}
+        self.released.discard((room, key))
+        r = await asyncio.to_thread(emails.send, dict(self.conf.get("gmail") or {}), self.private, c)
+        how, rp = "sent" if r["ok"] else "maybe sent" if r["maybe_sent"] else "failed", self.rooms[room].rp
+        self.ledger.gate(room=room, session_id=rp.session_id if rp else "", turn=self.rooms[room].turn_key, gate="email", decision=how,
+                         tool=emails.TOOL, rule="email-out", detail=f"to {', '.join(c['to'])}, {len(c['text'])} characters, "
+                         f"{len(c['files'])} file(s), {r.get('id') or r.get('error')}"[:300])
+        log.info("email: %s, %s, %d address(es), %d file(s)", room, how, len(c["to"]), len(c["files"]))
         return r
 
     def mac_host(self) -> str:
@@ -1411,16 +1437,19 @@ class Yerkd:
             v = gates.Verdict("text", "deny", words.TEXT_NOT_SENT.format(why=why), detail=why)    # it could not go: nothing to approve
         if v is None and tool == deletes.TOOL and (why := self.delete_refusal(name, deletes.paths_of(ti))):
             v = gates.Verdict("delete", "deny", words.NOT_DELETED.format(why=why), detail=why)    # the same: nothing to approve
+        if v is None and tool == emails.TOOL and (why := self.email_refusal(name, emails.normal(ti))):
+            v = gates.Verdict("email", "deny", words.EMAIL_NOT_SENT.format(why=why), detail=why)  # the same: nothing to approve
         key, shown, cwd = "", "", str(payload.get("cwd") or self.state / "rooms" / name / "work")
         if v is None and (hit := gates.external_hit(tool, ti, name, self.gates, self.room_confs)):
             rule, what, call = hit
-            key = gates.call_key(tool, ti)
+            key = gates.call_key(tool, emails.normal(ti) if tool == emails.TOOL else ti)    # an email with every field, as the tool sends it
             shown = (texts.preview(ti) if tool == texts.TOOL               # no JSON: a text as it reads, to whom it goes
+                     else emails.preview(emails.normal(ti), str(dict(self.conf.get("gmail") or {}).get("user") or "")) if tool == emails.TOOL
                      else deletes.preview(ti) if tool == deletes.TOOL else gates.plain(tool, ti) if self.room_confs[name].get("people") else key)
             rel = self.ledger.release(name, rule, key, cwd, self.gates.window_s)
             if rel:
                 v = gates.Verdict("approval", "release", detail=f"{what}: {call}; approved by {rel['approved_by']}", rule=rule)
-                if tool in (texts.TOOL, deletes.TOOL):
+                if tool in (texts.TOOL, deletes.TOOL, emails.TOOL):
                     self.released.add((name, key))
             else:
                 model, line = gates.held(what, call, self.gates.word, exact=shown)
