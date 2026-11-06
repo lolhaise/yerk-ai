@@ -8,8 +8,8 @@
   under a line saying it was sent to that assistant. Another assistant's message there (`[watch] assistants` in
   yerkd.toml) is filed under its own role once it has settled (SETTLE), its progress card never, and never answered;
   its files, there or in the room's own channel, are saved to the room's inbox as a person's are (_keep).
-- One read past those channels: the message whose link `watch` is handed, in an owner's room anywhere in its own
-  server, read once for the videos attached to it (pull), which are saved as a person's files are.
+- One read past those channels: the message whose link `watch` or `attachments` is handed, in an owner's room anywhere
+  in its own server, read once for the files attached to it (pull, files), which are saved as a person's files are.
 - Only the owner, the people a room lists (`people` in rooms.toml), and in test mode the listed webhooks,
   are answered. Webhook senders pass a loop guard (lifted/loopguard.py) so a runaway script cannot run the room.
 - A message is ledgered by its Discord id before anything runs, then acked with a reaction. Its
@@ -691,10 +691,10 @@ class DiscordChannel:
                 f["text"] = str(side)
         return files
 
-    async def pull(self, room: str, cid: int, mid: int, wide: bool) -> tuple[Path, str]:
-        """The first video attached to message `mid` in channel `cid`, for `watch` handed its link, and the note on the rest:
-        each saved to `room`'s inbox as a person's files are (stage), but one past watch.MOST_BYTES. Read only where the room
-        reads (its own channel, the one it watches) or, `wide` (an owner's room), in its own server; else watch.Failed."""
+    async def _read(self, room: str, cid: int, mid: int, wide: bool, outside: str, gone: bool = True) -> Any:
+        """Message `mid` in channel `cid`, read only where `room` reads (its own channel, the one it watches) or, `wide` (an
+        owner's room), in its own server; else watch.Failed in `outside`'s words. A message not there is watch.Failed too, or
+        None with `gone` False."""
         m, mine = None, getattr(self.rooms.get(cid), "name", None) == room
         try:
             if mine or wide:
@@ -702,13 +702,50 @@ class DiscordChannel:
                 if mine or getattr(getattr(ch, "guild", None), "id", None) == getattr((await self._channel(room)).guild, "id", 0):
                     m = await ch.fetch_message(mid)
         except discord.NotFound:
+            if not gone:
+                return None
             raise watch.Failed(words.WATCH_NO_MESSAGE) from None
         except discord.Forbidden:
             raise watch.Failed(words.WATCH_NOT_READABLE) from None
         except (discord.HTTPException, aiohttp.ClientError, asyncio.TimeoutError):
             raise watch.Failed(words.WATCH_DISCORD_DOWN) from None
         if m is None:
-            raise watch.Failed(words.WATCH_NOT_ITS_CHANNEL)
+            raise watch.Failed(outside)
+        return m
+
+    async def files(self, room: str, at: tuple[int | None, int] | None, name: str, wide: bool) -> tuple[str, list[dict[str, Any]], str]:
+        """The files an earlier message carries, for `attachments`: message `at` (its channel and id; no channel, the room's own
+        channel, then the one it watches), or with none the newest message `room` posted file `name` in (the ledger's outbound
+        rows); `name` keeps the one of that name. Read where _read lets the room read, each saved to the room's inbox as a
+        person's files are (stage), but one past watch.MOST_BYTES. Returns the message's id, what stage gave and the names too big."""
+        if at is None:
+            if (row := self.ledger.posted(room, safe_name(name))) is None:
+                raise watch.Failed(words.ATTACH_NOT_POSTED.format(name=name))
+            at = (int(row["channel"]), int(row["message_id"]))
+        cid, mid = at
+        if cid is not None:
+            m = await self._read(room, cid, mid, wide, words.ATTACH_NOT_ITS_CHANNEL)
+        else:
+            for c in sorted((c for c, r in self.rooms.items() if r.name == room), key=lambda c: c != self.names[room]):
+                if (m := await self._read(room, c, mid, wide, words.ATTACH_NOT_ITS_CHANNEL, gone=False)) is not None:
+                    break
+            else:
+                raise watch.Failed(words.ATTACH_NOT_FOUND)
+        if not (given := list(getattr(m, "attachments", None) or [])):
+            raise watch.Failed(words.ATTACH_NO_FILES)
+        want = [a for a in given if not name or a.filename.casefold() in (name.casefold(), safe_name(name).casefold())]
+        if not want:
+            raise watch.Failed(words.ATTACH_NO_NAME.format(name=name, files=", ".join(a.filename for a in given)))
+        big = ", ".join(a.filename for a in want if int(a.size or 0) > watch.MOST_BYTES)
+        fit = [a for a in want if int(a.size or 0) <= watch.MOST_BYTES]
+        kept = await self.stage(self.rooms[self.names[room]], SimpleNamespace(id=m.id, attachments=fit), say=False) if fit else []
+        return str(m.id), kept, big
+
+    async def pull(self, room: str, cid: int, mid: int, wide: bool) -> tuple[Path, str]:
+        """The first video attached to message `mid` in channel `cid`, for `watch` handed its link, and the note on the rest:
+        each saved to `room`'s inbox as a person's files are (stage), but one past watch.MOST_BYTES. Read only where the room
+        reads (its own channel, the one it watches) or, `wide` (an owner's room), in its own server; else watch.Failed."""
+        m = await self._read(room, cid, mid, wide, words.WATCH_NOT_ITS_CHANNEL)
         given = list(getattr(m, "attachments", None) or [])
         if not (videos := [a for a in given if watch.is_video(a.filename, getattr(a, "content_type", None) or "")]):
             raise watch.Failed(words.WATCH_NO_VIDEO.format(files=", ".join(a.filename for a in given)) if given else words.WATCH_NO_FILES)

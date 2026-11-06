@@ -375,6 +375,19 @@ WATCH_NO_FILES = "that message has no file attached, so there is nothing to watc
 WATCH_TOO_BIG = "past the 300 MB a watch takes, so not saved: {names}"
 WATCH_NOT_SAVED = "{name} could not be saved from Discord, so there is nothing to watch ({why})"
 WATCH_MORE = "that message has {n} more video(s), saved: watch each with its path: {paths}"
+# the files of an earlier Discord message saved again (the attachments tool, the adapter's files); a miss Discord gives is watch's
+ATTACH_NO_ROOM = "there is no room {room}, so there is no inbox to save a file in"
+ATTACH_NOTHING = "give the message's id or its link, or the name of a file this room posted"
+ATTACH_NOT_MESSAGE = "\"{given}\" is not a Discord message's id or its link, so no message was read"
+ATTACH_NOT_POSTED = "Yerk has no record of this room posting a file named {name}, so give the message's id or its link"
+ATTACH_NOT_FOUND = "no message with that id in this room's channel or the one it watches, so give its link"
+ATTACH_NOT_ITS_CHANNEL = ("that message is outside the channels this room reads, so it was not read: a Discord message in this "
+                          "room's own channel or the one it watches, and an owner's room one anywhere in its own server")
+ATTACH_NO_FILES = "that message carries no file, so there is nothing to save"
+ATTACH_NO_NAME = "that message carries no file named {name}, so nothing was saved; its files: {files}"
+ATTACH_TOO_BIG = "past the 300 MB a fetch takes, so not saved: {names}"
+ATTACH_NOT_SAVED = "{name} was not saved, since Discord would not give it ({why})"
+ATTACH_NEXT = "Saved in this room's inbox: post one again with `send` and its path, Read it, or attach it to an email."
 CAPTIONS_LIVE = "it is live now or not started yet, and a live stream has no captions to read"
 # a picture looked up on the web (reverse_image.py): why no search was made, and what its result says next
 REVERSE_NOT_HERE = "{name} is outside this room's folders; reverse_image_search reads the pictures sent to it and this room's own work"
