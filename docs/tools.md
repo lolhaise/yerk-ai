@@ -2,7 +2,7 @@
 
 Written by `yerk docs own` from yerk_ai/mcp_server.py (build) and workers.WORKER_TOOLS; change those and run it again, never this page.
 
-The 20 tools Yerk AI's own MCP server hands every room's Claude Code, preloaded, as mcp__yerk__NAME. Each one's description is the text the model reads, indentation dropped. A worker gets none of them unless [workers] yerk_tools in yerkd.toml names some, and then only recall, read_memory, on its own server.
+The 21 tools Yerk AI's own MCP server hands every room's Claude Code, preloaded, as mcp__yerk__NAME. Each one's description is the text the model reads, indentation dropped. A worker gets none of them unless [workers] yerk_tools in yerkd.toml names some, and then only recall, read_memory, on its own server.
 
 ## send
 
@@ -229,6 +229,21 @@ and it goes once. A result with `maybe_sent` may have gone out: say so, and neve
 
 - `to`: string, required
 - `text`: string, required
+
+## email
+
+```text
+Emails as the owner from the owner's own Gmail when the owner asks you to. `to` their email addresses, never a name
+(ask, or find it in the owner's mail); `subject` one line; `text` the email exactly as it should arrive; `files` whole
+paths of files in this room's folders to attach (a file sent to the room is in its inbox). It is held for the owner to
+read first: once they say the word, call it again the same and it goes once. A result with `maybe_sent` may have gone
+out: say so, and never send it again unasked.
+```
+
+- `to`: list of string, required
+- `subject`: string, required
+- `text`: string, required
+- `files`: list of string or null, default null
 
 ## texts
 

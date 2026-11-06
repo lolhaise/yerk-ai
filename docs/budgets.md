@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 120405`
+- `total = 121405`
 
 ## [session_start.claude_code]
 
@@ -70,9 +70,11 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-05, need-2026-11-04-53: the `texts` tool (the owner's recent texts read from the Mac, kept as a copy on the box so a room asked whether someone has texted answers from the last copy and says its time while the Mac sleeps, since a room asked whether a text had come in could not read the owner's Messages over ssh with the Mac asleep) is 987 as this tree builds it on Python 3.13, all 20 to 20,648, about 21,268 as sent (620 over the build, 31 a tool as on the others); so 21,300, no part could pay, the total rose by the 1,000 (to 120,405, re-measured as sent on deploy).
 
+2026-11-05, need-2026-11-05-59: the `email` tool (one email in the owner's name from their own Gmail with the room's files attached, held with who it goes to, its subject, its files and its words shown and sent once on the owner's word, since a room asked to send a statement and a document to an email address had a mail tool that reads only and a text tool that reaches phone numbers; filed 2026-11-05) is 974 as this tree builds it on Python 3.13, all 21 to 21,622, about 22,273 as sent (651 over the build, 31 a tool as on the others); so 22,300, no part could pay, the total rose by the 1,000 (to 121,405).
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
-- `yerk_tools = 21300`
+- `yerk_tools = 22300`
 - `deferred_tool_names = 3429`
 - `mcp__hands__ = 8165`
 - `mcp__web-ladder__web_image = 913`
@@ -503,7 +505,11 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-05: need-branch-drop raised it by 38, a need's branch deleted when the need goes live (nothing deleted one, so every shipped need left a branch here and on GitHub until a hand detached its workers' worktrees and dropped it), not folded to fit: pipeline.py 38 (`drop_local`, `drop` and its call in `live`). 26,224: main 18df63c's 26,186 plus 38.
 
-- `lines = 26224`
+2026-11-05, need-2026-11-05-59 raised it by 187, the `email` tool: one email in the owner's name from their own Gmail over its SMTP, on the app password `yerk import gmail` already reads ([gmail] user and password_file), with files from the room's own folders attached, held by the email-out gate with who it goes to, its subject, its files and its words shown, and sent once on the owner's word, a send that may have gone told apart from one that did not (emails.py 132: the checks before the ask, the preview, the message and the send; daemon.py 29: the tool, its refusal and the gate's preview and release; mcp_server.py 11, words.py 15, gates.py 1 and config.py 1: the tool, its words, the rule and the name key; sources.py 2 fewer: the import's app password read by the same function); the evening a room could not send a statement to an email address, not folded to fit. 26,411.
+
+2026-11-05, need-2026-11-05-59's fix raised it by 51: an attachment was held by its path only, so a file rewritten after the owner's word went out as its new bytes, and a link swapped onto its path between the tool's check and its read attached a file outside the room's folders; now each file is read once, from an open with no link on its path followed, the call the word is for carries each file's sha256, and the bytes read are the bytes sent (emails.py 47: `Part`, `opened`, `read` and `checked`, the preview and the message from those bytes; daemon.py 4: `email_check`, one read for the gate's refusal, key and preview, another for the tool's); a hole in the owner's word, not folded to fit. 26,462.
+
+- `lines = 26462`
 
 ## Uncapped
 

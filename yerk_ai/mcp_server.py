@@ -2,9 +2,9 @@
 # official Python SDK) and the send tool's shape are adapted from Hermes Agent v0.22.2,
 # mcp_serve.py (create_mcp_server, messages_send), https://github.com/NousResearch/hermes-agent
 # Copyright (c) 2025 Nous Research. MIT License. See NOTICE.
-"""Yerk AI's own MCP server: twenty tools (send, hold, recall, read_memory, remember, worker, schedule, settings, transcribe,
-voice_note, seen, render, watch, need, text, delete, reverse_image_search, github_state, page, texts), local-only HTTP, preloaded in every room;
-transcribe, voice_note, watch, text, reverse_image_search and github_state are here and not plug-ins because the daemon has the network
+"""Yerk AI's own MCP server: twenty-one tools (send, hold, recall, read_memory, remember, worker, schedule, settings, transcribe,
+voice_note, seen, render, watch, need, text, email, delete, reverse_image_search, github_state, page, texts), local-only HTTP, preloaded in
+every room; transcribe, voice_note, watch, text, email, reverse_image_search and github_state are here and not plug-ins because the daemon has the network
 plug-ins because the daemon has the network (and github_state the token) and a room's shell has none, seen because no owner room has a Write tool, render
 a writable /tmp a room's sandbox does not give (and LaTeX a sandbox of its own, a shell or none), and delete because that sandbox mounts all but the room's folders read-only. A worker gets none of it: by default no MCP server at all, and with
 [workers] yerk_tools its own stdio server (`worker_server`) carrying recall and read_memory only.
@@ -65,6 +65,7 @@ class Daemon(Protocol):
     async def tool_need(self, room: str, asked: str, tried: str, needed: str, shadow: str = "") -> dict[str, Any]: ...
     async def tool_text(self, room: str, to: str, text: str) -> dict[str, Any]: ...
     async def tool_delete(self, room: str, paths: list[str]) -> dict[str, Any]: ...
+    async def tool_email(self, room: str, ti: dict[str, Any]) -> dict[str, Any]: ...
     async def tool_reverse_image_search(self, room: str, path: str) -> dict[str, Any]: ...
     async def tool_github_state(self, room: str, branch_or_pr: str) -> dict[str, Any]: ...
     async def tool_page(self, room: str, req: dict[str, Any]) -> dict[str, Any]: ...
@@ -288,6 +289,16 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         exactly as it should arrive. It is held for the owner to read first: once they say the word, call it again the same
         and it goes once. A result with `maybe_sent` may have gone out: say so, and never send it again unasked."""
         return json.dumps(await daemon.tool_text(caller_room(ctx), to, text))
+
+    @mcp.tool()
+    async def email(to: list[str], subject: str, text: str, files: list[str] | None = None, *, ctx: Context) -> str:
+        """Emails as the owner from the owner's own Gmail when the owner asks you to. `to` their email addresses, never a name
+        (ask, or find it in the owner's mail); `subject` one line; `text` the email exactly as it should arrive; `files` whole
+        paths of files in this room's folders to attach (a file sent to the room is in its inbox). It is held for the owner to
+        read first: once they say the word, call it again the same and it goes once. A result with `maybe_sent` may have gone
+        out: say so, and never send it again unasked."""
+        ti = {"to": to, "subject": subject, "text": text, **({"files": files} if files else {})}
+        return json.dumps(await daemon.tool_email(caller_room(ctx), ti))
 
     @mcp.tool()
     async def texts(limit: int = 0, *, ctx: Context) -> str:

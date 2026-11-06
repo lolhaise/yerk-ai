@@ -411,6 +411,21 @@ TEXT_AWAY = "the Mac's bridge did not answer (the Mac asleep or away, or the bri
 TEXT_MAYBE = "it may have gone out, and the Mac never confirmed it: tell the owner to check Messages, and never send it again unasked"
 TEXT_WHY = {-32602: "Messages would not take that number or address", -32603: "Messages on the Mac failed or lacks a permission",
             -32000: "the Mac's bridge was busy, so try again in a minute", -32004: "the Mac's bridge was busy, so try again in a minute"}
+# an email in the owner's name (emails.py): why one cannot go, said before the owner is asked where it can be, and how one went
+EMAIL_OWNER_ROOMS = "an email goes out in the owner's name, so only the owner's own rooms send one"
+EMAIL_NO_SETUP = "no Gmail is set up to send from ([gmail] user and password_file in yerkd.toml, its app password in that file)"
+EMAIL_NO_TO, EMAIL_EMPTY = "there is no one to send it to", "there is no subject and no text to send"
+EMAIL_NO_ADDRESS = "\"{given}\" is not an email address: ask the owner for it, or recall it from the owner's mail"
+EMAIL_SUBJECT = "a subject is one line"
+EMAIL_FILE_OUTSIDE = "{name} is outside this room's folders; only a file from them goes, by its whole path"
+EMAIL_FILE_NONE = "{name} is not a file"
+EMAIL_FILES_BIG = "the files are {size} and one email takes {limit}"
+EMAIL_NOT_RELEASED = "not sent: an email goes only as the call the owner was shown held and said the word for, each file as it was then, once"
+EMAIL_NOT_SENT = "not sent: {why}"
+EMAIL_AWAY = "Gmail did not answer (the box offline, or Gmail down), so try again in a minute"
+EMAIL_LOGIN = "Gmail refused the login: the owner checks [gmail] user and the app password in its file"
+EMAIL_REFUSED = "Gmail refused the email (the sender, every address or the message itself)"
+EMAIL_MAYBE = "it may have gone out, and Gmail never confirmed it: tell the owner to check Sent Mail, and never send it again unasked"
 # the texts tool (inbox.py): the owner's recent texts, read live when the Mac answers, else from the last copy on the box
 TEXTS_OWNER_ROOMS = "the owner's texts are read in the owner's own rooms only"
 TEXTS_NO_SETUP = "no Mac is set up to read the owner's texts from ([imessage] host in yerkd.toml, or an owner room's mac add-on)"
