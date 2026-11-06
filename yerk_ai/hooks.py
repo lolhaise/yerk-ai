@@ -44,7 +44,8 @@ EVENTS = {      # what each event settings_for registers does (the daemon's _hoo
     "ConfigChange": "writes the tamper row (who, what, when, the hashes before and after), never blocks",
     "Stop": "runs the rule checks, no judge, each bouncing the turn once: an image never read, a voice note never transcribed, a "
     "video never watched or a picture never filed; a turn ending with nothing visible; a final text that only reports a filing; a "
-    "final text opening with a note to itself before the answer; a status board in a room with people; a fenced block posted on an "
+    "final text opening with a note to itself before the answer; a status board in a room with people; in any other room, a mark "
+    "the install retired ([gates] retired_marks; none by default); a fenced block posted on an "
     "earlier day; the sheet rule; the person and quote rules. The evidence rules after a reply only log (shadow rows)",
 }
 

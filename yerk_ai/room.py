@@ -29,7 +29,9 @@ adapter's event loop.
   quiet line before it goes when the room said nothing since, so one stands (a watched message's verdict owed by a
   `watch_audit` room: the card says none came, and stays); a final
   text that only reports a filing (`remember`, `schedule`, `hold`, `settings`) bounces once (stub); a final opening with
-  a note to itself before the answer (its plan for the reply, a rulebook tag) bounces once (note); a fenced block the
+  a note to itself before the answer (its plan for the reply, a rulebook tag) bounces once (note); in a room without
+  people, a final holding a mark the install retired ([gates] retired_marks) outside a fenced block bounces once
+  (retired); a fenced block the
   room posted on an earlier day is turned back once, in `send` before it posts and in the final text at Stop (paste); a
   document or a pasted block an owner's room ships with no claims sheet written that turn is turned back once the same
   way (sheet); a person's message that folded into the result and was taken in, whose content (its numbers, a short
@@ -198,6 +200,7 @@ class Room:
         self.stub_bounced = False                 # the stub check bounced this result already
         self.note_bounced = False                 # the note check bounced this result already
         self.board_bounced = False                # the board check bounced this result already
+        self.retired_bounced = False              # the retired-marks check bounced this result already
         self.paste_bounced = False                # the paste check turned back a send or a final of this result already
         self.sheet_bounced = False                # the sheet check turned back a send or a final of this result already
         self.said_bounced = False                 # the person and quote check turned back a send or a final of this result already
@@ -434,6 +437,20 @@ class Room:
         found = f"{n} line{'s' * (n != 1)} with a checklist mark, the colour key or what unblocks it"
         return (words.BOARD.format(found=found), found) if n else None
 
+    def retired_check(self, active: bool, text: str | None, marks: tuple[str, ...]) -> tuple[str, str] | None:
+        """The rule after the board rule, no judge, in every room without people (an owner room, the machine room; a room
+        with people keeps the board rule alone): a final holding one of the install's retired `marks` (yerkd.toml [gates]
+        retired_marks, none by default, and then it never bounces) anywhere in a line outside a fenced block (an unclosed one
+        runs to the end, as memory.fenced reads it) bounces once, saying how many lines and which marks: (the bounce, what
+        was found), or None."""
+        if active or not text or not marks or self.retired_bounced or self.conf.get("people"):
+            return None
+        plain = re.sub(f"{memory.FENCE}.*?(?:{memory.FENCE}|\\Z)", lambda m: "\n" * m[0].count("\n"), text.replace("\ufe0f", ""), flags=re.S)
+        hit = [x for x in plain.splitlines() if any(m in x for m in marks)]
+        self.retired_bounced = bool(hit)
+        found = f"{len(hit)} line{'s' * (len(hit) != 1)} with {' '.join(m for m in marks if any(m in x for x in hit))}"
+        return (words.RETIRED.format(found=found), found) if hit else None
+
     def paste_check(self, active: bool, text: str | None,
                     earlier: Callable[[], dict[str, tuple[str, str]]]) -> tuple[str, str] | None:
         """The paste rule, no judge, in the `send` tool before it posts and as the Stop hook's fifth rule, one flag for both
@@ -519,7 +536,8 @@ class Room:
                          people=self.name if self.conf.get("people") and self.conf.get("card") != "steps" else "")   # "steps": the rows
         self.card.narration = note                # a harness line from the first post, until the model's first words
         self.turn_key, self.bounced, self.silent_bounced, self.stub_bounced = uuid.uuid4().hex[:12], False, False, False
-        self.note_bounced = self.board_bounced = self.paste_bounced = self.sheet_bounced = self.said_bounced = self.fold_bounced = False
+        self.note_bounced = self.board_bounced = self.retired_bounced = self.paste_bounced = self.sheet_bounced = self.said_bounced = False
+        self.fold_bounced = False
         self.channel.open_card(self.name, self.card.render())   # state first from the first post
 
     def meta_for(self, prompt: str) -> tuple[str, float | None]:

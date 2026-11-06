@@ -128,6 +128,7 @@ The daemon's settings, in the private folder beside rooms.toml, read when yerkd 
 - `trash`: the trash command a delete is rewritten into (default: one found on the machine)
 - `off`: the built-in outward-action rules turned off, by name
 - `external`: [gates.external.NAME] tables, outward-action rules of your own: tool, command and what
+- `retired_marks`: marks a reply may not hold in a room without people (an owner room, the machine room), like ["☐", "🟦"]: a final message holding one anywhere in a line outside a fenced block is turned back once at Stop, asked for a plain numbered list instead, and the session start's room pack quotes the room's earlier lines without them, a colour key line left out whole (default none: nothing is turned back or changed; a room with people keeps its own board rule)
 
 ### [import]
 

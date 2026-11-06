@@ -181,6 +181,10 @@ BOARD_LINE = re.compile(r"^[\s>*-]*(?:☑|☐|⛔|🟦|🟨)|\bunblocks?:|🟦 m
 BOARD = ("This room has people, and your final message is the owner rooms' status board ({found}). Say where things "
          "stand in two or three plain sentences, with no checklist marks, colour key, quote rails or what unblocks it, "
          "and write that as your final message now.")
+# the retired-marks rule at Stop, in every room without people: the marks are the install's ([gates] retired_marks)
+RETIRED = ("This install retired the marks in your final message ({found}). Write it as a plain numbered list with none of "
+           "them, each line opening with a bold lead of two or three words and saying who does what in words (for a status, "
+           "one line per item with its state first), and write that as your final message now.")
 # the paste rule, in `send` and at Stop alike (2026-10-22: a block posted the evening before went out again word for word)
 PASTE = ("Not posted: your message holds a fenced block this room already posted on {when}, word for word, and its dates, "
          "times and plans were that day's. Re-read it line by line against today (relative dates, clock times, who meets "
@@ -388,6 +392,19 @@ WATCH_NO_FILES = "that message has no file attached, so there is nothing to watc
 WATCH_TOO_BIG = "past the 300 MB a watch takes, so not saved: {names}"
 WATCH_NOT_SAVED = "{name} could not be saved from Discord, so there is nothing to watch ({why})"
 WATCH_MORE = "that message has {n} more video(s), saved: watch each with its path: {paths}"
+# the files of an earlier Discord message saved again (the attachments tool, the adapter's files); a miss Discord gives is watch's
+ATTACH_NO_ROOM = "there is no room {room}, so there is no inbox to save a file in"
+ATTACH_NOTHING = "give the message's id or its link, or the name of a file this room posted"
+ATTACH_NOT_MESSAGE = "\"{given}\" is not a Discord message's id or its link, so no message was read"
+ATTACH_NOT_POSTED = "Yerk has no record of this room posting a file named {name}, so give the message's id or its link"
+ATTACH_NOT_FOUND = "no message with that id in this room's channel or the one it watches, so give its link"
+ATTACH_NOT_ITS_CHANNEL = ("that message is outside the channels this room reads, so it was not read: a Discord message in this "
+                          "room's own channel or the one it watches, and an owner's room one anywhere in its own server")
+ATTACH_NO_FILES = "that message carries no file, so there is nothing to save"
+ATTACH_NO_NAME = "that message carries no file named {name}, so nothing was saved; its files: {files}"
+ATTACH_TOO_BIG = "past the 300 MB a fetch takes, so not saved: {names}"
+ATTACH_NOT_SAVED = "{name} was not saved, since Discord would not give it ({why})"
+ATTACH_NEXT = "Saved in this room's inbox: post one again with `send` and its path, Read it, or attach it to an email."
 CAPTIONS_LIVE = "it is live now or not started yet, and a live stream has no captions to read"
 # a picture looked up on the web (reverse_image.py): why no search was made, and what its result says next
 REVERSE_NOT_HERE = "{name} is outside this room's folders; reverse_image_search reads the pictures sent to it and this room's own work"

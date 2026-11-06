@@ -590,6 +590,11 @@ class Ledger:
         return self._first("SELECT kind, message_id, body FROM outbound WHERE room = ? AND kind NOT IN ('progress', "
                            "'progress-edit') AND message_id IS NOT ? ORDER BY id DESC LIMIT 1", (room, besides))
 
+    def posted(self, room: str, name: str) -> dict[str, Any] | None:
+        """The newest message the room posted a file named `name` in (any case), its channel and message id, else None."""
+        return self._first("SELECT channel, message_id FROM outbound WHERE room = ? AND kind = 'file' AND file = ? COLLATE NOCASE "
+                           "AND message_id IS NOT NULL ORDER BY id DESC LIMIT 1", (room, name))
+
     def turn_for_key(self, turn_key: str) -> int | None:
         r = self._select("SELECT id FROM turns WHERE turn_key = ? ORDER BY id DESC LIMIT 1", (turn_key,))
         return int(r[0]["id"]) if r else None

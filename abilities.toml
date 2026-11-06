@@ -51,7 +51,9 @@ layer = 10
 # (abilities.census), the line before it naming it already (11 fewer), so it ends at 1,995; need-2026-11-04-47 found it
 # at 2,002 with latex's name and cut the answer's last line from "has any one" to "has one" (4 fewer), so it ends at 1,998;
 # need-2026-11-04-51 found it at 2,009 with page-talk's name and cut the three video abilities' shared provider words
-# from "keys when they are there" to "keys if there" (11 fewer), so it ends at 1,998.
+# from "keys when they are there" to "keys if there" (11 fewer), so it ends at 1,998; need-2026-11-06-69 found it at 2,011
+# with attachments' name and cut github-state's provider words from "on the token the needs pipeline uses" to "on the
+# pipeline's token", its needs line naming that token whole (13 fewer), so it ends at 1,998.
 [abilities.abilities]
 state = "built"
 what = "Says what Yerk AI can do."
@@ -696,6 +698,23 @@ key = "the transcript runs on transcribe's keys, in the private folder's secrets
 free_path = "the frames come without a key; without one the room says the video's sound could not be transcribed"
 asked_as = ["the video posted in the channel", "the mp4 in discord", "the video attached to that message", "watch the videos in the channel", "the discord video"]
 
+# need-2026-11-06-69: a room asked to post again a file it had posted two weeks before found its outbox copy swept and the
+# trash emptied, a history listing that named the file with no address, and no network in its shell to fetch one.
+[abilities.attachments]
+state = "built"
+what = "The attachments tool on Yerk's own MCP server: the files an earlier Discord message carries are saved again to the room's inbox by the daemon's bot, so a room asked to post a file again whose own copy is gone (the nightly sweep took its outbox copy) gets it back and posts it with send, reads it or attaches it to an email, where before a history listing named the file with no address and a room's shell has no network to fetch it."
+how = [
+  "Which message: its id, looked for in the room's own channel and then the one it watches (the id is the [m:] on its day-log line); its link, as Discord's Copy Message Link gives it; or a file's name alone, the newest message the room posted a file of that name in, from the ledger's row for each file the room sent.",
+  "Where: a room reads a message in its own channel or the one it watches, and an owner's room also one in any channel of its own server; any other is refused in one line, its message never read.",
+  "Save: each file on the message (with a name, that one) up to 300 MB is saved in the room's work/inbox/<message id>/ under its own name, a ledger row each, as the adapter saves a file sent to the room, so the nightly sweep never takes it; one past 300 MB is named and never fetched.",
+  "Misses in words: a message gone, an id in neither channel, a channel the bot cannot read, a message with no files or none of that name (its files named), a name the room never posted and a room off Discord each come back as one line.",
+]
+tier = "free"
+needs = "the Discord adapter, its bot able to read the channel (View Channel and Read Message History)"
+price = "none"
+free_path = "this is the free path"
+asked_as = ["send the file again", "resend the file", "post the file again", "the file you sent before", "the attachment from that message"]
+
 [abilities.reverse-image-search]
 state = "built"
 what = "The reverse_image_search tool on Yerk's own MCP server: a picture in a room's own folders (one sent to the room, a picture web_image saved, a frame watch took) is looked up on the web as Google Lens or TinEye would, and the room gets Google's best guess at what it is, the names it ties to it (a work and its maker, a place, a product), the pages that show it, and the copies and look-alikes it found, so a room asked where a picture comes from or who made it searches by the picture, not only by words describing it. The daemon runs it, since a room's shell has no network."
@@ -725,7 +744,7 @@ how = [
 ]
 tier = "key"
 keys = ["github"]
-provider = "GitHub (its REST API, on the token the needs pipeline uses)"
+provider = "GitHub (its REST API, on the pipeline's token)"
 needs = "a GitHub token at secrets/github.token in the private folder that reads Yerk's repository: its contents, pull requests and commit statuses (the needs pipeline's own token does)"
 price = "free: GitHub's REST API costs nothing on a token's own repositories, within its hourly rate limit"
 key = "make a fine-grained token on GitHub (Settings, Developer settings) for Yerk's repository with read access to its contents, pull requests and commit statuses (the pipeline's merge wants write too), and put it on the first line of secrets/github.token in the private folder, 0600; the next call reads it, no restart"

@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 122605`
+- `total = 123405`
 
 ## [session_start.claude_code]
 
@@ -80,11 +80,15 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-06, need-2026-11-04-51 with main folded in again (need-2026-11-05-59's `email` tool): the `page` tool at 2,045 and `email` at 974 as this tree builds them on Python 3.13, all 21 to 21,766, about 22,417 as sent (651 over the build, as on need 59's tree); so 22,500, no part could pay, the total rose by the 200 over main's 121,405 (to 121,605).
 
+2026-11-06, need-2026-11-06-69: the `attachments` tool (the files an earlier Discord message carries, saved again to the room's inbox by the daemon's bot, by the message's id, its link, or a file's name alone through the ledger's outbound rows, since a room asked to post again a file it had posted two weeks before found its outbox copy swept and the trash emptied, a history listing that named the file with no address, and no network in its shell; filed 2026-11-06) is 827 as this tree builds it on Python 3.13, all 22 to 22,593, about 23,275 as sent (682 over the build, 31 a tool as on the others); so 23,300, no part could pay, the total rose by the 800 (to 122,405).
+
 2026-11-06, rule-filing-check-2026-11-06: `remember`'s `older` (the live lines of other jobs on the same thing that a rule's filing lists, each settled as superseded or kept with its reason) and its sentence on what a rule holds take the tool from 1,904 to 2,304 as this tree builds it, all 21 to 22,166, about 22,817 as sent (651 over the build, as on need 59's tree); so 22,900, no part could pay, the total rose by the 400 (to 122,005).
+
+2026-11-06, rule-filing-check-2026-11-06 with main folded in (need-2026-11-06-69's `attachments` tool): `remember` at 2,304 and `attachments` at 827 as this tree builds them, all 22 to 22,993, about 23,675 as sent (682 over the build, 31 a tool as on need 69's tree); so 23,700, no part could pay, the total rose by this branch's 1,000 (400 here, 600 on the mechanics) over main's 122,405 (to 123,405).
 
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
-- `yerk_tools = 22900`
+- `yerk_tools = 23700`
 - `deferred_tool_names = 3429`
 - `mcp__hands__ = 8165`
 - `mcp__web-ladder__web_image = 913`
@@ -533,11 +537,19 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-06, need-2026-11-04-51 with main folded in again (need-2026-11-05-59's 187 and 51 lines): main's 26,462 plus this branch's 172, 26,634.
 
+2026-11-06, need-2026-11-06-69: 95 lines for the attachments tool (a room asked to post again a file it had posted two weeks before had its outbox copy swept, a history listing with the file's name and no address, and no network in its shell; filed 2026-11-06), not folded to fit: channels/discord.py 37 (_read, the message read pull had, shared now, the words for a message outside the room's channels its caller's and a message not there told apart for an id alone; files: the message by its link, by its id in the room's own channel then the one it watches, or by a file's name through the ledger, its files kept to the name asked and to 300 MB and saved by stage), daemon.py 30 (tool_attachments, YERK_TOOLS, the import of re), words.py 13, mcp_server.py 10 (the tool, its protocol line, the docstring) and ledger.py 5 (posted). 26,729.
+
+2026-11-06, retired-marks-2026-11-06: 51 lines (the owner's ask), not folded to fit. 37 for the retired-marks rule at Stop: room.py 18 (retired_check, the rule after the board rule in every room without people, its once-a-result flag and the docstring's line), gates.py 5 ([gates] retired_marks, a list of marks, each without its emoji variation selector), daemon.py 5 (its place in the Stop chain, its shadow row and log line), words.py 4 (RETIRED), config.py 4 (the key's line on settings.md) and hooks.py 1 (the Stop line on hooks.md); 14 for the room pack quoting the room's earlier lines without the marks, a colour key line left out whole: memory.py 13 (unmarked) and config.py 1. 26,685.
+
+2026-11-06, retired-marks-2026-11-06 with main folded in (need-2026-11-06-69's 95 lines): main's 26,729 plus this branch's 51, 26,780.
+
 2026-11-06, rule-filing-check-2026-11-06: 187 lines, not folded to fit: curate.py 110 (same, held, says, tokens, bans and settled: the live lines of other jobs on the same thing a rule's filing lists, and the room's verdict on each; apply's check of each line it writes), daemon.py 20 (tool_rule turns back a line out of the shape, then one with lines to settle; marks, logs and tells), shape.py 15 (tripped, the words behind each count, with offenses read from it; filing; install), memory.py 23 (unshaped, and rule's `also`), words.py 13, mcp_server.py 4 and config.py 2 ([docs] topics and acronyms described, which the daemon now reads). 26,821.
 
 2026-11-06, rule-filing-check-2026-11-06's precision fix raised it by 1: a line that says no to the same word as the rule being filed agrees with it, so `same` links neither of them through that word (curate.py 1, its docstring's line); the older-lines list named such lines as lines to settle, not folded to fit. 26,822.
 
-- `lines = 26822`
+2026-11-06, rule-filing-check-2026-11-06 with main folded in (need-2026-11-06-69's 95 lines and retired-marks-2026-11-06's 51): main's 26,780 plus this branch's 188, 26,968.
+
+- `lines = 26968`
 
 ## Uncapped
 

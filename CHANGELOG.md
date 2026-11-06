@@ -31,9 +31,54 @@ version changes.
 - The mechanics' line on filing a job now asks for literal words, an example that is a real exchange from the day log,
   and the older line's examples carried forward, and says the filing checks the wording and lists older lines on the
   same thing; four other mechanics lines are reworded with no change in what they ask. The mechanics' line goes to
-  6,800, `yerk_tools` to 22,900, the session total to 122,605 and the `[code]` ceiling to 26,822.
+  6,800, `yerk_tools` to 23,700, the session total to 123,405 and the `[code]` ceiling to 26,968.
 
-**Upgrading**: nothing to change. A script that files rules through `memory.rule` gets the same wording check.
+**Upgrading**: budgets.toml's `yerk_tools` is 23,700 and the session `total` 123,405; keep yours at least that, or the
+deploy's fit check refuses on the longer `remember`. A script that files rules through `memory.rule` gets the same
+wording check.
+
+### retired-marks-2026-11-06 (#?)
+
+- A reply shape you retired can now be held by code, not only asked for by a rule. Rule text is a request, so a room
+  could still answer with checklist boxes, colour squares saying who holds an item and a colour key under the list after
+  its rules said not to, and the status board's own rule turned that shape back only in a room with people.
+- With `[gates] retired_marks` set in yerkd.toml, a final message in any room without people (an owner room, the machine
+  room) holding one of those marks anywhere in a line (after a list number, after a dash, mid-line) is turned back once
+  before it is posted, saying how many lines hold one and which marks. The room is asked for a plain numbered list
+  instead: a bold lead of two or three words a line and who does what in words, and for a status one line per item with
+  its state first. A mark inside a fenced block never counts, and the second attempt goes out as written. Each bounce is
+  a `retired` shadow row, counted in the morning diff.
+- With the list set, the session start's room pack quotes the room's earlier lines without those marks, and a line that
+  was only a colour key is left out whole, so the pack no longer shows the retired shape back to the room as its own.
+  The day logs keep every line as it was.
+- A room with people keeps the board rule as it was, list or no list, and with no list nothing changes. The `[code]`
+  ceiling goes to 26,780.
+
+**Upgrading**: to turn it on, list the marks in yerkd.toml's `[gates]` table, like `retired_marks = ["☐", "🟦"]`, and
+restart yerkd. A value that is not a list of marks stops yerkd at its start with one line saying so. budgets.toml:
+`[code] lines` goes to 26,780.
+
+### need-2026-11-06-69 (#?)
+
+- A room can now post a file again that it posted days ago. Before, a room asked to send a file once more found its
+  own copy gone (the nightly sweep moves the copies of what a room sent to the trash after two days, and the trash
+  empties), a history listing that named the file but gave no address, and no network in its shell, so it pointed
+  you at the old message to download the file yourself.
+- The new `attachments` tool saves the files an earlier Discord message carries back into the room's inbox, where the
+  sweep never takes them, and the room posts one with `send`, reads it or attaches it to an email. The message is named
+  by its id (looked for in the room's own channel, then the one it watches; the id is on its line in the day log), by
+  its link, or with a file's name alone, the newest message the room posted that file in. A message with several files
+  gives them all, or with a name only that one.
+- A room reads a message only where it reads already: its own channel and the one it watches, and one of your rooms
+  also any channel of its own server, as `watch` reads a message's video. What cannot come is said in one line: a
+  message gone, an id in neither channel, a channel the bot cannot read, a message with no files or none of that name
+  (its files named), a name the room never posted, a file past 300 MB, or a room not on Discord.
+- The "what can you do" answer names the new ability inside its 2,000 characters: github-state's provider words are
+  shorter. The `[code]` ceiling goes to 26,729, and `yerk_tools` to 23,300 with the session total to 122,405.
+
+**Upgrading**: budgets.toml's `yerk_tools` is 23,300 and the session `total` 122,405; keep yours at least that, or the
+deploy's fit check refuses on the new tool. Restart yerkd for the new tool. Nothing to set: the bot reads the message
+on the permissions it already has (View Channel and Read Message History).
 
 ## 2026-11-05
 
