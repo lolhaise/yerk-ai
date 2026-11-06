@@ -13,7 +13,10 @@ version changes.
 - When Claude Code shortens a room's conversation by itself inside a turn, the card now says "shortening the
   conversation first" from the moment it starts until the model's next words, at the start of a turn or in its middle.
   Before, that wait (2 minutes in the one room on Nov 5) showed only "working on it".
-- The `[code]` ceiling goes to 26,465.
+- A model that is thinking and has said nothing yet shows as "thinking" on an owner room's card (and on a card = "steps"
+  room's) in place of "working on it", at the start of a turn and after each step, until its words or its thinking text
+  come. A room with people keeps its card as it was.
+- The `[code]` ceiling goes to 26,470.
 
 ### need-2026-11-05-59 (#?)
 

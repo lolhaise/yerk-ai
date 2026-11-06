@@ -124,6 +124,40 @@ def test_claude_codes_own_compaction_is_said_from_its_start_until_the_models_nex
     assert people.render() == f"{RUNNING} {words.COMPACTING}"
 
 
+def thinking(i, said=""):
+    return [se({"type": "content_block_start", "index": i, "content_block": {"type": "thinking", "thinking": ""}})] + (
+        [se({"type": "content_block_delta", "index": i, "delta": {"type": "thinking_delta", "thinking": said}})] if said else [])
+
+
+def test_a_model_thinking_with_nothing_said_shows_as_thinking_in_the_owner_rooms_shape():
+    """2026-11-05: after Claude Code's compaction the model thought 2 min 45 s before its first words, its thinking block
+    empty, under the bare start line. An open thinking block with no thinking text since the turn began or the last tool
+    row now says it is thinking; its text, the model's words or the block's end put the line back. No clock: the card
+    renders on events only, so the line says no time."""
+    c, stop = Card(), se({"type": "content_block_stop", "index": 0})
+    assert c.feed(thinking(0)[0]) is True and c.render() == f"{RUNNING} {words.THINKS}"
+    assert c.feed(stop) is True and c.render() == f"{RUNNING} {START}"
+    for ev in tool(1, "a", "Read", {"file_path": "/x/memory/pinned.md"}) + [result("a"), *thinking(2)]:   # after a row
+        c.feed(ev)
+    assert c.render() == f"{RUNNING} {words.THINKS}\n{OK} reading the pinned notes"
+    for ev in text(3, "Here it is"):                                    # words: the narration, as before
+        c.feed(ev)
+    assert c.render() == f"{RUNNING} Here it is\n{OK} reading the pinned notes"
+    panel = Card(thinking=True)                                         # thinking text: the panel's line says it
+    for ev in thinking(0, "Weighing the two dates first, " * 3):
+        panel.feed(ev)
+    assert panel.render().splitlines()[:2] == [f"{RUNNING} {START}", "-# thinking: Weighing the two dates first,"]
+    for ev in tool(1, "b", "Read", {"file_path": "/x/units.md"}) + thinking(2):   # a new block after the row: said afresh
+        panel.feed(ev)
+    assert panel.render().splitlines()[0] == f"{RUNNING} {words.THINKS}"
+    for conf, head in (({}, START), ({"card": "steps"}, words.THINKS)):     # a room with people keeps its shape; card = "steps"
+        room = Room.__new__(Room)                                       # is the owner rooms' shape
+        room.name, room.conf, room.channel = "r", {"privacy": "family", "people": [1], **conf}, NS(open_card=lambda room, text: None)
+        room._new_card()
+        room.card.feed(thinking(0)[0])
+        assert room.card.render() == f"{RUNNING} {head}", conf
+
+
 def test_an_image_never_read_bounces_once_at_stop(tmp_path):
     room = Room.__new__(Room)
     room.lock, room.rp, room.bounced = __import__("threading").Lock(), NS(read_paths=set()), False

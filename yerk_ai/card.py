@@ -1,6 +1,7 @@
 """Builds the live progress card a room shows while it works, from Claude Code's stream events. One card per turn of every kind: the state and the
 narration line (the model'says the sample; item Moved To's own compaction start, words.COMPACTING until the model's
-moved to, the Next._step and the), test reads it back (as-plain text with one more line; for
+item moved, to The._next step and; the test, reads.It back as plain text with one more line for the
+came since the turn began or the last tool row, else words.START), an optional thinking line (owner-only rooms that turn it on; the
 start of the summary, then "..."), then one row per tool call saying what the step is FOR in plain words
 (words.STEP), marked done or not done by its result, two or more failures in a row folded into one. Every
 line holds to phone width (words.PHONE); the newest rows win. The room swaps the card for the reply at the
@@ -21,7 +22,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from . import words
-from .words import DONE as OK, NOT_DONE as FAILED, START, WORKING as RUNNING
+from .words import DONE as OK, NOT_DONE as FAILED, START, THINKS, WORKING as RUNNING
 
 ROW_MAX, THINKING_MAX, ROWS_SHOWN = words.PHONE, 2 * words.PHONE, 12
 DAY = re.compile(r"\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])\.md")           # a day log is named by its day
@@ -132,6 +133,7 @@ class Card:
         self.text = ""                        # the text block streaming now
         self.thinking = ""
         self.thinking_at: int | None = None   # the open thinking block's index: its line waits for the block
+        self.thought = False                  # thinking text came since the turn began or the last tool row
         self.rows: list[Row] = []
         self.by_id: dict[str, Row] = {}
         self.by_index: dict[int, Row] = {}
@@ -161,6 +163,7 @@ class Card:
         if rid not in self.by_id:
             self.by_id[rid] = Row(rid, name)
             self.rows.append(self.by_id[rid])
+            self.thought = False
         return self.by_id[rid]
 
     def _stream(self, e: dict[str, Any]) -> None:
@@ -181,7 +184,8 @@ class Card:
             if not self.people and (line := next((x for x in self.text.splitlines() if x.strip()), "")):
                 self.narration = line
         elif t == "content_block_delta" and delta.get("type") == "thinking_delta":
-            self.thinking += str(delta.get("thinking") or "")
+            self.thinking += (said := str(delta.get("thinking") or ""))
+            self.thought = self.thought or bool(said.strip())   # a room without the panel streams none (daemon.spec_for)
         elif t == "content_block_delta" and delta.get("type") == "input_json_delta":
             self.partial[i] = self.partial.get(i, "") + str(delta.get("partial_json") or "")
         elif t == "content_block_stop" and i in self.by_index:
@@ -204,7 +208,8 @@ class Card:
     def render(self, head: str | None = None) -> str:
         if self.people:
             return self._people(head)
-        lines = [head or words.line(f"{RUNNING} {self.narration or START}")]
+        quiet = THINKS if self.thinking_at is not None and not self.thought else START   # 2026-11-05: 2 min 45 s of "working on it"
+        lines = [head or words.line(f"{RUNNING} {self.narration or quiet}")]
         whole = self.thinking_at is None or len(self.thinking) >= THINKING_MAX   # never a fragment of a summary
         if self.thinking_on and self.thinking.strip() and whole:
             text = " ".join(self.thinking.split())[:THINKING_MAX]

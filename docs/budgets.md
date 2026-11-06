@@ -509,9 +509,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-05, need-2026-11-05-59's fix raised it by 51: an attachment was held by its path only, so a file rewritten after the owner's word went out as its new bytes, and a link swapped onto its path between the tool's check and its read attached a file outside the room's folders; now each file is read once, from an open with no link on its path followed, the call the word is for carries each file's sha256, and the bytes read are the bytes sent (emails.py 47: `Part`, `opened`, `read` and `checked`, the preview and the message from those bytes; daemon.py 4: `email_check`, one read for the gate's refusal, key and preview, another for the tool's); a hole in the owner's word, not folded to fit. 26,462.
 
-2026-11-05, compact-visible-2026-11-05 raised it by 3: Claude Code's own compaction inside a turn shows on the card, words.COMPACTING from its status event (2.1.316: status compacting at its start) until the model's next words (card.py 3: the branch in feed and its docstring's clause); the evening an owner's room sat 2 min under the bare start line while Claude Code compacted inside his turn, not folded to fit. 26,465.
+2026-11-05, compact-visible-2026-11-05 raised it by 3: Claude Code's own compaction inside a turn shows on the card, words.COMPACTING from its status event (2.1.316: status compacting at its start) until the model's next words (card.py 3: the branch in feed and its docstring's clause); the evening an owner's room sat 2 min under the bare start line while Claude Code compacted inside his turn, not folded to fit. 26,465. Its second part raised it by 5: in the owner rooms' shape a thinking block open with no thinking text since the turn began or the last tool row says words.THINKS in place of the bare start line (card.py 5: the flag, its set and reset, the render, the docstring's clause; words.py 0: THINKS shares START's line); the same turn's 2 min 45 s of thinking before its first words, its thinking block empty, not folded to fit. 26,470.
 
-- `lines = 26465`
+- `lines = 26470`
 
 ## Uncapped
 

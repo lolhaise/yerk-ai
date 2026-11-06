@@ -82,7 +82,7 @@ def named(template: str, name: str, cols: int = PHONE, **facts: Any) -> str:
 
 
 # the turn card: a row says what the step is FOR, never the call (STYLE.md rule 4); {what} its target, {where} a folder
-START = "working on it"
+START, THINKS = "working on it", "thinking"       # the start line; a thinking block open with nothing said yet (card.py)
 STEP = {"bash": "running a command", "read": "reading {what}", "read_memory": "reading {what}", "write": "writing {what}",
         "edit": "editing {what}", "multiedit": "editing {what}", "notebookedit": "editing {what}",
         "grep": "searching {where} for {what}", "glob": "looking for {what} files", "recall": "looking up {what}",
