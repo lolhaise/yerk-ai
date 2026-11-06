@@ -8,6 +8,27 @@ version changes.
 
 ## 2026-11-06
 
+### retired-marks-2026-11-06 (#?)
+
+- A reply shape you retired can now be held by code, not only asked for by a rule. Rule text is a request, so a room
+  could still answer with checklist boxes, colour squares saying who holds an item and a colour key under the list after
+  its rules said not to, and the status board's own rule turned that shape back only in a room with people.
+- With `[gates] retired_marks` set in yerkd.toml, a final message in any room without people (an owner room, the machine
+  room) holding one of those marks anywhere in a line (after a list number, after a dash, mid-line) is turned back once
+  before it is posted, saying how many lines hold one and which marks. The room is asked for a plain numbered list
+  instead: a bold lead of two or three words a line and who does what in words, and for a status one line per item with
+  its state first. A mark inside a fenced block never counts, and the second attempt goes out as written. Each bounce is
+  a `retired` shadow row, counted in the morning diff.
+- With the list set, the session start's room pack quotes the room's earlier lines without those marks, and a line that
+  was only a colour key is left out whole, so the pack no longer shows the retired shape back to the room as its own.
+  The day logs keep every line as it was.
+- A room with people keeps the board rule as it was, list or no list, and with no list nothing changes. The `[code]`
+  ceiling goes to 26,780.
+
+**Upgrading**: to turn it on, list the marks in yerkd.toml's `[gates]` table, like `retired_marks = ["☐", "🟦"]`, and
+restart yerkd. A value that is not a list of marks stops yerkd at its start with one line saying so. budgets.toml:
+`[code] lines` goes to 26,780.
+
 ### need-2026-11-06-69 (#?)
 
 - A room can now post a file again that it posted days ago. Before, a room asked to send a file once more found its

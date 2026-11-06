@@ -1132,7 +1132,7 @@ class Yerkd:
     def room_pack(self, room: str, left: int = 6000) -> tuple[str, str]:
         r = self.rooms.get(room)
         text, _ = memory.room_pack(self.memory, room, left, exclude=r.current_ids() if r else set(),
-                                   rid=room_id(room, self.room_confs.get(room, {})), owner=self.owner(room))
+                                   rid=room_id(room, self.room_confs.get(room, {})), owner=self.owner(room), retired=self.gates.retired)
         return text, str(self.memory.daily)
 
     def compact_pack(self, room: str, sid: str = "") -> str:
@@ -1384,6 +1384,11 @@ class Yerkd:
                     self.ledger.shadow(t=round(time.time(), 3), room=name, session_id=sid, turn=room.turn_key, rule="board",
                                        detail=found, reply_chars=len(str(said)))
                     log.info("room %s: Stop bounced once: a status board in a room with people (%s)", name, found)
+                elif (retired := room.retired_check(active, None if said is None else str(said), self.gates.retired)):
+                    reason, found = retired           # counted the same way as the board
+                    self.ledger.shadow(t=round(time.time(), 3), room=name, session_id=sid, turn=room.turn_key, rule="retired",
+                                       detail=found, reply_chars=len(str(said)))
+                    log.info("room %s: Stop bounced once: a retired mark in a room without people (%s)", name, found)
                 elif said and (paste := await self.paste(room, str(said), active, name)):
                     reason, found = paste             # the send tool's words and flag: one bounce per result in either place
                     self.ledger.shadow(t=round(time.time(), 3), room=name, session_id=sid, turn=room.turn_key, rule="paste",

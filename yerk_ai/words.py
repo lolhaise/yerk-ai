@@ -168,6 +168,10 @@ BOARD_LINE = re.compile(r"^[\s>*-]*(?:☑|☐|⛔|🟦|🟨)|\bunblocks?:|🟦 m
 BOARD = ("This room has people, and your final message is the owner rooms' status board ({found}). Say where things "
          "stand in two or three plain sentences, with no checklist marks, colour key, quote rails or what unblocks it, "
          "and write that as your final message now.")
+# the retired-marks rule at Stop, in every room without people: the marks are the install's ([gates] retired_marks)
+RETIRED = ("This install retired the marks in your final message ({found}). Write it as a plain numbered list with none of "
+           "them, each line opening with a bold lead of two or three words and saying who does what in words (for a status, "
+           "one line per item with its state first), and write that as your final message now.")
 # the paste rule, in `send` and at Stop alike (2026-10-22: a block posted the evening before went out again word for word)
 PASTE = ("Not posted: your message holds a fenced block this room already posted on {when}, word for word, and its dates, "
          "times and plans were that day's. Re-read it line by line against today (relative dates, clock times, who meets "

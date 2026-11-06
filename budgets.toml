@@ -1120,4 +1120,12 @@ secs = 60
 # files: the message by its link, by its id in the room's own channel then the one it watches, or by a file's name through
 # the ledger, its files kept to the name asked and to 300 MB and saved by stage), daemon.py 30 (tool_attachments, YERK_TOOLS,
 # the import of re), words.py 13, mcp_server.py 10 (the tool, its protocol line, the docstring) and ledger.py 5 (posted). 26,729.
-lines = 26729
+# 2026-11-06, retired-marks-2026-11-06: 51 lines (the owner's ask), not folded to fit. 37 for the retired-marks rule at
+# Stop: room.py 18 (retired_check, the rule after the board rule in every room without people, its once-a-result flag
+# and the docstring's line), gates.py 5 ([gates] retired_marks, a list of marks, each without its emoji variation
+# selector), daemon.py 5 (its place in the Stop chain, its shadow row and log line), words.py 4 (RETIRED), config.py 4
+# (the key's line on settings.md) and hooks.py 1 (the Stop line on hooks.md); 14 for the room pack quoting the room's
+# earlier lines without the marks, a colour key line left out whole: memory.py 13 (unmarked) and config.py 1. 26,685.
+# 2026-11-06, retired-marks-2026-11-06 with main folded in (need-2026-11-06-69's 95 lines): main's 26,729 plus this
+# branch's 51, 26,780.
+lines = 26780
