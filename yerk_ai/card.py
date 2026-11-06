@@ -1,6 +1,6 @@
 """Builds the live progress card a room shows while it works, from Claude Code's stream events. One card per turn of every kind: the state and the
-narration line (the model'says the sample; item Moved To's own compaction start, words.COMPACTING until the model's
-item moved, to The._next step and; the test, reads.It back as plain text with one more line for the
+narration line (the model's newest text; words.COMPACTING from Claude Code's own compaction start to its end, status
+null with compact_result or the boundary; with none, words.THINKS while a thinking block is open and no thinking text
 came since the turn began or the last tool row, else words.START), an optional thinking line (owner-only rooms that turn it on; the
 start of the summary, then "..."), then one row per tool call saying what the step is FOR in plain words
 (words.STEP), marked done or not done by its result, two or more failures in a row folded into one. Every
@@ -155,9 +155,12 @@ class Card:
             for c in content if isinstance(content, list) else []:
                 if c.get("type") == "tool_result" and (hit := self.by_id.get(str(c.get("tool_use_id")))):
                     hit.state = FAILED if c.get("is_error") or tool_name(hit.name) == "send" and refused(c.get("content")) else OK
-        elif kind == "system" and ev.get("subtype") == "status" and ev.get("status") == "compacting":   # 2.1.316, at its start (status
-            self.narration = words.COMPACTING     # null at its end): said from here until the model's next words, as Room._note
-        return self.render() != before
+        elif kind == "system" and ev.get("subtype") == "status" and ev.get("status") == "compacting":   # 2.1.316, at its start
+            self.narration = words.COMPACTING     # said from here to its end (or the model's words, if they come first)
+        elif kind == "system" and self.narration == words.COMPACTING and (ev.get("subtype") == "compact_boundary" or (
+                ev.get("subtype") == "status" and ev.get("status") is None and ev.get("compact_result"))):   # its end: status
+            self.narration = ""                   # null with compact_result (success or failed), then on success the boundary;
+        return self.render() != before            # the line falls back to thinking or the start line; only this line ends
 
     def _row(self, rid: str, name: str) -> Row:
         if rid not in self.by_id:

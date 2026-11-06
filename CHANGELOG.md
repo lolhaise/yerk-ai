@@ -11,8 +11,9 @@ version changes.
 ### compact-visible-2026-11-05 (#?)
 
 - When Claude Code shortens a room's conversation by itself inside a turn, the card now says "shortening the
-  conversation first" from the moment it starts until the model's next words, at the start of a turn or in its middle.
-  Before, that wait (2 minutes in the one room on Nov 5) showed only "working on it".
+  conversation first" from the moment it starts until it ends, at the start of a turn or in its middle, and then goes
+  back to what the model is doing: "thinking", "working on it" or its words. Before, that wait (2 minutes in
+  one room on Nov 5) showed only "working on it".
 - A model that is thinking and has said nothing yet shows as "thinking" on an owner room's card (and on a card = "steps"
   room's) in place of "working on it", at the start of a turn and after each step, until its words or its thinking text
   come. A room with people keeps its card as it was.
@@ -22,7 +23,7 @@ version changes.
   it and runs right after, as with the idle compaction, and its card says "shortening the conversation first" from the
   moment it arrives; that is new for the idle compaction too, where such a message showed no card until the compaction
   ended. A message already waiting when the turn ends runs at once, and the card says so if Claude Code compacts inside it.
-- The `[code]` ceiling goes to 26,499.
+- The `[code]` ceiling goes to 26,502.
 
 **Upgrading**: budgets.toml `[session]` gains `idle_compact_within = 0.05`. A room's block in rooms.toml may set its own,
 like `idle_compact_at` and `idle_compact_after`; 0 turns it off. Restart yerkd for it.

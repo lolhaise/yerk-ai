@@ -102,15 +102,14 @@ def text(i, said):
             se({"type": "content_block_delta", "index": i, "delta": {"type": "text_delta", "text": said}})]
 
 
-def test_claude_codes_own_compaction_is_said_from_its_start_until_the_models_next_words():
+def test_claude_codes_own_compaction_is_said_from_its_start():
     """2026-11-05: Claude Code's own compaction ran 2 min inside the owner's turn under the bare start line. The stream
-    says when one starts (2.1.316: status compacting, then status null at its end) and the card says so from there until
-    the model's next words, at a turn's start and in its middle."""
+    says when one starts (2.1.316: status compacting, then status null with compact_result at its end) and the card says
+    so from there, at a turn's start and in its middle; the model's words replace it too."""
     c = Card()
     assert c.feed(status()) is True and c.render() == f"{RUNNING} {words.COMPACTING}"
-    for ev in (status(), status(None, compact_result="success"), {"type": "system", "subtype": "compact_boundary"},
-               status("requesting")):
-        assert c.feed(ev) is False                                      # said again, its end, the next call: it holds
+    for ev in (status(), status("requesting")):
+        assert c.feed(ev) is False                                      # said again, its own model call: it holds
     for ev in text(0, "Here is the plan") + tool(1, "a", "Read", {"file_path": "/x/memory/pinned.md"}) + [result("a")]:
         c.feed(ev)
     assert c.render() == f"{RUNNING} Here is the plan\n{OK} reading the pinned notes"
@@ -122,6 +121,54 @@ def test_claude_codes_own_compaction_is_said_from_its_start_until_the_models_nex
     people = Card(people="r")                                           # a room with people: until its holding line
     people.feed(status())
     assert people.render() == f"{RUNNING} {words.COMPACTING}"
+
+
+BOUNDARY = {"type": "system", "subtype": "compact_boundary", "compact_metadata": {"trigger": "auto"}}
+
+
+def test_the_compaction_line_ends_with_the_compaction_then_thinking_then_the_models_words():
+    """2026-11-05: the owner's message waited 2 min 4 s on Claude Code's compaction, then 2 min 45 s on the model's
+    thinking before its first words; a line held to the next words would have said shortening for all 4 min 49 s. The
+    compaction's end (status null with compact_result, then on success its boundary) puts the bare line back, so the card
+    names each phase: at a turn's start, and in its middle (the fixture: words, a row, the compaction, a silent thinking
+    block, the next words). Each list is the card at each event that changed it."""
+    c, stop = Card(), se({"type": "content_block_stop", "index": 0})
+    events = [status(), status("requesting"), status(None, compact_result="success"), {"type": "system", "subtype": "init"},
+              BOUNDARY, status("requesting"), *thinking(0), stop, *text(1, "Here is the plan")]
+    assert [c.render() for ev in events if c.feed(ev)] == [
+        f"{RUNNING} {x}" for x in (words.COMPACTING, START, words.THINKS, START, "Here is the plan")]
+    c, row = Card(), f"\n{OK} reading the pinned notes"
+    events = [json.loads(x) for x in (REPO / "tests" / "fixtures" / "compact_mid_turn.jsonl").read_text().splitlines()]
+    at = next(i for i, ev in enumerate(events) if ev.get("status") == "compacting")
+    for ev in events[:at]:
+        c.feed(ev)
+    assert c.render() == f"{RUNNING} Checking the notes first{row}"
+    assert [c.render() for ev in events[at:] if c.feed(ev)] == [
+        f"{RUNNING} {x}{row}" for x in (words.COMPACTING, START, words.THINKS, START, "The pinned notes say yes.")]
+
+
+def test_a_failed_compactions_end_ends_the_line_too_and_nothing_else_does():
+    """A failed compaction streams its end status (compact_result failed) and no boundary; a boundary alone ends the line
+    too. The compaction's own model call (status requesting), a progress status and a status null without compact_result
+    leave it up, and only the compaction's line ends: the model's words, a hop's line and a retry's line are left alone."""
+    c = Card()
+    for ev in (status(), status("requesting"), status(compact_output_chars=900), status(None), {"type": "system", "subtype": "init"}):
+        c.feed(ev)
+        assert c.render() == f"{RUNNING} {words.COMPACTING}", ev
+    assert c.feed(status(None, compact_result="failed", compact_error="fake")) is True and c.render() == f"{RUNNING} {START}"
+    c.feed(status())
+    assert c.feed(BOUNDARY) is True and c.render() == f"{RUNNING} {START}"
+    for ev in text(0, "Here is the plan"):
+        c.feed(ev)
+    for line in ("Here is the plan", words.MOVED.format(name="two"), words.AFTER_FAILED):
+        c.narration = line                                              # a harness line as Room._note and _new_card put it
+        for ev in (status(None, compact_result="success"), BOUNDARY, status(None, compact_result="failed")):
+            assert c.feed(ev) is False and c.narration == line
+    people = Card(people="r")                                           # a room with people: the same rule for its line
+    for ev, said in ((status(), words.COMPACTING), (status("requesting"), words.COMPACTING),
+                     (status(None, compact_result="success"), START)):
+        people.feed(ev)
+        assert people.render() == f"{RUNNING} {said}"
 
 
 def thinking(i, said=""):

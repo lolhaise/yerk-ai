@@ -1098,5 +1098,8 @@ secs = 60
 # conversation is being shortened first, the card its turn then takes over (room.py 26: `_ended`, RESERVE, the flags,
 # the early card in submit and its takeover in _turn, the module docstring's line; daemon.py 1: the key handed to
 # the room; config.py 2: its words); the same evening's six turns within 51,000 of the line with no idle stretch, not
-# folded to fit. 26,499.
-lines = 26499
+# folded to fit. 26,499. Its follow-up raised it by 3: words.COMPACTING ends with the compaction, at its end status
+# (status null with compact_result, success or failed) or its boundary, and the line falls back to words.THINKS or the
+# bare start line (card.py 3: the branch in feed); held to the model's next words, that turn's card would have said the
+# conversation was being shortened for all 4 min 49 s, 2 min 4 s of it the compaction's, not folded to fit. 26,502.
+lines = 26502
