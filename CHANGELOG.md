@@ -16,7 +16,16 @@ version changes.
 - A model that is thinking and has said nothing yet shows as "thinking" on an owner room's card (and on a card = "steps"
   room's) in place of "working on it", at the start of a turn and after each step, until its words or its thinking text
   come. A room with people keeps its card as it was.
-- The `[code]` ceiling goes to 26,470.
+- A room whose turn ends close to the point where Claude Code would compact the conversation by itself (within
+  `idle_compact_within` of the window, 0.05, so 40,000 tokens at an 800,000 window and 12,500 at 250,000) compacts it
+  right then in the background, once, instead of inside your next message. A message you send while it runs waits for
+  it and runs right after, as with the idle compaction, and its card says "shortening the conversation first" from the
+  moment it arrives; that is new for the idle compaction too, where such a message showed no card until the compaction
+  ended. A message already waiting when the turn ends runs at once, and the card says so if Claude Code compacts inside it.
+- The `[code]` ceiling goes to 26,499.
+
+**Upgrading**: budgets.toml `[session]` gains `idle_compact_within = 0.05`. A room's block in rooms.toml may set its own,
+like `idle_compact_at` and `idle_compact_after`; 0 turns it off. Restart yerkd for it.
 
 ### need-2026-11-05-59 (#?)
 
