@@ -603,13 +603,14 @@ PLAIN_FINAL = ("Two of the three are set: the library reminder comes Monday at 1
                "next. The photo album has to wait until this room can make files.")
 
 
-def test_a_status_board_in_a_room_with_people_bounces_once_and_never_in_an_owner_room(tmp_path):
+def test_a_status_board_in_a_room_with_people_bounces_once_and_never_in_an_owner_room_while_the_list_is_empty(tmp_path):
     """The board rule: a final with the board's marks in a room with people bounces once, as a shadow row `board`; plain
-    sentences stand, and an owner room's board is its own shape and never bounces."""
+    sentences stand, and an owner room's board never bounces while [gates] retired_marks is empty, its default."""
     y, room, ch = setup(tmp_path)
+    assert y.gates.retired == ()
     stop = {"hook_event_name": "Stop", "stop_hook_active": False}
     human_turn(room)
-    assert call(y, {**stop, "last_assistant_message": BOARD_FINAL}) == {}                       # the owner's room
+    assert call(y, {**stop, "last_assistant_message": BOARD_FINAL}) == {}                       # the owner's room, no list
     room.conf = {**room.conf, "people": [7]}                    # a person besides the owner
     room._new_card()
     assert room.card.people == "example-room"                                 # and the card takes its shape
@@ -629,6 +630,96 @@ def test_a_status_board_in_a_room_with_people_bounces_once_and_never_in_an_owner
         assert words.BOARD_LINE.search(line), line
     for line in ("> The prints are saved in your notes", "Book it in mid-July, about two months ahead.", "A 🟦 blue door"):
         assert not words.BOARD_LINE.search(line), line
+
+
+# the retired-marks rule ([gates] retired_marks), in every room without people; a synthetic list, no one's words: the marks
+# after a list number, where BOARD_LINE never looks, and a colour key under the list
+MARKS = {"retired_marks": ["☐", "☑", "🟦", "🟨"]}
+SQUARES_FINAL = "\n".join(["Where the move stands:",
+                           "1. 🟦 **Van booked.** It comes Saturday at 9am",
+                           "2. 🟨 **Keys back.** The old keys go to the office by Friday",
+                           "-# 🟦 me · 🟨 you"])
+NUMBERED_FINAL = "\n".join(SQUARES_FINAL.splitlines()[:3])                     # the same list with no key line
+LIST_FINAL = "1. **Van booked.** I booked it for Saturday at 9am.\n2. **Keys back.** You take the old keys to the office by Friday."
+
+
+def test_a_retired_mark_bounces_once_in_an_owner_room_and_once_in_the_machine_room_when_the_list_holds_one(tmp_path):
+    """The retired-marks rule: with [gates] retired_marks set, a final holding one of them in a room without people bounces
+    once before it is posted, as a shadow row `retired`; the second attempt goes out as written, and a plain list stands."""
+    y, room, ch = setup(tmp_path, MARKS)
+    assert y.gates.retired == ("☐", "☑", "🟦", "🟨")
+    stop = {"hook_event_name": "Stop", "stop_hook_active": False}
+    for conf in (room.conf, {**room.conf, "role": "machine"}):                  # an owner room, then the machine room
+        room.conf = conf
+        room._new_card()
+        human_turn(room)
+        out = call(y, {**stop, "last_assistant_message": SQUARES_FINAL})
+        assert out["decision"] == "block" and out["reason"] == words.RETIRED.format(found="3 lines with 🟦 🟨")
+        assert "plain numbered list" in out["reason"] and out["reason"].endswith("write that as your final message now.")
+        assert call(y, {**stop, "stop_hook_active": True, "last_assistant_message": SQUARES_FINAL}) == {}   # Claude Code's guard
+        assert call(y, {**stop, "last_assistant_message": SQUARES_FINAL}) == {}                            # and ours: once
+    rows = [r["detail"] for r in reversed(y.ledger.rows(20, "shadow")) if r["rule"] == "retired"]
+    assert rows == ["3 lines with 🟦 🟨"] * 2
+    assert y.ledger.shadow_rules(0, time.time() + 1)["retired"] == 2             # the morning diff's count
+    room._new_card()                                                            # the next result
+    human_turn(room)
+    assert call(y, {**stop, "last_assistant_message": LIST_FINAL}) == {}         # what it asks for stands
+
+
+def test_the_numbered_squares_with_no_key_line_bounce_and_the_bounce_says_how_many_lines(tmp_path):
+    """A mark counts anywhere in a line: after a list number (the shape the board's BOARD_LINE never sees), after a dash, mid
+    line, with or without its emoji variation selector; each line holding one counts once, and the bounce says how many."""
+    y, room, ch = setup(tmp_path, MARKS)
+    assert not any(words.BOARD_LINE.search(x) for x in NUMBERED_FINAL.splitlines())
+    human_turn(room)
+    out = call(y, {"hook_event_name": "Stop", "stop_hook_active": False, "last_assistant_message": NUMBERED_FINAL})
+    assert out["decision"] == "block" and "(2 lines with 🟦 🟨)" in out["reason"]
+    for text, found in (("- ☐ a dashed item", "1 line with ☐"), ("Done ☑ and next ☐ on one line", "1 line with ☐ ☑"),
+                        ("☑\ufe0f with its selector\nplain\n🟨 and a third", "2 lines with ☑ 🟨")):
+        room._new_card()
+        assert room.retired_check(False, text, y.gates.retired) == (words.RETIRED.format(found=found), found), text
+
+
+def test_a_retired_mark_inside_a_fenced_block_does_not_count(tmp_path):
+    """A fenced block (an inline one, and an unclosed one running to the end, as memory.fenced reads it) is never counted;
+    a mark outside it still is."""
+    y, room, ch = setup(tmp_path, MARKS)
+    logged = "The queue reads:\n```log\n🟦 job 4 queued\n☑ job 3 done\n```\nNothing else changed."
+    human_turn(room)
+    assert call(y, {"hook_event_name": "Stop", "stop_hook_active": False, "last_assistant_message": logged}) == {}
+    for text in ("Inline ```🟦 here``` only", "An open block:\n```\n🟦 runs to the end"):
+        room._new_card()
+        assert room.retired_check(False, text, y.gates.retired) is None, text
+    room._new_card()
+    assert room.retired_check(False, f"{logged}\n🟨 one outside", y.gates.retired)[1] == "1 line with 🟨"
+
+
+def test_an_empty_list_means_no_bounce_and_the_list_must_be_a_list_of_marks(tmp_path):
+    y, room, ch = setup(tmp_path, {"retired_marks": []})
+    assert y.gates.retired == () == gates.settings({}).retired == gates.settings(None).retired
+    human_turn(room)
+    assert call(y, {"hook_event_name": "Stop", "stop_hook_active": False, "last_assistant_message": SQUARES_FINAL}) == {}
+    assert room.retired_check(False, SQUARES_FINAL, ()) is None
+    assert not [r for r in y.ledger.rows(20, "shadow") if r["rule"] == "retired"]
+    assert gates.settings({"retired_marks": ["☑\ufe0f", " ", ""]}).retired == ("☑",)      # its selector off, a blank dropped
+    with pytest.raises(SystemExit, match="must be a list of marks"):
+        gates.settings({"retired_marks": "🟦 me"})                              # one string would be read letter by letter
+
+
+def test_a_room_with_people_keeps_the_board_rule_unchanged_with_the_list_set(tmp_path):
+    y, room, ch = setup(tmp_path, MARKS)
+    room.conf = {**room.conf, "people": [7]}
+    room._new_card()
+    stop = {"hook_event_name": "Stop", "stop_hook_active": False}
+    human_turn(room, "is the van set?", sender="person")
+    assert call(y, {**stop, "last_assistant_message": NUMBERED_FINAL}) == {}       # the board's marks miss it, as before
+    room._new_card()
+    human_turn(room, "and the album?", sender="person")
+    out = call(y, {**stop, "last_assistant_message": BOARD_FINAL})
+    assert out["reason"] == words.BOARD.format(found="4 lines with a checklist mark, the colour key or what unblocks it")
+    assert {r["rule"] for r in y.ledger.rows(20, "shadow")} & {"board", "retired"} == {"board"}
+    room._new_card()
+    assert room.retired_check(False, SQUARES_FINAL, y.gates.retired) is None      # never in a room with people
 
 
 def test_the_owners_word_counts_alone_or_as_the_first_word_and_never_inside_a_sentence():

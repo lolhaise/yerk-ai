@@ -529,7 +529,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-06, need-2026-11-04-51 with main folded in again (need-2026-11-05-59's 187 and 51 lines): main's 26,462 plus this branch's 172, 26,634.
 
-- `lines = 26634`
+2026-11-06, retired-marks-2026-11-06: 51 lines (the owner's ask), not folded to fit. 37 for the retired-marks rule at Stop: room.py 18 (retired_check, the rule after the board rule in every room without people, its once-a-result flag and the docstring's line), gates.py 5 ([gates] retired_marks, a list of marks, each without its emoji variation selector), daemon.py 5 (its place in the Stop chain, its shadow row and log line), words.py 4 (RETIRED), config.py 4 (the key's line on settings.md) and hooks.py 1 (the Stop line on hooks.md); 14 for the room pack quoting the room's earlier lines without the marks, a colour key line left out whole: memory.py 13 (unmarked) and config.py 1. 26,685.
+
+- `lines = 26685`
 
 ## Uncapped
 

@@ -69,18 +69,23 @@ class Settings:
     window_s: float = 1800.0                    # a word older than this releases nothing
     trash: tuple[str, ...] = ()                 # the trash command; () finds one
     external: dict[str, dict[str, str]] = field(default_factory=lambda: dict(EXTERNAL))
+    retired: tuple[str, ...] = ()               # marks a final in a room without people may not hold (Room.retired_check)
 
 
 def settings(conf: dict[str, Any] | None) -> Settings:
     """yerkd.toml [gates]: approvers, word, approve_minutes, trash (a command line), off (default
-    rule names to drop) and [gates.external.NAME] tool, command and what."""
+    rule names to drop), [gates.external.NAME] tool, command and what, and retired_marks (none by default; each
+    without its emoji variation selector, so either way of writing a mark matches)."""
     c = dict(conf or {})
+    if not isinstance(marks := c.get("retired_marks", []), list) or not all(isinstance(m, str) for m in marks):
+        raise SystemExit('yerkd.toml: [gates] retired_marks must be a list of marks, like retired_marks = ["☐", "🟦"]')
     ext = {k: v for k, v in EXTERNAL.items() if k not in set(c.get("off", []))}
     for name, rule in dict(c.get("external", {})).items():
         ext[str(name)] = {k: str(v) for k, v in dict(rule).items()}
     trash = tuple(shlex.split(str(c["trash"]))) if c.get("trash") else find_trash()
     return Settings(approvers=tuple(c.get("approvers", ["owner"])), word=str(c.get("word", "approve")).lower(),
-                    window_s=float(c.get("approve_minutes", 30)) * 60, trash=trash, external=ext)
+                    window_s=float(c.get("approve_minutes", 30)) * 60, trash=trash, external=ext,
+                    retired=tuple(x for x in (m.replace("\ufe0f", "").strip() for m in marks) if x))
 
 
 def find_trash() -> tuple[str, ...]:
