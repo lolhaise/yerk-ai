@@ -507,7 +507,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-05, need-2026-11-05-59 raised it by 187, the `email` tool: one email in the owner's name from their own Gmail over its SMTP, on the app password `yerk import gmail` already reads ([gmail] user and password_file), with files from the room's own folders attached, held by the email-out gate with who it goes to, its subject, its files and its words shown, and sent once on the owner's word, a send that may have gone told apart from one that did not (emails.py 132: the checks before the ask, the preview, the message and the send; daemon.py 29: the tool, its refusal and the gate's preview and release; mcp_server.py 11, words.py 15, gates.py 1 and config.py 1: the tool, its words, the rule and the name key; sources.py 2 fewer: the import's app password read by the same function); the evening a room could not send a statement to an email address, not folded to fit. 26,411.
 
-- `lines = 26411`
+2026-11-05, need-2026-11-05-59's fix raised it by 51: an attachment was held by its path only, so a file rewritten after the owner's word went out as its new bytes, and a link swapped onto its path between the tool's check and its read attached a file outside the room's folders; now each file is read once, from an open with no link on its path followed, the call the word is for carries each file's sha256, and the bytes read are the bytes sent (emails.py 47: `Part`, `opened`, `read` and `checked`, the preview and the message from those bytes; daemon.py 4: `email_check`, one read for the gate's refusal, key and preview, another for the tool's); a hole in the owner's word, not folded to fit. 26,462.
+
+- `lines = 26462`
 
 ## Uncapped
 

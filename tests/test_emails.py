@@ -8,6 +8,9 @@ have. A fake Gmail here stands in for the real one: nothing leaves the machine, 
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import os
+import shutil
 import smtplib
 from pathlib import Path
 
@@ -184,17 +187,18 @@ def test_no_email_goes_without_its_preview_with_the_rule_off_or_a_hook_that_fail
 
 def test_an_email_that_did_not_go_is_told_apart_from_one_that_may_have(tmp_path):
     y, room, ch, mail = setup(tmp_path)
-    g, c = y.conf["gmail"], emails.normal(mail)
+    (g, (c, parts, _)) = y.conf["gmail"], y.email_check("example-room", mail)
     for mode, why in (("away", words.EMAIL_AWAY), ("login", words.EMAIL_LOGIN), ("refuse", words.EMAIL_REFUSED)):
         Gmail.mode = mode
-        assert emails.send(g, y.private, c) == {"ok": False, "maybe_sent": False, "error": words.EMAIL_NOT_SENT.format(why=why)}
+        assert emails.send(g, y.private, c, parts) == {"ok": False, "maybe_sent": False, "error": words.EMAIL_NOT_SENT.format(why=why)}
     assert "abcdefghijklmnop" not in words.EMAIL_LOGIN and sent() == []           # Gmail's refusal, which may echo it, is never said
     Gmail.mode = "drop"
-    assert emails.send(g, y.private, c) == {"ok": False, "maybe_sent": True, "error": words.EMAIL_MAYBE}
+    assert emails.send(g, y.private, c, parts) == {"ok": False, "maybe_sent": True, "error": words.EMAIL_MAYBE}
     assert "never send it again unasked" in words.EMAIL_MAYBE
     Gmail.mode = "some"
-    assert emails.send(g, y.private, c)["refused"] == [TO]
-    assert emails.send({**g, "password_file": str(tmp_path / "none")}, y.private, c)["error"] == words.EMAIL_NOT_SENT.format(why=words.EMAIL_NO_SETUP)
+    assert emails.send(g, y.private, c, parts)["refused"] == [TO]
+    assert emails.send({**g, "password_file": str(tmp_path / "none")}, y.private, c, parts)["error"] == words.EMAIL_NOT_SENT.format(
+        why=words.EMAIL_NO_SETUP)
 
 
 def test_an_email_that_may_have_gone_out_is_ledgered_so(tmp_path):
@@ -220,3 +224,50 @@ def test_a_worker_never_emails_as_the_owner(tmp_path):
                              {"room": "example-room"})
     assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
     assert "a worker never takes one" in out["hookSpecificOutput"]["permissionDecisionReason"]
+
+
+def test_a_file_rewritten_after_the_owners_word_is_held_again_and_never_goes_as_its_new_bytes(tmp_path):
+    """The word is for the bytes the owner was shown: a file held by its path alone went out as whatever it held when the
+    tool read it, so one rewritten after the word, or between the release and the read, went as bytes no one approved."""
+    y, room, ch, mail = setup(tmp_path)
+    slip = Path(mail["files"][0])
+    shown, other = slip.read_bytes(), b"%PDF-1.4 another slip\n" * 100           # the same size: the preview cannot tell
+    assert held(pre(y, mail)) and "approve" in word(y, room)["hookSpecificOutput"]["additionalContext"]
+    slip.write_bytes(other)                                                       # rewritten after the word
+    assert held(pre(y, mail)) and len(ch.notes) == 2 and "attached: slip.pdf (2 KB)" in ch.notes[1]   # shown again, held
+    assert email(y, mail)["error"] == words.EMAIL_NOT_RELEASED and sent() == []
+    assert [hashlib.sha256(b).hexdigest() in r["call"] for r, b in zip(y.ledger.rows(5, "approvals"), (other, shown))] == [True] * 2
+    slip.write_bytes(shown)                                                       # back to the bytes the word was for
+    assert pre(y, mail) == {}                                                     # released: the call the owner approved
+    slip.write_bytes(other)                                                       # rewritten between the release and the read
+    assert email(y, mail)["error"] == words.EMAIL_NOT_RELEASED and sent() == [] and Gmail.log == []
+    word(y, room)                                                                 # the word for the bytes shown second
+    assert pre(y, mail) == {} and email(y, mail)["ok"]
+    [part] = list(sent()[0].iter_attachments())
+    assert part.get_content() == other and len(sent()) == 1
+
+
+def test_a_link_swapped_on_between_the_check_and_the_read_never_attaches_a_file_outside_the_rooms_folders(tmp_path, monkeypatch):
+    """The check and the read are one open: a file swapped for a link to a file outside the room's folders, or a folder on its
+    path for a link to one outside, once the check had passed but before the read, attached the outside file; a pipe swapped
+    in held the read open for good. Each is refused now, at the tool and at the gate, and nothing of the outside file shows."""
+    y, room, ch, mail = setup(tmp_path)
+    slip, may = Path(mail["files"][0]), y.may_send
+    shown, none = slip.read_bytes(), words.EMAIL_NOT_SENT.format(why=words.EMAIL_FILE_NONE.format(name="slip.pdf"))
+    (outside := tmp_path / "outside").mkdir()
+    (outside / "slip.pdf").write_bytes(secret := b"SECRET outside the room\n" * 300)
+    flips = {"the file for a link": lambda: (slip.unlink(), slip.symlink_to(outside / "slip.pdf")),
+             "a folder on its path for a link": lambda: (slip.parent.rename(slip.parent.with_name("m0")), slip.parent.symlink_to(outside)),
+             "the file for a pipe": lambda: (slip.unlink(), os.mkfifo(slip))}
+    for kind, flip in flips.items():
+        assert held(pre(y, mail)) and word(y, room) and pre(y, mail) == {}       # shown and released while it was the room's
+        monkeypatch.setattr(y, "may_send", lambda r, p, flip=flip: (may(r, p), flip())[0])    # swapped the moment the check passed
+        assert email(y, mail) == {"ok": False, "maybe_sent": False, "error": none}, kind
+        monkeypatch.setattr(y, "may_send", may)
+        for x in (slip.parent, slip.parent.with_name("m0")):
+            x.unlink() if x.is_symlink() else shutil.rmtree(x, ignore_errors=True)
+        slip.parent.mkdir()
+        slip.write_bytes(shown)
+    monkeypatch.setattr(y, "may_send", lambda r, p: (may(r, p), flips["the file for a link"]())[0])
+    assert pre(y, mail)["hookSpecificOutput"]["permissionDecisionReason"] == none                # the gate's own read, the same
+    assert sent() == [] and len(ch.notes) == 3 and words.size(len(secret)) not in str(ch.notes) and secret not in str(y.ledger.rows(20, "gates")).encode()

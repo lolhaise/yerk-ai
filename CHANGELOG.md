@@ -21,7 +21,12 @@ version changes.
 - What cannot go is said before you are asked: no Gmail set up, a name in place of an address, nothing to send, a file
   outside the room's folders or missing, or files past 18 MB. A send that may have gone out (the line dropped mid-way)
   says so and is never sent again unasked. Each outcome is a gate row with who it went to and the id it went under.
-- `yerk import gmail` and the tool read the app password the same way. The `[code]` ceiling goes to 26,411, and
+- A file goes out as the bytes it held when you were shown it. The email was first held with its files by their paths
+  only, so a file rewritten after your word went out as its new contents, and a file swapped for a link between the
+  tool's check and its read attached a file from outside the room's folders. Now each file is read once, with no link on
+  its way followed; your word is for those exact bytes (their sha256 is in the ledger's receipt), and they are what
+  goes. A file changed after your word is held again with its new preview, and a link swapped in is refused.
+- `yerk import gmail` and the tool read the app password the same way. The `[code]` ceiling goes to 26,462, and
   `yerk_tools` to 22,300 with the session total to 121,405.
 
 **Upgrading**: to send, yerkd.toml needs `[gmail]` with `user` (your Gmail address) and `password_file` (a file in your

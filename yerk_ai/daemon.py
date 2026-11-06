@@ -680,25 +680,28 @@ class Yerkd:
         log.info("text: %s, %s, %d characters", room, how, len(text))
         return r
 
-    def email_refusal(self, room: str, c: dict[str, Any]) -> str:
-        """Why the email `c` (emails.normal) from `room` cannot go, "" when it can: asked at the gate, so the owner is never asked
-        to approve one that would not go, and again by the tool."""
+    def email_check(self, room: str, ti: dict[str, Any]) -> tuple[dict[str, Any], list[emails.Part], str]:
+        """The email `ti` from `room` as the gate holds it and the tool sends it (emails.checked: its call with each file's
+        sha256, its files read once) and why it cannot go, "" when it can: asked at the gate, so the owner is never asked to
+        approve one that would not go, and again by the tool, whose read is the one that goes."""
         if not self.owner(room) or room not in self.rooms:
-            return words.EMAIL_OWNER_ROOMS
+            return emails.normal(ti), [], words.EMAIL_OWNER_ROOMS
         if not emails.password(dict(self.conf.get("gmail") or {}), self.private):
-            return words.EMAIL_NO_SETUP
-        return emails.why(c, lambda p: self.may_send(room, p))
+            return emails.normal(ti), [], words.EMAIL_NO_SETUP
+        return emails.checked(emails.normal(ti), lambda p: self.may_send(room, p))
 
     async def tool_email(self, room: str, ti: dict[str, Any]) -> dict[str, Any]:
         """The `email` tool: one email in the owner's name from the owner's Gmail (emails.send), from an owner's room only, and only
-        as the exact call the email-out gate showed the owner and released on their word, once (a hook that failed open sends
+        as the exact call the email-out gate showed the owner and released on their word, its files' bytes too (read here once,
+        and those bytes sent: a file rewritten or swapped since is no released call), once (a hook that failed open sends
         nothing); its outcome a gate row, the receipt after the hold, the word and the release."""
-        if why := self.email_refusal(room, c := emails.normal(ti)):
+        c, parts, why = await asyncio.to_thread(self.email_check, room, ti)
+        if why:
             return {"ok": False, "maybe_sent": False, "error": words.EMAIL_NOT_SENT.format(why=why)}
         if (room, key := gates.call_key(emails.TOOL, c)) not in self.released:
             return {"ok": False, "maybe_sent": False, "error": words.EMAIL_NOT_RELEASED}
         self.released.discard((room, key))
-        r = await asyncio.to_thread(emails.send, dict(self.conf.get("gmail") or {}), self.private, c)
+        r = await asyncio.to_thread(emails.send, dict(self.conf.get("gmail") or {}), self.private, c, parts)
         how, rp = "sent" if r["ok"] else "maybe sent" if r["maybe_sent"] else "failed", self.rooms[room].rp
         self.ledger.gate(room=room, session_id=rp.session_id if rp else "", turn=self.rooms[room].turn_key, gate="email", decision=how,
                          tool=emails.TOOL, rule="email-out", detail=f"to {', '.join(c['to'])}, {len(c['text'])} characters, "
@@ -1437,14 +1440,15 @@ class Yerkd:
             v = gates.Verdict("text", "deny", words.TEXT_NOT_SENT.format(why=why), detail=why)    # it could not go: nothing to approve
         if v is None and tool == deletes.TOOL and (why := self.delete_refusal(name, deletes.paths_of(ti))):
             v = gates.Verdict("delete", "deny", words.NOT_DELETED.format(why=why), detail=why)    # the same: nothing to approve
-        if v is None and tool == emails.TOOL and (why := self.email_refusal(name, emails.normal(ti))):
+        mail = self.email_check(name, ti) if v is None and tool == emails.TOOL else None    # its files read once: key and preview
+        if mail and (why := mail[2]):
             v = gates.Verdict("email", "deny", words.EMAIL_NOT_SENT.format(why=why), detail=why)  # the same: nothing to approve
         key, shown, cwd = "", "", str(payload.get("cwd") or self.state / "rooms" / name / "work")
         if v is None and (hit := gates.external_hit(tool, ti, name, self.gates, self.room_confs)):
             rule, what, call = hit
-            key = gates.call_key(tool, emails.normal(ti) if tool == emails.TOOL else ti)    # an email with every field, as the tool sends it
+            key = gates.call_key(tool, mail[0] if mail else ti)    # an email with every field and its files' sha256, as the tool sends it
             shown = (texts.preview(ti) if tool == texts.TOOL               # no JSON: a text as it reads, to whom it goes
-                     else emails.preview(emails.normal(ti), str(dict(self.conf.get("gmail") or {}).get("user") or "")) if tool == emails.TOOL
+                     else emails.preview(mail[0], mail[1], str(dict(self.conf.get("gmail") or {}).get("user") or "")) if mail
                      else deletes.preview(ti) if tool == deletes.TOOL else gates.plain(tool, ti) if self.room_confs[name].get("people") else key)
             rel = self.ledger.release(name, rule, key, cwd, self.gates.window_s)
             if rel:
