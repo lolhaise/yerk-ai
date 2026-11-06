@@ -268,7 +268,7 @@ def test_claude_codes_parts_as_the_rooms_send_them_fit_their_lines_and_what_is_l
     assert all(sent <= line for sent, line in rows.values()), out
     assert all(line <= sent * 1.02 for name, (sent, line) in rows.items() if name != "Yerk AI's tools"), rows
     s = b["session_start"]
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 120605
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 121605
 
 
 def room_sent(tmp_path, tools, file="# Yerk AI mechanics\n- an example line"):
@@ -394,11 +394,13 @@ def test_the_rulebook_line_keeps_about_1000_over_the_largest_room_text_and_what_
     119,005 (need-2026-11-03-49); then the `render` tool's sentence on a .tex (200), no part could pay, to 119,205
     (need-2026-11-04-47); then the fold line's clause (200, a message arriving mid-turn answered by name), no part could
     pay, to 119,405 (fold-named-2026-11-04); then the `texts` tool (1,000, the owner's recent texts read from the Mac and
-    kept as a copy on the box), no part could pay, to 120,405 (need-2026-11-04-53); then the `page` tool's clauses on the
-    talk in the program (200 with main folded in), no part could pay, to 120,605 (need-2026-11-04-51)."""
+    kept as a copy on the box), no part could pay, to 120,405 (need-2026-11-04-53); then the `email` tool (1,000, an email
+    in the owner's name from their own Gmail with the room's files attached), no part could pay, to 121,405 (need-2026-11-05-59);
+    then the `page` tool's clauses on the talk in the program (200 with main folded in), no part could pay, to 121,605
+    (need-2026-11-04-51)."""
     s = budgets()["session_start"]
     assert 900 <= s["appended"]["rulebook"] - LIVE_RULEBOOK <= 1400 and s["appended"]["rules"] == 16000
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 120605
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 121605
     private = tmp_path / "private"
     shutil.copytree(EXAMPLE_PRIVATE, private)
     (private / "rulebook.md").write_text("r" * (LIVE_RULEBOOK - 1) + "\n")

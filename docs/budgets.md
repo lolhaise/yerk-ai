@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 120605`
+- `total = 121605`
 
 ## [session_start.claude_code]
 
@@ -70,15 +70,19 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-05, need-2026-11-04-53: the `texts` tool (the owner's recent texts read from the Mac, kept as a copy on the box so a room asked whether someone has texted answers from the last copy and says its time while the Mac sleeps, since a room asked whether a text had come in could not read the owner's Messages over ssh with the Mac asleep) is 987 as this tree builds it on Python 3.13, all 20 to 20,648, about 21,268 as sent (620 over the build, 31 a tool as on the others); so 21,300, no part could pay, the total rose by the 1,000 (to 120,405, re-measured as sent on deploy).
 
+2026-11-05, need-2026-11-05-59: the `email` tool (one email in the owner's name from their own Gmail with the room's files attached, held with who it goes to, its subject, its files and its words shown and sent once on the owner's word, since a room asked to send a statement and a document to an email address had a mail tool that reads only and a text tool that reaches phone numbers; filed 2026-11-05) is 974 as this tree builds it on Python 3.13, all 21 to 21,622, about 22,273 as sent (651 over the build, 31 a tool as on the others); so 22,300, no part could pay, the total rose by the 1,000 (to 121,405).
+
 2026-11-04, need-2026-11-04-51: the `page` tool's two clauses on the talk in the program (blank tests run the program alone, its prints shown large; with the page's chat closed the room's replies go into the program as #> lines, since a room asked to talk with the owner in the program had its replies only in a chat pane that could not close; filed
 
 2026-11-04) take it from 1,901 to 2,045 as this tree builds it on Python 3.13, all 19 to 19,805, about 20,394 as sent (589 over the build, as on need 47's tree); so 20,400, no part could pay, the total rose by the 100 (to 119,505).
 
 2026-11-05, need-2026-11-04-51 with main folded in (need-2026-11-04-53's `texts` tool): the `page` tool at 2,045 and `texts` at 987 as this tree builds them, all 20 to 20,792, about 21,412 as sent (620 over the build, as on need 53's tree); so 21,500, no part could pay, the total rose by the 200 over main's 120,405 (to 120,605).
 
+2026-11-06, need-2026-11-04-51 with main folded in again (need-2026-11-05-59's `email` tool): the `page` tool at 2,045 and `email` at 974 as this tree builds them on Python 3.13, all 21 to 21,766, about 22,417 as sent (651 over the build, as on need 59's tree); so 22,500, no part could pay, the total rose by the 200 over main's 121,405 (to 121,605).
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
-- `yerk_tools = 21500`
+- `yerk_tools = 22500`
 - `deferred_tool_names = 3429`
 - `mcp__hands__ = 8165`
 - `mcp__web-ladder__web_image = 913`
@@ -509,6 +513,10 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-05: need-branch-drop raised it by 38, a need's branch deleted when the need goes live (nothing deleted one, so every shipped need left a branch here and on GitHub until a hand detached its workers' worktrees and dropped it), not folded to fit: pipeline.py 38 (`drop_local`, `drop` and its call in `live`). 26,224: main 18df63c's 26,186 plus 38.
 
+2026-11-05, need-2026-11-05-59 raised it by 187, the `email` tool: one email in the owner's name from their own Gmail over its SMTP, on the app password `yerk import gmail` already reads ([gmail] user and password_file), with files from the room's own folders attached, held by the email-out gate with who it goes to, its subject, its files and its words shown, and sent once on the owner's word, a send that may have gone told apart from one that did not (emails.py 132: the checks before the ask, the preview, the message and the send; daemon.py 29: the tool, its refusal and the gate's preview and release; mcp_server.py 11, words.py 15, gates.py 1 and config.py 1: the tool, its words, the rule and the name key; sources.py 2 fewer: the import's app password read by the same function); the evening a room could not send a statement to an email address, not folded to fit. 26,411.
+
+2026-11-05, need-2026-11-05-59's fix raised it by 51: an attachment was held by its path only, so a file rewritten after the owner's word went out as its new bytes, and a link swapped onto its path between the tool's check and its read attached a file outside the room's folders; now each file is read once, from an open with no link on its path followed, the call the word is for carries each file's sha256, and the bytes read are the bytes sent (emails.py 47: `Part`, `opened`, `read` and `checked`, the preview and the message from those bytes; daemon.py 4: `email_check`, one read for the gate's refusal, key and preview, another for the tool's); a hole in the owner's word, not folded to fit. 26,462.
+
 2026-11-04, need-2026-11-04-51: 105 lines for the talk in the program on the live page (a room asked to talk with the owner inside the program had replies only in the chat pane, a pane that could not be closed, and rewrote the whole program with #> lines, which threw the caret to the end; filed 2026-11-04), not folded to fit: channels/page.py 97 (owned, talk_lines and into: the room's lines as #> lines under the owner's last # line, wrapped, cut at DIFF_LINES; the chat closed kept in talk.json and said in the next message; a # line ended with Enter sent at once; the reply written in yerkd's copy and the room's last heard one alike and handed to every tab; the runner's alone run of a program with blank tests, its error's line, and the end of what a run printed said to the room), words.py 7 and mcp_server.py 1. The closed chat, the tab's own insertion with its caret kept, the room's bands and the large output are page.html, outside this count. 26,044.
 
 2026-11-04, need-2026-11-04-51's cold read, fixed: 25 lines, not folded to fit: channels/page.py 22 (spot, where the room's lines go, out of into so _talk knows the row they go after; talk_lines cuts at what the program has left under TEXT_MAX as well as at DIFF_LINES, with one count of the rest; _talk tells the room once when the program is full and moves the room's marks under the new lines down with them) and words.py 3 (PAGE_TALK_FULL, and PAGE_TALK_ON saying the lines under a reply move down). The tab's own cap and marks are page.html, outside this count. 26,069.
@@ -519,7 +527,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-05, need-2026-11-04-51's fourth cold read, fixed: 42 lines, not folded to fit: channels/page.py 40 (each reply in the program numbered and the newest TALK_KEPT kept in talk.json across a restart, handed to a tab with the state; a post whose number is behind gets the replies it lacks written in, caught_up, or is not kept when yerkd no longer has them) and words.py 2 (PAGE_TALK_BEHIND). The tab's catch-up and the number on its posts are page.html, outside this count. 26,396.
 
-- `lines = 26396`
+2026-11-06, need-2026-11-04-51 with main folded in again (need-2026-11-05-59's 187 and 51 lines): main's 26,462 plus this branch's 172, 26,634.
+
+- `lines = 26634`
 
 ## Uncapped
 

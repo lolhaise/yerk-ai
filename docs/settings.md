@@ -137,8 +137,9 @@ The daemon's settings, in the private folder beside rooms.toml, read when yerkd 
 
 ### [gmail]
 
-- `user`: the Gmail address `yerk import gmail` reads
+- `user`: the Gmail address `yerk import gmail` reads and the `email` tool sends from (none: no room emails)
 - `password_file`: a file holding its app password, never printed
+- `name`: the name an email goes out under (default none)
 
 ### [imessage]
 
