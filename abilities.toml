@@ -49,7 +49,11 @@ layer = 10
 # line, since the census under it already names each ability by its state (16 fewer), so it ends at 1,984;
 # need-2026-11-03-45 found it at 2,006 with page-mac's and page-reach's names and left this entry out of its own census
 # (abilities.census), the line before it naming it already (11 fewer), so it ends at 1,995; need-2026-11-04-47 found it
-# at 2,002 with latex's name and cut the answer's last line from "has any one" to "has one" (4 fewer), so it ends at 1,998.
+# at 2,002 with latex's name and cut the answer's last line from "has any one" to "has one" (4 fewer), so it ends at 1,998;
+# need-2026-11-04-51 found it at 2,009 with page-talk's name and cut the three video abilities' shared provider words
+# from "keys when they are there" to "keys if there" (11 fewer), so it ends at 1,998; need-2026-11-06-69 found it at 2,011
+# with attachments' name and cut github-state's provider words from "on the token the needs pipeline uses" to "on the
+# pipeline's token", its needs line naming that token whole (13 fewer), so it ends at 1,998.
 [abilities.abilities]
 state = "built"
 what = "Says what Yerk AI can do."
@@ -649,7 +653,7 @@ how = [
 ]
 tier = "key"
 keys = ["openai"]
-provider = "OpenAI for the transcript, with transcribe's Groq and Meta keys when they are there"
+provider = "OpenAI for the transcript, with transcribe's Groq and Meta keys if there"
 needs = "yt-dlp, ffmpeg and ffprobe on the machine, on the daemon's PATH; the OpenAI key for the transcript"
 price = "the download, the frames and a video's own captions are free; a video with no captions at transcribe's prices (yerk explain transcribe): a 1-minute reel is about 1 US cent with all three engines, a 10-minute video about 10"
 key = "the transcript runs on transcribe's keys, in the private folder's secrets/: openai.key, and groq.key and meta.key, both optional; the next call reads it, no restart"
@@ -668,7 +672,7 @@ how = [
 ]
 tier = "key"
 keys = ["openai"]
-provider = "OpenAI for the transcript, with transcribe's Groq and Meta keys when they are there"
+provider = "OpenAI for the transcript, with transcribe's Groq and Meta keys if there"
 needs = "ffmpeg and ffprobe on the machine, on the daemon's PATH; the OpenAI key for the transcript"
 price = "the frames are free; the transcript at transcribe's prices (yerk explain transcribe): a 1-minute clip is about 1 US cent with all three engines"
 key = "the transcript runs on transcribe's keys, in the private folder's secrets/: openai.key, and groq.key and meta.key, both optional; the next call reads it, no restart"
@@ -687,12 +691,29 @@ how = [
 ]
 tier = "key"
 keys = ["openai"]
-provider = "OpenAI for the transcript, with transcribe's Groq and Meta keys when they are there"
+provider = "OpenAI for the transcript, with transcribe's Groq and Meta keys if there"
 needs = "the Discord adapter, its bot able to read the channel (View Channel and Read Message History); ffmpeg and ffprobe on the machine; the OpenAI key for the transcript"
 price = "reading the message, the save and the frames are free; the transcript at transcribe's prices (yerk explain transcribe): a 1-minute clip is about 1 US cent with all three engines"
 key = "the transcript runs on transcribe's keys, in the private folder's secrets/: openai.key, and groq.key and meta.key, both optional; the next call reads it, no restart"
 free_path = "the frames come without a key; without one the room says the video's sound could not be transcribed"
 asked_as = ["the video posted in the channel", "the mp4 in discord", "the video attached to that message", "watch the videos in the channel", "the discord video"]
+
+# need-2026-11-06-69: a room asked to post again a file it had posted two weeks before found its outbox copy swept and the
+# trash emptied, a history listing that named the file with no address, and no network in its shell to fetch one.
+[abilities.attachments]
+state = "built"
+what = "The attachments tool on Yerk's own MCP server: the files an earlier Discord message carries are saved again to the room's inbox by the daemon's bot, so a room asked to post a file again whose own copy is gone (the nightly sweep took its outbox copy) gets it back and posts it with send, reads it or attaches it to an email, where before a history listing named the file with no address and a room's shell has no network to fetch it."
+how = [
+  "Which message: its id, looked for in the room's own channel and then the one it watches (the id is the [m:] on its day-log line); its link, as Discord's Copy Message Link gives it; or a file's name alone, the newest message the room posted a file of that name in, from the ledger's row for each file the room sent.",
+  "Where: a room reads a message in its own channel or the one it watches, and an owner's room also one in any channel of its own server; any other is refused in one line, its message never read.",
+  "Save: each file on the message (with a name, that one) up to 300 MB is saved in the room's work/inbox/<message id>/ under its own name, a ledger row each, as the adapter saves a file sent to the room, so the nightly sweep never takes it; one past 300 MB is named and never fetched.",
+  "Misses in words: a message gone, an id in neither channel, a channel the bot cannot read, a message with no files or none of that name (its files named), a name the room never posted and a room off Discord each come back as one line.",
+]
+tier = "free"
+needs = "the Discord adapter, its bot able to read the channel (View Channel and Read Message History)"
+price = "none"
+free_path = "this is the free path"
+asked_as = ["send the file again", "resend the file", "post the file again", "the file you sent before", "the attachment from that message"]
 
 [abilities.reverse-image-search]
 state = "built"
@@ -723,7 +744,7 @@ how = [
 ]
 tier = "key"
 keys = ["github"]
-provider = "GitHub (its REST API, on the token the needs pipeline uses)"
+provider = "GitHub (its REST API, on the pipeline's token)"
 needs = "a GitHub token at secrets/github.token in the private folder that reads Yerk's repository: its contents, pull requests and commit statuses (the needs pipeline's own token does)"
 price = "free: GitHub's REST API costs nothing on a token's own repositories, within its hourly rate limit"
 key = "make a fine-grained token on GitHub (Settings, Developer settings) for Yerk's repository with read access to its contents, pull requests and commit statuses (the pipeline's merge wants write too), and put it on the first line of secrets/github.token in the private folder, 0600; the next call reads it, no restart"
@@ -1641,6 +1662,27 @@ price = "none"
 free_path = "this is the free path"
 asked_as = ["page on my phone", "page from my phone", "page from my mac", "page on tailscale", "page over tailscale", "page on the lan",
             "page only on the pc", "cant reach the page", "page wont load on my mac"]
+
+# need-2026-11-04-51: the owner asked to talk with a room inside the program on the live page, no chat column at all; the
+# room's replies rendered only in the chat pane, which could not close (its split clamped 15 to 80), and the room rewrote
+# the whole program with #> lines, which threw the owner's caret to the end.
+[abilities.page-talk]
+state = "built"
+what = "A room's live page holds code, talk, output and ink on one surface, for every room: the chat closes to nothing and the talk lives in the program, the owner's # lines going to the room and its replies coming back as #> lines the page itself writes under the owner's last # line, with the owner's caret and typing kept; a # line ended with Enter goes at once, and what a run prints shows large."
+how = [
+  "The chat closed: drag the grip to the edge or press `close` on the chat; the split is 0, kept in the browser and by yerkd across restarts, and every tab that opens shows it; `chat` on the bar brings it back. The room is told in its next message, both ways.",
+  "The room's lines: while the chat is closed, each reply, notice and send of the room's goes into the program as #> lines, wrapped at 88 columns with a link or a fenced line kept whole, 60 at most, under the # line the owner said last (else the owner's lowest # line, else after the last line), after the #> lines already there, at its indent; the chat keeps them too.",
+  "Caret kept: yerkd writes the lines in its copy and in the one the room last heard, so the room is never told it typed them, and hands every tab the line and the words; the tab writes them in its own text at that line, so what the owner typed since keeps its place and the caret moves down with its line. A program the room draws keeps the caret where it was.",
+  "Marked as the room's: each #> line has a band in the room's colour, its name by the first line of a run, and is never read as the owner's talk.",
+  "Enter sends: a # line the owner ends with Enter goes to the room at once, not after the 1.5 s pause; an Enter after one the room already heard waits for the pause, as typing does; #run, #hint, #next or #make <anything> are talk the room acts on with its page tool.",
+  "Output: what a run prints shows large above the tests' tiles, and its end rides in the room's next message; a program with blank tests runs alone, as a script, in the same sandbox, so a game or a script the room writes on a #make line runs there.",
+]
+tier = "free"
+needs = "the live-page ability"
+price = "none"
+free_path = "this is the free path"
+asked_as = ["talk in the code", "talk to you in the code", "talk through comments", "talk via comments", "chat in the code",
+            "dont want the chatbox", "close the chat", "no chat column", "replies in the code", "print output bigger"]
 
 [abilities.work-writes]
 state = "built"

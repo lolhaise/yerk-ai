@@ -6,6 +6,80 @@ A line that changes a file the install keeps (rooms.toml, yerkd.toml, budgets.to
 newer than the code is refused with one line, never changed); the index chunks every file again when its chunker's
 version changes.
 
+## 2026-11-06
+
+### rule-filing-check-2026-11-06 (#?)
+
+- A rule a room files with `remember` and a `job` is checked before anything is written. Its words are read by the
+  counts `yerk doctor` scores the rule files with (a no with no reason, a shouted word, an example outside `<example>`
+  tags, an alarm mark), its examples left out. A rule that misses one is not filed: the room hears each count, the words
+  that tripped it and the prompting guide's fix in one line, rewrites the rule and files it again. Before, the doctor
+  named such a line the day after it was filed, and every room had loaded it by then.
+- Then the filing lists the live lines of other jobs that speak about the same thing, in the rules file, the topic rules
+  and each owner room's rulebook, persona and voice: a topic of the doctor's said-twice count, near-duplicate words, a
+  mark, code, a quoted phrase, a channel or a file both name, a thing one says no to that the other names, or one's job
+  named in the other, and then any line naming the job of a line so found. A line that says no to the same thing as the
+  new rule agrees with it, so that thing links neither of them. A word more than five lines say links none,
+  so the list stays short. Nothing is filed until the room's next call settles each line, superseded or kept, with a
+  one-clause reason. Before, a new rule could land while older lines of other jobs still asked for the opposite, and
+  every room that loaded them kept the old way.
+- A line superseded in the rules file or the topic rules is marked by the new rule, as its own job's older line is. A
+  line in a rulebook, persona or voice file, which no room changes, stays as it is, and the machine room gets one notice
+  naming the file, the line and the new rule, for whoever keeps that file. Each verdict and its reason is a line in the
+  room's day log.
+- `yerk curate --apply` writes no rule line a filing would turn back, and says which proposal and why.
+- The mechanics' line on filing a job now asks for literal words, an example that is a real exchange from the day log,
+  and the older line's examples carried forward, and says the filing checks the wording and lists older lines on the
+  same thing; four other mechanics lines are reworded with no change in what they ask. The mechanics' line goes to
+  6,800, `yerk_tools` to 23,700, the session total to 123,405 and the `[code]` ceiling to 26,968.
+
+**Upgrading**: budgets.toml's `yerk_tools` is 23,700 and the session `total` 123,405; keep yours at least that, or the
+deploy's fit check refuses on the longer `remember`. A script that files rules through `memory.rule` gets the same
+wording check.
+
+### retired-marks-2026-11-06 (#?)
+
+- A reply shape you retired can now be held by code, not only asked for by a rule. Rule text is a request, so a room
+  could still answer with checklist boxes, colour squares saying who holds an item and a colour key under the list after
+  its rules said not to, and the status board's own rule turned that shape back only in a room with people.
+- With `[gates] retired_marks` set in yerkd.toml, a final message in any room without people (an owner room, the machine
+  room) holding one of those marks anywhere in a line (after a list number, after a dash, mid-line) is turned back once
+  before it is posted, saying how many lines hold one and which marks. The room is asked for a plain numbered list
+  instead: a bold lead of two or three words a line and who does what in words, and for a status one line per item with
+  its state first. A mark inside a fenced block never counts, and the second attempt goes out as written. Each bounce is
+  a `retired` shadow row, counted in the morning diff.
+- With the list set, the session start's room pack quotes the room's earlier lines without those marks, and a line that
+  was only a colour key is left out whole, so the pack no longer shows the retired shape back to the room as its own.
+  The day logs keep every line as it was.
+- A room with people keeps the board rule as it was, list or no list, and with no list nothing changes. The `[code]`
+  ceiling goes to 26,780.
+
+**Upgrading**: to turn it on, list the marks in yerkd.toml's `[gates]` table, like `retired_marks = ["☐", "🟦"]`, and
+restart yerkd. A value that is not a list of marks stops yerkd at its start with one line saying so. budgets.toml:
+`[code] lines` goes to 26,780.
+
+### need-2026-11-06-69 (#?)
+
+- A room can now post a file again that it posted days ago. Before, a room asked to send a file once more found its
+  own copy gone (the nightly sweep moves the copies of what a room sent to the trash after two days, and the trash
+  empties), a history listing that named the file but gave no address, and no network in its shell, so it pointed
+  you at the old message to download the file yourself.
+- The new `attachments` tool saves the files an earlier Discord message carries back into the room's inbox, where the
+  sweep never takes them, and the room posts one with `send`, reads it or attaches it to an email. The message is named
+  by its id (looked for in the room's own channel, then the one it watches; the id is on its line in the day log), by
+  its link, or with a file's name alone, the newest message the room posted that file in. A message with several files
+  gives them all, or with a name only that one.
+- A room reads a message only where it reads already: its own channel and the one it watches, and one of your rooms
+  also any channel of its own server, as `watch` reads a message's video. What cannot come is said in one line: a
+  message gone, an id in neither channel, a channel the bot cannot read, a message with no files or none of that name
+  (its files named), a name the room never posted, a file past 300 MB, or a room not on Discord.
+- The "what can you do" answer names the new ability inside its 2,000 characters: github-state's provider words are
+  shorter. The `[code]` ceiling goes to 26,729, and `yerk_tools` to 23,300 with the session total to 122,405.
+
+**Upgrading**: budgets.toml's `yerk_tools` is 23,300 and the session `total` 122,405; keep yours at least that, or the
+deploy's fit check refuses on the new tool. Restart yerkd for the new tool. Nothing to set: the bot reads the message
+on the permissions it already has (View Channel and Read Message History).
+
 ## 2026-11-05
 
 ### compact-visible-2026-11-05 (#?)
@@ -23,7 +97,7 @@ version changes.
   it and runs right after, as with the idle compaction, and its card says "shortening the conversation first" from the
   moment it arrives; that is new for the idle compaction too, where such a message showed no card until the compaction
   ended. A message already waiting when the turn ends runs at once, and the card says so if Claude Code compacts inside it.
-- The `[code]` ceiling goes to 26,502.
+- The `[code]` ceiling goes to 27,008: main's 26,968 plus this branch's 40.
 
 **Upgrading**: budgets.toml `[session]` gains `idle_compact_within = 0.05`. A room's block in rooms.toml may set its own,
 like `idle_compact_at` and `idle_compact_after`; 0 turns it off. Restart yerkd for it.
@@ -96,6 +170,29 @@ private folder holding a Gmail app password, 0600; Google makes one under 2-Step
   on deploy.
 
 ## 2026-11-04
+
+### need-2026-11-04-51 (#?)
+
+- A live page can be one surface for code, talk, output and ink. Its chat now closes to nothing: drag the grip to the
+  edge or press `close` on the chat, and `chat` on the bar brings it back; yerkd keeps the closed chat across restarts
+  and every tab that opens shows it. While it is closed the talk lives in the program: a # line ended with Enter goes
+  to the room at once (not after the 1.5 s pause), and the room's replies come back as #> lines the page writes under
+  the owner's last # line, in the room's colour and marked as its own. The tab writes them in its own text, so the
+  caret stays where it was and what was typed since is kept; the room is told in its next message when the chat closes
+  or opens, and never reads its own #> lines as typed by the owner.
+- The room's #> lines stop at the program's 100,000-character cap, in yerkd's copy and in every tab: what fits goes
+  in, the rest is counted as on the chat ("... 20 more lines on the page's chat"), and the room hears once in its next
+  message that the program is full. Before, replies grew the program past the cap with no tab open, and the next
+  keystroke cut it on disk, the end of the owner's code with it. The room's marks under its new lines move down with
+  them, so an arrow stays on the code it points at and no longer lands on a #> line. An Enter after a comment the
+  room has already heard, such as a drill's header or a question the pause already sent, waits for the pause like any
+  typing, so the line typed under it goes in the same message; before, it sent the room a message at once that held
+  only a blank line.
+- What a run prints shows large, above the tests' tiles, and its end rides in the room's next message. A program whose
+  tests are blank runs alone, as a script, in the same sandbox, so a game or a script the room writes for a `#make`
+  line runs on the page. A program the room draws whole keeps the caret where it was.
+- **Upgrading**: budgets.toml raises `yerk_tools` to 22,500 and the session-start `total` to 121,605 (the `page` tool's
+  two new clauses) and `[code] lines` to 26,634, each with its dated note; nothing to set.
 
 ### need-2026-11-04-50 (#?)
 

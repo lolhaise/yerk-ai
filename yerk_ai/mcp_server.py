@@ -2,9 +2,9 @@
 # official Python SDK) and the send tool's shape are adapted from Hermes Agent v0.22.2,
 # mcp_serve.py (create_mcp_server, messages_send), https://github.com/NousResearch/hermes-agent
 # Copyright (c) 2025 Nous Research. MIT License. See NOTICE.
-"""Yerk AI's own MCP server: twenty-one tools (send, hold, recall, read_memory, remember, worker, schedule, settings, transcribe,
-voice_note, seen, render, watch, need, text, email, delete, reverse_image_search, github_state, page, texts), local-only HTTP, preloaded in
-every room; transcribe, voice_note, watch, text, email, reverse_image_search and github_state are here and not plug-ins because the daemon has the network
+"""Yerk AI's own MCP server: twenty-two tools (send, hold, recall, read_memory, remember, worker, schedule, settings, transcribe,
+voice_note, seen, render, watch, need, text, email, delete, reverse_image_search, github_state, page, texts, attachments), local-only HTTP, preloaded in
+every room; transcribe, voice_note, watch, text, email, reverse_image_search, github_state and attachments are here and not plug-ins because the daemon has the network
 plug-ins because the daemon has the network (and github_state the token) and a room's shell has none, seen because no owner room has a Write tool, render
 a writable /tmp a room's sandbox does not give (and LaTeX a sandbox of its own, a shell or none), and delete because that sandbox mounts all but the room's folders read-only. A worker gets none of it: by default no MCP server at all, and with
 [workers] yerk_tools its own stdio server (`worker_server`) carrying recall and read_memory only.
@@ -53,7 +53,8 @@ class Daemon(Protocol):
     async def tool_recall(self, room: str, query: str, k: int) -> dict[str, Any]: ...
     async def tool_read_memory(self, room: str, path: str, start: int, lines: int) -> dict[str, Any]: ...
     async def tool_remember(self, room: str, text: str, about: str, replaces: list[str], said: str = "", source: str = "") -> dict[str, Any]: ...
-    async def tool_rule(self, room: str, text: str, job: str, triggers: list[str] | None = None) -> dict[str, Any]: ...
+    async def tool_rule(self, room: str, text: str, job: str, triggers: list[str] | None = None,
+                        older: list[str] | None = None) -> dict[str, Any]: ...
     async def tool_worker(self, room: str, req: dict[str, Any]) -> dict[str, Any]: ...
     async def tool_schedule(self, room: str, req: dict[str, Any]) -> dict[str, Any]: ...
     async def tool_settings(self, room: str, model: str, effort: str, account: str = "") -> dict[str, Any]: ...
@@ -70,6 +71,7 @@ class Daemon(Protocol):
     async def tool_github_state(self, room: str, branch_or_pr: str) -> dict[str, Any]: ...
     async def tool_page(self, room: str, req: dict[str, Any]) -> dict[str, Any]: ...
     async def tool_texts(self, room: str, limit: int) -> dict[str, Any]: ...
+    async def tool_attachments(self, room: str, message: str, name: str) -> dict[str, Any]: ...
 
 
 def caller_room(ctx: Context) -> str:
@@ -167,7 +169,7 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
 
     @mcp.tool()
     async def remember(text: str, about: str = "", replaces: list[str] | None = None, job: str = "", triggers: list[str] | None = None,
-                       said: str = "", source: str = "", *, ctx: Context) -> str:
+                       said: str = "", source: str = "", older: list[str] | None = None, *, ctx: Context) -> str:
         """File in memory now, before you write the answer, what you were just told: a new fact, a decision or a
         correction, one line in plain words. `about`: for a fact, the person, place or thing it is about,
         by the name the owner uses (it names the fact file). `replaces`: for a correction, each old line as
@@ -175,12 +177,15 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         next 12 holding those words is marked superseded. Returns the new line's cite. `job`: when the owner
         says how a job is done from now on, or corrects how it was done, the job's short name ("open web pages",
         the rules' own name if it has one): `text` becomes its one rule in every room, the older one marked
-        replaced. `triggers`, with `job`: words or short phrases a message on the job holds (the owner's, when
+        replaced. A rule holds its reasons in calm words, examples in <example> tags, since every room follows it as
+        written; one that does not comes back with each fix, and so do live lines of other jobs on the same thing,
+        settled in `older`: `cite | superseded: why` or `cite | kept: why`.
+        `triggers`, with `job`: words or short phrases a message on the job holds (the owner's, when
         named); a topic rule loads on them and its job's words. `said`: when `text` is what a person said or
         wrote, word for word, their name, with `source` (the message id, file path or transcript line holding
         those words): it is filed as their words. Anything else about a person (what they decided or want, in
         your words) is your note, and is shown as your note, never as their words."""
-        return json.dumps(await (daemon.tool_rule(caller_room(ctx), text, job, triggers) if job else
+        return json.dumps(await (daemon.tool_rule(caller_room(ctx), text, job, triggers, older) if job else
                                  daemon.tool_remember(caller_room(ctx), text, about, replaces or [], said, source)))
 
     @mcp.tool()
@@ -353,11 +358,12 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
                    bar: dict[str, str] | None = None, timer: int = -1, stall: int = -1, open: bool = False, where: str = "",
                    off: bool = False, *, ctx: Context) -> str:
         """Draws on this room's live page, where the owner types, draws and runs tests in a browser; each part given replaces
-        what it shows. `code` a new program (solution.py); `tests` its unittest file (it imports solution), which the page
-        runs on every pause in typing; `marks` line marks, each {"line": N, "kind": "highlight" or "arrow", "text": a note},
+        what it shows. `code` a new program (solution.py); `tests` its unittest file (it imports solution; blank: the program
+        runs alone, its prints shown large), which the page runs on every pause in typing; `marks` line marks, each {"line": N, "kind": "highlight" or "arrow", "text": a note},
         [] clears; `hint` a card under the program; `bar` labels and values, a scoreboard on top ("Gold II" a rank badge,
         "12/40" or a number under LP a bar, a number big); `timer` seconds on its clock, 0 stops;
-        `stall` seconds of no typing before the page tells you, 0 off. Your replies show there too. What the owner types,
+        `stall` seconds of no typing before the page tells you, 0 off. Your replies show there too, and with its chat closed
+        go into the program as #> lines under the owner's last # line. What the owner types,
         draws and says there comes to you as messages, mid-turn too; each keystroke is in page/events.jsonl. `open` true
         (the owner asked for the page) turns it on, with no restart, and opens it on the owner's screen, `where` "mac" on
         their Mac (default "pc"); `off` true: off."""
@@ -365,6 +371,15 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
                                  "timer": timer if timer >= 0 else None, "stall": stall if stall >= 0 else None,
                                  "open": open or None, "where": where or None, "off": off or None}.items() if v is not None}
         return json.dumps(await daemon.tool_page(caller_room(ctx), req))
+
+    @mcp.tool()
+    async def attachments(message: str = "", name: str = "", *, ctx: Context) -> str:
+        """The files an earlier Discord message carries, saved again to this room's inbox, since your shell has no network: a
+        file this room posted whose copy is gone (the sweep took it), or one sent here. `message` its id (the [m:] of its
+        day-log line; in this room's channel or the one it watches) or its link (discord.com/channels/SERVER/CHANNEL/MESSAGE;
+        an owner's room, any channel of its server); `name` a file's name: with `message`, that file only; alone, the newest
+        file this room posted under it. Returns each saved path: `send` it again, Read it or attach it."""
+        return json.dumps(await daemon.tool_attachments(caller_room(ctx), message, name))
 
     def route(path: str, handler: Handler) -> None:
         @mcp.custom_route(path, methods=["POST"])

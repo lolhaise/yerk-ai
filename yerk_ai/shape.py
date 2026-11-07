@@ -25,7 +25,7 @@ from typing import Any
 
 from .config import REPO, flag
 from .context import MECHANICS, layer_dir
-from .memory import FRONT, RULES, Settings, cite
+from .memory import EXAMPLE, FRONT, RULES, Settings, cite
 from .mentions import OLD
 
 COUNTS = ("no why", "loud", "untagged", "alarm")      # per line; "twice" is per room
@@ -97,16 +97,32 @@ def plain(line: str, rules: bool = False, quotes: bool = False) -> str:
     return line if quotes else QUOTED.sub(" ", line)
 
 
+def tripped(line: str, rules: bool = False, acronyms: frozenset[str] = ACRONYMS) -> dict[str, list[str]]:
+    """Per count, in COUNTS' order, the words of one line of text that put it under that count (none: it is not)."""
+    p, q = plain(line, rules), plain(line, rules, quotes=True)
+    said = [m.group(0) for m in QUOTED.finditer(q) if len(m.group(1).split()) >= 3]
+    lead = LEAD.search(q.strip()) if QUOTED.search(q) or q.rstrip().endswith(":") else None
+    marked = MARKED.findall(q) if said else []
+    return {"no why": [] if WHY.search(p) else NEG.findall(p), "loud": [w for w in LOUD.findall(p) if w not in acronyms],
+            "untagged": THUMBS.findall(q) + ([lead.group(0)] if lead else []) + (said + marked if marked else []),
+            "alarm": [] if LEGEND.search(line) else ALARM.findall(p)}
+
+
 def offenses(line: str, rules: bool = False, acronyms: frozenset[str] = ACRONYMS) -> list[str]:
     """The per-line counts one line of text falls under, in COUNTS' order."""
-    p, q = plain(line, rules), plain(line, rules, quotes=True)
-    words = [len(m.group(1).split()) >= 3 for m in QUOTED.finditer(q)]
-    lead = LEAD.search(q.strip()) and (QUOTED.search(q) or q.rstrip().endswith(":"))
-    hits = {"no why": bool(NEG.search(p)) and not WHY.search(p),
-            "loud": any(w not in acronyms for w in LOUD.findall(p)),
-            "untagged": bool(THUMBS.search(q) or lead or (any(words) and MARKED.search(q))),
-            "alarm": bool(ALARM.search(p)) and not LEGEND.search(line)}
-    return [k for k in COUNTS if hits[k]]
+    return [k for k, v in tripped(line, rules, acronyms).items() if v]
+
+
+def filing(line: str, acronyms: frozenset[str] = ACRONYMS) -> dict[str, list[str]]:
+    """A rule line about to be filed, read as the counts read a rules line with its examples out (a line holding one is
+    never read by score): each count it falls under and the words that put it there. memory.rule files none that has one."""
+    return {k: list(dict.fromkeys(v)) for k, v in tripped(EXAMPLE.sub("", line), True, acronyms).items() if v}
+
+
+def install(docs: dict[str, Any]) -> tuple[dict[str, str], frozenset[str]]:
+    """The topics and acronyms the counts read on an install: TOPICS and ACRONYMS with yerkd.toml's [docs] topics and acronyms."""
+    return ({**TOPICS, **{str(k): str(v) for k, v in (docs.get("topics") or {}).items()}},
+            ACRONYMS | {str(x).upper() for x in docs.get("acronyms") or []})
 
 
 def score(path: Path, rules: bool = False, topics: dict[str, str] | None = None,
@@ -144,8 +160,7 @@ def label(private: Path, m: Settings, kind: str, p: Path) -> str:
 def check(private: Path, m: Settings, rooms: dict[str, dict[str, Any]], docs: dict[str, Any], now: float) -> dict[str, Any]:
     """Every room's rule files scored: per file its counts, per room the topics said twice, and the rules file's lines of
     the last day that miss the shape, by cite."""
-    topics = {**TOPICS, **{str(k): str(v) for k, v in (docs.get("topics") or {}).items()}}
-    acronyms = ACRONYMS | {str(x).upper() for x in docs.get("acronyms") or []}
+    topics, acronyms = install(docs)
     rules, scored, per_room, twice = m.root / RULES, dict[str, dict[str, Any]](), dict[str, dict[str, Any]](), dict[str, list[str]]()
     for name, conf in rooms.items():
         mine = []

@@ -244,6 +244,25 @@ def test_the_pack_is_the_rooms_filed_items_newest_first_and_comes_back_after_com
     assert ss["hooks"][0]["command"].endswith("--data-binary @- http://127.0.0.1:9/hook")
 
 
+
+def test_the_pack_quotes_an_item_with_the_retired_marks_dropped_and_a_colour_key_line_dropped_whole(tmp_path):
+    """With [gates] retired_marks set, the room's own earlier lines come back in the pack without them, so the pack never
+    shows the retired shape to the room as its own style; with none set, every item is quoted as filed."""
+    s = tree(tmp_path)
+    day(s, 1, ["- 09:00:00 example-room yerk: we decided the move plan / 1. 🟦 **Van booked.** It comes Saturday / "
+               "2. 🟨 **Keys back.** The old keys go back Friday / -# 🟦 me · 🟨 you [m:c1]",
+               "- 09:05:00 example-room owner: ☑\ufe0f van paid, ☐ boxes still to buy [m:c2]"])
+    marks = ("☐", "☑", "🟦", "🟨")
+    text = memory.room_pack(s, "example-room", 6000, NOW, retired=marks)[0]
+    assert ("yerk: we decided the move plan / 1. **Van booked.** It comes Saturday / 2. **Keys back.** The old keys go "
+            "back Friday (daily/2026-01-19.md:3)") in text
+    assert "owner: van paid, boxes still to buy (daily/2026-01-19.md:4)" in text
+    assert not any(m in text for m in marks) and "me · you" not in text
+    assert "-# 🟦 me · 🟨 you" in memory.room_pack(s, "example-room", 6000, NOW)[0]            # no list: as filed
+    for line in ("🟦 = me, 🟨 = you", "☐ open · ☑ done"):
+        assert memory.unmarked(line, marks) == "", line
+    assert memory.unmarked("☑ shipped", marks) == "shipped"                     # one mark and a word is a status, not a key
+
 # 4. the evidence ledger and the shadow Stop check
 def stream(ev: evidence.Evidence, tool: str, ti: dict, result: str, n: int = 1) -> None:
     ev.observe({"type": "assistant", "message": {"content": [{"type": "tool_use", "id": f"t{n}", "name": tool,

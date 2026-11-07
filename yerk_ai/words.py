@@ -155,6 +155,19 @@ RULE_STRIPPED = "the example in rule \"{job}\" taken out so rules.md fits its ca
 RULE_TOPIC_LOG = "rule \"{job}\" filed as a topic rule in {file}: rules.md is full at its cap of {cap:,}; it loads when {triggers} come up"
 RULE_TOPIC = "filed as a topic rule: loads when\n{triggers} come up\n\"{job}\"\nfrom {room}\n{where}\nrules.md is full at its cap of {cap:,}"
 TOPIC_WHERE = ("for every room", "for {rooms} only")
+# a rule a filing turns back (memory.unshaped, Daemon.tool_rule), with what a rule holds and why, so the room rewrites and calls again
+RULE_SHAPE = ("not filed: every room follows a rule as written, and follows it best in the prompting guide's shape (what to do "
+              "with its reason, calm words, an example inside <example> tags); rewrite what each line of `fix` names and call again")
+RULE_FIX = {"no why": "say what to do instead, or give it its reason with because, since or so that, since a model generalises from a reason",
+            "loud": "write it in normal case, since a shouted word makes a model overreact",
+            "untagged": "put the exchange inside <example> tags, marked landed or bounced, so a model tells it from the instruction",
+            "alarm": "say in words why it matters, since an alarm mark reads as urgency with no reason"}
+RULE_OFFENCE = "{name}: {said}; {fix}"
+RULE_SAME = ("not filed yet: each line in `older` is live and speaks about the same thing, and one left saying the old way keeps "
+             "it alive in every room that loads it; call again with `older` settling each, `cite | superseded: why` or "
+             "`cite | kept: why`, one clause")
+RULE_SETTLED = "rule \"{job}\" ({cite}) and {old}: {verdict}, {why}"      # the room's day log, a verdict a line, for a person to audit
+RULE_TELL = "a new rule outdates {old}\n\"{line}\"\nrule \"{job}\": {cite}, from {room}\nwhoever keeps {file} fixes it there"
 TOPICS_MOVED = "{n} rule{s} moved to rules-topics.md\nfrom rules-overflow.md, once\neach loads when its topic comes up"
 PART_CUT = "{part}: {n} line{s} dropped\nto fit its {cap:,} in {room}"     # at session start: whole lines of its own, no framing
 FILED = re.compile(r"^\W*(?:filed|saved|from now on,? every room)\b", re.I)   # a final reporting a filing (stub)
@@ -168,6 +181,10 @@ BOARD_LINE = re.compile(r"^[\s>*-]*(?:☑|☐|⛔|🟦|🟨)|\bunblocks?:|🟦 m
 BOARD = ("This room has people, and your final message is the owner rooms' status board ({found}). Say where things "
          "stand in two or three plain sentences, with no checklist marks, colour key, quote rails or what unblocks it, "
          "and write that as your final message now.")
+# the retired-marks rule at Stop, in every room without people: the marks are the install's ([gates] retired_marks)
+RETIRED = ("This install retired the marks in your final message ({found}). Write it as a plain numbered list with none of "
+           "them, each line opening with a bold lead of two or three words and saying who does what in words (for a status, "
+           "one line per item with its state first), and write that as your final message now.")
 # the paste rule, in `send` and at Stop alike (2026-10-22: a block posted the evening before went out again word for word)
 PASTE = ("Not posted: your message holds a fenced block this room already posted on {when}, word for word, and its dates, "
          "times and plans were that day's. Re-read it line by line against today (relative dates, clock times, who meets "
@@ -375,6 +392,19 @@ WATCH_NO_FILES = "that message has no file attached, so there is nothing to watc
 WATCH_TOO_BIG = "past the 300 MB a watch takes, so not saved: {names}"
 WATCH_NOT_SAVED = "{name} could not be saved from Discord, so there is nothing to watch ({why})"
 WATCH_MORE = "that message has {n} more video(s), saved: watch each with its path: {paths}"
+# the files of an earlier Discord message saved again (the attachments tool, the adapter's files); a miss Discord gives is watch's
+ATTACH_NO_ROOM = "there is no room {room}, so there is no inbox to save a file in"
+ATTACH_NOTHING = "give the message's id or its link, or the name of a file this room posted"
+ATTACH_NOT_MESSAGE = "\"{given}\" is not a Discord message's id or its link, so no message was read"
+ATTACH_NOT_POSTED = "Yerk has no record of this room posting a file named {name}, so give the message's id or its link"
+ATTACH_NOT_FOUND = "no message with that id in this room's channel or the one it watches, so give its link"
+ATTACH_NOT_ITS_CHANNEL = ("that message is outside the channels this room reads, so it was not read: a Discord message in this "
+                          "room's own channel or the one it watches, and an owner's room one anywhere in its own server")
+ATTACH_NO_FILES = "that message carries no file, so there is nothing to save"
+ATTACH_NO_NAME = "that message carries no file named {name}, so nothing was saved; its files: {files}"
+ATTACH_TOO_BIG = "past the 300 MB a fetch takes, so not saved: {names}"
+ATTACH_NOT_SAVED = "{name} was not saved, since Discord would not give it ({why})"
+ATTACH_NEXT = "Saved in this room's inbox: post one again with `send` and its path, Read it, or attach it to an email."
 CAPTIONS_LIVE = "it is live now or not started yet, and a live stream has no captions to read"
 # a picture looked up on the web (reverse_image.py): why no search was made, and what its result says next
 REVERSE_NOT_HERE = "{name} is outside this room's folders; reverse_image_search reads the pictures sent to it and this room's own work"
@@ -534,6 +564,16 @@ PAGE_UNPADDED = "the page spaces the bar's cells itself, so the padding in their
 PAGE_NO_DAEMON = "yerkd is not running here (no yerkd.json in the state folder); start it, then ask again"
 PAGE_NO_KEY = ("room {room} has no live page yet: ask for it in the room, whose page tool turns it on, or set page = true in its "
                "rooms.toml table and restart yerkd")
+# talk in the program (channels/page.py talk): the chat closed or opened, a reply's cut, and a program run alone, its prints
+PAGE_TALK_ON = ("the owner closed the page's chat: your replies now go into the program as #> lines under the owner's last "
+                "# line, so write them as short plain lines; the lines under them move down, your marks with them")
+PAGE_TALK_FULL = "the program is at the page's cap of {n:,} characters: what did not fit of your reply is on the page's chat alone"
+PAGE_TALK_OFF = "the owner opened the page's chat again: your replies show there, not in the program"
+PAGE_TALK_CUT = "... {n} more lines on the page's chat"
+PAGE_TALK_BEHIND = ("not kept: this tab missed more of the room's lines than yerkd keeps; when its feed is back it takes the "
+                    "program as yerkd has it")
+PAGE_MAIN, PAGE_MAIN_ERROR = "ran solution.py alone (no tests)", "ran solution.py alone (no tests), and it stopped: {error}{line}"
+PAGE_PRINTED = "it printed:\n{output}"
 QUIET_WORKER = "finished clean, nothing to add"   # a worker's last message of exactly NO_REPLY: its card's head ("nothing to post" ran past PHONE)
 # the emoji an OpenClaw progress card's tool row starts with, one per tool kind, "🧩" for any other (an MCP tool's): its
 # TOOL_DISPLAY_CONFIG with the message tool's spec, /usr/lib/node_modules/openclaw/dist/tool-display-zmIG5_OB.mjs, read

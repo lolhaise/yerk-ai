@@ -129,6 +129,7 @@ The daemon's settings, in the private folder beside rooms.toml, read when yerkd 
 - `trash`: the trash command a delete is rewritten into (default: one found on the machine)
 - `off`: the built-in outward-action rules turned off, by name
 - `external`: [gates.external.NAME] tables, outward-action rules of your own: tool, command and what
+- `retired_marks`: marks a reply may not hold in a room without people (an owner room, the machine room), like ["☐", "🟦"]: a final message holding one anywhere in a line outside a fenced block is turned back once at Stop, asked for a plain numbered list instead, and the session start's room pack quotes the room's earlier lines without them, a colour key line left out whole (default none: nothing is turned back or changed; a room with people keeps its own board rule)
 
 ### [import]
 
@@ -174,6 +175,8 @@ The daemon's settings, in the private folder beside rooms.toml, read when yerkd 
 - `fetch`: the doctor's weekly fetch of the Claude docs (default true)
 - `refresh_days`: days between fetches (default 7)
 - `pages`: the pages kept, slug = URL (default config.DOCS_PAGES)
+- `topics`: the install's own topics the rule-shape check reads, name = "regex", beside shape.TOPICS
+- `acronyms`: words in capitals the rule-shape check and a rule's filing read as names, not shouting
 
 ### [deploy]
 

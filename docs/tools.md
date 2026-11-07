@@ -2,7 +2,7 @@
 
 Written by `yerk docs own` from yerk_ai/mcp_server.py (build) and workers.WORKER_TOOLS; change those and run it again, never this page.
 
-The 21 tools Yerk AI's own MCP server hands every room's Claude Code, preloaded, as mcp__yerk__NAME. Each one's description is the text the model reads, indentation dropped. A worker gets none of them unless [workers] yerk_tools in yerkd.toml names some, and then only recall, read_memory, on its own server.
+The 22 tools Yerk AI's own MCP server hands every room's Claude Code, preloaded, as mcp__yerk__NAME. Each one's description is the text the model reads, indentation dropped. A worker gets none of them unless [workers] yerk_tools in yerkd.toml names some, and then only recall, read_memory, on its own server.
 
 ## send
 
@@ -59,7 +59,10 @@ by the name the owner uses (it names the fact file). `replaces`: for a correctio
 next 12 holding those words is marked superseded. Returns the new line's cite. `job`: when the owner
 says how a job is done from now on, or corrects how it was done, the job's short name ("open web pages",
 the rules' own name if it has one): `text` becomes its one rule in every room, the older one marked
-replaced. `triggers`, with `job`: words or short phrases a message on the job holds (the owner's, when
+replaced. A rule holds its reasons in calm words, examples in <example> tags, since every room follows it as
+written; one that does not comes back with each fix, and so do live lines of other jobs on the same thing,
+settled in `older`: `cite | superseded: why` or `cite | kept: why`.
+`triggers`, with `job`: words or short phrases a message on the job holds (the owner's, when
 named); a topic rule loads on them and its job's words. `said`: when `text` is what a person said or
 wrote, word for word, their name, with `source` (the message id, file path or transcript line holding
 those words): it is filed as their words. Anything else about a person (what they decided or want, in
@@ -73,6 +76,7 @@ your words) is your note, and is shown as your note, never as their words.
 - `triggers`: list of string or null, default null
 - `said`: string, default ""
 - `source`: string, default ""
+- `older`: list of string or null, default null
 
 ## worker
 
@@ -314,11 +318,12 @@ refused until the owner says yes; then call again with `owner_yes` true.
 
 ```text
 Draws on this room's live page, where the owner types, draws and runs tests in a browser; each part given replaces
-what it shows. `code` a new program (solution.py); `tests` its unittest file (it imports solution), which the page
-runs on every pause in typing; `marks` line marks, each {"line": N, "kind": "highlight" or "arrow", "text": a note},
+what it shows. `code` a new program (solution.py); `tests` its unittest file (it imports solution; blank: the program
+runs alone, its prints shown large), which the page runs on every pause in typing; `marks` line marks, each {"line": N, "kind": "highlight" or "arrow", "text": a note},
 [] clears; `hint` a card under the program; `bar` labels and values, a scoreboard on top ("Gold II" a rank badge,
 "12/40" or a number under LP a bar, a number big); `timer` seconds on its clock, 0 stops;
-`stall` seconds of no typing before the page tells you, 0 off. Your replies show there too. What the owner types,
+`stall` seconds of no typing before the page tells you, 0 off. Your replies show there too, and with its chat closed
+go into the program as #> lines under the owner's last # line. What the owner types,
 draws and says there comes to you as messages, mid-turn too; each keystroke is in page/events.jsonl. `open` true
 (the owner asked for the page) turns it on, with no restart, and opens it on the owner's screen, `where` "mac" on
 their Mac (default "pc"); `off` true: off.
@@ -334,3 +339,16 @@ their Mac (default "pc"); `off` true: off.
 - `open`: boolean, default false
 - `where`: string, default ""
 - `off`: boolean, default false
+
+## attachments
+
+```text
+The files an earlier Discord message carries, saved again to this room's inbox, since your shell has no network: a
+file this room posted whose copy is gone (the sweep took it), or one sent here. `message` its id (the [m:] of its
+day-log line; in this room's channel or the one it watches) or its link (discord.com/channels/SERVER/CHANNEL/MESSAGE;
+an owner's room, any channel of its server); `name` a file's name: with `message`, that file only; alone, the newest
+file this room posted under it. Returns each saved path: `send` it again, Read it or attach it.
+```
+
+- `message`: string, default ""
+- `name`: string, default ""

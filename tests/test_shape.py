@@ -4,6 +4,7 @@ its rule names, the thresholds in budgets.toml [shape], the doctor's findings an
 and the shipped mechanics and example layer clean, so a stranger's install starts in the shape."""
 import json
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 from test_doctor import tree  # noqa: F401  (the doctor's healthy install: the example layer, a day log, a fresh index)
@@ -95,11 +96,15 @@ def test_the_rule_shape_counts_are_one_weekly_line_said_on_sunday_or_the_day_one
     assert memory.read(m, "docs/shape/example-room.md", reader=mine)["ok"] and not memory.read(m, "docs/shape/example-room.md", reader=other)["ok"]
 
 
-def test_a_rule_filed_in_the_last_day_that_misses_the_shape_is_named_by_its_cite_and_never_refused(tree, capsys):  # noqa: F811
+def test_a_rule_line_of_the_last_day_that_misses_the_shape_is_named_by_its_cite(tree, capsys):  # noqa: F811
+    """A filing out of the shape is turned back with nothing written (memory.unshaped); a line a person writes into the
+    rules file by hand is read by no filing, so the doctor names it by its cite the day it lands."""
     priv, state, *_ = tree
     m = memory.settings(priv, state)
-    filed = memory.rule(m, "example-room", "m1", "dates", "never guess a date")
-    assert filed["ok"]                                                      # a room is never blocked from filing a rule
+    assert not memory.rule(m, "example-room", "m1", "dates", "never guess a date")["ok"] and not (m.root / memory.RULES).exists()
+    at = datetime.now(timezone.utc).astimezone(m.tz)
+    (m.root / memory.RULES).write_text(f"# Rules\n\n- dates: never guess a date (example-room, {at:%Y-%m-%d %H:%M:%S%:z}) [m:m1]\n")
+    filed = {"cite": f"{memory.cite(m, m.root / memory.RULES)}:3"}
     assert doctor.main(priv, state) == 1
     out = capsys.readouterr().out.splitlines()
     assert f"{words.WORKING} rule shape {filed['cite']}: filed in the last day with a negative with no why; file it again in the shape" in out

@@ -16,6 +16,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import secrets
 import signal
 import socket
@@ -28,8 +29,8 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 from zoneinfo import ZoneInfo
 
-from . import (beat, context, deletes, deploy, doctor, emails, evidence, gates, github, hooks, inbox, jobs, location, mcp_server, memory, mentions,
-               needs, pictures, pipeline, render, reverse_image, status, taste, texts, transcribe, voice_note, watch, workers)
+from . import (beat, context, curate, deletes, deploy, doctor, emails, evidence, gates, github, hooks, inbox, jobs, location, mcp_server, memory,
+               mentions, needs, pictures, pipeline, render, reverse_image, shape, status, taste, texts, transcribe, voice_note, watch, workers)
 from .accounts import Account, Cooldowns, from_dir, load_accounts, pick
 from .channels import page
 from .channels.page import Page
@@ -49,7 +50,8 @@ log = logging.getLogger("yerk.daemon")
 YERK_TOOLS = ["mcp__yerk__send", "mcp__yerk__hold", "mcp__yerk__recall", "mcp__yerk__read_memory",
               "mcp__yerk__remember", "mcp__yerk__worker", "mcp__yerk__schedule", "mcp__yerk__settings", "mcp__yerk__transcribe",
               "mcp__yerk__voice_note", "mcp__yerk__seen", "mcp__yerk__render", "mcp__yerk__watch", "mcp__yerk__need", texts.TOOL, deletes.TOOL, emails.TOOL,
-              "mcp__yerk__reverse_image_search", "mcp__yerk__github_state", "mcp__yerk__page", "mcp__yerk__texts"]
+              "mcp__yerk__reverse_image_search", "mcp__yerk__github_state", "mcp__yerk__page", "mcp__yerk__texts",
+              "mcp__yerk__attachments"]
 # A shell room's sandbox when rooms.toml gives it no [rooms.NAME.sandbox] table: unsandboxed, a Read deny stops `cat` and
 # the Read tool, but a script, grep or redirect read every secret (Claude Code 2.1.304, PR 66's cold read, 2026-10-21)
 SANDBOX = {"enabled": True, "autoAllowBashIfSandboxed": True}
@@ -594,6 +596,34 @@ class Yerkd:
         log.info("watch: %s, %s", room, said)
         return r
 
+    async def tool_attachments(self, room: str, message: str, name: str) -> dict[str, Any]:
+        """The `attachments` tool: the files an earlier Discord message carries saved again to the calling room's inbox by its
+        adapter's bot (files), so a room posts again, reads or attaches a file whose copy is gone (its outbox copy swept): the
+        message by its id (the room's own channel, then the one it watches) or its link (watch.message), or with `name` alone
+        the newest message this room posted a file of that name in (Ledger.posted). Free: no spend row."""
+        if room not in self.rooms:
+            return {"ok": False, "error": words.ATTACH_NO_ROOM.format(room=room)}
+        given, name = message.strip(), name.strip()
+        at = watch.message(given) or ((None, int(given)) if re.fullmatch(r"\d{1,20}", given) else None)
+        if not given and not name:
+            return {"ok": False, "error": words.ATTACH_NOTHING}
+        if given and at is None:
+            return {"ok": False, "error": words.ATTACH_NOT_MESSAGE.format(given=words.no_paths(given)[:120])}
+        if (files := getattr(self.channels.get(room), "files", None)) is None:
+            return {"ok": False, "error": words.WATCH_NO_DISCORD}
+        try:
+            mid, kept, big = await files(room, at, name, self.owner(room))
+        except watch.Failed as e:
+            log.info("attachments: %s, %s", room, str(e)[:160])
+            return {"ok": False, "error": str(e)}
+        saved = [{k: f[k] for k in ("name", "path", "size", "type")} for f in kept if f.get("ok")]
+        missed = [words.ATTACH_NOT_SAVED.format(name=f["name"], why=f.get("error")) for f in kept if not f.get("ok")]
+        note = "; ".join([*missed, *([words.ATTACH_TOO_BIG.format(names=big)] if big else [])])
+        log.info("attachments: %s, message %s, %d file(s) saved%s", room, mid, len(saved), f"; {note[:160]}" if note else "")
+        if not saved:
+            return {"ok": False, "error": note}
+        return {"ok": True, "message": mid, "files": saved, "note": note, "next": words.ATTACH_NEXT}
+
     async def tool_reverse_image_search(self, room: str, path: str) -> dict[str, Any]:
         """The `reverse_image_search` tool: a picture from the calling room's own folders (may_send's rule, as render's) looked
         up on the web by Google Cloud Vision's web detection off the loop (reverse_image.run), on the key in the private
@@ -961,21 +991,41 @@ class Yerkd:
             return {"ok": False, "line": words.WORKER_OWN_ROOM.format(room=named)}
         return None
 
-    async def tool_rule(self, room: str, text: str, job: str, triggers: list[str] | None = None) -> dict[str, Any]:
+    async def tool_rule(self, room: str, text: str, job: str, triggers: list[str] | None = None, older: list[str] | None = None) -> dict[str, Any]:
         """`remember` with a `job`: an owner's room files how it is done from now on (memory.rule) for every room, fitted under
         the rules part's budget; one with no room even with no examples is filed as a topic rule in rules-topics.md and said
-        (`topic`: the reply's clause and one machine-room notice, each naming the words it loads on: `triggers`, when given)."""
+        (`topic`: the reply's clause and one machine-room notice, each naming the words it loads on: `triggers`, when given).
+        Turned back first, nothing written: a line out of the prompting guide's shape (memory.unshaped), then one with live lines
+        of other jobs on the same thing (curate.same) until `older` settles each (curate.settled). Each verdict is a line in the
+        room's day log; a line superseded in the rules file or the topic rules is marked by the new one, and one in a rulebook,
+        persona or voice file, which no room changes, is one notice in the machine room for whoever keeps that file."""
         if room not in self.rooms or not self.owner(room):
             return {"ok": False, "line": words.RULES_OWNER_ONLY}
         if self.reader(room).sealed:        # its teaching stays its own day-log note, the job its label, never the shared rules
             return await self.tool_remember(room, text, job.strip(" :"), [])
+        topics, acronyms = shape.install(dict(self.conf.get("docs") or {}))
+        if refused := memory.unshaped(job, text, acronyms):
+            return refused
+        listed, said = await asyncio.to_thread(curate.same, self.private, self.memory, self.room_confs, job, text, topics), curate.settled(older)
+        if open_ := [x for x in listed if x["cite"] not in said]:
+            return {"ok": False, "error": words.RULE_SAME, "older": [{k: x[k] for k in ("cite", "text", "shares")} for x in open_]}
         with self.rooms[room].lock:
             mid = ",".join(m.id for m in self.rooms[room].inflight) or f"x{self.rooms[room].turn_key}"
         cap = 0 if uncapped(self.budgets) else int(self.budgets["session_start"]["appended"]["rules"])     # 0: no strip, no topic filing
+        also = tuple((x["path"], x["line"], x["text"]) for x in listed if x["kind"] in ("rules", "topics") and said[x["cite"]][0] == "superseded")
         r = await asyncio.to_thread(memory.rule, self.memory, room, mid, job, text, cap, self.daily, context.books(self.private, self.room_confs),
-                                    tuple(triggers or ()))
+                                    tuple(triggers or ()), also, acronyms)
         if not r["ok"]:
             return r
+        for x in listed:                    # each verdict where a person can read it; a hand-kept file's line to its keeper, once
+            verdict, why = said[x["cite"]]
+            key = f"{mid}.o{hashlib.sha1(' '.join([r['cite'], x['cite'], verdict]).encode()).hexdigest()[:8]}"
+            if self.daily.capture(room, key, "yerk", words.RULE_SETTLED.format(job=r["job"], cite=r["cite"], old=x["cite"], verdict=verdict,
+                                  why=why)) and verdict == "superseded" and x["kind"] not in ("rules", "topics"):
+                await self.jobs.alert(None, f"{words.WORKING} " + words.RULE_TELL.format(old=x["cite"], line=words.line(x["text"], 200),
+                                      job=r["job"], cite=r["cite"], room=room, file=x["cite"].rpartition(":")[0]), 0)
+        r |= {k: v for k, v in (("kept", [x["cite"] for x in listed if said[x["cite"]][0] == "kept"]), ("told", [
+            x["cite"] for x in listed if said[x["cite"]][0] == "superseded" and x["kind"] not in ("rules", "topics")])) if v}
         on = words.either(r.get("triggers", []))
         if r.get("topic") and not r.pop("again", False):       # a retried call: filed and said already
             where = words.TOPIC_WHERE[1].format(rooms=", ".join(r["rooms"])) if r["rooms"] else words.TOPIC_WHERE[0]
@@ -1103,7 +1153,7 @@ class Yerkd:
     def room_pack(self, room: str, left: int = 6000) -> tuple[str, str]:
         r = self.rooms.get(room)
         text, _ = memory.room_pack(self.memory, room, left, exclude=r.current_ids() if r else set(),
-                                   rid=room_id(room, self.room_confs.get(room, {})), owner=self.owner(room))
+                                   rid=room_id(room, self.room_confs.get(room, {})), owner=self.owner(room), retired=self.gates.retired)
         return text, str(self.memory.daily)
 
     def compact_pack(self, room: str, sid: str = "") -> str:
@@ -1355,6 +1405,11 @@ class Yerkd:
                     self.ledger.shadow(t=round(time.time(), 3), room=name, session_id=sid, turn=room.turn_key, rule="board",
                                        detail=found, reply_chars=len(str(said)))
                     log.info("room %s: Stop bounced once: a status board in a room with people (%s)", name, found)
+                elif (retired := room.retired_check(active, None if said is None else str(said), self.gates.retired)):
+                    reason, found = retired           # counted the same way as the board
+                    self.ledger.shadow(t=round(time.time(), 3), room=name, session_id=sid, turn=room.turn_key, rule="retired",
+                                       detail=found, reply_chars=len(str(said)))
+                    log.info("room %s: Stop bounced once: a retired mark in a room without people (%s)", name, found)
                 elif said and (paste := await self.paste(room, str(said), active, name)):
                     reason, found = paste             # the send tool's words and flag: one bounce per result in either place
                     self.ledger.shadow(t=round(time.time(), 3), room=name, session_id=sid, turn=room.turn_key, rule="paste",

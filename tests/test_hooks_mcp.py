@@ -52,12 +52,13 @@ def test_the_hook_endpoint_answers_over_http(tmp_path):
     assert other.json() == {}
 
 
-def test_twenty_one_preloaded_tools_with_slim_schemas(tmp_path):
+def test_twenty_two_preloaded_tools_with_slim_schemas(tmp_path):
     y = daemon(tmp_path)
     tools = {t.name: t for t in asyncio.run(mcp_server.build(y, y.port, y.hook).list_tools())}
     assert set(tools) == {"send", "hold", "recall", "read_memory", "remember", "worker", "schedule", "settings", "transcribe",
                           "voice_note", "seen", "render", "watch", "need", "text", "email", "delete", "reverse_image_search",
-                          "github_state", "page", "texts"}
+                          "github_state", "page", "texts", "attachments"}
+    assert list(tools["attachments"].inputSchema["properties"]) == ["message", "name"]
     assert list(tools["page"].inputSchema["properties"]) == ["code", "tests", "marks", "hint", "bar", "timer", "stall", "open", "where", "off"]
     assert list(tools["text"].inputSchema["properties"]) == ["to", "text"]
     assert list(tools["email"].inputSchema["properties"]) == ["to", "subject", "text", "files"]
@@ -70,7 +71,7 @@ def test_twenty_one_preloaded_tools_with_slim_schemas(tmp_path):
     assert list(tools["watch"].inputSchema["properties"]) == ["url", "path", "frames", "owner_yes"] and "`watch`" in context.MECHANICS.read_text()
     assert list(tools["seen"].inputSchema["properties"]) == ["path", "text", "shows"] and "`seen`" in context.MECHANICS.read_text()
     assert list(tools["voice_note"].inputSchema["properties"]) == ["script", "name", "owner_yes"]
-    assert list(tools["remember"].inputSchema["properties"]) == ["text", "about", "replaces", "job", "triggers", "said", "source"]
+    assert list(tools["remember"].inputSchema["properties"]) == ["text", "about", "replaces", "job", "triggers", "said", "source", "older"]
     assert {f"mcp__yerk__{t}" for t in tools} == set(YERK_TOOLS) and "`remember`" in context.MECHANICS.read_text()
     assert list(tools["settings"].inputSchema["properties"]) == ["model", "effort", "account"]
     assert "the owner asks to change this room's model or thinking level" in str(tools["settings"].description).lower()

@@ -208,7 +208,12 @@ YERKD_WORDS = {
               "approve_minutes": "a word older than this releases nothing (default 30)",
               "trash": "the trash command a delete is rewritten into (default: one found on the machine)",
               "off": "the built-in outward-action rules turned off, by name",
-              "external": "[gates.external.NAME] tables, outward-action rules of your own: tool, command and what"},
+              "external": "[gates.external.NAME] tables, outward-action rules of your own: tool, command and what",
+              "retired_marks": "marks a reply may not hold in a room without people (an owner room, the machine room), like "
+                               "[\"☐\", \"🟦\"]: a final message holding one anywhere in a line outside a fenced block is "
+                               "turned back once at Stop, asked for a plain numbered list instead, and the session start's "
+                               "room pack quotes the room's earlier lines without them, a colour key line left out whole "
+                               "(default none: nothing is turned back or changed; a room with people keeps its own board rule)"},
     "import": {"me": "the name your own texts and mail are filed under",
                "classes": "a chat id's class or room, \"shared\" or \"room:<a room's id>\" (default private)",
                "skip": "chat ids a server import leaves out"},
@@ -235,7 +240,9 @@ YERKD_WORDS = {
               "pr_check": "the install's PR checker every need worker runs before its last commit (default: the suite, ruff, mypy)"},
     "curate": {"account": "the one account the night's curation runs on", "logs": "more files in the private folder read as the owner's own stream"},
     "docs": {"fetch": "the doctor's weekly fetch of the Claude docs (default true)", "refresh_days": "days between fetches (default 7)",
-             "pages": "the pages kept, slug = URL (default config.DOCS_PAGES)"},
+             "pages": "the pages kept, slug = URL (default config.DOCS_PAGES)",
+             "topics": "the install's own topics the rule-shape check reads, name = \"regex\", beside shape.TOPICS",
+             "acronyms": "words in capitals the rule-shape check and a rule's filing read as names, not shouting"},
     "deploy": {"unit": "the systemd unit `yerk deploy` restarts (default: the one the running yerkd is in)",
                "tree": "the daemon's checkout (default: the unit's working folder)",
                "tests": "the fast tests run before a restart (default test_scrub, test_budget, test_card and test_style)",
