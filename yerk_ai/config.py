@@ -120,6 +120,8 @@ ROOM_WORDS = {
     "id": "the room's id in the day logs and the ledgers (default: its channel, else its name)",
     "idle_compact_after": "minutes with no turn before a session at idle_compact_at or more is compacted (unset: budgets.toml [session])",
     "idle_compact_at": "the share of compact_window past which an idle session is compacted between turns (unset: budgets.toml [session]; 0: never)",
+    "idle_compact_within": "the share of compact_window under Claude Code's own line (the window less 33,000) within which a session is "
+    "compacted as soon as a turn ends with nothing waiting, not idle_compact_after later (unset: budgets.toml [session]; 0: never)",
     "layer": "the folder the room's files come from, in the private folder (default: the private folder itself)",
     "mcp": "the room's own MCP servers, one [rooms.NAME.mcp.SERVER] table each; an owner room carries each [defaults] server it does not set",
     "mention_recall": "the people and things a message names, with their best lines, in its recall part (default true)",

@@ -21,6 +21,8 @@ adapter's event loop.
   ledger row; the room's next turn starts a fresh session on the room's own model.
 - After `idle_seconds` without a turn the process closes; the next message resumes the session. A new
   model, effort or account (the settings tool) closes it when the running turn ends, never inside it.
+- A session compacts between turns: idle `compact_after` past `compact_at` of its window (idle_compact), or at once when a
+  turn ends within `compact_within` of Claude Code's own line (_ended); a message meanwhile waits, its card up saying so.
 - Each turn owns one card (card.py), fed from the stream; every outbound part carries the turn's
   key. A turn that was sent an image and never read it is bounced once at Stop, naming the file;
   a working turn answering a person that ends with nothing visible in the room bounces once,
@@ -88,6 +90,7 @@ class Inbound:
 
 
 HARNESS = "yerk"                          # the sender of Yerk AI's own messages (a worker's relay)
+RESERVE = 33000                           # Claude Code compacts at its window less this (2.1.304's output reserve and buffer)
 FILING = ("remember", "schedule", "hold", "settings")   # Yerk AI's calls that file or set something, answering nothing
 STUB_CHARS = 200                          # the stub rule's size line (Room.stub_check)
 # the note rule's signals (Room.note_check), as measured 2026-10-29 over 2,571 finals: one hit, the reply seen live
@@ -173,7 +176,7 @@ class Room:
     def __init__(self, name: str, conf: dict[str, Any], spec: Callable[[], RoomSpec], accounts: list[Account],
                  channel: Channel, state: Any, ledger: Ledger, failures: FailureTable, cooldowns: Cooldowns,
                  idle_seconds: float = 1800.0, turn_timeout: float = 900.0, log_dir: Any = None,
-                 meters: Meters | None = None, compact: tuple[int, float, float] = (0, 0.0, 0.0)):
+                 meters: Meters | None = None, compact: tuple[int, float, float, float] = (0, 0.0, 0.0, 0.0)):
         self.name, self.conf, self.spec, self.accounts, self.channel = name, conf, spec, accounts, channel
         self.state, self.ledger, self.failures, self.cooldowns = state, ledger, failures, cooldowns
         self.idle_seconds, self.turn_timeout, self.log_dir, self.meters = idle_seconds, turn_timeout, log_dir, meters
@@ -213,9 +216,10 @@ class Room:
         self.stopped = False                      # /stop: the running turn ends now and is never run again
         self.halt = threading.Event()             # ... and a rerun's wait ends at once
         self.closing = False                      # the daemon is stopping (shutdown): nothing more starts or is written
-        self.window, self.compact_at, self.compact_after = compact   # the idle compaction's line (idle_compact); a 0 is off
+        self.window, self.compact_at, self.compact_after, self.compact_within = compact   # idle_compact's and _ended's; a 0 is off
         self.context = ledger.last_context(str((SessionTable(state / "sessions.json").get(name) or {}).get("session_id") or ""))
         self.grown = True                         # the session grew since an idle compaction was last tried
+        self.shortening = self.early = False      # a compaction holds the room; a message waiting on it has its card up
 
     def _ledger_call(self, call: dict[str, Any]) -> None:
         self.ledger.evidence(t=round(time.time(), 3), room=self.name, session_id=self.rp.session_id if self.rp else "",
@@ -237,7 +241,7 @@ class Room:
         with self.lock:
             if self.busy:
                 return "busy"
-            self.busy = True
+            self.busy = self.shortening = True
         t = self._compact_held("asked")
         return "ok" if t.outcome in ("ok", "empty", "compacted") else t.outcome
 
@@ -252,21 +256,36 @@ class Room:
             if (self.busy or self.queue or self.closing or fresh or not self.grown or not self.window or not self.compact_at
                     or now - self.last_active < self.compact_after or self.context < self.compact_at * self.window):
                 return False
-            self.busy, self.grown = True, False
+            self.busy, self.grown, self.shortening = True, False, True
         log.info("room %s: idle %.0f min at %d of its %d tokens, compacting", self.name, (now - self.last_active) / 60, self.context, self.window)
         threading.Thread(target=self._idle_compact, name=f"compact-{self.name}", daemon=True).start()
         return True
 
-    def _idle_compact(self) -> None:
+    def _ended(self) -> bool:
+        """Under the lock, a turn ended with nothing queued: a session within `compact_within` of its window under Claude Code's
+        own line (the window less RESERVE) compacts now, in the background as idle_compact does, not `compact_after` later, so
+        the next message finds it small instead of waiting in its own turn for Claude Code's (seen live: a turn ended at about
+        763,900 of 800,000 and the message 4 min 55 s later waited 2 min for one). Once per growth; never after /stop or the
+        daemon's stop, nor when the next run starts a fresh session. True: started, the room kept busy."""
+        line = self.window - RESERVE
+        if (self.closing or self.stopped or not self.grown or not self.window or not self.compact_within or self.fresh_next
+                or self.context < line - self.compact_within * self.window or (self.state / "rooms" / self.name / "fresh-next").is_file()):
+            return False
+        self.grown, self.shortening = False, True
+        log.info("room %s: a turn ended at %d of its %d tokens, Claude Code's line %d, compacting", self.name, self.context, self.window, line)
+        threading.Thread(target=self._idle_compact, args=("end-of-turn",), name=f"compact-{self.name}", daemon=True).start()
+        return True
+
+    def _idle_compact(self, why: str = "idle") -> None:
         try:
-            if (t := self._compact_held("idle")).compacted is None:     # said once: no retry until a turn grows the session
-                log.warning("room %s: the idle compaction did not compact (%s); not tried again before the next turn", self.name, t.outcome)
+            if (t := self._compact_held(why)).compacted is None:     # said once: no retry until a turn grows the session
+                log.warning("room %s: the %s compaction did not compact (%s); not tried again before the next turn", self.name, why, t.outcome)
         except Exception as e:
-            log.warning("room %s: the idle compaction failed (%s); not tried again before the next turn", self.name, e)
+            log.warning("room %s: the %s compaction failed (%s); not tried again before the next turn", self.name, why, e)
 
     def _compact_held(self, why: str) -> Turn:
         """/compact in the room's session (resumed when its process is gone) while the caller holds the room busy. A message
-        that came in meanwhile was queued: it runs right after, and its wait is logged."""
+        that came in meanwhile was queued, its card up from then (submit): it runs right after, and its wait is logged."""
         started = time.time()
         try:
             with self.lock:
@@ -279,7 +298,7 @@ class Room:
             return t
         finally:
             with self.lock:
-                waiting, self.last_active = list(self.queue), time.time()
+                waiting, self.last_active, self.shortening = list(self.queue), time.time(), False
                 self.busy = run = bool(waiting) and not self.closing
             if run:
                 log.info("room %s: %d message(s) waited up to %.0f s for the compaction (%s), running now", self.name, len(waiting),
@@ -311,6 +330,9 @@ class Room:
                 self.ledger.inbound_set(msg.id, state="running", folded=1, attempts=msg.attempt + 1)
                 return "folded"
             self.queue.append(msg)
+            if self.shortening and not self.early:   # waiting on a compaction: its card says so from now, its turn takes it over
+                self.early = True
+                self._new_card(words.COMPACTING)
             if self.busy:
                 return "queued"
             self.busy = True
@@ -530,7 +552,7 @@ class Room:
                         f"message {m.id} folded in with {', '.join(sorted(tokens)[:5])}, and the final names none of it")
         return None
 
-    def _new_card(self, note: str = "") -> None:
+    def _new_card(self, note: str = "", edit: bool = False) -> None:
         privacy = str(self.conf.get("privacy", "owner"))
         self.card = Card(thinking=flag(self.conf.get("thinking_panel")) and privacy == "owner",
                          people=self.name if self.conf.get("people") and self.conf.get("card") != "steps" else "")   # "steps": the rows
@@ -538,7 +560,10 @@ class Room:
         self.turn_key, self.bounced, self.silent_bounced, self.stub_bounced = uuid.uuid4().hex[:12], False, False, False
         self.note_bounced = self.board_bounced = self.retired_bounced = self.paste_bounced = self.sheet_bounced = self.said_bounced = False
         self.fold_bounced = False
-        self.channel.open_card(self.name, self.card.render())   # state first from the first post
+        if edit:                                  # the card its message got while it waited on a compaction (submit)
+            self.channel.progress(self.name, self.card.render())
+        else:
+            self.channel.open_card(self.name, self.card.render())   # state first from the first post
 
     def meta_for(self, prompt: str) -> tuple[str, float | None]:
         """Sender and previous human message time for a prompt the hook saw."""
@@ -674,7 +699,7 @@ class Room:
             while True:
                 with self.lock:
                     if not self.queue:
-                        self.busy = False
+                        self.busy = self._ended()        # near Claude Code's line: compacted now, in the background
                         self.last_active = time.time()
                         return
                     batch = [self.queue.popleft()]
@@ -714,11 +739,12 @@ class Room:
             self.to_open, self.stopped = {}, False
             self.halt.clear()
             self.answering = {m.id for m in batch}
+            early, self.early = self.early, False   # a card is up for it already: this turn takes it over
         self.evidence.reset()
         ctx = self.state / "rooms" / self.name / "context.md"
         if ctx.is_file():
             self.evidence.give(ctx.read_text(errors="replace"))     # the session-start file was read too
-        self._new_card(words.AFTER_FAILED if any(m.after for m in batch) else "")
+        self._new_card(words.AFTER_FAILED if any(m.after for m in batch) else "", early)
         self.out_of, model = "", str(override(self.state, self.name).get("model") or self.conf.get("model") or "")   # the pinned model
         on, account = self._fall_back(model, a := self._account(model)) or (model, a)   # `on`: the model the turn runs on
         recap = self._take_fresh()                              # a refusal fallback last turn, or /new

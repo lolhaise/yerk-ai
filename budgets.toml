@@ -326,9 +326,21 @@ compact_window = 250000
 # and a process start added up to 43,479, so at 0.7 a 700,000 window keeps 177,000 for the next turn and 400,000 keeps
 # 87,000. 25 minutes is under the 30 a room's process stays open, so it compacts warm, inside the hour the prompt cache
 # holds; a message came in while one would run after 12% of the idle stretches that long (9 of 75, the slowest compaction
-# seen: 320 s). A room's own keys in rooms.toml override these; idle_compact_at = 0 turns it off, as a window left to the model does.
+# seen: 320 s). A session that ends a turn, nothing queued, within `idle_compact_within` of its window under Claude
+# Code's own line is compacted then the same way, not `idle_compact_after` later: once per growth, a failure not tried
+# again before the next turn; a message that comes in meanwhile waits for it under a card that says the conversation is
+# being shortened first, and one already waiting runs at once, Claude Code compacting inside its turn, its card saying
+# so. On 2026-11-05 a busy room (an 800,000 window, so a line at 767,000) was never idle 25 minutes: its last
+# six turns began within 51,000 of the line, and a message 4 min 55 s after the sixth ended, at about 763,900, waited
+# 2 min 4 s for Claude Code's compaction. Measured on that session over 73 turns, a turn's end to the next turn's first
+# request grew 2,680 at the median, 4,228 at p90 and 7,591 at most, and one turn's own growth was 4,096, 31,326 and
+# 98,271: 0.05 is 40,000 at 800,000, past the next message for certain and most turns' own growth (38,917 the two
+# together), and 12,500 at the 250,000 here, past the next message and a median turn. A room's own keys in rooms.toml
+# override these; idle_compact_at = 0 turns the idle rule off and idle_compact_within = 0 the turn-end one, as a window
+# left to the model turns off both.
 idle_compact_at = 0.7
 idle_compact_after = 25
+idle_compact_within = 0.05
 
 [relay]
 # A worker's end, told in its room (DESIGN 6, decision 11): the harness line the room's session
@@ -1152,4 +1164,23 @@ secs = 60
 # older-lines list named such lines as lines to settle, not folded to fit. 26,822.
 # 2026-11-06, rule-filing-check-2026-11-06 with main folded in (need-2026-11-06-69's 95 lines and
 # retired-marks-2026-11-06's 51): main's 26,780 plus this branch's 188, 26,968.
-lines = 26968
+# 2026-11-05, compact-visible-2026-11-05 raised it by 3: Claude Code's own compaction inside a turn shows on the card,
+# words.COMPACTING from its status event (2.1.316: status compacting at its start) until the model's next words (card.py
+# 3: the branch in feed and its docstring's clause); seen live, a busy room sat 2 min under the bare start
+# line while Claude Code compacted inside the owner's turn, not folded to fit. 26,465. Its second part raised it by 5: in the
+# owner rooms' shape a thinking block open with no thinking text since the turn began or the last tool row says
+# words.THINKS in place of the bare start line (card.py 5: the flag, its set and reset, the render, the docstring's
+# clause; words.py 0: THINKS shares START's line); the same turn's 2 min 45 s of thinking before its first words, its
+# thinking block empty, not folded to fit. 26,470. Its third part raised it by 29: a turn that ends with nothing queued
+# and the session within [session] idle_compact_within of its window under Claude Code's own line compacts then, in the
+# background by the idle path, once per growth, and a message that comes in meanwhile gets its card at once saying the
+# conversation is being shortened first, the card its turn then takes over (room.py 26: `_ended`, RESERVE, the flags,
+# the early card in submit and its takeover in _turn, the module docstring's line; daemon.py 1: the key handed to
+# the room; config.py 2: its words); the same evening's six turns within 51,000 of the line with no idle stretch, not
+# folded to fit. 26,499. Its follow-up raised it by 3: words.COMPACTING ends with the compaction, at its end status
+# (status null with compact_result, success or failed) or its boundary, and the line falls back to words.THINKS or the
+# bare start line (card.py 3: the branch in feed); held to the model's next words, that turn's card would have said the
+# conversation was being shortened for all 4 min 49 s, 2 min 4 s of it the compaction's, not folded to fit. 26,502.
+# 2026-11-06, compact-visible-2026-11-05 with main folded in (need-2026-11-06-69's 95 lines, retired-marks-2026-11-06's
+# 51 and rule-filing-check-2026-11-06's 188): main's 26,968 plus this branch's 40, 27,008.
+lines = 27008

@@ -26,6 +26,9 @@ message and a success result echoing the text. Variations:
   first; FAKE_CLAUDE_COMPACT_FAIL=1: Claude Code's failed-compaction status and an error result, no boundary
 - note says the Sample:Item: moved to the next step and the test Reads it; Back:As plain, text with,
   the test reads (it_back_as_plain text) with one more Line
+- a line containing AUTO_COMPACT: before its answer, Claude Code's own compaction inside the turn as 2.1.316 streams it:
+  status compacting, FAKE_CLAUDE_COMPACT_SLOW seconds, status null (compact_result success), a compact_boundary (trigger
+  auto, post_tokens FAKE_CLAUDE_POST, else 20000)
 - a line containing SLOW: waits up to 1.5 s for another line; if one comes, it is replayed and
   answered in the same result (a fold)
 - a line containing HANG: no answer for 60 s (a turn only /stop ends)
@@ -185,6 +188,12 @@ def answer(text):
     if "HOOK_ERROR" in text:                   # what Claude Code 2.1.301 streams when a hook fails, non-blocking
         out({"type": "system", "subtype": "notification", "session_id": sid, "uuid": str(uuid.uuid4()),
              "key": "stop-hook-error", "text": "Stop hook error occurred \u00b7 ctrl+o to see"})
+    if "AUTO_COMPACT" in text:                 # Claude Code's own, past its line: the events 2.1.316 streamed for one, 2026-11-05
+        out({"type": "system", "subtype": "status", "status": "compacting", "session_id": sid, "uuid": str(uuid.uuid4())})
+        time.sleep(float(os.environ.get("FAKE_CLAUDE_COMPACT_SLOW") or 0))
+        out({"type": "system", "subtype": "status", "status": None, "compact_result": "success", "session_id": sid})
+        out({"type": "system", "subtype": "compact_boundary", "session_id": sid, "uuid": str(uuid.uuid4()),
+             "compact_metadata": {"trigger": "auto", "post_tokens": int(os.environ.get("FAKE_CLAUDE_POST") or 20000)}})
     reply = "\nNO_REPLY\n" if "READ_ALONG" in text else "echo: " + text
     out({"type": "stream_event", "event": {"type": "content_block_delta", "delta": {"type": "text_delta", "text": reply}}})
     n = int(text.split("CONTEXT:")[1].split()[0]) if "CONTEXT:" in text else 0
