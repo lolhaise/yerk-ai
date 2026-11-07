@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 123405`
+- `total = 123803`
 
 ## [session_start.claude_code]
 
@@ -86,11 +86,15 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-06, rule-filing-check-2026-11-06 with main folded in (need-2026-11-06-69's `attachments` tool): `remember` at 2,304 and `attachments` at 827 as this tree builds them, all 22 to 22,993, about 23,675 as sent (682 over the build, 31 a tool as on need 69's tree); so 23,700, no part could pay, the total rose by this branch's 1,000 (400 here, 600 on the mechanics) over main's 122,405 (to 123,405).
 
+2026-11-07, need-2026-11-07-74: the hands plug-in's browser `open` takes a mail's link by its number (`mail`, `link` and `mailbox` in place of `url`, the link's words judged as a click's label first, since a room asked whether a guest booking was still live read its mails with every link stripped, the plug-in's main never having taken need 33's list; filed
+
+2026-11-07): its entry 3,048 to 3,446 as the plug-in's branch need-2026-11-07-74 (aa73df9) builds it, 3,477 as sent (31 over, as each of the five goes; all five 8,408 built, 8,563 sent, the mail entry at need 33's 1,194 built), 398 over the 3,079 it sends on the plug-in's main f384c2b; so 8,563, no part could pay, the total rose by the 398 (to 123,803).
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
 - `yerk_tools = 23700`
 - `deferred_tool_names = 3429`
-- `mcp__hands__ = 8165`
+- `mcp__hands__ = 8563`
 - `mcp__web-ladder__web_image = 913`
 - `skills = 0`
 

@@ -213,7 +213,7 @@ def test_a_room_asked_to_use_a_link_in_an_email_hears_the_links_way_never_the_ma
     assert [e["key"] for e in found] == ["mail-links"]
     text = found[0]["text"]
     assert text.startswith(f"mail-links, a Yerk AI ability ({words.ability('described')[1]}): Gives a room each link in one of the "
-                           "owner's emails, its words beside its address")
+                           "owner's emails, numbered, its words beside its address")
     for want in ("One mail read, with its links", "Each address whole or not at all",
                  "Opened in the browser by its address, never found on the mailbox's web page", "Only for what the owner asked",
                  "a room asked to use a link in an email reads the mail, then opens that link's address with the browser"):
@@ -223,6 +223,35 @@ def test_a_room_asked_to_use_a_link_in_an_email_hears_the_links_way_never_the_ma
     assert next(x for x in told if x.startswith("- Only for what the owner asked:")).endswith("(cancel, confirm, unsubscribe).")
     assert [e["key"] for e in abilities.asked("search my email for the receipt", y.memory, TAB)] == ["email"]
     assert not abilities.asked("the table is cancelled, they sent me a cancellation email", y.memory, TAB)
+
+
+def test_a_room_asked_for_a_link_or_a_button_in_an_email_hears_the_numbered_way_and_the_owners_word(tmp_path):
+    """need-2026-11-07-74: a room asked whether a guest booking was still live read the booking's mails and got their words
+    with every link stripped (the plug-in's main had never taken need 33's list), and the booking site kept no account page
+    for a guest, so it filed a link from an email opened in the browser, or a button in it clicked. Asked that way, a room
+    gets mail-links whole: each link numbered and opened by the mail and that number, so a long tracking address is never
+    copied out, and one whose words say it acts (a Cancel, an answer such as I'll be there, or no words at all) held for the
+    owner's word; a mail ask with neither a link nor a button in it still gets the email entry."""
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    for ask in ("can you open the link from an email the restaurant sent and check the booking is still on tonight?",
+                "just click the button in that email, the one that says view reservation"):
+        found = abilities.asked(ask, y.memory, TAB)
+        assert [e["key"] for e in found] == ["mail-links"], ask
+    text = found[0]["text"]
+    assert text.startswith(f"mail-links, a Yerk AI ability ({words.ability('described')[1]}): Gives a room each link in one of the "
+                           "owner's emails, numbered, its words beside its address")
+    for want in ("Opened by the mail and the link's number, never copied out", "Held for the owner's word when its words say it acts",
+                 "by the mail and the link's number where its browser takes them"):
+        assert want in text, want
+    assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
+    told = abilities.explain("mail-links", TAB["mail-links"], TAB, y.memory)
+    assert [x.split(":")[0] for x in told if x.startswith(("- Opened", "- Only", "- Held"))] == [
+        "- Opened in the browser by its address, never found on the mailbox's web page", "- Opened by the mail and the link's number, never copied out",
+        "- Only for what the owner asked", "- Held for the owner's word when its words say it acts, as a click's label is"]
+    assert next(x for x in told if x.startswith("- Opened by")).endswith("so a long tracking address reaches the page whole, and the reply names the link it opened.")
+    assert next(x for x in told if x.startswith("- Held")).endswith("an answer such as I'll be there, Yes or No, and a link that shows no words.")
+    assert [e["key"] for e in abilities.asked("search my email for the receipt", y.memory, TAB)] == ["email"]
+    assert not abilities.asked("the button on the booking form is greyed out", y.memory, TAB)
 
 
 def test_ordinary_messages_pull_no_ability_into_the_room(tmp_path):

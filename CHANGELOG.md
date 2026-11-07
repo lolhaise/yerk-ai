@@ -6,6 +6,43 @@ A line that changes a file the install keeps (rooms.toml, yerkd.toml, budgets.to
 newer than the code is refused with one line, never changed); the index chunks every file again when its chunker's
 version changes.
 
+## 2026-11-07
+
+### need-2026-11-07-74 (#?)
+
+- A room can open a link in one of the owner's emails in the browser now, and press a button in one: the hands
+  plug-in's mail `read` lists the mail's links after its text, numbered, each link's words beside its address
+  (`3. Cancel: https://...`), and the browser's `open` takes `mail` (the mail's uid), `link` (that number) and
+  `mailbox` (INBOX unless the mail was found elsewhere) in place of `url`. The plug-in reads the mail again and opens
+  that link's own address in a background tab, under every guard an open has, so a long tracking address is never
+  copied out by a room, and the reply names the link it opened.
+- Opening a link is clicking it in the mail, so its words are judged first, as a click's label is: a Cancel, a
+  Confirm, an Unsubscribe, an answer a link gives just by being opened (I'll be there, decline, verify, opt out, or
+  Yes, No or Maybe as its whole words), and a link that shows no words wait for the owner's word. A View or a
+  Modify opens at once. A number past the list, a mail with no HTML part (its addresses are in its own text, for
+  `url`) and the reader's own failure are each said in one line.
+- Need 33's list (2026-11-02) is in this too. Its plug-in branch was cut before need 39's and could no longer
+  fast-forward the plug-in's main once that one landed, so the links never reached a room, though the abilities entry
+  and the budget line here already counted them. The plug-in's branch `need-2026-11-07-74` merges it (e19a355), then
+  adds the numbered open (aa73df9), so its main fast-forwards to both; 51 of 51 of the plug-in's offline tests green
+  (six of them about links, all six failing on its main f384c2b).
+- The abilities entry (`yerk explain mail-links`) says the link is opened by the mail and its number and held for the
+  owner's word when its words say it acts, with five more phrases ("link from an email", "button in that email", ...);
+  the README's Add-ons line says it in as many bytes.
+- budgets.toml: the hands line 8,165 to 8,563 (the browser entry 3,446 as the plug-in's branch builds it, 3,477 as
+  sent) and the session-start total by the 398 to 123,803, each with its dated note; docs/budgets.md is what
+  `yerk docs own` writes.
+- Why: on 2026-11-07 a room asked to make sure a guest booking was still on that night read the booking's
+  confirmation and reminder mails and got their words with every link stripped. The booking site showed no sign-in
+  for a guest and had no account page to look in, so only the mail's own link could show it, and the room filed the
+  need (need 74 of 2026-11-07).
+
+**Upgrading**: merge this before, or with, the plug-in's deploy, which is fast-forwarding hands-mcp's main to
+`need-2026-11-07-74` (aa73df9). A room has the links and the numbered open from its next process start after that.
+budgets.toml's hands line is 8,563 and the session `total` 123,803; keep yours at least that, or the deploy's fit check
+refuses on the longer browser entry. Until the plug-in's deploy a room sends that entry at its old 3,079, under the new
+line.
+
 ## 2026-11-06
 
 ### rule-filing-check-2026-11-06 (#?)
