@@ -558,7 +558,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-06, compact-visible-2026-11-05 with main folded in (need-2026-11-06-69's 95 lines, retired-marks-2026-11-06's 51 and rule-filing-check-2026-11-06's 188): main's 26,968 plus this branch's 40, 27,008.
 
-- `lines = 27008`
+2026-11-07, card-race-2026-11-07 raised it by 6: a restart's sweep (recover) leaves every card this process holds, so a turn whose card was posted before the sweep reached its room keeps it, and an edit that finds its card deleted forgets it and closes its row (channels/discord.py 6: the ids held, the check, the forget); a busy room's turn lost its card to the sweep a second after it was posted and its next eight minutes of edits went to a deleted message, not folded to fit. 27,014.
+
+- `lines = 27014`
 
 ## Uncapped
 

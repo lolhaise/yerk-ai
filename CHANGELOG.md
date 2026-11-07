@@ -8,6 +8,19 @@ version changes.
 
 ## 2026-11-07
 
+### card-race-2026-11-07 (#?)
+
+- A turn that starts right after a restart keeps its card. The restart's sweep removes the cards the old process left,
+  and it also removed a card this process had just posted when a message came in before the sweep reached that room; it
+  now leaves every card this process holds. Why: a room's turn lost its card a second after it
+  was posted, and for eight minutes the owner saw only the reaction while a voice note was made.
+- A card deleted by anyone while its turn runs is forgotten at the first edit that finds it gone: one line in the log,
+  no edit after it, and no card posted in its place. Why: before, every later edit of that turn failed again, 26 log
+  lines in those eight minutes.
+- The `[code]` ceiling goes to 27,014.
+
+**Upgrading**: none.
+
 ### need-2026-11-07-74 (#?)
 
 - A room can open a link in one of the owner's emails in the browser now, and press a button in one: the hands
