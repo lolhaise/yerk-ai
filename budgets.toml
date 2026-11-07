@@ -1200,4 +1200,9 @@ secs = 60
 # and the module's say a message either way; config.py 0: quiet_seconds's words); seen live, the restart went two
 # seconds after a busy room's 6-minute voice note landed, the person's message 8.6 minutes old, and the
 # owner's next message came six seconds later, not folded to fit. 27,020.
-lines = 27020
+# owner's next message came six seconds later, not folded to fit. 27,020. Its third part raised it by 18: a live need's
+# line to a room that filed it waits while that room's turn runs, in the background, looked at every 5 s and posted at
+# 20 minutes all the same, while the machine room's line and the next need start at once (pipeline.py 18: LIVE_POLL and
+# LIVE_CAP, live's split, busy, tell, live's docstring); seen live, need 74's line came into a busy room five
+# seconds into a turn and read as that turn's answer, not folded to fit. 27,038.
+lines = 27038

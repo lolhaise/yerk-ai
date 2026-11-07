@@ -14,7 +14,7 @@ import pytest
 from test_needs import ASK, FLYER, listed, need, ops
 from test_pictures import Rec
 
-from yerk_ai import cli, git_askpass, github, needs, words
+from yerk_ai import cli, git_askpass, github, needs, pipeline, words
 from yerk_ai.config import EXAMPLE_PRIVATE, REPO, head
 
 SLUG, TOK = "example-owner/example-repo", "tok-placeholder-0000"
@@ -248,6 +248,28 @@ def test_a_proven_deploy_holding_the_merge_is_live_one_line_a_room_and_a_failed_
     asyncio.run(y.pipeline.tick())
     assert (row(y, day, n2)["state"], row(y, day, n2)["why"]) == ("held", "deploy failed: the fast tests failed")
 
+
+def test_a_rooms_live_line_waits_out_its_turn_and_neither_the_machine_rooms_line_nor_the_next_need_waits(pipe, monkeypatch):
+    """Seen live: need 74's line came into a busy room five seconds into a turn and read as its answer."""
+    y, rec, hub, units, rooms = pipe
+    monkeypatch.setattr(pipeline, "LIVE_POLL", 0.01)
+    day = need(y, "example-room", *ASK)["day"]
+    n2 = need(y, "her-room", "post a reel", "no upload tool", "upload a video")["n"]     # queued behind need 1
+    y.rooms["example-room"].busy = y.rooms["her-room"].busy = True
+
+    async def go():
+        await y.pipeline.live(row(y, day))
+        assert words.NEED_LIVE.format(n=1, ability=ASK[2]) in rec.lines and row(y, day, n2)["state"] == "building"
+        await asyncio.sleep(0.2)
+        assert rooms["example-room"].lines == []                              # its turn still runs
+        y.rooms["example-room"].busy = False
+        await asyncio.sleep(0.2)
+        assert rooms["example-room"].lines == [words.NEED_LIVE_ROOM.format(n=1, ability=ASK[2])]
+        monkeypatch.setattr(pipeline, "LIVE_CAP", 0.05)
+        await y.pipeline.live(row(y, day, n2))
+        await asyncio.sleep(0.2)
+        assert rooms["her-room"].lines == [words.NEED_LIVE_ROOM.format(n=n2, ability="upload a video")]     # at the cap, in its turn
+    asyncio.run(go())
 
 def test_no_token_skips_github_says_so_once_and_done_still_closes_it_by_hand(pipe, monkeypatch, capsys):
     y, rec, hub, units, rooms = pipe

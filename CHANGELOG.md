@@ -21,7 +21,11 @@ version changes.
   message and its own last post (a reply, a notice, a file, a kept card; a card's progress is not one). Why: a
   restart went two seconds after a room's 6-minute voice note landed, since the window
   counted only from the owner's message 8.6 minutes before, and the owner's next message came six seconds later.
-- The `[code]` ceiling goes to 27,020.
+- A need's "built and live" line to a room that filed it waits until that room's turn ends, looking every 5 seconds,
+  and goes after 20 minutes even if the turn still runs; the machine room's line and the next need start at once as
+  before. Why: need 74's line came into an owner's room five seconds into a turn, so the owner's
+  message looked answered by a deploy line.
+- The `[code]` ceiling goes to 27,038.
 
 **Upgrading**: none.
 
