@@ -17,7 +17,11 @@ version changes.
 - A card deleted by anyone while its turn runs is forgotten at the first edit that finds it gone: one line in the log,
   no edit after it, and no card posted in its place. Why: before, every later edit of that turn failed again, 26 log
   lines in those eight minutes.
-- The `[code]` ceiling goes to 27,014.
+- `yerk deploy` waits for a room to have had no message either way for `[deploy] quiet_seconds`: its person's last
+  message and its own last post (a reply, a notice, a file, a kept card; a card's progress is not one). Why: a
+  restart went two seconds after a room's 6-minute voice note landed, since the window
+  counted only from the owner's message 8.6 minutes before, and the owner's next message came six seconds later.
+- The `[code]` ceiling goes to 27,020.
 
 **Upgrading**: none.
 

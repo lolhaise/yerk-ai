@@ -1194,4 +1194,10 @@ secs = 60
 # it and closes its row (channels/discord.py 6: the ids held, the check, the forget); seen live, a busy room's
 # turn lost its card to the sweep a second after it was posted and its next eight minutes of edits went to a deleted
 # message, not folded to fit. 27,014.
-lines = 27014
+# message, not folded to fit. 27,014. Its second part raised it by 6: `yerk deploy`'s quiet window counts from the newest
+# of a room's person's last message and its own last post (ledger.py 6: last_said, max(sent) over the room's outbound
+# rows with a message id, a card's progress and its edits left out; deploy.py 0: quiet takes the newer, its docstring
+# and the module's say a message either way; config.py 0: quiet_seconds's words); seen live, the restart went two
+# seconds after a busy room's 6-minute voice note landed, the person's message 8.6 minutes old, and the
+# owner's next message came six seconds later, not folded to fit. 27,020.
+lines = 27020
