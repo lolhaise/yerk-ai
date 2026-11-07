@@ -436,22 +436,27 @@ asked_as = ["screenshot of the page", "screenshot the page", "screenshot of the 
 
 # need-2026-11-01-33: a room asked to cancel a booking by the Cancel link in its confirmation mail had the mail's words and
 # no link's address, since the mail tool's text strips the tags, and the mail would not open by its row in the browser.
+# need-2026-11-07-74: a room asked whether a guest booking was still live read its mails with every link stripped again,
+# since the plug-in's main never took need 33's list, and the booking site kept no account page for a guest to look in.
 [abilities.mail-links]
 state = "described"
-what = "Gives a room each link in one of the owner's emails, its words beside its address, so the room opens the one it was asked for, a Cancel or a Confirm, in the browser ability's browser; the mail reader itself never opens one."
+what = "Gives a room each link in one of the owner's emails, numbered, its words beside its address, so the room opens the one it was asked for, a Cancel or a Confirm, in the browser ability's browser by the mail and that number; the mail reader itself never opens one."
 how = [
   "One mail read, with its links: each link of the mail's HTML part, web addresses only, in page order, its words beside its address, since the text alone strips the tags and leaves a link's words with nowhere to go.",
   "Each address whole or not at all: up to the read's size, inside the mail's untrusted wrap; a mail with no HTML part has its addresses in its own text.",
   "Opened in the browser by its address, never found on the mailbox's web page: no sign-in, no search row to click and no window to show, and the page it lands on keeps every browser guard.",
+  "Opened by the mail and the link's number, never copied out: the browser reads the mail again and opens that link's own address, so a long tracking address reaches the page whole, and the reply names the link it opened.",
   "Only for what the owner asked: opening a link is clicking it in the mail, and a link can act by itself (cancel, confirm, unsubscribe).",
+  "Held for the owner's word when its words say it acts, as a click's label is: a Cancel, a Confirm, an Unsubscribe, an answer such as I'll be there, Yes or No, and a link that shows no words.",
 ]
 tier = "free"
-needs = "the email ability's read in a mail plug-in that lists a mail's links, and the browser ability to open one"
+needs = "the email ability's read in a mail plug-in that numbers a mail's links, and the browser ability to open one by that number"
 price = "none"
 free_path = "this is the free path"
-why_not = "It rides on the mail tool of the plug-in kept outside this repo, the one that drives the browser; an install whose mail read lists a mail's links has it there, and a room asked to use a link in an email reads the mail, then opens that link's address with the browser."
+why_not = "It rides on the mail tool of the plug-in kept outside this repo, the one that drives the browser; an install whose mail read lists a mail's links has it there, and a room asked to use a link in an email reads the mail, then opens that link's address with the browser, by the mail and the link's number where its browser takes them."
 asked_as = ["link in the email", "link in that email", "links in the email", "link from the email", "link in the mail", "cancel link",
-            "confirmation link", "unsubscribe link"]
+            "confirmation link", "unsubscribe link", "link in an email", "link from an email", "button in the email",
+            "button in that email", "button in an email"]
 
 [abilities.pc-control]
 state = "described"
