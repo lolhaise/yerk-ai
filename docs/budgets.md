@@ -207,6 +207,10 @@ A room idle `idle_compact_after` minutes (no turn, nothing queued) whose session
 - `idle_compact_after = 25`
 - `idle_compact_within = 0.05`
 
+A turn that ends short of that, within `precompact_within` of the window under Claude Code's line, compacts a copy of the session instead (claude --resume --fork-session, then /compact in the copy), the room left free: a message that comes in meanwhile runs at once on the live session, as it would with no compaction at all, and the copy is dropped, stale; a copy no turn overtook becomes the room's session in one step, so the next message finds it small and never waits. On 2026-11-08 an owner's room ended a turn 37,362 under its line of 767,000 and the message after it waited 126 s behind a 206 s compaction (the ledger's last 40: median 161 s, at most 263 s); a turn had ended 61,754 under the line with 305 s of quiet after it, time for a copy. Of that room's four waits on 2026-11-07 and 08, a copy at 0.1 (80,000 at 800,000) would have been taken before three; the fourth crossed the band with no quiet stretch over 195 s. Over 3,473 turns in sessions past 300,000 a turn grew 4,560 at the median, 22,109 at p95, 52,082 at p99 and 169,511 at most, so a message run on the live session in the band, 40,000 or more under the line, risks Claude Code's own compaction inside its turn as it does today (1.6% of turns grew past 40,000); within `idle_compact_within` nothing changes. 0 turns it off; a room's own key in rooms.toml overrides it.
+
+- `precompact_within = 0.1`
+
 ## [relay]
 
 A worker's end, told in its room (DESIGN 6, decision 11): the harness line the room's session gets (the outcome, the report path, the report's start) and the most the relay reply may be.
@@ -558,7 +562,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-06, compact-visible-2026-11-05 with main folded in (need-2026-11-06-69's 95 lines, retired-marks-2026-11-06's 51 and rule-filing-check-2026-11-06's 188): main's 26,968 plus this branch's 40, 27,008.
 
-- `lines = 27008`
+2026-11-08, precompact-fork-2026-11-08 raised it by 116: a turn that ends within [session] precompact_within of Claude Code's line, short of idle_compact_within, compacts a copy of the session (--fork-session) off to the side, the room left free, and the copy becomes the room's session in one step when no turn overtook it (room.py 81: _fork_off, _precompact, _drop_fork, the band in _ended, the bumps in _turn, _compact_held, respec, renew and shutdown, the module docstring's lines; engine.py 33: start's fork, copied, adopt and discard; daemon.py 0: the key handed to the room; config.py 2: its words); seen live, a message waited 126 s behind a 206 s compaction, not folded to fit. 27,124.
+
+- `lines = 27124`
 
 ## Uncapped
 
