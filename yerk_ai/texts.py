@@ -1,7 +1,8 @@
 """Sends one text for the text tool, an iMessage or else an SMS, in your name from your Mac, to one person by their phone
 number or email address. Plain ssh holds no grant to drive Messages, so the Mac's bridge does it (a small app
 there that holds Messages' grants and serves imsg's JSON-RPC on a socket), reached as the iMessage rooms reached it
-(docs/STATUS.md, Layer 8a): ssh to [imessage] `host`, then socat to its `socket` there, or `command` whole. Each text is a
+(docs/STATUS.md, Layer 8a): ssh to [imessage] `host`, then socat to its `socket` there, or `command` whole, else (reach)
+the Mac and its bridge's socket as an owner room's add-on names them together in its mac.json. Each text is a
 connection of its own: a `status` first, whose answer (any answer, an old bridge's unknown-method error too) says the
 bridge is there, then one `send` of `to`, `text` and `service`, then the connection closes. So a text that did not go is
 told apart from one that may have: no answer to the status, or an error to the send, is not sent; no answer to the send,
@@ -25,6 +26,18 @@ SEND = 60.0                  # seconds a send waits on Messages itself ([imessag
 LINE = 1024 * 1024           # the longest line read from the bridge
 MAYBE = -32001               # imsg: the operation may have completed or remains in flight
 PHONE, EMAIL = re.compile(r"\+?[\d\s().-]+"), re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
+SOCKET = "imessage_socket"   # the Mac's bridge socket in an add-on's mac.json, beside its ssh: a whole path, nothing a shell reads
+WHOLE = re.compile(r"/[\w.@+/-]+", re.ASCII)
+
+
+def reach(conf: dict[str, Any], mac: dict[str, Any]) -> dict[str, Any]:
+    """[imessage] as a text goes: yerkd.toml's own when it names a way (transport), else its keys with the host and socket
+    an owner room's add-on names together in its mac.json (`mac`, page.addon_file), so the Mac and its bridge are named
+    once and a socket is never paired with another Mac; a socket that is not a whole path of plain characters is none,
+    since it rides ssh's command line to the Mac's shell."""
+    if transport(conf) or not WHOLE.fullmatch(sock := str(mac.get(SOCKET) or "").strip()) or not mac.get("ssh"):
+        return conf
+    return {**conf, "host": str(mac["ssh"]), "socket": sock}
 
 
 def transport(conf: dict[str, Any]) -> list[str]:

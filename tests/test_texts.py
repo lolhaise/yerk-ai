@@ -12,7 +12,9 @@ import sys
 from pathlib import Path
 
 from test_gates import Rec, call
+from test_page import add_on
 from yerk_ai import gates, mcp_server, texts, words
+from yerk_ai.channels import page
 from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai.daemon import YERK_TOOLS, Yerkd
 from yerk_ai.engine import SessionTable
@@ -45,6 +47,7 @@ for line in sys.stdin:
 '''
 TEXT = {"to": "+1 555 0001111", "text": "Running late, there by 7.\nSave me a seat?"}
 at = "@".join                                      # an address, put together here: the repository holds none
+SOCK = "/Users/example/.bridge/rpc.sock"           # the Mac's bridge socket, as an add-on's mac.json names it
 
 
 def mac(tmp_path: Path, mode: str = "ok", **extra: object) -> tuple[dict, Path]:
@@ -206,6 +209,58 @@ def test_the_way_to_the_mac_and_who_a_text_can_go_to():
     assert [texts.handle(x) for x in ("+1 555 0001111", "(555) 0001111", f" {at(['kettle', 'example.test'])} ", "Kettle Person", "12", "",
                                       "Kettle Person and Example Co", "+1 555 0001111 2222 3333")] == [
         "+15550001111", "5550001111", at(["kettle", "example.test"]), "", "", "", "", ""]
+
+
+def test_with_nothing_in_yerkd_toml_a_text_goes_by_the_mac_and_bridge_an_owner_room_s_add_on_names(tmp_path, tmp_path_factory, monkeypatch):
+    """need-2026-11-08-74, the wall a room hit: the owner asked a room to send their reply to a friend as an iMessage from the
+    Mac, and the gate said no Mac was set up for texts, though the box reached that Mac by ssh for the hands plug-in's mac
+    tool (which cannot drive Messages) and the Mac's bridge was up there; a room cannot set yerkd.toml mid-conversation.
+    With no [imessage] way, the Mac and its bridge are the ones an owner room's add-on names together in its mac.json, so
+    one deploy gives every owner room the send, held for the owner's word as ever; a person's room's add-on, or one under
+    the state folder (`tmp_path` here), where each room's folder is, is never read."""
+    y, room, ch, log = setup(tmp_path)
+    out = tmp_path_factory.mktemp("add-ons")                  # outside the state folder, as the hands plug-in's own checkout
+    y.conf.pop("imessage")
+    (bin_ := tmp_path / "mac-bin").mkdir()                   # ssh: its command line written down, its stdin the bridge's
+    (ssh := bin_ / "ssh").write_text(f'#!/bin/sh\nprintf "%s\\n" "$@" > "{tmp_path}/ssh-args"\n'
+                                     f'exec "{sys.executable}" -I "{tmp_path}/bridge.py" ok "{log}"\n')
+    ssh.chmod(0o700)
+    monkeypatch.setenv("PATH", f"{bin_}:{page.os.environ['PATH']}")
+    no_mac = words.TEXT_NOT_SENT.format(why=words.TEXT_NO_SETUP)
+    assert pre(y, TEXT)["hookSpecificOutput"]["permissionDecisionReason"] == no_mac           # the wall, as it was
+    for there in (add_on(out), add_on(tmp_path, imessage_socket=SOCK)):                      # no bridge named; a room could write it
+        y.room_confs["example-room"]["mcp"] = {"hands": there}
+        assert pre(y, TEXT)["hookSpecificOutput"]["permissionDecisionReason"] == no_mac
+    y.room_confs["example-quiet"] = {**y.room_confs["example-quiet"], "privacy": "family",
+                                     "mcp": {"hands": add_on(out, "family@family-mac", name="family", imessage_socket=SOCK)}}
+    assert pre(y, TEXT)["hookSpecificOutput"]["permissionDecisionReason"] == no_mac           # an owner room's add-on only
+    y.room_confs["example-room"]["mcp"] = {"hands": add_on(out, imessage_socket=SOCK)}
+    assert held(pre(y, TEXT)) and ch.notes[-1].endswith("```\nto: +15550001111\nRunning late, there by 7.\nSave me a seat?\n```")
+    assert text(y, TEXT)["error"] == words.TEXT_NOT_RELEASED and asked(log) == []             # held for the word as ever
+    word(y, room)
+    assert pre(y, TEXT) == {} and text(y, TEXT) == {"ok": True, "to": "+15550001111", "guid": "GUID-0001"}
+    assert (tmp_path / "ssh-args").read_text().splitlines() == [
+        "-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "owner@owner-mac", "/opt/homebrew/bin/socat", "-", f"UNIX-CONNECT:{SOCK}"]
+    assert asked(log) == [("status", {}), ("send", {"to": "+15550001111", "text": TEXT["text"], "service": "auto"})]
+    assert y.ledger.rows(1, "gates")[0]["decision"] == "sent"
+
+
+def test_the_bridge_is_yerkd_toml_s_way_else_a_host_and_socket_one_add_on_names_together_and_never_a_shell_word(tmp_path):
+    """The socket rides ssh's command line to the Mac's shell, so one from mac.json is taken only as a whole path of plain
+    characters and only with the host that same file names, read only where addon_file trusts it; yerkd.toml's own way
+    wins, its other keys (service, send_timeout, socat) kept."""
+    mac = {"ssh": "owner@owner-mac", "imessage_socket": SOCK}
+    assert texts.reach({}, mac) == {"host": "owner@owner-mac", "socket": SOCK}
+    assert texts.reach({"host": "other-mac", "service": "sms"}, mac) == {"host": "owner@owner-mac", "socket": SOCK, "service": "sms"}
+    own, cmd = {"host": "mac.example", "socket": "/tmp/example.sock"}, {"command": "nc -U /tmp/example.sock"}
+    assert texts.reach(own, mac) == own and texts.reach(cmd, mac) == cmd
+    for sock in ("", "rpc.sock", "~/rpc.sock", "/a b.sock", "/a;touch x", "/a$(touch x)", "/a\n.sock", 5, None, ["/a.sock"]):
+        assert texts.reach({}, {"ssh": "owner@owner-mac", "imessage_socket": sock}) == {}, sock
+    assert texts.reach({}, {"imessage_socket": SOCK}) == {} and texts.reach({}, {}) == {}
+    assert page.addon_file([add_on(tmp_path, imessage_socket=SOCK)]) == mac                  # the file's keys, whole
+    assert page.addon_file([add_on(tmp_path, mode=0o646, name="open", imessage_socket="/other.sock"), add_on(tmp_path, name="b")]) == {
+        "ssh": "owner@owner-mac"}                                                             # any user may write the first
+    assert page.addon_file([add_on(tmp_path, "-oProxyCommand=x", name="c", imessage_socket=SOCK)]) == {} == page.addon_file([])
 
 
 def test_a_worker_never_texts_as_the_owner(tmp_path):

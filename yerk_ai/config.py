@@ -221,7 +221,8 @@ YERKD_WORDS = {
                "skip": "chat ids a server import leaves out"},
     "gmail": {"user": "the Gmail address `yerk import gmail` reads and the `email` tool sends from (none: no room emails)",
               "password_file": "a file holding its app password, never printed", "name": "the name an email goes out under (default none)"},
-    "imessage": {"host": "the ssh host of the owner's Mac, the `text` tool's way to it (none: no room texts)",
+    "imessage": {"host": "the ssh host of the owner's Mac, the `text` tool's way to it (none, with socket: `ssh` and "
+                         "`imessage_socket` in a mac.json beside an owner room's add-on's server, the hands plug-in's, else no room texts)",
                  "socket": "the Mac's bridge socket there, serving imsg's JSON-RPC", "socat": "socat on the Mac (default /opt/homebrew/bin/socat)",
                  "command": "a whole command whose stdin and stdout are the bridge, in place of host and socket",
                  "service": "imessage, sms or auto (default auto: iMessage where the person has it, else SMS)",
