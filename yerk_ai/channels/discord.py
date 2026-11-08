@@ -884,8 +884,9 @@ class DiscordChannel:
     async def recover(self, cid: int, room: Room) -> None:
         ch = self.client.get_channel(cid) or await self.client.fetch_channel(cid)
         if cid == self.names[room.name]:                   # its own: what a restart left there; a watched one is only read
+            mine = {str(m.id) for m in self.cards.values()}    # posted by this process: a turn begun before this ran
             for c in self.ledger.cards_open(room.name):        # their turns ended with the old process
-                if c["kind"] == "worker":                      # a worker outlives the daemon: its card stays
+                if c["kind"] == "worker" or c["message_id"] in mine:   # a worker outlives the daemon: its card stays
                     continue
                 with contextlib.suppress(discord.HTTPException):
                     await ch.get_partial_message(int(c["message_id"])).delete()
@@ -1072,6 +1073,11 @@ class DiscordChannel:
                     await card.edit(content=text[:MAX])
                 except discord.HTTPException as e:
                     log.warning("progress in %s failed: %s", room, e)
+                    if isinstance(e, discord.NotFound):   # deleted by anyone: forgotten, never edited again (2026-11-07)
+                        self.cards.pop(key, None)
+                        for d in (self.shown, self.edited, self.want):
+                            d.pop(key, None)
+                        self.ledger.card_close(str(card.id), "found deleted at an edit")
                     return
                 self.edited[key], self.shown[key] = time.monotonic(), text
                 self.ledger.outbound(room=room, channel=str(self.names[room]), kind="progress-edit",

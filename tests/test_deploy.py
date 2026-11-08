@@ -160,6 +160,27 @@ def test_no_restart_while_a_turn_runs_or_a_person_wrote_lately_and_it_gives_up_a
     assert f.restarts == [] and [r[3] for r in rows(state)] == ["gave up", "gave up"]
 
 
+def test_the_quiet_window_counts_the_rooms_own_post_as_it_counts_a_persons_message(tmp_path):
+    """Seen live: the owner wrote, the room's reply landed 8.6 minutes later and the restart went two seconds after it, the
+    window counted from the person's message alone; the owner's next message came six seconds later, into the restart."""
+    state = tmp_path / "state"
+    state.mkdir()
+    (state / "yerkd.json").write_text(json.dumps({"pid": os.getpid(), "port": 1}))
+    led = Ledger(state / "ledger.sqlite")
+    led.inbound_add("m1", "example-room", "discord", "owner", 2)
+    led.inbound_set("m1", received=NOW - 600)                                # the person, 10 minutes ago
+    led.outbound(room="example-room", channel="1", kind="reply", message_id="r1", chars=9, sent=NOW - 5)   # its reply, 5 s ago
+    led.outbound(room="example-room", channel="1", kind="progress-edit", message_id="c1", chars=9, sent=NOW)   # a card's: not
+    led.outbound(room="example-room", channel="1", kind="notice", chars=9, error="503", sent=NOW)            # never posted: not
+    assert led.last_said("example-room") == NOW - 5 and led.last_said("example-quiet") is None
+
+    def ask(_state):
+        return {"rooms": [{"room": "example-room", "busy": False, "waiting": 0, "since": None}]}
+    assert deploy.quiet(state, ask, 240, NOW) == (False, f"{words.PLAIN} example-room had a message 5 s ago")
+    assert deploy.quiet(state, ask, 240, NOW + 234) == (False, f"{words.PLAIN} example-room had a message 4 min ago")
+    assert deploy.quiet(state, ask, 240, NOW + 235) == (True, "")             # both older than the window: quiet
+
+
 def test_it_refuses_what_does_not_fast_forward_and_a_tree_with_changes(tmp_path, capsys):
     tree, ids = repo(tmp_path)
     priv, state = layer(tmp_path, tree)

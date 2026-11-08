@@ -275,6 +275,48 @@ def test_a_crash_after_the_post_finds_the_reply_and_posts_nothing(dc):
     assert d.ledger.inbound_get("5")["reply_ids"] == "777"
 
 
+def test_recover_leaves_the_card_a_turn_of_this_process_posted_and_still_removes_the_old_ones(dc):
+    """Seen live: a message right after a restart opened its turn's card before recover ran on that room, and
+    recover deleted it as the old process's; the turn's eight minutes of edits then went to a deleted message."""
+    d, client, room = dc
+    ch = client.chans[ROOM_CH]
+    d.ledger.card_open("900", "test-room", "turn")                     # the card the old process left
+
+    async def go():
+        await d._open("test-room", "working on it", "turn")            # the channel is there; recover has not run yet
+        await d.recover(ROOM_CH, room)
+        d.want["test-room"] = "Reading the notes"
+        await d._edit("test-room")
+    run(go())
+    card = ch.sent[0]
+    assert ch.deleted == [900] and not card.deleted and card.edits == ["Reading the notes"]
+    assert [c["message_id"] for c in d.ledger.cards_open("test-room")] == [str(card.id)]      # open until its turn ends
+    run(d._finish("test-room", "the answer", ["5"], DONE, key="t30"))
+    assert card.deleted and d.ledger.cards_open("test-room") == [] and ch.sent[1].content == "the answer"
+
+
+def test_an_edit_that_finds_its_card_deleted_forgets_it_logs_once_and_posts_no_other(dc, caplog):
+    d, client, _ = dc
+    ch = client.chans[ROOM_CH]
+    run(d._open("test-room", "working on it", "turn"))
+    card = ch.sent[0]
+
+    async def gone(content):
+        raise discord.NotFound(NS(status=404, reason="Not Found"), {"code": 10008, "message": "Unknown Message"})
+    card.edit = gone
+
+    async def go():
+        for text in ("Reading the notes", "Reading the notes\n✅ read a.md"):
+            d.want["test-room"] = text
+            await d._edit("test-room")
+    run(go())
+    assert [m for m in caplog.messages if m.startswith("progress in test-room failed")] == [
+        "progress in test-room failed: 404 Not Found (error code: 10008): Unknown Message"]
+    assert "test-room" not in d.cards and d.ledger.cards_open("test-room") == []
+    run(d._finish("test-room", "the answer", ["5"], DONE, key="t31"))
+    assert [m.content for m in ch.sent] == ["working on it", "the answer"] and not card.deleted
+
+
 def lost():
     """What a reply's post raised, seen live in an owner's room, in the TLS read of Discord's answer."""
     return aiohttp.ClientOSError(1, "[SSL: SSLV3_ALERT_BAD_RECORD_MAC] ssl/tls alert bad record mac (_ssl.c:2711)")

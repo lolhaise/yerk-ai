@@ -475,6 +475,12 @@ class Ledger:
         r = self._select("SELECT max(received) AS t FROM inbound WHERE room = ? AND sender != 'yerk'", (room,))
         return float(r[0]["t"]) if r and r[0]["t"] is not None else None
 
+    def last_said(self, room: str) -> float | None:
+        """The room's own last post (a reply, a notice, a file, a card kept): a card's progress and a post that failed are not."""
+        r = self._select("SELECT max(sent) AS t FROM outbound WHERE room = ? AND message_id IS NOT NULL AND kind NOT IN "
+                         "('progress', 'progress-edit')", (room,))
+        return float(r[0]["t"]) if r and r[0]["t"] is not None else None
+
     # health
     def health(self, **row: Any) -> int:
         known(row, HEALTH, "health")

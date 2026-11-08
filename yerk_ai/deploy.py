@@ -3,7 +3,7 @@ moves the daemon back to the commit it ran and proves that. REF must fast-forwar
 from the branch checked out in the daemon's tree, which moves to it by `merge --ff-only` (a rollback moves it
 back with `reset --keep`; a detached tree stays detached); the fast tests run there, then the layer's recall
 controls (each through the exact half, a miss once more with the meaning half; one missed deploys nothing); the
-person's turn runs, no room has had a person's message for [deploy] quiet_seconds and the memory
+person's turn runs, no room has had a message either way (a person's or its own post) for [deploy] quiet_seconds and the memory
 index is not rebuilding, and gives quiet_seconds and the memory index is not rebuilding, and gives up after cap_minutes, the checkout as it was
 found. The proof: the unit active, the channel connected, /status answering under the install's secret with the
 new commit and every room served before. A failed proof rolls back the same way. Each deploy and rollback is a
@@ -260,8 +260,8 @@ class Systemd:
 
 
 def quiet(state: Path, ask: Ask, window: float, now: float, blind_ok: bool = False) -> tuple[bool, str]:
-    """No person's turn runs or waits, and no room had a person's message within `window`. A yerkd that
-    runs and does not answer is not quiet (unknown), unless `blind_ok`: a rollback of a daemon whose
+    """No person's turn runs or waits, and no room had a message either way (a person's, or its own post) within `window`.
+    A yerkd that runs and does not answer is not quiet (unknown), unless `blind_ok`: a rollback of a daemon whose
     proof failed goes ahead."""
     s = ask(state) if status.alive(state) else {"rooms": []}
     if s is None:
@@ -273,7 +273,7 @@ def quiet(state: Path, ask: Ask, window: float, now: float, blind_ok: bool = Fal
             return False, words.named(f"{words.PLAIN} {words.TURN_RUNS}", r["room"])
     ledger = Ledger(state / "ledger.sqlite")
     for r in s["rooms"]:
-        if now - (last := ledger.last_received(r["room"]) or 0.0) < window:
+        if now - (last := max(ledger.last_received(r["room"]) or 0.0, ledger.last_said(r["room"]) or 0.0)) < window:
             return False, words.named(f"{words.PLAIN} {words.RECENT}", r["room"], ago=words.span(now - last))
     return True, ""
 

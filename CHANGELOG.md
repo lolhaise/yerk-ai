@@ -37,6 +37,27 @@ version changes.
 
 ## 2026-11-07
 
+### card-race-2026-11-07 (#?)
+
+- A turn that starts right after a restart keeps its card. The restart's sweep removes the cards the old process left,
+  and it also removed a card this process had just posted when a message came in before the sweep reached that room; it
+  now leaves every card this process holds. Why: a room's turn lost its card a second after it
+  was posted, and for eight minutes the owner saw only the reaction while a voice note was made.
+- A card deleted by anyone while its turn runs is forgotten at the first edit that finds it gone: one line in the log,
+  no edit after it, and no card posted in its place. Why: before, every later edit of that turn failed again, 26 log
+  lines in those eight minutes.
+- `yerk deploy` waits for a room to have had no message either way for `[deploy] quiet_seconds`: its person's last
+  message and its own last post (a reply, a notice, a file, a kept card; a card's progress is not one). Why: a
+  restart went two seconds after a room's 6-minute voice note landed, since the window
+  counted only from the owner's message 8.6 minutes before, and the owner's next message came six seconds later.
+- A need's "built and live" line to a room that filed it waits until that room's turn ends, looking every 5 seconds,
+  and goes after 20 minutes even if the turn still runs; the machine room's line and the next need start at once as
+  before. Why: need 74's line came into an owner's room five seconds into a turn, so the owner's
+  message looked answered by a deploy line.
+- The `[code]` ceiling goes to 27,154 (main's 27,124 plus this branch's 30).
+
+**Upgrading**: none.
+
 ### need-2026-11-07-74 (#?)
 
 - A room can open a link in one of the owner's emails in the browser now, and press a button in one: the hands

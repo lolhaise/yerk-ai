@@ -40,6 +40,7 @@ from .config import REPO, flag, write_private
 
 log = logging.getLogger("yerk.needs")
 EVERY, NO_PR, READ_CAP = 120.0, 20 * 60.0, 30.0       # the watch's tick; no PR this long after the build; a reader's and a fixer's minutes
+LIVE_POLL, LIVE_CAP = 5.0, 20 * 60.0                  # a need's line to a room in a turn: looked at every 5 s, posted at 20 min at the latest
 UNIT = "yerk-deploy-"
 RED = ("failure", "error")
 
@@ -339,16 +340,33 @@ class Pipeline:
                 "deploy", "--private", str(self.y.private), "--state", str(self.y.state), "origin/main"]
 
     async def live(self, r: dict[str, Any]) -> None:
-        """Live: one line in the machine room, one in each room that filed it (each once), never a relay turn."""
+        """Live: one line in the machine room, one in each room that filed it (each once), never a relay turn; a room in a
+        turn has its line after that turn (`tell`, in the background, so neither the machine room's line nor next() waits)."""
         await self.set(r, {"state": "live", "live_at": self.now(), "worker": ""})
         await self.drop(r)
         ab = words.line(str(r["ability"]), 80)
         await self.say(words.NEED_LIVE.format(n=r["n"], ability=ab))
         for room in dict.fromkeys(str(a["room"]) for a in r["asks"]):
             if (ch := self.y.channels.get(room)) is not None and room != self.room():
-                with contextlib.suppress(Exception):
-                    await ch.notify(room, words.NEED_LIVE_ROOM.format(n=r["n"], ability=ab))
+                said = self.tell(ch, room, words.NEED_LIVE_ROOM.format(n=r["n"], ability=ab))
+                if not self.busy(room):
+                    await said
+                    continue
+                self.y.later.add(t := asyncio.get_running_loop().create_task(said))
+                t.add_done_callback(self.y.later.discard)
         await self.next()
+
+    def busy(self, room: str) -> bool:
+        return bool(getattr(self.y.rooms.get(room), "busy", False))
+
+    async def tell(self, ch: Any, room: str, line: str) -> None:
+        """`line` in `room` once its turn ends, looked at every LIVE_POLL s, at LIVE_CAP s all the same (seen live:
+        need 74's line came five seconds into a turn in a busy room and read as that turn's answer)."""
+        end = time.monotonic() + LIVE_CAP
+        while self.busy(room) and time.monotonic() < end:
+            await asyncio.sleep(LIVE_POLL)
+        with contextlib.suppress(Exception):
+            await ch.notify(room, line)
 
     async def drop(self, r: dict[str, Any]) -> None:
         """A live need's branches dropped, never in its way: one that stays, or an error, is one log line. Yerk's own goes here
