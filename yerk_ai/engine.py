@@ -288,6 +288,7 @@ class RoomProcess:
         self.proc: subprocess.Popen[bytes] | None = None
         self.session_id = ""
         self.resume_arg: str | None = None
+        self.fork_of: str | None = None        # a copy's (start(fork=True)): the session it was copied from, until adopt()
         self.lock: SessionLock | None = None
         self.room_dir = state / "rooms" / spec.room
         self.stderr_path = self.room_dir / "stderr.log"
@@ -303,6 +304,8 @@ class RoomProcess:
         s = self.spec
         a = [claude_bin(), *STREAM_FLAGS, "--model", s.model, "--setting-sources", "", "--strict-mcp-config", "--tools", ",".join(s.tools)]
         a += ["--resume", self.resume_arg] if self.resume_arg else ["--session-id", self.session_id]
+        if self.fork_of:                          # a copy under its own id (2.1.316 takes --session-id with --fork-session only)
+            a += ["--fork-session", "--session-id", self.session_id]
         if s.mcp_config:
             a += ["--mcp-config", str(s.mcp_config)]
         for d in [*s.add_dirs, self.projects]:    # its own sessions' folder only, where a tool output too big to return
@@ -315,9 +318,11 @@ class RoomProcess:
             a += ["--append-system-prompt-file", str(s.context_file)]
         return a + s.extra_args
 
-    def start(self, *, fresh: bool = False, resume: str | None = None) -> str:
+    def start(self, *, fresh: bool = False, resume: str | None = None, fork: bool = False) -> str:
         """Start the room's process: resume `resume` (a session id or a transcript path), else
-        the room's bound session, else a newly minted one (always when `fresh`)."""
+        the room's bound session, else a newly minted one (always when `fresh`). `fork`: a copy of the room's bound
+        session under a new id (--fork-session), for a compaction off to the side (Room._precompact); it is never bound
+        in the session table, so the room's row and its hooks' token stay the live process's until adopt()."""
         row = None if fresh else self.sessions.get(self.spec.room)
         if resume:
             self.resume_arg, self.session_id = resume, Path(resume).stem if resume.endswith(".jsonl") else resume
@@ -330,12 +335,17 @@ class RoomProcess:
             self.resume_arg = path if path and Path(path).parent != self.projects and os.path.isfile(path) else self.session_id
         else:
             self.resume_arg, self.session_id = None, str(uuid.uuid4())
+        if fork:
+            if not self.resume_arg:
+                raise RuntimeError(f"room {self.spec.room}: no bound session to copy")
+            self.fork_of, self.session_id = self.resume_arg, str(uuid.uuid4())
         (self.state / "locks").mkdir(parents=True, exist_ok=True)
         self.room_dir.mkdir(parents=True, exist_ok=True)
         with contextlib.suppress(OSError):        # an --add-dir missing at start is dropped; 0700 as Claude Code's own
             self.projects.mkdir(mode=0o700, parents=True, exist_ok=True)
         self.lock = SessionLock(self.state / "locks" / f"{self.session_id}.lock").acquire()
-        self.sessions.bind(self.spec.room, self.session_id, self.account.name, self.spec.token)
+        if not fork:
+            self.sessions.bind(self.spec.room, self.session_id, self.account.name, self.spec.token)
         if self.spec.settings:
             write_private(self.room_dir / "settings.json", json.dumps(self.spec.settings, indent=1))
         if self.log_path:
@@ -467,6 +477,29 @@ class RoomProcess:
                 return f.read().decode(errors="replace")
         except OSError:
             return ""
+
+    def copied(self) -> Path | None:
+        """Where Claude Code wrote this copy's transcript: this account's own folder, else beside the transcript it was
+        copied from (a session resumed by path, after a hop, writes there). None: not a copy, or nothing written."""
+        near = Path(self.fork_of).parent if self.fork_of and self.fork_of.endswith(".jsonl") else None
+        return next((p for d in (self.projects, near) if self.fork_of and d and (p := d / f"{self.session_id}.jsonl").is_file()), None)
+
+    def adopt(self) -> None:
+        """The room takes this copy as its session (Room._precompact): bound as a start binds, with the live process's
+        token (the same spec), so the hooks go on answering, and its transcript's path, so a copy written beside a
+        hop's transcript resumes by path; from here it is the room's process like any other."""
+        path = self.copied()
+        self.sessions.bind(self.spec.room, self.session_id, self.account.name, self.spec.token, transcript=str(path or ""))
+        self.fork_of, self.resume_arg = None, self.session_id
+
+    def discard(self) -> None:
+        """A copy the room did not take: ended, and its transcript (Yerk AI's own copy of the room's) removed. An adopted
+        process is never a copy any more, so nothing of the room's is ever removed here."""
+        self.end_now()
+        self.close()
+        if (path := self.copied()) is not None:
+            with contextlib.suppress(OSError):
+                path.unlink()
 
     def end_now(self, grace: float = 5.0) -> None:
         """/stop: TERM the process mid-turn, KILL it if it lingers; its reader then sees the end, and

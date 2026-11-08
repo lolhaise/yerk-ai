@@ -134,6 +134,8 @@ ROOM_WORDS = {
     "people": "Discord user ids answered in the room besides the owner, as sender person (unset: the owner only); needs privacy family or shared",
     "persona": "the persona file, the session start's persona part",
     "pinned_memory": "the pinned memory file, the session start's pinned_memory part",
+    "precompact_within": "the share of compact_window under Claude Code's own line within which a turn's end compacts a copy of the "
+    "session, the room left free, and the copy becomes its session if no turn overtook it (unset: budgets.toml [session]; 0: never)",
     "privacy": "owner (the default): the owner's room, which reads the whole memory; any other value walls the room: its own lines and the shared files only",
     "read": "folders the room may read besides its own, from its work folder; a room with people takes none, trusted or not",
     "recall_days": "how many of the newest day logs the recall pack reads at a session start (default 2)",

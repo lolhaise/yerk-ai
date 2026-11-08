@@ -5,6 +5,7 @@ Code's own); a turn that ends within `idle_compact_within` of Claude Code's own 
 (a busy room: never idle 25 minutes near its line). Each test ends on a case that compacts or answers,
 missing name."""
 import asyncio
+import json
 import logging
 import threading
 import time
@@ -16,6 +17,7 @@ from yerk_ai import words
 from yerk_ai.accounts import Account
 from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai.daemon import Yerkd
+from yerk_ai.engine import SessionTable
 from yerk_ai.room import Inbound
 
 FAKE = Path(__file__).with_name("fake_claude.py")
@@ -61,7 +63,9 @@ def y(tmp_path, monkeypatch):
     monkeypatch.setenv("YERK_CLAUDE", str(FAKE))
     monkeypatch.setenv("FAKE_CLAUDE_RECORD", str(tmp_path / "argv.jsonl"))
     monkeypatch.setenv("FAKE_CLAUDE_MARK", str(tmp_path / "mark"))
-    return Yerkd(EXAMPLE_PRIVATE, tmp_path, only_account=Account("one", tmp_path / "cfg1"))
+    d = Yerkd(EXAMPLE_PRIVATE, tmp_path, only_account=Account("one", tmp_path / "cfg1"))
+    d.budgets["session"]["precompact_within"] = 0       # the copy's band off but in its own tests (band), so these test one rule each
+    return d
 
 
 def say(y, room, mid, text, alone=False):
@@ -350,3 +354,87 @@ def test_the_turn_end_line_is_the_budgets_share_and_a_room_may_move_it_or_turn_i
     wait_idle(room)
     assert compactions(tmp_path) == 1
     room.rp.close()
+
+
+def band(y):
+    """The copy's band on: 0.1 of the 250,000 window, so a turn that ends from 192,000 up to the 204,500 above compacts a copy."""
+    y.budgets["session"]["precompact_within"] = 0.1
+
+
+def until(test, timeout=10):
+    end = time.time() + timeout
+    while not test() and time.time() < end:
+        time.sleep(0.02)
+    assert test()
+
+
+def bound(tmp_path):
+    return SessionTable(tmp_path / "sessions.json").get(ROOM)["session_id"]
+
+
+def test_a_turn_ending_in_the_copys_band_compacts_a_copy_off_to_the_side_and_the_room_takes_it_in_one_step(y, tmp_path, caplog):
+    """Seen live in a busy room: a turn ended 37,362 under its line and the next message waited 126 s behind the
+    206 s compaction; a turn 20 minutes earlier had ended 61,754 under it with 305 s of quiet after. Ended in the band, the
+    turn leaves the room free at once, the copy (--fork-session) compacts, and with no turn since it becomes the room's
+    session: bound, ledgered, the next message answered on it with no compaction of its own."""
+    band(y)
+    room = y.add_room(ROOM, chan := Chan())
+    with caplog.at_level(logging.INFO, logger="yerk.room"):
+        say(y, room, "1", "CONTEXT:195000 hello")             # 22,000 under Claude Code's line of 217,000: in the band
+        wait_idle(room)                                       # free at once, never held by the copy's compaction
+        until(lambda: any("compacted on a copy" in m for m in caplog.messages))
+    live, copy = y.ledger.rows(2)[1]["session_id"], room.rp.session_id          # the turn's row, then the copy's
+    assert live != copy and compactions(tmp_path) == 1 and room.context == 20000 and room.fork is None and bound(tmp_path) == copy
+    argv = [json.loads(x)["argv"] for x in (tmp_path / "argv.jsonl").read_text().splitlines()]
+    forked = [a for a in argv if "--fork-session" in a]
+    assert len(forked) == 1 and forked[0][forked[0].index("--resume") + 1] == live and forked[0][forked[0].index("--session-id") + 1] == copy
+    row = y.ledger.rows(1)[0]
+    assert (row["outcome"], row["session_id"], row["context"]) == ("compacted", copy, 20000)
+    assert any("compacted on a copy" in m and copy in m for m in caplog.messages)
+    say(y, room, "2", "and now?")
+    wait_idle(room)
+    assert chan.replies == ["echo: CONTEXT:195000 hello", "echo: and now?"] and room.rp.session_id == copy == bound(tmp_path)
+    assert compactions(tmp_path) == 1 and len([a for a in argv if "--fork-session" in a]) == 1
+
+
+def test_a_message_during_the_copys_compaction_runs_at_once_on_the_live_session_the_copy_dropped_and_tried_again(y, tmp_path, monkeypatch, caplog):
+    """The wait itself: a message that comes in while the copy compacts is never queued behind it. It runs at once on the
+    live session, which is what the room would do with no compaction at all; the copy is stale (Claude Code's own
+    prefix_changed rule) and dropped, its transcript copy removed, and the turn's end copies the session again."""
+    band(y)
+    monkeypatch.setenv("FAKE_CLAUDE_COMPACT_SLOW", "4")
+    room = y.add_room(ROOM, chan := Chan())
+    with caplog.at_level(logging.INFO, logger="yerk.room"):
+        say(y, room, "1", "CONTEXT:195000 hello")
+        wait_idle(room)
+        live = room.rp.session_id
+        started(tmp_path)                                     # the copy's /compact is running
+        first = room.fork.session_id
+        (copied := room.fork.projects / f"{first}.jsonl").parent.mkdir(parents=True, exist_ok=True)
+        copied.write_text("{}\n")                             # what Claude Code writes for the copy
+        sent = time.time()
+        assert say(y, room, "2", "CONTEXT:199000 and now?") == "started"
+        until(lambda: len(chan.replies) == 2, timeout=3)      # never behind the copy's 4 s
+        assert time.time() - sent < 3 and room.rp.session_id == live
+        until(lambda: any("compaction on a copy is dropped" in m and "overtook" in m for m in caplog.messages))
+        assert not copied.exists() and bound(tmp_path) == live
+        until(lambda: room.rp.session_id not in (live, first))   # the second turn's end copied it again, and no turn overtook that
+    assert chan.replies == ["echo: CONTEXT:195000 hello", "echo: CONTEXT:199000 and now?"]
+    assert compactions(tmp_path) == 2 and bound(tmp_path) == room.rp.session_id and room.context == 20000
+
+
+def test_a_turn_within_the_turn_end_line_still_compacts_the_live_session_and_a_band_of_0_never_copies(y, tmp_path):
+    """Within idle_compact_within of the line nothing changes: the live session compacts at the turn's end, the room held (its
+    own tests above). A band of 0, a room's own key, turns the copy off."""
+    band(y)
+    room = y.add_room(ROOM, Chan())
+    say(y, room, "1", "CONTEXT:205000 hello")              # 12,000 under the line: within 0.05 of the window
+    wait_idle(room)
+    argv = (tmp_path / "argv.jsonl").read_text()
+    assert compactions(tmp_path) == 1 and "--fork-session" not in argv and room.context == 20000
+    y.room_confs[ROOM]["precompact_within"] = 0
+    other = y.add_room(ROOM, Chan())
+    say(y, other, "2", "CONTEXT:195000 again")
+    wait_idle(other)
+    time.sleep(0.3)
+    assert compactions(tmp_path) == 1 and "--fork-session" not in (tmp_path / "argv.jsonl").read_text() and other.fork is None
