@@ -875,11 +875,12 @@ def test_an_open_on_the_mac_says_in_words_what_it_lacks_and_mints_no_ticket_it_c
     assert pagemod.mac({"page": {"address": "100.64.0.1:8787"}}, 1) == words.PAGE_NO_MAC
 
 
-def add_on(tmp_path, ssh="owner@owner-mac", mode=0o644, name="addon"):
-    """An add-on's folder as the hands plug-in keeps it: its server's script and, beside it, the Mac its mac tool reaches."""
+def add_on(tmp_path, ssh="owner@owner-mac", mode=0o644, name="addon", **more):
+    """An add-on's folder as the hands plug-in keeps it: its server's script and, beside it, the Mac its mac tool reaches
+    (`more`: that file's other keys, the Mac's texts bridge)."""
     (folder := tmp_path / name).mkdir(exist_ok=True)
     (folder / "server.mjs").write_text("// an add-on's MCP server\n")
-    (f := folder / pagemod.MAC_FILE).write_text(json.dumps({"ssh": ssh}))
+    (f := folder / pagemod.MAC_FILE).write_text(json.dumps({"ssh": ssh, **more}))
     f.chmod(mode)
     return {"type": "stdio", "command": "/usr/bin/node", "args": [str(folder / "server.mjs")], "env": {"YERK_ROOM": "example-room"}}
 

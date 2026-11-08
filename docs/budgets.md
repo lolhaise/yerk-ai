@@ -568,7 +568,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-08, card-race-2026-11-07 with main folded in (precompact-fork-2026-11-08's 116 lines): main's 27,124 plus this branch's 30, 27,154.
 
-- `lines = 27154`
+2026-11-08, need-2026-11-08-74 raised it by 29: the `text` tool reaches the Mac's bridge with nothing set in yerkd.toml, by the host and socket an owner room's add-on names together in its mac.json (the hands plug-in's, its branch need-2026-11-08-74 at 2e7593a), as `texts` and the page already reach that Mac (texts.py 13: reach, SOCKET and WHOLE, the module's line; daemon.py 8: imessage and owner_servers, the gate and the send on them; channels/page.py 6: addon_file, the trusted file's keys whole, addon_mac on it; words.py 1 and config.py 1: the words); a room asked to send the owner's reply as an iMessage from the Mac met "no Mac is set up for texts" with the bridge up on that Mac and its host already in the plug-in's mac.json, not folded to fit. The plug-in's mac entry is 3 characters shorter, so `mcp__hands__` holds. 27,183.
+
+- `lines = 27183`
 
 ## Uncapped
 

@@ -26,7 +26,8 @@ cap_minutes = 60                                  # a builder's minutes before i
 
 [imessage]
 # The `text` tool's way to the owner's Mac (docs/GUIDE.md: Texts in your name): ssh to `host`, then socat to the bridge's socket
-# there. Each text is held in the room for the owner's word first. No table, no texts: the tool says no Mac is set up.
+# there. Each text is held in the room for the owner's word first. No table: the Mac and socket an owner room's add-on
+# names together in its mac.json (`ssh`, `imessage_socket`), else no texts, and the tool says no Mac is set up.
 host = "<the Mac's ssh host, reached from this machine with a key>"
 socket = "<the bridge's socket on the Mac>"
 service = "auto"                         # imessage, sms or auto: iMessage where the person has it, else SMS

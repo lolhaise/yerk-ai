@@ -688,7 +688,7 @@ class Yerkd:
         one that would not go, and again by the tool."""
         if not self.owner(room):
             return words.TEXT_OWNER_ROOMS
-        if not texts.transport(dict(self.conf.get("imessage") or {})):
+        if not texts.transport(self.imessage()):
             return words.TEXT_NO_SETUP
         if not texts.handle(to):
             return words.TEXT_NO_HANDLE.format(given=words.line(words.no_paths(to), 60))
@@ -703,7 +703,7 @@ class Yerkd:
         if (room, key := gates.call_key(texts.TOOL, {"to": to, "text": text})) not in self.released:
             return {"ok": False, "maybe_sent": False, "error": words.TEXT_NOT_RELEASED}
         self.released.discard((room, key))
-        r = await texts.send(dict(self.conf.get("imessage") or {}), to, text)
+        r = await texts.send(self.imessage(), to, text)
         how = "sent" if r["ok"] else "maybe sent" if r["maybe_sent"] else "failed"
         rp = self.rooms[room].rp
         self.ledger.gate(room=room, session_id=rp.session_id if rp else "", turn=self.rooms[room].turn_key, gate="text", decision=how,
@@ -745,8 +745,16 @@ class Yerkd:
         Mac an owner room's add-on reaches by ssh (page.addon_mac, the hands plug-in's mac.json); "" when none is named."""
         if host := str(dict(self.conf.get("imessage") or {}).get("host") or "").strip():
             return host
-        servers = [s for n, c in self.room_confs.items() if self.owner(n) for s in dict(c.get("mcp") or {}).values()]
-        return page.addon_mac(servers, self.state)
+        return page.addon_mac(self.owner_servers(), self.state)
+
+    def owner_servers(self) -> list[Any]:
+        """The MCP tables of the owner's rooms, where an add-on's mac.json is looked for (page.addon_file); never a person's."""
+        return [s for n, c in self.room_confs.items() if self.owner(n) for s in dict(c.get("mcp") or {}).values()]
+
+    def imessage(self) -> dict[str, Any]:
+        """[imessage] as the `text` tool reaches the Mac's bridge: yerkd.toml's own way, else the Mac and its bridge's socket
+        an owner room's add-on names in its mac.json (texts.reach), as `texts` and the page reach that Mac."""
+        return texts.reach(dict(self.conf.get("imessage") or {}), page.addon_file(self.owner_servers(), self.state))
 
     async def tool_texts(self, room: str, limit: int = 0) -> dict[str, Any]:
         """The `texts` tool: the owner's recent texts, read from the Mac's Messages database (inbox.read), from an owner's

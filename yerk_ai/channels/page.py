@@ -930,11 +930,17 @@ def mac(conf: dict[str, Any], port: int, servers: Any = (), state: Path | None =
 
 
 def addon_mac(servers: Any, state: Path | None = None) -> str:
-    """The owner's Mac as an owner room's add-on reaches it by ssh, for an open there with neither key set: `ssh` in the
-    MAC_FILE beside a server's script (`servers`: those rooms' MCP tables; the hands plug-in keeps its mac tool's host
-    there), a host or user@host (SSH_HOST), never an option. Only a file of the owner's that no other user may write (its
-    group the owner's own) and none under Yerk's state folder, where each room's folder is, so neither a room nor another
-    user steers the ssh and the one-time address it carries; "" when none names one."""
+    """The owner's Mac as an owner room's add-on reaches it by ssh, for an open there with neither key set: `ssh` in
+    addon_file's mac.json; "" when none names one."""
+    return str(addon_file(servers, state).get("ssh") or "")
+
+
+def addon_file(servers: Any, state: Path | None = None) -> dict[str, Any]:
+    """The MAC_FILE beside a server's script whose `ssh` is a host or user@host (SSH_HOST), never an option, its keys as it
+    has them (`servers`: the owner rooms' MCP tables; the hands plug-in keeps its mac tool's host there, and the Mac's
+    texts bridge beside it, texts.reach). Only a file of the owner's that no other user may write (its group the owner's
+    own) and none under Yerk's state folder, where each room's folder is, so neither a room nor another user steers the
+    ssh, the one-time address it carries or a text; {} when none names one."""
     for srv in (x for x in servers if isinstance(x, dict)):
         said = [srv.get("command"), *(a if isinstance(a := srv.get("args"), list) else [])]
         for f in (Path(x).parent / MAC_FILE for x in said if isinstance(x, str) and x.startswith("/")):
@@ -944,12 +950,12 @@ def addon_mac(servers: Any, state: Path | None = None) -> str:
                 shared = st.st_mode & 0o020 and (g.gr_mem or g.gr_name != pwd.getpwuid(st.st_uid).pw_name)    # a group not the owner's own
                 if st.st_uid != os.getuid() or st.st_mode & 0o002 or shared or state is not None and f.resolve().is_relative_to(state.resolve()):
                     continue
-                host = str(json.loads(f.read_text()).get("ssh") or "").strip()
+                host = str((got := json.loads(f.read_text())).get("ssh") or "").strip()
             except (OSError, ValueError, KeyError, AttributeError):
                 continue
             if SSH_HOST.fullmatch(host):
-                return host
-    return ""
+                return {**got, "ssh": host}
+    return {}
 
 
 @functools.lru_cache(maxsize=1)

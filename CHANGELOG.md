@@ -8,6 +8,28 @@ version changes.
 
 ## 2026-11-08
 
+### need-2026-11-08-74 (#?)
+
+- Asking a room to text someone as you from your Mac works with nothing set in yerkd.toml, in every owner room. Before,
+  the `text` tool's gate said no Mac was set up for texts unless yerkd.toml named `[imessage] host` and `socket`, even on
+  a box that already reached the Mac by ssh for the hands plug-in's `mac` tool and read your texts from it, with the
+  Mac's bridge up there; the `mac` tool cannot drive Messages over plain ssh, and a room cannot set yerkd.toml while a
+  conversation runs.
+- The way to the bridge: `[imessage] host` and `socket` (or `command`), as before, else the Mac and the bridge's socket
+  an owner room's add-on names together in the `mac.json` beside its server's script
+  (`{"ssh": "user@host", "imessage_socket": "/path/to/the/bridge.sock"}`), the same Mac `texts` and the page already
+  reach. It is read only from a file of yours that no other user may write and none under Yerk's state folder, a socket
+  only beside the host that same file names, and only as a whole path of plain characters, since it rides ssh's command
+  line to the Mac's shell; a person's room's add-on is never read. The other `[imessage]` keys (`service`, `socat`,
+  `send_timeout`) still apply.
+- Nothing else changes: each text is still held in the room with its words and who it goes to, sent once on your word,
+  and refused before you are asked when it could not go. The refusal now names both places a Mac is set up. The
+  `[code]` ceiling goes to 27,183.
+
+**Upgrading**: the hands plug-in names its Mac's bridge in its `mac.json`, beside the Mac's ssh host, and its `mac`
+tool's entry says a text goes by the `text` tool (its branch `need-2026-11-08-74`); its rooms have it at their next
+session, and Yerk's `text` tool reads it at once. A yerkd.toml `[imessage]` with `host` and `socket` wins as before.
+
 ### precompact-fork-2026-11-08 (#?)
 
 - A room near its window no longer makes the next message wait on a compaction it could have done in a quiet moment.
