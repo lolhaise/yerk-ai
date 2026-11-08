@@ -374,7 +374,7 @@ class Yerkd:
         room = Room(name, conf, lambda: self.spec_for(name), accts, channel, self.state, self.ledger,
                     self.failures, self.cooldowns, idle_seconds=self.idle_seconds, log_dir=self.log_dir, meters=self.meters,
                     compact=(self.window(name), float(s.get("idle_compact_at", 0)), 60 * float(s.get("idle_compact_after", 0)),
-                             float(s.get("idle_compact_within", 0))))
+                             float(s.get("idle_compact_within", 0))), precompact=float(s.get("precompact_within", 0)))
         self.rooms[name], self.channels[name] = room, channel
         if paged:
             self.page.add_room(room)

@@ -6,6 +6,35 @@ A line that changes a file the install keeps (rooms.toml, yerkd.toml, budgets.to
 newer than the code is refused with one line, never changed); the index chunks every file again when its chunker's
 version changes.
 
+## 2026-11-08
+
+### precompact-fork-2026-11-08 (#?)
+
+- A room near its window no longer makes the next message wait on a compaction it could have done in a quiet moment.
+  A turn that ends within `precompact_within` of the window under Claude Code's own line (0.1: 80,000 tokens at an
+  800,000 window, so from 687,000 to the 727,000 where the end-of-turn compaction starts) compacts a copy of the
+  session instead: `claude --resume <session> --fork-session --session-id <new>`, then `/compact` in the copy, on the
+  live process's own spec and account, so it reads the prompt cache the room warmed and its SessionStart hook adds
+  the recall pack again as a live compaction does. The room stays free the whole time.
+- A message that comes in while the copy compacts runs at once on the live session, which is what the room did before
+  at that size (no compaction ran there), and the copy is ended and dropped as stale, its transcript copy removed:
+  Claude Code's own rule for a precomputed summary whose prefix changed. The turn's end copies the session again.
+- A copy that no turn, compaction, settings change or /new overtook becomes the room's session in one step, under
+  the room's lock: bound in sessions.json with the live process's token, ledgered `compacted` with its size after,
+  the old process closed. The next message lands on a session of about 14,000 tokens and never waits.
+- Nothing changes within `idle_compact_within` of the line: the live session still compacts at the turn's end and a
+  message meanwhile waits, its card saying so. The window stays whatever rooms.toml says (800,000 in the room
+  measured); what moves is when a quiet room compacts, at most `precompact_within` less `idle_compact_within` earlier.
+- Why: on 2026-11-08 a busy room ended a turn 37,362 under its line and the owner's next message
+  waited 126 s behind a 206 s compaction (the ledger's last 40 compactions: median 161 s, at most 263 s). Twenty
+  minutes earlier a turn had ended 61,754 under the line with 305 s of quiet after it, time enough for a copy. Claude
+  Code 2.1.316's own precomputed compaction does not reach a headless room: it sits behind the server flag
+  `tengu_sepia_moth`, false on the account tested, whatever settings.json says, and its idle compaction fires at 90%
+  of a one-hour cache (54 min idle), after yerkd has closed an idle room's process at 30.
+
+**Upgrading**: budgets.toml `[session]` gains `precompact_within = 0.1`. A room's block in rooms.toml may set its own;
+0 turns the copy off and leaves the room as it was.
+
 ## 2026-11-07
 
 ### need-2026-11-07-74 (#?)
