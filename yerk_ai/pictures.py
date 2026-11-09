@@ -8,14 +8,24 @@ only.
 `yerk pictures backfill ROOM` files the pictures sent before this: a Yerk worker per BATCH pictures on the room's own account,
 one at a time, one line to the machine room per batch; with `--root FOLDER`, the pictures under a folder the room lists in
 rooms.toml (`read` or `also`), each sidecar beside its picture, indexed under that root as its other files are.
+`zoom` (the tool): Read shows a room a picture at most EDGE pixels on its long side, so the small print on a bigger one is
+lost; a part of it, as fractions of its width and height, is cut out and scaled by ffmpeg to EDGE on its long side (lanczos,
+enlarged MOST_UP times at most) and written as a PNG under the room's work/ZOOM/, which no scan of the pictures sent reads
+and the scratch sweep takes. size() reads a picture's width and height off its header, never a decode.
 """
 from __future__ import annotations
 
 import os
+import re
+import shutil
+import struct
+import subprocess
+import tempfile
 from datetime import datetime, tzinfo
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, BinaryIO, Callable
 
+from . import words
 from .config import write_private
 from .context import attachments_dir
 from .memindex import SEEN, SEEN_HEAD, SKIP_DIRS
@@ -25,10 +35,125 @@ BATCH = 20                   # the pictures one backfill worker reads
 TEXT_MAX = 20_000            # the most of a picture's words one sidecar keeps
 NONE = "(no words on it)"
 SHOWS = "what it shows: "
+EDGE, MOST_UP = 2000, 4.0    # pixels on the long side Read shows at most (Claude Code 2.1.316); the most a zoom enlarges
+ZOOM, TIMEOUT = "zoom", 60   # under a room's work folder: zoom/<its folder's name, a message id>/STEM.zoom-N.png; seconds
+SOF = {0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF}   # a JPEG's frame headers
 
 
 def is_picture(path: Path) -> bool:
     return path.suffix.lower() in KINDS
+
+
+def size(path: Path) -> tuple[int, int] | None:
+    """A picture's width and height off its header, never a decode: a PNG's IHDR, a GIF's screen, a WebP's first chunk, a
+    JPEG's frame header after its segments (an EXIF orientation that turns it a quarter, as ffmpeg turns it, swaps the
+    two); None for anything else or a header cut short."""
+    try:
+        with path.open("rb") as f:
+            h = f.read(30)
+            if h.startswith(b"\x89PNG\r\n\x1a\n") and h[12:16] == b"IHDR" and len(h) >= 24:
+                return int.from_bytes(h[16:20], "big"), int.from_bytes(h[20:24], "big")
+            if h[:6] in (b"GIF87a", b"GIF89a") and len(h) >= 10:
+                return int.from_bytes(h[6:8], "little"), int.from_bytes(h[8:10], "little")
+            if h[:4] == b"RIFF" and h[8:12] == b"WEBP" and len(h) == 30:
+                return webp(h[12:16], h[20:30])
+            return jpeg(f) if h[:2] == b"\xff\xd8" else None
+    except (OSError, struct.error):
+        return None
+
+
+def webp(kind: bytes, d: bytes) -> tuple[int, int] | None:
+    """A WebP's size from its first chunk: lossy (VP8), lossless (VP8L) or extended (VP8X, its canvas)."""
+    if kind == b"VP8 " and d[3:6] == b"\x9d\x01\x2a":
+        return int.from_bytes(d[6:8], "little") & 0x3FFF, int.from_bytes(d[8:10], "little") & 0x3FFF
+    if kind == b"VP8L" and d[:1] == b"\x2f":
+        v = int.from_bytes(d[1:5], "little")
+        return (v & 0x3FFF) + 1, (v >> 14 & 0x3FFF) + 1
+    if kind == b"VP8X":
+        return int.from_bytes(d[4:7], "little") + 1, int.from_bytes(d[7:10], "little") + 1
+    return None
+
+
+def jpeg(f: BinaryIO) -> tuple[int, int] | None:
+    """A JPEG's size, its segments walked from the start to its frame header (an EXIF block or a colour profile comes first)."""
+    f.seek(2)
+    turned = False
+    while len(m := f.read(2)) == 2 and m[0] == 0xFF:
+        if m[1] == 0xFF:                                         # a fill byte before a marker
+            f.seek(-1, 1)
+        elif m[1] in (0xD9, 0xDA):                               # the end, or the picture's data, before any frame header
+            return None
+        elif m[1] != 0x01 and not 0xD0 <= m[1] <= 0xD7:          # those have no length
+            n = struct.unpack(">H", f.read(2))[0]
+            if m[1] in SOF:
+                hi, wide = struct.unpack(">xHH", f.read(5))
+                return (hi, wide) if turned else (wide, hi)
+            if m[1] == 0xE1:
+                turned = quarter(f.read(n - 2)) or turned
+            else:
+                f.seek(n - 2, 1)
+    return None
+
+
+def quarter(app1: bytes) -> bool:
+    """Whether an EXIF block's orientation (5 to 8) turns the picture a quarter, so its width and height swap."""
+    t, end = app1[6:], {b"II": "<", b"MM": ">"}.get(app1[6:8], "")
+    if not app1.startswith(b"Exif\x00\x00") or not end:
+        return False
+    at = struct.unpack(end + "I", t[4:8])[0]
+    for i in range(struct.unpack(end + "H", t[at:at + 2])[0]):
+        tag, _, _, value = struct.unpack(end + "HHIH", t[at + 2 + 12 * i:at + 12 + 12 * i])
+        if tag == 0x0112:
+            return bool(value in (5, 6, 7, 8))
+    return False
+
+
+def zoom(picture: Path, box: tuple[float, float, float, float], into: Path) -> dict[str, Any]:
+    """The `zoom` tool's call, blocking (the daemon runs it off the loop): the box, fractions of the picture's width and
+    height, cut out by ffmpeg and scaled so its long side is EDGE (enlarged MOST_UP times at most), saved in `into` as
+    STEM.zoom-N.png, N one past this picture's last zoom there; a picture whose header gives no size (a HEIC) is made a
+    whole PNG first, so the box is in pixels ffmpeg itself counts."""
+    x0, y0, x1, y1 = box
+    why = ("outside" if not all(0 <= v <= 1 for v in box) else "inverted" if x1 < x0 or y1 < y0 else
+           "empty" if x1 == x0 or y1 == y0 else "")
+    if why:
+        return {"ok": False, "error": words.ZOOM_BOX.format(box=", ".join(f"{v:g}" for v in box), why=words.ZOOM_WHY[why])}
+    if not (exe := shutil.which("ffmpeg")):
+        return {"ok": False, "error": words.ZOOM_NO_FFMPEG.format(name=picture.name)}
+    with tempfile.TemporaryDirectory(prefix="yerk-zoom-") as d:
+        src, whole = picture, Path(d) / "whole.png"
+        if not (dims := size(picture)):
+            if why := ffmpeg(exe, picture, "null", whole):
+                return {"ok": False, "error": words.REVERSE_NOT_PICTURE.format(name=picture.name, why=why)}
+            src, dims = whole, size(whole)
+        w, h = dims or (0, 0)
+        px = [round(x0 * w), round(y0 * h), round(x1 * w), round(y1 * h)]
+        cw, ch = px[2] - px[0], px[3] - px[1]
+        if cw < 1 or ch < 1:
+            return {"ok": False, "error": words.ZOOM_BOX.format(box=", ".join(f"{v:g}" for v in box), why=words.ZOOM_WHY["empty"])}
+        scale = min(MOST_UP, EDGE / max(cw, ch))
+        into.mkdir(parents=True, exist_ok=True)
+        done = [int(m[1]) for f in into.iterdir() if (m := re.fullmatch(re.escape(picture.stem) + r"\.zoom-(\d+)\.png", f.name))]
+        out = into / f"{picture.stem}.zoom-{max(done, default=0) + 1}.png"
+        fit = f"format=rgb24|rgba,crop={cw}:{ch}:{px[0]}:{px[1]},scale={round(cw * scale)}:{round(ch * scale)}:flags=lanczos"
+        if why := ffmpeg(exe, src, fit, out):
+            return {"ok": False, "error": words.REVERSE_NOT_PICTURE.format(name=picture.name, why=why)}
+    return {"ok": True, "file": str(out), "box_px": px, "scale": round(scale, 2), "next": words.ZOOM_NEXT}
+
+
+def ffmpeg(exe: str, src: Path, fit: str, out: Path) -> str:
+    """One frame of `src` through the filters `fit` to the PNG `out`: "" once it is written, else why not, in ffmpeg's own
+    last line (no path in it), and no part of a file left behind."""
+    try:
+        p = subprocess.run([exe, "-v", "error", "-y", "-i", str(src), "-frames:v", "1", "-vf", fit, str(out)],
+                           capture_output=True, text=True, timeout=TIMEOUT)
+        why = "" if p.returncode == 0 else words.no_paths(p.stderr.strip().splitlines()[-1] if p.stderr.strip() else "")[:160]
+    except subprocess.TimeoutExpired:
+        why = words.WATCH_SLOW.format(seconds=TIMEOUT)
+    if why or not out.is_file() or not out.stat().st_size:
+        out.unlink(missing_ok=True)
+        return why or words.WATCH_NO_WHY
+    return ""
 
 
 def sidecar(picture: Path) -> Path:

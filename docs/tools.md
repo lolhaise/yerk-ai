@@ -2,7 +2,7 @@
 
 Written by `yerk docs own` from yerk_ai/mcp_server.py (build) and workers.WORKER_TOOLS; change those and run it again, never this page.
 
-The 22 tools Yerk AI's own MCP server hands every room's Claude Code, preloaded, as mcp__yerk__NAME. Each one's description is the text the model reads, indentation dropped. A worker gets none of them unless [workers] yerk_tools in yerkd.toml names some, and then only recall, read_memory, on its own server.
+The 23 tools Yerk AI's own MCP server hands every room's Claude Code, preloaded, as mcp__yerk__NAME. Each one's description is the text the model reads, indentation dropped. A worker gets none of them unless [workers] yerk_tools in yerkd.toml names some, and then only recall, read_memory, on its own server.
 
 ## send
 
@@ -286,6 +286,23 @@ as a guess.
 ```
 
 - `path`: string, required
+
+## zoom
+
+```text
+A part of a picture, enlarged, since Read shows you a picture at most 2000 px on its long side and the small print
+of a bigger one is lost: use it before you answer from a time, a figure, a name or any print you would squint at (a
+calendar, a form, a receipt, a chat's timestamps). `path` a picture in this room's folders (its [attachment] path);
+x0, y0, x1, y1 the part as fractions of its width and height from its top left (0, 0.5, 0.5, 1: its bottom left
+quarter), so look at the whole first and zoom where the answer is. Returns a PNG 2000 px on its long side (enlarged 4
+times at most): Read it, then answer. When Read refuses a picture, zoom 0, 0, 1, 1 makes the whole of it one Read opens.
+```
+
+- `path`: string, required
+- `x0`: number, required
+- `y0`: number, required
+- `x1`: number, required
+- `y1`: number, required
 
 ## github_state
 

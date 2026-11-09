@@ -51,7 +51,7 @@ YERK_TOOLS = ["mcp__yerk__send", "mcp__yerk__hold", "mcp__yerk__recall", "mcp__y
               "mcp__yerk__remember", "mcp__yerk__worker", "mcp__yerk__schedule", "mcp__yerk__settings", "mcp__yerk__transcribe",
               "mcp__yerk__voice_note", "mcp__yerk__seen", "mcp__yerk__render", "mcp__yerk__watch", "mcp__yerk__need", texts.TOOL, deletes.TOOL, emails.TOOL,
               "mcp__yerk__reverse_image_search", "mcp__yerk__github_state", "mcp__yerk__page", "mcp__yerk__texts",
-              "mcp__yerk__attachments"]
+              "mcp__yerk__attachments", "mcp__yerk__zoom"]
 # A shell room's sandbox when rooms.toml gives it no [rooms.NAME.sandbox] table: unsandboxed, a Read deny stops `cat` and
 # the Read tool, but a script, grep or redirect read every secret (Claude Code 2.1.304, PR 66's cold read, 2026-10-21)
 SANDBOX = {"enabled": True, "autoAllowBashIfSandboxed": True}
@@ -661,6 +661,23 @@ class Yerkd:
         out = await asyncio.to_thread(pictures.file, room, p, text, shows, self.memory.tz)
         log.info("seen: %s, %s, %d characters of its words", room, p.name, len(text))
         return {"ok": True, "file": str(out), "next": words.FILED_NEXT.format(clause=words.FILED_AT_MOST)}
+
+    async def tool_zoom(self, room: str, path: str, x0: float, y0: float, x1: float, y1: float) -> dict[str, Any]:
+        """The `zoom` tool: a part of a picture in the calling room's own folders (may_send's rule, as render's), as fractions
+        of its width and height, made a PNG pictures.EDGE pixels on its long side by ffmpeg off the loop (pictures.zoom), in the room's
+        work/zoom/<the picture's folder's name: a message id for one sent>/, where no scan of the pictures sent looks and the
+        scratch sweep takes it. Free: no spend row."""
+        p = Path(path).expanduser().resolve()
+        if room not in self.rooms or not self.may_send(room, p):
+            return {"ok": False, "error": words.ZOOM_NOT_HERE.format(name=p.name)}
+        if not p.is_file():
+            return {"ok": False, "error": words.REVERSE_NO_FILE.format(name=p.name)}
+        if not pictures.is_picture(p):
+            return {"ok": False, "error": words.ZOOM_NOT_PICTURE.format(name=p.name)}
+        into = self.state / "rooms" / room / "work" / pictures.ZOOM / p.parent.name
+        r = await asyncio.to_thread(pictures.zoom, p, (x0, y0, x1, y1), into)
+        log.info("zoom: %s, %s", room, f"{p.name}, box {r['box_px']} at {r['scale']}x" if r["ok"] else r["error"][:160])
+        return r
 
     async def tool_need(self, room: str, asked: str, tried: str, needed: str, shadow: str = "") -> dict[str, Any]:
         """The `need` tool: what a room could not do, filed as one line (needs.file), folded into an open need of the same
