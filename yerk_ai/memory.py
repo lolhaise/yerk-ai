@@ -650,24 +650,66 @@ def remember(s: Settings, log: DailyLog, room: str, mid: str, text: str, about: 
             [*taken.values(), *(f"{c}: a read-only root or not this room's own line; the new line names it" for c in named)]}
 
 
+def retire(s: Settings, log: DailyLog, room: str, mid: str, at: str, why: str) -> dict[str, Any]:
+    """A rule that turned out wrong, deleted, as the Claude docs say ("delete notes that turn out to be wrong", shape.PINS): its
+    live line in RULES or TOPIC_RULES (`at`, its cite) is emptied, so no other line's cite moves, after its words and `why` go
+    to the room's day log as a note, where its history stays by cite. A rule with a replacement is filed with `job` instead,
+    which marks the old line superseded."""
+    why, files = one_line(why), {cite(s, s.root / f): s.root / f for f in (RULES, TOPIC_RULES)}
+    name, _, n = at.strip().rpartition(":")
+    path, k = files.get(name), int(n) if n.isdigit() else 0
+    if not why:
+        return {"ok": False, "error": "retire needs `text`: why the rule turned out wrong, one clause"}
+    rows = path.read_text().splitlines() if path is not None and path.is_file() else []
+    line = rows[k - 1] if 0 < k <= len(rows) else ""
+    if path is None or not line.startswith("- ") or mentions.OLD in line:
+        return {"ok": False, "error": f"nothing retired: {at.strip()} is no live rule line of {' or '.join(files)}"}
+    when = datetime.now(timezone.utc).astimezone(s.tz)
+    key = f"{mid}.r{hashlib.sha1(line.encode()).hexdigest()[:8]}"
+    log.capture(room, key, NOTE, f"rule \"{topic(line)}\" retired from {at.strip()}, since {why}: {line[2:]}", when=when)
+    day = s.daily / f"{when:%Y-%m-%d}.md"
+    logged = next((i + 1 for i, x in enumerate(day.read_text().splitlines()) if x.endswith(f"[m:{key}]")), 0)
+    with daily_lock(s.daily):                  # the one writers' lock; the line read again, a retried call finds it gone
+        rows = path.read_text().splitlines()
+        if 0 < k <= len(rows) and rows[k - 1] == line:
+            rows[k - 1] = ""
+            write_private(path, "\n".join(rows) + "\n")
+    return {"ok": True, "retired": at.strip(), "cite": f"{cite(s, day)}:{logged}"}
+
+
 def mark(line: str, by: str = "") -> str:
     """`line` marked superseded, by `by` (its replacement's cite) when given; the mark goes before a line's class and id."""
     return re.sub(r"^(.*?)((?: \[c:\w+\])?(?: \[m:[^\]\s]+\])?)$", lambda m: f"{m[1]} {mentions.OLD}{' by ' + by if by else ''}]{m[2]}",
                   line, count=1)
 
 
-def unshaped(job: str, text: str, acronyms: frozenset[str] | None = None) -> dict[str, Any] | None:
+def unshaped(job: str, text: str, acronyms: frozenset[str] | None = None, s: Settings | None = None,
+             read: Any = None) -> dict[str, Any] | None:
     """The refusal of a rule whose line as filed misses the prompting guide's shape (shape.filing: the doctor's per-line counts,
-    its examples out), each count a line of `fix` with the words that tripped it and the guide's fix; None when it has the shape."""
+    its examples out) or the Claude docs' lesson shape (shape.lesson, 2026-11-09: one lesson, a one-line summary first, its reason,
+    a brief body, a day-log cite in place of a quote the day log holds, plain sentences), each a line of `fix` with the words that
+    tripped it, the fix and, for a lesson check, the docs sentence it enforces read off the fetched page; None when it has the shape.
+    `read` (shape.pages): the pages of every model a room runs, since every room loads the rule; a check on a page none reads
+    is not asked. Never refused here (shape.NOT_AT_GATE): a long sentence. A style limit is refused only with no reason."""
     from . import shape                # shape reads this module's names as it loads
+    from .config import budgets
     bad = shape.filing(f"- {one_line(job).strip(' :').lower()}: {one_line(text)}", *([acronyms] if acronyms else []))
-    return {"ok": False, "error": words.RULE_SHAPE, "fix": [words.RULE_OFFENCE.format(name=shape.NAMES[k], said=", ".join(
-        f'"{w.strip(QUOTES)}"' for w in v), fix=words.RULE_FIX[k]) for k, v in bad.items()]} if bad else None
+    fix = [words.RULE_OFFENCE.format(name=shape.NAMES[k], said=", ".join(f'"{w.strip(QUOTES)}"' for w in v), fix=words.RULE_FIX[k])
+           for k, v in bad.items()]
+    limits = dict(budgets().get("shape") or {})
+    found = shape.lesson(job, text, s.daily if s else None, limits, read=read)
+    for k, v in found.items():
+        if k in shape.NOT_AT_GATE or (k in shape.COUNT_ONLY and "no reason" not in found):
+            continue
+        _, key, default = shape.LESSON[k]
+        fix.append(words.RULE_OFFENCE.format(name=words.LESSON_NAMES[k], said="; ".join(v), fix=words.LESSON_FIX[k].format(
+            cap=shape.threshold(limits, key, default), sentence=shape.said(k, s.docs if s else None))))
+    return {"ok": False, "error": words.RULE_SHAPE, "fix": fix} if fix else None
 
 
 def rule(s: Settings, room: str, mid: str, job: str, text: str, cap: int = 0, log: DailyLog | None = None,
          books: dict[str, str] | None = None, on: tuple[str, ...] = (), also: tuple[tuple[Path, int, str], ...] = (),
-         acronyms: frozenset[str] | None = None) -> dict[str, Any]:
+         acronyms: frozenset[str] | None = None, read: Any = None) -> dict[str, Any]:
     """How a job is done from now on, from an owner's room, into RULES: the one file every room starts with and hears
     from on its next message when it changes (context.news), shared so read_memory reads it anywhere. One line with its
     room, message and time; the job's live line before it, in RULES or TOPIC_RULES, is marked superseded by the new one, never
@@ -679,12 +721,12 @@ def rule(s: Settings, room: str, mid: str, job: str, text: str, cap: int = 0, lo
     filing loads on beside its job's words, in place of what its own words name (an [on: ...] mark before its trailer); a topic filing
     naming none keeps its job's live topic rule's. `replaced` names every line of its job it marked, in either file, and each of
     `also` (path, line, its text when listed: another job's line in either file on the same thing, curate.same) it marked by the new
-    line, the one still holding those words. A line out of the prompting guide's shape is never filed (unshaped)."""
+    line, the one still holding those words. A line out of the prompting guide's shape or the Claude docs' lesson shape is never filed (unshaped)."""
     job, body = one_line(job).strip(" :").lower(), one_line(text)
     on = tuple(dict.fromkeys(t for x in on if (t := " ".join(re.sub(r"[,()\[\]]", " ", x).split()))))    # no comma or bracket: the mark's
     if not job or not body:
         return {"ok": False, "error": "a rule needs the job's short name and how it is done, both as text"}
-    if refused := unshaped(job, body, acronyms):
+    if refused := unshaped(job, body, acronyms, s, read):
         return refused
     if bad := [t for t in on if not wants(t)]:
         return {"ok": False, "error": f"nothing filed: a trigger needs a word that names something, not only words like a, the or how: {'; '.join(bad)}"}

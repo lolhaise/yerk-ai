@@ -20,7 +20,7 @@ from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
 from .accounts import load_accounts
-from .config import REPO, flag, uncapped, write_private
+from .config import REPO, STARTS, flag, uncapped, write_private
 from .lifted.clock import clock_line, room_voice
 from .lifted.sizemap import fmt, split_sections
 from .lifted.trim import truncate
@@ -193,7 +193,9 @@ def news(path: Path, sid: str, private: Path, room: dict[str, Any], rules: Path,
     once per version: each new line and each line replaced or gone, or past `budget` their count and `kept`, a file in the
     room's work folder that holds them whole, since every room's Read reaches that folder and only an owner room's reaches
     the mechanics' own file (2026-10-28: a note named that file, and a room's Read of it was refused).
-    `path` keeps the room's looks; `sid` "" records a process start, a new session's first look (its start file's)."""
+    `path` keeps the room's looks; `sid` "" records a process start, a new session's first look (its start file's). A session
+    this file last saw under another id (a compaction's copy, adopted) reads from the texts its kept start was built from
+    (engine.kept_start), since a resumed session keeps the start it began with and hears every change since here."""
     rb = layer_dir(private, room) / str(room["rulebook"]) if room.get("rulebook") else None
     now = {k: ((mechanics() if k == "mechanics" else p.read_text().strip()) if p.is_file() else "", p.resolve()) for k, p in
            (("mechanics", MECHANICS), ("rulebook", rb), ("rules", rules)) if p}
@@ -203,7 +205,11 @@ def news(path: Path, sid: str, private: Path, room: dict[str, Any], rules: Path,
     if not sid:
         write_private(path, json.dumps({**look, "start": texts}))
         return ""
-    seen = look.get("seen", texts) if look.get("session") == sid else look.get("start", texts)
+    try:                                                  # the texts its kept start was built from (engine.kept_start)
+        began = dict(json.loads((path.parent / STARTS / f"{sid}.json").read_text()))
+    except (OSError, ValueError, TypeError):
+        began = {}
+    seen = look.get("seen", texts) if look.get("session") == sid else began or look.get("start", texts)
     if look.get("session") == sid and seen == texts:
         return ""
     write_private(path, json.dumps({**look, "session": sid, "seen": texts}))

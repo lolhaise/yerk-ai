@@ -206,6 +206,7 @@ class Room:
         self.silent_bounced = False               # the silent-ending check bounced this result already
         self.stub_bounced = False                 # the stub check bounced this result already
         self.note_bounced = False                 # the note check bounced this result already
+        self.filing_bounced = False               # the filing check bounced this result already
         self.board_bounced = False                # the board check bounced this result already
         self.retired_bounced = False              # the retired-marks check bounced this result already
         self.paste_bounced = False                # the paste check turned back a send or a final of this result already
@@ -509,6 +510,24 @@ class Room:
         self.stub_bounced = bool(found)
         return (words.STUB.format(head=" ".join(text.split())[:80]), found) if found else None
 
+    def filing_check(self, active: bool, text: str | None, docs: Path | None = None) -> tuple[str, str] | None:
+        """The Stop hook's rule after the stub rule, no judge (2026-11-09, the owner: a rule rewritten, then "Filed: ..." told
+        back): in a result that called one of FILING, a final holding a filing report (words.FILING_REPORT: a line opening Filed
+        or Logged, "the rule now says", a rules file's cite restated) bounces once with the Claude docs' readability sentence,
+        read off the fetched page under `docs`, the rest of the answer kept: (the bounce, what was found), or None."""
+        from . import shape
+        with self.evidence.lock:
+            trail = list(self.evidence.trail)
+        if active or not text or text.strip() == words.NO_REPLY or self.filing_bounced or self.stub_bounced or not any(
+                kind == "tool" and t.rsplit("__", 1)[-1] in FILING for kind, t in trail):
+            return None
+        if not (hit := words.FILING_REPORT.search(text)):
+            return None
+        self.filing_bounced = True
+        line = text[text.rfind("\n", 0, hit.end() - 1) + 1:].split("\n", 1)[0].strip()      # the line the report ends on
+        return (words.FILING_TOLD.format(head=" ".join(line.split())[:80], sentence=shape.sentence("reader", docs).rsplit(" (", 1)[0]),
+                f"a filing report: {' '.join(line.split())[:80]}")
+
     def note_check(self, active: bool, text: str | None) -> tuple[str, str] | None:
         """The Stop hook's rule after the stub rule, no judge (seen live: a turn with no thinking wrote its plan for the
         reply above the answer, and the room posted both whole): the final's first paragraph, at most NOTE_CHARS, is a note to
@@ -636,6 +655,7 @@ class Room:
         self.card.narration = note                # a harness line from the first post, until the model's first words
         self.turn_key, self.bounced, self.silent_bounced, self.stub_bounced = uuid.uuid4().hex[:12], False, False, False
         self.note_bounced = self.board_bounced = self.retired_bounced = self.paste_bounced = self.sheet_bounced = self.said_bounced = False
+        self.filing_bounced = False
         self.fold_bounced = False
         if edit:                                  # the card its message got while it waited on a compaction (submit)
             self.channel.progress(self.name, self.card.render())

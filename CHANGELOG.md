@@ -30,9 +30,47 @@ version changes.
   and one that dies after NO_REPLY are each told, in order) and tests/test_abilities.py (the workers entry answers the
   ask whole under the recall cap), and the tool's words checked in tests/test_hooks_mcp.py.
 
-**Upgrading:** budgets.toml raises `yerk_tools` to 24,900, the session start's `total` to 125,548 and `[code] lines` to
-27,360, each with its dated note. A worker that ends after the deploy's restart ends this way, and a room picks up the
-tool's words at its next session.
+**Upgrading:** budgets.toml raises `yerk_tools` to 25,600, the session start's `total` to 127,548 and `[code] lines` to
+27,915, each with its dated note. Of the 800 on `yerk_tools`, 100 is the `worker` tool's clause and 700 is `remember` as
+main builds it (3,016 characters since memory-docs-shape and fable-5-2, no line moved for it there). A worker that ends
+after the deploy's restart ends this way, and a room picks up the tool's words at its next session.
+
+### memory-docs-shape-2026-11-09 (#?)
+
+- A rule is filed as one lesson in the shape Anthropic's Claude Fable 5 prompting page gives a memory system: one lesson,
+  a one-line summary first, its reason, a brief body, and a day-log cite in place of a quote the day log already holds.
+  `remember` with `job` refuses a rule that enumerates cases, runs a summary past 140 characters, gives no reason, runs
+  a body past 600 characters, or pastes more than 8 words a day log holds. Each refusal quotes the docs sentence it
+  enforces, read off the fetched page, and says the fix.
+- `yerk docs` fetches the Fable 5 prompting page too, and the doctor fetches the pages daily. Each check is pinned to its
+  docs sentence and page; a sentence the page no longer holds turns the test suite red and is a doctor line.
+- The doctor's daily run scores the whole rule store against the lesson shape and the rules file against the
+  code-memory limits (200 lines or 25KB), writes `docs/shape/lessons.md`, and on a finding files a need and says one line
+  in the machine room. A green day says nothing.
+- `remember` with `retire` deletes a rule that turned out wrong: its line is emptied and its words go to the day log.
+- A filing is never announced. A final message reporting one ("Filed", "Logged", "the rule now says") after a filing
+  call bounces once with the docs' readability sentence, and `remember`'s result no longer asks for a filing clause.
+
+- Claude Fable 5.2: a room's checks read its own model's prompting page beside the guide, the Fable family page and
+  code-memory, and the shared rules store is scored against the pages of every model any room runs, each finding naming
+  its page. `yerk docs` fetches the 5.2 page; a model a room runs with no page fetched is a doctor line and a need naming
+  the page to add.
+- From the 5.2 page, `remember` with `job` refuses an absolute rule (never, always, must not) that does not say where it
+  applies or what lifts it, an approval rule that names no action ("anything outward" alone), a line telling the model
+  to think less, and a line asking for its reasoning in the reply. A hard limit of lines, sentences or words is counted
+  in `docs/shape/lessons.md`, never refused. The 40-word sentence cap is gone from the gate, since the page says a hard
+  sentence limit makes prose choppy.
+- The mechanics say the 5.2 page's finishing, opening-line-and-recap and communicating-clearly text in their own words,
+  each absolute carries its scope and exception, and a line names the steps that need no approval.
+- A resumed session, or a compaction's copy of one, is given the start file it began with (kept per session under
+  `rooms/<room>/starts/`), and every change since rides its newest message, since Claude Fable 5.2 rejects a resumed
+  request whose system prompt changed. A new session takes the current files.
+
+**Upgrading:** budgets.toml `[shape]` gains the `lesson_*` lines, `[session_start.appended] mechanics` rises to 8,500 and
+the total to 126,748, and `[code]` lines rises, each with its dated note; `[docs] refresh_days` defaults to 1. An install
+whose `[docs] pages` in yerkd.toml replaces the default list adds `prompting-fable-5-2` (and each model its rooms run)
+there, or the doctor files the need. Until the store is converted (the migration, a later change), the doctor files one
+need for the rules out of the lesson shape and says one machine-room line a day.
 
 ### need-2026-11-09-75 (#?)
 
