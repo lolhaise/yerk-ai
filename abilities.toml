@@ -389,6 +389,7 @@ how = [
   "A brake: the owner's stop word ends it at once, and a run lifts the brake for itself with a lease that runs out on its own.",
   "A relaunch before each call: a browser that quit with its last tab leaves a port that takes a connection and resets it, so the tool starts it again inside the call's lease, and one that will not come back is said to be down in one line with its reason, never a stack trace's first line.",
   "The computer the owner names: the default one when none is named; another computer's browser is another profile with its own sign-ins, so a read moves there only when the owner names it.",
+  "A field typed as keys type it, by the browser action type in place of set, for a React or Angular form that never sees a value a script sets and keeps its Next button disabled: found by set's label rules, cleared with a real Backspace, typed through the browser's own text input (Input.insertText) a character at a time while short, read back, and the focus taken off it so its checks run.",
 ]
 tier = "free"
 needs = "a desktop computer with a Chromium-based browser, a separate profile on it, and a path from the box to its developer port"
@@ -396,7 +397,8 @@ price = "none"
 free_path = "this is the free path"
 why_not = "Not in this repo: a browser reaches the rooms as a plug-in an install attaches to every owner room under rooms.toml [defaults] (on the owner's box, hands and its mcp__hands__browser), so a room that holds such a tool opens the page with it, on the computer the owner names, and when the tool says that browser is down the room tells the owner, never reading on another computer unasked. The bank-balances ability builds on it."
 asked_as = ["use my browser", "control my browser", "drive my browser", "use a browser", "browser for me", "open a website for me",
-            "open it in my browser", "open a page in my browser", "browser on my pc"]
+            "open it in my browser", "open a page in my browser", "browser on my pc", "the next button stays disabled",
+            "the form won't take the value", "the field needs real keystrokes"]
 
 # need-2026-11-01-31: a form that wants a photo could not be sent, since a file input takes no typed value.
 [abilities.form-files]
@@ -466,7 +468,7 @@ asked_as = ["link in the email", "link in that email", "links in the email", "li
 state = "described"
 what = "Types into whatever field has focus in one of the room's tabs in the browser ability's browser, such as one a click by position focused, and reads, lists, fills and clicks a form drawn inside a web component, which a page's own text and controls leave out."
 how = [
-  "One browser action, type: text into the field that has focus, typed by the browser itself over its developer protocol (Input.insertText), so a field inside a web component, a framework's field that ignores a value set by script and a field no list names all take it; then one key when asked, such as Tab to the next field.",
+  "One browser action, type: text into the field that has focus, typed by the browser itself over its developer protocol (Input.insertText), a character at a time while short, or into the field a label names, cleared first with a real Backspace, so a field inside a web component, a framework's field that ignores a value set by script and a field no list names all take it; then one key when asked, such as Tab to the next field.",
   "The field found first, as the browser will type into it: through each web component's own part of the page and each frame of the page's own site; nothing focused, a field that takes no text and a file input are each said with the way past, and what the field reads after comes back.",
   "A select takes the option its words name: an exact one first, else the one option that holds them; none or several are said with the options.",
   "A web component's form read too: its words follow the page's on a read, its controls are listed with the page's, and a fill or a click by label reaches them; one whose inside is closed to the page is reached by type alone.",

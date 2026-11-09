@@ -7,7 +7,7 @@
 # The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and
 # Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 [session_start]
-total = 125745
+total = 125912
 
 # Load order, most stable first, so the cached start of the prompt survives.
 # The first parts are Claude Code's own (its default prompt, the built-in tools
@@ -183,6 +183,11 @@ total = 125745
 # shell waited on an approval no one gives mid-turn) is 1,081 as this tree builds it, all 23 to 24,074, about 24,787 as
 # sent (713 over the build, 31 a tool as on the others); so 24,800, no part could pay, the total rose by the 1,100 (to
 # 125,303 with its mechanics line's 400).
+# 2026-11-09, need-2026-11-09-75: the hands plug-in's browser gains `type` (a field's value typed as keys are, the browser's
+# own text input into the focused field, since a room's quote form showed what `set` put in its licence field while its
+# React form never had it and its Next stayed disabled; filed 2026-11-09): its entry grows 145 as the plug-in's branch
+# need-2026-11-09-75 (cc75696) builds it against its main 2e7593a, so 3,622 as sent (31 over, as each of the five goes),
+# all five 8,708; so 8,708, no part could pay, the total rose by the 145 (to 125,448).
 # 2026-11-09, need-2026-11-09-74: the hands plug-in's browser gains `type` (text into whatever field has focus in a tab,
 # such as one a click by x and y focused, and a web component's form read, listed, set and clicked by label, since a room
 # asked to run a quote on a form drawn inside a shadow root saw it only in a shot, its read and its fields stopping at the
@@ -190,12 +195,17 @@ total = 125745
 # 3,880 as JSON on the plug-in's branch need-2026-11-09-74 (8c2aff9) against its main 2e7593a, 442 more as sent (each of
 # the five goes out 31 over its build, which `type` leaves as it was); so 9,005, no part could pay, the total rose by the
 # 442 (to 125,745 on zoom-2026-11-09's 125,303, main cc6ccfe folded in).
+# 2026-11-09, need-2026-11-09-74 on main da8bfd8 (need-2026-11-09-75's `type` landed first): the plug-in's main aa4d3fc
+# merges its branch need-2026-11-09-74 onto need 75's cc75696 as one `type` (by its label, need 75's way, through each open
+# shadow root too, a select by its option's words; with no label, the field that has focus; a key after either): its
+# browser entry 4,047 as JSON there (3,583 on cc75696, 3,880 on the branch), about 4,086 as sent, all five 9,140 built;
+# so 9,172, the 464 over main's 8,708, no part could pay, the total rose by the 464 (to 125,912 on main's 125,448).
 [session_start.claude_code]
 claude_code_prompt = 10966
 builtin_tools = 12132
 yerk_tools = 24800
 deferred_tool_names = 3429
-mcp__hands__ = 9005
+mcp__hands__ = 9172
 mcp__web-ladder__web_image = 913
 skills = 0
 

@@ -22,6 +22,12 @@ version changes.
   nothing focused, a field that takes no text and a file input (upload's) are each refused with the way past; a card
   field is never typed into, confirmed or not; a frame of another site holding the focus is judged as a click by x and
   y into one is. Nothing is typed on a payment page, and on a look-alike only on the owner's word, as with set and click.
+- One `type` with need-2026-11-09-75's, which reached main first: the plug-in's main aa4d3fc merges its branch
+  `need-2026-11-09-74` onto need 75's `type` (cc75696) as one action. With a `label` (or need 75's `value` for the text),
+  the field by its label, found as `set` finds it, through each open shadow root too, then a box: a text box cleared with
+  a real Backspace and typed a character at a time while short, a select given the option its words name. With no label,
+  the field that has focus, as above, typed a character at a time too. A `key` after either, and what the field holds
+  read back.
 - A form drawn inside a web component's open shadow root is read too: its words follow the page's on `read` (after
   `--- inside web components (shadow roots) ---`), `fields` lists its controls after the page's, `set` and `click`
   reach them by label after chrome-cdp's own NOT FOUND, and a click by x and y is judged by the control under the
@@ -30,11 +36,14 @@ version changes.
 - The plug-in's branch `need-2026-11-09-74` (8c2aff9, then af44c92, a test's placeholder postal code); 58 of 58 of its offline
   tests green, six of them new, the first the wall itself: a click by x and y focuses a Year select in a shadow root,
   `type` picks the year, then types the postal code and presses Tab. Its page scripts were also run in Playwright's
-  headless Chromium against a form in a shadow root, a closed root, nested roots and a card field in a root.
+  headless Chromium against a form in a shadow root, a closed root, nested roots and a card field in a root. Joined to
+  need 75's on the plug-in's main (aa4d3fc): 66 of 66 green, both branches' cases and one for the joined paths, and its
+  by-label scripts run in that headless Chromium against a field and a select inside a shadow root.
 - The abilities entry `form-typing` (`yerk explain form-typing`), with its phrases ("type into the field", "shadow
   root", "fields are not listed", ...); the README's Add-ons line names it in as many bytes.
-- budgets.toml: the hands line 8,563 to 9,005 (the browser entry 442 longer as the plug-in's branch builds it) and the
-  session-start total by the 442 to 125,745 (on zoom-2026-11-09's 125,303); the per-message recall line 2,000 to 2,100 and the per-message cap 5,650 to
+- budgets.toml: the hands line to 9,172 (the joined browser entry as the plug-in's main aa4d3fc builds it, 4,086 as
+  sent; 464 over main's 8,708 with need 75's `type`) and the session-start total by the 464 to 125,912 (on main
+  da8bfd8's 125,448); the per-message recall line 2,000 to 2,100 and the per-message cap 5,650 to
   5,750, since the answer to "what can you do" (every ability's name by its state) rides whole under the recall line, sat
   2 under it, and `form-typing`'s name took it 11 over. Each with its dated note; docs/budgets.md is what `yerk docs own`
   writes.
@@ -42,9 +51,24 @@ version changes.
   and its fields saw only the page's footer, since the form sits in a web component's shadow root; a click by x and y
   focused the form's first field, and no action typed into it, so the room filed the need (need 74 of 2026-11-09).
 
-**Upgrading**: merge this before, or with, the plug-in's deploy, which fast-forwards hands-mcp's main to its branch
-`need-2026-11-09-74`: the hands line here counts the browser entry that branch sends, and its rooms have `type` at their
-next session. An install that keeps its own budgets.toml takes the recall line's 2,100 and the per-message cap's 5,750.
+**Upgrading**: hands-mcp's main already holds the joined `type` (aa4d3fc): the hands line here counts the browser entry it
+sends, and its rooms have it at their next session. An install that keeps its own budgets.toml takes the recall line's 2,100 and the per-message cap's 5,750.
+
+### need-2026-11-09-75 (#?)
+
+- A room fills a React or Angular form's text field so the form registers it. The hands plug-in's browser `set` writes
+  a value from a script, and a framework form whose checks wait on the browser's own events showed the value but never
+  had it, so its Next button stayed disabled and the form went no further. The browser's new `type` action finds the
+  field by `set`'s own label rules (the page, then a frame of the page's own site), a text box only, focuses it, clears
+  what it held with a real Backspace, and types the value through the browser's own text input (`Input.insertText`, a
+  character at a time while the value is short, so a mask formats it as it goes). Then it reads the field back (a
+  password by its length only) and takes the focus off it, so the change event and the checks on leaving the field run.
+  A field that offers suggestions keeps the focus for its list. The guards are `set`'s: nothing on a payment page, and a
+  checkout look-alike only on your word.
+- The plug-in's change is on its branch `need-2026-11-09-75`; `yerk explain browser` carries the typing line.
+
+**Upgrading:** budgets.toml raises `mcp__hands__` to 8,708 and the session start's `total` to 125,448, each with its
+dated note. The plug-in's branch merges onto its main, and a room picks up `type` at its next session.
 
 ### zoom-2026-11-09 (#?)
 
