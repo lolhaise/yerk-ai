@@ -431,6 +431,7 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
 
 LESSON_NEED = "the rule store kept in the Claude docs' lesson shape"            # the need the daily run files and folds into
 PIN_NEED = "the lesson checks re-pinned to the Claude docs' sentences that moved"
+MODEL_NEED = "the prompting page of a model a room runs added to the pages yerk docs fetches"   # shape.unpaged
 
 
 def lessons(private: Path, state: Path, m: memory.Settings, now: float, dry: bool = False,
@@ -439,11 +440,17 @@ def lessons(private: Path, state: Path, m: memory.Settings, now: float, dry: boo
     every pinned sentence against its fetched page, the whole rule store against shape.LESSON, the index against code-memory's
     limits. Its lines are the doctor's, kept in docs/shape/lessons.md; a finding files a need through needs.file (one open need of
     that ability, its count rising each day it stays) so the pipeline builds the fix, and says one line in the machine room once
-    and the. Test reads it back as plain text with one."""
+    a day. A green day writes the report and says nothing. The pages read follow the rooms (2026-11-09, Claude Fable 5.2): the
+    ones every room reads and the prompting page of each model a room runs (shape.pages), and a model whose page `yerk docs
+    refresh` does not fetch is a line and a need naming the page to add. A moved sentence, a model with no page and the store's
+    the next run starts the example."""
     from . import needs
+    from .config import models
     limits, root = dict(budgets().get("shape") or {}), docs.root(state)
-    r = rule_shape.store(m, limits, root)
-    out = rule_shape.store_findings(r, limits, root)
+    conf = load_toml(private / "yerkd.toml") if (private / "yerkd.toml").is_file() else {}
+    by = rule_shape.run_by(rooms(private), state, models(conf))
+    r = rule_shape.store(m, limits, root, rule_shape.pages(by))
+    out = rule_shape.unpaged_lines(rule_shape.unpaged(by, docs.pages(dict(conf.get("docs") or {})))) + rule_shape.store_findings(r, limits, root)
     if dry:
         return out
     day = time.strftime("%Y-%m-%d", time.localtime(now))
@@ -452,9 +459,11 @@ def lessons(private: Path, state: Path, m: memory.Settings, now: float, dry: boo
     if not out:
         return out
     machine = next((n for n, c in rooms(private).items() if c.get("role") == "machine"), "")
-    filed = needs.file(m, state, machine or "doctor", f"doctor-lessons-{day}", now=now, tried=out[0],
-                       asked="in the queue for 0000-00-00: its turn and the last part Closes the case, before the next run",
-                       needed=PIN_NEED if r["moved"] else LESSON_NEED)
+    kinds = {PIN_NEED: [x for x in out if x.startswith("docs moved")], MODEL_NEED: [x for x in out if x.startswith("docs: no prompting")]}
+    kinds[LESSON_NEED] = [x for x in out if x not in kinds[PIN_NEED] + kinds[MODEL_NEED]]
+    filed = [needs.file(m, state, machine or "doctor", f"doctor-lessons-{day}", now=now, tried=said[0], needed=need,
+                        asked="the owner's order of 2026-11-09: every rule written the way the Claude docs say, never out of date")
+             for need, said in kinds.items() if said][0]
     if machine:
         line = words.LESSONS_LINE.format(first=out[0], n=len(out), s="s" * (len(out) != 1), need=f"{filed.get('day', day)} {filed.get('n', '')}".strip())
         with suppress(OSError, ValueError):

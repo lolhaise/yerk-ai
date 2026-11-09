@@ -1038,7 +1038,8 @@ class Yerkd:
         if self.reader(room).sealed:        # its teaching stays its own day-log note, the job its label, never the shared rules
             return await self.tool_remember(room, text, job.strip(" :"), [])
         topics, acronyms = shape.install(dict(self.conf.get("docs") or {}))
-        if refused := memory.unshaped(job, text, acronyms, self.memory):
+        read = shape.pages(shape.run_by(self.room_confs, self.state, self.models))    # every model a room runs: all load the rule
+        if refused := memory.unshaped(job, text, acronyms, self.memory, read):
             return refused
         listed, said = await asyncio.to_thread(curate.same, self.private, self.memory, self.room_confs, job, text, topics), curate.settled(older)
         if open_ := [x for x in listed if x["cite"] not in said]:
@@ -1048,7 +1049,7 @@ class Yerkd:
         cap = 0 if uncapped(self.budgets) else int(self.budgets["session_start"]["appended"]["rules"])     # 0: no strip, no topic filing
         also = tuple((x["path"], x["line"], x["text"]) for x in listed if x["kind"] in ("rules", "topics") and said[x["cite"]][0] == "superseded")
         r = await asyncio.to_thread(memory.rule, self.memory, room, mid, job, text, cap, self.daily, context.books(self.private, self.room_confs),
-                                    tuple(triggers or ()), also, acronyms)
+                                    tuple(triggers or ()), also, acronyms, read)
         if not r["ok"]:
             return r
         for x in listed:                    # each verdict where a person can read it; a hand-kept file's line to its keeper, once

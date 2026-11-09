@@ -403,7 +403,8 @@ lesson_summary_chars = 140    # the one-line summary, the rule's first sentence
 lesson_body_chars = 600       # the body after the summary, file:line cites not counted
 lesson_quote_words = 8        # a quoted passage or example past this many words that a day log holds is cited, not pasted
 lesson_gloss_words = 6        # a cited example's gloss (Landed or Bounced, a cite, then this many words at most)
-lesson_sentence_words = 40    # turn and the
+lesson_sentence_words = 40    # the longest sentence: a store finding for a 5.1 room only, never refused at the gate (2026-11-09,
+                              # Claude Fable 5.2's page: a hard limit such as "in 20 words or fewer" can make its prose choppy)
 lesson_findings = 0           # the store's lessons out of the shape before the doctor's daily run files a need
 
 [recall]

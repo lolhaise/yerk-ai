@@ -232,7 +232,11 @@ def rules_text() -> str:
 # the sentence as the page says it, so `pinned` can tell when the page moved, and every refusal quotes the sentence off
 # the test reads (`it`). Back as plain text with one more line for/the_check_while.a second entry waits in the
 # run files a need naming it. Thresholds: budgets.toml [shape], the lesson_* keys.
-FABLE, FABLE1, CODE_MEMORY = "prompting-fable-5", "prompting-fable-5-1", "code-memory"
+FABLE, FABLE1, FABLE2, CODE_MEMORY, GUIDE = "prompting-fable-5", "prompting-fable-5-1", "prompting-fable-5-2", "code-memory", "prompting-guide"
+# The pages every room's checks read whatever model it runs: the general guide, the Fable family page (the memory recipe
+# lives only there; the 5.1 and 5.2 pages do not restate it) and code-memory. A model's own prompting page (page_of) is
+# read only for the rooms that run that model, so the density pin, on the 5.1 page that 5.2 dropped, binds a 5.1 room only.
+EVERY = (GUIDE, FABLE, CODE_MEMORY)
 PINS = {
     "lesson": (FABLE, "Store one lesson per file with a one-line summary at the top."),
     "why": (FABLE, "Record corrections and confirmed approaches alike, including why they mattered."),
@@ -247,11 +251,68 @@ PINS = {
                         "fewer paragraph breaks."),
     "index": (CODE_MEMORY, "Example note 000 says the `Sample.item`, moved to the 00Next, step and the, test reads it back "
                            "starts the example note."),
+    # Claude Fable 5.2's page (2026-11-09, on the owner's word: everything in Yerk the way its docs say)
+    "caution": (FABLE2, "Starts the example note says the sample item: moved, to, the next, step "
+                        "the sample item."),
+    "no-approval": (FABLE2, "Name the steps that need no approval."),
+    "exception": (FABLE2, "And the test reads it back."),
+    "approvals": (FABLE2, "While a second entry waits in the, queue for its turn and the, last part closes "
+                          "one more line for."),
+    "style-limit": (FABLE2, "Check While 0.0 a second entry waits, in the queue for its turn “and the last "
+                            "starts, the 00 example note says” the sample item moved to."),
+    "built-up": (FABLE2, "Moved to the, next step and the test reads it back, as plain text with one "
+                         "part closes the case before the next."),
+    "think-less": (FABLE2, "The Last part, closes the case before the Next Run 0.0 starts the example `note` says the."),
+    "reasoning": (FABLE2, "Back as plain, text, with one more line for the check while a second entry waits in, "
+                          "remove those instructions."),
+    "new-conversations": (FABLE2, "Make these changes in new conversations only."),
+    "newest-turn": (FABLE2, "To change instructions partway through a conversation, put them in the newest turn."),
+    "append-only": (FABLE2, "Apart from compaction and context editing, keep the history append-only."),
+    "clearly": (FABLE2, "Write for an intelligent but low-context reader."),               # the "# Communicating clearly" block
+    "plain-words": (FABLE2, "Use plain words, and write in clear, understandable full sentences."),
+    "finishing": (FABLE2, "Please avoid stopping while you still owe work the user asked for."),   # the "# Finishing work" block
+    "recap": (FABLE2, "Before you start, say in a line what you’re about to do; brief updates while you work help the user "
+                      "follow along."),                                                 # the opening line, updates and recap
 }
 # Each lesson check, the pin it enforces, its threshold key in [shape] and its default (a findings count's is zero).
 LESSON = {"enumerated": ("brief", "lesson_cases", 3), "summary": ("lesson", "lesson_summary_chars", 140),
           "no reason": ("reason", "lesson_why", 0), "long": ("brief", "lesson_body_chars", 600),
-          "on record": ("on record", "lesson_quote_words", 8), "dense": ("density", "lesson_sentence_words", 40)}
+          "on record": ("on record", "lesson_quote_words", 8), "dense": ("density", "lesson_sentence_words", 40),
+          # Claude Fable 5.2's (2026-11-09): read for an install where a room runs claude-fable-5-2, no number but the words
+          "absolute": (("built-up", "exception"), "", 0), "approval": ("approvals", "", 0), "think less": ("think-less", "", 0),
+          "reasoning": ("reasoning", "", 0), "style limit": ("style-limit", "", 0)}
+# Never a refusal at the write gate: the 40-word sentence (Fable 5.2's page says a hard sentence limit makes prose choppy,
+# and the 5.1 density note it rests on binds a 5.1 room only, in the store). A style limit is a count in the store, often the
+# owner's own preference, and the gate asks of it only its reason.
+NOT_AT_GATE, COUNT_ONLY = frozenset({"dense"}), frozenset({"style limit"})
+ABSOLUTE = re.compile(r"\b(?:never|always|must not|mustn['’]t|under no circumstances|at all times|at no time|no matter what|"
+                      r"without exception|in no case|not ever)\b", re.I)
+SCOPE = re.compile(r"\b(?:when|whenever|while|where|wherever|before|after|during|until|once|unless)\b|\b(?:in|on|for|at|inside|"
+                   r"outside|within)\s+(?:a|an|the|any|every|each|this|that|these|those|his|her|their|my|your|our|its|one|another|other|all)\b", re.I)
+EXCEPTION = re.compile(r"\b(?:unless|except|only (?:if|when|after|with)|until|even (?:if|when|asked)|no exceptions?|go-ahead|"
+                       r"approv(?:al|ed|es)|say-so|(?:his|her|their|the owner's) (?:ok|okay|word)|(?:when|if) (?:he|she|they|the owner) "
+                       r"(?:asks?|says?|approves?|tells?))\b", re.I)
+ASK_FIRST = re.compile(r"\b(?:ask(?:s|ing)? (?:him |her |them |the owner |me )?(?:first|before)|(?:get|getting|needs?|wait for|"
+                       r"with(?:out)?) (?:a |an |his |her |their |the owner's |my |your )?(?:go-ahead|ok|okay|approval|sign-off|say-so|"
+                       r"confirmation)|confirm (?:first|before)|check with (?:him|her|them|the owner) (?:first|before))\b", re.I)
+VAGUE = re.compile(r"\b(?:anything (?:outward|external|outside|public|risky|irreversible|important|big)|(?:sending )?messages? to "
+                   r"(?:people|others|anyone|someone)|(?:any|every) (?:outward|external|outside) (?:actions?|steps?|things?)|"
+                   r"outward actions?|external actions?|any action|any step|anything|everything)\b", re.I)
+NAMED = re.compile(r"\b(?:e-?mail|text|sms|post|tweet|push|merg|delet|pay|buy|order|deploy|publish|sign|book|transfer|invoic|"
+                   r"refund|cancel|upload|releas|call|invit|repl|comment|commit|pull request|purchas|spend|charg|forward|install|"
+                   r"overwrit|rebas|money)\w*", re.I)
+THINK_LESS = re.compile(r"\b(?:without (?:thinking|deliberat\w*|overthinking)|(?:think|deliberate) less|(?:do not|don['’]t|never|no "
+                        r"need to) (?:think|deliberate|overthink)\b(?! (?:that|he|she|they|it|so|of|about whether))|(?:skip|minimi[sz]e|"
+                        r"limit|less|minimal) (?:the |your )?(?:thinking|deliberation|deliberating)|answer (?:directly|immediately|"
+                        r"straight away|right away|at once) without|no extended thinking|stop thinking|keep (?:the |your )?thinking "
+                        r"(?:short|brief|minimal))\b", re.I)
+REASONING = re.compile(r"\b(?:show|write|explain|include|give|lay out|walk (?:me |him |them )?through|spell out|share|print|post|"
+                       r"narrate|put)\s+(?:out\s+)?(?:all\s+)?(?:of\s+)?(?:your|its|the|his|my)?\s*(?:reasoning|thinking|thought "
+                       r"process|chain[- ]of[- ]thought)\b|\bthink (?:out loud|aloud)\b|\bstep[- ]by[- ]step reasoning\b|"
+                       r"\b(?:reasoning|thinking) (?:in|into) (?:the|your|each) (?:reply|response|answer|message)\b", re.I)
+STYLE_LIMIT = re.compile(r"\b(?:\d{1,4}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|"
+                         r"forty|fifty)\s+(?:or (?:fewer|less|more)\s+)?(?:short\s+)?(?:lines?|sentences?|words?|paragraphs?|"
+                         r"bullets?|characters?|chars)\b", re.I)
 GLOSS = ("lesson_gloss_words", 6)          # a cited example's gloss, at most
 CASE = re.compile(r"(?:^|[.;:!?]\s+|\(\w\)\s*|\b\d[.)]\s+)(?:when|whenever|if|for)\b", re.I)    # a case's head, a clause's first word
 NUMBERED = re.compile(r"(?:^|\s)(?:\(\d{1,2}\)|\d{1,2}[.)]|\([a-h]\))\s")                          # (1) 1. 1) (a)
@@ -268,13 +329,64 @@ def page(docs: Path | None, slug: str) -> str:
 
 
 def flat(text: str) -> str:
-    """Text as a pin is matched: one space for any run of white space, straight quotes for curly ones."""
-    return " ".join(text.translate(str.maketrans("‘’“”", "''\"\"")).split())
+    """Text as a pin is matched: one space for any run of white space, straight quotes for curly ones, and a Markdown link
+    as its words, since a page's sentence reads the same with a link in it (5.2's "put them in the newest turn" is one)."""
+    return " ".join(LINK.sub(r"\1", text).translate(str.maketrans("‘’“”", "''\"\"")).split())
 
 
-def pinned(docs: Path | None) -> list[tuple[str, str, str]]:
-    """(pin, slug, sentence) of each pin its fetched page no longer holds word for word; a page not fetched yet is none."""
-    return [(k, slug, said) for k, (slug, said) in PINS.items() if (text := page(docs, slug)) and flat(said) not in flat(text)]
+LINK = re.compile(r"\[([^\]\n]*)\]\([^)\s]*\)")
+DATED = re.compile(r"-\d{8}$")
+
+
+def page_of(model: str) -> str:
+    """A model's own prompting page, by its id: claude-fable-5-2 is prompting-fable-5-2, claude-opus-5-5 prompting-opus-5-5
+    (a dated id's date dropped), so a model shipped tomorrow names its page with no table to edit."""
+    return "prompting-" + DATED.sub("", model.strip().lower()).removeprefix("claude-")
+
+
+def run_by(rooms: dict[str, dict[str, Any]], state: Path, listed: dict[str, str]) -> dict[str, list[str]]:
+    """model id -> the rooms that run it: each room's override over rooms.toml (config.room_settings), an alias read through
+    the install's model list; a room on the model's own default names none, so it reads the pages every room reads."""
+    from .config import room_settings
+    out: dict[str, list[str]] = {}
+    for name, conf in rooms.items():
+        if model := room_settings(conf, state, name, listed)["model"][0]:
+            out.setdefault(listed.get(model.lower(), model), []).append(name)
+    return out
+
+
+def pages(models: Any = ()) -> tuple[str, ...]:
+    """The pages the checks read for rooms running `models`: EVERY, then each model's own page; a shared store's, every
+    model any room runs."""
+    return tuple(dict.fromkeys([*EVERY, *(page_of(m) for m in models)]))
+
+
+def unpaged(by: dict[str, list[str]], kept: Any) -> list[tuple[str, str, list[str]]]:
+    """(model, the page to add, its rooms) for each model a room runs whose prompting page is not among the pages `yerk docs
+    refresh` fetches (`kept`, docs.pages), so a model shipped later cannot leave the checks behind in silence."""
+    return [(model, page_of(model), names) for model, names in sorted(by.items()) if page_of(model) not in set(kept)]
+
+
+def bound(check: str, read: Any) -> bool:
+    """A LESSON check binds where every page its pins sit on is read."""
+    return all(PINS[p][0] in read for p in pins_of(check))
+
+
+def pins_of(check: str) -> tuple[str, ...]:
+    pin = LESSON[check][0]
+    return pin if isinstance(pin, tuple) else (pin,)
+
+
+def said(check: str, docs: Path | None = None) -> str:
+    """A check's docs sentences, each with its cite, as its refusal and its finding quote them."""
+    return " and ".join(sentence(p, docs) for p in pins_of(check))
+
+
+def pinned(docs: Path | None, read: Any = None) -> list[tuple[str, str, str]]:
+    """(pin, slug, sentence) of each pin its fetched page no longer holds word for word; a page not fetched yet is none, and with
+    `read` (pages()) only the pins on a page some room reads, so the 5.1 density note moving is no finding once no room runs 5.1."""
+    return [(k, slug, said) for k, (slug, said) in PINS.items()
+            if (read is None or slug in read) and (text := page(docs, slug)) and flat(said) not in flat(text)]
 
 
 def sentence(pin: str, docs: Path | None = None) -> str:
@@ -292,7 +404,7 @@ def index_limits(docs: Path | None = None) -> tuple[int, int]:
 
 
 def threshold(limits: dict[str, Any], key: str, default: int) -> int:
-    v = limits.get(key, default)
+    v = limits.get(key, default) if key else default
     return v if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else default
 
 
@@ -312,7 +424,7 @@ def on_record(passage: str, daily: Path | None, seen: dict[Path, str] | None = N
 
 
 def lesson(job: str, text: str, daily: Path | None = None, limits: dict[str, Any] | None = None,
-           seen: dict[Path, str] | None = None) -> dict[str, list[str]]:
+           seen: dict[Path, str] | None = None, read: Any = None) -> dict[str, list[str]]:
     """One rule as one lesson, as the Claude docs shape it: each LESSON check it misses and the words that miss it.
     enumerated: lesson_cases or more case heads (when, whenever, if or for opening a clause) or numbered cases (1. (2) (a));
     summary: the first sentence, the summary, over lesson_summary_chars (a body after it is the lesson's detail, when it has any);
@@ -320,8 +432,18 @@ def lesson(job: str, text: str, daily: Path | None = None, limits: dict[str, Any
     long: the body after the summary over lesson_body_chars, examples' cites and file:line cites not counted;
     on record: a quoted passage or an example of more than lesson_quote_words words that a day log holds (cite that line);
                an example of the cited form (Landed or Bounced, a cite) with a gloss over lesson_gloss_words words;
-    dense: a sentence over lesson_sentence_words words. Code in backticks is no sentence and no case."""
-    lim = limits or {}
+    dense: a sentence over lesson_sentence_words words (a 5.1 room's: its page's density note);
+    absolute: never, always, must not or a like word, with no scope (a when, where or before clause, or in, on, for or at a
+    named thing) or no exception written in (unless, except, only if, until, a go-ahead, an approval, or even when asked
+    saying that nothing lifts it);
+    approval: asking first required (ask first, get the owner's go-ahead, needs approval) of only a vague class (anything outward,
+    messages to people, anything) with no named action (an email, a payment, a push, a delete and the like);
+    think less: a line telling the model to answer without thinking or to think less;
+    reasoning: a line asking for reasoning or thinking written into the reply;
+    style limit: a hard number of lines, sentences or words (a count, never a refusal; the gate asks it only its reason).
+    Code in backticks is no sentence and no case; quoted text is no instruction. `read`: the pages the checks read (pages());
+    a check binds only where its pins' page is read, EVERY when not given."""
+    lim, read = limits or {}, EVERY if read is None else read
     cap = {k: threshold(lim, key, d) for k, (_, key, d) in LESSON.items()}
     said = re.sub(r"`[^`]*`", "code", one(text))
     prose = TRAILER.sub("", EXAMPLE_TAGS.sub(" ", said)).strip()
@@ -354,7 +476,15 @@ def lesson(job: str, text: str, daily: Path | None = None, limits: dict[str, Any
     long_ones = [s for s in SENTENCES.split(CITED.sub("cite", prose)) if len(s.split()) > cap["dense"]]
     if long_ones:
         out["dense"] = [f"a sentence of {len(s.split())} words" for s in long_ones[:3]]
-    return out
+    bare = QUOTED.sub(" ", prose)
+    if ab := ABSOLUTE.findall(bare):
+        miss = [x for x, rx in (("no scope", SCOPE), ("no exception written in", EXCEPTION)) if not rx.search(bare)]
+        out |= {"absolute": [f'"{ab[0].lower()}" with {" and ".join(miss)}']} if miss else {}
+    if ASK_FIRST.search(bare) and (vague := VAGUE.search(bare)) and not NAMED.search(bare):
+        out["approval"] = [f'asking first of "{vague[0]}" with no action named']
+    out |= {k: [f'"{m[0]}"' for m in rx.finditer(bare)][:3] for k, rx in (("think less", THINK_LESS), ("reasoning", REASONING),
+                                                                       ("style limit", STYLE_LIMIT)) if rx.search(bare)}
+    return {k: v for k, v in out.items() if bound(k, read)}
 
 
 def one(text: str) -> str:
@@ -377,33 +507,50 @@ def lessons_of(path: Path) -> list[tuple[int, str, str]]:
     return out
 
 
-def store(m: Settings, limits: dict[str, Any], docs: Path | None = None) -> dict[str, Any]:
+def store(m: Settings, limits: dict[str, Any], docs: Path | None = None, read: Any = None) -> dict[str, Any]:
     """The whole rule store against the lesson shape: each live rule of RULES and TOPIC_RULES that misses a LESSON check, by
-    cite with its checks, and RULES, the index a session start loads, against the code-memory limits (lines, bytes)."""
+    cite with its checks, each style limit counted apart (COUNT_ONLY), and RULES, the index a session start loads, against the
+    code-memory limits (lines, bytes). `read`: the pages of every model any room runs (pages()), since every room loads the store."""
     from .memory import TOPIC_RULES
-    found, seen = list[tuple[str, list[str]]](), dict[Path, str]()      # seen: each day log read once for every rule
+    found, counted, seen = list[tuple[str, list[str]]](), list[str](), dict[Path, str]()   # seen: each day log read once
     for name in (RULES, TOPIC_RULES):
         p = m.root / name
         for n, job, text in lessons_of(p):
-            if bad := lesson(job, text, m.daily, limits, seen):
-                found.append((f"{cite(m, p)}:{n}", list(bad)))
+            missed = lesson(job, text, m.daily, limits, seen, read)
+            counted += [f"{cite(m, p)}:{n}"] * any(k in COUNT_ONLY for k in missed)
+            if bad := [k for k in missed if k not in COUNT_ONLY]:
+                found.append((f"{cite(m, p)}:{n}", bad))
     p, (most, size) = m.root / RULES, index_limits(docs)
     rows, have = (p.read_text(encoding="utf-8", errors="replace").splitlines(), p.stat().st_size) if p.is_file() else ([], 0)
     over = [f"{len(rows)} lines, past {most}"] * (len(rows) > most) + [f"{have:,} bytes, past {size:,}"] * (have > size)
-    return {"lessons": found, "index": over, "moved": pinned(docs)}
+    return {"lessons": found, "index": over, "moved": pinned(docs, read), "style limits": counted, "read": list(read or EVERY)}
 
 
 def store_findings(r: dict[str, Any], limits: dict[str, Any], docs: Path | None = None) -> list[str]:
     """The doctor's daily lines for the store: a pin its page moved off, the index past code-memory's limits, and the lessons that
-    miss the shape past lesson_findings (zero), the first named with its checks and the docs sentence the first check enforces."""
+    miss the shape past lesson_findings (zero), a line per page whose checks they miss, the first named with its checks and the
+    sentence of that page its first check enforces. A style limit is counted in the report, never a line here."""
     out = [f"docs moved: {slug} no longer says the sentence the {k} check enforces: \"{said}\"" for k, slug, said in r["moved"]]
     if r["index"]:
         out.append(f"rule index {RULES}: {' and '.join(r['index'])}, the code-memory limit a session start loads, {sentence('index', docs)}")
     if len(r["lessons"]) > threshold(limits, "lesson_findings", 0):
-        at, bad = r["lessons"][0]
-        out.append(f"rule shape: {len(r['lessons'])} lesson{'s' * (len(r['lessons']) != 1)} out of the docs' shape, first {at}: "
-                   f"{', '.join(bad)}; {sentence(LESSON[bad[0]][0], docs)}")
+        on: dict[str, list[tuple[str, list[str]]]] = {}
+        for at, bad in r["lessons"]:
+            for slug in dict.fromkeys(PINS[pins_of(k)[0]][0] for k in bad):
+                on.setdefault(slug, []).append((at, [k for k in bad if PINS[pins_of(k)[0]][0] == slug]))
+        for slug, rows in on.items():
+            at, bad = rows[0]
+            out.append(f"rule shape: {len(rows)} lesson{'s' * (len(rows) != 1)} out of {slug}'s shape, first {at}: "
+                       f"{', '.join(bad)}; {said(bad[0], docs)}")
     return out
+
+
+def unpaged_lines(rows: list[tuple[str, str, list[str]]]) -> list[str]:
+    """The doctor's line for each model a room runs with no prompting page fetched, naming the page to add."""
+    from .config import _PE
+    return [f"docs: no prompting page fetched for {model}, which {len(names)} room{'s' * (len(names) != 1)} run{'s' * (len(names) == 1)}; "
+            f"add {slug} ({_PE}{slug.replace('prompting-', 'prompting-claude-', 1)}) to the pages `yerk docs refresh` fetches"
+            for model, slug, names in rows]
 
 
 def store_report(r: dict[str, Any], found: list[str], at: str) -> str:
@@ -412,6 +559,11 @@ def store_report(r: dict[str, Any], found: list[str], at: str) -> str:
            "The doctor's daily check of every live rule against the Claude docs' lesson shape (shape.LESSON), each check's "
            "sentence pinned to its fetched page (shape.PINS). `yerk curate --rules` proposes the fixes.", ""]
     out += [f"- {x}" for x in found] or ["- in the shape: every pinned sentence on its page, every lesson in the shape, the index under its limits"]
+    out += ["", f"Pages read, those of every model a room runs: {', '.join(r.get('read') or EVERY)}."]
     if r["lessons"]:
         out += ["", f"## Lessons out of the shape: {len(r['lessons'])}", "", *[f"- {c}: {', '.join(k)}" for c, k in r["lessons"]]]
+    if FABLE2 in (r.get("read") or ()) and (st := r.get("style limits")):
+        out += ["", f"## Style limits, counted, never refused: {len(st)}", "",
+                f"A hard number of lines, sentences or words is often the owner's own call; {sentence('style-limit')}", "",
+                *[f"- {c}" for c in st]]
     return "\n".join(out) + "\n"

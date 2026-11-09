@@ -20,9 +20,10 @@ _IGNORED: set[tuple[str, str, str]] = set()             # (room, key, value) of 
 # The pages `yerk docs` keeps (docs.py), slug = URL, [docs] pages in yerkd.toml replacing them whole: the prompting guide,
 # the prompting page of each model in models.toml, and the Claude Code pages a room's harness leans on (the system prompt
 # flags are on cli-reference and the Agent SDK's page). Each answered `Accept: text/markdown` with Markdown on 2026-10-21.
+# 2026-11-09: prompting-fable-5-2 added the day Claude Fable 5.2 shipped, since a room's checks read its own model's page (shape.page_of).
 _PE, _CC = "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/", "https://code.claude.com/docs/en/"
 DOCS_PAGES = {"prompting-guide": _PE + "claude-prompting-best-practices",
-              **{f"prompting-{m}": f"{_PE}prompting-claude-{m}" for m in ("opus-5-5", "sonnet-5-5", "haiku-5-5", "fable-5-1", "fable-5")},
+              **{f"prompting-{m}": f"{_PE}prompting-claude-{m}" for m in ("opus-5-5", "sonnet-5-5", "haiku-5-5", "fable-5-2", "fable-5-1", "fable-5")},
               **{f"code-{p.rsplit('/', 1)[-1].removeprefix('modifying-')}": _CC + p for p in
                  ("settings", "hooks", "memory", "sandboxing", "mcp", "cli-reference", "agent-sdk/modifying-system-prompts")}}
 

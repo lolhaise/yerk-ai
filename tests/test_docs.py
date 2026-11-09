@@ -164,14 +164,15 @@ def test_in_a_rooms_own_recall_the_owners_notes_rank_above_the_docs_and_the_page
 
 def test_the_default_pages_are_the_guide_the_models_prompting_pages_and_the_claude_code_pages():
     assert DOCS_PAGES["prompting-guide"].endswith("/prompt-engineering/claude-prompting-best-practices")
-    assert {"prompting-opus-5-5", "prompting-sonnet-5-5", "prompting-haiku-5-5", "prompting-fable-5-1"} <= set(DOCS_PAGES)
+    assert {"prompting-opus-5-5", "prompting-sonnet-5-5", "prompting-haiku-5-5", "prompting-fable-5-1", "prompting-fable-5-2"} <= set(DOCS_PAGES)
     assert {"code-settings", "code-hooks", "code-memory", "code-sandboxing", "code-mcp", "code-cli-reference", "code-system-prompts"} <= set(DOCS_PAGES)
     assert all(docs.SLUG.fullmatch(k) and words.width(f"{words.WORKING} docs changed: {k}") <= words.PHONE for k in DOCS_PAGES)
 
 
-def test_yerk_doctor_refreshes_the_docs_once_a_week_never_with_fetch_off_and_says_a_page_it_could_not_fetch(site, tree, capsys):  # noqa: F811
+def test_yerk_doctor_refreshes_the_docs_once_a_week_never_with_fetch_off_and_says_a_page_it_could_not_fetch(site, tree, capsys, monkeypatch):  # noqa: F811
     url, seen, _ = site
     priv, state, *_ = tree
+    monkeypatch.setattr(doctor.rule_shape, "unpaged", lambda by, kept: [])    # one test page here; a model's own page: test_lesson_shape
     (priv / "yerkd.toml").write_text(f'[docs]\nfetch = false\n[docs.pages]\nguide = "{url}/page"\n')
     assert doctor.main(priv, state, refresh=True) == 0 and seen == []      # the off switch: due, and nothing fetched
     (priv / "yerkd.toml").write_text(f'[docs.pages]\nguide = "{url}/page"\n')
@@ -241,6 +242,7 @@ def test_a_page_cut_off_mid_read_is_a_failure_of_that_page_and_never_stops_the_d
     url, _, _ = site
     priv, state, *_ = tree
     (priv / "yerkd.toml").write_text(f'[docs.pages]\nguide = "{url}/page"\n')
+    monkeypatch.setattr(doctor.rule_shape, "unpaged", lambda by, kept: [])    # one test page here; a model's own page: test_lesson_shape
 
     def cut(u):
         raise http.client.IncompleteRead(b"half")

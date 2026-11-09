@@ -47,9 +47,11 @@ RECALL = ("Search the owner's memory (daily logs, fact files, the curated file, 
           "Each hit is the lines that carry the match and a `cite` (file:line). Cite every fact you use\n"
           "by its `cite`; read_memory(cite) reads on from it. A \"timeout\" status means busy, not down.")
 # the rule shape `remember` says, in the Claude docs' own words: the pinned sentences, checked daily against the fetched page
+# and, 2026-11-09, Claude Fable 5.2: in place of the 40-word sentence cap the gate no longer asks (its page: a hard limit makes
+# prose choppy), the line of its "Communicating clearly" block on how a sentence reads
 LESSON_SHAPE = (" ".join(PINS[k][1] for k in ("lesson", "why", "on record")) + " So a rule opens with a one-line summary, "
                 "gives its reason, keeps its body brief and cites an example by its day-log line "
-                "(<example>Landed, daily/YYYY-MM-DD.md:N</example>) in place of pasting it")
+                "(<example>Landed, daily/YYYY-MM-DD.md:N</example>) in place of pasting it. " + PINS["plain-words"][1])
 READ_MEMORY = (f"Exact lines of a memory file, `lines` of them (default {READ_LINES}; ask more, up to 400, or a later\n"
                "`from_line` to read on). `path`: a recall `cite` (its line is the start) or a memory path.")
 

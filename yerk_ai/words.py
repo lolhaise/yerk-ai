@@ -162,7 +162,10 @@ RULE_SHAPE = ("not filed: every room follows a rule as written, and follows it b
               "what each line of `fix` names and call again")
 # the lesson checks (shape.LESSON, 2026-11-09): each fix ends with the docs sentence it enforces, read off the fetched page
 LESSON_NAMES = {"enumerated": "an enumeration of cases", "summary": "no one-line summary first", "no reason": "no reason given",
-                "long": "a long body", "on record": "what the day log already records", "dense": "a long sentence"}
+                "long": "a long body", "on record": "what the day log already records", "dense": "a long sentence",
+                "absolute": "an absolute rule missing its scope or exception", "approval": "an approval rule naming no action",
+                "think less": "a line telling the model to think less", "reasoning": "a line asking for reasoning in the reply",
+                "style limit": "a hard style limit with no reason"}
 LESSON_FIX = {"enumerated": "file one lesson per case, or one general rule with its reason, since the docs say {sentence}",
               "summary": "open with a one-line summary, one sentence of at most {cap} characters naming the job, then the body, "
                          "since the docs say {sentence}",
@@ -170,7 +173,14 @@ LESSON_FIX = {"enumerated": "file one lesson per case, or one general rule with 
               "long": "keep the body to {cap} characters and cite the day log for the rest, since the docs say {sentence}",
               "on record": "cite the line in place of the quote, as <example>Landed, daily/YYYY-MM-DD.md:N</example> with at most "
                            "a six-word gloss, since the docs say {sentence}",
-              "dense": "write sentences of at most {cap} words, since the docs say {sentence}"}
+              "dense": "write sentences of at most {cap} words, since the docs say {sentence}",
+              "absolute": "say where or when it applies and why, and write the go-ahead or named case that lifts it into this same "
+                          "rule (or say nothing does, as even when asked), since the docs say {sentence}",
+              "approval": "name the exact actions that need asking first (an email to a client, a payment, a push), since the docs "
+                          "say {sentence}",
+              "think less": "remove the line, since the docs say {sentence}",
+              "reasoning": "remove the line, since the docs say {sentence}",
+              "style limit": "give the limit its reason with because, since or so that, since the docs say {sentence}"}
 RULE_FIX = {"no why": "say what to do instead, or give it its reason with because, since or so that, since a model generalises from a reason",
             "loud": "write it in normal case, since a shouted word makes a model overreact",
             "untagged": "put the exchange inside <example> tags, marked landed or bounced, so a model tells it from the instruction",

@@ -683,27 +683,33 @@ def mark(line: str, by: str = "") -> str:
                   line, count=1)
 
 
-def unshaped(job: str, text: str, acronyms: frozenset[str] | None = None, s: Settings | None = None) -> dict[str, Any] | None:
+def unshaped(job: str, text: str, acronyms: frozenset[str] | None = None, s: Settings | None = None,
+             read: Any = None) -> dict[str, Any] | None:
     """The refusal of a rule whose line as filed misses the prompting guide's shape (shape.filing: the doctor's per-line counts,
     its examples out) or the Claude docs' lesson shape (shape.lesson, 2026-11-09: one lesson, a one-line summary first, its reason,
     a brief body, a day-log cite in place of a quote the day log holds, plain sentences), each a line of `fix` with the words that
-    tripped it, the fix and, for a lesson check, the docs sentence it enforces read off the fetched page; None when it has the shape."""
+    tripped it, the fix and, for a lesson check, the docs sentence it enforces read off the fetched page; None when it has the shape.
+    `read` (shape.pages): the pages of every model a room runs, since every room loads the rule; a check on a page none reads
+    is not asked. Never refused here (shape.NOT_AT_GATE): a long sentence. A style limit is refused only with no reason."""
     from . import shape                # shape reads this module's names as it loads
     from .config import budgets
     bad = shape.filing(f"- {one_line(job).strip(' :').lower()}: {one_line(text)}", *([acronyms] if acronyms else []))
     fix = [words.RULE_OFFENCE.format(name=shape.NAMES[k], said=", ".join(f'"{w.strip(QUOTES)}"' for w in v), fix=words.RULE_FIX[k])
            for k, v in bad.items()]
     limits = dict(budgets().get("shape") or {})
-    for k, v in shape.lesson(job, text, s.daily if s else None, limits).items():
-        pin, key, default = shape.LESSON[k]
+    found = shape.lesson(job, text, s.daily if s else None, limits, read=read)
+    for k, v in found.items():
+        if k in shape.NOT_AT_GATE or (k in shape.COUNT_ONLY and "no reason" not in found):
+            continue
+        _, key, default = shape.LESSON[k]
         fix.append(words.RULE_OFFENCE.format(name=words.LESSON_NAMES[k], said="; ".join(v), fix=words.LESSON_FIX[k].format(
-            cap=shape.threshold(limits, key, default), sentence=shape.sentence(pin, s.docs if s else None))))
+            cap=shape.threshold(limits, key, default), sentence=shape.said(k, s.docs if s else None))))
     return {"ok": False, "error": words.RULE_SHAPE, "fix": fix} if fix else None
 
 
 def rule(s: Settings, room: str, mid: str, job: str, text: str, cap: int = 0, log: DailyLog | None = None,
          books: dict[str, str] | None = None, on: tuple[str, ...] = (), also: tuple[tuple[Path, int, str], ...] = (),
-         acronyms: frozenset[str] | None = None) -> dict[str, Any]:
+         acronyms: frozenset[str] | None = None, read: Any = None) -> dict[str, Any]:
     """How a job is done from now on, from an owner's room, into RULES: the one file every room starts with and hears
     from on its next message when it changes (context.news), shared so read_memory reads it anywhere. One line with its
     room, message and time; the job's live line before it, in RULES or TOPIC_RULES, is marked superseded by the new one, never
@@ -720,7 +726,7 @@ def rule(s: Settings, room: str, mid: str, job: str, text: str, cap: int = 0, lo
     on = tuple(dict.fromkeys(t for x in on if (t := " ".join(re.sub(r"[,()\[\]]", " ", x).split()))))    # no comma or bracket: the mark's
     if not job or not body:
         return {"ok": False, "error": "a rule needs the job's short name and how it is done, both as text"}
-    if refused := unshaped(job, body, acronyms, s):
+    if refused := unshaped(job, body, acronyms, s, read):
         return refused
     if bad := [t for t in on if not wants(t)]:
         return {"ok": False, "error": f"nothing filed: a trigger needs a word that names something, not only words like a, the or how: {'; '.join(bad)}"}

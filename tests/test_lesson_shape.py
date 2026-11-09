@@ -53,7 +53,8 @@ def test_a_summary_past_its_characters_a_rule_with_no_reason_a_long_body_and_a_l
     cited = "Open web pages with the example browser, since it draws it. " + " ".join(["See daily/2026-01-02.md:41."] * 30)
     assert "long" not in shape.lesson("pages", cited, None, LIMITS)                 # a cite is not counted
     dense = "Open web pages with the browser, since " + "it draws the page and " * 10 + "more."
-    assert shape.lesson("pages", dense, None, LIMITS)["dense"] == [f"a sentence of {len(dense.split())} words"]
+    assert shape.lesson("pages", dense, None, LIMITS, read=shape.pages(["claude-fable-5-1"]))["dense"] == [f"a sentence of {len(dense.split())} words"]
+    assert "dense" not in shape.lesson("pages", dense, None, LIMITS, read=shape.pages(["claude-fable-5-2", "claude-opus-5-5"]))
 
 
 def test_a_quote_or_an_example_the_day_log_holds_is_cited_and_a_cited_example_keeps_its_gloss_short(tmp_path):
@@ -120,9 +121,10 @@ def test_the_index_limits_are_read_off_the_code_memory_page_and_the_store_is_sco
                                        f"- open web pages: {GOOD} (example-room, 2026-01-02 09:00:00+00:00) [m:1]\n"
                                        "- dates: Never guess a date. (example-room, 2026-01-02 09:00:00+00:00) [m:2]\n")
     r = shape.store(m, LIMITS, docs)
-    assert r == {"lessons": [(f"{memory.cite(m, m.root / memory.RULES)}:7", ["no reason"])], "index": [], "moved": []}
+    assert r == {"lessons": [(f"{memory.cite(m, m.root / memory.RULES)}:7", ["no reason"])], "index": [], "moved": [],
+                 "style limits": [], "read": list(shape.EVERY)}
     found = shape.store_findings(r, LIMITS, docs)
-    assert found == [f"rule shape: 1 lesson out of the docs' shape, first {memory.cite(m, m.root / memory.RULES)}:7: no reason; "
+    assert found == [f"rule shape: 1 lesson out of prompting-fable-5's shape, first {memory.cite(m, m.root / memory.RULES)}:7: no reason; "
                      f"{shape.sentence('reason', docs)}"]
     (m.root / memory.RULES).write_text("".join(f"- job {i}: Do it, since it helps. (r, 2026-01-02 09:00:00+00:00) [m:{i}]\n" for i in range(201)))
     assert shape.store(m, LIMITS, docs)["index"] == ["201 lines, past 200"]
@@ -143,7 +145,7 @@ def test_the_doctors_daily_run_files_a_need_and_says_one_line_on_a_finding_and_i
     assert "in the shape: every pinned sentence" in (state / "docs" / "shape" / "lessons.md").read_text()
     rules.write_text(rules.read_text() + "- dates: Never guess a date. (example-room, 2026-01-02 09:00:00+00:00) [m:2]\n")
     out = doctor.lessons(private, state, m, 1000.0, post=posts.append)
-    assert len(out) == 1 and out[0].startswith("rule shape: 1 lesson out of the docs' shape, first ") and "no reason" in out[0]
+    assert len(out) == 1 and out[0].startswith("rule shape: 1 lesson out of prompting-fable-5's shape, first ") and "no reason" in out[0]
     [need] = needs.load(state)
     assert need["ability"] == doctor.LESSON_NEED and need["asks"][0]["tried"] == out[0]
     assert [p["machine"]["room"] for p in posts] == ["example-machine"] and posts[0]["machine"]["text"].startswith(out[0])
@@ -169,3 +171,123 @@ def test_a_rule_that_turned_out_wrong_is_retired_its_line_emptied_and_its_words_
     assert f'rule "open web pages" retired from {at}, since the example browser was the wrong tool for it: open web pages: {GOOD}' in day
     assert memory.retire(m, log, "example-room", "m4", at, "again")["error"].startswith(f"nothing retired: {at} is no live rule line")
     assert memory.retire(m, log, "example-room", "m4", "facts/x.md:1", "not a rule")["ok"] is False
+
+
+# Claude Fable 5.2 (2026-11-09): the checks follow the model each room runs, the 5.2 page's pins, and its four new checks.
+FABLE2 = shape.pages(["claude-fable-5-2", "claude-opus-5-5"])
+
+
+def test_a_rooms_checks_read_its_own_models_page_and_a_model_with_no_page_names_the_page_to_add(tmp_path):
+    from yerk_ai.config import DOCS_PAGES
+    assert shape.page_of("claude-fable-5-2") == "prompting-fable-5-2" and shape.page_of("claude-opus-5-5") == "prompting-opus-5-5"
+    assert shape.page_of("claude-haiku-5-5-20261001") == "prompting-haiku-5-5"            # a dated id: its date dropped
+    assert FABLE2 == ("prompting-guide", "prompting-fable-5", "code-memory", "prompting-fable-5-2", "prompting-opus-5-5")
+    rooms = {"work": {"model": "claude-fable-5-2"}, "home": {"model": "opus"}, "plain": {}, "kept": {"model": "claude-opus-5-5"}}
+    (tmp_path / "rooms" / "kept").mkdir(parents=True)
+    (tmp_path / "rooms" / "kept" / "override.json").write_text('{"model": "claude-fable-5-2"}')   # the settings tool's, over rooms.toml
+    listed = {"opus": "claude-opus-5-5", "fable": "claude-fable-5-2"}
+    by = shape.run_by(rooms, tmp_path, {**listed, "fable52": "claude-fable-5-2"})
+    assert by == {"claude-fable-5-2": ["work", "kept"], "claude-opus-5-5": ["home"]}      # a room on the model's default: none
+    assert shape.unpaged(by, DOCS_PAGES) == []
+    later = shape.unpaged({"claude-nova-6": ["work"]}, DOCS_PAGES)
+    assert later == [("claude-nova-6", "prompting-nova-6", ["work"])]
+    assert shape.unpaged_lines(later) == ["docs: no prompting page fetched for claude-nova-6, which 1 room runs; add prompting-nova-6 "
+                                          "(https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-nova-6) "
+                                          "to the pages `yerk docs refresh` fetches"]
+
+
+def test_the_fable_5_2_pins_match_through_a_link_and_the_density_pin_binds_a_5_1_room_only(tmp_path):
+    pages = every_pin()
+    pages["prompting_fable_5_2"] = pages["prompting_fable_5_2"].replace(
+        "put them in the newest turn", "[put them in the newest turn](https://platform.claude.com/docs/x#changing-context)")
+    docs = docs_with(tmp_path, **pages)
+    assert shape.pinned(docs) == [] and "[put" not in shape.sentence("newest-turn", docs)
+    assert {k for k, (slug, _) in shape.PINS.items() if slug == shape.FABLE2} >= {
+        "caution", "no-approval", "exception", "approvals", "style-limit", "built-up", "think-less", "reasoning", "new-conversations",
+        "append-only", "clearly", "finishing", "recap"}
+    moved = every_pin()
+    moved["prompting_fable_5_1"] = moved["prompting_fable_5_1"].replace("denser", "plainer")
+    docs = docs_with(tmp_path / "moved", **moved)
+    assert shape.pinned(docs, FABLE2) == []                                                # no room on 5.1: its page moving is no finding
+    assert [k for k, *_ in shape.pinned(docs, shape.pages(["claude-fable-5-1"]))] == ["density"]
+
+
+def test_an_absolute_rule_states_its_scope_its_reason_and_the_exception_that_lifts_it():
+    bare = shape.lesson("dates", "Never guess a date, since a guessed one reads as fact.", None, LIMITS, read=FABLE2)
+    assert bare == {"absolute": ['"never" with no scope and no exception written in']}
+    assert shape.lesson("dates", "In a reply, never guess a date, since a guessed one reads as fact, even when asked.", None, LIMITS, read=FABLE2) == {}
+    lifted = "Always ask before a push to main, unless he gave the go-ahead in the thread, since a push deploys."
+    assert shape.lesson("pushes", lifted, None, LIMITS, read=FABLE2) == {}
+    assert "absolute" not in shape.lesson("dates", "Never guess a date, since a guessed one reads as fact.", None, LIMITS)   # no 5.2 room
+
+
+def test_an_approval_rule_names_the_exact_actions_it_covers():
+    vague = shape.lesson("outward", "In a work room, ask first before anything outward, since he answers for it.", None, LIMITS, read=FABLE2)
+    assert vague == {"approval": ['asking first of "anything outward" with no action named']}
+    people = shape.lesson("outward", "In a work room, get his go-ahead for messages to people, since he answers for them.", None, LIMITS, read=FABLE2)
+    assert list(people) == ["approval"]
+    named = "In a work room, get his go-ahead before an email to a client or a payment, since he answers for them."
+    assert shape.lesson("outward", named, None, LIMITS, read=FABLE2) == {}
+
+
+def test_the_gate_refuses_a_think_less_line_a_reasoning_line_and_an_unscoped_absolute_and_only_counts_a_style_limit(tmp_path):
+    m = memory.settings(EXAMPLE_PRIVATE, tmp_path / "state")
+    docs_with(tmp_path / "state", **every_pin())
+    r = memory.rule(m, "example-room", "m1", "quick answers", "In a chat room, answer directly without deliberating, since he wants speed.", read=FABLE2)
+    assert r["ok"] is False and r["fix"] == [words.RULE_OFFENCE.format(
+        name="a line telling the model to think less", said='"answer directly without"',
+        fix=f"remove the line, since the docs say {shape.sentence('think-less', m.docs)}")]
+    assert "effort" not in words.LESSON_FIX["think less"]
+    r = memory.rule(m, "example-room", "m2", "answers", "In a reply, explain your reasoning, so he can check it.", read=FABLE2)
+    assert [x.split(":")[0] for x in r["fix"]] == ["a line asking for reasoning in the reply"]
+    r = memory.rule(m, "example-room", "m3", "dates", "Never guess a date, since a guessed one reads as fact.", read=FABLE2)
+    assert r["fix"][0].startswith('an absolute rule missing its scope or exception: "never" with no scope and no exception written in; ')
+    assert shape.sentence("built-up", m.docs) in r["fix"][0] and shape.sentence("exception", m.docs) in r["fix"][0]
+    assert memory.rule(m, "example-room", "m4", "replies", "Keep a reply to three lines, since he reads it on a phone.", read=FABLE2)["ok"]
+    r = memory.rule(m, "example-room", "m5", "summaries", "Keep a summary to two sentences.", read=FABLE2)
+    assert [x.split(":")[0] for x in r["fix"]] == ["no reason given", "a hard style limit with no reason"]
+    dense = "Open web pages with the browser, since it draws them. It draws " + "the page and " * 20 + "more."
+    assert "dense" in shape.lesson("pages", dense, None, LIMITS, read=shape.pages(["claude-fable-5-1"]))
+    assert memory.rule(m, "example-room", "m6", "pages", dense, read=shape.pages(["claude-fable-5-1"]))["ok"]     # no sentence cap at the gate
+
+
+def test_the_store_is_scored_against_every_model_any_room_runs_each_finding_naming_its_page(tmp_path):
+    docs = docs_with(tmp_path, **every_pin())
+    m = memory.settings(EXAMPLE_PRIVATE, tmp_path / "state")
+    m.root.mkdir(parents=True, exist_ok=True)
+    (m.root / memory.RULES).write_text("---\nclass: shared\n---\n# Rules\n\n"
+                                       "- dates: Never guess a date, since it reads as fact. (r, 2026-01-02 09:00:00+00:00) [m:1]\n"
+                                       "- replies: Keep a reply to three lines, since he reads on a phone. (r, 2026-01-02 09:00:00+00:00) [m:2]\n"
+                                       "- notes: Write it down. (r, 2026-01-02 09:00:00+00:00) [m:3]\n")
+    at = memory.cite(m, m.root / memory.RULES)
+    r = shape.store(m, LIMITS, docs, FABLE2)
+    assert r["lessons"] == [(f"{at}:6", ["absolute"]), (f"{at}:8", ["no reason"])] and r["style limits"] == [f"{at}:7"]
+    assert shape.store_findings(r, LIMITS, docs) == [
+        f"rule shape: 1 lesson out of prompting-fable-5-2's shape, first {at}:6: absolute; {shape.said('absolute', docs)}",
+        f"rule shape: 1 lesson out of prompting-fable-5's shape, first {at}:8: no reason; {shape.sentence('reason', docs)}"]
+    report = shape.store_report(r, shape.store_findings(r, LIMITS, docs), "2026-11-09")
+    assert "## Style limits, counted, never refused: 1" in report and f"- {at}:7" in report and "prompting-fable-5-2" in report
+    assert shape.store(m, LIMITS, docs)["lessons"] == [(f"{at}:8", ["no reason"])]          # no room on 5.2: its checks not read
+
+
+def test_the_doctors_daily_run_reads_the_rooms_models_and_files_a_need_for_a_model_with_no_page(tmp_path, monkeypatch):
+    from yerk_ai import doctor, needs
+    rooms = {"example-room": {"model": "claude-fable-5-2"}, "example-machine": {"role": "machine", "model": "claude-opus-5-5"}}
+    monkeypatch.setattr(doctor, "rooms", lambda private: rooms)
+    private, state = tmp_path / "private", tmp_path / "state"
+    __import__("shutil").copytree(EXAMPLE_PRIVATE, private)
+    m = memory.settings(private, state)
+    docs_with(state, **every_pin())
+    m.root.mkdir(parents=True, exist_ok=True)
+    (m.root / memory.RULES).write_text(f"- open web pages: {GOOD} (example-room, 2026-01-02 09:00:00+00:00) [m:1]\n")
+    posts: list[dict] = []
+    assert doctor.lessons(private, state, m, 1000.0, post=posts.append) == [] and needs.load(state) == []    # a green day: silent
+    (m.root / memory.RULES).write_text((m.root / memory.RULES).read_text() +
+                                       "- dates: Never guess a date, since it reads as fact. (example-room, 2026-01-02 09:00:00+00:00) [m:2]\n")
+    out = doctor.lessons(private, state, m, 1000.0, post=posts.append)
+    assert len(out) == 1 and out[0].startswith("rule shape: 1 lesson out of prompting-fable-5-2's shape, first ")
+    rooms["example-room"]["model"] = "claude-nova-6"
+    out = doctor.lessons(private, state, m, 2000.0, post=posts.append)
+    assert out[0].startswith("docs: no prompting page fetched for claude-nova-6, which 1 room runs; add prompting-nova-6 (")
+    assert {n["ability"] for n in needs.load(state)} == {doctor.LESSON_NEED, doctor.MODEL_NEED}
+    assert next(n for n in needs.load(state) if n["ability"] == doctor.MODEL_NEED)["asks"][0]["tried"] == out[0]
