@@ -6,6 +6,25 @@ A line that changes a file the install keeps (rooms.toml, yerkd.toml, budgets.to
 newer than the code is refused with one line, never changed); the index chunks every file again when its chunker's
 version changes.
 
+## 2026-11-09
+
+### zoom-2026-11-09 (#?)
+
+- A room reads the small print on a big picture. Read shows a room a picture at most 2000 px on its long side, so a
+  calendar's times, a form's figures or a receipt's lines on a screenshot or photo bigger than that came out too small
+  to read, and ffmpeg in a room's shell waited on an approval no one gives mid-turn. The new `zoom` tool takes a picture
+  in the room's own folders and a box as fractions of its width and height (0, 0, 1, 1 is the whole picture), and
+  returns a PNG of that part 2000 px on its long side, enlarged 4 times at most, which the room Reads before it answers.
+  The whole picture zoomed is also the way past a picture Read refuses to open.
+- A picture sent to a room whose long side is over 2000 px says so on its `[attachment]` line, with its size and that
+  `zoom` reads its small print; the size comes off the picture's header (PNG, JPEG, WebP, GIF), nothing decoded and no
+  new dependency. The rooms' mechanics carry one line on it.
+- The zooms are saved under the room's `work/zoom/<message id>/` as `NAME.zoom-N.png`, outside the inbox, so no backfill
+  or doctor count takes them for pictures sent, and the scratch sweep clears them with the rest of the room's scratch.
+
+**Upgrading:** budgets.toml raises `yerk_tools` to 24,800, `mechanics` to 7,200, the session start's `total` to 125,303
+and `[code] lines` to 27,355, each with its dated note. A room picks up the tool and the line at its next session.
+
 ## 2026-11-08
 
 ### need-2026-11-08-74 (#?)

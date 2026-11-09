@@ -2,11 +2,12 @@
 # official Python SDK) and the send tool's shape are adapted from Hermes Agent v0.22.2,
 # mcp_serve.py (create_mcp_server, messages_send), https://github.com/NousResearch/hermes-agent
 # Copyright (c) 2025 Nous Research. MIT License. See NOTICE.
-"""Yerk AI's own MCP server: twenty-two tools (send, hold, recall, read_memory, remember, worker, schedule, settings, transcribe,
-voice_note, seen, render, watch, need, text, email, delete, reverse_image_search, github_state, page, texts, attachments), local-only HTTP, preloaded in
+"""Yerk AI's own MCP server: twenty-three tools (send, hold, recall, read_memory, remember, worker, schedule, settings, transcribe,
+voice_note, seen, render, watch, need, text, email, delete, reverse_image_search, github_state, page, texts, attachments, zoom), local-only HTTP, preloaded in
 every room; transcribe, voice_note, watch, text, email, reverse_image_search, github_state and attachments are here and not plug-ins because the daemon has the network
 plug-ins because the daemon has the network (and github_state the token) and a room's shell has none, seen because no owner room has a Write tool, render
-a writable /tmp a room's sandbox does not give (and LaTeX a sandbox of its own, a shell or none), and delete because that sandbox mounts all but the room's folders read-only. A worker gets none of it: by default no MCP server at all, and with
+because LibreOffice needs a writable /tmp a room's sandbox does not give (and LaTeX a sandbox of its own, a shell or none), delete because that sandbox
+folders read-only, and zoom because ffmpeg in a room's shell waits on an approval no one gives mid-turn. A worker gets none of it: by default no MCP server at all, and with
 [workers] yerk_tools its own stdio server (`worker_server`) carrying recall and read_memory only.
 
 Every endpoint (/mcp, /hook, /control) wants the `x-yerk-secret` header (restart test R3). Three
@@ -72,6 +73,7 @@ class Daemon(Protocol):
     async def tool_page(self, room: str, req: dict[str, Any]) -> dict[str, Any]: ...
     async def tool_texts(self, room: str, limit: int) -> dict[str, Any]: ...
     async def tool_attachments(self, room: str, message: str, name: str) -> dict[str, Any]: ...
+    async def tool_zoom(self, room: str, path: str, x0: float, y0: float, x1: float, y1: float) -> dict[str, Any]: ...
 
 
 def caller_room(ctx: Context) -> str:
@@ -333,6 +335,16 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         picture comes from, what it is or who made it; open a page that shows it before you say so, and give the best guess
         as a guess."""
         return json.dumps(await daemon.tool_reverse_image_search(caller_room(ctx), path))
+
+    @mcp.tool()
+    async def zoom(path: str, x0: float, y0: float, x1: float, y1: float, *, ctx: Context) -> str:
+        """A part of a picture, enlarged, since Read shows you a picture at most 2000 px on its long side and the small print
+        of a bigger one is lost: use it before you answer from a time, a figure, a name or any print you would squint at (a
+        calendar, a form, a receipt, a chat's timestamps). `path` a picture in this room's folders (its [attachment] path);
+        x0, y0, x1, y1 the part as fractions of its width and height from its top left (0, 0.5, 0.5, 1: its bottom left
+        quarter), so look at the whole first and zoom where the answer is. Returns a PNG 2000 px on its long side (enlarged 4
+        times at most): Read it, then answer. When Read refuses a picture, zoom 0, 0, 1, 1 makes the whole of it one Read opens."""
+        return json.dumps(await daemon.tool_zoom(caller_room(ctx), path, x0, y0, x1, y1))
 
     @mcp.tool()
     async def github_state(branch_or_pr: str, *, ctx: Context) -> str:
