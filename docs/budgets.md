@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 125448`
+- `total = 126353`
 
 ## [session_start.claude_code]
 
@@ -94,11 +94,13 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-09, need-2026-11-09-75: the hands plug-in's browser gains `type` (a field's value typed as keys are, the browser's own text input into the focused field, since a room's quote form showed what `set` put in its licence field while its React form never had it and its Next stayed disabled; filed 2026-11-09): its entry grows 145 as the plug-in's branch need-2026-11-09-75 (cc75696) builds it against its main 2e7593a, so 3,622 as sent (31 over, as each of the five goes), all five 8,708; so 8,708, no part could pay, the total rose by the 145 (to 125,448).
 
+2026-11-09, need-2026-11-09-76: the hands plug-in's browser gains `keep` (a key a tab shows, saved by the plug-in itself in the private folder's secrets/ as a new NAME.key, its value never in a result, since a room asked to keep a key a signed-in settings page showed in a locked file found the page's Copy button copied onto the browser machine's clipboard and reading the page put the key in its session log; filed 2026-11-09): its entry 4,073 to 4,497 as the plug-in's branch need-2026-11-09-76 (9bb3cc0) builds it, 424 more; on its main 378b785 the entry was already 481 over need 75's 3,592, need 74's type merged onto need 75's (aa4d3fc) with no line raised, the five sending 9,187 on the 8,708 line; so 8,708 plus the 905, 9,613 (all five 9,456 built, 9,611 sent at 31 over each as measured, need 75's 2 over kept), no part could pay, the total rose by the 905 (to 126,353).
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
 - `yerk_tools = 24800`
 - `deferred_tool_names = 3429`
-- `mcp__hands__ = 8708`
+- `mcp__hands__ = 9613`
 - `mcp__web-ladder__web_image = 913`
 - `skills = 0`
 

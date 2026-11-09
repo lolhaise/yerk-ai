@@ -53,7 +53,9 @@ layer = 10
 # need-2026-11-04-51 found it at 2,009 with page-talk's name and cut the three video abilities' shared provider words
 # from "keys when they are there" to "keys if there" (11 fewer), so it ends at 1,998; need-2026-11-06-69 found it at 2,011
 # with attachments' name and cut github-state's provider words from "on the token the needs pipeline uses" to "on the
-# pipeline's token", its needs line naming that token whole (13 fewer), so it ends at 1,998.
+# pipeline's token", its needs line naming that token whole (13 fewer), so it ends at 1,998; need-2026-11-09-76 found it
+# at 2,009 with page-keys' name and cut reverse-image-search's provider words from "Google Cloud Vision (web detection)" to
+# "Google Cloud Vision", its first how line naming web detection whole (16 fewer), so it ends at 1,993.
 [abilities.abilities]
 state = "built"
 what = "Says what Yerk AI can do."
@@ -437,6 +439,28 @@ why_not = "It rides on the browser ability, which is not in this repo; an instal
 asked_as = ["screenshot of the page", "screenshot the page", "screenshot of the tab", "screenshot of your browser", "screenshot your browser",
             "pic of the page", "picture of the page", "picture of your browser"]
 
+# need-2026-11-09-76: a room asked to keep a bot's API key, shown on a signed-in settings page, in a locked file had no way
+# that kept the key out of its own session: the page's Copy button, clicked through the browser, copied onto the browser
+# computer's clipboard, never the box's; a room cannot write the secrets folder; and reading the page put the key in its log.
+[abilities.page-keys]
+state = "described"
+what = "Saves a key or token a web page shows, such as an API key on a signed-in settings page, straight into the private folder's secrets as a new NAME.key through the browser ability's browser, so its value never reaches the room, its session log or a reply."
+how = [
+  "One browser action, keep, with the room's tab, the new file's name and the label that finds the value: it is read in the page and handed to the plug-in alone, never back to the room.",
+  "Found by a field's label, else by the page's own Copy button, clicked with the copy caught inside the page, else by the words beside it: a field in the page, its web components or its boxes; the Copy button's copy, since that browser's clipboard is another computer's; the one-word value shown beside the words.",
+  "Written by the plug-in itself, a new file in the secrets folder: the key on its first line, 0600 in a 0700 folder, the way every key Yerk runs on is kept, so a job or script the owner runs reads it there and no room ever does.",
+  "Never over a file already there, a link included, and only on the owner's word: a steered call cannot replace a key Yerk runs on, and the file is outside the room; nothing is kept from a payment page.",
+  "Refused with its reason when what it found is not one key: shown masked, holding spaces, under 8 or over 4,096 characters, several values with none picked, or nothing labelled so.",
+  "The reply names the file and the value's length only, and the plug-in scrubs the value from every line it returns or ledgers.",
+]
+tier = "free"
+needs = "the browser ability with a keep action in its plug-in, and the private folder's secrets on the box the plug-in runs on"
+price = "none"
+free_path = "this is the free path"
+why_not = "It rides on the browser ability, which is not in this repo; an install whose browser plug-in carries the keep action has it there, and a room asked to keep a key a page shows in a locked file keeps it with that action, never by reading the page."
+asked_as = ["save the api key", "keep the api key", "store the api key", "copy the api key", "key in a locked file", "token in a locked file",
+            "save the key to the secrets folder", "save the token from the page"]
+
 # need-2026-11-01-33: a room asked to cancel a booking by the Cancel link in its confirmation mail had the mail's words and
 # no link's address, since the mail tool's text strips the tags, and the mail would not open by its row in the browser.
 # need-2026-11-07-74: a room asked whether a guest booking was still live read its mails with every link stripped again,
@@ -734,7 +758,7 @@ how = [
 ]
 tier = "key"
 keys = ["google-vision"]
-provider = "Google Cloud Vision (web detection)"
+provider = "Google Cloud Vision"
 needs = "a Google Cloud Vision API key in the private folder (secrets/google-vision.key), from a Google Cloud project with the Cloud Vision API turned on and billing set up; ffmpeg on the machine for a HEIC, an AVIF or a picture past 7 MB"
 price = "the first 1,000 pictures a month free, then US$3.50 a thousand, 0.35 US cents a picture (Cloud Vision's pricing page, read 2026-11-02); each call books 0.35 cents, the list price, not the month's bill"
 key = "make an API key in the Google Cloud project that has the Cloud Vision API turned on (APIs and services, Credentials; restrict it to that API), and put it on the first line of secrets/google-vision.key in the private folder, 0600; the next call reads it, no restart"

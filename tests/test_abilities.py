@@ -183,6 +183,24 @@ def test_a_room_asked_to_put_a_photo_on_a_web_form_hears_the_upload_way(tmp_path
     assert not abilities.asked("the photos are on the listing already, I added them myself", y.memory, TAB)
 
 
+def test_a_room_asked_to_keep_a_key_a_page_shows_hears_the_keep_way_never_the_read(tmp_path):
+    """need-2026-11-09-76: a room asked to keep a bot's API key, shown on a signed-in settings page, in a locked file found
+    the page's Copy button copied onto the browser computer's clipboard, a room cannot write the secrets folder, and
+    reading the page put the key in its log. Asked that way, a room gets page-keys whole: the browser plug-in's keep, the
+    value read in the page and written by the plug-in as a new file in the secrets folder, never shown, never over one."""
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    found = abilities.asked("make the example bot and keep the api key it shows in a locked file", y.memory, TAB)
+    assert [e["key"] for e in found] == ["page-keys"]
+    text = found[0]["text"]
+    assert text.startswith(f"page-keys, a Yerk AI ability ({words.ability('described')[1]}): Saves a key or token a web page shows")
+    for want in ("One browser action, keep", "the page's own Copy button, clicked with the copy caught inside the page",
+                 "Written by the plug-in itself", "Never over a file already there", "only on the owner's word",
+                 "whose browser plug-in carries the keep action", "never by reading the page"):
+        assert want in text, want
+    assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
+    assert not abilities.asked("the key works now, thanks", y.memory, TAB)
+
+
 def test_a_room_whose_form_never_takes_a_set_value_hears_the_typing_way(tmp_path):
     """need-2026-11-09-75: a room drove a quote form to its last text field, and the browser's `set` put the value there
     (the field showed it) while the page's React form never had it, so its Next stayed disabled. Asked that way, a room
