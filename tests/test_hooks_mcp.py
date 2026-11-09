@@ -85,6 +85,8 @@ def test_twenty_three_preloaded_tools_with_slim_schemas(tmp_path):
     assert list(tools["read_memory"].inputSchema["properties"]) == ["path", "from_line", "lines"]
     assert list(tools["worker"].inputSchema["properties"]) == ["action", "brief", "id", "room", "tasks", "cap_minutes",
                                                               "account", "model", "effort"]
+    said = " ".join(str(tools["worker"].description).split())   # lines joined: Python 3.12 keeps a docstring's indent, 3.13 strips it
+    assert "the room hears the result, or nothing if its last message is exactly NO_REPLY" in said
     cfg = json.loads(mcp_server.room_config("http://127.0.0.1:1/mcp", "example-room", tmp_path / "m.json").read_text())
     assert cfg["mcpServers"]["yerk"]["alwaysLoad"] is True and list(cfg["mcpServers"]) == ["yerk"]
     assert cfg["mcpServers"]["yerk"]["timeout"] == 600_000            # past Claude Code's 60 s, so a transcribe call can finish

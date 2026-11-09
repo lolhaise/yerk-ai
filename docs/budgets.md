@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 126748`
+- `total = 127548`
 
 ## [session_start.claude_code]
 
@@ -94,9 +94,11 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-09, need-2026-11-09-75: the hands plug-in's browser gains `type` (a field's value typed as keys are, the browser's own text input into the focused field, since a room's quote form showed what `set` put in its licence field while its React form never had it and its Next stayed disabled; filed 2026-11-09): its entry grows 145 as the plug-in's branch need-2026-11-09-75 (cc75696) builds it against its main 2e7593a, so 3,622 as sent (31 over, as each of the five goes), all five 8,708; so 8,708, no part could pay, the total rose by the 145 (to 125,448).
 
+2026-11-09, need-2026-11-09-77: the `worker` tool's clause that the room hears nothing when a worker's last message is exactly NO_REPLY (a timer script started each run with `yerk worker start`, and every quiet run still asked its room for a relay turn that had to be answered with a posted line; filed 2026-11-09) takes the tool from 1,398 to 1,450 as this tree builds it. With main 47d8d58 folded in, `remember` is 3,016 there (2,304 before memory-docs-shape and fable-5-2 gave it retire and the rule shape in the docs' words, with no line moved: main builds all 23 at 24,786, about 25,499 as sent, 699 over 24,800), so all 23 build to 24,838, about 25,551 as sent (713 over the build, as on zoom's tree); so 25,600, no part could pay, the total rose by the 800 (100 this clause, 700 main's `remember`) over main's 126,748 (to 127,548).
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
-- `yerk_tools = 24800`
+- `yerk_tools = 25600`
 - `deferred_tool_names = 3429`
 - `mcp__hands__ = 8708`
 - `mcp__web-ladder__web_image = 913`
@@ -597,7 +599,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-09: fable-5-2 raised it by 230 on the owner's word (everything in Yerk the way Claude Fable 5.2's docs say, and kept that way), not folded to fit: shape.py 152 (the model mapping, the 5.2 page's pins, its four checks and the style-limit count, the store per page), engine.py 37 (each session's start kept by its id), doctor.py 12 (the rooms' models read, a need per kind), words.py 10 (each new check's name and fix), context.py 6 (news from a kept start), memory.py 6 (the gate's pages), config.py 4, mcp_server.py 2, daemon.py 1. 27,910.
 
-- `lines = 27910`
+2026-11-09: need-2026-11-09-77 raised it by 5: a worker whose last message is exactly NO_REPLY ends with no relay turn from any caller, as a job's does, the ledger's relay skipped with why, since a timer script started each run with `yerk worker start` and every quiet run still asked its room for a turn that had to be answered with a posted line; not folded to fit: workers.py 5 (the skip, its ledger note and log line; the module's line on it), mcp_server.py 0 (the tool's clause, its lines folded again), cli.py 0 (--brief's words). 27,915: main 47d8d58's 27,910 plus 5.
+
+- `lines = 27915`
 
 ## Uncapped
 

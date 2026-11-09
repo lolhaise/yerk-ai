@@ -207,9 +207,9 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         """Heavy work leaves the room: a worker is a headless run with its own card in the room and a
         report. action "start": `brief` is the whole job (what done looks like, where it ends, what to
         leave alone); optional `tasks` (its checklist rows), `cap_minutes` (default 65), `account`, `model`,
-        `effort` (low, medium, high, xhigh, max; default the room's live level), `room` (default this room). Returns its
-        id, folder and report path; when it ends, the card settles and the room hears the result. "list": workers and their state. "stop" / "report":
-        by `id` (report gives the report's text, for you to tell in your own words)."""
+        `effort` (low, medium, high, xhigh, max; default the room's live level), `room` (default this room). Returns its id, folder
+        and report path; when it ends, the card settles and the room hears the result, or nothing if its last message is exactly
+        NO_REPLY. "list": workers and their state. "stop" / "report": by `id` (report gives the report's text, for you to tell in your own words)."""
         req = {"action": action, "brief": brief, "id": id, "room": room, "tasks": tasks or [],
                "cap_minutes": cap_minutes, "account": account, "model": model, "effort": effort}
         return json.dumps(await daemon.tool_worker(caller_room(ctx), req))

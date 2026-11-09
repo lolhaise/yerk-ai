@@ -8,6 +8,37 @@ version changes.
 
 ## 2026-11-09
 
+### need-2026-11-09-77 (#?)
+
+- A worker whose last message is exactly NO_REPLY now ends with no relay turn, however it was started: the `worker` tool,
+  or `yerk worker start --brief FILE --room ROOM` in a timer's script. Before, only a scheduled agent job's NO_REPLY was
+  silent; any other worker's quiet end settled its card as `🟢 worker finished clean, nothing to add`, then still asked its
+  room for a turn to tell the outcome, which the room had to answer with a posted line. A timer script that starts a
+  worker each time something might need a look, dozens of times on a busy day, put a turn in its room for every quiet run,
+  and the way around it, a one-shot agent job a run, left a job in the jobs file each time and could not pick the
+  thinking level.
+- What stays: the card settles quiet as before; the worker's ledger row says relay skipped, "the worker answered
+  NO_REPLY", and `yerk worker list` shows it. A run with something to say is told as before, and one that dies, times
+  out or is stopped after saying NO_REPLY is still told. A worker that ended while yerkd was down ends the same way at
+  its next start. A job's worker, a pictures backfill batch and the needs pipeline's workers keep their own endings, and
+  `--effort`, `--model`, `--account`, `--cap` and `--task` work as they did.
+- The `worker` tool's words say the room hears nothing when the last message is exactly NO_REPLY, `yerk worker start`'s
+  `--brief` help says so, and the workers ability (`yerk explain workers`) carries the silent end, found by a room that
+  asks for a worker from a script that ends silently.
+- The tests: 2 new, in tests/test_workers.py (a worker started by `yerk worker start --brief FILE --room ROOM --effort
+  low` that answers NO_REPLY asks no turn and runs at its level, live and at a re-attach, while one with something to say
+  and one that dies after NO_REPLY are each told, in order) and tests/test_abilities.py (the workers entry answers the
+  ask whole under the recall cap), and the tool's words checked in tests/test_hooks_mcp.py.
+- Tests only: that check of the `worker` tool's words now reads them with their lines joined, as the attachments,
+  seen and watch tests read theirs (box-ci red on py3.12 at this branch's head 385d9e1). Python 3.12 keeps a
+  docstring's indent where 3.13 and 3.14 strip it, so on 3.12 the line break before NO_REPLY came with eight spaces
+  and the test, which matched the bare line break, failed there alone. The tool's words are unchanged.
+
+**Upgrading:** budgets.toml raises `yerk_tools` to 25,600, the session start's `total` to 127,548 and `[code] lines` to
+27,915, each with its dated note. Of the 800 on `yerk_tools`, 100 is the `worker` tool's clause and 700 is `remember` as
+main builds it (3,016 characters since memory-docs-shape and fable-5-2, no line moved for it there). A worker that ends
+after the deploy's restart ends this way, and a room picks up the tool's words at its next session.
+
 ### memory-docs-shape-2026-11-09 (#?)
 
 - A rule is filed as one lesson in the shape Anthropic's Claude Fable 5 prompting page gives a memory system: one lesson,
