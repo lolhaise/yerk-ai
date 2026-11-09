@@ -8,6 +8,22 @@ version changes.
 
 ## 2026-11-09
 
+### need-2026-11-09-75 (#?)
+
+- A room fills a React or Angular form's text field so the form registers it. The hands plug-in's browser `set` writes
+  a value from a script, and a framework form whose checks wait on the browser's own events showed the value but never
+  had it, so its Next button stayed disabled and the form went no further. The browser's new `type` action finds the
+  field by `set`'s own label rules (the page, then a frame of the page's own site), a text box only, focuses it, clears
+  what it held with a real Backspace, and types the value through the browser's own text input (`Input.insertText`, a
+  character at a time while the value is short, so a mask formats it as it goes). Then it reads the field back (a
+  password by its length only) and takes the focus off it, so the change event and the checks on leaving the field run.
+  A field that offers suggestions keeps the focus for its list. The guards are `set`'s: nothing on a payment page, and a
+  checkout look-alike only on your word.
+- The plug-in's change is on its branch `need-2026-11-09-75`; `yerk explain browser` carries the typing line.
+
+**Upgrading:** budgets.toml raises `mcp__hands__` to 8,708 and the session start's `total` to 125,448, each with its
+dated note. The plug-in's branch merges onto its main, and a room picks up `type` at its next session.
+
 ### zoom-2026-11-09 (#?)
 
 - A room reads the small print on a big picture. Read shows a room a picture at most 2000 px on its long side, so a

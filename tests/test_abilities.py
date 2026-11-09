@@ -183,6 +183,23 @@ def test_a_room_asked_to_put_a_photo_on_a_web_form_hears_the_upload_way(tmp_path
     assert not abilities.asked("the photos are on the listing already, I added them myself", y.memory, TAB)
 
 
+def test_a_room_whose_form_never_takes_a_set_value_hears_the_typing_way(tmp_path):
+    """need-2026-11-09-75: a room drove a quote form to its last text field, and the browser's `set` put the value there
+    (the field showed it) while the page's React form never had it, so its Next stayed disabled. Asked that way, a room
+    gets the browser entry whole, with its typing line: the plug-in's type, the browser's own text input, the field left so
+    its checks run (a key of its own would push the abilities answer, 1,998 at main, past the 2,000 recall cap)."""
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    found = abilities.asked("the form shows the number but the next button stays disabled, can you get past it?", y.memory, TAB)
+    assert [e["key"] for e in found] == ["browser"]
+    text = found[0]["text"]
+    assert text.startswith(f"browser, a Yerk AI ability ({words.ability('described')[1]}): Drives a real browser")
+    for want in ("A field typed as keys type it, by the browser action type in place of set, for a React or Angular form "
+                 "that never sees a value a script sets and keeps its Next button disabled.", "Drives a real browser"):
+        assert want in text, want
+    assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
+    assert not abilities.asked("the form went through and the quote came back", y.memory, TAB)
+
+
 def test_a_room_asked_for_a_picture_of_its_tab_hears_the_shot_way_never_the_desktops(tmp_path):
     """need-2026-10-28-28: a room asked for a picture of the page it was filling in found no screenshot among the browser's
     actions, and the desktop's screenshot shoots the owner's screen, where that browser shows no window. Asked that way, a

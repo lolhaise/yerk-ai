@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 125303`
+- `total = 125448`
 
 ## [session_start.claude_code]
 
@@ -92,11 +92,13 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-09, zoom-2026-11-09: the `zoom` tool (a part of a picture in a room's folders, as fractions of its width and height, made a PNG 2000 px on its long side by ffmpeg, since Read shows a picture at most 2000 px on its long side and a room asked whether someone was free at a time on a calendar's picture could not read the times, while ffmpeg in its shell waited on an approval no one gives mid-turn) is 1,081 as this tree builds it, all 23 to 24,074, about 24,787 as sent (713 over the build, 31 a tool as on the others); so 24,800, no part could pay, the total rose by the 1,100 (to 125,303 with its mechanics line's 400).
 
+2026-11-09, need-2026-11-09-75: the hands plug-in's browser gains `type` (a field's value typed as keys are, the browser's own text input into the focused field, since a room's quote form showed what `set` put in its licence field while its React form never had it and its Next stayed disabled; filed 2026-11-09): its entry grows 145 as the plug-in's branch need-2026-11-09-75 (cc75696) builds it against its main 2e7593a, so 3,622 as sent (31 over, as each of the five goes), all five 8,708; so 8,708, no part could pay, the total rose by the 145 (to 125,448).
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
 - `yerk_tools = 24800`
 - `deferred_tool_names = 3429`
-- `mcp__hands__ = 8563`
+- `mcp__hands__ = 8708`
 - `mcp__web-ladder__web_image = 913`
 - `skills = 0`
 
