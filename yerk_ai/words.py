@@ -147,9 +147,9 @@ RULES_OWNER_ONLY = "not filed as a rule, since a rule reaches every room; rememb
 FILED_NEXT = ("Only the text after your last tool call reaches the room, and nothing written above this call is shown, "
               "so the answer goes there, first and whole (the result, the numbers, what you found or decided), and the "
               "filing is {clause}.")
-FILED_AT_MOST = "one clause at its end at most"
-RULE_CLAUSE = "one clause at its end, this one: every room now does {job} this way"
-TOPIC_CLAUSE = "one clause at its end, this one: the rule loads when {triggers} come up, since the shared rules file is full"
+FILED_AT_MOST = "never said, since the answer stands alone for a reader who did not see the work"     # 2026-11-09: no narration
+RULE_CLAUSE = FILED_AT_MOST + " (every room now does {job} this way)"
+TOPIC_CLAUSE = FILED_AT_MOST + " (the rule loads when {triggers} come up, since the shared rules file is full)"
 # a filing fitted under the rules file's cap (memory.rule): each strip and a topic rule in the room's day log, a topic rule in the
 # machine room (rules-on-demand: never "held", it loads when its topic comes up)
 RULE_STRIPPED = "the example in rule \"{job}\" taken out so rules.md fits its cap of {cap:,}"
@@ -187,7 +187,13 @@ PART_CUT = "{part}: {n} line{s} dropped\nto fit its {cap:,} in {room}"     # at 
 FILED = re.compile(r"^\W*(?:filed|saved|from now on,? every room)\b", re.I)   # a final reporting a filing (stub)
 STUB = ("Only your final message reaches the room, and yours, \"{head}\", reports the filing, not the answer: the answer "
         "is above your last tool call, where the room never sees it, or it was never written. Write the whole answer as "
-        "your final message now, first and complete, with the filing one clause at its end at most.")
+        "your final message now, first and complete, with no word about the filing.")
+# the filing rule at Stop (Room.filing_check, 2026-11-09, the owner: a rule's filing told back as "Filed: ..."): a final holding a
+# filing report bounces once, quoting the Claude docs' readability sentence off the fetched page
+FILING_REPORT = re.compile(r"(?im)^[^\w\n]*(?:filed|logged)\b|\bthe rule now says\b|\bI(?:'ve| have)? (?:filed|logged)\b|"
+                           r"\b(?:filed|logged) (?:it|that|this|the rule) (?:as|in|under|to)\b|\brules(?:-topics)?\.md:\d+")
+FILING_TOLD = ("Your final message reports a filing (\"{head}\"), and the room reads the answer only: {sentence}. Send the "
+               "answer again as your final message, every word of it but the filing report, which is never said.")
 # the note rule at Stop (seen live: a reply opened with the model's plan for it, and the room posted both whole)
 NOTE = ("Every word of your final message is posted, and yours opens with a note to yourself (\"{head}\") before the answer. "
         "Thinking is where that goes. Write the answer alone as your final message now, from its first word.")

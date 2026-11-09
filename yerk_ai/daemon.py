@@ -1420,6 +1420,11 @@ class Yerkd:
                     self.ledger.shadow(t=round(time.time(), 3), room=name, session_id=sid, turn=room.turn_key, rule="stub",
                                        detail=found, reply_chars=len(str(said)))
                     log.info("room %s: Stop bounced once: the final text only reports a filing (%s)", name, found)
+                elif (told := room.filing_check(active, None if said is None else str(said), self.memory.docs)):
+                    reason, found = told              # counted the same way as a stub
+                    self.ledger.shadow(t=round(time.time(), 3), room=name, session_id=sid, turn=room.turn_key, rule="filing",
+                                       detail=found, reply_chars=len(str(said)))
+                    log.info("room %s: Stop bounced once: the final reports a filing (%s)", name, found)
                 elif (note := room.note_check(active, None if said is None else str(said))):
                     reason, found = note              # counted the same way as a stub
                     self.ledger.shadow(t=round(time.time(), 3), room=name, session_id=sid, turn=room.turn_key, rule="note",

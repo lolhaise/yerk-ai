@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from yerk_ai import evidence, gates, hooks, mcp_server, memindex, memory, words
+from yerk_ai import evidence, gates, hooks, mcp_server, memindex, memory, shape, words
 from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai.daemon import Yerkd
 from fake_channel import ConsoleChannel
@@ -319,7 +319,7 @@ def test_a_final_that_only_reports_a_filing_bounces_once_and_so_does_an_answer_l
                          ([("say", "Logging that."), ("call", "mcp__yerk__remember")],
                           "Noted, and that moves the review to Thursday with the same three people on it."),
                          ([("say", "Filing it, then the build."), ("call", "mcp__yerk__remember"), ("call", "Bash")],
-                          "Filed, and the build is green.")):
+                          "The build is green.")):
         room._new_card()
         stream(room, *steps)
         assert call(y, {**stop, "last_assistant_message": final}) == {}, final
@@ -742,3 +742,28 @@ def test_an_owner_rooms_send_to_the_machine_room_needs_no_word_and_a_family_room
     assert send("family-room", "ops")[0] == "send-elsewhere"              # a family room's still holds
     assert send("main", "other")[0] == "send-elsewhere"         # any other room still holds
     assert send("main", "ops", None)[0] == "send-elsewhere"     # no rooms.toml in hand: unchanged
+
+
+def test_a_final_holding_a_filing_report_bounces_once_with_the_readability_sentence_and_the_rest_kept(tmp_path):
+    """The filing rule (2026-11-09, the owner: a rule rewritten, then "Filed: ..." told back): after a filing call, a final
+    holding a filing report bounces once, quoting the Claude docs' readability sentence and asking for the rest of the answer;
+    a final with no report stands, and so does one in a result that filed nothing."""
+    y, room, ch = setup(tmp_path)
+    stop = {"hook_event_name": "Stop", "stop_hook_active": False}
+    told = "The build is green and the review moved to Thursday.\n\nFiled: rules.md:115, the rule now says so."
+    for final in (told, "The build is green. I've filed it under the release job.", "Logged, and the build is green."):
+        room._new_card()
+        stream(room, ("say", "Filing it, then the build."), ("call", "mcp__yerk__remember"), ("call", "Bash"))
+        out = call(y, {**stop, "last_assistant_message": final})
+        assert out["decision"] == "block" and "for a reader who didn't see any of that" in out["reason"], final
+        assert "every word of it but the filing report" in out["reason"]
+        assert call(y, {**stop, "last_assistant_message": final}) == {}                             # once
+    assert sorted(r["detail"] for r in y.ledger.rows(20, "shadow") if r["rule"] == "filing") == [
+        "a filing report: Filed: rules.md:115, the rule now says so.", "a filing report: Logged, and the build is green.",
+        "a filing report: The build is green. I've filed it under the release job."]
+    room._new_card()
+    stream(room, ("say", "Checking."), ("call", "Bash"))
+    assert call(y, {**stop, "last_assistant_message": "Filed under taxes, the 2025 receipts are in the blue folder."}) == {}
+    room._new_card()
+    stream(room, ("say", "Filing it."), ("call", "mcp__yerk__remember"))
+    assert call(y, {**stop, "last_assistant_message": "The review is Thursday at 9:30 with the same three people."}) == {}

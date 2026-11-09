@@ -51,7 +51,7 @@ def test_a_rule_filed_in_one_room_reaches_a_running_room_on_its_next_message_onc
     r = rule(y, A, "Open web pages with the example browser, never the example fetcher, since it misses what a page draws.", "Open web pages:")
     assert r == {"ok": True, "job": "open web pages", "cite": "tree/rules.md:6", "replaced": [],
                  "next": words.FILED_NEXT.format(clause=words.RULE_CLAUSE.format(job="open web pages"))}
-    assert r["next"].endswith("the filing is one clause at its end, this one: every room now does open web pages this way.")
+    assert r["next"].endswith("the filing is never said, since the answer stands alone for a reader who did not see the work (every room now does open web pages this way).")
     block = told(y, "sid-b")
     assert block.count(f"{context.NEWS}\nnew in rules.md: open web pages: Open web pages with the example browser, never "
                        "the example fetcher, since it misses what a page draws. (example-room, ") == 1 and "[m:m-1]" in block
@@ -217,7 +217,7 @@ def test_a_rule_with_no_room_even_with_no_examples_is_filed_as_a_topic_rule_and_
     on = "last, job or example"                                         # its own job word first: no other rule says "last"
     assert r == {"ok": True, "job": "example job last", "cite": "tree/rules-topics.md:3", "replaced": [], "topic": True,
                  "triggers": ["last", "job", "example"], "rooms": [], "next": words.FILED_NEXT.format(clause=words.TOPIC_CLAUSE.format(triggers=on))}
-    assert r["next"].endswith("this one: the rule loads when last, job or example come up, since the shared rules file is full.")
+    assert r["next"].endswith("(the rule loads when last, job or example come up, since the shared rules file is full).")
     tier = y.memory.root / memory.TOPIC_RULES
     assert path.read_bytes() == before and tier.stat().st_mode & 0o777 == 0o600 and not (y.memory.root / memory.OVERFLOW).exists()
     assert tier.read_text().splitlines()[-1].startswith(f"- example job last: Example job last is done the example way, since it works.{EX} ({A}, ")
