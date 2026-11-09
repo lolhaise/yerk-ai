@@ -254,6 +254,36 @@ def test_a_room_asked_for_a_link_or_a_button_in_an_email_hears_the_numbered_way_
     assert not abilities.asked("the button on the booking form is greyed out", y.memory, TAB)
 
 
+
+def test_a_room_asked_to_type_into_a_field_it_focused_hears_the_type_way_and_the_web_component_form(tmp_path):
+    """need-2026-11-09-74: a room asked to run a quote on a form drawn inside a web component saw the form only in a shot:
+    the browser's read and its list of fields stopped at the page's footer, and a click by position focused the form's
+    first field with no action to type into it. Asked that way, a room gets form-typing whole: the browser plug-in's type,
+    into the field that has focus, typed by the browser itself; a select takes the option its words name; the web
+    component's form is read, listed, filled and clicked by label; an Enter waits for the owner's word, and nothing is typed
+    into a card field; a message about typing up a form gets no ability."""
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    for ask in ("the quote page draws its form but nothing lists it, can you type into the field you clicked?",
+                "its fields are not listed, the form sits in a shadow root"):
+        found = abilities.asked(ask, y.memory, TAB)
+        assert [e["key"] for e in found] == ["form-typing"], ask
+    text = found[0]["text"]
+    assert text.startswith(f"form-typing, a Yerk AI ability ({words.ability('described')[1]}): Types into whatever field has focus "
+                           "in one of the room's tabs")
+    for want in ("One browser action, type; The field found first, as the browser will type into it; A select takes the option its "
+                 "words name; A web component's form read too; The owner's word before an Enter",
+                 "whose browser plug-in carries the type action", "clicks its field by position and types into it"):
+        assert want in text, want
+    assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
+    told = abilities.explain("form-typing", TAB["form-typing"], TAB, y.memory)
+    assert next(x for x in told if x.startswith("- One browser action, type:")).startswith(
+        "- One browser action, type: text into the field that has focus, typed by the browser itself over its developer protocol")
+    assert next(x for x in told if x.startswith("- A web component's form read too:")).endswith(
+        "one whose inside is closed to the page is reached by type alone.")
+    held = next(x for x in told if x.startswith("- The owner's word before an Enter"))
+    assert "nothing typed into a card field, the owner's word or not" in held and held.endswith("as one on the page does.")
+    assert not abilities.asked("I have to type up the form for work tonight", y.memory, TAB)
+
 def test_ordinary_messages_pull_no_ability_into_the_room(tmp_path):
     y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
     assert {m: [e["key"] for e in abilities.asked(m, y.memory, TAB)] for m in ORDINARY} == {m: [] for m in ORDINARY}

@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 123803`
+- `total = 124245`
 
 ## [session_start.claude_code]
 
@@ -90,11 +90,13 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-07): its entry 3,048 to 3,446 as the plug-in's branch need-2026-11-07-74 (aa73df9) builds it, 3,477 as sent (31 over, as each of the five goes; all five 8,408 built, 8,563 sent, the mail entry at need 33's 1,194 built), 398 over the 3,079 it sends on the plug-in's main f384c2b; so 8,563, no part could pay, the total rose by the 398 (to 123,803).
 
+2026-11-09, need-2026-11-09-74: the hands plug-in's browser gains `type` (text into whatever field has focus in a tab, such as one a click by x and y focused, and a web component's form read, listed, set and clicked by label, since a room asked to run a quote on a form drawn inside a shadow root saw it only in a shot, its read and its fields stopping at the page's footer, and had no action to type into the field its click focused; filed 2026-11-09): its entry 3,438 to 3,880 as JSON on the plug-in's branch need-2026-11-09-74 (8c2aff9) against its main 2e7593a, 442 more as sent (each of the five goes out 31 over its build, which `type` leaves as it was); so 9,005, no part could pay, the total rose by the 442 (to 124,245).
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
 - `yerk_tools = 23700`
 - `deferred_tool_names = 3429`
-- `mcp__hands__ = 8563`
+- `mcp__hands__ = 9005`
 - `mcp__web-ladder__web_image = 913`
 - `skills = 0`
 
@@ -160,7 +162,9 @@ What the UserPromptSubmit hook adds to each message: `typical` caps the parts ev
 
 2026-10-23: 5,500 to 5,650, the place part's 150 below.
 
-- `cap = 5650`
+2026-11-09, need-2026-11-09-74: 5,650 to 5,750, the recall part's 100 below.
+
+- `cap = 5750`
 
 ## [per_message.parts]
 
@@ -183,7 +187,9 @@ Claude Code moves a hook output longer than this into a file.
 
 Paid only when a message hits: the people and things it names, then the room's own lines of the last 14 days on its topic (L19, decision 20). The parts above plus these stay under `cap`. 2,000 from the cold read of Oct 21 (rail-2, index healthy): the twenty episodic questions found 9 of 20 at 1,500 and 11 of 20 at 2,000. Clock 200 + metadata 300 + rules 1,500 + recall 2,000 + taste 1,500 = the cap, 5,500.
 
-- `recall = 2000`
+2026-11-09, need-2026-11-09-74: 2,100. The answer to "what can you do" (abilities.py's census: every ability's name by its state) rides whole under this line or not at all, and it sat 2 characters under it; form-typing's name (the browser plug-in's type, filed 2026-11-09 by a room that saw a quote form only in a shot) takes it 11 over, 2,012 with its block's head against the 2,001 a line of 2,000 holds, and no name can join it at 2,000; so 100 more, room for about seven names. The twenty episodic questions' finding at 2,000 stands; the cap above rose by the same 100.
+
+- `recall = 2100`
 
 Paid once per version by a running session (decision 15): what changed in the rules file, its rulebook or the mechanics since it last looked, new and replaced lines; past this, their count and where to read them.
 

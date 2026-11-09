@@ -459,6 +459,27 @@ asked_as = ["link in the email", "link in that email", "links in the email", "li
             "confirmation link", "unsubscribe link", "link in an email", "link from an email", "button in the email",
             "button in that email", "button in an email"]
 
+# need-2026-11-09-74: a room asked to run a quote on a form drawn inside a web component saw the form only in a shot: the
+# browser's read and its list of fields stopped at the page's footer, and a click by position focused the form's first
+# field with no action to type into it.
+[abilities.form-typing]
+state = "described"
+what = "Types into whatever field has focus in one of the room's tabs in the browser ability's browser, such as one a click by position focused, and reads, lists, fills and clicks a form drawn inside a web component, which a page's own text and controls leave out."
+how = [
+  "One browser action, type: text into the field that has focus, typed by the browser itself over its developer protocol (Input.insertText), so a field inside a web component, a framework's field that ignores a value set by script and a field no list names all take it; then one key when asked, such as Tab to the next field.",
+  "The field found first, as the browser will type into it: through each web component's own part of the page and each frame of the page's own site; nothing focused, a field that takes no text and a file input are each said with the way past, and what the field reads after comes back.",
+  "A select takes the option its words name: an exact one first, else the one option that holds them; none or several are said with the options.",
+  "A web component's form read too: its words follow the page's on a read, its controls are listed with the page's, and a fill or a click by label reaches them; one whose inside is closed to the page is reached by type alone.",
+  "The owner's word before an Enter, which can send the form; nothing typed into a card field, the owner's word or not, and a card field, a pay button or a payment frame inside a web component makes a payment page, as one on the page does.",
+]
+tier = "free"
+needs = "the browser ability with a type action in its plug-in"
+price = "none"
+free_path = "this is the free path"
+why_not = "It rides on the browser ability, which is not in this repo; an install whose browser plug-in carries the type action has it there, and a room that sees a form only in a shot clicks its field by position and types into it."
+asked_as = ["type into the field", "type in the field", "type into a field", "type into the form", "focused field", "field that has focus",
+            "shadow dom", "shadow root", "web component form", "fields are not listed"]
+
 [abilities.pc-control]
 state = "described"
 what = "Hands and eyes on a desktop computer: clicks, keys, windows and screenshots, for what a browser cannot reach."
