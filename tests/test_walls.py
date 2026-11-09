@@ -158,3 +158,37 @@ def test_the_units_sandbox_binds_the_gate_files_read_only(tmp_path):
     assert f"ReadWritePaths={folder}" in props
     assert f"ReadOnlyPaths={folder / 'worker.json'}" in props and f"ReadOnlyPaths={folder / 'settings.json'}" in props
     assert not [p for p in props if "mcp.json" in p]
+
+
+# G3: a gate whose hook fails must refuse. Claude Code carries an action out when a hook cannot start, times out or exits
+# oddly, unless the hook says onFailure "block" (docs, hooks: "Block the action when a hook fails", v2.1.295 on). On
+# 2026-10-19 one room's 170 PreToolUse calls got HTTP 403 and every action went ahead.
+def test_the_gate_hook_blocks_when_it_fails_and_the_other_hooks_do_not(tmp_path):
+    from yerk_ai import hooks
+    s = hooks.settings_for("http://127.0.0.1:9/hook", tmp_path / "hook-header")
+    assert [h.get("onFailure") for h in s["PreToolUse"][0]["hooks"]] == ["block"]
+    for event in ("UserPromptSubmit", "Stop", "PostToolUse", "PostToolUseFailure", "ConfigChange", "SessionStart"):
+        assert all("onFailure" not in h for h in s[event][0]["hooks"]), event     # a lost message or an endless turn is no gate
+
+
+def test_the_gate_hook_as_written_refuses_when_the_daemon_does_not_answer(tmp_path):
+    import socket
+    import subprocess
+    from yerk_ai import hooks
+    with socket.socket() as sock:                     # a port nothing listens on
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+    (tmp_path / "hook-header").write_text("x-yerk-secret: t\n")
+    s = hooks.settings_for(f"http://127.0.0.1:{port}/hook", tmp_path / "hook-header")
+    gate = s["PreToolUse"][0]["hooks"][0]["command"]
+    p = subprocess.run(["sh", "-c", gate], input='{"hook_event_name": "PreToolUse"}', capture_output=True, text=True, timeout=30)
+    assert p.returncode == 2 and "gate" in p.stderr and "not run" in p.stderr     # exit 2: Claude Code blocks the call, the model reads why
+    other = subprocess.run(["sh", "-c", s["PostToolUse"][0]["hooks"][0]["command"]], input="{}", capture_output=True, text=True, timeout=30)
+    assert other.returncode not in (0, 2)             # any other hook: an error in the transcript, nothing blocked
+
+
+def test_a_workers_gate_hook_blocks_when_it_fails(tmp_path):
+    import json
+    from yerk_ai import workers
+    hook = json.loads(workers.gate_settings(tmp_path).read_text())["hooks"]["PreToolUse"][0]["hooks"][0]
+    assert hook.get("onFailure") == "block"

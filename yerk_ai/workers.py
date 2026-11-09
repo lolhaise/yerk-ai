@@ -120,11 +120,13 @@ def yerk_tools(conf: dict[str, Any]) -> list[str]:
 
 def gate_settings(folder: Path) -> Path:
     """A worker's --settings: one PreToolUse hook on every tool call, the room's gates run as a local
-    process (gates.py worker-hook: no daemon round trip, no secret) with the worker's folder as the root."""
+    process (gates.py worker-hook: no daemon round trip, no secret) with the worker's folder as the root. A hook that
+    cannot start, times out or dies (a checkout that does not import mid-deploy) blocks the call (`onFailure`), as a
+    hook that cannot read it does: Claude Code lets the call through otherwise."""
     cmd = shlex.join(["env", f"PYTHONPATH={PACKAGE.parent}", sys.executable, "-P", "-m", "yerk_ai.gates", "worker-hook", str(folder)])
     path = folder / "settings.json"
     path.write_text(json.dumps({"hooks": {"PreToolUse": [{"matcher": "*", "hooks": [
-        {"type": "command", "command": cmd, "timeout": 15}]}]}}, indent=1))
+        {"type": "command", "command": cmd, "timeout": 15, "onFailure": "block"}]}]}}, indent=1))
     return path
 
 
