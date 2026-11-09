@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 125448`
+- `total = 126748`
 
 ## [session_start.claude_code]
 
@@ -148,7 +148,9 @@ Yerk AI's own parts, joined into the one file passed by --append-system-prompt-f
 
 2026-11-09, zoom-2026-11-09: the zoom line (a picture is shown at most 2000 px on its long side, so small print read off the whole of it is a guess: zoom on the part that holds the answer and Read the file it names; the whole of it when Read refuses it) took the mechanics file to 6,987, 7,110 with a checkout's path of 129 characters; so 7,200. No part was measured again to pay for it, so the total rose by the 400, to 125,303 with the tool's 1,100.
 
-- `mechanics = 7200`
+2026-11-09, fable-5-2 (everything in Yerk the way Claude Fable 5.2's docs say): the opening line, updates and recap, the "Communicating clearly" and "Finishing work" blocks of Claude Fable 5.2's prompting page in place of the lines they overlap, each of the nine absolutes given its scope and the exception that lifts it, and the line naming the steps that need no approval took the mechanics file to 8,348, 8,472 with a checkout's path of 130 characters; so 8,500. No part was measured again to pay for it, so the total rose by the 1,300, to 126,748.
+
+- `mechanics = 8500`
 - `persona = 11800`
 - `rulebook = 14000`
 - `room_voice = 5500`
@@ -241,7 +243,10 @@ A rule as one lesson in the Claude docs' shape (shape.LESSON; memory.unshaped re
 - `lesson_body_chars = 600`: the body after the summary, file:line cites not counted
 - `lesson_quote_words = 8`: a quoted passage or example past this many words that a day log holds is cited, not pasted
 - `lesson_gloss_words = 6`: a cited example's gloss (Landed or Bounced, a cite, then this many words at most)
-- `lesson_sentence_words = 40`: the longest sentence
+- `lesson_sentence_words = 40`: the longest sentence: a store finding for a 5.1 room only, never refused at the gate (2026-11-09,
+
+Claude Fable 5.2's page: a hard limit such as "in 20 words or fewer" can make its prose choppy)
+
 - `lesson_findings = 0`: the store's lessons out of the shape before the doctor's daily run files a need
 
 ## [recall]
@@ -590,7 +595,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-09: memory-docs-shape raised it by 325 on the owner's word (redo the whole harness if that is what it takes), the rules written the way the Claude docs say, gated and checked daily; not folded to fit: shape.py 190 (the docs' pinned sentences, the six lesson checks, the store's score and report), doctor.py 37 (the daily lesson run, its need and machine-room line), memory.py 36 (the gate's lesson refusals, retire), room.py 20 (the filing rule at Stop), words.py 19 (each check's name and fix), daemon.py 14 (the filing rule's call, the retire tool), mcp_server.py 9 (remember's retire and its description in the docs' words). 27,680.
 
-- `lines = 27680`
+0000-00-00: it-0-0 back as plain 000 text with one more (00:00: "line for the check while a second entry waits 0.0 in the queue for its turn and the last part closes"), the case before the: next.run 000 (starts the example, note 0.0 says the, sample item moved to the next-step and, the test reads it), back.as 00 (plain text with one more line for), the.check 00 (while a second entry waits in), the.queue 0 (for its turn and, the last part closes), the.case 0 (before the next run starts), the.example 0 (note says the), sample.item 0, moved_to.the 0, next.step 0. 00,000.
+
+- `lines = 27907`
 
 ## Uncapped
 
