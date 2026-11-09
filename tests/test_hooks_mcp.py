@@ -214,7 +214,8 @@ def test_a_rooms_settings_and_mcp_config_carry_its_token_and_are_private(tmp_pat
     for event, entries in spec.settings["hooks"].items():        # every event a command hook: a sandboxed
         hook = entries[0]["hooks"][0]                              # room's proxy refuses http hooks with 403
         assert hook["type"] == "command" and "http" not in hook, event
-        assert spec.token not in hook["command"] and f"-H @{header} " in hook["command"] and hook["command"].endswith("/hook"), event
+        assert spec.token not in hook["command"] and f"-H @{header} " in hook["command"], event
+        assert hook["command"].endswith("/hook") or (event == "PreToolUse" and "/hook || {" in hook["command"]), event   # the gate refuses when curl fails
     assert header.read_text() == f"x-yerk-secret: {spec.token}\n" and oct(header.stat().st_mode & 0o777) == "0o600"
     assert oct((tmp_path / "rooms" / "example-room" / "context.md").stat().st_mode & 0o777) == "0o600"   # the owner's lines
     cfg = json.loads(spec.mcp_config.read_text())
