@@ -17,6 +17,9 @@ REPO = PACKAGE.parent
 EXAMPLE_PRIVATE = REPO / "examples" / "private"
 EFFORTS = ("low", "medium", "high", "xhigh", "max")      # Claude Code 2.1.301's --effort levels (its --help)
 _IGNORED: set[tuple[str, str, str]] = set()             # (room, key, value) of an override already logged
+# <state>/rooms/<room>/starts/, beside assembled.jsonl: each session's start file as it began (<id>.md) and the rule texts it
+# was built from (<id>.json), so a resumed session keeps the system prompt it started with (engine.kept_start, context.news)
+STARTS = "starts"
 # The pages `yerk docs` keeps (docs.py), slug = URL, [docs] pages in yerkd.toml replacing them whole: the prompting guide,
 # the prompting page of each model in models.toml, and the Claude Code pages a room's harness leans on (the system prompt
 # flags are on cli-reference and the Agent SDK's page). Each answered `Accept: text/markdown` with Markdown on 2026-10-21.
