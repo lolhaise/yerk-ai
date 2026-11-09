@@ -195,7 +195,10 @@ def test_a_room_asked_to_keep_a_key_a_page_shows_hears_the_keep_way_never_the_re
     assert text.startswith(f"page-keys, a Yerk AI ability ({words.ability('described')[1]}): Saves a key or token a web page shows")
     for want in ("One browser action, keep", "the page's own Copy button, clicked with the copy caught inside the page",
                  "Written by the plug-in itself", "Never over a file already there", "only on the owner's word",
-                 "whose browser plug-in carries the keep action", "never by reading the page"):
+                 "whose browser plug-in carries the keep action", "never by reading the page",
+                 # the cold read (2026-11-09): by the page's url, the page never opened or read first, every key scrubbed after
+                 "with the page's url", "the room never opening or reading that page first", "scrubs every NAME.key's value",
+                 "a later read of that page shows <key>", "given the page's url, never by reading the page"):
         assert want in text, want
     assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
     assert not abilities.asked("the key works now, thanks", y.memory, TAB)

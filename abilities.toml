@@ -446,18 +446,18 @@ asked_as = ["screenshot of the page", "screenshot the page", "screenshot of the 
 state = "described"
 what = "Saves a key or token a web page shows, such as an API key on a signed-in settings page, straight into the private folder's secrets as a new NAME.key through the browser ability's browser, so its value never reaches the room, its session log or a reply."
 how = [
-  "One browser action, keep, with the room's tab, the new file's name and the label that finds the value: it is read in the page and handed to the plug-in alone, never back to the room.",
-  "Found by a field's label, else by the page's own Copy button, clicked with the copy caught inside the page, else by the words beside it: a field in the page, its web components or its boxes; the Copy button's copy, since that browser's clipboard is another computer's; the one-word value shown beside the words.",
+  "One browser action, keep, with the page's url, the new file's name and the label that finds the value, the room never opening or reading that page first: the plug-in opens it itself and returns no page text, since the page's text would show the room the key, and the value is read in the page and handed to the plug-in alone, never back to the room; a tab works for a key shown only after a click.",
+  "Found by a field's label, else by the page's own Copy button, clicked with the copy caught inside the page, else by the words beside it: a field in the page, its web components or its boxes; the Copy button's copy, since that browser's clipboard is another computer's; the one-word value shown beside the words, shaped like a key (a letter and a digit), never a button's or a link's words.",
   "Written by the plug-in itself, a new file in the secrets folder: the key on its first line, 0600 in a 0700 folder, the way every key Yerk runs on is kept, so a job or script the owner runs reads it there and no room ever does.",
   "Never over a file already there, a link included, and only on the owner's word: a steered call cannot replace a key Yerk runs on, and the file is outside the room; nothing is kept from a payment page.",
   "Refused with its reason when what it found is not one key: shown masked, holding spaces, under 8 or over 4,096 characters, several values with none picked, or nothing labelled so.",
-  "The reply names the file and the value's length only, and the plug-in scrubs the value from every line it returns or ledgers.",
+  "The reply names the file and the value's length only, and the plug-in scrubs every NAME.key's value from every line it returns or ledgers after, so a later read of that page shows <key>; a refusal lists the page's labels, never a hint to read the page.",
 ]
 tier = "free"
 needs = "the browser ability with a keep action in its plug-in, and the private folder's secrets on the box the plug-in runs on"
 price = "none"
 free_path = "this is the free path"
-why_not = "It rides on the browser ability, which is not in this repo; an install whose browser plug-in carries the keep action has it there, and a room asked to keep a key a page shows in a locked file keeps it with that action, never by reading the page."
+why_not = "It rides on the browser ability, which is not in this repo; an install whose browser plug-in carries the keep action has it there, and a room asked to keep a key a page shows in a locked file keeps it with that action, given the page's url, never by reading the page."
 asked_as = ["save the api key", "keep the api key", "store the api key", "copy the api key", "key in a locked file", "token in a locked file",
             "save the key to the secrets folder", "save the token from the page"]
 

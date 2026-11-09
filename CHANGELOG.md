@@ -28,10 +28,21 @@ version changes.
 - The plug-in's change is on its branch `need-2026-11-09-76`; `yerk explain page-keys` has the ability. The "what can
   you do" answer fits its 2,000-character cap with the new name by cutting reverse-image-search's provider words to
   "Google Cloud Vision".
+- The cold read found the room still read the key in the filed case: `keep` needed a tab, only `open` gave one, and
+  `open` always returns the page's text, so the key was in the room's log before `keep` ran; a later read of the page
+  was never scrubbed, and keep's own refusals said to read the tab. Now `keep` takes the page's `url`: the plug-in opens
+  the page itself and returns the tab id with no page text (a tab still works for a key shown only after a click).
+  Every `secrets/*.key` file's first line is scrubbed from every reply after, so a later read of that page shows
+  `<key>`. No refusal or repeat hint sends the room to read the page: "nothing to keep" lists the page's labels and
+  Copy button words, never a value. The words-beside way takes only a value shaped like a key (a letter and a digit)
+  and skips buttons, links and other controls, since it saved a Regenerate button's word or a date as the key; a Copy
+  button whose words also say regenerate, reset, rotate, roll or revoke is never clicked; a failed page script is said
+  in fixed words, never its output, and so is a failed read of the page keep opened. The plug-in's fix is on its
+  branch `need-2026-11-09-76`, commits 305c25c and d570241.
 
-**Upgrading:** budgets.toml raises `mcp__hands__` to 9,613 and the session start's `total` to 126,353, each with its
-dated note: 424 for `keep`, and 481 the plug-in's main already sends since need 74's `type` was merged onto need 75's
-with no line raised. The plug-in's branch merges onto its main, and a room picks up `keep` at its next session.
+**Upgrading:** budgets.toml raises `mcp__hands__` to 9,831 and the session start's `total` to 126,571, each with its
+dated note: 424 for `keep`, 481 the plug-in's main already sends since need 74's `type` was merged onto need 75's
+with no line raised, and 218 for keep by the page's url. The plug-in's branch merges onto its main, and a room picks up `keep` at its next session.
 
 ### need-2026-11-09-75 (#?)
 
