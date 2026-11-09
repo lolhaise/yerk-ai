@@ -291,3 +291,18 @@ def test_the_doctors_daily_run_reads_the_rooms_models_and_files_a_need_for_a_mod
     assert out[0].startswith("docs: no prompting page fetched for claude-nova-6, which 1 room runs; add prompting-nova-6 (")
     assert {n["ability"] for n in needs.load(state)} == {doctor.LESSON_NEED, doctor.MODEL_NEED}
     assert next(n for n in needs.load(state) if n["ability"] == doctor.MODEL_NEED)["asks"][0]["tried"] == out[0]
+
+
+def test_the_mechanics_say_the_5_2_blocks_in_their_own_voice_and_each_absolute_carries_its_scope_and_exception():
+    """Claude Fable 5.2's page: "Write the exception into the rule." and "Name the steps that need no approval." Each mechanics
+    line is read as the store's checks read a rule, so no absolute, vague approval, think-less or reasoning line comes back."""
+    from yerk_ai import context
+    text = context.MECHANICS.read_text()
+    rows = [x[2:] for x in text.splitlines() if x.startswith("- ")]
+    assert sum(bool(shape.ABSOLUTE.search(x)) for x in rows) >= 9
+    assert [(x[:50], k) for x in rows for k in shape.lesson("mechanics", x, None, LIMITS, read=FABLE2)
+            if k in ("absolute", "approval", "think less", "reasoning")] == []
+    assert "need no approval" in text and "a retry of a call that is safe to repeat" in text           # the no-approval line
+    assert "say in a line what you are about to do" in text and "a short recap that stands on its own" in text
+    assert "write for a reader who has not seen your tool calls or files: key points first, plain words in full sentences" in text
+    assert "an ordinary obstacle" in text and "is left alone: say plainly what you found" in text            # finishing work

@@ -7,7 +7,7 @@
 # The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and
 # Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 [session_start]
-total = 125448
+total = 126748
 
 # Load order, most stable first, so the cached start of the prompt survives.
 # The first parts are Claude Code's own (its default prompt, the built-in tools
@@ -280,8 +280,13 @@ skills = 0
 # the whole of it is a guess: zoom on the part that holds the answer and Read the file it names; the whole of it when Read
 # refuses it) took the mechanics file to 6,987, 7,110 with a checkout's path of 129 characters; so 7,200. No part was
 # measured again to pay for it, so the total rose by the 400, to 125,303 with the tool's 1,100.
+# 2026-11-09, fable-5-2 (everything in Yerk the way Claude Fable 5.2's docs say): the opening line,
+# updates and recap, the "Communicating clearly" and "Finishing work" blocks of Claude Fable 5.2's prompting page in place
+# of the lines they overlap, each of the nine absolutes given its scope and the exception that lifts it, and the line naming
+# the steps that need no approval took the mechanics file to 8,348, 8,472 with a checkout's path of 130 characters; so
+# 8,500. No part was measured again to pay for it, so the total rose by the 1,300, to 126,748.
 [session_start.appended]
-mechanics = 7200
+mechanics = 8500
 persona = 11800
 rulebook = 14000
 room_voice = 5500
@@ -1277,4 +1282,9 @@ secs = 60
 # doctor.py 37 (the daily lesson run, its need and machine-room line), memory.py 36 (the gate's lesson refusals, retire),
 # room.py 20 (the filing rule at Stop), words.py 19 (each check's name and fix), daemon.py 14 (the filing rule's call,
 # the retire tool), mcp_server.py 9 (remember's retire and its description in the docs' words). 27,680.
-lines = 27680
+# 0000-00-00: with-0-0 one more line 000 for the check while (00:00: "a second entry waits in the queue for its
+
+# pins, its four checks and the style-limit count, the store per page), engine.py 37 (each session's start kept by its id),
+# to.the 00 (next step and the test reads), it.back 0 (as plain text with, one more line for), the.check 0 (while
+# plain text with one), more.line 0 (for the check), while.a 0, second_entry.waits 0, in.the 0. 00,000.
+lines = 27907
