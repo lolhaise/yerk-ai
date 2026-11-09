@@ -296,17 +296,23 @@ def threshold(limits: dict[str, Any], key: str, default: int) -> int:
     return v if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else default
 
 
-def on_record(passage: str, daily: Path | None) -> str:
-    """The day-log line holding `passage` word for word (spaces and curly quotes aside), as daily/<day>.md:<line>; "" for none."""
+def on_record(passage: str, daily: Path | None, seen: dict[Path, str] | None = None) -> str:
+    """The day-log line holding `passage` word for word (spaces and curly quotes aside), as daily/<day>.md:<line>; "" for none.
+    `seen`: each day log as read once, its lines flattened, kept for the next passage (the doctor's whole-store run)."""
     want = flat(passage).lower()
     for p in sorted(daily.glob("*.md"), reverse=True) if daily and daily.is_dir() and want else ():
-        for n, x in enumerate(p.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
-            if want in flat(x).lower():
-                return f"daily/{p.name}:{n}"
+        text = seen.get(p) if seen is not None else None
+        if text is None:
+            text = "\n".join(flat(x).lower() for x in p.read_text(encoding="utf-8", errors="replace").splitlines())
+            if seen is not None:
+                seen[p] = text
+        if (i := text.find(want)) >= 0:
+            return f"daily/{p.name}:{text.count(chr(10), 0, i) + 1}"
     return ""
 
 
-def lesson(job: str, text: str, daily: Path | None = None, limits: dict[str, Any] | None = None) -> dict[str, list[str]]:
+def lesson(job: str, text: str, daily: Path | None = None, limits: dict[str, Any] | None = None,
+           seen: dict[Path, str] | None = None) -> dict[str, list[str]]:
     """One rule as one lesson, as the Claude docs shape it: each LESSON check it misses and the words that miss it.
     enumerated: lesson_cases or more case heads (when, whenever, if or for opening a clause) or numbered cases (1. (2) (a));
     summary: the first sentence, the summary, over lesson_summary_chars (a body after it is the lesson's detail, when it has any);
@@ -338,10 +344,10 @@ def lesson(job: str, text: str, daily: Path | None = None, limits: dict[str, Any
                 record.append(f"a gloss of {len(m[2].split())} words beside {m[1]}")
             continue
         quote = re.sub(r"^\s*(?:landed|bounced)\b[,:]?\s*", "", ex.strip(), flags=re.I)
-        if len(quote.split()) > cap["on record"] and (at := on_record(quote.strip(QUOTES_ALL), daily)):
+        if len(quote.split()) > cap["on record"] and (at := on_record(quote.strip(QUOTES_ALL), daily, seen)):
             record.append(f"an example the day log holds at {at}")
     for m in QUOTED.finditer(prose):
-        if len(m[1].split()) > cap["on record"] and (at := on_record(m[1], daily)):
+        if len(m[1].split()) > cap["on record"] and (at := on_record(m[1], daily, seen)):
             record.append(f"a quote the day log holds at {at}")
     if record:
         out["on record"] = record
@@ -375,11 +381,11 @@ def store(m: Settings, limits: dict[str, Any], docs: Path | None = None) -> dict
     """The whole rule store against the lesson shape: each live rule of RULES and TOPIC_RULES that misses a LESSON check, by
     cite with its checks, and RULES, the index a session start loads, against the code-memory limits (lines, bytes)."""
     from .memory import TOPIC_RULES
-    found: list[tuple[str, list[str]]] = []
+    found, seen = list[tuple[str, list[str]]](), dict[Path, str]()      # seen: each day log read once for every rule
     for name in (RULES, TOPIC_RULES):
         p = m.root / name
         for n, job, text in lessons_of(p):
-            if bad := lesson(job, text, m.daily, limits):
+            if bad := lesson(job, text, m.daily, limits, seen):
                 found.append((f"{cite(m, p)}:{n}", list(bad)))
     p, (most, size) = m.root / RULES, index_limits(docs)
     rows, have = (p.read_text(encoding="utf-8", errors="replace").splitlines(), p.stat().st_size) if p.is_file() else ([], 0)

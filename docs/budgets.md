@@ -588,9 +588,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-09: zoom-2026-11-09 raised it by 172, the `zoom` tool, a part of a picture in a room's own folders as fractions of its width and height made a PNG 2000 px on its long side by ffmpeg, since Read shows a picture at most 2000 px on its long side and a room asked whether someone was free at a time on a calendar's picture could not read the times, while ffmpeg in its shell waited on an approval no one gives mid-turn; not folded to fit: pictures.py 125 (the header read of a PNG, a GIF, a WebP and a JPEG with its EXIF quarter turn, the crop and scale with the 4x cap, the numbering, a HEIC made a whole PNG first), daemon.py 17 (the tool on the room's own folders, every room's allow line), mcp_server.py 12 (the tool's sentence), words.py 11 (the refusals, the box's words, the [attachment] clause, the card's row), channels/discord.py 7 (the [attachment] line's clause on a picture past 2000 px). 27,355.
 
-2026-11-09: memory-docs-shape raised it by 319 on the owner's word (he asked for the whole harness to be redone if that is what it takes), the rules written the way the Claude docs say, gated and checked daily; not folded to fit: shape.py 184 (the docs' pinned sentences, the six lesson checks, the store's score and report), doctor.py 37 (the daily lesson run, its need and machine-room line), memory.py 36 (the gate's lesson refusals, retire), room.py 20 (the filing rule at Stop), words.py 19 (each check's name and fix), daemon.py 14 (the filing rule's call, the retire tool), mcp_server.py 9 (remember's retire and its description in the docs' words). 27,674.
+2026-11-09: memory-docs-shape raised it by 325 on the owner's word (redo the whole harness if that is what it takes), the rules written the way the Claude docs say, gated and checked daily; not folded to fit: shape.py 190 (the docs' pinned sentences, the six lesson checks, the store's score and report), doctor.py 37 (the daily lesson run, its need and machine-room line), memory.py 36 (the gate's lesson refusals, retire), room.py 20 (the filing rule at Stop), words.py 19 (each check's name and fix), daemon.py 14 (the filing rule's call, the retire tool), mcp_server.py 9 (remember's retire and its description in the docs' words). 27,680.
 
-- `lines = 27674`
+- `lines = 27680`
 
 ## Uncapped
 

@@ -62,6 +62,9 @@ def test_a_quote_or_an_example_the_day_log_holds_is_cited_and_a_cited_example_ke
     (daily / "2026-01-02.md").write_text(f"# 2026-01-02\n\n- 09:00 owner: {said} [m:1]\n")
     pasted = f'Write it short, since he writes that way. <example>Landed: "{said}"</example>'
     assert shape.lesson("his messages", pasted, daily, LIMITS)["on record"] == ["an example the day log holds at daily/2026-01-02.md:3"]
+    seen: dict = {}
+    assert shape.on_record(said, daily, seen) == "daily/2026-01-02.md:3" and list(seen) == [daily / "2026-01-02.md"]     # read once
+    assert shape.on_record("a line no day log holds at all here", daily, seen) == "" and len(seen) == 1
     quoted = f'Write it short, since he said "{said}".'
     assert shape.lesson("his messages", quoted, daily, LIMITS)["on record"] == ["a quote the day log holds at daily/2026-01-02.md:3"]
     cite = "Write it short, since he writes that way. <example>Landed, daily/2026-01-02.md:3, short to his manager</example>"
