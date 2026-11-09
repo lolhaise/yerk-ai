@@ -662,7 +662,7 @@ def retire(s: Settings, log: DailyLog, room: str, mid: str, at: str, why: str) -
         return {"ok": False, "error": "retire needs `text`: why the rule turned out wrong, one clause"}
     rows = path.read_text().splitlines() if path is not None and path.is_file() else []
     line = rows[k - 1] if 0 < k <= len(rows) else ""
-    if not line.startswith("- ") or mentions.OLD in line:
+    if path is None or not line.startswith("- ") or mentions.OLD in line:
         return {"ok": False, "error": f"nothing retired: {at.strip()} is no live rule line of {' or '.join(files)}"}
     when = datetime.now(timezone.utc).astimezone(s.tz)
     key = f"{mid}.r{hashlib.sha1(line.encode()).hexdigest()[:8]}"

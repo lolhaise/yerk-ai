@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from yerk_ai import evidence, gates, hooks, mcp_server, memindex, memory, shape, words
+from yerk_ai import evidence, gates, hooks, mcp_server, memindex, memory, words
 from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai.daemon import Yerkd
 from fake_channel import ConsoleChannel

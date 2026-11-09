@@ -8,6 +8,26 @@ version changes.
 
 ## 2026-11-09
 
+### memory-docs-shape-2026-11-09 (#?)
+
+- A rule is filed as one lesson in the shape Anthropic's Claude Fable 5 prompting page gives a memory system: one lesson,
+  a one-line summary first, its reason, a brief body, and a day-log cite in place of a quote the day log already holds.
+  `remember` with `job` refuses a rule that enumerates cases, runs a summary past 140 characters, gives no reason, runs
+  a body past 600 characters, pastes more than 8 words a day log holds, or holds a sentence past 40 words. Each refusal
+  quotes the docs sentence it enforces, read off the fetched page, and says the fix.
+- `yerk docs` fetches the Fable 5 prompting page too, and the doctor fetches the pages daily. Each check is pinned to its
+  docs sentence and page; a sentence the page no longer holds turns the test suite red and is a doctor line.
+- The doctor's daily run scores the whole rule store against the lesson shape and the rules file against the
+  code-memory limits (200 lines or 25KB), writes `docs/shape/lessons.md`, and on a finding files a need and says one line
+  in the machine room. A green day says nothing.
+- `remember` with `retire` deletes a rule that turned out wrong: its line is emptied and its words go to the day log.
+- A filing is never announced. A final message reporting one ("Filed", "Logged", "the rule now says") after a filing
+  call bounces once with the docs' readability sentence, and `remember`'s result no longer asks for a filing clause.
+
+**Upgrading:** budgets.toml `[shape]` gains the `lesson_*` lines and `[code]` lines rises, each with its dated note;
+`[docs] refresh_days` defaults to 1. Until the store is converted (the migration, a later change), the doctor files one
+need for the rules out of the lesson shape and says one machine-room line a day.
+
 ### need-2026-11-09-75 (#?)
 
 - A room fills a React or Angular form's text field so the form registers it. The hands plug-in's browser `set` writes
