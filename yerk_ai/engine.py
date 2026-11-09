@@ -31,7 +31,7 @@ from types import TracebackType
 from typing import IO, Any, Callable
 
 from .accounts import Account, account_env
-from .config import write_private
+from .config import STARTS, write_private
 from .ledger import Ledger
 from .lifted.classify import Failure, FailureTable
 from .transcribe import is_audio
@@ -273,6 +273,40 @@ class Turn:
         return None if t is None else int((t - self.started) * 1000)
 
 
+KEEP_STARTS = 12                      # a room's kept start files, newest first: a session older than these starts from the files
+
+
+def kept_start(room_dir: Path, built: Path, sid: str, began: str = "") -> None:
+    """The start file a process is given (`built`, the room's context.md, which every reader of it then reads as sent). A
+    session resumed, or copied for a compaction (`began`: its id, or the id it was copied from), is given the text it began
+    with, kept in <room>/starts/<id>.md, so its system prompt never changes under it: Claude Fable 5.2's page, "Make these
+    changes in new conversations only.", since on 5.2 the API checks the prefix for every account and thinking after a
+    changed system prompt is invalid, so a resumed request can fail. Every change since rides the newest message
+    (context.news, from <id>.json, the rule texts the start was built from). A fresh session, or one begun before its start
+    was kept, takes the current files and keeps them under its id. The oldest past KEEP_STARTS are removed."""
+    folder, mine = room_dir / STARTS, room_dir / STARTS / f"{sid}.md"
+    src = folder / f"{began}.md" if began else None
+    if src is not None and src.is_file():
+        text, seen = src.read_text(errors="replace"), src.with_suffix(".json")
+        texts = seen.read_text(errors="replace") if seen.is_file() else ""
+    else:
+        text = built.read_text(errors="replace")
+        try:
+            texts = json.dumps(json.loads((room_dir / "rules-seen.json").read_text()).get("start", {}))
+        except (OSError, ValueError, AttributeError):
+            texts = ""
+    folder.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if built.read_text(errors="replace") != text:
+        write_private(built, text)
+    write_private(mine, text)
+    if texts:
+        write_private(mine.with_suffix(".json"), texts)
+    with contextlib.suppress(OSError):                  # a file another start of the room removed meanwhile: the next start prunes
+        for old in sorted(folder.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)[KEEP_STARTS:]:
+            for gone in (old, old.with_suffix(".json")):
+                gone.unlink(missing_ok=True)
+
+
 class RoomProcess:
     """One Claude Code process for one room's session."""
 
@@ -335,12 +369,15 @@ class RoomProcess:
             self.resume_arg = path if path and Path(path).parent != self.projects and os.path.isfile(path) else self.session_id
         else:
             self.resume_arg, self.session_id = None, str(uuid.uuid4())
+        began = self.session_id if self.resume_arg else ""          # a session resumed or copied: the one whose start it keeps
         if fork:
             if not self.resume_arg:
                 raise RuntimeError(f"room {self.spec.room}: no bound session to copy")
             self.fork_of, self.session_id = self.resume_arg, str(uuid.uuid4())
         (self.state / "locks").mkdir(parents=True, exist_ok=True)
         self.room_dir.mkdir(parents=True, exist_ok=True)
+        if self.spec.context_file and self.spec.context_file.is_file():
+            kept_start(self.room_dir, self.spec.context_file, self.session_id, began)
         with contextlib.suppress(OSError):        # an --add-dir missing at start is dropped; 0700 as Claude Code's own
             self.projects.mkdir(mode=0o700, parents=True, exist_ok=True)
         self.lock = SessionLock(self.state / "locks" / f"{self.session_id}.lock").acquire()

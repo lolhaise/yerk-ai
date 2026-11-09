@@ -58,7 +58,8 @@ def test_every_count_past_its_threshold_is_a_finding_and_a_count_under_it_is_onl
     roomy = {k: 9 for k in shape.KEYS.values()}
     assert shape.findings(r, roomy) == [] and "- loud, line 6: - Write it in plain text, IMPORTANT for phones." in shape.report("r", r, roomy, "now")
     assert budgets()["shape"] == {"negatives_without_why": 0, "shouted": 0, "untagged_examples": 0, "alarm_marks": 0,
-                                  "duplicated_topics": 0}
+                                  "duplicated_topics": 0, "lesson_cases": 3, "lesson_summary_chars": 140, "lesson_body_chars": 600,
+                                  "lesson_quote_words": 8, "lesson_gloss_words": 6, "lesson_sentence_words": 40, "lesson_findings": 0}
 
 
 def test_the_mechanics_and_the_example_layer_are_in_the_shape(tmp_path):
@@ -67,7 +68,7 @@ def test_the_mechanics_and_the_example_layer_are_in_the_shape(tmp_path):
     assert shape.findings(r, budgets()["shape"]) == [] and shape.totals(r)["lines"] >= 30
     text = context.MECHANICS.read_text().strip()
     assert context.chars(text) < budgets()["session_start"]["appended"]["mechanics"]
-    assert "`<example>` tags, marked landed or bounced" in text and "`docs/claude/` and `docs/shape/`" in text
+    assert "cited in `<example>` tags, `Landed, daily/YYYY-MM-DD.md:N`" in text and "never announced" in text and "`docs/claude/` and `docs/shape/`" in text
 
 
 def test_the_rule_shape_counts_are_one_weekly_line_said_on_sunday_or_the_day_one_rose_and_each_rooms_report_is_written(tree, capsys):  # noqa: F811

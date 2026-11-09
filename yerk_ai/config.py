@@ -17,12 +17,16 @@ REPO = PACKAGE.parent
 EXAMPLE_PRIVATE = REPO / "examples" / "private"
 EFFORTS = ("low", "medium", "high", "xhigh", "max")      # Claude Code 2.1.301's --effort levels (its --help)
 _IGNORED: set[tuple[str, str, str]] = set()             # (room, key, value) of an override already logged
+# <state>/rooms/<room>/starts/, beside assembled.jsonl: each session's start file as it began (<id>.md) and the rule texts it
+# was built from (<id>.json), so a resumed session keeps the system prompt it started with (engine.kept_start, context.news)
+STARTS = "starts"
 # The pages `yerk docs` keeps (docs.py), slug = URL, [docs] pages in yerkd.toml replacing them whole: the prompting guide,
 # the prompting page of each model in models.toml, and the Claude Code pages a room's harness leans on (the system prompt
 # flags are on cli-reference and the Agent SDK's page). Each answered `Accept: text/markdown` with Markdown on 2026-10-21.
+# 2026-11-09: prompting-fable-5-2 added the day Claude Fable 5.2 shipped, since a room's checks read its own model's page (shape.page_of).
 _PE, _CC = "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/", "https://code.claude.com/docs/en/"
 DOCS_PAGES = {"prompting-guide": _PE + "claude-prompting-best-practices",
-              **{f"prompting-{m}": f"{_PE}prompting-claude-{m}" for m in ("opus-5-5", "sonnet-5-5", "haiku-5-5", "fable-5-1")},
+              **{f"prompting-{m}": f"{_PE}prompting-claude-{m}" for m in ("opus-5-5", "sonnet-5-5", "haiku-5-5", "fable-5-2", "fable-5-1", "fable-5")},
               **{f"code-{p.rsplit('/', 1)[-1].removeprefix('modifying-')}": _CC + p for p in
                  ("settings", "hooks", "memory", "sandboxing", "mcp", "cli-reference", "agent-sdk/modifying-system-prompts")}}
 
@@ -242,7 +246,7 @@ YERKD_WORDS = {
               "repo": "the GitHub OWNER/NAME of the pipeline's PRs (default: from the daemon tree's origin)",
               "pr_check": "the install's PR checker every need worker runs before its last commit (default: the suite, ruff, mypy)"},
     "curate": {"account": "the one account the night's curation runs on", "logs": "more files in the private folder read as the owner's own stream"},
-    "docs": {"fetch": "the doctor's weekly fetch of the Claude docs (default true)", "refresh_days": "days between fetches (default 7)",
+    "docs": {"fetch": "the doctor's daily fetch of the Claude docs (default true)", "refresh_days": "days between fetches (default 1)",
              "pages": "the pages kept, slug = URL (default config.DOCS_PAGES)",
              "topics": "the install's own topics the rule-shape check reads, name = \"regex\", beside shape.TOPICS",
              "acronyms": "words in capitals the rule-shape check and a rule's filing read as names, not shouting"},
