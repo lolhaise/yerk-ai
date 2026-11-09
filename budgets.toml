@@ -1282,9 +1282,9 @@ secs = 60
 # doctor.py 37 (the daily lesson run, its need and machine-room line), memory.py 36 (the gate's lesson refusals, retire),
 # room.py 20 (the filing rule at Stop), words.py 19 (each check's name and fix), daemon.py 14 (the filing rule's call,
 # the retire tool), mcp_server.py 9 (remember's retire and its description in the docs' words). 27,680.
-# 0000-00-00: with-0-0 one more line 000 for the check while (00:00: "a second entry waits in the queue for its
+# 2026-11-09: fable-5-2 raised it by 230 on the owner's word (everything in Yerk the way Claude Fable 5.2's docs say, and kept that way), not folded to fit: shape.py 152 (the model mapping, the 5.2 page's
 
 # pins, its four checks and the style-limit count, the store per page), engine.py 37 (each session's start kept by its id),
-# to.the 00 (next step and the test reads), it.back 0 (as plain text with, one more line for), the.check 0 (while
-# plain text with one), more.line 0 (for the check), while.a 0, second_entry.waits 0, in.the 0. 00,000.
-lines = 27907
+# doctor.py 12 (the rooms' models read, a need per kind), words.py 10 (each new check's name and fix), context.py 6 (news
+# from a kept start), memory.py 6 (the gate's pages), config.py 4, mcp_server.py 2, daemon.py 1. 27,910.
+lines = 27910

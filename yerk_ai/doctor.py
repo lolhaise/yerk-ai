@@ -447,8 +447,11 @@ def lessons(private: Path, state: Path, m: memory.Settings, now: float, dry: boo
     from . import needs
     from .config import models
     limits, root = dict(budgets().get("shape") or {}), docs.root(state)
-    conf = load_toml(private / "yerkd.toml") if (private / "yerkd.toml").is_file() else {}
-    by = rule_shape.run_by(rooms(private), state, models(conf))
+    try:
+        conf = load_toml(private / "yerkd.toml") if (private / "yerkd.toml").is_file() else {}
+        by = rule_shape.run_by(rooms(private), state, models(conf))
+    except (OSError, ValueError):      # rooms.toml or yerkd.toml unreadable: the pages every room reads; layout and fit say why
+        conf, by = {}, {}
     r = rule_shape.store(m, limits, root, rule_shape.pages(by))
     out = rule_shape.unpaged_lines(rule_shape.unpaged(by, docs.pages(dict(conf.get("docs") or {})))) + rule_shape.store_findings(r, limits, root)
     if dry:

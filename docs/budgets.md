@@ -595,9 +595,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-09: memory-docs-shape raised it by 325 on the owner's word (redo the whole harness if that is what it takes), the rules written the way the Claude docs say, gated and checked daily; not folded to fit: shape.py 190 (the docs' pinned sentences, the six lesson checks, the store's score and report), doctor.py 37 (the daily lesson run, its need and machine-room line), memory.py 36 (the gate's lesson refusals, retire), room.py 20 (the filing rule at Stop), words.py 19 (each check's name and fix), daemon.py 14 (the filing rule's call, the retire tool), mcp_server.py 9 (remember's retire and its description in the docs' words). 27,680.
 
-0000-00-00: it-0-0 back as plain 000 text with one more (00:00: "line for the check while a second entry waits 0.0 in the queue for its turn and the last part closes"), the case before the: next.run 000 (starts the example, note 0.0 says the, sample item moved to the next-step and, the test reads it), back.as 00 (plain text with one more line for), the.check 00 (while a second entry waits in), the.queue 0 (for its turn and, the last part closes), the.case 0 (before the next run starts), the.example 0 (note says the), sample.item 0, moved_to.the 0, next.step 0. 00,000.
+2026-11-09: fable-5-2 raised it by 230 on the owner's word (everything in Yerk the way Claude Fable 5.2's docs say, and kept that way), not folded to fit: shape.py 152 (the model mapping, the 5.2 page's pins, its four checks and the style-limit count, the store per page), engine.py 37 (each session's start kept by its id), doctor.py 12 (the rooms' models read, a need per kind), words.py 10 (each new check's name and fix), context.py 6 (news from a kept start), memory.py 6 (the gate's pages), config.py 4, mcp_server.py 2, daemon.py 1. 27,910.
 
-- `lines = 27907`
+- `lines = 27910`
 
 ## Uncapped
 

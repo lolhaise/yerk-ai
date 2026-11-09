@@ -312,8 +312,11 @@ def test_the_folder_check_and_the_rule_check_name_themselves_apart_when_neither_
 
 def lesson_lines(priv, state) -> list[str]:
     """The doctor's lesson-shape lines for the store as it is (shape.store_findings), each orange, in the order printed."""
+    from yerk_ai.config import load_toml, models, rooms
     m, limits = memory.settings(priv, state), budgets()["shape"]
-    return [f"{words.WORKING} {x}" for x in shape.store_findings(shape.store(m, limits, state / "docs"), limits, state / "docs")]
+    conf = load_toml(priv / "yerkd.toml") if (priv / "yerkd.toml").is_file() else {}
+    read = shape.pages(shape.run_by(rooms(priv), state, models(conf)))      # the pages of every model a room runs, as the doctor reads
+    return [f"{words.WORKING} {x}" for x in shape.store_findings(shape.store(m, limits, state / "docs", read), limits, state / "docs")]
 
 
 def test_a_part_past_its_line_reads_red_with_the_overflow_and_one_that_fits_reads_green(tree, capsys):
