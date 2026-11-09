@@ -192,3 +192,18 @@ def test_a_workers_gate_hook_blocks_when_it_fails(tmp_path):
     from yerk_ai import workers
     hook = json.loads(workers.gate_settings(tmp_path).read_text())["hooks"]["PreToolUse"][0]["hooks"][0]
     assert hook.get("onFailure") == "block"
+
+
+# G6: the owner's word approves a hold they could have read: never one made after the word reached Yerk. A word folded into a
+# running turn reaches the gate after the turn's next tool calls (measured: 1.0 to 2.4 s after it was written, 2 of 11 folded).
+def test_the_word_never_approves_a_hold_made_after_it_was_written(tmp_path):
+    import time
+    from yerk_ai.ledger import Ledger
+    led = Ledger(tmp_path / "ledger.sqlite")
+    led.hold_add("r", "text-out", "a text in your name", 1, "text A", "/w")
+    written = time.time()
+    time.sleep(0.02)
+    led.hold_add("r", "text-out", "a text in your name", 2, "text B", "/w")
+    assert led.approve("r", "owner", 1800, before=written)["call"] == "text A"       # the one that was there to read
+    assert led.approve("r", "owner", 1800, before=written) is None                    # B waits for a word of its own
+    assert led.approve("r", "owner", 1800)["call"] == "text B"                        # a later word, written with B shown
