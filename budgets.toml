@@ -393,6 +393,18 @@ shouted = 0
 untagged_examples = 0
 alarm_marks = 0
 duplicated_topics = 0
+# A rule as one lesson in the Claude docs' shape (shape.LESSON; memory.unshaped refuses a filing past any, the doctor scores the
+# whole store daily against them; 2026-11-09, on the owner's word: always written the way the Claude docs say). Each derives from a
+# sentence of a fetched page (shape.PINS): cases from "a brief instruction rather than enumerating" (prompting-fable-5), the
+# summary from "one lesson per file with a one-line summary at the top", the quote words from "Don't save what the repo or chat
+# history already records", the sentence words from the Fable 5.1 density note (no mannered-prose rule a grep can redo).
+lesson_cases = 3              # case heads (when, whenever, if, for at a clause start) or numbered cases that make an enumeration
+lesson_summary_chars = 140    # the one-line summary, the rule's first sentence
+lesson_body_chars = 600       # the body after the summary, file:line cites not counted
+lesson_quote_words = 8        # a quoted passage or example past this many words that a day log holds is cited, not pasted
+lesson_gloss_words = 6        # a cited example's gloss (Landed or Bounced, a cite, then this many words at most)
+lesson_sentence_words = 40    # turn and the
+lesson_findings = 0           # the store's lessons out of the shape before the doctor's daily run files a need
 
 [recall]
 # The recall bench as a ratchet (memory.ratchet): every `yerk recall-bench` run adds its row to <state>/memory/recall-bench.jsonl

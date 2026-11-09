@@ -187,9 +187,9 @@ def test_a_rule_filed_in_an_uncapped_install_keeps_its_examples_and_never_goes_t
         s = memory.settings(private, state)
         rules = s.root / memory.RULES
         rules.write_text(rules.read_text() + "".join(f"- big {i}: done so <example>like this, at length</example>{'.' * 200}\n" for i in range(80)))
-        r = memory.rule(s, ROOM, "m1", "new job", "how it is done <example>this way</example>", cap)
+        r = memory.rule(s, ROOM, "m1", "new job", "how it is done, since it works <example>this way</example>", cap)
         assert r["ok"] and bool(r.get("topic")) is topic and "stripped" not in r
-        assert ("- new job: how it is done <example>this way</example> (" in rules.read_text()) is not topic
+        assert ("- new job: how it is done, since it works <example>this way</example> (" in rules.read_text()) is not topic
 
 
 def test_taste_rows_go_whole_and_the_counts_stay(tmp_path):

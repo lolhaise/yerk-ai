@@ -225,3 +225,176 @@ def report(name: str, r: dict[str, Any], limits: dict[str, Any], at: str) -> str
 def rules_text() -> str:
     """Each count's exact rule, from this module's own description, for `yerk docs shape --rules`."""
     return (__doc__ or "").split("grep:\n", 1)[-1]
+
+
+# A lesson in the Claude docs' shape (2026-11-09, on the owner's word: always written the way the Claude docs say). Each check
+# derives from one sentence of a page `yerk docs` fetches to <state>/docs/claude/<slug>.md: PINS holds the page's slug and
+# the sentence as the page says it, so `pinned` can tell when the page moved, and every refusal quotes the sentence off
+# the test reads (`it`). Back as plain text with one more line for/the_check_while.a second entry waits in the
+# run files a need naming it. Thresholds: budgets.toml [shape], the lesson_* keys.
+FABLE, FABLE1, CODE_MEMORY = "prompting-fable-5", "prompting-fable-5-1", "code-memory"
+PINS = {
+    "lesson": (FABLE, "Store one lesson per file with a one-line summary at the top."),
+    "why": (FABLE, "Record corrections and confirmed approaches alike, including why they mattered."),
+    "on record": (FABLE, "Don't save what the repo or chat history already records; update an existing note rather than "
+                         "creating a duplicate; delete notes that turn out to be wrong."),
+    "brief": (FABLE, "Instruction-following is improved enough that you can steer most behaviors with a brief instruction "
+                     "rather than enumerating each behavior by name."),
+    "reason": (FABLE, "Claude Fable 5 tends to perform better when the prompt states the intent behind a request: context lets "
+                      "it connect the task to relevant information rather than inferring intent on its own."),
+    "reader": (FABLE, "Your final summary is different: it's for a reader who didn't see any of that."),
+    "density": (FABLE1, "In some cases, though, its prose is denser than Claude Fable 5’s: sentences run longer and there are "
+                        "fewer paragraph breaks."),
+    "index": (CODE_MEMORY, "Example note 000 says the `Sample.item`, moved to the 00Next, step and the, test reads it back "
+                           "starts the example note."),
+}
+# Each lesson check, the pin it enforces, its threshold key in [shape] and its default (a findings count's is zero).
+LESSON = {"enumerated": ("brief", "lesson_cases", 3), "summary": ("lesson", "lesson_summary_chars", 140),
+          "no reason": ("reason", "lesson_why", 0), "long": ("brief", "lesson_body_chars", 600),
+          "on record": ("on record", "lesson_quote_words", 8), "dense": ("density", "lesson_sentence_words", 40)}
+GLOSS = ("lesson_gloss_words", 6)          # a cited example's gloss, at most
+CASE = re.compile(r"(?:^|[.;:!?]\s+|\(\w\)\s*|\b\d[.)]\s+)(?:when|whenever|if|for)\b", re.I)    # a case's head, a clause's first word
+NUMBERED = re.compile(r"(?:^|\s)(?:\(\d{1,2}\)|\d{1,2}[.)]|\([a-h]\))\s")                          # (1) 1. 1) (a)
+CITED = re.compile(r"\b[\w.-]+(?:/[\w.-]+)*\.md:\d+\b")                                            # daily/2026-11-09.md:41
+SHOWN = re.compile(r"^\s*(?:landed|bounced)\b[,:]?\s*(" + CITED.pattern + r")[\s,;:.-]*(.*)$", re.I | re.S)
+SENTENCES = re.compile(r"(?<=[.!?])[\"”)]?\s+(?=[\"“(<A-Z0-9])")
+INSIDE = re.compile(r"<example(?:\s[^>]*)?>(.*?)</example>", re.I | re.S)
+
+
+def page(docs: Path | None, slug: str) -> str:
+    """A fetched page's text, docs.py's <state>/docs/claude/<slug>.md; "" when it is not fetched."""
+    p = docs / "claude" / f"{slug}.md" if docs else None
+    return p.read_text(encoding="utf-8", errors="replace") if p and p.is_file() else ""
+
+
+def flat(text: str) -> str:
+    """Text as a pin is matched: one space for any run of white space, straight quotes for curly ones."""
+    return " ".join(text.translate(str.maketrans("‘’“”", "''\"\"")).split())
+
+
+def pinned(docs: Path | None) -> list[tuple[str, str, str]]:
+    """(pin, slug, sentence) of each pin its fetched page no longer holds word for word; a page not fetched yet is none."""
+    return [(k, slug, said) for k, (slug, said) in PINS.items() if (text := page(docs, slug)) and flat(said) not in flat(text)]
+
+
+def sentence(pin: str, docs: Path | None = None) -> str:
+    """A pin's sentence as its fetched page says it, quoted with its cite (docs/claude/<slug>.md); the pin's words before a fetch."""
+    slug, said = PINS[pin]
+    text, want = flat(page(docs, slug)), flat(said)
+    return f'"{text[i:i + len(want)] if (i := text.find(want)) >= 0 else said}" (docs/claude/{slug}.md)'
+
+
+def index_limits(docs: Path | None = None) -> tuple[int, int]:
+    """The index's limits, lines and bytes, read off the code-memory sentence a session start loads by (200 lines, 25KB)."""
+    said = sentence("index", docs)
+    n, kb = re.search(r"(\d+) lines", said), re.search(r"(\d+)\s*KB", said)
+    return int(n[1]) if n else 200, int(kb[1]) * 1000 if kb else 25_000
+
+
+def threshold(limits: dict[str, Any], key: str, default: int) -> int:
+    v = limits.get(key, default)
+    return v if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else default
+
+
+def on_record(passage: str, daily: Path | None) -> str:
+    """The day-log line holding `passage` word for word (spaces and curly quotes aside), as daily/<day>.md:<line>; "" for none."""
+    want = flat(passage).lower()
+    for p in sorted(daily.glob("*.md"), reverse=True) if daily and daily.is_dir() and want else ():
+        for n, x in enumerate(p.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+            if want in flat(x).lower():
+                return f"daily/{p.name}:{n}"
+    return ""
+
+
+def lesson(job: str, text: str, daily: Path | None = None, limits: dict[str, Any] | None = None) -> dict[str, list[str]]:
+    """One rule as one lesson, as the Claude docs shape it: each LESSON check it misses and the words that miss it.
+    enumerated: lesson_cases or more case heads (when, whenever, if or for opening a clause) or numbered cases (1. (2) (a));
+    summary: the first sentence, the summary, over lesson_summary_chars (a body after it is the lesson's detail, when it has any);
+    no reason: no because, since, so that, so or why anywhere in it;
+    long: the body after the summary over lesson_body_chars, examples' cites and file:line cites not counted;
+    on record: a quoted passage or an example of more than lesson_quote_words words that a day log holds (cite that line);
+               an example of the cited form (Landed or Bounced, a cite) with a gloss over lesson_gloss_words words;
+    dense: a sentence over lesson_sentence_words words. Code in backticks is no sentence and no case."""
+    lim = limits or {}
+    cap = {k: threshold(lim, key, d) for k, (_, key, d) in LESSON.items()}
+    said = re.sub(r"`[^`]*`", "code", one(text))
+    prose = TRAILER.sub("", EXAMPLE_TAGS.sub(" ", said)).strip()
+    out: dict[str, list[str]] = {}
+    heads = [m.group(0).strip(" .;:") for m in CASE.finditer(prose)] + [m.group(0).strip() for m in NUMBERED.finditer(prose)]
+    if len(heads) >= max(cap["enumerated"], 2):
+        out["enumerated"] = [f"{len(heads)} cases ({', '.join(dict.fromkeys(h.split()[-1] for h in heads))})"]
+    first, *rest = SENTENCES.split(prose, maxsplit=1) or [""]
+    body = rest[0] if rest else ""             # none: the summary is the whole lesson, as a one-sentence rule with its reason is
+    if len(first) > cap["summary"]:
+        out["summary"] = [f"a first sentence of {len(first)} characters"]
+    if not WHY.search(QUOTED.sub(" ", prose)):
+        out["no reason"] = ["no because, since, so that or why"]
+    if len(CITED.sub("", body)) > cap["long"]:
+        out["long"] = [f"a body of {len(CITED.sub('', body))} characters"]
+    record = []
+    for ex in INSIDE.findall(said):
+        if m := SHOWN.match(ex.strip()):
+            if len(m[2].split()) > threshold(lim, *GLOSS):
+                record.append(f"a gloss of {len(m[2].split())} words beside {m[1]}")
+            continue
+        quote = re.sub(r"^\s*(?:landed|bounced)\b[,:]?\s*", "", ex.strip(), flags=re.I)
+        if len(quote.split()) > cap["on record"] and (at := on_record(quote.strip(QUOTES_ALL), daily)):
+            record.append(f"an example the day log holds at {at}")
+    for m in QUOTED.finditer(prose):
+        if len(m[1].split()) > cap["on record"] and (at := on_record(m[1], daily)):
+            record.append(f"a quote the day log holds at {at}")
+    if record:
+        out["on record"] = record
+    long_ones = [s for s in SENTENCES.split(CITED.sub("cite", prose)) if len(s.split()) > cap["dense"]]
+    if long_ones:
+        out["dense"] = [f"a sentence of {len(s.split())} words" for s in long_ones[:3]]
+    return out
+
+
+def one(text: str) -> str:
+    return " ".join(text.split())
+
+
+EXAMPLE_TAGS = re.compile(r"\s*<example(?:\s[^>]*)?>.*?</example>", re.I | re.S)
+QUOTES_ALL = "\"“”'‘’ "
+
+
+def lessons_of(path: Path) -> list[tuple[int, str, str]]:
+    """(line number, job, text) of each live rule line of a rules file (RULES, TOPIC_RULES): a bullet `- job: text`, its trailer
+    and scope marks out, none superseded."""
+    out = []
+    for n, raw in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines() if path.is_file() else [], 1):
+        if raw.startswith("- ") and OLD not in raw:
+            head, colon, said = raw[2:].partition(": ")
+            said = re.sub(r" \[(?:rooms|on): [^\]]*\]", "", TRAILER.sub("", said if colon else raw[2:]))
+            out.append((n, head if colon else "", said))
+    return out
+
+
+def store(m: Settings, limits: dict[str, Any], docs: Path | None = None) -> dict[str, Any]:
+    """The whole rule store against the lesson shape: each live rule of RULES and TOPIC_RULES that misses a LESSON check, by
+    cite with its checks, and RULES, the index a session start loads, against the code-memory limits (lines, bytes)."""
+    from .memory import TOPIC_RULES
+    found: list[tuple[str, list[str]]] = []
+    for name in (RULES, TOPIC_RULES):
+        p = m.root / name
+        for n, job, text in lessons_of(p):
+            if bad := lesson(job, text, m.daily, limits):
+                found.append((f"{cite(m, p)}:{n}", list(bad)))
+    p, (most, size) = m.root / RULES, index_limits(docs)
+    rows = p.read_text(encoding="utf-8", errors="replace").splitlines() if p.is_file() else []
+    over = [f"{len(rows)} lines, past {most}"] * (len(rows) > most) + [f"{p.stat().st_size:,} bytes, past {size:,}"] * (p.is_file() and p.stat().st_size > size)
+    return {"lessons": found, "index": over, "moved": pinned(docs)}
+
+
+def store_findings(r: dict[str, Any], limits: dict[str, Any], docs: Path | None = None) -> list[str]:
+    """The doctor's daily lines for the store: a pin its page moved off, the index past code-memory's limits, and the lessons that
+    miss the shape past lesson_findings (zero), the first named with its checks and the docs sentence the first check enforces."""
+    out = [f"docs moved: {slug} no longer says the sentence the {k} check enforces: \"{said}\"" for k, slug, said in r["moved"]]
+    if r["index"]:
+        out.append(f"rule index {RULES}: {' and '.join(r['index'])}, the code-memory limit a session start loads, {sentence('index', docs)}")
+    if len(r["lessons"]) > threshold(limits, "lesson_findings", 0):
+        at, bad = r["lessons"][0]
+        out.append(f"rule shape: {len(r['lessons'])} lesson{'s' * (len(r['lessons']) != 1)} out of the docs' shape, first {at}: "
+                   f"{', '.join(bad)}; {sentence(LESSON[bad[0]][0], docs)}")
+    return out

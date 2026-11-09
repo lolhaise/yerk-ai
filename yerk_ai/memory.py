@@ -656,13 +656,22 @@ def mark(line: str, by: str = "") -> str:
                   line, count=1)
 
 
-def unshaped(job: str, text: str, acronyms: frozenset[str] | None = None) -> dict[str, Any] | None:
+def unshaped(job: str, text: str, acronyms: frozenset[str] | None = None, s: Settings | None = None) -> dict[str, Any] | None:
     """The refusal of a rule whose line as filed misses the prompting guide's shape (shape.filing: the doctor's per-line counts,
-    its examples out), each count a line of `fix` with the words that tripped it and the guide's fix; None when it has the shape."""
+    its examples out) or the Claude docs' lesson shape (shape.lesson, 2026-11-09: one lesson, a one-line summary first, its reason,
+    a brief body, a day-log cite in place of a quote the day log holds, plain sentences), each a line of `fix` with the words that
+    tripped it, the fix and, for a lesson check, the docs sentence it enforces read off the fetched page; None when it has the shape."""
     from . import shape                # shape reads this module's names as it loads
+    from .config import budgets
     bad = shape.filing(f"- {one_line(job).strip(' :').lower()}: {one_line(text)}", *([acronyms] if acronyms else []))
-    return {"ok": False, "error": words.RULE_SHAPE, "fix": [words.RULE_OFFENCE.format(name=shape.NAMES[k], said=", ".join(
-        f'"{w.strip(QUOTES)}"' for w in v), fix=words.RULE_FIX[k]) for k, v in bad.items()]} if bad else None
+    fix = [words.RULE_OFFENCE.format(name=shape.NAMES[k], said=", ".join(f'"{w.strip(QUOTES)}"' for w in v), fix=words.RULE_FIX[k])
+           for k, v in bad.items()]
+    limits = dict(budgets().get("shape") or {})
+    for k, v in shape.lesson(job, text, s.daily if s else None, limits).items():
+        pin, key, default = shape.LESSON[k]
+        fix.append(words.RULE_OFFENCE.format(name=words.LESSON_NAMES[k], said="; ".join(v), fix=words.LESSON_FIX[k].format(
+            cap=shape.threshold(limits, key, default), sentence=shape.sentence(pin, s.docs if s else None))))
+    return {"ok": False, "error": words.RULE_SHAPE, "fix": fix} if fix else None
 
 
 def rule(s: Settings, room: str, mid: str, job: str, text: str, cap: int = 0, log: DailyLog | None = None,
@@ -679,12 +688,12 @@ def rule(s: Settings, room: str, mid: str, job: str, text: str, cap: int = 0, lo
     filing loads on beside its job's words, in place of what its own words name (an [on: ...] mark before its trailer); a topic filing
     naming none keeps its job's live topic rule's. `replaced` names every line of its job it marked, in either file, and each of
     `also` (path, line, its text when listed: another job's line in either file on the same thing, curate.same) it marked by the new
-    line, the one still holding those words. A line out of the prompting guide's shape is never filed (unshaped)."""
+    line, the one still holding those words. A line out of the prompting guide's shape or the Claude docs' lesson shape is never filed (unshaped)."""
     job, body = one_line(job).strip(" :").lower(), one_line(text)
     on = tuple(dict.fromkeys(t for x in on if (t := " ".join(re.sub(r"[,()\[\]]", " ", x).split()))))    # no comma or bracket: the mark's
     if not job or not body:
         return {"ok": False, "error": "a rule needs the job's short name and how it is done, both as text"}
-    if refused := unshaped(job, body, acronyms):
+    if refused := unshaped(job, body, acronyms, s):
         return refused
     if bad := [t for t in on if not wants(t)]:
         return {"ok": False, "error": f"nothing filed: a trigger needs a word that names something, not only words like a, the or how: {'; '.join(bad)}"}

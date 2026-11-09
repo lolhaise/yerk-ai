@@ -66,7 +66,7 @@ def test_a_page_is_fetched_as_markdown_headed_by_its_source_time_and_hash_and_a_
 def test_a_page_that_fails_or_is_not_markdown_keeps_its_old_file_and_the_refresh_stays_due(site, tmp_path):
     url, _, _ = site
     docs.refresh(tmp_path, {"pages": {"guide": f"{url}/page"}}, now=1000.0)
-    assert not docs.due(tmp_path, {}, 1000.0 + 6 * DAY) and docs.due(tmp_path, {}, 1000.0 + 7 * DAY)
+    assert not docs.due(tmp_path, {}, 1000.0 + DAY / 2) and docs.due(tmp_path, {}, 1000.0 + DAY)          # daily since 2026-11-09
     r = docs.refresh(tmp_path, {"pages": {"guide": f"{url}/html", "gone": f"{url}/gone", "Bad Slug": f"{url}/page"}}, now=1000.0 + 7 * DAY)
     assert r["failed"]["guide"] == "ValueError: not Markdown (text/html)" and r["failed"]["gone"].startswith("HTTPError: HTTP Error 404")
     assert r["failed"]["Bad Slug"].startswith("ValueError: a slug is") and docs.failed(r)[0].startswith("docs: 3 pages not fetched, first guide")

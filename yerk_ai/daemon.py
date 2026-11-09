@@ -1029,7 +1029,7 @@ class Yerkd:
         if self.reader(room).sealed:        # its teaching stays its own day-log note, the job its label, never the shared rules
             return await self.tool_remember(room, text, job.strip(" :"), [])
         topics, acronyms = shape.install(dict(self.conf.get("docs") or {}))
-        if refused := memory.unshaped(job, text, acronyms):
+        if refused := memory.unshaped(job, text, acronyms, self.memory):
             return refused
         listed, said = await asyncio.to_thread(curate.same, self.private, self.memory, self.room_confs, job, text, topics), curate.settled(older)
         if open_ := [x for x in listed if x["cite"] not in said]:

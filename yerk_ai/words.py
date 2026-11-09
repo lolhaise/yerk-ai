@@ -157,8 +157,20 @@ RULE_TOPIC_LOG = "rule \"{job}\" filed as a topic rule in {file}: rules.md is fu
 RULE_TOPIC = "filed as a topic rule: loads when\n{triggers} come up\n\"{job}\"\nfrom {room}\n{where}\nrules.md is full at its cap of {cap:,}"
 TOPIC_WHERE = ("for every room", "for {rooms} only")
 # a rule a filing turns back (memory.unshaped, Daemon.tool_rule), with what a rule holds and why, so the room rewrites and calls again
-RULE_SHAPE = ("not filed: every room follows a rule as written, and follows it best in the prompting guide's shape (what to do "
-              "with its reason, calm words, an example inside <example> tags); rewrite what each line of `fix` names and call again")
+RULE_SHAPE = ("not filed: every room follows a rule as written, and follows it best in the Claude docs' shape (one lesson, a "
+              "one-line summary first, then its reason in a brief body, calm words, a day-log cite in place of a quote); rewrite "
+              "what each line of `fix` names and call again")
+# the lesson checks (shape.LESSON, 2026-11-09): each fix ends with the docs sentence it enforces, read off the fetched page
+LESSON_NAMES = {"enumerated": "an enumeration of cases", "summary": "no one-line summary first", "no reason": "no reason given",
+                "long": "a long body", "on record": "what the day log already records", "dense": "a long sentence"}
+LESSON_FIX = {"enumerated": "file one lesson per case, or one general rule with its reason, since the docs say {sentence}",
+              "summary": "open with a one-line summary, one sentence of at most {cap} characters naming the job, then the body, "
+                         "since the docs say {sentence}",
+              "no reason": "give the rule its reason with because, since or so that, since the docs say {sentence}",
+              "long": "keep the body to {cap} characters and cite the day log for the rest, since the docs say {sentence}",
+              "on record": "cite the line in place of the quote, as <example>Landed, daily/YYYY-MM-DD.md:N</example> with at most "
+                           "a six-word gloss, since the docs say {sentence}",
+              "dense": "write sentences of at most {cap} words, since the docs say {sentence}"}
 RULE_FIX = {"no why": "say what to do instead, or give it its reason with because, since or so that, since a model generalises from a reason",
             "loud": "write it in normal case, since a shouted word makes a model overreact",
             "untagged": "put the exchange inside <example> tags, marked landed or bounced, so a model tells it from the instruction",

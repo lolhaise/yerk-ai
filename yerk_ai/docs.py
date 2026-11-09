@@ -5,7 +5,7 @@ by its source, fetch time and content hash, class shared. memory.settings adds <
 a room's own recall finds a page in every room, below the owner's notes, and cites it as docs/claude/<slug>.md:line; what a room
 per message leaves the docs out (memory.ranked). The sites answer `Accept: text/markdown` with the page as Markdown
 (checked 2026-10-21 with a plain GET); anything else is refused and the page's old file kept. `yerk doctor` fetches them
-once [docs] refresh_days (7) have passed since the last clean refresh, unless [docs] fetch = false (`yerk docs refresh`
+[docs] refresh_days (1, daily since 2026-11-09, since shape.PINS reads its sentences from them) have passed since the last clean
 refresh, unless [docs] fetch = false (`yerk docs refresh` still fetches when run), and a page whose hash moved is a line in the
 rules may be stale against it."""
 from __future__ import annotations
@@ -23,7 +23,7 @@ from typing import Any
 from . import __version__, words
 from .config import DOCS_PAGES, flag, load_toml, write_private
 
-REFRESH_DAYS, MAX_BYTES, TIMEOUT, STAMP = 7, 4_000_000, 30, "refresh.json"
+REFRESH_DAYS, MAX_BYTES, TIMEOUT, STAMP = 1, 4_000_000, 30, "refresh.json"     # daily since 2026-11-09: the shape's sentences are read from them
 SLUG = re.compile(r"[a-z0-9][a-z0-9-]{0,63}")
 HEAD = re.compile(r"\A---\nclass: shared\nsource: (\S+)\nfetched: (\S+)\nsha256: ([0-9a-f]{64})\n---\n")
 
@@ -67,7 +67,7 @@ def load(state: Path) -> dict[str, Any]:
 
 
 def due(state: Path, conf: dict[str, Any], now: float) -> bool:
-    """The doctor's weekly fetch: refresh_days since the last clean refresh, never with [docs] fetch = false."""
+    """The doctor's daily fetch: refresh_days since the last clean refresh, never with [docs] fetch = false."""
     days = conf.get("refresh_days", REFRESH_DAYS)
     days = days if isinstance(days, (int, float)) and not isinstance(days, bool) and days > 0 else REFRESH_DAYS
     return flag(conf.get("fetch"), True) and now - float(load(state).get("at", 0)) >= days * 86400

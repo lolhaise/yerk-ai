@@ -22,7 +22,7 @@ _IGNORED: set[tuple[str, str, str]] = set()             # (room, key, value) of 
 # flags are on cli-reference and the Agent SDK's page). Each answered `Accept: text/markdown` with Markdown on 2026-10-21.
 _PE, _CC = "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/", "https://code.claude.com/docs/en/"
 DOCS_PAGES = {"prompting-guide": _PE + "claude-prompting-best-practices",
-              **{f"prompting-{m}": f"{_PE}prompting-claude-{m}" for m in ("opus-5-5", "sonnet-5-5", "haiku-5-5", "fable-5-1")},
+              **{f"prompting-{m}": f"{_PE}prompting-claude-{m}" for m in ("opus-5-5", "sonnet-5-5", "haiku-5-5", "fable-5-1", "fable-5")},
               **{f"code-{p.rsplit('/', 1)[-1].removeprefix('modifying-')}": _CC + p for p in
                  ("settings", "hooks", "memory", "sandboxing", "mcp", "cli-reference", "agent-sdk/modifying-system-prompts")}}
 
@@ -242,7 +242,7 @@ YERKD_WORDS = {
               "repo": "the GitHub OWNER/NAME of the pipeline's PRs (default: from the daemon tree's origin)",
               "pr_check": "the install's PR checker every need worker runs before its last commit (default: the suite, ruff, mypy)"},
     "curate": {"account": "the one account the night's curation runs on", "logs": "more files in the private folder read as the owner's own stream"},
-    "docs": {"fetch": "the doctor's weekly fetch of the Claude docs (default true)", "refresh_days": "days between fetches (default 7)",
+    "docs": {"fetch": "the doctor's daily fetch of the Claude docs (default true)", "refresh_days": "days between fetches (default 1)",
              "pages": "the pages kept, slug = URL (default config.DOCS_PAGES)",
              "topics": "the install's own topics the rule-shape check reads, name = \"regex\", beside shape.TOPICS",
              "acronyms": "words in capitals the rule-shape check and a rule's filing read as names, not shouting"},
