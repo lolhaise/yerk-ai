@@ -15,6 +15,7 @@ from __future__ import annotations
 import itertools
 import os
 import re
+from contextvars import ContextVar
 
 # One argument with its quotes removed, and whether the shell would still
 # expand part of it ($x, `x`, $(x)) before the program sees it.
@@ -45,19 +46,28 @@ class _Unreadable(Exception):
     """The text cannot be read for certain: an open quote, too deep, or a command known only at run time."""
 
 
-def unwrap(command: str, depth: int = 4) -> list[list[str]] | None:
+# One read's own setting (a thread's, a task's): whether a command behind xargs keeps the words written after it.
+_WHOLE: ContextVar[bool] = ContextVar("yerk_unwrap_whole", default=False)
+
+
+def unwrap(command: str, depth: int = 4, whole: bool = False) -> list[list[str]] | None:
     """The simple commands the text would run, each as argv, with wrappers peeled.
 
     The strings that `sh -c`, `bash -c`, `zsh -c`, `eval`, `$(...)` and
     backquotes run are read again by the same rules, up to depth levels. A
     heredoc body is data. Behind xargs a command keeps only its program, since
-    its arguments arrive at run time. None when the text cannot be read: an
-    open quote, more than depth levels, or a command known only at run time.
+    its arguments arrive at run time; with `whole` it keeps the words written
+    after it too, for a reader that asks what a command starts with (the
+    approval rules), never where a delete points. None when the text cannot be
+    read: an open quote, more than depth levels, or a command known only at run time.
     """
+    token = _WHOLE.set(whole)
     try:
         return _parse(command, depth)
     except _Unreadable:
         return None
+    finally:
+        _WHOLE.reset(token)
 
 
 def delete_targets(argv: list[str], cwd: str) -> list[str] | None:
@@ -297,7 +307,7 @@ def _peel(argv: list[_Word], depth: int) -> list[list[str]]:
             if i + before >= len(argv):
                 return [[w for w, _ in argv]]  # nothing wrapped: the wrapper itself runs
             if name == "xargs":
-                return [found[:1] for found in _peel(argv[i:], depth)]
+                return [found if _WHOLE.get() else found[:1] for found in _peel(argv[i:], depth)]
             argv = argv[i + before:]
         else:
             break

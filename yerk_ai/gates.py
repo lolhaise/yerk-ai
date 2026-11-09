@@ -13,6 +13,8 @@ quotes, in a heredoc body or as a word in a string is not a delete; lifted/shell
 - restart: a write to a file yerkd reads at start (yerkd.toml, rooms.toml, accounts.toml) or a
   restart of yerkd is refused while the memory index rebuilds or a human turn is running, with one
   plain line to the room;
+- one reading: the approval and restart rules read a shell command as the delete rules do, as what would really run
+  (runs, unwrap), so a held command is held behind a wrapper, in a nested shell or by its full path too;
 - approval: an action named external (a send to another room, an owner room's line to the machine
   room excepted, a public post, a login, money, a
   message out through another tool, a text or an email in the owner's name, a delete for good outside the work folder, or a rule in
@@ -41,6 +43,8 @@ RESTART_FILES = ("yerkd.toml", "rooms.toml", "accounts.toml")     # read once, w
 RESTART_BASH = re.compile(r"^(?:systemctl\s+--user\s+(?:restart|stop|kill|try-restart|reload-or-restart)\s+yerkd"
                           r"|(?:pkill|killall)\b.*\byerk"
                           r"|kill\b.*\$\(\s*(?:pgrep|pidof)\b[^)]*yerk)", re.I)
+RESTART_VERBS = frozenset({"restart", "stop", "kill", "try-restart", "reload-or-restart", "try-reload-or-restart", "condrestart",
+                           "force-reload"})     # systemctl's words that end or replace a unit's process
 WRITE_OPS = re.compile(r">>?|\btee\b|\bsed\s+(?:-[^\s]*\s+)*-i|\bcp\b|\bmv\b|\btruncate\b|\bdd\b|\bperl\s+-[^\s]*i")
 WRITE_TOOLS = ("Write", "Edit", "MultiEdit", "NotebookEdit")
 EXTERNAL: dict[str, dict[str, str]] = {
@@ -134,6 +138,27 @@ def shell(command: str) -> list[tuple[str, list[str], str]]:
     return out
 
 
+def runs(command: str) -> list[str]:
+    """Every simple command the text would really run, one line each, read as the delete rules read it (unwrap): wrappers
+    peeled, the strings a nested shell, eval, $(...) and backquotes run read again, a command behind xargs with the words
+    written after it, and the program by its name alone (`/usr/bin/git` is `git`). So one reading serves every gate, and a
+    held command is held behind `timeout`, in `bash -c`, after `then` or by its full path. [] when the text cannot be read
+    for certain: check_shell has refused that command already."""
+    return [shlex.join([os.path.basename(argv[0]), *argv[1:]]) for argv in unwrap.unwrap(command, whole=True) or [] if argv]
+
+
+def restarts(argv: list[str]) -> bool:
+    """One command that would stop or restart yerkd: systemctl with one of RESTART_VERBS and a unit named yerkd after it,
+    wherever its options sit (`systemctl --user --no-block restart yerkd-test`, `systemctl restart --user yerkd`); pkill or
+    killall with a word naming yerk."""
+    name, args = (os.path.basename(argv[0]), argv[1:]) if argv else ("", [])
+    if name == "systemctl":
+        said = [a.lower() for a in args if not a.startswith("-")]
+        verb = next((k for k, a in enumerate(said) if a in RESTART_VERBS), None)
+        return verb is not None and any(a.startswith("yerkd") for a in said[verb + 1:])
+    return name in ("pkill", "killall") and any("yerk" in a.lower() for a in args)
+
+
 def is_delete(argv: list[str]) -> bool:
     return bool(argv) and os.path.basename(argv[0]) in ("rm", "unlink")
 
@@ -214,7 +239,10 @@ def restart_hit(tool: str, ti: dict[str, Any], private: Path) -> str | None:
         return None
     if tool != "Bash":
         return None
-    for seg, argv, norm in shell(str(ti.get("command") or "")):
+    command = str(ti.get("command") or "")
+    if any(restarts(argv) for argv in unwrap.unwrap(command, whole=True) or []) or any(RESTART_BASH.search(x) for x in runs(command)):
+        return "a restart of yerkd"       # what would really run: behind a wrapper, in a nested shell, by its full path
+    for seg, argv, norm in shell(command):
         if RESTART_BASH.search(norm):
             return "a restart of yerkd"
         if not shellguard.search_outside_quotes(WRITE_OPS, seg):
@@ -251,6 +279,7 @@ def external_hit(tool: str, ti: dict[str, Any], room: str, s: Settings,
     """(rule, what in plain words, the call in one line) for an action named external, else None. With `rooms`
     (rooms.toml's) a send names a room by its channel too (room_named); without, by its name only."""
     parts = shell(str(ti.get("command") or "")) if tool == "Bash" else []
+    read = [norm for _, _, norm in parts] + (runs(str(ti.get("command") or "")) if tool == "Bash" else [])   # as written, then as it would run
     for name, rule in s.external.items():
         if not re.search(rule.get("tool", r"^$"), tool):
             continue
@@ -261,7 +290,7 @@ def external_hit(tool: str, ti: dict[str, Any], room: str, s: Settings,
             continue
         what = rule.get("what", name)
         if rule.get("command"):
-            hit = next((norm for _, _, norm in parts if re.search(rule["command"], norm)), None)
+            hit = next((norm for norm in read if re.search(rule["command"], norm)), None)
             if hit is None:
                 continue
             return name, what, hit[:160]
