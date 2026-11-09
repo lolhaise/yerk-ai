@@ -61,7 +61,7 @@ import aiohttp
 import discord
 from discord.http import handle_message_parameters
 
-from .. import addons, files as extracted, status, transcribe, watch, words
+from .. import addons, files as extracted, pictures, status, transcribe, watch, words
 from ..config import EFFORTS, uncapped
 from ..ledger import Ledger
 from ..lifted.loopguard import LoopGuard
@@ -165,7 +165,7 @@ def message_text(m: Any, files: list[dict[str, Any]] | None = None, reply: str =
                   "ok": False, "error": "not staged"} for a in getattr(m, "attachments", []) or []]
     for f in files:
         if f.get("ok"):
-            lines.append(f"[attachment] {f['name']}, {f['type']}, {f['size']:,} bytes, saved at {f['path']}")
+            lines.append(f"[attachment] {f['name']}, {f['type']}, {f['size']:,} bytes, saved at {f['path']}{shrunk(Path(f['path']))}")
             lines += [words.VOICE_NOTE.format(name=f["name"])] if transcribe.is_audio(f["name"], f["type"]) else []
             lines += [words.VIDEO_FILE.format(name=f["name"])] if watch.is_video(f["name"], f["type"]) else []
             lines += [words.ADDON_READS.format(name=f["name"], tool=t) for k, t in (reads or {}).items() if fnmatchcase(f["type"], k)][:1]
@@ -173,6 +173,13 @@ def message_text(m: Any, files: list[dict[str, Any]] | None = None, reply: str =
         else:
             lines.append(f"[attachment] {f['name']}: could not be fetched ({f.get('error', 'unknown')})")
     return "\n".join(x for x in lines if x).strip()
+
+
+def shrunk(path: Path) -> str:
+    """The [attachment] line's clause on a picture past what Read shows, pictures.EDGE pixels on its long side: its size
+    off its header (pictures.size), and that zoom reads its small print; "" for any other file."""
+    dims = pictures.size(path) if pictures.is_picture(path) else None
+    return words.SHRUNK.format(w=dims[0], h=dims[1], edge=pictures.EDGE) if dims and max(dims) > pictures.EDGE else ""
 
 
 def shown(user: Any) -> str:

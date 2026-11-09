@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 124245`
+- `total = 125745`
 
 ## [session_start.claude_code]
 
@@ -90,11 +90,13 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-07): its entry 3,048 to 3,446 as the plug-in's branch need-2026-11-07-74 (aa73df9) builds it, 3,477 as sent (31 over, as each of the five goes; all five 8,408 built, 8,563 sent, the mail entry at need 33's 1,194 built), 398 over the 3,079 it sends on the plug-in's main f384c2b; so 8,563, no part could pay, the total rose by the 398 (to 123,803).
 
-2026-11-09, need-2026-11-09-74: the hands plug-in's browser gains `type` (text into whatever field has focus in a tab, such as one a click by x and y focused, and a web component's form read, listed, set and clicked by label, since a room asked to run a quote on a form drawn inside a shadow root saw it only in a shot, its read and its fields stopping at the page's footer, and had no action to type into the field its click focused; filed 2026-11-09): its entry 3,438 to 3,880 as JSON on the plug-in's branch need-2026-11-09-74 (8c2aff9) against its main 2e7593a, 442 more as sent (each of the five goes out 31 over its build, which `type` leaves as it was); so 9,005, no part could pay, the total rose by the 442 (to 124,245).
+2026-11-09, zoom-2026-11-09: the `zoom` tool (a part of a picture in a room's folders, as fractions of its width and height, made a PNG 2000 px on its long side by ffmpeg, since Read shows a picture at most 2000 px on its long side and a room asked whether someone was free at a time on a calendar's picture could not read the times, while ffmpeg in its shell waited on an approval no one gives mid-turn) is 1,081 as this tree builds it, all 23 to 24,074, about 24,787 as sent (713 over the build, 31 a tool as on the others); so 24,800, no part could pay, the total rose by the 1,100 (to 125,303 with its mechanics line's 400).
+
+2026-11-09, need-2026-11-09-74: the hands plug-in's browser gains `type` (text into whatever field has focus in a tab, such as one a click by x and y focused, and a web component's form read, listed, set and clicked by label, since a room asked to run a quote on a form drawn inside a shadow root saw it only in a shot, its read and its fields stopping at the page's footer, and had no action to type into the field its click focused; filed 2026-11-09): its entry 3,438 to 3,880 as JSON on the plug-in's branch need-2026-11-09-74 (8c2aff9) against its main 2e7593a, 442 more as sent (each of the five goes out 31 over its build, which `type` leaves as it was); so 9,005, no part could pay, the total rose by the 442 (to 125,745 on zoom-2026-11-09's 125,303, main cc6ccfe folded in).
 
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
-- `yerk_tools = 23700`
+- `yerk_tools = 24800`
 - `deferred_tool_names = 3429`
 - `mcp__hands__ = 9005`
 - `mcp__web-ladder__web_image = 913`
@@ -144,7 +146,9 @@ Yerk AI's own parts, joined into the one file passed by --append-system-prompt-f
 
 2026-11-06, rule-filing-check-2026-11-06: the filing line's new text (literal words, an example a real exchange from the day log, the older line's examples carried forward, and the filing's check of the wording and its list of older lines on the same thing) and four wording-only rewrites (the fold, attachment, paste and recall-pack lines) took the mechanics file to 6,676: 6,689 on the box, 6,799 with a checkout's path of 129 characters; so 6,800, a checkout's path of up to 130. No part was measured again to pay for it, so the total rose by the 600, to 122,605 with the tools' 400.
 
-- `mechanics = 6800`
+2026-11-09, zoom-2026-11-09: the zoom line (a picture is shown at most 2000 px on its long side, so small print read off the whole of it is a guess: zoom on the part that holds the answer and Read the file it names; the whole of it when Read refuses it) took the mechanics file to 6,987, 7,110 with a checkout's path of 129 characters; so 7,200. No part was measured again to pay for it, so the total rose by the 400, to 125,303 with the tool's 1,100.
+
+- `mechanics = 7200`
 - `persona = 11800`
 - `rulebook = 14000`
 - `room_voice = 5500`
@@ -576,7 +580,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-08, need-2026-11-08-74 raised it by 29: the `text` tool reaches the Mac's bridge with nothing set in yerkd.toml, by the host and socket an owner room's add-on names together in its mac.json (the hands plug-in's, its branch need-2026-11-08-74 at 2e7593a), as `texts` and the page already reach that Mac (texts.py 13: reach, SOCKET and WHOLE, the module's line; daemon.py 8: imessage and owner_servers, the gate and the send on them; channels/page.py 6: addon_file, the trusted file's keys whole, addon_mac on it; words.py 1 and config.py 1: the words); a room asked to send the owner's reply as an iMessage from the Mac met "no Mac is set up for texts" with the bridge up on that Mac and its host already in the plug-in's mac.json, not folded to fit. The plug-in's mac entry is 3 characters shorter, so `mcp__hands__` holds. 27,183.
 
-- `lines = 27183`
+2026-11-09: zoom-2026-11-09 raised it by 172, the `zoom` tool, a part of a picture in a room's own folders as fractions of its width and height made a PNG 2000 px on its long side by ffmpeg, since Read shows a picture at most 2000 px on its long side and a room asked whether someone was free at a time on a calendar's picture could not read the times, while ffmpeg in its shell waited on an approval no one gives mid-turn; not folded to fit: pictures.py 125 (the header read of a PNG, a GIF, a WebP and a JPEG with its EXIF quarter turn, the crop and scale with the 4x cap, the numbering, a HEIC made a whole PNG first), daemon.py 17 (the tool on the room's own folders, every room's allow line), mcp_server.py 12 (the tool's sentence), words.py 11 (the refusals, the box's words, the [attachment] clause, the card's row), channels/discord.py 7 (the [attachment] line's clause on a picture past 2000 px). 27,355.
+
+- `lines = 27355`
 
 ## Uncapped
 
