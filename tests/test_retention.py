@@ -371,7 +371,7 @@ def test_a_swept_room_finds_retention_md_in_its_work_folder_and_an_untouched_roo
     retention.run(priv, state, now=NOW + DAY)
     assert "- renders/r1.pgm -> " in note.read_text() and "FIVERR" not in note.read_text() and busy.exists()   # rewritten whole
     told = [x for x in context.MECHANICS.read_text().splitlines() if "KEEP" in x]                # and every room is told both
-    assert len(told) == 1 and "a folder under work/ with a file named `KEEP` is never swept, so" in told[0] and "RETENTION.md at the top of work/" in told[0]
+    assert len(told) == 1 and "a folder under work/ with a file named `KEEP` is never swept until its `KEEP` is removed, so" in told[0] and "RETENTION.md at the top of work/" in told[0]
 
 
 MB = 1_000_000

@@ -110,7 +110,7 @@ def padded(tmp: Path) -> Path:
 def test_capped_is_mains_assembly_byte_for_byte_with_the_switch_absent_or_false(tmp_path):
     """The fixture is this scenario assembled on the base commit (1ec2592, PR 145's merge; retaken on note-to-self, on
     retention-keep, on need-2026-10-31-27, on need-2026-10-25-21, on need-2026-10-24-22, on fold-named-2026-11-04 and on
-    rule-filing-check-2026-11-06 and on zoom-2026-11-09, each
+    rule-filing-check-2026-11-06, on zoom-2026-11-09, on memory-docs-shape-2026-11-09 and on fable-5-2, each
     one's mechanics line its only change, need-2026-10-25-21's with the checkout's path, CODE; and on need-2026-10-28-25, its only change the rules
     note past its size naming the room's work folder file, context.CHANGED): the start file, both messages,
     the compaction, every assembled.jsonl row, the topic rules told and every log line, the same with [limits] absent and
@@ -187,9 +187,9 @@ def test_a_rule_filed_in_an_uncapped_install_keeps_its_examples_and_never_goes_t
         s = memory.settings(private, state)
         rules = s.root / memory.RULES
         rules.write_text(rules.read_text() + "".join(f"- big {i}: done so <example>like this, at length</example>{'.' * 200}\n" for i in range(80)))
-        r = memory.rule(s, ROOM, "m1", "new job", "how it is done <example>this way</example>", cap)
+        r = memory.rule(s, ROOM, "m1", "new job", "how it is done, since it works <example>this way</example>", cap)
         assert r["ok"] and bool(r.get("topic")) is topic and "stripped" not in r
-        assert ("- new job: how it is done <example>this way</example> (" in rules.read_text()) is not topic
+        assert ("- new job: how it is done, since it works <example>this way</example> (" in rules.read_text()) is not topic
 
 
 def test_taste_rows_go_whole_and_the_counts_stay(tmp_path):

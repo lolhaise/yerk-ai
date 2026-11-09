@@ -51,7 +51,7 @@ def test_a_rule_filed_in_one_room_reaches_a_running_room_on_its_next_message_onc
     r = rule(y, A, "Open web pages with the example browser, never the example fetcher, since it misses what a page draws.", "Open web pages:")
     assert r == {"ok": True, "job": "open web pages", "cite": "tree/rules.md:6", "replaced": [],
                  "next": words.FILED_NEXT.format(clause=words.RULE_CLAUSE.format(job="open web pages"))}
-    assert r["next"].endswith("the filing is one clause at its end, this one: every room now does open web pages this way.")
+    assert r["next"].endswith("the filing is never said, since the answer stands alone for a reader who did not see the work (every room now does open web pages this way).")
     block = told(y, "sid-b")
     assert block.count(f"{context.NEWS}\nnew in rules.md: open web pages: Open web pages with the example browser, never "
                        "the example fetcher, since it misses what a page draws. (example-room, ") == 1 and "[m:m-1]" in block
@@ -63,25 +63,25 @@ def test_a_rule_filed_in_one_room_reaches_a_running_room_on_its_next_message_onc
 
 def test_a_replaced_rule_shows_as_replaced_and_stays_in_the_file_marked(tmp_path):
     y = daemon(tmp_path)
-    old = rule(y, A, "Open web pages with the old fetcher.")
+    old = rule(y, A, "Open web pages with the old fetcher, since it is the one set up.")
     start(y, B, "sid-b")
-    new = rule(y, A, "Open web pages with the example browser.")
+    new = rule(y, A, "Open web pages with the example browser, since it draws the page.")
     assert new["cite"] == "tree/rules.md:7" and new["replaced"] == [old["cite"]]
     block = told(y, "sid-b")
-    assert "new in rules.md: open web pages: Open web pages with the example browser. (" in block
-    assert "replaced in rules.md: open web pages: Open web pages with the old fetcher. (" in block
+    assert "new in rules.md: open web pages: Open web pages with the example browser, since it draws the page. (" in block
+    assert "replaced in rules.md: open web pages: Open web pages with the old fetcher, since it is the one set up. (" in block
     line = (y.memory.root / memory.RULES).read_text().splitlines()[5]
-    assert line.startswith("- open web pages: Open web pages with the old fetcher. (example-room, ")
+    assert line.startswith("- open web pages: Open web pages with the old fetcher, since it is the one set up. (example-room, ")
     assert line.endswith(" [superseded by tree/rules.md:7] [m:m-1]")          # marked, never deleted
     start(y, A, "sid-a")                                                # a new session starts with the live line only
     ctx = (tmp_path / "state" / "rooms" / A / "context.md").read_text()
-    assert "Open web pages with the example browser." in ctx and "old fetcher" not in ctx
+    assert "Open web pages with the example browser, since it draws the page." in ctx and "old fetcher" not in ctx
 
 
 def test_a_room_that_is_not_an_owner_room_cannot_file_a_rule(tmp_path):
     y = daemon(tmp_path)
-    assert rule(y, FAMILY, "Open web pages with the example browser.") == {"ok": False, "line": words.RULES_OWNER_ONLY}
-    assert rule(y, "", "Open web pages with the example browser.") == {"ok": False, "line": words.RULES_OWNER_ONLY}
+    assert rule(y, FAMILY, "Open web pages with the example browser, since it draws the page.") == {"ok": False, "line": words.RULES_OWNER_ONLY}
+    assert rule(y, "", "Open web pages with the example browser, since it draws the page.") == {"ok": False, "line": words.RULES_OWNER_ONLY}
     assert not (y.memory.root / memory.RULES).exists()
     assert not rule(y, A, "  ")["ok"] and not rule(y, A, "Open web pages with it.", " : ")["ok"]
 
@@ -90,10 +90,10 @@ def test_the_block_keeps_to_its_budget_and_past_it_gives_the_count_and_where_to_
     y = daemon(tmp_path)
     start(y, FAMILY, "sid-f")
     budget = y.budgets["per_message"]["on_hit"]["rules"]
-    rule(y, A, "Example job one is done the example way.", "example job one")
+    rule(y, A, "Example job one is done the example way, since it works.", "example job one")
     assert context.chars(y.rules_news(FAMILY, "sid-f")) <= budget
     for i, w in enumerate("amber birch cedar delta quartz fjord grove heron iris juniper kestrel lumen".split()):
-        rule(y, A, f"Example job {i} is done the example way, " + f"{w} " * 20, f"example job {i}")   # no two on one thing
+        rule(y, A, f"Example job {i} is done the example way, since it works. " + f"{w.title()} " * 20, f"example job {i}")   # no two on one thing
     note, kept = y.rules_news(FAMILY, "sid-f"), y.state / "rooms" / FAMILY / "work" / context.CHANGED
     assert note == (f"{context.NEWS} 12 lines new or replaced, past the {budget:,} characters this note holds; "
                     f"read them: Read {kept}.") and context.chars(note) <= budget
@@ -172,9 +172,9 @@ def test_a_filing_that_fits_is_filed_whole_with_its_example(tmp_path):
     y = daemon(tmp_path)
     cap = y.budgets["session_start"]["appended"]["rules"]
     path = fill(y, cap - 1000, (older("example older a"),))
-    r = rule(y, A, "Answer the example question first." + EX, "example new")
+    r = rule(y, A, "Answer the example question first, since it was asked." + EX, "example new")
     assert "stripped" not in r and "held" not in r and size(y) <= cap
-    assert path.read_text().splitlines()[-1].startswith(f"- example new: Answer the example question first.{EX} ({A}, ")
+    assert path.read_text().splitlines()[-1].startswith(f"- example new: Answer the example question first, since it was asked.{EX} ({A}, ")
     assert path.read_text().count("<example>") == 2 and not (y.memory.root / memory.OVERFLOW).exists() and fitted(y) == []
 
 
@@ -182,7 +182,7 @@ def test_a_filing_past_the_cap_loses_its_own_example_first_and_older_rules_keep_
     """Seen live: one rule's 190-character example took the rules file past its cap and seven proven rules went out of
     every session start. The new rule's own example goes first; here that is enough, so the older rules keep theirs."""
     y = daemon(tmp_path)
-    cap, text = y.budgets["session_start"]["appended"]["rules"], "Answer the example question first."
+    cap, text = y.budgets["session_start"]["appended"]["rules"], "Answer the example question first, since it was asked."
     path = fill(y, cap - memory.HEADROOM - line_len("example new", text), (older("example older a"), older("example older b")))
     r = rule(y, A, text + EX, "example new")
     assert r["stripped"] == ["example new"] and size(y) == cap - memory.HEADROOM
@@ -193,7 +193,7 @@ def test_a_filing_past_the_cap_loses_its_own_example_first_and_older_rules_keep_
 
 def test_then_the_newest_older_rules_example_goes_and_never_an_older_ones_first(tmp_path):
     y = daemon(tmp_path)
-    cap, text = y.budgets["session_start"]["appended"]["rules"], "Answer the example question first."
+    cap, text = y.budgets["session_start"]["appended"]["rules"], "Answer the example question first, since it was asked."
     path = fill(y, cap - memory.HEADROOM - line_len("example new", text) + 50, (older("example older a"), older("example older b")))
     r = rule(y, A, text + SMALL, "example new")                     # its own example is not enough: 50 still over
     assert r["stripped"] == ["example new", "example older b"] and size(y) <= cap - memory.HEADROOM
@@ -213,14 +213,14 @@ def test_a_rule_with_no_room_even_with_no_examples_is_filed_as_a_topic_rule_and_
     cap = y.budgets["session_start"]["appended"]["rules"]
     before = (path := fill(y, cap - 50)).read_bytes()
     start(y, B, "sid-b")
-    r = rule(y, A, "Example job last is done the example way." + EX, "example job last")
+    r = rule(y, A, "Example job last is done the example way, since it works." + EX, "example job last")
     on = "last, job or example"                                         # its own job word first: no other rule says "last"
     assert r == {"ok": True, "job": "example job last", "cite": "tree/rules-topics.md:3", "replaced": [], "topic": True,
                  "triggers": ["last", "job", "example"], "rooms": [], "next": words.FILED_NEXT.format(clause=words.TOPIC_CLAUSE.format(triggers=on))}
-    assert r["next"].endswith("this one: the rule loads when last, job or example come up, since the shared rules file is full.")
+    assert r["next"].endswith("(the rule loads when last, job or example come up, since the shared rules file is full).")
     tier = y.memory.root / memory.TOPIC_RULES
     assert path.read_bytes() == before and tier.stat().st_mode & 0o777 == 0o600 and not (y.memory.root / memory.OVERFLOW).exists()
-    assert tier.read_text().splitlines()[-1].startswith(f"- example job last: Example job last is done the example way.{EX} ({A}, ")
+    assert tier.read_text().splitlines()[-1].startswith(f"- example job last: Example job last is done the example way, since it works.{EX} ({A}, ")
     posts = [json.loads(x) for x in capsys.readouterr().out.splitlines() if x.startswith("{")]
     notice = (f"{words.DONE} filed as a topic rule: loads when\nlast, job or example come up\n\"example job last\"\nfrom {A}\nfor every room\n"
               f"rules.md is full at its cap of {cap:,}")
@@ -228,7 +228,7 @@ def test_a_rule_with_no_room_even_with_no_examples_is_filed_as_a_topic_rule_and_
     assert [p for p in posts if p["room"] == A] == []                  # the room says it in its reply
     assert fitted(y) == [words.RULE_TOPIC_LOG.format(job="example job last", file="rules-topics.md", cap=cap, triggers=on)]
     assert context.NEWS not in told(y, "sid-b")                         # the rules file never changed
-    assert rule(y, A, "Example job last is done the example way." + EX, "example job last") == r      # a retried call
+    assert rule(y, A, "Example job last is done the example way, since it works." + EX, "example job last") == r      # a retried call
     assert tier.read_text().count("- example job last: ") == 1 and len(fitted(y)) == 1 and "notice" not in capsys.readouterr().out
 
 
@@ -265,11 +265,11 @@ def test_a_tail_cut_never_ends_inside_an_example_that_spans_lines():
 
 def test_a_session_started_after_the_change_has_the_rules_at_start_and_no_block(tmp_path):
     y = daemon(tmp_path)
-    rule(y, A, "Open web pages with the example browser.")
+    rule(y, A, "Open web pages with the example browser, since it draws the page.")
     start(y, B, "sid-new")
     ctx = (tmp_path / "state" / "rooms" / B / "context.md").read_text()
     assert (f"[from {(y.memory.root / memory.RULES).resolve()}]\n# Rules: one live line per job, in every room\n\n"
-            "- open web pages: Open web pages with the example browser. (example-room, ") in ctx
+            "- open web pages: Open web pages with the example browser, since it draws the page. (example-room, ") in ctx
     assert "class: shared" not in ctx
     assert context.NEWS not in told(y, "sid-new")
 
@@ -305,14 +305,14 @@ def test_a_sealed_room_never_gets_another_rooms_rule_at_start_on_a_message_or_on
     y = sealed(tmp_path)
     start(y, SEALED, "sid-s")
     start(y, B, "sid-b")
-    rule(y, A, "Open web pages with the example browser.")
+    rule(y, A, "Open web pages with the example browser, since it draws the page.")
     assert "example browser" in told(y, "sid-b")                        # the control: an unsealed room hears it
     got = told(y, "sid-s")
     assert context.NEWS not in got and "example browser" not in got
     start(y, SEALED, "sid-s2")                                        # a session started after the rule
     room = tmp_path / "state" / "rooms" / SEALED
     assert "example browser" not in (room / "context.md").read_text() and "example browser" not in told(y, "sid-s2")
-    assert "Open web pages with the example browser." in (tmp_path / "state" / "rooms" / B / "rules-seen.json").read_text()
+    assert "Open web pages with the example browser, since it draws the page." in (tmp_path / "state" / "rooms" / B / "rules-seen.json").read_text()
     assert not (room / "rules-seen.json").exists()
     assert not asyncio.run(y.tool_read_memory(SEALED, memory.RULES, 1, 50))["ok"]
 

@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 125448`
+- `total = 126748`
 
 ## [session_start.claude_code]
 
@@ -148,7 +148,9 @@ Yerk AI's own parts, joined into the one file passed by --append-system-prompt-f
 
 2026-11-09, zoom-2026-11-09: the zoom line (a picture is shown at most 2000 px on its long side, so small print read off the whole of it is a guess: zoom on the part that holds the answer and Read the file it names; the whole of it when Read refuses it) took the mechanics file to 6,987, 7,110 with a checkout's path of 129 characters; so 7,200. No part was measured again to pay for it, so the total rose by the 400, to 125,303 with the tool's 1,100.
 
-- `mechanics = 7200`
+2026-11-09, fable-5-2 (everything in Yerk the way Claude Fable 5.2's docs say): the opening line, updates and recap, the "Communicating clearly" and "Finishing work" blocks of Claude Fable 5.2's prompting page in place of the lines they overlap, each of the nine absolutes given its scope and the exception that lifts it, and the line naming the steps that need no approval took the mechanics file to 8,348, 8,472 with a checkout's path of 130 characters; so 8,500. No part was measured again to pay for it, so the total rose by the 1,300, to 126,748.
+
+- `mechanics = 8500`
 - `persona = 11800`
 - `rulebook = 14000`
 - `room_voice = 5500`
@@ -233,6 +235,19 @@ The rule-shape check (shape.py; `yerk doctor` daily, `yerk docs shape` on demand
 - `untagged_examples = 0`
 - `alarm_marks = 0`
 - `duplicated_topics = 0`
+
+A rule as one lesson in the Claude docs' shape (shape.LESSON; memory.unshaped refuses a filing past any, the doctor scores the whole store daily against them; 2026-11-09, on the owner's word: always written the way the Claude docs say). Each derives from a sentence of a fetched page (shape.PINS): cases from "a brief instruction rather than enumerating" (prompting-fable-5), the summary from "one lesson per file with a one-line summary at the top", the quote words from "Don't save what the repo or chat history already records", the sentence words from the Fable 5.1 density note (no mannered-prose rule a grep can redo).
+
+- `lesson_cases = 3`: case heads (when, whenever, if, for at a clause start) or numbered cases that make an enumeration
+- `lesson_summary_chars = 140`: the one-line summary, the rule's first sentence
+- `lesson_body_chars = 600`: the body after the summary, file:line cites not counted
+- `lesson_quote_words = 8`: a quoted passage or example past this many words that a day log holds is cited, not pasted
+- `lesson_gloss_words = 6`: a cited example's gloss (Landed or Bounced, a cite, then this many words at most)
+- `lesson_sentence_words = 40`: the longest sentence: a store finding for a 5.1 room only, never refused at the gate (2026-11-09,
+
+Claude Fable 5.2's page: a hard limit such as "in 20 words or fewer" can make its prose choppy)
+
+- `lesson_findings = 0`: the store's lessons out of the shape before the doctor's daily run files a need
 
 ## [recall]
 
@@ -578,7 +593,11 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-09: zoom-2026-11-09 raised it by 172, the `zoom` tool, a part of a picture in a room's own folders as fractions of its width and height made a PNG 2000 px on its long side by ffmpeg, since Read shows a picture at most 2000 px on its long side and a room asked whether someone was free at a time on a calendar's picture could not read the times, while ffmpeg in its shell waited on an approval no one gives mid-turn; not folded to fit: pictures.py 125 (the header read of a PNG, a GIF, a WebP and a JPEG with its EXIF quarter turn, the crop and scale with the 4x cap, the numbering, a HEIC made a whole PNG first), daemon.py 17 (the tool on the room's own folders, every room's allow line), mcp_server.py 12 (the tool's sentence), words.py 11 (the refusals, the box's words, the [attachment] clause, the card's row), channels/discord.py 7 (the [attachment] line's clause on a picture past 2000 px). 27,355.
 
-- `lines = 27355`
+2026-11-09: memory-docs-shape raised it by 325 on the owner's word (redo the whole harness if that is what it takes), the rules written the way the Claude docs say, gated and checked daily; not folded to fit: shape.py 190 (the docs' pinned sentences, the six lesson checks, the store's score and report), doctor.py 37 (the daily lesson run, its need and machine-room line), memory.py 36 (the gate's lesson refusals, retire), room.py 20 (the filing rule at Stop), words.py 19 (each check's name and fix), daemon.py 14 (the filing rule's call, the retire tool), mcp_server.py 9 (remember's retire and its description in the docs' words). 27,680.
+
+2026-11-09: fable-5-2 raised it by 230 on the owner's word (everything in Yerk the way Claude Fable 5.2's docs say, and kept that way), not folded to fit: shape.py 152 (the model mapping, the 5.2 page's pins, its four checks and the style-limit count, the store per page), engine.py 37 (each session's start kept by its id), doctor.py 12 (the rooms' models read, a need per kind), words.py 10 (each new check's name and fix), context.py 6 (news from a kept start), memory.py 6 (the gate's pages), config.py 4, mcp_server.py 2, daemon.py 1. 27,910.
+
+- `lines = 27910`
 
 ## Uncapped
 

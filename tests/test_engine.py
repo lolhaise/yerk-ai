@@ -312,3 +312,56 @@ def test_a_turn_ends_on_silence_never_on_length(make):
         silent = rp.ask("HANG", timeout=1.0)
         assert silent.outcome == "timeout"
         rp.end_now()                       # the fake sleeps 60 s: no 15 s close() grace in teardown
+
+
+def test_a_resumed_session_keeps_the_start_file_it_began_with_and_a_fresh_one_takes_the_current_files(make, tmp_path):
+    """Claude Fable 5.2's page (2026-11-09): "Make these changes in new conversations only." A resumed request sent with another
+    system prompt can fail, so a resumed or copied session is given the text it began with, and a fresh one the current files."""
+    rdir = tmp_path / "rooms" / "r1"
+    rdir.mkdir(parents=True)
+    ctx = rdir / "context.md"
+    (rdir / "rules-seen.json").write_text(json.dumps({"start": {"rules": "- a: one"}}))
+    ctx.write_text("rules: one\n")
+
+    def started(**kw):
+        with make() as rp:
+            rp.spec.context_file = ctx
+            return rp.start(**kw)
+    sid = started()
+    ctx.write_text("rules: two\n")                       # the next process start's spec, built from changed files
+    assert started() == sid and ctx.read_text() == "rules: one\n"
+    argv = records(tmp_path)[1]["argv"]
+    assert argv[argv.index("--resume") + 1] == sid and argv[argv.index("--append-system-prompt-file") + 1] == str(ctx)
+    assert json.loads((rdir / "starts" / f"{sid}.json").read_text()) == {"rules": "- a: one"}
+    ctx.write_text("rules: three\n")
+    new = started(fresh=True)
+    assert new != sid and ctx.read_text() == "rules: three\n" and (rdir / "starts" / f"{new}.md").read_text() == "rules: three\n"
+    ctx.write_text("rules: four\n")
+    fork = started(fork=True)                            # a compaction's copy of the bound session: its start, under its own id
+    assert fork != new and (rdir / "starts" / f"{fork}.md").read_text() == "rules: three\n" == ctx.read_text()
+
+
+def test_a_kept_start_folder_holds_the_newest_starts_and_a_session_begun_before_it_keeps_the_current_files(tmp_path):
+    from yerk_ai import engine
+    (rdir := tmp_path / "r").mkdir()
+    (ctx := rdir / "context.md").write_text("now\n")
+    engine.kept_start(rdir, ctx, "old", began="old")    # resumed, nothing kept for it yet: the current files, kept from here
+    assert (rdir / "starts" / "old.md").read_text() == "now\n" and ctx.read_text() == "now\n"
+    os.utime(rdir / "starts" / "old.md", (1000, 1000))
+    for i in range(engine.KEEP_STARTS):
+        engine.kept_start(rdir, ctx, f"s{i}")
+    assert len(list((rdir / "starts").glob("*.md"))) == engine.KEEP_STARTS     # pruned at each start, the newest kept
+    assert not (rdir / "starts" / "old.md").exists() and (rdir / "starts" / f"s{engine.KEEP_STARTS - 1}.md").is_file()
+
+
+def test_a_compactions_adopted_copy_hears_every_rule_change_since_the_start_it_kept(tmp_path):
+    from yerk_ai import context
+    rules, rdir = tmp_path / "rules.md", tmp_path / "rooms" / "r1"
+    (rdir / "starts").mkdir(parents=True)
+    rules.write_text("- a: one\n- b: two\n")
+    path = rdir / "rules-seen.json"
+    path.write_text(json.dumps({"session": "parent", "seen": {"mechanics": context.mechanics(), "rules": "- a: one\n- b: two"},
+                                "start": {"mechanics": context.mechanics(), "rules": "- a: one\n- b: two"}}))
+    (rdir / "starts" / "copy.json").write_text(json.dumps({"mechanics": context.mechanics(), "rules": "- a: one"}))
+    said = context.news(path, "copy", tmp_path, {}, rules, 10_000, rdir / "work" / "changed.md")
+    assert said == f"{context.NEWS}\nnew in rules.md: b: two"         # since the start it kept, though the parent had heard it
