@@ -29,6 +29,10 @@ version changes.
   low` that answers NO_REPLY asks no turn and runs at its level, live and at a re-attach, while one with something to say
   and one that dies after NO_REPLY are each told, in order) and tests/test_abilities.py (the workers entry answers the
   ask whole under the recall cap), and the tool's words checked in tests/test_hooks_mcp.py.
+- Tests only: that check of the `worker` tool's words now reads them with their lines joined, as the attachments,
+  seen and watch tests read theirs (box-ci red on py3.12 at this branch's head 385d9e1). Python 3.12 keeps a
+  docstring's indent where 3.13 and 3.14 strip it, so on 3.12 the line break before NO_REPLY came with eight spaces
+  and the test, which matched the bare line break, failed there alone. The tool's words are unchanged.
 
 **Upgrading:** budgets.toml raises `yerk_tools` to 25,600, the session start's `total` to 127,548 and `[code] lines` to
 27,915, each with its dated note. Of the 800 on `yerk_tools`, 100 is the `worker` tool's clause and 700 is `remember` as
