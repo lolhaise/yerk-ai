@@ -176,6 +176,7 @@ RULE_FIX = {"no why": "say what to do instead, or give it its reason with becaus
             "untagged": "put the exchange inside <example> tags, marked landed or bounced, so a model tells it from the instruction",
             "alarm": "say in words why it matters, since an alarm mark reads as urgency with no reason"}
 RULE_OFFENCE = "{name}: {said}; {fix}"
+LESSONS_LINE = "{first} ({n} finding{s}); need {need} builds the fix, `yerk curate --rules` proposes it"   # the doctor's daily lesson run
 RULE_SAME = ("not filed yet: each line in `older` is live and speaks about the same thing, and one left saying the old way keeps "
              "it alive in every room that loads it; call again with `older` settling each, `cite | superseded: why` or "
              "`cite | kept: why`, one clause")

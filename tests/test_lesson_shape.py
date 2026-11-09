@@ -123,3 +123,28 @@ def test_the_index_limits_are_read_off_the_code_memory_page_and_the_store_is_sco
                      f"{shape.sentence('reason', docs)}"]
     (m.root / memory.RULES).write_text("".join(f"- job {i}: Do it, since it helps. (r, 2026-01-02 09:00:00+00:00) [m:{i}]\n" for i in range(201)))
     assert shape.store(m, LIMITS, docs)["index"] == ["201 lines, past 200"]
+
+
+def test_the_doctors_daily_run_files_a_need_and_says_one_line_on_a_finding_and_is_silent_on_a_green_day(tmp_path, monkeypatch):
+    from yerk_ai import doctor, needs
+    monkeypatch.setattr(doctor, "rooms", lambda private: {"example-room": {}, "example-machine": {"role": "machine"}})
+    private, state = tmp_path / "private", tmp_path / "state"
+    __import__("shutil").copytree(EXAMPLE_PRIVATE, private)
+    m = memory.settings(private, state)
+    docs_with(state, **every_pin())
+    m.root.mkdir(parents=True, exist_ok=True)
+    rules = m.root / memory.RULES
+    rules.write_text(f"- open web pages: {GOOD} (example-room, 2026-01-02 09:00:00+00:00) [m:1]\n")
+    posts: list[dict] = []
+    assert doctor.lessons(private, state, m, 1000.0, post=posts.append) == [] and posts == [] and needs.load(state) == []
+    assert "in the shape: every pinned sentence" in (state / "docs" / "shape" / "lessons.md").read_text()
+    rules.write_text(rules.read_text() + "- dates: Never guess a date. (example-room, 2026-01-02 09:00:00+00:00) [m:2]\n")
+    out = doctor.lessons(private, state, m, 1000.0, post=posts.append)
+    assert len(out) == 1 and out[0].startswith("rule shape: 1 lesson out of the docs' shape, first ") and "no reason" in out[0]
+    [need] = needs.load(state)
+    assert need["ability"] == doctor.LESSON_NEED and need["asks"][0]["tried"] == out[0]
+    assert [p["machine"]["room"] for p in posts] == ["example-machine"] and posts[0]["machine"]["text"].startswith(out[0])
+    assert need["asks"][0]["room"] == "example-machine"
+    doctor.lessons(private, state, m, 1000.0 + 86400, post=posts.append)            # the next day: the same need, its count up
+    assert len(needs.load(state)) == 1 and len(needs.load(state)[0]["asks"]) == 2
+    assert doctor.lessons(private, state, m, 1000.0, dry=True) == out and len(needs.load(state)[0]["asks"]) == 2

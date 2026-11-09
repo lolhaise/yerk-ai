@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from yerk_ai import config, context, doctor, files, hooks, memindex, memory, morning, pictures, status, words
+from yerk_ai import config, context, doctor, files, hooks, memindex, memory, morning, pictures, shape, status, words
 from yerk_ai.accounts import Cooldowns, load_accounts
 from yerk_ai.config import EXAMPLE_PRIVATE, ROOM_KEYS, budgets
 from yerk_ai.daemon import Yerkd
@@ -310,20 +310,27 @@ def test_the_folder_check_and_the_rule_check_name_themselves_apart_when_neither_
     assert said == ["layout: not checked", "rule shape: not checked", "fit: not checked", "moved in: not checked"], said
 
 
+def lesson_lines(priv, state) -> list[str]:
+    """The doctor's lesson-shape lines for the store as it is (shape.store_findings), each orange, in the order printed."""
+    m, limits = memory.settings(priv, state), budgets()["shape"]
+    return [f"{words.WORKING} {x}" for x in shape.store_findings(shape.store(m, limits, state / "docs"), limits, state / "docs")]
+
+
 def test_a_part_past_its_line_reads_red_with_the_overflow_and_one_that_fits_reads_green(tree, capsys):
     """2026-10-22: the shared rules file sat over its line for a day and every session start cut rules from its middle,
     said to no one. Every room's parts are measured as session start builds them; a part past its line is one finding per
     file, with the overflow in characters and the rooms it is cut in."""
     priv, state, *_ = tree
     rules, cap = priv / "memory" / memory.RULES, budgets()["session_start"]["appended"]["rules"]
-    rules.write_text("".join(f"- example job {i}: done the example way, step by step.\n" for i in range(300)))
+    rules.write_text("".join(f"- example job {i}: done the example way, step by step, since it works.\n" for i in range(300)))
     raw = context.chars(context.rules_text({}, rules)[0])
     assert doctor.main(priv, state) == 1
-    assert capsys.readouterr().out.splitlines() == [f"{words.NOT_DONE} rules.md: rules over its line by {raw - cap:,} characters ({raw:,} of {cap:,}), "
+    assert capsys.readouterr().out.splitlines() == [*lesson_lines(priv, state),          # 300 lines: past the index's 200 too
+                                                    f"{words.NOT_DONE} rules.md: rules over its line by {raw - cap:,} characters ({raw:,} of {cap:,}), "
                                                     "cut at every session start in example-room, example-quiet; raise its line in "
                                                     "budgets.toml or trim the file"]
     assert doctor.line(state, time.time())[1].startswith(f"{words.NOT_DONE} ")
-    rules.write_text("- example job: done the example way.\n")
+    rules.write_text("- example job: done the example way, since it works.\n")
     assert doctor.main(priv, state) == 0 and capsys.readouterr().out == CLEAN
 
 
@@ -333,11 +340,12 @@ def test_the_fit_check_reads_the_topic_rules_and_an_overflow_not_moved_yet(tree,
     yet: orange, until its next start moves it."""
     priv, state, *_ = tree
     tier, most = priv / "memory" / memory.TOPIC_RULES, budgets()["per_message"]["on_hit"]["rules"]
-    fine, at = "- example job 1: done the example way. (example-room, 2026-10-22 16:54:00-04:00) [m:m-1]", "(example-room, 2026-10-22 16:54:00-04:00)"
-    tier.write_text("\n".join([*memory.TOPIC_HEAD, fine, f"- example job 2: done the example way. [rooms: example-gone] {at} [m:m-2]",
-                               f"- example job 3: done the {'example ' * (most // 8)}way. {at} [m:m-3]"]) + "\n")
+    fine, at = "- example job 1: done the example way, since it works. (example-room, 2026-10-22 16:54:00-04:00) [m:m-1]", "(example-room, 2026-10-22 16:54:00-04:00)"
+    tier.write_text("\n".join([*memory.TOPIC_HEAD, fine, f"- example job 2: done the example way, since it works. [rooms: example-gone] {at} [m:m-2]",
+                               f"- example job 3: done the {'example ' * (most // 8)}way, since it works. {at} [m:m-3]"]) + "\n")
     assert doctor.main(priv, state) == 1
-    assert capsys.readouterr().out.splitlines() == [f"{words.WORKING} rules-topics.md: 2 topic rules never load, first \"example job 2\": "
+    assert capsys.readouterr().out.splitlines() == [*lesson_lines(priv, state),          # job 3: one sentence past the lesson shape
+                                                    f"{words.WORKING} rules-topics.md: 2 topic rules never load, first \"example job 2\": "
                                                     f"longer than the per-message rules part's {most:,} or kept to no room in rooms.toml; "
                                                     "shorten it or fix its [rooms: ...]"]
     tier.write_text("\n".join([*memory.TOPIC_HEAD, fine]) + "\n")

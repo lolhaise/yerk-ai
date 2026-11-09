@@ -412,9 +412,13 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
         elif b is not None and now - b["at"] > backup.STALE:
             found.append(f"backup: the newest, {b['name']}, is {(now - b['at']) / 3600:.0f} h old, past 36 h; is yerk-backup.timer on?")
 
+    def lesson_shape() -> None:     # the whole store against the Claude docs' lesson shape and its pinned sentences, daily
+        found.extend(f"{ORANGE} {x}" for x in lessons(private, state, m, now, dry))
+
     for what, check in (("layout", layout), ("classes", classes), ("tokens", tokens), ("index", index), ("hooks", hooked),
                         ("modes", modes), ("secrets", leaks), ("disk", growth), ("memory cap", high), ("backfill", backfill),
-                        ("cites", cites), ("code", code), ("rule shape", ruleshape), ("fit", fits), ("moved in", moved), ("backup", backed),
+                        ("cites", cites), ("code", code), ("rule shape", ruleshape), ("lesson shape", lesson_shape), ("fit", fits),
+                        ("moved in", moved), ("backup", backed),
                         ("timers", timers)):
         try:
             check()
@@ -423,6 +427,39 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
     old = (now - float(last.get("sized", 0))) / DAY < 0.75     # tomorrow compares against the run a day before it
     return {"sizes": last.get("sizes", {}) if old else now_sizes, "sized": last.get("sized", 0) if old else now, "shape": shaped,
             "weekly": weekly, "scope": said["scope"]}
+
+
+LESSON_NEED = "the rule store kept in the Claude docs' lesson shape"            # the need the daily run files and folds into
+PIN_NEED = "the lesson checks re-pinned to the Claude docs' sentences that moved"
+
+
+def lessons(private: Path, state: Path, m: memory.Settings, now: float, dry: bool = False,
+            post: Callable[[dict[str, Any]], dict[str, Any]] | None = None) -> list[str]:
+    """The daily run of the Claude docs' lesson shape (2026-11-09: it should never regress or go out of date):
+    every pinned sentence against its fetched page, the whole rule store against shape.LESSON, the index against code-memory's
+    limits. Its lines are the doctor's, kept in docs/shape/lessons.md; a finding files a need through needs.file (one open need of
+    that ability, its count rising each day it stays) so the pipeline builds the fix, and says one line in the machine room once
+    and the. Test reads it back as plain text with one."""
+    from . import needs
+    limits, root = dict(budgets().get("shape") or {}), docs.root(state)
+    r = rule_shape.store(m, limits, root)
+    out = rule_shape.store_findings(r, limits, root)
+    if dry:
+        return out
+    day = time.strftime("%Y-%m-%d", time.localtime(now))
+    (folder := root / "shape").mkdir(mode=0o700, parents=True, exist_ok=True)
+    write_private(folder / "lessons.md", "---\nclass: private\n---\n" + rule_shape.store_report(r, out, day))
+    if not out:
+        return out
+    machine = next((n for n, c in rooms(private).items() if c.get("role") == "machine"), "")
+    filed = needs.file(m, state, machine or "doctor", f"doctor-lessons-{day}", now=now, tried=out[0],
+                       asked="in the queue for 0000-00-00: its turn and the last part Closes the case, before the next run",
+                       needed=PIN_NEED if r["moved"] else LESSON_NEED)
+    if machine:
+        line = words.LESSONS_LINE.format(first=out[0], n=len(out), s="s" * (len(out) != 1), need=f"{filed.get('day', day)} {filed.get('n', '')}".strip())
+        with suppress(OSError, ValueError):
+            (post or (lambda p: jobs.post_control(state, p, 60)))({"machine": {"room": machine, "text": line, "key": f"doctor-lessons-{day}"}})
+    return out
 
 
 def load(state: Path) -> dict[str, Any]:
@@ -452,7 +489,7 @@ def run(private: Path, state: Path, dry: bool = False, now: float | None = None,
     finally:
         ledger.close()              # before the checks: its -wal and -shm files go with it, never counted as the install's
     fixed = repair(private, state, m, busy, dry, now, proc)
-    if refresh and not dry and docs.due(state, dict(conf.get("docs") or {}), now):     # weekly; a failure tries again tomorrow
+    if refresh and not dry and docs.due(state, dict(conf.get("docs") or {}), now):     # daily; a failure tries again next run
         try:
             found.extend(f"{ORANGE} {x}; `yerk docs refresh` tries again" for x in docs.failed(docs.refresh(state, dict(conf.get("docs") or {}), now=now)))
         except Exception as e:                                  # a refresh that cannot run is a line; the checks still run

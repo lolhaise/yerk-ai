@@ -382,8 +382,8 @@ def store(m: Settings, limits: dict[str, Any], docs: Path | None = None) -> dict
             if bad := lesson(job, text, m.daily, limits):
                 found.append((f"{cite(m, p)}:{n}", list(bad)))
     p, (most, size) = m.root / RULES, index_limits(docs)
-    rows = p.read_text(encoding="utf-8", errors="replace").splitlines() if p.is_file() else []
-    over = [f"{len(rows)} lines, past {most}"] * (len(rows) > most) + [f"{p.stat().st_size:,} bytes, past {size:,}"] * (p.is_file() and p.stat().st_size > size)
+    rows, have = (p.read_text(encoding="utf-8", errors="replace").splitlines(), p.stat().st_size) if p.is_file() else ([], 0)
+    over = [f"{len(rows)} lines, past {most}"] * (len(rows) > most) + [f"{have:,} bytes, past {size:,}"] * (have > size)
     return {"lessons": found, "index": over, "moved": pinned(docs)}
 
 
@@ -398,3 +398,14 @@ def store_findings(r: dict[str, Any], limits: dict[str, Any], docs: Path | None 
         out.append(f"rule shape: {len(r['lessons'])} lesson{'s' * (len(r['lessons']) != 1)} out of the docs' shape, first {at}: "
                    f"{', '.join(bad)}; {sentence(LESSON[bad[0]][0], docs)}")
     return out
+
+
+def store_report(r: dict[str, Any], found: list[str], at: str) -> str:
+    """The store's lesson report, Markdown, docs/shape/lessons.md: the doctor's lines, then every lesson out of the shape by cite."""
+    out = [f"# Lesson shape: the rule store, {at}", "",
+           "The doctor's daily check of every live rule against the Claude docs' lesson shape (shape.LESSON), each check's "
+           "sentence pinned to its fetched page (shape.PINS). `yerk curate --rules` proposes the fixes.", ""]
+    out += [f"- {x}" for x in found] or ["- in the shape: every pinned sentence on its page, every lesson in the shape, the index under its limits"]
+    if r["lessons"]:
+        out += ["", f"## Lessons out of the shape: {len(r['lessons'])}", "", *[f"- {c}: {', '.join(k)}" for c, k in r["lessons"]]]
+    return "\n".join(out) + "\n"
