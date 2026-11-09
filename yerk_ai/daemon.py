@@ -1016,6 +1016,15 @@ class Yerkd:
             return {"ok": False, "line": words.WORKER_OWN_ROOM.format(room=named)}
         return None
 
+    async def tool_retire(self, room: str, at: str, why: str) -> dict[str, Any]:
+        """`remember` with `retire`: an owner's room deletes a rule that turned out wrong (memory.retire), its words to the day log."""
+        if room not in self.rooms or not self.owner(room) or self.reader(room).sealed:
+            return {"ok": False, "line": words.RULES_OWNER_ONLY}
+        with self.rooms[room].lock:
+            mid = ",".join(m.id for m in self.rooms[room].inflight) or f"x{self.rooms[room].turn_key}"
+        r = await asyncio.to_thread(memory.retire, self.memory, self.daily, room, mid, at, why)
+        return {**r, "next": words.FILED_NEXT.format(clause=words.FILED_AT_MOST)} if r["ok"] else r
+
     async def tool_rule(self, room: str, text: str, job: str, triggers: list[str] | None = None, older: list[str] | None = None) -> dict[str, Any]:
         """`remember` with a `job`: an owner's room files how it is done from now on (memory.rule) for every room, fitted under
         the rules part's budget; one with no room even with no examples is filed as a topic rule in rules-topics.md and said

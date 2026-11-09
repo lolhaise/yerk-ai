@@ -25,6 +25,7 @@ header, passed with --strict-mcp-config. The same HTTP app answers the hooks.
 from __future__ import annotations
 
 import hmac
+import inspect
 import json
 import logging
 from pathlib import Path
@@ -35,6 +36,7 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 
 from .memory import READ_LINES
+from .shape import PINS
 
 log = logging.getLogger("yerk.http")
 HEADER = "x-yerk-secret"
@@ -44,6 +46,10 @@ RECALL = ("Search the owner's memory (daily logs, fact files, the curated file, 
           "and, where the install has a provider key, by meaning too, so a paraphrase finds the line.\n"
           "Each hit is the lines that carry the match and a `cite` (file:line). Cite every fact you use\n"
           "by its `cite`; read_memory(cite) reads on from it. A \"timeout\" status means busy, not down.")
+# the rule shape `remember` says, in the Claude docs' own words: the pinned sentences, checked daily against the fetched page
+LESSON_SHAPE = (" ".join(PINS[k][1] for k in ("lesson", "why", "on record")) + " So a rule opens with a one-line summary, "
+                "gives its reason, keeps its body brief and cites an example by its day-log line "
+                "(<example>Landed, daily/YYYY-MM-DD.md:N</example>) in place of pasting it")
 READ_MEMORY = (f"Exact lines of a memory file, `lines` of them (default {READ_LINES}; ask more, up to 400, or a later\n"
                "`from_line` to read on). `path`: a recall `cite` (its line is the start) or a memory path.")
 
@@ -56,6 +62,7 @@ class Daemon(Protocol):
     async def tool_remember(self, room: str, text: str, about: str, replaces: list[str], said: str = "", source: str = "") -> dict[str, Any]: ...
     async def tool_rule(self, room: str, text: str, job: str, triggers: list[str] | None = None,
                         older: list[str] | None = None) -> dict[str, Any]: ...
+    async def tool_retire(self, room: str, at: str, why: str) -> dict[str, Any]: ...
     async def tool_worker(self, room: str, req: dict[str, Any]) -> dict[str, Any]: ...
     async def tool_schedule(self, room: str, req: dict[str, Any]) -> dict[str, Any]: ...
     async def tool_settings(self, room: str, model: str, effort: str, account: str = "") -> dict[str, Any]: ...
@@ -169,9 +176,8 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
     async def read_memory(path: str, from_line: int = 1, lines: int = READ_LINES, *, ctx: Context) -> str:
         return json.dumps(await daemon.tool_read_memory(caller_room(ctx), path, from_line, lines))
 
-    @mcp.tool()
     async def remember(text: str, about: str = "", replaces: list[str] | None = None, job: str = "", triggers: list[str] | None = None,
-                       said: str = "", source: str = "", older: list[str] | None = None, *, ctx: Context) -> str:
+                       said: str = "", source: str = "", older: list[str] | None = None, retire: str = "", *, ctx: Context) -> str:
         """File in memory now, before you write the answer, what you were just told: a new fact, a decision or a
         correction, one line in plain words. `about`: for a fact, the person, place or thing it is about,
         by the name the owner uses (it names the fact file). `replaces`: for a correction, each old line as
@@ -179,16 +185,19 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         next 12 holding those words is marked superseded. Returns the new line's cite. `job`: when the owner
         says how a job is done from now on, or corrects how it was done, the job's short name ("open web pages",
         the rules' own name if it has one): `text` becomes its one rule in every room, the older one marked
-        replaced. A rule holds its reasons in calm words, examples in <example> tags, since every room follows it as
-        written; one that does not comes back with each fix, and so do live lines of other jobs on the same thing,
-        settled in `older`: `cite | superseded: why` or `cite | kept: why`.
+        replaced. A rule is one lesson in the Claude docs' shape, LESSON_SHAPE; one that is not comes back with each
+        fix and the docs sentence it misses, and so do live lines of other jobs on the same thing, settled in `older`:
+        `cite | superseded: why` or `cite | kept: why`. `retire`: a rule's cite that turned out wrong, `text` why;
+        its line is deleted and its words kept in the day log.
         `triggers`, with `job`: words or short phrases a message on the job holds (the owner's, when
         named); a topic rule loads on them and its job's words. `said`: when `text` is what a person said or
         wrote, word for word, their name, with `source` (the message id, file path or transcript line holding
         those words): it is filed as their words. Anything else about a person (what they decided or want, in
         your words) is your note, and is shown as your note, never as their words."""
-        return json.dumps(await (daemon.tool_rule(caller_room(ctx), text, job, triggers, older) if job else
+        return json.dumps(await (daemon.tool_retire(caller_room(ctx), retire, text) if retire else
+                                 daemon.tool_rule(caller_room(ctx), text, job, triggers, older) if job else
                                  daemon.tool_remember(caller_room(ctx), text, about, replaces or [], said, source)))
+    mcp.tool(description=inspect.cleandoc(remember.__doc__ or "").replace("LESSON_SHAPE", LESSON_SHAPE))(remember)
 
     @mcp.tool()
     async def worker(action: str, brief: str = "", id: str = "", room: str = "", tasks: list[str] | None = None,

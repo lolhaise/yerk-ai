@@ -650,6 +650,33 @@ def remember(s: Settings, log: DailyLog, room: str, mid: str, text: str, about: 
             [*taken.values(), *(f"{c}: a read-only root or not this room's own line; the new line names it" for c in named)]}
 
 
+def retire(s: Settings, log: DailyLog, room: str, mid: str, at: str, why: str) -> dict[str, Any]:
+    """A rule that turned out wrong, deleted, as the Claude docs say ("delete notes that turn out to be wrong", shape.PINS): its
+    live line in RULES or TOPIC_RULES (`at`, its cite) is emptied, so no other line's cite moves, after its words and `why` go
+    to the room's day log as a note, where its history stays by cite. A rule with a replacement is filed with `job` instead,
+    which marks the old line superseded."""
+    why, files = one_line(why), {cite(s, s.root / f): s.root / f for f in (RULES, TOPIC_RULES)}
+    name, _, n = at.strip().rpartition(":")
+    path, k = files.get(name), int(n) if n.isdigit() else 0
+    if not why:
+        return {"ok": False, "error": "retire needs `text`: why the rule turned out wrong, one clause"}
+    rows = path.read_text().splitlines() if path is not None and path.is_file() else []
+    line = rows[k - 1] if 0 < k <= len(rows) else ""
+    if not line.startswith("- ") or mentions.OLD in line:
+        return {"ok": False, "error": f"nothing retired: {at.strip()} is no live rule line of {' or '.join(files)}"}
+    when = datetime.now(timezone.utc).astimezone(s.tz)
+    key = f"{mid}.r{hashlib.sha1(line.encode()).hexdigest()[:8]}"
+    log.capture(room, key, NOTE, f"rule \"{topic(line)}\" retired from {at.strip()}, since {why}: {line[2:]}", when=when)
+    day = s.daily / f"{when:%Y-%m-%d}.md"
+    logged = next((i + 1 for i, x in enumerate(day.read_text().splitlines()) if x.endswith(f"[m:{key}]")), 0)
+    with daily_lock(s.daily):                  # the one writers' lock; the line read again, a retried call finds it gone
+        rows = path.read_text().splitlines()
+        if 0 < k <= len(rows) and rows[k - 1] == line:
+            rows[k - 1] = ""
+            write_private(path, "\n".join(rows) + "\n")
+    return {"ok": True, "retired": at.strip(), "cite": f"{cite(s, day)}:{logged}"}
+
+
 def mark(line: str, by: str = "") -> str:
     """`line` marked superseded, by `by` (its replacement's cite) when given; the mark goes before a line's class and id."""
     return re.sub(r"^(.*?)((?: \[c:\w+\])?(?: \[m:[^\]\s]+\])?)$", lambda m: f"{m[1]} {mentions.OLD}{' by ' + by if by else ''}]{m[2]}",

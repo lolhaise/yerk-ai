@@ -148,3 +148,21 @@ def test_the_doctors_daily_run_files_a_need_and_says_one_line_on_a_finding_and_i
     doctor.lessons(private, state, m, 1000.0 + 86400, post=posts.append)            # the next day: the same need, its count up
     assert len(needs.load(state)) == 1 and len(needs.load(state)[0]["asks"]) == 2
     assert doctor.lessons(private, state, m, 1000.0, dry=True) == out and len(needs.load(state)[0]["asks"]) == 2
+
+
+def test_a_rule_that_turned_out_wrong_is_retired_its_line_emptied_and_its_words_kept_in_the_day_log(tmp_path):
+    m = memory.settings(EXAMPLE_PRIVATE, tmp_path / "state")
+    log = memory.DailyLog(m.daily, m.tz)
+    assert memory.rule(m, "example-room", "m1", "open web pages", GOOD)["ok"]
+    assert memory.rule(m, "example-room", "m2", "dates", "Take a date from a file, since a guessed one reads as fact.")["ok"]
+    rules = m.root / memory.RULES
+    at, later = f"{memory.cite(m, rules)}:6", rules.read_text().splitlines()[6]
+    assert memory.retire(m, log, "example-room", "m3", at, "")["ok"] is False                     # no why: nothing retired
+    r = memory.retire(m, log, "example-room", "m3", at, "the example browser was the wrong tool for it")
+    assert r["ok"] and r["retired"] == at and r["cite"] == f"{memory.cite(m, m.daily)}/{r['cite'].rsplit('/', 1)[1]}"
+    rows = rules.read_text().splitlines()
+    assert rows[5] == "" and rows[6] == later                         # emptied, so the next rule's cite stays the same
+    day = (m.daily / r["cite"].rsplit("/", 1)[1].rsplit(":", 1)[0]).read_text()
+    assert f'rule "open web pages" retired from {at}, since the example browser was the wrong tool for it: open web pages: {GOOD}' in day
+    assert memory.retire(m, log, "example-room", "m4", at, "again")["error"].startswith(f"nothing retired: {at} is no live rule line")
+    assert memory.retire(m, log, "example-room", "m4", "facts/x.md:1", "not a rule")["ok"] is False
