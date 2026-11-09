@@ -104,3 +104,57 @@ def test_runs_reads_a_command_as_the_delete_rules_do():
     assert gates.runs("echo x | xargs -n1 git push origin") == ["echo x", "git push origin"]      # behind xargs: its fixed words too
     assert gates.runs('bash -c "a; b c"') == ["a", "b c"]
     assert gates.runs("echo 'unclosed") == []                      # unreadable: the delete gate has refused it already
+
+
+# G2: a worker's gate reads its settings from the worker's own folder (worker.json: the external rules, the private folder,
+# the trash command; settings.json: the hook itself; mcp.json: its tools), which the worker may write. The unit now binds
+# the three read-only, and the gate refuses a write to them in plain words.
+def _worker(tmp_path: Path) -> tuple[Path, dict]:
+    folder = tmp_path / "state" / "workers" / "w1"
+    folder.mkdir(parents=True)
+    spec = {"room": "r", "gate": {"trash": ["trash"], "private": str(tmp_path / "private")}}
+    for name in gates.GATE_FILES:
+        (folder / name).write_text("{}")
+    return folder, spec
+
+
+def _denied(folder: Path, spec: dict, tool: str, ti: dict, cwd: Path | None = None) -> bool:
+    out = gates.worker_check({"tool_name": tool, "tool_input": ti, "cwd": str(cwd or folder)}, folder, spec)
+    return out.get("hookSpecificOutput", {}).get("permissionDecision") == "deny"
+
+
+@pytest.mark.parametrize("name", ["worker.json", "settings.json", "mcp.json"])
+def test_a_worker_may_not_write_its_own_gate_files(tmp_path, name):
+    folder, spec = _worker(tmp_path)
+    (tmp_path / "elsewhere").mkdir()
+    for tool, ti in (("Write", {"file_path": str(folder / name), "content": "{}"}),
+                     ("Edit", {"file_path": str(folder / name), "old_string": "a", "new_string": "b"}),
+                     ("Write", {"file_path": name, "content": "{}"}),                  # relative: its cwd is the folder
+                     ("Bash", {"command": f"echo '{{}}' > {name}"}),
+                     ("Bash", {"command": f"cp /dev/null {folder / name}"}),
+                     ("Bash", {"command": f"sed -i 's/a/b/' ./{name}"}),
+                     ("Bash", {"command": f"bash -c 'cat other.json > {name}'"}),
+                     ("Bash", {"command": f"python3 -c \"open('{name}', 'w').write('{{}}')\""})):
+        assert _denied(folder, spec, tool, ti), (tool, ti)
+    assert _denied(folder, spec, "Bash", {"command": f"cd {folder} && echo x > {name}"}, cwd=tmp_path / "elsewhere")
+
+
+def test_a_worker_still_reads_its_gate_files_and_writes_its_own_work(tmp_path):
+    folder, spec = _worker(tmp_path)
+    for tool, ti in (("Read", {"file_path": str(folder / "worker.json")}), ("Bash", {"command": "cat worker.json"}),
+                     ("Bash", {"command": "jq .room worker.json > room.txt"}), ("Bash", {"command": "sed -n 1,5p settings.json"}),
+                     ("Bash", {"command": "grep -c hooks settings.json; ls -la"}), ("Write", {"file_path": "notes.md", "content": "x"}),
+                     ("Write", {"file_path": str(folder / "wt" / "worker.json"), "content": "{}"}),     # a file of its work, same name
+                     ("Bash", {"command": "cat > REPORT.md <<'EOF'\nworker.json holds the spec\nEOF"}),
+                     ("Bash", {"command": "echo done > TASKS.md"})):
+        assert not _denied(folder, spec, tool, ti), (tool, ti)
+
+
+def test_the_units_sandbox_binds_the_gate_files_read_only(tmp_path):
+    from yerk_ai import workers
+    folder, _ = _worker(tmp_path)
+    (folder / "mcp.json").unlink()                     # a worker with no Yerk tools has none: a missing path is not named
+    props = workers.Systemd(tmp_path / "state", ()).sandbox(folder, {"CLAUDE_CONFIG_DIR": str(tmp_path / "acct")})[1::2]
+    assert f"ReadWritePaths={folder}" in props
+    assert f"ReadOnlyPaths={folder / 'worker.json'}" in props and f"ReadOnlyPaths={folder / 'settings.json'}" in props
+    assert not [p for p in props if "mcp.json" in p]

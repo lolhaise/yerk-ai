@@ -64,6 +64,7 @@ from .accounts import Account, Cooldowns, account_env, pick
 from .card import ROWS_SHOWN, short
 from .config import EFFORTS, PACKAGE, room_settings, uncapped
 from .engine import claude_bin
+from .gates import GATE_FILES
 from .ledger import Ledger
 from .room import Inbound
 
@@ -160,6 +161,7 @@ class Systemd:
     def sandbox(self, folder: Path, env: dict[str, str]) -> list[str]:
         """The state folder read-only; the worker's own folder writable, and its account's config
         folder when that lives under the state folder (Claude Code writes its transcript there); the
+        worker's own gate files (gates.GATE_FILES) read-only inside it; the
         install's secret, the private layer's secrets/ (every provider key and account token but the
         worker's own token, bound back read-only for its first step) and every room's folder (its
         token, settings and override) not there at all. The worker secret stays readable: a worker's
@@ -170,6 +172,9 @@ class Systemd:
         config = Path(env.get("CLAUDE_CONFIG_DIR") or folder)
         rw = [folder, *([config] if config != folder and config.is_relative_to(self.state) else [])]
         props = ["PrivateUsers=yes", f"ReadOnlyPaths={self.state}", *(f"ReadWritePaths={p}" for p in rw)]
+        # its own gate (the spec the hook reads on every call, the hook, its tools) stays as the daemon wrote it: each file
+        # read-only inside the writable folder, so no tool, shell shape or program of the worker's rewrites, moves or removes it
+        props += [f"ReadOnlyPaths={folder / n}" for n in GATE_FILES if (folder / n).is_file()]
         rooms, token = self.state / "rooms", env.get("YERK_TOKEN_FILE", "")
         for p in self.hidden:
             if p != rooms and token and Path(token).is_relative_to(p):

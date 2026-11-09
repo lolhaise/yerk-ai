@@ -47,6 +47,9 @@ RESTART_VERBS = frozenset({"restart", "stop", "kill", "try-restart", "reload-or-
                            "force-reload"})     # systemctl's words that end or replace a unit's process
 WRITE_OPS = re.compile(r">>?|\btee\b|\bsed\s+(?:-[^\s]*\s+)*-i|\bcp\b|\bmv\b|\btruncate\b|\bdd\b|\bperl\s+-[^\s]*i")
 WRITE_TOOLS = ("Write", "Edit", "MultiEdit", "NotebookEdit")
+GATE_FILES = ("worker.json", "settings.json", "mcp.json")       # a worker's own gate, in its folder (workers.py): its spec, hook and tools
+READERS = frozenset({"cat", "head", "tail", "less", "more", "grep", "egrep", "fgrep", "rg", "wc", "jq", "ls", "stat", "file", "diff",
+                     "cmp", "md5sum", "sha1sum", "sha256sum", "sed"})     # programs that only read the file they name (sed without -i)
 EXTERNAL: dict[str, dict[str, str]] = {
     "send-elsewhere": {"tool": r"^mcp__yerk__send$", "room": "other", "what": "a send to another room"},
     "public-post": {"tool": r"^Bash$", "what": "a public post",
@@ -254,6 +257,30 @@ def restart_hit(tool: str, ti: dict[str, Any], private: Path) -> str | None:
     return None
 
 
+def own_gate_hit(tool: str, ti: dict[str, Any], folder: Path, cwd: str) -> str | None:
+    """Would this call of a worker's write one of its own gate files (GATE_FILES in its folder)? -> the file's name, else
+    None. The worker gate reads worker.json on every call, so a worker that rewrote it would set its own rules. A file tool
+    by its path; a shell command when it names the file anywhere, a nested string too, other than as what a reader reads
+    (`cat worker.json`, `jq . worker.json > copy.json`). The unit binds the same files read-only (workers.Systemd.sandbox):
+    that is the wall, this is its plain line."""
+    mine = {str(p) for f in GATE_FILES for p in (folder / f, (folder / f).resolve())}
+
+    def gate_file(word: str) -> str:
+        p = Path(os.path.expanduser(word))
+        return next((q.name for q in ([p] if p.is_absolute() else [Path(cwd) / p, folder / p])
+                     if str(q) in mine or os.path.normpath(q) in mine or str(q.resolve()) in mine), "")
+    if tool in WRITE_TOOLS:
+        return gate_file(str(ti.get("file_path") or ti.get("notebook_path") or "")) or None
+    if tool != "Bash":
+        return None
+    command = shellguard.strip_heredocs(str(ti.get("command") or ""))
+    named = [n for word in re.findall(r"[^\s'\"<>|;&=()]+", command) if (n := gate_file(word))]
+    read = sum(1 for argv in unwrap.unwrap(command, whole=True) or [] if argv and os.path.basename(argv[0]) in READERS
+               and not (os.path.basename(argv[0]) == "sed" and any(a.startswith(("-i", "--in-place")) for a in argv[1:]))
+               for a in argv[1:] if gate_file(a))
+    return named[0] if len(named) > read else None
+
+
 def room_named(value: str, rooms: dict[str, dict[str, Any]]) -> str | None:
     """The room a send's `room` names, else None: a room's name, or its channel in rooms.toml (`discord:<id>`), whole or
     the id alone (the day log's room id when rooms.toml sets no `id`). The gate's "other" and the send tool both read it."""
@@ -358,13 +385,16 @@ def is_word(prompt: str, sender: str, s: Settings) -> bool:
 def worker_check(payload: dict[str, Any], folder: Path, spec: dict[str, Any]) -> dict[str, Any]:
     """A worker's PreToolUse (workers.py writes the hook): the room's gates on what it would run, with
     deletes held to the worker's own folder. A worker has nobody to say the word, so an external action,
-    a write to Yerk AI's config or a restart of it is refused, never held."""
+    a write to Yerk AI's config or a restart of it is refused, never held; so is a write to its own gate files (own_gate_hit)."""
     g = dict(spec.get("gate") or {})
     s = Settings(trash=tuple(g.get("trash") or find_trash()),
                  external={str(k): dict(v) for k, v in dict(g.get("external") or EXTERNAL).items()})
     tool, ti = str(payload.get("tool_name") or ""), dict(payload.get("tool_input") or {})
     v = None
-    if tool == "Bash":
+    if (name := own_gate_hit(tool, ti, folder, str(payload.get("cwd") or folder))):
+        v = Verdict("worker", "deny", f"Refused: {name} is this worker's own gate file, written by the daemon, and a worker never "
+                                      "changes it. Read it if you need it; write your own files beside it.")
+    if v is None and tool == "Bash":
         v = check_shell(str(ti.get("command") or ""), str(payload.get("cwd") or folder), s, root=str(folder))
         if v and v.new_input is not None:
             v.new_input = {**ti, **v.new_input}
