@@ -198,7 +198,7 @@ def test_a_family_room_with_one_person_reads_its_own_lines_and_shared_files_only
     y.daily.capture("example-room", "o1", "owner", "the owner's private line about the example kettle")
     y.daily.capture(mom, "p1", "person", "the mother's line about the example kettle", who="mom")
     memory.remember(y.memory, y.daily, "example-room", "o2", "The example kettle is teal", "example kettle", (), y.reader("example-room"))
-    memory.rule(y.memory, "example-room", "o3", "tea", "sample item moved to the next")
+    memory.rule(y.memory, "example-room", "o3", "tea", "steep the example tea four minutes, since longer turns it bitter")
     sync(y)
     got = texts(y, mom, "example kettle", 20)
     assert "the mother's line" in got and "owner's private line" not in got and "teal" not in got and "periwinkle" not in got
