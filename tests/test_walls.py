@@ -207,3 +207,20 @@ def test_the_word_never_approves_a_hold_made_after_it_was_written(tmp_path):
     assert led.approve("r", "owner", 1800, before=written)["call"] == "text A"       # the one that was there to read
     assert led.approve("r", "owner", 1800, before=written) is None                    # B waits for a word of its own
     assert led.approve("r", "owner", 1800)["call"] == "text B"                        # a later word, written with B shown
+
+
+# G7: a provider key pasted into a room was filed in the day log as written, then indexed, embedded at the provider and
+# recalled. The imports' scrubber (sources.scrub) never saw a live message, and knew no Groq shape, though Yerk holds a Groq
+# key itself. Live: one Groq-shaped string, 56 characters, memory/daily/2026-07-10.md line 264.
+def test_a_provider_key_in_a_live_message_is_withheld_from_the_day_log(tmp_path):
+    from zoneinfo import ZoneInfo
+    from yerk_ai import memory, sources
+    fakes = {"groq-key": "gsk_" + "Ab3" * 17 + "x", "github-token": "ghp_" + "Zz9" * 12, "anthropic-key": "sk-ant-" + "Qr7" * 10}
+    log = memory.DailyLog(tmp_path / "daily", ZoneInfo("UTC"), {"r": ("r", "private")})
+    for n, (kind, fake) in enumerate(fakes.items()):
+        assert log.capture("r", f"m{n}", "owner", f"use this one {fake} for the transcripts, the door code is 4821")
+    text = "".join(p.read_text() for p in (tmp_path / "daily").glob("*.md"))
+    for kind, fake in fakes.items():
+        assert fake not in text and f"[{kind} withheld]" in text, kind
+    assert text.count("the door code is 4821") == 3            # what the owner files on purpose stays as they said it
+    assert sources.scrub("gsk_" + "Ab3" * 17 + "x") == "[groq-key withheld]"      # an imported text or mail too

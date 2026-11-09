@@ -372,7 +372,8 @@ class DailyLog:
         files = files or []
         at = (when or datetime.now(timezone.utc)).astimezone(self.tz)
         day = at.strftime("%Y-%m-%d")
-        body = one_line(text) or ("(attachment only)" if files else "(no text)")
+        from .sources import keys_out          # late: sources reads the index's grammar, as this module does
+        body = one_line(keys_out(text)) or ("(attachment only)" if files else "(no text)")     # a provider key: its kind, never its value
         key = f"{mid}.e{hashlib.sha1(body.encode()).hexdigest()[:8]}" if edited else mid
         rid, cls = self.rooms.get(room, (room, "private"))
         lines = [format_line(at, room, rid, role, who, f"{'(edited) ' if edited else ''}{body}", cls, key)]
