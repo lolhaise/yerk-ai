@@ -1295,12 +1295,17 @@ free_path = "this is the free path"
 why_not = "After the rooms move."
 asked_as = ["claude code mod", "status line", "slash command"]
 
+# need-2026-11-09-77: a timer script started a worker with `yerk worker start` each time something might need a look, and
+# every run that answered NO_REPLY still asked its room for a relay turn that had to be answered with a posted line, since
+# only a job's hook skipped it. The silent end is built in this entry, which keeps its name, so the "what can you do"
+# census (abilities.abilities) carries no new name past its 2,000 cap.
 [abilities.workers]
 state = "built"
-what = "Heavy work leaves the room: the worker tool and `yerk worker start|list|stop|report` run a headless claude -p with a brief, a staging folder, a TASKS.md and a report, as its own systemd unit that outlives the daemon, with its own card in the room (a row per TASKS.md line, ticked live), the card settled and one short relay turn when it ends; `yerk status` lists the running ones against the ledger."
+what = "Heavy work leaves the room: the worker tool and `yerk worker start|list|stop|report` run a headless claude -p with a brief, a staging folder, a TASKS.md and a report, as its own systemd unit that outlives the daemon, with its own card in the room (a row per TASKS.md line, ticked live), the card settled and one short relay turn when it ends; none when its last message is exactly NO_REPLY, however it was started (the tool, or `yerk worker start` in a timer's script, at any --effort): its card settles quiet and the ledger says why. `yerk status` lists the running ones against the ledger."
 tier = "free"
 needs = "systemd user units (systemd-run --user) and Linux inotify; an account from accounts.toml, the same subscription the rooms run on"
 free_path = "this is the free path"
+asked_as = ["worker from a script", "silent worker", "worker ends silently", "ends silently on no_reply"]
 layer = 5
 
 [abilities.capture]

@@ -93,7 +93,7 @@ workers: start (needs a running yerkd), list, stop, report
 
 - `ACTION`: one of start, list, stop, report
 - `[ID]`: stop, report: the worker's id
-- `--brief BRIEF`: start: the brief file
+- `--brief BRIEF`: start: the brief file; a run whose last message is exactly NO_REPLY settles its card quiet, with no relay
 - `--room ROOM`: start: the room for its card and relay (default: the only room, else required)
 - `--task TASK`: start: a TASKS.md row (repeat for each); repeat for each
 - `--cap CAP`: start: minutes before it is stopped (default [workers], 65)

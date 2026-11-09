@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 125448`
+- `total = 125548`
 
 ## [session_start.claude_code]
 
@@ -94,9 +94,11 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-09, need-2026-11-09-75: the hands plug-in's browser gains `type` (a field's value typed as keys are, the browser's own text input into the focused field, since a room's quote form showed what `set` put in its licence field while its React form never had it and its Next stayed disabled; filed 2026-11-09): its entry grows 145 as the plug-in's branch need-2026-11-09-75 (cc75696) builds it against its main 2e7593a, so 3,622 as sent (31 over, as each of the five goes), all five 8,708; so 8,708, no part could pay, the total rose by the 145 (to 125,448).
 
+2026-11-09, need-2026-11-09-77: the `worker` tool's clause that the room hears nothing when a worker's last message is exactly NO_REPLY (a timer script started each run with `yerk worker start`, and every quiet run still asked its room for a relay turn that had to be answered with a posted line; filed 2026-11-09) takes the tool from 1,398 to 1,450 as this tree builds it, all 23 to 24,126, about 24,839 as sent (713 over the build, as on zoom's tree); so 24,900, no part could pay, the total rose by the 100 (to 125,548).
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
-- `yerk_tools = 24800`
+- `yerk_tools = 24900`
 - `deferred_tool_names = 3429`
 - `mcp__hands__ = 8708`
 - `mcp__web-ladder__web_image = 913`
@@ -578,7 +580,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-09: zoom-2026-11-09 raised it by 172, the `zoom` tool, a part of a picture in a room's own folders as fractions of its width and height made a PNG 2000 px on its long side by ffmpeg, since Read shows a picture at most 2000 px on its long side and a room asked whether someone was free at a time on a calendar's picture could not read the times, while ffmpeg in its shell waited on an approval no one gives mid-turn; not folded to fit: pictures.py 125 (the header read of a PNG, a GIF, a WebP and a JPEG with its EXIF quarter turn, the crop and scale with the 4x cap, the numbering, a HEIC made a whole PNG first), daemon.py 17 (the tool on the room's own folders, every room's allow line), mcp_server.py 12 (the tool's sentence), words.py 11 (the refusals, the box's words, the [attachment] clause, the card's row), channels/discord.py 7 (the [attachment] line's clause on a picture past 2000 px). 27,355.
 
-- `lines = 27355`
+2026-11-09: need-2026-11-09-77 raised it by 5: a worker whose last message is exactly NO_REPLY ends with no relay turn from any caller, as a job's does, the ledger's relay skipped with why, since a timer script started each run with `yerk worker start` and every quiet run still asked its room for a turn that had to be answered with a posted line; not folded to fit: workers.py 5 (the skip, its ledger note and log line; the module's line on it), mcp_server.py 0 (the tool's clause, its lines folded again), cli.py 0 (--brief's words). 27,360.
+
+- `lines = 27360`
 
 ## Uncapped
 

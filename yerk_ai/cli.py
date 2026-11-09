@@ -799,7 +799,7 @@ def parser() -> argparse.ArgumentParser:
     wk = sub.add_parser("worker", help="workers: start (needs a running yerkd), list, stop, report")
     wk.add_argument("action", choices=["start", "list", "stop", "report"])
     wk.add_argument("id", nargs="?", help="stop, report: the worker's id")
-    wk.add_argument("--brief", help="start: the brief file")
+    wk.add_argument("--brief", help="start: the brief file; a run whose last message is exactly NO_REPLY settles its card quiet, with no relay")
     wk.add_argument("--room", help="start: the room for its card and relay (default: the only room, else required)")
     wk.add_argument("--task", action="append", default=[], help="start: a TASKS.md row (repeat for each)")
     wk.add_argument("--cap", type=float, default=0.0, help="start: minutes before it is stopped (default [workers], 65)")
