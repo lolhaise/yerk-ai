@@ -8,6 +8,51 @@ version changes.
 
 ## 2026-11-10
 
+### need-2026-11-09-74 (#27)
+
+- A room can fill a web form it sees only in a shot now: the hands plug-in's browser gains `type`, which puts text into
+  whatever field has focus in one of the room's tabs (one a click by x and y, or by label, just focused), typed by the
+  browser itself over its developer protocol (chrome-cdp's `insert`, Input.insertText), so a field inside a web
+  component's shadow root, open or closed, a framework's field that ignores a value set by script, and a field no list
+  names all take it. `key` presses one key after the text, or alone: Tab, Escape, ArrowDown, ArrowUp or Backspace, and
+  Enter on the owner's word, since an Enter can send the form. A select takes the option its words name (an exact one
+  first, else the one option that holds them; none or several are said with the options), and the reply says what the
+  field reads after, or where Tab moved the focus.
+- The field is found before anything is typed, through each open shadow root and each frame of the page's own site:
+  nothing focused, a field that takes no text and a file input (upload's) are each refused with the way past; a card
+  field is never typed into, confirmed or not; a frame of another site holding the focus is judged as a click by x and
+  y into one is. Nothing is typed on a payment page, and on a look-alike only on the owner's word, as with set and click.
+- One `type` with need-2026-11-09-75's, which reached main first: the plug-in's main aa4d3fc merges its branch
+  `need-2026-11-09-74` onto need 75's `type` (cc75696) as one action. With a `label` (or need 75's `value` for the text),
+  the field by its label, found as `set` finds it, through each open shadow root too, then a box: a text box cleared with
+  a real Backspace and typed a character at a time while short, a select given the option its words name. With no label,
+  the field that has focus, as above, typed a character at a time too. A `key` after either, and what the field holds
+  read back.
+- A form drawn inside a web component's open shadow root is read too: its words follow the page's on `read` (after
+  `--- inside web components (shadow roots) ---`), `fields` lists its controls after the page's, `set` and `click`
+  reach them by label after chrome-cdp's own NOT FOUND, and a click by x and y is judged by the control under the
+  point inside it, so a form's submit there waits for the owner's word. A card field, a pay button or a payment frame
+  inside one makes a payment page, as one on the page does.
+- The plug-in's branch `need-2026-11-09-74` (8c2aff9, then af44c92, a test's placeholder postal code); 58 of 58 of its offline
+  tests green, six of them new, the first the wall itself: a click by x and y focuses a Year select in a shadow root,
+  `type` picks the year, then types the postal code and presses Tab. Its page scripts were also run in Playwright's
+  headless Chromium against a form in a shadow root, a closed root, nested roots and a card field in a root. Joined to
+  need 75's on the plug-in's main (aa4d3fc): 66 of 66 green, both branches' cases and one for the joined paths, and its
+  by-label scripts run in that headless Chromium against a field and a select inside a shadow root.
+- The abilities entry `form-typing` (`yerk explain form-typing`), with its phrases ("type into the field", "shadow
+  root", "fields are not listed", ...); the README's Add-ons line names it in as many bytes.
+- budgets.toml: the per-message recall line 2,000 to 2,100 and the per-message cap 5,650 to 5,750, since the answer to
+  "what can you do" (every ability's name by its state) rides whole under the recall line, sat 7 under it on main, and
+  `form-typing`'s name took it 6 over. The hands line and the session-start total stay where they are (9,831 and
+  129,071): need-2026-11-09-76 reached main first and its hands line already counts the joined browser entry. Each
+  with its dated note; docs/budgets.md is what `yerk docs own` writes.
+- Why: on 2026-11-09 a room asked to run an online quote saw the site's quote form in a shot, while the browser's read
+  and its fields saw only the page's footer, since the form sits in a web component's shadow root; a click by x and y
+  focused the form's first field, and no action typed into it, so the room filed the need (need 74 of 2026-11-09).
+
+**Upgrading**: hands-mcp's main already holds the joined `type` (aa4d3fc): the hands line here counts the browser entry it
+sends, and its rooms have it at their next session. An install that keeps its own budgets.toml takes the recall line's 2,100 and the per-message cap's 5,750.
+
 ### need-2026-11-09-83 (#?)
 
 - The `texts` tool reads the words of the texts you sent. Before, a room asked to confirm the words of a text you had
