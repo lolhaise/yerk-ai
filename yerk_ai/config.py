@@ -177,6 +177,9 @@ YERKD_WORDS = {
     "http": {"port": "the local port of /mcp, /hook and /control (default: a free one; yerkd --port wins)"},
     "page": {"open": "the command that opens a room's live page on the owner's screen, a list, the address added last (default: the "
                      "box's own: wslview or Windows' url.dll under WSL, open on a Mac, xdg-open with a display)",
+             "screen": "the PC's monitor the page tool's open puts the page on under WSL, maximized, the screen woken with no click: "
+                       "left, middle, right, primary or its number from the left (default: none, where the browser puts it; the "
+                       "tool's `screen` wins)",
              "mac": "the ssh host of the owner's Mac, where the page tool's open with where mac runs `open` on the page's one-time "
                     "address, handed on ssh's stdin (default: [imessage] host, else `ssh` in a mac.json beside an owner room's "
                     "add-on's server, the hands plug-in's, a file of the owner's no one else writes)",

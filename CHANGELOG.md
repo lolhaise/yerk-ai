@@ -8,6 +8,42 @@ version changes.
 
 ## 2026-11-10
 
+### need-2026-11-10-82 (#?)
+
+- A room opens your live page on the PC monitor you name, maximized there, and hears that it painted before it looks.
+  Before, the `page` tool's open handed the address to the default browser, which put it wherever its last window was:
+  on 2026-11-10 a scheduled check told to open the page on the owner's middle monitor heard "opened on the owner's
+  screen" while the page sat maximized on the left one, unpainted on a screen asleep. A desktop screenshot then showed
+  the night before's frame, and only a click, which needs your word, would have woken it.
+- Now the `page` tool takes `screen`, and yerkd.toml's `[page] screen` names a standing one: left, middle, right,
+  primary or its number from the left (middle is the centre one; of two, the right one, so the same screen stays the
+  middle one when Windows drops a third that sleeps). On a WSL box, Windows' own PowerShell opens the page's one-time
+  address in a new window of the default browser (Chrome, Edge, Brave, Vivaldi, Opera or Firefox), moves that window to
+  the screen, maximizes it and raises it above the rest without taking the focus. It wakes the display first with a
+  display-required request and a still mouse event: no click, no key, the pointer unmoved. The address rides in
+  PowerShell's environment, never on a command line.
+- The page's tab says when it has drawn a frame while it shows; a browser draws none for a covered window or a screen
+  that sleeps or is locked. The open waits 10 seconds for that and says "painted" with the screen's rectangle for a
+  desktop screenshot, else "not painted" and why: locked, or still asleep or covered. A room no longer reads an old frame
+  as the page.
+- Said in words, opening the page once at most: a screen that is not there (with how many there are), a browser yerkd
+  opens no window of, a window that never showed, a box that is not a Windows PC. Only when nothing opened yet does the
+  box's opener open it where the browser puts it. An open with no screen named works as before.
+- The ability is page-mac's (`yerk explain page-mac`), the entry for where the page opens, since a key of its own would
+  push the abilities answer past its 2,000 recall cap; it answers a room asked for the page on the middle monitor, the
+  wrong monitor or a blank page. The README's live page line names the PC monitor you name; to stay under 12,000 bytes
+  its progress card clause and two Install words are shorter.
+- The tests: 5 new, in tests/test_page.py: the named screen's open with the address in the environment and on no command
+  line; the standing `[page] screen`; the paint counted only from the tab that open made, never another ticket's or
+  another room's; a locked screen; each failure said, with no second tab; PowerShell's own failure in words, never the
+  address; the tab's paint and the script's screen count read in place. conftest.py keeps every test's box off Windows,
+  so no test opens a page on a real screen.
+
+**Upgrading:** budgets.toml raises `yerk_tools` to 26,400, the session start's `total` to 129,471 and `[code] lines` to
+28,431, each with its dated note. To keep the page on one monitor, set `[page] screen` in yerkd.toml (for example
+`screen = "middle"`); else a room names it per open. A room picks up the tool's `screen` at its next session; a page tab
+open from before the deploy says it painted only after a reload.
+
 ### walls-2026-11-10 (#43)
 
 - A gate that cannot be asked refuses. A room's tool call is not run when the daemon gives its gate no answer within 8

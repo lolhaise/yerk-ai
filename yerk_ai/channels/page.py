@@ -45,6 +45,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import contextlib
 import difflib
 import errno
@@ -110,6 +111,95 @@ TAILNET = (ipaddress.ip_network("100.64.0.0/10"), ipaddress.ip_network("fd7a:115
 # Windows' own opener under WSL (a Windows browser reaches the box's local address): it hands the address whole to the
 # default browser, where cmd.exe's start would split it at its `&`
 WSL_OPEN = ("/mnt/c/Windows/System32/rundll32.exe", "url.dll,FileProtocolHandler")
+# a screen the owner names (the `page` tool's `screen`, else [page] screen): one of the PC's monitors, by its place from the
+# left (middle: the centre one, of an even count the one right of it, so a third screen asleep, which Windows can drop,
+# leaves the owner's middle one the same) or its number counted so, that an open under WSL puts the page on (place) in a
+# window of its own of the default
+# browser, maximized there and raised above the rest without the focus, the display woken by a still mouse event (no
+# click, no key, the pointer unmoved); then the open waits for the tab itself to say it painted (painted). The script is
+# Windows PowerShell's encoded command, its address, screen and room in its environment (WSLENV), never a command line
+SCREENS = ("left", "middle", "right", "primary")
+POWERSHELL = "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"
+PLACE_SECONDS = 40        # the placing script's wall clock: PowerShell's start, the browser, its window (it waits 15 s for it)
+PAINT_SECONDS = 10        # how long a placed open waits for its tab to say it painted
+PLACE_PS1 = r"""$ErrorActionPreference = 'Stop'
+function Say($h) { [Console]::Out.WriteLine((ConvertTo-Json $h -Compress)) }
+$opened = $false
+try {
+Add-Type -TypeDefinition @'
+using System; using System.Collections.Generic; using System.Runtime.InteropServices; using System.Text;
+public static class YerkScreen {
+  [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
+  [StructLayout(LayoutKind.Sequential)] public struct INFO { public int Size; public RECT Mon, Work; public uint Flags; }
+  public delegate bool MonProc(IntPtr m, IntPtr dc, ref RECT r, IntPtr d);
+  public delegate bool WinProc(IntPtr h, IntPtr d);
+  [DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr c);
+  [DllImport("user32.dll")] public static extern bool EnumDisplayMonitors(IntPtr dc, IntPtr clip, MonProc f, IntPtr d);
+  [DllImport("user32.dll")] public static extern bool GetMonitorInfo(IntPtr m, ref INFO i);
+  [DllImport("user32.dll")] public static extern bool EnumWindows(WinProc f, IntPtr d);
+  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
+  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int how);
+  [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int w, int ht, uint f);
+  [DllImport("user32.dll")] public static extern IntPtr MonitorFromWindow(IntPtr h, uint f);
+  [DllImport("user32.dll")] public static extern IntPtr OpenInputDesktop(uint f, bool inherit, uint access);
+  [DllImport("user32.dll")] public static extern bool CloseDesktop(IntPtr d);
+  [DllImport("user32.dll")] public static extern void mouse_event(uint f, int dx, int dy, uint data, UIntPtr extra);
+  [DllImport("kernel32.dll")] public static extern uint SetThreadExecutionState(uint f);
+  public static List<long[]> Screens() {
+    var all = new List<long[]>();
+    EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, delegate(IntPtr m, IntPtr dc, ref RECT r, IntPtr d) {
+      var i = new INFO(); i.Size = Marshal.SizeOf(typeof(INFO));
+      if (GetMonitorInfo(m, ref i)) all.Add(new long[] { i.Mon.L, i.Mon.T, i.Mon.R - i.Mon.L, i.Mon.B - i.Mon.T,
+        i.Work.L, i.Work.T, i.Work.R - i.Work.L, i.Work.B - i.Work.T, i.Flags & 1, m.ToInt64() });
+      return true; }, IntPtr.Zero);
+    all.Sort((a, b) => a[0] != b[0] ? a[0].CompareTo(b[0]) : a[1].CompareTo(b[1]));
+    return all;
+  }
+  public static Dictionary<long, string> Windows() {
+    var all = new Dictionary<long, string>();
+    EnumWindows(delegate(IntPtr h, IntPtr d) {
+      if (IsWindowVisible(h)) { var s = new StringBuilder(512); GetWindowText(h, s, 512); all[h.ToInt64()] = s.ToString(); }
+      return true; }, IntPtr.Zero);
+    return all;
+  }
+}
+'@
+try { [void][YerkScreen]::SetProcessDpiAwarenessContext([IntPtr]::new(-4)) } catch { }
+$url, $want = $env:YERK_PAGE_URL, $env:YERK_PAGE_SCREEN
+$all = [YerkScreen]::Screens(); $n = $all.Count; $i = -1
+if ($want -eq 'left') { $i = 0 } elseif ($want -eq 'right') { $i = $n - 1 }
+elseif ($want -eq 'middle') { $i = [int][math]::Floor($n / 2) }
+elseif ($want -eq 'primary') { for ($k = 0; $k -lt $n; $k++) { if ($all[$k][8] -eq 1) { $i = $k } } }
+elseif ($want -match '^[1-9]$') { $i = [int]$want - 1 }
+if ($i -lt 0 -or $i -ge $n) { Say @{ ok = $false; error = 'screen'; of = $n; opened = $false }; exit 0 }
+$s = $all[$i]
+$desk = [YerkScreen]::OpenInputDesktop(0, $false, 1); $locked = $desk -eq [IntPtr]::Zero
+if (-not $locked) { [void][YerkScreen]::CloseDesktop($desk) }
+[void][YerkScreen]::SetThreadExecutionState(2)
+[YerkScreen]::mouse_event(1, 0, 0, 0, [UIntPtr]::Zero)
+$prog = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\Shell\Associations\UrlAssociations\http\UserChoice' -ErrorAction SilentlyContinue).ProgId
+$cmd = if ($prog) { (Get-ItemProperty "Registry::HKEY_CLASSES_ROOT\$prog\shell\open\command" -ErrorAction SilentlyContinue).'(default)' } else { '' }
+$exe = if ($cmd -match '^\s*"([^"]+)"') { $Matches[1] } elseif ($cmd -match '^\s*(\S+)') { $Matches[1] } else { '' }
+$name = if ($exe) { [IO.Path]::GetFileNameWithoutExtension($exe).ToLower() } else { '' }
+$flag = if ($name -eq 'firefox') { '-new-window' } elseif ($name -in 'chrome', 'msedge', 'brave', 'vivaldi', 'opera', 'chromium') { '--new-window' } else { '' }
+if (-not $flag -or -not (Test-Path -LiteralPath $exe)) { Say @{ ok = $false; error = 'browser'; opened = $false }; exit 0 }
+$before = [YerkScreen]::Windows()
+Start-Process -FilePath $exe -ArgumentList @($flag, ('"' + $url + '"')); $opened = $true
+$h = [IntPtr]::Zero
+for ($t = 0; $t -lt 60 -and $h -eq [IntPtr]::Zero; $t++) {
+  Start-Sleep -Milliseconds 250; $now = [YerkScreen]::Windows()
+  foreach ($k in $now.Keys) { if (-not $before.ContainsKey($k) -and ($now[$k].StartsWith($env:YERK_PAGE_ROOM + ': Yerk page') -or $now[$k].StartsWith('Yerk page'))) { $h = [IntPtr]::new($k) } }
+}
+if ($h -eq [IntPtr]::Zero) { Say @{ ok = $false; error = 'window'; opened = $true }; exit 0 }
+[void][YerkScreen]::ShowWindow($h, 4)
+[void][YerkScreen]::SetWindowPos($h, [IntPtr]::Zero, $s[4], $s[5], $s[6], $s[7], 0x14)
+[void][YerkScreen]::ShowWindow($h, 3)
+foreach ($z in -1, -2) { [void][YerkScreen]::SetWindowPos($h, [IntPtr]::new($z), 0, 0, 0, 0, 0x53) }
+$on = [YerkScreen]::MonitorFromWindow($h, 2).ToInt64() -eq $s[9]
+Say @{ ok = $on; error = $(if ($on) { '' } else { 'moved' }); n = $i + 1; of = $n; x = $s[0]; y = $s[1]; w = $s[2]; h = $s[3]; locked = $locked; opened = $true }
+} catch { Say @{ ok = $false; error = 'failed'; why = $_.Exception.Message; opened = $opened } }
+"""
 PROGRAM, TESTS, CHAT, TALK = "solution.py", "test_solution.py", "chat.json", "talk.json"
 MARKS, CHATS = ("highlight", "arrow"), ("open", "closed")
 # the bar as a scoreboard, read from the room's words alone (cell): a rank's tiers, low to high, each its colour on the
@@ -523,6 +613,7 @@ class Page:
         self.state, self.ledger, self.capture, self.quiet = state, ledger, capture, quiet
         self.sheets: dict[str, Sheet] = {}
         self.tickets: dict[str, tuple[str, float]] = {}     # one-time ticket -> (its room, when it runs out)
+        self.paints: dict[str, tuple[str, float, asyncio.Event]] = {}   # its tab's paint (painted): its room, when made, said
         self.loop: asyncio.AbstractEventLoop | None = None
         self.closing = False
 
@@ -582,6 +673,7 @@ class Page:
         self.tickets = {t: v for t, v in self.tickets.items() if v[1] > now}
         t = secrets.token_urlsafe(24)
         self.tickets[t] = (room, now + TICKET_SECONDS)
+        self.paints = {k: v for k, v in self.paints.items() if v[1] > now - 300} | {t: (room, now, asyncio.Event())}
         return f"{base or f'http://127.0.0.1:{port}'}{PATH}?{urlencode({'room': room, 'open': t})}"
 
     def redeem(self, ticket: str) -> dict[str, Any]:
@@ -595,6 +687,16 @@ class Page:
             log.warning("page: a one-time address was refused: used once already, past its minute, never made or its page off")
             return {"ok": False, "error": words.PAGE_TICKET_SPENT}
         return {"ok": True, "room": found[0], "key": s.key}
+
+    async def painted(self, ticket: str, seconds: float = PAINT_SECONDS) -> bool:
+        """Whether the tab a one-time address opened says, within `seconds`, that it painted where the owner sees it: a frame
+        drawn while it shows (page.html's `shown`), which a browser never draws on a window covered, minimized, on a screen
+        that sleeps or a locked one, so the room looks only at a page it can see."""
+        if (p := self.paints.get(ticket)) is None:
+            return False
+        with contextlib.suppress(asyncio.TimeoutError):
+            await asyncio.wait_for(p[2].wait(), seconds)
+        return p[2].is_set()
 
     def mirror(self, channel: Any) -> Mirror:
         return Mirror(channel, self)
@@ -668,6 +770,10 @@ class Page:
                 s.keep()
                 self._log(s, {"kind": "away", "n": n})
                 self._push(s, {"away": n})
+            return {"ok": True}
+        elif kind == "shown":                          # the tab a one-time address opened painted (painted): no message
+            if (p := self.paints.get(str(ev.get("ticket") or ""))) is not None and p[0] == room:
+                p[2].set()
             return {"ok": True}
         elif kind == "talk":                           # the chat closed to nothing, or open again: said in the next message
             if (on := ev.get("on") is True) != s.talk:
@@ -978,6 +1084,50 @@ def opener(conf: dict[str, Any]) -> list[str]:
         return [w] if (w := shutil.which("wslview")) else list(WSL_OPEN) if os.path.exists(WSL_OPEN[0]) else []
     x = shutil.which("xdg-open")
     return [x] if x and (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")) else []
+
+
+def wsl() -> bool:
+    """The box is WSL, its screen Windows' own, where place puts the page on a named screen (the opener's own test)."""
+    return sys.platform == "linux" and any(os.path.exists(f"/proc/sys/fs/binfmt_misc/{n}") for n in ("WSLInterop", "WSLInterop-late"))
+
+
+def screen_name(said: Any) -> str:
+    """A screen the owner names, as place takes it: left, middle, right or primary, or its number from the left (1 to 9);
+    "" for none named, ValueError in words for one that is neither."""
+    name = str(said or "").strip().lower()
+    if name and name not in SCREENS and not re.fullmatch(r"[1-9]", name):
+        raise ValueError(words.PAGE_SCREEN.format(screen=words.no_paths(name)[:40]))
+    return name
+
+
+def place(url: str, screen: str, room: str, seconds: float = PLACE_SECONDS) -> dict[str, Any]:
+    """`url` opened on the owner's named screen of the PC under WSL (PLACE_PS1): a window of its own of the default browser,
+    maximized there and raised without the focus, the display woken first; {"ok": True, the screen's number, count and
+    rectangle, "locked"} once it is there, else {"ok": False, "opened": whether the browser was started, "why": in words}."""
+    env = {**os.environ, "YERK_PAGE_URL": url, "YERK_PAGE_SCREEN": screen, "YERK_PAGE_ROOM": room,
+           "WSLENV": ":".join(x for x in (os.environ.get("WSLENV", ""), "YERK_PAGE_URL/w:YERK_PAGE_SCREEN/w:YERK_PAGE_ROOM/w") if x)}
+    script = base64.b64encode(PLACE_PS1.encode("utf-16-le")).decode()
+    try:
+        p = subprocess.run([POWERSHELL, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", script],
+                           capture_output=True, text=True, timeout=seconds, stdin=subprocess.DEVNULL, env=env)
+    except subprocess.TimeoutExpired:          # the browser may be up: never opened again
+        return {"ok": False, "opened": True, "again": False, "why": words.PAGE_OPEN_SLOW.format(n=round(seconds))}
+    except OSError as e:
+        return {"ok": False, "opened": False, "again": True, "why": words.PAGE_OPEN_FAILED.format(why=e.strerror or type(e).__name__)}
+    try:
+        got = json.loads((p.stdout.strip().splitlines() or [""])[-1])
+        assert isinstance(got, dict)
+    except (ValueError, AssertionError):       # PowerShell itself failed, before the script ran
+        said = (p.stderr or p.stdout).strip().replace(url, "the address")
+        return {"ok": False, "opened": False, "again": True,
+                "why": words.PAGE_OPEN_FAILED.format(why=said.splitlines()[-1][-200:] if said else words.PAGE_OPEN_SILENT)}
+    if got.get("ok") is True:
+        return {"ok": True, **{k: int(got.get(k) or 0) for k in ("n", "of", "x", "y", "w", "h")}, "locked": got.get("locked") is True}
+    why = {"screen": words.PAGE_NO_SUCH_SCREEN.format(screen=screen, n=got.get("of", 0)), "browser": words.PAGE_NO_BROWSER,
+           "window": words.PAGE_NO_WINDOW, "moved": words.PAGE_NOT_MOVED.format(screen=screen)}.get(str(got.get("error")))
+    opened = got.get("opened") is True         # the opener opens it instead only when nothing did and the screen is there
+    return {"ok": False, "opened": opened, "again": not opened and got.get("error") != "screen", "locked": got.get("locked") is True,
+            "why": why or words.PAGE_OPEN_FAILED.format(why=str(got.get("why") or words.PAGE_OPEN_SILENT).replace(url, "the address")[:200])}
 
 
 def mac(conf: dict[str, Any], port: int, servers: Any = (), state: Path | None = None) -> tuple[list[str], str] | str:

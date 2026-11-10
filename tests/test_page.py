@@ -1347,7 +1347,7 @@ def test_the_page_tool_s_chat_reaches_the_page_through_the_daemon_open_or_not(tm
     assert y.page.sheets["example-room"].state()["state"]["talk"] is True
     opened = []
 
-    async def page_open(room, where="pc"):
+    async def page_open(room, where="pc", screen=""):
         opened.append((room, where))
         return {"ok": True, "opened": True, "line": words.PAGE_OPENED}
     monkeypatch.setattr(y, "page_open", page_open)
@@ -1798,3 +1798,154 @@ def test_the_room_s_own_send_is_a_bubble_only_from_its_turn_on_the_page(tmp_path
     room.busy = False
     assert [(b["line"], b["text"]) for b in s.bubbles] == [(1, "from the page turn")] and s.code == "# q?\nx = 1\n"
     assert [x["text"] for x in s.lines] == ["from no turn", "from the Discord turn", "from the page turn"]
+
+
+def windows_box(tmp_path, monkeypatch, said='{"ok": true, "n": 2, "of": 3, "x": 1920, "y": 0, "w": 2560, "h": 1440, "locked": false, "opened": true}'):
+    """A stand-in for the owner's Windows PC under WSL: its PowerShell writes its command line to `ps-args`, the address,
+    screen and room it was handed in its environment to `ps-env` (with WSLENV, which hands them over), and says `said`, as
+    the placing script ends; the box's own opener writes what it was handed to `opened`."""
+    (ps := tmp_path / "powershell.exe").write_text(
+        f'#!/bin/sh\nprintf \'%s\\n\' "$@" > "{tmp_path}/ps-args"\n'
+        f'printf \'%s\\n\' "$YERK_PAGE_URL" "$YERK_PAGE_SCREEN" "$YERK_PAGE_ROOM" "$WSLENV" > "{tmp_path}/ps-env"\n'
+        f"cat <<'SAID'\n{said}\nSAID\n")
+    ps.chmod(0o700)
+    monkeypatch.setattr(pagemod, "POWERSHELL", str(ps))
+    monkeypatch.setattr(pagemod, "wsl", lambda: True)
+    monkeypatch.setattr(pagemod, "PAINT_SECONDS", 0.3)
+    return tmp_path / "ps-args", tmp_path / "ps-env"
+
+
+async def open_and_paint(y, req, handed_file, ticket_of=lambda url: url.rpartition("open=")[2], room="example-room"):
+    """The page tool's call while the tab it opens paints: once the PC was handed the address, the tab says so (page.html's
+    `shown`, with the one-time ticket it traded), as the owner's browser does when it draws a frame where the owner sees it."""
+    async def tab():
+        for _ in range(200):
+            if handed_file.exists() and handed_file.read_text().strip():
+                break
+            await asyncio.sleep(0.01)
+        url = handed_file.read_text().splitlines()[0]
+        assert (await y.page.event(room, {"kind": "shown", "ticket": ticket_of(url)})) == {"ok": True}
+    told = asyncio.create_task(tab())
+    got = await y.tool_page("example-room", req)
+    await told
+    return got
+
+
+def test_the_page_opens_maximized_on_the_screen_the_owner_names_and_the_room_hears_it_painted_before_it_looks(tmp_path, monkeypatch):
+    """need-2026-11-10-82, the wall a room hit: the owner's standing order is the page on their middle monitor, and a scheduled
+    check opened it with the page tool, which said "opened on the owner's screen" while the browser had put it on their left
+    monitor, maximized, unpainted (the screen asleep), so a desktop screenshot showed an old frame, and only a click, which
+    needs the owner's word, would wake it. A named screen (`screen`, else [page] screen) opens it in a window of its own on that
+    monitor, maximized and raised, the screen woken with no click; the room is told it painted only once the tab says so,
+    with the rectangle to shoot."""
+    y, _, state = plain_daemon(tmp_path)
+    args, handed = windows_box(tmp_path, monkeypatch)
+    y.conf["page"] = {"open": [str(opener_script(tmp_path))]}
+    got = asyncio.run(open_and_paint(y, {"open": True, "screen": "Middle"}, handed))
+    assert got == {"ok": True, "opened": True, "line": f"{words.PAGE_ON}; {words.PAGE_OPENED_SCREEN.format(screen='middle', n=2, of=3)}; "
+                                                      f"{words.PAGE_PAINTED.format(x=1920, y=0, w=2560, h=1440)}"}
+    assert not (tmp_path / "opened").exists()                                    # the box's opener never ran: no tab elsewhere
+    key = (state / "secrets" / "pages" / "example-room.secret").read_text().strip()
+    url, screen, room, wslenv = handed.read_text().splitlines()
+    assert url.startswith(f"http://127.0.0.1:{y.port}/page?room=example-room&open=") and key not in url
+    assert (screen, room) == ("middle", "example-room")
+    assert {"YERK_PAGE_URL/w", "YERK_PAGE_SCREEN/w", "YERK_PAGE_ROOM/w"} <= set(wslenv.split(":"))   # handed to Windows
+    argv = args.read_text().splitlines()
+    assert url.rpartition("open=")[2] not in args.read_text() and argv[:-1] == [
+        "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand"]     # the ticket on no command line
+    assert pagemod.base64.b64decode(argv[-1]).decode("utf-16-le") == pagemod.PLACE_PS1
+    y.conf["page"] = {"open": [str(opener_script(tmp_path))], "screen": "2"}     # the owner's standing order, set once
+    handed.unlink()
+    got = asyncio.run(open_and_paint(y, {"open": True}, handed))
+    assert got["line"].startswith(f"{words.PAGE_WAS_ON}; {words.PAGE_OPENED_SCREEN.format(screen='2', n=2, of=3)}")
+    assert handed.read_text().splitlines()[1] == "2" and got["line"].endswith(words.PAGE_PAINTED.format(x=1920, y=0, w=2560, h=1440))
+
+
+def test_a_tab_that_never_paints_is_said_unpainted_so_the_room_never_reads_an_old_frame_as_the_page(tmp_path, monkeypatch):
+    """The wall itself: the open said done while the screen slept and the tab drew nothing. With no frame drawn by the tab
+    the open made (another ticket's, or another room's, counts for nothing), the room hears the page is not painted and
+    why; a locked screen is said locked."""
+    y, _, _ = plain_daemon(tmp_path)
+    _, handed = windows_box(tmp_path, monkeypatch)
+    got = asyncio.run(y.tool_page("example-room", {"open": True, "screen": "middle"}))
+    assert got["opened"] and got["line"].endswith(words.PAGE_NOT_PAINTED.format(n=0.3)) and words.PAGE_OPENED not in got["line"]
+    handed.unlink()
+    got = asyncio.run(open_and_paint(y, {"screen": "middle"}, handed, ticket_of=lambda url: "another-ticket"))
+    assert got["line"].endswith(words.PAGE_NOT_PAINTED.format(n=0.3))
+    y.page_switch("example-quiet", True)
+    handed.unlink()
+    got = asyncio.run(open_and_paint(y, {"screen": "middle"}, handed, room="example-quiet"))     # its key, this room's ticket
+    assert got["line"].endswith(words.PAGE_NOT_PAINTED.format(n=0.3))
+    windows_box(tmp_path, monkeypatch, said='{"ok": true, "n": 2, "of": 2, "x": 1920, "y": 0, "w": 2560, "h": 1440, "locked": true}')
+    got = asyncio.run(y.tool_page("example-room", {"screen": "middle"}))
+    assert got["line"] == f"{words.PAGE_WAS_ON}; {words.PAGE_OPENED_SCREEN.format(screen='middle', n=2, of=2)}; {words.PAGE_LOCKED}"
+
+
+def test_a_screen_that_is_not_there_or_not_placed_is_said_in_words_and_the_page_opens_once_at_most(tmp_path, monkeypatch):
+    y, _, _ = plain_daemon(tmp_path)
+    y.conf["page"] = {"open": [str(opener_script(tmp_path))]}
+    assert asyncio.run(y.tool_page("example-room", {"open": True, "screen": "top"})) == {
+        "ok": False, "error": words.PAGE_SCREEN.format(screen="top")}
+    assert asyncio.run(y.tool_page("example-room", {"screen": "middle", "where": "mac"})) == {"ok": False, "error": words.PAGE_SCREEN_MAC}
+    assert "example-room" not in y.page.sheets                                   # neither switched anything on
+    got = asyncio.run(y.tool_page("example-room", {"screen": "middle"}))        # not a Windows PC: the box's opener, said
+    assert got["line"].startswith(f"{words.PAGE_ON}; {words.PAGE_NOT_PLACED.format(screen='middle', why=words.PAGE_SCREEN_NOT_HERE)}; "
+                                  f"{words.PAGE_OPENED}; ") and (tmp_path / "opened").exists()
+    (tmp_path / "opened").unlink()
+    windows_box(tmp_path, monkeypatch, said='{"ok": false, "error": "screen", "of": 2, "opened": false}')
+    got = asyncio.run(y.tool_page("example-room", {"screen": "5"}))
+    why = words.PAGE_NO_SUCH_SCREEN.format(screen="5", n=2)
+    assert got == {"ok": True, "opened": False, "line": f"{words.PAGE_WAS_ON}; {words.PAGE_NOT_PLACED.format(screen='5', why=why)}"}
+    assert not (tmp_path / "opened").exists()                                    # no tab where the browser puts it, unasked
+    windows_box(tmp_path, monkeypatch, said='{"ok": false, "error": "browser", "opened": false}')
+    got = asyncio.run(y.tool_page("example-room", {"screen": "left"}))         # a browser it cannot open a window of: the opener
+    assert f"{words.PAGE_NOT_PLACED.format(screen='left', why=words.PAGE_NO_BROWSER)}; {words.PAGE_OPENED}" in got["line"]
+    assert (tmp_path / "opened").exists()
+    (tmp_path / "opened").unlink()
+    windows_box(tmp_path, monkeypatch, said='{"ok": false, "error": "window", "opened": true}')
+    got = asyncio.run(y.tool_page("example-room", {"screen": "left"}))         # the browser was started: never a second tab
+    assert got["opened"] and words.PAGE_NOT_PLACED.format(screen="left", why=words.PAGE_NO_WINDOW) in got["line"]
+    assert not (tmp_path / "opened").exists()
+    y.conf["page"] = {"open": [str(opener_script(tmp_path))], "screen": "the big one"}    # a [page] screen that names none
+    got = asyncio.run(y.tool_page("example-room", {"open": True}))
+    assert got["line"] == f"{words.PAGE_WAS_ON}; [page] {words.PAGE_SCREEN.format(screen='the big one')}; {words.PAGE_OPENED}"
+
+
+def test_the_placing_says_powershell_s_own_failure_in_words_and_never_the_address(tmp_path, monkeypatch):
+    url = "http://127.0.0.1:1/page?room=r&open=secret-ticket"
+    assert pagemod.place(url, "middle", "r") == {"ok": False, "opened": False, "again": True,
+                                                 "why": words.PAGE_OPEN_FAILED.format(why="No such file or directory")}
+    windows_box(tmp_path, monkeypatch, said='')
+    (tmp_path / "powershell.exe").write_text('#!/bin/sh\necho "cannot run for $YERK_PAGE_URL" >&2\nexit 1\n')
+    got = pagemod.place(url, "middle", "r")
+    assert got["why"] == words.PAGE_OPEN_FAILED.format(why="cannot run for the address") and got["again"]
+    windows_box(tmp_path, monkeypatch, said='{"ok": false, "error": "failed", "why": "Access is denied", "opened": true}')
+    assert pagemod.place(url, "middle", "r") == {"ok": False, "opened": True, "again": False, "locked": False,
+                                                 "why": words.PAGE_OPEN_FAILED.format(why="Access is denied")}
+    (tmp_path / "powershell.exe").write_text("#!/bin/sh\nsleep 5\n")
+    assert pagemod.place(url, "middle", "r", seconds=0.2) == {"ok": False, "opened": True, "again": False,
+                                                              "why": words.PAGE_OPEN_SLOW.format(n=0)}
+    assert [pagemod.screen_name(x) for x in ("", None, " LEFT ", "middle", "right", "primary", "3")] == [
+        "", "", "left", "middle", "right", "primary", "3"]
+    for bad in ("0", "10", "centre", "/home/x/screen"):
+        with pytest.raises(ValueError):
+            pagemod.screen_name(bad)
+
+
+def test_the_tab_says_it_painted_once_from_a_frame_drawn_while_it_shows_and_the_script_takes_the_owner_s_middle_one():
+    """The tab's word that it painted is a frame drawn while it shows (two animation frames, which a browser never runs for
+    a covered window, a screen asleep or locked), once, after its ticket's trade, with that ticket; and the placing script
+    counts the screens from the left, its middle the centre one, of two the right one, so a third screen asleep, which
+    Windows can drop, leaves the owner's middle one where it was."""
+    script = pagemod.HTML.read_text().split("<script>", 1)[1]
+    shown = script.split("function shown() {", 1)[1].split("\n}\n", 1)[0]
+    assert 'document.visibilityState !== "visible"' in shown and shown.count("requestAnimationFrame") == 2
+    assert 'post("event", { kind: "shown", ticket: OPEN })' in shown and "told = true" in shown
+    assert 'document.addEventListener("visibilitychange", shown)' in script
+    assert "listen(); shown(); }" in script.split('fetch("/page/open"', 1)[1]
+    ps = pagemod.PLACE_PS1
+    assert "elseif ($want -eq 'middle') { $i = [int][math]::Floor($n / 2) }" in ps
+    assert "all.Sort((a, b) => a[0] != b[0] ? a[0].CompareTo(b[0]) : a[1].CompareTo(b[1]));" in ps
+    assert ps.index("SetThreadExecutionState(2)") < ps.index("mouse_event(1, 0, 0, 0") < ps.index("Start-Process")   # woken first
+    assert "click" not in ps.lower() and "SendKeys" not in ps and "SetCursorPos" not in ps                # no click, no key, no move
+    assert "0x53" in ps and "ShowWindow($h, 3)" in ps                            # raised with no focus taken, maximized there

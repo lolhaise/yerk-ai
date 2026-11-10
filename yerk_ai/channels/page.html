@@ -867,9 +867,18 @@ ink.addEventListener("pointerup", () => {
 });
 for (const name in panes) draw(panes[name].ed);              // a row to type on before the state comes, the program's editor focused
 panes.code.ed.el.focus();
+let told = false;                                             // painted where the owner sees it, said once for the open's check
+function shown() {                                            // (page.py, painted): a frame drawn while the tab shows, never on a
+  if (told || !OPEN || !KEY || document.visibilityState !== "visible") return;   // covered window, a sleeping or a locked screen
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    if (told || document.visibilityState !== "visible") return;
+    told = true; post("event", { kind: "shown", ticket: OPEN });
+  }));
+}
+document.addEventListener("visibilitychange", shown);
 if (OPEN) fetch("/page/open", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ticket: OPEN }) })
   .then(r => r.json()).catch(() => ({})).then(d => {          // the ticket, once, for the key, which never was in the address
-    if (d.key) { KEY = d.key; keepKey(d.room || ROOM, d.key); listen(); }
+    if (d.key) { KEY = d.key; keepKey(d.room || ROOM, d.key); listen(); shown(); }
     else line({ text: d.error || "The page did not open; ask the room again.", kind: "notice" });
   });
 else if (!KEY) line({ text: STRANDED, kind: "notice" });

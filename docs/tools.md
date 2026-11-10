@@ -349,7 +349,9 @@ runs alone, its prints shown large), which the page runs on every pause in typin
 its chat closed by the owner or by `chat` "closed" on their ask, "open" back) as bubbles under it, never in solution.py. What the owner types,
 draws and says there comes to you as messages, mid-turn too; each keystroke is in page/events.jsonl. `open` true
 (the owner asked for the page) turns it on, with no restart, and opens it on the owner's screen, `where` "mac" on
-their Mac (default "pc"); `off` true: off.
+their Mac (default "pc"); `screen` the PC monitor the owner names (left, middle, right, primary or its number from
+the left; default [page] screen): maximized there, woken with no click, said painted only once it is, so look (a
+desktop screenshot of the rectangle given) only then; `off` true: off.
 ```
 
 - `code`: string, default ""
@@ -362,6 +364,7 @@ their Mac (default "pc"); `off` true: off.
 - `chat`: string, default ""
 - `open`: boolean, default false
 - `where`: string, default ""
+- `screen`: string, default ""
 - `off`: boolean, default false
 
 ## attachments

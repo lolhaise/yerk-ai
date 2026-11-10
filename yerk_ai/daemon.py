@@ -484,11 +484,12 @@ class Yerkd:
         log.info("page: room %s switched %s by its page tool, no restart", name, "on" if on else "off")
         return True
 
-    async def page_open(self, room: str, where: str = "pc") -> dict[str, Any]:
+    async def page_open(self, room: str, where: str = "pc", screen: str = "") -> dict[str, Any]:
         """The `page` tool's open: the room's page on (page_switch), then opened at a one-time address (Page.ticket), never
         the key, which no room holds and no command line carries: on the owner's screen by the box's opener, or, `where`
         mac, on the Mac by ssh to it ([page] mac and address, else an owner room's add-on's Mac and the box's tailnet,
-        page.mac), the address on ssh's stdin."""
+        page.mac), the address on ssh's stdin. A screen the owner names (`screen`, else [page] screen) takes the PC's open:
+        maximized on that monitor, the display woken (page.place), then said painted only once the tab says so (painted)."""
         lines = [words.PAGE_ON if self.page_switch(room, True) else words.PAGE_WAS_ON]
         if not await asyncio.to_thread(page.sandbox_starts):
             lines.append(words.PAGE_NO_SANDBOX)
@@ -498,15 +499,46 @@ class Yerkd:
             why = way if isinstance(way, str) else await asyncio.to_thread(page.open_on_screen, way[0], self.page.ticket(room, self.port, way[1]),
                                                                            script=page.MAC_OPEN)
             done, failed = words.PAGE_OPENED_MAC, words.PAGE_NOT_OPENED_MAC.format(why=why)
+        elif screen := screen or self.screen_named(lines):
+            return await self.page_placed(room, screen, lines)
         else:
             why = await asyncio.to_thread(page.open_on_screen, page.opener(self.conf), self.page.ticket(room, self.port))
             done, failed = words.PAGE_OPENED, words.PAGE_NOT_OPENED.format(why=why, room=room)
         log.info("page: room %s, %s", room, why or f"opened on the owner's {'Mac' if where == 'mac' else 'screen'}")
         return {"ok": True, "opened": not why, "line": "; ".join([*lines, failed if why else done])}
 
+    def screen_named(self, lines: list[str]) -> str:
+        """[page] screen, the owner's monitor for the page on the PC; one that is no screen's name is said in `lines`."""
+        try:
+            return page.screen_name(dict(self.conf.get("page") or {}).get("screen"))
+        except ValueError as e:
+            lines.append(f"[page] {e}")
+            return ""
+
+    async def page_placed(self, room: str, screen: str, lines: list[str]) -> dict[str, Any]:
+        """The open on the owner's named screen (page_open): placed there under WSL (page.place), else by the box's opener with
+        why not; then whether its tab painted, which the room is told before it looks (a screenshot of a screen that sleeps
+        shows an old frame), with the screen's rectangle to shoot when it did."""
+        url = self.page.ticket(room, self.port)
+        got = await asyncio.to_thread(page.place, url, screen, room) if page.wsl() else {
+            "ok": False, "opened": False, "again": True, "why": words.PAGE_SCREEN_NOT_HERE}
+        lines.append(words.PAGE_OPENED_SCREEN.format(screen=screen, n=got["n"], of=got["of"]) if got["ok"] else
+                     words.PAGE_NOT_PLACED.format(screen=screen, why=got["why"]))
+        if got.get("again"):                  # nothing opened, the screen there: the box's opener, where the browser puts it
+            why = await asyncio.to_thread(page.open_on_screen, page.opener(self.conf), url)
+            lines.append(words.PAGE_NOT_OPENED.format(why=why, room=room) if why else words.PAGE_OPENED)
+            got["opened"] = not why
+        if opened := got["ok"] or got["opened"]:
+            painted = await self.page.painted(url.rpartition("open=")[2], page.PAINT_SECONDS)
+            lines.append((words.PAGE_PAINTED.format(**{k: got[k] for k in "xywh"}) if got["ok"] else words.PAGE_PAINTED_THERE)
+                         if painted else words.PAGE_LOCKED if got.get("locked") else words.PAGE_NOT_PAINTED.format(n=page.PAINT_SECONDS))
+            log.info("page: room %s, the %s screen%s, %s", room, screen, "" if got["ok"] else " not placed", "painted" if painted else "not painted")
+        return {"ok": True, "opened": opened, "line": "; ".join(lines)}
+
     async def tool_page(self, room: str, req: dict[str, Any]) -> dict[str, Any]:
         """The `page` tool: `open` turns the calling room's live page on and opens it on the owner's screen (page_open), or
-        on the Mac with `where` mac (a `where` alone opens too), `off` turns it off; what it draws goes on the page
+        on the Mac with `where` mac, on a named monitor of the PC with `screen` (a `where` or a `screen` alone opens too),
+        `off` turns it off; what it draws goes on the page
         (channels/page.py), shown on every open tab now; a new program or tests run at once, their result in the answer, so
         the page's own run of them wakes no turn; the owner's rooms only (add_room and page_switch give no other room a page)."""
         if not self.owner(room):
@@ -516,7 +548,13 @@ class Yerkd:
             return {"ok": True, "line": words.PAGE_OFF}
         if (where := str(req.pop("where", "") or "").strip().lower()) not in ("", "pc", "mac"):
             return {"ok": False, "error": words.PAGE_WHERE.format(where=words.no_paths(where)[:40])}
-        opened = await self.page_open(room, where or "pc") if req.pop("open", False) or where else None
+        try:
+            screen = page.screen_name(req.pop("screen", ""))
+        except ValueError as e:
+            return {"ok": False, "error": str(e)}
+        if screen and where == "mac":
+            return {"ok": False, "error": words.PAGE_SCREEN_MAC}
+        opened = await self.page_open(room, where or "pc", screen) if req.pop("open", False) or where or screen else None
         if opened is not None and not req:
             return opened
         r = self.page.draw(room, req)
