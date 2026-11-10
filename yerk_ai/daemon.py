@@ -1016,6 +1016,15 @@ class Yerkd:
             return {"ok": False, "line": words.WORKER_OWN_ROOM.format(room=named)}
         return None
 
+    async def tool_retire(self, room: str, at: str, why: str) -> dict[str, Any]:
+        """`remember` with `retire`: an owner's room deletes a rule that turned out wrong (memory.retire), its words to the day log."""
+        if room not in self.rooms or not self.owner(room) or self.reader(room).sealed:
+            return {"ok": False, "line": words.RULES_OWNER_ONLY}
+        with self.rooms[room].lock:
+            mid = ",".join(m.id for m in self.rooms[room].inflight) or f"x{self.rooms[room].turn_key}"
+        r = await asyncio.to_thread(memory.retire, self.memory, self.daily, room, mid, at, why)
+        return {**r, "next": words.FILED_NEXT.format(clause=words.FILED_AT_MOST)} if r["ok"] else r
+
     async def tool_rule(self, room: str, text: str, job: str, triggers: list[str] | None = None, older: list[str] | None = None) -> dict[str, Any]:
         """`remember` with a `job`: an owner's room files how it is done from now on (memory.rule) for every room, fitted under
         the rules part's budget; one with no room even with no examples is filed as a topic rule in rules-topics.md and said
@@ -1029,7 +1038,8 @@ class Yerkd:
         if self.reader(room).sealed:        # its teaching stays its own day-log note, the job its label, never the shared rules
             return await self.tool_remember(room, text, job.strip(" :"), [])
         topics, acronyms = shape.install(dict(self.conf.get("docs") or {}))
-        if refused := memory.unshaped(job, text, acronyms):
+        read = shape.pages(shape.run_by(self.room_confs, self.state, self.models))    # every model a room runs: all load the rule
+        if refused := memory.unshaped(job, text, acronyms, self.memory, read):
             return refused
         listed, said = await asyncio.to_thread(curate.same, self.private, self.memory, self.room_confs, job, text, topics), curate.settled(older)
         if open_ := [x for x in listed if x["cite"] not in said]:
@@ -1039,7 +1049,7 @@ class Yerkd:
         cap = 0 if uncapped(self.budgets) else int(self.budgets["session_start"]["appended"]["rules"])     # 0: no strip, no topic filing
         also = tuple((x["path"], x["line"], x["text"]) for x in listed if x["kind"] in ("rules", "topics") and said[x["cite"]][0] == "superseded")
         r = await asyncio.to_thread(memory.rule, self.memory, room, mid, job, text, cap, self.daily, context.books(self.private, self.room_confs),
-                                    tuple(triggers or ()), also, acronyms)
+                                    tuple(triggers or ()), also, acronyms, read)
         if not r["ok"]:
             return r
         for x in listed:                    # each verdict where a person can read it; a hand-kept file's line to its keeper, once
@@ -1420,6 +1430,11 @@ class Yerkd:
                     self.ledger.shadow(t=round(time.time(), 3), room=name, session_id=sid, turn=room.turn_key, rule="stub",
                                        detail=found, reply_chars=len(str(said)))
                     log.info("room %s: Stop bounced once: the final text only reports a filing (%s)", name, found)
+                elif (told := room.filing_check(active, None if said is None else str(said), self.memory.docs)):
+                    reason, found = told              # counted the same way as a stub
+                    self.ledger.shadow(t=round(time.time(), 3), room=name, session_id=sid, turn=room.turn_key, rule="filing",
+                                       detail=found, reply_chars=len(str(said)))
+                    log.info("room %s: Stop bounced once: the final reports a filing (%s)", name, found)
                 elif (note := room.note_check(active, None if said is None else str(said))):
                     reason, found = note              # counted the same way as a stub
                     self.ledger.shadow(t=round(time.time(), 3), room=name, session_id=sid, turn=room.turn_key, rule="note",
@@ -1531,7 +1546,7 @@ class Yerkd:
             shown = (texts.preview(ti) if tool == texts.TOOL               # no JSON: a text as it reads, to whom it goes
                      else emails.preview(mail[0], mail[1], str(dict(self.conf.get("gmail") or {}).get("user") or "")) if mail
                      else deletes.preview(ti) if tool == deletes.TOOL else gates.plain(tool, ti) if self.room_confs[name].get("people") else key)
-            rel = self.ledger.release(name, rule, key, cwd, self.gates.window_s)
+            rel = self.ledger.release(name, rule, key, gates.bound_to(tool, cwd), self.gates.window_s)
             if rel:
                 v = gates.Verdict("approval", "release", detail=f"{what}: {call}; approved by {rel['approved_by']}", rule=rule)
                 if tool in (texts.TOOL, deletes.TOOL, emails.TOOL):

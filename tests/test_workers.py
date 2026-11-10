@@ -17,7 +17,7 @@ from types import SimpleNamespace as NS
 import pytest
 
 import yerk_ai.channels.discord as dmod
-from yerk_ai import mcp_server, workers
+from yerk_ai import cli, mcp_server, workers
 from yerk_ai import words as W
 from yerk_ai.accounts import Account, Cooldowns, store_token
 from yerk_ai.config import table
@@ -444,6 +444,50 @@ def test_a_settled_card_reads_as_before_for_any_other_end_and_the_quiet_one_keep
     quiet = workers.card_text(row, items, end(result=W.NO_REPLY, quiet=True), accounts=2, look=W.Look(paths="owner"))
     assert quiet.splitlines() == [f"{W.DONE} worker finished clean, nothing to add", "-# done in 3 min, account one", saved,
                                   "-# /w/abc123/REPORT.md"]
+
+
+def test_a_worker_a_script_starts_that_answers_exactly_no_reply_ends_with_no_relay_turn_live_or_at_a_re_attach(setup, monkeypatch):
+    """need-2026-11-09-77: a timer script started each run with `yerk worker start --brief FILE --room ROOM`, the brief
+    saying to answer exactly NO_REPLY when there is nothing, and each quiet run still asked the room for a relay turn that
+    had to be answered with a posted line: only a job's hook skipped it, and the workaround, a one-shot agent job a run, left
+    a job in the jobs file each time and no thinking level. Now a clean end whose last message is exactly NO_REPLY, read as
+    the card reads it, asks no turn from any caller: the relay is skipped with why, nothing reaches the room's session, the
+    card settles quiet, live and when a restart finds it ended, and the run keeps its --effort. A run with something to say
+    still relays, and one that dies after NO_REPLY is still told."""
+    s = setup
+    room = s.room()
+    (brief := s.tmp / "brief.md").write_text('FAKE report="NO_REPLY" result="NO_REPLY"\nAnswer exactly NO_REPLY when nothing opened.\n')
+    asked: list[dict] = []
+    monkeypatch.setattr(cli, "_control", lambda state, payload, timeout: asked.append(payload["worker"]) or {"ok": True})
+    assert cli.main(["worker", "start", "--brief", str(brief), "--room", "r", "--effort", "low"]) == 0
+
+    async def go():
+        w = s.make({"r": room})
+        w.begin(asyncio.get_running_loop())
+        quiet = await w.handle("", asked[0])                  # what /control does with the script's line
+        assert quiet["ok"] and quiet["effort"] == "low", quiet
+        await ended(s.ledger, quiet["id"])
+        said = await w.start("r", 'FAKE report="One question opened" result="filed a forecast"')
+        await ended(s.ledger, said["id"])
+        died = await w.start("r", 'FAKE report="NO_REPLY" result="NO_REPLY" exit=3')
+        await ended(s.ledger, died["id"])
+        unlisted(s, "qu1e72", 30, exit={"result": "success", "code": "exited", "status": "0", "ended": time.time()})
+        (s.tmp / "workers" / "qu1e72" / "stdout.jsonl").write_text(json.dumps({"type": "result", "result": "NO_REPLY"}) + "\n")
+        await w.reattach()                                    # it ended while no daemon was up
+        return quiet, said["id"], died["id"]
+    quiet, said, died = asyncio.run(go())
+    argv = json.loads((Path(quiet["staging"]) / "fake-record.json").read_text())["argv"]
+    assert argv[argv.index("--effort") + 1] == "low"
+    for wid in (quiet["id"], "qu1e72"):
+        row = s.ledger.worker_get(wid)
+        assert (row["exit"], row["relay"], row["relay_note"]) == ("done", "skipped", "the worker answered NO_REPLY"), wid
+        assert s.ledger.inbound_get(f"relay-{wid}") is None, wid          # no turn was asked of the room's session
+        card = next(t for k, t, _, _ in s.chan.settled if k == f"worker:{wid}")
+        assert card.splitlines()[0] == f"{W.DONE} worker {W.QUIET_WORKER}" and W.NO_REPLY not in card
+    assert [inbound for _, inbound in s.chan.replies] == [[f"relay-{said}"], [f"relay-{died}"]]   # each told, in order
+    assert [s.ledger.worker_get(x)["relay"] for x in (said, died)] == ["relayed", "relayed"]
+    listed = {r["id"]: (r["relay"], r["relay_note"]) for r in workers.listing(s.ledger)}
+    assert listed[quiet["id"]] == ("skipped", "the worker answered NO_REPLY")       # `yerk worker list` says why
 
 
 def test_a_relay_left_open_by_a_crash_is_ledgered_as_what_happened(setup):

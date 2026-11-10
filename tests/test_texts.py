@@ -141,6 +141,27 @@ def test_an_edit_is_a_new_preview_and_the_word_sends_only_the_newest(tmp_path):
     assert [p["text"] for m, p in asked(log) if m == "send"] == ["Running late, there by 8."]
 
 
+def test_the_word_sends_the_held_text_once_whatever_folder_the_shell_is_in_when_it_is_called_again(tmp_path):
+    """need 78 of 2026-11-09, the wall: a text held with the room's shell in a folder under its work folder, a /compact
+    before the owner's word, and the session back in the work folder; the same call matched no approved hold, the folder
+    being part of the match, so it was held again on a second card and the owner said the word twice. The word is for the
+    call, wherever the shell is."""
+    y, room, ch, log = setup(tmp_path)
+    work = tmp_path / "rooms" / "example-room" / "work"
+    held_in, back_in = str(work / "notes"), str(work)
+
+    def pre_in(cwd: str) -> dict:
+        return call(y, {"hook_event_name": "PreToolUse", "tool_name": texts.TOOL, "tool_input": TEXT, "cwd": cwd})
+    assert held(pre_in(held_in))
+    word(y, room)
+    assert pre_in(back_in) == {} and len(ch.notes) == 1               # released from the work folder: no second card
+    assert text(y, TEXT)["ok"] and [m for m, _ in asked(log)].count("send") == 1
+    assert held(pre_in(held_in)) and text(y, TEXT)["error"] == words.TEXT_NOT_RELEASED    # once: the next one is held again
+    rows = y.ledger._select("SELECT * FROM approvals ORDER BY id", ())
+    assert [(r["cwd"], bool(r["approved"]), bool(r["released"])) for r in rows] == [(held_in, True, True), (held_in, False, False)]
+    assert [r["decision"] for r in y.ledger.rows(10, "gates")].count("approved") == 1      # one word
+
+
 def test_a_persons_room_never_texts_as_the_owner_and_nothing_of_it_is_shown_there(tmp_path):
     y, room, ch, log = setup(tmp_path, people=True)
     out = pre(y, TEXT)["hookSpecificOutput"]

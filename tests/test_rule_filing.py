@@ -22,6 +22,9 @@ A_SAID = ("Each item is one line opening with its mark (🟢 done, 🟠 running,
 B_SAID = "One block a morning, its items with marks as status lists says, since the owner reads both the same way."
 BOOK = "- A plan goes in the status lists shape, marks included, so it reads like every other list here."
 C_SAID = "A plan is a plain numbered list, with no marks, since its order is the point and a mark reads as a state."
+# the lesson check every rule with no reason also falls under (shape.lesson), its docs sentence the pin's before a fetch
+NO_REASON = words.RULE_OFFENCE.format(name=words.LESSON_NAMES["no reason"], said="no because, since, so that or why",
+                                      fix=words.LESSON_FIX["no reason"].format(cap=0, sentence=shape.sentence("reason")))
 
 
 def install(tmp_path):
@@ -54,7 +57,7 @@ def test_a_rule_out_of_the_guides_shape_is_turned_back_naming_each_count_its_wor
     assert r == {"ok": False, "error": words.RULE_SHAPE, "fix": [
         words.RULE_OFFENCE.format(name="a negative with no why", said='"NEVER"', fix=words.RULE_FIX["no why"]),
         words.RULE_OFFENCE.format(name="a shouted word", said='"NEVER"', fix=words.RULE_FIX["loud"]),
-        words.RULE_OFFENCE.format(name="an alarm mark", said='"🔴"', fix=words.RULE_FIX["alarm"])]}
+        words.RULE_OFFENCE.format(name="an alarm mark", said='"🔴"', fix=words.RULE_FIX["alarm"]), NO_REASON]}
     assert r["fix"][0] == ('a negative with no why: "NEVER"; say what to do instead, or give it its reason with because, since or '
                            "so that, since a model generalises from a reason")
     assert not (y.memory.root / memory.RULES).exists() and fitted(y) == []        # nothing filed, nothing logged
@@ -70,7 +73,7 @@ def test_the_counts_read_a_rule_with_its_examples_out_so_an_example_never_trips_
     y = daemon(tmp_path)
     ex = ' <example>Asked "is it on", the reply was NEVER 👍, and it bounced.</example>'
     assert rule(y, A, "Open web pages with the browser, never the fetcher." + ex, "open web pages")["fix"] == [
-        words.RULE_OFFENCE.format(name="a negative with no why", said='"never"', fix=words.RULE_FIX["no why"])]
+        words.RULE_OFFENCE.format(name="a negative with no why", said='"never"', fix=words.RULE_FIX["no why"]), NO_REASON]
     r = rule(y, A, "Open web pages with the browser, since it draws what the page shows." + ex, "open web pages")
     assert r["ok"] and r["cite"].endswith(":6")                         # the same example, inside its tags: filed
     assert shape.filing("- a job: do it, since it helps" + ex) == {} and shape.offenses("- x: never NEVER 🔴 👍", True) == list(shape.COUNTS)
@@ -81,7 +84,7 @@ def test_every_writer_of_a_rule_line_passes_the_check_the_tool_does(tmp_path):
     r = memory.rule(m, A, "m1", "dates", "never guess a date")
     assert r["error"] == words.RULE_SHAPE and not (m.root / memory.RULES).exists()
     assert memory.rule(m, A, "m1", "dates", "Take a date from a file, since a guessed one reads as fact.")["ok"]
-    assert memory.rule(m, A, "m2", "pages", "Say WIDGETS once", acronyms=shape.ACRONYMS | {"WIDGETS"})["ok"]      # [docs] acronyms
+    assert memory.rule(m, A, "m2", "pages", "Say WIDGETS once, since it is a name.", acronyms=shape.ACRONYMS | {"WIDGETS"})["ok"]      # [docs] acronyms
 
 
 def test_the_case_lists_job_a_job_b_and_the_rulebook_line_and_files_nothing_on_the_first_call(tmp_path):

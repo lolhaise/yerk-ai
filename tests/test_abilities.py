@@ -292,6 +292,22 @@ def test_a_room_asked_for_a_link_or_a_button_in_an_email_hears_the_numbered_way_
     assert not abilities.asked("the button on the booking form is greyed out", y.memory, TAB)
 
 
+def test_a_room_asked_for_a_worker_a_script_starts_that_ends_silently_hears_the_no_reply_way(tmp_path):
+    """need-2026-11-09-77: a timer script started a worker with `yerk worker start` each time something might need a look,
+    and each run that answered NO_REPLY still asked its room for a relay turn. Asked that way, a room gets the workers entry
+    whole, with its silent end: none when the last message is exactly NO_REPLY, the tool's or a script's alike (a key of its
+    own would push the abilities answer, 1,998 at main, past the 2,000 recall cap)."""
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    found = abilities.asked("can I start a worker from a script that ends silently on NO_REPLY?", y.memory, TAB)
+    assert [e["key"] for e in found] == ["workers"]
+    text = found[0]["text"]
+    assert text.startswith(f"workers, a Yerk AI ability ({words.ability('on')[1]}): Heavy work leaves the room")
+    assert ("none when its last message is exactly NO_REPLY, however it was started (the tool, or `yerk worker start` in a "
+            "timer's script, at any --effort): its card settles quiet and the ledger says why.") in text
+    assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
+    assert not abilities.asked("the worker finished and the report is saved", y.memory, TAB)
+
+
 def test_ordinary_messages_pull_no_ability_into_the_room(tmp_path):
     y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
     assert {m: [e["key"] for e in abilities.asked(m, y.memory, TAB)] for m in ORDINARY} == {m: [] for m in ORDINARY}

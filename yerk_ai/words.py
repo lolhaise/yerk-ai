@@ -147,9 +147,9 @@ RULES_OWNER_ONLY = "not filed as a rule, since a rule reaches every room; rememb
 FILED_NEXT = ("Only the text after your last tool call reaches the room, and nothing written above this call is shown, "
               "so the answer goes there, first and whole (the result, the numbers, what you found or decided), and the "
               "filing is {clause}.")
-FILED_AT_MOST = "one clause at its end at most"
-RULE_CLAUSE = "one clause at its end, this one: every room now does {job} this way"
-TOPIC_CLAUSE = "one clause at its end, this one: the rule loads when {triggers} come up, since the shared rules file is full"
+FILED_AT_MOST = "never said, since the answer stands alone for a reader who did not see the work"     # 2026-11-09: no narration
+RULE_CLAUSE = FILED_AT_MOST + " (every room now does {job} this way)"
+TOPIC_CLAUSE = FILED_AT_MOST + " (the rule loads when {triggers} come up, since the shared rules file is full)"
 # a filing fitted under the rules file's cap (memory.rule): each strip and a topic rule in the room's day log, a topic rule in the
 # machine room (rules-on-demand: never "held", it loads when its topic comes up)
 RULE_STRIPPED = "the example in rule \"{job}\" taken out so rules.md fits its cap of {cap:,}"
@@ -157,13 +157,36 @@ RULE_TOPIC_LOG = "rule \"{job}\" filed as a topic rule in {file}: rules.md is fu
 RULE_TOPIC = "filed as a topic rule: loads when\n{triggers} come up\n\"{job}\"\nfrom {room}\n{where}\nrules.md is full at its cap of {cap:,}"
 TOPIC_WHERE = ("for every room", "for {rooms} only")
 # a rule a filing turns back (memory.unshaped, Daemon.tool_rule), with what a rule holds and why, so the room rewrites and calls again
-RULE_SHAPE = ("not filed: every room follows a rule as written, and follows it best in the prompting guide's shape (what to do "
-              "with its reason, calm words, an example inside <example> tags); rewrite what each line of `fix` names and call again")
+RULE_SHAPE = ("not filed: every room follows a rule as written, and follows it best in the Claude docs' shape (one lesson, a "
+              "one-line summary first, then its reason in a brief body, calm words, a day-log cite in place of a quote); rewrite "
+              "what each line of `fix` names and call again")
+# the lesson checks (shape.LESSON, 2026-11-09): each fix ends with the docs sentence it enforces, read off the fetched page
+LESSON_NAMES = {"enumerated": "an enumeration of cases", "summary": "no one-line summary first", "no reason": "no reason given",
+                "long": "a long body", "on record": "what the day log already records", "dense": "a long sentence",
+                "absolute": "an absolute rule missing its scope or exception", "approval": "an approval rule naming no action",
+                "think less": "a line telling the model to think less", "reasoning": "a line asking for reasoning in the reply",
+                "style limit": "a hard style limit with no reason"}
+LESSON_FIX = {"enumerated": "file one lesson per case, or one general rule with its reason, since the docs say {sentence}",
+              "summary": "open with a one-line summary, one sentence of at most {cap} characters naming the job, then the body, "
+                         "since the docs say {sentence}",
+              "no reason": "give the rule its reason with because, since or so that, since the docs say {sentence}",
+              "long": "keep the body to {cap} characters and cite the day log for the rest, since the docs say {sentence}",
+              "on record": "cite the line in place of the quote, as <example>Landed, daily/YYYY-MM-DD.md:N</example> with at most "
+                           "a six-word gloss, since the docs say {sentence}",
+              "dense": "write sentences of at most {cap} words, since the docs say {sentence}",
+              "absolute": "say where or when it applies and why, and write the go-ahead or named case that lifts it into this same "
+                          "rule (or say nothing does, as even when asked), since the docs say {sentence}",
+              "approval": "name the exact actions that need asking first (an email to a client, a payment, a push), since the docs "
+                          "say {sentence}",
+              "think less": "remove the line, since the docs say {sentence}",
+              "reasoning": "remove the line, since the docs say {sentence}",
+              "style limit": "give the limit its reason with because, since or so that, since the docs say {sentence}"}
 RULE_FIX = {"no why": "say what to do instead, or give it its reason with because, since or so that, since a model generalises from a reason",
             "loud": "write it in normal case, since a shouted word makes a model overreact",
             "untagged": "put the exchange inside <example> tags, marked landed or bounced, so a model tells it from the instruction",
             "alarm": "say in words why it matters, since an alarm mark reads as urgency with no reason"}
 RULE_OFFENCE = "{name}: {said}; {fix}"
+LESSONS_LINE = "{first} ({n} finding{s}); need {need} builds the fix, `yerk curate --rules` proposes it"   # the doctor's daily lesson run
 RULE_SAME = ("not filed yet: each line in `older` is live and speaks about the same thing, and one left saying the old way keeps "
              "it alive in every room that loads it; call again with `older` settling each, `cite | superseded: why` or "
              "`cite | kept: why`, one clause")
@@ -174,7 +197,13 @@ PART_CUT = "{part}: {n} line{s} dropped\nto fit its {cap:,} in {room}"     # at 
 FILED = re.compile(r"^\W*(?:filed|saved|from now on,? every room)\b", re.I)   # a final reporting a filing (stub)
 STUB = ("Only your final message reaches the room, and yours, \"{head}\", reports the filing, not the answer: the answer "
         "is above your last tool call, where the room never sees it, or it was never written. Write the whole answer as "
-        "your final message now, first and complete, with the filing one clause at its end at most.")
+        "your final message now, first and complete, with no word about the filing.")
+# the filing rule at Stop (Room.filing_check, 2026-11-09, the owner: a rule's filing told back as "Filed: ..."): a final holding a
+# filing report bounces once, quoting the Claude docs' readability sentence off the fetched page
+FILING_REPORT = re.compile(r"(?im)^[^\w\n]*(?:filed|logged)\b|\bthe rule now says\b|\bI(?:'ve| have)? (?:filed|logged)\b|"
+                           r"\b(?:filed|logged) (?:it|that|this|the rule) (?:as|in|under|to)\b|\brules(?:-topics)?\.md:\d+")
+FILING_TOLD = ("Your final message reports a filing (\"{head}\"), and the room reads the answer only: {sentence}. Send the "
+               "answer again as your final message, every word of it but the filing report, which is never said.")
 # the note rule at Stop (seen live: a reply opened with the model's plan for it, and the room posted both whole)
 NOTE = ("Every word of your final message is posted, and yours opens with a note to yourself (\"{head}\") before the answer. "
         "Thinking is where that goes. Write the answer alone as your final message now, from its first word.")

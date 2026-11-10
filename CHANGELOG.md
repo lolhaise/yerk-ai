@@ -40,9 +40,97 @@ version changes.
   in fixed words, never its output, and so is a failed read of the page keep opened. The plug-in's fix is on its
   branch `need-2026-11-09-76`, commits 305c25c and d570241.
 
-**Upgrading:** budgets.toml raises `mcp__hands__` to 9,831 and the session start's `total` to 126,571, each with its
+**Upgrading:** budgets.toml raises `mcp__hands__` to 9,831 and the session start's `total` to 128,671 (on main's 127,548), each with its
 dated note: 424 for `keep`, 481 the plug-in's main already sends since need 74's `type` was merged onto need 75's
 with no line raised, and 218 for keep by the page's url. The plug-in's branch merges onto its main, and a room picks up `keep` at its next session.
+
+### need-2026-11-09-78 (#?)
+
+- A text or an email you approved goes on that one word, whatever folder the room's shell is in when it calls again.
+  Before, an approval matched the call and the folder the shell was in when it was held, so a session a compaction had
+  put back in its work folder (a resumed session starts there) made the same call, was held a second time on a second
+  card, and you said the word twice; the text still went once.
+- The same holds for a send to another room, a delete through the `delete` tool and any other tool's call the gates
+  hold: a tool's input is its whole call (an email's files by whole path and sha256, a delete's whole paths), so the
+  folder adds nothing to it. A shell command (a `git push`, a `gh pr create`) still runs on its word only from the
+  folder it was held in, since the same words push another repository from another folder.
+- Nothing else changes: each call is still shown before the word, the word releases it once, the next one is held
+  again, and the hold's ledger row still keeps the folder the shell was in.
+- The tests: 3 new, in tests/test_texts.py and tests/test_emails.py (held with the shell in a folder under the work
+  folder, the word, then the same call from the work folder: released and sent once, one card and one word, and the
+  next one held again) and tests/test_gates.py (a send to another room released from another folder; a `git push` held
+  again from another folder and released from its own).
+
+**Upgrading:** budgets.toml raises `[code] lines` to 27,923 with its dated note. Nothing to set; a hold made before the
+deploy's restart is released by the same call from any folder too.
+
+### need-2026-11-09-77 (#?)
+
+- A worker whose last message is exactly NO_REPLY now ends with no relay turn, however it was started: the `worker` tool,
+  or `yerk worker start --brief FILE --room ROOM` in a timer's script. Before, only a scheduled agent job's NO_REPLY was
+  silent; any other worker's quiet end settled its card as `🟢 worker finished clean, nothing to add`, then still asked its
+  room for a turn to tell the outcome, which the room had to answer with a posted line. A timer script that starts a
+  worker each time something might need a look, dozens of times on a busy day, put a turn in its room for every quiet run,
+  and the way around it, a one-shot agent job a run, left a job in the jobs file each time and could not pick the
+  thinking level.
+- What stays: the card settles quiet as before; the worker's ledger row says relay skipped, "the worker answered
+  NO_REPLY", and `yerk worker list` shows it. A run with something to say is told as before, and one that dies, times
+  out or is stopped after saying NO_REPLY is still told. A worker that ended while yerkd was down ends the same way at
+  its next start. A job's worker, a pictures backfill batch and the needs pipeline's workers keep their own endings, and
+  `--effort`, `--model`, `--account`, `--cap` and `--task` work as they did.
+- The `worker` tool's words say the room hears nothing when the last message is exactly NO_REPLY, `yerk worker start`'s
+  `--brief` help says so, and the workers ability (`yerk explain workers`) carries the silent end, found by a room that
+  asks for a worker from a script that ends silently.
+- The tests: 2 new, in tests/test_workers.py (a worker started by `yerk worker start --brief FILE --room ROOM --effort
+  low` that answers NO_REPLY asks no turn and runs at its level, live and at a re-attach, while one with something to say
+  and one that dies after NO_REPLY are each told, in order) and tests/test_abilities.py (the workers entry answers the
+  ask whole under the recall cap), and the tool's words checked in tests/test_hooks_mcp.py.
+- Tests only: that check of the `worker` tool's words now reads them with their lines joined, as the attachments,
+  seen and watch tests read theirs (box-ci red on py3.12 at this branch's head 385d9e1). Python 3.12 keeps a
+  docstring's indent where 3.13 and 3.14 strip it, so on 3.12 the line break before NO_REPLY came with eight spaces
+  and the test, which matched the bare line break, failed there alone. The tool's words are unchanged.
+
+**Upgrading:** budgets.toml raises `yerk_tools` to 25,600, the session start's `total` to 127,548 and `[code] lines` to
+27,915, each with its dated note. Of the 800 on `yerk_tools`, 100 is the `worker` tool's clause and 700 is `remember` as
+main builds it (3,016 characters since memory-docs-shape and fable-5-2, no line moved for it there). A worker that ends
+after the deploy's restart ends this way, and a room picks up the tool's words at its next session.
+
+### memory-docs-shape-2026-11-09 (#?)
+
+- A rule is filed as one lesson in the shape Anthropic's Claude Fable 5 prompting page gives a memory system: one lesson,
+  a one-line summary first, its reason, a brief body, and a day-log cite in place of a quote the day log already holds.
+  `remember` with `job` refuses a rule that enumerates cases, runs a summary past 140 characters, gives no reason, runs
+  a body past 600 characters, or pastes more than 8 words a day log holds. Each refusal quotes the docs sentence it
+  enforces, read off the fetched page, and says the fix.
+- `yerk docs` fetches the Fable 5 prompting page too, and the doctor fetches the pages daily. Each check is pinned to its
+  docs sentence and page; a sentence the page no longer holds turns the test suite red and is a doctor line.
+- The doctor's daily run scores the whole rule store against the lesson shape and the rules file against the
+  code-memory limits (200 lines or 25KB), writes `docs/shape/lessons.md`, and on a finding files a need and says one line
+  in the machine room. A green day says nothing.
+- `remember` with `retire` deletes a rule that turned out wrong: its line is emptied and its words go to the day log.
+- A filing is never announced. A final message reporting one ("Filed", "Logged", "the rule now says") after a filing
+  call bounces once with the docs' readability sentence, and `remember`'s result no longer asks for a filing clause.
+
+- Claude Fable 5.2: a room's checks read its own model's prompting page beside the guide, the Fable family page and
+  code-memory, and the shared rules store is scored against the pages of every model any room runs, each finding naming
+  its page. `yerk docs` fetches the 5.2 page; a model a room runs with no page fetched is a doctor line and a need naming
+  the page to add.
+- From the 5.2 page, `remember` with `job` refuses an absolute rule (never, always, must not) that does not say where it
+  applies or what lifts it, an approval rule that names no action ("anything outward" alone), a line telling the model
+  to think less, and a line asking for its reasoning in the reply. A hard limit of lines, sentences or words is counted
+  in `docs/shape/lessons.md`, never refused. The 40-word sentence cap is gone from the gate, since the page says a hard
+  sentence limit makes prose choppy.
+- The mechanics say the 5.2 page's finishing, opening-line-and-recap and communicating-clearly text in their own words,
+  each absolute carries its scope and exception, and a line names the steps that need no approval.
+- A resumed session, or a compaction's copy of one, is given the start file it began with (kept per session under
+  `rooms/<room>/starts/`), and every change since rides its newest message, since Claude Fable 5.2 rejects a resumed
+  request whose system prompt changed. A new session takes the current files.
+
+**Upgrading:** budgets.toml `[shape]` gains the `lesson_*` lines, `[session_start.appended] mechanics` rises to 8,500 and
+the total to 126,748, and `[code]` lines rises, each with its dated note; `[docs] refresh_days` defaults to 1. An install
+whose `[docs] pages` in yerkd.toml replaces the default list adds `prompting-fable-5-2` (and each model its rooms run)
+there, or the doctor files the need. Until the store is converted (the migration, a later change), the doctor files one
+need for the rules out of the lesson shape and says one machine-room line a day.
 
 ### need-2026-11-09-75 (#?)
 

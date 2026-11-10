@@ -59,9 +59,10 @@ by the name the owner uses (it names the fact file). `replaces`: for a correctio
 next 12 holding those words is marked superseded. Returns the new line's cite. `job`: when the owner
 says how a job is done from now on, or corrects how it was done, the job's short name ("open web pages",
 the rules' own name if it has one): `text` becomes its one rule in every room, the older one marked
-replaced. A rule holds its reasons in calm words, examples in <example> tags, since every room follows it as
-written; one that does not comes back with each fix, and so do live lines of other jobs on the same thing,
-settled in `older`: `cite | superseded: why` or `cite | kept: why`.
+replaced. A rule is one lesson in the Claude docs' shape, Store one lesson per file with a one-line summary at the top. Record corrections and confirmed approaches alike, including why they mattered. Don't save what the repo or chat history already records; update an existing note rather than creating a duplicate; delete notes that turn out to be wrong. So a rule opens with a one-line summary, gives its reason, keeps its body brief and cites an example by its day-log line (<example>Landed, daily/YYYY-MM-DD.md:N</example>) in place of pasting it. Use plain words, and write in clear, understandable full sentences.; one that is not comes back with each
+fix and the docs sentence it misses, and so do live lines of other jobs on the same thing, settled in `older`:
+`cite | superseded: why` or `cite | kept: why`. `retire`: a rule's cite that turned out wrong, `text` why;
+its line is deleted and its words kept in the day log.
 `triggers`, with `job`: words or short phrases a message on the job holds (the owner's, when
 named); a topic rule loads on them and its job's words. `said`: when `text` is what a person said or
 wrote, word for word, their name, with `source` (the message id, file path or transcript line holding
@@ -77,6 +78,7 @@ your words) is your note, and is shown as your note, never as their words.
 - `said`: string, default ""
 - `source`: string, default ""
 - `older`: list of string or null, default null
+- `retire`: string, default ""
 
 ## worker
 
@@ -84,9 +86,9 @@ your words) is your note, and is shown as your note, never as their words.
 Heavy work leaves the room: a worker is a headless run with its own card in the room and a
 report. action "start": `brief` is the whole job (what done looks like, where it ends, what to
 leave alone); optional `tasks` (its checklist rows), `cap_minutes` (default 65), `account`, `model`,
-`effort` (low, medium, high, xhigh, max; default the room's live level), `room` (default this room). Returns its
-id, folder and report path; when it ends, the card settles and the room hears the result. "list": workers and their state. "stop" / "report":
-by `id` (report gives the report's text, for you to tell in your own words).
+`effort` (low, medium, high, xhigh, max; default the room's live level), `room` (default this room). Returns its id, folder
+and report path; when it ends, the card settles and the room hears the result, or nothing if its last message is exactly
+NO_REPLY. "list": workers and their state. "stop" / "report": by `id` (report gives the report's text, for you to tell in your own words).
 ```
 
 - `action`: string, required

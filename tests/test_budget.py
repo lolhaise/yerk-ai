@@ -259,9 +259,12 @@ def test_claude_codes_parts_as_the_rooms_send_them_fit_their_lines_and_what_is_l
     (about 3,477 as sent), the total by the 398 to 123,803 on rule-filing-check's 123,405; then (zoom-2026-11-09) the `zoom`
     tool (about 1,112 as sent; all 23 about 24,787) to 24,800 and the total by the 1,100, with its mechanics line's 400, to
     125,303; then (need-2026-11-09-75) the hands line to 8,708 for the browser's `type` (about 3,622 as sent), the total by
-    the 145 to 125,448; then (need-2026-11-09-76) the hands line to 9,613 for the browser's `keep` and the plug-in main's
-    merged type (about 4,527 as sent), the total by the 905 to 126,353; then (need 76's cold read) the hands line to 9,831
-    for keep by the page's url (about 4,745 as sent), the total by the 218 to 126,571."""
+    the 145 to 125,448; then (fable-5-2) the mechanics to 8,500 and the total by the 1,300 to 126,748; then
+    (need-2026-11-09-77) the `worker` tool's clause on a NO_REPLY end (about 1,481 as sent) with `remember` as main
+    47d8d58 builds it (3,016, no line moved for it there; all 23 about 25,551) to 25,600 and the total by the 800 to
+    127,548; then (need-2026-11-09-76) the hands line to 9,613 for the browser's `keep` and the plug-in main's merged
+    type (about 4,527 as sent), the total by the 905 to 128,453 on main's 127,548; then (need 76's cold read) the hands
+    line to 9,831 for keep by the page's url (about 4,745 as sent), the total by the 218 to 128,671 on main's 127,548."""
     shape = {"system": [{"type": "text", "text": "p" * LIVE_PROMPT}, {"type": "text", "text": "# Yerk AI mechanics"}],
              "tools": [entry(n, size) for n, size in LIVE_TOOLS.items()]}
     (t := tmp_path / "sid.jsonl").write_text(json.dumps({"type": "api-request-shape", "shape": shape}) + "\n")
@@ -279,7 +282,7 @@ def test_claude_codes_parts_as_the_rooms_send_them_fit_their_lines_and_what_is_l
     assert all(sent <= line for sent, line in rows.values()), out
     assert all(line <= sent * 1.02 for name, (sent, line) in rows.items() if name != "Yerk AI's tools"), rows
     s = b["session_start"]
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 126571
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 128671
 
 
 def room_sent(tmp_path, tools, file="# Yerk AI mechanics\n- an example line"):
@@ -414,11 +417,14 @@ def test_the_rulebook_line_keeps_about_1000_over_the_largest_room_text_and_what_
     (rule-filing-check-2026-11-06); then the hands line (398, the browser's open of a mail's link by its number), no part
     could pay, to 123,803 (need-2026-11-07-74); then the `zoom` tool (1,100) and its mechanics line (400), no part could
     pay, to 125,303 (zoom-2026-11-09); then the hands line (145, the browser's `type`), no part could pay, to 125,448
-    (need-2026-11-09-75); then the hands line (905, the browser's `keep` and the plug-in main's merged type), no part could
-    pay, to 126,353 (need-2026-11-09-76), then by the 218 of keep by url, to 126,571 (its cold read)."""
+    (need-2026-11-09-75); then the mechanics in Claude Fable 5.2's words (1,300), no part could pay, to 126,748
+    (fable-5-2); then the `worker` tool's clause on a NO_REPLY end (100) and `remember`'s growth on main 47d8d58 (700),
+    no part could pay, to 127,548 (need-2026-11-09-77); then the hands line (905, the browser's `keep` and the plug-in
+    main's merged type), no part could pay, to 128,453 on main's 127,548 (need-2026-11-09-76), then by the 218 of keep
+    by url, to 128,671 on main's 127,548 (its cold read)."""
     s = budgets()["session_start"]
     assert 900 <= s["appended"]["rulebook"] - LIVE_RULEBOOK <= 1400 and s["appended"]["rules"] == 16000
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 126571
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 128671
     private = tmp_path / "private"
     shutil.copytree(EXAMPLE_PRIVATE, private)
     (private / "rulebook.md").write_text("r" * (LIVE_RULEBOOK - 1) + "\n")
@@ -442,7 +448,7 @@ def test_the_mechanics_say_when_to_use_the_place_unasked_in_one_line_inside_thei
     text = context.MECHANICS.read_text().strip()
     lines = [x for x in text.splitlines() if "`[place]`" in x]
     assert len(lines) == 1 and all(w in lines[0] for w in ("unasked", "gym", "log the session", "work", "commute", "moving", "short"))
-    assert context.chars(text) < budgets()["session_start"]["appended"]["mechanics"] == 7200
+    assert context.chars(text) < budgets()["session_start"]["appended"]["mechanics"] == 8500
 
 
 def test_the_mechanics_say_a_message_arriving_mid_turn_is_answered_by_name_in_one_line_inside_their_budget():

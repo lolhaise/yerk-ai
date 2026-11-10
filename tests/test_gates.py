@@ -210,6 +210,35 @@ def test_an_approval_releases_exactly_the_held_call_once_and_a_word_without_the_
     assert [r["decision"] for r in y.ledger.rows(30, "gates")].count("approved") == 1
 
 
+def test_a_tools_approval_holds_whatever_folder_the_shell_is_in_and_a_shell_commands_only_in_its_own(tmp_path):
+    """need 78 of 2026-11-09: a call held with the shell in one folder and tried again from another, as a session resumed
+    after a /compact is, back in its work folder. A tool's input is its whole call, so the word releases it there; a shell
+    command's words do another thing in another folder (gates.bound_to), so its word holds only where it was held."""
+    y, room, ch = setup(tmp_path)
+    work = tmp_path / "rooms" / "example-room" / "work"
+    send = {"tool_name": "mcp__yerk__send", "tool_input": {"room": "family", "text": "hi"}}
+    push = {"tool_name": "Bash", "tool_input": {"command": "git push origin main"}}
+
+    def pre(c, cwd):
+        return call(y, {"hook_event_name": "PreToolUse", **c, "cwd": str(cwd)})
+
+    def held(out):
+        return out.get("hookSpecificOutput", {}).get("permissionDecision") == "deny"
+
+    def word(mid):
+        room.busy, room.inflight = True, [Inbound(mid, "owner", "approve")]
+        call(y, {"hook_event_name": "UserPromptSubmit", "prompt": "approve"})
+    assert held(pre(send, work / "repo"))
+    word("m1")
+    assert pre(send, work) == {} and held(pre(send, work / "repo"))       # released from another folder, once
+    assert held(pre(push, work / "repo"))
+    word("m2")
+    assert held(pre(push, work)) and pre(push, work / "repo") == {}        # a command: only from its own folder
+    assert gates.bound_to("Bash", "/x") == "/x" and gates.bound_to("mcp__yerk__text", "/x") is None
+    assert [r["decision"] for r in reversed(y.ledger.rows(20, "gates"))] == [
+        "hold", "approved", "release", "hold", "hold", "approved", "hold", "release"]
+
+
 def test_approvers_and_external_rules_come_from_yerkd_toml(tmp_path):
     s = gates.settings({"approvers": ["owner", "test-webhook"], "word": "Go", "off": ["public-post"],
                         "external": {"deploy": {"tool": "^Bash$", "command": r"^fly\s+deploy\b", "what": "a deploy"}}})
@@ -319,7 +348,7 @@ def test_a_final_that_only_reports_a_filing_bounces_once_and_so_does_an_answer_l
                          ([("say", "Logging that."), ("call", "mcp__yerk__remember")],
                           "Noted, and that moves the review to Thursday with the same three people on it."),
                          ([("say", "Filing it, then the build."), ("call", "mcp__yerk__remember"), ("call", "Bash")],
-                          "Filed, and the build is green.")):
+                          "The build is green.")):
         room._new_card()
         stream(room, *steps)
         assert call(y, {**stop, "last_assistant_message": final}) == {}, final
@@ -742,3 +771,28 @@ def test_an_owner_rooms_send_to_the_machine_room_needs_no_word_and_a_family_room
     assert send("family-room", "ops")[0] == "send-elsewhere"              # a family room's still holds
     assert send("main", "other")[0] == "send-elsewhere"         # any other room still holds
     assert send("main", "ops", None)[0] == "send-elsewhere"     # no rooms.toml in hand: unchanged
+
+
+def test_a_final_holding_a_filing_report_bounces_once_with_the_readability_sentence_and_the_rest_kept(tmp_path):
+    """The filing rule (2026-11-09, the owner: a rule rewritten, then "Filed: ..." told back): after a filing call, a final
+    holding a filing report bounces once, quoting the Claude docs' readability sentence and asking for the rest of the answer;
+    a final with no report stands, and so does one in a result that filed nothing."""
+    y, room, ch = setup(tmp_path)
+    stop = {"hook_event_name": "Stop", "stop_hook_active": False}
+    told = "The build is green and the review moved to Thursday.\n\nFiled: rules.md:115, the rule now says so."
+    for final in (told, "The build is green. I've filed it under the release job.", "Logged, and the build is green."):
+        room._new_card()
+        stream(room, ("say", "Filing it, then the build."), ("call", "mcp__yerk__remember"), ("call", "Bash"))
+        out = call(y, {**stop, "last_assistant_message": final})
+        assert out["decision"] == "block" and "for a reader who didn't see any of that" in out["reason"], final
+        assert "every word of it but the filing report" in out["reason"]
+        assert call(y, {**stop, "last_assistant_message": final}) == {}                             # once
+    assert sorted(r["detail"] for r in y.ledger.rows(20, "shadow") if r["rule"] == "filing") == [
+        "a filing report: Filed: rules.md:115, the rule now says so.", "a filing report: Logged, and the build is green.",
+        "a filing report: The build is green. I've filed it under the release job."]
+    room._new_card()
+    stream(room, ("say", "Checking."), ("call", "Bash"))
+    assert call(y, {**stop, "last_assistant_message": "Filed under taxes, the 2025 receipts are in the blue folder."}) == {}
+    room._new_card()
+    stream(room, ("say", "Filing it."), ("call", "mcp__yerk__remember"))
+    assert call(y, {**stop, "last_assistant_message": "The review is Thursday at 9:30 with the same three people."}) == {}
