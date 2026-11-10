@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-11-10
 
-### walls-2026-11-10 (#?)
+### walls-2026-11-10 (#43)
 
 - A gate that cannot be asked refuses. A room's tool call is not run when the daemon gives its gate no answer within 8
   seconds or answers with an error, and the room's model is told so in one line; a worker's call is not run when its
