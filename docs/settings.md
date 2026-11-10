@@ -171,6 +171,8 @@ The daemon's settings, in the private folder beside rooms.toml, read when yerkd 
 
 - `account`: the one account the night's curation runs on
 - `logs`: more files in the private folder read as the owner's own stream
+- `model`: the model its worker calls run on, the conversion's too (default opus)
+- `cap_minutes`: the minutes one worker call may run (default 45)
 
 ### [docs]
 

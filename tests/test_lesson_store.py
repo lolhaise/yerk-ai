@@ -187,3 +187,101 @@ def test_the_daily_check_scores_each_lesson_file_and_the_index_and_reports_an_in
     lines = (m.root / memory.RULES).read_text() + "".join(f"- A summary of lesson {i}. (rules/lesson-{i}.md)\n" for i in range(200))
     (m.root / memory.RULES).write_text(lines)
     assert shape.store(m, budgets()["shape"])["index"] == [f"{len(lines.splitlines())} lines, past 200"]   # the daily run keeps saying it
+
+
+# The conversion (conversion.py, `yerk curate --lessons`): a dry run, its apply from the exact file, its undo.
+NOW = 1_762_790_400.0          # 2025-11-10 16:00 UTC, the dry run's clock; the day logs below sit inside its 14 days
+FABLE2 = ("prompting-guide", "prompting-fable-5", "code-memory", "prompting-fable-5-2")     # a room on Claude Fable 5.2
+
+
+def old_store(tmp_path):
+    """An unconverted store: three live rules, one replaced line, a topic rule, an owner message that loads each."""
+    from datetime import datetime, timezone
+    m = memory.settings(EXAMPLE_PRIVATE, tmp_path / "state")
+    m.root.mkdir(parents=True, exist_ok=True)
+    t = "(example-room, 2025-11-01 09:00:00-04:00)"
+    rows = ["---", "class: shared", "---", "# Rules", "",
+            memory.mark(f"- book the hall: Book the hall early, since it fills. {t} [m:m0]", "tree/rules.md:7"),
+            f"- book the hall: {HALL} {t} [m:m1]",
+            f"- open web pages: {WEB} {t} [m:m2]",
+            f"- example ledger: Never post the example ledger. {t} [m:m3]"]
+    (m.root / memory.RULES).write_text("\n".join(rows) + "\n")
+    (m.root / memory.TOPIC_RULES).write_text("\n".join([*memory.TOPIC_HEAD, f"- dates: {DATES} [rooms: example-room] {t} [m:m4]"]) + "\n")
+    m.daily.mkdir(parents=True, exist_ok=True)
+    day = datetime.fromtimestamp(NOW - 86400, timezone.utc).date().isoformat()
+    (m.daily / f"{day}.md").write_text(f"# {day}\n\n" + "\n".join(
+        memory.format_line(datetime.fromtimestamp(NOW - 86400 + i, timezone.utc), "example-room", "r1", "owner", "", said, "private", f"o{i}")
+        for i, said in enumerate(["can you book the hall for us", "open web pages for the example report", "the example ledger, post it?"])) + "\n")
+    return m
+
+
+def test_the_dry_run_writes_one_proposals_file_and_changes_nothing_else(tmp_path):
+    from yerk_ai import conversion
+    m = old_store(tmp_path)
+    before = {p: p.read_bytes() for p in m.root.rglob("*") if p.is_file()}
+    path = conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=lambda p, tools: "", read=FABLE2)
+    assert {p: p.read_bytes() for p in m.root.rglob("*") if p.is_file() and p != path} == before and path.parent.name == "rules-proposals"
+    text = path.read_text()
+    rec = conversion.loaded(path)
+    assert [r["cite"] for r in rec["rules"]] == ["tree/rules.md:7", "tree/rules.md:8", "tree/rules.md:9", "tree/rules-topics.md:3"]
+    ledger = rec["rules"][2]
+    assert ledger["lessons"][0]["body"] == 'It holds for the job "example ledger". Only the owner\'s go-ahead lifts it.'
+    assert [d["kind"] for d in ledger["done"]] == ["scope added", "exception added", "no reason on file"]
+    assert rec["ready"] is False and "the gate refuses" in text and "- no reason on file (listed for Ben" in text
+    assert rec["ends"]["tree/rules.md:6"] == "tree/rules.md:7"                         # the replaced line leads to its live rule
+    assert "lost by the split" not in text and "1 owner message of the last 14 days load it" in text
+
+
+def test_an_apply_takes_the_exact_file_keeps_the_originals_and_an_old_cite_finds_its_lesson_and_undo_puts_them_back(tmp_path):
+    from yerk_ai import conversion
+    m = old_store(tmp_path)
+    rows = (m.root / memory.RULES).read_text().replace("Never post the example ledger.", "Keep the example ledger to the owner, since it holds his accounts.")
+    (m.root / memory.RULES).write_text(rows)
+    originals = {n: (m.root / n).read_bytes() for n in (memory.RULES, memory.TOPIC_RULES)}
+    path = conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=lambda p, tools: "")
+    assert conversion.loaded(path)["ready"] is True
+    path.write_text(path.read_text().replace("Original:", "Originally:", 1))
+    try:
+        conversion.apply(EXAMPLE_PRIVATE, tmp_path / "state", m, path)
+        raise AssertionError("an edited file applied")
+    except RuntimeError as e:
+        assert "not the file a dry run wrote" in str(e)
+    path = conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=lambda p, tools: "")
+    out = conversion.apply(EXAMPLE_PRIVATE, tmp_path / "state", m, path)
+    assert out[0].startswith("4 lessons from 4 rules") and lessons.converted(m.root) and not (m.root / memory.TOPIC_RULES).exists()
+    day = conversion.loaded(path)["day"]
+    assert (m.root / f"rules-backup-{day}" / memory.RULES).read_bytes() == originals[memory.RULES]
+    assert [x.slug for x in lessons.store(m.root)] == ["book-the-hall", "open-web-pages", "example-ledger", "dates"]
+    assert lessons.store(m.root)[3].rooms == ("example-room",) and lessons.store(m.root)[3].cls == "private"
+    for old in ("tree/rules.md:6", "tree/rules.md:7"):                # a replaced line and its live one: the same lesson
+        assert lessons.live_slug(m.root, old) == "book-the-hall"
+    assert memory.read(m, "rules-topics.md:3")["moved"].startswith("rules-topics.md:3 is rules/dates.md now")
+    whole, _ = context.rules_text({}, m.root / memory.RULES, "example-room", "example-room")    # uncapped: every rule it had
+    assert len(whole.splitlines()) == 5 and HALL in whole and DATES in whole
+    assert conversion.undo(m, day)[0].startswith("4 lessons removed")
+    assert {n: (m.root / n).read_bytes() for n in originals} == originals and not lessons.converted(m.root)
+
+
+def test_the_model_pass_is_knocked_down_or_kept_and_a_split_that_loses_its_trigger_is_refused(tmp_path):
+    from yerk_ai import conversion
+    m = old_store(tmp_path)
+    rows = (m.root / memory.RULES).read_text().replace(WEB, "Open pages in the Browserly viewer.")      # no reason: the model's
+    (m.root / memory.RULES).write_text(rows)
+    day = next(m.daily.glob("*.md"))
+    day.write_text(day.read_text().replace("open web pages for the example report", "is Browserly up"))
+    asked: list[str] = []
+
+    def model(prompt: str, tools: str) -> str:
+        asked.append(prompt.lstrip().split("\n", 1)[0])
+        if prompt.lstrip().startswith("You check the lessons"):
+            return "KEEP tree/rules.md:8\nDROP tree/rules.md:9 | it adds a case"
+        return "\n".join(json.dumps(x) for x in (
+            {"cite": "tree/rules.md:8", "lessons": [{"summary": "Open pages in the example viewer.", "body": ""}],
+             "rewritten": [{"said": "Open pages in the Browserly viewer.", "as": "Open pages in the example viewer."}]},
+            {"cite": "tree/rules.md:9", "lessons": [{"summary": "Keep the example ledger in.", "body": ""}]}))
+    rec = conversion.loaded(conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=model, read=FABLE2))
+    assert len(asked) == 2                                   # one proposing call, one knock-down
+    web, ledger = rec["rules"][1], rec["rules"][2]
+    assert web["lessons"][0]["summary"] == "Open pages in the example viewer." and web["missing"] == []
+    assert ledger["lessons"][0]["summary"] == "Never post the example ledger."       # knocked down: split as it stands
+    assert rec["lost"] == {"tree/rules.md:8": [f"daily/{day.name}:4"]} and "1 original losing a trigger" in rec["why"]

@@ -32,3 +32,20 @@ You check card lines another worker proposed from the packs below. Pass a line o
 Answer one line for each proposed line, the line exactly as proposed:
 `KEEP <card file>: - <Key>: ...` or `DROP <card file>: - <Key>: ... | <the rule it breaks, in a few words>`
 Never rewrite a line: one that would pass with a change is dropped with the change named. Write nothing else.
+
+# Lessons
+
+You rewrite rules into lessons in the shape the Claude docs give a memory system: "Store one lesson per file with a one-line summary at the top." Each rule below follows `===`, its cite and its job. The rule is the owner's; its meaning never changes.
+
+For each rule, write one JSON object on one line, nothing else:
+`{"cite": "<its cite>", "lessons": [{"summary": "...", "body": "..."}], "left_out": [{"said": "<a sentence of the rule>", "why": "..."}], "rewritten": [{"said": "<a sentence of the rule>", "as": "<the lesson's words for it>"}], "reason": {"said": "<the reason>", "from": "<the rule's own words, or the daily/<day>.md:<line> it cites>"}, "caution": "<why its reason may no longer hold>"}`
+- The summary is the instruction itself, one imperative sentence of at most 140 characters that a room can follow with the body unread. The body holds its reason and its cited examples, at most 600 characters.
+- A rule that lists cases becomes one lesson per case or one general lesson with its reason.
+- Every sentence of the rule lands in a lesson word for word, or is listed in `rewritten` with the words that carry it, or in `left_out` with why. Add nothing the rule does not say.
+- A reason comes from the rule's own words or a day-log line it cites, word for word, never invented; give none when there is none on file.
+- `caution` only for a caution whose reason may no longer hold; it stays in place, since deleting one is the owner's call.
+- Leave out the keys you have nothing for. Plain punctuation, no em dashes.
+
+# Knock down lessons
+
+You check the lessons another worker proposed from the rules below. Pass a proposal only when its lessons, read together, say what the rule says: nothing lost, nothing added, no case dropped, a reason only where the rule or the line it cites gives one. For each proposal write one line: `KEEP <cite>` or `DROP <cite> | <why>`. Write nothing else.

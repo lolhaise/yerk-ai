@@ -541,7 +541,9 @@ def cmd_curate(a: argparse.Namespace) -> int:
     """The night's card curation (curate.py): the sweep, then yesterday's facts, or each day from --since, proposed,
     knocked down, checked and landed past the bench, then the rule files' proposals; --dry-run changes nothing. --rules:
     the proposals alone; --apply DAY N[,N...]: the owner's word, those proposals written (or `undo`, the last apply back)."""
-    from . import curate
+    from . import conversion, curate
+    if a.lessons or a.lessons_apply or a.lessons_undo:
+        return conversion.main(private_dir(a.private), state_dir(a.state), a.lessons_apply or "", a.lessons_undo or "")
     if a.apply:
         return curate.apply_main(private_dir(a.private), state_dir(a.state), *a.apply)
     if a.rules:
@@ -932,6 +934,10 @@ def parser() -> argparse.ArgumentParser:
                     "proposed into <memory>/rules-proposals/<day>.md, never applied")
     cu.add_argument("--apply", nargs=2, metavar=("DAY", "N"), help="the owner's word: proposals N[,N...] of DAY written, backed "
                     "back as plain text with one more, line `for`: the check while a second")
+    cu.add_argument("--lessons", action="store_true", help="the conversion's dry run: the rule store as lesson files and an index, "
+                    "proposed into <memory>/rules-proposals/lessons-<day>.md, nothing else written")
+    cu.add_argument("--lessons-apply", metavar="FILE", help="that exact proposals file applied, the originals copied first")
+    cu.add_argument("--lessons-undo", metavar="DAY", help="the originals of DAY's conversion put back")
     cf = sub.add_parser("config", help="the settings Yerk AI describes, with their values here and plain words")
     cf.add_argument("action", choices=["get"])
     cf.add_argument("key", nargs="?", default="", help="a setting or section (presentation, memory, room); all when left out")
