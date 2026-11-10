@@ -134,7 +134,10 @@ def test_a_worker_may_not_write_its_own_gate_files(tmp_path, name):
                      ("Bash", {"command": f"cp /dev/null {folder / name}"}),
                      ("Bash", {"command": f"sed -i 's/a/b/' ./{name}"}),
                      ("Bash", {"command": f"bash -c 'cat other.json > {name}'"}),
-                     ("Bash", {"command": f"python3 -c \"open('{name}', 'w').write('{{}}')\""})):
+                     ("Bash", {"command": f"python3 -c \"open('{name}', 'w').write('{{}}')\""}),
+                     ("Bash", {"command": f"echo x | tee -a {name}"}), ("Bash", {"command": f"mv other.json {name}"}),
+                     ("Bash", {"command": f"dd if=/dev/zero of={name} count=1"}),
+                     ("Bash", {"command": f"cp /tmp/x/{name} ."})):                     # a copy into its folder, under the same name
         assert _denied(folder, spec, tool, ti), (tool, ti)
     assert _denied(folder, spec, "Bash", {"command": f"cd {folder} && echo x > {name}"}, cwd=tmp_path / "elsewhere")
 
@@ -146,7 +149,12 @@ def test_a_worker_still_reads_its_gate_files_and_writes_its_own_work(tmp_path):
                      ("Bash", {"command": "grep -c hooks settings.json; ls -la"}), ("Write", {"file_path": "notes.md", "content": "x"}),
                      ("Write", {"file_path": str(folder / "wt" / "worker.json"), "content": "{}"}),     # a file of its work, same name
                      ("Bash", {"command": "cat > REPORT.md <<'EOF'\nworker.json holds the spec\nEOF"}),
-                     ("Bash", {"command": "echo done > TASKS.md"})):
+                     ("Bash", {"command": "echo done > TASKS.md"}),
+                     # naming a gate file is no write: a worker's commonest first command, and a read by a program of its own
+                     # (2026-11-10: the 31 of 17,017 real worker commands that named one were all reads, and all were refused)
+                     ("Bash", {"command": 'echo "--- worker.json ---" && cat worker.json && echo "--- settings.json ---" && cat settings.json'}),
+                     ("Bash", {"command": "python3 -c \"import json;d=json.load(open('worker.json'));print(d.get('room'))\""}),
+                     ("Bash", {"command": "cp worker.json copy.json"}), ("Bash", {"command": "find . -maxdepth 2 -name mcp.json | head"})):
         assert not _denied(folder, spec, tool, ti), (tool, ti)
 
 

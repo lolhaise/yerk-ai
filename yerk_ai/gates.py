@@ -48,8 +48,12 @@ RESTART_VERBS = frozenset({"restart", "stop", "kill", "try-restart", "reload-or-
 WRITE_OPS = re.compile(r">>?|\btee\b|\bsed\s+(?:-[^\s]*\s+)*-i|\bcp\b|\bmv\b|\btruncate\b|\bdd\b|\bperl\s+-[^\s]*i")
 WRITE_TOOLS = ("Write", "Edit", "MultiEdit", "NotebookEdit")
 GATE_FILES = ("worker.json", "settings.json", "mcp.json")       # a worker's own gate, in its folder (workers.py): its spec, hook and tools
-READERS = frozenset({"cat", "head", "tail", "less", "more", "grep", "egrep", "fgrep", "rg", "wc", "jq", "ls", "stat", "file", "diff",
-                     "cmp", "md5sum", "sha1sum", "sha256sum", "sed"})     # programs that only read the file they name (sed without -i)
+WRITERS = frozenset({"mv", "tee", "truncate", "dd", "rm", "unlink", "touch", "chmod", "chown", "shred"})   # change what they name
+COPIERS = frozenset({"cp", "install", "rsync", "ln"})               # write their last word, read the ones before it
+INTERPRETERS = ("python", "node", "perl", "ruby")                   # run the code among their words (-c, -e)
+REDIRECT = re.compile(r"(?:&>>?|>>?|>\|)\s*([^\s'\"<>|;&=()]+)")     # a redirect's target, a nested shell's too
+WRITES_IN_CODE = re.compile(r"""['"][wax]b?\+?['"]|['"]r\+b?['"]|\.write|write_text|write_bytes|writeFile|appendFile"""
+                            r"""|\bos\.(?:replace|rename|remove|unlink|truncate)|\.unlink\(|\.rename\(|shutil\.|\btruncate\b""")
 EXTERNAL: dict[str, dict[str, str]] = {
     "send-elsewhere": {"tool": r"^mcp__yerk__send$", "room": "other", "what": "a send to another room"},
     "public-post": {"tool": r"^Bash$", "what": "a public post",
@@ -260,25 +264,46 @@ def restart_hit(tool: str, ti: dict[str, Any], private: Path) -> str | None:
 def own_gate_hit(tool: str, ti: dict[str, Any], folder: Path, cwd: str) -> str | None:
     """Would this call of a worker's write one of its own gate files (GATE_FILES in its folder)? -> the file's name, else
     None. The worker gate reads worker.json on every call, so a worker that rewrote it would set its own rules. A file tool
-    by its path; a shell command when it names the file anywhere, a nested string too, other than as what a reader reads
-    (`cat worker.json`, `jq . worker.json > copy.json`). The unit binds the same files read-only (workers.Systemd.sandbox):
-    that is the wall, this is its plain line."""
+    by its path; a shell command with a write to the file evident in its text: a redirect into it (a nested shell's too), a
+    program that changes what it names (WRITERS, sed -i, perl -i) with the file among its words, a copy whose target it is,
+    or code given to an interpreter that names the file and writes (WRITES_IN_CODE). Reading it is free by any program, and
+    so is naming it: `echo "--- worker.json ---"; cat worker.json` is a worker's commonest first command, and of 17,017
+    real worker commands the 31 that named a gate file were all reads (2026-11-10). The unit binds the same files
+    read-only (workers.Systemd.sandbox): that is the wall, this is its plain line, so a write this text does not show is
+    still refused, by the file system."""
     mine = {str(p) for f in GATE_FILES for p in (folder / f, (folder / f).resolve())}
 
     def gate_file(word: str) -> str:
         p = Path(os.path.expanduser(word))
         return next((q.name for q in ([p] if p.is_absolute() else [Path(cwd) / p, folder / p])
                      if str(q) in mine or os.path.normpath(q) in mine or str(q.resolve()) in mine), "")
+
+    def into(target: str, sources: list[str]) -> str:
+        """A copy's target: the file itself, or its folder with a source of a gate file's name."""
+        p = Path(os.path.expanduser(target))
+        there = any(os.path.normpath(q) == os.path.normpath(folder) for q in ([p] if p.is_absolute() else [Path(cwd) / p, folder / p]))
+        return gate_file(target) or next((os.path.basename(a) for a in sources if there and os.path.basename(a) in GATE_FILES), "")
     if tool in WRITE_TOOLS:
         return gate_file(str(ti.get("file_path") or ti.get("notebook_path") or "")) or None
     if tool != "Bash":
         return None
     command = shellguard.strip_heredocs(str(ti.get("command") or ""))
-    named = [n for word in re.findall(r"[^\s'\"<>|;&=()]+", command) if (n := gate_file(word))]
-    read = sum(1 for argv in unwrap.unwrap(command, whole=True) or [] if argv and os.path.basename(argv[0]) in READERS
-               and not (os.path.basename(argv[0]) == "sed" and any(a.startswith(("-i", "--in-place")) for a in argv[1:]))
-               for a in argv[1:] if gate_file(a))
-    return named[0] if len(named) > read else None
+    if hit := next((n for m in REDIRECT.finditer(command) if (n := gate_file(m[1]))), ""):
+        return hit
+    for argv in unwrap.unwrap(command, whole=True) or []:
+        name, args = (os.path.basename(argv[0]), argv[1:]) if argv else ("", [])
+        words = [a for a in args if not a.startswith("-")]
+        if name in COPIERS:
+            hit = into(words[-1], words[:-1]) if len(words) > 1 else ""
+        elif name in WRITERS or name in ("sed", "perl") and any(re.match(r"-[A-Za-z]*i|--in-place", a) for a in args):
+            hit = next((n for a in words if (n := gate_file(a.removeprefix("of=") if name == "dd" else a))), "")
+        elif name.startswith(INTERPRETERS) and WRITES_IN_CODE.search(code := " ".join(args)):
+            hit = next((n for w in re.findall(r"[^\s'\"<>|;&=(),]+", code) if (n := gate_file(w))), "")
+        else:
+            hit = ""
+        if hit:
+            return hit
+    return None
 
 
 def room_named(value: str, rooms: dict[str, dict[str, Any]]) -> str | None:
