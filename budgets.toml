@@ -1469,4 +1469,12 @@ secs = 60
 # 2026-11-10: lesson-store-2026-11-10 took main 76cc360 in a merge: 29,345 is main's ceiling of 28,587 plus this
 # branch's own 758 lines, recounted after the merge (the 402 and the 356 above, which were counted on main abc0833's
 # 28,431); nothing of either side was folded.
-lines = 29345
+# 2026-11-10: lesson-store-2026-11-10 raised it by 120 more, the conversion's model pass made to produce lessons that pass
+# (the first real dry run on a store of the owner's size: 121 of 217 lessons refused, 47 originals not accounted for, 22
+# losing a trigger), not folded to fit: conversion.py 120 (a rule whose lessons the gate refuses, whose words are not all
+# accounted for or that the knock-down dropped goes back with its findings, two rounds at most, and one still failing is
+# listed; the first proposal and the knock-down in calls side by side; a reason per lesson, taken or refused; each example
+# cited by code; a quote kept whole across its sentence ends; the rule's trigger words in every lesson's `on`; the reasons
+# the owner's side supplies in rules-proposals/reasons.tsv; the verdict's count of lessons with no reason on file). 29,465:
+# 29,345 plus 120.
+lines = 29465

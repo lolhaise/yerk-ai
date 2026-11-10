@@ -226,8 +226,10 @@ def test_the_dry_run_writes_one_proposals_file_and_changes_nothing_else(tmp_path
     assert [r["cite"] for r in rec["rules"]] == ["tree/rules.md:7", "tree/rules.md:8", "tree/rules.md:9", "tree/rules-topics.md:3"]
     ledger = rec["rules"][2]
     assert ledger["lessons"][0]["body"] == 'It holds for the job "example ledger". Only the owner\'s go-ahead lifts it.'
-    assert [d["kind"] for d in ledger["done"]] == ["scope added", "exception added", "no reason on file"]
-    assert rec["ready"] is False and "the gate refuses" in text and "- no reason on file (listed for Ben" in text
+    assert [d["kind"] for d in ledger["done"]] == ["scope added", "exception added", "no reason on file", "still failing"]
+    assert "after 2 rounds back to the model: no proposal came back for it; split as it stands" in text
+    assert rec["ready"] is False and "the gate refuses" not in text and "- no reason on file (listed for Ben" in text
+    assert rec["why"] == ["1 lesson refused only for a reason no file holds, each listed (a row in rules-proposals/reasons.tsv supplies one)"]
     assert rec["ends"]["tree/rules.md:6"] == "tree/rules.md:7"                         # the replaced line leads to its live rule
     assert "lost by the split" not in text and "1 owner message of the last 14 days load it" in text
 
@@ -262,26 +264,79 @@ def test_an_apply_takes_the_exact_file_keeps_the_originals_and_an_old_cite_finds
     assert {n: (m.root / n).read_bytes() for n in originals} == originals and not lessons.converted(m.root)
 
 
-def test_the_model_pass_is_knocked_down_or_kept_and_a_split_that_loses_its_trigger_is_refused(tmp_path):
+def test_a_refused_or_dropped_proposal_goes_back_with_its_findings_one_still_failing_is_listed_and_no_split_loses_a_trigger(tmp_path):
     from yerk_ai import conversion
     m = old_store(tmp_path)
-    rows = (m.root / memory.RULES).read_text().replace(WEB, "Open pages in the Browserly viewer.")      # no reason: the model's
-    (m.root / memory.RULES).write_text(rows)
+    rule = "Open pages in the Browserly viewer, which draws what a page shows."     # a reason to a reader, none to the gate
+    (m.root / memory.RULES).write_text((m.root / memory.RULES).read_text().replace(WEB, rule))
     day = next(m.daily.glob("*.md"))
     day.write_text(day.read_text().replace("open web pages for the example report", "is Browserly up"))
     asked: list[str] = []
+    again = {"cite": "tree/rules.md:8", "lessons": [{"summary": "Open pages in the example viewer.", "body": "Use it since it draws "
+             "what a page shows.", "reason": {"said": "draws what a page shows", "from": "the rule's own words"}}],
+             "rewritten": [{"said": rule, "as": "Open pages in the example viewer. Use it since it draws what a page shows."}]}
 
     def model(prompt: str, tools: str) -> str:
-        asked.append(prompt.lstrip().split("\n", 1)[0])
-        if prompt.lstrip().startswith("You check the lessons"):
+        asked.append(prompt := prompt.lstrip())
+        if prompt.startswith("You check the lessons"):
             return "KEEP tree/rules.md:8\nDROP tree/rules.md:9 | it adds a case"
+        if prompt.startswith("The gate refused"):
+            return json.dumps(again) if "tree/rules.md:8 (job" in prompt else ""
         return "\n".join(json.dumps(x) for x in (
-            {"cite": "tree/rules.md:8", "lessons": [{"summary": "Open pages in the example viewer.", "body": ""}],
-             "rewritten": [{"said": "Open pages in the Browserly viewer.", "as": "Open pages in the example viewer."}]},
+            {"cite": "tree/rules.md:8", "lessons": [{"summary": "Open pages in the example viewer.", "body": "It draws what a page shows."}],
+             "rewritten": [{"said": rule, "as": "Open pages in the example viewer. It draws what a page shows."}]},
             {"cite": "tree/rules.md:9", "lessons": [{"summary": "Keep the example ledger in.", "body": ""}]}))
-    rec = conversion.loaded(conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=model, read=FABLE2))
-    assert len(asked) == 2                                   # one proposing call, one knock-down
+    path = conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=model, read=FABLE2)
+    rec, text = conversion.loaded(path), path.read_text()
+    backs = [x for x in asked if x.startswith("The gate refused")]
+    assert len(backs) == 2 and "tree/rules.md:9" in backs[1] and "tree/rules.md:8 (job" not in backs[1]       # the failing ones only
+    assert "no reason given" in backs[0] and "- the reviewer dropped it: it adds a case" in backs[0]
     web, ledger = rec["rules"][1], rec["rules"][2]
-    assert web["lessons"][0]["summary"] == "Open pages in the example viewer." and web["missing"] == []
-    assert ledger["lessons"][0]["summary"] == "Never post the example ledger."       # knocked down: split as it stands
-    assert rec["lost"] == {"tree/rules.md:8": [f"daily/{day.name}:4"]} and "1 original losing a trigger" in rec["why"]
+    assert web["lessons"][0]["gate"] == [] and web["missing"] == [] and {"kind": "reason added", "said": "draws what a page shows",
+                                                                         "from": "the rule's own words"} in web["done"]
+    assert "browserly" in web["lessons"][0]["on"] and rec["lost"] == {}            # the rule's words kept: its trigger holds
+    assert ledger["lessons"][0]["summary"] == "Keep the example ledger in."      # its last proposal, never split in silence
+    still = next(d["why"] for d in ledger["done"] if d["kind"] == "still failing")
+    assert still.startswith("after 2 rounds back to the model: ") and still.endswith(" / the reviewer dropped it: it adds a case")
+    assert 'not accounted for: "Never post the example ledger."' in still and f"- still failing ({still})" in text
+
+
+def test_an_example_lands_cited_a_quote_across_sentence_ends_is_one_and_a_supplied_reason_is_used_and_listed(tmp_path):
+    from yerk_ai import conversion
+    m = old_store(tmp_path)
+    day = next(m.daily.glob("*.md"))
+    bounced = "the rota came on a wednesday and nobody could plan the week"
+    day.write_text(day.read_text() + "\n".join([
+        memory.format_line(datetime_at(NOW - 3600), "example-room", "r1", "owner", "", bounced, "private", "o8"),
+        memory.format_line(datetime_at(NOW - 3000), "example-room", "r1", "owner", "", "the example ledger holds my accounts", "private", "o9")]) + "\n")
+    n = len(day.read_text().splitlines())
+    quoted = 'Reply plainly when he asks "Why? What now?" about a plan, since a long answer buries it.'
+    rows = (m.root / memory.RULES).read_text().replace(HALL, f'Post the rota on Monday, since the team plans from it. <example>Bounced: '
+                                                         f'"{bounced}"</example>').replace(WEB, quoted)
+    (m.root / memory.RULES).write_text(rows)
+    (m.root / "rules-proposals").mkdir()
+    (m.root / "rules-proposals" / "reasons.tsv").write_text(f"# cite, line, reason\ntree/rules.md:9\tdaily/{day.name}:{n}\tholds my accounts\n")
+
+    def model(prompt: str, tools: str) -> str:
+        if (prompt := prompt.lstrip()).startswith("You check the lessons"):
+            return "KEEP tree/rules.md:8\nKEEP tree/rules.md:9"
+        if prompt.startswith("The gate refused"):
+            return ""
+        assert f"Reason on file, from daily/{day.name}:{n}: holds my accounts" in prompt and bounced not in prompt
+        return "\n".join(json.dumps(x) for x in (
+            {"cite": "tree/rules.md:8", "lessons": [{"summary": "Reply plainly to a question about a plan.", "body": "Do so since a long answer buries it."}],
+             "rewritten": [{"said": quoted, "as": "Reply plainly to a question about a plan."}]},
+            {"cite": "tree/rules.md:9", "lessons": [{"summary": "Keep the example ledger in the owner's room.", "body": "Never post it, "
+             "since it holds my accounts.", "reason": {"said": "holds my accounts", "from": f"daily/{day.name}:{n}"}}]}))
+    rec = conversion.loaded(conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=model, read=FABLE2))
+    hall, web, ledger = rec["rules"][:3]
+    assert hall["lessons"][0]["body"].endswith(f"<example>Bounced, daily/{day.name}:{n - 1}</example>") and hall["missing"] == []
+    assert any(d["kind"] == "example cited" and d["at"] == f"daily/{day.name}:{n - 1}" for d in hall["done"])
+    assert web["missing"] == [] and web["lessons"][0]["gate"] == []          # the quote's halves no longer read as two sentences
+    assert ledger["lessons"][0]["gate"] == [] and not any(d["kind"] == "no reason on file" for d in ledger["done"])
+    assert {"kind": "reason supplied", "said": "holds my accounts", "from": f"daily/{day.name}:{n}, named in rules-proposals/reasons.tsv"} in ledger["done"]
+
+
+def datetime_at(t: float):
+    from datetime import datetime, timezone
+    return datetime.fromtimestamp(t, timezone.utc)

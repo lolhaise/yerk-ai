@@ -39,6 +39,21 @@ version changes.
   and refuses unless every lesson passes the gate, every original is accounted for, the trigger test passes and the store
   is byte for byte the one the dry run read; it copies the originals to `<memory>/rules-backup-<day>/` first.
   `yerk curate --lessons-undo DAY` puts them back.
+- The conversion's model pass now produces lessons that pass. The `Lessons` prompt states each check the gate makes, in
+  plain words with the docs' sentence where the gate quotes one, and asks for a reason in every lesson's body after
+  because, since or so that, in the rule's own words: "which breaks on a phone" is a reason to a reader and none to the
+  gate. A rule whose lessons the gate refuses, whose words are not all accounted for or that the knock-down dropped goes
+  back to the model with its proposal and the exact findings (`Lessons again`, the round's failing rules in one call,
+  two rounds at most); one still failing is listed with its findings, never split as it stands in silence. The first
+  proposal and each knock-down run in calls of 16 rules side by side.
+- Code cites each `<example>` of a rule in a lesson as the day-log line that holds it, keeps one no line holds, and lists
+  one no body has room for; a quote is read whole across the sentence ends inside it, so its halves no longer read as
+  sentences left out. Every lesson keeps the words its rule loads on today as its `on:` words, so a split cannot lose a
+  trigger.
+- A rule with no reason on file stays listed, and the verdict counts its lessons apart from the gate's other refusals.
+  `<memory>/rules-proposals/reasons.tsv` is where the owner's side supplies one: a row a rule, tab-separated, its cite,
+  the `daily/<day>.md:N` line that holds the reason and the reason in that line's words; the dry run hands it to the
+  model and lists it as supplied.
 
 **Upgrading:** nothing changes until the conversion runs: an install with no `<memory>/rules/` folder keeps its
 one-line-per-rule files. To convert, run `yerk curate --lessons`, read the proposals file, then
