@@ -49,7 +49,9 @@ version changes.
 - Code cites each `<example>` of a rule in a lesson as the day-log line that holds it, keeps one no line holds, and lists
   one no body has room for; a quote is read whole across the sentence ends inside it, so its halves no longer read as
   sentences left out. Every lesson keeps the words its rule loads on today as its `on:` words, so a split cannot lose a
-  trigger.
+  trigger: each smallest set of its trigger words that loads it today, or each word alone where a set would not do. On a
+  copy of a store of the owner's size, over its last 14 days of owner messages, that loads 2.7 times as many lessons'
+  rules as load today, where each word alone would load 7.8 times as many.
 - A rule with no reason on file stays listed, and the verdict counts its lessons apart from the gate's other refusals.
   `<memory>/rules-proposals/reasons.tsv` is where the owner's side supplies one: a row a rule, tab-separated, its cite,
   the `daily/<day>.md:N` line that holds the reason and the reason in that line's words; the dry run hands it to the

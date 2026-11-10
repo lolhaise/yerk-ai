@@ -340,3 +340,14 @@ def test_an_example_lands_cited_a_quote_across_sentence_ends_is_one_and_a_suppli
 def datetime_at(t: float):
     from datetime import datetime, timezone
     return datetime.fromtimestamp(t, timezone.utc)
+
+
+def test_a_lesson_keeps_each_smallest_word_set_that_loads_its_rule_today_else_each_word_alone():
+    from yerk_ai import conversion
+    line = "- tidy the shelf: Keep the Quillby list by the door, since it is read there. (example-room, 2025-11-01 09:00:00-04:00)"
+    assert sorted(memory.triggers(line)) == ["quill", "shelf", "tidy"]
+    assert conversion.keeps(line, ({"tidy": 1.0, "shelf": 2.5, "quill": 4.0}, 4.0)) == ["quillby", "shelf tidy"]   # ride 3.0
+    assert conversion.keeps(line, ({"tidy": 1.1, "shelf": 1.1, "quill": 1.1}, 4.0)) == ["tidy shelf quillby"]      # all three
+    assert conversion.keeps(line, ({"tidy": 0.9, "shelf": 0.9, "quill": 0.9}, 4.0)) == []        # none loads it: build keeps each
+    four = line.replace("by the door", "by the Brindle door")                                     # four words load it: each alone
+    assert conversion.keeps(four, ({"tidy": 0.8, "shelf": 0.8, "quill": 0.8, "brind": 0.8}, 4.0)) == ["tidy", "shelf", "quillby", "brindle"]

@@ -13,6 +13,7 @@ for, the trigger test passes and the store is byte for byte the one the dry run 
 from __future__ import annotations
 
 import hashlib
+import itertools
 import json
 import re
 import shutil
@@ -186,10 +187,28 @@ def supplied_reasons(s: memory.Settings) -> dict[str, tuple[str, str]]:
     return out
 
 
+def keeps(line: str, weights: tuple[dict[str, float], float]) -> list[str]:
+    """The words a rule loads on today as the `on` words each lesson made of it keeps (on_topic weighs an `on` phrase held as a
+    word only one rule says, so it always loads): each smallest set of its trigger words whose weight among the live rules
+    reaches memory.RIDE, a set one phrase, three words at most. A rule a set of more words could load keeps each trigger word
+    alone, which loads more often but never less, so a message that loads it today always loads a lesson made of it."""
+    weight, one = weights
+    tr, picked, ride = memory.triggers(line), {memory.wants(t) for t in memory.picked(line)}, memory.RIDE * weights[1]
+    w = {k: one if k in picked else weight.get(k, one) for k in tr}
+    light = sorted((k for k in w if w[k] < ride), key=lambda k: w[k])
+    if next((n for n in range(1, len(light) + 1) if sum(w[k] for k in light[:n]) >= ride), 0) > 3:
+        return list(dict.fromkeys(tr.values()))
+    out: list[tuple[str, ...]] = [(k,) for k in w if w[k] >= ride]
+    for c in (c for n in (2, 3) for c in itertools.combinations(sorted(light, key=lambda k: -w[k]), n)):
+        out += [c] if sum(w[k] for k in c) >= ride and not any(set(o) <= set(c) for o in out) else []
+    return [" ".join(tr[k] for k in c) for c in out]
+
+
 def build(s: memory.Settings, rule: dict[str, Any], prop: dict[str, Any] | None, read: Any, seen: dict[Path, str],
           taken: set[str], acronyms: frozenset[str] | None, supplied: dict[str, tuple[str, str]] | None = None) -> dict[str, Any]:
-    """The lessons made of one rule, each with its gate, and what was done to it. Each lesson keeps every word its rule loads on
-    (memory.triggers: its job's, its picked ones or what its words name) as its own `on`, so no split loses a trigger; each
+    """The lessons made of one rule, each with its gate, and what was done to it. Each lesson keeps the words its rule loads on
+    (keeps; else memory.triggers' every word: its job's, its picked ones, what its words name) as its `on`, so no split loses a
+    trigger; each
     example of the rule lands in the first lesson whose body holds it, in the cited form, else is listed as left out."""
     most, supplied = shape.threshold(dict(budgets().get("shape") or {}), "lesson_quote_words", 8), supplied or {}
     parts = [(x.get("summary", ""), x.get("body", ""), x.get("reason")) for x in (prop or {}).get("lessons", []) if isinstance(x, dict)] \
@@ -199,7 +218,8 @@ def build(s: memory.Settings, rule: dict[str, Any], prop: dict[str, Any] | None,
     done += list({json.dumps(x, sort_keys=True): x for x in (reason_of(s, rule, w, supplied) for w in whys)}.values())
     if (c := (prop or {}).get("caution")):
         done.append({"kind": "caution to review", "said": c, "why": "left in place: deleting one is the owner's side's call"})
-    on = list(dict.fromkeys(memory.triggers(rule["text"]).values()))
+    every = list(dict.fromkeys(memory.triggers(rule["text"]).values()))
+    on = rule.get("keeps") or every
     shown_ = examples(rule, s.daily, seen)
     made = []
     for summary, body, _ in parts:
@@ -211,6 +231,8 @@ def build(s: memory.Settings, rule: dict[str, Any], prop: dict[str, Any] | None,
         taken.add(slug)
         made.append({"slug": slug, "job": rule["job"], "summary": summary, "body": body, "cls": rule["cls"], "rooms": rule["rooms"],
                      "on": on, "filed": rule["filed"]})
+        if len(lesson_of(made[-1]).front()) > lessons.FRONT_MAX:      # the sets past the front matter's room: each word alone
+            made[-1]["on"] = on = every
         while made[-1]["on"] and len(lesson_of(made[-1]).front()) > lessons.FRONT_MAX:
             made[-1]["on"] = made[-1]["on"][:-1]
         done += cited + cited2 + added
@@ -350,7 +372,9 @@ def dry_run(private: Path, state: Path, s: memory.Settings, now: float | None = 
     read = shape.pages(shape.run_by(rooms(private), state, models(conf))) if read is None else read
     acronyms = shape.install(dict(conf.get("docs") or {}))[1]
     rules, seen, taken = originals(s), dict[Path, str](), set(lessons.retired(s.root))
-    supplied = supplied_reasons(s)
+    supplied, weights = supplied_reasons(s), memory.rarities([r["text"] for r in rules])
+    for r in rules:
+        r["keeps"] = keeps(r["text"], weights)
     off = [r for r in rules if memory.unshaped(r["job"], r["said"], acronyms, s, read, seen)]
     props = model_pass(off, model or (lambda p, tools: curate.ask(private, state, dict(conf.get("curate", {})), p, tools)),
                        lambda r, x: findings(build(s, r, x, read, seen, set(taken), acronyms, supplied)), supplied)

@@ -663,7 +663,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-10: lesson-store-2026-11-10 raised it by 120 more, the conversion's model pass made to produce lessons that pass (the first real dry run on a store of the owner's size: 121 of 217 lessons refused, 47 originals not accounted for, 22 losing a trigger), not folded to fit: conversion.py 120 (a rule whose lessons the gate refuses, whose words are not all accounted for or that the knock-down dropped goes back with its findings, two rounds at most, and one still failing is listed; the first proposal and the knock-down in calls side by side; a reason per lesson, taken or refused; each example cited by code; a quote kept whole across its sentence ends; the rule's trigger words in every lesson's `on`; the reasons the owner's side supplies in rules-proposals/reasons.tsv; the verdict's count of lessons with no reason on file). 29,465: 29,345 plus 120.
 
-- `lines = 29465`
+2026-11-10: lesson-store-2026-11-10 raised it by 24 more, the trigger words a lesson keeps cut to what loads its rule today (each word alone loaded 7.8 times as many rules' lessons as load today over the last 14 days of owner messages on that copy; each smallest set of trigger words that loads it, three words at most, else each word alone, loads 2.7 times and loses none), not folded to fit: conversion.py 24 (keeps). 29,489: 29,465 plus 24.
+
+- `lines = 29489`
 
 ## Uncapped
 
