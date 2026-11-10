@@ -4,7 +4,7 @@ Session start, most stable first so the cached start of the prompt survives: Cla
 prompt, tools and skills, then one appended file holding the mechanics, persona, rulebook, room voice,
 pinned memory, the install's rules file and the recall pack. Per message: only parts with
 news: the clock line, the message metadata, in an owner room where the owner's phone last was (location.py), what
-changed in the rules since the session looked, and the topic rules the message names.
+changed in the rules, persona and voice since the session looked, and the topic rules the message names.
 """
 from __future__ import annotations
 
@@ -188,17 +188,44 @@ def per_message(room_name: str, room: dict[str, Any], sender: str, now: datetime
         [Part("place", place, limits.get("place"), chars(place))] if place else [])     # an owner room's: location.part
 
 
+def lines_of(text: str) -> list[str]:
+    """A file's lines that say something (news tells them): no front matter, heading or blank."""
+    return [x for x in FRONT.sub("", text).splitlines() if x.strip() and not x.startswith("#")]
+
+
+def began_with(start: Path, name: str, text: str, path: Path) -> str:
+    """Part `name`'s text (persona, room_voice) as a session's kept start file `start` holds it, for a look from before news
+    kept that part (2026-11-09): its lines from its `[from <path>]` line to the next part (a line after a blank one that starts
+    with `[`, or TOPICAL), less its own trim marker, so a line gone since is told; then each line of `text`, the file now,
+    that the start holds whole anywhere. `text`, so nothing is told, when there is no start or it holds none of the file's
+    lines: a message never carries a whole file."""
+    try:
+        lines = start.read_text(errors="replace").split("\n")
+    except OSError:
+        return text
+    whole, cut, part = set(lines), f"[...trimmed {name}: ", list[str]()
+    at = next((i + 1 for i, x in enumerate(lines) if x == f"[from {path}]" and i and not lines[i - 1]), len(lines))
+    for i in range(at, len(lines)):
+        if not lines[i - 1] and (lines[i].startswith("[") or lines[i] == TOPICAL) and not lines[i].startswith(cut):
+            break
+        part += [] if lines[i].startswith(cut) else [lines[i]]
+    return "\n".join([*part, *(x for x in text.split("\n") if x in whole and x not in part)]) \
+        if any(x in whole for x in lines_of(text)) else text
+
+
 def news(path: Path, sid: str, private: Path, room: dict[str, Any], rules: Path, budget: int, kept: Path) -> str:
-    """What changed in the mechanics, the room's rulebook or the rules file since session `sid` last looked (decision 15),
-    once per version: each new line and each line replaced or gone, or past `budget` their count and `kept`, a file in the
-    room's work folder that holds them whole, since every room's Read reaches that folder and only an owner room's reaches
-    the mechanics' own file (2026-10-28: a note named that file, and a room's Read of it was refused).
+    """What changed in the mechanics, the room's persona, rulebook or voice file or the rules file since session `sid` last
+    looked (decision 15), once per version: each new line and each line replaced or gone, or past `budget` their count and
+    `kept`, a file in the room's work folder that holds them whole, since every room's Read reaches that folder and only an
+    owner room's reaches the mechanics' own file (2026-10-28: a note named that file, and a room's Read of it was refused).
     `path` keeps the room's looks; `sid` "" records a process start, a new session's first look (its start file's). A session
     this file last saw under another id (a compaction's copy, adopted) reads from the texts its kept start was built from
-    (engine.kept_start), since a resumed session keeps the start it began with and hears every change since here."""
-    rb = layer_dir(private, room) / str(room["rulebook"]) if room.get("rulebook") else None
+    (engine.kept_start), since a resumed session keeps the start it began with and hears every change since here; a look
+    with no persona or voice text, kept before news told them, reads it from that start (began_with)."""
+    base = layer_dir(private, room)          # the hand-kept files the room loads, in its start's order (APPENDED)
+    hand = [(k, base / str(room[c])) for k, c in (("persona", "persona"), ("rulebook", "rulebook"), ("room_voice", "voice")) if room.get(c)]
     now = {k: ((mechanics() if k == "mechanics" else p.read_text().strip()) if p.is_file() else "", p.resolve()) for k, p in
-           (("mechanics", MECHANICS), ("rulebook", rb), ("rules", rules)) if p}
+           (("mechanics", MECHANICS), *hand, ("rules", rules))}
     texts = {k: t for k, (t, _) in now.items()}
     path.parent.mkdir(parents=True, exist_ok=True)
     look = json.loads(path.read_text()) if path.is_file() else {}
@@ -213,9 +240,11 @@ def news(path: Path, sid: str, private: Path, room: dict[str, Any], rules: Path,
     if look.get("session") == sid and seen == texts:
         return ""
     write_private(path, json.dumps({**look, "session": sid, "seen": texts}))
+    start = path.parent / STARTS / f"{sid}.md"
+    seen = {**{k: began_with(start, k, *now[k]) for k in ("persona", "room_voice") if k in now and k not in seen}, **seen}
     rows: dict[str, list[str]] = {}
-    for k, (text, p) in now.items():      # the lines that say something: no front matter, heading or blank
-        old, new = ([x for x in FRONT.sub("", t).splitlines() if x.strip() and not x.startswith("#")] for t in (seen.get(k, ""), text))
+    for k, (text, p) in now.items():
+        old, new = (lines_of(t) for t in (seen.get(k, ""), text))
         rows[k] = [f"new in {p.name}: {x.removeprefix('- ')}" for x in new if x not in old and OLD not in x] + \
                   [f"replaced in {p.name}: {x.removeprefix('- ')}" for x in old if x not in new]
     lines = [x for r in rows.values() for x in r]

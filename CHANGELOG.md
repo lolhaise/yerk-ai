@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-11-10
 
-### need-2026-11-09-81 (#?)
+### need-2026-11-09-81 (#38)
 
 - A room closes or opens its live page's chat when you ask, with its `page` tool. Before, the tool drew the program, the
   tests, marks, the hint, the bar, the timer and the stall wait but had no switch for the chat pane: only the `close`
@@ -17,23 +17,179 @@ version changes.
 - Now the `page` tool takes `chat`: "closed" closes the page's chat to nothing, as its `close` button does, and "open"
   brings it back. Every open tab shows it at once (an opened chat comes back at the width it had), yerkd keeps it across
   a restart, and a tab that opens later shows it too; with no tab open the answer says the page shows it when one opens,
-  and `open` and `chat` go in one call. With the chat closed the room's replies go into the program as #> lines under
-  your last # line, as they do when you close it yourself.
+  and `open` and `chat` go in one call. With the chat closed every answer of the room's to the page is a bubble under
+  the line it was asked from (else under your last # line), never in the program, as when you close it yourself.
 - The room is not told back what it did itself, a switch of yours that it undoes before it heard of it is never said,
   and a word that is neither is refused in words with nothing drawn. The tab shows the room's switch and keeps it in the
   browser's split, posting nothing back; your own press of `close` or `chat` after it tells yerkd as before.
 - The ability is page-talk's (`yerk explain page-talk`): its line on the closed chat names the room's switch, and it
   answers a room asked for no chat box, about the chat on the right, to hide the chat or to bring it back. The README's
-  live page line says the chat closes on ask (two of its other phrases shorter, to stay under 12,000 bytes).
+  live page line says "chat on ask" (its `delete` clause says paths for files or folders, to stay under 12,000 bytes).
 - The tests: 4 new, in tests/test_page.py (the tool's switch on every open tab, in talk.json and after a restart, the
-  replies then in the program, nothing told back, an owner's switch it undoes left unsaid, a bad word drawing nothing;
-  the tool through the daemon with no tab open, beside `open`, and its refusal; the page's own script, run by node,
-  closing and opening the chat as its buttons do and posting nothing back) and tests/test_abilities.py (the ask in those
-  words finds page-talk whole under the recall cap), and the tool's `chat` field checked in tests/test_hooks_mcp.py.
+  room's answer then a bubble and never in the program, nothing told back, an owner's switch it undoes left unsaid, a
+  bad word drawing nothing; the tool through the daemon with no tab open, beside `open`, and its refusal; the page's own
+  script, run by node, closing and opening the chat as its buttons do and posting nothing back) and
+  tests/test_abilities.py (the ask in those words finds page-talk whole under the recall cap), and the tool's `chat`
+  field checked in tests/test_hooks_mcp.py.
+
+**Upgrading:** budgets.toml raises `yerk_tools` to 26,100, the session start's `total` to 129,171 and `[code] lines` to
+28,094, each with its dated note. Nothing else to change. A room picks up the tool's `chat` at its next session; a page
+tab open from before the deploy shows the room's switch once it is reloaded.
+
+### need-2026-11-09-74 (#27)
+
+- A room can fill a web form it sees only in a shot now: the hands plug-in's browser gains `type`, which puts text into
+  whatever field has focus in one of the room's tabs (one a click by x and y, or by label, just focused), typed by the
+  browser itself over its developer protocol (chrome-cdp's `insert`, Input.insertText), so a field inside a web
+  component's shadow root, open or closed, a framework's field that ignores a value set by script, and a field no list
+  names all take it. `key` presses one key after the text, or alone: Tab, Escape, ArrowDown, ArrowUp or Backspace, and
+  Enter on the owner's word, since an Enter can send the form. A select takes the option its words name (an exact one
+  first, else the one option that holds them; none or several are said with the options), and the reply says what the
+  field reads after, or where Tab moved the focus.
+- The field is found before anything is typed, through each open shadow root and each frame of the page's own site:
+  nothing focused, a field that takes no text and a file input (upload's) are each refused with the way past; a card
+  field is never typed into, confirmed or not; a frame of another site holding the focus is judged as a click by x and
+  y into one is. Nothing is typed on a payment page, and on a look-alike only on the owner's word, as with set and click.
+- One `type` with need-2026-11-09-75's, which reached main first: the plug-in's main aa4d3fc merges its branch
+  `need-2026-11-09-74` onto need 75's `type` (cc75696) as one action. With a `label` (or need 75's `value` for the text),
+  the field by its label, found as `set` finds it, through each open shadow root too, then a box: a text box cleared with
+  a real Backspace and typed a character at a time while short, a select given the option its words name. With no label,
+  the field that has focus, as above, typed a character at a time too. A `key` after either, and what the field holds
+  read back.
+- A form drawn inside a web component's open shadow root is read too: its words follow the page's on `read` (after
+  `--- inside web components (shadow roots) ---`), `fields` lists its controls after the page's, `set` and `click`
+  reach them by label after chrome-cdp's own NOT FOUND, and a click by x and y is judged by the control under the
+  point inside it, so a form's submit there waits for the owner's word. A card field, a pay button or a payment frame
+  inside one makes a payment page, as one on the page does.
+- The plug-in's branch `need-2026-11-09-74` (8c2aff9, then af44c92, a test's placeholder postal code); 58 of 58 of its offline
+  tests green, six of them new, the first the wall itself: a click by x and y focuses a Year select in a shadow root,
+  `type` picks the year, then types the postal code and presses Tab. Its page scripts were also run in Playwright's
+  headless Chromium against a form in a shadow root, a closed root, nested roots and a card field in a root. Joined to
+  need 75's on the plug-in's main (aa4d3fc): 66 of 66 green, both branches' cases and one for the joined paths, and its
+  by-label scripts run in that headless Chromium against a field and a select inside a shadow root.
+- The abilities entry `form-typing` (`yerk explain form-typing`), with its phrases ("type into the field", "shadow
+  root", "fields are not listed", ...); the README's Add-ons line names it in as many bytes.
+- budgets.toml: the per-message recall line 2,000 to 2,100 and the per-message cap 5,650 to 5,750, since the answer to
+  "what can you do" (every ability's name by its state) rides whole under the recall line, sat 7 under it on main, and
+  `form-typing`'s name took it 6 over. The hands line and the session-start total stay where they are (9,831 and
+  129,071): need-2026-11-09-76 reached main first and its hands line already counts the joined browser entry. Each
+  with its dated note; docs/budgets.md is what `yerk docs own` writes.
+- Why: on 2026-11-09 a room asked to run an online quote saw the site's quote form in a shot, while the browser's read
+  and its fields saw only the page's footer, since the form sits in a web component's shadow root; a click by x and y
+  focused the form's first field, and no action typed into it, so the room filed the need (need 74 of 2026-11-09).
+
+**Upgrading**: hands-mcp's main already holds the joined `type` (aa4d3fc): the hands line here counts the browser entry it
+sends, and its rooms have it at their next session. An install that keeps its own budgets.toml takes the recall line's 2,100 and the per-message cap's 5,750.
+
+### need-2026-11-09-83 (#?)
+
+- The `texts` tool reads the words of the texts you sent. Before, a room asked to confirm the words of a text you had
+  just sent got an empty text field for it, and for every other text you sent that evening, while the texts you got
+  carried their words: Messages keeps the words of many sent texts only in the message's rich copy (its
+  `attributedBody`), and the read took the plain text column alone.
+- Now a row whose text column is blank brings its rich copy too, as hex, only for that row, and the daemon reads the
+  words out of it the way `yerk import imessage:` already did. The copy on the box keeps them, so a read while the Mac
+  sleeps has them too.
+- A text with no words anywhere says why in a new `blank` field, never an empty text a room could take for what was
+  said: a picture or a file alone, a rich copy that could not be read, or no words stored (as with an unsent text or a
+  group change). A text whose only content was a picture used to come back as one invisible mark; now it is `blank`.
+- The `texts` tool's description names `blank`, the `text` ability (`yerk explain text`) says how a blank text's words
+  are read, found by a room asked what you texted, and the README's `texts` clause says it reads yours whole.
+- The tests: 4 new in tests/test_inbox.py (the wall: a text you sent with a blank text column read whole from its rich
+  copy, a long one too; the read's own query run on a database shaped like the Mac's, the rich copy brought only for a
+  blank row; every reason a blank gives, and words beside a picture kept as words; the tool's answer and the copy) and
+  1 in tests/test_abilities.py (asked what you texted, a room gets the text entry whole under the recall cap).
 
 **Upgrading:** budgets.toml raises `yerk_tools` to 26,000, the session start's `total` to 129,071 and `[code] lines` to
-27,959, each with its dated note. Nothing else to change. A room picks up the tool's `chat` at its next session; a page
-tab open from before the deploy shows the room's switch once it is reloaded.
+28,086, each with its dated note. Nothing to set: the copy on the box is written again at the Mac's next answer, and a
+room picks up the tool's new words at its next session.
+
+### need-2026-11-09-82 (#?)
+
+- A room's live page talks in the code now, not in it: the room's answers to what is said on the page show as bubbles
+  between the editor's rows, under the line they were asked from, in the room's colour with its name and time, four lines
+  shown and a click to open the rest, an x that puts one away on every tab. They are never written into `solution.py`,
+  where the room's reply used to land as a dozen plain `#>` lines at the bottom of the owner's file. With the chat closed
+  every answer to the page is a bubble (under the `#` line said last when its message named no line); with it open, the
+  answer to a line asked about still is. yerkd keeps the newest 100 in `work/page/talk.json`, so a reload or a restart
+  shows them, and a bubble moves with its line as the owner types; a program the room draws keeps it on the line it kept.
+- A pulsing typing mark sits under that line from the send until the room's turn ends (its reply, a failed turn's notice
+  or a silent NO_REPLY end), and at the foot of the chat for a line said in the say box.
+- One key asks about a line: Ctrl+Enter on it, or a click on its number, sends "about line N of the program:" and its
+  words to the room at once; a click on a red test tile sends "about test NAME, which fails at line N:" and its message,
+  and the answer lands under the test's `def`.
+- Both editors colour Python (keywords, strings, numbers, names, comments, decorators), the owner's own `#` lines in a
+  colour of their own and the room's old `#>` lines in its colour, with the page's own code and no outside script. Enter
+  keeps the indent (four more after a colon), Tab indents and Shift+Tab out, Ctrl+Z and Ctrl+Shift+Z undo and redo.
+- A bar number that rises pops "+N" beside it.
+- The room is told the new way when the chat closes or opens; the `page` tool's clause says its answers are bubbles.
+- The tests: the `#>` tests (the tab's catch-up of replies it missed, the cap on replies in the program, marks moving
+  under them) are gone with the lines; new ones cover the bubble under the line asked from and never in the program, kept
+  across a restart and put away for good, the typing mark's life, the line and test asks, bubbles moving with edits and
+  draws, need 80's rule (only answers to the page), and node runs of the page's own editor, lexer, `+N` and its moves
+  checked against page.py's on 300 random edits.
+- The fix: a bubble moved by lines typed above it is written to `work/page/talk.json` at once, so after a restart it
+  comes back beside its line. Before, it came back on its old line, now beside some other line of the program, because
+  only a new bubble, its x or a program the room drew wrote the file. An edit that moves no bubble writes nothing there.
+  `[code]` lines go to 28,056, one fewer, since the draw's own write folds into the move.
+
+### persona-voice-news-2026-11-09 (#?)
+
+- A line added, changed or removed in a room's persona or voice file now reaches the room's running session. Before, the
+  `Rules changed since you last looked:` block on a message was built from the mechanics, the room's rulebook and the
+  rules file only, and a resumed or compacted session keeps the start file it began with, so a fix made by hand to the
+  persona or a voice file reached no running room: one that kept its session for days went on with the old persona until
+  a fresh session (`/new`, a model switch that cannot carry the session, a crash).
+- Now each such line is told once, on the session's next message, inside the same block and in the rulebook's words
+  (`new in persona.md: ...`, `replaced in persona.md: ...`, a voice file by its own name), as Claude Fable 5.2's page
+  says a change partway through a conversation is made: "put them in the newest turn". Every room that loads the file
+  hears it (one layer's rooms share a persona; a voice file is one room's). The block's 1,500 characters and
+  rules-changed.md past them hold for the larger block as before; a sealed room still hears nothing, and a room with no
+  persona or no voice key is as before.
+- A fresh session's look on file (rules-seen.json, and the texts kept beside its start, starts/<id>.json) now holds the
+  persona and voice texts it began with, so every later edit is told against them, and a compaction's copy keeps its
+  parent's, as it does the three rule texts.
+- A session begun before this change has no persona or voice text on file, so it reads them off the start file it was
+  given (starts/<id>.md): a line of the file now that the start holds whole counts as seen and the others are told as new,
+  and a line of the start's own persona or voice part (from its `[from <path>]` line to the next part, its trim marker left
+  out) that the file no longer has is told as replaced. On a capped install where that part was cut to fit, the lines
+  cut from its middle are told once as new, past the budget in rules-changed.md. With no kept start, or one that holds
+  none of the file's lines, nothing is told, so no message carries a whole persona or voice file.
+- The `rules-changed` ability (`yerk explain rules-changed`), the guide's paragraph on it, budgets.toml's note on `rules`
+  and the UserPromptSubmit line of docs/hooks.md name the two files. The mechanics are unchanged: their line on the block
+  says it brings changes, which stays true.
+- The tests: 4 new in tests/test_rules.py (an edit told once to each room that loads the file, with two rooms sharing one
+  persona, a room with neither key quiet and a fresh start's kept texts holding both; a session from before the change
+  told only the lines its start does not hold, a removed line among them, and with no kept start nothing; on a start cut
+  to fit, a line gone from the persona's head told and no line of another part taken for the persona's; a compaction's
+  copy told the change since the start it kept, and a sealed room nothing), and tests/test_uncapped.py's capped fixture
+  retaken, its only change rules-seen.json holding the persona and voice texts.
+
+**Upgrading:** budgets.toml raises `[code] lines` to 27,990 with its dated note. Nothing else to change: a running
+session's first message after the deploy reads its baseline off its kept start.
+
+### hot-reads-2026-11-10 (#?)
+
+- The daemon no longer freezes, and is no longer killed by systemd's watchdog, when one room posts a reply while another
+  room's turn is busy. To post a reply it read the room's whole delivery history on the event loop. sqlite hands
+  Python's interpreter back after every row, so with another room's turn working at that moment a row cost about 8 ms
+  instead of microseconds: on the owner's ledger 236 rows took 2.0 s, and the busiest room has 4,667, about 40 s, past the
+  watchdog's 30. That killed the daemon on 2026-11-09 with a turn running, which was cut and redelivered (the
+  loop's stack was in that read); an earlier kill the same day fits it (a send in another room sat 29 s between
+  planned and posted, the one before it 11 s).
+- Now one reply's parts are read by key range, which sqlite answers from the key's index: the same rows in the same
+  order, whatever the room's age. A turn's landed parts and the replies the end-of-turn check reads are read the same
+  way (the engine audit of 2026-11-09, defect 1: that check took 1,017 ms under the ledger's one lock in a session 2,564
+  turns old and 9.5 ms after, its text identical in 120 of 120 sessions read on the live ledger).
+- `yerk deploy` no longer stops on its fast tests in the first three minutes after midnight. tests/test_style.py's
+  worker card test used a row begun 185 seconds before; right after midnight that is the evening before, which the card
+  says with its day ("Mon 23:57"), and the test's pattern took a bare time only. A deploy that tested from 23:57 to
+  00:00 on 2026-11-10 stopped there with "assert None", and its need was held.
+- The tests: 4 new. tests/test_ledger_hot_reads.py counts sqlite's own steps, never seconds: the end-of-turn read costs
+  the session's replies, and a reply's parts and a turn's landed parts cost the same in a room of 100 replies and in
+  one of 4,000. tests/test_style.py states the card a row begun before midnight gets, and its two clock tests no longer
+  depend on the hour they run.
+- budgets.toml: `[code] lines` 27,961 to 27,977 with its dated note.
 
 ## 2026-11-09
 

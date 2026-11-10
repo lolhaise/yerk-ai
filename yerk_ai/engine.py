@@ -282,7 +282,7 @@ def kept_start(room_dir: Path, built: Path, sid: str, began: str = "") -> None:
     with, kept in <room>/starts/<id>.md, so its system prompt never changes under it: Claude Fable 5.2's page, "Make these
     changes in new conversations only.", since on 5.2 the API checks the prefix for every account and thinking after a
     changed system prompt is invalid, so a resumed request can fail. Every change since rides the newest message
-    (context.news, from <id>.json, the rule texts the start was built from). A fresh session, or one begun before its start
+    (context.news, from <id>.json, the texts it tells the start was built from). A fresh session, or one begun before its start
     was kept, takes the current files and keeps them under its id. The oldest past KEEP_STARTS are removed."""
     folder, mine = room_dir / STARTS, room_dir / STARTS / f"{sid}.md"
     src = folder / f"{began}.md" if began else None

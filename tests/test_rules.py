@@ -7,8 +7,8 @@ import json
 import shutil
 from pathlib import Path
 
-from yerk_ai import context, memory, words
-from yerk_ai.config import EXAMPLE_PRIVATE, REPO, budgets
+from yerk_ai import context, engine, memory, words
+from yerk_ai.config import EXAMPLE_PRIVATE, REPO, budgets, rooms
 from yerk_ai.daemon import Yerkd
 from fake_channel import ConsoleChannel
 from test_code_read import reaches
@@ -327,3 +327,123 @@ def test_a_sealed_rooms_own_rule_stays_its_own_note_and_never_reaches_the_rules_
     assert context.NEWS not in told(y, "sid-b")
     day = asyncio.run(y.tool_read_memory(SEALED, r["cite"].rpartition(":")[0], 1, 50))
     assert day["ok"] and "Open web pages: Use the example browser, never the example fetcher." in day["text"]
+
+
+# The persona and the voice file, kept by hand, reach a running session the same way (2026-11-09): Claude Fable 5.2's page,
+# "To change instructions partway through a conversation, put them in the newest turn."
+EDIT = ("so a reply reads in one pass", "so a phone reads a reply in one pass")
+VOICE = "\n- Example: a yes or no gets one line.\n"
+
+
+def kept(y: Yerkd, room: str, sid: str, began: str = "") -> Path:
+    """A process start as RoomProcess.start makes one: its start file, its first look and its kept start (engine.kept_start)."""
+    start(y, room, sid)
+    engine.kept_start(rdir := y.state / "rooms" / room, rdir / "context.md", sid, began)
+    return rdir
+
+
+def before(y: Yerkd, room: str, sid: str) -> Path:
+    """A session begun before news kept the persona and voice: its looks and its kept start's texts have neither."""
+    rdir = kept(y, room, sid)
+    assert context.NEWS not in told(y, sid)
+    look, began = json.loads((path := rdir / "rules-seen.json").read_text()), rdir / "starts" / f"{sid}.json"
+    path.write_text(json.dumps({**look, **{k: drop(look[k]) for k in ("start", "seen")}}))
+    began.write_text(json.dumps(drop(json.loads(began.read_text()))))
+    return rdir
+
+
+def drop(texts: dict) -> dict:
+    """The texts as news kept them before it told the persona and voice."""
+    return {k: v for k, v in texts.items() if k not in ("persona", "room_voice")}
+
+
+def changed(text: str) -> list[str]:
+    return [x for x in text.split("\n") if x.startswith(("new in ", "replaced in "))]
+
+
+def edit(priv: Path, gone: str = "") -> None:
+    """A persona line changed and one added, `gone` removed, and a line added to example-room's own voice file."""
+    p, v = priv / "persona.md", priv / "rooms" / f"{A}.md"
+    p.write_text(p.read_text().replace(*EDIT).replace(gone, "") + "- Example: say a time in the room's own zone.\n")
+    v.write_text(v.read_text() + VOICE)
+
+
+def test_a_persona_or_voice_edit_reaches_each_running_room_that_loads_it_once(tmp_path):
+    shutil.copytree(EXAMPLE_PRIVATE, priv := tmp_path / "private")
+    y = daemon(tmp_path, priv)
+    y.room_confs[FAMILY] = {k: v for k, v in y.room_confs[FAMILY].items() if k not in ("persona", "voice")}
+    for room, sid in ((A, "sid-a"), (B, "sid-b"), (FAMILY, "sid-f")):
+        kept(y, room, sid)
+    begun = json.loads((y.state / "rooms" / A / "starts" / "sid-a.json").read_text())
+    assert begun["persona"] == (priv / "persona.md").read_text().strip() and begun["room_voice"] == (priv / "rooms" / f"{A}.md").read_text().strip()
+    edit(priv)
+    persona = ["new in persona.md: Short sentences and plain words, so a phone reads a reply in one pass.",
+               "new in persona.md: Example: say a time in the room's own zone.",
+               "replaced in persona.md: Short sentences and plain words, so a reply reads in one pass."]
+    assert changed(got := told(y, "sid-a")) == [*persona, "new in example-room.md: Example: a yes or no gets one line."]
+    assert f"{context.NEWS}\n{persona[0]}" in got
+    assert changed(told(y, "sid-b")) == persona                      # one layer's persona, shared; the voice file is one room's
+    assert context.NEWS not in told(y, "sid-f")                      # no persona and no voice key: as before
+    assert "persona" not in json.loads((y.state / "rooms" / FAMILY / "rules-seen.json").read_text())["seen"]
+    assert all(context.NEWS not in told(y, sid) for sid in ("sid-a", "sid-b", "sid-f"))      # once, then never again for it
+
+
+def test_a_session_begun_before_the_persona_was_kept_is_told_only_the_lines_its_start_does_not_hold(tmp_path):
+    """Its look and its kept start's texts hold no persona or voice: they are read from the start file it was given, so it
+    hears neither the whole file nor nothing, and a line gone since its start (here the persona's last) is told too."""
+    shutil.copytree(EXAMPLE_PRIVATE, priv := tmp_path / "private")
+    y = daemon(tmp_path, priv)
+    before(y, A, "sid-a")
+    gone = "- Name the source of any number you give, so the owner can check it.\n"
+    edit(priv, gone)
+    assert changed(told(y, "sid-a")) == [
+        "new in persona.md: Short sentences and plain words, so a phone reads a reply in one pass.",
+        "new in persona.md: Example: say a time in the room's own zone.",
+        "replaced in persona.md: Short sentences and plain words, so a reply reads in one pass.",
+        "replaced in persona.md: Name the source of any number you give, so the owner can check it.",
+        "new in example-room.md: Example: a yes or no gets one line."]
+    assert context.NEWS not in told(y, "sid-a")
+    rdir = before(y, B, "sid-b")
+    (rdir / "starts" / "sid-b.md").unlink()                          # no kept start and no text kept: nothing to tell
+    (priv / "persona.md").write_text((priv / "persona.md").read_text() + "- Example: one more line.\n")
+    assert context.NEWS not in told(y, "sid-b")
+
+
+def test_a_kept_start_cut_to_fit_gives_the_lines_it_holds_and_never_a_line_of_another_part(tmp_path):
+    """A capped install sends a part past its line cut: the persona and the voice keep their first and last lines, the
+    rulebook its first. What a session begun before news kept the persona and voice is told is read off the lines its start
+    holds: a line gone from the persona's head is told, and no line of the rulebook, the voice or the marker is the persona's."""
+    shutil.copytree(EXAMPLE_PRIVATE, priv := tmp_path / "private")
+    persona, book = priv / "persona.md", priv / "rulebook.md"
+    persona.write_text(persona.read_text() + "".join(f"- persona line {i}: the way this room answers.\n" for i in range(40)))
+    book.write_text(book.read_text() + "".join(f"- rulebook line {i}: kept the example way.\n" for i in range(40)))
+    room, b = rooms(priv)[A], budgets()
+    b["session_start"]["appended"].update(persona=1200, rulebook=900, room_voice=500)
+    parts = {p.name: p for p in context.session_start(priv, room, b)}
+    assert all(parts[k].cut for k in ("persona", "rulebook", "room_voice"))
+    (rdir := tmp_path / "room" / "starts").mkdir(parents=True)
+    (rdir / "s1.md").write_text(context.appended_file(list(parts.values())))      # its kept start, and its texts as kept before
+    (rdir / "s1.json").write_text(json.dumps({"mechanics": context.mechanics(), "rulebook": book.read_text().strip(), "rules": ""}))
+    rdir = rdir.parent
+    head = "- Short sentences and plain words, so a reply reads in one pass."
+    persona.write_text(persona.read_text().replace(head + "\n", ""))
+    got = changed(context.news(rdir / "rules-seen.json", "s1", priv, room, priv / "memory" / memory.RULES, 100_000, rdir / "w.md"))
+    assert [x for x in got if x.startswith("replaced")] == [f"replaced in persona.md: {head.removeprefix('- ')}"]
+    for name, k in (("persona.md", "persona"), (f"{A}.md", "room_voice")):     # the lines its start never held: told as new
+        assert {x.split(": ", 1)[1] for x in got if x.startswith(f"new in {name}: ")} == \
+            {x.removeprefix("- ") for x in parts[k].cut if not x.startswith("#")}
+    assert context.news(rdir / "rules-seen.json", "s1", priv, room, priv / "memory" / memory.RULES, 100_000, rdir / "w.md") == ""
+
+
+def test_a_compactions_copy_hears_a_persona_change_since_the_start_it_kept_and_a_sealed_room_none(tmp_path):
+    y = sealed(tmp_path)
+    priv = tmp_path / "private"
+    kept(y, A, "parent")
+    kept(y, SEALED, "sid-s")                                         # loads the same persona and voice file
+    edit(priv)
+    assert "new in example-room.md: Example: a yes or no gets one line." in changed(told(y, "parent"))
+    kept(y, A, "copy", began="parent")                               # a compaction's copy, adopted: its parent's start and texts
+    assert json.loads((y.state / "rooms" / A / "starts" / "copy.json").read_text())["persona"] != (priv / "persona.md").read_text().strip()
+    assert "new in example-room.md: Example: a yes or no gets one line." in changed(told(y, "copy"))
+    assert context.NEWS not in told(y, "copy") and context.NEWS not in told(y, "sid-s")
+    assert not (y.state / "rooms" / SEALED / "rules-seen.json").exists()

@@ -351,12 +351,54 @@ def test_a_room_asked_why_its_discord_replies_land_in_the_code_hears_the_page_ta
     assert [e["key"] for e in found] == ["page-talk"]
     text = found[0]["text"]
     assert text.startswith(f"page-talk, a Yerk AI ability ({words.ability('on')[1]}): A room's live page holds code, talk")
-    assert ("its replies to them coming back as #> lines the page itself writes under the owner's last # line, with the "
-            "owner's caret and typing kept, while what it says anywhere else (a Discord answer, a job's post, a scheduled "
-            "note's) stays on the chat") in text
+    assert "what it says anywhere else (a Discord answer, a job's post) stays on the chat" in text
     assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
     assert [e["key"] for e in abilities.asked("the patch notes in my code again", y.memory, TAB)] == ["page-talk"]
     assert not abilities.asked("the patch notes went out on discord", y.memory, TAB)
+
+
+def test_a_room_asked_for_the_words_of_a_text_the_owner_sent_hears_the_blank_text_way(tmp_path):
+    """need-2026-11-09-83: a room asked to confirm the words of a text the owner had just sent got an empty text field, as
+    on every text they sent that evening. Asked that way, a room gets the text entry whole, with the words read from the rich
+    copy and a blank said with its reason (a key of its own would push the abilities answer past the 2,000 recall cap)."""
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    found = abilities.asked("what did i text her just now? confirm the exact words", y.memory, TAB)
+    assert [e["key"] for e in found] == ["text"]
+    text = found[0]["text"]
+    assert "the owner's own sent ones too, whose words Messages often keeps only in its rich copy" in text
+    assert "A blank text's words" in text
+    assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
+    assert not abilities.asked("she sent the photo again", y.memory, TAB)
+
+
+def test_a_room_asked_to_type_into_a_field_it_focused_hears_the_type_way_and_the_web_component_form(tmp_path):
+    """need-2026-11-09-74: a room asked to run a quote on a form drawn inside a web component saw the form only in a shot:
+    the browser's read and its list of fields stopped at the page's footer, and a click by position focused the form's
+    first field with no action to type into it. Asked that way, a room gets form-typing whole: the browser plug-in's type,
+    into the field that has focus, typed by the browser itself; a select takes the option its words name; the web
+    component's form is read, listed, filled and clicked by label; an Enter waits for the owner's word, and nothing is typed
+    into a card field; a message about typing up a form gets no ability."""
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    for ask in ("the quote page draws its form but nothing lists it, can you type into the field you clicked?",
+                "its fields are not listed, the form sits in a shadow root"):
+        found = abilities.asked(ask, y.memory, TAB)
+        assert [e["key"] for e in found] == ["form-typing"], ask
+    text = found[0]["text"]
+    assert text.startswith(f"form-typing, a Yerk AI ability ({words.ability('described')[1]}): Types into whatever field has focus "
+                           "in one of the room's tabs")
+    for want in ("One browser action, type; The field found first, as the browser will type into it; A select takes the option its "
+                 "words name; A web component's form read too; The owner's word before an Enter",
+                 "whose browser plug-in carries the type action", "clicks its field by position and types into it"):
+        assert want in text, want
+    assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
+    told = abilities.explain("form-typing", TAB["form-typing"], TAB, y.memory)
+    assert next(x for x in told if x.startswith("- One browser action, type:")).startswith(
+        "- One browser action, type: text into the field that has focus, typed by the browser itself over its developer protocol")
+    assert next(x for x in told if x.startswith("- A web component's form read too:")).endswith(
+        "one whose inside is closed to the page is reached by type alone.")
+    held = next(x for x in told if x.startswith("- The owner's word before an Enter"))
+    assert "nothing typed into a card field, the owner's word or not" in held and held.endswith("as one on the page does.")
+    assert not abilities.asked("I have to type up the form for work tonight", y.memory, TAB)
 
 
 def test_ordinary_messages_pull_no_ability_into_the_room(tmp_path):
@@ -379,3 +421,20 @@ def test_a_room_asking_what_can_you_do_gets_every_ability_by_state(tmp_path, cap
     assert cli.main(["explain", "abilities", "--private", str(EXAMPLE_PRIVATE), "--state", str(tmp_path)]) == 0
     said = capsys.readouterr().out
     assert said.startswith(f"{words.DONE} abilities: on") and all(n in said for n in TAB)
+
+
+def test_a_room_asked_to_talk_in_the_code_with_bubbles_hears_the_page_talk_way(tmp_path):
+    """need-2026-11-09-82: asked to talk to the owner inside the code, a room had its replies written into the program as plain
+    #> lines in a one-colour editor, nothing on screen while it thought. Asked that way, a room gets the page-talk entry
+    whole: bubbles under the line asked from, never in solution.py, the typing mark, Ctrl+Enter on a line and Python colours
+    (a key of its own would push the abilities answer, 1,993 at main, past the 2,000 recall cap)."""
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    found = abilities.asked("can you talk to me in the code with bubbles, not a chat box?", y.memory, TAB)
+    assert [e["key"] for e in found] == ["page-talk"]
+    text = found[0]["text"]
+    assert ("its answers coming back as bubbles between the rows under the line asked from, never written into solution.py, "
+            "with a typing mark there while it thinks; Ctrl+Enter or a line's number asks about that line") in text
+    assert "the editors colour Python, the owner's own # lines in a colour of their own" in text
+    assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
+    assert [e["key"] for e in abilities.asked("please upgrade the page", y.memory, TAB)] == ["page-talk"]
+    assert not abilities.asked("the bubbles in the bath", y.memory, TAB)

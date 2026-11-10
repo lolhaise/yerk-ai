@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 129071`
+- `total = 129171`
 
 ## [session_start.claude_code]
 
@@ -102,11 +102,17 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-09, need-2026-11-09-79: the `schedule` tool's `effort` and `model` (an agent job's worker at the job's own thinking level and model, since a room on max started each research run of a bot as a standing agent job and every job's worker took the room's level, one run at max costing about eight times the same run at high) take the tool from 2,149 to 2,410 as this tree builds it, all 23 to 25,099, about 25,812 as sent (713 over the build, as on need 77's tree); so 25,900, no part could pay, the total rose by the 300 (to 128,971 on main's 128,671).
 
-2026-11-10, need-2026-11-09-81: the `page` tool's `chat` ("closed" closes the live page's chat to nothing as its close button does, "open" brings it back, since the owner asked a room on the page for no chat box a second time and only the button in the owner's browser closed it; filed 2026-11-09) takes the tool from 2,063 (main 5529087's, with need 80's clause) to 2,188 as this tree builds it, all 23 from 25,117 to 25,242, about 25,955 as sent (713 over the build, as on need 79's tree); so 26,000, no part could pay, the total rose by the 100 (to 129,071 on main's 128,971).
+2026-11-10, need-2026-11-09-83: the `texts` tool's clause on a message with no words (`text` its words, or `blank` saying why it has none, never told as empty, since a room asked to confirm the words of a text the owner had just sent found its text field empty, as on every text they sent that evening, the words kept only in the message's attributedBody; filed
+
+2026-11-09) takes the tool from 987 to 1,069 as this tree builds it, all 23 to 25,181, about 25,894 as sent (713 over the build, as on need 79's tree), 6 under the line; so 26,000, no part could pay, the total rose by the 100 (to 129,071 on main's 128,971).
+
+2026-11-10, need-2026-11-09-74 (the hands plug-in's browser types into whatever field has focus in a tab, and a web component's form is read, listed, set and clicked by label, since a room asked to run a quote on a form drawn inside a shadow root saw it only in a shot, its read and its fields stopping at the page's footer, and had no action to type into the field its click focused; filed 2026-11-09): one `type` with need-2026-11-09-75's on the plug-in's main (aa4d3fc: by its label through each open shadow root too, a select by its option's words; with no label, the field that has focus; a key after either). No line moves for it here: need-2026-11-09-76 reached main first and its 905 above counts this joined entry (the 481 over need 75's), so the hands line stays 9,831 and the total 129,071.
+
+2026-11-10, need-2026-11-09-81: the `page` tool's `chat` ("closed" closes the live page's chat to nothing as its close button does, "open" brings it back, since the owner asked a room on the page for no chat box a second time and only the button in the owner's browser closed it) takes the tool from 2,077 (main's, with need 82's clause) to 2,202 as this tree builds it, all 23 from 25,213 (main's: need 83's 25,181 with need 80's and need 82's page clauses, 18 and 14) to 25,338, about 26,051 as sent (713 over the build, as on need 79's tree), 51 over the line; so 26,100, no part could pay, the total rose by the 100 (to 129,171 on main's 129,071).
 
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
-- `yerk_tools = 26000`
+- `yerk_tools = 26100`
 - `deferred_tool_names = 3429`
 - `mcp__hands__ = 9831`
 - `mcp__web-ladder__web_image = 913`
@@ -178,7 +184,9 @@ What the UserPromptSubmit hook adds to each message: `typical` caps the parts ev
 
 2026-10-23: 5,500 to 5,650, the place part's 150 below.
 
-- `cap = 5650`
+2026-11-10, need-2026-11-09-74: 5,650 to 5,750, the recall part's 100 below.
+
+- `cap = 5750`
 
 ## [per_message.parts]
 
@@ -201,9 +209,11 @@ Claude Code moves a hook output longer than this into a file.
 
 Paid only when a message hits: the people and things it names, then the room's own lines of the last 14 days on its topic (L19, decision 20). The parts above plus these stay under `cap`. 2,000 from the cold read of Oct 21 (rail-2, index healthy): the twenty episodic questions found 9 of 20 at 1,500 and 11 of 20 at 2,000. Clock 200 + metadata 300 + rules 1,500 + recall 2,000 + taste 1,500 = the cap, 5,500.
 
-- `recall = 2000`
+2026-11-10, need-2026-11-09-74: 2,100. The answer to "what can you do" (abilities.py's census: every ability's name by its state) rides whole under this line or not at all, and on main d97c1ba it sat 7 characters under it (1,993); form-typing's name (the browser plug-in's type, filed by a room that saw a quote form only in a shot) takes it 6 over, 2,006; so 100 more, room for about seven names. The twenty episodic questions' finding at 2,000 stands; the cap above rose by the same 100.
 
-Paid once per version by a running session (decision 15): what changed in the rules file, its rulebook or the mechanics since it last looked, new and replaced lines; past this, their count and where to read them.
+- `recall = 2100`
+
+Paid once per version by a running session (decision 15): what changed in the rules file, its persona, rulebook or voice file or the mechanics since it last looked, new and replaced lines; past this, their count and where to read them.
 
 - `rules = 1500`
 
@@ -615,9 +625,19 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-09: need-2026-11-09-80 raised it by 11: with a live page's chat closed, only the room's lines that answer what was said on the page go into the program, since every line it said from any thread went in and a Discord answer, a scheduled note's and a job's nightly post landed in the owner's code under the last # line; two docstring lines folded, the rest not folded to fit: channels/page.py 8 (answers_page, a page message of the room's among those a line answers, read from the ledger; said writing the program only then; the Mirror handing each line its messages; the module's line on it), channels/discord.py 1 (send_text's `inbound`, the page's, its rows still answering none), daemon.py 1 (the send tool's turn messages to send_text), words.py 1 (the room told, when the chat closes, that its other lines stay on the chat), mcp_server.py 0 (the page tool's clause, 18 characters, inside yerk_tools' 25,900: about 25,830 as sent, no raise). 27,961: main 37d8a70's 27,950 plus 11.
 
-2026-11-10: need-2026-11-09-81 raised it by 9: the live page's `page` tool closes the page's chat or opens it (`chat`), as its buttons do, on every open tab and kept across a restart, since the owner asked a room on the page for no chat box a second time and only the close button in the owner's browser closed it; not folded to fit: channels/page.py 8 (draw's `chat`, checked before any part is drawn, kept in talk.json, an owner's switch it undoes before the room heard it left unsaid, the module's and draw's lines on it), words.py 1 (PAGE_CHAT), mcp_server.py 0 (the tool's parameter and clause). The tab's showing of it is page.html, outside this count. 27,970: main 5529087's 27,961 plus 9.
+2026-11-10: hot-reads-2026-11-10 raised it by 16: to post one reply the daemon read the room's whole delivery history on the event loop, and sqlite hands Python's interpreter back after every row, so with another room's turn busy a row cost about 8 ms: 236 rows took 2.0 s on the owner's ledger and a busy room's 4,667 about 40 s, past systemd's 30 s watchdog, which killed the daemon with the loop's stack in that read (an earlier kill that day fits it: a send in the work room sat 29 s between planned and posted). One reply's parts, a turn's landed parts and the end-of-turn check's replies are read by key range (the engine audit's defect 1); not folded to fit: ledger.py 17 (deliveries_of; said and landed by range, with why), channels/discord.py -1 (_deliver and one key's redelivery call it). 27,977: main 5529087's 27,961 plus 16.
 
-- `lines = 27970`
+2026-11-10: persona-voice-news-2026-11-09 raised it by 29: a line added, changed or removed in a room's persona or voice file reaches its running session once, in its next message's rules block, since a room that keeps its session for days went on with the old persona (Claude Fable 5.2's page: "To change instructions partway through a conversation, put them in the newest turn."); not folded to fit: context.py 29 (the two files in news' look, the lines a look from before they were kept reads off the session's kept start, began_with, and the lines that say something, lines_of, which news and it share). 28,006: main 10e9cfb's 27,977 plus 29.
+
+2026-11-10: need-2026-11-09-82 raised it by 51: the room's answers to a live page are bubbles between the editor's rows under the line asked from, never #> lines written into the owner's solution.py, with a typing mark till the turn ends and one key to ask about a line or a red test, since the owner asked to talk to the room in the code and got a dozen plain #> lines at the bottom of the owner's file, a one-colour editor and nothing on screen while it thought; not folded to fit: channels/page.py 51 (talk_lines, spot, into, caught_up and the reply numbering out; moved, kept_lines, fallback and def_line, the sheet's bubbles, typing mark and anchors with shift, the ask and bubble events, asking, _bubble, ended and the Mirror's silent in), words.py 0 (the asks' words for the talk's cut and catch-up), mcp_server.py 0 (the page tool's clause, as long as before). The editor, its colours and the bubbles are page.html's, outside this count. 28,057: main 6a13109's 28,006 plus 51.
+
+2026-11-10: need-2026-11-09-82's fix (PR 40) lowered it by 1: a bubble an edit moves is written to talk.json at once, since lines typed above one moved it in yerkd's copy alone and a restart brought it back on its old line, beside another line of the program; channels/page.py -1 (shift writes talk.json when a bubble moved or went, for an edit and a draw alike, so the draw's own write and its block after the loop go). 28,056: 28,057 less 1.
+
+2026-11-10: need-2026-11-09-83 raised it by 30: a text whose text column comes back blank, as Messages leaves many the owner sent, is read from its attributedBody (the import's own reading), and one with no words there says why in `blank`, since a room asked to confirm the words of a text the owner had just sent got an empty text field for every text they sent that evening; not folded to fit: inbox.py 27 (said, the query's attributedBody as hex, parse's fifth field and FILE_MARK), words.py 2 (TEXTS_BLANK), mcp_server.py 1 (the texts tool's clause on `blank`). 28,086: 28,056 plus 30.
+
+2026-11-10: need-2026-11-09-81 raised it by 8: the live page's `page` tool closes the page's chat or opens it (`chat`), as its buttons do, on every open tab and kept across a restart, since the owner asked a room on the page for no chat box a second time and only the close button in the owner's browser closed it; not folded to fit: channels/page.py 7 (draw's `chat`, checked before any part is drawn, kept in talk.json, an owner's switch it undoes before the room heard it left unsaid, draw's line on it; the module's clause on it fits in need 82's lines), words.py 1 (PAGE_CHAT), mcp_server.py 0 (the tool's parameter and clause). The tab's showing of it is page.html, outside this count. 28,094: main 90bd742's 28,086 plus 8.
+
+- `lines = 28094`
 
 ## Uncapped
 

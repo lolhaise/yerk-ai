@@ -324,10 +324,11 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         """The owner's own recent texts (iMessage and SMS), newest first, read from the owner's Mac: use it to answer
         whether someone has texted, or what a text said. This only reads; it never sends one (that is `text`). `limit` how
         many to return (12 unless you ask, up to 40). Each message has `who` (the other person's number or address, empty
-        for one the owner sent), `from_me`, `at` (epoch seconds) and `text`. The owner's Mac sleeps when its lid is shut on
-        battery, so the texts are kept as a copy on the box, refreshed whenever the Mac is awake: `as_of` says where this
-        answer comes from. With `awake` true it was just read from the Mac; with it false the Mac is asleep or away and the
-        answer is the last copy, whose age `as_of` gives, so say that time and do not pass a stale answer off as fresh."""
+        for one the owner sent), `from_me`, `at` (epoch seconds) and `text`, its words, or `blank` saying why it has none:
+        say that, never that it was empty. The owner's Mac sleeps when its lid is shut on battery, so the texts are kept as
+        a copy on the box, refreshed whenever the Mac is awake: `as_of` says where this answer comes from. With `awake` true
+        it was just read from the Mac; with it false the Mac is asleep or away and the answer is the last copy, whose age
+        `as_of` gives, so say that time and do not pass a stale answer off as fresh."""
         return json.dumps(await daemon.tool_texts(caller_room(ctx), limit))
 
     @mcp.tool()
@@ -386,8 +387,8 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         runs alone, its prints shown large), which the page runs on every pause in typing; `marks` line marks, each {"line": N, "kind": "highlight" or "arrow", "text": a note},
         [] clears; `hint` a card under the program; `bar` labels and values, a scoreboard on top ("Gold II" a rank badge,
         "12/40" or a number under LP a bar, a number big); `timer` seconds on its clock, 0 stops;
-        `stall` seconds of no typing before the page tells you, 0 off. Your replies show there too, and with its chat closed
-        (by the owner, or `chat` "closed" on their ask, "open" back) those to the page go into the program as #> lines under the owner's last # line. What the owner types,
+        `stall` seconds of no typing before the page tells you, 0 off. Your replies show there too, and those to a line the owner asked about (all to the page,
+        its chat closed by the owner or by `chat` "closed" on their ask, "open" back) as bubbles under it, never in solution.py. What the owner types,
         draws and says there comes to you as messages, mid-turn too; each keystroke is in page/events.jsonl. `open` true
         (the owner asked for the page) turns it on, with no restart, and opens it on the owner's screen, `where` "mac" on
         their Mac (default "pc"); `off` true: off."""
