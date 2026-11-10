@@ -268,7 +268,9 @@ def test_claude_codes_parts_as_the_rooms_send_them_fit_their_lines_and_what_is_l
     (need-2026-11-09-79) the `schedule` tool's `effort` and `model` (about 2,441 as sent; all 23 about 25,812) to 25,900
     and the total by the 300 to 128,971; then (need-2026-11-09-83) the `texts` tool's clause on `blank` (about 1,100 as
     sent; all 23 about 25,894) to 26,000 and the total by the 100 to 129,071; then (need-2026-11-09-81) the `page` tool's
-    `chat` (about 2,233 as sent; all 23 about 26,051) to 26,100 and the total by the 100 to 129,171."""
+    `chat` (about 2,233 as sent; all 23 about 26,051) to 26,100 and the total by the 100 to 129,171; then
+    (need-2026-11-10-82) the `page` tool's `screen` (about 2,555 as sent; all 23 about 26,373) to 26,400 and the total by
+    the 300 to 129,471."""
     shape = {"system": [{"type": "text", "text": "p" * LIVE_PROMPT}, {"type": "text", "text": "# Yerk AI mechanics"}],
              "tools": [entry(n, size) for n, size in LIVE_TOOLS.items()]}
     (t := tmp_path / "sid.jsonl").write_text(json.dumps({"type": "api-request-shape", "shape": shape}) + "\n")
@@ -286,7 +288,7 @@ def test_claude_codes_parts_as_the_rooms_send_them_fit_their_lines_and_what_is_l
     assert all(sent <= line for sent, line in rows.values()), out
     assert all(line <= sent * 1.02 for name, (sent, line) in rows.items() if name != "Yerk AI's tools"), rows
     s = b["session_start"]
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 129171
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 129471
 
 
 def room_sent(tmp_path, tools, file="# Yerk AI mechanics\n- an example line"):
@@ -428,10 +430,11 @@ def test_the_rulebook_line_keeps_about_1000_over_the_largest_room_text_and_what_
     by url, to 128,671 on main's 127,548 (its cold read); then the `schedule` tool's `effort` and `model` (300), no part
     could pay, to 128,971 (need-2026-11-09-79); then the `texts` tool's clause on `blank` (100), no part could pay, to
     129,071 (need-2026-11-09-83); then the `page` tool's `chat`, the live page's chat closed or opened by the room (100),
-    no part could pay, to 129,171 (need-2026-11-09-81)."""
+    no part could pay, to 129,171 (need-2026-11-09-81); then its `screen`, the PC monitor the owner names, the page
+    maximized there and said painted only once it is (300), no part could pay, to 129,471 (need-2026-11-10-82)."""
     s = budgets()["session_start"]
     assert 900 <= s["appended"]["rulebook"] - LIVE_RULEBOOK <= 1400 and s["appended"]["rules"] == 16000
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 129171
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 129471
     private = tmp_path / "private"
     shutil.copytree(EXAMPLE_PRIVATE, private)
     (private / "rulebook.md").write_text("r" * (LIVE_RULEBOOK - 1) + "\n")

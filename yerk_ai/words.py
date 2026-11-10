@@ -598,6 +598,22 @@ PAGE_NO_MAC = ("no Mac is set up for the page: [page] mac in yerkd.toml names it
 PAGE_NO_ADDRESS = ("the Mac has no address for the page: yerkd serves it on the box's tailnet when tailscale is up at its start, "
                    "else [page] listen in yerkd.toml names the box's LAN address ([page] address names another way to yerkd's port, a WSL forward's)")
 PAGE_MAC_SSH = "the Mac did not answer over ssh: {why}"
+# the open's `screen` (channels/page.py place): the owner's named monitor of the PC, the page maximized there, then its paint
+PAGE_SCREEN = "screen is left, middle, right, primary or its number from the left (1 to 9), not {screen}"
+PAGE_SCREEN_MAC = "screen names a monitor of the PC; an open on the Mac goes where the Mac puts it"
+PAGE_SCREEN_NOT_HERE = "yerkd places the page on a named screen of a Windows PC (WSL) only"
+PAGE_OPENED_SCREEN = "opened on the owner's {screen} screen, {n} of {of} from the left, maximized and on top"
+PAGE_NOT_PLACED = "not placed on the {screen} screen: {why}"
+PAGE_NO_SUCH_SCREEN = "the owner has {n} screen(s) and none is the {screen} one"
+PAGE_NO_BROWSER = "the default browser is not one yerkd opens in a window of its own (Chrome, Edge, Brave, Vivaldi, Opera, Firefox)"
+PAGE_NO_WINDOW = "no window of the page showed in 15 s, so it opened where the browser put it"
+PAGE_NOT_MOVED = "its window would not move to the {screen} screen"
+PAGE_PAINTED = "painted: a desktop screenshot of {x},{y} {w}x{h} shows it as the owner sees it"
+PAGE_PAINTED_THERE = "painted where the browser put it: a desktop screenshot of that screen shows it"
+PAGE_NOT_PAINTED = ("not painted after {n} s, so a desktop screenshot would show an old frame or none: the screen still "
+                    "sleeps or the window is covered; it paints when the owner wakes it")
+PAGE_LOCKED = ("not painted: the owner's screen is locked, so a desktop screenshot would show an old frame or none; it paints "
+               "when the owner unlocks it")
 # [page] listen (channels/page.py listen): the box's one tailnet or LAN address the page is also served on, or why not
 PAGE_LISTEN_EVERY = "[page] listen {x} is every network the box is on, a café's too: name its tailnet or LAN address"
 PAGE_LISTEN_PUBLIC = "[page] listen {x} is a public address, the page on the internet in plain text: name the box's tailnet or LAN one"

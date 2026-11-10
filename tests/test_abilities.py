@@ -146,6 +146,20 @@ def test_a_room_asked_to_open_a_page_in_the_browser_on_the_pc_hears_the_plug_in_
     assert not abilities.asked("the tracker is open on my pc already, I logged the hours myself", y.memory, TAB)
 
 
+def test_a_room_asked_for_the_page_on_the_owner_s_middle_monitor_hears_the_named_screen_way(tmp_path):
+    """need-2026-11-10-82: a room told to open the live page on the owner's middle monitor had it put on the left one by the
+    browser, unpainted on a screen asleep, and was told it opened. Asked that way, it gets page-mac whole under the recall
+    cap: the tool's `screen` opens it maximized there with the screen woken and no click, and says when it painted."""
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    found = abilities.asked("open the coding page on my middle monitor, the wrong monitor got it last time", y.memory, TAB)
+    assert "page-mac" in [e["key"] for e in found]
+    text = next(e["text"] for e in found if e["key"] == "page-mac")
+    for want in ("`screen` (else [page] screen) names the owner's monitor", "the screen woken with no click",
+                 "the room is told it painted only once the tab says so"):
+        assert want in text, want
+    assert text in hooks.render_recall([e for e in found if e["key"] == "page-mac"], [], int(y.budgets["per_message"]["on_hit"]["recall"]))
+
+
 def test_a_room_asked_to_book_a_free_table_hears_the_page_decides_way(tmp_path):
     """need-2026-10-26-23: a room asked to book a free table filled none of the Confirm page's fields (a name, a phone
     number, an email, no card, no deposit): the page sat on a checkout address, and the browser refused every field and

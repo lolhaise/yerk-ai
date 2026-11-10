@@ -1692,10 +1692,17 @@ asked_as = ["talk to you on the page", "chat on the page", "talk on the page", "
 # need-2026-11-04-50: asked for the page on the Mac, a room got "no Mac is set up for the page" and would have got
 # no address next, though the box reached the Mac by ssh for the hands plug-in's mac tool and sat on the tailnet, and a
 # room cannot set yerkd.toml while a conversation runs. Nothing to set now.
+# need-2026-11-10-82: a scheduled check told to open the page on the owner's middle monitor heard "opened on the owner's
+# screen" while the browser had put it on the left one, maximized and unpainted on a screen asleep, so a desktop screenshot
+# showed an old frame, and only a click, which needs the owner's word, would wake it. A key of its own would
+# push the abilities answer, 1,993 at main, past the 2,000 recall cap, so this entry, where the page opens, carries it.
 [abilities.page-mac]
 state = "built"
-what = "The live page opens on the screen the owner is at: the `page` tool's open takes `where`, pc (the default, the box's own screen) or mac, and yerkd opens it on the owner's Mac over ssh at a one-time address, the ticket on no command line, with nothing set in yerkd.toml when an owner room's add-on reaches the Mac and the box is on the tailnet; a reload of the page there keeps it, since the tab keeps its key in its own session storage."
+what = "The live page opens on the screen the owner is at: the `page` tool's open takes `where`, pc (the default, the box's own screen) or mac, and yerkd opens it on the owner's Mac over ssh at a one-time address, the ticket on no command line, with nothing set in yerkd.toml when an owner room's add-on reaches the Mac and the box is on the tailnet; a reload of the page there keeps it, since the tab keeps its key in its own session storage. On the PC, `screen` (else [page] screen) names the owner's monitor, left, middle, right, primary or its number from the left: the page opens there in a window of its own, maximized, the screen woken with no click, and the room is told it painted only once the tab says so."
 how = [
+  "A named screen, on a Windows PC under WSL: Windows' own PowerShell opens the page's one-time address in a new window of the default browser (Chrome, Edge, Brave, Vivaldi, Opera or Firefox), the address in its environment, never on a command line; counts the screens from the left (middle the centre one, of two the right one, so a third screen asleep, which Windows can drop, leaves it the same; primary the main one); moves the window to that screen's work area, maximizes it there and raises it above the rest without taking the focus; and first wakes the display, a display-required request and a still mouse event: no click, no key, the pointer unmoved.",
+  "Painted, said: the tab says when it drew a frame while it shows (a browser draws none on a covered window, a screen asleep or a locked one), and the open waits 10 s for it: painted, with the screen's rectangle for a desktop screenshot, else not painted and why (locked, or still asleep or covered), so the room never reads an old frame as the page.",
+  "Told in words: a screen that is not there (with how many there are), a browser yerkd opens no window of, a window that never showed, a box that is not a Windows PC; the page then opens once at most, where the browser puts it, and only when nothing opened yet.",
   "The Mac: ssh to [page] mac in yerkd.toml (else [imessage] host, the text tool's Mac) runs `open` there on the page's one-time address, handed on ssh's stdin, so neither the key nor the ticket is on a command line; the address is [page] address, yerkd as the Mac reaches it (the box's tailnet or LAN host, its port yerkd's when it names none), else [page] listen's (page-reach), since 127.0.0.1 on the Mac is the Mac.",
   "Nothing set: with neither key, the Mac is the one an owner room's add-on reaches, `ssh` in the mac.json beside its server (the hands plug-in's, its mac tool's host), a host or user@host only, from a file of the owner's no other user writes and none under Yerk's state folder, where each room's folder is; the address is the box's own tailnet one (page-reach), so one restart of yerkd at a deploy lands the page on the Mac.",
   "Told in words: no Mac named, no address set, a Mac that does not answer over ssh or a `where` that is neither pc nor mac; the page is on all the same, and where pc opens it on the box's own screen.",
@@ -1703,11 +1710,13 @@ how = [
   "A tab with no key says a line typed there reached no room, keeps the words in the box and says how to open the page.",
 ]
 tier = "free"
-needs = "the page-switch ability; ssh from the box to the Mac with a key (BatchMode), named by [page] mac or an add-on's mac.json, and the page served where the Mac reaches it (the box's tailnet, page-reach's [page] listen, or a forward named in [page] address)"
+needs = "the page-switch ability; ssh from the box to the Mac with a key (BatchMode), named by [page] mac or an add-on's mac.json, and the page served where the Mac reaches it (the box's tailnet, page-reach's [page] listen, or a forward named in [page] address); a named screen, a WSL box on the Windows PC whose screens they are, nothing to install"
 price = "none"
 free_path = "this is the free path"
 asked_as = ["page on my mac", "open it on my mac", "open my page on my mac", "i need it on my mac", "not my pc", "page on the mac",
-            "page needs its address", "reload lost the page", "coding page on my mac", "no mac is set up"]
+            "page needs its address", "reload lost the page", "coding page on my mac", "no mac is set up",
+            "page on my middle monitor", "open it on my middle monitor", "page on my monitor", "wrong monitor", "other monitor",
+            "page is blank", "page not painted", "make it for my monitor"]
 
 # need-2026-11-03-45: the owner, on the Mac, asked for the live page there; yerkd served it on 127.0.0.1 alone and built its
 # address with that host, which on the Mac or a phone is that device itself, so the page opened only on the PC that hosts

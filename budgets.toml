@@ -7,7 +7,7 @@
 # The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and
 # Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 [session_start]
-total = 129171
+total = 129471
 
 # Load order, most stable first, so the cached start of the prompt survives.
 # The first parts are Claude Code's own (its default prompt, the built-in tools
@@ -234,10 +234,17 @@ total = 129171
 # clause) to 2,202 as this tree builds it, all 23 from 25,213 (main's: need 83's 25,181 with need 80's and need 82's page
 # clauses, 18 and 14) to 25,338, about 26,051 as sent (713 over the build, as on need 79's tree), 51 over the line; so
 # 26,100, no part could pay, the total rose by the 100 (to 129,171 on main's 129,071).
+# 2026-11-10, need-2026-11-10-82: the `page` tool's `screen` (the PC monitor the owner names, the page maximized there in a
+# window of its own, the screen woken with no click and said painted only once the tab says so, since a scheduled check
+# told to open the page on the owner's middle monitor heard "opened on the owner's screen" while the browser had put it on
+# the left one, unpainted on a screen asleep, and only a click, which needs the owner's word, would wake it; filed 2026-11-10
+# takes the tool from 2,202 to 2,524 as this tree builds it, all 23 from 25,338 to 25,660 (322 more, measured on
+# main 4e7a617 and on this tree the same way), about 26,373 as sent (713 over the build, as on need 79's tree), 273 over
+# the line; so 26,400, no part could pay, the total rose by the 300 (to 129,471 on main's 129,171).
 [session_start.claude_code]
 claude_code_prompt = 10966
 builtin_tools = 12132
-yerk_tools = 26100
+yerk_tools = 26400
 deferred_tool_names = 3429
 mcp__hands__ = 9831
 mcp__web-ladder__web_image = 913
@@ -1414,4 +1421,13 @@ secs = 60
 # KEYS, keys_out), hooks.py 10 (GATE_DOWN, the gate's own hook), unwrap.py 10 (`whole`), workers.py 7 (the read-only
 # binds, onFailure), ledger.py 2 (approve's `before`), memory.py 1 (keys_out on a day-log line). 28,221:
 # need-2026-11-09-81's 28,094 plus 127.
-lines = 28221
+# 2026-11-10: need-2026-11-10-82 raised it by 210, the live page opened on the PC monitor the owner names for every room
+# (need 82: a scheduled check told to open the page on the owner's middle monitor had it put on the left one by the
+# browser, unpainted on a screen asleep, told "opened", and only a click, which needs the owner's word, would wake it), not folded
+# to fit: channels/page.py 150 (PLACE_PS1, the Windows script that opens a window of its own of the default browser on the
+# named screen, maximized and raised without the focus, the screen woken by a still mouse event; place, its run with the
+# address in its environment and its every end in words; screen_name, wsl; the tab's paint waited on by its ticket),
+# daemon.py 38 (the named screen's open, its fallback to the box's opener only when nothing opened, its paint said before
+# the room looks; [page] screen; the tool's `screen`), words.py 16, mcp_server.py 3 (the tool's `screen`), config.py 3
+# (the key). The tab's word that it painted is page.html, outside this count. 28,431: main 4e7a617's 28,221 plus 210.
+lines = 28431

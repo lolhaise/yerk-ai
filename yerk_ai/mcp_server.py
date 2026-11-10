@@ -381,7 +381,7 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
     @mcp.tool()
     async def page(code: str = "", tests: str = "", marks: list[dict[str, Any]] | None = None, hint: str | None = None,
                    bar: dict[str, str] | None = None, timer: int = -1, stall: int = -1, chat: str = "", open: bool = False,
-                   where: str = "", off: bool = False, *, ctx: Context) -> str:
+                   where: str = "", screen: str = "", off: bool = False, *, ctx: Context) -> str:
         """Draws on this room's live page, where the owner types, draws and runs tests in a browser; each part given replaces
         what it shows. `code` a new program (solution.py); `tests` its unittest file (it imports solution; blank: the program
         runs alone, its prints shown large), which the page runs on every pause in typing; `marks` line marks, each {"line": N, "kind": "highlight" or "arrow", "text": a note},
@@ -391,10 +391,13 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         its chat closed by the owner or by `chat` "closed" on their ask, "open" back) as bubbles under it, never in solution.py. What the owner types,
         draws and says there comes to you as messages, mid-turn too; each keystroke is in page/events.jsonl. `open` true
         (the owner asked for the page) turns it on, with no restart, and opens it on the owner's screen, `where` "mac" on
-        their Mac (default "pc"); `off` true: off."""
+        their Mac (default "pc"); `screen` the PC monitor the owner names (left, middle, right, primary or its number from
+        the left; default [page] screen): maximized there, woken with no click, said painted only once it is, so look (a
+        desktop screenshot of the rectangle given) only then; `off` true: off."""
         req = {k: v for k, v in {"code": code or None, "tests": tests or None, "marks": marks, "hint": hint, "bar": bar,
                                  "timer": timer if timer >= 0 else None, "stall": stall if stall >= 0 else None, "chat": chat or None,
-                                 "open": open or None, "where": where or None, "off": off or None}.items() if v is not None}
+                                 "open": open or None, "where": where or None, "screen": screen or None, "off": off or None}.items()
+               if v is not None}
         return json.dumps(await daemon.tool_page(caller_room(ctx), req))
 
     @mcp.tool()
