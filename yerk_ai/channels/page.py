@@ -498,7 +498,9 @@ class Sheet:
         """Every line kept in `pane` (each bubble's, the typing mark's, each page message's, the line asked about and the # line
         said last) where `to` puts it: an edit (moved) or a drawn program (remap), where 0 drops a bubble with its line."""
         went = [(b, to(b["line"]) if b["pane"] == pane else b["line"]) for b in self.bubbles]
-        self.bubbles = [{**b, "line": n} for b, n in went if n]
+        if any(n != b["line"] for b, n in went):     # one moved or went: talk.json now, so a restart shows each on its line
+            self.bubbles = [{**b, "line": n} for b, n in went if n]
+            self.keep()
         for spot in (self.typing, self.ask, *self.anchors.values()):
             if spot.get("pane") == pane and spot.get("line"):
                 spot["line"] = to(spot["line"]) or spot["line"]
@@ -795,13 +797,10 @@ class Page:
                 op[pane] = text
                 if text != old and any(b["pane"] == pane for b in s.bubbles) | (s.typing.get("pane") == pane):
                     stay = kept_lines(old, text)
-                    s.shift(pane, lambda n: stay.get(n, 0))
-                    op["bubbles"] = s.bubbles
+                    s.shift(pane, lambda n: stay.get(n, 0))                  # talk.json written by it, as an edit's
+                    op["bubbles"], op["typing"] = [shown(b) for b in s.bubbles], s.typing
         if "code" in op or "tests" in op:
             s.heard, s.run = (s.code, s.tests), None
-        if "bubbles" in op:
-            s.keep()
-            op["bubbles"], op["typing"] = [shown(b) for b in s.bubbles], s.typing
         if isinstance(req.get("marks"), list):
             s.marks = op["marks"] = [{"line": int(m["line"]), "kind": m.get("kind") if m.get("kind") in MARKS else "highlight",
                                       "text": str(m.get("text") or "")[:NOTE_MAX]}

@@ -32,6 +32,10 @@ version changes.
   across a restart and put away for good, the typing mark's life, the line and test asks, bubbles moving with edits and
   draws, need 80's rule (only answers to the page), and node runs of the page's own editor, lexer, `+N` and its moves
   checked against page.py's on 300 random edits.
+- The fix: a bubble moved by lines typed above it is written to `work/page/talk.json` at once, so after a restart it
+  comes back beside its line. Before, it came back on its old line, now beside some other line of the program, because
+  only a new bubble, its x or a program the room drew wrote the file. An edit that moves no bubble writes nothing there.
+  `[code]` lines go to 28,056, one fewer, since the draw's own write folds into the move.
 
 ### persona-voice-news-2026-11-09 (#?)
 

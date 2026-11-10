@@ -1363,4 +1363,8 @@ secs = 60
 # ended and the Mirror's silent in), words.py 0 (the asks' words for the talk's cut and catch-up), mcp_server.py 0 (the
 # page tool's clause, as long as before). The editor, its colours and the bubbles are page.html's, outside this count.
 # 28,057: main 6a13109's 28,006 plus 51.
-lines = 28057
+# 2026-11-10: need-2026-11-09-82's fix (PR 40) lowered it by 1: a bubble an edit moves is written to talk.json at once,
+# since lines typed above one moved it in yerkd's copy alone and a restart brought it back on its old line, beside another
+# line of the program; channels/page.py -1 (shift writes talk.json when a bubble moved or went, for an edit and a draw
+# alike, so the draw's own write and its block after the loop go). 28,056: 28,057 less 1.
+lines = 28056

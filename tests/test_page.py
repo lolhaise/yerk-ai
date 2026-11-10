@@ -1455,9 +1455,35 @@ def test_bubbles_move_with_their_lines_as_the_owner_types_and_a_drawn_program_ke
     p.draw("r", {"code": "import os\na = 1\n# why b?\nb = 2\n# a new round\n"})        # keeps line 3, replaces 6
     d = next(o["draw"] for o in bubble_ops(q) if "draw" in o)
     assert [(b["n"], b["line"]) for b in d["bubbles"]] == [(1, 3), (3, 2)] and [(b["n"], b["line"]) for b in s.bubbles] == [(1, 3), (3, 2)]
-    assert json.loads((tmp_path / "rooms" / "r" / "work" / "page" / "talk.json").read_text())["bubbles"][0]["line"] == 3
+    assert [(b["n"], b["line"]) for b in json.loads((tmp_path / "rooms" / "r" / "work" / "page" / "talk.json").read_text())["bubbles"]] == [(1, 3), (3, 2)]
     p.draw("r", {"hint": "no program drawn"})
     assert "bubbles" not in next(o["draw"] for o in bubble_ops(q) if "draw" in o)
+
+
+def test_a_bubble_an_edit_moved_comes_back_on_its_line_after_a_restart(tmp_path, monkeypatch):
+    """PR 40's fix: lines typed above a bubble moved it in yerkd's copy alone, and talk.json still held its old line, so
+    after a restart it came back beside another line of the program. An edit that moves a bubble writes talk.json at
+    once; one that moves none (a line typed under it, or in the other pane) never writes it."""
+    p, room = hub(tmp_path, quiet=60)
+    p.draw("r", {"code": "a = 1\n# why b?\nb = 2\n", "tests": TESTS})
+    s, wrote, write = p.sheets["r"], [], pagemod.write_private
+    monkeypatch.setattr(pagemod, "write_private", lambda path, text, *a: (wrote.append(path.name), write(path, text, *a))[1])
+
+    async def go():
+        await p.event("r", {"kind": "ask", "pane": "code", "line": 2, "text": "# why b?"})
+        p.said("r", "Because.", inbound=[room.got[-1].id])
+        await asyncio.sleep(0)
+        for pane, text in (("code", "a = 1\n# why b?\nb = 2\nc = 3\n"), ("tests", "\n" + TESTS),
+                           ("code", "import os\nimport re\na = 1\n# why b?\nb = 2\nc = 3\n")):
+            await p.event("r", {"kind": "edit", "pane": pane, "text": text})
+    asyncio.run(go())
+    assert [(b["pane"], b["line"]) for b in s.bubbles] == [("code", 4)]
+    assert wrote.count(pagemod.TALK) == 2             # the bubble's own, then the edit that moved it: never the two that did not
+    again = Page(tmp_path, p.ledger)
+    again.add_room(Taken())
+    back = again.sheets["r"]
+    assert [(b["n"], b["pane"], b["line"], b["text"]) for b in back.bubbles] == [(1, "code", 4, "Because.")]
+    assert back.code.split("\n")[3] == "# why b?"     # beside the line it answers, never "a = 1" two lines up
 
 
 def test_moved_fallback_and_def_line_find_a_bubble_s_line():
