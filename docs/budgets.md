@@ -201,7 +201,7 @@ Paid only when a message hits: the people and things it names, then the room's o
 
 - `recall = 2000`
 
-Paid once per version by a running session (decision 15): what changed in the rules file, its rulebook or the mechanics since it last looked, new and replaced lines; past this, their count and where to read them.
+Paid once per version by a running session (decision 15): what changed in the rules file, its persona, rulebook or voice file or the mechanics since it last looked, new and replaced lines; past this, their count and where to read them.
 
 - `rules = 1500`
 
@@ -615,7 +615,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-10: hot-reads-2026-11-10 raised it by 16: to post one reply the daemon read the room's whole delivery history on the event loop, and sqlite hands Python's interpreter back after every row, so with another room's turn busy a row cost about 8 ms: 236 rows took 2.0 s on the owner's ledger and a busy room's 4,667 about 40 s, past systemd's 30 s watchdog, which killed the daemon with the loop's stack in that read (an earlier kill that day fits it: a send in the work room sat 29 s between planned and posted). One reply's parts, a turn's landed parts and the end-of-turn check's replies are read by key range (the engine audit's defect 1); not folded to fit: ledger.py 17 (deliveries_of; said and landed by range, with why), channels/discord.py -1 (_deliver and one key's redelivery call it). 27,977: main 5529087's 27,961 plus 16.
 
-- `lines = 27977`
+2026-11-10: persona-voice-news-2026-11-09 raised it by 29: a line added, changed or removed in a room's persona or voice file reaches its running session once, in its next message's rules block, since a room that keeps its session for days went on with the old persona (Claude Fable 5.2's page: "To change instructions partway through a conversation, put them in the newest turn."); not folded to fit: context.py 29 (the two files in news' look, the lines a look from before they were kept reads off the session's kept start, began_with, and the lines that say something, lines_of, which news and it share). 28,006: main 10e9cfb's 27,977 plus 29.
+
+- `lines = 28006`
 
 ## Uncapped
 
