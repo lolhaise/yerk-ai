@@ -86,7 +86,8 @@ your words) is your note, and is shown as your note, never as their words.
 Heavy work leaves the room: a worker is a headless run with its own card in the room and a
 report. action "start": `brief` is the whole job (what done looks like, where it ends, what to
 leave alone); optional `tasks` (its checklist rows), `cap_minutes` (default 65), `account`, `model`,
-`effort` (low, medium, high, xhigh, max; default the room's live level), `room` (default this room). Returns its id, folder
+`effort` (low, medium, high, xhigh, max; default the room's live level), `room` (default this room), `addons` (your own
+add-on tools it gets too, as named here or by server, such as a browser; a step needing `confirmed` it leaves ready for you). Returns its id, folder
 and report path; when it ends, the card settles and the room hears the result, or nothing if its last message is exactly
 NO_REPLY. "list": workers and their state. "stop" / "report": by `id` (report gives the report's text, for you to tell in your own words).
 ```
@@ -100,6 +101,7 @@ NO_REPLY. "list": workers and their state. "stop" / "report": by `id` (report gi
 - `account`: string, default ""
 - `model`: string, default ""
 - `effort`: string, default ""
+- `addons`: list of string or null, default null
 
 ## schedule
 

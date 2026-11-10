@@ -36,7 +36,10 @@ daemon restarts.
   the account frees. A worker that moves account mid-run is not built.
 - Tools: none from Yerk AI by default. [workers] yerk_tools may give it the read-only ones (recall,
   read_memory, nothing else) through its own stdio MCP server, which has no send, hold, worker or
-  schedule tool to give.
+  schedule tool to give. A start's `addons` gives it the room's own add-on tools it names (need 83 of 2026-11-10: a
+  room could not hand a worker the browser), each one the room's allow list has, its server's table as the room runs it
+  plus ADDON_ENV; never one whose table hands it a credential, which the worker's shell could read. Its gate
+  (gates.worker_check) refuses any other MCP tool, and every call that carries the owner's word (`confirmed`).
 - A daemon start re-attaches from the ledger and the unit list: a running unit gets its watch and its
   card back, one that ended while the daemon was away completes, one that vanished settles as lost.
 """
@@ -76,6 +79,9 @@ ENV_KEEP = ("PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "LC_CT
             "XDG_RUNTIME_DIR")                 # what claude gets from the unit's environment; the rest stays out
 TICK = re.compile(r"^\s*[-*+]\s*\[([ xX])\]\s*(.+?)\s*$")
 WORKER_TOOLS = ("recall", "read_memory")       # the only Yerk AI tools a worker may get: read-only
+ADDON = re.compile(r"^mcp__([A-Za-z0-9_-]+?)(?:__([A-Za-z0-9_-]+))?$")   # a room's add-on tool, or all of its server's
+ADDON_ENV = ("YERK_WORKER", "YERK_WORK_DIR")   # what an add-on's server learns of the worker it serves: its id, its folder
+CREDENTIAL = re.compile(r"key|token|secret|pass|auth|cookie|credential", re.I)   # an env name or header that hands one over
 PUMP_EVERY = 5.0                               # seconds between looks for an idle room with a relay waiting
 YOUNG = 120.0                                  # seconds after its start a worker missing from the unit list is not lost yet
 
@@ -130,12 +136,43 @@ def gate_settings(folder: Path) -> Path:
     return path
 
 
-def mcp_config(state: Path, room: str, tools: list[str], path: Path) -> Path:
-    """A worker's --mcp-config: its own stdio server (mcp_server.py `worker`) with only `tools`."""
-    args = ["-P", "-m", "yerk_ai.mcp_server", "worker", str(state), room, ",".join(tools)]
-    cfg = {"mcpServers": {"yerk": {"type": "stdio", "command": sys.executable, "args": args, "env": {"PYTHONPATH": str(PACKAGE.parent)}}}}
-    path.write_text(json.dumps(cfg, indent=1))
+def mcp_config(state: Path, room: str, tools: list[str], path: Path, servers: dict[str, Any] | None = None) -> Path:
+    """A worker's --mcp-config: its own stdio server (mcp_server.py `worker`) with only `tools`, when there are any, and the
+    room's add-on servers it was given (`servers`, from room_addons)."""
+    cfg: dict[str, Any] = dict(servers or {})
+    if tools:
+        args = ["-P", "-m", "yerk_ai.mcp_server", "worker", str(state), room, ",".join(tools)]
+        cfg["yerk"] = {"type": "stdio", "command": sys.executable, "args": args, "env": {"PYTHONPATH": str(PACKAGE.parent)}}
+    path.write_text(json.dumps({"mcpServers": cfg}, indent=1))
     return path
+
+
+def room_addons(conf: dict[str, Any], want: Sequence[str], wid: str, folder: Path) -> tuple[dict[str, Any], list[str]] | str:
+    """The room's own add-on tools a worker asks for, from its rooms.toml table (`conf`, [defaults] in it): each a tool's
+    name as the room has it (mcp__hands__browser) or a server's name (hands) for every one of its tools the room's allow
+    names. (its servers, each as the room runs it, its env with ADDON_ENV and YERK_TOOL_TIMEOUT; the tools), or why not:
+    a tool the room has not, or a server whose table hands over a credential (an env name or header saying key, token,
+    secret, pass, auth, cookie or credential), since an add-on's process and its table are the worker's shell's to read."""
+    servers = {str(k): v for k, v in dict(conf.get("mcp") or {}).items() if isinstance(v, dict)}
+    have = [str(t) for t in conf.get("allow") or [] if (m := ADDON.match(str(t))) and m.group(1) in servers]
+    tools: list[str] = []
+    for w in (str(x).strip() for x in want if str(x).strip()):
+        hit = [t for t in have if t == w or ADDON.match(t).group(1) == w.removeprefix("mcp__")]  # type: ignore[union-attr]
+        if not hit and (m := ADDON.match(w)) and m.group(2) and f"mcp__{m.group(1)}" in have:   # the room allows all of it
+            hit = [w]
+        if not hit:
+            return f"this room has no add-on tool {w!r}; its add-on tools: {', '.join(have) or 'none'}"
+        tools += [t for t in hit if t not in tools]
+    out: dict[str, Any] = {}
+    for name in dict.fromkeys(ADDON.match(t).group(1) for t in tools):  # type: ignore[union-attr]
+        table = servers[name]
+        if any(CREDENTIAL.search(str(k)) for part in ("env", "headers") for k in dict(table.get(part) or {})):
+            return f"the add-on {name} is not given to a worker: its rooms.toml table passes a credential, which a worker's shell could read"
+        env = {**dict(table.get("env") or {}), "YERK_WORKER": wid, "YERK_WORK_DIR": str(folder)}
+        if isinstance(table.get("timeout"), int):
+            env["YERK_TOOL_TIMEOUT"] = str(table["timeout"])
+        out[name] = {**table, "env": env}
+    return out, tools
 
 
 # the unit; systemctl and unit_line are the jobs' and the deploy's too
@@ -235,9 +272,9 @@ def run(spec_path: Path) -> int:
             "--session-id", str(spec["session_id"]), "--setting-sources", "", "--strict-mcp-config",
             "--tools", ",".join(spec["tools"]), "--disallowedTools", "Agent", "--permission-mode",
             str(spec["permission_mode"]), *(["--effort", str(spec["effort"])] if spec.get("effort") else [])]
-    if spec.get("mcp_config") and spec.get("yerk_tools"):     # only the read-only tools, from its own server
-        argv += ["--mcp-config", str(spec["mcp_config"]),
-                 "--allowedTools", ",".join(f"mcp__yerk__{t}" for t in spec["yerk_tools"] if t in WORKER_TOOLS)]
+    granted = [*(f"mcp__yerk__{t}" for t in spec.get("yerk_tools") or [] if t in WORKER_TOOLS), *spec.get("addon_tools", [])]
+    if spec.get("mcp_config") and granted:     # the read-only tools from its own server, the room's add-on tools it was given
+        argv += ["--mcp-config", str(spec["mcp_config"]), "--allowedTools", ",".join(granted)]
     if spec.get("settings"):                                   # the gates' hook (gate_settings)
         argv += ["--settings", str(spec["settings"])]
     os.dup2(os.open(spec["prompt"], os.O_RDONLY), 0)         # the prompt on stdin; the opened fd closes on exec
@@ -509,7 +546,8 @@ class Workers:
             return await self.start(room, str(req.get("brief") or ""),
                                     str(req.get("brief_file") or ""), str(req.get("account") or ""),
                                     str(req.get("model") or ""), float(req.get("cap_minutes") or 0),
-                                    list(req.get("tasks") or []), effort=str(req.get("effort") or ""))
+                                    list(req.get("tasks") or []), effort=str(req.get("effort") or ""),
+                                    addons=[str(a) for a in req.get("addons") or []])
         if action == "stop":
             return await self.stop(str(req.get("id", "")))
         if action == "list":
@@ -525,8 +563,9 @@ class Workers:
 
     async def start(self, room: str, brief: str = "", brief_file: str = "", account: str = "", model: str = "",
                     cap_minutes: float = 0.0, tasks: list[str] | None = None, job: str = "",
-                    more: dict[str, Any] | None = None, effort: str = "") -> dict[str, Any]:
-        """`more`: keys the daemon's own callers add to worker.json (never the tool's or the command line's), none replacing one."""
+                    more: dict[str, Any] | None = None, effort: str = "", addons: list[str] | None = None) -> dict[str, Any]:
+        """`more`: keys the daemon's own callers add to worker.json (never the tool's or the command line's), none replacing one.
+        `addons`: the room's own add-on tools the worker gets (room_addons), refused whole when one is not given."""
         if room not in self.rooms:
             return {"ok": False, "error": f"no room {room!r}; rooms: {', '.join(self.rooms)}"}
         if brief_file and not brief:
@@ -547,6 +586,9 @@ class Workers:
         while self.ledger.worker_get(wid):
             wid = uuid.uuid4().hex[:6]
         d = self.conf.root / wid
+        given = room_addons(self.room_confs.get(room, {}), addons, wid, d) if addons else ({}, [])
+        if isinstance(given, str):
+            return {"ok": False, "error": given}
         d.mkdir(mode=0o700, parents=True)
         cap = (cap_minutes or self.conf.cap_minutes) * 60
         report, tasks_md = d / REPORT, d / TASKS
@@ -563,7 +605,10 @@ class Workers:
             "- Your last message is the deliverable: end with it, no tool call after it.\n"
             f"- You have no room session, no Yerk AI tools and no subagents. Your cap is {cap / 60:g} minutes; "
             "past it the run is stopped.\n"
-            "- Your tool calls pass Yerk AI's gates: a plain delete in your folder goes to the trash; a delete "
+            + (f"- You have the room's own {', '.join(given[1])} too. A step that needs the owner's word (`confirmed`) is "
+               "refused, since nobody is here to give it: leave that step ready, and say in your report what waits for "
+               "the word, for the room to do once the owner says it.\n" if given[1] else "")
+            + "- Your tool calls pass Yerk AI's gates: a plain delete in your folder goes to the trash; a delete "
             "elsewhere or after a cd, an external action (a post, a login, money, a message out) and a change to "
             "Yerk AI's own config are refused. Put what you could not do in your report.\n\n"
             f"The brief (also in {d / 'BRIEF.md'}):\n\n{brief.strip()}\n")
@@ -575,7 +620,10 @@ class Workers:
         spec.update({k: v for k, v in (more or {}).items() if k not in spec})
         if self.conf.yerk_tools:
             spec["yerk_tools"] = list(self.conf.yerk_tools)
-            spec["mcp_config"] = str(mcp_config(self.state, room, self.conf.yerk_tools, d / "mcp.json"))
+        if given[1]:
+            spec["addon_tools"] = given[1]
+        if self.conf.yerk_tools or given[1]:
+            spec["mcp_config"] = str(mcp_config(self.state, room, self.conf.yerk_tools, d / "mcp.json", given[0]))
         (d / "worker.json").write_text(json.dumps(spec, indent=1))
         now = round(time.time(), 3)
         busy = self.busy(acct.name)
@@ -591,7 +639,8 @@ class Workers:
         if self.watch:
             self.watch.add(d)
         out = {"ok": True, "id": wid, "unit": row["unit"], "room": room, "account": acct.name, "model": model, "effort": effort,
-               "staging": str(d), "report": str(report), "tasks": str(tasks_md), "cap_minutes": cap / 60}
+               "staging": str(d), "report": str(report), "tasks": str(tasks_md), "cap_minutes": cap / 60,
+               **({"addons": given[1]} if given[1] else {})}
         if row.get("waiting"):
             row["line"] = len(self.in_line(acct.name))
             await self._show(row)

@@ -17,7 +17,7 @@ from types import SimpleNamespace as NS
 import pytest
 
 import yerk_ai.channels.discord as dmod
-from yerk_ai import cli, mcp_server, workers
+from yerk_ai import cli, gates, mcp_server, workers
 from yerk_ai import words as W
 from yerk_ai.accounts import Account, Cooldowns, store_token
 from yerk_ai.config import table
@@ -902,3 +902,74 @@ def test_a_worker_runs_at_the_calls_effort_else_config_else_the_rooms_and_refuse
         assert json.loads((Path(out["staging"]) / "worker.json").read_text())["effort"] == level
     assert d["ok"] is False and "no effort level 'turbo'" in d["error"]
     assert sorted(p.name for p in (s.tmp / "workers").iterdir()) == before      # a refusal leaves no folder behind
+
+
+HANDS = {"type": "stdio", "command": "/usr/bin/node", "args": ["/opt/example/hands/server.mjs"], "env": {"YERK_ROOM": "r"},
+         "timeout": 120000}
+ROOM = {"model": "m", "allow": ["mcp__hands__browser", "mcp__hands__desktop", "mcp__web__web_fetch"],
+        "mcp": {"hands": HANDS, "web": {"type": "stdio", "command": "web", "env": {"WEB_API_KEY": "placeholder"}}}}
+
+
+def test_a_worker_gets_the_rooms_own_addon_tools_it_names_its_server_as_the_room_runs_it_and_nothing_else(setup):
+    """Need 83 of 2026-11-10: a room asked for a worker to fill web forms in the browser, and the worker it started had no
+    browser tool at all. A start's `addons` gives it the room's own add-on tools, by name or by server."""
+    s = setup
+
+    async def go():
+        w = s.make({"r": Busy()})
+        w.room_confs["r"] = ROOM
+        w.begin(asyncio.get_running_loop())
+        one = await w.start("r", 'FAKE report="browsed"', account="one", addons=["mcp__hands__browser"])
+        both = await w.start("r", 'FAKE report="both"', account="one", addons=["hands"])
+        return one, both, await ended(s.ledger, one["id"]), await ended(s.ledger, both["id"])
+    one, both, row, _ = asyncio.run(go())
+    folder = Path(one["staging"])
+    argv = json.loads((folder / "fake-record.json").read_text())["argv"]
+    assert argv[argv.index("--allowedTools") + 1] == "mcp__hands__browser" and "--strict-mcp-config" in argv
+    cfg = json.loads(Path(argv[argv.index("--mcp-config") + 1]).read_text())["mcpServers"]
+    assert list(cfg) == ["hands"]                                   # no web, and no yerk server: none was configured
+    assert cfg["hands"]["args"] == HANDS["args"] and cfg["hands"]["env"] == {
+        "YERK_ROOM": "r", "YERK_WORKER": one["id"], "YERK_WORK_DIR": str(folder), "YERK_TOOL_TIMEOUT": "120000"}
+    spec = json.loads((folder / "worker.json").read_text())
+    assert spec["addon_tools"] == one["addons"] == ["mcp__hands__browser"] and row["exit"] == "done"
+    prompt = (folder / "PROMPT.md").read_text()
+    assert "the room's own mcp__hands__browser too" in prompt and "`confirmed`) is refused" in prompt
+    assert both["addons"] == ["mcp__hands__browser", "mcp__hands__desktop"]
+    plain = json.loads((Path(both["staging"]) / "worker.json").read_text())
+    assert gates.given("mcp__hands__desktop", plain) and not gates.given("mcp__web__web_fetch", plain)
+
+
+@pytest.mark.parametrize(("want", "why"), [(["mcp__hands__mail"], "no add-on tool 'mcp__hands__mail'"),
+                                           (["mcp__yerk__send"], "no add-on tool 'mcp__yerk__send'"),
+                                           (["web"], "passes a credential")])
+def test_a_worker_never_gets_an_addon_tool_its_room_has_not_or_one_whose_table_hands_over_a_credential(setup, want, why):
+    s = setup
+
+    async def go():
+        w = s.make({"r": Busy()})
+        w.room_confs["r"] = ROOM
+        return await w.start("r", 'FAKE report="x"', account="one", addons=want)
+    out = asyncio.run(go())
+    assert out["ok"] is False and why in out["error"] and "mcp__hands__browser" in out["error"] + ROOM["allow"][0]
+    assert s.units.calls == [] and not (s.tmp / "workers").exists()       # refused whole: no folder, no unit
+
+
+def test_the_worker_tool_hands_the_rooms_browser_to_a_worker_from_an_owner_room_only(tmp_path):
+    from yerk_ai.config import EXAMPLE_PRIVATE
+    from yerk_ai.daemon import Yerkd
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    y.workers.launcher = units = Record()
+    y.room_confs["example-room"] = {**ROOM, "privacy": "owner"}
+    y.room_confs["family"] = {**ROOM, "privacy": "family"}
+    for name in ("example-room", "family"):
+        y.rooms[name] = NS()
+    ask = {"action": "start", "brief": "fill the example form", "addons": ["mcp__hands__browser"]}
+
+    async def go():
+        return await y.tool_worker("example-room", ask), await y.tool_worker("family", ask)
+    own, family = asyncio.run(go())
+    assert own["ok"] and own["addons"] == ["mcp__hands__browser"] and family == {"ok": False, "line": W.WORKERS_OWNER_ONLY}
+    spec = json.loads((Path(own["staging"]) / "worker.json").read_text())
+    servers = json.loads(Path(spec["mcp_config"]).read_text())["mcpServers"]
+    assert spec["addon_tools"] == ["mcp__hands__browser"] and servers["hands"]["env"]["YERK_WORKER"] == own["id"]
+    assert [c["unit"] for c in units.calls] == [own["unit"]]
