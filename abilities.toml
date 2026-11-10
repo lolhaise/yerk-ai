@@ -1379,7 +1379,7 @@ asked_as = ["topic rule triggers", "trigger words", "rule fire on", "rule load o
 
 [abilities.rules-changed]
 state = "built"
-what = "Tells a running room what changed in the rules it runs on: on its next message, once per version, each line new or replaced in the mechanics, its rulebook or the shared rules file since its session last looked (a sealed room, which loads no shared rule, hears none). Past the note's 1,500 characters (budgets.toml [per_message.on_hit] rules) the note gives their count and names rules-changed.md in the room's own work folder, written 0600 with each of those lines whole, so every room reads them with its own Read, whatever its privacy; never the mechanics' own file in Yerk's checkout, which only an owner room's Read reaches."
+what = "Tells a running room what changed in the rules it runs on: on its next message, once per version, each line new or replaced in the mechanics, its persona, rulebook or voice file or the shared rules file since its session last looked (a sealed room, which loads no shared rule, hears none). Past the note's 1,500 characters (budgets.toml [per_message.on_hit] rules) the note gives their count and names rules-changed.md in the room's own work folder, written 0600 with each of those lines whole, so every room reads them with its own Read, whatever its privacy; never the mechanics' own file in Yerk's checkout, which only an owner room's Read reaches."
 tier = "free"
 needs = "nothing; it rides on each room's per-message hook"
 free_path = "this is the free path"

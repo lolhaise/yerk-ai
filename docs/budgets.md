@@ -201,7 +201,7 @@ Paid only when a message hits: the people and things it names, then the room's o
 
 - `recall = 2000`
 
-Paid once per version by a running session (decision 15): what changed in the rules file, its rulebook or the mechanics since it last looked, new and replaced lines; past this, their count and where to read them.
+Paid once per version by a running session (decision 15): what changed in the rules file, its persona, rulebook or voice file or the mechanics since it last looked, new and replaced lines; past this, their count and where to read them.
 
 - `rules = 1500`
 
@@ -611,7 +611,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-09: need-2026-11-09-79 raised it by 27: an agent job sets its worker's thinking level and model (`effort` and `model` in jobs.toml, the `schedule` tool and `yerk schedule add`), since a room on max started each research run of a bot as a standing agent job and every job's worker took the room's level, one run at max costing about eight times the same run at high; not folded to fit: jobs.py 24 (the two keys and their words, the job's fields, the refusals on a note, a script and a level that is not one, the model checked against the install's list with an alias kept by its name, the alias made its full id at the hand-off to the worker, the add's and the list's words), cli.py 2 (--model and --effort), mcp_server.py 1 (the tool's clause). 27,950: main 74e6a81's 27,923 plus 27.
 
-- `lines = 27950`
+2026-11-09: persona-voice-news-2026-11-09 raised it by 29: a line added, changed or removed in a room's persona or voice file reaches its running session once, in its next message's rules block, since a room that keeps its session for days went on with the old persona (Claude Fable 5.2's page: "To change instructions partway through a conversation, put them in the newest turn."); not folded to fit: context.py 29 (the two files in news' look, the lines a look from before they were kept reads off the session's kept start, began_with, and the lines that say something, lines_of, which news and it share). 27,979: main 37d8a70's 27,950 plus 29.
+
+- `lines = 27979`
 
 ## Uncapped
 

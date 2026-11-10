@@ -350,8 +350,8 @@ output_cap = 10000
 # 2,000 from the cold read of Oct 21 (rail-2, index healthy): the twenty episodic questions found 9 of 20
 # at 1,500 and 11 of 20 at 2,000. Clock 200 + metadata 300 + rules 1,500 + recall 2,000 + taste 1,500 = the cap, 5,500.
 recall = 2000
-# Its turn and the last part closes the (case 00): before the next run starts the, example note
-# note says the sample item moved to, the next step and; the test, reads it back as plain text with.
+# Paid once per version by a running session (decision 15): what changed in the rules file, its persona, rulebook
+# or voice file or the mechanics since it last looked, new and replaced lines; past this, their count and where to read them.
 rules = 1500
 # Paid on every message of an owner room whose layer keeps taste.jsonl: the owner's verdicts on the room's replies,
 # three praised and two faulted, the owner's words beside the reply, as an earlier setup injected them (taste.py). The owner asked
@@ -1331,4 +1331,10 @@ secs = 60
 # script and a level that is not one, the model checked against the install's list with an alias kept by its name, the
 # alias made its full id at the hand-off to the worker, the add's and the list's words), cli.py 2 (--model and --effort),
 # mcp_server.py 1 (the tool's clause). 27,950: main 74e6a81's 27,923 plus 27.
-lines = 27950
+# 0000-00-00: more-line-for-0000-00-00 the check while 00: a second entry, waits in the queue for its turn and the
+# file reaches its running session once, in its next message's rules block, since a room that keeps its session for days
+# went on with the old persona (Claude Fable 5.2's page: "To change instructions partway through a conversation, put them
+# in the newest turn."); not folded to fit: context.py 29 (the two files in news' look, the lines a look from before they
+# were kept reads off the session's kept start, began_with, and the lines that say something, lines_of, which news and
+# it share). 27,979: main 37d8a70's 27,950 plus 29.
+lines = 27979
