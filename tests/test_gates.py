@@ -210,6 +210,35 @@ def test_an_approval_releases_exactly_the_held_call_once_and_a_word_without_the_
     assert [r["decision"] for r in y.ledger.rows(30, "gates")].count("approved") == 1
 
 
+def test_a_tools_approval_holds_whatever_folder_the_shell_is_in_and_a_shell_commands_only_in_its_own(tmp_path):
+    """need 78 of 2026-11-09: a call held with the shell in one folder and tried again from another, as a session resumed
+    after a /compact is, back in its work folder. A tool's input is its whole call, so the word releases it there; a shell
+    command's words do another thing in another folder (gates.bound_to), so its word holds only where it was held."""
+    y, room, ch = setup(tmp_path)
+    work = tmp_path / "rooms" / "example-room" / "work"
+    send = {"tool_name": "mcp__yerk__send", "tool_input": {"room": "family", "text": "hi"}}
+    push = {"tool_name": "Bash", "tool_input": {"command": "git push origin main"}}
+
+    def pre(c, cwd):
+        return call(y, {"hook_event_name": "PreToolUse", **c, "cwd": str(cwd)})
+
+    def held(out):
+        return out.get("hookSpecificOutput", {}).get("permissionDecision") == "deny"
+
+    def word(mid):
+        room.busy, room.inflight = True, [Inbound(mid, "owner", "approve")]
+        call(y, {"hook_event_name": "UserPromptSubmit", "prompt": "approve"})
+    assert held(pre(send, work / "repo"))
+    word("m1")
+    assert pre(send, work) == {} and held(pre(send, work / "repo"))       # released from another folder, once
+    assert held(pre(push, work / "repo"))
+    word("m2")
+    assert held(pre(push, work)) and pre(push, work / "repo") == {}        # a command: only from its own folder
+    assert gates.bound_to("Bash", "/x") == "/x" and gates.bound_to("mcp__yerk__text", "/x") is None
+    assert [r["decision"] for r in reversed(y.ledger.rows(20, "gates"))] == [
+        "hold", "approved", "release", "hold", "hold", "approved", "hold", "release"]
+
+
 def test_approvers_and_external_rules_come_from_yerkd_toml(tmp_path):
     s = gates.settings({"approvers": ["owner", "test-webhook"], "word": "Go", "off": ["public-post"],
                         "external": {"deploy": {"tool": "^Bash$", "command": r"^fly\s+deploy\b", "what": "a deploy"}}})

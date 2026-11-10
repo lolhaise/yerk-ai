@@ -1300,4 +1300,9 @@ secs = 60
 # `yerk worker start` and every quiet run still asked its room for a turn that had to be answered with a posted line;
 # not folded to fit: workers.py 5 (the skip, its ledger note and log line; the module's line on it), mcp_server.py 0
 # (the tool's clause, its lines folded again), cli.py 0 (--brief's words). 27,915: main 47d8d58's 27,910 plus 5.
-lines = 27915
+# 2026-11-09: need-2026-11-09-78 raised it by 8: an approved hold of a text, an email or any other tool's call releases
+# the same call whatever folder the room's shell is in, since a session a /compact had put back in its work folder made
+# the owner's approved text again, was held a second time on a second card and the word was said twice; a shell
+# command's approval stays bound to its folder; not folded to fit: gates.py 7 (bound_to, the folder an approval holds
+# in, and its reason), ledger.py 1 (release with any folder), daemon.py 0. 27,923: main 3867cd6's 27,915 plus 8.
+lines = 27923
