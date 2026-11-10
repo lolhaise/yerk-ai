@@ -36,9 +36,11 @@ WORD = re.compile(r"[\w'’-]+")      # a sentence is accounted for by its words
 GO_AHEAD = "Only the owner's go-ahead lifts it."
 HIS_WORD = "Only the owner's own go-ahead lifts it, not anyone else's."     # no word a rule loads on: "person" outweighed one
 ROUNDS = 2                         # the times a rule still failing goes back to the model with its findings, after its first
-CHUNK = 16                         # rules a call of the first proposal and of a knock-down reads; the calls run side by side
+CHUNK = 8                          # rules a call of the first proposal, a knock-down or a round back reads; the calls run side by
+                                   # side (16 to a call ran 9 minutes on a store of the owner's size; a round's rules in one call, 11)
 REASONS = "reasons.tsv"            # in <memory>/rules-proposals/: cite, the daily/<day>.md:<line> holding it, the reason, a row
 WANTING = ("no reason given", "a negative with no why", "a hard style limit with no reason")   # what a reason on file would meet
+WRAP = re.compile(r"\s*</?examples(?:\s[^>]*)?>", re.I)    # the wrapper left round a rule's examples once code takes them out
 
 
 def sha(p: Path) -> str:
@@ -127,18 +129,22 @@ def accounted(rule: dict[str, Any], made: list[dict[str, Any]], listed: list[dic
     """The original's sentences that land in no lesson (word for word, a cited quote aside) and are not listed as left out or
     rewritten: none, when every sentence is accounted for."""
     have = flat(" ".join(f"{x['summary']} {x['body']}" for x in made))
-    said = {flat(x["said"]) for x in listed if x["kind"] in ("left out", "rewritten")}
-    out, text = [], shape.EXAMPLE_TAGS.sub(" ", rule["said"])     # an example is code's, each listed (examples)
-    for x in listed:                    # a cited quote is accounted for by its cite, a quote across two sentences too
-        text = text.replace(x["said"], " ") if x["kind"] == "quote cited" else text
+
+    def uncited(text: str) -> str:      # a cited quote is accounted for by its cite, a quote across two sentences too
+        for x in listed:
+            text = text.replace(x["said"], " ") if x["kind"] == "quote cited" else text
+        return text
+    said = [y for y in {flat(uncited(x["said"])) for x in listed if x["kind"] in ("left out", "rewritten")} if y.strip(" .;:,")]
+    out, text = [], uncited(WRAP.sub(" ", shape.EXAMPLE_TAGS.sub(" ", rule["said"])))   # an example is code's, each listed
     held = [m[0] for m in shape.QUOTED.finditer(text)]       # a quote is never split at a sentence end inside it
     text = shape.QUOTED.sub(lambda m: f"\u201c\x00{held.index(m[0])}\x00\u201d", text)
     for sent in shape.SENTENCES.split(text):
         sent = re.sub("\u201c\x00(\\d+)\x00\u201d", lambda m: held[int(m[1])], sent)
         rest = flat(sent)
-        for y in said:                  # a sentence left out or rewritten, listed in the model's split of the rule
-            rest = rest.replace(y, " ") if y else rest
-        bare = flat(shape.QUOTED.sub(" ", rest))
+        cut = {i for y in said for m in re.finditer(re.escape(y), rest) for i in range(m.start(), m.end())}
+        rest = "".join(" " if i in cut else c for i, c in enumerate(rest))    # each part the model listed, found in the
+        bare = flat(shape.MARKED.sub(" ", shape.QUOTED.sub(" ", rest)))      # sentence as it stands (the parts may overlap); a
+        # mark (landed, bounced) is the store's, never a lesson's: the prompt asks it written nowhere
         if rest.strip(" .;:,") and flat(sent) not in have and not set(WORD.findall(bare)) <= set(WORD.findall(have)):
             out.append(sent.strip())
     return out
@@ -147,10 +153,13 @@ def accounted(rule: dict[str, Any], made: list[dict[str, Any]], listed: list[dic
 def examples(rule: dict[str, Any], daily: Path, seen: dict[Path, str]) -> list[dict[str, str]]:
     """Each <example> of the original in the cited form the gate takes: the day-log line that holds its words, by exact text
     search, with its mark (Landed or Bounced) as it had one; one no line holds kept as it stands. Code's, never the model's."""
-    out = []
+    out, most = [], shape.threshold(dict(budgets().get("shape") or {}), *shape.GLOSS)
     for ex in shape.INSIDE.findall(rule["said"]):
         mark = (m[0].capitalize() + ", ") if (m := shape.MARKED.search(ex)) else ""
-        if shape.SHOWN.match(ex.strip()) or not (quote := shape.MARKED.sub(" ", ex).strip(shape.QUOTES_ALL + ",:;.")):
+        if (m := shape.SHOWN.match(ex.strip())) and len(m[2].split()) > most:      # cited, its gloss past the gate's room
+            out.append({"kind": "example cited", "said": ex.strip(), "as": f"<example>{mark}{m[1]}</example>",
+                        "why": f"its gloss of {len(m[2].split())} words left out, since the gate takes {most} at most beside a cite"})
+        elif shape.SHOWN.match(ex.strip()) or not (quote := shape.MARKED.sub(" ", ex).strip(shape.QUOTES_ALL + ",:;.")):
             out.append({"kind": "example cited", "said": ex.strip(), "as": f"<example>{ex.strip()}</example>"})
         elif at := next((x for q in [quote, *(m[1] for m in shape.QUOTED.finditer(ex))] if (x := shape.on_record(q, daily, seen))), ""):
             out.append({"kind": "example cited", "said": ex.strip(), "at": at, "as": f"<example>{mark}{at}</example>"})
@@ -160,11 +169,11 @@ def examples(rule: dict[str, Any], daily: Path, seen: dict[Path, str]) -> list[d
     return out
 
 
-def reason_of(s: memory.Settings, rule: dict[str, Any], why: dict[str, Any], supplied: dict[str, tuple[str, str]]) -> dict[str, str]:
+def reason_of(s: memory.Settings, rule: dict[str, Any], why: dict[str, Any], supplied: dict[str, list[tuple[str, str]]]) -> dict[str, str]:
     """A proposed reason as a listed item: added when the rule's own words or the day-log line it names hold it word for word,
     supplied when it is the owner's side's for this cite (REASONS), else refused; a reason is never invented."""
     said, src = str(why.get("said") or ""), str(why.get("from") or "")
-    if (mine := supplied.get(rule["cite"])) and flat(said) and flat(said) in flat(mine[1]):
+    if mine := next((x for x in supplied.get(rule["cite"], []) if flat(said) and flat(said) in flat(x[1])), None):
         return {"kind": "reason supplied", "said": said, "from": f"{mine[0]}, named in {curate.PROPOSALS}/{REASONS}"}
     line = (s.daily / src.removeprefix("daily/").rpartition(":")[0]) if src.startswith("daily/") else None
     n = int(src.rpartition(":")[2]) if line and src.rpartition(":")[2].isdigit() else 0
@@ -174,16 +183,17 @@ def reason_of(s: memory.Settings, rule: dict[str, Any], why: dict[str, Any], sup
             else {"kind": "reason refused", "said": said, "why": "neither the rule's own words nor the line it names hold it"})
 
 
-def supplied_reasons(s: memory.Settings) -> dict[str, tuple[str, str]]:
-    """cite -> (its day-log line, the reason) of each row of <memory>/rules-proposals/REASONS that the line it names holds word
-    for word (`cite<TAB>daily/<day>.md:<line><TAB>reason`, # a comment), the owner's side's reason for a rule with none on file."""
-    p, out = s.root / curate.PROPOSALS / REASONS, dict[str, tuple[str, str]]()
+def supplied_reasons(s: memory.Settings) -> dict[str, list[tuple[str, str]]]:
+    """cite -> each (its day-log line, the reason) row of <memory>/rules-proposals/REASONS that the line it names holds word for
+    word (`cite<TAB>daily/<day>.md:<line><TAB>reason`, # a comment), the owner's side's reason for a rule with none on file, a
+    row a reason, so a rule split in parts may have one for each part that has none."""
+    p, out = s.root / curate.PROPOSALS / REASONS, dict[str, list[tuple[str, str]]]()
     for raw in p.read_text(encoding="utf-8", errors="replace").splitlines() if p.is_file() else []:
         cite, at, why = ([*raw.split("\t"), "", ""])[:3]
         f, _, n = at.strip().removeprefix("daily/").rpartition(":")
         rows = (s.daily / f).read_text(errors="replace").splitlines() if f and (s.daily / f).is_file() else []
         if not raw.startswith("#") and why.strip() and n.isdigit() and 0 < int(n) <= len(rows) and flat(why) in flat(rows[int(n) - 1]):
-            out[cite.strip()] = (at.strip(), why.strip())
+            out.setdefault(cite.strip(), []).append((at.strip(), why.strip()))
     return out
 
 
@@ -205,14 +215,14 @@ def keeps(line: str, weights: tuple[dict[str, float], float]) -> list[str]:
 
 
 def build(s: memory.Settings, rule: dict[str, Any], prop: dict[str, Any] | None, read: Any, seen: dict[Path, str],
-          taken: set[str], acronyms: frozenset[str] | None, supplied: dict[str, tuple[str, str]] | None = None) -> dict[str, Any]:
+          taken: set[str], acronyms: frozenset[str] | None, supplied: dict[str, list[tuple[str, str]]] | None = None) -> dict[str, Any]:
     """The lessons made of one rule, each with its gate, and what was done to it. Each lesson keeps the words its rule loads on
     (keeps; else memory.triggers' every word: its job's, its picked ones, what its words name) as its `on`, so no split loses a
     trigger; each
     example of the rule lands in the first lesson whose body holds it, in the cited form, else is listed as left out."""
     most, supplied = shape.threshold(dict(budgets().get("shape") or {}), "lesson_quote_words", 8), supplied or {}
     parts = [(x.get("summary", ""), x.get("body", ""), x.get("reason")) for x in (prop or {}).get("lessons", []) if isinstance(x, dict)] \
-        or [(*memory.split_summary(shape.EXAMPLE_TAGS.sub("", rule["said"]).strip()), None)]
+        or [(*memory.split_summary(WRAP.sub("", shape.EXAMPLE_TAGS.sub("", rule["said"])).strip()), None)]
     done = [{"kind": k, **x} for k in ("left out", "rewritten") for x in (prop or {}).get(k.replace(" ", "_"), []) if isinstance(x, dict)]
     whys = [w for *_, w in parts if isinstance(w, dict) and w.get("said")] + [w for w in [(prop or {}).get("reason")] if isinstance(w, dict) and w.get("said")]
     done += list({json.dumps(x, sort_keys=True): x for x in (reason_of(s, rule, w, supplied) for w in whys)}.values())
@@ -223,7 +233,10 @@ def build(s: memory.Settings, rule: dict[str, Any], prop: dict[str, Any] | None,
     shown_ = examples(rule, s.daily, seen)
     made = []
     for summary, body, _ in parts:
+        mine = {m[0]: examples({"said": m[0]}, s.daily, seen)[0] for m in shape.INSIDE.finditer(body)}    # an <example> the
+        body = shape.INSIDE.sub(lambda m: mine[m[0]]["as"], body)                                         # model wrote, cited
         body, cited = quotes(body, s.daily, seen, most)
+        done += list(mine.values())
         summary, cited2 = quotes(summary, s.daily, seen, most)
         body2, added = absolute(rule["job"], f"{summary} {body}".strip(), read)
         body = body2[len(summary):].strip()
@@ -247,16 +260,20 @@ def build(s: memory.Settings, rule: dict[str, Any], prop: dict[str, Any] | None,
         x["gate"] = (memory.unshaped(rule["job"], f"{x['summary']} {x['body']}".strip(), acronyms, s, read, seen) or {}).get("fix", [])
         if len(x["on"]) < len(on):
             done.append({"kind": "triggers trimmed", "said": ", ".join(on[len(x["on"]):]), "why": f"the front matter holds {lessons.FRONT_MAX} characters"})
+    row = f"{curate.PROPOSALS}/{REASONS} names one for it" if rule["cite"] in supplied else f"a row in {curate.PROPOSALS}/{REASONS} supplies one"
     if not any(x["kind"] in ("reason added", "reason supplied") for x in done) and "no reason" in shape.lesson(rule["job"], rule["said"], None, {}, read=read):
-        done.append({"kind": "no reason on file", "why": "listed for Ben: a reason is never invented; " + (
-            f"{curate.PROPOSALS}/{REASONS} names one for it" if rule["cite"] in supplied else f"a row in {curate.PROPOSALS}/{REASONS} supplies one")})
+        done.append({"kind": "no reason on file", "why": "listed for Ben: a reason is never invented; " + row})
+    elif prop:                          # a split rule's lesson refused only for a reason, whose part the rule gives none
+        done += [{"kind": "no reason on file", "said": x["summary"], "why": "listed for Ben: the rule gives this lesson's part no "
+                  "reason and a reason is never invented; " + row} for x, (*_, w) in zip(made, parts) if x["gate"]
+                 and all(g.startswith(WANTING) for g in x["gate"]) and not (isinstance(w, dict) and w.get("said"))]
     return {**{k: rule[k] for k in ("cite", "file", "line", "text", "job")}, "lessons": made, "done": done,
             "missing": accounted(rule, made, done)}
 
 
 def findings(m: dict[str, Any]) -> list[str]:
     """What still fails in one rule's lessons, word for word: each lesson's gate refusal, each sentence of the rule not accounted
-    for and each reason refused. A refusal for no reason goes back too, since a reason a reader sees ("which breaks on a phone")
+    for and each reason refused. A refusal for no reason goes back too, since a reason a reader sees ("which slows the page")
     is none to the gate; the prompt says to give none where none is on file."""
     return [f'lesson {i} ("{x["summary"]}"): {g}' for i, x in enumerate(m["lessons"], 1) for g in x["gate"]] + \
         [f'not accounted for: "{x}"' for x in m["missing"]] + \
@@ -300,17 +317,17 @@ def proposed(said: str, cites: set[str]) -> dict[str, dict[str, Any]]:
 
 
 def model_pass(rules: list[dict[str, Any]], model: Callable[[str, str], str], check: Callable[[dict[str, Any], dict[str, Any]], list[str]],
-               supplied: dict[str, tuple[str, str]] | None = None) -> dict[str, dict[str, Any]]:
+               supplied: dict[str, list[tuple[str, str]]] | None = None) -> dict[str, dict[str, Any]]:
     """curate's propose and knock-down machinery on the rules out of the shape: curate.md's "Lessons" proposes each rule's lessons
     as one JSON line (CHUNK rules a call, side by side), "Knock down lessons" keeps or drops each; a rule whose lessons `check`
     still finds failing (the gate's refusals, its words not all accounted for) or that was dropped goes back with its proposal and
-    the exact findings ("Lessons again", the round's failing rules in one call), ROUNDS times at most. cite -> {"prop": its last
+    the exact findings ("Lessons again", the round's failing rules CHUNK a call, side by side), ROUNDS times at most. cite -> {"prop": its last
     proposal (none: no answer came for it), "findings": what still fails after the last round, "rounds": the times it went back}."""
     if not rules:
         return {}
     have = supplied or {}
-    shown_ = {r["cite"]: f"=== {r['cite']} (job: {r['job']})\n{shape.EXAMPLE_TAGS.sub('', r['said']).strip()}" + (
-        f"\nReason on file, from {have[r['cite']][0]}: {have[r['cite']][1]}" if r["cite"] in have else "") for r in rules}
+    shown_ = {r["cite"]: f"=== {r['cite']} (job: {r['job']})\n{WRAP.sub('', shape.EXAMPLE_TAGS.sub('', r['said'])).strip()}" + "".join(
+        f"\nReason on file, from {at}: {why}" for at, why in have.get(r["cite"], [])) for r in rules}
 
     def side(part: str, group: list[dict[str, Any]], extra: Callable[[str], str], tools: str) -> list[str]:
         chunks = [group[i:i + CHUNK] for i in range(0, len(group), CHUNK)]
@@ -334,9 +351,9 @@ def model_pass(rules: list[dict[str, Any]], model: Callable[[str, str], str], ch
         todo = [r for r in todo if out[r["cite"]]["findings"]]
         if not todo or n == ROUNDS:
             break
-        again = "\n\n".join(shown_[r["cite"]] + "\n=== proposed\n" + json.dumps(props.get(r["cite"]) or {}) + "\n=== findings\n"
-                             + "\n".join(f"- {f}" for f in out[r["cite"]]["findings"]) for r in todo)
-        props |= proposed(model(curate.prompt("Lessons again", {}, again), ""), {r["cite"] for r in todo})
+        for said in side("Lessons again", todo, lambda c: "\n=== proposed\n" + json.dumps(props.get(c) or {}) + "\n=== findings\n"
+                         + "\n".join(f"- {f}" for f in out[c]["findings"]), ""):
+            props |= proposed(said, {r["cite"] for r in todo})
     return out
 
 
@@ -389,8 +406,8 @@ def dry_run(private: Path, state: Path, s: memory.Settings, now: float | None = 
         m["loads"] = loads.get(r["cite"], 0)
     day = datetime.fromtimestamp(now, s.tz).date().isoformat()
     path = s.root / curate.PROPOSALS / FILE.format(day=day)
-    bare = [x for m in made if any(d["kind"] == "no reason on file" for d in m["done"]) for x in m["lessons"]
-            if x["gate"] and all(g.startswith(WANTING) for g in x["gate"])]
+    bare = [x for m in made for x in m["lessons"] if x["gate"] and all(g.startswith(WANTING) for g in x["gate"]) and any(
+            d["kind"] == "no reason on file" and d.get("said", x["summary"]) == x["summary"] for d in m["done"])]
     why = [f"{n} lesson{'s' * (n != 1)} the gate refuses" for n in [sum(bool(x["gate"]) for m in made for x in m["lessons"]) - len(bare)] if n]
     why += [f"{n} lesson{'s' * (n != 1)} refused only for a reason no file holds, each listed (a row in {curate.PROPOSALS}/{REASONS} "
             "supplies one)" for n in [len(bare)] if n]

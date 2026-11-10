@@ -1481,4 +1481,10 @@ secs = 60
 # (each word alone loaded 7.8 times as many rules' lessons as load today over the last 14 days of owner messages on that
 # copy; each smallest set of trigger words that loads it, three words at most, else each word alone, loads 2.7 times and
 # loses none), not folded to fit: conversion.py 24 (keeps). 29,489: 29,465 plus 24.
-lines = 29489
+# 2026-11-10: lesson-store-2026-11-10 raised it by 17 more, the conversion measured on the owner's real rules (its first
+# real pass read listed sentences as not accounted for and refused lessons whose part the rule gives no reason as
+# refused for cause; a round's failing rules in one call ran 11 minutes), not folded to fit: conversion.py 17 (the
+# listed parts cut as found, the store's marks and the examples' wrapper aside; a lesson with no reason of its own
+# listed; a reasons file's row a part; a long gloss cited alone; an example the model writes cited; the rounds side by
+# side). 29,506: 29,489 plus 17.
+lines = 29506

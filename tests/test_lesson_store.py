@@ -351,3 +351,56 @@ def test_a_lesson_keeps_each_smallest_word_set_that_loads_its_rule_today_else_ea
     assert conversion.keeps(line, ({"tidy": 0.9, "shelf": 0.9, "quill": 0.9}, 4.0)) == []        # none loads it: build keeps each
     four = line.replace("by the door", "by the Brindle door")                                     # four words load it: each alone
     assert conversion.keeps(four, ({"tidy": 0.8, "shelf": 0.8, "quill": 0.8, "brind": 0.8}, 4.0)) == ["tidy", "shelf", "quillby", "brindle"]
+
+
+def test_a_listed_sentence_holding_a_cited_quote_or_parts_that_overlap_is_accounted_for_and_a_part_with_no_reason_is_listed(tmp_path, monkeypatch):
+    from yerk_ai import conversion
+    monkeypatch.setattr(conversion, "CHUNK", 1)
+    m = old_store(tmp_path)
+    day = next(m.daily.glob("*.md"))
+    said = "the long answers bury the plan every single time we talk"
+    day.write_text(day.read_text() + "\n".join(
+        memory.format_line(datetime_at(NOW - 3000 + i), "example-room", "r1", "owner", "", x, "private", f"o{8 + i}")
+        for i, x in enumerate([said, "the example ledger holds my accounts", "and the bank reads the example ledger"])) + "\n")
+    n = len(day.read_text().splitlines()) - 2
+    one = f'Keep replies short, since he said "{said}".'
+    two = 'Lead with the date ("date first, always, so I can plan"), since he plans from it; the last long one bounced.'
+    hall = (f"Post the rota on Monday, since the team plans from it; put the week in bold. <examples><example>Bounced, daily/"
+            f"{day.name}:3, a gloss of far more than six words on it</example></examples>")
+    (m.root / memory.RULES).write_text((m.root / memory.RULES).read_text().replace(HALL, hall).replace(WEB, f"{one} {two}"))
+    (m.root / "rules-proposals").mkdir()
+    (m.root / "rules-proposals" / "reasons.tsv").write_text(
+        f"tree/rules.md:9\tdaily/{day.name}:{n + 1}\tholds my accounts\ntree/rules.md:9\tdaily/{day.name}:{n + 2}\tthe bank reads\n")
+    backs: list[str] = []
+
+    def model(prompt: str, tools: str) -> str:
+        if (prompt := prompt.lstrip()).startswith("You check the lessons"):
+            return "KEEP tree/rules.md:7\nKEEP tree/rules.md:8\nDROP tree/rules.md:9 | so it goes back too"
+        if prompt.startswith("The gate refused"):
+            backs.append(prompt)
+            return ""
+        if "tree/rules.md:9 (job" in prompt:
+            assert "holds my accounts" in prompt and f"Reason on file, from daily/{day.name}:{n + 2}: the bank reads" in prompt
+        return "\n".join(json.dumps(x) for x in (
+            {"cite": "tree/rules.md:7", "lessons": [
+                {"summary": "Post the rota on Monday.", "body": "Do so since the team plans from it.", "reason": {"said": "the team plans from it"}},
+                {"summary": "Put the week in bold.", "body": ""}],
+             "rewritten": [{"said": "Post the rota on Monday, since the team plans from it; put the week in bold.", "as": "the two lessons"}]},
+            {"cite": "tree/rules.md:8", "lessons": [
+                {"summary": "Keep replies short.", "body": f'Do so since in his words "{said}".', "reason": {"said": said, "from": f"daily/{day.name}:{n}"}},
+                {"summary": "Put the day first.", "body": "Do it since he plans from it.", "reason": {"said": "he plans from it"}}],
+             "rewritten": [{"said": one, "as": "Keep replies short."}, {"said": two.split(";")[0], "as": "Put the day first."}],
+             "left_out": [{"said": '"date first, always, so I can plan"', "why": "his words"}, {"said": "the last long one", "why": "how one went"}]},
+            {"cite": "tree/rules.md:9", "lessons": [{"summary": "Keep the example ledger in the owner's room.", "body": "Never post it, since "
+             "the bank reads it.", "reason": {"said": "the bank reads", "from": f"daily/{day.name}:{n + 2}"}}]}))
+    rec = conversion.loaded(conversion.dry_run(EXAMPLE_PRIVATE, tmp_path / "state", m, NOW, model=model, read=FABLE2))
+    rota, web, ledger = rec["rules"][:3]
+    assert web["missing"] == [] and rota["missing"] == []          # a cited quote inside a listed sentence, a mark, the wrapper
+    assert web["lessons"][0]["body"] == f"Do so since in his words the words at daily/{day.name}:{n}."
+    assert rota["lessons"][0]["body"].endswith(f"<example>Bounced, daily/{day.name}:3</example>") and rota["lessons"][0]["gate"] == []
+    assert any(d["kind"] == "example cited" and "its gloss of 10 words left out" in d.get("why", "") for d in rota["done"])
+    assert {"kind": "no reason on file", "said": "Put the week in bold.", "why": "listed for Ben: the rule gives this lesson's part no "
+            "reason and a reason is never invented; a row in rules-proposals/reasons.tsv supplies one"} in rota["done"]
+    assert {"kind": "reason supplied", "said": "the bank reads", "from": f"daily/{day.name}:{n + 2}, named in rules-proposals/reasons.tsv"} in ledger["done"]
+    assert rec["why"][0] == "1 lesson refused only for a reason no file holds, each listed (a row in rules-proposals/reasons.tsv supplies one)"
+    assert len(backs) == 4 and all(x.count(" (job: ") == 1 for x in backs)   # the round's failing rules, one a call at CHUNK 1
