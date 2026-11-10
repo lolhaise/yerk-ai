@@ -33,6 +33,41 @@ version changes.
   draws, need 80's rule (only answers to the page), and node runs of the page's own editor, lexer, `+N` and its moves
   checked against page.py's on 300 random edits.
 
+### persona-voice-news-2026-11-09 (#?)
+
+- A line added, changed or removed in a room's persona or voice file now reaches the room's running session. Before, the
+  `Rules changed since you last looked:` block on a message was built from the mechanics, the room's rulebook and the
+  rules file only, and a resumed or compacted session keeps the start file it began with, so a fix made by hand to the
+  persona or a voice file reached no running room: one that kept its session for days went on with the old persona until
+  a fresh session (`/new`, a model switch that cannot carry the session, a crash).
+- Now each such line is told once, on the session's next message, inside the same block and in the rulebook's words
+  (`new in persona.md: ...`, `replaced in persona.md: ...`, a voice file by its own name), as Claude Fable 5.2's page
+  says a change partway through a conversation is made: "put them in the newest turn". Every room that loads the file
+  hears it (one layer's rooms share a persona; a voice file is one room's). The block's 1,500 characters and
+  rules-changed.md past them hold for the larger block as before; a sealed room still hears nothing, and a room with no
+  persona or no voice key is as before.
+- A fresh session's look on file (rules-seen.json, and the texts kept beside its start, starts/<id>.json) now holds the
+  persona and voice texts it began with, so every later edit is told against them, and a compaction's copy keeps its
+  parent's, as it does the three rule texts.
+- A session begun before this change has no persona or voice text on file, so it reads them off the start file it was
+  given (starts/<id>.md): a line of the file now that the start holds whole counts as seen and the others are told as new,
+  and a line of the start's own persona or voice part (from its `[from <path>]` line to the next part, its trim marker left
+  out) that the file no longer has is told as replaced. On a capped install where that part was cut to fit, the lines
+  cut from its middle are told once as new, past the budget in rules-changed.md. With no kept start, or one that holds
+  none of the file's lines, nothing is told, so no message carries a whole persona or voice file.
+- The `rules-changed` ability (`yerk explain rules-changed`), the guide's paragraph on it, budgets.toml's note on `rules`
+  and the UserPromptSubmit line of docs/hooks.md name the two files. The mechanics are unchanged: their line on the block
+  says it brings changes, which stays true.
+- The tests: 4 new in tests/test_rules.py (an edit told once to each room that loads the file, with two rooms sharing one
+  persona, a room with neither key quiet and a fresh start's kept texts holding both; a session from before the change
+  told only the lines its start does not hold, a removed line among them, and with no kept start nothing; on a start cut
+  to fit, a line gone from the persona's head told and no line of another part taken for the persona's; a compaction's
+  copy told the change since the start it kept, and a sealed room nothing), and tests/test_uncapped.py's capped fixture
+  retaken, its only change rules-seen.json holding the persona and voice texts.
+
+**Upgrading:** budgets.toml raises `[code] lines` to 27,990 with its dated note. Nothing else to change: a running
+session's first message after the deploy reads its baseline off its kept start.
+
 ### hot-reads-2026-11-10 (#?)
 
 - The daemon no longer freezes, and is no longer killed by systemd's watchdog, when one room posts a reply while another
