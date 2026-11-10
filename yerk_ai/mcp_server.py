@@ -217,7 +217,7 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
     @mcp.tool()
     async def schedule(action: str, name: str = "", when: str = "", what: str = "", kind: str = "",
                        tz: str = "", deliver: str = "announce", room: str = "", cap_minutes: float = 0,
-                       account: str = "", *, ctx: Context) -> str:
+                       account: str = "", model: str = "", effort: str = "", *, ctx: Context) -> str:
         """Timed work that lands in a room, kept on systemd timers that outlive the daemon. action
         "add": `name` (lowercase letters, digits, hyphens); `when` is a date and time ("2026-03-09 09:00":
         a one-shot, removed after it fires) or a systemd calendar line, recurring ("Mon..Fri 09:00",
@@ -225,15 +225,16 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         owner's rooms, "note" in any other): "note", a reminder
         (when it is due this room is told the text and says it in its own voice; no worker, shell or
         account); "agent", the brief a worker gets (a headless run with a card here, its last message told
-        by this room, exactly NO_REPLY for silence); "script", the shell line to run (no model call, its
+        by this room, exactly NO_REPLY for silence; `effort` its thinking level, low, medium, high, xhigh or max, and
+        `model` one from the install's list, default this room's live ones); "script", the shell line to run (no model call, its
         output posted as is, exit 0 with no output posts nothing, a failure alerts the ops room). Any room
         adds, lists and removes its own notes; an agent or script job runs as the owner, so only the owner's
         rooms set one. `deliver` "announce" (default) or "silent" (run and ledger, never post). Returns the
         next fire time read back from systemd. "remove": by `name`. "list": the jobs this room may see.
         <example>"remind me Saturday at 10 to call the clinic": action "add", kind "note", name
         "call-clinic", when "2026-10-24 10:00", what "Remind them to call the clinic now."</example>"""
-        req = {"action": action, "name": name, "when": when, "what": what, "kind": kind, "tz": tz,
-               "deliver": deliver, "room": room, "cap_minutes": cap_minutes, "account": account}
+        req = {"action": action, "name": name, "when": when, "what": what, "kind": kind, "tz": tz, "deliver": deliver,
+               "room": room, "cap_minutes": cap_minutes, "account": account, "model": model, "effort": effort}
         return json.dumps(await daemon.tool_schedule(caller_room(ctx), req))
 
     @mcp.tool()

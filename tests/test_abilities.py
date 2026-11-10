@@ -308,6 +308,24 @@ def test_a_room_asked_for_a_worker_a_script_starts_that_ends_silently_hears_the_
     assert not abilities.asked("the worker finished and the report is saved", y.memory, TAB)
 
 
+def test_a_room_asked_for_a_scheduled_jobs_own_thinking_level_hears_the_schedule_way(tmp_path):
+    """need-2026-11-09-79: a room on max started a bot's research runs as standing agent jobs, and each job's worker took the
+    room's level, since neither the schedule tool nor `yerk schedule add` had a thinking level or a model. Asked that way, a
+    room gets the schedule entry whole, with the job's own level and model (a key of its own would push the abilities
+    answer, 1,993 at main, past the 2,000 recall cap)."""
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    found = abilities.asked("can each job's effort be high on a cheaper model while this room stays on max?", y.memory, TAB)
+    assert [e["key"] for e in found] == ["schedule"]
+    text = found[0]["text"]
+    assert text.startswith(f"schedule, a Yerk AI ability ({words.ability('on')[1]}): The schedule tool in every room")
+    assert ("An agent job sets its own worker's thinking level and model (the tool's `effort` and `model`, `yerk schedule add "
+            "--effort --model`, or the keys in jobs.toml; a model an alias or a full id on the install's list)") in text
+    assert "one that sets neither runs on the room's live level and model" in text
+    assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
+    assert [e["key"] for e in abilities.asked("what is the job's model now?", y.memory, TAB)] == ["schedule"]
+    assert not abilities.asked("the job ran and its card settled quiet", y.memory, TAB)
+
+
 def test_ordinary_messages_pull_no_ability_into_the_room(tmp_path):
     y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
     assert {m: [e["key"] for e in abilities.asked(m, y.memory, TAB)] for m in ORDINARY} == {m: [] for m in ORDINARY}

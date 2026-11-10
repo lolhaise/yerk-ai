@@ -8,6 +8,38 @@ version changes.
 
 ## 2026-11-09
 
+### need-2026-11-09-79 (#?)
+
+- A scheduled agent job sets its own worker's thinking level and model. Before, every job's worker took its room's live
+  level and model, and neither the `schedule` tool nor `yerk schedule add` had a field for either: a room kept on max
+  thinking that started each research run of a bot as a standing agent job (deliver silent, so no relay turn) paid max
+  for every run, one run at max costing about eight times the same run at high, and the accounts' weekly meters filled.
+- Now the `schedule` tool takes `effort` (low, medium, high, xhigh, max) and `model` (an alias or a full id on the
+  install's list: models.toml, or [models] in yerkd.toml) for an agent job, `yerk schedule add` takes `--effort` and
+  `--model`, and jobs.toml takes the `effort` and `model` keys. The job's worker runs at them while its room stays on
+  its own. An alias is kept by its name in the jobs file, so the job follows the list when the list moves, and the worker
+  gets the alias's full id when the job fires. A job that sets neither runs as before: `[workers]` effort and model when
+  yerkd.toml sets them, else the room's live ones.
+- Refused, the jobs file left as it was: either on a note or a script job (a note runs nothing, a script calls no
+  model), a level that is not one, and, from the tool or `yerk schedule add`, a model off the install's list, answered
+  with the list. A model written into jobs.toml by hand goes to the worker as written (an alias on the list made its full
+  id); one Claude Code does not know ends the run with the job's failure alert, as before.
+- The add's answer, `yerk schedule add`'s line and every list of jobs (`yerk schedule list`, `yerk jobs list`, the
+  tool's list) say what a job sets ("agent, model sonnet, effort high"). The schedule ability (`yerk explain schedule`)
+  carries it, found by a room asked about a job's thinking level, effort or model, and the example jobs file's agent job
+  shows `effort`. The README's jobs.toml line names an agent job's effort and model (its usage meters sentence a few
+  words shorter, to stay under 12,000 bytes).
+- The tests: 2 new and 5 new refusal cases, in tests/test_jobs.py (with the room on max, a job added through the tool
+  with effort high and model sonnet runs its worker at `--effort high --model claude-sonnet-5-5` while one that sets
+  neither runs at the room's max and model; a model off the list, a level that is not one and a level on a note refused
+  with the file unchanged; the list's words; `yerk schedule add --model --effort` and its refusal; a note or a script
+  with either key, and a made-up level, refused by the loader) and tests/test_abilities.py (the schedule entry answers
+  the ask whole under the recall cap), and the tool's two fields and its words checked in tests/test_hooks_mcp.py.
+
+**Upgrading:** budgets.toml raises `yerk_tools` to 25,900, the session start's `total` to 128,971 and `[code] lines` to
+27,950, each with its dated note. Nothing to change in jobs.toml: a job without the new keys runs as it did. A room picks
+up the tool's two fields at its next session.
+
 ### need-2026-11-09-76 (#?)
 
 - A room saves a key a web page shows straight into your private folder's `secrets/`, and never reads it. Asked to keep

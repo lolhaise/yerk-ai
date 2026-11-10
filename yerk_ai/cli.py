@@ -270,7 +270,7 @@ def cmd_schedule(a: argparse.Namespace) -> int:
     """add, remove, list: the same three actions as the room's `schedule` tool, on the jobs file and
     the timers, with or without a running daemon. The zone defaults to the room's."""
     from . import jobs
-    from .config import load_toml
+    from .config import load_toml, models
     priv, state = private_dir(a.private), state_dir(a.state)
     conf = load_toml(priv / "yerkd.toml") if (priv / "yerkd.toml").is_file() else {}
     rs, units, env, path = rooms(priv), jobs.Systemd(), jobs.env_for(priv, state), priv / jobs.FILE
@@ -288,7 +288,7 @@ def cmd_schedule(a: argparse.Namespace) -> int:
             return 2
         out = jobs.schedule_add(path, units, env, a.name, a.kind, a.when, a.what, room,
                                 a.tz or jobs.default_tz(rs, room, conf), a.deliver, a.cap, a.account or "",
-                                int(conf.get("jobs", {}).get("note_chars", jobs.NOTE_CHARS)))
+                                int(conf.get("jobs", {}).get("note_chars", jobs.NOTE_CHARS)), a.model or "", a.effort or "", models(conf))
     if a.json:
         print(json.dumps(out, default=str))
     elif not out["ok"]:
@@ -298,8 +298,8 @@ def cmd_schedule(a: argparse.Namespace) -> int:
     elif a.action == "remove":
         print("\n".join([f"{a.name}: removed"] + out["diff"]))
     else:
-        print(f"{out['name']}: {out['schedule']}, {out['kind']} job, room {out['room']}, deliver {out['deliver']}; "
-              f"next {out['next_text']}; unit {out['unit']}")
+        print(f"{out['name']}: {out['schedule']}, {out['kind']} job, room {out['room']}, deliver {out['deliver']}"
+              + "".join(f", {k} {out[k]}" for k in ("model", "effort") if k in out) + f"; next {out['next_text']}; unit {out['unit']}")
     return 0 if out["ok"] else 1
 
 
@@ -852,6 +852,8 @@ def parser() -> argparse.ArgumentParser:
     sc.add_argument("--deliver", choices=["announce", "silent"], default="announce")
     sc.add_argument("--cap", type=float, default=0.0, help="add: minutes before the run is stopped")
     sc.add_argument("--account", help="add: agent jobs, the account to run on")
+    sc.add_argument("--model", help="add: agent jobs, the worker's model, an alias or a full id on the install's list (default [workers], else the room's)")
+    sc.add_argument("--effort", help="add: agent jobs, the worker's thinking level, one of low, medium, high, xhigh, max (default [workers], else the room's)")
     sc.add_argument("--json", action="store_true")
     rb = sub.add_parser("recall-bench", help="the fixed question set against the memory index: top six and top one "
                         "hit rates (exit 2 when a control misses, 1 failure, 3 timeout, 4 a drop budgets.toml [recall] does not name)")
