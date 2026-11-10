@@ -410,7 +410,8 @@ def is_word(prompt: str, sender: str, s: Settings) -> bool:
 def worker_check(payload: dict[str, Any], folder: Path, spec: dict[str, Any]) -> dict[str, Any]:
     """A worker's PreToolUse (workers.py writes the hook): the room's gates on what it would run, with
     deletes held to the worker's own folder. A worker has nobody to say the word, so an external action,
-    a write to Yerk AI's config or a restart of it is refused, never held; so is a write to its own gate files (own_gate_hit)."""
+    a write to Yerk AI's config or a restart of it is refused, never held; so is a write to its own gate files (own_gate_hit),
+    an MCP tool it was not given (given) and an add-on call that carries the owner's word, `confirmed` (need 83)."""
     g = dict(spec.get("gate") or {})
     s = Settings(trash=tuple(g.get("trash") or find_trash()),
                  external={str(k): dict(v) for k, v in dict(g.get("external") or EXTERNAL).items()})
@@ -426,11 +427,26 @@ def worker_check(payload: dict[str, Any], folder: Path, spec: dict[str, Any]) ->
     if v is None and (what := restart_hit(tool, ti, Path(str(g.get("private") or "/nonexistent")))):
         v = Verdict("restart", "deny", f"Refused: {what} would change or restart Yerk AI, and a worker never does "
                                        "that. Say in your report what should change; the owner does it.")
+    if v is None and tool.startswith("mcp__") and not given(tool, spec):
+        v = Verdict("worker", "deny", f"Refused: {tool} is not one of this worker's tools. Say in your report what it would "
+                                      "have done; the room has its own tools.")
+    if v is None and tool.startswith("mcp__") and str(ti.get("confirmed", "")).lower() not in ("", "false", "none", "0"):
+        v = Verdict("approval", "deny", f"Refused: {tool} with confirmed acts on the owner's word, and a worker has nobody to "
+                                        "give it. Leave that step ready and say in your report what waits for the word; the "
+                                        "room does it once the owner says it.")
     if v is None and (hit := external_hit(tool, ti, str(spec.get("room") or ""), s)):
         _, what, call = hit
         v = Verdict("approval", "deny", f"Refused: {what} (`{call}`) is an external action, and a worker never "
                                         "takes one. Put it in your report as a draft; the owner decides.")
     return v.output() if v else {}
+
+
+def given(tool: str, spec: dict[str, Any]) -> bool:
+    """Is this MCP tool one the daemon gave the worker (workers.py): a read-only Yerk AI tool from [workers] yerk_tools, or
+    an add-on tool of its room's from the start's `addons` (a server's whole name gives each of its tools)?"""
+    if tool.startswith("mcp__yerk__"):
+        return tool.removeprefix("mcp__yerk__") in (spec.get("yerk_tools") or [])
+    return any(tool == g or tool.startswith(f"{g}__") for g in (spec.get("addon_tools") or []))
 
 
 def worker_hook(folder: Path) -> int:

@@ -8,6 +8,26 @@ version changes.
 
 ## 2026-11-10
 
+### need-2026-11-10-83
+
+- A worker can drive the browser. The `worker` tool takes `addons`: the room's own add-on tools the worker gets too, by
+  the name the room has (`mcp__hands__browser`) or by server (`hands`). Before, a worker had only its built-in tools, so
+  a room that handed a long form-filling job to a worker, to stay free to talk, saw it stop in under a minute: it could
+  not open or fill a web form.
+- Only what the room itself has: a tool missing from the room's allow list, or a server whose rooms.toml table passes a
+  credential in its env or headers (a worker's shell could read it), refuses the start whole, saying why. A room that
+  is not the owner's still starts no worker at all.
+- The server runs from the room's own table, with `YERK_WORKER` (the worker's id) and `YERK_WORK_DIR` (its folder)
+  added to its env. The browser plug-in (its branch need-2026-11-10-83) then acts on the room's tabs, so the room can
+  pick up a form the worker left ready; holds a brake lease of its own, `hands-<room>-w<id>`, since two processes on one
+  owner name share a lease and the first one's arm would end the other's mid-call; saves its pictures in the worker's
+  folder; and puts the worker's id on each ledger line.
+- The worker's gate refuses any other MCP tool, and any add-on call carrying the owner's word (`confirmed`): nobody is
+  there to give it. The worker leaves that step ready (a quote form filled up to its last button, say) and its report
+  says what waits, for the room to do once the owner says it.
+- **Upgrading**: nothing to set. The browser plug-in's branch lands with this one; a room's rooms.toml table and allow
+  list are read as they are. budgets.toml: `[code] lines` and `yerk_tools` rise with their dated reasons.
+
 ### copy-survives-2026-11-10 (#46)
 
 - A message sent while a room compacts a copy of its session no longer throws the copy away. Before, a turn starting

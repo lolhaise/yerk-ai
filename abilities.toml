@@ -1359,6 +1359,22 @@ free_path = "this is the free path"
 asked_as = ["worker from a script", "silent worker", "worker ends silently", "ends silently on no_reply"]
 layer = 5
 
+[abilities.worker-addons]
+state = "built"
+what = "A worker an owner room starts gets the room's own add-on tools it names, such as the browser plug-in's browser, so a long form-filling job runs outside the room while the room stays free to talk (need 83 of 2026-11-10: a worker had no browser tool and stopped in under a minute)."
+how = [
+  "The worker tool's `addons`: a tool's name as the room has it, or a server's name for each of its tools the room's allow list names; one the room has not, or a server whose rooms.toml table passes a credential, refuses the start whole.",
+  "The server runs as the room runs it, from its own table, told the worker's id and folder, so the browser plug-in acts on the room's tabs, holds a brake lease of its own and saves its pictures in the worker's folder.",
+  "The worker's gate refuses every other MCP tool, and any call carrying the owner's word (`confirmed`): the worker leaves that step ready and its report says what waits, for the room to do on the owner's word.",
+]
+tier = "free"
+needs = "an add-on in the room's own rooms.toml table and allow list; for the browser, the browser ability"
+price = "none"
+free_path = "this is the free path"
+asked_as = ["worker that can drive the browser", "worker with the browser", "fill forms in a worker", "browser in a worker",
+            "worker can't open a web form", "run it outside the room", "give the worker hands", "worker with add-ons"]
+layer = 5
+
 [abilities.capture]
 state = "built"
 what = "Every message of every room filed in the day's log in the private memory tree as it lands: time, room, sender role, one line per attachment."

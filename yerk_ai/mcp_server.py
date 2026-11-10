@@ -203,15 +203,17 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
 
     @mcp.tool()
     async def worker(action: str, brief: str = "", id: str = "", room: str = "", tasks: list[str] | None = None,
-                     cap_minutes: float = 0, account: str = "", model: str = "", effort: str = "", *, ctx: Context) -> str:
+                     cap_minutes: float = 0, account: str = "", model: str = "", effort: str = "",
+                     addons: list[str] | None = None, *, ctx: Context) -> str:
         """Heavy work leaves the room: a worker is a headless run with its own card in the room and a
         report. action "start": `brief` is the whole job (what done looks like, where it ends, what to
         leave alone); optional `tasks` (its checklist rows), `cap_minutes` (default 65), `account`, `model`,
-        `effort` (low, medium, high, xhigh, max; default the room's live level), `room` (default this room). Returns its id, folder
+        `effort` (low, medium, high, xhigh, max; default the room's live level), `room` (default this room), `addons` (your own
+        add-on tools it gets too, as named here or by server, such as a browser; a step needing `confirmed` it leaves ready for you). Returns its id, folder
         and report path; when it ends, the card settles and the room hears the result, or nothing if its last message is exactly
         NO_REPLY. "list": workers and their state. "stop" / "report": by `id` (report gives the report's text, for you to tell in your own words)."""
         req = {"action": action, "brief": brief, "id": id, "room": room, "tasks": tasks or [],
-               "cap_minutes": cap_minutes, "account": account, "model": model, "effort": effort}
+               "cap_minutes": cap_minutes, "account": account, "model": model, "effort": effort, "addons": addons or []}
         return json.dumps(await daemon.tool_worker(caller_room(ctx), req))
 
     @mcp.tool()
