@@ -637,7 +637,11 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-10: need-2026-11-09-81 raised it by 8: the live page's `page` tool closes the page's chat or opens it (`chat`), as its buttons do, on every open tab and kept across a restart, since the owner asked a room on the page for no chat box a second time and only the close button in the owner's browser closed it; not folded to fit: channels/page.py 7 (draw's `chat`, checked before any part is drawn, kept in talk.json, an owner's switch it undoes before the room heard it left unsaid, draw's line on it; the module's clause on it fits in need 82's lines), words.py 1 (PAGE_CHAT), mcp_server.py 0 (the tool's parameter and clause). The tab's showing of it is page.html, outside this count. 28,094: main 90bd742's 28,086 plus 8.
 
-- `lines = 28094`
+2026-11-10: walls-2026-11-10 raised it by 127: a gate that cannot be asked refuses (a room's gate hook ends 2 with one line for the model on any failure of its curl, which gives up at 8 s, and blocks on its own failure; a worker's hook blocks too), every gate reads a shell command as what would really run, a worker's own gate files are read-only inside its unit and a write to one that shows in the text is refused in plain words, the owner's word approves only a hold made before it reached Yerk, and a provider key pasted into a room is filed as its kind, since on 2026-10-19 one room's 170 gate calls failed and every action ran, and a worker's `timeout 60 git push` went past the gate on
+
+2026-10-28; not folded to fit: gates.py 84 (runs, restarts, own_gate_hit and its tables), sources.py 13 (the Groq shape, KEYS, keys_out), hooks.py 10 (GATE_DOWN, the gate's own hook), unwrap.py 10 (`whole`), workers.py 7 (the read-only binds, onFailure), ledger.py 2 (approve's `before`), memory.py 1 (keys_out on a day-log line). 28,221: need-2026-11-09-81's 28,094 plus 127.
+
+- `lines = 28221`
 
 ## Uncapped
 
