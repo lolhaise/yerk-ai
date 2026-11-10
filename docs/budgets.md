@@ -613,7 +613,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-09: need-2026-11-09-80 raised it by 11: with a live page's chat closed, only the room's lines that answer what was said on the page go into the program, since every line it said from any thread went in and a Discord answer, a scheduled note's and a job's nightly post landed in the owner's code under the last # line; two docstring lines folded, the rest not folded to fit: channels/page.py 8 (answers_page, a page message of the room's among those a line answers, read from the ledger; said writing the program only then; the Mirror handing each line its messages; the module's line on it), channels/discord.py 1 (send_text's `inbound`, the page's, its rows still answering none), daemon.py 1 (the send tool's turn messages to send_text), words.py 1 (the room told, when the chat closes, that its other lines stay on the chat), mcp_server.py 0 (the page tool's clause, 18 characters, inside yerk_tools' 25,900: about 25,830 as sent, no raise). 27,961: main 37d8a70's 27,950 plus 11.
 
-- `lines = 27961`
+2026-11-10: hot-reads-2026-11-10 raised it by 16: to post one reply the daemon read the room's whole delivery history on the event loop, and sqlite hands Python's interpreter back after every row, so with another room's turn busy a row cost about 8 ms: 236 rows took 2.0 s on the owner's ledger and a busy room's 4,667 about 40 s, past systemd's 30 s watchdog, which killed the daemon with the loop's stack in that read (an earlier kill that day fits it: a send in the work room sat 29 s between planned and posted). One reply's parts, a turn's landed parts and the end-of-turn check's replies are read by key range (the engine audit's defect 1); not folded to fit: ledger.py 17 (deliveries_of; said and landed by range, with why), channels/discord.py -1 (_deliver and one key's redelivery call it). 27,977: main 5529087's 27,961 plus 16.
+
+- `lines = 27977`
 
 ## Uncapped
 
