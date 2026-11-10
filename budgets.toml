@@ -1331,4 +1331,13 @@ secs = 60
 # script and a level that is not one, the model checked against the install's list with an alias kept by its name, the
 # alias made its full id at the hand-off to the worker, the add's and the list's words), cli.py 2 (--model and --effort),
 # mcp_server.py 1 (the tool's clause). 27,950: main 74e6a81's 27,923 plus 27.
-lines = 27950
+# 2026-11-09: need-2026-11-09-80 raised it by 11: with a live page's chat closed, only the room's lines that answer what was
+# said on the page go into the program, since every line it said from any thread went in and a Discord answer, a scheduled
+# note's and a job's nightly post landed in the owner's code under the last # line; two docstring lines folded, the rest
+# not folded to fit: channels/page.py 8 (answers_page, a page message of the room's among those a line answers, read from
+# the ledger; said writing the program only then; the Mirror handing each line its messages; the module's line on it),
+# channels/discord.py 1 (send_text's `inbound`, the page's, its rows still answering none), daemon.py 1 (the send tool's
+# turn messages to send_text), words.py 1 (the room told, when the chat closes, that its other lines stay on the chat),
+# mcp_server.py 0 (the page tool's clause, 18 characters, inside yerk_tools' 25,900: about 25,830 as sent, no raise).
+# 27,961: main 37d8a70's 27,950 plus 11.
+lines = 27961

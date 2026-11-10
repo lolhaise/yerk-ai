@@ -453,9 +453,10 @@ class Yerkd:
         try:
             if voice:                                         # Discord takes no words beside one, so they follow it
                 ids, why = await ch.send_voice(room, Path(file), voice, key=key, inbound=inbound)
-                ids += await ch.send_text(room, text, key=f"{key}-t") if text else []
-            else:
-                ids = await (ch.send_file(room, Path(file), text, key=key, inbound=inbound) if file else ch.send_text(room, text, key=key))
+                ids += await ch.send_text(room, text, key=f"{key}-t", inbound=inbound) if text else []
+            else:                                             # a page's room writes the words in its program when they answer it
+                ids = await (ch.send_file(room, Path(file), text, key=key, inbound=inbound) if file else
+                             ch.send_text(room, text, key=key, inbound=inbound))
         except (OSError, ValueError, DeliveryFailed) as e:
             return {"ok": False, "error": str(e)}
         log.info("send: %s -> %s, %d message(s)%s", caller or "?", room, len(ids), f", the voice note as a plain file: {why}" if why else "")
