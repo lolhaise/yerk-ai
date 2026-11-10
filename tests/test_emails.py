@@ -147,6 +147,23 @@ def test_an_email_with_no_files_given_is_the_same_call_as_one_with_none_and_an_e
     assert [m.get_body(("plain",)).get_content() for m in sent()] == ["Hello,\n\nMy statement, corrected.\n"]
 
 
+def test_the_word_sends_the_held_email_once_whatever_folder_the_shell_is_in_when_it_is_called_again(tmp_path):
+    """need 78 of 2026-11-09, the wall: held with the shell in the folder of the file it attaches, a /compact before the word,
+    the session back in its work folder, and the same call was held again on a second card. Its files go by whole path and
+    sha256, so the folder adds nothing to the call: the word sends it once, wherever the shell is."""
+    y, room, ch, mail = setup(tmp_path)
+    work = tmp_path / "rooms" / "example-room" / "work"
+
+    def pre_in(cwd: Path) -> dict:
+        return call(y, {"hook_event_name": "PreToolUse", "tool_name": emails.TOOL, "tool_input": mail, "cwd": str(cwd)})
+    assert held(pre_in(work / "inbox" / "m1"))
+    word(y, room)
+    assert pre_in(work) == {} and len(ch.notes) == 1                  # released from the work folder: no second card
+    assert email(y, mail)["ok"] and len(sent()) == 1
+    assert held(pre_in(work / "inbox" / "m1")) and email(y, mail)["error"] == words.EMAIL_NOT_RELEASED   # once
+    assert [r["decision"] for r in y.ledger.rows(10, "gates")].count("approved") == 1      # one word
+
+
 def test_a_persons_room_never_emails_as_the_owner_and_nothing_of_it_is_shown_there(tmp_path):
     y, room, ch, mail = setup(tmp_path, people=True)
     out = pre(y, mail)["hookSpecificOutput"]

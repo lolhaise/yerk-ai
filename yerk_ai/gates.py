@@ -18,7 +18,7 @@ quotes, in a heredoc body or as a word in a string is not a delete; lifted/shell
   message out through another tool, a text or an email in the owner's name, a delete for good outside the work folder, or a rule in
   yerkd.toml [gates.external]) is held, one plain
   line to the room, until an approver says the word in the room's running turn; then that same call
-  (its normalised text and working folder) runs once, and any other call is held again.
+  (its normalised text, and a shell command's working folder) runs once, and any other call is held again.
 Every hold, release, refusal and rewrite is a row in the ledger's `gates` table.
 """
 from __future__ import annotations
@@ -277,6 +277,13 @@ def call_key(tool: str, ti: dict[str, Any]) -> str:
     if tool == "Bash":
         return " ; ".join(norm or seg for seg, _, norm in shell(str(ti.get("command") or "")))
     return f"{tool} {json.dumps(ti, sort_keys=True, ensure_ascii=False)}"
+
+
+def bound_to(tool: str, cwd: str) -> str | None:
+    """The folder an approval of this call holds in: a shell command's working folder (the same words push another repository
+    from another), else None, any: a tool's input is its whole call (a text, an email with its files' whole paths and sha256,
+    a delete of whole paths), so a session a /compact put back in its work folder is released (need 78 of 2026-11-09)."""
+    return cwd if tool == "Bash" else None
 
 
 def plain(tool: str, ti: dict[str, Any]) -> str:

@@ -268,11 +268,12 @@ class Ledger:
         self._update("approvals", "id", r[0]["id"], {"approved": time.time(), "approved_by": by})
         return r[0]
 
-    def release(self, room: str, rule: str, call: str, cwd: str, window_s: float) -> dict[str, Any] | None:
-        """The approved hold of exactly this call (its normalised text and working folder), not yet used,
-        takes it through once; another call under the same rule is not released by it."""
-        r = self._select("SELECT * FROM approvals WHERE room = ? AND rule = ? AND call = ? AND cwd = ? AND approved > ? "
-                         "AND released IS NULL ORDER BY id DESC LIMIT 1", (room, rule, call, cwd, time.time() - window_s))
+    def release(self, room: str, rule: str, call: str, cwd: str | None, window_s: float) -> dict[str, Any] | None:
+        """The approved hold of exactly this call (its normalised text, and its working folder unless `cwd` is None:
+        gates.bound_to), not yet used, takes it through once; another call under the same rule is not released by it."""
+        where, folder = ("AND cwd = ? ", (cwd,)) if cwd is not None else ("", ())
+        r = self._select(f"SELECT * FROM approvals WHERE room = ? AND rule = ? AND call = ? {where}AND approved > ? "
+                         "AND released IS NULL ORDER BY id DESC LIMIT 1", (room, rule, call, *folder, time.time() - window_s))
         if not r:
             return None
         self._update("approvals", "id", r[0]["id"], {"released": time.time()})

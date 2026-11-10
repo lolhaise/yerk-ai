@@ -8,6 +8,26 @@ version changes.
 
 ## 2026-11-09
 
+### need-2026-11-09-78 (#?)
+
+- A text or an email you approved goes on that one word, whatever folder the room's shell is in when it calls again.
+  Before, an approval matched the call and the folder the shell was in when it was held, so a session a compaction had
+  put back in its work folder (a resumed session starts there) made the same call, was held a second time on a second
+  card, and you said the word twice; the text still went once.
+- The same holds for a send to another room, a delete through the `delete` tool and any other tool's call the gates
+  hold: a tool's input is its whole call (an email's files by whole path and sha256, a delete's whole paths), so the
+  folder adds nothing to it. A shell command (a `git push`, a `gh pr create`) still runs on its word only from the
+  folder it was held in, since the same words push another repository from another folder.
+- Nothing else changes: each call is still shown before the word, the word releases it once, the next one is held
+  again, and the hold's ledger row still keeps the folder the shell was in.
+- The tests: 3 new, in tests/test_texts.py and tests/test_emails.py (held with the shell in a folder under the work
+  folder, the word, then the same call from the work folder: released and sent once, one card and one word, and the
+  next one held again) and tests/test_gates.py (a send to another room released from another folder; a `git push` held
+  again from another folder and released from its own).
+
+**Upgrading:** budgets.toml raises `[code] lines` to 27,923 with its dated note. Nothing to set; a hold made before the
+deploy's restart is released by the same call from any folder too.
+
 ### need-2026-11-09-77 (#?)
 
 - A worker whose last message is exactly NO_REPLY now ends with no relay turn, however it was started: the `worker` tool,
