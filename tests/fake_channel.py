@@ -40,7 +40,7 @@ class ConsoleChannel:
         self.progress(room, card)                 # nothing on stdout: a final of exactly NO_REPLY posts nothing
         return []
 
-    async def send_text(self, room: str, text: str, key: str | None = None) -> list[str]:
+    async def send_text(self, room: str, text: str, key: str | None = None, inbound: str = "") -> list[str]:
         return self._out({"room": room, "send": text})
 
     async def notify(self, room: str, text: str) -> list[str]:

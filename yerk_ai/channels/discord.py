@@ -1252,7 +1252,8 @@ class DiscordChannel:
         async with self._lock(room):
             return await self._deliver(room, key)
 
-    async def send_text(self, room: str, text: str, key: str | None = None) -> list[str]:
+    async def send_text(self, room: str, text: str, key: str | None = None, inbound: str = "") -> list[str]:
+        """A send's rows answer no message (a redelivery marks none answered); `inbound`, its turn's, is for the page (page.Mirror)."""
         return await self._post(room, text, "send", [], key)
 
     async def notify(self, room: str, text: str) -> list[str]:

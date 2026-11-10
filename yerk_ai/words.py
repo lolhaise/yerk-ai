@@ -606,8 +606,9 @@ PAGE_NO_DAEMON = "yerkd is not running here (no yerkd.json in the state folder);
 PAGE_NO_KEY = ("room {room} has no live page yet: ask for it in the room, whose page tool turns it on, or set page = true in its "
                "rooms.toml table and restart yerkd")
 # talk in the program (channels/page.py talk): the chat closed or opened, a reply's cut, and a program run alone, its prints
-PAGE_TALK_ON = ("the owner closed the page's chat: your replies now go into the program as #> lines under the owner's last "
-                "# line, so write them as short plain lines; the lines under them move down, your marks with them")
+PAGE_TALK_ON = ("the owner closed the page's chat: your replies to what is said on the page now go into the program as #> lines "
+                "under the owner's last # line, so write them as short plain lines; the lines under them move down, your marks "
+                "with them; what you say in answer to anything else (Discord, a job, a scheduled note) stays on the chat")
 PAGE_TALK_FULL = "the program is at the page's cap of {n:,} characters: what did not fit of your reply is on the page's chat alone"
 PAGE_TALK_OFF = "the owner opened the page's chat again: your replies show there, not in the program"
 PAGE_TALK_CUT = "... {n} more lines on the page's chat"
