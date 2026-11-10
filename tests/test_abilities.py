@@ -342,6 +342,20 @@ def test_a_room_asked_why_its_discord_replies_land_in_the_code_hears_the_page_ta
     assert not abilities.asked("the patch notes went out on discord", y.memory, TAB)
 
 
+def test_a_room_asked_for_the_words_of_a_text_the_owner_sent_hears_the_blank_text_way(tmp_path):
+    """need-2026-11-09-83: a room asked to confirm the words of a text the owner had just sent got an empty text field, as
+    on every text they sent that evening. Asked that way, a room gets the text entry whole, with the words read from the rich
+    copy and a blank said with its reason (a key of its own would push the abilities answer past the 2,000 recall cap)."""
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    found = abilities.asked("what did i text her just now? confirm the exact words", y.memory, TAB)
+    assert [e["key"] for e in found] == ["text"]
+    text = found[0]["text"]
+    assert "the owner's own sent ones too, whose words Messages often keeps only in its rich copy" in text
+    assert "A blank text's words" in text
+    assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
+    assert not abilities.asked("she sent the photo again", y.memory, TAB)
+
+
 def test_ordinary_messages_pull_no_ability_into_the_room(tmp_path):
     y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
     assert {m: [e["key"] for e in abilities.asked(m, y.memory, TAB)] for m in ORDINARY} == {m: [] for m in ORDINARY}

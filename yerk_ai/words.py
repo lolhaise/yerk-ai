@@ -503,6 +503,8 @@ TEXTS_NO_SETUP = "no Mac is set up to read the owner's texts from ([imessage] ho
 TEXTS_NONE = "no copy of the texts yet, and the Mac did not answer to make one (it is asleep or away)"
 TEXTS_LIVE = "read from the Mac just now"
 TEXTS_FROM_COPY = "from the last copy, made {when}; the Mac is asleep or away, so a newer text is out of reach until it wakes"
+TEXTS_BLANK = {"file": "a picture or a file with no words", "unread": "its words are stored in a form that could not be read",
+               "none": "no words are stored for it, as with an unsent text, a group change or an app's message"}
 # a delete the owner orders outside a room's work folder (deletes.py): why one cannot go, said before the owner is asked
 DELETE_OWNER_ROOMS = "a delete outside the work folder is the owner's to order, so only the owner's own rooms make one"
 DELETE_NO_PATHS, DELETE_NOT_WHOLE = "there is no path to delete", "\"{given}\" is not a whole path from /"

@@ -11,19 +11,25 @@ copy and says that copy's time, so a stale answer is never passed off as a fresh
 
 The read is a read-only sqlite of ~/Library/Messages/chat.db over plain ssh (no Messages grant needed, unlike the send in
 texts.py, only a Mac whose ssh login can read that file): the newest rows of `message` joined to `handle`, fields split on
-US (0x1f) and rows on RS (0x1e), so a text carrying newlines or tabs survives the split. The command is bash on the Mac's
-stdin, as the mac tool runs one, so nothing of it rides the ssh command line. ssh fails fast when the Mac is asleep (exit
-255 or a timeout) and nothing here is retried, so the check costs a shut Mac one refused connection and no more.
+US (0x1f) and rows on RS (0x1e), so a text carrying newlines or tabs survives the split. A row whose text column is
+blank, as Messages leaves many the owner sent, brings its attributedBody as hex, the rich copy that holds its words, read
+here as the import reads it (sources.body_of); one with no words there either says why in `blank`, so a room never takes
+a blank for what was said. The command is bash on the Mac's stdin, as the mac tool runs one, so nothing of it rides the
+ssh command line. ssh fails fast when the Mac is asleep (exit 255 or a timeout) and nothing here is retried, so the check
+costs a shut Mac one refused connection and no more.
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import subprocess
 import time
 from pathlib import Path
 from typing import Any, Callable
 
+from . import words
 from .config import write_private
+from .sources import body_of
 
 FOLDER = "texts"                 # <state>/texts/, 0700 like the rest of the state folder
 FILE = "inbox.json"              # the copy: {"at": epoch copied, "host", "messages": newest first}
@@ -36,9 +42,11 @@ READ_TIMEOUT = 25.0              # the whole read's wall clock, the connect incl
 POLL = 120.0                     # seconds between the daemon's light checks (CONF poll_seconds)
 APPLE = 978307200                # seconds from the Unix epoch to Apple's (2001-01-01)
 US, RS = "\x1f", "\x1e"          # the field and row separators sqlite writes between values and rows
+FILE_MARK = "\ufffc"             # where a picture or a file sits in a message's words, the whole of one with no words
 
 # newest LIMIT messages: when (seconds, both the nanosecond and the older second form handled), from the owner or not, who
-# (the other party's number or address, "" for the owner's own line), the text. attributedBody-only rows read as "".
+# (the other party's number or address, "" for the owner's own line), the text, and the attributedBody as hex when the
+# text is blank (its words are there), else "".
 Run = Callable[[list[str], bytes, float], "tuple[int | None, bytes, bool]"]
 
 
@@ -46,7 +54,8 @@ def script(limit: int = LIMIT) -> str:
     """The bash line run on the Mac's stdin: a read-only sqlite of the newest `limit` messages, fields on US and rows on
     RS. bash, so $'\\x1f', $'\\x1e' and $HOME all hold whatever the login shell is."""
     sql = ("SELECT CASE WHEN m.date > 1000000000000 THEN m.date/1000000000 ELSE m.date END + {apple}, "
-           "m.is_from_me, COALESCE(h.id, ''), COALESCE(m.text, '') "
+           "m.is_from_me, COALESCE(h.id, ''), COALESCE(m.text, ''), "
+           "CASE WHEN COALESCE(m.text, '') = '' THEN COALESCE(hex(m.attributedBody), '') ELSE '' END "
            "FROM message m LEFT JOIN handle h ON m.handle_id = h.ROWID "
            "ORDER BY m.date DESC LIMIT {limit};").format(apple=APPLE, limit=int(limit))
     return f"sqlite3 -readonly -separator $'\\x1f' -newline $'\\x1e' \"$HOME/{DB}\" \"{sql}\"\n"
@@ -68,22 +77,40 @@ def _run(cmd: list[str], stdin: bytes, timeout: float) -> tuple[int | None, byte
         return 255, b"", False
 
 
+def said(text: str, blob: str) -> tuple[str, str]:
+    """A message's words and, when it has none, why (words.TEXTS_BLANK): its text column; else, that column blank, the words
+    its attributedBody holds (`blob`, as hex); else "" and the reason: a picture or a file alone, a rich copy that could not
+    be read, or no words stored at all."""
+    body: str | None = None
+    if text.replace(FILE_MARK, "").strip():
+        return text, ""
+    if blob := blob.strip():
+        with contextlib.suppress(ValueError):
+            body = body_of(bytes.fromhex(blob))
+        if body is not None and body.replace(FILE_MARK, "").strip():
+            return body, ""
+    why = "file" if FILE_MARK in text + (body or "") else "unread" if blob and body is None else "none"
+    return "", words.TEXTS_BLANK[why]
+
+
 def parse(out: str) -> list[dict[str, Any]]:
-    """The sqlite output as a list of messages, newest first: each row split on US into when, from_me, who and text."""
+    """The sqlite output as a list of messages, newest first: each row split on US into when, from_me, who, text and the
+    attributedBody's hex, the last (hex has no US), so a text carrying one keeps it; the words by said, and `blank` with
+    why on a message that has none."""
     msgs: list[dict[str, Any]] = []
     for row in out.split(RS):
         if not row.strip("\n"):
             continue
         cols = row.split(US)
-        if len(cols) < 4:
+        if len(cols) < 5:
             continue
-        when, from_me, who, text = cols[0], cols[1], cols[2], US.join(cols[3:])
+        when, from_me, who, (text, blank) = cols[0], cols[1], cols[2], said(US.join(cols[3:-1]), cols[-1])
         try:
             at = float(when)
         except ValueError:
             continue
         msgs.append({"at": at, "from_me": from_me.strip() == "1", "who": who.strip(),
-                     "text": text.strip("\n")[:TEXT_MAX]})
+                     "text": text.strip("\n")[:TEXT_MAX], **({"blank": blank} if blank else {})})
     return msgs
 
 

@@ -260,10 +260,11 @@ out: say so, and never send it again unasked.
 The owner's own recent texts (iMessage and SMS), newest first, read from the owner's Mac: use it to answer
 whether someone has texted, or what a text said. This only reads; it never sends one (that is `text`). `limit` how
 many to return (12 unless you ask, up to 40). Each message has `who` (the other person's number or address, empty
-for one the owner sent), `from_me`, `at` (epoch seconds) and `text`. The owner's Mac sleeps when its lid is shut on
-battery, so the texts are kept as a copy on the box, refreshed whenever the Mac is awake: `as_of` says where this
-answer comes from. With `awake` true it was just read from the Mac; with it false the Mac is asleep or away and the
-answer is the last copy, whose age `as_of` gives, so say that time and do not pass a stale answer off as fresh.
+for one the owner sent), `from_me`, `at` (epoch seconds) and `text`, its words, or `blank` saying why it has none:
+say that, never that it was empty. The owner's Mac sleeps when its lid is shut on battery, so the texts are kept as
+a copy on the box, refreshed whenever the Mac is awake: `as_of` says where this answer comes from. With `awake` true
+it was just read from the Mac; with it false the Mac is asleep or away and the answer is the last copy, whose age
+`as_of` gives, so say that time and do not pass a stale answer off as fresh.
 ```
 
 - `limit`: integer, default 0
