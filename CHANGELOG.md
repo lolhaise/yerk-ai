@@ -6,7 +6,7 @@ A line that changes a file the install keeps (rooms.toml, yerkd.toml, budgets.to
 newer than the code is refused with one line, never changed); the index chunks every file again when its chunker's
 version changes.
 
-## 2026-11-09
+## 2026-11-10
 
 ### persona-voice-news-2026-11-09 (#?)
 
@@ -42,6 +42,31 @@ version changes.
 
 **Upgrading:** budgets.toml raises `[code] lines` to 27,990 with its dated note. Nothing else to change: a running
 session's first message after the deploy reads its baseline off its kept start.
+
+### hot-reads-2026-11-10 (#?)
+
+- The daemon no longer freezes, and is no longer killed by systemd's watchdog, when one room posts a reply while another
+  room's turn is busy. To post a reply it read the room's whole delivery history on the event loop. sqlite hands
+  Python's interpreter back after every row, so with another room's turn working at that moment a row cost about 8 ms
+  instead of microseconds: on the owner's ledger 236 rows took 2.0 s, and the busiest room has 4,667, about 40 s, past the
+  watchdog's 30. That killed the daemon on 2026-11-09 with a turn running, which was cut and redelivered (the
+  loop's stack was in that read); an earlier kill the same day fits it (a send in another room sat 29 s between
+  planned and posted, the one before it 11 s).
+- Now one reply's parts are read by key range, which sqlite answers from the key's index: the same rows in the same
+  order, whatever the room's age. A turn's landed parts and the replies the end-of-turn check reads are read the same
+  way (the engine audit of 2026-11-09, defect 1: that check took 1,017 ms under the ledger's one lock in a session 2,564
+  turns old and 9.5 ms after, its text identical in 120 of 120 sessions read on the live ledger).
+- `yerk deploy` no longer stops on its fast tests in the first three minutes after midnight. tests/test_style.py's
+  worker card test used a row begun 185 seconds before; right after midnight that is the evening before, which the card
+  says with its day ("Mon 23:57"), and the test's pattern took a bare time only. A deploy that tested from 23:57 to
+  00:00 on 2026-11-10 stopped there with "assert None", and its need was held.
+- The tests: 4 new. tests/test_ledger_hot_reads.py counts sqlite's own steps, never seconds: the end-of-turn read costs
+  the session's replies, and a reply's parts and a turn's landed parts cost the same in a room of 100 replies and in
+  one of 4,000. tests/test_style.py states the card a row begun before midnight gets, and its two clock tests no longer
+  depend on the hour they run.
+- budgets.toml: `[code] lines` 27,961 to 27,977 with its dated note.
+
+## 2026-11-09
 
 ### need-2026-11-09-80 (#?)
 

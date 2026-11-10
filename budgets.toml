@@ -1340,10 +1340,18 @@ secs = 60
 # turn messages to send_text), words.py 1 (the room told, when the chat closes, that its other lines stay on the chat),
 # mcp_server.py 0 (the page tool's clause, 18 characters, inside yerk_tools' 25,900: about 25,830 as sent, no raise).
 # 27,961: main 37d8a70's 27,950 plus 11.
-# 0000-00-00: more-line-for-0000-00-00 the check while 00: a second entry, waits in the queue for its turn and the
+# 2026-11-10: hot-reads-2026-11-10 raised it by 16: to post one reply the daemon read the room's whole delivery history on
+# the event loop, and sqlite hands Python's interpreter back after every row, so with another room's turn busy a row cost
+# about 8 ms: 236 rows took 2.0 s on the owner's ledger and a busy room's 4,667 about 40 s, past systemd's 30 s
+# watchdog, which killed the daemon with the loop's stack in that read (an earlier kill that day
+# fits it: a send in the work room sat 29 s between planned and posted). One reply's parts, a turn's landed parts and
+# the end-of-turn check's replies are read by key range (the engine audit's defect 1); not folded to fit: ledger.py 17
+# (deliveries_of; said and landed by range, with why), channels/discord.py -1 (_deliver and one key's redelivery call it).
+# 27,977: main 5529087's 27,961 plus 16.
+# 2026-11-10: persona-voice-news-2026-11-09 raised it by 29: a line added, changed or removed in a room's persona or voice
 # file reaches its running session once, in its next message's rules block, since a room that keeps its session for days
 # went on with the old persona (Claude Fable 5.2's page: "To change instructions partway through a conversation, put them
 # in the newest turn."); not folded to fit: context.py 29 (the two files in news' look, the lines a look from before they
 # were kept reads off the session's kept start, began_with, and the lines that say something, lines_of, which news and
-# it share). 27,990: main 5529087's 27,961 plus 29.
-lines = 27990
+# it share). 28,006: main 10e9cfb's 27,977 plus 29.
+lines = 28006
