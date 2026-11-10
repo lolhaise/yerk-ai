@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 127548`
+- `total = 128671`
 
 ## [session_start.claude_code]
 
@@ -96,11 +96,15 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-09, need-2026-11-09-77: the `worker` tool's clause that the room hears nothing when a worker's last message is exactly NO_REPLY (a timer script started each run with `yerk worker start`, and every quiet run still asked its room for a relay turn that had to be answered with a posted line; filed 2026-11-09) takes the tool from 1,398 to 1,450 as this tree builds it. With main 47d8d58 folded in, `remember` is 3,016 there (2,304 before memory-docs-shape and fable-5-2 gave it retire and the rule shape in the docs' words, with no line moved: main builds all 23 at 24,786, about 25,499 as sent, 699 over 24,800), so all 23 build to 24,838, about 25,551 as sent (713 over the build, as on zoom's tree); so 25,600, no part could pay, the total rose by the 800 (100 this clause, 700 main's `remember`) over main's 126,748 (to 127,548).
 
+2026-11-09, need-2026-11-09-76: the hands plug-in's browser gains `keep` (a key a tab shows, saved by the plug-in itself in the private folder's secrets/ as a new NAME.key, its value never in a result, since a room asked to keep a key a signed-in settings page showed in a locked file found the page's Copy button copied onto the browser machine's clipboard and reading the page put the key in its session log; filed 2026-11-09): its entry 4,073 to 4,497 as the plug-in's branch need-2026-11-09-76 (9bb3cc0) builds it, 424 more; on its main 378b785 the entry was already 481 over need 75's 3,592, need 74's type merged onto need 75's (aa4d3fc) with no line raised, the five sending 9,187 on the 8,708 line; so 8,708 plus the 905, 9,613 (all five 9,456 built, 9,611 sent at 31 over each as measured, need 75's 2 over kept), no part could pay, the total rose by the 905 (to 128,453 on main's 127,548).
+
+2026-11-09, need-2026-11-09-76's fix (the cold read: the room still read the key, since keep needed a tab, only open gave one, and open returns the page's text): keep takes the page's url, the plug-in opening the page itself with no page text returned, and the entry says so (keep by url, never open or read the page first): the browser's entry grows 218 as the plug-in's branch need-2026-11-09-76 (305c25c, its head d570241 the same) builds it, description words only, so 218 as sent too (4,527 to 4,745); 9,613 plus the 218, 9,831, no part could pay, the total rose by the 218 (to 128,671 on main's 127,548).
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
 - `yerk_tools = 25600`
 - `deferred_tool_names = 3429`
-- `mcp__hands__ = 8708`
+- `mcp__hands__ = 9831`
 - `mcp__web-ladder__web_image = 913`
 - `skills = 0`
 

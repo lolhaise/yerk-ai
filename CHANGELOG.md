@@ -8,6 +8,42 @@ version changes.
 
 ## 2026-11-09
 
+### need-2026-11-09-76 (#?)
+
+- A room saves a key a web page shows straight into your private folder's `secrets/`, and never reads it. Asked to keep
+  a new API key from a signed-in settings page in a locked file, a room had no clean way: the page's Copy button,
+  clicked through the browser, copied onto the clipboard of the computer that browser runs on, never the box's; a room
+  cannot write the secrets folder; so the only way left was to read the page, which put the key in the room's session
+  log. The hands plug-in's browser gains `keep`: the room names its tab, the new file's name and a label, and the
+  plug-in reads the value in the page and writes it itself as `secrets/NAME.key` (the key on its first line, 0600, the
+  folder 0700), so the value never reaches a reply, an error, the plug-in's ledger or the room. It finds the value three
+  ways: a field by its label (the page, its web components, a frame of the page's own site); else the page's own Copy
+  button, clicked with the copy caught inside the page (a button whose words say copy and nothing outward, the page's
+  clipboard put back after); else the one-word value shown beside the words. The reply names the file and the
+  value's length only.
+- The guards: only on your word (`confirmed`), since it writes outside the room; never over a file already there, a
+  link included, so a steered call cannot replace a key Yerk runs on; nothing kept from a payment page; and a value
+  shown masked, holding spaces, under 8 or over 4,096 characters, several values with none picked, or nothing found is
+  refused with its reason. A job or a script you run reads the file; no room does.
+- The plug-in's change is on its branch `need-2026-11-09-76`; `yerk explain page-keys` has the ability. The "what can
+  you do" answer fits its 2,000-character cap with the new name by cutting reverse-image-search's provider words to
+  "Google Cloud Vision".
+- The cold read found the room still read the key in the filed case: `keep` needed a tab, only `open` gave one, and
+  `open` always returns the page's text, so the key was in the room's log before `keep` ran; a later read of the page
+  was never scrubbed, and keep's own refusals said to read the tab. Now `keep` takes the page's `url`: the plug-in opens
+  the page itself and returns the tab id with no page text (a tab still works for a key shown only after a click).
+  Every `secrets/*.key` file's first line is scrubbed from every reply after, so a later read of that page shows
+  `<key>`. No refusal or repeat hint sends the room to read the page: "nothing to keep" lists the page's labels and
+  Copy button words, never a value. The words-beside way takes only a value shaped like a key (a letter and a digit)
+  and skips buttons, links and other controls, since it saved a Regenerate button's word or a date as the key; a Copy
+  button whose words also say regenerate, reset, rotate, roll or revoke is never clicked; a failed page script is said
+  in fixed words, never its output, and so is a failed read of the page keep opened. The plug-in's fix is on its
+  branch `need-2026-11-09-76`, commits 305c25c and d570241.
+
+**Upgrading:** budgets.toml raises `mcp__hands__` to 9,831 and the session start's `total` to 128,671 (on main's 127,548), each with its
+dated note: 424 for `keep`, 481 the plug-in's main already sends since need 74's `type` was merged onto need 75's
+with no line raised, and 218 for keep by the page's url. The plug-in's branch merges onto its main, and a room picks up `keep` at its next session.
+
 ### need-2026-11-09-78 (#?)
 
 - A text or an email you approved goes on that one word, whatever folder the room's shell is in when it calls again.

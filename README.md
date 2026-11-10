@@ -58,7 +58,7 @@ Each active room is one `claude -p` process, stream-json in and out, on a sessio
 
 ## Add-ons
 
-What a room does beyond Claude Code's tools comes as add-ons: MCP servers in rooms.toml, a `[rooms.NAME.mcp.SERVER]` table each or once for all owner rooms under `[defaults]`, their tools in the room's `allow`; a need's fix in one's own repository is built and landed there (`plugin-builds`). One ships here, the web plug-in in `plugins/web`: pages (Bookings as a guest, a Commons written question's answer), search and research (`research-ids`), outside `[code]` ([docs/GUIDE.md](docs/GUIDE.md), Web reach). A browser kept outside is one (`yerk explain browser`): shoots a tab (`tab-shots`), opens mail links by number (`mail-links`), on your word books free on checkout pages (`free-bookings`), puts a file on a form (`form-files`), types by keys.
+What a room does beyond Claude Code's tools comes as add-ons: MCP servers in rooms.toml, a `[rooms.NAME.mcp.SERVER]` table each or once for all owner rooms under `[defaults]`, their tools in the room's `allow`; a need's fix in one's own repository is built and landed there (`plugin-builds`). One ships here, the web plug-in in `plugins/web`: pages (Bookings as a guest, a Commons answer), search and research (`research-ids`), outside `[code]` ([docs/GUIDE.md](docs/GUIDE.md), Web reach). A browser kept outside is one (`browser`): shoots a tab (`tab-shots`), opens mail links by number (`mail-links`), on your word books free on checkout pages (`free-bookings`), puts a file on a form (`form-files`), types by keys, keeps a key unread (`page-keys`).
 
 ## The docs
 
