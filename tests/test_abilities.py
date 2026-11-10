@@ -341,6 +341,24 @@ def test_a_room_asked_for_no_chat_box_on_its_page_hears_the_page_tool_s_switch(t
     assert "`page` tool's `chat` closes it (closed) or opens it (open) on every open tab at once" in how
 
 
+def test_a_room_asked_why_its_discord_replies_land_in_the_code_hears_the_page_talk_way(tmp_path):
+    """need-2026-11-09-80: with a live page's chat closed, every line a room said from any thread went into the program, so a
+    Discord answer and a job's nightly post landed in the owner's code. Asked that way, a room gets the page-talk entry
+    whole, only its answers to the page in the program and every other line on the chat (a key of its own would push the
+    abilities answer, 1,993 at main, past the 2,000 recall cap)."""
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    found = abilities.asked("why are your discord replies in my code on the page?", y.memory, TAB)
+    assert [e["key"] for e in found] == ["page-talk"]
+    text = found[0]["text"]
+    assert text.startswith(f"page-talk, a Yerk AI ability ({words.ability('on')[1]}): A room's live page holds code, talk")
+    assert ("its replies to them coming back as #> lines the page itself writes under the owner's last # line, with the "
+            "owner's caret and typing kept, while what it says anywhere else (a Discord answer, a job's post, a scheduled "
+            "note's) stays on the chat") in text
+    assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
+    assert [e["key"] for e in abilities.asked("the patch notes in my code again", y.memory, TAB)] == ["page-talk"]
+    assert not abilities.asked("the patch notes went out on discord", y.memory, TAB)
+
+
 def test_ordinary_messages_pull_no_ability_into_the_room(tmp_path):
     y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
     assert {m: [e["key"] for e in abilities.asked(m, y.memory, TAB)] for m in ORDINARY} == {m: [] for m in ORDINARY}

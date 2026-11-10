@@ -387,7 +387,7 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         [] clears; `hint` a card under the program; `bar` labels and values, a scoreboard on top ("Gold II" a rank badge,
         "12/40" or a number under LP a bar, a number big); `timer` seconds on its clock, 0 stops;
         `stall` seconds of no typing before the page tells you, 0 off. Your replies show there too, and with its chat closed
-        (by the owner, or `chat` "closed" on their ask, "open" back) go into the program as #> lines under the owner's last # line. What the owner types,
+        (by the owner, or `chat` "closed" on their ask, "open" back) those to the page go into the program as #> lines under the owner's last # line. What the owner types,
         draws and says there comes to you as messages, mid-turn too; each keystroke is in page/events.jsonl. `open` true
         (the owner asked for the page) turns it on, with no restart, and opens it on the owner's screen, `where` "mac" on
         their Mac (default "pc"); `off` true: off."""

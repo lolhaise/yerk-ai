@@ -37,6 +37,33 @@ tab open from before the deploy shows the room's switch once it is reloaded.
 
 ## 2026-11-09
 
+### need-2026-11-09-80 (#?)
+
+- With a live page's chat closed, only the room's answers to what was said on the page go into the program. Before,
+  every line the room said, from any thread, was written into the program as #> lines under your last # line: its
+  answer to a Discord message, to a scheduled note or to a worker's end, and a job's nightly post, all landed in your
+  code.
+- Now a line goes in when a message it answers is one the page sent the room (its own page message, ledgered on the
+  page's channel): the reply to a turn on it, a turn that folded it in with another message too; the notice of such a
+  turn that failed; and the room's own `send` from that turn, which now hands the page the messages its turn answers.
+  Every other line stays on the page's chat alone, kept for when you open it, and reaches the room's channel as before.
+  The room is told so when you close the chat, and the `page` tool's description says it.
+- The page-talk ability (`yerk explain page-talk`) carries it, found by a room asked why its Discord replies land in
+  the code (a key of its own would push the "what can you do" answer past its 2,000-character cap). docs/GUIDE.md's
+  live page section says how the talk in the program works, and the README's live page clause says only replies to it
+  go in its code (three lines of its docs list say the same in fewer words, to stay under 12,000 bytes).
+- The tests: 4 new, in tests/test_page.py (with the chat closed, a Discord message's, a scheduled note's and a worker's
+  end's answer, a job's post, a notice that answers nothing and an answer to another room's page stay on the chat,
+  while the reply, the notice, the room's own send and a fold's reply on the page's message go in under the owner's #
+  line; a room's own turn on a Discord message leaves the program as it was and its turn on the page writes its reply
+  in; the send tool from a turn on the page writes in, from a turn on Discord or no turn it does not) and
+  tests/test_abilities.py (the page-talk entry answers the ask whole under the recall cap). The talk tests that said a
+  line with no message now name the page message it answers.
+
+**Upgrading:** budgets.toml raises `[code] lines` to 27,961 with its dated note; the `page` tool's 18 more characters
+fit `yerk_tools` as it is. Nothing to set: yerkd's next start takes it, and a room reads the tool's clause at its next
+session.
+
 ### need-2026-11-09-79 (#?)
 
 - A scheduled agent job sets its own worker's thinking level and model. Before, every job's worker took its room's live

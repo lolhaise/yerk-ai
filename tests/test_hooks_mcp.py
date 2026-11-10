@@ -123,8 +123,8 @@ class KeyedChannel(ConsoleChannel):
         super().__init__()
         self.keys = []
 
-    async def send_text(self, room, text, key=None):
-        self.keys.append((key, ""))
+    async def send_text(self, room, text, key=None, inbound=""):
+        self.keys.append((key, inbound))
         return await super().send_text(room, text, key)
 
     async def send_file(self, room, path, caption="", key=None, inbound=""):
@@ -159,7 +159,7 @@ def test_a_send_discord_never_took_is_the_tools_error(tmp_path):
     ch = KeyedChannel()
     y.add_room("example-room", ch)
 
-    async def lost(room, text, key=None):
+    async def lost(room, text, key=None, inbound=""):
         raise DeliveryFailed(f"{key}:0: ClientOSError: [Errno 1] ssl/tls alert bad record mac")
     ch.send_text = lost
     said = asyncio.run(y.tool_send("example-room", "PING", "", "example-room"))

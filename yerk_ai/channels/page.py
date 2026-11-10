@@ -21,12 +21,13 @@
   restart: its replies, its notices and its sends to itself (Mirror), and what the `page` tool draws: a new program or tests, marks on lines (a highlight, an arrow, each with a note), a one-line hint,
   the bar (labels and values, a countdown) and the stall wait. A tab that opens or reconnects gets the whole state first.
 - The talk can live in the program instead (talk): with the page's chat closed to nothing (by its button, or by the room's
-  `page` tool, `chat`, on every open tab at once), the room's lines also go into the
-  program as #> comment lines under the owner's last # line (into), which yerkd writes in its copy and every open tab writes
-  in its own text at the same line, so the owner's caret and typing since stay, no more than TEXT_MAX holds, the room's
-  marks under them moved down; each reply numbered, so a tab whose feed was down writes the ones it missed when it is back,
-  and a post built before one never takes it out (caught_up); a # line ended with Enter goes at once, and a program whose
-  tests are blank runs alone, its prints shown large and said to the room.
+  `page` tool, `chat`, on every open tab at once), the room's lines that answer what
+  was said on the page (answers_page) also go into the program as #> comment lines under the owner's last # line (into), and
+  a line from any other thread (a Discord message's answer, a job's post, a scheduled note's) stays on the chat alone; yerkd
+  writes them in its copy and every open tab in its own text at the same line, so the owner's caret and typing since stay,
+  no more than TEXT_MAX holds, the room's marks under them moved down; each reply numbered, so a tab whose feed was down
+  writes the ones it missed when it is back, and a post built before one never takes it out (caught_up); a # line ended
+  with Enter goes at once, and a program whose tests are blank runs alone, its prints shown large and said to the room.
 - On the owner's ask the room's `page` tool turns its page on with no restart (Yerkd.page_switch) and yerkd opens it on
   the owner's screen with the box's own opener (opener): the address it opens holds a one-time ticket, never the key,
   since an opener's command line is readable by every local user (/proc); the page trades the ticket once, within
@@ -67,7 +68,7 @@ import textwrap
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, AsyncIterator, Callable
+from typing import Any, AsyncIterator, Callable, Iterable
 from urllib.parse import urlencode, urlsplit
 
 from .. import words
@@ -796,21 +797,27 @@ class Page:
         notes = ([] if s.tabs else [words.PAGE_NO_TAB]) + ([words.PAGE_UNPADDED] if padded else [])
         return {"ok": True, "tabs": len(s.tabs), **({"note": "; ".join(notes)} if notes else {})}
 
-    def said(self, room: str, text: str, kind: str = "reply") -> None:
+    def said(self, room: str, text: str, kind: str = "reply", inbound: Iterable[str] = ()) -> None:
         """A line the room said, from any thread, its first TEXT_MAX characters as the say box's: kept for a tab that opens
-        later and shown on every open one; with the page's chat closed, written into the program too (_talk)."""
+        later and shown on every open one; with the page's chat closed, written into the program too (_talk) when it answers
+        what was said on the page (`inbound`, the messages it answers: answers_page), else on the chat alone."""
         if (s := self.sheets.get(room)) is None or not text.strip() or text.strip() == words.NO_REPLY:
             return
         line = {"text": text[:TEXT_MAX], "kind": kind, "t": round(time.time(), 3)}
-        for step in (self._said, self._talk):
+        for step in (self._said, self._talk) if self.answers_page(room, inbound) else (self._said,):
             if self.loop is not None and self.loop.is_running():
                 self.loop.call_soon_threadsafe(step, s, line)
             else:
                 step(s, line)
 
+    def answers_page(self, room: str, inbound: Iterable[str]) -> bool:
+        """A line of the room's answers what was said on its page: a message it answers is one the page sent it (flush), ledgered
+        on the page's channel for this room; one that answers none (a job's post) or only others (Discord, a note) does not."""
+        return any((r := self.ledger.inbound_get(m)) is not None and r["channel"] == CHANNEL and r["room"] == room for m in inbound if m)
+
     def _talk(self, s: Sheet, line: dict[str, Any]) -> None:
-        """A line the room said, as #> lines in the program under the owner's last # line (into) while the page's chat is
-        closed: in yerkd's copy and the room's last heard one alike, so the room is never told it typed them, and to every
+        """A line the room said in answer to the page (said), as #> lines in the program under the owner's last # line (into)
+        while the page's chat is closed: in yerkd's copy and the room's last heard one alike, so the room is never told it typed them, and to every
         open tab as that line and the words, which it writes in its own text there, the owner's caret and typing kept. No
         more than the program holds under TEXT_MAX, the rest named as on the chat and the room told once in its next
         message (past it, the next keystroke posted cut the owner's code); the room's marks under them move down with
@@ -884,7 +891,8 @@ class Page:
 
 class Mirror:
     """A room's channel with its page beside it: every call goes to the channel as before, and the room's replies, notices and
-    sends to itself also render on the page."""
+    sends to itself also render on the page, each with the messages it answers (`inbound`; a send's, its turn's, comma-joined
+    as send_file takes them), so the page writes only its answers to what was said there into the program (Page.said)."""
 
     def __init__(self, inner: Any, page: Page):
         self.inner, self.page = inner, page
@@ -894,17 +902,17 @@ class Mirror:
 
     def reply(self, room: str, text: str, inbound: list[str], card: str | None = None, key: str | None = None) -> list[str]:
         ids: list[str] = self.inner.reply(room, text, inbound, card, key)
-        self.page.said(room, text)
+        self.page.said(room, text, inbound=inbound)
         return ids
 
     def notice(self, room: str, text: str, inbound: list[str], card: str | None = None, key: str | None = None) -> list[str]:
         ids: list[str] = self.inner.notice(room, text, inbound, card, key)
-        self.page.said(room, text, "notice")
+        self.page.said(room, text, "notice", inbound)
         return ids
 
-    async def send_text(self, room: str, text: str, key: str | None = None) -> list[str]:
-        ids: list[str] = await self.inner.send_text(room, text, key)
-        self.page.said(room, text)
+    async def send_text(self, room: str, text: str, key: str | None = None, inbound: str = "") -> list[str]:
+        ids: list[str] = await self.inner.send_text(room, text, key, inbound=inbound)
+        self.page.said(room, text, inbound=inbound.split(","))
         return ids
 
 

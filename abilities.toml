@@ -1708,15 +1708,18 @@ asked_as = ["page on my phone", "page from my phone", "page from my mac", "page 
 # need-2026-11-04-51: the owner asked to talk with a room inside the program on the live page, no chat column at all; the
 # room's replies rendered only in the chat pane, which could not close (its split clamped 15 to 80), and the room rewrote
 # the whole program with #> lines, which threw the owner's caret to the end.
+# need-2026-11-09-80: with the chat closed, every line a room said from any thread went into the program as #> lines, not
+# only its answers to what was said on the page: a Discord answer, a scheduled note's and a job's nightly post landed in
+# the owner's code under the last # line.
 # need-2026-11-09-81: the owner, on the live page, asked a room a second time for no chat box; the page tool drew code,
 # tests, marks, a hint, the bar, the timer and the stall but had no switch for the chat, which only the close button in
 # the owner's browser closed, and the page's own state of it is yerkd's.
 [abilities.page-talk]
 state = "built"
-what = "A room's live page holds code, talk, output and ink on one surface, for every room: the chat closes to nothing (its button, or the room's `page` tool on the owner's ask, which opens it again too) and the talk lives in the program, the owner's # lines going to the room and its replies coming back as #> lines the page itself writes under the owner's last # line, with the owner's caret and typing kept; a # line ended with Enter goes at once, and what a run prints shows large."
+what = "A room's live page holds code, talk, output and ink on one surface, for every room: the chat closes to nothing (its button, or the room's `page` tool on the owner's ask, which opens it again too) and the talk lives in the program, the owner's # lines going to the room and its replies to them coming back as #> lines the page itself writes under the owner's last # line, with the owner's caret and typing kept, while what it says anywhere else (a Discord answer, a job's post, a scheduled note's) stays on the chat; a # line ended with Enter goes at once, and what a run prints shows large."
 how = [
   "The chat closed: drag the grip to the edge or press `close` on the chat, or ask the room, whose `page` tool's `chat` closes it (closed) or opens it (open) on every open tab at once; the split is 0, kept in the browser and by yerkd across restarts, and every tab that opens shows it; the `chat` button on the bar brings it back. The room is told in its next message, both ways, when the owner switches it, never of its own switch, nor of one of the owner's it undid before it heard.",
-  "The room's lines: while the chat is closed, each reply, notice and send of the room's goes into the program as #> lines, wrapped at 88 columns with a link or a fenced line kept whole, 60 at most, under the # line the owner said last (else the owner's lowest # line, else after the last line), after the #> lines already there, at its indent; the chat keeps them too.",
+  "The room's lines: while the chat is closed, each reply, notice and send of the room's that answers a message from the page (its turn on one, a fold of one too) goes into the program as #> lines, wrapped at 88 columns with a link or a fenced line kept whole, 60 at most, under the # line the owner said last (else the owner's lowest # line, else after the last line), after the #> lines already there, at its indent; one that answers only another thread (a Discord message, a scheduled note, a worker's end, another room) or nothing (a job's post, a hook's notice) stays on the chat, which keeps them all.",
   "Caret kept: yerkd writes the lines in its copy and in the one the room last heard, so the room is never told it typed them, and hands every tab the line and the words; the tab writes them in its own text at that line, so what the owner typed since keeps its place and the caret moves down with its line. A program the room draws keeps the caret where it was.",
   "Marked as the room's: each #> line has a band in the room's colour, its name by the first line of a run, and is never read as the owner's talk.",
   "Enter sends: a # line the owner ends with Enter goes to the room at once, not after the 1.5 s pause; an Enter after one the room already heard waits for the pause, as typing does; #run, #hint, #next or #make <anything> are talk the room acts on with its page tool.",
@@ -1728,7 +1731,8 @@ price = "none"
 free_path = "this is the free path"
 asked_as = ["talk in the code", "talk to you in the code", "talk through comments", "talk via comments", "chat in the code",
             "dont want the chatbox", "close the chat", "no chat column", "replies in the code", "print output bigger",
-            "want a chat box", "chat on the right", "hide the chat", "bring the chat back"]
+            "discord replies in my code", "discord answers in my code", "only page replies in the code", "patch notes in my code",
+            "other replies in my code", "want a chat box", "chat on the right", "hide the chat", "bring the chat back"]
 
 [abilities.work-writes]
 state = "built"
