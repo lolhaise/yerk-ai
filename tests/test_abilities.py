@@ -336,9 +336,7 @@ def test_a_room_asked_why_its_discord_replies_land_in_the_code_hears_the_page_ta
     assert [e["key"] for e in found] == ["page-talk"]
     text = found[0]["text"]
     assert text.startswith(f"page-talk, a Yerk AI ability ({words.ability('on')[1]}): A room's live page holds code, talk")
-    assert ("its replies to them coming back as #> lines the page itself writes under the owner's last # line, with the "
-            "owner's caret and typing kept, while what it says anywhere else (a Discord answer, a job's post, a scheduled "
-            "note's) stays on the chat") in text
+    assert "what it says anywhere else (a Discord answer, a job's post) stays on the chat" in text
     assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
     assert [e["key"] for e in abilities.asked("the patch notes in my code again", y.memory, TAB)] == ["page-talk"]
     assert not abilities.asked("the patch notes went out on discord", y.memory, TAB)
@@ -364,3 +362,20 @@ def test_a_room_asking_what_can_you_do_gets_every_ability_by_state(tmp_path, cap
     assert cli.main(["explain", "abilities", "--private", str(EXAMPLE_PRIVATE), "--state", str(tmp_path)]) == 0
     said = capsys.readouterr().out
     assert said.startswith(f"{words.DONE} abilities: on") and all(n in said for n in TAB)
+
+
+def test_a_room_asked_to_talk_in_the_code_with_bubbles_hears_the_page_talk_way(tmp_path):
+    """need-2026-11-09-82: asked to talk to the owner inside the code, a room had its replies written into the program as plain
+    #> lines in a one-colour editor, nothing on screen while it thought. Asked that way, a room gets the page-talk entry
+    whole: bubbles under the line asked from, never in solution.py, the typing mark, Ctrl+Enter on a line and Python colours
+    (a key of its own would push the abilities answer, 1,993 at main, past the 2,000 recall cap)."""
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    found = abilities.asked("can you talk to me in the code with bubbles, not a chat box?", y.memory, TAB)
+    assert [e["key"] for e in found] == ["page-talk"]
+    text = found[0]["text"]
+    assert ("its answers coming back as bubbles between the rows under the line asked from, never written into solution.py, "
+            "with a typing mark there while it thinks; Ctrl+Enter or a line's number asks about that line") in text
+    assert "the editors colour Python, the owner's own # lines in a colour of their own" in text
+    assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
+    assert [e["key"] for e in abilities.asked("please upgrade the page", y.memory, TAB)] == ["page-talk"]
+    assert not abilities.asked("the bubbles in the bath", y.memory, TAB)

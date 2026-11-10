@@ -8,6 +8,31 @@ version changes.
 
 ## 2026-11-10
 
+### need-2026-11-09-82 (#?)
+
+- A room's live page talks in the code now, not in it: the room's answers to what is said on the page show as bubbles
+  between the editor's rows, under the line they were asked from, in the room's colour with its name and time, four lines
+  shown and a click to open the rest, an x that puts one away on every tab. They are never written into `solution.py`,
+  where the room's reply used to land as a dozen plain `#>` lines at the bottom of the owner's file. With the chat closed
+  every answer to the page is a bubble (under the `#` line said last when its message named no line); with it open, the
+  answer to a line asked about still is. yerkd keeps the newest 100 in `work/page/talk.json`, so a reload or a restart
+  shows them, and a bubble moves with its line as the owner types; a program the room draws keeps it on the line it kept.
+- A pulsing typing mark sits under that line from the send until the room's turn ends (its reply, a failed turn's notice
+  or a silent NO_REPLY end), and at the foot of the chat for a line said in the say box.
+- One key asks about a line: Ctrl+Enter on it, or a click on its number, sends "about line N of the program:" and its
+  words to the room at once; a click on a red test tile sends "about test NAME, which fails at line N:" and its message,
+  and the answer lands under the test's `def`.
+- Both editors colour Python (keywords, strings, numbers, names, comments, decorators), the owner's own `#` lines in a
+  colour of their own and the room's old `#>` lines in its colour, with the page's own code and no outside script. Enter
+  keeps the indent (four more after a colon), Tab indents and Shift+Tab out, Ctrl+Z and Ctrl+Shift+Z undo and redo.
+- A bar number that rises pops "+N" beside it.
+- The room is told the new way when the chat closes or opens; the `page` tool's clause says its answers are bubbles.
+- The tests: the `#>` tests (the tab's catch-up of replies it missed, the cap on replies in the program, marks moving
+  under them) are gone with the lines; new ones cover the bubble under the line asked from and never in the program, kept
+  across a restart and put away for good, the typing mark's life, the line and test asks, bubbles moving with edits and
+  draws, need 80's rule (only answers to the page), and node runs of the page's own editor, lexer, `+N` and its moves
+  checked against page.py's on 300 random edits.
+
 ### hot-reads-2026-11-10 (#?)
 
 - The daemon no longer freezes, and is no longer killed by systemd's watchdog, when one room posts a reply while another
