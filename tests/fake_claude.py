@@ -24,7 +24,7 @@ message and a success result echoing the text. Variations:
 - the line /compact: a compact_boundary as 2.1.304 streams it (post_tokens FAKE_CLAUDE_POST, else 20000), then a
   compaction result; each one appends a line to FAKE_CLAUDE_MARK.compacted. FAKE_CLAUDE_COMPACT_SLOW=S waits S seconds
   first; FAKE_CLAUDE_COMPACT_FAIL=1: Claude Code's failed-compaction status and an error result, no boundary
-- note says the Sample:Item: moved to the next step and the test Reads it; Back:As plain, text with,
+- a line containing CONTEXT:N (the last one in it): its assistant message's usage says the session holds N tokens; SUBAGENT:M adds, after it,
   the test reads (it_back_as_plain text) with one more Line
 - a line containing AUTO_COMPACT: before its answer, Claude Code's own compaction inside the turn as 2.1.316 streams it:
   status compacting, FAKE_CLAUDE_COMPACT_SLOW seconds, status null (compact_result success), a compact_boundary (trigger
@@ -196,7 +196,7 @@ def answer(text):
              "compact_metadata": {"trigger": "auto", "post_tokens": int(os.environ.get("FAKE_CLAUDE_POST") or 20000)}})
     reply = "\nNO_REPLY\n" if "READ_ALONG" in text else "echo: " + text
     out({"type": "stream_event", "event": {"type": "content_block_delta", "delta": {"type": "text_delta", "text": reply}}})
-    n = int(text.split("CONTEXT:")[1].split()[0]) if "CONTEXT:" in text else 0
+    n = int(text.split("CONTEXT:")[-1].split()[0]) if "CONTEXT:" in text else 0     # the last: a copy's tail ahead names earlier ones
     out({"type": "assistant", "message": {"content": [{"type": "text", "text": reply}],
                                           **({"usage": {"input_tokens": 2, "cache_read_input_tokens": n - 2}} if n else {})}})
     if "SUBAGENT:" in text:

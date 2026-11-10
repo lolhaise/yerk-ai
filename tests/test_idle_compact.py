@@ -17,8 +17,8 @@ from yerk_ai import words
 from yerk_ai.accounts import Account
 from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai.daemon import Yerkd
-from yerk_ai.engine import SessionTable
-from yerk_ai.room import Inbound
+from yerk_ai.engine import RoomProcess, SessionTable
+from yerk_ai.room import TAIL_HEAD, Inbound
 
 FAKE = Path(__file__).with_name("fake_claude.py")
 ROOM = "example-room"            # the example layer's room: the budget's 250,000 window, so 0.7 of it is 175,000, Claude
@@ -397,30 +397,185 @@ def test_a_turn_ending_in_the_copys_band_compacts_a_copy_off_to_the_side_and_the
     assert compactions(tmp_path) == 1 and len([a for a in argv if "--fork-session" in a]) == 1
 
 
-def test_a_message_during_the_copys_compaction_runs_at_once_on_the_live_session_the_copy_dropped_and_tried_again(y, tmp_path, monkeypatch, caplog):
-    """The wait itself: a message that comes in while the copy compacts is never queued behind it. It runs at once on the
-    live session, which is what the room would do with no compaction at all; the copy is stale (Claude Code's own
-    prefix_changed rule) and dropped, its transcript copy removed, and the turn's end copies the session again."""
+@pytest.fixture
+def gate(monkeypatch):
+    """The copy's /compact held until the test opens the gate: a copy's two minutes, at the test's own pace."""
+    opened = threading.Event()
+    real = RoomProcess.read_turn
+
+    def read_turn(self, *a, **k):
+        t = real(self, *a, **k)
+        if self.fork_of:                                      # the copy, before the room takes it
+            opened.wait(20)
+        return t
+    monkeypatch.setattr(RoomProcess, "read_turn", read_turn)
+    return opened
+
+
+def owners_window(y):
+    """A room with the long window: 1,000,000, so Claude Code's line is 967,000, the copy's band starts 100,000 under it
+    and the turn-end compaction's 50,000 under it (917,000)."""
     band(y)
-    monkeypatch.setenv("FAKE_CLAUDE_COMPACT_SLOW", "4")
+    y.room_confs[ROOM]["compact_window"] = 1000000
+
+
+def echoed(chan, i):
+    return chan.replies[i].removeprefix("echo: ")
+
+
+def test_nine_quick_turns_keep_one_copy_which_the_room_takes_at_a_turns_end_its_tail_given_once_and_nothing_waits(y, tmp_path, gate, caplog):
+    """Nine minutes of a busy room, replayed: nine turns ended in the copy's band (874,665 to 915,021 of
+    a 1,000,000 window), each message sent within a minute of the last answer, while a copy's compaction takes about two
+    minutes. Every copy was dropped and the tenth turn's end compacted the live session with the room held. Here exactly
+    one copy starts, goes on through the turns that overtake it, and becomes the room's session as the first turn that ends
+    after its compaction ends; the copy's first message carries those turns' exchanges once; no message waits and the
+    live session is never compacted."""
+    owners_window(y)
+    room = y.add_room(ROOM, chan := Cards())
+    sizes = [874665, 880423, 882850, 886954, 896346, 903385, 906439, 910801, 915021]
+    times = []
+    with caplog.at_level(logging.INFO, logger="yerk.room"):
+        for i, n in enumerate(sizes):
+            if i == 4:                                        # the fifth turn runs: the copy's compaction ends inside it
+                say(y, room, str(i), f"CONTEXT:{n} SLOW turn {i}")
+                until(lambda: room.reading)
+                gate.set()
+                until(lambda: room.ready is not None)         # compacted while the turn runs: held for its end
+                live = room.rp.session_id
+            else:
+                taken = gate.is_set() and room.fork is None and room.ready is None
+                say(y, room, str(i), f"CONTEXT:{24000 + i if taken else n} turn {i}")
+            sent = time.time()
+            wait_idle(room)
+            times.append(time.time() - sent)
+            if i == 0:
+                live, copy = room.rp.session_id, room.fork.session_id
+    argv = (tmp_path / "argv.jsonl").read_text().splitlines()
+    assert len([a for a in argv if "--fork-session" in a]) == 1 and compactions(tmp_path) == 1     # one copy, no held compaction
+    assert room.rp.session_id == copy == bound(tmp_path) != live and room.fork is None and room.ready is None
+    assert not any("waited" in m or "compact (end-of-turn)" in m for m in caplog.messages)
+    assert not any(words.COMPACTING in text for _, text in chan.cards) and max(times) < 5
+    took = next(m for m in caplog.messages if "compacted on a copy in" in m and "now the room's" in m)
+    assert "4 turn(s) overtook it" in took and copy in took
+    first = echoed(chan, 5)                                   # the copy's first message: the tail, then turn 5's own text
+    assert first.count(TAIL_HEAD) == 1 and first.endswith("turn 5")
+    for i in (1, 2, 3, 4):                                    # the turns between the copy and its take, each once, in order
+        assert first.count(f"owner: CONTEXT:{sizes[i]}") == 1 and first.count(f"the room: echo: CONTEXT:{sizes[i]}") == 1
+    assert [first.index(f"turn {i}\n") for i in (1, 2, 3)] == sorted(first.index(f"turn {i}\n") for i in (1, 2, 3))
+    assert f"CONTEXT:{sizes[0]}" not in first                 # made before the copy: in its summary, never in the tail
+    assert all(TAIL_HEAD not in echoed(chan, i) for i in range(6, 9)) and not (tmp_path / "rooms" / ROOM / "copy-tail").exists()
+    row = next(r for r in y.ledger.rows(20) if r["session_id"] == copy and r["outcome"] == "compacted")
+    assert "4 turn(s) overtook it" in row["note"] and "tail" in row["note"]
+
+
+def test_a_copy_that_compacts_while_a_turn_runs_is_taken_as_it_ends_before_the_message_waiting_runs(y, tmp_path, gate, caplog):
+    """Item 2: the copy's compaction ends while a turn is being answered and a message waits behind it; the turn ends on
+    the live session, then the room takes the copy in one step, then the waiting message runs on the copy, the exchange
+    it overtook in front of it. The swap makes no model call: only the copy's /compact was ever sent."""
+    band(y)
     room = y.add_room(ROOM, chan := Chan())
     with caplog.at_level(logging.INFO, logger="yerk.room"):
         say(y, room, "1", "CONTEXT:195000 hello")
         wait_idle(room)
-        live = room.rp.session_id
-        started(tmp_path)                                     # the copy's /compact is running
-        first = room.fork.session_id
-        (copied := room.fork.projects / f"{first}.jsonl").parent.mkdir(parents=True, exist_ok=True)
-        copied.write_text("{}\n")                             # what Claude Code writes for the copy
-        sent = time.time()
-        assert say(y, room, "2", "CONTEXT:199000 and now?") == "started"
-        until(lambda: len(chan.replies) == 2, timeout=3)      # never behind the copy's 4 s
-        assert time.time() - sent < 3 and room.rp.session_id == live
-        until(lambda: any("compaction on a copy is dropped" in m and "overtook" in m for m in caplog.messages))
-        assert not copied.exists() and bound(tmp_path) == live
-        until(lambda: room.rp.session_id not in (live, first))   # the second turn's end copied it again, and no turn overtook that
-    assert chan.replies == ["echo: CONTEXT:195000 hello", "echo: CONTEXT:199000 and now?"]
-    assert compactions(tmp_path) == 2 and bound(tmp_path) == room.rp.session_id and room.context == 20000
+        live, copy = room.rp.session_id, room.fork.session_id
+        say(y, room, "2", "CONTEXT:196000 SLOW still here")
+        until(lambda: room.reading)
+        assert say(y, room, "3", "CONTEXT:21000 queued behind it", alone=True) == "queued"
+        gate.set()
+        until(lambda: room.ready is not None)
+        assert room.rp.session_id == live
+        wait_idle(room)
+    assert chan.replies[1] == "echo: CONTEXT:196000 SLOW still here" and room.rp.session_id == copy == bound(tmp_path)
+    last = echoed(chan, 2)
+    assert last.startswith(TAIL_HEAD) and "owner: CONTEXT:196000 SLOW still here" in last and last.endswith("\n\nCONTEXT:21000 queued behind it")
+    assert compactions(tmp_path) == 1 and any("taken as it ends" in m for m in caplog.messages)
+
+
+@pytest.mark.parametrize("end", ["respec", "renew", "fresh-next", "held", "fail"])
+def test_a_copy_still_ends_on_a_change_of_the_live_session_or_its_own_failure_and_says_why(y, tmp_path, gate, monkeypatch, caplog, end):
+    """Item 1: what still ends a copy, each said in the log and the ledger, its transcript copy removed, the room's bound
+    session the live one: a model, effort or account change; /new or a fresh-next file; a held compaction starting; its own
+    compaction failing, after which the next turn's end copies again (item 6)."""
+    band(y)
+    if end == "fail":
+        monkeypatch.setenv("FAKE_CLAUDE_COMPACT_FAIL", "1")
+    room = y.add_room(ROOM, Chan())
+    why = {"respec": "model, effort or account changed", "renew": "/new", "fresh-next": "fresh session",
+           "held": "asked compaction of the live session started", "fail": "its compaction failed"}[end]
+    with caplog.at_level(logging.INFO, logger="yerk.room"):
+        say(y, room, "1", "CONTEXT:195000 hello")
+        wait_idle(room)
+        live, fork = room.rp.session_id, room.fork
+        (copied := fork.projects / f"{fork.session_id}.jsonl").parent.mkdir(parents=True, exist_ok=True)
+        copied.write_text("{}\n")                            # what Claude Code writes for the copy
+        if end == "respec":
+            room.respec()
+        elif end == "renew":
+            room.renew()
+        elif end == "fresh-next":
+            (tmp_path / "rooms" / ROOM / "fresh-next").write_text("(a recap)")
+        elif end == "held":
+            threading.Thread(target=room.compact_now, daemon=True).start()
+        gate.set()
+        until(lambda: any("compaction on a copy is dropped" in m and why in m for m in caplog.messages))
+    wait_idle(room)
+    assert not copied.exists() and room.fork is None and room.ready is None and (room.rp is None or room.rp.session_id != fork.session_id)
+    if end in ("respec", "fail"):
+        assert bound(tmp_path) == live
+    if end == "fail":                                         # tried again at the next turn's end, as before
+        gate.clear()
+        say(y, room, "2", "CONTEXT:196000 again")
+        wait_idle(room)
+        until(lambda: room.fork is not None and room.fork is not fork)
+        gate.set()
+
+
+def test_the_turn_end_compaction_waits_for_a_healthy_copy_while_a_turn_still_fits_and_runs_as_before_past_that(y, tmp_path, gate, caplog):
+    """Item 5: at 917,284, 49,716 under the line, a copy compacting leaves the room free (30,000 or more left); at 940,000,
+    27,000 under it, the turn-end compaction runs as before and the copy is dropped. With no copy at all it runs at once."""
+    owners_window(y)
+    room = y.add_room(ROOM, Chan())
+    with caplog.at_level(logging.INFO, logger="yerk.room"):
+        say(y, room, "1", "CONTEXT:874665 hello")
+        wait_idle(room)
+        fork = room.fork
+        say(y, room, "2", "CONTEXT:917284 and")
+        wait_idle(room)
+        assert compactions(tmp_path) == 1 and room.fork is fork and not room.busy      # only the copy's /compact
+        assert any("a turn still fits, so the session waits for it" in m for m in caplog.messages)
+        say(y, room, "3", "CONTEXT:940000 then")
+        until(lambda: any("a turn ended at 940000" in m and "compacting" in m for m in caplog.messages))
+        gate.set()                                            # the copy's thread sees it was ended
+        until(lambda: any("compaction on a copy is dropped" in m and "end-of-turn" in m for m in caplog.messages))
+        wait_idle(room)
+        until(lambda: compactions(tmp_path) == 2)
+    assert room.context == 20000 and room.fork is None and bound(tmp_path) == room.rp.session_id
+
+
+def test_a_daemon_restart_with_a_copy_in_flight_loses_the_copy_and_nothing_else(y, tmp_path, gate, caplog):
+    """Item 8: the daemon stops while a copy compacts: the copy ends with it, its transcript copy removed and never bound;
+    after the restart the room resumes its live session, every message answered, with no tail and no compaction."""
+    band(y)
+    room = y.add_room(ROOM, chan := Chan())
+    with caplog.at_level(logging.INFO, logger="yerk.room"):
+        say(y, room, "1", "CONTEXT:195000 hello")
+        wait_idle(room)
+        live, fork = room.rp.session_id, room.fork
+        (copied := fork.projects / f"{fork.session_id}.jsonl").parent.mkdir(parents=True, exist_ok=True)
+        copied.write_text("{}\n")
+        started(tmp_path)                                     # its /compact is running
+        room.shutdown()
+        gate.set()
+        until(lambda: any("compaction on a copy is dropped" in m and "daemon is stopping" in m for m in caplog.messages))
+    assert not copied.exists() and bound(tmp_path) == live
+    again = Yerkd(EXAMPLE_PRIVATE, tmp_path, only_account=Account("one", tmp_path / "cfg1"))   # the restart
+    again.budgets["session"]["precompact_within"] = 0
+    room = again.add_room(ROOM, chan := Chan())
+    say(again, room, "2", "after the restart")
+    wait_idle(room)
+    assert chan.replies == ["echo: after the restart"] and room.rp.session_id == live == bound(tmp_path)
+    assert compactions(tmp_path) == 1 and not (tmp_path / "rooms" / ROOM / "copy-tail").exists()   # the copy's own, cut
+    room.rp.close()
 
 
 def test_a_turn_within_the_turn_end_line_still_compacts_the_live_session_and_a_band_of_0_never_copies(y, tmp_path):

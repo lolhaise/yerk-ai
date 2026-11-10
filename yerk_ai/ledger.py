@@ -35,10 +35,11 @@ from typing import Any, Callable
 
 COLUMNS = ("room", "account", "config_dir", "session_id", "started", "first_visible", "ended",
            "outcome", "failure", "action", "output_chars", "models", "fallback_model", "accepted", "inbound",
-           "source", "hop", "recap", "turn_key", "model", "out_of", "context")
+           "source", "hop", "recap", "turn_key", "model", "out_of", "context", "note")
 ADDED = {"turns": {"inbound": "TEXT", "source": "TEXT", "hop": "TEXT", "recap": "INTEGER",   # newer than run 1
                    "turn_key": "TEXT", "model": "TEXT", "out_of": "TEXT",   # the model asked for; the pinned one every account was out of
-                   "context": "INTEGER"},                   # the session's tokens at the turn's last call (the idle compaction's)
+                   "context": "INTEGER",                    # the session's tokens at the turn's last call (the idle compaction's)
+                   "note": "TEXT"},                         # a copy's take or drop, said (Room._precompact)
          "outbound": {"body": "TEXT"},                      # a card's text, each post and edit
          "workers": {"job": "TEXT"},                        # the scheduled job a worker runs for (jobs.py)
          "evidence": {"tool_use_id": "TEXT"},               # joins a call to its time (tool_times)
@@ -432,7 +433,7 @@ class Ledger:
     def turn_summary(self, since: float) -> tuple[dict[str, float], list[dict[str, Any]]]:
         """(each room's last answered turn's end, the failed turns since `since` by room, outcome and class with a count)."""
         ok = self._select("SELECT room, max(ended) AS ended FROM turns WHERE outcome = 'ok' GROUP BY room", ())
-        failed = self._select("SELECT room, outcome, failure, count(*) AS n FROM turns WHERE started >= ? AND outcome NOT IN ('ok', 'compacted') "
+        failed = self._select("SELECT room, outcome, failure, count(*) AS n FROM turns WHERE started >= ? AND outcome NOT IN ('ok', 'compacted', 'dropped') "
                               "GROUP BY room, outcome, failure ORDER BY room", (since,))
         return {str(r["room"]): float(r["ended"]) for r in ok if r["ended"] is not None}, failed
 

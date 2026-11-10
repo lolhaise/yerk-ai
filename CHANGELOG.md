@@ -8,6 +8,35 @@ version changes.
 
 ## 2026-11-10
 
+### copy-survives-2026-11-10 (#?)
+
+- A message sent while a room compacts a copy of its session no longer throws the copy away. Before, a turn starting
+  ended the copy, so in a fast chat no copy ever finished: on 2026-11-10, inside seven minutes, a busy room sent
+  a message within a minute of each of nine answers, all nine copies were dropped (50 of 54 over two days), and the
+  tenth turn's end compacted the live session for 121 s, a message waiting 14 s under the card that says the
+  conversation is being shortened first.
+- Now the message runs at once on the live session and the copy goes on compacting off to the side. Once it has, the
+  room takes it in one step: at once when no turn runs, else as the running turn ends, before a message waiting runs.
+  Taking it makes no model call, so no message waits on it.
+- What was said on the live session after the copy was made reaches the copy once, as text, in the first message it
+  gets: each message and the room's reply, word for word with their times, under one heading that says they came after
+  the summary, that their tool output is not included and that what they wrote to memory or disk is there. Past
+  `copy_tail` characters the newest stay whole and the oldest are named by their day-log lines. A restart before that
+  message keeps it.
+- While a copy compacts, the turn-end compaction waits for it as long as `copy_room` tokens are left under Claude Code's
+  line, so it is the last resort. With no copy, or after one failed, it runs as before.
+- A copy still ends when the room's model, effort or account changes, on /new or a fresh-next file, when a held
+  compaction starts, when the daemon stops, when its own compaction fails, and when a turn's run started a fresh
+  session or the live session compacted meanwhile. The log and the ledger say why; a take says how long the compaction
+  took, how many turns overtook the copy and the tail's size (the turns row's new `note`).
+- The tests: 9 in tests/test_idle_compact.py in place of the old drop's 1: the replay of the nine quick
+  turns (one copy, taken at a turn's end, its tail given once, no wait, no held compaction); a copy compacted while a
+  turn runs taken as it ends, before the message waiting; each change that still ends a copy, and a failed one tried
+  again; the turn-end compaction waiting for a healthy copy and running past `copy_room`; a restart with a copy in flight.
+
+**Upgrading:** budgets.toml adds `[session] copy_tail` (12,000) and `copy_room` (30,000) and raises `[code] lines` to
+28,587, each with its dated note. The ledger adds its `note` column at the next start.
+
 ### need-2026-11-10-82 (#?)
 
 - A room opens your live page on the PC monitor you name, maximized there, and hears that it painted before it looks.

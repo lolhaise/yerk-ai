@@ -24,8 +24,11 @@ adapter's event loop.
 - A session compacts between turns: idle `compact_after` past `compact_at` of its window (idle_compact), or at once when a
   turn ends within `compact_within` of Claude Code's own line (_ended); a message meanwhile waits, its card up saying so.
   A turn that ends further out, within `precompact_within` of the line, compacts a copy of the session instead, the room
-  left free (_precompact): a message meanwhile runs at once on the live session and the copy is dropped, stale; a copy
-  no turn overtook becomes the room's session in one step, so the next message finds it small without waiting.
+  left free (_precompact): a message meanwhile runs at once on the live session and the copy goes on compacting; once it
+  has, it becomes the room's session in one step, at once when no turn runs, else as the running turn ends, before a
+  message waiting runs, so the next message finds it small without waiting. What the live session said since the copy
+  was made rides once, as text, in the first message the copy gets (_tail); while one compacts, the turn-end compaction
+  waits for it as long as a turn still fits under the line ([session] copy_room).
 - Each turn owns one card (card.py), fed from the stream; every outbound part carries the turn's
   key. A turn that was sent an image and never read it is bounced once at Stop, naming the file;
   a working turn answering a person that ends with nothing visible in the room bounces once,
@@ -162,6 +165,10 @@ RESUME_RECAP = ("(Yerk AI: the earlier session of this room could not be resumed
 REFUSAL_RECAP = ("(Yerk AI: this is a new session. The previous one was moved to another model after a block, "
                  "so its messages are not in this context.)")
 NEW_RECAP = "(Yerk AI: the owner asked for a new session with /new, so this is a new one. The last reply here began: \"{last}\")"
+TAIL_HEAD = ("## Said after the summary above was written\n(Yerk AI: while the summary above was being written, this room "
+             "went on talking. Here is each message and the room's reply since, word for word and in order, with their times. "
+             "The tool output of those turns is not included; anything they wrote to memory or to disk is there.)")
+TAIL_CUT = "Earlier, named by their day-log lines to keep this short:"
 
 
 class Channel(Protocol):
@@ -180,7 +187,7 @@ class Room:
                  channel: Channel, state: Any, ledger: Ledger, failures: FailureTable, cooldowns: Cooldowns,
                  idle_seconds: float = 1800.0, turn_timeout: float = 900.0, log_dir: Any = None,
                  meters: Meters | None = None, compact: tuple[int, float, float, float] = (0, 0.0, 0.0, 0.0),
-                 precompact: float = 0.0):
+                 precompact: float = 0.0, copy: tuple[int, int] = (12000, 30000)):
         self.name, self.conf, self.spec, self.accounts, self.channel = name, conf, spec, accounts, channel
         self.state, self.ledger, self.failures, self.cooldowns = state, ledger, failures, cooldowns
         self.idle_seconds, self.turn_timeout, self.log_dir, self.meters = idle_seconds, turn_timeout, log_dir, meters
@@ -229,6 +236,13 @@ class Room:
         self.fork: RoomProcess | None = None      # the copy being compacted off to the side (_precompact), at most one
         self.runs = 0                             # bumped by anything that changes or replaces the live session: a copy
                                                   # taken before a bump is stale (Claude Code's own prefix_changed rule)
+        self.copy_tail, self.copy_room = copy     # [session] copy_tail (chars) and copy_room (tokens under the line)
+        self.ready: tuple[RoomProcess, Turn, float] | None = None   # a copy compacted while a turn ran: taken as it ends
+        self.tail: list[dict[str, Any]] = []      # each exchange on the live session since the copy was made (_said)
+        self.overtook = 0                         # the turns that ran on the live session since the copy was made
+        self.dropped = ""                         # why the copy in flight was ended (_drop_fork), for its thread's line
+        self.shrunk = False                       # the live session compacted since the copy was made: the copy is moot
+        self.cite: Callable[[str, float], str] | None = None   # a message's day-log cite (the daemon's), for a long tail
 
     def _ledger_call(self, call: dict[str, Any]) -> None:
         self.ledger.evidence(t=round(time.time(), 3), room=self.name, session_id=self.rp.session_id if self.rp else "",
@@ -279,7 +293,10 @@ class Room:
         A turn that ends short of that but within `precompact_within` of the line compacts a copy instead (_precompact) and
         the room stays free: False (seen live: a turn ended 37,362 under its line of 767,000,
         and the message after it waited 126 s behind the 206 s compaction; earlier a turn had ended 61,754 under it with
-        305 s of quiet after, time for a copy's compaction, then ledgered at a median 161 s)."""
+        305 s of quiet after, time for a copy's compaction, then ledgered at a median 161 s). While a copy compacts, the
+        turn-end compaction is the last resort: it waits for the copy as long as a turn still fits, `copy_room` or more
+        under the line (seen live: it ran at 917,284, 49,716 under the line, and the message
+        107 s later waited 14 s under its card)."""
         line = self.window - RESERVE
         if (self.closing or self.stopped or not self.grown or not self.window or self.fresh_next
                 or (self.state / "rooms" / self.name / "fresh-next").is_file()):
@@ -287,6 +304,10 @@ class Room:
         if not self.compact_within or self.context < line - self.compact_within * self.window:
             if self.precompact_within and self.context >= line - self.precompact_within * self.window:
                 self._fork_off()
+            return False
+        if self.fork is not None and line - self.context >= self.copy_room:
+            log.info("room %s: a turn ended at %d of its %d tokens, Claude Code's line %d; a copy is compacting and a turn "
+                     "still fits, so the session waits for it", self.name, self.context, self.window, line)
             return False
         self.grown, self.shortening = False, True
         log.info("room %s: a turn ended at %d of its %d tokens, Claude Code's line %d, compacting", self.name, self.context, self.window, line)
@@ -303,11 +324,11 @@ class Room:
     def _fork_off(self) -> None:
         """Under the lock, a turn ended in the copy's band (_ended): the room's session copied (--fork-session) and compacted
         off to the side, on the live process's own spec and account, so the copy's requests read the prompt cache the live
-        session warmed and its one hook (SessionStart compact: the recall pack added again) answers as the room's. Once per
-        run; never without a live process to copy from."""
-        if self.fork is not None or not (self.rp and self.rp.alive()):
+        session warmed and its one hook (SessionStart compact: the recall pack added again) answers as the room's. One copy
+        per growth: none while one compacts or waits to be taken; never without a live process to copy from."""
+        if self.fork is not None or self.ready is not None or not (self.rp and self.rp.alive()):
             return
-        live = self.rp
+        live, self.tail, self.overtook, self.dropped, self.shrunk = self.rp, [], 0, "", False
         self.fork = rp = RoomProcess(live.spec, live.account, self.state, ledger=self.ledger, failures=self.failures,
                                      log=self.log_dir / f"{self.name}.jsonl" if self.log_dir else None,
                                      meters=self.meters.seen if self.meters else None)
@@ -316,49 +337,155 @@ class Room:
         threading.Thread(target=self._precompact, args=(rp, self.runs), name=f"precompact-{self.name}", daemon=True).start()
 
     def _precompact(self, rp: RoomProcess, runs: int) -> None:
-        """The copy's /compact, the room free meanwhile. Taken in one step under the lock (adopt: bound, the room's process
-        from here, the old one closed) only when it compacted and nothing overtook it: no turn, compaction, settings change
-        or /new since it was copied (`runs`), no turn running, nothing queued, the daemon not stopping. Else it is dropped,
-        its transcript copy with it, and the next turn's end tries again; the live session never waited on it."""
+        """The copy's /compact, the room free meanwhile: a turn that starts runs on the live session and the copy goes on.
+        Compacted, it is taken in one step under the lock (_take) at once when no turn runs, else held (`ready`) and taken
+        as the running turn ends, before a message waiting runs (_run). Dropped, its transcript copy with it, when its own
+        compaction failed, when a change ended it (`runs`: a settings change, /new, a held compaction, the daemon's stop;
+        _drop_fork), or when the next run starts a fresh session; the next turn's end may copy again. The live session never
+        waits on it (seen live: a message within a minute of each answer dropped nine copies in a row
+        while a copy took about two minutes, and the tenth turn's end compacted the live session with the room held)."""
         started, t, why = time.time(), None, ""
         try:
             rp.start(fork=True)
             t = rp.read_turn(rp.send("/compact"), self.turn_timeout, record=False)
         except Exception as e:
-            why = f"failed: {e}"
+            why = f"its compaction failed: {e}"
+        took = None
         with self.lock:
             ok = t is not None and t.compacted is not None and t.outcome in ("ok", "empty")
-            fresh = self.fresh_next or (self.state / "rooms" / self.name / "fresh-next").is_file()
-            why = next((w for w, hit in (("a turn or a change overtook it", self.runs != runs or self.fork is not rp),
-                                         (why or f"it did not compact ({t.outcome if t else 'no turn'})", not ok),
-                                         ("a turn is running", self.busy or bool(self.queue)), ("the daemon is stopping", self.closing),
-                                         ("the next run starts a fresh session", bool(fresh))) if hit), "")
+            why = next((w for w, hit in ((self.dropped or "a change ended it", self.runs != runs or self.fork is not rp),
+                                         (why or f"its compaction failed ({t.outcome if t else 'no turn'})", not ok)) if hit), "")
+            why = why or self._stale(rp)
             if self.fork is rp:
                 self.fork = None
-            old = None
+                if why:
+                    self.tail, self.overtook = [], 0
             if not why and t is not None:
-                rp.evidence = self.evidence
-                rp.adopt()
-                old, self.rp = self.rp, rp
-                before, self.context, self.grown, self.last_active = self.context, t.context or self.context, False, time.time()
+                if self.busy or self.queue:
+                    self.ready = (rp, t, started)     # _run takes it as the running turn ends
+                else:
+                    took = self._take(rp, t, started)
         if why or t is None:
-            rp.discard()
-            log.info("room %s: the compaction on a copy is dropped after %.0f s: %s", self.name, time.time() - started, why)
-            return
-        t.outcome = "compacted"
-        rp.record(t)                              # the copy's row, its size after: the room's session from here
-        log.info("room %s: compacted on a copy in %.0f s, %d to %d tokens, session %s now the room's (was %s)", self.name,
-                 time.time() - started, before, self.context, rp.session_id, old.session_id if old else "closed")
-        if old and old is not rp:
-            old.close()
+            self._dropped(rp, t, started, why)
+        elif took:
+            self._took(*took)
+        else:
+            log.info("room %s: compacted on a copy in %.0f s while a turn runs; taken as it ends", self.name, time.time() - started)
 
-    def _drop_fork(self) -> None:
-        """Under the lock, the live session is about to change: a copy being compacted is stale from here, so it ends now
-        (its thread drops it) instead of finishing a summary nobody takes."""
+    def _stale(self, rp: RoomProcess) -> str:
+        """Under the lock, why a compacted copy cannot become the room's session ("" when it can): the daemon is stopping,
+        the next run starts a fresh session, a turn's run started one (the room's bound session is no longer the one it
+        copied), or the live session compacted meanwhile (Claude Code's own inside a turn, or the overflow path's)."""
+        origin = str(rp.fork_of or "")
+        bound = str((SessionTable(self.state / "sessions.json").get(self.name) or {}).get("session_id") or "")
+        return next((w for w, hit in (("the daemon is stopping", self.closing),
+                                      ("the next run starts a fresh session", bool(self.fresh_next or (self.state / "rooms" / self.name / "fresh-next").is_file())),
+                                      ("a turn started a fresh session", bound != (Path(origin).stem if origin.endswith(".jsonl") else origin)),
+                                      ("the live session compacted meanwhile", self.shrunk)) if hit), "")
+
+    def _take(self, rp: RoomProcess, t: Turn, started: float) -> tuple[Any, ...]:
+        """Under the lock, a compacted copy becomes the room's session in one step, no model call made (adopt: bound, the
+        room's process from here); what the live session said since it was made waits for the copy's first message, once,
+        in the room's folder (`copy-tail`: a restart before that message keeps it). The rest is _took's, unlocked."""
+        rp.evidence = self.evidence
+        rp.adopt()
+        old, self.rp, self.ready = self.rp, rp, None
+        before, self.context, self.grown, self.last_active = self.context, t.context or self.context, False, time.time()
+        tail, turns = self._tail(), self.overtook
+        self.tail, self.overtook = [], 0
+        path = self.state / "rooms" / self.name / "copy-tail"
+        if tail:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            write_private(path, json.dumps({"session_id": rp.session_id, "text": tail}))
+        else:
+            path.unlink(missing_ok=True)
+        return rp, t, started, old, before, turns, len(tail)
+
+    def _took(self, rp: RoomProcess, t: Turn, started: float, old: RoomProcess | None, before: int, turns: int, tail: int) -> None:
+        """A take's row and line: how long the compaction took, how long it waited for a turn, how many turns overtook the
+        copy and the tail's size; the old process closed off the room's path, so a message waiting never waits on it."""
+        took, waited = (t.ended or time.time()) - started, time.time() - (t.ended or time.time())
+        t.outcome = "compacted"
+        rp.record(t, note=f"copy taken: compacted in {took:.0f} s, taken {waited:.0f} s later, {turns} turn(s) overtook it, "
+                          f"tail {tail} chars")     # the copy's row, its size after: the room's session from here
+        log.info("room %s: compacted on a copy in %.0f s, %d to %d tokens, session %s now the room's (was %s), taken %.0f s "
+                 "later; %d turn(s) overtook it, the tail %d chars", self.name, took, before, self.context, rp.session_id,
+                 old.session_id if old else "closed", waited, turns, tail)
+        if old and old is not rp:
+            threading.Thread(target=old.close, name=f"precompact-old-{self.name}", daemon=True).start()
+
+    def _dropped(self, rp: RoomProcess, t: Turn | None, started: float, why: str) -> None:
+        """A copy the room did not take: ended, its transcript copy removed, the line and (when its /compact ran, the daemon
+        not stopping) the row say why."""
+        rp.discard()
+        log.info("room %s: the compaction on a copy is dropped after %.0f s: %s", self.name, time.time() - started, why)
+        if t is not None and not self.closing:
+            t.outcome = "dropped"
+            rp.record(t, note=f"copy dropped after {time.time() - started:.0f} s: {why}")
+
+    def _drop_fork(self, why: str) -> None:
+        """Under the lock, the live session is about to change (a settings change, /new, a held compaction, the daemon's
+        stop): a copy being compacted, or one compacted and waiting for the running turn's end, is stale from here, so it
+        ends now (a running one's thread drops it, saying `why`) instead of finishing a summary nobody takes. A turn that
+        starts is no change: it runs on the live session and the copy goes on (_precompact)."""
         self.runs += 1
         if (rp := self.fork) is not None:
-            self.fork = None
+            self.fork, self.dropped = None, why
             threading.Thread(target=rp.end_now, name=f"precompact-end-{self.name}", daemon=True).start()
+        if (ready := self.ready) is not None:
+            self.ready = None
+            threading.Thread(target=self._dropped, args=(ready[0], ready[1], ready[2], why), name=f"precompact-end-{self.name}",
+                             daemon=True).start()
+        self.tail, self.overtook = [], 0
+
+    def _said(self, covered: list[Inbound], reply: str, at: float) -> None:
+        """Under the lock, a result delivered on the live session while a copy compacts or waits to be taken: its exchange,
+        for the copy's tail."""
+        if (self.fork is not None or self.ready is not None) and covered:
+            self.tail.append({"messages": [(m.id, m.sender, m.received, m.text) for m in covered], "at": at, "reply": reply})
+
+    def _tail(self) -> str:
+        """Under the lock, what the live session said since the copy was made, as the copy's first message carries it: one
+        heading (TAIL_HEAD), then each message and the room's reply with their times, word for word from the room's own
+        record. Past `copy_tail` chars the newest exchanges stay whole and the oldest are named by their day-log lines
+        (the daemon's cite), else by their times. "" when no turn overtook the copy."""
+        def at(x: float) -> str:
+            return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(x))
+
+        def whole(x: dict[str, Any]) -> str:
+            return "\n".join([*(f"[{at(w)}] {who}: {text}" for _, who, w, text in x["messages"]), f"[{at(x['at'])}] the room: {x['reply']}"])
+        if not self.tail:
+            return ""
+        kept: list[str] = []
+        size = len(TAIL_HEAD)
+        for x in reversed(self.tail):
+            part = whole(x)
+            if kept and size + len(part) + 2 > self.copy_tail:
+                break
+            kept.insert(0, part)
+            size += len(part) + 2
+        cut = self.tail[:len(self.tail) - len(kept)]
+        named = [f"- [{at(w)}] {who}: {(self.cite(mid, w) if self.cite else '') or 'in the day log at that time'}"
+                 for x in cut for mid, who, w, _ in x["messages"]]
+        return "\n\n".join([TAIL_HEAD, *(["\n".join([TAIL_CUT, *named])] if named else []), *kept])
+
+    def _due(self) -> tuple[RoomProcess, Turn, float] | None:
+        """Under the lock, at a turn's end: the copy that compacted while it ran (`ready`), taken off it."""
+        due, self.ready = self.ready, None
+        return due
+
+    def _tail_for(self, sid: str) -> tuple[str, Path] | None:
+        """The tail a taken copy's first message carries (_take), for session `sid`; a file for another session is stale (a
+        fresh start, /new) and goes."""
+        path = self.state / "rooms" / self.name / "copy-tail"
+        try:
+            held = json.loads(path.read_text())
+        except (OSError, ValueError):
+            return None
+        if str(held.get("session_id")) != sid or not held.get("text"):
+            path.unlink(missing_ok=True)
+            return None
+        return str(held["text"]), path
 
     def _compact_held(self, why: str) -> Turn:
         """/compact in the room's session (resumed when its process is gone) while the caller holds the room busy. A message
@@ -367,7 +494,7 @@ class Room:
         try:
             with self.lock:
                 alive = self.rp is not None and self.rp.alive()
-                self._drop_fork()
+                self._drop_fork(f"the {why} compaction of the live session started")
             if not alive:
                 self._start(self._account())
             t = self._slash_compact()
@@ -686,7 +813,7 @@ class Room:
         with self.lock:
             self.stale = self.busy
             rp, self.rp = (None, self.rp) if self.busy else (self.rp, None)
-            self._drop_fork()                     # a copy runs on the old spec
+            self._drop_fork("the room's model, effort or account changed")   # a copy runs on the old spec
         if rp:
             rp.close()
 
@@ -696,7 +823,7 @@ class Room:
         line is also the daemon's own file, `fresh-next` beside the room's override, so a restart before the
         next message keeps it."""
         with self.lock:
-            self._drop_fork()
+            self._drop_fork("/new: the next run starts a fresh session")
             self.fresh_next = NEW_RECAP.format(last=self.last_reply or "nothing yet")
             (self.state / "rooms" / self.name).mkdir(parents=True, exist_ok=True)
             write_private(self.state / "rooms" / self.name / "fresh-next", self.fresh_next)
@@ -733,7 +860,7 @@ class Room:
         with self.lock:
             self.closing, rp, busy = True, self.rp, self.busy
             self.halt.set()
-            self._drop_fork()
+            self._drop_fork("the daemon is stopping")
         if rp:
             if busy:
                 rp.end_now()
@@ -798,13 +925,23 @@ class Room:
         try:
             while True:
                 with self.lock:
+                    due, took = self._due(), None        # a copy compacted while the turn ran: taken before anything queued
+                    if due and not (stale := self._stale(due[0])):
+                        took = self._take(*due)
+                    elif due:
+                        threading.Thread(target=self._dropped, args=(*due, stale), name=f"precompact-end-{self.name}", daemon=True).start()
+                    batch = []
                     if not self.queue:
                         self.busy = self._ended()        # near Claude Code's line: compacted now, in the background
                         self.last_active = time.time()
-                        return
-                    batch = [self.queue.popleft()]
-                    while not batch[0].alone and self.queue and not self.queue[0].alone:
-                        batch.append(self.queue.popleft())
+                    else:
+                        batch = [self.queue.popleft()]
+                        while not batch[0].alone and self.queue and not self.queue[0].alone:
+                            batch.append(self.queue.popleft())
+                if took:
+                    self._took(*took)
+                if not batch:
+                    return
                 try:
                     self._turn(batch)
                 finally:                         # a turn that raised has ended too
@@ -839,7 +976,7 @@ class Room:
             self.to_open, self.stopped = {}, False
             self.halt.clear()
             self.answering = {m.id for m in batch}
-            self._drop_fork()                     # it runs at once on the live session; a copy being compacted is stale
+            self.overtook += self.fork is not None   # it runs at once on the live session; a copy compacting goes on (_precompact)
             early, self.early = self.early, False   # a card is up for it already: this turn takes it over
         self.evidence.reset()
         ctx = self.state / "rooms" / self.name / "context.md"
@@ -870,14 +1007,18 @@ class Room:
                 model = on = self.rp.spec.model if self.rp and not self.out_of else model   # the process's model is the truth: an override off the list was ignored
             assert self.rp
             note = recap if self.rp.session_id != recap_sid else None   # a recap rides until a session has it
+            tail = self._tail_for(self.rp.session_id)   # a taken copy's first message: what the live session said meanwhile
+            first = "\n\n".join(x for x in (tail[0] if tail else "", note or "") if x) or None
             with self.lock:                       # Room.stop sets `stopped` under this lock: it sees `reading`
                 halted = self.stopped             # and TERMs the process, or nothing is written here
                 if not halted:
                     self.pending.clear()
                     self.inflight, self.folds = [], []    # written now, with no turn read: none of these is a fold
                     for i, m in enumerate(resend):
-                        self._write(m, note if i == 0 else None)
+                        self._write(m, first if i == 0 else None)
                         self.ledger.inbound_set(m.id, state="running", attempts=m.attempt + 1)
+                    if tail:
+                        tail[1].unlink(missing_ok=True)   # given once: a rerun of this message goes without it
                     self.reading = True
             if halted:                            # it landed while the process started
                 self._end(resend, words.STOPPED, "/stop", "stopped")
@@ -980,6 +1121,7 @@ class Room:
             turn = self.rp.read_turn(started, self.turn_timeout, record=False, on_event=self._on_event)
             if turn.context:                      # the session's size now: the idle compaction's to read
                 self.context, self.grown = turn.context, True
+            self.shrunk = self.shrunk or turn.compacted is not None   # Claude Code compacted it inside the turn
             if self.stopped and turn.outcome != "ok":
                 turn.outcome, turn.failure = "stopped", None
             with self.lock:
@@ -1018,6 +1160,7 @@ class Room:
                                         **({"note": "silent"} if quiet else {}))
                 self._then(m, "answered", reply_ids, len(text))
             with self.lock:
+                self._said(covered, text, now)    # a copy compacting: the exchange rides to it (_tail)
                 self.inflight = list(self.pending)
                 self.to_open = {}
                 if not self.pending or self.fresh_next:
@@ -1053,5 +1196,6 @@ class Room:
         assert self.rp
         t = self.rp.read_turn(self.rp.send("/compact"), self.turn_timeout, record=False)
         t.outcome = "compacted" if t.compacted is not None and t.outcome in ("ok", "empty") else t.outcome
+        self.shrunk = self.shrunk or t.outcome == "compacted"   # a copy made before it is moot
         self.rp.record(t)                         # read by yerk status --json's failed turns
         return t
