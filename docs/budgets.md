@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 128971`
+- `total = 129071`
 
 ## [session_start.claude_code]
 
@@ -102,9 +102,13 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-09, need-2026-11-09-79: the `schedule` tool's `effort` and `model` (an agent job's worker at the job's own thinking level and model, since a room on max started each research run of a bot as a standing agent job and every job's worker took the room's level, one run at max costing about eight times the same run at high) take the tool from 2,149 to 2,410 as this tree builds it, all 23 to 25,099, about 25,812 as sent (713 over the build, as on need 77's tree); so 25,900, no part could pay, the total rose by the 300 (to 128,971 on main's 128,671).
 
+2026-11-10, need-2026-11-09-83: the `texts` tool's clause on a message with no words (`text` its words, or `blank` saying why it has none, never told as empty, since a room asked to confirm the words of a text the owner had just sent found its text field empty, as on every text they sent that evening, the words kept only in the message's attributedBody; filed
+
+2026-11-09) takes the tool from 987 to 1,069 as this tree builds it, all 23 to 25,181, about 25,894 as sent (713 over the build, as on need 79's tree), 6 under the line; so 26,000, no part could pay, the total rose by the 100 (to 129,071 on main's 128,971).
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
-- `yerk_tools = 25900`
+- `yerk_tools = 26000`
 - `deferred_tool_names = 3429`
 - `mcp__hands__ = 9831`
 - `mcp__web-ladder__web_image = 913`
@@ -621,7 +625,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-10: need-2026-11-09-82's fix (PR 40) lowered it by 1: a bubble an edit moves is written to talk.json at once, since lines typed above one moved it in yerkd's copy alone and a restart brought it back on its old line, beside another line of the program; channels/page.py -1 (shift writes talk.json when a bubble moved or went, for an edit and a draw alike, so the draw's own write and its block after the loop go). 28,056: 28,057 less 1.
 
-- `lines = 28056`
+2026-11-10: need-2026-11-09-83 raised it by 30: a text whose text column comes back blank, as Messages leaves many the owner sent, is read from its attributedBody (the import's own reading), and one with no words there says why in `blank`, since a room asked to confirm the words of a text the owner had just sent got an empty text field for every text they sent that evening; not folded to fit: inbox.py 27 (said, the query's attributedBody as hex, parse's fifth field and FILE_MARK), words.py 2 (TEXTS_BLANK), mcp_server.py 1 (the texts tool's clause on `blank`). 28,086: 28,056 plus 30.
+
+- `lines = 28086`
 
 ## Uncapped
 

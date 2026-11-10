@@ -8,6 +8,29 @@ version changes.
 
 ## 2026-11-10
 
+### need-2026-11-09-83 (#?)
+
+- The `texts` tool reads the words of the texts you sent. Before, a room asked to confirm the words of a text you had
+  just sent got an empty text field for it, and for every other text you sent that evening, while the texts you got
+  carried their words: Messages keeps the words of many sent texts only in the message's rich copy (its
+  `attributedBody`), and the read took the plain text column alone.
+- Now a row whose text column is blank brings its rich copy too, as hex, only for that row, and the daemon reads the
+  words out of it the way `yerk import imessage:` already did. The copy on the box keeps them, so a read while the Mac
+  sleeps has them too.
+- A text with no words anywhere says why in a new `blank` field, never an empty text a room could take for what was
+  said: a picture or a file alone, a rich copy that could not be read, or no words stored (as with an unsent text or a
+  group change). A text whose only content was a picture used to come back as one invisible mark; now it is `blank`.
+- The `texts` tool's description names `blank`, the `text` ability (`yerk explain text`) says how a blank text's words
+  are read, found by a room asked what you texted, and the README's `texts` clause says it reads yours whole.
+- The tests: 4 new in tests/test_inbox.py (the wall: a text you sent with a blank text column read whole from its rich
+  copy, a long one too; the read's own query run on a database shaped like the Mac's, the rich copy brought only for a
+  blank row; every reason a blank gives, and words beside a picture kept as words; the tool's answer and the copy) and
+  1 in tests/test_abilities.py (asked what you texted, a room gets the text entry whole under the recall cap).
+
+**Upgrading:** budgets.toml raises `yerk_tools` to 26,000, the session start's `total` to 129,071 and `[code] lines` to
+28,086, each with its dated note. Nothing to set: the copy on the box is written again at the Mac's next answer, and a
+room picks up the tool's new words at its next session.
+
 ### need-2026-11-09-82 (#?)
 
 - A room's live page talks in the code now, not in it: the room's answers to what is said on the page show as bubbles
