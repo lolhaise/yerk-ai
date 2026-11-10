@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-11-10
 
-### copy-survives-2026-11-10 (#?)
+### copy-survives-2026-11-10 (#46)
 
 - A message sent while a room compacts a copy of its session no longer throws the copy away. Before, a turn starting
   ended the copy, so in a fast chat no copy ever finished: on 2026-11-10, inside seven minutes, a busy room sent
