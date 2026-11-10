@@ -326,6 +326,21 @@ def test_a_room_asked_for_a_scheduled_jobs_own_thinking_level_hears_the_schedule
     assert not abilities.asked("the job ran and its card settled quiet", y.memory, TAB)
 
 
+def test_a_room_asked_for_no_chat_box_on_its_page_hears_the_page_tool_s_switch(tmp_path):
+    """need-2026-11-09-81: asked on the live page a second time for no chat box, a room found no switch for the chat in its
+    page tool, only the close button in the owner's browser. Asked that way, or about the chat on the right, or to bring
+    it back, a room gets page-talk whole, with the page tool's switch (a key of its own would push the abilities answer,
+    1,993 at main, past the 2,000 recall cap)."""
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    for ask in ("I do not want a chat box on the page", "why is the chat on the right still there?", "bring the chat back"):
+        found = abilities.asked(ask, y.memory, TAB)
+        assert [e["key"] for e in found] == ["page-talk"], ask
+        assert "the chat closes to nothing (its button, or the room's `page` tool on the owner's ask, which opens it again too)" in found[0]["text"]
+        assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
+    how = TAB["page-talk"]["how"][0]
+    assert "`page` tool's `chat` closes it (closed) or opens it (open) on every open tab at once" in how
+
+
 def test_a_room_asked_why_its_discord_replies_land_in_the_code_hears_the_page_talk_way(tmp_path):
     """need-2026-11-09-80: with a live page's chat closed, every line a room said from any thread went into the program, so a
     Discord answer and a job's nightly post landed in the owner's code. Asked that way, a room gets the page-talk entry

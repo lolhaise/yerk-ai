@@ -8,6 +8,34 @@ version changes.
 
 ## 2026-11-10
 
+### need-2026-11-09-81 (#38)
+
+- A room closes or opens its live page's chat when you ask, with its `page` tool. Before, the tool drew the program, the
+  tests, marks, the hint, the bar, the timer and the stall wait but had no switch for the chat pane: only the `close`
+  button in your browser closed it, and the page's own record of it is yerkd's, which no room writes. Asked on the page
+  for no chat box, a room had no way to take it away.
+- Now the `page` tool takes `chat`: "closed" closes the page's chat to nothing, as its `close` button does, and "open"
+  brings it back. Every open tab shows it at once (an opened chat comes back at the width it had), yerkd keeps it across
+  a restart, and a tab that opens later shows it too; with no tab open the answer says the page shows it when one opens,
+  and `open` and `chat` go in one call. With the chat closed every answer of the room's to the page is a bubble under
+  the line it was asked from (else under your last # line), never in the program, as when you close it yourself.
+- The room is not told back what it did itself, a switch of yours that it undoes before it heard of it is never said,
+  and a word that is neither is refused in words with nothing drawn. The tab shows the room's switch and keeps it in the
+  browser's split, posting nothing back; your own press of `close` or `chat` after it tells yerkd as before.
+- The ability is page-talk's (`yerk explain page-talk`): its line on the closed chat names the room's switch, and it
+  answers a room asked for no chat box, about the chat on the right, to hide the chat or to bring it back. The README's
+  live page line says "chat on ask" (its `delete` clause says paths for files or folders, to stay under 12,000 bytes).
+- The tests: 4 new, in tests/test_page.py (the tool's switch on every open tab, in talk.json and after a restart, the
+  room's answer then a bubble and never in the program, nothing told back, an owner's switch it undoes left unsaid, a
+  bad word drawing nothing; the tool through the daemon with no tab open, beside `open`, and its refusal; the page's own
+  script, run by node, closing and opening the chat as its buttons do and posting nothing back) and
+  tests/test_abilities.py (the ask in those words finds page-talk whole under the recall cap), and the tool's `chat`
+  field checked in tests/test_hooks_mcp.py.
+
+**Upgrading:** budgets.toml raises `yerk_tools` to 26,100, the session start's `total` to 129,171 and `[code] lines` to
+28,094, each with its dated note. Nothing else to change. A room picks up the tool's `chat` at its next session; a page
+tab open from before the deploy shows the room's switch once it is reloaded.
+
 ### need-2026-11-09-74 (#27)
 
 - A room can fill a web form it sees only in a shot now: the hands plug-in's browser gains `type`, which puts text into

@@ -1734,14 +1734,17 @@ asked_as = ["page on my phone", "page from my phone", "page from my mac", "page 
 # need-2026-11-09-80: with the chat closed, every line a room said from any thread went into the program as #> lines, not
 # only its answers to what was said on the page: a Discord answer, a scheduled note's and a job's nightly post landed in
 # the owner's code under the last # line.
+# need-2026-11-09-81: the owner, on the live page, asked a room a second time for no chat box; the page tool drew code,
+# tests, marks, a hint, the bar, the timer and the stall but had no switch for the chat, which only the close button in
+# the owner's browser closed, and the page's own state of it is yerkd's.
 # need-2026-11-09-82: the owner asked to talk to the room inside the code, not a chat box; the room's reply was a dozen plain
 # #> lines written into the owner's file, the editor one colour and nothing on screen while it thought. A
 # key of its own would push the abilities answer, 1,993 at main, past the 2,000 recall cap, so this entry carries it.
 [abilities.page-talk]
 state = "built"
-what = "A room's live page holds code, talk, output and ink on one surface, for every room: the editors colour Python, the owner's own # lines in a colour of their own; the chat closes to nothing and the talk lives in the program, the owner's # lines going to the room and its answers coming back as bubbles between the rows under the line asked from, never written into solution.py, with a typing mark there while it thinks; Ctrl+Enter or a line's number asks about that line, a red test's tile about that test; what it says anywhere else (a Discord answer, a job's post) stays on the chat."
+what = "A room's live page holds code, talk, output and ink on one surface, for every room: the editors colour Python, the owner's own # lines in a colour of their own; the chat closes to nothing (its button, or the room's `page` tool on the owner's ask, which opens it again too) and the talk lives in the program, the owner's # lines going to the room and its answers coming back as bubbles between the rows under the line asked from, never written into solution.py, with a typing mark there while it thinks; Ctrl+Enter or a line's number asks about that line, a red test's tile about that test; what it says anywhere else (a Discord answer, a job's post) stays on the chat."
 how = [
-  "The chat closed: drag the grip to the edge or press `close` on the chat; the split is 0, kept in the browser and by yerkd across restarts, and every tab that opens shows it; `chat` on the bar brings it back. The room is told in its next message, both ways.",
+  "The chat closed: drag the grip to the edge or press `close` on the chat, or ask the room, whose `page` tool's `chat` closes it (closed) or opens it (open) on every open tab at once; the split is 0, kept in the browser and by yerkd across restarts, and every tab that opens shows it; the `chat` button on the bar brings it back. The room is told in its next message, both ways, when the owner switches it, never of its own switch, nor of one of the owner's it undid before it heard.",
   "Bubbles: each reply, notice and send of the room's that answers a message from the page (its turn on one, a fold of one too) shows under the line that message asked from, in the room's colour with its name and time, four lines with a click to open, an x that puts it away on every tab; with the chat closed every answer to the page does, under the # line said last when its message named none, and one that answers only another thread or nothing stays on the chat, which keeps them all.",
   "Kept: yerkd keeps the newest 100 bubbles with their lines for a reload or a restart; a bubble moves with its line as the owner types, and a program the room draws keeps it on the line it kept or takes it with a line it replaced. The program is never touched, so the room is never told it typed anything.",
   "The typing mark: three pulsing dots in the room's colour under the line from the send until the turn's reply, notice or silent end, on the chat for a line said in the say box.",
@@ -1758,7 +1761,8 @@ asked_as = ["talk in the code", "talk to you in the code", "talk through comment
             "dont want the chatbox", "close the chat", "no chat column", "replies in the code", "print output bigger",
             "discord replies in my code", "discord answers in my code", "only page replies in the code", "patch notes in my code",
             "other replies in my code", "talk to me in the code", "upgrade the page", "bubbles in the code", "ask about a line",
-            "typing indicator on the page", "colours in the editor", "syntax highlighting on the page"]
+            "typing indicator on the page", "colours in the editor", "syntax highlighting on the page",
+            "want a chat box", "chat on the right", "hide the chat", "bring the chat back"]
 
 [abilities.work-writes]
 state = "built"

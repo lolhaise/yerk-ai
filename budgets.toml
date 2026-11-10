@@ -7,7 +7,7 @@
 # The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and
 # Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 [session_start]
-total = 129071
+total = 129171
 
 # Load order, most stable first, so the cached start of the prompt survives.
 # The first parts are Claude Code's own (its default prompt, the built-in tools
@@ -228,10 +228,16 @@ total = 129071
 # (aa4d3fc: by its label through each open shadow root too, a select by its option's words; with no label, the field that
 # has focus; a key after either). No line moves for it here: need-2026-11-09-76 reached main first and its 905 above
 # counts this joined entry (the 481 over need 75's), so the hands line stays 9,831 and the total 129,071.
+# 2026-11-10, need-2026-11-09-81: the `page` tool's `chat` ("closed" closes the live page's chat to nothing as its close
+# button does, "open" brings it back, since the owner asked a room on the page for no chat box a second time and only
+# the button in the owner's browser closed it) takes the tool from 2,077 (main's, with need 82's
+# clause) to 2,202 as this tree builds it, all 23 from 25,213 (main's: need 83's 25,181 with need 80's and need 82's page
+# clauses, 18 and 14) to 25,338, about 26,051 as sent (713 over the build, as on need 79's tree), 51 over the line; so
+# 26,100, no part could pay, the total rose by the 100 (to 129,171 on main's 129,071).
 [session_start.claude_code]
 claude_code_prompt = 10966
 builtin_tools = 12132
-yerk_tools = 26000
+yerk_tools = 26100
 deferred_tool_names = 3429
 mcp__hands__ = 9831
 mcp__web-ladder__web_image = 913
@@ -1391,4 +1397,11 @@ secs = 60
 # `blank`, since a room asked to confirm the words of a text the owner had just sent got an empty text field for every
 # text they sent that evening; not folded to fit: inbox.py 27 (said, the query's attributedBody as hex, parse's fifth field
 # and FILE_MARK), words.py 2 (TEXTS_BLANK), mcp_server.py 1 (the texts tool's clause on `blank`). 28,086: 28,056 plus 30.
-lines = 28086
+# 2026-11-10: need-2026-11-09-81 raised it by 8: the live page's `page` tool closes the page's chat or opens it (`chat`),
+# as its buttons do, on every open tab and kept across a restart, since the owner asked a room on the page for no chat box
+# a second time and only the close button in the owner's browser closed it; not folded to fit: channels/page.py 7 (draw's
+# `chat`, checked before any part is drawn, kept in talk.json, an owner's switch it undoes before the room heard it left
+# unsaid, draw's line on it; the module's clause on it fits in need 82's lines), words.py 1 (PAGE_CHAT), mcp_server.py 0
+# (the tool's parameter and clause). The tab's showing of it is page.html, outside this count. 28,094: main 90bd742's
+# 28,086 plus 8.
+lines = 28094
