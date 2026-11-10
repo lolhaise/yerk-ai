@@ -111,7 +111,8 @@ a one-shot, removed after it fires) or a systemd calendar line, recurring ("Mon.
 owner's rooms, "note" in any other): "note", a reminder
 (when it is due this room is told the text and says it in its own voice; no worker, shell or
 account); "agent", the brief a worker gets (a headless run with a card here, its last message told
-by this room, exactly NO_REPLY for silence); "script", the shell line to run (no model call, its
+by this room, exactly NO_REPLY for silence; `effort` its thinking level, low, medium, high, xhigh or max, and
+`model` one from the install's list, default this room's live ones); "script", the shell line to run (no model call, its
 output posted as is, exit 0 with no output posts nothing, a failure alerts the ops room). Any room
 adds, lists and removes its own notes; an agent or script job runs as the owner, so only the owner's
 rooms set one. `deliver` "announce" (default) or "silent" (run and ledger, never post). Returns the
@@ -130,6 +131,8 @@ next fire time read back from systemd. "remove": by `name`. "list": the jobs thi
 - `room`: string, default ""
 - `cap_minutes`: number, default 0
 - `account`: string, default ""
+- `model`: string, default ""
+- `effort`: string, default ""
 
 ## settings
 

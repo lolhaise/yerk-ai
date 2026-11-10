@@ -1473,10 +1473,11 @@ layer = 5
 state = "built"
 
 [abilities.schedule]
-what = "The schedule tool in every room, and `yerk schedule`: add a one-shot or a recurring job (a name, when with a zone, what, how to deliver), remove one, list them; writes the jobs file, syncs the timers and answers with the next fire time read back from systemd. A missing zone is the room's configured one, never UTC by accident. Any room adds, lists and removes its own notes; agent and script jobs run as the owner, so only the owner's rooms set them."
+what = "The schedule tool in every room, and `yerk schedule`: add a one-shot or a recurring job (a name, when with a zone, what, how to deliver), remove one, list them; writes the jobs file, syncs the timers and answers with the next fire time read back from systemd. A missing zone is the room's configured one, never UTC by accident. Any room adds, lists and removes its own notes; agent and script jobs run as the owner, so only the owner's rooms set them. An agent job sets its own worker's thinking level and model (the tool's `effort` and `model`, `yerk schedule add --effort --model`, or the keys in jobs.toml; a model an alias or a full id on the install's list), so a job that fires many times a week can think at high while its room stays on max; one that sets neither runs on the room's live level and model, and either on a note or a script, a level that is not one or a model off the list is refused."
 tier = "free"
 needs = "the jobs ability"
 free_path = "this is the free path"
+asked_as = ["job's thinking level", "job's effort", "job's model", "thinking level of a job", "effort of a job"]
 layer = 5
 state = "built"
 
