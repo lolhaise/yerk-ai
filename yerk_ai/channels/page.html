@@ -440,6 +440,7 @@ function apply(op) {
     if (d.board) state.board = d.board;
     if (d.timer) { state.timer = d.timer; timerSaid = false; }
     if (typeof d.stall === "number") state.stall = d.stall;
+    if (typeof d.chat === "string") { talkOn = d.chat === "closed"; if (talkOn !== chatless) split(talkOn ? 0 : opened, true, false); }   // the room's switch: shown, never told back
     if (typeof d.code === "string" || typeof d.tests === "string") setTimeout(run, 50);
   }
   if (op.line) line(op.line);

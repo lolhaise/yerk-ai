@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 128971`
+- `total = 129071`
 
 ## [session_start.claude_code]
 
@@ -102,9 +102,11 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-09, need-2026-11-09-79: the `schedule` tool's `effort` and `model` (an agent job's worker at the job's own thinking level and model, since a room on max started each research run of a bot as a standing agent job and every job's worker took the room's level, one run at max costing about eight times the same run at high) take the tool from 2,149 to 2,410 as this tree builds it, all 23 to 25,099, about 25,812 as sent (713 over the build, as on need 77's tree); so 25,900, no part could pay, the total rose by the 300 (to 128,971 on main's 128,671).
 
+2026-11-10, need-2026-11-09-81: the `page` tool's `chat` ("closed" closes the live page's chat to nothing as its close button does, "open" brings it back, since the owner asked a room on the page for no chat box a second time and only the button in the owner's browser closed it; filed 2026-11-09) takes the tool from 2,045 to 2,170 as this tree builds it, all 23 to 25,224, about 25,937 as sent (713 over the build, as on need 79's tree); so 26,000, no part could pay, the total rose by the 100 (to 129,071 on main's 128,971).
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
-- `yerk_tools = 25900`
+- `yerk_tools = 26000`
 - `deferred_tool_names = 3429`
 - `mcp__hands__ = 9831`
 - `mcp__web-ladder__web_image = 913`
@@ -611,7 +613,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-09: need-2026-11-09-79 raised it by 27: an agent job sets its worker's thinking level and model (`effort` and `model` in jobs.toml, the `schedule` tool and `yerk schedule add`), since a room on max started each research run of a bot as a standing agent job and every job's worker took the room's level, one run at max costing about eight times the same run at high; not folded to fit: jobs.py 24 (the two keys and their words, the job's fields, the refusals on a note, a script and a level that is not one, the model checked against the install's list with an alias kept by its name, the alias made its full id at the hand-off to the worker, the add's and the list's words), cli.py 2 (--model and --effort), mcp_server.py 1 (the tool's clause). 27,950: main 74e6a81's 27,923 plus 27.
 
-- `lines = 27950`
+2026-11-10: need-2026-11-09-81 raised it by 9: the live page's `page` tool closes the page's chat or opens it (`chat`), as its buttons do, on every open tab and kept across a restart, since the owner asked a room on the page for no chat box a second time and only the close button in the owner's browser closed it; not folded to fit: channels/page.py 8 (draw's `chat`, checked before any part is drawn, kept in talk.json, an owner's switch it undoes before the room heard it left unsaid, the module's and draw's lines on it), words.py 1 (PAGE_CHAT), mcp_server.py 0 (the tool's parameter and clause). The tab's showing of it is page.html, outside this count. 27,959: main 37d8a70's 27,950 plus 9.
+
+- `lines = 27959`
 
 ## Uncapped
 

@@ -20,7 +20,8 @@
   time-stamped and read the way Discord reads a message (rich), the newest LINES_KEPT kept in work/page/ across a
   restart: its replies, its notices and its sends to itself (Mirror), and what the `page` tool draws: a new program or tests, marks on lines (a highlight, an arrow, each with a note), a one-line hint,
   the bar (labels and values, a countdown) and the stall wait. A tab that opens or reconnects gets the whole state first.
-- The talk can live in the program instead (talk): with the page's chat closed to nothing, the room's lines also go into the
+- The talk can live in the program instead (talk): with the page's chat closed to nothing (by its button, or by the room's
+  `page` tool, `chat`, on every open tab at once), the room's lines also go into the
   program as #> comment lines under the owner's last # line (into), which yerkd writes in its copy and every open tab writes
   in its own text at the same line, so the owner's caret and typing since stay, no more than TEXT_MAX holds, the room's
   marks under them moved down; each reply numbered, so a tab whose feed was down writes the ones it missed when it is back,
@@ -110,7 +111,7 @@ TAILNET = (ipaddress.ip_network("100.64.0.0/10"), ipaddress.ip_network("fd7a:115
 # default browser, where cmd.exe's start would split it at its `&`
 WSL_OPEN = ("/mnt/c/Windows/System32/rundll32.exe", "url.dll,FileProtocolHandler")
 PROGRAM, TESTS, CHAT, TALK = "solution.py", "test_solution.py", "chat.json", "talk.json"
-MARKS = ("highlight", "arrow")
+MARKS, CHATS = ("highlight", "arrow"), ("open", "closed")
 # the bar as a scoreboard, read from the room's words alone (cell): a rank's tiers, low to high, each its colour on the
 # page (.tier-NAME in page.html); the labels whose value is a rank; a division after a tier; a number and a short unit
 TIERS = ("iron", "bronze", "silver", "gold", "platinum", "emerald", "diamond", "master", "grandmaster", "challenger")
@@ -752,9 +753,12 @@ class Page:
 
     # what the room draws
     def draw(self, room: str, req: dict[str, Any]) -> dict[str, Any]:
-        """The `page` tool: each part given replaces what the page shows of it, and goes to every open tab now."""
+        """The `page` tool: each part given replaces what the page shows of it, and goes to every open tab now; `chat` closes
+        the page's chat or opens it as its buttons do (talk), kept, and an owner's switch not yet said that it undoes unsaid."""
         if (s := self.sheets.get(room)) is None:
             return {"ok": False, "error": words.PAGE_NONE.format(room=room)}
+        if (chat := str(req.get("chat") or "").strip().lower()) not in ("", *CHATS):     # before any part: none drawn on a bad one
+            return {"ok": False, "error": words.PAGE_CHAT.format(chat=words.no_paths(chat)[:40])}
         op: dict[str, Any] = {}
         for pane, name in (("code", PROGRAM), ("tests", TESTS)):
             if isinstance(req.get(pane), str):
@@ -780,6 +784,10 @@ class Page:
             s.timer = op["timer"] = {"seconds": req["timer"], "from": round(time.time(), 3)} if req["timer"] else {}
         if isinstance(req.get("stall"), int) and req["stall"] >= 0:
             s.stall = op["stall"] = req["stall"]
+        if chat:
+            s.talk, op["chat"] = chat == "closed", chat
+            s.keep()
+            s.waiting = [x for x in s.waiting if x != (words.PAGE_TALK_OFF if s.talk else words.PAGE_TALK_ON)]
         if not op:
             return {"ok": False, "error": words.PAGE_NOTHING}
         self._log(s, {"kind": "drawn", **{k: v for k, v in op.items() if k not in ("code", "tests", "board")},

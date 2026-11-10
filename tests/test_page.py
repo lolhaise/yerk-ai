@@ -1421,6 +1421,111 @@ def test_the_chat_closes_to_nothing_and_the_page_remembers_it(tmp_path):
     assert ".mark.room {" in css and 'make("div", "mark room")' in script                    # the room's lines in its colour
 
 
+def test_the_page_tool_closes_the_chat_and_opens_it_on_every_open_tab_and_the_page_keeps_it(tmp_path):
+    """need-2026-11-09-81, the wall the ask hit: the owner, on the live page, said a second time they wanted no chat box;
+    the page tool drew code, tests, marks, a hint, the bar, the timer and the stall but had no switch for the chat, which
+    only the close button in the owner's browser closed, and talk.json is yerkd's own. The tool's `chat` closes it or opens
+    it as the buttons do: on every open tab now, kept across a restart and shown by every tab that opens, the room's replies
+    then in the program; the room is not told back what it did itself, an owner's switch it undoes before the room heard
+    it is never said, and a word that is neither draws nothing."""
+    p, room = hub(tmp_path, quiet=60)
+    p.draw("r", {"code": "# why?\nx = 1\n"})
+    kept = tmp_path / "rooms" / "r" / "work" / "page" / "talk.json"
+
+    async def go(page, chat, said):
+        tab = page.stream("r", beat=0.05)
+        first = json.loads(await tab.__anext__())
+        got = page.draw("r", {"chat": chat})
+        ops = [json.loads(await tab.__anext__())]
+        page.said("r", said)
+        ops += [json.loads(await tab.__anext__()) for _ in range(2 if page.sheets["r"].talk else 1)]
+        await tab.aclose()
+        return first, got, ops
+    first, got, (op, said, talk) = asyncio.run(go(p, "closed", "the room's answer"))
+    s = p.sheets["r"]
+    assert first["state"]["talk"] is False and got == {"ok": True, "tabs": 1} and op == {"draw": {"chat": "closed"}}
+    assert s.talk and json.loads(kept.read_text())["on"] is True
+    assert said["line"]["text"] == "the room's answer" and talk["talk"]["lines"] == ["#> the room's answer"]
+    assert s.code == "# why?\n#> the room's answer\nx = 1\n"                     # the reply in the program, as with the button
+    assert {k: v for k, v in events(tmp_path)[-2].items() if k != "t"} == {"kind": "drawn", "chat": "closed"}
+    assert s.waiting == [] and p.flush("r") == "" and room.got == []              # nothing told back: the room did it
+    again = Page(tmp_path, p.ledger)
+    again.add_room(Taken())
+    assert again.sheets["r"].state()["state"]["talk"] is True                     # a tab that opens after a restart: closed
+    first, got, (op, said) = asyncio.run(go(again, " Open ", "on the chat alone"))
+    assert first["state"]["talk"] is True and got == {"ok": True, "tabs": 1} and op == {"draw": {"chat": "open"}}
+    assert not again.sheets["r"].talk and json.loads(kept.read_text())["on"] is False and "on the chat alone" not in again.sheets["r"].code
+    asyncio.run(again.event("r", {"kind": "talk", "on": True}))                  # the owner closes it; the room not told yet
+    again.draw("r", {"chat": "closed"})
+    assert again.sheets["r"].waiting == [words.PAGE_TALK_ON]                      # the same switch: still true, still said
+    again.draw("r", {"chat": "open"})
+    assert again.sheets["r"].waiting == [] and again.flush("r") == ""            # undone: never said
+    assert again.draw("r", {"chat": "hidden", "hint": "x"}) == {"ok": False, "error": words.PAGE_CHAT.format(chat="hidden")}
+    assert again.sheets["r"].hint == "" and not again.sheets["r"].talk            # a bad word draws nothing
+
+
+def test_the_page_tool_s_chat_reaches_the_page_through_the_daemon_open_or_not(tmp_path, monkeypatch):
+    """need-2026-11-09-81: the tool's `chat` reaches the room's page by the daemon, with no tab open too (the page shows it
+    when one opens), beside `open` in one call, and a word that is neither is refused in words."""
+    y, _ = page_daemon(tmp_path)
+    server = mcp_server.build(y, y.port, y.hook)
+    monkeypatch.setattr(mcp_server, "caller_room", lambda ctx: "example-room")
+    got = asyncio.run(server.call_tool("page", {"chat": "closed"}))
+    assert json.loads((got[0] if isinstance(got, tuple) else got)[0].text) == {"ok": True, "tabs": 0, "note": words.PAGE_NO_TAB}
+    assert y.page.sheets["example-room"].state()["state"]["talk"] is True
+    opened = []
+
+    async def page_open(room, where="pc"):
+        opened.append((room, where))
+        return {"ok": True, "opened": True, "line": words.PAGE_OPENED}
+    monkeypatch.setattr(y, "page_open", page_open)
+    both = asyncio.run(y.tool_page("example-room", {"open": True, "chat": "open"}))
+    assert opened == [("example-room", "pc")] and both["ok"] and both["opened"]["opened"] and not y.page.sheets["example-room"].talk
+    assert asyncio.run(y.tool_page("example-room", {"chat": "gone"})) == {"ok": False, "error": words.PAGE_CHAT.format(chat="gone")}
+
+
+def tab_chat(steps, width=40):
+    """The page's own apply(), split() and keep() run by node on stand-ins for the document and the browser's storage: the
+    chat at `width` of the screen first, then each step, an op from yerkd's feed or a press of the owner's (split's
+    argument): after each, the chat closed or not, what the tab believes yerkd keeps, the body's classes, the chat button
+    on the bar shown or not, the chat's width and the split the browser keeps; then what the tab posted to yerkd."""
+    script = pagemod.HTML.read_text().split("<script>", 1)[1]
+    fns = "".join(f"function {n}(" + script.split(f"\nfunction {n}(", 1)[1].split("\n}\n", 1)[0] + "\n}\n" for n in ("apply", "split"))
+    lines = [x for x in script.splitlines() if x.startswith(("function keep(", "const SPLIT = "))]
+    harness = ("const [steps, width] = JSON.parse(process.argv.at(-1)), els = {}, store = {}, posted = [];\n"
+               "const classes = () => ({ on: new Set(), toggle(c, v) { if (v) this.on.add(c); else this.on.delete(c); } });\n"
+               "const $ = s => els[s] || (els[s] = { hidden: true, textContent: '', classList: classes() });\n"
+               "const style = { p: {}, getPropertyValue(k) { return this.p[k] || ''; }, removeProperty(k) { delete this.p[k]; },\n"
+               "  setProperty(k, v) { this.p[k] = v; } };\n"
+               "const document = { body: { style, classList: classes() }, activeElement: null };\n"
+               "const localStorage = { getItem: k => store[k] ?? null, setItem: (k, v) => { store[k] = v; }, removeItem: k => { delete store[k]; } };\n"
+               "const post = (p, b) => (posted.push(b), Promise.resolve({ ok: true }));\n"
+               "let KEY = 'k', talkOn = false, chatless = false, opened = null, talked = 0, timerSaid = false, state = { marks: [] };\n"
+               "const panes = { code: { ta: { value: '' } } }, noop = () => {};\n"
+               "const [gutter, sync, showMarks, showBar, line, showRun, put, run, talk] = Array(9).fill(noop);\n"
+               + "\n".join(lines) + "\n" + fns +
+               "split(width, true, false);\nconst seen = steps.map(x => { if (x.op) apply(x.op); else split(x.press === 'opened' ? opened : x.press);\n"
+               "  return { chatless, talkOn, body: [...document.body.classList.on], chat_button: !$('#open-chat').hidden,\n"
+               "           width: style.p['--chat'] || null, kept: store['yerk-page-chat'] ?? null }; });\n"
+               "console.log(JSON.stringify({ seen, posted }));\n")
+    done = subprocess.run(["node", "-e", harness, json.dumps([steps, width])], capture_output=True, text=True, timeout=60)
+    assert done.returncode == 0, done.stderr
+    return json.loads(done.stdout)
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="node runs the page's script; it is not on this box")
+def test_a_tab_shows_the_room_s_switch_of_the_chat_and_tells_yerkd_nothing_back():
+    """need-2026-11-09-81: a tab given the room's `chat` closes its chat to nothing or opens it at the width it had, as its
+    own buttons do, kept in the browser, and posts nothing, since yerkd already keeps it; the owner's press after it still
+    tells yerkd, once."""
+    got = tab_chat([{"op": {"draw": {"chat": "closed"}}}, {"op": {"draw": {"chat": "closed"}}}, {"op": {"draw": {"chat": "open"}}},
+                    {"op": {"draw": {"chat": "closed"}}}, {"press": "opened"}])
+    closed = {"chatless": True, "talkOn": True, "body": ["chatless"], "chat_button": True, "width": None, "kept": "0.0"}
+    back = {"chatless": False, "talkOn": False, "body": [], "chat_button": False, "width": "40.0%", "kept": "40.0"}
+    assert got["seen"] == [closed, closed, back, closed, back]
+    assert got["posted"] == [{"kind": "talk", "on": False}]                         # the owner's own press alone
+
+
 def test_the_room_s_replies_never_grow_the_program_past_its_cap_so_a_keystroke_cuts_none_of_it(tmp_path):
     """need-2026-11-04-51, the cold read's first find: _talk wrote the room's #> lines into yerkd's copy with no cap, where
     every other way in (an edit, a draw) cuts at TEXT_MAX, so with the chat closed long replies grew the program past it

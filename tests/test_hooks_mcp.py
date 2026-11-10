@@ -60,7 +60,7 @@ def test_twenty_three_preloaded_tools_with_slim_schemas(tmp_path):
                           "github_state", "page", "texts", "attachments", "zoom"}
     assert list(tools["zoom"].inputSchema["properties"]) == ["path", "x0", "y0", "x1", "y1"] and "`zoom`" in context.MECHANICS.read_text()
     assert list(tools["attachments"].inputSchema["properties"]) == ["message", "name"]
-    assert list(tools["page"].inputSchema["properties"]) == ["code", "tests", "marks", "hint", "bar", "timer", "stall", "open", "where", "off"]
+    assert list(tools["page"].inputSchema["properties"]) == ["code", "tests", "marks", "hint", "bar", "timer", "stall", "chat", "open", "where", "off"]
     assert list(tools["text"].inputSchema["properties"]) == ["to", "text"]
     assert list(tools["email"].inputSchema["properties"]) == ["to", "subject", "text", "files"]
     assert list(tools["texts"].inputSchema["properties"]) == ["limit"]
