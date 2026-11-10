@@ -30,8 +30,9 @@ APPLIED = "applied.json"           # in the backup folder: what an apply wrote, 
 DAYS = 14                          # the trigger test's window of owner messages
 OWNER = ("owner", "test-webhook")  # whose messages the trigger test reads (the webhook stands in for the owner)
 PEOPLE = re.compile(r"\b(?:anyone|anybody|someone|somebody|people|a person|other persons?|others|strangers?|whoever)\b", re.I)
+WORD = re.compile(r"[\w'’-]+")      # a sentence is accounted for by its words, the punctuation a cited quote left aside
 GO_AHEAD = "Only the owner's go-ahead lifts it."
-HIS_WORD = "Only the owner's own go-ahead lifts it, not another person's."
+HIS_WORD = "Only the owner's own go-ahead lifts it, not anyone else's."     # no word a rule loads on: "person" outweighed one
 
 
 def sha(p: Path) -> str:
@@ -121,10 +122,12 @@ def accounted(rule: dict[str, Any], made: list[dict[str, Any]], listed: list[dic
     rewritten: none, when every sentence is accounted for."""
     have = flat(" ".join(f"{x['summary']} {x['body']}" for x in made))
     said = {flat(x["said"]) for x in listed if x["kind"] in ("left out", "rewritten")}
-    out = []
-    for sent in shape.SENTENCES.split(rule["said"]):
+    out, text = [], rule["said"]
+    for x in listed:                    # a cited quote is accounted for by its cite, a quote across two sentences too
+        text = text.replace(x["said"], " ") if x["kind"] == "quote cited" else text
+    for sent in shape.SENTENCES.split(text):
         bare = flat(shape.QUOTED.sub(" ", sent))
-        if sent.strip() and flat(sent) not in have and flat(sent) not in said and not set(bare.split()) <= set(have.split()):
+        if sent.strip() and flat(sent) not in have and flat(sent) not in said and not set(WORD.findall(bare)) <= set(WORD.findall(have)):
             out.append(sent.strip())
     return out
 
