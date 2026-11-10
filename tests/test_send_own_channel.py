@@ -23,7 +23,7 @@ class Sent(Rec):
         super().__init__()
         self.sent: list[str] = []
 
-    async def send_text(self, room, text, key=None):
+    async def send_text(self, room, text, key=None, inbound=""):
         self.sent.append(text)
         return ["s1"]
 
