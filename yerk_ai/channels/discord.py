@@ -943,7 +943,7 @@ class DiscordChannel:
                 files += [(str(m.id), a.filename, int(a.size or 0)) for a in getattr(m, "attachments", []) or []]
         claimed = {str(r["message_id"]) for r in self.ledger.deliveries(room.name) if r["message_id"]}
         for key in keys:
-            rows = sorted((r for r in self.ledger.deliveries(room.name) if r["key"].rsplit(":", 1)[0] == key),
+            rows = sorted(self.ledger.deliveries_of(room.name, key),
                           key=lambda r: int(r["key"].rsplit(":", 1)[1]) if r["key"].rsplit(":", 1)[1].isdigit() else 0)
             if rows[0]["kind"] == "file":
                 await self._redeliver_file(ch, room.name, rows[0], files, claimed)
@@ -1210,8 +1210,7 @@ class DiscordChannel:
         connection is sent once more under the same nonce: Discord answers a nonce it already took with that message, never
         a second one (discord.py sends enforce_nonce). A part that failed, and the parts after it, are never posted again."""
         ch, ids = await self._channel(room), []
-        rows = sorted((r for r in self.ledger.deliveries(room) if r["key"].rsplit(":", 1)[0] == key),
-                      key=lambda r: int(r["key"].rsplit(":", 1)[1]))
+        rows = sorted(self.ledger.deliveries_of(room, key), key=lambda r: int(r["key"].rsplit(":", 1)[1]))   # this reply's parts, never the room's history
         for i, r in enumerate(rows):
             if r["state"] == "sent":
                 ids.append(str(r["message_id"]))

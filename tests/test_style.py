@@ -8,6 +8,7 @@ import json
 import os
 import re
 import time
+from datetime import datetime
 from pathlib import Path
 
 import discord
@@ -71,6 +72,9 @@ def a_turn_with_three_tools() -> Card:
     c.feed(done("a"))
     c.feed(done("b", error=True))
     return c
+
+
+NOON = datetime(2026, 1, 7, 12, 0).timestamp()      # a Wednesday noon on the box's own clock
 
 
 def worker_row(cap=900.0, started=None):
@@ -327,7 +331,8 @@ def test_yerk_config_get_presentation_prints_each_setting_with_its_plain_words(t
         f"memory.{k}" for k in (*memory.EMBEDDING_SETTINGS, *memory.RECALL_SETTINGS)]  # a section by its name
 
 
-def test_the_worker_card_honors_footer_paths_and_times():
+def test_the_worker_card_honors_footer_paths_and_times(monkeypatch):
+    monkeypatch.setattr(time, "time", lambda: NOON)        # one fixed noon: a row begun 185 s ago is today's at any hour the suite runs
     row = worker_row()
     items = [(True, "first tick")]
     full = workers.card_text(row, items, look=words.Look(footer="full"))
@@ -347,12 +352,21 @@ def test_the_worker_card_honors_footer_paths_and_times():
     assert words.LOOK == words.Look()
 
 
+def test_a_card_begun_before_midnight_says_its_day(monkeypatch):
+    """A deploy's fast tests ran through midnight on 2026-11-10 and the test above failed for the first 185 seconds of the
+    day, so the deploy stopped: its row, begun 185 s before, was the evening before's, which words.clock says with its day."""
+    monkeypatch.setattr(time, "time", lambda: datetime(2026, 1, 8, 0, 0, 20).timestamp())
+    card = workers.card_text(worker_row(), [(True, "first tick")], look=words.Look(times="clock"))
+    assert re.search(r"started Wed 23:57, cap 15 min$", card), card
+    assert all(words.width(x) <= words.PHONE for x in card.splitlines()), card
+
+
 def test_times_are_said_the_way_a_person_says_them():
     assert [words.span(x) for x in (18, 181, 3725 * 2)] == ["18 s", "3 min", "2 h 4 min"]
     assert words.of_cap(30, 900) == "under 1 min of 15" and words.of_cap(185, 900) == "3 min of 15"
     assert words.ago(20) == "just now" and words.ago(125) == "2 min ago"
-    assert re.fullmatch(r"\d\d:\d\d", words.clock(time.time())) and re.fullmatch(r"\w{3} \d\d:\d\d",
-                                                                                   words.clock(time.time() - 3 * 86400))
+    now = time.time()                                       # one reading for both, so midnight between two readings changes nothing
+    assert re.fullmatch(r"\d\d:\d\d", words.clock(now, now)) and re.fullmatch(r"\w{3} \d\d:\d\d", words.clock(now - 3 * 86400, now))
     assert words.sizes(20_971_521, 20_971_520) == ("20,971,521 bytes", "20,971,520 bytes")
     assert words.sizes(26_214_400, 20_971_520) == ("25 MB", "20 MB")
 
