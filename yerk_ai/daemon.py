@@ -374,7 +374,9 @@ class Yerkd:
         room = Room(name, conf, lambda: self.spec_for(name), accts, channel, self.state, self.ledger,
                     self.failures, self.cooldowns, idle_seconds=self.idle_seconds, log_dir=self.log_dir, meters=self.meters,
                     compact=(self.window(name), float(s.get("idle_compact_at", 0)), 60 * float(s.get("idle_compact_after", 0)),
-                             float(s.get("idle_compact_within", 0))), precompact=float(s.get("precompact_within", 0)))
+                             float(s.get("idle_compact_within", 0))), precompact=float(s.get("precompact_within", 0)),
+                    copy=(int(s.get("copy_tail", 12000)), int(s.get("copy_room", 30000))))
+        room.cite = self.day_cite                                # a long tail names its oldest exchanges by their lines
         self.rooms[name], self.channels[name] = room, channel
         if paged:
             self.page.add_room(room)
@@ -1276,6 +1278,15 @@ class Yerkd:
         past = [h for h in self.search(room, prompt, PAST_HITS, hits, 2.0, 3.0, docs=False)
                 .get("hits", []) if not any(f"[m:{m}" in h["text"] for m in mine)] if back else []
         return abilities.asked(prompt, self.memory) + names + deep, topics, past, absent     # "can you do voice": the manifest's answer
+
+    def day_cite(self, mid: str, when: float) -> str:
+        """The day-log cite (file:line) of message `mid`, sent at `when`, "" when its line is not there (Room._tail)."""
+        day = self.memory.daily / f"{datetime.fromtimestamp(when, self.memory.tz):%Y-%m-%d}.md"
+        with contextlib.suppress(OSError):
+            for n, line in enumerate(day.read_text(errors="replace").splitlines(), 1):
+                if line.endswith(f"[m:{mid}]"):
+                    return f"{memory.cite(self.memory, day)}:{n}"
+        return ""
 
     def rules_news(self, room: str, sid: str = "") -> str:
         """The rules block for session `sid` (context.news), under budgets.toml's `rules`, past it in the work folder; "" records a process start."""
