@@ -1354,4 +1354,17 @@ secs = 60
 # in the newest turn."); not folded to fit: context.py 29 (the two files in news' look, the lines a look from before they
 # were kept reads off the session's kept start, began_with, and the lines that say something, lines_of, which news and
 # it share). 28,006: main 10e9cfb's 27,977 plus 29.
-lines = 28006
+# 2026-11-10: need-2026-11-09-82 raised it by 51: the room's answers to a live page are bubbles between the editor's rows
+# under the line asked from, never #> lines written into the owner's solution.py, with a typing mark till the turn ends
+# and one key to ask about a line or a red test, since the owner asked to talk to the room in the code and got a dozen
+# plain #> lines at the bottom of the owner's file, a one-colour editor and nothing on screen while it thought; not folded to
+# fit: channels/page.py 51 (talk_lines, spot, into, caught_up and the reply numbering out; moved, kept_lines, fallback
+# and def_line, the sheet's bubbles, typing mark and anchors with shift, the ask and bubble events, asking, _bubble,
+# ended and the Mirror's silent in), words.py 0 (the asks' words for the talk's cut and catch-up), mcp_server.py 0 (the
+# page tool's clause, as long as before). The editor, its colours and the bubbles are page.html's, outside this count.
+# 28,057: main 6a13109's 28,006 plus 51.
+# 2026-11-10: need-2026-11-09-82's fix (PR 40) lowered it by 1: a bubble an edit moves is written to talk.json at once,
+# since lines typed above one moved it in yerkd's copy alone and a restart brought it back on its old line, beside another
+# line of the program; channels/page.py -1 (shift writes talk.json when a bubble moved or went, for an edit and a draw
+# alike, so the draw's own write and its block after the loop go). 28,056: 28,057 less 1.
+lines = 28056

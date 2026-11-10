@@ -605,15 +605,15 @@ PAGE_UNPADDED = "the page spaces the bar's cells itself, so the padding in their
 PAGE_NO_DAEMON = "yerkd is not running here (no yerkd.json in the state folder); start it, then ask again"
 PAGE_NO_KEY = ("room {room} has no live page yet: ask for it in the room, whose page tool turns it on, or set page = true in its "
                "rooms.toml table and restart yerkd")
-# talk in the program (channels/page.py talk): the chat closed or opened, a reply's cut, and a program run alone, its prints
-PAGE_TALK_ON = ("the owner closed the page's chat: your replies to what is said on the page now go into the program as #> lines "
-                "under the owner's last # line, so write them as short plain lines; the lines under them move down, your marks "
-                "with them; what you say in answer to anything else (Discord, a job, a scheduled note) stays on the chat")
-PAGE_TALK_FULL = "the program is at the page's cap of {n:,} characters: what did not fit of your reply is on the page's chat alone"
-PAGE_TALK_OFF = "the owner opened the page's chat again: your replies show there, not in the program"
-PAGE_TALK_CUT = "... {n} more lines on the page's chat"
-PAGE_TALK_BEHIND = ("not kept: this tab missed more of the room's lines than yerkd keeps; when its feed is back it takes the "
-                    "program as yerkd has it")
+# talk in the program (channels/page.py talk): the chat closed or opened, a line or a test asked about, and a program run alone
+PAGE_TALK_ON = ("the owner closed the page's chat: your replies to what is said on the page now show in the program as bubbles "
+                "under the line it was asked from, never in solution.py, four lines before a click opens one, so keep them short; "
+                "what you say in answer to anything else (Discord, a job, a scheduled note) stays on the chat")
+PAGE_TALK_OFF = "the owner opened the page's chat again: your replies show there, and one to a line asked about under that line too"
+PAGE_ASK_LINE = "about line {line} of the {pane}: {text}"
+PAGE_ASK_BLANK = "about line {line} of the {pane}, a blank line"
+PAGE_ASK_TEST, PAGE_ASK_FAILS = "about test {name}{how}", ", which fails{line}: {message}"
+PAGE_ASK_NONE = "the page asked about a line or a test it does not have"
 PAGE_MAIN, PAGE_MAIN_ERROR = "ran solution.py alone (no tests)", "ran solution.py alone (no tests), and it stopped: {error}{line}"
 PAGE_PRINTED = "it printed:\n{output}"
 QUIET_WORKER = "finished clean, nothing to add"   # a worker's last message of exactly NO_REPLY: its card's head ("nothing to post" ran past PHONE)
