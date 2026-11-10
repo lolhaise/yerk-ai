@@ -23,12 +23,12 @@
 - The talk can live in the program instead (talk): the room's lines that answer what was said on the page (answers_page)
   show in its coloured editor as bubbles between the rows, under the line they were asked from, never in solution.py
   (_bubble): a # line the owner said, a line asked about (Ctrl+Enter or its number: ask) or a red test's tile, its def line
-  in the tests; with the chat closed every answer to the page does, under the # line said last when its message named
-  none (fallback), and a line from any other thread (a Discord message's answer, a job's post) stays on the chat alone. A
-  typing mark shows under that line from the send until the turn's reply, notice or silent end lands (ended); each bubble
-  moves with its line as the owner types (moved) or the room draws (kept_lines), the newest BUBBLES_KEPT in talk.json, put
-  away on every tab by its x. A # line ended with Enter goes at once, and blank tests run the program alone, its prints
-  shown large and said to the room.
+  in the tests; with the chat closed (by its button, or by the room's `page` tool, `chat`, on every open tab at once)
+  every answer to the page does, under the # line said last when its message named none (fallback), and a line from any
+  other thread (a Discord message's answer, a job's post) stays on the chat alone. A typing mark shows under that line
+  from the send until the turn's reply, notice or silent end lands (ended); each bubble moves with its line as the owner
+  types (moved) or the room draws (kept_lines), the newest BUBBLES_KEPT in talk.json, put away on every tab by its x.
+  A # line ended with Enter goes at once, and blank tests run the program alone, its prints shown large and said to the room.
 - On the owner's ask the room's `page` tool turns its page on with no restart (Yerkd.page_switch) and yerkd opens it on
   the owner's screen with the box's own opener (opener): the address it opens holds a one-time ticket, never the key,
   since an opener's command line is readable by every local user (/proc); the page trades the ticket once, within
@@ -111,7 +111,7 @@ TAILNET = (ipaddress.ip_network("100.64.0.0/10"), ipaddress.ip_network("fd7a:115
 # default browser, where cmd.exe's start would split it at its `&`
 WSL_OPEN = ("/mnt/c/Windows/System32/rundll32.exe", "url.dll,FileProtocolHandler")
 PROGRAM, TESTS, CHAT, TALK = "solution.py", "test_solution.py", "chat.json", "talk.json"
-MARKS = ("highlight", "arrow")
+MARKS, CHATS = ("highlight", "arrow"), ("open", "closed")
 # the bar as a scoreboard, read from the room's words alone (cell): a rank's tiers, low to high, each its colour on the
 # page (.tier-NAME in page.html); the labels whose value is a rank; a division after a tier; a number and a short unit
 TIERS = ("iron", "bronze", "silver", "gold", "platinum", "emerald", "diamond", "master", "grandmaster", "challenger")
@@ -785,9 +785,12 @@ class Page:
     # what the room draws
     def draw(self, room: str, req: dict[str, Any]) -> dict[str, Any]:
         """The `page` tool: each part given replaces what the page shows of it, and goes to every open tab now; a bubble keeps
-        its line where the program drawn kept it, and goes with a line it replaced (kept_lines)."""
+        its line where the program drawn kept it, and goes with a line it replaced (kept_lines); `chat` closes the page's chat
+        or opens it as its buttons do (talk), kept, and an owner's switch not yet said that it undoes unsaid."""
         if (s := self.sheets.get(room)) is None:
             return {"ok": False, "error": words.PAGE_NONE.format(room=room)}
+        if (chat := str(req.get("chat") or "").strip().lower()) not in ("", *CHATS):     # before any part: none drawn on a bad one
+            return {"ok": False, "error": words.PAGE_CHAT.format(chat=words.no_paths(chat)[:40])}
         op: dict[str, Any] = {}
         for pane, name in (("code", PROGRAM), ("tests", TESTS)):
             if isinstance(req.get(pane), str):
@@ -817,6 +820,10 @@ class Page:
             s.timer = op["timer"] = {"seconds": req["timer"], "from": round(time.time(), 3)} if req["timer"] else {}
         if isinstance(req.get("stall"), int) and req["stall"] >= 0:
             s.stall = op["stall"] = req["stall"]
+        if chat:
+            s.talk, op["chat"] = chat == "closed", chat
+            s.keep()
+            s.waiting = [x for x in s.waiting if x != (words.PAGE_TALK_OFF if s.talk else words.PAGE_TALK_ON)]
         if not op:
             return {"ok": False, "error": words.PAGE_NOTHING}
         self._log(s, {"kind": "drawn", **{k: v for k, v in op.items() if k not in ("code", "tests", "board", "bubbles", "typing")},
