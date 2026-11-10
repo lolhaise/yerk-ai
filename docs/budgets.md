@@ -645,7 +645,11 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-10: need-2026-11-10-82 raised it by 210, the live page opened on the PC monitor the owner names for every room (need 82: a scheduled check told to open the page on the owner's middle monitor had it put on the left one by the browser, unpainted on a screen asleep, told "opened", and only a click, which needs the owner's word, would wake it), not folded to fit: channels/page.py 150 (PLACE_PS1, the Windows script that opens a window of its own of the default browser on the named screen, maximized and raised without the focus, the screen woken by a still mouse event; place, its run with the address in its environment and its every end in words; screen_name, wsl; the tab's paint waited on by its ticket), daemon.py 38 (the named screen's open, its fallback to the box's opener only when nothing opened, its paint said before the room looks; [page] screen; the tool's `screen`), words.py 16, mcp_server.py 3 (the tool's `screen`), config.py 3 (the key). The tab's word that it painted is page.html, outside this count. 28,431: main 4e7a617's 28,221 plus 210.
 
-- `lines = 28431`
+2026-11-10: lesson-store-2026-11-10 raised it by 402, the rule store in the Claude docs' shape (the owner's order of
+
+2026-11-09: every rule written the way the docs say), not folded to fit: lessons.py 229 (one lesson per file, its front matter and summary, the index, the tombstones, an old cite's walk to its lesson, the snapshot a session from before a conversion reads), memory.py 88 (the filing and the retire of a lesson, an old cite read as its lesson, the corpus, recall's walk to the live lesson past five hops), context.py 37 (the index or every lesson whole at a start, a lesson's body on its words, news from the snapshot), shape.py 23 (each lesson file scored, its layout too), memindex.py 13 (a lesson one chunk, its front matter out; the originals' folder out of the index), curate.py 7, doctor.py 3, words.py 2. 28,833: main abc0833's 28,431 plus 402.
+
+- `lines = 28833`
 
 ## Uncapped
 

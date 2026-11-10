@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterator
 from zoneinfo import ZoneInfo
 
-from . import memindex, mentions, words
+from . import lessons, memindex, mentions, words
 from .config import REPO, load_toml, room_id, write_private
 
 MARK = re.compile(r"\[m:([^\]\s]+)\]$", re.M)        # the message id that ends each captured line
@@ -605,6 +605,9 @@ def remember(s: Settings, log: DailyLog, room: str, mid: str, text: str, about: 
                            if said and len(hit) != 1 else "a heading, a blank or not a line this room may read")))
             continue
         p, ln, k = Path(r["path"]), parse_line(line), r["from"] + hit[0]
+        if p.is_relative_to(s.root / lessons.DIR):         # a lesson is replaced in place by its job's filing, or retired
+            refused.append(f"{c}: a lesson; file its job again with `job` to replace it, or `retire` it")
+            continue
         olds[p.is_relative_to(s.root) and (owner or (ln is not None and (ln.cls, ln.rid) == (cls, rid)))].append((p, k))
     edit, named = ([f"{cite(s, p)}:{k}" for p, k in olds[b]] for b in (True, False))
     note = body + (f" (supersedes {', '.join(edit + named)})" if edit or named else "")
@@ -656,6 +659,8 @@ def retire(s: Settings, log: DailyLog, room: str, mid: str, at: str, why: str) -
     live line in RULES or TOPIC_RULES (`at`, its cite) is emptied, so no other line's cite moves, after its words and `why` go
     to the room's day log as a note, where its history stays by cite. A rule with a replacement is filed with `job` instead,
     which marks the old line superseded."""
+    if lessons.converted(s.root):
+        return retire_lesson(s, log, room, mid, at, one_line(why))
     why, files = one_line(why), {cite(s, s.root / f): s.root / f for f in (RULES, TOPIC_RULES)}
     name, _, n = at.strip().rpartition(":")
     path, k = files.get(name), int(n) if n.isdigit() else 0
@@ -731,6 +736,8 @@ def rule(s: Settings, room: str, mid: str, job: str, text: str, cap: int = 0, lo
         return refused
     if bad := [t for t in on if not wants(t)]:
         return {"ok": False, "error": f"nothing filed: a trigger needs a word that names something, not only words like a, the or how: {'; '.join(bad)}"}
+    if lessons.converted(s.root):
+        return rule_lesson(s, room, mid, job, body, log, on, also)
     path, head, at = s.root / RULES, f"- {job}: ", datetime.now(timezone.utc).astimezone(s.tz)
     tail, tier, stripped, k, rooms, cues, swapped = f" ({room}, {at:%Y-%m-%d %H:%M:%S%:z}) [m:{mid}]", s.root / TOPIC_RULES, list[str](), 0, list[str](), list[str](), list[int]()
     new = f"{head}{body}{tail}"
@@ -793,12 +800,93 @@ def rule(s: Settings, room: str, mid: str, job: str, text: str, cap: int = 0, lo
     return {"ok": True, "job": job, "cite": f"{cite(s, path)}:{n}", "replaced": replaced, **({"stripped": stripped} if stripped else {})}
 
 
+def split_summary(body: str) -> tuple[str, str]:
+    """A lesson's words as its file keeps them: the summary, its first sentence (shape.lesson's), and the body after it."""
+    from . import shape
+    first, *rest = shape.SENTENCES.split(body.strip(), maxsplit=1) or [""]
+    return first.strip(), rest[0].strip() if rest else ""
+
+
+def rule_lesson(s: Settings, room: str, mid: str, job: str, body: str, log: DailyLog | None, on: tuple[str, ...],
+                also: tuple[tuple[Path, int, str], ...] = (), slug: str = "") -> dict[str, Any]:
+    """memory.rule on a converted store (lessons.py): the job's lesson replaced in place (`slug`, else its job's first live lesson),
+    its old words a note in the room's day log, where its history stays; else a new lesson after the last. Each of `also` (another
+    lesson on the same thing, curate.same) still holding its words is retired, replaced by this one. The index's limits are a
+    reminder, never a refusal, as code-memory's own are: a filing that takes rules.md near or past them is filed, and its result
+    (`index`) says to shorten the index by merging or dropping stale lessons."""
+    from . import shape
+    summary, rest = split_summary(body)
+    at = datetime.now(timezone.utc).astimezone(s.tz)
+    with daily_lock(s.daily):                  # the one writers' lock
+        have = lessons.store(s.root)
+        was = next((x for x in have if x.slug == slug), None) if slug else next((x for x in have if x.job == job), None)
+        if was is not None and (was.summary, was.body) == (summary, rest):          # a retried call
+            return {"ok": True, "job": job, "cite": was.cite, "replaced": []}
+        new = lessons.Lesson(was.slug if was else lessons.slug_of(job, {x.slug for x in have} | set(lessons.retired(s.root))), job,
+                             summary, rest, was.cls if was else "shared", was.rooms if was else (), on or (was.on if was else ()),
+                             f"{room}, {at:%Y-%m-%d %H:%M:%S%:z} [m:{mid}]")
+        if len(new.front()) >= lessons.FRONT_MAX:
+            return {"ok": False, "error": f"nothing filed: the lesson's front matter (its job, rooms and triggers) runs past "
+                    f"{lessons.FRONT_MAX} characters, past which no room reads its class; give a shorter job or fewer triggers"}
+        lessons.put(s.root, new)
+        gone = [x.cite for p, _, t in also if (x := lessons.parse(p)) is not None and x.slug != new.slug and Path(p).parent ==
+                s.root / lessons.DIR and EXAMPLE.sub("", x.line).strip() == EXAMPLE.sub("", t).strip()
+                and lessons.drop(s.root, x.slug, f"{at:%Y-%m-%d}", new.slug)]
+    if log is not None and was is not None:    # its history, in the day log by cite
+        log.capture(room, f"{mid}.l{hashlib.sha1(new.whole.encode()).hexdigest()[:8]}", NOTE,
+                    f"lesson {was.cite} \"{job}\" replaced in place, it said: {was.whole[2:]}", when=at)
+    most, size = shape.index_limits(s.docs)
+    near = lessons.near(s.root, most, size)
+    return {"ok": True, "job": job, "cite": new.cite, "replaced": [*([was.cite] if was else []), *gone],
+            **({"index": words.INDEX_NEAR.format(said=" and ".join(near), sentence=shape.sentence("index", s.docs))} if near else {})}
+
+
+def retire_lesson(s: Settings, log: DailyLog, room: str, mid: str, at: str, why: str) -> dict[str, Any]:
+    """memory.retire on a converted store: the live lesson `at` names (its file, rules/<slug>.md, or an old cite its rule became)
+    deleted, its words and `why` first a note in the room's day log, and a row in lessons.RETIRED, so a cite to it still finds them."""
+    if not why:
+        return {"ok": False, "error": "retire needs `text`: why the rule turned out wrong, one clause"}
+    slug = lessons.named(s.root, at)
+    if not slug or (x := lessons.parse(s.root / lessons.DIR / f"{slug}.md")) is None:
+        return {"ok": False, "error": f"nothing retired: {at.strip()} is no live lesson of {lessons.DIR}/"}
+    when = datetime.now(timezone.utc).astimezone(s.tz)
+    key = f"{mid}.r{hashlib.sha1(x.whole.encode()).hexdigest()[:8]}"
+    log.capture(room, key, NOTE, f"lesson {x.cite} \"{x.job}\" retired, since {why}: {x.whole[2:]}", when=when)
+    day = s.daily / f"{when:%Y-%m-%d}.md"
+    logged = next((i + 1 for i, y in enumerate(day.read_text().splitlines()) if y.endswith(f"[m:{key}]")), 0)
+    with daily_lock(s.daily):
+        lessons.drop(s.root, slug, f"{when:%Y-%m-%d}")
+    return {"ok": True, "retired": x.cite, "cite": f"{cite(s, day)}:{logged}"}
+
+
+def rule_lines(root: Path) -> list[str]:
+    """Every live rule as a rule line (`- job: words`): a converted store's lessons (lessons.Lesson.line), else the bullets of
+    RULES and TOPIC_RULES; the corpus on_topic weighs a message's words against."""
+    return [x.line for x in lessons.store(root)] if lessons.converted(root) else [*live_rules(root / RULES), *live_rules(root / TOPIC_RULES)]
+
+
 def live_first(s: Settings, r: dict[str, Any], reader: Reader | None = None) -> dict[str, Any]:
     """Recall's answer with no superseded line above its replacement: a hit that a later hit names as replaced
     gets that hit right above it, and a hit showing a marked line, or whose window (its line and the next 12)
-    holds a line in LATER, gets the live end of that line's replacements (five hops at most) read in right above
-    it, as the reader may see it, unless a hit above already shows it."""
-    hits, kept = list(r.get("hits") or []), later(s)
+    holds a line in LATER, gets the live end of that line's replacements (lessons.HOPS at most, a cite met twice ends it) read
+    in right above it, as the reader may see it, unless a hit above already shows it. On a converted store a cite into the store
+    (a lesson's, an old rules.md:N or rules-topics.md:N, one a mark or LATER names) ends at the live lesson it leads to, through
+    the tombstones (lessons.live_slug), so a history line in the day log reaches the lesson its rule is now."""
+    hits, kept, whole = list(r.get("hits") or []), later(s), lessons.converted(s.root)
+
+    def walk(c: str) -> tuple[str, str]:
+        line, at, been = "", "", set[str]()
+        while c and c not in been and len(been) < lessons.HOPS:    # a replacement replaced in turn: on to the live end (F4)
+            been.add(c)
+            if whole and (slug := lessons.live_slug(s.root, c)):
+                x, f = lessons.parse(s.root / lessons.DIR / f"{slug}.md"), s.root / lessons.DIR / f"{slug}.md"
+                ok = x is not None and allowed_text(reader, f, x.whole, daily=s.daily) is not None
+                return (f"{cite(s, f)}:{x.front().count(chr(10)) + 1}", x.whole) if ok and x else ("", "")
+            got = read(s, c, lines=1)
+            line = (allowed_text(reader, Path(got["path"]), got["text"], daily=s.daily) or "").strip() if got["ok"] else ""
+            at = f"{cite(s, Path(got['path']))}:{got['from']}" if line else ""
+            c = (BY.findall(line) or [kept.get(at, "")])[0] if line else ""
+        return at, line
 
     def above(j: int) -> int:
         names = {c.strip().rpartition(":")[0] for m in re.findall(r"\(supersedes ([^)]+)\)", hits[j]["text"]) for c in m.split(",")}
@@ -807,15 +895,12 @@ def live_first(s: Settings, r: dict[str, Any], reader: Reader | None = None) -> 
     for h in [hits[j] for j in sorted(range(len(hits)), key=lambda j: (above(j), above(j) == j, j))]:
         f, _, at = h["cite"].rpartition(":")         # a read-only root's pair names its real file: two copies share a cite (A1)
         mine = (f, read(s, h["cite"], lines=1).get("path") if kept else f)
-        for c in BY.findall(h["text"]) + [b for a, b in kept.items() if a.rpartition(":")[0] in mine
-                                           and 0 <= int(a.rpartition(":")[2]) - int(at) <= READ_LINES]:
-            for _ in range(5):          # a replacement replaced in turn: on to the live end (F4)
-                got = read(s, c, lines=1)
-                line = (allowed_text(reader, Path(got["path"]), got["text"], daily=s.daily) or "").strip() if got["ok"] else ""
-                if not (c := (BY.findall(line) or [kept.get(f"{cite(s, Path(got['path']))}:{got['from']}", "")])[0] if line else ""):
-                    break
-            if line and not any(line in x["text"] for x in [*out, h]):
-                out.append({"cite": f"{cite(s, Path(got['path']))}:{got['from']}", "text": line})
+        store = [m[0] for m in (*lessons.CITE.finditer(h["text"]), *lessons.OLD_CITE.finditer(h["text"]))] if whole else []
+        for c in dict.fromkeys(BY.findall(h["text"]) + store + [b for a, b in kept.items() if a.rpartition(":")[0] in mine
+                                                                and 0 <= int(a.rpartition(":")[2]) - int(at) <= READ_LINES]):
+            to, line = walk(c)
+            if line and not (to.rpartition(":")[0] == f and lessons.CITE.search(f)) and not any(line in x["text"] for x in [*out, h]):
+                out.append({"cite": to, "text": line})
         out.append(h)
     return {**r, "hits": out} if r.get("ok") else r
 
@@ -828,6 +913,9 @@ def read(s: Settings, path: str, start: int = 1, lines: int = READ_LINES, reader
     `reader` (the asking room) sees only what its class allows: a private file is refused outright, a
     day log keeps its own room's lines and blanks the others, so the line numbers still cite."""
     m = re.fullmatch(r"(.+?):(\d{1,9})", path)     # nine digits at most: int() refuses a line of 4,300 or more
+    if m and m[1].rpartition("/")[2] in (RULES, TOPIC_RULES) and lessons.converted(s.root) and (to := lessons.live_slug(s.root, path)):
+        got = read(s, f"{lessons.DIR}/{to}.md", 1, max(lines, 40), reader)       # a cite from before the conversion: its lesson
+        return {**got, "moved": f"{path} is {lessons.DIR}/{to}.md now, the lesson its rule became"} if got["ok"] else got
     if m:
         path, start = m.group(1), start if int(start) > 1 else int(m.group(2))
     try:            # a NUL, or a name too long (3.12 and 3.13 raise that from exists()), is no such file

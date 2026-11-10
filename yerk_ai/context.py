@@ -25,6 +25,7 @@ from .lifted.clock import clock_line, room_voice
 from .lifted.sizemap import fmt, split_sections
 from .lifted.trim import truncate
 from . import memory
+from . import lessons
 from .memory import FRONT, chars, rules_part
 from .mentions import OLD
 
@@ -36,6 +37,7 @@ SEP = "\n\n"
 NEWS = "Rules changed since you last looked:"
 CHANGED = "rules-changed.md"       # in a room's work folder: a NEWS note's lines past its budget, whole, where every room's Read reaches
 TOPICAL = "Rules on this message's topic, from rules-topics.md, as binding as the rules file's:"
+LESSONS_TOPICAL = "Lessons on this message's topic, whole, from rules/, as binding as the index's lines:"
 TOLD = "topics-told.json"          # in a room's state folder: the topic rules its session was handed, each once until a compaction
 NONE = sys.maxsize                 # an uncapped install's limit for what is sent ([limits] uncapped); the budget's number stays its line
 APPROVAL = 300                     # what an uncapped message's pack leaves under the hook ceiling: the daemon's [approval] line after it
@@ -122,9 +124,15 @@ def recall_pack(base: Path, room: dict[str, Any], limit: int = 6000, pack: Pack 
     return SEP.join(texts), ", ".join(srcs)
 
 
-def rules_text(room: dict[str, Any], rules: Path | None, topical: str | None = None) -> tuple[str, str]:
+def rules_text(room: dict[str, Any], rules: Path | None, topical: str | None = None, name: str | None = None) -> tuple[str, str]:
     """The install's rules file's live lines (memory.rule), a part of its own: no front matter or superseded line; with
-    `topical`, an uncapped install's room name, after them under TOPICAL every live topic rule that room may have, whole."""
+    `topical`, an uncapped install's room name, after them under TOPICAL every live topic rule that room may have, whole.
+    A converted store (lessons.py): the index's line of each lesson room `name` may have, its summary and its file, or with
+    `topical` each of those lessons whole, summary then body, so an uncapped room starts knowing every rule it knew before."""
+    if rules and lessons.converted(rules.parent) and not flag(room.get("sealed")):
+        have = lessons.shown(lessons.store(rules.parent), topical if topical is not None else name)
+        rows = [x.whole if topical is not None else x.index_line for x in have]
+        return (f"[from {rules.resolve()}]\n" + "\n".join(rows), str(rules.resolve())) if rows else ("", "")
     if not rules or not rules.is_file() or flag(room.get("sealed")):      # sealed: its own rulebook, no other room's rule
         return "", ""
     mine = [] if topical is None else [x for x in memory.live_rules(rules.with_name(memory.TOPIC_RULES))
@@ -145,7 +153,7 @@ def session_start(private: Path, room: dict[str, Any], budgets: dict[str, Any], 
         "rulebook": _read(base, room.get("rulebook")),
         "room_voice": (cited(vpath, room_voice(vpath) or ""), str(vpath)) if vpath else ("", ""),
         "pinned_memory": _read(base, room.get("pinned_memory")),
-        "rules": rules_text(room, rules, room_name if whole else None),
+        "rules": rules_text(room, rules, room_name if whole else None, room_name),
         "recall_pack": recall_pack(base, room, NONE if whole else int(limits["recall_pack"]), pack),
     }
     parts = []
@@ -213,7 +221,7 @@ def began_with(start: Path, name: str, text: str, path: Path) -> str:
         if any(x in whole for x in lines_of(text)) else text
 
 
-def news(path: Path, sid: str, private: Path, room: dict[str, Any], rules: Path, budget: int, kept: Path) -> str:
+def news(path: Path, sid: str, private: Path, room: dict[str, Any], rules: Path, budget: int, kept: Path, name: str | None = None) -> str:
     """What changed in the mechanics, the room's persona, rulebook or voice file or the rules file since session `sid` last
     looked (decision 15), once per version: each new line and each line replaced or gone, or past `budget` their count and
     `kept`, a file in the room's work folder that holds them whole, since every room's Read reaches that folder and only an
@@ -221,11 +229,16 @@ def news(path: Path, sid: str, private: Path, room: dict[str, Any], rules: Path,
     `path` keeps the room's looks; `sid` "" records a process start, a new session's first look (its start file's). A session
     this file last saw under another id (a compaction's copy, adopted) reads from the texts its kept start was built from
     (engine.kept_start), since a resumed session keeps the start it began with and hears every change since here; a look
-    with no persona or voice text, kept before news told them, reads it from that start (began_with)."""
+    with no persona or voice text, kept before news told them, reads it from that start (began_with). A converted store's text
+    is each lesson room `name` may have, whole (lessons.news_text); a look from before the conversion reads the lessons as converted
+    (lessons.snapshot), so a session that began before it hears only a lesson changed since, since its rules mean what they meant
+    when it started (prompting-fable-5-2: "Make these changes in new conversations only")."""
     base = layer_dir(private, room)          # the hand-kept files the room loads, in its start's order (APPENDED)
     hand = [(k, base / str(room[c])) for k, c in (("persona", "persona"), ("rulebook", "rulebook"), ("room_voice", "voice")) if room.get(c)]
     now = {k: ((mechanics() if k == "mechanics" else p.read_text().strip()) if p.is_file() else "", p.resolve()) for k, p in
            (("mechanics", MECHANICS), *hand, ("rules", rules))}
+    if (whole := lessons.converted(rules.parent)):
+        now["rules"] = (lessons.news_text(lessons.shown(lessons.store(rules.parent), name)), rules.resolve())
     texts = {k: t for k, (t, _) in now.items()}
     path.parent.mkdir(parents=True, exist_ok=True)
     look = json.loads(path.read_text()) if path.is_file() else {}
@@ -237,6 +250,9 @@ def news(path: Path, sid: str, private: Path, room: dict[str, Any], rules: Path,
     except (OSError, ValueError, TypeError):
         began = {}
     seen = look.get("seen", texts) if look.get("session") == sid else began or look.get("start", texts)
+    if whole and not str(seen.get("rules", "")).startswith(lessons.LESSON_MARK):        # a look from before the conversion
+        snap = [x for x in lessons.snapshot(rules.parent) if name is None or not x[1] or name in x[1]]
+        seen = {**seen, "rules": "\n".join([lessons.LESSON_MARK, *(x[2] for x in snap)]) if snap else texts["rules"]}
     if look.get("session") == sid and seen == texts:
         return ""
     write_private(path, json.dumps({**look, "session": sid, "seen": texts}))
@@ -267,20 +283,41 @@ def topics(path: Path, sid: str, room: str, rules: Path, text: str | None, budge
     [rooms: ...], or one naming it), each once per session `sid` until its next compaction (`path` keeps what it was handed),
     best first, each whole under `budget` after TOPICAL: (the block, the jobs in it). `start`, an uncapped install's session
     start file: a rule it carries never rides again, and `text` None takes every other one (a compaction's re-add)."""
-    tier = memory.live_rules(rules.with_name(memory.TOPIC_RULES))
-    mine = [x for x in tier if ((sc := memory.scope(x)) is None or room in sc) and (start is None or x not in start)]
-    if not sid or not mine or budget <= chars(TOPICAL):
-        return "", []
     look = json.loads(path.read_text()) if path.is_file() else {}
-    had, out, left = set(look.get("told", [])) if look.get("session") == sid else set(), [TOPICAL], budget - chars(TOPICAL)
-    for _, x in memory.on_topic(text, mine, [*memory.live_rules(rules), *tier]) if text is not None else [(0.0, x) for x in mine]:
-        if (k := hashlib.sha1(x.encode()).hexdigest()[:12]) not in had and chars(x) + 1 <= left:
-            out, left = [*out, x], left - chars(x) - 1
+    had = set(look.get("told", [])) if look.get("session") == sid else set()
+    if lessons.converted(rules.parent):            # each lesson with a body, matched on its rule line's words, sent whole
+        head, every, held = LESSONS_TOPICAL, lessons.store(rules.parent), told_before(rules.parent, path.parent, sid, start, had)
+        sent = {x.line: x.whole for x in lessons.shown(every, room) if x.body and (start is None or x.whole not in start) and x.slug not in held}
+        corpus = [x.line for x in every]
+    else:
+        tier = memory.live_rules(rules.with_name(memory.TOPIC_RULES))
+        head, corpus = TOPICAL, [*memory.live_rules(rules), *tier]
+        sent = {x: x for x in tier if ((sc := memory.scope(x)) is None or room in sc) and (start is None or x not in start)}
+    if not sid or not sent or budget <= chars(head):
+        return "", []
+    out, jobs, left = [head], list[str](), budget - chars(head)
+    for _, x in memory.on_topic(text, list(sent), corpus) if text is not None else [(0.0, x) for x in sent]:
+        if (k := hashlib.sha1(sent[x].encode()).hexdigest()[:12]) not in had and chars(sent[x]) + 1 <= left:
+            out, jobs, left = [*out, sent[x]], [*jobs, memory.topic(x)], left - chars(sent[x]) - 1
             had.add(k)
     if len(out) == 1:
         return "", []
     write_private(path, json.dumps({"session": sid, "told": sorted(had)}))
-    return "\n".join(out), [memory.topic(x) for x in out[1:]]
+    return "\n".join(out), jobs
+
+
+def told_before(root: Path, room_dir: Path, sid: str, start: str | None, had: set[str]) -> set[str]:
+    """The slugs of the lessons a session from before the conversion holds already, each unchanged since: one whose rule's line
+    its kept start file (else `start`) carries or it was told as a topic rule (`had`), by the hashes of the lines each lesson came
+    from (lessons.snapshot), so a session that began before it is told nothing about it."""
+    if not (snap := lessons.snapshot(root)):
+        return set()
+    try:
+        began = (room_dir / STARTS / f"{sid}.md").read_text(errors="replace")
+    except OSError:
+        began = start or ""
+    seen, now = had | {hashlib.sha1(x.encode()).hexdigest()[:12] for x in began.splitlines()}, {x.slug: x.whole for x in lessons.store(root)}
+    return {x[0] for x in snap if len(x) > 3 and now.get(x[0]) == x[2] and seen & set(x[3])}
 
 
 def ceiling(text: str, cap: int, path: Path, tail: int = 0) -> str:

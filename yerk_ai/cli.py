@@ -9,7 +9,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from . import __version__, context, memory, taste
+from . import __version__, context, lessons, memory, taste
 from .config import EXAMPLE_PRIVATE, budgets, private_dir, rooms, state_dir, uncapped
 
 
@@ -35,9 +35,9 @@ def cmd_map(a: argparse.Namespace) -> int:
     label = "the fake example layer" if priv == EXAMPLE_PRIVATE else str(priv)
     sent, src = context.sent(priv, state_dir(a.state), a.room, b)        # Claude Code's parts as last sent, else at their line
     print(context.render(a.room, label, start, msg, b, hit, sent, src))
-    tier = memory.live_rules(root / memory.TOPIC_RULES)
+    tier = [x.line for x in lessons.store(root) if x.body] if lessons.converted(root) else memory.live_rules(root / memory.TOPIC_RULES)
     mine, (seen, jobs) = [x for x in tier if (sc := memory.scope(x)) is None or a.room in sc], context.rode(state_dir(a.state), a.room)
-    print(f"\nTopic rules ({memory.TOPIC_RULES}): {len(tier)}, {sum(context.chars(x) + 1 for x in tier):,} characters, {len(mine)} of them "
+    print(f"\nTopic rules ({lessons.DIR + '/, each lesson body' if lessons.converted(root) else memory.TOPIC_RULES}): {len(tier)}, {sum(context.chars(x) + 1 for x in tier):,} characters, {len(mine)} of them "
           f"this room's; " + ("each rides whole in the session start's `rules` part, a message only one filed since the session started"
                               if whole else "each rides in a message's `rules` part when the message names its topic, never at session start"))
     print(f"  on its last {seen} messages: " + (", ".join(f"{j} ({k})" for j, k in sorted(jobs.items(), key=lambda kv: -kv[1])) or "none rode"))

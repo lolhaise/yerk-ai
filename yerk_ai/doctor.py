@@ -18,6 +18,7 @@ from typing import Any, Callable
 
 from . import addons, backup, deploy, docs, files, hooks, jobs, memindex, memory, pictures, retention, status, words
 from . import shape as rule_shape                      # the check named "rule shape"; "layout" is the private folder's
+from . import lessons as lesson_files                  # the store's layout; doctor.lessons is the daily run
 from .accounts import load_accounts, token_info
 from .config import REPO, ROOM_KEYS, budgets, filled, load_toml, room_defaults, room_id, rooms, uncapped, write_private
 from .context import NONE, TOPICAL, attachments_dir, chars, layer_dir, session_start
@@ -388,9 +389,11 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
         for (part, src), (raw, cap, names) in over.items():
             found.append(f"{RED} {Path(src).name or part}: {part} over its line by {raw - cap:,} characters ({raw:,} of {cap:,}), cut "
                          f"at every session start in {', '.join(names)}; raise its line in budgets.toml or trim the file")
-        tier, most, on_file = memory.live_rules(m.root / memory.TOPIC_RULES), NONE if uncapped(b) else int(b["per_message"]["on_hit"]["rules"]), set(rooms(private))
-        never = [memory.topic(x) for x in tier if chars(x) + 1 > most - chars(TOPICAL) or (sc := memory.scope(x)) is not None and not sc & on_file]
-        found.extend([f"{words.WORKING} {memory.TOPIC_RULES}: {len(never)} topic rule{'s' * (len(never) != 1)} never load, first \"{never[0]}\": "
+        tier = [(x.whole, x.line) for x in lesson_files.store(m.root) if x.body] if lesson_files.converted(m.root) else [
+            (x, x) for x in memory.live_rules(m.root / memory.TOPIC_RULES)]          # (what rides, the line its words and rooms are read off)
+        most, on_file = NONE if uncapped(b) else int(b["per_message"]["on_hit"]["rules"]), set(rooms(private))
+        never = [memory.topic(y) for x, y in tier if chars(x) + 1 > most - chars(TOPICAL) or (sc := memory.scope(y)) is not None and not sc & on_file]
+        found.extend([f"{words.WORKING} {lesson_files.DIR + '/' if lesson_files.converted(m.root) else memory.TOPIC_RULES}: {len(never)} topic rule{'s' * (len(never) != 1)} never load, first \"{never[0]}\": "
                       f"longer than the per-message rules part's {most:,} or kept to no room in rooms.toml; shorten it or fix its [rooms: ...]"] if never else [])
         held = memory.live_rules(m.root / memory.OVERFLOW)
         found.extend([f"{words.WORKING} {memory.OVERFLOW}: {len(held)} rule{'s' * (len(held) != 1)} in no room yet; yerkd moves "

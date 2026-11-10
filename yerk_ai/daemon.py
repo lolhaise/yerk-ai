@@ -1283,7 +1283,7 @@ class Yerkd:
             return ""
         rdir = self.state / "rooms" / room
         return context.news(rdir / "rules-seen.json", sid, self.private, self.room_confs[room], self.memory.root / memory.RULES,
-                            context.NONE if uncapped(self.budgets) else int(self.budgets["per_message"]["on_hit"]["rules"]), rdir / "work" / context.CHANGED)
+                            context.NONE if uncapped(self.budgets) else int(self.budgets["per_message"]["on_hit"]["rules"]), rdir / "work" / context.CHANGED, room)
 
     def rules_topic(self, room: str, sid: str, prompt: str | None, budget: int) -> tuple[str, list[str]]:
         """The topic rules this message names, the room's own and every room's, each once per session (context.topics); none in a sealed room.

@@ -25,6 +25,7 @@ from typing import Any
 
 from .config import REPO, flag
 from .context import MECHANICS, layer_dir
+from . import lessons
 from .memory import EXAMPLE, FRONT, RULES, Settings, cite
 from .mentions import OLD
 
@@ -127,10 +128,13 @@ def install(docs: dict[str, Any]) -> tuple[dict[str, str], frozenset[str]]:
 
 def score(path: Path, rules: bool = False, topics: dict[str, str] | None = None,
           acronyms: frozenset[str] = ACRONYMS) -> dict[str, Any]:
-    """One file: the lines read, each count's offending lines as (line number, text), and the topics it says."""
+    """One file: the lines read, each count's offending lines as (line number, text), and the topics it says. A converted
+    store's index is scored as its lessons, each whole on a line (lessons.Lesson.whole), since a summary's reason is in its body."""
     rx = {k: re.compile(v, re.I) for k, v in (topics or TOPICS).items()}
     out: dict[str, Any] = {"lines": 0, "topics": set(), **{k: [] for k in COUNTS}}
-    for n, raw, ex in lines(path.read_text(encoding="utf-8", errors="replace"), rules):
+    text = "\n".join(x.whole for x in lessons.store(path.parent)) if rules and lessons.converted(path.parent) else \
+        path.read_text(encoding="utf-8", errors="replace")
+    for n, raw, ex in lines(text, rules):
         if ex:
             continue
         out["lines"] += 1
@@ -175,7 +179,12 @@ def check(private: Path, m: Settings, rooms: dict[str, dict[str, Any]], docs: di
         for t, fs in per_room[name]["twice"].items():
             twice.setdefault(t, fs)
     fresh = []
-    if rules.is_file():
+    if lessons.converted(m.root):                 # each lesson filed in the last day, by its file
+        for x in lessons.store(m.root):
+            at = STAMP.search(x.line)
+            if at and now - datetime.fromisoformat(at.group(2)).timestamp() <= 86400 and (o := offenses(x.line, True, acronyms)):
+                fresh.append((f"{cite(m, m.root / x.cite)}:{x.front().count(chr(10)) + 1}", o))
+    elif rules.is_file():
         for n, raw, ex in lines(rules.read_text(encoding="utf-8", errors="replace"), rules=True):
             at = STAMP.search(raw)
             if not ex and at and now - datetime.fromisoformat(at.group(2)).timestamp() <= 86400 and (o := offenses(raw, True, acronyms)):
@@ -507,19 +516,33 @@ def lessons_of(path: Path) -> list[tuple[int, str, str]]:
     return out
 
 
+def rows_of(m: Settings) -> list[tuple[str, str, str, dict[str, list[str]]]]:
+    """(cite, job, words, the layout's own misses) of each live rule: a converted store's lessons, each cited at its summary, a
+    summary line past lessons.SUMMARY_MAX, or a front matter past lessons.FRONT_MAX or with no class first, a "summary" miss
+    (the lesson pin's "one-line summary at the top"); else each rule line of RULES and TOPIC_RULES."""
+    from .memory import TOPIC_RULES
+    if not lessons.converted(m.root):
+        return [(f"{cite(m, p)}:{n}", job, text, {}) for p in (m.root / RULES, m.root / TOPIC_RULES) for n, job, text in lessons_of(p)]
+    out = []
+    for x in lessons.store(m.root):
+        head = (m.root / x.cite).read_text(encoding="utf-8", errors="replace")[:lessons.FRONT_MAX]
+        layout = {"summary": [f"a summary line of {len(x.summary)} characters"]} if len(x.summary) > lessons.SUMMARY_MAX else {}
+        if not (FRONT.match(head) and head.startswith("---\nclass: ")):       # the summary not at the top a room's class read finds
+            layout["summary"] = [*layout.get("summary", []), "a front matter past 400 characters or with no class first"]
+        out.append((f"{cite(m, m.root / x.cite)}:{x.front().count(chr(10)) + 1}", x.job, f"{x.summary} {x.body}".strip(), layout))
+    return out
+
+
 def store(m: Settings, limits: dict[str, Any], docs: Path | None = None, read: Any = None) -> dict[str, Any]:
     """The whole rule store against the lesson shape: each live rule of RULES and TOPIC_RULES that misses a LESSON check, by
     cite with its checks, each style limit counted apart (COUNT_ONLY), and RULES, the index a session start loads, against the
     code-memory limits (lines, bytes). `read`: the pages of every model any room runs (pages()), since every room loads the store."""
-    from .memory import TOPIC_RULES
     found, counted, seen = list[tuple[str, list[str]]](), list[str](), dict[Path, str]()   # seen: each day log read once
-    for name in (RULES, TOPIC_RULES):
-        p = m.root / name
-        for n, job, text in lessons_of(p):
-            missed = lesson(job, text, m.daily, limits, seen, read)
-            counted += [f"{cite(m, p)}:{n}"] * any(k in COUNT_ONLY for k in missed)
-            if bad := [k for k in missed if k not in COUNT_ONLY]:
-                found.append((f"{cite(m, p)}:{n}", bad))
+    for at, job, text, layout in rows_of(m):
+        missed = lesson(job, text, m.daily, limits, seen, read) | layout
+        counted += [at] * any(k in COUNT_ONLY for k in missed)
+        if bad := [k for k in missed if k not in COUNT_ONLY]:
+            found.append((at, bad))
     p, (most, size) = m.root / RULES, index_limits(docs)
     rows, have = (p.read_text(encoding="utf-8", errors="replace").splitlines(), p.stat().st_size) if p.is_file() else ([], 0)
     over = [f"{len(rows)} lines, past {most}"] * (len(rows) > most) + [f"{have:,} bytes, past {size:,}"] * (have > size)

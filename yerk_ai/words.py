@@ -149,6 +149,8 @@ FILED_NEXT = ("Only the text after your last tool call reaches the room, and not
               "filing is {clause}.")
 FILED_AT_MOST = "never said, since the answer stands alone for a reader who did not see the work"     # 2026-11-09: no narration
 RULE_CLAUSE = FILED_AT_MOST + " (every room now does {job} this way)"
+INDEX_NEAR = ("rules.md, the index every session start loads, is at {said}: shorten it by merging lessons that say one thing "
+              "and retiring stale ones, since {sentence}")      # a filing near code-memory's limits: filed, and told so
 TOPIC_CLAUSE = FILED_AT_MOST + " (the rule loads when {triggers} come up, since the shared rules file is full)"
 # a filing fitted under the rules file's cap (memory.rule): each strip and a topic rule in the room's day log, a topic rule in the
 # machine room (rules-on-demand: never "held", it loads when its topic comes up)

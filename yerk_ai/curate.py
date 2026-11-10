@@ -27,7 +27,7 @@ from itertools import combinations, groupby
 from pathlib import Path
 from typing import Any, Callable
 
-from . import context, doctor, memindex, memory, mentions, needs, shape, taste, words
+from . import context, doctor, lessons, memindex, memory, mentions, needs, shape, taste, words
 from .accounts import account_env, load_accounts
 from .config import budgets, flag, load_toml, rooms, write_private
 from .engine import claude_bin
@@ -612,7 +612,8 @@ def held(private: Path, s: memory.Settings, confs: dict[str, dict[str, Any]]) ->
     """(kind, path, its name in a cite) of each file the owner rooms load a rule may be said in, once: the rules file and the
     topic rules, a filing's to mark, then each owner room's rulebook, persona and voice, which the person keeping them changes."""
     rules = s.root / memory.RULES
-    out = {p.resolve(): (k, memory.cite(s, p)) for k, p in (("rules", rules), ("topics", s.root / memory.TOPIC_RULES)) if p.is_file()}
+    out = {p.resolve(): (k, memory.cite(s, p)) for k, p in (("rules", rules), ("topics", s.root / memory.TOPIC_RULES))
+           if p.is_file() and not lessons.converted(s.root)}         # a converted store's lessons: same() reads each whole
     for conf in confs.values():
         if str(conf.get("privacy", "owner")) == "owner" and not flag(conf.get("sealed")):
             for k, p in shape.files(private, conf, rules):
@@ -641,6 +642,12 @@ def same(private: Path, s: memory.Settings, confs: dict[str, dict[str, Any]], jo
             w = memory.ON.sub("", memory.SCOPE.sub("", TRAILER.sub("", w))) if rule else w
             rows.append({"cite": f"{name}:{n}", "text": raw.strip(), "kind": kind, "path": p, "line": n, "low": flat(w).lower(),
                          "said": split(w)[1] if rule else w, "job": memory.topic(raw).lower() if rule else ""})
+    for x in lessons.store(s.root) if lessons.converted(s.root) else ():     # each lesson as one rule line, cited at its summary
+        if x.job.lower() != job:
+            w = memory.ON.sub("", memory.SCOPE.sub("", TRAILER.sub("", memory.EXAMPLE.sub("", x.line))))
+            rows.append({"cite": f"{memory.cite(s, s.root / x.cite)}:{x.front().count(chr(10)) + 1}", "text": x.line, "kind": "rules",
+                         "path": (s.root / x.cite).resolve(), "line": x.front().count(chr(10)) + 1, "low": flat(w).lower(),
+                         "said": split(w)[1], "job": x.job.lower()})
     new, rx = flat(f"{job}: {mine}").lower(), {t: re.compile(v, re.I) for t, v in (topics or shape.TOPICS).items()}
     count: dict[str, int] = {}
 
