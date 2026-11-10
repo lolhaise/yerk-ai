@@ -453,9 +453,10 @@ class Yerkd:
         try:
             if voice:                                         # Discord takes no words beside one, so they follow it
                 ids, why = await ch.send_voice(room, Path(file), voice, key=key, inbound=inbound)
-                ids += await ch.send_text(room, text, key=f"{key}-t") if text else []
-            else:
-                ids = await (ch.send_file(room, Path(file), text, key=key, inbound=inbound) if file else ch.send_text(room, text, key=key))
+                ids += await ch.send_text(room, text, key=f"{key}-t", inbound=inbound) if text else []
+            else:                                             # a page's room writes the words in its program when they answer it
+                ids = await (ch.send_file(room, Path(file), text, key=key, inbound=inbound) if file else
+                             ch.send_text(room, text, key=key, inbound=inbound))
         except (OSError, ValueError, DeliveryFailed) as e:
             return {"ok": False, "error": str(e)}
         log.info("send: %s -> %s, %d message(s)%s", caller or "?", room, len(ids), f", the voice note as a plain file: {why}" if why else "")
@@ -1546,7 +1547,7 @@ class Yerkd:
             shown = (texts.preview(ti) if tool == texts.TOOL               # no JSON: a text as it reads, to whom it goes
                      else emails.preview(mail[0], mail[1], str(dict(self.conf.get("gmail") or {}).get("user") or "")) if mail
                      else deletes.preview(ti) if tool == deletes.TOOL else gates.plain(tool, ti) if self.room_confs[name].get("people") else key)
-            rel = self.ledger.release(name, rule, key, cwd, self.gates.window_s)
+            rel = self.ledger.release(name, rule, key, gates.bound_to(tool, cwd), self.gates.window_s)
             if rel:
                 v = gates.Verdict("approval", "release", detail=f"{what}: {call}; approved by {rel['approved_by']}", rule=rule)
                 if tool in (texts.TOOL, deletes.TOOL, emails.TOOL):

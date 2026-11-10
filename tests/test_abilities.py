@@ -183,6 +183,27 @@ def test_a_room_asked_to_put_a_photo_on_a_web_form_hears_the_upload_way(tmp_path
     assert not abilities.asked("the photos are on the listing already, I added them myself", y.memory, TAB)
 
 
+def test_a_room_asked_to_keep_a_key_a_page_shows_hears_the_keep_way_never_the_read(tmp_path):
+    """need-2026-11-09-76: a room asked to keep a bot's API key, shown on a signed-in settings page, in a locked file found
+    the page's Copy button copied onto the browser computer's clipboard, a room cannot write the secrets folder, and
+    reading the page put the key in its log. Asked that way, a room gets page-keys whole: the browser plug-in's keep, the
+    value read in the page and written by the plug-in as a new file in the secrets folder, never shown, never over one."""
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    found = abilities.asked("make the example bot and keep the api key it shows in a locked file", y.memory, TAB)
+    assert [e["key"] for e in found] == ["page-keys"]
+    text = found[0]["text"]
+    assert text.startswith(f"page-keys, a Yerk AI ability ({words.ability('described')[1]}): Saves a key or token a web page shows")
+    for want in ("One browser action, keep", "the page's own Copy button, clicked with the copy caught inside the page",
+                 "Written by the plug-in itself", "Never over a file already there", "only on the owner's word",
+                 "whose browser plug-in carries the keep action", "never by reading the page",
+                 # the cold read (2026-11-09): by the page's url, the page never opened or read first, every key scrubbed after
+                 "with the page's url", "the room never opening or reading that page first", "scrubs every NAME.key's value",
+                 "a later read of that page shows <key>", "given the page's url, never by reading the page"):
+        assert want in text, want
+    assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
+    assert not abilities.asked("the key works now, thanks", y.memory, TAB)
+
+
 def test_a_room_whose_form_never_takes_a_set_value_hears_the_typing_way(tmp_path):
     """need-2026-11-09-75: a room drove a quote form to its last text field, and the browser's `set` put the value there
     (the field showed it) while the page's React form never had it, so its Next stayed disabled. Asked that way, a room
@@ -271,6 +292,69 @@ def test_a_room_asked_for_a_link_or_a_button_in_an_email_hears_the_numbered_way_
     assert not abilities.asked("the button on the booking form is greyed out", y.memory, TAB)
 
 
+def test_a_room_asked_for_a_worker_a_script_starts_that_ends_silently_hears_the_no_reply_way(tmp_path):
+    """need-2026-11-09-77: a timer script started a worker with `yerk worker start` each time something might need a look,
+    and each run that answered NO_REPLY still asked its room for a relay turn. Asked that way, a room gets the workers entry
+    whole, with its silent end: none when the last message is exactly NO_REPLY, the tool's or a script's alike (a key of its
+    own would push the abilities answer, 1,998 at main, past the 2,000 recall cap)."""
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    found = abilities.asked("can I start a worker from a script that ends silently on NO_REPLY?", y.memory, TAB)
+    assert [e["key"] for e in found] == ["workers"]
+    text = found[0]["text"]
+    assert text.startswith(f"workers, a Yerk AI ability ({words.ability('on')[1]}): Heavy work leaves the room")
+    assert ("none when its last message is exactly NO_REPLY, however it was started (the tool, or `yerk worker start` in a "
+            "timer's script, at any --effort): its card settles quiet and the ledger says why.") in text
+    assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
+    assert not abilities.asked("the worker finished and the report is saved", y.memory, TAB)
+
+
+def test_a_room_asked_for_a_scheduled_jobs_own_thinking_level_hears_the_schedule_way(tmp_path):
+    """need-2026-11-09-79: a room on max started a bot's research runs as standing agent jobs, and each job's worker took the
+    room's level, since neither the schedule tool nor `yerk schedule add` had a thinking level or a model. Asked that way, a
+    room gets the schedule entry whole, with the job's own level and model (a key of its own would push the abilities
+    answer, 1,993 at main, past the 2,000 recall cap)."""
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    found = abilities.asked("can each job's effort be high on a cheaper model while this room stays on max?", y.memory, TAB)
+    assert [e["key"] for e in found] == ["schedule"]
+    text = found[0]["text"]
+    assert text.startswith(f"schedule, a Yerk AI ability ({words.ability('on')[1]}): The schedule tool in every room")
+    assert ("An agent job sets its own worker's thinking level and model (the tool's `effort` and `model`, `yerk schedule add "
+            "--effort --model`, or the keys in jobs.toml; a model an alias or a full id on the install's list)") in text
+    assert "one that sets neither runs on the room's live level and model" in text
+    assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
+    assert [e["key"] for e in abilities.asked("what is the job's model now?", y.memory, TAB)] == ["schedule"]
+    assert not abilities.asked("the job ran and its card settled quiet", y.memory, TAB)
+
+
+def test_a_room_asked_why_its_discord_replies_land_in_the_code_hears_the_page_talk_way(tmp_path):
+    """need-2026-11-09-80: with a live page's chat closed, every line a room said from any thread went into the program, so a
+    Discord answer and a job's nightly post landed in the owner's code. Asked that way, a room gets the page-talk entry
+    whole, only its answers to the page in the program and every other line on the chat (a key of its own would push the
+    abilities answer, 1,993 at main, past the 2,000 recall cap)."""
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    found = abilities.asked("why are your discord replies in my code on the page?", y.memory, TAB)
+    assert [e["key"] for e in found] == ["page-talk"]
+    text = found[0]["text"]
+    assert text.startswith(f"page-talk, a Yerk AI ability ({words.ability('on')[1]}): A room's live page holds code, talk")
+    assert "what it says anywhere else (a Discord answer, a job's post) stays on the chat" in text
+    assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
+    assert [e["key"] for e in abilities.asked("the patch notes in my code again", y.memory, TAB)] == ["page-talk"]
+    assert not abilities.asked("the patch notes went out on discord", y.memory, TAB)
+
+
+def test_a_room_asked_for_the_words_of_a_text_the_owner_sent_hears_the_blank_text_way(tmp_path):
+    """need-2026-11-09-83: a room asked to confirm the words of a text the owner had just sent got an empty text field, as
+    on every text they sent that evening. Asked that way, a room gets the text entry whole, with the words read from the rich
+    copy and a blank said with its reason (a key of its own would push the abilities answer past the 2,000 recall cap)."""
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    found = abilities.asked("what did i text her just now? confirm the exact words", y.memory, TAB)
+    assert [e["key"] for e in found] == ["text"]
+    text = found[0]["text"]
+    assert "the owner's own sent ones too, whose words Messages often keeps only in its rich copy" in text
+    assert "A blank text's words" in text
+    assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
+    assert not abilities.asked("she sent the photo again", y.memory, TAB)
+
 
 def test_a_room_asked_to_type_into_a_field_it_focused_hears_the_type_way_and_the_web_component_form(tmp_path):
     """need-2026-11-09-74: a room asked to run a quote on a form drawn inside a web component saw the form only in a shot:
@@ -301,6 +385,7 @@ def test_a_room_asked_to_type_into_a_field_it_focused_hears_the_type_way_and_the
     assert "nothing typed into a card field, the owner's word or not" in held and held.endswith("as one on the page does.")
     assert not abilities.asked("I have to type up the form for work tonight", y.memory, TAB)
 
+
 def test_ordinary_messages_pull_no_ability_into_the_room(tmp_path):
     y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
     assert {m: [e["key"] for e in abilities.asked(m, y.memory, TAB)] for m in ORDINARY} == {m: [] for m in ORDINARY}
@@ -321,3 +406,20 @@ def test_a_room_asking_what_can_you_do_gets_every_ability_by_state(tmp_path, cap
     assert cli.main(["explain", "abilities", "--private", str(EXAMPLE_PRIVATE), "--state", str(tmp_path)]) == 0
     said = capsys.readouterr().out
     assert said.startswith(f"{words.DONE} abilities: on") and all(n in said for n in TAB)
+
+
+def test_a_room_asked_to_talk_in_the_code_with_bubbles_hears_the_page_talk_way(tmp_path):
+    """need-2026-11-09-82: asked to talk to the owner inside the code, a room had its replies written into the program as plain
+    #> lines in a one-colour editor, nothing on screen while it thought. Asked that way, a room gets the page-talk entry
+    whole: bubbles under the line asked from, never in solution.py, the typing mark, Ctrl+Enter on a line and Python colours
+    (a key of its own would push the abilities answer, 1,993 at main, past the 2,000 recall cap)."""
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    found = abilities.asked("can you talk to me in the code with bubbles, not a chat box?", y.memory, TAB)
+    assert [e["key"] for e in found] == ["page-talk"]
+    text = found[0]["text"]
+    assert ("its answers coming back as bubbles between the rows under the line asked from, never written into solution.py, "
+            "with a typing mark there while it thinks; Ctrl+Enter or a line's number asks about that line") in text
+    assert "the editors colour Python, the owner's own # lines in a colour of their own" in text
+    assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
+    assert [e["key"] for e in abilities.asked("please upgrade the page", y.memory, TAB)] == ["page-talk"]
+    assert not abilities.asked("the bubbles in the bath", y.memory, TAB)

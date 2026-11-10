@@ -18,6 +18,7 @@ schedule = "Mon..Fri 07:30"          # 07:30 on weekdays
 tz = "UTC"
 room = "example-room"                # its card is here; its last message is told here by the room
 account = "one"
+effort = "high"                      # its worker's thinking level (and `model` its model); unset, the room's live ones
 cap = 20
 deliver = "announce"
 message = "Write the morning brief from the open loops and yesterday's daily log: three lines at most. Nothing worth saying: answer exactly NO_REPLY."

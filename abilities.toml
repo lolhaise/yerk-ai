@@ -53,7 +53,9 @@ layer = 10
 # need-2026-11-04-51 found it at 2,009 with page-talk's name and cut the three video abilities' shared provider words
 # from "keys when they are there" to "keys if there" (11 fewer), so it ends at 1,998; need-2026-11-06-69 found it at 2,011
 # with attachments' name and cut github-state's provider words from "on the token the needs pipeline uses" to "on the
-# pipeline's token", its needs line naming that token whole (13 fewer), so it ends at 1,998.
+# pipeline's token", its needs line naming that token whole (13 fewer), so it ends at 1,998; need-2026-11-09-76 found it
+# at 2,009 with page-keys' name and cut reverse-image-search's provider words from "Google Cloud Vision (web detection)" to
+# "Google Cloud Vision", its first how line naming web detection whole (16 fewer), so it ends at 1,993.
 [abilities.abilities]
 state = "built"
 what = "Says what Yerk AI can do."
@@ -97,9 +99,13 @@ asked_as = ["fix the plug-in", "build it in the plug-in", "plug-in repo", "chang
 
 # The described abilities below are known and not built (decision 26). On a described entry, `upgrade`
 # names the built ability that already ships part of it.
+# need-2026-11-09-78: a room's text was held, the owner said the word, and the same call, made again by a session a
+# /compact had put back in its work folder, was held a second time on a second card, since the folder was part of what
+# an approval matched. The folder now binds a shell command's approval only, built in this entry, which keeps its name,
+# so the "what can you do" census (abilities.abilities) carries no new name past its 2,000 cap.
 [abilities.gates]
 state = "built"
-what = "Rule-based gates on a room's tool calls, decided by code, so they block. A delete (rm, rm -r, unlink) runs as the trash with the same paths and the room is not told unless the trash fails; a command that never runs (a delete of the root, home or a system folder, mkfs, dd onto a disk, a fork bomb, a shutdown) is refused; shell text is read quote-aware first, so a rm in quotes, in a heredoc or in a sentence is not a delete. A write to yerkd.toml, rooms.toml or accounts.toml, or a restart of yerkd, is refused with one line while a person is mid-conversation or the memory index rebuilds. An external action (a send to another room, a public post, a login, money, a message out through another tool, a delete for good outside the work folder through the delete tool, or a rule in yerkd.toml [gates.external]) is held with one line until the owner says approve in the room, then that same call runs once. A working turn that ends with nothing in the room bounces once, naming what it owes, and so does a final message that only reports a filing (remember, schedule, hold, settings) while the answer sits above the call or was never written, each such bounce a `stub` row the morning diff counts; a session that replaced another says so in the room; a changed settings file is a tamper row. Every decision, each tool call's time and failure and each hook call's own time are ledgered. The five judge-model reply gates (a model reading a reply before it goes out) are shadow-only: they ledger what they would bounce and block nothing until one shows under 1 in 10 false alarms on 100 cases and a known-good control passes. The first shadow rule is the check-is-the-read one: a claim about code, what is running, a decision or a file's contents with no run or read behind it in the turn is ledgered with the sentence and the tools the turn ran."
+what = "Rule-based gates on a room's tool calls, decided by code, so they block. A delete (rm, rm -r, unlink) runs as the trash with the same paths and the room is not told unless the trash fails; a command that never runs (a delete of the root, home or a system folder, mkfs, dd onto a disk, a fork bomb, a shutdown) is refused; shell text is read quote-aware first, so a rm in quotes, in a heredoc or in a sentence is not a delete. A write to yerkd.toml, rooms.toml or accounts.toml, or a restart of yerkd, is refused with one line while a person is mid-conversation or the memory index rebuilds. An external action (a send to another room, a public post, a login, money, a text or an email in the owner's name, a message out through another tool, a delete for good outside the work folder through the delete tool, or a rule in yerkd.toml [gates.external]) is held with one line until the owner says approve in the room, then that same call runs once: a tool's call from whatever folder the shell is in by then (a session resumed after a compaction is back in its work folder), a shell command only from the folder it was held in, since the same words do another thing elsewhere. A working turn that ends with nothing in the room bounces once, naming what it owes, and so does a final message that only reports a filing (remember, schedule, hold, settings) while the answer sits above the call or was never written, each such bounce a `stub` row the morning diff counts; a session that replaced another says so in the room; a changed settings file is a tamper row. Every decision, each tool call's time and failure and each hook call's own time are ledgered. The five judge-model reply gates (a model reading a reply before it goes out) are shadow-only: they ledger what they would bounce and block nothing until one shows under 1 in 10 false alarms on 100 cases and a known-good control passes. The first shadow rule is the check-is-the-read one: a claim about code, what is running, a decision or a file's contents with no run or read behind it in the turn is ledgered with the sentence and the tools the turn ran."
 tier = "free"
 needs = "nothing; a trash command (trash-cli or gio) for the rewrite, else a delete is refused with the trash line; the approval word, the approvers and extra external rules in yerkd.toml [gates]"
 free_path = "this is the free path"
@@ -210,14 +216,15 @@ upgrade = "jobs"
 
 [abilities.text]
 state = "built"
-what = "Two tools on Yerk's own MCP server for the owner's Messages on his own Mac: text sends one, texts reads his recent ones. Sending: a room the owner asks to text someone sends one text in the owner's name, an iMessage or else an SMS, to that person's phone number or email address, held in the room with its words and who it goes to shown as they will read and sent once on the owner's approval word; an edit is a new preview. Reading: a room asked whether someone has texted, or what a text said, reads his recent texts newest first and never sends; his Mac sleeps when its lid is shut on battery, so they are kept as a private copy on the box, refreshed whenever the Mac is awake, and a room asked while the Mac sleeps answers from the last copy and says that copy's time. The daemon does both, since a room's shell has no network and plain ssh holds no grant to drive Messages."
+what = "Two tools on Yerk's own MCP server for the owner's Messages on their own Mac: text sends one, texts reads their recent ones. Sending: a room the owner asks to text someone sends one text in the owner's name, an iMessage or else an SMS, to that person's phone number or email address, held in the room with its words and who it goes to shown as they will read and sent once on the owner's approval word; an edit is a new preview. Reading: a room asked whether someone has texted, or what a text said (the owner's own sent ones too, whose words Messages often keeps only in its rich copy), reads the recent texts newest first and never sends; the Mac sleeps when its lid is shut on battery, so they are kept as a private copy on the box, refreshed whenever the Mac is awake, and a room asked while the Mac sleeps answers from the last copy and says that copy's time. The daemon does both, since a room's shell has no network and plain ssh holds no grant to drive Messages."
 how = [
-  "Preview first: the text-out gate holds each send and shows the room its words and who it goes to, never its JSON; the owner's approval word releases that exact call once, and the daemon sends only a call the gate released, so a rule turned off or a hook that failed open sends nothing.",
+  "Preview first: the text-out gate holds each send and shows the room its words and who it goes to, never its JSON; the owner's approval word releases that exact call once, whatever folder the room's shell is in when it calls again, and the daemon sends only a call the gate released, so a rule turned off or a hook that failed open sends nothing.",
   "Before the ask: a person's room, an install with no Mac set up, a name in place of a number or an address, or an empty text is refused at the gate, so the owner is never asked to approve a text that could not go.",
   "The way to the Mac: ssh to [imessage] host, then socat to the socket of the Mac's bridge, a small app there that holds Messages' grants and serves imsg's JSON-RPC; a status first, then one send of the number or address, the text and the service (auto by default: iMessage where the person has it, else SMS through the phone), on a connection of its own.",
   "Named once: with no [imessage] way in yerkd.toml, the Mac and its bridge's socket are the ones an owner room's add-on names together in its mac.json (ssh and imessage_socket, the hands plug-in's), the Mac texts and the page already reach, read only from a file of the owner's no other user writes and none under the state folder, and the socket only as a whole path of plain characters, since it rides ssh to the Mac's shell; a person's room's add-on is never read.",
   "Told apart: no answer to the status, or an error to the send, is not sent; no answer to the send, or the bridge's own may-have-completed answer, may have gone out, and the room says so and never sends it again unasked.",
   "Reading: a read-only sqlite of the Mac's Messages database over plain ssh (no Messages grant, unlike the send), the newest messages of who, when, which way and the words, from an owner's room only; it never writes, installs, deletes or sends.",
+  "A blank text's words: a text whose plain text comes back blank, as Messages leaves many the owner sent, brings its rich copy (attributedBody), read as `yerk import` reads it, so a room asked for the words the owner sent has them; one with no words there either says why (a picture or a file alone, a rich copy that could not be read, or none stored, as with an unsent text), never told as empty.",
   "The copy: a light daemon check reads the newest texts whenever the Mac answers, its own short wakes included (a shut Mac still wakes itself for a minute or two to take a message), and writes them under the state folder, 0600, as private as the rest of it; ssh to a sleeping Mac fails fast and nothing is retried, so it never keeps the Mac awake or wakes it, and with the Mac away a read answers from the last copy and gives its age, or says there is no copy yet rather than guess.",
   "Receipt: each send's outcome is a gate row after its hold, the word and the release, with who it went to, its length and the id Messages gave it; a read is never gated and leaves no text on a command line.",
 ]
@@ -226,7 +233,8 @@ needs = "a Mac signed into the owner's Messages (the phone's text forwarding on,
 price = "none"
 free_path = "this is the free path"
 asked_as = ["text her for me", "text him for me", "text them for me", "send a text for me", "send an imessage", "text from my phone",
-            "did she text me back", "has he texted me", "check my texts", "read my texts", "any new texts", "did i get a text"]
+            "did she text me back", "has he texted me", "check my texts", "read my texts", "any new texts", "did i get a text",
+            "what did i text", "words of my text", "my sent texts", "the text i sent"]
 
 [abilities.delete-outside]
 state = "built"
@@ -270,7 +278,7 @@ upgrade = "text"
 state = "built"
 what = "The email tool on Yerk's own MCP server: a room the owner asks to email someone sends one email in the owner's name from the owner's own Gmail, to their email addresses, with files from the room's own folders attached (a document sent to the room, one it made), held in the room with who it goes to, its subject, each file by its name and size, and its words shown as they will read, and sent once on the owner's approval word; an edit is a new preview. The daemon sends it, since a room's shell has no network. Reading and searching the owner's mail is the mail tool of the plug-in kept outside this repo, the one that drives the browser, read only."
 how = [
-  "Preview first: the email-out gate holds each send and shows the room who it is from and goes to, its subject, its files and its words, never its JSON or a path; the owner's approval word releases that exact call once, and the daemon sends only a call the gate released, so a rule turned off or a hook that failed open sends nothing.",
+  "Preview first: the email-out gate holds each send and shows the room who it is from and goes to, its subject, its files and its words, never its JSON or a path; the owner's approval word releases that exact call once, whatever folder the room's shell is in when it calls again, and the daemon sends only a call the gate released, so a rule turned off or a hook that failed open sends nothing.",
   "The bytes the word is for: each file is read once, from an open with no link on its path followed, and its sha256 is in the call the owner approves; those bytes are what goes, so a file rewritten after the word is held again with its new preview, and a link swapped onto its path after the check is refused, never followed to a file outside the room's folders.",
   "Before the ask: a person's room, an install with no Gmail set up, a name in place of an address, no subject and no text, a file outside the room's own folders or not there, or files past 18 MB (Gmail takes 25 MB a message, the files grown by its encoding) are refused at the gate, so the owner is never asked to approve an email that could not go.",
   "The way out: Gmail's SMTP over TLS as [gmail] user, on the app password `yerk import gmail` reads from [gmail] password_file, so the owner's Gmail is named once; plain text, each file attached by its name and type, and Gmail keeps a copy in Sent Mail.",
@@ -436,6 +444,28 @@ free_path = "this is the free path"
 why_not = "It rides on the browser ability, which is not in this repo; an install whose browser plug-in carries the shot action has it there, and a room asked for a picture of its tab shoots the tab, never the owner's screen."
 asked_as = ["screenshot of the page", "screenshot the page", "screenshot of the tab", "screenshot of your browser", "screenshot your browser",
             "pic of the page", "picture of the page", "picture of your browser"]
+
+# need-2026-11-09-76: a room asked to keep a bot's API key, shown on a signed-in settings page, in a locked file had no way
+# that kept the key out of its own session: the page's Copy button, clicked through the browser, copied onto the browser
+# computer's clipboard, never the box's; a room cannot write the secrets folder; and reading the page put the key in its log.
+[abilities.page-keys]
+state = "described"
+what = "Saves a key or token a web page shows, such as an API key on a signed-in settings page, straight into the private folder's secrets as a new NAME.key through the browser ability's browser, so its value never reaches the room, its session log or a reply."
+how = [
+  "One browser action, keep, with the page's url, the new file's name and the label that finds the value, the room never opening or reading that page first: the plug-in opens it itself and returns no page text, since the page's text would show the room the key, and the value is read in the page and handed to the plug-in alone, never back to the room; a tab works for a key shown only after a click.",
+  "Found by a field's label, else by the page's own Copy button, clicked with the copy caught inside the page, else by the words beside it: a field in the page, its web components or its boxes; the Copy button's copy, since that browser's clipboard is another computer's; the one-word value shown beside the words, shaped like a key (a letter and a digit), never a button's or a link's words.",
+  "Written by the plug-in itself, a new file in the secrets folder: the key on its first line, 0600 in a 0700 folder, the way every key Yerk runs on is kept, so a job or script the owner runs reads it there and no room ever does.",
+  "Never over a file already there, a link included, and only on the owner's word: a steered call cannot replace a key Yerk runs on, and the file is outside the room; nothing is kept from a payment page.",
+  "Refused with its reason when what it found is not one key: shown masked, holding spaces, under 8 or over 4,096 characters, several values with none picked, or nothing labelled so.",
+  "The reply names the file and the value's length only, and the plug-in scrubs every NAME.key's value from every line it returns or ledgers after, so a later read of that page shows <key>; a refusal lists the page's labels, never a hint to read the page.",
+]
+tier = "free"
+needs = "the browser ability with a keep action in its plug-in, and the private folder's secrets on the box the plug-in runs on"
+price = "none"
+free_path = "this is the free path"
+why_not = "It rides on the browser ability, which is not in this repo; an install whose browser plug-in carries the keep action has it there, and a room asked to keep a key a page shows in a locked file keeps it with that action, given the page's url, never by reading the page."
+asked_as = ["save the api key", "keep the api key", "store the api key", "copy the api key", "key in a locked file", "token in a locked file",
+            "save the key to the secrets folder", "save the token from the page"]
 
 # need-2026-11-01-33: a room asked to cancel a booking by the Cancel link in its confirmation mail had the mail's words and
 # no link's address, since the mail tool's text strips the tags, and the mail would not open by its row in the browser.
@@ -755,7 +785,7 @@ how = [
 ]
 tier = "key"
 keys = ["google-vision"]
-provider = "Google Cloud Vision (web detection)"
+provider = "Google Cloud Vision"
 needs = "a Google Cloud Vision API key in the private folder (secrets/google-vision.key), from a Google Cloud project with the Cloud Vision API turned on and billing set up; ffmpeg on the machine for a HEIC, an AVIF or a picture past 7 MB"
 price = "the first 1,000 pictures a month free, then US$3.50 a thousand, 0.35 US cents a picture (Cloud Vision's pricing page, read 2026-11-02); each call books 0.35 cents, the list price, not the month's bill"
 key = "make an API key in the Google Cloud project that has the Cloud Vision API turned on (APIs and services, Credentials; restrict it to that API), and put it on the first line of secrets/google-vision.key in the private folder, 0600; the next call reads it, no restart"
@@ -1316,12 +1346,17 @@ free_path = "this is the free path"
 why_not = "After the rooms move."
 asked_as = ["claude code mod", "status line", "slash command"]
 
+# need-2026-11-09-77: a timer script started a worker with `yerk worker start` each time something might need a look, and
+# every run that answered NO_REPLY still asked its room for a relay turn that had to be answered with a posted line, since
+# only a job's hook skipped it. The silent end is built in this entry, which keeps its name, so the "what can you do"
+# census (abilities.abilities) carries no new name past its 2,000 cap.
 [abilities.workers]
 state = "built"
-what = "Heavy work leaves the room: the worker tool and `yerk worker start|list|stop|report` run a headless claude -p with a brief, a staging folder, a TASKS.md and a report, as its own systemd unit that outlives the daemon, with its own card in the room (a row per TASKS.md line, ticked live), the card settled and one short relay turn when it ends; `yerk status` lists the running ones against the ledger."
+what = "Heavy work leaves the room: the worker tool and `yerk worker start|list|stop|report` run a headless claude -p with a brief, a staging folder, a TASKS.md and a report, as its own systemd unit that outlives the daemon, with its own card in the room (a row per TASKS.md line, ticked live), the card settled and one short relay turn when it ends; none when its last message is exactly NO_REPLY, however it was started (the tool, or `yerk worker start` in a timer's script, at any --effort): its card settles quiet and the ledger says why. `yerk status` lists the running ones against the ledger."
 tier = "free"
 needs = "systemd user units (systemd-run --user) and Linux inotify; an account from accounts.toml, the same subscription the rooms run on"
 free_path = "this is the free path"
+asked_as = ["worker from a script", "silent worker", "worker ends silently", "ends silently on no_reply"]
 layer = 5
 
 [abilities.capture]
@@ -1367,7 +1402,7 @@ asked_as = ["topic rule triggers", "trigger words", "rule fire on", "rule load o
 
 [abilities.rules-changed]
 state = "built"
-what = "Tells a running room what changed in the rules it runs on: on its next message, once per version, each line new or replaced in the mechanics, its rulebook or the shared rules file since its session last looked (a sealed room, which loads no shared rule, hears none). Past the note's 1,500 characters (budgets.toml [per_message.on_hit] rules) the note gives their count and names rules-changed.md in the room's own work folder, written 0600 with each of those lines whole, so every room reads them with its own Read, whatever its privacy; never the mechanics' own file in Yerk's checkout, which only an owner room's Read reaches."
+what = "Tells a running room what changed in the rules it runs on: on its next message, once per version, each line new or replaced in the mechanics, its persona, rulebook or voice file or the shared rules file since its session last looked (a sealed room, which loads no shared rule, hears none). Past the note's 1,500 characters (budgets.toml [per_message.on_hit] rules) the note gives their count and names rules-changed.md in the room's own work folder, written 0600 with each of those lines whole, so every room reads them with its own Read, whatever its privacy; never the mechanics' own file in Yerk's checkout, which only an owner room's Read reaches."
 tier = "free"
 needs = "nothing; it rides on each room's per-message hook"
 free_path = "this is the free path"
@@ -1461,10 +1496,11 @@ layer = 5
 state = "built"
 
 [abilities.schedule]
-what = "The schedule tool in every room, and `yerk schedule`: add a one-shot or a recurring job (a name, when with a zone, what, how to deliver), remove one, list them; writes the jobs file, syncs the timers and answers with the next fire time read back from systemd. A missing zone is the room's configured one, never UTC by accident. Any room adds, lists and removes its own notes; agent and script jobs run as the owner, so only the owner's rooms set them."
+what = "The schedule tool in every room, and `yerk schedule`: add a one-shot or a recurring job (a name, when with a zone, what, how to deliver), remove one, list them; writes the jobs file, syncs the timers and answers with the next fire time read back from systemd. A missing zone is the room's configured one, never UTC by accident. Any room adds, lists and removes its own notes; agent and script jobs run as the owner, so only the owner's rooms set them. An agent job sets its own worker's thinking level and model (the tool's `effort` and `model`, `yerk schedule add --effort --model`, or the keys in jobs.toml; a model an alias or a full id on the install's list), so a job that fires many times a week can think at high while its room stays on max; one that sets neither runs on the room's live level and model, and either on a note or a script, a level that is not one or a model off the list is refused."
 tier = "free"
 needs = "the jobs ability"
 free_path = "this is the free path"
+asked_as = ["job's thinking level", "job's effort", "job's model", "thinking level of a job", "effort of a job"]
 layer = 5
 state = "built"
 
@@ -1695,23 +1731,34 @@ asked_as = ["page on my phone", "page from my phone", "page from my mac", "page 
 # need-2026-11-04-51: the owner asked to talk with a room inside the program on the live page, no chat column at all; the
 # room's replies rendered only in the chat pane, which could not close (its split clamped 15 to 80), and the room rewrote
 # the whole program with #> lines, which threw the owner's caret to the end.
+# need-2026-11-09-80: with the chat closed, every line a room said from any thread went into the program as #> lines, not
+# only its answers to what was said on the page: a Discord answer, a scheduled note's and a job's nightly post landed in
+# the owner's code under the last # line.
+# need-2026-11-09-82: the owner asked to talk to the room inside the code, not a chat box; the room's reply was a dozen plain
+# #> lines written into the owner's file, the editor one colour and nothing on screen while it thought. A
+# key of its own would push the abilities answer, 1,993 at main, past the 2,000 recall cap, so this entry carries it.
 [abilities.page-talk]
 state = "built"
-what = "A room's live page holds code, talk, output and ink on one surface, for every room: the chat closes to nothing and the talk lives in the program, the owner's # lines going to the room and its replies coming back as #> lines the page itself writes under the owner's last # line, with the owner's caret and typing kept; a # line ended with Enter goes at once, and what a run prints shows large."
+what = "A room's live page holds code, talk, output and ink on one surface, for every room: the editors colour Python, the owner's own # lines in a colour of their own; the chat closes to nothing and the talk lives in the program, the owner's # lines going to the room and its answers coming back as bubbles between the rows under the line asked from, never written into solution.py, with a typing mark there while it thinks; Ctrl+Enter or a line's number asks about that line, a red test's tile about that test; what it says anywhere else (a Discord answer, a job's post) stays on the chat."
 how = [
   "The chat closed: drag the grip to the edge or press `close` on the chat; the split is 0, kept in the browser and by yerkd across restarts, and every tab that opens shows it; `chat` on the bar brings it back. The room is told in its next message, both ways.",
-  "The room's lines: while the chat is closed, each reply, notice and send of the room's goes into the program as #> lines, wrapped at 88 columns with a link or a fenced line kept whole, 60 at most, under the # line the owner said last (else the owner's lowest # line, else after the last line), after the #> lines already there, at its indent; the chat keeps them too.",
-  "Caret kept: yerkd writes the lines in its copy and in the one the room last heard, so the room is never told it typed them, and hands every tab the line and the words; the tab writes them in its own text at that line, so what the owner typed since keeps its place and the caret moves down with its line. A program the room draws keeps the caret where it was.",
-  "Marked as the room's: each #> line has a band in the room's colour, its name by the first line of a run, and is never read as the owner's talk.",
+  "Bubbles: each reply, notice and send of the room's that answers a message from the page (its turn on one, a fold of one too) shows under the line that message asked from, in the room's colour with its name and time, four lines with a click to open, an x that puts it away on every tab; with the chat closed every answer to the page does, under the # line said last when its message named none, and one that answers only another thread or nothing stays on the chat, which keeps them all.",
+  "Kept: yerkd keeps the newest 100 bubbles with their lines for a reload or a restart; a bubble moves with its line as the owner types, and a program the room draws keeps it on the line it kept or takes it with a line it replaced. The program is never touched, so the room is never told it typed anything.",
+  "The typing mark: three pulsing dots in the room's colour under the line from the send until the turn's reply, notice or silent end, on the chat for a line said in the say box.",
+  "Ask about a line: Ctrl+Enter on a line or a click on its number says \"about line N\" and its words to the room at once, the chat open or closed; a click on a red tile says \"about test NAME\" and how it fails, its answer under the test's def.",
+  "The editors: Python in colour (keywords, strings, numbers, names, comments), the owner's whole # lines in their own, the room's old #> lines in its, read by the page's own code with no outside script; Enter keeps the indent, Tab indents, Ctrl+Z undoes.",
   "Enter sends: a # line the owner ends with Enter goes to the room at once, not after the 1.5 s pause; an Enter after one the room already heard waits for the pause, as typing does; #run, #hint, #next or #make <anything> are talk the room acts on with its page tool.",
-  "Output: what a run prints shows large above the tests' tiles, and its end rides in the room's next message; a program with blank tests runs alone, as a script, in the same sandbox, so a game or a script the room writes on a #make line runs there.",
+  "Output: what a run prints shows large above the tests' tiles, and its end rides in the room's next message; a program with blank tests runs alone, as a script, in the same sandbox; a bar number that rises pops its \"+N\" beside it.",
 ]
 tier = "free"
 needs = "the live-page ability"
 price = "none"
 free_path = "this is the free path"
 asked_as = ["talk in the code", "talk to you in the code", "talk through comments", "talk via comments", "chat in the code",
-            "dont want the chatbox", "close the chat", "no chat column", "replies in the code", "print output bigger"]
+            "dont want the chatbox", "close the chat", "no chat column", "replies in the code", "print output bigger",
+            "discord replies in my code", "discord answers in my code", "only page replies in the code", "patch notes in my code",
+            "other replies in my code", "talk to me in the code", "upgrade the page", "bubbles in the code", "ask about a line",
+            "typing indicator on the page", "colours in the editor", "syntax highlighting on the page"]
 
 [abilities.work-writes]
 state = "built"

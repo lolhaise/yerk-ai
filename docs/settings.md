@@ -242,6 +242,8 @@ One `[jobs.NAME]` table a scheduled job; `yerk jobs sync` makes its systemd time
 - `tz`: the IANA time zone the schedule or the time is read in (such as Europe/Paris); required with schedule, and with at when the time carries no offset
 - `room`: the room the output, the relay or the note lands in (a name from rooms.toml); an agent job's card is there too. A room that is not the owner's adds, lists and removes its own notes and no other job
 - `account`: agent jobs: the account (accounts.toml) the worker runs on; unset, the first one not resting
+- `model`: agent jobs: the worker's model, an alias or a full id on the install's list (models.toml, or [models] in yerkd.toml); unset, [workers] model, else the room's live one
+- `effort`: agent jobs: the worker's thinking level, one of low, medium, high, xhigh, max; unset, [workers] effort, else the room's live level
 - `cap`: minutes the run may take before it is stopped (default 10 for a script, 15 for an agent); a stopped run alerts
 - `deliver`: "announce" (default): the output or the relay goes to the room; "silent": the run and its ledger row happen, nothing is posted, a failure still alerts the ops room
 - `command`: script jobs: the shell line to run (/bin/sh -c), with an account-free environment, TZ set to the job's zone, YERK_JOB and YERK_JOB_DIR set, YERK_PRIVATE and YERK_STATE as the unit has them and this install's `yerk` first on PATH, so a `yerk` line runs on this install's folders; exit 0 with output posts it, exit 0 with nothing posts nothing, anything else alerts

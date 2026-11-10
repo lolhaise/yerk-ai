@@ -78,13 +78,17 @@ def test_twenty_three_preloaded_tools_with_slim_schemas(tmp_path):
     assert "the owner asks to change this room's model or thinking level" in str(tools["settings"].description).lower()
     assert "`account` an account's name (tried first, the others behind it)" in str(tools["settings"].description)
     assert list(tools["schedule"].inputSchema["properties"]) == ["action", "name", "when", "what", "kind", "tz",
-                                                                "deliver", "room", "cap_minutes", "account"]
+                                                                "deliver", "room", "cap_minutes", "account", "model", "effort"]
+    said = " ".join(str(tools["schedule"].description).split())   # an agent job's worker on its own level and model (need 79)
+    assert "`effort` its thinking level, low, medium, high, xhigh or max, and `model` one from the install's list, default this room's live ones" in said
     assert list(tools["send"].inputSchema["properties"]) == ["room", "text", "file"]
     assert list(tools["hold"].inputSchema["properties"]) == ["wait_for", "reason"]
     assert list(tools["recall"].inputSchema["properties"]) == ["query", "k"]
     assert list(tools["read_memory"].inputSchema["properties"]) == ["path", "from_line", "lines"]
     assert list(tools["worker"].inputSchema["properties"]) == ["action", "brief", "id", "room", "tasks", "cap_minutes",
                                                               "account", "model", "effort"]
+    said = " ".join(str(tools["worker"].description).split())   # lines joined: Python 3.12 keeps a docstring's indent, 3.13 strips it
+    assert "the room hears the result, or nothing if its last message is exactly NO_REPLY" in said
     cfg = json.loads(mcp_server.room_config("http://127.0.0.1:1/mcp", "example-room", tmp_path / "m.json").read_text())
     assert cfg["mcpServers"]["yerk"]["alwaysLoad"] is True and list(cfg["mcpServers"]) == ["yerk"]
     assert cfg["mcpServers"]["yerk"]["timeout"] == 600_000            # past Claude Code's 60 s, so a transcribe call can finish
@@ -119,8 +123,8 @@ class KeyedChannel(ConsoleChannel):
         super().__init__()
         self.keys = []
 
-    async def send_text(self, room, text, key=None):
-        self.keys.append((key, ""))
+    async def send_text(self, room, text, key=None, inbound=""):
+        self.keys.append((key, inbound))
         return await super().send_text(room, text, key)
 
     async def send_file(self, room, path, caption="", key=None, inbound=""):
@@ -155,7 +159,7 @@ def test_a_send_discord_never_took_is_the_tools_error(tmp_path):
     ch = KeyedChannel()
     y.add_room("example-room", ch)
 
-    async def lost(room, text, key=None):
+    async def lost(room, text, key=None, inbound=""):
         raise DeliveryFailed(f"{key}:0: ClientOSError: [Errno 1] ssl/tls alert bad record mac")
     ch.send_text = lost
     said = asyncio.run(y.tool_send("example-room", "PING", "", "example-room"))

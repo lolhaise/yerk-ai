@@ -86,9 +86,9 @@ your words) is your note, and is shown as your note, never as their words.
 Heavy work leaves the room: a worker is a headless run with its own card in the room and a
 report. action "start": `brief` is the whole job (what done looks like, where it ends, what to
 leave alone); optional `tasks` (its checklist rows), `cap_minutes` (default 65), `account`, `model`,
-`effort` (low, medium, high, xhigh, max; default the room's live level), `room` (default this room). Returns its
-id, folder and report path; when it ends, the card settles and the room hears the result. "list": workers and their state. "stop" / "report":
-by `id` (report gives the report's text, for you to tell in your own words).
+`effort` (low, medium, high, xhigh, max; default the room's live level), `room` (default this room). Returns its id, folder
+and report path; when it ends, the card settles and the room hears the result, or nothing if its last message is exactly
+NO_REPLY. "list": workers and their state. "stop" / "report": by `id` (report gives the report's text, for you to tell in your own words).
 ```
 
 - `action`: string, required
@@ -111,7 +111,8 @@ a one-shot, removed after it fires) or a systemd calendar line, recurring ("Mon.
 owner's rooms, "note" in any other): "note", a reminder
 (when it is due this room is told the text and says it in its own voice; no worker, shell or
 account); "agent", the brief a worker gets (a headless run with a card here, its last message told
-by this room, exactly NO_REPLY for silence); "script", the shell line to run (no model call, its
+by this room, exactly NO_REPLY for silence; `effort` its thinking level, low, medium, high, xhigh or max, and
+`model` one from the install's list, default this room's live ones); "script", the shell line to run (no model call, its
 output posted as is, exit 0 with no output posts nothing, a failure alerts the ops room). Any room
 adds, lists and removes its own notes; an agent or script job runs as the owner, so only the owner's
 rooms set one. `deliver` "announce" (default) or "silent" (run and ledger, never post). Returns the
@@ -130,6 +131,8 @@ next fire time read back from systemd. "remove": by `name`. "list": the jobs thi
 - `room`: string, default ""
 - `cap_minutes`: number, default 0
 - `account`: string, default ""
+- `model`: string, default ""
+- `effort`: string, default ""
 
 ## settings
 
@@ -257,10 +260,11 @@ out: say so, and never send it again unasked.
 The owner's own recent texts (iMessage and SMS), newest first, read from the owner's Mac: use it to answer
 whether someone has texted, or what a text said. This only reads; it never sends one (that is `text`). `limit` how
 many to return (12 unless you ask, up to 40). Each message has `who` (the other person's number or address, empty
-for one the owner sent), `from_me`, `at` (epoch seconds) and `text`. The owner's Mac sleeps when its lid is shut on
-battery, so the texts are kept as a copy on the box, refreshed whenever the Mac is awake: `as_of` says where this
-answer comes from. With `awake` true it was just read from the Mac; with it false the Mac is asleep or away and the
-answer is the last copy, whose age `as_of` gives, so say that time and do not pass a stale answer off as fresh.
+for one the owner sent), `from_me`, `at` (epoch seconds) and `text`, its words, or `blank` saying why it has none:
+say that, never that it was empty. The owner's Mac sleeps when its lid is shut on battery, so the texts are kept as
+a copy on the box, refreshed whenever the Mac is awake: `as_of` says where this answer comes from. With `awake` true
+it was just read from the Mac; with it false the Mac is asleep or away and the answer is the last copy, whose age
+`as_of` gives, so say that time and do not pass a stale answer off as fresh.
 ```
 
 - `limit`: integer, default 0
@@ -341,8 +345,8 @@ what it shows. `code` a new program (solution.py); `tests` its unittest file (it
 runs alone, its prints shown large), which the page runs on every pause in typing; `marks` line marks, each {"line": N, "kind": "highlight" or "arrow", "text": a note},
 [] clears; `hint` a card under the program; `bar` labels and values, a scoreboard on top ("Gold II" a rank badge,
 "12/40" or a number under LP a bar, a number big); `timer` seconds on its clock, 0 stops;
-`stall` seconds of no typing before the page tells you, 0 off. Your replies show there too, and with its chat closed
-go into the program as #> lines under the owner's last # line. What the owner types,
+`stall` seconds of no typing before the page tells you, 0 off. Your replies show there too, and those to a line the
+owner asked about (all to the page, its chat closed) as bubbles under it, never in solution.py. What the owner types,
 draws and says there comes to you as messages, mid-turn too; each keystroke is in page/events.jsonl. `open` true
 (the owner asked for the page) turns it on, with no restart, and opens it on the owner's screen, `where` "mac" on
 their Mac (default "pc"); `off` true: off.

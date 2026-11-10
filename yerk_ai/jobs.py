@@ -18,7 +18,7 @@ running daemon, which delivers by the cron-wrap rule: exit 0 with output posts t
 room, exit 0 with nothing posts nothing, a failure or a timeout posts one alert line to the machine
 room (rooms.toml role = "machine"), else the ops room (yerkd.toml [jobs] ops_room), else the job's
 room. An agent job is a worker (workers.py): the
-`message` is its brief, the job's account and cap apply, its card is in the job's room, and when
+`message` is its brief, the job's account, cap, model and thinking level apply, its card is in the job's room, and when
 it ends its last message is told by the room's own session; a last message of exactly NO_REPLY is
 silence. A note runs nothing: when it is due, its room's own session is told `[reminder NAME due]` and
 its `message` in a harness turn of its own and says it in its voice (no worker, shell, account or cap).
@@ -52,7 +52,7 @@ from typing import Any, Callable, Iterator
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from . import words
-from .config import REPO, toml_value
+from .config import EFFORTS, REPO, toml_value
 from .ledger import Ledger
 from .lifted.killtree import stop_group
 from .room import HARNESS, Inbound
@@ -90,6 +90,10 @@ KEYS: dict[str, str] = {        # every key of a [jobs.NAME] table, in plain wor
             "there too. A room that is not the owner's adds, lists and removes its own notes and no other job",
     "account": "agent jobs: the account (accounts.toml) the worker runs on; unset, "
                "the first one not resting",
+    "model": "agent jobs: the worker's model, an alias or a full id on the install's list (models.toml, or [models] in "
+             "yerkd.toml); unset, [workers] model, else the room's live one",
+    "effort": "agent jobs: the worker's thinking level, one of low, medium, high, xhigh, max; unset, [workers] effort, "
+              "else the room's live level",
     "cap": "minutes the run may take before it is stopped (default 10 for a script, 15 for an agent); "
            "a stopped run alerts",
     "deliver": '"announce" (default): the output or the relay goes to the room; "silent": the run and its ledger '
@@ -177,6 +181,8 @@ class Job:
     payload: str                  # the command or the message
     account: str = ""
     at_epoch: float = 0.0
+    model: str = ""               # agent jobs: the worker's own model and thinking level; "" the room's
+    effort: str = ""
 
     @property
     def unit(self) -> str:
@@ -185,6 +191,10 @@ class Job:
     @property
     def zone(self) -> ZoneInfo:
         return ZoneInfo(self.tz or "UTC")
+
+    def runs_on(self) -> dict[str, str]:
+        """The model and thinking level an agent job sets for its worker; {} runs on the room's."""
+        return {k: v for k, v in (("model", self.model), ("effort", self.effort)) if v}
 
     def describe(self) -> str:
         if self.when == "calendar":
@@ -213,7 +223,7 @@ def make_job(name: str, raw: dict[str, Any], now: float | None = None) -> Job:
         raise JobError(f"unknown key{'s' if len(bad) > 1 else ''} {', '.join(bad)}; the keys are {', '.join(KEYS)}")
     if (kind := str(raw.get("kind", ""))) not in KINDS:
         raise JobError('`kind` must be "script", "agent" or "note"' + (f", not {kind!r}" if kind else ""))
-    if kind == "note" and (extra := [k for k in ("command", "account", "cap") if k in raw]):
+    if kind == "note" and (extra := [k for k in ("command", "account", "cap", "model", "effort") if k in raw]):
         raise JobError(f"a note runs nothing, so it takes no `{extra[0]}`: its `message` is what its room is told")
     whens = [k for k in ("schedule", "at") if k in raw]
     if len(whens) != 1:
@@ -233,12 +243,16 @@ def make_job(name: str, raw: dict[str, Any], now: float | None = None) -> Job:
         raise JobError("`cap` must be above 0 minutes")
     if (deliver := str(raw.get("deliver", "announce"))) not in DELIVER:
         raise JobError('`deliver` must be "announce" or "silent"')
-    account = str(raw.get("account", "") or "")
+    account, model = str(raw.get("account", "") or ""), str(raw.get("model", "") or "").strip()
+    if (effort := str(raw.get("effort", "") or "").strip().lower()) and effort not in EFFORTS:
+        raise JobError(f"`effort` must be one of {', '.join(EFFORTS)}, or left out for the room's level")
     if kind == "script":
         if "message" in raw:
             raise JobError("a script job has `command`, not `message`")
         if account:
             raise JobError("a script job runs with no account; `account` is for agent jobs")
+        if (extra := [k for k in ("model", "effort") if k in raw]):
+            raise JobError(f"a script job runs no model; `{extra[0]}` is for agent jobs")
         payload = str(raw.get("command", "") or "")
         if not payload.strip():
             raise JobError("a script job needs `command`, the shell line to run")
@@ -262,7 +276,7 @@ def make_job(name: str, raw: dict[str, Any], now: float | None = None) -> Job:
             tz_name = "UTC"
         if at_epoch <= now:
             raise JobError(f"`at` {when_text(at_epoch, tz_name)} is in the past")
-    return Job(name, kind, room, when, spec, tz_name, cap, deliver, payload, account, at_epoch)
+    return Job(name, kind, room, when, spec, tz_name, cap, deliver, payload, account, at_epoch, model, effort)
 
 
 def load(path: Path, now: float | None = None) -> tuple[dict[str, Job], dict[str, str]]:
@@ -358,7 +372,7 @@ def remove(path: Path, name: str) -> bool:
 
 
 def fields_for(kind: str, when: str, what: str, room: str, tz: str, deliver: str = "announce", cap: float = 0.0,
-               account: str = "") -> dict[str, Any]:
+               account: str = "", model: str = "", effort: str = "") -> dict[str, Any]:
     """The table a `schedule add` writes: `when` is a time (a one-shot) or a systemd calendar line
     (recurring); `what` is the message (agent, note) or the command (script)."""
     w = when.strip()
@@ -375,6 +389,7 @@ def fields_for(kind: str, when: str, what: str, room: str, tz: str, deliver: str
         out["deliver"] = deliver
     if account:
         out["account"] = account
+    out.update({k: v for k, v in (("model", model), ("effort", effort)) if v})
     out["command" if kind == "script" else "message"] = what
     return out
 
@@ -587,7 +602,8 @@ def read_lines(back: dict[str, dict[str, Any]], jobs: dict[str, Job], now: float
         else:
             nxt = when_text(r["next"], r["tz"]) + (f" ({in_text(r['next'], now)})" if r["next"] else "")
             last = f", last {when_text(r['last'], r['tz'])}" if r["last"] else ", never fired yet"
-            out.append(f"{name}: next {nxt}{last}; {jobs[name].describe()}, room {jobs[name].room}, {jobs[name].kind}")
+            out.append(f"{name}: next {nxt}{last}; {jobs[name].describe()}, room {jobs[name].room}, {jobs[name].kind}"
+                       + "".join(f", {k} {v}" for k, v in jobs[name].runs_on().items()))
     return out or ["jobs: none"]
 
 
@@ -727,17 +743,23 @@ def brief_for(job: Job, run_id: int, fired: float) -> str:
 
 # the schedule tool's three actions: one code path for the tool and for `yerk schedule`
 def schedule_add(path: Path, units: Systemd, env: Env, name: str, kind: str, when: str, what: str, room: str, tz: str,
-                 deliver: str = "announce", cap: float = 0.0, account: str = "", note_chars: int = NOTE_CHARS) -> dict[str, Any]:
+                 deliver: str = "announce", cap: float = 0.0, account: str = "", note_chars: int = NOTE_CHARS,
+                 model: str = "", effort: str = "", models: dict[str, str] | None = None) -> dict[str, Any]:
     """Write the job to the file, sync, and answer with the next fire time read back from systemd;
-    a job systemd will not schedule is taken out of the file again. A note longer than `note_chars` is refused."""
-    name = name.strip().lower()
+    a job systemd will not schedule is taken out of the file again. A note longer than `note_chars` is refused, and so is
+    a `model` off the install's list (`models`, alias = full id), an alias kept as its lowercase name so the job follows the list."""
+    name, low, effort = name.strip().lower(), model.strip().lower(), effort.strip().lower()
+    model = low if low in (models or {}) else model.strip()
     if kind == "note" and len(what) > note_chars:
         return {"ok": False, "error": words.NOTE_LONG.format(most=note_chars, n=len(what))}
+    if kind == "agent" and model and models is not None and model not in models and model not in models.values():
+        listed = ", ".join(f"{a} ({words.model_name(m)})" for a, m in models.items())
+        return {"ok": False, "error": words.NOT_LISTED.format(model=model, models=listed)}
     if not tz:
         return {"ok": False, "error": f"give `tz` (an IANA name such as Europe/Paris): room {room!r} has no timezone "
                                       "configured, and nothing is put on UTC by accident"}
     try:
-        fields = fields_for(kind, when, what, room, tz, deliver, cap, account)
+        fields = fields_for(kind, when, what, room, tz, deliver, cap, account, model, effort)
         job = add(path, name, fields)
         p, back = sync(path, units, env)
     except JobError as e:
@@ -751,7 +773,7 @@ def schedule_add(path: Path, units: Systemd, env: Env, name: str, kind: str, whe
         return {"ok": False, "error": f"not scheduled: {why}; the job was taken out of the file again"}
     now = time.time()
     return {"ok": True, "name": name, "unit": r["unit"], "schedule": job.describe(), "room": room, "tz": job.tz,
-            "kind": kind, "deliver": job.deliver, "next": r["next"],
+            "kind": kind, "deliver": job.deliver, **job.runs_on(), "next": r["next"],
             "next_text": f"{when_text(r['next'], job.tz)} ({in_text(r['next'], now)})", "diff": diff_lines(p)}
 
 
@@ -780,7 +802,7 @@ def schedule_list(path: Path, units: Systemd, only: set[str] | None = None) -> d
     rows = [{"name": n, **r, "next_text": when_text(r["next"], r["tz"]) + (f" ({in_text(r['next'], now)})"
                                                                              if r["next"] else ""),
              **({"schedule": jobs[n].describe(), "room": jobs[n].room, "kind": jobs[n].kind,
-                 "deliver": jobs[n].deliver} if n in jobs else {})} for n, r in back.items()]
+                 "deliver": jobs[n].deliver, **jobs[n].runs_on()} if n in jobs else {})} for n, r in back.items()]
     lines = read_lines(back, jobs, now) + [f"! {n}: cannot be scheduled: {w}" for n, w in sorted(errors.items())]
     return {"ok": True, "jobs": rows, "errors": errors, "lines": lines}
 
@@ -862,7 +884,8 @@ class Jobs:
         out = schedule_add(self.path, self.units, self.env(), str(req.get("name", "")), str(req.get("kind") or "agent"),
                            str(req.get("when", "")), str(req.get("what", "")), room, tz,
                            str(req.get("deliver") or "announce"), float(req.get("cap_minutes") or 0),
-                           str(req.get("account") or ""), int(self.conf.get("note_chars", NOTE_CHARS)))
+                           str(req.get("account") or ""), int(self.conf.get("note_chars", NOTE_CHARS)),
+                           str(req.get("model") or ""), str(req.get("effort") or ""), self.workers.models)
         if out["ok"]:
             log.info("job %s: added from %s (%s), next %s", out["name"], caller or "the command line", out["schedule"], out["next_text"])
         return out
@@ -891,7 +914,8 @@ class Jobs:
         if job.kind != "agent":
             return {"ok": False, "error": f"job {name} is a {job.kind} job; only agent jobs and notes are fired this way"}
         out = await self.workers.start(job.room, brief_for(job, run_id, float(run["fired"])), account=job.account,
-                                       cap_minutes=job.cap, job=name)
+                                       cap_minutes=job.cap, job=name, effort=job.effort,
+                                       model=self.workers.models.get(job.model.lower(), job.model))   # an alias, by the list
         if not out.get("ok"):
             self.ledger.job_run_set(run_id, ended=time.time(), exit="not run", result="did not start",
                                     delivery="alert", note=str(out.get("error", "")))

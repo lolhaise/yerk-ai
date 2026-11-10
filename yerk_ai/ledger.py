@@ -268,11 +268,12 @@ class Ledger:
         self._update("approvals", "id", r[0]["id"], {"approved": time.time(), "approved_by": by})
         return r[0]
 
-    def release(self, room: str, rule: str, call: str, cwd: str, window_s: float) -> dict[str, Any] | None:
-        """The approved hold of exactly this call (its normalised text and working folder), not yet used,
-        takes it through once; another call under the same rule is not released by it."""
-        r = self._select("SELECT * FROM approvals WHERE room = ? AND rule = ? AND call = ? AND cwd = ? AND approved > ? "
-                         "AND released IS NULL ORDER BY id DESC LIMIT 1", (room, rule, call, cwd, time.time() - window_s))
+    def release(self, room: str, rule: str, call: str, cwd: str | None, window_s: float) -> dict[str, Any] | None:
+        """The approved hold of exactly this call (its normalised text, and its working folder unless `cwd` is None:
+        gates.bound_to), not yet used, takes it through once; another call under the same rule is not released by it."""
+        where, folder = ("AND cwd = ? ", (cwd,)) if cwd is not None else ("", ())
+        r = self._select(f"SELECT * FROM approvals WHERE room = ? AND rule = ? AND call = ? {where}AND approved > ? "
+                         "AND released IS NULL ORDER BY id DESC LIMIT 1", (room, rule, call, *folder, time.time() - window_s))
         if not r:
             return None
         self._update("approvals", "id", r[0]["id"], {"released": time.time()})
@@ -304,20 +305,37 @@ class Ledger:
         return int(r[0]["n"])
 
     def landed(self, turn_key: str) -> int:
-        """Parts already in the room under a turn's key (its reply parts, its sends)."""
+        """Parts already in the room under a turn's key (its reply parts, its sends). Read by key range (`key:` up to
+        `key;`, `key-s` up to `key-t`), so it costs what the turn posted, never every sent row there is (a LIKE on the key
+        cannot use its index: sqlite's LIKE ignores case and the key's index does not)."""
         if not turn_key:
             return 0
-        r = self._select("SELECT count(*) AS n FROM deliveries WHERE state = 'sent' AND (key LIKE ? OR key LIKE ?)",
-                         (f"{turn_key}:%", f"{turn_key}-s%"))
+        one = "(SELECT count(*) FROM deliveries WHERE key >= ? AND key < ? AND +state = 'sent')"      # +: the key's own index
+        r = self._select(f"SELECT {one} + {one} AS n", (f"{turn_key}:", f"{turn_key};", f"{turn_key}-s", f"{turn_key}-t"))
         return int(r[0]["n"])
 
     def said(self, room: str, session_id: str, before: float) -> str:
         """The replies `room` posted in session `session_id` before `before`, its turn's start: what the Stop check read.
-        Its narration before a tool call, its sends, captions and notes were never checked, so they are not here."""
-        rows = self._select("SELECT body FROM deliveries d WHERE room = ? AND kind = 'reply' AND state = 'sent' AND created < ? "
-                            "AND EXISTS (SELECT 1 FROM turns t WHERE t.room = d.room AND t.session_id = ? AND d.key LIKE "
-                            "t.turn_key || ':%')", (room, before, session_id))
+        Its narration before a tool call, its sends, captions and notes were never checked, so they are not here.
+        Each turn of the session finds its own parts by key range, so the read costs the session's replies. It was every
+        reply of the room against every turn of the session, a LIKE per pair, under the ledger's one lock: 1,017 ms a
+        Stop in a room 2,564 turns into its session (measured 2026-11-09 on the live ledger), and the event loop's next
+        ledger call waited behind it (911 of 953 logged loop stalls in 7.7 days overlap a Stop hook)."""
+        rows = self._select("SELECT d.body AS body, d.created AS created, d.rowid AS n FROM (SELECT DISTINCT turn_key FROM turns "
+                            "WHERE session_id = ? AND room = ? AND turn_key IS NOT NULL AND turn_key != '') t CROSS JOIN deliveries d "
+                            "ON d.key >= t.turn_key || ':' AND d.key < t.turn_key || ';' WHERE +d.room = ? AND d.kind = 'reply' "
+                            "AND +d.state = 'sent' AND +d.created < ?", (session_id, room, room, before))   # +: by the key, never the room's rows
+        rows.sort(key=lambda r: (r["created"], r["n"]))        # the order the room posted them in, as before
         return "\n".join(str(r["body"]) for r in rows)
+
+    def deliveries_of(self, room: str, key: str) -> list[dict[str, Any]]:
+        """The parts of one delivery (`key:0`, `key:1`, ...), in order, by key range: what a post of one reply needs. A
+        room's whole history (deliveries(room): 4,394 rows and 1.9 million characters in a busy room, 14.65 ms
+        on the event loop for every reply) is never read for it. A longer key under the same start
+        (`key:hooks:0`, a notice's) is another delivery and is left out, as the callers' own test left it out."""
+        rows = self._select("SELECT * FROM deliveries WHERE key >= ? AND key < ? AND +room = ?", (f"{key}:", f"{key};", room))
+        rows.sort(key=lambda r: (r["created"] or 0, r["key"]))
+        return [r for r in rows if r["key"].rsplit(":", 1)[0] == key]
 
     # observability (beat.py, status.py, morning.py)
     def spend(self, **row: Any) -> int:

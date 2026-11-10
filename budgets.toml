@@ -7,7 +7,7 @@
 # The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and
 # Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 [session_start]
-total = 127212
+total = 129071
 
 # Load order, most stable first, so the cached start of the prompt survives.
 # The first parts are Claude Code's own (its default prompt, the built-in tools
@@ -188,24 +188,52 @@ total = 127212
 # React form never had it and its Next stayed disabled; filed 2026-11-09): its entry grows 145 as the plug-in's branch
 # need-2026-11-09-75 (cc75696) builds it against its main 2e7593a, so 3,622 as sent (31 over, as each of the five goes),
 # all five 8,708; so 8,708, no part could pay, the total rose by the 145 (to 125,448).
-# 2026-11-09, need-2026-11-09-74: the hands plug-in's browser gains `type` (text into whatever field has focus in a tab,
-# such as one a click by x and y focused, and a web component's form read, listed, set and clicked by label, since a room
-# asked to run a quote on a form drawn inside a shadow root saw it only in a shot, its read and its fields stopping at the
-# page's footer, and had no action to type into the field its click focused; filed 2026-11-09): its entry 3,438 to
-# 3,880 as JSON on the plug-in's branch need-2026-11-09-74 (8c2aff9) against its main 2e7593a, 442 more as sent (each of
-# the five goes out 31 over its build, which `type` leaves as it was); so 9,005, no part could pay, the total rose by the
-# 442 (to 125,745 on zoom-2026-11-09's 125,303, main cc6ccfe folded in).
-# 2026-11-09, need-2026-11-09-74 on main da8bfd8 (need-2026-11-09-75's `type` landed first): the plug-in's main aa4d3fc
-# merges its branch need-2026-11-09-74 onto need 75's cc75696 as one `type` (by its label, need 75's way, through each open
-# shadow root too, a select by its option's words; with no label, the field that has focus; a key after either): its
-# browser entry 4,047 as JSON there (3,583 on cc75696, 3,880 on the branch), about 4,086 as sent, all five 9,140 built;
-# so 9,172, the 464 over main's 8,708, no part could pay, the total rose by the 464 (to 127,212 on main's 126,748).
+# 2026-11-09, need-2026-11-09-77: the `worker` tool's clause that the room hears nothing when a worker's last message is
+# exactly NO_REPLY (a timer script started each run with `yerk worker start`, and every quiet run still asked its room for
+# a relay turn that had to be answered with a posted line; filed 2026-11-09) takes the tool from 1,398 to 1,450 as
+# this tree builds it. With main 47d8d58 folded in, `remember` is 3,016 there (2,304 before memory-docs-shape and fable-5-2
+# gave it retire and the rule shape in the docs' words, with no line moved: main builds all 23 at 24,786, about 25,499 as
+# sent, 699 over 24,800), so all 23 build to 24,838, about 25,551 as sent (713 over the build, as on zoom's tree); so
+# 25,600, no part could pay, the total rose by the 800 (100 this clause, 700 main's `remember`) over main's 126,748 (to
+# 127,548).
+# 2026-11-09, need-2026-11-09-76: the hands plug-in's browser gains `keep` (a key a tab shows, saved by the plug-in itself
+# in the private folder's secrets/ as a new NAME.key, its value never in a result, since a room asked to keep a key a
+# signed-in settings page showed in a locked file found the page's Copy button copied onto the browser machine's clipboard
+# and reading the page put the key in its session log; filed 2026-11-09): its entry 4,073 to 4,497 as the plug-in's
+# branch need-2026-11-09-76 (9bb3cc0) builds it, 424 more; on its main 378b785 the entry was already 481 over need 75's
+# 3,592, need 74's type merged onto need 75's (aa4d3fc) with no line raised, the five sending 9,187 on the 8,708 line; so
+# 8,708 plus the 905, 9,613 (all five 9,456 built, 9,611 sent at 31 over each as measured, need 75's 2 over kept), no part
+# could pay, the total rose by the 905 (to 128,453 on main's 127,548).
+# 2026-11-09, need-2026-11-09-76's fix (the cold read: the room still read the key, since keep needed a tab, only open gave
+# one, and open returns the page's text): keep takes the page's url, the plug-in opening the page itself with no page text
+# returned, and the entry says so (keep by url, never open or read the page first): the browser's entry grows 218 as the
+# plug-in's branch need-2026-11-09-76 (305c25c, its head d570241 the same) builds it, description words only, so 218 as
+# sent too (4,527 to 4,745); 9,613 plus the 218, 9,831, no part could pay, the total rose by the 218 (to 128,671 on
+# main's 127,548).
+# 2026-11-09, need-2026-11-09-79: the `schedule` tool's `effort` and `model` (an agent job's worker at the job's own thinking
+# level and model, since a room on max started each research run of a bot as a standing agent job and every job's worker
+# took the room's level, one run at max costing about eight times the same run at high) take the
+# tool from 2,149 to 2,410 as this tree builds it, all 23 to 25,099, about 25,812 as sent (713 over the build, as on need
+# 77's tree); so 25,900, no part could pay, the total rose by the 300 (to 128,971 on main's 128,671).
+# 2026-11-10, need-2026-11-09-83: the `texts` tool's clause on a message with no words (`text` its words, or `blank` saying
+# why it has none, never told as empty, since a room asked to confirm the words of a text the owner had just sent found
+# its text field empty, as on every text they sent that evening, the words kept only in the message's attributedBody; filed
+# 2026-11-09) takes the tool from 987 to 1,069 as this tree builds it, all 23 to 25,181, about 25,894 as sent (713
+# over the build, as on need 79's tree), 6 under the line; so 26,000, no part could pay, the total rose by the 100 (to
+# 129,071 on main's 128,971).
+# 2026-11-10, need-2026-11-09-74 (the hands plug-in's browser types into whatever field has focus in a tab, and a web
+# component's form is read, listed, set and clicked by label, since a room asked to run a quote on a form drawn inside a
+# shadow root saw it only in a shot, its read and its fields stopping at the page's footer, and had no action to type into
+# the field its click focused; filed 2026-11-09): one `type` with need-2026-11-09-75's on the plug-in's main
+# (aa4d3fc: by its label through each open shadow root too, a select by its option's words; with no label, the field that
+# has focus; a key after either). No line moves for it here: need-2026-11-09-76 reached main first and its 905 above
+# counts this joined entry (the 481 over need 75's), so the hands line stays 9,831 and the total 129,071.
 [session_start.claude_code]
 claude_code_prompt = 10966
 builtin_tools = 12132
-yerk_tools = 24800
+yerk_tools = 26000
 deferred_tool_names = 3429
-mcp__hands__ = 9172
+mcp__hands__ = 9831
 mcp__web-ladder__web_image = 913
 skills = 0
 
@@ -313,7 +341,7 @@ typical = 1500
 # 2026-10-21: 4,000 to 5,500, the taste part's 1,500 below (the owner's files carried over as they
 # are, the cap raised where they need it).
 # 2026-10-23: 5,500 to 5,650, the place part's 150 below.
-# 0000-00-00, the-0000-00-00-00: 0,000 next 0,000, step and the 000 test.
+# 2026-11-10, need-2026-11-09-74: 5,650 to 5,750, the recall part's 100 below.
 cap = 5750
 
 # The parts every message carries, one cap each: the clock line, the metadata line and, in an owner room, the place line.
@@ -335,14 +363,14 @@ output_cap = 10000
 # of the last 14 days on its topic (L19, decision 20). The parts above plus these stay under `cap`.
 # 2,000 from the cold read of Oct 21 (rail-2, index healthy): the twenty episodic questions found 9 of 20
 # at 1,500 and 11 of 20 at 2,000. Clock 200 + metadata 300 + rules 1,500 + recall 2,000 + taste 1,500 = the cap, 5,500.
-# 2026-11-09, need-2026-11-09-74: 2,100. The answer to "what can you do" (abilities.py's census: every ability's name by
-# its state) rides whole under this line or not at all, and it sat 2 characters under it; form-typing's name (the browser
-# plug-in's type, filed 2026-11-09 by a room that saw a quote form only in a shot) takes it 11 over, 2,012 with its
-# block's head against the 2,001 a line of 2,000 holds, and no name can join it at 2,000; so 100 more, room for about seven
-# names. The twenty episodic questions' finding at 2,000 stands; the cap above rose by the same 100.
+# 2026-11-10, need-2026-11-09-74: 2,100. The answer to "what can you do" (abilities.py's census: every ability's name by
+# its state) rides whole under this line or not at all, and on main d97c1ba it sat 7 characters under it (1,993);
+# form-typing's name (the browser plug-in's type, filed by a room that saw a quote form only in a shot)
+# takes it 6 over, 2,006; so 100 more, room for about seven names. The twenty episodic questions' finding at 2,000
+# stands; the cap above rose by the same 100.
 recall = 2100
-# Its turn and the last part closes the (case 00): before the next run starts the, example note
-# note says the sample item moved to, the next step and; the test, reads it back as plain text with.
+# Paid once per version by a running session (decision 15): what changed in the rules file, its persona, rulebook
+# or voice file or the mechanics since it last looked, new and replaced lines; past this, their count and where to read them.
 rules = 1500
 # Paid on every message of an owner room whose layer keeps taste.jsonl: the owner's verdicts on the room's replies,
 # three praised and two faulted, the owner's words beside the reply, as an earlier setup injected them (taste.py). The owner asked
@@ -1305,4 +1333,62 @@ secs = 60
 # pins, its four checks and the style-limit count, the store per page), engine.py 37 (each session's start kept by its id),
 # doctor.py 12 (the rooms' models read, a need per kind), words.py 10 (each new check's name and fix), context.py 6 (news
 # from a kept start), memory.py 6 (the gate's pages), config.py 4, mcp_server.py 2, daemon.py 1. 27,910.
-lines = 27910
+# 2026-11-09: need-2026-11-09-77 raised it by 5: a worker whose last message is exactly NO_REPLY ends with no relay turn
+# from any caller, as a job's does, the ledger's relay skipped with why, since a timer script started each run with
+# `yerk worker start` and every quiet run still asked its room for a turn that had to be answered with a posted line;
+# not folded to fit: workers.py 5 (the skip, its ledger note and log line; the module's line on it), mcp_server.py 0
+# (the tool's clause, its lines folded again), cli.py 0 (--brief's words). 27,915: main 47d8d58's 27,910 plus 5.
+# 2026-11-09: need-2026-11-09-78 raised it by 8: an approved hold of a text, an email or any other tool's call releases
+# the same call whatever folder the room's shell is in, since a session a /compact had put back in its work folder made
+# the owner's approved text again, was held a second time on a second card and the word was said twice; a shell
+# command's approval stays bound to its folder; not folded to fit: gates.py 7 (bound_to, the folder an approval holds
+# in, and its reason), ledger.py 1 (release with any folder), daemon.py 0. 27,923: main 3867cd6's 27,915 plus 8.
+# 2026-11-09: need-2026-11-09-79 raised it by 27: an agent job sets its worker's thinking level and model (`effort` and
+# `model` in jobs.toml, the `schedule` tool and `yerk schedule add`), since a room on max started each research run of a bot
+# as a standing agent job and every job's worker took the room's level, one run at max costing about eight times the same
+# run at high; not folded to fit: jobs.py 24 (the two keys and their words, the job's fields, the refusals on a note, a
+# script and a level that is not one, the model checked against the install's list with an alias kept by its name, the
+# alias made its full id at the hand-off to the worker, the add's and the list's words), cli.py 2 (--model and --effort),
+# mcp_server.py 1 (the tool's clause). 27,950: main 74e6a81's 27,923 plus 27.
+# 2026-11-09: need-2026-11-09-80 raised it by 11: with a live page's chat closed, only the room's lines that answer what was
+# said on the page go into the program, since every line it said from any thread went in and a Discord answer, a scheduled
+# note's and a job's nightly post landed in the owner's code under the last # line; two docstring lines folded, the rest
+# not folded to fit: channels/page.py 8 (answers_page, a page message of the room's among those a line answers, read from
+# the ledger; said writing the program only then; the Mirror handing each line its messages; the module's line on it),
+# channels/discord.py 1 (send_text's `inbound`, the page's, its rows still answering none), daemon.py 1 (the send tool's
+# turn messages to send_text), words.py 1 (the room told, when the chat closes, that its other lines stay on the chat),
+# mcp_server.py 0 (the page tool's clause, 18 characters, inside yerk_tools' 25,900: about 25,830 as sent, no raise).
+# 27,961: main 37d8a70's 27,950 plus 11.
+# 2026-11-10: hot-reads-2026-11-10 raised it by 16: to post one reply the daemon read the room's whole delivery history on
+# the event loop, and sqlite hands Python's interpreter back after every row, so with another room's turn busy a row cost
+# about 8 ms: 236 rows took 2.0 s on the owner's ledger and a busy room's 4,667 about 40 s, past systemd's 30 s
+# watchdog, which killed the daemon with the loop's stack in that read (an earlier kill that day
+# fits it: a send in the work room sat 29 s between planned and posted). One reply's parts, a turn's landed parts and
+# the end-of-turn check's replies are read by key range (the engine audit's defect 1); not folded to fit: ledger.py 17
+# (deliveries_of; said and landed by range, with why), channels/discord.py -1 (_deliver and one key's redelivery call it).
+# 27,977: main 5529087's 27,961 plus 16.
+# 2026-11-10: persona-voice-news-2026-11-09 raised it by 29: a line added, changed or removed in a room's persona or voice
+# file reaches its running session once, in its next message's rules block, since a room that keeps its session for days
+# went on with the old persona (Claude Fable 5.2's page: "To change instructions partway through a conversation, put them
+# in the newest turn."); not folded to fit: context.py 29 (the two files in news' look, the lines a look from before they
+# were kept reads off the session's kept start, began_with, and the lines that say something, lines_of, which news and
+# it share). 28,006: main 10e9cfb's 27,977 plus 29.
+# 2026-11-10: need-2026-11-09-82 raised it by 51: the room's answers to a live page are bubbles between the editor's rows
+# under the line asked from, never #> lines written into the owner's solution.py, with a typing mark till the turn ends
+# and one key to ask about a line or a red test, since the owner asked to talk to the room in the code and got a dozen
+# plain #> lines at the bottom of the owner's file, a one-colour editor and nothing on screen while it thought; not folded to
+# fit: channels/page.py 51 (talk_lines, spot, into, caught_up and the reply numbering out; moved, kept_lines, fallback
+# and def_line, the sheet's bubbles, typing mark and anchors with shift, the ask and bubble events, asking, _bubble,
+# ended and the Mirror's silent in), words.py 0 (the asks' words for the talk's cut and catch-up), mcp_server.py 0 (the
+# page tool's clause, as long as before). The editor, its colours and the bubbles are page.html's, outside this count.
+# 28,057: main 6a13109's 28,006 plus 51.
+# 2026-11-10: need-2026-11-09-82's fix (PR 40) lowered it by 1: a bubble an edit moves is written to talk.json at once,
+# since lines typed above one moved it in yerkd's copy alone and a restart brought it back on its old line, beside another
+# line of the program; channels/page.py -1 (shift writes talk.json when a bubble moved or went, for an edit and a draw
+# alike, so the draw's own write and its block after the loop go). 28,056: 28,057 less 1.
+# 2026-11-10: need-2026-11-09-83 raised it by 30: a text whose text column comes back blank, as Messages leaves many the
+# owner sent, is read from its attributedBody (the import's own reading), and one with no words there says why in
+# `blank`, since a room asked to confirm the words of a text the owner had just sent got an empty text field for every
+# text they sent that evening; not folded to fit: inbox.py 27 (said, the query's attributedBody as hex, parse's fifth field
+# and FILE_MARK), words.py 2 (TEXTS_BLANK), mcp_server.py 1 (the texts tool's clause on `blank`). 28,086: 28,056 plus 30.
+lines = 28086

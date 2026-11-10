@@ -29,7 +29,8 @@ daemon restarts.
   merged with another relay; two completions are two relays, in order), and in a room whose process
   is closed it resumes the room's own session, as any message does. The raw report never goes to
   the room. A last message of exactly NO_REPLY settles the card quiet, live or at a re-attach: the
-  done mark and "finished clean, nothing to add", no token, no rows, the footer as ever.
+  done mark and "finished clean, nothing to add", no token, no rows, the footer as ever; and no
+  relay turn, whoever started it (the tool, `yerk worker start` in a script), the ledger saying why.
 - One heavy worker per account ([workers] per_account, default 1): a worker whose account is busy
   waits in line, its card saying "waiting for an account" and its place; the daemon starts it when
   the account frees. A worker that moves account mid-run is not built.
@@ -682,7 +683,7 @@ class Workers:
         end: dict[str, Any] = {"exit": state, "detail": detail, "finished": float(x.get("ended") or time.time()),
                "result": first_line(report) or ("no report file" if state == "done" else ""),
                "has_report": report.is_file(), "result_code": x.get("result") or ""}
-        # its last message read as jobs.py's worker_done reads it: exactly NO_REPLY settles the card quiet (card_text)
+        # its last message read as jobs.py's worker_done reads it: exactly NO_REPLY settles the card quiet (card_text), no relay
         end["quiet"] = state == "done" and (last_message(Path(row["staging"])) or end["result"]).strip() == words.NO_REPLY
         self.ledger.worker_set(wid, finished=round(end["finished"], 3), exit=state, exit_detail=detail, result=end["result"])
         row["card"] = row.get("card") or fresh.get("card")
@@ -696,6 +697,10 @@ class Workers:
                         return
                 except Exception:                            # a hook that fails never loses the relay
                     log.exception("worker %s: a completion hook failed", wid)
+            if end["quiet"]:                                 # nothing to tell: no relay turn, as a job's NO_REPLY is silence
+                self.ledger.worker_set(wid, relay="skipped", relay_note="the worker answered NO_REPLY")
+                log.info("worker %s: relay skipped: it answered NO_REPLY", wid)
+                return
             await self.relay(row, end)
         finally:
             await self.next_in_line()                        # the account is free: the next in line starts

@@ -93,7 +93,7 @@ workers: start (needs a running yerkd), list, stop, report
 
 - `ACTION`: one of start, list, stop, report
 - `[ID]`: stop, report: the worker's id
-- `--brief BRIEF`: start: the brief file
+- `--brief BRIEF`: start: the brief file; a run whose last message is exactly NO_REPLY settles its card quiet, with no relay
 - `--room ROOM`: start: the room for its card and relay (default: the only room, else required)
 - `--task TASK`: start: a TASKS.md row (repeat for each); repeat for each
 - `--cap CAP`: start: minutes before it is stopped (default [workers], 65)
@@ -172,6 +172,8 @@ add a one-shot or a recurring job, remove one, or list them (the room's `schedul
 - `--deliver DELIVER`: one of announce, silent; default announce
 - `--cap CAP`: add: minutes before the run is stopped
 - `--account ACCOUNT`: add: agent jobs, the account to run on
+- `--model MODEL`: add: agent jobs, the worker's model, an alias or a full id on the install's list (default [workers], else the room's)
+- `--effort EFFORT`: add: agent jobs, the worker's thinking level, one of low, medium, high, xhigh, max (default [workers], else the room's)
 - `--json`
 - `--private PRIVATE`: private folder (default: $YERK_PRIVATE, else the fake example layer)
 - `--state STATE`: state folder (default: $YERK_STATE, else ~/.local/state/yerk)

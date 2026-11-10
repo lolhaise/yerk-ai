@@ -152,6 +152,12 @@ def test_a_calendar_line_and_a_time_are_the_two_schedules_and_a_cron_line_is_ref
     ({"kind": "note", "schedule": "*:00", "tz": "UTC", "room": "r", "message": "x", "command": "echo x"}, "runs nothing, so it takes no `command`"),
     ({"kind": "note", "schedule": "*:00", "tz": "UTC", "room": "r", "message": "x", "account": "one"}, "takes no `account`"),
     ({"kind": "note", "schedule": "*:00", "tz": "UTC", "room": "r", "message": "x", "cap": 5}, "takes no `cap`"),
+    ({"kind": "note", "schedule": "*:00", "tz": "UTC", "room": "r", "message": "x", "effort": "high"}, "takes no `effort`"),
+    ({"kind": "note", "schedule": "*:00", "tz": "UTC", "room": "r", "message": "x", "model": "sonnet"}, "takes no `model`"),
+    ({"kind": "script", "schedule": "*:00", "tz": "UTC", "room": "r", "command": "x", "effort": "low"}, "runs no model; `effort` is for agent"),
+    ({"kind": "script", "schedule": "*:00", "tz": "UTC", "room": "r", "command": "x", "model": "opus"}, "runs no model; `model` is for agent"),
+    ({"kind": "agent", "schedule": "*:00", "tz": "UTC", "room": "r", "message": "x", "effort": "turbo"},
+     "`effort` must be one of low, medium, high, xhigh, max, or left out for the room's level"),
     ({"kind": "note", "schedule": "*:00", "tz": "UTC", "room": "r"}, "a note needs `message`, the text its room is told"),
 ])
 def test_a_job_that_cannot_be_scheduled_is_named_with_why(raw, why):
@@ -420,6 +426,74 @@ def test_an_agent_job_becomes_a_worker_with_the_right_account_and_cap_and_relays
     assert rec.notified == [("r", f"{W.NOT_DONE} job crash failed: it ended with an error")]
     assert s.ledger.job_run_get(run_crash)["note"] == f"worker {crash['id']}: exit-code, exited 3"
     assert len(s.chan.replies) == 1                      # the one relay; the other three posted nothing
+
+
+def test_an_agent_jobs_worker_runs_at_the_jobs_own_model_and_thinking_level_not_the_rooms(setup, tmp_path, capsys):
+    """need-2026-11-09-79: a room on max thinking started a bot's research runs as standing agent jobs (deliver silent), and
+    every job's worker took the room's level, since neither the schedule tool nor `yerk schedule add` had a model or a
+    thinking level: a run at max cost about eight times the same run at high. An agent job now sets its worker's `effort` and
+    `model` (an alias or a full id on the install's list; an alias is kept by its name, so the job follows the list, and the
+    worker gets its full id); a job that sets neither runs on the room's live ones as before. A model off the list, a level
+    that is not one, and either on a note are refused, the file left as it was; the list says what each job sets."""
+    s = setup
+    rec = Rec()
+    j, w, sd, priv, state = manager(setup, tmp_path, {"r": s.room()}, {"r": rec})
+    s.ledger.__init__(state / "ledger.sqlite")
+    j.ledger = w.ledger = s.ledger
+    w.models = {"opus": "claude-opus-5-5", "sonnet": "claude-sonnet-5-5"}
+    (s.tmp / "rooms" / "r").mkdir(parents=True)
+    (s.tmp / "rooms" / "r" / "override.json").write_text(json.dumps({"effort": "max"}))      # the room's own level: max
+    path = write_jobs(priv / "jobs.toml", "# the owner's comment stays\n")
+    add = lambda **k: asyncio.run(j.handle("r", {"action": "add", "kind": "agent", "when": "Mon..Fri 09:00", **k}))  # noqa: E731
+    lean = add(name="lean", what='FAKE report="NO_REPLY" result="NO_REPLY"', deliver="silent", model=" Sonnet", effort="HIGH ")
+    assert lean["ok"] and (lean["model"], lean["effort"]) == ("sonnet", "high"), lean
+    plain = add(name="plain", what='FAKE report="NO_REPLY" result="NO_REPLY"', deliver="silent")
+    assert plain["ok"] and "model" not in plain and "effort" not in plain
+    assert ('[jobs.lean]\nkind = "agent"\nschedule = "Mon..Fri 09:00"\ntz = "UTC"\nroom = "r"\nmodel = "sonnet"\neffort = "high"\n'
+            'deliver = "silent"\n') in path.read_text() and "[jobs.plain]" in path.read_text()
+    before = path.read_bytes()
+    assert add(name="odd", what="x", model="gpt-9") == {"ok": False, "error": W.NOT_LISTED.format(
+        model="gpt-9", models="opus (Opus 5.5), sonnet (Sonnet 5.5)")}
+    assert add(name="odd", what="x", effort="turbo")["error"].startswith("`effort` must be one of low, medium, high, xhigh, max")
+    assert add(name="odd", kind="note", what="x", effort="low")["error"].startswith("a note runs nothing, so it takes no `effort`")
+    assert path.read_bytes() == before and sd.ours() == ["lean", "plain"]
+    listed = asyncio.run(j.handle("r", {"action": "list"}))
+    assert [x.split("; ", 1)[1] for x in listed["lines"]] == ["calendar `Mon..Fri 09:00` UTC, room r, agent, model sonnet, effort high",
+                                                              "calendar `Mon..Fri 09:00` UTC, room r, agent"]
+    assert [(x["name"], x.get("model"), x.get("effort")) for x in listed["jobs"]] == [("lean", "sonnet", "high"), ("plain", None, None)]
+
+    async def go():
+        loop = asyncio.get_running_loop()
+        w.begin(loop)
+        handoff = lambda p: asyncio.run_coroutine_threadsafe(j.handle("", p["job"]), loop).result(30)  # noqa: E731
+        rows = {}
+        for name in ("lean", "plain"):
+            assert await asyncio.to_thread(jobs.run, name, priv, state, sd, handoff) == 0
+            rows[name] = await ended(s.ledger, s.ledger.job_runs(job=name)[0]["worker"])
+        return rows
+    rows = asyncio.run(go())
+    for name, model, level in (("lean", "claude-sonnet-5-5", "high"), ("plain", "m", "max")):     # the job's own, else the room's
+        argv = json.loads((Path(rows[name]["staging"]) / "fake-record.json").read_text())["argv"]
+        assert (argv[argv.index("--model") + 1], argv[argv.index("--effort") + 1]) == (model, level), (name, argv)
+        assert (rows[name]["model"], rows[name]["job"], rows[name]["relay"]) == (model, name, "skipped")
+        assert json.loads((Path(rows[name]["staging"]) / "worker.json").read_text())["effort"] == level
+    # `yerk schedule add` takes the same two, checked against the install's list
+    capsys.readouterr()
+    monkey = pytest.MonkeyPatch()
+    monkey.setattr(jobs, "Systemd", lambda: sd)
+    monkey.setattr(cli, "rooms", lambda p: {"r": {"timezone": "UTC"}})
+    try:
+        rc = cli.main(["schedule", "add", "cli-lean", "--when", "*:0/45", "--what", "look", "--room", "r", "--model", "opus",
+                       "--effort", "low", "--private", str(priv), "--state", str(state)])
+        odd = cli.main(["schedule", "add", "cli-odd", "--when", "*:0/45", "--what", "look", "--room", "r", "--model", "gpt-9",
+                        "--private", str(priv), "--state", str(state)])
+    finally:
+        monkey.undo()
+    out, err = capsys.readouterr()
+    assert (rc, odd) == (0, 1)
+    assert out.startswith("cli-lean: calendar `*:0/45` UTC, agent job, room r, deliver announce, model opus, effort low; next ")
+    assert err.startswith("not on the list: gpt-9\nthe list: opus (") and "cli-odd" not in path.read_text()
+    assert jobs.load(path)[0]["cli-lean"].runs_on() == {"model": "opus", "effort": "low"}
 
 
 def test_a_one_shot_is_removed_from_the_file_and_its_units_go_after_it_fires(setup, tmp_path):
