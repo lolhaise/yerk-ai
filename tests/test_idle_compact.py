@@ -578,6 +578,38 @@ def test_a_daemon_restart_with_a_copy_in_flight_loses_the_copy_and_nothing_else(
     room.rp.close()
 
 
+def test_a_taken_copys_tail_waits_through_a_restart_and_rides_the_next_message_once(y, tmp_path, gate, caplog):
+    """The room takes a copy at a turn's end with nothing waiting, so the tail waits in the room's folder. The daemon restarts
+    before the next message, as an idle room's process closes: the room resumes the copy, the next message carries the tail
+    once and the one after it nothing."""
+    band(y)
+    room = y.add_room(ROOM, chan := Chan())
+    with caplog.at_level(logging.INFO, logger="yerk.room"):
+        say(y, room, "1", "CONTEXT:195000 hello")
+        wait_idle(room)
+        copy = room.fork.session_id
+        say(y, room, "2", "CONTEXT:196000 SLOW still here")
+        until(lambda: room.reading)
+        gate.set()
+        until(lambda: room.ready is not None)
+        wait_idle(room)
+    kept = tmp_path / "rooms" / ROOM / "copy-tail"
+    assert room.rp.session_id == copy == bound(tmp_path) and kept.exists()
+    room.shutdown()
+    again = Yerkd(EXAMPLE_PRIVATE, tmp_path, only_account=Account("one", tmp_path / "cfg1"))   # the restart
+    again.budgets["session"]["precompact_within"] = 0
+    room = again.add_room(ROOM, chan := Chan())
+    say(again, room, "3", "CONTEXT:21000 after the restart")
+    wait_idle(room)
+    first = echoed(chan, 0)
+    assert room.rp.session_id == copy == bound(tmp_path) and not kept.exists()
+    assert first.startswith(TAIL_HEAD) and "owner: CONTEXT:196000 SLOW still here" in first and first.endswith("\n\nCONTEXT:21000 after the restart")
+    say(again, room, "4", "CONTEXT:22000 and once more")
+    wait_idle(room)
+    assert TAIL_HEAD not in echoed(chan, 1)
+    room.rp.close()
+
+
 def test_a_turn_within_the_turn_end_line_still_compacts_the_live_session_and_a_band_of_0_never_copies(y, tmp_path):
     """Within idle_compact_within of the line nothing changes: the live session compacts at the turn's end, the room held (its
     own tests above). A band of 0, a room's own key, turns the copy off."""
