@@ -53,6 +53,7 @@ EXTRA = re.compile(r"\bOTP\b|\bone[- ]time\b|(?-i:\bPIN\b)|\b(?:2FA|MFA)\b|\btwo
 # 2026-10-21 scrub, a code said as one or after its word, a password's value and a link's token: 91, 82 and 6 lines
 # from long-number senders and others passed the rest on the 2026-10-20 texts)
 SECRETS = {"anthropic-key": r"sk-ant-[A-Za-z0-9_-]{20,}", "openai-key": r"(?<![A-Za-z0-9])sk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{32,}",
+           "groq-key": r"(?<![A-Za-z0-9])gsk_[A-Za-z0-9]{30,}",
            "github-token": r"(?:ghp|gho|ghs|ghu)_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}",
            "slack-token": r"xox[abprs]-[A-Za-z0-9-]{10,}", "aws-key-id": r"(?<![A-Z0-9])AKIA[0-9A-Z]{16}(?![A-Z0-9])",
            "google-api-key": r"AIza[0-9A-Za-z_-]{35}", "google-oauth": r"ya29\.[0-9A-Za-z_-]{20,}",
@@ -71,6 +72,18 @@ HELD_TEXT, HELD_MAIL = "[security text: body withheld]", "[security mail: body w
 
 def scrub(text: str) -> str:
     return SECRET.sub(lambda m: f"[{str(m.lastgroup).replace('_', '-')} withheld]", text)
+
+
+# A provider's key or token by its own shape: withheld from a live message's day-log line too (memory.DailyLog.capture), so
+# one pasted into a room is never indexed, embedded at the provider or recalled. A code, a password and a link's token are
+# not in it: in a room those are the owner's own words, theirs to file.
+KEYS = ("anthropic-key", "openai-key", "groq-key", "github-token", "slack-token", "aws-key-id", "google-api-key", "google-oauth",
+        "discord-token", "jwt", "private-key", "presigned-url", "stripe-key", "telegram-token")
+KEY = re.compile("|".join(f"(?P<{k.replace('-', '_')}>{SECRETS[k]})" for k in KEYS))
+
+
+def keys_out(text: str) -> str:
+    return KEY.sub(lambda m: f"[{str(m.lastgroup).replace('_', '-')} withheld]", text)
 
 
 def put(out: Path, record: Path, files: dict[str, tuple[str, list[tuple[str, str]]]], span: bool, dry: bool) -> tuple[int, int]:

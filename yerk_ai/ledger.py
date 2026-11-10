@@ -259,10 +259,12 @@ class Ledger:
         return self._insert("approvals", {"room": room, "rule": rule, "what": what, "held": time.time(),
                                           "gate_id": gate_id, "call": call, "cwd": cwd})
 
-    def approve(self, room: str, by: str, window_s: float) -> dict[str, Any] | None:
-        """The owner's word: the room's newest hold not yet approved (inside the window) is approved."""
-        r = self._select("SELECT * FROM approvals WHERE room = ? AND approved IS NULL AND held > ? ORDER BY id DESC "
-                         "LIMIT 1", (room, time.time() - window_s))
+    def approve(self, room: str, by: str, window_s: float, before: float | None = None) -> dict[str, Any] | None:
+        """The owner's word: the room's newest hold not yet approved (inside the window) is approved. `before`, when the word
+        reached Yerk: a hold made after it is never approved by it, since nobody had read that hold when the word was written
+        (a word folded into a running turn reaches the gate after the turn's next calls)."""
+        r = self._select("SELECT * FROM approvals WHERE room = ? AND approved IS NULL AND held > ? AND held <= ? ORDER BY id DESC "
+                         "LIMIT 1", (room, time.time() - window_s, time.time() if before is None else before))
         if not r:
             return None
         self._update("approvals", "id", r[0]["id"], {"approved": time.time(), "approved_by": by})

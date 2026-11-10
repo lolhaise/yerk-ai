@@ -205,8 +205,8 @@ def test_an_approval_releases_exactly_the_held_call_once_and_a_word_without_the_
     rows = y.ledger._select("SELECT * FROM approvals ORDER BY id", ())
     main, feature = "git push origin main", "git push origin feature"
     assert [(r["call"], r["cwd"] == str(work), bool(r["approved"]), bool(r["released"])) for r in rows] == [
-        (main, True, False, False), (main, True, True, True), (feature, True, False, False),
-        (main, False, False, False), (main, True, False, False), (feature, True, False, False)]
+        (main, True, True, True), (main, True, False, False), (feature, True, False, False),     # the word approves the hold that
+        (main, False, False, False), (main, True, False, False), (feature, True, False, False)]  # was there when it was written
     assert [r["decision"] for r in y.ledger.rows(30, "gates")].count("approved") == 1
 
 

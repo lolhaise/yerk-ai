@@ -13,6 +13,8 @@ quotes, in a heredoc body or as a word in a string is not a delete; lifted/shell
 - restart: a write to a file yerkd reads at start (yerkd.toml, rooms.toml, accounts.toml) or a
   restart of yerkd is refused while the memory index rebuilds or a human turn is running, with one
   plain line to the room;
+- one reading: the approval and restart rules read a shell command as the delete rules do, as what would really run
+  (runs, unwrap), so a held command is held behind a wrapper, in a nested shell or by its full path too;
 - approval: an action named external (a send to another room, an owner room's line to the machine
   room excepted, a public post, a login, money, a
   message out through another tool, a text or an email in the owner's name, a delete for good outside the work folder, or a rule in
@@ -41,8 +43,17 @@ RESTART_FILES = ("yerkd.toml", "rooms.toml", "accounts.toml")     # read once, w
 RESTART_BASH = re.compile(r"^(?:systemctl\s+--user\s+(?:restart|stop|kill|try-restart|reload-or-restart)\s+yerkd"
                           r"|(?:pkill|killall)\b.*\byerk"
                           r"|kill\b.*\$\(\s*(?:pgrep|pidof)\b[^)]*yerk)", re.I)
+RESTART_VERBS = frozenset({"restart", "stop", "kill", "try-restart", "reload-or-restart", "try-reload-or-restart", "condrestart",
+                           "force-reload"})     # systemctl's words that end or replace a unit's process
 WRITE_OPS = re.compile(r">>?|\btee\b|\bsed\s+(?:-[^\s]*\s+)*-i|\bcp\b|\bmv\b|\btruncate\b|\bdd\b|\bperl\s+-[^\s]*i")
 WRITE_TOOLS = ("Write", "Edit", "MultiEdit", "NotebookEdit")
+GATE_FILES = ("worker.json", "settings.json", "mcp.json")       # a worker's own gate, in its folder (workers.py): its spec, hook and tools
+WRITERS = frozenset({"mv", "tee", "truncate", "dd", "rm", "unlink", "touch", "chmod", "chown", "shred"})   # change what they name
+COPIERS = frozenset({"cp", "install", "rsync", "ln"})               # write their last word, read the ones before it
+INTERPRETERS = ("python", "node", "perl", "ruby")                   # run the code among their words (-c, -e)
+REDIRECT = re.compile(r"(?:&>>?|>>?|>\|)\s*([^\s'\"<>|;&=()]+)")     # a redirect's target, a nested shell's too
+WRITES_IN_CODE = re.compile(r"""['"][wax]b?\+?['"]|['"]r\+b?['"]|\.write|write_text|write_bytes|writeFile|appendFile"""
+                            r"""|\bos\.(?:replace|rename|remove|unlink|truncate)|\.unlink\(|\.rename\(|shutil\.|\btruncate\b""")
 EXTERNAL: dict[str, dict[str, str]] = {
     "send-elsewhere": {"tool": r"^mcp__yerk__send$", "room": "other", "what": "a send to another room"},
     "public-post": {"tool": r"^Bash$", "what": "a public post",
@@ -134,6 +145,27 @@ def shell(command: str) -> list[tuple[str, list[str], str]]:
     return out
 
 
+def runs(command: str) -> list[str]:
+    """Every simple command the text would really run, one line each, read as the delete rules read it (unwrap): wrappers
+    peeled, the strings a nested shell, eval, $(...) and backquotes run read again, a command behind xargs with the words
+    written after it, and the program by its name alone (`/usr/bin/git` is `git`). So one reading serves every gate, and a
+    held command is held behind `timeout`, in `bash -c`, after `then` or by its full path. [] when the text cannot be read
+    for certain: check_shell has refused that command already."""
+    return [shlex.join([os.path.basename(argv[0]), *argv[1:]]) for argv in unwrap.unwrap(command, whole=True) or [] if argv]
+
+
+def restarts(argv: list[str]) -> bool:
+    """One command that would stop or restart yerkd: systemctl with one of RESTART_VERBS and a unit named yerkd after it,
+    wherever its options sit (`systemctl --user --no-block restart yerkd-test`, `systemctl restart --user yerkd`); pkill or
+    killall with a word naming yerk."""
+    name, args = (os.path.basename(argv[0]), argv[1:]) if argv else ("", [])
+    if name == "systemctl":
+        said = [a.lower() for a in args if not a.startswith("-")]
+        verb = next((k for k, a in enumerate(said) if a in RESTART_VERBS), None)
+        return verb is not None and any(a.startswith("yerkd") for a in said[verb + 1:])
+    return name in ("pkill", "killall") and any("yerk" in a.lower() for a in args)
+
+
 def is_delete(argv: list[str]) -> bool:
     return bool(argv) and os.path.basename(argv[0]) in ("rm", "unlink")
 
@@ -214,7 +246,10 @@ def restart_hit(tool: str, ti: dict[str, Any], private: Path) -> str | None:
         return None
     if tool != "Bash":
         return None
-    for seg, argv, norm in shell(str(ti.get("command") or "")):
+    command = str(ti.get("command") or "")
+    if any(restarts(argv) for argv in unwrap.unwrap(command, whole=True) or []) or any(RESTART_BASH.search(x) for x in runs(command)):
+        return "a restart of yerkd"       # what would really run: behind a wrapper, in a nested shell, by its full path
+    for seg, argv, norm in shell(command):
         if RESTART_BASH.search(norm):
             return "a restart of yerkd"
         if not shellguard.search_outside_quotes(WRITE_OPS, seg):
@@ -223,6 +258,51 @@ def restart_hit(tool: str, ti: dict[str, Any], private: Path) -> str | None:
             p = Path(os.path.expanduser(tok))
             if p.name in RESTART_FILES and p.is_absolute() and (str(p) in targets or str(p.resolve()) in targets):
                 return f"a write to {p.name}"
+    return None
+
+
+def own_gate_hit(tool: str, ti: dict[str, Any], folder: Path, cwd: str) -> str | None:
+    """Would this call of a worker's write one of its own gate files (GATE_FILES in its folder)? -> the file's name, else
+    None. The worker gate reads worker.json on every call, so a worker that rewrote it would set its own rules. A file tool
+    by its path; a shell command with a write to the file evident in its text: a redirect into it (a nested shell's too), a
+    program that changes what it names (WRITERS, sed -i, perl -i) with the file among its words, a copy whose target it is,
+    or code given to an interpreter that names the file and writes (WRITES_IN_CODE). Reading it is free by any program, and
+    so is naming it: `echo "--- worker.json ---"; cat worker.json` is a worker's commonest first command, and of 17,017
+    real worker commands the 31 that named a gate file were all reads (2026-11-10). The unit binds the same files
+    read-only (workers.Systemd.sandbox): that is the wall, this is its plain line, so a write this text does not show is
+    still refused, by the file system."""
+    mine = {str(p) for f in GATE_FILES for p in (folder / f, (folder / f).resolve())}
+
+    def gate_file(word: str) -> str:
+        p = Path(os.path.expanduser(word))
+        return next((q.name for q in ([p] if p.is_absolute() else [Path(cwd) / p, folder / p])
+                     if str(q) in mine or os.path.normpath(q) in mine or str(q.resolve()) in mine), "")
+
+    def into(target: str, sources: list[str]) -> str:
+        """A copy's target: the file itself, or its folder with a source of a gate file's name."""
+        p = Path(os.path.expanduser(target))
+        there = any(os.path.normpath(q) == os.path.normpath(folder) for q in ([p] if p.is_absolute() else [Path(cwd) / p, folder / p]))
+        return gate_file(target) or next((os.path.basename(a) for a in sources if there and os.path.basename(a) in GATE_FILES), "")
+    if tool in WRITE_TOOLS:
+        return gate_file(str(ti.get("file_path") or ti.get("notebook_path") or "")) or None
+    if tool != "Bash":
+        return None
+    command = shellguard.strip_heredocs(str(ti.get("command") or ""))
+    if hit := next((n for m in REDIRECT.finditer(command) if (n := gate_file(m[1]))), ""):
+        return hit
+    for argv in unwrap.unwrap(command, whole=True) or []:
+        name, args = (os.path.basename(argv[0]), argv[1:]) if argv else ("", [])
+        words = [a for a in args if not a.startswith("-")]
+        if name in COPIERS:
+            hit = into(words[-1], words[:-1]) if len(words) > 1 else ""
+        elif name in WRITERS or name in ("sed", "perl") and any(re.match(r"-[A-Za-z]*i|--in-place", a) for a in args):
+            hit = next((n for a in words if (n := gate_file(a.removeprefix("of=") if name == "dd" else a))), "")
+        elif name.startswith(INTERPRETERS) and WRITES_IN_CODE.search(code := " ".join(args)):
+            hit = next((n for w in re.findall(r"[^\s'\"<>|;&=(),]+", code) if (n := gate_file(w))), "")
+        else:
+            hit = ""
+        if hit:
+            return hit
     return None
 
 
@@ -251,6 +331,7 @@ def external_hit(tool: str, ti: dict[str, Any], room: str, s: Settings,
     """(rule, what in plain words, the call in one line) for an action named external, else None. With `rooms`
     (rooms.toml's) a send names a room by its channel too (room_named); without, by its name only."""
     parts = shell(str(ti.get("command") or "")) if tool == "Bash" else []
+    read = [norm for _, _, norm in parts] + (runs(str(ti.get("command") or "")) if tool == "Bash" else [])   # as written, then as it would run
     for name, rule in s.external.items():
         if not re.search(rule.get("tool", r"^$"), tool):
             continue
@@ -261,7 +342,7 @@ def external_hit(tool: str, ti: dict[str, Any], room: str, s: Settings,
             continue
         what = rule.get("what", name)
         if rule.get("command"):
-            hit = next((norm for _, _, norm in parts if re.search(rule["command"], norm)), None)
+            hit = next((norm for norm in read if re.search(rule["command"], norm)), None)
             if hit is None:
                 continue
             return name, what, hit[:160]
@@ -329,13 +410,16 @@ def is_word(prompt: str, sender: str, s: Settings) -> bool:
 def worker_check(payload: dict[str, Any], folder: Path, spec: dict[str, Any]) -> dict[str, Any]:
     """A worker's PreToolUse (workers.py writes the hook): the room's gates on what it would run, with
     deletes held to the worker's own folder. A worker has nobody to say the word, so an external action,
-    a write to Yerk AI's config or a restart of it is refused, never held."""
+    a write to Yerk AI's config or a restart of it is refused, never held; so is a write to its own gate files (own_gate_hit)."""
     g = dict(spec.get("gate") or {})
     s = Settings(trash=tuple(g.get("trash") or find_trash()),
                  external={str(k): dict(v) for k, v in dict(g.get("external") or EXTERNAL).items()})
     tool, ti = str(payload.get("tool_name") or ""), dict(payload.get("tool_input") or {})
     v = None
-    if tool == "Bash":
+    if (name := own_gate_hit(tool, ti, folder, str(payload.get("cwd") or folder))):
+        v = Verdict("worker", "deny", f"Refused: {name} is this worker's own gate file, written by the daemon, and a worker never "
+                                      "changes it. Read it if you need it; write your own files beside it.")
+    if v is None and tool == "Bash":
         v = check_shell(str(ti.get("command") or ""), str(payload.get("cwd") or folder), s, root=str(folder))
         if v and v.new_input is not None:
             v.new_input = {**ti, **v.new_input}

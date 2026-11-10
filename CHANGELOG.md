@@ -8,6 +8,29 @@ version changes.
 
 ## 2026-11-10
 
+### walls-2026-11-10 (#43)
+
+- A gate that cannot be asked refuses. A room's tool call is not run when the daemon gives its gate no answer within 8
+  seconds or answers with an error, and the room's model is told so in one line; a worker's call is not run when its
+  gate hook cannot start, fails or times out. Before, Claude Code carried the call out: on 2026-10-19 one room's
+  170 gate calls failed and every action ran. Tried in real Claude Code 2.1.321 sessions before the merge: with the old
+  settings and no daemon the command ran; with these, a gate that is down, slow past 8 s or answering 403 stops it, and
+  a healthy one runs it.
+- A held command is held in every shape a shell runs it: behind `timeout` or `nice`, in `bash -c`, after `then`, behind
+  `xargs`, or by its full path. The same for a restart of yerkd, wherever systemctl's options sit. Before, only the plain
+  form was held (worker 00c67e's `timeout 60 git push`, 2026-10-28, went past the gate and failed for lack of a login).
+  Replayed: 15,187 real worker commands gain that one hold; 1,424 real room commands gain none.
+- A worker cannot change its own gate: worker.json, settings.json and mcp.json in its folder are read-only inside its
+  unit, and a write to one that shows in the command is refused in plain words. Reading and naming them stay free (a
+  first cut refused 31 of 17,017 real worker commands, every one a read; this one refuses none of them).
+- The owner's word approves only a hold that was there when the word reached Yerk, never one the turn made afterwards.
+- A provider key or token pasted into a room is filed in the day log as its kind (`[groq-key withheld]`), never its
+  value; imports withhold Groq keys too. A code or a password said in a room is filed as said. Over the 197,187 day-log
+  lines on file the fourteen key shapes match one string.
+- From the walls audit of 2026-11-09 (branch walls-audit-2026-11-09 on da8bfd8), brought onto main with need-2026-11-09-81.
+- **Upgrading**: nothing to change. While yerkd is down or stalled past 8 seconds a room's tool calls are refused, not
+  run; they go through again on the next try.
+
 ### need-2026-11-09-81 (#38)
 
 - A room closes or opens its live page's chat when you ask, with its `page` tool. Before, the tool drew the program, the

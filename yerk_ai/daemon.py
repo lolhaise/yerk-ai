@@ -1506,7 +1506,7 @@ class Yerkd:
             if said and said.id not in self.worded and gates.is_word(said.text, said.sender, self.gates):   # its words, no line ahead
                 self.worded.add(said.id)                  # one message, one approval
                 sender = said.sender
-                row = self.ledger.approve(name, sender, self.gates.window_s)
+                row = self.ledger.approve(name, sender, self.gates.window_s, before=said.received)   # never a hold made after the word
                 if row:
                     self.ledger.gate(room=name, session_id=sid, turn=self.rooms[name].turn_key, gate="approval",
                                      decision="approved", tool="", rule=row["rule"], detail=f"{row['what']}; by {sender}")
