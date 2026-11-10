@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-11-10
 
-### need-2026-11-10-83
+### need-2026-11-10-83 (#47)
 
 - A worker can drive the browser. The `worker` tool takes `addons`: the room's own add-on tools the worker gets too, by
   the name the room has (`mcp__hands__browser`) or by server (`hands`). Before, a worker had only its built-in tools, so

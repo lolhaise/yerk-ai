@@ -427,6 +427,10 @@ def worker_check(payload: dict[str, Any], folder: Path, spec: dict[str, Any]) ->
     if v is None and (what := restart_hit(tool, ti, Path(str(g.get("private") or "/nonexistent")))):
         v = Verdict("restart", "deny", f"Refused: {what} would change or restart Yerk AI, and a worker never does "
                                        "that. Say in your report what should change; the owner does it.")
+    if v is None and (hit := external_hit(tool, ti, str(spec.get("room") or ""), s)):
+        _, what, call = hit
+        v = Verdict("approval", "deny", f"Refused: {what} (`{call}`) is an external action, and a worker never "
+                                        "takes one. Put it in your report as a draft; the owner decides.")
     if v is None and tool.startswith("mcp__") and not given(tool, spec):
         v = Verdict("worker", "deny", f"Refused: {tool} is not one of this worker's tools. Say in your report what it would "
                                       "have done; the room has its own tools.")
@@ -434,10 +438,6 @@ def worker_check(payload: dict[str, Any], folder: Path, spec: dict[str, Any]) ->
         v = Verdict("approval", "deny", f"Refused: {tool} with confirmed acts on the owner's word, and a worker has nobody to "
                                         "give it. Leave that step ready and say in your report what waits for the word; the "
                                         "room does it once the owner says it.")
-    if v is None and (hit := external_hit(tool, ti, str(spec.get("room") or ""), s)):
-        _, what, call = hit
-        v = Verdict("approval", "deny", f"Refused: {what} (`{call}`) is an external action, and a worker never "
-                                        "takes one. Put it in your report as a draft; the owner decides.")
     return v.output() if v else {}
 
 

@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 129471`
+- `total = 129771`
 
 ## [session_start.claude_code]
 
@@ -112,9 +112,11 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-10, need-2026-11-10-82: the `page` tool's `screen` (the PC monitor the owner names, the page maximized there in a window of its own, the screen woken with no click and said painted only once the tab says so, since a scheduled check told to open the page on the owner's middle monitor heard "opened on the owner's screen" while the browser had put it on the left one, unpainted on a screen asleep, and only a click, which needs the owner's word, would wake it; filed 2026-11-10) takes the tool from 2,202 to 2,524 as this tree builds it, all 23 from 25,338 to 25,660 (322 more, measured on main 4e7a617 and on this tree the same way), about 26,373 as sent (713 over the build, as on need 79's tree), 273 over the line; so 26,400, no part could pay, the total rose by the 300 (to 129,471 on main's 129,171).
 
+2026-11-10, need-2026-11-10-83: the `worker` tool's `addons` (the room's own add-on tools a worker gets too, such as the browser, since a worker started to fill web forms outside the room stopped in under a minute with no browser tool; filed 2026-11-10) takes the tool from 1,439 to 1,710 as this tree builds it, all 23 from 25,407 to 25,678 (271 more, measured on main 76cc360 and on this tree the same way), about 26,644 as sent, 244 over the line; so 26,700, no part could pay, the total rose by the 300 (to 129,771 on main's 129,471). The hands plug-in's tool entries do not change.
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
-- `yerk_tools = 26400`
+- `yerk_tools = 26700`
 - `deferred_tool_names = 3429`
 - `mcp__hands__ = 9831`
 - `mcp__web-ladder__web_image = 913`
@@ -655,7 +657,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-10: copy-survives-2026-11-10 raised it by 156, a copy's compaction no longer dropped by the next message (seen live: nine copies dropped in a row in nine minutes, each by a message within a minute of its answer, 50 of 54 over two days, and the tenth turn's end compacted the live session with a message waiting under its card), not folded to fit: room.py 144 (the copy held for the running turn's end and taken there before a message waiting runs, _take and _took; the drop said in words and in the ledger, _dropped, _drop_fork's reasons; _stale, the copy of a live session a fresh start or a compaction replaced; the tail, _said, _tail, _tail_for, its heading and its file across a restart; the turn-end compaction waiting for a healthy copy while a turn fits), daemon.py 11 (day_cite, the [session] keys), ledger.py 1 (the turns row's note). 28,587: main abc0833's 28,431 plus 156.
 
-- `lines = 28587`
+2026-11-10: need-2026-11-10-83 raised it by 67: a worker gets the room's own add-on tools a start names (`addons`), as a worker started to fill web forms in the browser outside the room stopped in under a minute with no browser tool; not folded to fit: workers.py 52 (room_addons, the credential wall and the env that tells the server its worker; the config, the prompt's line, the spec and the launch's allowed tools), gates.py 15 (given: an MCP tool the worker was not given and an add-on call carrying `confirmed`, each refused), mcp_server.py 3 (the tool's parameter and its clause). 28,654: main 76cc360's 28,587 plus 67.
+
+- `lines = 28654`
 
 ## Uncapped
 
