@@ -428,9 +428,9 @@ idle_compact_after = 25
 idle_compact_within = 0.05
 # A turn that ends short of that, within `precompact_within` of the window under Claude Code's line, compacts a copy of
 # the session instead (claude --resume --fork-session, then /compact in the copy), the room left free: a message that
-# comes in meanwhile runs at once on the live session, as it would with no compaction at all, and the copy is dropped,
-# stale; a copy no turn overtook becomes the room's session in one step, so the next message finds it small and never
-# waits. On 2026-11-08 an owner's room ended a turn 37,362 under its line of 767,000 and the message after
+# comes in meanwhile runs at once on the live session, as it would with no compaction at all, and the copy goes on; once
+# compacted it becomes the room's session in one step, at once with no turn running, else as the running turn ends, so
+# the next message finds it small and never waits. On 2026-11-08 a busy room ended a turn 37,362 under its line of 767,000 and the message after
 # it waited 126 s behind a 206 s compaction (the ledger's last 40: median 161 s, at most 263 s); earlier a turn had
 # ended 61,754 under the line with 305 s of quiet after it, time for a copy. Of that room's four waits on 2026-11-07 and
 # 08, a copy at 0.1 (80,000 at 800,000) would have been taken before three; the fourth crossed the band with no quiet
@@ -439,6 +439,20 @@ idle_compact_within = 0.05
 # Code's own compaction inside its turn as it does today (1.6% of turns grew past 40,000); within `idle_compact_within`
 # nothing changes. 0 turns it off; a room's own key in rooms.toml overrides it.
 precompact_within = 0.1
+# 2026-11-10: a turn no longer drops the copy (in seven minutes a busy room sent a message within a minute of each
+# of nine answers and every copy was dropped, 50 of 54 over two days; the tenth turn's end compacted the live session and
+# a message waited 14 s). What the live session said while the copy compacted rides once, as text, in the copy's first
+# message: each message and the room's reply, word for word, at most `copy_tail` chars, the newest whole and the oldest
+# named by their day-log lines past it. 12,000 holds six exchanges at the p95 sizes since 2026-11-03 (a message 616
+# chars, a reply 1,324; medians 67 and 482, the largest reply 3,579), and six is what a copy's slowest compaction (263 s)
+# leaves room for at that morning's pace of a turn every 50 s; about 3,000 tokens.
+copy_tail = 12000
+# 2026-11-10: while a copy compacts, a turn that ends within `idle_compact_within` of the line leaves the room free as
+# long as `copy_room` tokens or more are left under the line, so the turn-end compaction is the last resort: 30,000 is a
+# turn's own growth at p95 above (22,109) plus the most a turn's end to the next turn's first request grew (7,591), so 19
+# turns in 20 fit; closer, or with no copy compacting, it compacts the live session as before. At a 1,000,000 window that
+# gives the copy the first 20,000 of the 50,000 band; at the 250,000 here the band is 12,500 and nothing changes.
+copy_room = 30000
 
 [relay]
 # A worker's end, told in its room (DESIGN 6, decision 11): the harness line the room's session
@@ -1430,9 +1444,17 @@ secs = 60
 # daemon.py 38 (the named screen's open, its fallback to the box's opener only when nothing opened, its paint said before
 # the room looks; [page] screen; the tool's `screen`), words.py 16, mcp_server.py 3 (the tool's `screen`), config.py 3
 # (the key). The tab's word that it painted is page.html, outside this count. 28,431: main 4e7a617's 28,221 plus 210.
-# 2026-11-10: lesson-store-2026-11-10 raised it by 402, the rule store in the Claude docs' shape (the owner's order of
-# 2026-11-09: every rule written the way the docs say), not folded to fit: lessons.py 229 (one lesson per file, its front
-# matter and summary, the index, the tombstones, an old cite's walk to its lesson, the snapshot a session from before a
+# 2026-11-10: copy-survives-2026-11-10 raised it by 156, a copy's compaction no longer dropped by the next message (seen
+# live: nine copies dropped in a row in nine minutes, each by a message within a minute of its answer, 50 of 54
+# over two days, and the tenth turn's end compacted the live session with a message waiting under its card), not folded
+# to fit: room.py 144 (the copy held for the running turn's end and taken there before a message waiting runs, _take and
+# _took; the drop said in words and in the ledger, _dropped, _drop_fork's reasons; _stale, the copy of a live session a
+# fresh start or a compaction replaced; the tail, _said, _tail, _tail_for, its heading and its file across a restart;
+# the turn-end compaction waiting for a healthy copy while a turn fits), daemon.py 11 (day_cite, the [session] keys),
+# ledger.py 1 (the turns row's note). 28,587: main abc0833's 28,431 plus 156.
+# 2026-11-10: lesson-store-2026-11-10 raised it by 402, the rule store in the Claude docs' shape (the owner's order
+# of 2026-11-09: every rule written the way the docs say), not folded to fit: lessons.py 229 (one lesson per file, its
+# front matter and summary, the index, the tombstones, an old cite's walk to its lesson, the snapshot a session from before a
 # conversion reads), memory.py 88 (the filing and the retire of a lesson, an old cite read as its lesson, the corpus, recall's
 # walk to the live lesson past five hops), context.py 37 (the index or every lesson whole at a start, a lesson's body on its
 # words, news from the snapshot), shape.py 23 (each lesson file scored, its layout too), memindex.py 13 (a lesson one chunk, its
@@ -1444,4 +1466,7 @@ secs = 60
 # the model pass through curate's propose and knock-down, the frozen trigger test, the proposals file and its exact apply, the
 # copy of the originals and the undo), cli.py 6, config.py 2 (the two [curate] keys its model pass reads, described). 29,189:
 # 28,833 plus 356.
-lines = 29189
+# 2026-11-10: lesson-store-2026-11-10 took main 76cc360 in a merge: 29,345 is main's ceiling of 28,587 plus this
+# branch's own 758 lines, recounted after the merge (the 402 and the 356 above, which were counted on main abc0833's
+# 28,431); nothing of either side was folded.
+lines = 29345
