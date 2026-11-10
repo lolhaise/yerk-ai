@@ -152,7 +152,7 @@ def build(s: memory.Settings, rule: dict[str, Any], prop: dict[str, Any] | None,
         body = body2[len(summary):].strip()
         slug = lessons.slug_of(rule["job"], taken)
         taken.add(slug)
-        refused = memory.unshaped(rule["job"], f"{summary} {body}".strip(), acronyms, s, read)
+        refused = memory.unshaped(rule["job"], f"{summary} {body}".strip(), acronyms, s, read, seen)
         made.append({"slug": slug, "job": rule["job"], "summary": summary, "body": body, "cls": rule["cls"], "rooms": rule["rooms"],
                      "on": rule["on"], "filed": rule["filed"], "gate": (refused or {}).get("fix", [])})
         done += cited + cited2 + added
@@ -166,21 +166,24 @@ def lesson_of(x: dict[str, Any]) -> lessons.Lesson:
     return lessons.Lesson(x["slug"], x["job"], x["summary"], x["body"], x["cls"], tuple(x["rooms"]), tuple(x["on"]), x["filed"])
 
 
-def trigger_test(rules: list[dict[str, Any]], made: list[dict[str, Any]], messages: list[tuple[str, str]]) -> dict[str, list[str]]:
+def trigger_test(rules: list[dict[str, Any]], made: list[dict[str, Any]],
+                 messages: list[tuple[str, str]]) -> tuple[dict[str, list[str]], dict[str, int]]:
     """The frozen trigger test: cite -> each owner message that loads the rule today (memory.on_topic among every live rule)
-    and loads no lesson made of it (on_topic among every lesson made); none lost, no key."""
+    and loads no lesson made of it (on_topic among every lesson made), none lost no key; and cite -> how many load it."""
     old = [r["text"] for r in rules]
     new = {r["cite"]: [lesson_of(x).line for x in m["lessons"]] for r, m in zip(rules, made)}
     corpus = [x for v in new.values() for x in v]
-    w_old, w_new, lost = memory.rarities(old), memory.rarities(corpus), dict[str, list[str]]()
+    w_old, w_new, lost, loads = memory.rarities(old), memory.rarities(corpus), dict[str, list[str]](), dict[str, int]()
     for at, said in messages:
         if not (hit := {x for _, x in memory.on_topic(said, old, old, w_old)}):
             continue
         now = {x for _, x in memory.on_topic(said, corpus, corpus, w_new)}
         for r in rules:
-            if r["text"] in hit and not now & set(new[r["cite"]]):
-                lost.setdefault(r["cite"], []).append(at)
-    return lost
+            if r["text"] in hit:
+                loads[r["cite"]] = loads.get(r["cite"], 0) + 1
+                if not now & set(new[r["cite"]]):
+                    lost.setdefault(r["cite"], []).append(at)
+    return lost, loads
 
 
 def model_pass(rules: list[dict[str, Any]], model: Callable[[str, str], str]) -> dict[str, dict[str, Any]]:
@@ -235,14 +238,12 @@ def dry_run(private: Path, state: Path, s: memory.Settings, now: float | None = 
     read = shape.pages(shape.run_by(rooms(private), state, models(conf))) if read is None else read
     acronyms = shape.install(dict(conf.get("docs") or {}))[1]
     rules, seen, taken = originals(s), dict[Path, str](), set(lessons.retired(s.root))
-    off = [r for r in rules if memory.unshaped(r["job"], r["said"], acronyms, s, read)]
+    off = [r for r in rules if memory.unshaped(r["job"], r["said"], acronyms, s, read, seen)]
     props = model_pass(off, model or (lambda p, tools: curate.ask(private, state, dict(conf.get("curate", {})), p, tools)))
     made = [build(s, r, props.get(r["cite"]), read, seen, taken, acronyms) for r in rules]
-    msgs = owner_messages(s, now)
-    lost = trigger_test(rules, made, msgs)
-    w = memory.rarities([r["text"] for r in rules])
+    lost, loads = trigger_test(rules, made, owner_messages(s, now))
     for r, m in zip(rules, made):
-        m["loads"] = sum(1 for _, said in msgs if memory.on_topic(said, [r["text"]], [x["text"] for x in rules], w))
+        m["loads"] = loads.get(r["cite"], 0)
     day = datetime.fromtimestamp(now, s.tz).date().isoformat()
     path = s.root / curate.PROPOSALS / FILE.format(day=day)
     why = [f"{n} lesson{'s' * (n != 1)} the gate refuses" for n in [sum(bool(x["gate"]) for m in made for x in m["lessons"])] if n]
@@ -278,8 +279,9 @@ def apply(private: Path, state: Path, s: memory.Settings, path: Path) -> list[st
         raise RuntimeError(f"the store is converted already ({lessons.DIR}/ is there): nothing applied")
     conf = load_toml(private / "yerkd.toml") if (private / "yerkd.toml").is_file() else {}
     acronyms = shape.install(dict(conf.get("docs") or {}))[1]
+    seen = dict[Path, str]()
     if off := [x["slug"] for m in rec["rules"] for x in m["lessons"]
-               if memory.unshaped(x["job"], f"{x['summary']} {x['body']}".strip(), acronyms, s, rec["read"])]:
+               if memory.unshaped(x["job"], f"{x['summary']} {x['body']}".strip(), acronyms, s, rec["read"], seen)]:
         raise RuntimeError(f"{off[0]} no longer passes the gate: run the dry run again; nothing applied")
     backup = s.root / f"{lessons.BACKUP}{rec['day']}"
     with memory.daily_lock(s.daily):

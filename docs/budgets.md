@@ -649,9 +649,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-09: every rule written the way the docs say), not folded to fit: lessons.py 229 (one lesson per file, its front matter and summary, the index, the tombstones, an old cite's walk to its lesson, the snapshot a session from before a conversion reads), memory.py 88 (the filing and the retire of a lesson, an old cite read as its lesson, the corpus, recall's walk to the live lesson past five hops), context.py 37 (the index or every lesson whole at a start, a lesson's body on its words, news from the snapshot), shape.py 23 (each lesson file scored, its layout too), memindex.py 13 (a lesson one chunk, its front matter out; the originals' folder out of the index), curate.py 7, doctor.py 3, words.py 2. 28,833: main abc0833's 28,431 plus 402.
 
-2026-11-10: lesson-store-2026-11-10 raised it by 351 more, the conversion of a store written before the gate (`yerk curate --lessons`, its apply and undo), not folded to fit: conversion.py 343 (the originals by cite and each replaced line's live end, the plain split, a quote the day log holds cited, the owner's go-ahead written into an absolute, every sentence accounted for, the model pass through curate's propose and knock-down, the frozen trigger test, the proposals file and its exact apply, the copy of the originals and the undo), cli.py 6, config.py 2 (the two [curate] keys its model pass reads, described). 29,184: 28,833 plus 351.
+2026-11-10: lesson-store-2026-11-10 raised it by 353 more, the conversion of a store written before the gate (`yerk curate --lessons`, its apply and undo), not folded to fit: conversion.py 345 (the originals by cite and each replaced line's live end, the plain split, a quote the day log holds cited, the owner's go-ahead written into an absolute, every sentence accounted for, the model pass through curate's propose and knock-down, the frozen trigger test, the proposals file and its exact apply, the copy of the originals and the undo), cli.py 6, config.py 2 (the two [curate] keys its model pass reads, described). 29,186: 28,833 plus 353.
 
-- `lines = 29184`
+- `lines = 29186`
 
 ## Uncapped
 

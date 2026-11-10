@@ -690,7 +690,7 @@ def mark(line: str, by: str = "") -> str:
 
 
 def unshaped(job: str, text: str, acronyms: frozenset[str] | None = None, s: Settings | None = None,
-             read: Any = None) -> dict[str, Any] | None:
+             read: Any = None, seen: dict[Path, str] | None = None) -> dict[str, Any] | None:
     """The refusal of a rule whose line as filed misses the prompting guide's shape (shape.filing: the doctor's per-line counts,
     its examples out) or the Claude docs' lesson shape (shape.lesson, 2026-11-09: one lesson, a one-line summary first, its reason,
     a brief body, a day-log cite in place of a quote the day log holds, plain sentences), each a line of `fix` with the words that
@@ -703,7 +703,7 @@ def unshaped(job: str, text: str, acronyms: frozenset[str] | None = None, s: Set
     fix = [words.RULE_OFFENCE.format(name=shape.NAMES[k], said=", ".join(f'"{w.strip(QUOTES)}"' for w in v), fix=words.RULE_FIX[k])
            for k, v in bad.items()]
     limits = dict(budgets().get("shape") or {})
-    found = shape.lesson(job, text, s.daily if s else None, limits, read=read)
+    found = shape.lesson(job, text, s.daily if s else None, limits, seen, read=read)      # seen: each day log read once, many rules
     for k, v in found.items():
         if k in shape.NOT_AT_GATE or (k in shape.COUNT_ONLY and "no reason" not in found):
             continue

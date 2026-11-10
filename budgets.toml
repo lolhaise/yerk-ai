@@ -1438,10 +1438,10 @@ secs = 60
 # words, news from the snapshot), shape.py 23 (each lesson file scored, its layout too), memindex.py 13 (a lesson one chunk, its
 # front matter out; the originals' folder out of the index), curate.py 7, doctor.py 3, words.py 2. 28,833: main abc0833's
 # 28,431 plus 402.
-# 2026-11-10: lesson-store-2026-11-10 raised it by 351 more, the conversion of a store written before the gate (`yerk curate
-# --lessons`, its apply and undo), not folded to fit: conversion.py 343 (the originals by cite and each replaced line's live end,
+# 2026-11-10: lesson-store-2026-11-10 raised it by 353 more, the conversion of a store written before the gate (`yerk curate
+# --lessons`, its apply and undo), not folded to fit: conversion.py 345 (the originals by cite and each replaced line's live end,
 # the plain split, a quote the day log holds cited, the owner's go-ahead written into an absolute, every sentence accounted for,
 # the model pass through curate's propose and knock-down, the frozen trigger test, the proposals file and its exact apply, the
-# copy of the originals and the undo), cli.py 6, config.py 2 (the two [curate] keys its model pass reads, described). 29,184:
-# 28,833 plus 351.
-lines = 29184
+# copy of the originals and the undo), cli.py 6, config.py 2 (the two [curate] keys its model pass reads, described). 29,186:
+# 28,833 plus 353.
+lines = 29186
