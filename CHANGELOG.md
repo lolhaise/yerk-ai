@@ -8,6 +8,42 @@ version changes.
 
 ## 2026-11-10
 
+### lesson-store-2026-11-10 (#?)
+
+- The rule store can now be kept the way the Claude docs keep a memory: "Store one lesson per file with a one-line summary
+  at the top." Each lesson is `<memory>/rules/<slug>.md`: its front matter first (`class:` its first key, the block under
+  400 characters so every room's class read finds it), then its summary, one imperative line a room can follow with the
+  body unread, then the body with its reason and cited examples. `rules.md` becomes the index, one line per live lesson,
+  its summary and its file, in the order filed.
+- On a converted store, `remember` with `job` replaces its job's lesson in place (the docs' "update an existing note
+  rather than creating a duplicate"), its old words a note in the day log, or adds a new lesson; a slug never changes and
+  never names two lessons. `retire` deletes the lesson's file and writes a row to `retired.tsv` (slug, day, replaced by),
+  so a cite to it still leads on to the lesson that replaced it. A filing that takes the index near or past code-memory's
+  200 lines or 25KB is filed, and its result says to shorten the index by merging or retiring lessons; the daily run keeps
+  naming an index past them. Nothing is refused for the index's size.
+- A session start loads the index; on an uncapped install it carries every lesson whole, so a room knows what it knew. A
+  lesson's body rides on its words where a topic rule did. A room kept to a lesson by its rooms mark, a sealed room and a
+  person's room see what they saw. A session that began before a conversion is told nothing about it, only a lesson changed
+  since, since the docs say to make such changes "in new conversations only".
+- Recall reads each lesson as one chunk with its front matter out, so a room's name in a lesson's scope never matches a
+  search. Its walk from a replaced line to the live one now runs up to 64 hops and stops when a cite repeats (it gave up
+  after five; real chains ran ten), and goes on through old `rules.md:N` and `rules-topics.md:N` cites and tombstones to
+  the live lesson. `read_memory` on an old cite reads the lesson its rule became.
+- `yerk curate --lessons` converts an existing store. Its dry run writes one proposals file,
+  `<memory>/rules-proposals/lessons-<day>.md`, and nothing else: each original rule by its cite, the lessons made of it,
+  each one's result from the gate a filing passes, and each change as a listed item (a quote replaced by its day-log cite,
+  a quote kept, a sentence left out or rewritten and why, a reason added and its line, the scope and the owner's go-ahead
+  written into an absolute, a rule with no reason on file, a caution to review). A rule already in the shape is split as it
+  stands; the rest go through curate's propose and knock-down model pass. A frozen trigger test refuses a split that loses
+  an owner message of the last 14 days that loads its rule today. `yerk curate --lessons-apply FILE` takes that exact file
+  and refuses unless every lesson passes the gate, every original is accounted for, the trigger test passes and the store
+  is byte for byte the one the dry run read; it copies the originals to `<memory>/rules-backup-<day>/` first.
+  `yerk curate --lessons-undo DAY` puts them back.
+
+**Upgrading:** nothing changes until the conversion runs: an install with no `<memory>/rules/` folder keeps its
+one-line-per-rule files. To convert, run `yerk curate --lessons`, read the proposals file, then
+`yerk curate --lessons-apply <that file>`. The memory index skips `rules-backup-*` folders from its next start.
+
 ### need-2026-11-10-82 (#?)
 
 - A room opens your live page on the PC monitor you name, maximized there, and hears that it painted before it looks.
