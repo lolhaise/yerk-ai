@@ -259,8 +259,8 @@ def test_an_uncapped_install_lifts_the_money_gates_and_transcribes_result_carrie
 
     def spoke(script, name, folder, private, key, book, owner_yes=False):
         asked.append(owner_yes)
-        book("minimax/speech-2.8-hd", 0.5, "section 1 of 1")
-        return {"ok": True, "engine": "minimax/speech-2.8-hd", "duration_s": 3.0, "usd": 0.5}
+        book("fish/s2.1-pro-free", 0.5, "section 1 of 1")
+        return {"ok": True, "engine": "fish/s2.1-pro-free", "duration_s": 3.0, "usd": 0.5}
     monkeypatch.setattr(transcribe, "run", heard)
     monkeypatch.setattr(voice_note, "run", spoke)
     for name, yerkd in (("capped", None), ("on", ON)):

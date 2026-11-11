@@ -1,8 +1,8 @@
-"""The voice_note tool (voice_note.py), offline: the sections and the markup each voice gets, the probe's match, a whole note
-against a fake MiniMax and a fake Fish on local ports (the fallback, all or nothing, the spend rows, the gate, the keys), the
-loudness and opus step on synthetic tones, the probe failing a note, the Discord voice message's payload and its plain-file
-fallback, `send` taking a note as voice, and the ability's entry. One test makes a real note, behind YERK_VOICE_LIVE=1 with
-keys in $YERK_PRIVATE/secrets/."""
+"""Checks the voice_note tool (voice_note.py), which turns a script a room writes into a spoken voice note sent as a Discord
+against a fake Fish on a local port (all or nothing, the spend rows, the gate, the keys), the loudness and opus step on
+synthetic tones, the probe failing a note, the Discord voice message's payload and its plain-file fallback, `send` taking a
+as voice, and the ability's entry. One test makes a real note, behind YERK_VOICE_LIVE=1 with keys in $YERK_PRIVATE/secrets/."""
+$YERK_PRIVATE/secrets/."""
 from __future__ import annotations
 
 import asyncio
@@ -67,7 +67,7 @@ class Fake:
 
 @pytest.fixture(scope="module")
 def tone(tmp_path_factory) -> bytes:
-    """1.5 s of a 440 Hz tone as mp3, the audio both fake voices answer with."""
+    """1.5 s of a 440 Hz tone as mp3, the audio the fake voice answers with."""
     out = tmp_path_factory.mktemp("tone") / "tone.mp3"
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=1.5", "-ac", "1", "-ar", "32000",
                     "-b:a", "64k", str(out)], check=True)
@@ -75,32 +75,22 @@ def tone(tmp_path_factory) -> bytes:
 
 
 def spoke(tone: bytes) -> Callable[[int, dict[str, Any]], tuple[int, bytes]]:
-    return lambda n, body: (200, json.dumps({"data": {"audio": tone.hex()}, "extra_info": {"usage_characters": len(body["text"])},
-                                             "base_resp": {"status_code": 0, "status_msg": "success"}}).encode())
-
-
-def broke(code: int = 2053, msg: str = "insufficient balance") -> tuple[int, bytes]:
-    return 200, json.dumps({"base_resp": {"status_code": code, "status_msg": msg}}).encode()
+    return lambda n, body: (200, tone)
 
 
 @pytest.fixture
 def note(tmp_path, monkeypatch, request):
-    """A private folder with example keys and a pronunciation file, both fakes wired in, and the probe answering `heard`
-    (set it on the returned namespace); returns NS(private, folder, rows, probes, mm, fish, make)."""
+    """A private folder with example keys, the fake wired in, and the probe answering `heard` (set it on the returned
+    namespace); returns NS(private, folder, rows, probes, fish, make)."""
     private = tmp_path / "private"
     (private / "secrets").mkdir(parents=True)
-    (private / "voice").mkdir()
-    (private / "secrets" / "minimax.key").write_text("mm-test-key-123456\nnotes\n")
-    (private / "secrets" / "fish.key").write_text("fish-test-key-654321\n")
+    (private / "secrets" / "fish.key").write_text("fish-test-key-654321\nnotes\n")
     (private / "secrets" / "openai.key").write_text("sk-test-openai-key-777\n")
-    (private / "voice" / "pronounce.txt").write_text("# example rules\nYerk/YURK\n\nnot a rule\n")
-    ns = NS(private=private, folder=tmp_path / "work" / "voice", rows=[], probes=[], heard=HEARD, mm=None, fish=None)
+    ns = NS(private=private, folder=tmp_path / "work" / "voice", rows=[], probes=[], heard=HEARD, fish=None)
 
-    def wire(mm: Fake, fish: Fake) -> None:
-        ns.mm, ns.fish = mm, fish
-        request.addfinalizer(mm.close)
+    def wire(fish: Fake) -> None:
+        ns.fish = fish
         request.addfinalizer(fish.close)
-        monkeypatch.setitem(voice_note.ENGINES, "minimax", (mm.url, *voice_note.ENGINES["minimax"][1:]))
         monkeypatch.setitem(voice_note.ENGINES, "fish", (fish.url, *voice_note.ENGINES["fish"][1:]))
 
     def post(engine, secret, clip, timeout=600):
@@ -133,9 +123,9 @@ def test_sections_split_at_pause_lines_and_long_paragraphs_and_a_short_one_joins
     assert voice_note.sections("\n[[pause]]\n  \n") == []
 
 
-def test_each_voice_gets_the_markup_it_reads_and_the_check_compares_only_spoken_words():
-    assert voice_note.for_minimax("(break) [warm] Hi there. (break) (pause) (laughs) Go. (break)") == "Hi there. <#0.4#> (laughs) Go."
+def test_fish_gets_the_markup_it_reads_and_the_check_compares_only_spoken_words():
     assert voice_note.for_fish("[warm] Hi there. <#0.6#> Go.") == "[warm] Hi there. (break) Go."
+    assert voice_note.for_fish("Hi there. <#0.4#> Go. (break) Done.") == "Hi there. (break) Go. (break) Done."
     assert voice_note.said("[warm] Hi there, (break) it's me. (laughs) <#0.4#> Say (sure) 12 times.") == [
         "hi", "there", "it's", "me", "say", "sure", "12", "times"]
 
@@ -151,17 +141,16 @@ def test_the_probe_matches_in_order_and_names_a_word_glued_in_between():
 
 
 @FFMPEG
-def test_a_note_is_made_on_minimax_as_loud_opus_ogg_checked_and_booked(note, tone):
-    note.wire(Fake(spoke(tone)), Fake(lambda n, body: (500, b"unused")))
+def test_a_note_is_made_on_fish_as_loud_opus_ogg_checked_and_booked(note, tone):
+    note.wire(Fake(spoke(tone)))
     r = note.make()
     out = Path(r["file"])
-    assert r["ok"] and r["engine"] == "minimax/speech-2.8-hd" and out == note.folder / "first-note.ogg" and r["sections"] == 2
-    assert r["probe"] == HEARD and r["next"] == words.VOICE_NEXT and "fallback" not in r and not note.fish.calls
-    first = note.mm.calls[0]
-    assert first["auth"] == "Bearer mm-test-key-123456" and first["body"]["text"] == (
-        "Hello from the example room.\n\nThis is only a test, <#0.4#> nothing more.")   # the mood tag dropped, (break) a pause
-    assert first["body"]["voice_setting"] == {"voice_id": "English_FriendlyPerson", "speed": 1.18, "pitch": -1, "vol": 1.0}
-    assert first["body"]["language_boost"] == "English" and first["body"]["pronunciation_dict"] == {"tone": ["Yerk/YURK"]}
+    assert r["ok"] and r["engine"] == "fish/s2.1-pro-free" and out == note.folder / "first-note.ogg" and r["sections"] == 2
+    assert r["probe"] == HEARD and r["next"] == words.VOICE_NEXT and len(note.fish.calls) == 2
+    first = note.fish.calls[0]
+    assert first["auth"] == "Bearer fish-test-key-654321" and first["model"] == "s2.1-pro-free"
+    assert first["body"] == {"text": "[warm] Hello from the example room.\n\nThis is only a test, (break) nothing more.",
+                             "format": "mp3", "reference_id": "ca4ec67b92ae4d90829eb40dcd672312"}   # Fish acts on the mood tag
     assert probe(out, "stream=codec_name,sample_rate,channels") == ["opus,48000,1"]
     seconds = float(probe(out, "format=duration")[0])
     assert abs(seconds - 3.5) < 0.15 and r["duration_s"] == round(seconds, 1)       # two 1.5 s sections, 0.5 s apart
@@ -173,46 +162,39 @@ def test_a_note_is_made_on_minimax_as_loud_opus_ogg_checked_and_booked(note, ton
     assert abs(len(wave) - side["duration"] * 10) <= 1 and max(wave) == 255 and voice_note.meta(out) == {
         "duration": side["duration"], "waveform": side["waveform"]}
     assert note.probes == [("openai", "sk-test-openai-key-777", "probe.mp3", pytest.approx(3.5, abs=0.15))]
-    chars = [len(c["body"]["text"]) for c in note.mm.calls]
-    assert [(e, round(u, 6), n) for e, u, n in note.rows[:2]] == [
-        ("minimax/speech-2.8-hd", round(chars[0] * 0.0001, 6), f"section 1 of 2, {chars[0]} characters"),
-        ("minimax/speech-2.8-hd", round(chars[1] * 0.0001, 6), f"section 2 of 2, {chars[1]} characters")]
+    size = [len(c["body"]["text"].encode()) for c in note.fish.calls]
+    assert note.rows[:2] == [("fish/s2.1-pro-free", 0.0, f"section 1 of 2, {size[0]} bytes"),
+                             ("fish/s2.1-pro-free", 0.0, f"section 2 of 2, {size[1]} bytes")]
     assert note.rows[2][0] == "openai/whisper-1" and note.rows[2][2].startswith("check, first ") and len(note.rows) == 3
+    assert note.rows[2][1] == pytest.approx(3.5 * 0.0001, abs=2e-5)
     assert r["usd"] == round(sum(u for _, u, _ in note.rows), 4) and not list(note.folder.glob(".voice-*"))
     assert note.make()["file"].endswith("first-note-2.ogg")          # never over a note already there
 
 
 @FFMPEG
-def test_any_minimax_failure_moves_the_whole_note_to_fish_so_it_never_changes_voice(note, tone):
-    ok = spoke(tone)
-    note.wire(Fake(lambda n, body: ok(n, body) if n == 1 else broke()), Fake(lambda n, body: (200, tone)))
+def test_a_fish_failure_on_any_section_means_no_note_and_the_error_names_fish(note, tone):
+    note.wire(Fake(lambda n, body: (200, tone) if n == 1 else (500, b"busy")))
     r = note.make()
-    assert r["ok"] and r["engine"] == "fish/s2.1-pro-free" and r["fallback"] == "minimax: MiniMax 2053 insufficient balance"
-    assert len(note.mm.calls) == 2 and len(note.fish.calls) == 2      # section 1 made again on Fish: all or nothing
-    first = note.fish.calls[0]
-    assert first["auth"] == "Bearer fish-test-key-654321" and first["model"] == "s2.1-pro-free"
-    assert first["body"] == {"text": "[warm] Hello from the example room.\n\nThis is only a test, (break) nothing more.",
-                             "format": "mp3", "reference_id": "ca4ec67b92ae4d90829eb40dcd672312"}   # Fish acts on the mood tag
-    assert [(e, u) for e, u, _ in note.rows] == [("minimax/speech-2.8-hd", pytest.approx(len(note.mm.calls[0]["body"]["text"]) * 1e-4)),
-                                                 ("fish/s2.1-pro-free", 0.0), ("fish/s2.1-pro-free", 0.0),
-                                                 ("openai/whisper-1", pytest.approx(3.5 * 0.0001, abs=2e-5))]
+    assert r == {"ok": False, "error": words.VOICE_NO_ENGINE.format(why="fish: HTTP 500 busy")}
+    assert len(note.fish.calls) == 2 and not note.probes and list(note.folder.iterdir()) == []   # all or nothing: section 1 is not kept
+    assert [e for e, _, _ in note.rows] == ["fish/s2.1-pro-free"]                                # the section Fish made stays booked
 
 
 @FFMPEG
-def test_with_neither_voice_there_is_no_note_and_no_key_in_the_error(note, tone):
-    note.wire(Fake(lambda n, body: (500, b"busy")), Fake(lambda n, body: (402, b'{"message": "no credit for fish-test-key-654321"}')))
+def test_with_no_voice_there_is_no_note_and_no_key_in_the_error(note, tone):
+    note.wire(Fake(lambda n, body: (402, b'{"message": "no credit for fish-test-key-654321"}')))
     r = note.make()
-    assert not r["ok"] and r["error"].startswith("neither voice made it, so there is no note: minimax: HTTP 500 busy; fish: HTTP 402")
+    assert not r["ok"] and r["error"].startswith(words.VOICE_NO_ENGINE.format(why="fish: HTTP 402"))
     assert "fish-test-key" not in r["error"] and "<key>" in r["error"] and not note.rows and not note.probes
     assert list(note.folder.iterdir()) == []
 
 
 @FFMPEG
 def test_a_note_whose_first_words_do_not_read_back_as_the_script_is_deleted(note, tone):
-    note.wire(Fake(spoke(tone)), Fake(lambda n, body: (200, tone)))
+    note.wire(Fake(spoke(tone)))
     note.heard = "Completely different words came back from this one instead"
     r = note.make()
-    assert not r["ok"] and r["error"].startswith("the note failed its check, so it was deleted") and r["engine"] == "minimax/speech-2.8-hd"
+    assert not r["ok"] and r["error"].startswith("the note failed its check, so it was deleted") and r["engine"] == "fish/s2.1-pro-free"
     assert f'read back as "{note.heard}" where the script opens "Hello from the example room. This is only a"' in r["error"]
     assert not list(note.folder.glob("*.ogg")) and [e for e, _, _ in note.rows][-1] == "openai/whisper-1"   # paid, and booked
     note.heard = "Hello from the example room pimp. This is only a test, nothing more."
@@ -220,31 +202,34 @@ def test_a_note_whose_first_words_do_not_read_back_as_the_script_is_deleted(note
 
 
 @FFMPEG
-def test_no_key_no_check_key_and_a_note_past_the_gate_spend_nothing_until_the_owner_says_yes(note, tone):
-    note.wire(Fake(spoke(tone)), Fake(lambda n, body: (200, tone)))
+def test_no_key_no_check_key_and_a_note_past_the_gate_spend_nothing_until_the_owner_says_yes(note, tone, monkeypatch):
+    note.wire(Fake(spoke(tone)))
     (note.private / "secrets" / "openai.key").write_text("\n")
     assert note.make() == {"ok": False, "error": words.VOICE_NO_CHECK}
     (note.private / "secrets" / "openai.key").write_text("sk-test-openai-key-777\n")
-    long = "\n\n".join(f"Paragraph {i} " + "word " * 100 for i in range(21))      # about 10,800 characters: about US$1.08
-    size = sum(len(voice_note.for_minimax(s)) for s in voice_note.sections(long))
+    long = "\n\n".join(f"Paragraph {i} café " + "word " * 100 for i in range(21))  # about 10,900 bytes: about US$1.09 at 1e-4 a byte
+    size = sum(len(voice_note.for_fish(s)) for s in voice_note.sections(long)) + 21     # Fish bills bytes: each é is two
+    free = voice_note.ENGINES["fish"]
+    monkeypatch.setitem(voice_note.ENGINES, "fish", (*free[:3], 1e-4))                  # a price: Fish's own US$0 never reaches the gate
     r = note.make(long)
     assert not r["ok"] and r["error"] == words.VOICE_OVER_GATE.format(chars=size, usd=size * 1e-4 + 20 * 1e-4) and size > 10_000
-    assert note.make("(break) [warm]") == {"ok": False, "error": words.VOICE_EMPTY} and not note.mm.calls and not note.rows
+    assert note.make("(break) [warm]") == {"ok": False, "error": words.VOICE_EMPTY} and not note.fish.calls and not note.rows
     note.heard = " ".join(long.split()[:40])
     r = note.make(long, owner_yes=True)
-    assert r["ok"] and len(note.mm.calls) == len(voice_note.sections(long)) == 3
-    for k in ("minimax.key", "fish.key"):
-        (note.private / "secrets" / k).unlink()
+    assert r["ok"] and len(note.fish.calls) == len(voice_note.sections(long)) == 3
+    monkeypatch.setitem(voice_note.ENGINES, "fish", free)
+    assert note.make(long)["ok"]                                                        # at US$0 only the check counts: no yes needed
+    (note.private / "secrets" / "fish.key").unlink()
     assert note.make() == {"ok": False, "error": words.VOICE_NO_KEY}
 
 
 def test_a_key_never_reaches_an_error(monkeypatch):
     def refuse(req, timeout):
-        assert req.get_header("Authorization") == "Bearer mm-abc-123456789"
-        raise voice_note.urllib.error.HTTPError(req.full_url, 401, "no", {}, io.BytesIO(b"bad key mm-abc-123456789"))
+        assert req.get_header("Authorization") == "Bearer fish-abc-123456789"
+        raise voice_note.urllib.error.HTTPError(req.full_url, 401, "no", {}, io.BytesIO(b"bad key fish-abc-123456789"))
     monkeypatch.setattr(voice_note.urllib.request, "urlopen", refuse)
     with pytest.raises(voice_note.Failed) as e:
-        voice_note.call("https://example.invalid/v1", {"text": "hi"}, "mm-abc-123456789")
+        voice_note.call("https://example.invalid/v1", {"text": "hi"}, "fish-abc-123456789")
     assert str(e.value) == "HTTP 401 bad key <key>"
 
 
@@ -333,11 +318,12 @@ def test_yerk_explain_voice_note_says_how_it_works_what_it_costs_and_that_it_is_
     assert cli.main(["explain", "voice_note", "--private", str(EXAMPLE_PRIVATE), "--state", str(tmp_path / "s")]) == 0
     out = capsys.readouterr().out.splitlines()
     tab = abilities.manifest()
-    mark, said = words.ability("needs", provider="MiniMax, and Fish Audio when MiniMax fails")
+    mark, said = words.ability("needs", provider="Fish Audio")
+    assert tab["voice_note"]["keys"] == ["openai", "fish"]
     assert out[0] == f"{mark} voice_note: {said}"
     assert "How it works:" in out and [x[2:].split(":")[0] for x in out if x.startswith("- ")] == [
         "Script", "Voice", "Sound", "Check", "Send", "Spend", "English only"]
-    assert any(x.startswith("Cost: US$100 a million characters on MiniMax speech-2.8-hd") for x in out)
+    assert any(x.startswith("Cost: US$0 on Fish Audio s2.1-pro-free") for x in out)
     private = tmp_path / "p"
     shutil.copytree(EXAMPLE_PRIVATE, private)
     (private / "secrets").mkdir()
