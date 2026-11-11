@@ -735,9 +735,10 @@ class Yerkd:
             return r
         if not r["again"] and not r["folded"] and self.pipeline.auto():   # [needs] auto: built now, or queued
             await self.pipeline.filed(r, room)
-        elif not r["again"]:                              # a retried call is said once
+        elif not r["again"]:                              # a retried call is said once; NEED_FILED's {n} is in its command too
             await self.jobs.alert(None, (words.NEED_AGAIN if r["folded"] else words.NEED_FILED).format(
-                n=r["n"], room=room, ability=words.line(r["ability"], 80), day=r["day"], count=r["count"]), 0)
+                n=needs.called(self.state, r) if r["folded"] else r["n"], room=room, ability=words.line(r["ability"], 80),
+                day=r["day"], count=r["count"]), 0)
         log.info("need: %s, %s %s, %s", room, r["day"], r["n"], "folded" if r["folded"] else "filed")
         return {**r, "next": words.FILED_NEXT.format(clause=words.NEED_CLAUSE)}
 
@@ -947,7 +948,7 @@ class Yerkd:
                                    lambda r: r.get("state", "filed") in ("filed", "queued", "held", "stuck")) is None:
             row = needs.find(needs.load(self.state), day, n)
             return {"ok": False, "error": words.NEED_NONE.format(day=day, n=n) if row is None else
-                    words.NEED_BUSY.format(n=n, state=needs.said(row))}
+                    words.NEED_BUSY.format(n=needs.called(self.state, row), state=needs.said(row))}
         row, conf = needs.find(needs.load(self.state), day, n) or {}, self.pipeline.conf()
         found = await asyncio.to_thread(needs.plugins, self.room_confs, REPO)      # the plug-in repositories a fix may live in
         there = await asyncio.to_thread(needs.ahead, found, f"need-{day}-{n}")
@@ -991,10 +992,10 @@ class Yerkd:
                                         lambda x: x.get("state") == "filed")
         note = words.LINE_NONE.format(what="need build")
         if r is not None:
-            ab, st = words.line(str(r["ability"]), 80), r.get("state")
-            line = (words.NEED_PR.format(n=n, pr=r.get("pr"), ability=ab) if st == "pr" else words.NEED_BRANCH.format(
-                n=n, branch=r.get("branch"), ability=ab) if st == "built" else words.NEED_CUT_BUILD.format(n=n, ability=ab)
-                if st == "queued" else words.NEED_FAILED.format(n=n, how=how, ability=ab))
+            ab, st, num = words.line(str(r["ability"]), 80), r.get("state"), needs.called(self.state, r)
+            line = (words.NEED_PR.format(n=num, pr=r.get("pr"), ability=ab) if st == "pr" else words.NEED_BRANCH.format(
+                n=num, branch=r.get("branch"), ability=ab) if st == "built" else words.NEED_CUT_BUILD.format(n=num, ability=ab)
+                if st == "queued" else words.NEED_FAILED.format(n=num, how=how, ability=ab))
             line += words.NEED_PLUGIN.format(names=", ".join(r.get("plugins") or ())) * bool(st in ("pr", "built") and r.get("plugins"))
             note = await self.posted(str(row["room"]), line, "need build")
             log.info("%s", line)

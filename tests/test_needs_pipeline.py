@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 
 import pytest
-from test_needs import ASK, FLYER, listed, need, ops
+from test_needs import ASK, FLYER, listed, need, ops, twins
 from test_pictures import Rec
 from test_slash import OWNER, run_discord
 
@@ -133,6 +133,18 @@ def test_a_need_filed_before_the_pipeline_is_queued_on_a_tick_one_whose_build_ca
     asyncio.run(y.pipeline.stop(row(y, day, 3), "held", "a reason"))               # none in flight now: the queued one starts
     assert row(y, day)["state"] == "building" and row(y, day)["worker"] and len(y.workers.launcher.calls) == 2
     assert rec.lines[-1] == words.NEED_STARTS.format(n=1, room="example-room", ability=ASK[2]) and row(y, day, 2)["state"] == "filed"
+
+
+def test_the_pipelines_lines_say_a_number_two_needs_hold_with_its_day_and_queued_behind_it_too(pipe):
+    y, rec, hub, units, rooms = pipe
+    twins(y)
+    asyncio.run(y.pipeline.set(row(y, "2026-11-10", 81), {"state": "pr", "pr": 7}))           # in flight: a new need queues behind it
+    f = need(y, "her-room", "what does this voice memo say", "no audio tool", "hear a voice memo")
+    assert row(y, f["day"], f["n"])["state"] == "queued" and y.workers.launcher.calls == []
+    assert rec.lines[-1] == words.NEED_QUEUED.format(n=f["n"], room="her-room", ability="hear a voice memo", behind="81 of 2026-11-10")
+    asyncio.run(y.pipeline.stop(row(y, "2026-11-10", 81), "held", "a reason"))                # none in flight now: the queued one starts
+    assert rec.lines[-2:] == [words.NEED_HELD.format(n="81 of 2026-11-10", ability="read a scanned PDF", why="a reason"),
+                              words.NEED_STARTS.format(n=f["n"], room="her-room", ability="hear a voice memo")]
 
 
 def test_built_pr_checks_pending_then_green_start_a_cold_read_and_its_merge_uses_the_heads_sha(pipe):

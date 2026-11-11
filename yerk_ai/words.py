@@ -665,6 +665,7 @@ NEED_CLAUSE = "one clause at its end, this one: what you needed is filed for the
 NEED_NOT_YOURS = "not filed: a need from this room names only its own files, and {path} is not one"
 NEED_NONE = "no need {n} of {day}; `yerk needs list` shows them"
 NEED_BUSY = "need {n} is {state}: one builder a need, so nothing started"
+NEED_OF = "{n} of {day}"         # needs.called: the {n} of a line above and below when another need holds that number too
 # the needs pipeline (pipeline.py): each change one line in the machine room; live also one line in each room that filed it
 NEED_STARTS = WORKING + " need {n} from {room}: {ability}; its builder starts"
 NEED_QUEUED = WORKING + " need {n} from {room}: {ability}; queued behind need {behind}"

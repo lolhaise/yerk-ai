@@ -63,6 +63,13 @@ def find(rows: list[dict[str, Any]], day: str, n: int) -> dict[str, Any] | None:
     return next((r for r in rows if r.get("day") == day and int(r.get("n", 0)) == n), None)
 
 
+def called(state: Path, r: dict[str, Any]) -> str:
+    """A need's number as a line says it: N, or "N of DAY" (words.NEED_OF) when a need of another day holds N too, as needs
+    filed before 2026-11-11 can, when the count restarted each day."""
+    n, day = int(r["n"]), str(r["day"])
+    return words.NEED_OF.format(n=n, day=day) if any(int(x.get("n", 0)) == n and x.get("day") != day for x in load(state)) else str(n)
+
+
 def stem(w: str) -> str:
     return w[:-1] if len(w) > 3 and w.endswith("s") and not w.endswith("ss") else w
 

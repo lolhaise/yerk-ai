@@ -191,6 +191,37 @@ def test_a_new_need_never_takes_a_number_an_earlier_need_held_whatever_its_day(t
     assert (memo["day"], memo["n"]) == (third, 6) and "\n## 5. cut: rule 5\n" in (y.memory.root / needs.FOLDER / f"{third}.md").read_text()
 
 
+def twins(y) -> None:
+    """The record as numbers that restarted each day left it: need 81 on two days (one live, one held), need 82 on one."""
+    ask = {"room": "example-room", "at": "2026-11-09 09:00", "mid": "m-0", "asked": ASK[0], "tried": ASK[1], "needed": ASK[2], "shadow": ""}
+    rows = [{"day": "2026-11-09", "n": 81, "ability": ASK[2], "state": "live", "pr": 40, "asks": [ask]},
+            {"day": "2026-11-10", "n": 81, "ability": "read a scanned PDF", "state": "held", "why": "a reason",
+             "asks": [ask | {"at": "2026-11-10 09:00", "needed": "read a scanned PDF"}]},
+            {"day": "2026-11-10", "n": 82, "ability": "upload a video", "state": "filed", "asks": [ask | {"at": "2026-11-10 10:00", "needed": "upload a video"}]}]
+    (y.state / needs.STORE).write_text(json.dumps(rows))
+
+
+def test_a_number_two_needs_hold_is_said_with_its_day_and_one_only_one_holds_reads_as_before(tmp_path):
+    y, rec = ops(tmp_path, "example-room", "her-room")
+    twins(y)
+    f = need(y, "her-room", "read my lease", "Read on the PDF: no text layer", "read scanned PDFs")
+    assert (f["day"], f["n"], f["folded"]) == ("2026-11-10", 81, True)
+    assert rec.lines[-1] == words.NEED_AGAIN.format(n="81 of 2026-11-10", room="her-room", count=2, ability="read a scanned PDF")
+    assert need(y, "her-room", "post a reel", "no upload tool", "upload a video")["n"] == 82        # 82 is one need's alone
+    assert rec.lines[-1] == words.NEED_AGAIN.format(n=82, room="her-room", count=2, ability="upload a video")
+    assert asyncio.run(y.control({"needs": {"action": "build", "day": "2026-11-09", "n": 81}})) == {
+        "ok": False, "error": words.NEED_BUSY.format(n="81 of 2026-11-09", state="live, PR 40")}
+    r = asyncio.run(y.control({"needs": {"action": "build", "day": "2026-11-10", "n": 81}}))
+    assert r["ok"] and asyncio.run(y.control({"needs": {"action": "build", "day": "2026-11-10", "n": 81}})) == {
+        "ok": False, "error": words.NEED_BUSY.format(n="81 of 2026-11-10", state=f"building {r['id']}")}
+    (Path(r["staging"]) / "REPORT.md").write_text("PR 123: it reads a scanned PDF\n")
+    (Path(r["staging"]) / "exit.json").write_text(json.dumps({"result": "success", "code": "exited", "status": "0"}))
+    asyncio.run(y.workers.complete(r["id"]))
+    assert rec.lines[-1] == words.NEED_PR.format(n="81 of 2026-11-10", pr=123, ability="read a scanned PDF")
+    new = need(y, "example-room", "what does this voice memo say", "no audio tool", "hear a voice memo")
+    assert rec.lines[-1] == words.NEED_FILED.format(n=new["n"], room="example-room", ability="hear a voice memo", day=new["day"])
+
+
 def test_one_ability_said_twice_is_one_need_and_two_abilities_are_two():
     assert needs.same("see a picture in a post", "see pictures in posts") and needs.same("read a scanned PDF", "read scanned PDFs")
     assert needs.same("see a picture in a post", "see the picture in a tweet's post")
