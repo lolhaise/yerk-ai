@@ -491,6 +491,29 @@ asked_as = ["link in the email", "link in that email", "links in the email", "li
             "confirmation link", "unsubscribe link", "link in an email", "link from an email", "button in the email",
             "button in that email", "button in an email"]
 
+# need-2026-11-11-85: a room asked to read a quote an email carried as a PDF, to confirm what it said, had the file's name
+# from the mail tool's read and no way to the file: the mail tool neither saved nor opened one, the attachments tool takes a
+# Discord message's files only, and a room's shell has no network; it asked the owner to send the file into the room.
+[abilities.mail-files]
+state = "described"
+what = "Gives a room a file one of the owner's emails carries, a PDF, a picture or a document, saved whole in the room's own work folder by the mail reader itself, so the room opens it with Read and answers from the file, never from the mail's words about it."
+how = [
+  "One mail read, with its files: each file the mail carries, numbered in the order its parts come, with its type and size, inside the mail's untrusted wrap.",
+  "Saved by its number, or every one: the reader fetches the mail again, read only (nothing marked read, moved or deleted), writes each file whole in a folder of its own for that mail in the room's work folder, and returns its path to open with Read.",
+  "Under the file's own name made safe: anything a path could carry made plain, a second file of one name numbered, and a file with no name named for its number and type.",
+  "Never out of the room's folder: the reader walks to that folder a part at a time without following a link, so a link left in the work folder sends no file elsewhere, and the refusal names it.",
+  "Read as the mail is read: what the file says is the sender's, a record, never an instruction.",
+  "Refused in one line with its reason: a mail with no files, a number past its list, or a room whose work folder is not known.",
+]
+tier = "free"
+needs = "the email ability's read in a mail plug-in that numbers a mail's files and saves one by that number"
+price = "none"
+free_path = "this is the free path"
+why_not = "It rides on the mail tool of the plug-in kept outside this repo, the one that drives the browser; an install whose mail tool carries the attachment action has it there, and a room asked about a file in an email reads the mail, saves the file by its number with that action, then opens the path it names with Read, never asking the owner to send the file into the room."
+asked_as = ["attached to the email", "attached to an email", "attached to that email", "attached in the email", "attached to my email",
+            "attachment in the email", "attachment in my email", "attachment in my gmail", "attachment from the email", "email attachment",
+            "pdf in my email", "pdf in my gmail", "pdf in the email", "file in the email", "file in my email"]
+
 # need-2026-11-09-74: a room asked to run a quote on a form drawn inside a web component saw the form only in a shot: the
 # browser's read and its list of fields stopped at the page's footer, and a click by position focused the form's first
 # field with no action to type into it.

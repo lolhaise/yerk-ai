@@ -7,7 +7,7 @@
 # The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and
 # Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 [session_start]
-total = 129771
+total = 130071
 
 # Load order, most stable first, so the cached start of the prompt survives.
 # The first parts are Claude Code's own (its default prompt, the built-in tools
@@ -246,12 +246,19 @@ total = 129771
 # filed 2026-11-10) takes the tool from 1,439 to 1,710 as this tree builds it, all 23 from 25,407 to 25,678 (271
 # more, measured on main 76cc360 and on this tree the same way), about 26,644 as sent, 244 over the line; so 26,700, no
 # part could pay, the total rose by the 300 (to 129,771 on main's 129,471). The hands plug-in's tool entries do not change.
+# 2026-11-11, need-2026-11-11-85: the hands plug-in's mail gains `attachment` (a file a mail carries, one by its number in
+# the read or every one, saved by the plug-in's reader in the room's own work folder to open with Read, and the read
+# numbers each file with its type and size, since a room asked to read a quote sent as a PDF in a mail had the file's
+# name and no way to the file, its shell having no network; filed 2026-11-11): its entry 1,194 to 1,494 as the
+# plug-in's branch need-2026-11-11-85 (1c6df9d) builds it, 300 more, so 1,525 as sent (31 over, as each of the five goes;
+# all five 9,974 built, 10,129 sent, need 75's 2 over kept); so 10,131, no other line lowered for it, the total rose by
+# the 300 (to 130,071 on main's 129,771).
 [session_start.claude_code]
 claude_code_prompt = 10966
 builtin_tools = 12132
 yerk_tools = 26700
 deferred_tool_names = 3429
-mcp__hands__ = 9831
+mcp__hands__ = 10131
 mcp__web-ladder__web_image = 913
 skills = 0
 
