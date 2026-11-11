@@ -802,7 +802,7 @@ NUMBERS = ("one two three four five six seven eight nine ten eleven twelve thirt
 # the room's /status (status.room_card): the box card's shape, every line opening with its own icon and the red mark only
 # on trouble; the account the room is on wears ON_THIS, one resting until other than its own weekly reset ASLEEP
 ROOM_HEAD, ROOM_HELD, ROOM_OF = "\N{BRAIN} {parts}", "\N{BOOKS} {held}", "/{window} ({pct}%)"
-ROOM_COMPACTED, ROOM_NEW = " · \N{BROOM} {n}", "\N{BOOKS} new session"     # since the session began; no session yet
+ROOM_COMPACTED, ROOM_NEW = " · \N{BROOM} {n} today", "\N{BOOKS} new session"     # the room's today (the ledger's); no session yet
 ROOM_THINK, ROOM_FAST = "\N{GEAR}\N{VARIATION SELECTOR-16} Think: {effort}", " · Fast: on"
 ROOM_FAST_ONLY = "\N{GEAR}\N{VARIATION SELECTOR-16} Fast: on"       # a room whose thinking level nothing names
 TANK, ON_THIS, ASLEEP = "\N{FUEL PUMP} Tank", "\N{BLACK RIGHTWARDS ARROWHEAD} ", " · \N{SLEEPING SYMBOL} {until}"

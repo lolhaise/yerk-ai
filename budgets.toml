@@ -1507,4 +1507,10 @@ secs = 60
 # The ceiling on the launcher and its three properties, the key read strictly and a value that is not a size refused
 # with a warning, and the module's words for it 23 (workers.py); the key's settings line 3 (config.py). 29,244:
 # status-card f02fb0c1's 29,218 plus 26.
-lines = 29244
+# 2026-11-11: status-broom lowered it by 5, the owner's order of 2026-11-11 (the room card's broom was its session's
+# compactions kept in memory, so every daemon restart blanked it until the room's next new session): the number is the
+# room's compactions today as the ledger counts them. Ledger.compactions and COMPACTED_IN_TURN, the note on the row of a
+# turn inside which Claude Code compacted, 8 (ledger.py); Room.compactions, Room._counted and the reset in _start
+# removed, the note written with the turn's row, less 14 (room.py); collect's one read a card 1 (status.py); the
+# broom's words 0 (words.py). 29,239: worker-memory's 29,244 less 5.
+lines = 29239

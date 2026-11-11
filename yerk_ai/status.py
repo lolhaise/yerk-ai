@@ -91,10 +91,11 @@ def collect(private: Path, state: Path, accounts: list[Account], cooldowns: Cool
     listed = config.models(conf) if rooms else {}
     if rooms is not None:
         out["units"].append(use("yerkd", [r for r in [stat(os.getpid(), proc)] if r]))   # its own, not its children
+    compacted = ledger.compactions(midnight(now)) if rooms else {}   # each room's today, the ledger's: a restart keeps them
     for name, room in (rooms or {}).items():
         with room.lock:
             msgs, waiting, busy, rp = [*room.inflight, *room.pending, *room.queue], len(room.queue), room.busy, room.rp
-            held = (getattr(room, "context", 0), getattr(room, "window", 0), getattr(room, "compactions", None),
+            held = (getattr(room, "context", 0), getattr(room, "window", 0), compacted.get(name, 0),
                     getattr(room, "fresh_next", None) is None)
         out["rooms"].append({"room": name, "busy": busy, "waiting": waiting, "watch": room.conf.get("watch"),
                              "since": min((m.received for m in msgs), default=None) if busy else None,
@@ -128,15 +129,15 @@ def collect(private: Path, state: Path, accounts: list[Account], cooldowns: Cool
     return out
 
 
-def head(state: Path, name: str, room: Any, rp: Any, held: tuple[int, int, int | None, bool], accounts: list[Account],
+def head(state: Path, name: str, room: Any, rp: Any, held: tuple[int, int, int, bool], accounts: list[Account],
          cooldowns: Cooldowns, listed: dict[str, str], now: float) -> dict[str, Any]:
     """The room card's head (room_card) for room `name`, its session's numbers as collect read them under the room's lock
-    (`held`: its tokens, its compaction window, its compactions, and no new session waiting): the model its next reply
+    (`held`: its tokens, its compaction window, its compactions today, and no new session waiting): the model its next reply
     launches with (its /model choice over rooms.toml, as config.room_settings reads them for spec_for, an alias through
     the install's list; "" when neither names one, since Claude Code's own default has no id Yerk knows), its thinking
     level ("" alike), the account its session is on (the live process's, else the one its next turn would try, as Room._account
     picks: the one it is put on unless that one rests), its tokens (None: no session yet, or a /new waiting), its window (0: left
-    to the model) and compactions (None: not known)."""
+    to the model) and its compactions today (Ledger.compactions, read once a card for every room)."""
     tokens, window, compactions, same = held
     settings = config.room_settings(dict(room.conf), state, name, listed)
     model = settings["model"][0]
@@ -359,7 +360,7 @@ def card(s: dict[str, Any], now: float | None = None) -> list[str]:
 def room_card(s: dict[str, Any], room: str, now: float | None = None) -> list[str]:
     """/status typed in `room`: the box card's shape, every line at most words.PHONE columns opening with its own icon,
     never a dash (STYLE.md). The room in three lines (the model its next reply launches with and its account; its session's
-    tokens over its window and its compactions; its thinking level, and fast mode while on), the tank (tank's numbers, two
+    tokens over its window and its compactions today; its thinking level, and fast mode while on), the tank (tank's numbers, two
     lines an account in number order, the room's own marked, a rest other than the account's weekly reset said), what runs
     (this room's turn first, at most four lines), today's speed and spend, then a red line only for trouble: a stall today,
     no backup or a stale one, a timer list not read."""
