@@ -9,7 +9,7 @@ itself this way: one need at a time (two open PRs that both move the code ceilin
 - The watch (`tick`: its own task every EVERY seconds, and once each time the channel connects): built, then its PR
   (github.pr_for), then PR; a PR's head's checks all in ([needs] contexts) and green: the cold read; one red: a fix worker
   while fixes < [needs] fix_cap, else held; not all in within [needs] checks_minutes of the head: stuck, and PR again once
-  they are all in and final (`late`); no PR NO_PR after the build: stuck (the box's sync is down).
+  they are all in and final and no other need is in flight (`late`); no PR NO_PR after the build: stuck (the box's sync is down).
 - The cold read, a fresh worker and never the builder: `merge` merges with the head's sha (github.merge, the sha guard);
   `fix first: why` is a fix worker (it counts toward the cap) and the checks again; `unsure: why` is held. A fix worker:
   `fixed: sha` is PR again with its new head; `cannot: why` is held. A read or a fix cut off by a stop nobody asked for
@@ -220,7 +220,11 @@ class Pipeline:
 
     async def late(self, r: dict[str, Any], tok: str, repo: str) -> None:
         """A stuck need with a PR whose head's checks have all come in since, each final: PR again, and the next tick reads it
-        as any other, green the cold read and red a fix (2026-11-09: need 81 sat stuck with all seven green)."""
+        as any other, green the cold read and red a fix (2026-11-09: need 81 sat stuck with all seven green). Only when no
+        other need is in flight, the queue's own test (two in flight edit the same lines of the same bookkeeping files);
+        until then it stays stuck and says nothing more."""
+        if self.flight():
+            return
         c = await asyncio.to_thread(github.checks, repo, str(r["head"]), tok)
         ctx: dict[str, list[str]] = c.get("contexts") or {}
         if c["ok"] and len(ctx) >= int(self.conf().get("contexts") or 7) and all(v[0] in ("success", *RED) for v in ctx.values()):

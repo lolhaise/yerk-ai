@@ -225,6 +225,26 @@ def test_a_stuck_need_whose_checks_all_come_late_goes_back_to_pr_and_on_and_one_
     assert row(y, day, n2)["state"] == "stuck" and not [c for c in hub.calls[calls:] if "/status" in c[1]]
 
 
+def test_a_stuck_need_whose_checks_came_late_waits_while_another_need_is_in_flight_and_comes_back_once_none_is(pipe):
+    y, rec, hub, units, rooms = pipe                     # two in flight edit the same lines of the same bookkeeping files
+    day = need(y, "example-room", *ASK)["day"]
+    to_pr(y, hub, day)
+    status = ("GET", f"/repos/{SLUG}/commits/{'a' * 40}/status")
+    hub.routes[status] = (200, {"state": "pending", "statuses": GREEN[:6]})
+    y.pipeline.now = lambda: time.time() + 41 * 60
+    asyncio.run(y.pipeline.tick())
+    n2 = need(y, "her-room", "post a reel", "no upload tool", "upload a video")["n"]
+    assert row(y, day)["state"] == "stuck" and row(y, day, n2)["state"] == "building"     # stuck is not in flight: need 2 starts
+    hub.routes[status] = (200, {"state": "success", "statuses": GREEN})
+    said, calls = list(rec.lines), len(hub.calls)
+    asyncio.run(y.pipeline.tick())
+    asyncio.run(y.pipeline.tick())                       # all in and green, need 2 in flight: it stays stuck and says nothing
+    assert row(y, day)["state"] == "stuck" and rec.lines == said and not [c for c in hub.calls[calls:] if "/status" in c[1]]
+    asyncio.run(y.pipeline.stop(row(y, day, n2), "held", "a reason"))
+    asyncio.run(y.pipeline.tick())                       # the tick that finds the flight empty brings it back
+    assert row(y, day)["state"] == "pr" and rec.lines[-1] == words.NEED_LATE.format(n=1, pr=7)
+
+
 def test_a_builder_that_cannot_start_holds_its_need_with_why_and_the_next_queued_need_starts(pipe):
     y, rec, hub, units, rooms = pipe                     # a unit systemd refuses, then an account accounts.toml no longer has
     y.conf["needs"]["auto"] = False                      # three filed; the first in flight with no unit, two queued behind it
