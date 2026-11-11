@@ -27,7 +27,7 @@ uv run yerk retention --dry-run              # what the nightly sweep (units/yer
 uv run yerk doctor --dry-run                 # the daily check (units/yerk-doctor.timer): a line per finding, one green line when all is well
 uv run yerk curate --dry-run --since 2026-10-19   # the night's card curation (units/yerk-curate.timer): what it would sweep and propose
 uv run python tests/contract/probes.py drill --config-dir DIR   # the Claude Code upgrade drill: the version, hello, fold and resume on one account, a verdict
-uv run python tests/contract/probes.py hello|fold|resume|blocks|smoke|measure|check|idle --config-dir ~/.claude   # one contract probe
+uv run python tests/contract/probes.py hello|fold|resume|blocks|smoke|measure|short|think|check|idle --config-dir ~/.claude   # one contract probe
 uv run pytest
 ```
 
