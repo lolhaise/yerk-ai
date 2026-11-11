@@ -41,6 +41,10 @@ log = logging.getLogger("yerk.engine")
 STREAM_FLAGS = ["-p", "--input-format", "stream-json", "--output-format", "stream-json",
                 "--verbose", "--include-partial-messages", "--replay-user-messages"]
 CONTEXT = ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")   # a call's usage: the session's size
+# Fast mode bills usage credits, never the plan: it reaches a process only through fast_reaches. Fable 5.2 alone, by its full
+# id: on an Opus model "fastMode" in --settings turns fast mode on at launch with no command (Claude Code's fast mode page,
+# 2026-11-11), and an alias is resolved by Claude Code, not here.
+FAST_MODELS, FAST_ON, FAST_WAIT = frozenset({"claude-fable-5-2"}), "/fast on", 60.0
 
 
 def claude_bin() -> str:
@@ -76,6 +80,13 @@ class RoomSpec:
     add_dirs: list[Path] = field(default_factory=list)       # --add-dir: folders the room may read
     extra_args: list[str] = field(default_factory=list)
     token: str = ""                                          # this process's credential for /hook and /mcp (bound with the session)
+    fast: bool = False                                       # the room's own /fast on; reaches Claude Code only by fast_reaches
+
+
+def fast_reaches(spec: RoomSpec) -> bool:
+    """Fast mode for this process: the room asked for it and the model it launches on, read at launch (Room._start may
+    change it after the spec was built), is Fable 5.2."""
+    return spec.fast is True and spec.model in FAST_MODELS
 
 
 def token_hash(token: str) -> str:
@@ -331,6 +342,7 @@ class RoomProcess:
         self._log_lock = threading.Lock()
         self._stdin_lock = threading.Lock()
         self.read_paths: set[str] = set()      # every file the process asked to Read (the Stop check reads it)
+        self.fast_state = self.fast_said = ""  # fast_mode_state from its newest result; what its own /fast on was answered
 
     def alive(self) -> bool:
         return self.proc is not None and self.proc.poll() is None
@@ -347,7 +359,7 @@ class RoomProcess:
             a += ["--add-dir", str(d)]           # is saved (<session>/tool-results/), so it can Read it back
         if s.allow:
             a += ["--allowedTools", ",".join(s.allow)]
-        if s.settings:
+        if self.launch_settings():
             a += ["--settings", str(self.room_dir / "settings.json")]
         if s.context_file:
             a += ["--append-system-prompt-file", str(s.context_file)]
@@ -384,8 +396,8 @@ class RoomProcess:
         self.lock = SessionLock(self.state / "locks" / f"{self.session_id}.lock").acquire()
         if not fork:
             self.sessions.bind(self.spec.room, self.session_id, self.account.name, self.spec.token)
-        if self.spec.settings:
-            write_private(self.room_dir / "settings.json", json.dumps(self.spec.settings, indent=1))
+        if settings := self.launch_settings():
+            write_private(self.room_dir / "settings.json", json.dumps(settings, indent=1))
         if self.log_path:
             try:
                 self._log = open(self.log_path, "a")
@@ -398,7 +410,21 @@ class RoomProcess:
                                      stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=err)   # a stdio server: a baseline env, not ours
         err.close()
         threading.Thread(target=self._read, name=f"read-{self.spec.room}", daemon=True).start()
+        if fast_reaches(self.spec):
+            self._fast_on()
         return self.session_id
+
+    def launch_settings(self) -> dict[str, Any]:
+        """The --settings file: the spec's settings, with "fastMode" where fast_reaches says and nowhere else."""
+        out = {k: v for k, v in self.spec.settings.items() if k != "fastMode"}
+        return {**out, "fastMode": True} if fast_reaches(self.spec) else out
+
+    def _fast_on(self) -> None:
+        """`/fast on` before the first line of a new process fast_reaches opens (on Fable 5.2 the launch setting does nothing
+        until /fast runs; in -p it holds for that session only): read to the end of its result, its replay ahead of it, and
+        never recorded, so no reply, ledger row, card or pairing of a result with its message sees it. A refusal leaves
+        the session at standard speed; `fast_said` keeps Claude Code's words for the room's line."""
+        self.fast_said = self.read_turn(self.send(FAST_ON), FAST_WAIT, record=False).text
 
     def _note(self, obj: dict[str, Any]) -> None:
         """One line in the stream log. A write that fails (the disk full, the file past a size limit) ends the log
@@ -482,6 +508,8 @@ class RoomProcess:
                 on_event(turn, ev)
         if turn.ended is None:
             turn.ended = time.time()
+        if turn.result and turn.result.get("fast_mode_state") in ("on", "cooldown", "off"):   # what Claude Code reports
+            self.fast_state = str(turn.result["fast_mode_state"])
         if turn.outcome == "ok" and not turn.text.strip():
             turn.outcome = "empty"      # an empty reply is a failure to retry fresh, never a silence
         if turn.outcome not in ("ok", "empty") and self.failures:
