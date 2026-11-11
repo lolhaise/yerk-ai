@@ -29,7 +29,7 @@ const WALL_TEXT = {
   bb_unavailable: ["Browserbase's service answered 503 (temporarily unavailable).", "yes", "Retry shortly."],
   bb_concurrency: ["Browserbase's concurrent browser or fetch limit was hit.", "yes", "Retry shortly; another job is using the browsers."],
   bb_timeout: ["Browserbase did not answer in time.", "yes", "Retry."],
-  login_required: ["The site wants a login before it shows this page.", "after login", "Log in once inside this site's fetch-plus context (see contexts.json for its id) and every later read reuses that login."],
+  login_required: ["The site wants a login before it shows this page.", "after login", "In an owner room, open the page in the owner's own browser with the hands plug-in; in any other room, say that the site wants a login."],
   captcha_unsolved: ["A captcha or bot challenge was still up after the browser and captcha solver ran.", "later", "Retry later, or open the page in the owner's own browser."],
   geo_blocked: ["The site says this content is not available in the proxy's region.", "maybe", "Retry with a geolocated proxy, or read it from the owner's own browser."],
   proxy_restricted: ["Browserbase's residential proxy provider refuses this site category, and the no-proxy browser also failed.", "no", "Open it in the owner's own browser."],

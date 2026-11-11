@@ -669,3 +669,16 @@ test("a proxied session the proxy provider refused is booked beside its retry wi
   assert.equal(q.extractor, "fetch-plus:failed:offsite_redirect");
   assert.deepEqual(q.paid.map((x) => [x.rung, x.proxies]), [["L1", false], ["L2", true], ["L3", true], ["L3", false]], "the retry was sent off-site and refused; both sessions are still booked");
 });
+
+// F7-12: a room cannot log in inside a Browserbase context or read contexts.json (no Yerk tool opens one, and the file is
+// outside every room's folders), so the login wall names the moves rooms have: an owner room's hands plug-in, else words.
+test("the login wall names a move a room can take: the owner's own browser with the hands plug-in in an owner room, else that the site wants a login", async () => {
+  const SIGN_IN = page("Sign in", `<main><h1>Sign in</h1><form><input type="email" name="u"><input type="password" name="p"><button>Sign in</button></form><p>Sign in to see this page.</p></main>`);
+  const { deps } = sessionRig({ sessions: () => READ_PAGE, overrides: { l3Enabled: false } });
+  deps.fetchImpl = async (url) => (String(url).endsWith("/v1/fetch") ? json({ statusCode: 200, headers: { "content-type": "text/html" }, content: SIGN_IN, contentType: "text/html" }) : json({}, 404));
+  const p = await offsiteRun("https://members.example/account/orders", deps);
+  assert.equal(p.extractor, "fetch-plus:failed:login_required");
+  assert.match(p.text, /^What stopped it: The site wants a login before it shows this page\.$/m);
+  assert.match(p.text, /^Next move: In an owner room, open the page in the owner's own browser with the hands plug-in; in any other room, say that the site wants a login\.$/m);
+  assert.doesNotMatch(p.text, /fetch-plus context|contexts\.json/);
+});
