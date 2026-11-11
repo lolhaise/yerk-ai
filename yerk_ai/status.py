@@ -20,6 +20,7 @@ from typing import Any, Callable
 
 from . import __version__, backup, config, jobs, latency, usage, words, workers
 from .accounts import Account, Cooldowns
+from .engine import FAST_MODELS
 from .ledger import Ledger
 from .meters import Meters
 
@@ -69,6 +70,13 @@ def use(name: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
             "cpu_s": round(cpu, 2), "cpu_pct": round(100 * cpu / max(rows[0]["age_s"], 1.0), 2)}
 
 
+def fast_shown(state: Path, name: str, room: Any) -> bool:
+    """/status says fast mode is on for a room only while its own /fast on stands, its model is Fable 5.2 and Claude Code
+    has not reported it otherwise since (Room.fast_state): never "on" when Claude Code refused it."""
+    model = str(config.override(state, name).get("model") or room.conf.get("model") or "")
+    return config.fast_on(state, name) and model in FAST_MODELS and room.fast_state in ("", "on")
+
+
 def collect(private: Path, state: Path, accounts: list[Account], cooldowns: Cooldowns, ledger: Ledger,
             rooms: dict[str, Any] | None = None, now: float | None = None, proc: Path = PROC,
             units: Callable[[], set[str]] | None = None, timers: Any = None, live: bool = False,
@@ -86,7 +94,8 @@ def collect(private: Path, state: Path, accounts: list[Account], cooldowns: Cool
             msgs, waiting, busy, rp = [*room.inflight, *room.pending, *room.queue], len(room.queue), room.busy, room.rp
         out["rooms"].append({"room": name, "busy": busy, "waiting": waiting, "watch": room.conf.get("watch"),
                              "since": min((m.received for m in msgs), default=None) if busy else None,
-                             "account": config.pinned(state, name, [a.name for a in accounts])})   # the one it is put on
+                             "account": config.pinned(state, name, [a.name for a in accounts]),   # the one it is put on
+                             "fast": fast_shown(state, name, room)})
         if rp is not None and rp.proc is not None and rp.alive():
             out["units"].append(use(name, tree(rp.proc.pid, proc)))
     try:
@@ -281,6 +290,8 @@ def card(s: dict[str, Any], now: float | None = None) -> list[str]:
         text = W.ROOMS_ON.format(account=W.tag(acct), rooms=", ".join(names))
         out.append(row(W.PLAIN, text if W.width(f"{W.PLAIN} {text}") <= W.PHONE
                        else W.ROOMS_ON.format(account=W.tag(acct), rooms=W.ROOMS_N.format(n=len(names)))))
+    if fast := [r["room"] for r in s["rooms"] if r.get("fast")]:      # only while it is on: it bills usage credits
+        out.append(row(W.PLAIN, W.FAST_ROOMS.format(rooms=", ".join(fast))))
     out.append(row(W.PLAIN, W.VERSION_AT.format(version=s.get("version") or __version__,   # what runs: an upgrade's receipt
                                                  commit=str(s.get("commit") or "")[:7] or "?")))
     if s.get("addons") is not None:                     # `yerk status` names the installed add-ons (addons.py)

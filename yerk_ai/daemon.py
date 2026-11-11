@@ -34,10 +34,10 @@ from . import (beat, context, curate, deletes, deploy, doctor, emails, evidence,
 from .accounts import Account, Cooldowns, from_dir, load_accounts, pick
 from .channels import page
 from .channels.page import Page
-from .config import (EFFORTS, REPO, SHELLS, account_and_model, account_named, assistants, budgets, discord_id, flag, load_toml, models,
-                     override, people, pinned, private_dir, read_secret, room_id, room_settings, rooms, state_dir, table, trusted, uncapped,
-                     write_private)
-from .engine import RoomSpec, SessionTable
+from .config import (EFFORTS, REPO, SHELLS, account_and_model, account_named, assistants, budgets, discord_id, fast_on, flag, load_toml,
+                     models, override, people, pinned, private_dir, read_secret, room_id, room_settings, rooms, state_dir, table, trusted,
+                     uncapped, write_private)
+from .engine import FAST_MODELS, RoomSpec, SessionTable, fast_probe
 from .ledger import Ledger
 from .lifted.classify import FailureTable
 from .lifted.loopguard import LoopGuard
@@ -220,7 +220,7 @@ class Yerkd:
             extra += ["--thinking-display", "summarized"]      # the panel's text; off: the stream says nothing
         return RoomSpec(room=name, model=now["model"][0], cwd=work, tools=list(conf.get("tools", [])), settings=settings,
                         context_file=ctx, mcp_config=mcp_server.room_config(f"{self.url}/mcp", name, rdir / "mcp.json", token, conf.get("mcp")),
-                        extra_args=extra, token=token, add_dirs=dirs)
+                        extra_args=extra, token=token, add_dirs=dirs, fast=fast_on(self.state, name))   # engine.fast_reaches decides
 
     def cut_said(self, name: str, parts: list[context.Part]) -> None:
         """Each part a session start sent with lines of its own dropped to fit its key (whole lines, never a blank, a `[from`
@@ -1172,12 +1172,48 @@ class Yerkd:
             (self.state / "rooms" / room).mkdir(parents=True, exist_ok=True)
             write_private(self.state / "rooms" / room / "override.json", json.dumps(over))
         now, on = room_settings(conf, self.state, room, self.models), pinned(self.state, room, [*names.values()])
+        if (dropped := over.get("fast") is True and now["model"][0] not in FAST_MODELS):   # off Fable 5.2: fast mode goes with it
+            over.pop("fast")
+            write_private(self.state / "rooms" / room / "override.json", json.dumps(over))
         if ([v for v, _ in now.values()], on) != ([v for v, _ in before.values()], pin) and room in self.rooms:
             await asyncio.to_thread(self.rooms[room].respec)        # an idle process's close, off the loop
         log.info("settings: room %s on %s, effort %s, account %s", room, now["model"][0], now["effort"][0] or "default", on or "by order")
         line = (words.NEXT_REPLY if want or level or acct else words.THIS_ROOM).format(
             model=words.model_name(now["model"][0]), effort=now["effort"][0] or "default", on=words.ON.format(account=on) if on else "")
-        return {"ok": True, "line": line + (self.carried(room, on) if on != pin else "")}
+        return {"ok": True, "line": line + (self.carried(room, on) if on != pin else "") + (f"\n{words.FAST_OFF}" if dropped else "")}
+
+    async def fast_command(self, room: str, choice: str) -> dict[str, Any]:
+        """/fast: on, off, or nothing for the room's state. On is kept only in a room on Fable 5.2 and only when Claude Code
+        itself, asked on the account the room is on now (engine.fast_probe, a local command), turns it on; the next reply's
+        process then launches with it (Room.respec, as a changed effort does); off drops it the same way. Never "on" when
+        Claude Code refused it: the line is its refusal, in plain words, and nothing is kept."""
+        want, over = choice.strip().lower(), override(self.state, room)
+        model, r = room_settings(self.room_confs[room], self.state, room, self.models)["model"][0], self.rooms.get(room)
+        if want not in ("", "on", "off"):
+            return {"ok": False, "line": words.FAST_CHOICES.format(choice=words.line(want, 20))}
+        if not want:
+            reported = [words.FAST_SAID.format(state=r.fast_state)] if r and r.fast_state else []
+            return {"ok": True, "line": "\n".join([words.FAST_NOW.format(setting="on" if over.get("fast") is True else "off"), *reported])}
+        if want == "on" and model not in FAST_MODELS:
+            return {"ok": False, "line": words.FAST_ONLY.format(model=words.model_name(model) if model else words.USUAL)}
+        if want == "on":
+            acct = r.account_now() if r else self._account_for(room, model)
+            state, said = await asyncio.to_thread(fast_probe, acct, model)
+            log.info("fast: room %s asked on account %s: %s", room, acct.name, state or "no answer")
+            if state != "on":
+                return {"ok": False, "line": words.FAST_NOT_ON.format(why=words.fast_why(said, acct.name))}
+        if (over.get("fast") is True) != (want == "on"):
+            over.pop("fast", None)
+            over.update({"fast": True} if want == "on" else {})
+            (self.state / "rooms" / room).mkdir(parents=True, exist_ok=True)
+            write_private(self.state / "rooms" / room / "override.json", json.dumps(over))
+            if r:
+                await asyncio.to_thread(r.respec)          # an idle process's close, off the loop; a running turn ends as it began
+        return {"ok": True, "line": words.FAST_ON_NEXT if want == "on" else words.FAST_OFF}
+
+    def _account_for(self, room: str, model: str) -> Account:
+        """The account a room with no runner would start on: the one it is put on, else the first free for `model`."""
+        return pick(self.accounts, self.cooldowns, first=pinned(self.state, room, [a.name for a in self.accounts]), model=model)
 
     async def model_command(self, room: str, choice: str, account: str = "") -> dict[str, Any]:
         """/model: its one argument an account, a model or both (config.account_and_model), default clearing both, through the

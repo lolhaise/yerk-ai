@@ -989,8 +989,16 @@ USUAL = "the default"                                # a room whose rooms.toml n
 # slash commands on the rooms' own bot (Discord): the owner's only, every answer seen by the owner alone
 COMMANDS = {"model": "this room's model or account, from the next reply", "effort": "this room's thinking level, from the next reply",
             "new": "a new session in this room; memory stays", "stop": "end the running turn now",
-            "status": "what runs now"}
-CHOICE = {"model": "an account, a model or both, the account first; default clears both", "effort": "a thinking level, or default", "account": "an account by name, or default"}
+            "status": "what runs now", "fast": "fast mode for this room, on or off, from the next reply"}
+CHOICE = {"model": "an account, a model or both, the account first; default clears both", "effort": "a thinking level, or default", "account": "an account by name, or default",
+          "fast": "on or off; leave it out for this room's state"}
+# /fast (Yerkd.fast_command): never "on" unless Claude Code itself said so; a later process's refusal is said once (Room._start)
+FAST_ON_NEXT, FAST_OFF = "fast mode on from the next reply\nbilled to usage credits, not the plan", "fast mode off"
+FAST_NOT_ON, FAST_ONLY = "fast mode did not turn on\n{why}", "fast mode is for Fable 5.2 rooms\nthis room is on {model}"
+FAST_NO_CREDITS, FAST_CLAUDE, FAST_NO_ANSWER = "usage credits are off on account {account}", "Claude Code said:\n{why}", "Claude Code gave no answer"
+FAST_NOW, FAST_SAID = "this room: fast mode {setting}", "Claude Code reports: {state}"   # on, off or cooldown, its own word
+FAST_LOST, FAST_OUT = "fast mode is not running\n{why}\nreplies run at standard speed", "account {account} is out of usage credits"
+FAST_ROOMS, FAST_CHOICES = "fast mode on: {rooms}", "not a choice: {choice}\nthe choices: on, off"
 NOT_OWNER, NOT_A_ROOM = "only the owner can use this", "this channel is not a Yerk room"
 NO_OWNER = "set [discord] owner in yerkd.toml"       # every command, while yerkd.toml names no owner
 WATCHED = "{room} answers in <#{own}>, not here"     # a channel a room watches: read, never written to
@@ -998,6 +1006,17 @@ NEW_NEXT = "new session from the next message\nmemory stays"
 STOPPED = "stopped with /stop"                       # the stopped turn's card
 STOP_DONE, NOTHING_TO_STOP = "stopped the running turn", "nothing is running here"
 NOT_RUN = "that did not run\nthe daemon's log says why"
+
+
+def fast_why(said: str, account: str) -> str:
+    """Claude Code's refusal of /fast on in plain words: usage credits by the account's name, else its own reason without its
+    "Fast mode unavailable:" head or its command hint."""
+    why = (said.split(":", 1)[1] if said.startswith("Fast mode unavailable:") else said).split(" · ")[0].strip()
+    if "out of usage credits" in said.lower():          # the notice mid-session: "Fast mode disabled · Out of usage credits"
+        return FAST_OUT.format(account=account)
+    if "usage credits" in why.lower():
+        return FAST_NO_CREDITS.format(account=account)
+    return FAST_CLAUDE.format(why=line(why)) if why and said != FAST_NO_ANSWER else FAST_NO_ANSWER   # nothing came back
 
 
 def model_name(mid: str) -> str:

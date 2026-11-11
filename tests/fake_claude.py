@@ -50,6 +50,15 @@ message and a success result echoing the text. Variations:
 - `claude -p /usage`: a result whose text is FAKE_CLAUDE_USAGE_DIR/<config folder's name>.txt, the meters as Claude
   Code prints them on the folder's own login; under CLAUDE_CODE_OAUTH_TOKEN, or with no such file, the session's cost
   instead (no meters), as the real one prints under a one-year token. FAKE_CLAUDE_USAGE_SLOW=S waits S seconds first
+- /fast on, /fast off (a line, or `-p "/fast on"`): what 2.1.321 answers in -p (PROBES 2026-11-11; the accepted text from
+  its binary): an init, a synthetic assistant message and a result with num_turns 0 and fast_mode_state; launched without
+  "fastMode" in its --settings, "not available in the Agent SDK"; for a FAKE_CLAUDE_NO_CREDITS_DIRS folder, "requires usage
+  credits". Every result carries the session's fast_mode_state. FAKE_CLAUDE_STDIN: each line's text is appended there.
+- a line containing OUT_OF_CREDITS: the notice 2.1.321 streams once a turn while fast mode is out of usage credits
+- a line containing COOLDOWN, fast mode on: the session's fast_mode_state is cooldown from that result on
+- /fast: FAKE_CLAUDE_FAST_SLOW=S waits S seconds before answering; `-p "/fast on"` makes the folder 2.1.321 made
+  for its working folder under the config folder's projects/ (empty under --no-session-persistence), and with
+  FAKE_CLAUDE_FAST_EXIT=N prints nothing and exits N
 Turn and, the last part closes the case before (the next) run Starts_The_Example.
 """
 import json
@@ -109,6 +118,17 @@ failing = listed("FAKE_CLAUDE_FAIL_DIRS") and model == os.environ.get("FAKE_CLAU
 bad_model = bool(model) and model == os.environ.get("FAKE_CLAUDE_BAD_MODEL")
 
 
+def launch_settings():
+    v = argv[argv.index("--settings") + 1] if "--settings" in argv else ""
+    try:
+        return json.loads(v if v.lstrip().startswith("{") else Path(v).read_text()) if v else {}
+    except (OSError, ValueError):
+        return {}
+
+
+fast = {"launch": launch_settings().get("fastMode") is True, "state": "off"}
+
+
 def out(obj):
     sys.stdout.write(json.dumps(obj) + "\n")
     sys.stdout.flush()
@@ -121,7 +141,25 @@ def replay(msg):
 
 def result(text, error=False, model="fake-model"):
     out({"type": "result", "subtype": "success", "is_error": error, "result": text, "session_id": sid,
-         "modelUsage": {} if error else {model: {}}})
+         "modelUsage": {} if error else {model: {}}, "fast_mode_state": fast["state"]})
+
+
+def fast_command(text):
+    """/fast as 2.1.321 answers it under -p: the state it reaches, said by a synthetic message, no model call."""
+    time.sleep(float(os.environ.get("FAKE_CLAUDE_FAST_SLOW") or 0))
+    arg = text.strip()[len("/fast"):].strip()
+    if not fast["launch"]:
+        said = "Fast mode unavailable: Fast mode is not available in the Agent SDK"
+    elif arg == "off":
+        fast["state"], said = "off", "Fast mode OFF (this session only)"
+    elif listed("FAKE_CLAUDE_NO_CREDITS_DIRS"):
+        said = "Fast mode unavailable: Fast mode requires usage credits · /usage-credits to turn them on"
+    else:
+        fast["state"], said = "on", "↯ Fast mode ON · $16/$80 per Mtok (this session only)"
+    out({"type": "system", "subtype": "init", "session_id": sid, "model": model, "tools": [], "fast_mode_state": fast["state"]})
+    out({"type": "assistant", "message": {"model": "<synthetic>", "content": [{"type": "text", "text": said}]}, "session_id": sid})
+    out({"type": "result", "subtype": "success", "is_error": False, "result": said, "num_turns": 0, "total_cost_usd": 0,
+         "session_id": sid, "fast_mode_state": fast["state"]})
 
 
 def first(name):
@@ -185,6 +223,11 @@ def answer(text):
             "status": "allowed", "rateLimitType": "five_hour", "unifiedWindows": {
                 "five_hour": {"utilization": five, "resetsAt": 2000000000 + shift},
                 "seven_day": {"utilization": week, "resetsAt": 2000300000}}}})
+    if "COOLDOWN" in text and fast["state"] == "on":   # fast mode on and rate limited: standard speed for a while
+        fast["state"] = "cooldown"
+    if "OUT_OF_CREDITS" in text:               # fast mode on, the account out of usage credits: once a turn (fast mode page)
+        out({"type": "system", "subtype": "notification", "session_id": sid, "uuid": str(uuid.uuid4()),
+             "text": "Fast mode disabled \u00b7 Out of usage credits"})
     if "HOOK_ERROR" in text:                   # what Claude Code 2.1.301 streams when a hook fails, non-blocking
         out({"type": "system", "subtype": "notification", "session_id": sid, "uuid": str(uuid.uuid4()),
              "key": "stop-hook-error", "text": "Stop hook error occurred \u00b7 ctrl+o to see"})
@@ -216,9 +259,15 @@ def notice_turn(status, text, tasks=("bg1",)):
          "origin": {"kind": "task-notification"}, "modelUsage": {"fake-model": {}}})
 
 
+if one_shot and argv[argv.index("-p") + 1].startswith("/fast"):
+    if cfg:                                  # the real one names it after the working folder, every other character a dash
+        (Path(cfg) / "projects" / "".join(c if c.isalnum() else "-" for c in os.getcwd())).mkdir(parents=True, exist_ok=True)
+    if os.environ.get("FAKE_CLAUDE_FAST_EXIT"):
+        sys.exit(int(os.environ["FAKE_CLAUDE_FAST_EXIT"]))
 out({"type": "system", "subtype": "init", "session_id": sid, "model": "fake", "tools": []})
 if one_shot:
-    answer(argv[argv.index("-p") + 1])
+    asked = argv[argv.index("-p") + 1]
+    fast_command(asked) if asked.startswith("/fast") else answer(asked)
     sys.exit(0)
 while True:
     line = sys.stdin.readline()
@@ -228,6 +277,9 @@ while True:
         continue
     msg = json.loads(line)
     text = msg["message"]["content"]
+    if os.environ.get("FAKE_CLAUDE_STDIN"):
+        with open(os.environ["FAKE_CLAUDE_STDIN"], "a") as f:
+            f.write(json.dumps(text) + "\n")
     if "--resume" in argv and os.environ.get("FAKE_CLAUDE_ORPHANS") == "1" and first("orphans"):
         notice_turn("stopped", "", tasks=("bg1", "bg2"))
     if "STALL" in text:
@@ -235,6 +287,9 @@ while True:
             pass
         break
     replay(msg)
+    if text.strip().startswith("/fast"):
+        fast_command(text)
+        continue
     if "SLOW" in text and select.select([sys.stdin], [], [], 1.5)[0]:
         extra = json.loads(sys.stdin.readline())
         replay(extra)

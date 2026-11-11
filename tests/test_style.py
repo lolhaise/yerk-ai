@@ -169,6 +169,14 @@ def test_every_notice_is_state_first_plain_and_phone_width():
                                                            where=words.line(words.TOPIC_WHERE[1].format(rooms="example-room, example-quiet, family-room"))),
                 f"{words.DONE} " + words.TOPICS_MOVED.format(n=3, s="s"),
                 f"{words.WORKING} " + words.PART_CUT.format(part="pinned_memory", room="example-room-long", cap=14000, n=1400, s="s")]
+    refusals = ["Fast mode unavailable: Fast mode requires usage credits · /usage-credits to turn them on",   # PROBES 2026-11-11
+                "Fast mode unavailable: Fast mode is not available in the Agent SDK", "Fast mode disabled · Out of usage credits", ""]
+    notices += [f"{words.DONE} {words.FAST_ON_NEXT}", f"{words.DONE} {words.FAST_OFF}", f"{words.NOT_DONE} {words.FAST_ONLY.format(model='Opus 5.5')}",
+                f"{words.NOT_DONE} {words.FAST_CHOICES.format(choice='sideways')}",
+                *(f"{words.NOT_DONE} {words.FAST_NOT_ON.format(why=words.fast_why(r, 'five'))}" for r in refusals),
+                *(f"{words.WORKING} {words.FAST_LOST.format(why=words.fast_why(r, 'five'))}" for r in refusals)]
+    bare = f"{words.PLAIN} {words.FAST_NOW.format(setting='off')}\n{words.FAST_SAID.format(state='cooldown')}"   # /fast alone, as /effort's
+    assert not room_safe(bare) and all(words.width(x) <= words.PHONE for x in bare.splitlines())
     for text in notices:
         assert (state_first(text) or text.startswith(words.SUB)) and not room_safe(text), text
         assert all(words.width(x) <= words.PHONE for x in text.splitlines()), text

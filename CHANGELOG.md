@@ -8,6 +8,35 @@ version changes.
 
 ## 2026-11-11
 
+### fast-mode (#51)
+
+- `/fast` in a room's own channel turns Claude Code's fast mode on or off for that room, from the next reply (the
+  owner's order of 2026-11-11). Fast mode bills usage credits, never the plan, so it reaches Claude Code only in a room
+  where the owner typed `/fast on`, and only while that room runs on Fable 5.2 by its full id, `claude-fable-5-2`
+  (`/model fable` stores it). On an Opus model the launch setting alone turns fast mode on, so no Opus process ever gets
+  it; no worker, job, curate run, beat, health check, evidence judge or need gets it either.
+- `/fast on` first asks Claude Code itself, on the account the room is on now, with the local command `/fast on` (no
+  model request, no cost), and keeps the setting only when it answers on: "fast mode on from the next reply", "billed to
+  usage credits, not the plan". Refused, nothing is kept and the line says why: "usage credits are off on account
+  five", or Claude Code's own reason. In a room on another model: "fast mode is for Fable 5.2 rooms" and the room's
+  model. `/fast off` says "fast mode off"; `/fast` alone says the room's setting and what Claude Code last reported. A
+  switch off Fable 5.2 drops it, and the settings line ends "fast mode off".
+- A room with it on launches with `fastMode` in its settings file and sends `/fast on` before the first message of every
+  new process (fresh, resumed, or after a hop), never shown, ledgered or counted. A refusal there (a hop to an account
+  with usage credits off, credits run out mid-session) is said once in the room, and the reply still comes at standard
+  speed; a cooldown is no refusal. A `/fast on` there that gets no result, or fails, ends that process: the turn runs on
+  one launched as before, and the room is told once. `/status` says "fast mode on:" and the room while it is on. A room
+  with it off launches as before.
+- The copy a compaction runs on never gets fast mode, whatever the room's setting: fast replies were asked for, not a
+  fast compaction billed to credits. Once a copy is taken, the room runs at standard speed until its next new process.
+- While a room has it on, every turn in that room's process runs fast, a job's message into the room included: fast
+  mode is the session's, and switching it around one message would read the conversation again at the fast rate.
+- The check leaves nothing behind: the empty folder Claude Code makes under the account's `projects/` is removed. A
+  Fable 5.2 model that is not found drops fast mode with it, as `/model` does.
+- budgets.toml: `[code] lines` 28,898 to 29,066 with its dated note.
+- **Upgrading**: nothing to change. The rooms' slash commands are registered again at the next start, `/fast` with
+  them. No account has usage credits on today, so `/fast on` says so until the owner turns them on for an account.
+
 ### need-2026-11-11-85 (#?)
 
 - A room can read a file one of your emails carries now: a PDF quote, a picture, a document. The hands plug-in's mail
