@@ -1131,7 +1131,7 @@ def rules_main(private: Path, state: Path, dry: bool = False) -> int:
         return 2
     print("".join(f"{q['n']}. {q['kind']}: {q['label']} ({-q['saved']:+,} chars, evidence {q['rows']}): {q['why']}\n" for q in r["proposals"]), end="")
     print("".join(f"{n}: {a:,} now, {b:,} with every proposal" + (f", line {c:,}" if c else "") + "\n" for n, _, c, a, b in r["sizes"]), end="")
-    print("dry run: nothing written" if dry else f"proposals: {r['file']}" if r["file"] else "no proposals")
+    print(words.ADD_DRY if dry else f"proposals: {r['file']}" if r["file"] else "no proposals")
     return 1 if r["proposals"] else 0
 
 
