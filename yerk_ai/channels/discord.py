@@ -32,7 +32,7 @@
 - Replies: the final text only, split under 2,000 characters, never inside a code block.
 - Files: one path (`send_file`): a snapshot under a new name in the room's outbox, size and type
   checked against what the bot can send (measured, BOT_UPLOAD), the message id recorded, a
-  visible notice on any miss that names the limit in bytes.
+  visible notice on any miss that names the limit (in exact bytes only where MB would read the same).
 - Slash commands (/model, /effort, /new, /stop, /status): on connect exactly this install's, on the
   guilds its rooms live in, never global; the owner's only, in a room only, each the daemon method
   the room's tool or `yerk` command calls; every answer ephemeral, inside Discord's three seconds.
