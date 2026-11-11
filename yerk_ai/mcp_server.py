@@ -166,8 +166,10 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
 
     @mcp.tool()
     async def hold(wait_for: str, reason: str, *, ctx: Context) -> str:
-        """End your turn while you wait on a named event or worker. After this call write one short
-        line saying what you are waiting for, and make no more tool calls; the room hears when it happens."""
+        """End your turn while you wait on a worker or a named event. After this call write one short
+        line saying what you are waiting for, and make no more tool calls. A worker's result comes back to
+        the room by itself. Nothing watches any other event: the room hears of one only from the next
+        message, or from a job you schedule to check it."""
         return json.dumps(await daemon.tool_hold(caller_room(ctx), wait_for, reason))
 
     @mcp.tool(description=RECALL)
