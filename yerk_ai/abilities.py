@@ -6,6 +6,7 @@ and comes from the file, never from a guess (decision 16; the list itself, decis
 """
 from __future__ import annotations
 
+import functools
 import logging
 import re
 from pathlib import Path
@@ -120,6 +121,12 @@ def brief(name: str, ab: dict[str, Any], tab: dict[str, dict[str, Any]], s: Any)
     return " ".join(x for x in parts if x)
 
 
+@functools.cache
+def phrase(text: str) -> re.Pattern[str]:
+    """One `asked_as` phrase as a whole-word pattern, compiled once: the manifest's phrases outnumber re's own cache (512)."""
+    return re.compile(rf"\b{re.escape(text)}\b")
+
+
 def asked(prompt: str, s: Any, tab: dict[str, dict[str, Any]] | None = None) -> list[dict[str, Any]]:
     """The abilities a room message names by one of its `asked_as` phrases, as entries for the
     per-message recall part (`brief`), so the room answers from the manifest in its own words, never
@@ -131,4 +138,4 @@ def asked(prompt: str, s: Any, tab: dict[str, dict[str, Any]] | None = None) -> 
         return []
     low = prompt.lower()
     return [{"key": name, "text": brief(name, ab, tab, s), "cite": f"yerk explain {name}"} for name, ab in tab.items()
-            if any(re.search(rf"\b{re.escape(str(p).lower())}\b", low) for p in ab.get("asked_as", []))]
+            if any(phrase(str(p).lower()).search(low) for p in ab.get("asked_as", []))]
