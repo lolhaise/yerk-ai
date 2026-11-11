@@ -18,6 +18,7 @@ import path from "node:path";
 import { takeWindow } from "../common.mjs";
 import { readAnswers, writtenQuestion } from "./commons.js";
 import { detectChallenge, judgePage } from "./detect.js";
+import { DOCUMENT_CAP, documentKind, mayBeDocument } from "./document.js";
 import { collapse, extractHtml } from "./extract.js";
 import { isPrivateHost, readJson, recordUsage, sleep, writeJsonAtomic } from "./util.js";
 
@@ -319,7 +320,7 @@ export async function localFetchRung({ url, settings, extractMode, signal, timeo
   try {
     const sig = signal ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs);
     ({ res, finalUrl: hopFinal } = await fetchPublicOnly(url, { headers: browserHeaders(settings), signal: sig }, fetchImpl, settings.blockPrivateHosts));
-    buf = await readCapped(res, settings.localMaxBytes);
+    buf = await readCapped(res, mayBeDocument(res.headers.get("content-type")) ? Math.max(settings.localMaxBytes, DOCUMENT_CAP) : settings.localMaxBytes);
   } catch (err) {
     if (signal?.aborted) throw err;
     const wall = localNetWall(err);
@@ -332,6 +333,10 @@ export async function localFetchRung({ url, settings, extractMode, signal, timeo
   const status = res.status;
   const ctype = String(res.headers.get("content-type") || "").toLowerCase();
   const finalUrl = hopFinal || res.url || url;
+  // A PDF or a Word file (need 87, document.js), known by its own first bytes: the read is its bytes, which web_fetch saves
+  // for the room and reads the words of; a .docx's type says "xml" and was once read as text.
+  const kind = status < 400 && !/html|^text\/|json/.test(ctype) ? documentKind(buf) : "";
+  if (kind) return { rung: "F1", ok: true, status, finalUrl, ctype, ex: { content: "" }, document: { kind, buf }, ms: Date.now() - t0, outcome: "ok" };
   if (/^(image|audio|video|font)\/|application\/(pdf|zip|octet-stream|x-|vnd\.)/.test(ctype) && !/xml|json/.test(ctype)) {
     return { rung: "F1", ok: false, wall: "binary_content", outcome: `binary:${ctype.split(";")[0]}`, status, ms: Date.now() - t0, next: "stop" };
   }

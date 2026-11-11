@@ -7,7 +7,7 @@
 # The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and
 # Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 [session_start]
-total = 130071
+total = 130223
 
 # Load order, most stable first, so the cached start of the prompt survives.
 # The first parts are Claude Code's own (its default prompt, the built-in tools
@@ -253,11 +253,17 @@ total = 130071
 # plug-in's branch need-2026-11-11-85 (1c6df9d) builds it, 300 more, so 1,525 as sent (31 over, as each of the five goes;
 # all five 9,974 built, 10,129 sent, need 75's 2 over kept); so 10,131, no other line lowered for it, the total rose by
 # the 300 (to 130,071 on main's 129,771).
+# 2026-11-11, need-2026-11-11-87: web_fetch reads a PDF or a Word file at a link (its words, a PDF page by page, the file
+# saved in the room's work folder for Read), since a room asked what a province's form asks for met the binary wall on the
+# form's Word file and on two PDF copies of it, and answered off a forms list page and search previews; its description
+# one sentence longer, 152 more as sent (a plug-in's description goes out as written), so the other entries (web-ladder's
+# four and the placeholder) 3,581 on the 3,429 line; no other line lowered for it, the total rose by the 152 (to 130,223
+# on main's 130,071).
 [session_start.claude_code]
 claude_code_prompt = 10966
 builtin_tools = 12132
 yerk_tools = 26700
-deferred_tool_names = 3429
+deferred_tool_names = 3581
 mcp__hands__ = 10131
 mcp__web-ladder__web_image = 913
 skills = 0

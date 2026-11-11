@@ -92,6 +92,29 @@ def test_yerk_explain_commons_answers_answers_from_the_abilities_file_with_no_ke
     assert [e["key"] for e in found] == ["commons-answers"]
 
 
+def test_yerk_explain_web_documents_answers_from_the_abilities_file_and_web_fetch_keeps_a_document_s_bytes(tmp_path, capsys):
+    """Need 87 (2026-11-11): a room asked what a province's form asks for met web_fetch's binary wall on the form's own Word
+    file and on two PDF copies of it, "these tools read no other binary file", and answered off a forms list page and
+    search previews. web_fetch now keeps a PDF or a Word file's bytes, saves the file in the room's work folder and answers
+    with its words (plugins/web/test/tools.test.mjs has the wall and the read of each kind), an ability of its own, free."""
+    assert cli.main(["explain", "web-documents", "--private", str(EXAMPLE_PRIVATE), "--state", str(tmp_path)]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    tab = abilities.manifest()
+    ab = tab["web-documents"]
+    assert lines[:2] == [f"{words.DONE} web-documents: {words.ability('on')[1]}", ab["what"]]
+    assert all(w in ab["what"] for w in ("PDF", "Word file", "web_fetch", "work folder", "Read", "render"))
+    assert ab["tier"] == "free" and "key" not in ab and "pdftotext" in ab["needs"]
+    found = abilities.asked("can you read the pdf at this link? it's the form's pdf", None, tab)
+    assert "web-documents" in [e["key"] for e in found]
+    lib = REPO / "plugins" / "web" / "lib"
+    wall = (lib / "fetch" / "ladder.js").read_text()
+    assert "these tools read no other binary file" in wall and "web_fetch reads a PDF or a Word file itself" in wall
+    assert "document: { kind, buf }" in (lib / "fetch" / "local.js").read_text() and "document: { kind, buf: bytes }" in wall
+    tools = (lib / "tools.mjs").read_text()
+    assert "if (p.document) return documentRead(" in tools and "A PDF or a Word file (.docx, .doc, .odt) comes back as its words" in tools
+    assert "export async function readDocument" in (lib / "fetch" / "document.js").read_text()
+
+
 def test_yerk_explain_research_ids_answers_from_the_abilities_file_on_with_the_exa_key(tmp_path, capsys):
     """Need 49 (2026-11-04): a room's web_research came back after 60 s as a timeout with no run id, so web_research_result had
     nothing to collect: Claude Code cut the call at the room's own one-minute limit on the server while the plug-in waited

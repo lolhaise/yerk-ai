@@ -16,6 +16,7 @@ import { BrowserbaseError, bbFetch } from "./browserbase.js";
 import { writtenQuestion } from "./commons.js";
 import { registrableDomain, siteGroupFor } from "./contexts.js";
 import { judgePage } from "./detect.js";
+import { documentKind } from "./document.js";
 import { collapse, extractHtml, extractMarkdown, markdownToText } from "./extract.js";
 import { runSessionRung, wallFromNavError } from "./l3.js";
 import { closeLocalBrowser, localBrowserPresent, localBrowserRung, localBrowserState, localCooldownFor, localFetchRung, localTrawlRung, markLocalBlocked, rememberRead, siteMemoryPlan, takeLocalSlot } from "./local.js";
@@ -38,7 +39,7 @@ const WALL_TEXT = {
   dns_error: ["The hostname does not resolve.", "no", "Check the URL spelling."],
   connection_failed: ["The site refused or dropped the connection.", "yes", "Retry; the site may be down."],
   too_large: ["The page is over Browserbase Fetch's 5 MB limit and the browser rung could not read it either.", "no", "Fetch a smaller page or a specific section."],
-  binary_content: ["The URL returns a binary file, not a web page.", "no", "An image: use web_image(url), then Read the file it saves; these tools read no other binary file."],
+  binary_content: ["The URL returns a binary file, not a web page.", "no", "An image: use web_image(url), then Read the file it saves; web_fetch reads a PDF or a Word file itself, and these tools read no other binary file."],
   invalid_url: ["The URL is not a public http(s) address.", "no", "Use a public http or https URL."],
   guest_choice: ["This Bookings page stayed on Microsoft's \"Sign in or continue as guest\" screen: its meeting types and open times show only after a click on Continue as guest, which only the machine's own browser (F2) makes, and no rung got past it.", "maybe", "Retry in a minute (the machine's browser may have been busy); if it stays, ask the page's owner for the open times in words."],
   empty: ["Every rung loaded the page but found no readable text.", "maybe", "The content may be inside an image, a canvas or an app that needs interaction."],
@@ -157,6 +158,9 @@ async function fetchRung({ rung, url, proxies, timeoutMs, settings, apiKey, extr
   // The Fetch API does not report the post-redirect URL, so finalUrl stays the requested one.
   const finalUrl = url;
   if (res.encoding === "base64") {
+    const bytes = Buffer.from(String(res.content ?? ""), "base64");
+    const kind = status >= 200 && status < 400 ? documentKind(bytes) : ""; // a PDF or a Word file (need 87), as F1 keeps one
+    if (kind) return { rung, ok: true, status, finalUrl, ctype, ex: { content: "" }, document: { kind, buf: bytes }, ms: Date.now() - t0, outcome: "ok", ...paid };
     return { rung, ok: false, wall: "binary_content", outcome: `binary:${ctype.split(";")[0] || "unknown"}`, status, ms: Date.now() - t0, next: "stop", ...paid };
   }
   const content = typeof res.content === "string" ? res.content : JSON.stringify(res.content ?? "", null, 2);
@@ -273,6 +277,7 @@ function successPayload({ url, win, attempts, extractMode, startedAt }) {
     tookMs: Date.now() - startedAt,
     fetchedAt: new Date().toISOString(),
     ...(warnings.length ? { warning: warnings.join("; ") } : {}),
+    ...(win.document ? { document: win.document } : {}), // a PDF or a Word file's kind and bytes, which tools.mjs reads
     paid: paidRungs(attempts),
   };
 }
