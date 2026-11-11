@@ -81,3 +81,25 @@ def test_landed_and_one_replys_parts_never_read_the_rooms_history(tmp_path):
     assert [r["key"] for r in rows1] == [r["key"] for r in rows2] == ["k1:0", "k1:1"]
     assert [r["body"] for r in rows1] == ["one", "two"] and led1.deliveries_of("r", "nokey") == []
     assert b <= a + 2, f"one reply's parts took {a} ticks in a room of 100 replies and {b} in one of 4,000"
+
+
+def test_last_reply_reads_its_own_parts_never_the_other_rooms_replies(tmp_path):
+    """Ledger.last_reply runs on the event loop for each message the owner sends in a room that keeps taste (taste.py): its
+    parts are read by key range, so the other rooms' sent replies cost it nothing (a LIKE on the key read every sent row)."""
+    def ledger(name, others):
+        led = Ledger(tmp_path / name)
+        led.db.execute("BEGIN")
+        for i in range(others):
+            led.db.execute("INSERT INTO deliveries (key, room, kind, body, state, created, sent) VALUES (?, 'other', 'reply', 'x', 'sent', ?, ?)",
+                           (f"o{i:011d}:0", i, i))
+        for key, kind, body, at in (("k0:0", "reply", "older", 1.0), ("k1:0", "reply", "one", 5.0), ("k1:1", "reply", "two", 6.0),
+                                    ("k1:hooks:0", "notice", "the hooks line", 7.0)):     # a longer key under the same start: not a part
+            led.db.execute("INSERT INTO deliveries (key, room, kind, body, state, created, sent, message_id) VALUES (?, 'r', ?, ?, 'sent', ?, ?, ?)",
+                           (key, kind, body, at, at, f"m-{key}"))
+        led.db.execute("COMMIT")
+        return led
+    led1, led2 = ledger("a.sqlite", 0), ledger("b.sqlite", 4000)
+    a, r1 = steps(led1, lambda: led1.last_reply("r"))
+    b, r2 = steps(led2, lambda: led2.last_reply("r"))
+    assert r1 == r2 == {"id": "m-k1:0", "sent": 5.0, "text": "one\ntwo"} and led1.last_reply("none") is None
+    assert b <= a + 2, f"the room's last reply took {a} ticks beside no other room's replies and {b} beside 4,000"

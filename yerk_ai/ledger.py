@@ -606,8 +606,8 @@ class Ledger:
                              "ORDER BY sent DESC LIMIT 1", (room,))) is None:
             return None
         base = str(r["key"]).rsplit(":", 1)[0]
-        parts = sorted((p for p in self._select("SELECT key, message_id, body, sent FROM deliveries WHERE key LIKE ? AND "
-                                                 "state = 'sent'", (f"{base}:%",)) if p["key"].rsplit(":", 1)[0] == base),
+        parts = sorted((p for p in self._select("SELECT key, message_id, body, sent FROM deliveries WHERE key >= ? AND key < ? "
+                                                 "AND +state = 'sent'", (f"{base}:", f"{base};")) if p["key"].rsplit(":", 1)[0] == base),
                        key=lambda p: int(p["key"].rsplit(":", 1)[1]))
         return {"id": str(parts[0]["message_id"]), "sent": float(parts[0]["sent"]), "text": "\n".join(str(p["body"]) for p in parts)}
 
