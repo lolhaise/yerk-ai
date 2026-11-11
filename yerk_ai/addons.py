@@ -216,7 +216,7 @@ def add(source: str, private: Path, state: Path, dry: bool = False, run: Run = s
             say(f"{W.NOT_DONE} " + W.NOT_ADDED.format(why=W.no_paths((r.stderr or "git clone failed").strip().splitlines()[-1])))
             return 1
         name, ab = entry(scratch)
-        ins, folder = ab.get("install", {}), state / DIR / name
+        ins, folder = (ab["install"] if isinstance(ab.get("install"), dict) else {}), state / DIR / name   # check() refuses any other
         say(W.step(W.ADD_STEP, "fetch", False, src=src))
         rtext = (private / "rooms.toml").read_text()
         ytext = (private / "yerkd.toml").read_text() if (private / "yerkd.toml").is_file() else ""
