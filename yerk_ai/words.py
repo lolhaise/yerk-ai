@@ -832,6 +832,10 @@ SPEED_WAS, SPEED_OF = "{what} {now}, day before {was}", {"first": "first line", 
 SHADOW, NO_SHADOW = "shadow flag {rule}: {n}", "shadow flags: none"
 SPENT = "spent {day}: US${usd:.2f} on {n} calls"                     # the spend rows, one per paid call (ledger.spent)
 SPEND = "spend {day} US${usd:.2f} ({n} call{s}) · week US${week:.2f}"     # an uncapped install's, every day (status.spend_line)
+WEB_PAST, WEB_REACHED = "{what}: {now} in {month} > {limit}", "{what} reached {limit} in {month}"   # a web plan alert, once
+WEB_ALERT = "web plug-in alert in {month}"                           # an alerts.log line in no shape the diff knows
+WEB_WHAT = {"fetchCalls": "web fetches", "proxy": "web proxy", "browser": "web browser", "exa": "Exa searches",
+            "parallel-paid": "Parallel searches"}                   # whose meter: Browserbase's three, then the search engines
 UNKNOWN, NOT_ANSWERING_WHY = "{what}: unknown, {why}", "yerkd not answering"
 DEAD, NO_YERKD, NO_DEAD = "dead turns: {n}, {name}, last {at}", "no yerkd answers", "dead turns: none in 24h"
 SWEPT, SWEEP_FAILED = "swept: {kinds}", "retention failed: {why}"     # the night's sweep (retention.py)
