@@ -233,7 +233,7 @@ class Room:
         self.context = ledger.last_context(str((SessionTable(state / "sessions.json").get(name) or {}).get("session_id") or ""))
         self.compactions: int | None = None       # the live session's compactions since it began (/status); None: not known,
                                                   # a session resumed at a daemon start; 0 from each newly minted one (_start)
-        self.grown = True                        # the session grew since an idle compaction was last tried
+        self.grown = True                         # the session grew since an idle compaction was last tried
         self.shortening = self.early = False      # a compaction holds the room; a message waiting on it has its card up
         self.precompact_within = precompact       # _ended's copy compaction, a share of the window; 0 is off
         self.fork: RoomProcess | None = None      # the copy being compacted off to the side (_precompact), at most one
