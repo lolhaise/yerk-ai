@@ -22,10 +22,16 @@ version changes.
   model. `/fast off` says "fast mode off"; `/fast` alone says the room's setting and what Claude Code last reported. A
   switch off Fable 5.2 drops it, and the settings line ends "fast mode off".
 - A room with it on launches with `fastMode` in its settings file and sends `/fast on` before the first message of every
-  new process (fresh, resumed, after a hop or a compaction), never shown, ledgered or counted. A refusal there (a hop to
-  an account with usage credits off, credits run out mid-session) is said once in the room, and the reply still comes at
-  standard speed. `/status` says "fast mode on:" and the room while it is on. A room with it off launches as before.
-- budgets.toml: `[code] lines` 28,898 to 29,047 with its dated note.
+  new process (fresh, resumed, or after a hop), never shown, ledgered or counted. A refusal there (a hop to an account
+  with usage credits off, credits run out mid-session) is said once in the room, and the reply still comes at standard
+  speed; a cooldown is no refusal. A `/fast on` there that gets no result, or fails, ends that process: the turn runs on
+  one launched as before, and the room is told once. `/status` says "fast mode on:" and the room while it is on. A room
+  with it off launches as before.
+- The copy a compaction runs on never gets fast mode, whatever the room's setting: fast replies were asked for, not a
+  fast compaction billed to credits. Once a copy is taken, the room runs at standard speed until its next new process.
+- The check leaves nothing behind: the empty folder Claude Code makes under the account's `projects/` is removed. A
+  Fable 5.2 model that is not found drops fast mode with it, as `/model` does.
+- budgets.toml: `[code] lines` 28,898 to 29,066 with its dated note.
 - **Upgrading**: nothing to change. The rooms' slash commands are registered again at the next start, `/fast` with
   them. No account has usage credits on today, so `/fast on` says so until the owner turns them on for an account.
 
