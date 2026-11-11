@@ -58,5 +58,5 @@ select = ["E4", "E7", "E9", "F"]
 # F811: a pytest fixture imported from another test module and named again as a test's parameter (12 hits in two files)
 "tests/test_jobs.py" = ["F811"]
 "tests/test_reliability.py" = ["F811"]
-# E731: one lambda bound to a name where a def would be three lines for a one-line helper (move.py:237)
+# E731: one lambda bound to a name where a def would be three lines for a one-line helper (move.py:258)
 "yerk_ai/move.py" = ["E731"]
