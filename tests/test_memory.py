@@ -4,6 +4,7 @@ recall bench and the manifest. Every value here is a placeholder."""
 import json
 import os
 import re
+import shutil
 import sqlite3
 import time
 import tomllib
@@ -170,6 +171,46 @@ def test_a_former_rooms_name_is_not_a_non_owner_rooms_history(tmp_path):
     assert len(memory.room_items(s, "family", now, rid="f-new")) == 2                  # the owner view, by name too
     assert len(memory.topic_hits(s, "family", "decided on the kettle?", set(), now, rid="f-new")) == 2
     assert len(memory.room_items(s, "family", now, rid="family", owner=False)) == 0   # an old line never reaches a non-owner room
+
+
+def test_a_past_days_lines_are_parsed_once_and_read_again_when_its_size_or_time_changes(tmp_path, monkeypatch):
+    """Every message reads the room's last 14 day logs (topic_hits); a past day's parsed lines are kept while its path, size
+    and modification time hold and today's are read every time, and what comes back is a fresh read's: after a past day
+    is appended to, rewritten at the same size and replaced (cleanup F3-06)."""
+    s = tree(tmp_path)
+    now, at = datetime(2026, 1, 6, 20, tzinfo=UTC), datetime(2026, 1, 5, 9, tzinfo=UTC)
+
+    def line(i: int, body: str) -> str:
+        return memory.format_line(at + timedelta(minutes=i), "example-room", "example-room", "owner", "", body, "room", f"m{i}")
+    past, today = s.daily / "2026-01-05.md", s.daily / "2026-01-06.md"
+    past.write_text("# 2026-01-05\n\n" + "".join(line(i, f"the teal kettle {i}") + "\n" for i in range(3)))
+    today.write_text("# 2026-01-06\n\n" + line(9, "the kettle today") + "\n")
+    parsed: list[str] = []
+    real = memory.parse_line
+    monkeypatch.setattr(memory, "parse_line", lambda raw: parsed.append(raw) or real(raw))
+
+    def read() -> list:
+        return list(memory.room_lines(s, "example-room", now))
+
+    def fresh(n: int) -> list:                         # the same files in a folder never read before: a read from disk
+        shutil.copytree(tmp_path / "private", tmp_path / f"fresh{n}" / "private")
+        return list(memory.room_lines(memory.settings(tmp_path / f"fresh{n}" / "private", tmp_path / f"fresh{n}" / "state",
+                                                      {"timezone": "UTC"}), "example-room", now))
+    first = read()
+    assert first == fresh(1) and [ln.body for _, _, ln, _ in first] == ["the kettle today", *(f"the teal kettle {i}" for i in range(3))]
+    parsed.clear()
+    assert read() == first and parsed == [line(9, "the kettle today")]        # the past day parsed once, today's every time
+    with past.open("a") as f:
+        f.write(line(3, "the teal kettle 3") + "\n")
+    assert read() == fresh(2) and len(read()) == 5                              # appended: its size changed
+    size = past.stat().st_size
+    past.write_text(past.read_text().replace("teal", "blue"))
+    st = past.stat()
+    os.utime(past, ns=(st.st_atime_ns, st.st_mtime_ns + 1_000_000_000))      # a later write's time: two in one clock tick share one
+    assert past.stat().st_size == size and read() == fresh(3) and "blue" in read()[1][2].body
+    (new := tmp_path / "new.md").write_text("# 2026-01-05\n\n" + line(4, "a red kettle") + "\n")
+    os.replace(new, past)
+    assert read() == fresh(4) and [ln.body for _, _, ln, _ in read()] == ["the kettle today", "a red kettle"]
 
 
 def test_the_example_layer_never_captures_into_the_repo(tmp_path):
