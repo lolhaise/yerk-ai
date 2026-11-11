@@ -320,7 +320,7 @@ async function openAndDrive({ base, apiKey, projectId, url, settings, ctx, proxi
   return { page, driveError, sessionSeconds: (Date.now() - t0) / 1000, sessionId: session.id, settled, blockPictures, proxyBytesEst };
 }
 
-// Returns { page, driveError, ctxNote, proxies, error? } for the ladder to judge.
+// Returns { page, driveError, ctxNote, proxies, error?, first? } for the ladder to judge.
 export async function runSessionRung({ base, apiKey, projectId, url, hostname, settings, budgetMs, signal, fetchImpl, blockPictures = false, proxiesOverride }) {
   const deadline = Date.now() + Math.max(5000, budgetMs);
   let ctx = null;
@@ -329,6 +329,9 @@ export async function runSessionRung({ base, apiKey, projectId, url, hostname, s
   }
   const ctxNote = ctx?.note;
   let proxies = typeof proxiesOverride === "boolean" ? proxiesOverride : settings.l3Proxies;
+  // A proxied session the provider refused is billed too (its seconds and its proxy bytes): it goes back beside the
+  // retry, or beside the error when the retry could not open, and the ladder books it as its own row (paidRungs).
+  let first;
   try {
     let run;
     try {
@@ -346,12 +349,13 @@ export async function runSessionRung({ base, apiKey, projectId, url, hostname, s
     // Proxy providers refuse some site categories; the docs' first fix is "try without proxies".
     if (proxies && run.page?.navError && wallFromNavError(run.page.navError) === "proxy_restricted" && deadline - Date.now() > 12000) {
       proxies = false;
+      first = { sessionSeconds: run.sessionSeconds, proxyBytesEst: run.proxyBytesEst };
       const retry = await openAndDrive({ base, apiKey, projectId, url, settings, ctx: ctx?.id ? ctx : null, proxies, deadline, signal, fetchImpl, blockPictures });
-      return { ...retry, ctxNote, proxies, proxyRetry: true };
+      return { ...retry, ctxNote, proxies, proxyRetry: true, first };
     }
     return { ...run, ctxNote, proxies };
   } catch (err) {
-    return { page: null, error: err, ctxNote, proxies };
+    return { page: null, error: err, ctxNote, proxies, ...(first ? { first } : {}) };
   } finally {
     ctx?.done?.({ used: true });
   }

@@ -643,3 +643,29 @@ test("a browser session sent off-site is refused at L3n and L3, and both session
   assert.deepEqual(r.paid.map((p) => [p.rung, p.proxies]), [["L1", false], ["L2", true], ["L3n", false], ["L3", true]]);
   assert.ok(r.paid.find((p) => p.rung === "L3").bytes >= 1048576, "the proxied session's bytes estimate is booked");
 });
+
+// F7-10: a proxied session whose provider refuses the site is retried without proxies (l3.js runSessionRung); Browserbase
+// bills both sessions, so the first is returned beside the retry and booked as its own row.
+const READ_PAGE = { url: "https://www.classifieds.test/b-city/used-lamp/k0l1700272", title: "Brass floor lamp", html: page("Brass floor lamp", `<main><h1>Brass floor lamp</h1><p>${LISTING_TEXT}</p><p>${LISTING_TEXT}</p></main>`), text: `${LISTING_TEXT} ${LISTING_TEXT}` };
+
+test("a proxied session the proxy provider refused is booked beside its retry without proxies, also when the retry could not open", async () => {
+  const refused = { url: "about:blank", title: "", html: "", text: "", navError: "page.goto: net::ERR_TUNNEL_CONNECTION_FAILED at https://www.classifieds.test/" };
+  const read = sessionRig({ sessions: (body) => (body.proxies ? refused : READ_PAGE), overrides: { l3NoProxyFirst: false } });
+  const r = await offsiteRun(READ_PAGE.url, read.deps);
+  assert.equal(r.extractor, "fetch-plus:L3");
+  assert.equal(read.made.size, 2, "the proxied session, then its retry without proxies");
+  assert.deepEqual(r.paid.map((p) => [p.rung, p.proxies]), [["L1", false], ["L2", true], ["L3", true], ["L3", false]]);
+  assert.ok(r.paid[2].bytes >= 1048576 && r.paid[2].seconds >= 0, "the refused session's proxy bytes estimate and its seconds are booked");
+  assert.equal(r.paid[3].bytes, 0, "the retry rode no proxy");
+  let n = 0;
+  const lost = sessionRig({ sessions: () => refused, overrides: { l3NoProxyFirst: false } });
+  const create = lost.deps.fetchImpl;
+  lost.deps.fetchImpl = async (url, init = {}) => (String(url).endsWith("/v1/sessions") && init.method === "POST" && ++n === 2 ? json({ error: "unavailable" }, 503) : create(url, init));
+  const p = await offsiteRun(READ_PAGE.url, lost.deps);
+  assert.equal(p.extractor, "fetch-plus:failed:bb_unavailable");
+  assert.deepEqual(p.paid.map((x) => [x.rung, x.proxies]), [["L1", false], ["L2", true], ["L3", true]], "the retry never opened; the refused session is still booked");
+  const off = sessionRig({ sessions: (body) => (body.proxies ? refused : LANDED), overrides: { l3NoProxyFirst: false, l3BlockPictures: false } });
+  const q = await offsiteRun(READ_PAGE.url, off.deps);
+  assert.equal(q.extractor, "fetch-plus:failed:offsite_redirect");
+  assert.deepEqual(q.paid.map((x) => [x.rung, x.proxies]), [["L1", false], ["L2", true], ["L3", true], ["L3", false]], "the retry was sent off-site and refused; both sessions are still booked");
+});

@@ -187,7 +187,7 @@ async function sessionRung({ url, hostname, settings, apiKey, projectId, extract
   const t0 = Date.now();
   const run = await runSessionRung({ base: settings.apiBaseUrl, apiKey, projectId, url, hostname, settings, budgetMs, signal, fetchImpl, blockPictures, proxiesOverride: proxies });
   const ms = Date.now() - t0;
-  const extra = { ctxNote: run.ctxNote, proxies: run.proxies, proxyRetry: run.proxyRetry, driver: run.page?.driver, pictures: blockPictures ? "off" : "on", settled: run.settled, captchaSeen: Boolean(run.page?.captcha?.started), billed: Boolean(run.sessionId), seconds: run.sessionSeconds || 0, bytes: run.proxyBytesEst || 0 };
+  const extra = { ctxNote: run.ctxNote, proxies: run.proxies, proxyRetry: run.proxyRetry, driver: run.page?.driver, pictures: blockPictures ? "off" : "on", settled: run.settled, captchaSeen: Boolean(run.page?.captcha?.started), billed: Boolean(run.sessionId), seconds: run.sessionSeconds || 0, bytes: run.proxyBytesEst || 0, ...(run.first ? { first: { seconds: run.first.sessionSeconds || 0, bytes: run.first.proxyBytesEst || 0 } } : {}) };
   if (run.error) {
     const wall = run.error instanceof BrowserbaseError ? wallFromBbError(run.error) : "nav_error";
     return { rung: "L3", ok: false, wall, outcome: `session:${wall}`, ms, ...extra };
@@ -241,9 +241,13 @@ function rungLabel(a) {
   return `L3 browser session${a.proxies ? " + proxies" : ""} + captcha solver${a.pictures === "off" ? ", pictures off" : ""}${a.ctxNote ? ` (${a.ctxNote})` : ""}${a.proxyRetry ? ", retried without proxies" : ""}`;
 }
 
-// The Browserbase calls a read paid for, one per billed rung: tools.mjs books each as a spend row.
+// The Browserbase calls a read paid for, one per billed rung: tools.mjs books each as a spend row. A session retried
+// without proxies carries the refused proxied one as `first` (l3.js runSessionRung), booked as its own row before it.
 function paidRungs(attempts) {
-  return attempts.filter((a) => a.billed).map((a) => ({ rung: a.rung, proxies: a.rung === "L2" || (/^L3/.test(a.rung) && a.proxies === true), seconds: a.seconds || 0, bytes: a.bytes || 0 }));
+  return attempts.flatMap((a) => [
+    ...(a.first ? [{ rung: a.rung, proxies: true, seconds: a.first.seconds, bytes: a.first.bytes }] : []),
+    ...(a.billed ? [{ rung: a.rung, proxies: a.rung === "L2" || (/^L3/.test(a.rung) && a.proxies === true), seconds: a.seconds || 0, bytes: a.bytes || 0 }] : []),
+  ]);
 }
 
 function successPayload({ url, win, attempts, extractMode, startedAt }) {
@@ -364,7 +368,7 @@ function refuseOffsite(r, to) {
     const u = new URL(landed);
     landed = `${u.origin}${u.pathname}`; // no query string: an ad landing's tracking is not worth repeating
   } catch {}
-  return { rung: r.rung, ok: false, wall: "offsite_redirect", verdict: "offsite", outcome: `offsite:${to}`, offsite: to, landed: landed.slice(0, 120), status: r.status, ms: r.ms, phases: r.phases, ctxNote: r.ctxNote, proxies: r.proxies, proxyRetry: r.proxyRetry, pictures: r.pictures, driver: r.driver, ...(r.billed ? { billed: true, seconds: r.seconds, bytes: r.bytes } : {}) };
+  return { rung: r.rung, ok: false, wall: "offsite_redirect", verdict: "offsite", outcome: `offsite:${to}`, offsite: to, landed: landed.slice(0, 120), status: r.status, ms: r.ms, phases: r.phases, ctxNote: r.ctxNote, proxies: r.proxies, proxyRetry: r.proxyRetry, pictures: r.pictures, driver: r.driver, ...(r.billed ? { billed: true, seconds: r.seconds, bytes: r.bytes } : {}), ...(r.first ? { first: r.first } : {}) };
 }
 
 // ---- entry -----------------------------------------------------------------------
