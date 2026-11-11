@@ -284,6 +284,8 @@ def _peel(argv: list[_Word], depth: int) -> list[list[str]]:
             argv = argv[1:]
         elif word == "function":
             argv = argv[2:]
+        elif word == "coproc":  # bash runs what follows in the background, its NAME before a compound command a name
+            argv = argv[2:] if len(argv) > 2 and argv[2][0] in {*_KEYWORDS, "for", "case", "select"} else argv[1:]
         elif word in ("for", "case", "select"):
             return []  # a loop or case header, not a command
         elif name in _SHELLS or name in ("eval", "su"):
