@@ -423,7 +423,7 @@ def run(private: Path, state: Path, since: str = "", dry: bool = False, now: flo
            **promote(s, private, state, c, days, backup, dry, model, now)}
     out["checked"] = undone + out["checked"]
     try:                                                 # then the rule files: proposed, never applied (PR curate-rules)
-        out["rules"] = rules(private, state, s, dry, now)["card"]
+        out["rules"] = rules(private, state, s, dry, now, reuse=True)["card"]    # the day's on file stand: the card's numbers
     except (Exception, SystemExit) as e:                 # rooms.toml or budgets.toml unreadable: the morning says it
         out["rules"], out["checked"] = [], out["checked"] + [f"rules: not proposed, {type(e).__name__}: {words.no_paths(str(e))[:80]}"]
     if not dry:
@@ -1005,17 +1005,27 @@ def say(private: Path, state: Path, day: str, lines: list[str], post: Callable[[
 
 
 def rules(private: Path, state: Path, s: memory.Settings, dry: bool, now: float,
-          post: Callable[[dict[str, Any]], dict[str, Any]] | None = None) -> dict[str, Any]:
+          post: Callable[[dict[str, Any]], dict[str, Any]] | None = None, reuse: bool = False) -> dict[str, Any]:
     """The rules phase: the proposals, kept in <memory>/rules-proposals/<day>.md (0600) and <state>/curate-rules.json unless
-    `dry` (the applies on file kept for undo), and the card said in the machine room at most once a day, never with none."""
+    `dry` (the applies on file kept for undo), and the card said in the machine room at most once a day, never with none.
+    `reuse` (curate's own phase): the day's proposals on file (an earlier `yerk curate --rules` of that day) stand as they
+    are, so the numbers its card showed are the numbers `--apply` takes; they are built only when none of the day are on file."""
     day = datetime.fromtimestamp(now, s.tz).date().isoformat()
-    props, sizes, name = propose(private, state, s, now)
-    with nullcontext() if dry else memory.daily_lock(s.daily):    # the needs' lock: a need filed now keeps its number and block
-        needs.around(props, needs.numbers(state, day))           # the day's needs keep theirs; the proposals take the rest
-        out: dict[str, Any] = {"day": day, "proposals": props, "sizes": sizes, "card": card(day, props), "file": ""}
-        if props and not dry:
-            (folder := s.root / PROPOSALS).mkdir(mode=0o700, parents=True, exist_ok=True)
-            out["file"] = str(write_private(folder / f"{day}.md", page(day, props, sizes, name) + needs.part(state, day)))
+    try:
+        built = dict(json.loads((state / PROPOSED).read_text())) if reuse else {}
+    except (OSError, ValueError, TypeError):
+        built = {}
+    if built.get("date") == day:
+        props = list(built.get("proposals", []))
+        out: dict[str, Any] = {"day": day, "proposals": props, "sizes": [], "card": card(day, props), "file": ""}
+    else:
+        props, sizes, name = propose(private, state, s, now)
+        with nullcontext() if dry else memory.daily_lock(s.daily):    # the needs' lock: a need filed now keeps its number and block
+            needs.around(props, needs.numbers(state, day))           # the day's needs keep theirs; the proposals take the rest
+            out = {"day": day, "proposals": props, "sizes": sizes, "card": card(day, props), "file": ""}
+            if props and not dry:
+                (folder := s.root / PROPOSALS).mkdir(mode=0o700, parents=True, exist_ok=True)
+                out["file"] = str(write_private(folder / f"{day}.md", page(day, props, sizes, name) + needs.part(state, day)))
     if dry:
         return out
     try:

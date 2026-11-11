@@ -187,6 +187,25 @@ def test_the_nightly_run_proposes_after_the_promotion_and_its_dry_run_writes_not
     assert {p: p.read_bytes() for p in files} == before
 
 
+def test_the_nightly_run_keeps_the_numbers_the_card_showed_and_builds_only_when_none_of_the_day_are_on_file(tree):
+    """F4-03: the 04:30 `curate --rules` job said the card, then curate's own phase at 05:00 built the proposals again and
+    rewrote the file `--apply` reads, so a proposal that moved in between took another number than the card showed."""
+    priv, state, s = tree
+    sent: list = []
+
+    def post(p):
+        sent.append(p)
+        return {"ok": True}
+    first = curate.rules(priv, state, s, False, NOW, post)["proposals"]                  # the 04:30 job: built, the card said
+    (s.root / "rules.md").write_text("\n".join(RULES[:6] + RULES[7:8] + RULES[9:]))     # the photo rules gone before 05:00
+    curate.run(priv, state, now=NOW + 1800, model=lambda p, t: "")
+    on_file = json.loads((state / curate.PROPOSED).read_text())
+    assert on_file["date"] == DAY and on_file["proposals"] == first and on_file["said"] == DAY and len(sent) == 1
+    curate.run(priv, state, now=NOW + 86400, model=lambda p, t: "")                      # a day with none on file: its own
+    on_file = json.loads((state / curate.PROPOSED).read_text())
+    assert on_file["date"] == "2026-10-22" and on_file["proposals"] and on_file["proposals"] != first
+
+
 def test_one_message_that_filed_two_jobs_is_never_a_merge_and_one_on_overlapping_jobs_is(tree):
     """PR 92's cold read: the live dry run merged two rules of different jobs filed from one message. One message alone is
     no merge; with overlapping jobs it is."""
