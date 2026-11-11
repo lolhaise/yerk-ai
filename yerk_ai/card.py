@@ -125,8 +125,8 @@ class Row:
 
 
 class Card:
-    def __init__(self, kind: str = "turn", thinking: bool = False, people: str = ""):
-        self.kind, self.thinking_on = kind, thinking
+    def __init__(self, thinking: bool = False, people: str = ""):
+        self.thinking_on = thinking
         self.people = people                  # a room with people: its name, and the card's shape is _people()
         self.holding = ""                     # that room's newest holding line
         self.narration = ""
