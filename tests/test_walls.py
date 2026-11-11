@@ -114,6 +114,7 @@ START_UP_WRITES = [                               # {p} is the private folder; e
     'bash -c "echo x >> {p}/yerkd.toml"', "cd {p} && sed -i s/a/b/ yerkd.toml", "sh -c 'cp /x/y {p}/rooms.toml'",
     "timeout 9 tee -a {p}/accounts.toml < new", "env A=1 perl -pi -e s/a/b/ {p}/yerkd.toml", "cp /x/rooms.toml {p}/",
     "cd {p}; echo x > ./accounts.toml", "echo x >> {p}/yerkd.toml", "mv new.toml {p}/yerkd.toml", "dd if=new of={p}/rooms.toml",
+    "cat > notes.md <<'EOF'\nx\nEOF\nsed -i s/a/b/ {p}/yerkd.toml",   # after a heredoc: unwrap reads the text as written
 ]
 
 
