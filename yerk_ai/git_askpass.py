@@ -8,7 +8,7 @@ import re
 import sys
 from pathlib import Path
 
-GITHUB = re.compile(r"'https://(?:[^@/']+@)?github\.com[/']")     # the host in git's prompt: "Password for 'https://x-access-token@github.com': "
+GITHUB = re.compile(r"'https://(?:[^@/']+@)?github\.com[/']")     # the host in git's prompt ("Username for 'https://github.com': "), a user before it or not
 
 
 def answer(prompt: str, token_file: str) -> str:

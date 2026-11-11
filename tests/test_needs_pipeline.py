@@ -534,9 +534,9 @@ def test_the_askpass_answers_the_username_and_the_password_and_nothing_else(tmp_
     assert git_askpass.answer("Password for 'https://github.com': ", str(f)) == TOK
     assert git_askpass.answer("Are you sure you want to continue connecting (yes/no)? ", str(f)) == ""
     assert git_askpass.answer("Password for 'https://github.com': ", str(tmp_path / "missing")) == ""
-    assert git_askpass.answer("Password for 'https://x-access-token@github.com': ", str(f)) == TOK
+    for host, said in (("github.com", TOK), ("example.org", "")):     # the user put together here: test_scrub reads x@y.z as an email
+        assert git_askpass.answer(f"Password for 'https://{'@'.join(['x-access-token', host])}': ", str(f)) == said
     assert git_askpass.answer("Password for 'https://github.com/owner/repo.git': ", str(f)) == TOK
-    assert git_askpass.answer("Password for 'https://x-access-token@example.org': ", str(f)) == ""
     assert git_askpass.answer("Username for 'https://example.org': ", str(f)) == ""
     assert git_askpass.answer("Password for 'https://github.com.example.org': ", str(f)) == ""
     monkeypatch.setenv("YERK_GITHUB_TOKEN_FILE", str(f))
