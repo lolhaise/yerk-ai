@@ -631,6 +631,11 @@ def test_a_sync_while_a_one_shot_runs_keeps_it_and_its_units_until_its_own_run_t
     assert sd.ours() == ["second"] and (sd.read("yerk-job-second.timer"), sd.read("yerk-job-second.service")) == second
     assert "[jobs.second]" in path.read_text() and "[jobs.first]" not in path.read_text()
     assert not [c for c in sd.calls[n:] if "second" in str(c)] and checked == []      # not disabled, removed or rewritten
+    sd.next["yerk-job-second.timer"], sd.last["yerk-job-second.timer"] = None, time.time() - 120     # fired: no next
+    assert jobs.status_lines(path, sd) == [f"{W.WORKING} second: running"]             # yerk status reads it as the sync
+    listed, told = jobs.schedule_list(path, sd), asyncio.run(j.handle("", {"action": "list"}))     # the command, the tool
+    assert listed["lines"] == told["lines"] == [f"second: running; {jobs.load(path, 0)[0]['second'].describe()}, room r, script"]
+    assert listed["errors"] == told["errors"] == {} and [r["name"] for r in listed["jobs"] if not r.get("stray")] == ["second"]
     p, _ = jobs.sync(path, sd, ENV)                                # any other sync keeps it too
     assert (p.unchanged, p.removed, p.errors, checked) == (["second"], [], {}, [])
     assert jobs.run("second", priv, state, units=sd, handoff=handoff) == 0
@@ -639,6 +644,7 @@ def test_a_sync_while_a_one_shot_runs_keeps_it_and_its_units_until_its_own_run_t
     sd.check = lambda spec: ""                                     # written while it was still to come
     jobs.sync(path, sd, ENV, now=time.time() - HOUR)
     assert sd.ours() == ["cut"]
+    assert jobs.status_lines(path, sd) == [f"{W.NOT_DONE} timer cut: not in the jobs file", f"{W.NOT_DONE} cut: cannot be scheduled"]
     n = len(sd.calls)
     p, _ = jobs.sync(path, sd, ENV)                                # the next sync removes it as before
     assert (p.removed, p.unchanged, sd.ours()) == (["cut"], [], []) and p.errors["cut"].endswith("is in the past")

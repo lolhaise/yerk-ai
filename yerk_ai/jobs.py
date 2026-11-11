@@ -49,7 +49,7 @@ from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Iterator
+from typing import Any, Callable, Collection, Iterator
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from . import words
@@ -611,19 +611,22 @@ def diff_lines(p: Plan) -> list[str]:
     return out or ["nothing to do: the jobs file is empty and no job timer is on disk"]
 
 
-def read_lines(back: dict[str, dict[str, Any]], jobs: dict[str, Job], now: float | None = None) -> list[str]:
-    """One line per job: next fire from systemd, in the job's zone, and the last fire."""
+def read_lines(back: dict[str, dict[str, Any]], jobs: dict[str, Job], now: float | None = None,
+               running: Collection[str] = ()) -> list[str]:
+    """One line per job: next fire from systemd, in the job's zone, and the last fire; a one-shot whose run is going
+    (`running`) says so in their place."""
     now = time.time() if now is None else now
     out = []
     for name, r in back.items():
         if r.get("stray"):
             out.append(f"timer {r['unit']}: NOT IN THE JOBS FILE (`yerk jobs sync` removes it)")
-        elif not r["scheduled"]:
+        elif not r["scheduled"] and name not in running:
             out.append(f"{name}: NOT SCHEDULED (no timer loaded; run `yerk jobs sync`)")
         else:
             nxt = when_text(r["next"], r["tz"]) + (f" ({in_text(r['next'], now)})" if r["next"] else "")
             last = f", last {when_text(r['last'], r['tz'])}" if r["last"] else ", never fired yet"
-            out.append(f"{name}: next {nxt}{last}; {jobs[name].describe()}, room {jobs[name].room}, {jobs[name].kind}"
+            head = words.JOB_RUNNING.format(name=name) if name in running else f"{name}: next {nxt}{last}"
+            out.append(f"{head}; {jobs[name].describe()}, room {jobs[name].room}, {jobs[name].kind}"
                        + "".join(f", {k} {v}" for k, v in jobs[name].runs_on().items()))
     return out or ["jobs: none"]
 
@@ -634,13 +637,15 @@ def phone(text: str) -> str:
 
 def status_lines(path: Path, units: Systemd, now: float | None = None) -> list[str]:
     """`yerk status`: one line per job, state first and phone width: a green dot and how long until
-    its next fire (from systemd, never from memory), a white dot for a job with no timer, a red dot
-    for one that cannot be scheduled or a timer with no job. The detail (times, zones, why) is
-    `yerk jobs list`. An unreadable timer list is said, never shown as empty."""
+    its next fire (from systemd, never from memory), an orange one for a one-shot whose run is going,
+    a white dot for a job with no timer, a red dot for one that cannot be scheduled or a timer with
+    no job. The detail (times, zones, why) is `yerk jobs list`. An unreadable timer list is said,
+    never shown as empty."""
     now = time.time() if now is None else now
     jobs, errors = load(path, now)
     try:
-        back = readback(jobs, units, now)
+        kept = running_one_shots(path, units, errors)          # in the file and running, as the sync reads them
+        back = readback({**jobs, **kept}, units, now)
     except (OSError, subprocess.SubprocessError, ValueError) as e:
         log.warning("jobs: the timer list could not be read: %s", e)
         return [f"{NOT_DONE} jobs: the timer list could not be read"]
@@ -648,13 +653,15 @@ def status_lines(path: Path, units: Systemd, now: float | None = None) -> list[s
     for name, r in back.items():
         if r.get("stray"):
             out.append(phone(f"{NOT_DONE} timer {name}: not in the jobs file"))
+        elif name in kept:
+            out.append(phone(f"{words.WORKING} " + words.JOB_RUNNING.format(name=name)))
         elif not r["scheduled"]:
             out.append(phone(f"{NOTHING} {name}: not scheduled"))
         elif r["next"]:
             out.append(phone(f"{DONE} {name}: {in_text(r['next'], now)}"))
         else:
             out.append(phone(f"{NOTHING} {name}: no next fire"))
-    out += [phone(f"{NOT_DONE} {n}: cannot be scheduled") for n in sorted(errors)]
+    out += [phone(f"{NOT_DONE} {n}: cannot be scheduled") for n in sorted(errors) if n not in kept]
     return out
 
 
@@ -828,6 +835,8 @@ def schedule_list(path: Path, units: Systemd, only: set[str] | None = None) -> d
     that is not the owner's sees its own notes and never another job's name, room or error."""
     jobs, errors = load(path)
     try:
+        kept = running_one_shots(path, units, errors)          # in the file and running, as the sync reads them
+        jobs, errors = {**jobs, **kept}, {n: w for n, w in errors.items() if n not in kept}
         back = readback(jobs, units)
     except (OSError, subprocess.SubprocessError, ValueError) as e:
         return {"ok": False, "error": f"the timer list could not be read: {e}"}
@@ -838,7 +847,7 @@ def schedule_list(path: Path, units: Systemd, only: set[str] | None = None) -> d
                                                                              if r["next"] else ""),
              **({"schedule": jobs[n].describe(), "room": jobs[n].room, "kind": jobs[n].kind,
                  "deliver": jobs[n].deliver, **jobs[n].runs_on()} if n in jobs else {})} for n, r in back.items()]
-    lines = read_lines(back, jobs, now) + [f"! {n}: cannot be scheduled: {w}" for n, w in sorted(errors.items())]
+    lines = read_lines(back, jobs, now, kept) + [f"! {n}: cannot be scheduled: {w}" for n, w in sorted(errors.items())]
     return {"ok": True, "jobs": rows, "errors": errors, "lines": lines}
 
 

@@ -267,6 +267,7 @@ def died(result: str) -> str:
 # jobs in a room: the exit code and systemd's words stay in the unit's log and in
 # `yerk status --full`, never in the line
 JOB_FAILED, JOB_STOPPED = "job {name} failed: {why}", "job {name} {stopped}"
+JOB_RUNNING = "{name}: running"        # yerk status and the jobs list: a one-shot whose own run is going
 NOT_STARTED = {"did not start": "it could not start", "lost": "it ended with no record"}
 
 
