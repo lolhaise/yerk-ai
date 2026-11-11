@@ -299,6 +299,28 @@ def test_a_planted_drop_fails_the_bench_unless_a_dated_note_names_it(tmp_path, c
                                                     "4 runs before, and no dated note in budgets.toml [recall] drops names it"]
 
 
+# 6c. a blind run (a control missed, so its numbers hold nothing) exits a code of its own, which the weekly unit does not count
+# as success; no question set stays 2, which it does, and the deploy's --controls step still exits 2 on the same miss
+def test_a_blind_run_exits_its_own_code_and_fails_the_weekly_unit(tmp_path, capsys):
+    s = memory.settings(EXAMPLE_PRIVATE, tmp_path / "state", {"timezone": "UTC"})
+    memindex.Index(s.index_db, s.scope).sync()
+    for name in ("recall", "episodic", "self"):
+        qs = json.loads((EXAMPLE_PRIVATE / "evals" / f"{name}-questions.json").read_text())
+        for q in qs["questions"]:
+            q["answer_tokens"] = ["nowhere-in-the-example-layer"] if q.get("control") else q["answer_tokens"]
+        (tmp_path / f"{name}-questions.json").write_text(json.dumps(qs))
+    args = ["recall-bench", "--private", str(EXAMPLE_PRIVATE), "--state", str(tmp_path / "state"), "--questions"]
+    unit = (Path(__file__).resolve().parents[1] / "units" / "yerk-recall-bench.service").read_text().splitlines()
+    success = {0} | {int(x) for line in unit if line.startswith("SuccessExitStatus=") for x in line.partition("=")[2].split()}
+    code = cli.main([*args, str(tmp_path / "recall-questions.json")])
+    assert "BLIND: control question(s) missed: ctrl-units" in capsys.readouterr().err
+    assert code not in success, f"a blind run exits {code}, which the weekly unit counts as success ({sorted(success)})"
+    assert code == 5
+    assert cli.main([*args, str(tmp_path / "none.json")]) == 2 and 2 in success       # an install without a bench stays quiet
+    assert cli.main([*args, str(tmp_path / "recall-questions.json"), "--controls"]) == 2   # the deploy's step, unchanged
+    assert json.loads(capsys.readouterr().out.splitlines()[-1])["missed"] == ["ctrl-units"]
+
+
 # 7. the manifest, and `yerk abilities` and `yerk explain` both ways
 def test_the_manifest_and_the_abilities_command_show_the_key_tier_both_ways(tmp_path, capsys):
     ab = abilities.manifest()

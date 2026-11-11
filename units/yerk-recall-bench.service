@@ -1,5 +1,7 @@
 # The weekly retrieval measurement (L63): the fixed question set against the memory index; one
-# JSON line per run in <state>/memory/recall-bench.jsonl. Installed with yerk-recall-bench.timer:
+# JSON line per run in <state>/memory/recall-bench.jsonl. No question set exits 2, which is not a unit failure (an
+# install without a bench stays quiet); a blind run (a control missed, so its numbers hold nothing) exits 5 and fails
+# the unit, as a drop (4), a timeout (3) and a failure (1) do. Installed with yerk-recall-bench.timer:
 # copy both to ~/.config/systemd/user/ and `systemctl --user enable --now yerk-recall-bench.timer`.
 [Unit]
 Description=Yerk AI weekly recall bench

@@ -606,7 +606,7 @@ def cmd_recall_bench(a: argparse.Namespace) -> int:
             print(f"BLIND: control question(s) missed: {', '.join(r['blind'])}", file=sys.stderr)
     for d in drops:
         print(f"RATCHET: {d}", file=sys.stderr)
-    return 2 if r["blind"] else 4 if drops else 0
+    return 5 if r["blind"] else 4 if drops else 0      # 5: blind, its own code, so the weekly unit fails it (2 is no question set)
 
 
 def cmd_bench(a: argparse.Namespace) -> int:
@@ -856,7 +856,7 @@ def parser() -> argparse.ArgumentParser:
     sc.add_argument("--effort", help="add: agent jobs, the worker's thinking level, one of low, medium, high, xhigh, max (default [workers], else the room's)")
     sc.add_argument("--json", action="store_true")
     rb = sub.add_parser("recall-bench", help="the fixed question set against the memory index: top six and top one "
-                        "hit rates (exit 2 when a control misses, 1 failure, 3 timeout, 4 a drop budgets.toml [recall] does not name)")
+                        "hit rates (exit 5 when a control misses, 2 no question set, 1 failure, 3 timeout, 4 a drop budgets.toml [recall] does not name)")
     rb.add_argument("--questions", help="the recall kind's question file (default: [memory] bench, else <private>/evals/recall-questions"
                     ".json); the episodic and self kinds are episodic-questions.json and self-questions.json beside it")
     rb.add_argument("-k", type=int, default=6, help="results per question (default 6, the recall tool's default)")

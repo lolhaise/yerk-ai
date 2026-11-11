@@ -180,7 +180,7 @@ add a one-shot or a recurring job, remove one, or list them (the room's `schedul
 
 ### yerk recall-bench
 
-the fixed question set against the memory index: top six and top one hit rates (exit 2 when a control misses, 1 failure, 3 timeout, 4 a drop budgets.toml [recall] does not name)
+the fixed question set against the memory index: top six and top one hit rates (exit 5 when a control misses, 2 no question set, 1 failure, 3 timeout, 4 a drop budgets.toml [recall] does not name)
 
 - `--questions QUESTIONS`: the recall kind's question file (default: [memory] bench, else <private>/evals/recall-questions.json); the episodic and self kinds are episodic-questions.json and self-questions.json beside it
 - `-k K`: results per question (default 6, the recall tool's default)
