@@ -24,7 +24,7 @@ uv run yerk morning                          # the morning diff to the role = "m
 uv run yerk deploy [REF] --private DIR       # REF onto the running yerkd: fast-forward only, fast tests, recall controls, a quiet room, proof, else rollback
 uv run yerk deploy --unit                    # the same, moving a systemd-run yerkd onto units/yerkd.service (Install below)
 uv run yerk retention --dry-run              # what the nightly sweep (units/yerk-retention.timer) would move to the trash, by kind
-uv run yerk doctor --dry-run                 # the daily check (units/yerk-doctor.timer): a line per finding, nothing when all is well
+uv run yerk doctor --dry-run                 # the daily check (units/yerk-doctor.timer): a line per finding, one green line when all is well
 uv run yerk curate --dry-run --since 2026-10-19   # the night's card curation (units/yerk-curate.timer): what it would sweep and propose
 uv run python tests/contract/probes.py drill --config-dir DIR   # the Claude Code upgrade drill: the version, hello, fold and resume on one account, a verdict
 uv run python tests/contract/probes.py hello|fold|resume|blocks|smoke|measure|check|idle --config-dir ~/.claude   # one contract probe

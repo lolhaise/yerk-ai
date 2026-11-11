@@ -87,7 +87,7 @@ Every day at 05:00 local time, after the doctor's 04:40 check and before the 06:
 
 ## yerk-doctor.service
 
-The daily check (yerk doctor): the private folder's shape, rooms.toml keys against the loaders, memory classes and day-log lines, token expiry, the index, each running room's hooks, disk growth past [doctor] growth_mb in yerkd.toml (500 MB a day), and the crash repair of NUL lines in day logs, assembled logs and bound transcripts, each file backed up first. Prints nothing when all is well; a finding exits 1, which is not a unit failure (the morning diff says it); a run that could not run exits 2 and fails the unit. Installed with yerk-doctor.timer: copy both to ~/.config/systemd/user/ and `systemctl --user enable --now yerk-doctor.timer`.
+The daily check (yerk doctor): the private folder's shape, rooms.toml keys against the loaders, memory classes and day-log lines, token expiry, the index, each running room's hooks, disk growth past [doctor] growth_mb in yerkd.toml (500 MB a day), and the crash repair of NUL lines in day logs, assembled logs and bound transcripts, each file backed up first. Prints one green line when all is well; a finding exits 1, which is not a unit failure (the morning diff says it); a run that could not run exits 2 and fails the unit. Installed with yerk-doctor.timer: copy both to ~/.config/systemd/user/ and `systemctl --user enable --now yerk-doctor.timer`.
 
 [Unit]
 
