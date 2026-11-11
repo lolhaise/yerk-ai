@@ -7,6 +7,7 @@ itself this way: one need at a time (two open PRs that both move the code ceilin
   builder that fails starts once more; failed twice, the need is stuck; one cut off by a stop nobody asked for (a box
   shutdown) is queued, uncounted, and the next tick starts it. A need still filed that no build ever claimed (filed
   before the pipeline, or with auto off) is queued on a tick (`pickup`); one a build came back from stays, a person's call.
+  At the daemon's start a need left building with no worker (the daemon died between the claim and its start) is queued (`begin`).
 - The watch (`tick`: its own task every EVERY seconds, and once each time the channel connects): built, then its PR
   (github.pr_for), then PR; a PR's head's checks all in ([needs] contexts) and green: the cold read; one red: a fix worker
   while fixes < [needs] fix_cap, else held; not all in within [needs] checks_minutes of the head: stuck, and PR again once
@@ -141,6 +142,16 @@ class Pipeline:
         for r in sorted(needs.load(self.y.state), key=lambda r: (str(r["day"]), int(r["n"]))):
             if r.get("state") == "filed" and not r.get("last") and "worker" not in r and await self.set(r, {"state": "queued"}, "filed"):
                 await self.say(words.NEED_PICKED_UP.format(n=r["n"], day=r["day"], room=r["asks"][0]["room"], ability=words.line(str(r["ability"]), 80)))
+
+    def begin(self) -> None:
+        """The daemon's start, before any of its tasks: a need left building with no worker (need_build's claim, the daemon
+        gone before the start answered) is queued again, so the queue starts it; building is in flight, so it held the queue
+        for good. One building with a worker is left alone: its end comes through workers.reattach."""
+        for r in needs.load(self.y.state):
+            if r.get("state") == "building" and not r.get("worker") and needs.update(
+                    self.y.memory, self.y.state, str(r["day"]), int(r["n"]), {"state": "queued"},
+                    lambda x: x.get("state") == "building" and not x.get("worker")):
+                log.info("needs: need %s of %s was claimed and its builder never started, so it is queued again", r["n"], r["day"])
 
     async def stop(self, r: dict[str, Any], state: str, why: str) -> None:
         """Held (a person decides) or stuck, with why; the next queued need starts."""

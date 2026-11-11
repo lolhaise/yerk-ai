@@ -1869,6 +1869,7 @@ class Yerkd:
             raise SystemExit("no room has a discord:<channel id> in rooms.toml")
         self.workers.begin(asyncio.get_running_loop())
         self.page.begin(asyncio.get_running_loop())
+        self.pipeline.begin()                            # before any task: a need's claim whose builder never started, queued
         moved = self.move_held()                         # before any room starts; said after the connect
 
         async def say_moved() -> None:

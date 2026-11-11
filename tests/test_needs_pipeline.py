@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 from test_needs import ASK, FLYER, listed, need, ops
 from test_pictures import Rec
+from test_slash import OWNER, run_discord
 
 from yerk_ai import cli, git_askpass, github, needs, pipeline, words
 from yerk_ai.config import EXAMPLE_PRIVATE, REPO, head
@@ -282,6 +283,15 @@ def test_a_builder_that_cannot_start_holds_its_need_with_why_and_the_next_queued
     n4 = need(y, "example-room", "read this scan", "no ocr tool", "read a scanned page")["n"]
     asyncio.run(y.pipeline.stop(row(y, day, 3), "held", "a reason"))
     assert row(y, day, n4)["state"] == "held" and row(y, day, n4)["why"].startswith("its builder did not start: no account 'gone'")
+
+
+def test_a_claim_whose_builder_never_answered_is_queued_when_the_daemon_starts_and_one_with_a_worker_is_left(tmp_path, monkeypatch):
+    state, ask = tmp_path / "state", {"room": "example-room", "at": "12:00", "asked": "a", "tried": "b", "needed": "c", "mid": "m-1"}
+    state.mkdir()                                        # the daemon died between need_build's claim and its start's answer
+    (state / needs.STORE).write_text(json.dumps([{"day": "2026-11-10", "n": n, "ability": f"ability {n}", "asks": [ask],
+                                                  "state": "building", "worker": w, "fixes": 0} for n, w in ((1, ""), (2, "w2"))]))
+    run_discord(tmp_path, monkeypatch, f"owner = {OWNER}\n")      # yerkd's start as it runs, its connection and tasks at once
+    assert [(r["state"], r["worker"]) for r in needs.load(state)] == [("queued", ""), ("building", "w2")]
 
 
 def test_a_builders_line_that_cannot_be_posted_is_said_so_on_the_workers_row(pipe):

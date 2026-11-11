@@ -146,7 +146,7 @@ def run_discord(tmp_path, monkeypatch, discord_table):
                      .replace('privacy = "owner"', 'privacy = "family"', 1))      # a room that lists people is not the owner's alone
     (priv / "discord.token").write_text("not-a-token\n")
     (priv / "yerkd.toml").write_text('[discord]\ntoken_file = "discord.token"\n' + discord_table)
-    (tmp_path / "state").mkdir()
+    (tmp_path / "state").mkdir(exist_ok=True)            # a test may put its state there first
     d = Yerkd(priv, tmp_path / "state", only_account=Account("one", tmp_path / "cfg1"))
     built = []
 
