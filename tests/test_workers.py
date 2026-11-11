@@ -893,7 +893,7 @@ def test_a_worker_unit_has_a_4g_memory_ceiling_no_swap_and_outlives_a_kill_for_m
 
 def test_the_exit_record_carries_the_units_kills_for_memory_and_a_count_it_cannot_read_leaves_it_as_before(tmp_path, monkeypatch):
     # ExecStopPost runs in the unit's own cgroup and reads its memory.events there (systemd 259, two units on the box, 2026-11-11)
-    unit = "user.slice/user-1000.slice/user@1000.service/app.slice/yerk-worker-abc123.service"
+    unit = "user.slice/app.slice/yerk-worker-abc123.service"
     events, d = tmp_path / "fs" / unit / "memory.events", tmp_path / "w"
     events.parent.mkdir(parents=True)
     d.mkdir()
