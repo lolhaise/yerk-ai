@@ -267,16 +267,16 @@ def test_the_deploys_status_ask_and_json_never_start_claude_code_and_the_card_do
 def test_the_card_names_a_watched_channel_by_its_name_and_by_its_id_only_when_no_name_is_known(tmp_path):
     """F2-13: a room's watched channel on the card (`yerk status` and /status, both from status_now) is its name as the
     adapter knows it; its id only with no adapter, or a channel the adapter has no name for."""
-    y, ref = Yerkd(EXAMPLE_PRIVATE, tmp_path), "discord:123456789012345678"
+    y, ref = Yerkd(EXAMPLE_PRIVATE, tmp_path), "discord:4242"        # a real id is 17 to 19 digits; the scrub test refuses one
     y.rooms = {"example-room": busy_room()}
     y.rooms["example-room"].conf["watch"] = ref
     y.link = SimpleNamespace(channel_name=lambda r: "watched" if r == ref else "")
     lines = status.card(json.loads(json.dumps(asyncio.run(y.status_now({})))), NOW)
-    assert "- example-room: watches #watched" in lines and not [x for x in lines if "123456789012345678" in x], lines
+    assert [x for x in lines if ": watches " in x] == ["- example-room: watches #watched"], lines
     for link in (None, SimpleNamespace(channel_name=lambda r: "")):
         y.link = link
         lines = status.card(json.loads(json.dumps(asyncio.run(y.status_now({})))), NOW)
-        assert [x for x in lines if x.endswith(": watches 123456789012345678")], lines
+        assert [x for x in lines if ": watches " in x] == ["- example-room: watches 4242"], lines
 
 
 def test_the_status_help_names_every_part_the_card_prints(tmp_path):
