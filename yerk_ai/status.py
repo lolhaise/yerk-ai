@@ -404,7 +404,7 @@ def room_card(s: dict[str, Any], room: str, now: float | None = None) -> list[st
             busy.append(W.named(f"{W.NOT_DONE if took > BLOCKED else W.BUSY} {W.TURN_OF}" + (W.QUEUED.format(n=r["waiting"]) if r["waiting"] else ""),
                                 W.HERE if r["room"] == room else r["room"], took=W.span(took)))
     busy += [W.line(f"{W.NOT_DONE if gone else W.BUSY} {text}") for gone, text in said(s["workers"], now)]
-    out += (busy if len(busy) <= 4 else [*busy[:3], W.line(f"{W.BUSY} {W.AND_MORE.format(n=len(busy) - 3)}")]) or [W.QUIET]
+    out += (busy if len(busy) <= 4 else [*busy[:3], W.line(f"{W.BUSY} {W.AND_MORE.format(n=len(busy) - 3)}")]) or [W.ALL_QUIET]
     if (sp := s.get("speed")) and any(v is not None for v in sp.values()):     # none before the day's first message
         out.append(W.line(W.ROOM_SPEED.format(day=W.TODAY, **{k: "-" if v is None else W.secs(v) for k, v in sp.items()})))
     if "spend" in s:                                    # an uncapped install's (collect)

@@ -481,7 +481,7 @@ def test_status_in_a_room_is_that_rooms_card_and_another_room_gets_its_own_head(
     assert here[:3] == [words.ROOM_HEAD.format(parts="claude-fable-5-1 · ①"), words.ROOM_NEW, ""]       # no level named: no line
     assert there[:3] == [words.ROOM_HEAD.format(parts="claude-opus-5-5 · ①"), words.ROOM_NEW, words.ROOM_THINK.format(effort="max")]
     assert here[3:] == there[4:] and not any(x.startswith(f"{words.PLAIN} ") for x in here + there)   # one tank, one daemon
-    assert words.QUIET in here and "yerkd running" not in "\n".join(here)
+    assert words.ALL_QUIET in here and "yerkd running" not in "\n".join(here)
 
 
 def test_registration_is_exactly_these_commands_on_exactly_the_rooms_guilds(y, tmp_path):
