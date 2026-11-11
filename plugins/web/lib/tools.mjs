@@ -12,7 +12,7 @@ import { IMAGE_CAP, IMAGE_TYPES, imageInfo, imageWall, runImage } from "./fetch/
 import { runFetchPlus } from "./fetch/ladder.js";
 import { closeLocalBrowser } from "./fetch/local.js";
 import { flushPending, resolveSettings } from "./fetch/util.js";
-import { formatRun, research, researchResult, waitIn } from "./research.mjs";
+import { DAILY_USD, formatRun, research, researchResult, waitIn } from "./research.mjs";
 import { runSearchPlus } from "./search/provider.js";
 import { resolvePluginSettings } from "./search/util.js";
 import { truncateSanitized, wrapWebContent } from "./untrusted.mjs";
@@ -101,7 +101,7 @@ export const TOOLS = [
   {
     name: "web_research",
     description:
-      "Research the web through the Exa Agent: one job on Exa's side runs many searches, reads and checks the pages, and returns a cited answer, as JSON too when a schema is given. Use it for a list, a dig across many pages, or a named thing to verify and enrich, with sources; a single fact or page is web_search or web_fetch. About 10 cents a run at medium, up to 15 minutes; every room shares one US$2 daily cap. A run still going after about 3 minutes comes back as a run id for web_research_result.",
+      "Research the web through the Exa Agent: one job on Exa's side runs many searches, reads and checks the pages, and returns a cited answer, as JSON too when a schema is given. Use it for a list, a dig across many pages, or a named thing to verify and enrich, with sources; a single fact or page is web_search or web_fetch. About 10 cents a run at medium, up to 15 minutes; every room shares one daily cap, the one web.json sets, else US$" + DAILY_USD + ". A run still going after about 3 minutes comes back as a run id for web_research_result.",
     inputSchema: {
       type: "object",
       properties: {

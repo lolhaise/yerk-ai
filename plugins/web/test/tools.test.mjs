@@ -1043,3 +1043,11 @@ test("web_fetch ends its climb 10 s inside the room's limit: a one-minute room g
   const owner = await climbIn(180000, 3);
   assert.deepEqual(owner.paid, none.paid, "170 s is above the ladder's own 140 s, so nothing changes");
 });
+
+// F7-16: every room carries web_research's description, and the cap it meets is web.json's research.dailyUsd (research.mjs
+// dailyCap); the description names that one, and the default only as the default, from the code's own number.
+test("web_research's description says every room shares the daily cap web.json sets, US$2 when it sets none, never a fixed figure", () => {
+  const d = TOOLS.find((t) => t.name === "web_research").description;
+  assert.match(d, /every room shares one daily cap, the one web\.json sets, else US\$2\./);
+  assert.doesNotMatch(d, /one US\$2 daily cap/);
+});
