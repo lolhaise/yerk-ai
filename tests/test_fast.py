@@ -367,3 +367,17 @@ def test_an_exception_inside_the_fast_on_exchange_leaves_the_turn_as_on_main(roo
     say("1", "hi")
     assert chan.replies == ["echo: hi"] and lines(tmp_path) == ["hi"] and len(ledger.rows(10)) == 1
     assert chan.notices == [f"{words.WORKING} {words.FAST_LOST.format(why=words.FAST_NO_ANSWER)}"]
+
+
+def test_a_fable_model_not_found_takes_the_rooms_fast_mode_with_it(y, tmp_path):
+    """Off Fable 5.2 by a model-not-found failure (Room._off_model) as by /model: fast mode goes too, so the room's own
+    settings tool, which never takes fast, cannot bring it back by switching to Fable 5.2 again."""
+    from types import SimpleNamespace
+    on_fable(y)
+    assert fast(y, "on")["ok"]
+    room = y.add_room(ROOM, Chan())
+    room.rp = SimpleNamespace(spec=SimpleNamespace(model="claude-fable-5-2"))
+    line = room._off_model(SimpleNamespace(source="type:model_not_found"))
+    room.rp = None
+    assert line.endswith(f"\n{words.FAST_OFF}") and "fast" not in override(tmp_path, ROOM)
+    assert asyncio.run(y.tool_settings(ROOM, "fable", ""))["ok"] and y.spec_for(ROOM).fast is False

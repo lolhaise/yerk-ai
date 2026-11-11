@@ -1147,9 +1147,11 @@ class Room:
                 and self.rp and self.rp.spec.model == bad):
             return ""
         over.pop("model")
+        fast = over.pop("fast", None) is True     # off its model, fast mode goes with it, as /model's does (Yerkd.tool_settings)
         write_private(self.state / "rooms" / self.name / "override.json", json.dumps(over))
         log.info("room %s: %s was not found, the override's model dropped", self.name, bad)
-        return words.BACK_ON.format(model=words.model_name(bad), usual=words.model_name(usual) if usual else words.USUAL)
+        return words.BACK_ON.format(model=words.model_name(bad), usual=words.model_name(usual) if usual else words.USUAL) + (
+            f"\n{words.FAST_OFF}" if fast else "")
 
     def _results(self, account: Account, hop: str | None, recapped: bool) -> tuple[str, Turn | None]:
         """Deliver each result of the running process until nothing waits: "done"; a failed turn:
