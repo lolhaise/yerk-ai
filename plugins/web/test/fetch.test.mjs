@@ -14,7 +14,7 @@ import { after, before, test } from "node:test";
 import { detectChallenge } from "../lib/fetch/detect.js";
 import { extractHtml } from "../lib/fetch/extract.js";
 import { bookingsGuestUrl, isBookingsPage, runFetchPlus } from "../lib/fetch/ladder.js";
-import { closeLocalBrowser, localBrowserPresent, localBrowserRung, localFetchRung, memoryKey, pathClass, rememberRead, siteMemoryPlan } from "../lib/fetch/local.js";
+import { closeLocalBrowser, judgeRendered, localBrowserPresent, localBrowserRung, localFetchRung, memoryKey, pathClass, rememberRead, siteMemoryPlan } from "../lib/fetch/local.js";
 import { flushPending, resolveSettings } from "../lib/fetch/util.js";
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "yerk-web-fetch-"));
@@ -681,4 +681,15 @@ test("the login wall names a move a room can take: the owner's own browser with 
   assert.match(p.text, /^What stopped it: The site wants a login before it shows this page\.$/m);
   assert.match(p.text, /^Next move: In an owner room, open the page in the owner's own browser with the hands plug-in; in any other room, say that the site wants a login\.$/m);
   assert.doesNotMatch(p.text, /fetch-plus context|contexts\.json/);
+});
+
+// F7-14: the verdict F2 and F3 share (local.js judgeRendered) says it has L3's rules; L3's title candidates include every
+// og:title (the 2026-09-28 v2 fix), so a client app whose og:title alone reads "undefined | shop" is an empty render at
+// every rung. Readability takes a dc:title before an og:title, so on such a page only the og:title candidate sees it.
+test("judgeRendered takes an og:title that reads undefined as an empty render, as L3 does, when the extracted title is another", async () => {
+  const head = `<meta name="dc:title" content="Floor lamps"><meta property="og:title" content="undefined | Example Shop">`;
+  const html = page("Floor lamps | Example Shop", `<main>${"<p>Free delivery over $50. Sign up for our newsletter. Store hours and locations near you. </p>".repeat(40)}</main>`, head);
+  const r = await judgeRendered({ p: { status: 200, finalUrl: "https://shop.example/p/1", title: "Floor lamps | Example Shop", html, innerText: "" }, url: "https://shop.example/p/1", settings: resolveSettings({}, { stateDir: STATE }), extractMode: "markdown", rung: "F2" });
+  assert.equal(r.ex.title, "Floor lamps", "the extracted title is the dc:title, so no other candidate reads undefined");
+  assert.deepEqual([r.ok, r.wall, r.outcome], [false, "empty", "thin:render_empty"]);
 });
