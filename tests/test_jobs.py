@@ -426,6 +426,33 @@ def test_a_job_fired_before_the_daemon_listens_is_handed_off_once_it_does_until_
         assert jobs.run("boot", priv, state, units=sd, handoff=took) == 1 and len(calls) == 1
 
 
+def test_a_script_run_its_unit_cut_mid_run_is_closed_at_the_next_start_with_the_failed_run_alert(setup, tmp_path):
+    """A script run whose unit was stopped mid-run (its start limit, or any stop) never writes its end. The daemon's sweep
+    after a restart closes it once its fired time plus its cap plus the margin has passed: the row gets its end and says it
+    was cut, and the failed-run alert goes out, once. A run that may still be going, an agent run, and a run of a job no
+    longer in the file are left as they are."""
+    s = setup
+    rec, ops = Rec(), Rec()
+    j, w, sd, priv, state = manager(setup, tmp_path, {"r": s.room(), "ops": s.room("ops")}, {"r": rec, "ops": ops},
+                                    conf={"ops_room": "ops"})
+    write_jobs(priv / "jobs.toml", '[jobs.slow]\nkind = "script"\nschedule = "*:00"\ntz = "UTC"\nroom = "r"\ncap = 1\ncommand = "sleep 600"\n'
+                                   '[jobs.think]\nkind = "agent"\nschedule = "*:00"\ntz = "UTC"\nroom = "r"\nmessage = "the brief"\n')
+    now = time.time()
+
+    def started(job, kind, ago):                          # the row a run writes as it starts (jobs.run), and nothing after
+        return s.ledger.job_run_add(job=job, kind=kind, room="r", unit=f"{jobs.UNIT}{job}", planned=now - ago, fired=now - ago)
+    cut, going, agent, gone = started("slow", "script", 181), started("slow", "script", 120), started("think", "agent", 999), \
+        started("old", "script", 9999)
+    asyncio.run(j.reattach())
+    r = s.ledger.job_run_get(cut)
+    assert (r["ended"], r["exit"], r["result"], r["delivery"], r["message_ids"]) == (now - 181 + 180, "cut", "cut", "alert", "n1")
+    assert ops.notified == [("ops", W.job_line("slow", "failed", result="signal"))]
+    assert ops.notified[0][1] == f"{W.NOT_DONE} job slow failed: it was killed"
+    assert [s.ledger.job_run_get(i)["ended"] for i in (going, agent, gone)] == [None, None, None]
+    asyncio.run(j.reattach())                                                     # closed once, told once
+    assert len(ops.notified) == 1 and rec.notified == rec.sent == []
+
+
 def test_an_agent_job_becomes_a_worker_with_the_right_account_and_cap_and_relays(setup, tmp_path):
     s = setup
     rec = Rec()

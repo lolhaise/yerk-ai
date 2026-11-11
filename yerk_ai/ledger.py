@@ -544,13 +544,15 @@ class Ledger:
     def job_run_for_worker(self, worker_id: str) -> dict[str, Any] | None:
         return self._first("SELECT * FROM job_runs WHERE worker = ? ORDER BY id DESC LIMIT 1", (worker_id,))
 
-    def job_runs(self, job: str | None = None, limit: int = 50, undelivered: bool = False) -> list[dict[str, Any]]:
-        """The newest runs (of one job when named); `undelivered`: runs whose delivery waits on a daemon."""
+    def job_runs(self, job: str | None = None, limit: int = 50, undelivered: bool = False, unended: bool = False) -> list[dict[str, Any]]:
+        """The newest runs (of one job when named); `undelivered`: runs whose delivery waits on a daemon; `unended`: no end yet."""
         sql, args = "SELECT * FROM job_runs WHERE 1", tuple[Any, ...]()
         if job:
             sql, args = sql + " AND job = ?", (*args, job)
         if undelivered:
             sql = sql + " AND delivery LIKE 'undelivered:%'"
+        if unended:
+            sql = sql + " AND ended IS NULL"
         return self._select(sql + " ORDER BY id DESC LIMIT ?", (*args, limit))
 
     # outbound and holds
