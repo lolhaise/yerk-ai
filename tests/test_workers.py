@@ -446,6 +446,59 @@ def test_a_settled_card_reads_as_before_for_any_other_end_and_the_quiet_one_keep
                                   "-# /w/abc123/REPORT.md"]
 
 
+def settle(s, wid, exit):
+    """A worker whose unit wrote `exit`, settled through Workers.complete: its card's lines, its ledger exit_detail and the
+    first line of its relay."""
+    seen = {}
+
+    async def go():
+        unlisted(s, wid, 30, exit={**exit, "ended": time.time()})
+        w = s.make({"r": Busy()})
+
+        async def hook(row, end):
+            seen["end"] = end
+            return True
+        w.hooks.append(hook)
+        await w.complete(wid)
+    asyncio.run(go())
+    row = s.ledger.worker_get(wid)
+    card = next(t for k, t, _, _ in s.chan.settled if k == f"worker:{wid}").splitlines()
+    assert all(W.width(x) <= W.PHONE for x in card)
+    return card, row["exit_detail"], workers.relay_text(row, seen["end"], 1500).splitlines()[0]
+
+
+def test_a_death_for_memory_says_memory_on_the_card_the_relay_and_the_ledger_and_a_kill_with_no_count_reads_as_before(setup):
+    # 2026-11-11, units on the box: OOMPolicy=continue ends a main process the kernel killed for memory as signal, KILL;
+    # OOMPolicy=stop said oom-kill, exited 143, as seen live
+    for wid, exit, detail in (("oomkil", {"result": "signal", "code": "killed", "status": "KILL", "oom_kill": 1}, "signal, killed KILL"),
+                              ("oomstp", {"result": "oom-kill", "code": "exited", "status": "143"}, "oom-kill, exited 143")):
+        card, said, relay = settle(setup, wid, exit)
+        assert card[:2] == [f"{W.NOT_DONE} worker died: it ran out of memory", "merge"] and said == f"{detail}; it ran out of memory"
+        assert relay.startswith(f"[worker {wid} finished] died: it ran out of memory, ") and relay.count("memory") == 1
+    for wid, exit in (("kill00", {"result": "signal", "code": "killed", "status": "KILL"}),
+                      ("kill01", {"result": "signal", "code": "killed", "status": "KILL", "oom_kill": 0})):
+        card, said, relay = settle(setup, wid, exit)
+        assert (card[:2], said) == ([f"{W.NOT_DONE} worker died: it was killed", "merge"], "signal, killed KILL")
+        assert relay.startswith(f"[worker {wid} finished] died: it was killed, ") and "memory" not in relay
+
+
+def test_a_worker_that_lost_a_process_to_memory_and_ended_any_other_way_says_so_in_one_line_and_none_without(setup):
+    one, two = W.OOM_LOST[0], W.OOM_LOST[1].format(n=2)
+    for wid, exit, head, line in (
+            ("lost01", {"result": "success", "code": "exited", "status": "0", "oom_kill": 1}, "finished clean", one),
+            ("lost02", {"result": "timeout", "code": "killed", "status": "TERM", "oom_kill": 2}, "stopped: timed out at 30 min", two),
+            ("lost03", {"result": "exit-code", "code": "exited", "status": "3", "oom_kill": 1}, "died: it ended with an error", one),
+            ("lost04", {"result": "exit-code", "code": "exited", "status": "143", "oom_kill": 1}, "died: it ended with an error", one),
+            ("none00", {"result": "success", "code": "exited", "status": "0", "oom_kill": 0}, "finished clean", None)):
+        card, said, relay = settle(setup, wid, exit)
+        detail = f"{exit['result']}, {exit['code']} {exit['status']}"
+        assert card[0].endswith(f"worker {head}") and relay.startswith(f"[worker {wid} finished] {head}, "), wid
+        if line is None:
+            assert card[1] == "merge" and said == detail and "memory" not in relay
+        else:
+            assert card[1:3] == [line, "merge"] and said == f"{detail}; {line}" and relay.endswith(f"; {line}"), wid
+
+
 def test_a_worker_a_script_starts_that_answers_exactly_no_reply_ends_with_no_relay_turn_live_or_at_a_re_attach(setup, monkeypatch):
     """need-2026-11-09-77: a timer script started each run with `yerk worker start --brief FILE --room ROOM`, the brief
     saying to answer exactly NO_REPLY when there is nothing, and each quiet run still asked the room for a relay turn that
