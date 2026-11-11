@@ -1,5 +1,5 @@
-"""Contract probes: real Claude Code processes, tiny prompts, raw event logs kept (DESIGN 12: nightly, and before an
-upgrade). They live beside the tests, out of the package, and run from a checkout with its venv:
+"""Contract probes check that a real Claude Code still behaves the way Yerk AI relies on: real Claude Code processes, tiny prompts, raw event logs
+kept. They are run by hand, before an upgrade (DESIGN 12); no unit or job runs them. They live beside the tests, out of the package, and run from
 `python tests/contract/probes.py NAME --config-dir DIR` prints one probe's JSON, `... drill --config-dir DIR` is the
 upgrade drill; each exits 0 when it passed. The raw event logs go to <state>/probes (--logs).
 
