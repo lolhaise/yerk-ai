@@ -79,8 +79,8 @@ def delete_targets(argv: list[str], cwd: str) -> list[str] | None:
     rsync with --delete (its destination) and zip -m (its files). An empty list
     when none of these is the command: that is not a proof it deletes nothing
     (an interpreter, a wrapper this module does not peel, or a program not
-    listed here can still delete), so the gate reads an empty list as unknown,
-    never as safe. None when a target holds a variable, a glob or a `~`, is
+    listed here can still delete), and the gate lets such a command run unless
+    it is one of the runners it refuses (gates._RUNNERS). None when a target holds a variable, a glob or a `~`, is
     empty, or when a delete names no path at all, as behind xargs; and for tar
     --remove-files, whose members depend on its mode.
     """
