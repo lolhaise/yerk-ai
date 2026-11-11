@@ -343,6 +343,37 @@ def test_a_room_asked_for_a_link_or_a_button_in_an_email_hears_the_numbered_way_
     assert not abilities.asked("the button on the booking form is greyed out", y.memory, TAB)
 
 
+def test_a_room_asked_to_read_a_file_an_email_carries_hears_the_attachment_way_never_to_ask_for_the_file(tmp_path):
+    """need-2026-11-11-85: a room asked to read a quote an email carried as a PDF, to confirm what it said, had the file's
+    name from the mail tool's read and no way to the file (the mail tool neither saved nor opened one, the attachments tool
+    takes a Discord message's files only, and its shell has no network), so it asked the owner to send the file into the
+    room. Asked that way, a room gets mail-files whole: the read numbers the mail's files, the plug-in's attachment action
+    saves one by that number in the room's work folder, and the room opens the path with Read, never asking for the file;
+    a mail ask with no file in it still gets the email entry, and a file posted again from a Discord message the
+    attachments entry."""
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    for ask in ("can you read the quote the insurer sent? it's a pdf attached to the email, I need the deductible",
+                "check the attachment in my gmail from the bank and tell me the total"):
+        found = abilities.asked(ask, y.memory, TAB)
+        assert [e["key"] for e in found] == ["mail-files"], ask
+    text = found[0]["text"]
+    assert text.startswith(f"mail-files, a Yerk AI ability ({words.ability('described')[1]}): Gives a room a file one of the "
+                           "owner's emails carries")
+    for want in ("One mail read, with its files; Saved by its number, or every one; Under the file's own name made safe; "
+                 "Never out of the room's folder; Read as the mail is read; Refused in one line with its reason",
+                 "saves the file by its number with that action, then opens the path it names with Read, never asking the owner "
+                 "to send the file into the room"):
+        assert want in text, want
+    assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
+    told = abilities.explain("mail-files", TAB["mail-files"], TAB, y.memory)
+    assert next(x for x in told if x.startswith("- Saved by its number")).endswith("and returns its path to open with Read.")
+    assert next(x for x in told if x.startswith("- Never out of")).startswith(
+        "- Never out of the room's folder: the reader walks to that folder a part at a time without following a link")
+    assert [e["key"] for e in abilities.asked("search my email for the receipt", y.memory, TAB)] == ["email"]
+    assert [e["key"] for e in abilities.asked("send the file again", y.memory, TAB)] == ["attachments"]
+    assert not abilities.asked("I attached the file to my reply", y.memory, TAB)
+
+
 def test_a_room_asked_for_a_worker_a_script_starts_that_ends_silently_hears_the_no_reply_way(tmp_path):
     """need-2026-11-09-77: a timer script started a worker with `yerk worker start` each time something might need a look,
     and each run that answered NO_REPLY still asked its room for a relay turn. Asked that way, a room gets the workers entry
