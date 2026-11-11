@@ -1595,7 +1595,7 @@ class Yerkd:
                                   way=words.DELETE_WAY if self.owner(name) else "")
             if v and v.new_input is not None:
                 v.new_input = {**ti, **v.new_input}
-        if v is None and (what := gates.restart_hit(tool, ti, self.private)):
+        if v is None and (what := gates.restart_hit(tool, ti, self.private, str(payload.get("cwd") or self.state / "rooms" / name / "work"))):
             why = (words.REBUILDING if self.rebuild_running()
                    else words.IN_PROGRESS if any(r.human_turn() for r in self.rooms.values()) else "")
             if why:

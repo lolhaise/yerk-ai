@@ -148,6 +148,15 @@ def test_a_restart_causing_write_is_refused_during_a_human_turn_or_a_rebuild_and
         assert all(words.width(x) <= words.PHONE for x in line.splitlines()), line
 
 
+def test_a_shell_write_to_a_start_up_file_in_a_nested_shell_or_by_its_relative_name_is_refused_during_a_human_turn(tmp_path):
+    y, room, ch = setup(tmp_path)                 # cleanup F5-09: the restart rule reads the write as it would run, in its folder
+    human_turn(room)
+    for command, cwd in ((f'bash -c "echo x >> {EXAMPLE_PRIVATE}/rooms.toml"', tmp_path), ("sed -i s/a/b/ yerkd.toml", EXAMPLE_PRIVATE)):
+        out = call(y, {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": command}, "cwd": str(cwd)})
+        assert out.get("hookSpecificOutput", {}).get("permissionDecision") == "deny", command
+    assert len(ch.notes) == 2 and all(words.IN_PROGRESS in line for line in ch.notes)
+
+
 def test_the_approval_gate_holds_then_the_owners_word_releases_it_once_ledgered_either_way(tmp_path):
     y, room, ch = setup(tmp_path)
     push = {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "git push origin main"}}

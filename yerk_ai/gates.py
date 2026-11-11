@@ -45,7 +45,6 @@ RESTART_BASH = re.compile(r"^(?:systemctl\s+--user\s+(?:restart|stop|kill|try-re
                           r"|kill\b.*\$\(\s*(?:pgrep|pidof)\b[^)]*yerk)", re.I)
 RESTART_VERBS = frozenset({"restart", "stop", "kill", "try-restart", "reload-or-restart", "try-reload-or-restart", "condrestart",
                            "force-reload"})     # systemctl's words that end or replace a unit's process
-WRITE_OPS = re.compile(r">>?|\btee\b|\bsed\s+(?:-[^\s]*\s+)*-i|\bcp\b|\bmv\b|\btruncate\b|\bdd\b|\bperl\s+-[^\s]*i")
 WRITE_TOOLS = ("Write", "Edit", "MultiEdit", "NotebookEdit")
 GATE_FILES = ("worker.json", "settings.json", "mcp.json")       # a worker's own gate, in its folder (workers.py): its spec, hook and tools
 WRITERS = frozenset({"mv", "tee", "truncate", "dd", "rm", "unlink", "touch", "chmod", "chown", "shred"})   # change what they name
@@ -236,8 +235,11 @@ def check_shell(command: str, cwd: str, s: Settings, root: str = "", way: str = 
     return Verdict("trash", "rewrite", note, detail=f"{command[:160]} -> {cmd[:160]}", new_input={"command": cmd})
 
 
-def restart_hit(tool: str, ti: dict[str, Any], private: Path) -> str | None:
-    """Would this call restart yerkd, or write a file it reads only at start? -> what, else None."""
+def restart_hit(tool: str, ti: dict[str, Any], private: Path, cwd: str = "") -> str | None:
+    """Would this call restart yerkd, or write a file it reads only at start? -> what, else None. A shell command's write is
+    read as own_gate_hit reads one: a redirect into the file (a nested shell's too), or a program that changes what it names
+    (WRITERS, sed -i, perl -i) or a copy whose target it is among what would really run (unwrap); a relative word is read
+    against `cwd`, the command's folder, and against the private folder, so a `cd` into it first is no way round."""
     targets = {str((private / f).resolve()) for f in RESTART_FILES} | {str(private / f) for f in RESTART_FILES}
     if tool in WRITE_TOOLS:
         fp = str(ti.get("file_path") or ti.get("notebook_path") or "")
@@ -249,15 +251,30 @@ def restart_hit(tool: str, ti: dict[str, Any], private: Path) -> str | None:
     command = str(ti.get("command") or "")
     if any(restarts(argv) for argv in unwrap.unwrap(command, whole=True) or []) or any(RESTART_BASH.search(x) for x in runs(command)):
         return "a restart of yerkd"       # what would really run: behind a wrapper, in a nested shell, by its full path
-    for seg, argv, norm in shell(command):
-        if RESTART_BASH.search(norm):
-            return "a restart of yerkd"
-        if not shellguard.search_outside_quotes(WRITE_OPS, seg):
-            continue
-        for tok in re.findall(r"[^\s'\"<>|;&=]+", seg):
-            p = Path(os.path.expanduser(tok))
-            if p.name in RESTART_FILES and p.is_absolute() and (str(p) in targets or str(p.resolve()) in targets):
-                return f"a write to {p.name}"
+    if any(RESTART_BASH.search(norm) for _, _, norm in shell(command)):
+        return "a restart of yerkd"
+
+    def places(word: str) -> list[Path]:
+        p = Path(os.path.expanduser(word))
+        return [p] if p.is_absolute() else [*([Path(cwd) / p] if cwd else []), private / p]
+
+    def start_file(word: str) -> str:
+        return next((q.name for q in places(word) if str(q) in targets or os.path.normpath(q) in targets or str(q.resolve()) in targets), "")
+    if hit := next((n for m in REDIRECT.finditer(shellguard.strip_heredocs(command)) if (n := start_file(m[1]))), ""):
+        return f"a write to {hit}"
+    for argv in unwrap.unwrap(command, whole=True) or []:     # a heredoc body is data here too
+        name, args = (os.path.basename(argv[0]), argv[1:]) if argv else ("", [])
+        words = [a for a in args if not a.startswith("-")]
+        if name in COPIERS:      # its target, or the private folder with a source of a start-up file's name
+            there = len(words) > 1 and any(os.path.normpath(q) == os.path.normpath(private) for q in places(words[-1]))
+            hit = (start_file(words[-1]) if len(words) > 1 else "") or next((os.path.basename(a) for a in words[:-1]
+                                                                             if there and os.path.basename(a) in RESTART_FILES), "")
+        elif name in WRITERS or name in ("sed", "perl") and any(re.match(r"-[A-Za-z]*i|--in-place", a) for a in args):
+            hit = next((n for a in words if (n := start_file(a.removeprefix("of=") if name == "dd" else a))), "")
+        else:
+            hit = ""
+        if hit:
+            return f"a write to {hit}"
     return None
 
 
@@ -424,7 +441,7 @@ def worker_check(payload: dict[str, Any], folder: Path, spec: dict[str, Any]) ->
         v = check_shell(str(ti.get("command") or ""), str(payload.get("cwd") or folder), s, root=str(folder))
         if v and v.new_input is not None:
             v.new_input = {**ti, **v.new_input}
-    if v is None and (what := restart_hit(tool, ti, Path(str(g.get("private") or "/nonexistent")))):
+    if v is None and (what := restart_hit(tool, ti, Path(str(g.get("private") or "/nonexistent")), str(payload.get("cwd") or folder))):
         v = Verdict("restart", "deny", f"Refused: {what} would change or restart Yerk AI, and a worker never does "
                                        "that. Say in your report what should change; the owner does it.")
     if v is None and (hit := external_hit(tool, ti, str(spec.get("room") or ""), s)):
