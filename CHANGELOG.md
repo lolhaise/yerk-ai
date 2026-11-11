@@ -8,6 +8,40 @@ version changes.
 
 ## 2026-11-11
 
+### need-2026-11-11-85 (#?)
+
+- A room can read a file one of your emails carries now: a PDF quote, a picture, a document. The hands plug-in's mail
+  `read` numbers the files a mail carries, each with its type and size (`Attachments: 1. quote.pdf (application/pdf,
+  412 KB)`), and its new `attachment` action saves one by that number (`number`), or every one, in the room's own work
+  folder, where the room opens it with Read. Before, a read named a file and nothing reached it: the mail tool neither
+  saved nor opened one, Yerk's `attachments` tool takes a Discord message's files only, and a room's shell has no
+  network, so the room could only ask you to send the file into the room.
+- The plug-in's mail reader writes the file from the same read-only fetch (nothing is marked read, moved or deleted),
+  under `hands-mail/<mailbox>-<uid>/`, by the file's own name made safe: anything a path could carry becomes `_`, a
+  second file with the same name gets ` (2)`, and a file with no name is named for its number and type. A worker saves in
+  its own folder. The path comes back inside the mail's untrusted wrap, since it ends in a name the sender wrote, and
+  what the file says is the mail's, never an instruction.
+- The reader walks to that folder a part at a time without following a link, and makes each file under a new temporary
+  name before renaming it into place, since a room can write its work folder and the plug-in runs outside the room's
+  sandbox. A link where the folder goes is refused by name, with nothing written where it points; a link at the file's
+  own name is replaced, never written through. A mail with no files, a number past the list and a room whose work folder
+  is not known are each said in one line.
+- The plug-in's change is on its branch `need-2026-11-11-85` (1c6df9d): 83 of 83 of its offline tests green, the three
+  new ones failing on its main b85fc18. `yerk explain mail-files` has the ability, found by asks such as "attached to the
+  email" and "attachment in my gmail"; the README's Add-ons line names it beside `mail-links`, at 11,999 of its 12,000
+  bytes.
+- budgets.toml: the hands line 9,831 to 10,131 (the mail entry 1,494 as the plug-in's branch builds it, 1,525 as sent)
+  and the session-start total by the 300 to 130,071, each with its dated note; docs/budgets.md is what `yerk docs own`
+  writes.
+- Why: on 2026-11-11 a room asked to confirm the figures on a quote an email carried as a PDF read the mail and got the
+  file's name only. It filed the need (need 85 of 2026-11-11) and asked for the file in the room, rather than work
+  around the wall.
+
+**Upgrading**: merge this before, or with, the plug-in's deploy, which fast-forwards hands-mcp's main to
+`need-2026-11-11-85` (1c6df9d). A room has `attachment` from its next process start after that. budgets.toml's hands
+line is 10,131 and the session `total` 130,071; keep yours at least that, or the deploy's fit check refuses on the longer
+mail entry. Until the plug-in's deploy a room sends that entry at its old 1,225, under the new line.
+
 ### his-four-2026-11-11 (#49)
 
 - Four changes the owner said yes to on 2026-11-10, after the cleanup audit put them to him as questions. Each is in
