@@ -703,3 +703,27 @@ def test_a_failed_pin_pass_is_skipped_and_only_a_sqlite_without_dbstat_turns_the
     assert pin.mode == "map" and pin.pass_()["mode"] == "off"
     pin.close()
     idx.close()
+
+
+# 18. a rebuild under a running yerk-index reloads the store with the install's own units: a lines-only store stays lines only,
+# though the rebuild copied the chunk vectors an earlier `both` left on disk
+def test_a_rebuild_reloads_the_store_with_the_installs_units(tmp_path):
+    s = tree(tmp_path)
+    stub = StubEmbedder(s.embeddings_key)
+    idx, store, server, back, status = serve(s, stub, units="both")
+    drain(back)
+    server.stop()
+    idx.close()
+    lines = embeddings.Vectors(stub.dim)
+    conn = sqlite3.connect(f"file:{memindex.live(s.index_db)}?mode=ro", uri=True)
+    n = lines.load(conn, stub.model, "lines")
+    assert 0 < n < embeddings.Vectors(stub.dim).load(conn, stub.model, "both")      # the disk holds chunk vectors too
+    conn.close()
+    back2 = embeddings.Backfill(s.index_db, memindex.live, lines, stub, gap=0.0, units="lines")
+    back2.step()                                              # its connection on the live generation
+    memindex.rebuild(s.index_db, s.scope)                     # the link swaps under it
+    back2.step()                                              # the swap seen: the store loaded again
+    assert lines.n == n
+    back2.stop.set()
+    if back2.conn is not None:
+        back2.conn.close()

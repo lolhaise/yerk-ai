@@ -363,7 +363,7 @@ class Backfill:
                 self.conn.close()
             self.conn = sqlite3.connect(real, timeout=5.0, isolation_level=None)
             if self.real is not None:
-                log.info("the index was rebuilt: %d vectors loaded from %s", self.store.load(self.conn, self.embedder.model), real.name)
+                log.info("the index was rebuilt: %d vectors loaded from %s", self.store.load(self.conn, self.embedder.model, self.units), real.name)
                 self.dirty.set()
             self.real = real
         return self.conn
