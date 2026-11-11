@@ -782,7 +782,7 @@ def parser() -> argparse.ArgumentParser:
     im.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
     ac = sub.add_parser("accounts", help="tokens, rests and health per account; cool, clear, token, mint, health")
     ac.add_argument("action", nargs="?", default="list", choices=["list", "cool", "clear", "token", "mint", "health"])
-    ac.add_argument("name", nargs="?", help="cool, clear, token: the account")
+    ac.add_argument("name", nargs="?", help="cool, clear, token, mint: the account")
     ac.add_argument("minutes", nargs="?", type=float, default=30.0, help="cool: minutes to rest")
     ac.add_argument("--kind", default="manual", help="cool: the rest's kind (default manual)")
     ac.add_argument("--issued", help="token: the issue date, YYYY-MM-DD (default today)")

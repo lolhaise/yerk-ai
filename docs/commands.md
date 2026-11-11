@@ -61,7 +61,7 @@ a chat's whole history into the day logs, no room made: discord:<channel or thre
 tokens, rests and health per account; cool, clear, token, mint, health
 
 - `[ACTION]`: one of list, cool, clear, token, mint, health; default list
-- `[NAME]`: cool, clear, token: the account
+- `[NAME]`: cool, clear, token, mint: the account
 - `[MINUTES]`: cool: minutes to rest; default 30.0
 - `--kind KIND`: cool: the rest's kind (default manual)
 - `--issued ISSUED`: token: the issue date, YYYY-MM-DD (default today)
