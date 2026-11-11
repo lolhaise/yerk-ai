@@ -491,6 +491,9 @@ class Systemd:
     def disable_now(self, timer: str) -> str:
         return self._unit_cmd("disable", "--now", timer)
 
+    def running(self, unit: str) -> bool:                     # a one-shot service is activating while its run goes
+        return systemctl("is-active", unit).stdout.strip() in ("active", "activating")
+
     def check(self, spec: str) -> str:
         try:
             p = subprocess.run(["systemd-analyze", "calendar", spec], capture_output=True, text=True, timeout=30)
@@ -519,12 +522,15 @@ class Plan:
     failed: dict[str, str] = field(default_factory=dict)       # systemd refused: job -> why
 
 
+def running_one_shots(path: Path, units: Systemd, errors: dict[str, str]) -> dict[str, Job]:
+    """The one-shots `load` refused only for their time having passed whose own service runs: in the file and running.
+    Only that run takes one out of the file and then its units; one whose run was cut is refused as any past time is."""
+    return {n: j for n, j in load(path, 0)[0].items() if n in errors and j.when == "at" and units.running(f"{j.unit}.service")}
+
+
 def plan(path: Path, units: Systemd, env: Env, now: float | None = None) -> Plan:
     jobs, errors = load(path, now)
-    ours = units.ours()
-    # a one-shot whose time has passed, still in the file with its units on disk, is running or due on return: kept as
-    # it is and never checked for a next fire, since only its own run takes it out of the file and then its units
-    kept = {n: j for n, j in load(path, 0)[0].items() if n in errors and j.when == "at" and n in ours}
+    kept = running_one_shots(path, units, errors)               # kept as they are, never checked for a next fire
     p = Plan(jobs=jobs, errors=errors)
     for name, job in jobs.items():
         for spec in job.calendar():
@@ -545,7 +551,7 @@ def plan(path: Path, units: Systemd, env: Env, now: float | None = None) -> Plan
         p.jobs[name] = job
         p.unchanged.append(name)
     wanted = set(jobs) - set(p.errors)
-    p.removed = [n for n in ours if n not in wanted]
+    p.removed = [n for n in units.ours() if n not in wanted]
     return p
 
 

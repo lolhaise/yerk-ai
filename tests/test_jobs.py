@@ -33,11 +33,15 @@ HOUR = 3600
 
 class FakeSystemd:
     """systemd as sync and the runner rely on it: unit files in a folder, every call recorded, a timer
-    known once enabled; its next and last fire times are whatever the test puts there."""
+    known once enabled; its next and last fire times are whatever the test puts there, and a service
+    runs while the test has it in `active`."""
 
     def __init__(self, folder):
-        self.folder, self.calls, self.enabled, self.next, self.last = folder, [], {}, {}, {}
+        self.folder, self.calls, self.enabled, self.next, self.last, self.active = folder, [], {}, {}, {}, set()
         folder.mkdir(parents=True, exist_ok=True)
+
+    def running(self, unit):
+        return unit in self.active
 
     def read(self, unit):
         p = self.folder / unit
@@ -254,8 +258,13 @@ def test_the_read_back_comes_from_systemd_in_the_jobs_zone(tmp_path):
     assert jobs.status_lines(path, sd, now) == [f"{jobs.NOT_DONE} jobs: the timer list could not be read"]
 
 
-def test_the_real_adapter_writes_reads_and_removes_unit_files_and_a_removed_timers_stamp(tmp_path):
+def test_the_real_adapter_writes_reads_and_removes_unit_files_and_a_removed_timers_stamp(tmp_path, monkeypatch):
     sd = jobs.Systemd(folder=tmp_path / "units", stamps=tmp_path / "stamps")
+    states = {f"yerk-job-{s}.service": s for s in ("active", "activating", "deactivating", "inactive", "failed")}
+    monkeypatch.setattr(jobs.subprocess, "run", lambda cmd, **k: subprocess.CompletedProcess(
+        cmd, 0 if cmd[2:] == ["is-active", "yerk-job-active.service"] else 3, states[cmd[3]] + "\n", ""))
+    assert [u for u in states if sd.running(u)] == ["yerk-job-active.service", "yerk-job-activating.service"]
+    monkeypatch.undo()
     sd.write("yerk-job-x.timer", jobs.HEADER + "x.\n[Timer]\n")
     sd.write("yerk-job-x.service", jobs.HEADER + "x.\n[Service]\n")
     (tmp_path / "units" / "yerk-job-hand.timer").write_text("[Timer]\n")          # not ours: never listed, never removed
@@ -602,7 +611,8 @@ def test_a_one_shot_is_removed_from_the_file_and_its_units_go_after_it_fires(set
 def test_a_sync_while_a_one_shot_runs_keeps_it_and_its_units_until_its_own_run_takes_them_out(setup, tmp_path):
     """Two one-shots at one minute: the first to finish syncs while the other still runs. That one keeps its place in the
     file and both its units (counted unchanged, never checked for a next fire), so systemd does not stop it; its own run
-    takes it out. A past one-shot with no units is still refused."""
+    takes it out. A past one-shot whose own unit is not running (its run was cut) is refused and its units go, as before
+    this fix; so is one with no units."""
     s = setup
     rec = Rec()
     j, w, sd, priv, state = manager(setup, tmp_path, {"r": s.room()}, {"r": rec})
@@ -616,6 +626,7 @@ def test_a_sync_while_a_one_shot_runs_keeps_it_and_its_units_until_its_own_run_t
     checked = []
     sd.check = lambda spec: checked.append(spec) or f"{spec!r} never fires again (it is in the past)"
     handoff = lambda payload: asyncio.run(j.handle("", payload["job"]))  # noqa: E731  (the daemon's /control)
+    sd.active = {"yerk-job-first.service", "yerk-job-second.service"}           # both units running
     assert jobs.run("first", priv, state, units=sd, handoff=handoff) == 0
     assert sd.ours() == ["second"] and (sd.read("yerk-job-second.timer"), sd.read("yerk-job-second.service")) == second
     assert "[jobs.second]" in path.read_text() and "[jobs.first]" not in path.read_text()
@@ -624,6 +635,15 @@ def test_a_sync_while_a_one_shot_runs_keeps_it_and_its_units_until_its_own_run_t
     assert (p.unchanged, p.removed, p.errors, checked) == (["second"], [], {}, [])
     assert jobs.run("second", priv, state, units=sd, handoff=handoff) == 0
     assert sd.ours() == [] and "[jobs.second]" not in path.read_text() and [t for _, t, _ in rec.sent] == ["first", "second"]
+    write_jobs(path, shot.format(n="cut"))                         # its run was cut (a box shutdown): its unit is not running
+    sd.check = lambda spec: ""                                     # written while it was still to come
+    jobs.sync(path, sd, ENV, now=time.time() - HOUR)
+    assert sd.ours() == ["cut"]
+    n = len(sd.calls)
+    p, _ = jobs.sync(path, sd, ENV)                                # the next sync removes it as before
+    assert (p.removed, p.unchanged, sd.ours()) == (["cut"], [], []) and p.errors["cut"].endswith("is in the past")
+    assert sd.calls[n:] == [("disable", "yerk-job-cut.timer"), ("remove", "yerk-job-cut.timer"),
+                            ("remove", "yerk-job-cut.service"), ("reload",)]
     write_jobs(path, shot.format(n="late"))                        # never scheduled: refused as before
     p, _ = jobs.sync(path, sd, ENV)
     assert p.errors["late"].endswith("is in the past") and (p.unchanged, sd.ours()) == ([], [])
