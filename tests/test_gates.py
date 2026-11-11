@@ -663,7 +663,7 @@ def test_a_status_board_in_a_room_with_people_bounces_once_and_never_in_an_owner
     assert call(y, {**stop, "last_assistant_message": BOARD_FINAL}) == {}                       # the owner's room, no list
     room.conf = {**room.conf, "people": [7]}                    # a person besides the owner
     room._new_card()
-    assert room.card.people == "example-room"                                 # and the card takes its shape
+    assert room.card.people == ""                                             # its card the owner rooms' shape (card-default)
     human_turn(room, "is the library one set?", sender="person")
     out = call(y, {**stop, "last_assistant_message": BOARD_FINAL})
     assert out["decision"] == "block" and "two or three plain sentences" in out["reason"]

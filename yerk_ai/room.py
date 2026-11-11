@@ -780,7 +780,7 @@ class Room:
     def _new_card(self, note: str = "", edit: bool = False) -> None:
         privacy = str(self.conf.get("privacy", "owner"))
         self.card = Card(thinking=flag(self.conf.get("thinking_panel")) and privacy == "owner",
-                         people=self.name if self.conf.get("people") and self.conf.get("card") != "steps" else "")   # "steps": the rows
+                         people=self.name if self.conf.get("people") and self.conf.get("card") == "count" else "")   # only "count": the short card
         self.card.narration = note                # a harness line from the first post, until the model's first words
         self.turn_key, self.bounced, self.silent_bounced, self.stub_bounced = uuid.uuid4().hex[:12], False, False, False
         self.note_bounced = self.board_bounced = self.retired_bounced = self.paste_bounced = self.sheet_bounced = self.said_bounced = False

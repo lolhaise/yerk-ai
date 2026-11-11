@@ -107,7 +107,7 @@ FILES = {"open-loops.md": "your open items", "MEMORY.md": "the pinned notes", "p
 ANOTHER_WAY = "that did not work, trying another way"       # two or more failed steps in a row, as one row
 EARLIER, EARLIER_ROWS, ROOM_NOW = "{n} earlier steps", "{n} earlier rows", "checking what this room runs"
 THINKING, NOT_ANSWERED, YOU_ASKED = "thinking: ", "not answered", 'you asked: "{asked}"'
-STEP_N = "step {n}"                       # a room with people: its card counts the steps and never names one
+STEP_N = "step {n}"                       # a room with people and card = "count": its card counts the steps, never names one
 WHY = {                                   # a failed turn, in plain words: the failure class, else the outcome
     "auth": "the account's login was refused", "quota": "out of usage on every account",
     "transient": "Claude was busy; ask again", "overflow": "the conversation is too long",
