@@ -440,7 +440,8 @@ export async function runFetchPlus(args, ctx, executionContext = {}, deps = {}) 
   // The free rungs need no key; a missing key stops the ladder only where Browserbase starts.
   if (!creds.apiKey && !settings.localEnabled) return fail("no_key");
 
-  let total = settings.totalMaxSeconds * 1000;
+  // The caller's cap on the whole climb, when it is the tighter one (tools.mjs: 10 s inside the room's limit on this server).
+  let total = Math.min(settings.totalMaxSeconds * 1000, executionContext?.capMs || Infinity);
   const left = () => total - (clock() - startedTick);
   const common = { url, settings, apiKey: creds.apiKey, extractMode, signal, fetchImpl };
 

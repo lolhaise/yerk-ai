@@ -172,9 +172,13 @@ export async function webFetch(args, { signal, deps = {}, at = AT } = {}) {
   if (!key.value) lines.push(`No Browserbase key (${key.why}): only the free rungs on this machine can run.`);
   if (note) lines.push(note);
 
+  // The room's own limit caps the climb, need 49's rule as web_research waits (research.mjs waitIn: 10 s inside the limit,
+  // half a limit under 20 s): Claude Code drops an answer that comes after it, so the room gets the ladder's named wall in
+  // time, and no paid rung starts after the room stopped listening. No limit set: the ladder's own total.
+  const capMs = at.limit ? Math.max(at.limit - 10000, at.limit / 2) : undefined;
   let p;
   try {
-    p = await runFetchPlus({ url, extractMode: "markdown" }, { config: { ...rest, stateDir: path.join(at.web, "fetch") } }, { signal }, {
+    p = await runFetchPlus({ url, extractMode: "markdown" }, { config: { ...rest, stateDir: path.join(at.web, "fetch") } }, { signal, capMs }, {
       ...deps,
       credentials: { apiKey: key.value || undefined, projectId: project.value || undefined },
     });

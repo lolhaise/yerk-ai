@@ -999,3 +999,47 @@ test("a picture's type and size come from its own bytes: jpeg, png, gif and the 
   ]);
   assert.deepEqual([imageInfo(AVIF), imageInfo(jpeg(10, 10).subarray(0, 12)), imageInfo(Buffer.from("<html>no</html>"))], [null, null, null]);
 });
+
+// ---- web_fetch inside the room's own limit (F7-15) ---------------------------------------------------------------
+// Claude Code cuts a call at the room's limit on this server and drops its answer (common.mjs where().limit); the family
+// rooms' is a minute while the ladder's own total is 140 s. The climb now ends 10 s inside the limit, need 49's rule as
+// web_research waits, so the room gets the ladder's named wall in time and no paid rung starts after it stopped listening.
+// The clock is the ladder's test seam (settings._now): F2 holds its whole budget on a challenge, a Browserbase Fetch takes
+// 10 s, and a session create answers 503; every paid call's start is noted.
+async function climbIn(limit, n) {
+  const clock = { t: Date.parse("2026-11-10T12:00:00Z") };
+  const t0 = clock.t;
+  const paid = [];
+  const r = rig();
+  r.deps.localBrowserRung = async ({ budgetMs }) => {
+    clock.t += budgetMs;
+    return { rung: "F2", ok: false, wall: "challenge", verdict: "challenge", outcome: "challenge:fixture", status: 403, ms: budgetMs, next: "BB" };
+  };
+  r.deps.fetchImpl = async (url, init = {}) => {
+    const u = String(url);
+    if (u.endsWith("/v1/fetch")) {
+      paid.push(["fetch", clock.t - t0]);
+      clock.t += 10000;
+      return json({ statusCode: 403, headers: { "content-type": "text/html" }, content: CF, contentType: "text/html" });
+    }
+    if (u.endsWith("/v1/sessions") && init.method === "POST") {
+      paid.push(["session", clock.t - t0]);
+      return json({ error: "unavailable" }, 503);
+    }
+    return json({}, 404);
+  };
+  r.deps.settingsOverrides = { l3Enabled: true, contextStrategy: "none", usageSyncMinutes: 0, localTrawlEnabled: false, _now: () => clock.t };
+  const t = textOf(await webFetch({ url: `https://slow${n}.example/listing` }, { deps: r.deps, at: { ...WITH, limit } }));
+  return { head: t.split("\n")[0], paid, took: clock.t - t0 };
+}
+
+test("web_fetch ends its climb 10 s inside the room's limit: a one-minute room gets the timeout wall by 50 s and no paid rung starts after it; no limit, or the owner rooms' 180 s, climbs as before", async () => {
+  const minute = await climbIn(60000, 1);
+  assert.match(minute.head, /^web_fetch could not read https:\/\/slow1\.example\/listing: wall timeout, rungs F1:challenge[^,]*,F2:challenge:fixture,L1:challenge[^.]*\.$/);
+  assert.ok(minute.took <= 50000, `the climb ended at ${minute.took} ms`);
+  assert.ok(minute.paid.every(([, ms]) => ms < 50000), `paid starts ${JSON.stringify(minute.paid)}`);
+  const none = await climbIn(null, 2);
+  assert.deepEqual(none.paid, [["fetch", 35000], ["fetch", 45000], ["session", 55000]], "no limit: the ladder's own 140 s");
+  const owner = await climbIn(180000, 3);
+  assert.deepEqual(owner.paid, none.paid, "170 s is above the ladder's own 140 s, so nothing changes");
+});
