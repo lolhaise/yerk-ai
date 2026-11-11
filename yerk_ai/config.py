@@ -217,6 +217,9 @@ YERKD_WORDS = {
                  "places": "the named places, {\"places\": [{\"label\", \"lat\", \"lon\", \"radius_m\"}]}, only read",
                  "stale_after": "no place part when the newest fix is older than this (default 3h)"},
     "workers": {"root": "where workers' folders go (default <state>/workers)", "cap_minutes": "minutes before a worker is stopped (default 65)",
+                "memory_max": "a worker's memory ceiling, bytes or a whole number with K, M, G or T after it, with no swap past it: "
+                              "the kernel kills the process inside the worker using the most memory and the worker goes on; anything "
+                              "else is not a size and the default is used (default 4G)",
                 "model": "a worker's model (default: the room's)", "account": "the account workers run on (default: the first not resting)",
                 "effort": "a worker's thinking level, one of low, medium, high, xhigh, max (default: the room's live level)",
                 "tools": "a worker's built-in tools (default Bash, Read, Write, Edit, Glob, Grep, WebFetch, WebSearch, TodoWrite)",

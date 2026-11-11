@@ -8,6 +8,22 @@ version changes.
 
 ## 2026-11-11
 
+### worker-memory (#55)
+
+- Every worker's unit has a memory ceiling, 4G unless `[workers] memory_max` says otherwise, with no swap past it (the
+  owner's order of 2026-11-11: a worker reproducing an out-of-memory bug took 16G of RAM and 3.2G of swap on a 20G box,
+  and the box froze for 76 seconds). Past the ceiling the kernel kills the process using the most memory inside that
+  worker, never one of the box's, and systemd does not stop the worker for it (OOMPolicy=continue): a test run that
+  blows up dies alone and the worker goes on. The time cap, the sandbox and how a worker's end is read are unchanged.
+- `[workers] memory_max` in yerkd.toml: a whole number of bytes, or one with K, M, G or T after it (any case). Any other
+  value (a word, a fraction, a percentage, infinity, zero) is never handed to systemd: the log says it is not a size and
+  every worker gets 4G. docs/settings.md lists the key.
+- budgets.toml: `[code] lines` 29,218 to 29,244 with its dated note.
+- **Upgrading**: nothing to change; the ceiling holds for every worker started after yerkd's next start. An install
+  that capped its workers with a systemd drop-in (a `yerk-worker-.service.d/` folder in ~/.config/systemd/user/ setting
+  MemoryMax) can remove it and run `systemctl --user daemon-reload`, so yerkd.toml is the one place that states the
+  number: while the drop-in is there, systemd applies its number over the one Yerk AI gives.
+
 ### need-2026-11-11-87 (#?)
 
 - A room reads a PDF or a Word file at a web link now: a form, a notice or a report someone links. web_fetch named any

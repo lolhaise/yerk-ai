@@ -673,7 +673,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-11: status-card raised it by 152, the owner's order of 2026-11-11 (the room's /status was the whole machine card, too long to read on their phone): /status typed in a room answers with that room's own card in the box card's shape, `yerk status` keeping its machine card byte for byte. The room card, the head collect reads for each room under its lock, and account_lines' numbers, its second line's fit, the workers' words and the backup's line split out for both cards to print 115 (status.py); the card's words, words.number and words.tokens 21 (words.py); a session's compactions, counted where the room records one and reset where a new session is minted 15 (room.py); the command's line 1 (channels/discord.py). 29,218: main f804ae1c's 29,066 plus 152.
 
-- `lines = 29218`
+2026-11-11: worker-memory raised it by 26, the owner's order of 2026-11-11 (a worker took 16G of RAM and 3.2G of swap on a 20G box and froze it; the ceiling that stopped the next one was a systemd drop-in outside the repo): every worker unit gets MemoryMax, no swap and OOMPolicy=continue from Systemd.start, its number [workers] memory_max (default 4G). The ceiling on the launcher and its three properties, the key read strictly and a value that is not a size refused with a warning, and the module's words for it 23 (workers.py); the key's settings line 3 (config.py). 29,244: status-card f02fb0c1's 29,218 plus 26.
+
+- `lines = 29244`
 
 ## Uncapped
 
