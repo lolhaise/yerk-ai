@@ -357,3 +357,13 @@ def test_a_cooldown_after_fast_mode_turned_on_is_never_said_as_a_refusal(room, t
     say("1", "hi")
     say("2", "COOLDOWN then")
     assert chan.replies == ["echo: hi", "echo: COOLDOWN then"] and chan.notices == [] and r.fast_state == "cooldown"
+
+
+def test_an_exception_inside_the_fast_on_exchange_leaves_the_turn_as_on_main(room, tmp_path, monkeypatch):
+    def boom(self):
+        raise RuntimeError("boom")
+    monkeypatch.setattr(RoomProcess, "_fast_on", boom)
+    r, chan, ledger, say = room
+    say("1", "hi")
+    assert chan.replies == ["echo: hi"] and lines(tmp_path) == ["hi"] and len(ledger.rows(10)) == 1
+    assert chan.notices == [f"{words.WORKING} {words.FAST_LOST.format(why=words.FAST_NO_ANSWER)}"]

@@ -440,7 +440,11 @@ class RoomProcess:
         err.close()
         threading.Thread(target=self._read, name=f"read-{self.spec.room}", daemon=True).start()
         if fast_reaches(self.spec):
-            self._fast_on()
+            try:
+                self._fast_on()
+            except Exception as e:             # fast mode is never worth a turn: as no result (Room._start runs one as on main)
+                log.warning("room %s: /fast on failed: %s", self.spec.room, e)
+                self.fast_lost = True
         return self.session_id
 
     def launch_settings(self) -> dict[str, Any]:
