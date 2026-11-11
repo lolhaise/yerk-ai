@@ -340,3 +340,11 @@ def test_a_late_answer_to_fast_on_never_becomes_the_reply(room, tmp_path, monkey
     assert chan.replies == ["echo: hi", "echo: again"] and lines(tmp_path) == ["/fast on", "hi", "again"]   # that process ended
     assert chan.notices == [f"{words.WORKING} {words.FAST_LOST.format(why=words.FAST_NO_ANSWER)}"] and len(ledger.rows(10)) == 2
 
+
+
+def test_status_never_shows_fast_mode_for_a_room_off_fable_5_2(room, tmp_path):
+    from yerk_ai import status
+    r, chan, ledger, say = room
+    (tmp_path / "rooms" / "r").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "rooms" / "r" / "override.json").write_text(json.dumps({"fast": True, "model": "claude-opus-5-5"}))
+    assert not status.fast_shown(tmp_path, "r", r)
