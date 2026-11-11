@@ -201,7 +201,7 @@ def test_a_room_put_on_a_resting_account_names_the_account_its_next_turn_would_t
 # the room card: the brief's sample, line for line, from room_input()
 CARD = """\
 🧠 claude-fable-5-2 · ②
-📚 212k/400k (53%) · 🧹 0
+📚 212k/400k (53%) · 🧹 0 today
 ⚙️ Think: max
 
 ⛽ Tank
@@ -302,10 +302,15 @@ def test_a_room_with_no_session_yet_says_so():
 
 
 def test_a_part_that_cannot_be_read_is_left_out():
-    assert card(room_input(head={"window": 0}))[1] == "📚 212k · 🧹 0"
+    assert card(room_input(head={"window": 0}))[1] == "📚 212k · 🧹 0 today"
     assert card(room_input(head={"compactions": None}))[1] == "📚 212k/400k (53%)"
-    assert card(room_input(head={"context": 1049000, "window": 1000000, "compactions": 3}))[1] == "📚 1.0m/1.0m (105%) · 🧹 3"
+    assert card(room_input(head={"context": 1049000, "window": 1000000, "compactions": 3}))[1] == "📚 1.0m/1.0m (105%) · 🧹 3 today"
     assert card(room_input(head={"model": ""}))[0] == "🧠 ②"
+
+
+def test_the_count_says_it_is_todays_and_fits_its_line_at_the_longest_values():
+    assert card(room_input(head={"context": 999000, "window": 1000000, "compactions": 99}))[1] == "📚 999k/1.0m (100%) · 🧹 99 today"
+    assert words.width("📚 1000k/1.0m (100%)" + words.ROOM_COMPACTED.format(n=99)) == 34 <= words.PHONE    # 1000k: wider than words.tokens writes
 
 
 def test_this_rooms_turn_comes_first_with_what_waits_then_other_rooms_then_workers():
