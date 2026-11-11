@@ -458,6 +458,35 @@ def staged(y, wid: str) -> str:
     return (Path(y.ledger.worker_get(wid)["staging"]) / "BRIEF.md").read_text()
 
 
+def test_a_need_workers_clean_worktrees_go_when_it_ends_their_branches_kept_and_one_with_changes_stays_said_on_its_row(pipe, tmp_path):
+    y, rec, hub, units, rooms = pipe                     # 2026-11-10: 207 worker worktrees of the live repository, none removed
+    repo = tmp_path / "scratch-repo"                     # made here, never the live one
+    repo.mkdir()
+    git(repo, "init", "-q", "-b", "main")
+    (repo / ".gitignore").write_text(".venv/\n")
+    git(repo, "add", ".")
+    git(repo, *ID, "commit", "-q", "-m", "baseline")
+    day = need(y, "example-room", *ASK)["day"]
+    builder = row(y, day)["worker"]
+    d = Path(y.ledger.worker_get(builder)["staging"])
+    git(repo, "worktree", "add", "-q", str(d / "wt"), "-b", f"need-{day}-1")
+    (d / "wt" / ".venv").mkdir()                         # ignored: it goes with its worktree
+    git(repo, "worktree", "add", "-q", str(d / "other-wt"), "-b", "other")
+    (d / "other-wt" / "new.txt").write_text("not committed\n")
+    to_pr(y, hub, day)
+    assert not (d / "wt").exists() and (d / "other-wt" / "new.txt").is_file()
+    assert git(repo, "branch", "--list", f"need-{day}-1") and str(d / "wt") not in git(repo, "worktree", "list")
+    assert y.ledger.worker_get(builder)["relay_note"] == "; ".join([
+        words.LINE_POSTED.format(what="need build"), words.WORKTREE_KEPT.format(name="other-wt", why=words.WORKTREE_CHANGES)])
+    hub.routes[("GET", f"/repos/{SLUG}/commits/{'a' * 40}/status")] = (200, {"state": "success", "statuses": GREEN})
+    asyncio.run(y.pipeline.tick())
+    reader = row(y, day)["worker"]
+    r = Path(y.ledger.worker_get(reader)["staging"])
+    git(repo, "worktree", "add", "-q", str(r / "wt"), f"need-{day}-1")
+    end(y, reader, "unsure: it changes the gates")       # a cold read's worktree goes the same way
+    assert not (r / "wt").exists() and y.ledger.worker_get(reader)["relay_note"] == "need read: its line went to the machine room"
+
+
 def test_a_plugin_kept_in_its_own_git_repository_is_named_in_the_builders_brief_from_the_rooms_mcp_tables(pipe, tmp_path):
     """need 36 (2026-11-02): a browser gate in a plug-in's own repository came back twice, since the builder only ever edited
     Yerk's repo and described the rest as out of reach; the brief now names each add-on whose code is a git repository of

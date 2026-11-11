@@ -965,7 +965,8 @@ class Yerkd:
         """A need's builder ended (workers.hooks): the need's state from its report's first line (needs.ended) and one line to
         the machine room, never a relay turn; under [needs] auto a failed build starts once more, then the need is stuck (one
         cut off by a stop nobody asked for, workers.cut_off, starts again uncounted). A cold read or a fix worker goes to the
-        pipeline (Pipeline.ended); False for any other worker."""
+        pipeline (Pipeline.ended); False for any other worker. First, any need worker's clean worktrees go (needs.tidy), so
+        the next worker can take the branch, and its note names each that stays."""
         try:
             job = json.loads((Path(row["staging"]) / "worker.json").read_text()).get("need")
         except (OSError, ValueError):
@@ -973,8 +974,13 @@ class Yerkd:
         if not isinstance(job, dict):
             return False
         day, n = str(job.get("day")), int(job.get("n") or 0)
+        kept = await asyncio.to_thread(needs.tidy, Path(row["staging"]))
         if job.get("role") in ("read", "fix"):
-            return await self.pipeline.ended(row, end, str(job["role"]), day, n)
+            done = await self.pipeline.ended(row, end, str(job["role"]), day, n)
+            if kept:                                     # after the note ended wrote
+                said = str((self.ledger.worker_get(str(row["id"])) or {}).get("relay_note") or "")
+                self.ledger.worker_set(str(row["id"]), relay_note="; ".join([said, *kept]))
+            return done
         how = workers.settled_state(row, workers.tasks_of(Path(row["tasks"])), end)[1]
         plugs = await self.pipeline.heads({"day": day, "n": n})                   # a plug-in branch the builder left
         r = await asyncio.to_thread(needs.ended, self.memory, self.state, day, n, str(row["id"]), how,
@@ -987,7 +993,7 @@ class Yerkd:
             line += words.NEED_PLUGIN.format(names=", ".join(r.get("plugins") or ())) * bool(st in ("pr", "built") and r.get("plugins"))
             note = await self.posted(str(row["room"]), line, "need build")
             log.info("%s", line)
-        self.ledger.worker_set(str(row["id"]), relay="skipped", relay_note=note)
+        self.ledger.worker_set(str(row["id"]), relay="skipped", relay_note="; ".join([note, *kept]))
         if r is not None and r.get("state") == "filed" and self.pipeline.auto():     # failed: once more, then stuck
             if (fails := int(r.get("fails") or 0) + (not workers.cut_off(end))) >= 2:
                 await self.pipeline.stop({**r, "fails": fails}, "stuck", f"its builder failed twice, last: {how}")
