@@ -535,6 +535,28 @@ why_not = "It rides on the browser ability, which is not in this repo; an instal
 asked_as = ["type into the field", "type in the field", "type into a field", "type into the form", "focused field", "field that has focus",
             "shadow dom", "shadow root", "web component form", "fields are not listed"]
 
+# need-2026-11-11-86: a room asked why it could not see a file a mail carried opened the owner's mail app in the browser,
+# signed in, the mail on screen, and its click by position on the mail's file chip was refused: the browser read the whole
+# mailbox as a payment page, since the app's blue Upgrade button in its own top bar matched the pay words, so every click
+# in it was refused. It asked the owner to send the file into the room instead.
+[abilities.upsell-pages]
+state = "described"
+what = "Clicks and fills inside a web app whose own frame offers a paid plan, such as a mail app's Upgrade button in its top bar, in the browser ability's browser, as on any page; that button is never clicked, and a page that takes money is still never touched."
+how = [
+  "The button decides by where it sits: one whose whole words offer a paid plan (Upgrade, Subscribe, Start free trial) makes a payment page only inside a form, a dialog or a box of the page's own site, where it is a plan's last step and an Enter in the form can press it; one in the app's own frame, a top bar, a side bar or a banner, makes none.",
+  "Payment still read as before: a button whose words make a payment (Pay, Place order, Buy now, Checkout) makes a payment page wherever it shows, as a card field, a payment frame, a saved card and a payment service's address do.",
+  "Through web components too: the form or the dialog is looked for up through each web component's host, so a plan's last step drawn inside one is still that step.",
+  "The button itself never clicked: by its words or by position, the owner's word or not, nor any button whose words make a payment, a hidden one its words still find included; a link offering a plan asks for the owner's word, as an outward click does.",
+  "The rest of the page as on any page: a list's rows, a mail's file chip and the search box take a click by position from a picture of the tab, and an outward click or an Enter still waits for the owner's word.",
+]
+tier = "free"
+needs = "the browser ability, with a plug-in whose payment check tells a plan offered in an app's own frame from a plan's last step"
+price = "none"
+free_path = "this is the free path"
+why_not = "It rides on the browser ability, which is not in this repo; an install whose browser plug-in reads an Upgrade button in an app's own frame as no payment page has it there, and a room working in the owner's mail app clicks a row or a file chip by position from a picture of the tab, never asking the owner to send what the screen shows; a file a mail carries comes whole by the mail tool's attachment action, with no click at all."
+asked_as = ["click in my gmail", "click inside my gmail", "click in gmail", "click inside gmail", "gmail is a payment page",
+            "read as a payment page", "not a payment page", "upgrade button", "click in my mailbox", "click in the mailbox"]
+
 [abilities.pc-control]
 state = "described"
 what = "Hands and eyes on a desktop computer: clicks, keys, windows and screenshots, for what a browser cannot reach."

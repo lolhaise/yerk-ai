@@ -8,6 +8,35 @@ version changes.
 
 ## 2026-11-11
 
+### need-2026-11-11-86 (#?)
+
+- A room can click inside a web app whose own top bar offers a paid plan now, such as your mail app with its blue Upgrade
+  button: a search's rows, a mail's file chip, the search box. The hands plug-in's browser read a button whose whole words
+  are Upgrade, Subscribe or Start free trial as a pay button wherever it showed, so the whole mailbox was a payment page
+  and every click in it was refused, your word or not.
+- Such a button makes a payment page now only inside a form, a dialog or a box (a frame of the page's own site), where it
+  is a plan's last step and an Enter in the form can press it; the form or dialog is looked for up through each web
+  component's host too. One in the app's own frame (a top bar, a side bar, a banner) makes none. A button whose words make
+  a payment (Pay, Place order, Buy now, Checkout, Donate, Submit payment) still makes a payment page wherever it shows, as
+  a card field, a payment frame, a saved card and a payment service's address do.
+- The button itself is never clicked, by its words or by position, your word or not, and neither is any pay button, a
+  hidden one a click by label still finds included: "is a pay button (its words offer a paid plan), and hands never clicks
+  one, confirmed or not". A link that offers a plan asks for your word, as before.
+- The plug-in's change is on its branch `need-2026-11-11-86` (1de35ea): 86 of 86 of its offline tests green, one running
+  the page probe in Playwright's headless shell against pages it writes, whose mail app read as a payment page on its main
+  1c6df9d. Its tool entries are unchanged (10,072 bytes as built, as on main), so no budgets.toml line moves. `yerk explain
+  upsell-pages` has the ability, found by asks such as "click inside my gmail" and "read as a payment page"; the README's
+  Add-ons line names it beside `free-bookings`, at 11,992 of its 12,000 bytes, the Install paragraph no longer repeating
+  the docs list's line on docs/units.md.
+- Why: on 2026-11-11 a room asked why it could not see a file one of your emails carried opened your mail app in the
+  browser, found the mail with its file on screen, and was refused the click on the file as on a payment page. It filed the
+  need (need 86 of 2026-11-11) and asked you to send the file into the room, rather than work around the wall. The file
+  itself comes by the mail tool's `attachment` (need-2026-11-11-85), with no click at all.
+
+**Upgrading**: merge this before, or with, the plug-in's deploy, which fast-forwards hands-mcp's main to
+`need-2026-11-11-86` (1de35ea). A room clicks in such an app from its next process start after that. Nothing in
+rooms.toml, yerkd.toml or budgets.toml changes.
+
 ### fast-mode (#51)
 
 - `/fast` in a room's own channel turns Claude Code's fast mode on or off for that room, from the next reply (the
