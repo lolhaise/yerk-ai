@@ -4,12 +4,16 @@ about the room it was typed in, each account's usage left at two lines each, wha
 from __future__ import annotations
 
 import calendar
-import os
 import time
 
 import pytest
+from test_idle_compact import FAKE, ROOM, Chan, say, wait_idle
+from test_observe import Timers
 
-from yerk_ai import status, words
+from yerk_ai import status
+from yerk_ai.accounts import Account
+from yerk_ai.config import EXAMPLE_PRIVATE
+from yerk_ai.daemon import Yerkd
 
 NOW = float(calendar.timegm((2026, 11, 11, 13, 45, 0)))      # a Wednesday, 1:45p in the zone the tests pin
 H, D = 3600.0, 86400.0
@@ -113,3 +117,61 @@ MACHINE = [
 
 def test_yerk_status_prints_the_same_text_as_on_main_for_the_same_input():
     assert status.card(machine_input()) == MACHINE
+
+
+def daemon(tmp_path, monkeypatch):
+    """A daemon over the example layer on the fake Claude Code, as test_idle_compact's: one account."""
+    monkeypatch.setenv("YERK_CLAUDE", str(FAKE))
+    monkeypatch.setenv("FAKE_CLAUDE_MARK", str(tmp_path / "mark"))
+    d = Yerkd(EXAMPLE_PRIVATE, tmp_path, only_account=Account("one", tmp_path / "cfg1"))
+    d.budgets["session"]["precompact_within"] = 0
+    return d
+
+
+def test_a_session_counts_its_compactions_from_its_start_and_a_new_session_starts_again_at_0(tmp_path, monkeypatch):
+    y = daemon(tmp_path, monkeypatch)
+    room = y.add_room(ROOM, Chan())
+    assert room.compactions is None                          # no session started yet: nothing known
+    say(y, room, "1", "CONTEXT:200000 hello")
+    wait_idle(room)
+    assert room.compactions == 0                             # a newly minted session
+    room.compact_now()                                       # a held /compact (the reaper's, yerk room compact)
+    wait_idle(room)
+    assert room.compactions == 1
+    say(y, room, "2", "AUTO_COMPACT and on")                 # Claude Code's own, inside a turn
+    wait_idle(room)
+    assert room.compactions == 2
+    say(y, room, "3a", "plain")                              # a turn that compacts nothing (and a recap that quotes no trigger)
+    wait_idle(room)
+    assert room.compactions == 2
+    room.renew()                                             # /new: the next run starts a fresh session
+    say(y, room, "3", "fresh")
+    wait_idle(room)
+    assert room.compactions == 0
+    room.rp.close()
+    again = daemon(tmp_path, monkeypatch).add_room(ROOM, Chan())      # a daemon start: the session goes on, resumed
+    say(y, again, "4", "back")
+    wait_idle(again)
+    assert again.compactions is None                         # its earlier compactions were never seen: not known
+    again.rp.close()
+
+
+def test_collect_gives_each_room_its_head_read_under_its_lock_and_answers_with_its_process_closed(tmp_path, monkeypatch):
+    y = daemon(tmp_path, monkeypatch)
+    room = y.add_room(ROOM, Chan())
+    say(y, room, "1", "CONTEXT:200000 hello")
+    wait_idle(room)
+
+    def head():
+        s = status.collect(EXAMPLE_PRIVATE, tmp_path, y.accounts, y.cooldowns, y.ledger, y.rooms, units=set, timers=Timers({}))
+        return s["rooms"][0]["head"]
+    assert head() == {"model": "claude-fable-5-1", "effort": "", "account": "one", "context": 200000, "window": 250000,
+                      "compactions": 0}
+    room.rp.close()
+    room.rp = None                                           # the process gone: the account its next turn tries
+    assert head()["account"] == "one" and head()["context"] == 200000
+    room.renew()                                             # a /new waiting: the next reply starts a new session
+    assert head()["context"] is None
+    (tmp_path / "rooms" / ROOM).mkdir(parents=True, exist_ok=True)
+    (tmp_path / "rooms" / ROOM / "override.json").write_text('{"model": "claude-opus-5-5", "effort": "max"}')
+    assert (head()["model"], head()["effort"]) == ("claude-opus-5-5", "max")      # its /model and /effort over rooms.toml

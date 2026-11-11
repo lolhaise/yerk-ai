@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import __version__, backup, config, jobs, latency, usage, words, workers
-from .accounts import Account, Cooldowns
+from .accounts import Account, Cooldowns, pick
 from .engine import FAST_MODELS
 from .ledger import Ledger
 from .meters import Meters
@@ -87,15 +87,19 @@ def collect(private: Path, state: Path, accounts: list[Account], cooldowns: Cool
     an account with neither shows the stream's reading."""
     now = time.time() if now is None else now
     out: dict[str, Any] = {"at": now, "running": rooms is not None, "rooms": [], "units": []}
+    conf = config.load_toml(private / "yerkd.toml") if (private / "yerkd.toml").is_file() else {}
+    listed = config.models(conf) if rooms else {}
     if rooms is not None:
         out["units"].append(use("yerkd", [r for r in [stat(os.getpid(), proc)] if r]))   # its own, not its children
     for name, room in (rooms or {}).items():
         with room.lock:
             msgs, waiting, busy, rp = [*room.inflight, *room.pending, *room.queue], len(room.queue), room.busy, room.rp
+            held = (getattr(room, "context", 0), getattr(room, "window", 0), getattr(room, "compactions", None),
+                    getattr(room, "fresh_next", None) is None)
         out["rooms"].append({"room": name, "busy": busy, "waiting": waiting, "watch": room.conf.get("watch"),
                              "since": min((m.received for m in msgs), default=None) if busy else None,
                              "account": config.pinned(state, name, [a.name for a in accounts]),   # the one it is put on
-                             "fast": fast_shown(state, name, room)})
+                             "fast": fast_shown(state, name, room), "head": head(state, name, room, rp, held, accounts, cooldowns, listed, now)})
         if rp is not None and rp.proc is not None and rp.alive():
             out["units"].append(use(name, tree(rp.proc.pid, proc)))
     try:
@@ -119,10 +123,27 @@ def collect(private: Path, state: Path, accounts: list[Account], cooldowns: Cool
     out["stalls"] = ledger.stalls(midnight(now))
     out["speed"] = latency.medians(ledger, midnight(now), now)    # today's median first line and turn
     out["backup"] = backup.newest(private, state)
-    conf = config.load_toml(private / "yerkd.toml") if (private / "yerkd.toml").is_file() else {}
     if config.uncapped(config.budgets(conf)):           # the money gates lifted: the receipt, today and the week to it
         out["spend"] = spend(ledger, midnight(now), now, midnight(now, 6))
     return out
+
+
+def head(state: Path, name: str, room: Any, rp: Any, held: tuple[int, int, int | None, bool], accounts: list[Account],
+         cooldowns: Cooldowns, listed: dict[str, str], now: float) -> dict[str, Any]:
+    """The room card's head (room_card) for room `name`, its session's numbers as collect read them under the room's lock
+    (`held`: its tokens, its compaction window, its compactions, and no new session waiting): the model its next reply
+    launches with (its /model choice over rooms.toml, as config.room_settings reads them for spec_for, an alias through
+    the install's list; "" when neither names one, since Claude Code's own default has no id Yerk knows), its thinking
+    level ("" alike), the account its session is on (the live process's, else the one it is put on, else accounts.pick's),
+    its tokens (None: no session yet, or a /new waiting), its window (0: left to the model) and compactions (None: not known)."""
+    tokens, window, compactions, same = held
+    settings = config.room_settings(dict(room.conf), state, name, listed)
+    model = settings["model"][0]
+    own = rp.account.name if rp is not None and hasattr(rp, "account") else ""
+    account = own or config.pinned(state, name, [a.name for a in accounts]) or (
+        pick(accounts, cooldowns, now, model=model).name if accounts else "")
+    return {"model": listed.get(model.lower(), model), "effort": settings["effort"][0], "account": account,
+            "context": tokens if tokens and same else None, "window": int(window or 0), "compactions": compactions}
 
 
 def spend(ledger: Ledger, since: float, until: float, week: float) -> dict[str, Any]:

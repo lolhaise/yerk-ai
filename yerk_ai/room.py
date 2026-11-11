@@ -231,7 +231,9 @@ class Room:
         self.closing = False                      # the daemon is stopping (shutdown): nothing more starts or is written
         self.window, self.compact_at, self.compact_after, self.compact_within = compact   # idle_compact's and _ended's; a 0 is off
         self.context = ledger.last_context(str((SessionTable(state / "sessions.json").get(name) or {}).get("session_id") or ""))
-        self.grown = True                         # the session grew since an idle compaction was last tried
+        self.compactions: int | None = None       # the live session's compactions since it began (/status); None: not known,
+                                                  # a session resumed at a daemon start; 0 from each newly minted one (_start)
+        self.grown = True                        # the session grew since an idle compaction was last tried
         self.shortening = self.early = False      # a compaction holds the room; a message waiting on it has its card up
         self.precompact_within = precompact       # _ended's copy compaction, a share of the window; 0 is off
         self.fork: RoomProcess | None = None      # the copy being compacted off to the side (_precompact), at most one
@@ -395,6 +397,7 @@ class Room:
         rp.adopt()
         old, self.rp, self.ready = self.rp, rp, None
         before, self.context, self.grown, self.last_active = self.context, t.context or self.context, False, time.time()
+        self._counted()                           # the copy was compacted: the room's session goes on, compacted once more
         tail, turns = self._tail(), self.overtook
         self.tail, self.overtook = [], 0
         path = self.state / "rooms" / self.name / "copy-tail"
@@ -914,6 +917,7 @@ class Room:
         rp = RoomProcess(spec, account, self.state, ledger=self.ledger, failures=self.failures, log=log_path,
                          meters=self.meters.seen if self.meters else None, evidence=self.evidence)
         rp.start(fresh=fresh)
+        minted = rp.resume_arg is None            # a newly minted session (RoomProcess.start): its compactions start at 0
         if lost := rp.fast_lost:                 # its /fast on got no result: a late one would be read as the next line's reply,
             rp.close()                           # so the room runs on a process launched as on main, without fast mode
             spec.fast = False
@@ -921,6 +925,8 @@ class Room:
                              meters=self.meters.seen if self.meters else None, evidence=self.evidence)
             rp.start(fresh=fresh)
         self.rp = rp
+        if minted or rp.resume_arg is None:
+            self.compactions = 0
         self.hooked = self.hooks_warned = False   # per process start: its first hook call proves the hooks alive; the notice went out
         self._fast_said(rp, words.FAST_NO_ANSWER if lost else "", at_start=True)
 
@@ -1166,6 +1172,8 @@ class Room:
             if turn.context:                      # the session's size now: the idle compaction's to read
                 self.context, self.grown = turn.context, True
             self.shrunk = self.shrunk or turn.compacted is not None   # Claude Code compacted it inside the turn
+            if turn.compacted is not None:
+                self._counted()
             if self.stopped and turn.outcome != "ok":
                 turn.outcome, turn.failure = "stopped", None
             with self.lock:
@@ -1243,5 +1251,12 @@ class Room:
         t = self.rp.read_turn(self.rp.send("/compact"), self.turn_timeout, record=False)
         t.outcome = "compacted" if t.compacted is not None and t.outcome in ("ok", "empty") else t.outcome
         self.shrunk = self.shrunk or t.outcome == "compacted"   # a copy made before it is moot
+        if t.outcome == "compacted":
+            self._counted()
         self.rp.record(t)                         # read by yerk status --json's failed turns
         return t
+
+    def _counted(self) -> None:
+        """One more compaction of the live session, for /status; a count not known (a session resumed at a start) stays so."""
+        if self.compactions is not None:
+            self.compactions += 1
