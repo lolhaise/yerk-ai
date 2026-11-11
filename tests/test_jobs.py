@@ -448,8 +448,9 @@ def test_a_job_fired_before_the_daemon_listens_is_handed_off_once_it_does_until_
 def test_a_script_run_its_unit_cut_mid_run_is_closed_at_the_next_start_with_the_failed_run_alert(setup, tmp_path):
     """A script run whose unit was stopped mid-run (its start limit, or any stop) never writes its end. The daemon's sweep
     after a restart closes it once its fired time plus its cap plus the margin has passed: the row gets its end and says it
-    was cut, and the failed-run alert goes out, once. A run that may still be going, an agent run, and a run of a job no
-    longer in the file are left as they are."""
+    was cut, and the failed-run alert goes out, once. A run of a job no longer in the file is closed the same way on the
+    default script cap, and nothing is sent for it: nobody is left to tell. A run that may still be going and an agent run
+    are left as they are."""
     s = setup
     rec, ops = Rec(), Rec()
     j, w, sd, priv, state = manager(setup, tmp_path, {"r": s.room(), "ops": s.room("ops")}, {"r": rec, "ops": ops},
@@ -460,14 +461,16 @@ def test_a_script_run_its_unit_cut_mid_run_is_closed_at_the_next_start_with_the_
 
     def started(job, kind, ago):                          # the row a run writes as it starts (jobs.run), and nothing after
         return s.ledger.job_run_add(job=job, kind=kind, room="r", unit=f"{jobs.UNIT}{job}", planned=now - ago, fired=now - ago)
-    cut, going, agent, gone = started("slow", "script", 181), started("slow", "script", 120), started("think", "agent", 999), \
-        started("old", "script", 9999)
+    cut, going, agent, gone, recent = started("slow", "script", 181), started("slow", "script", 120), \
+        started("think", "agent", 999), started("old", "script", 9999), started("old", "script", 700)
     asyncio.run(j.reattach())
     r = s.ledger.job_run_get(cut)
     assert (r["ended"], r["exit"], r["result"], r["delivery"], r["message_ids"]) == (now - 181 + 180, "cut", "cut", "alert", "n1")
     assert ops.notified == [("ops", W.job_line("slow", "failed", result="signal"))]
     assert ops.notified[0][1] == f"{W.NOT_DONE} job slow failed: it was killed"
-    assert [s.ledger.job_run_get(i)["ended"] for i in (going, agent, gone)] == [None, None, None]
+    r = s.ledger.job_run_get(gone)                          # its job is gone: the default script cap, 10 min plus the margin
+    assert (r["ended"], r["exit"], r["result"], r["delivery"], r["message_ids"]) == (now - 9999 + 720, "cut", "cut", "none", None)
+    assert [s.ledger.job_run_get(i)["ended"] for i in (going, agent, recent)] == [None, None, None]
     asyncio.run(j.reattach())                                                     # closed once, told once
     assert len(ops.notified) == 1 and rec.notified == rec.sent == []
 

@@ -1096,12 +1096,14 @@ class Jobs:
         """After a daemon start: a script run that ended while no daemon was up is delivered late; a note that fired
         then, or whose turn the restart cut, is told now, unless its reply was in the room already. A script run with no
         end past its unit's limit was cut mid-run (the limit, or any stop): it is closed and alerts as a failed run does."""
-        for r in self.ledger.job_runs(unended=True):
-            if r["kind"] != "script" or (job := self.jobs().get(str(r["job"]))) is None or \
-                    (end := float(r["fired"]) + start_limit(job)) > time.time():
+        for r in self.ledger.job_runs(unended=True):        # a script whose job has left the file: the default cap, nobody to tell
+            job = self.jobs().get(str(r["job"])) if r["kind"] == "script" else None
+            limit = start_limit(job) if job else int(DEFAULT_CAP["script"] * 60) + 120
+            if r["kind"] != "script" or (end := float(r["fired"]) + limit) > time.time():
                 continue
-            self.ledger.job_run_set(int(r["id"]), ended=end, exit="cut", result="cut", delivery="alert")
-            await self.alert(job, words.job_line(job.name, "failed", result="signal"), int(r["id"]), str(r["room"]))
+            self.ledger.job_run_set(int(r["id"]), ended=end, exit="cut", result="cut", delivery="alert" if job else "none")
+            if job is not None:
+                await self.alert(job, words.job_line(job.name, "failed", result="signal"), int(r["id"]), str(r["room"]))
         for r in self.ledger.job_runs(undelivered=True):
             if r["kind"] == "note" and (r["delivery"] != WAITING or float(r["fired"]) < self.started):   # one told here is in hand
                 if (posted := self.ledger.delivered_for(mid := f"note-{r['id']}")):
