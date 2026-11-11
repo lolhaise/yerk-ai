@@ -14,6 +14,7 @@ import { after, beforeEach, test } from "node:test";
 import { isDeepStrictEqual } from "node:util";
 import zlib from "node:zlib";
 import { KEY_FILES, readKey, spend, takeWindow, where } from "../lib/common.mjs";
+import { documentKind, xfaWords, xmlWords } from "../lib/fetch/document.js";
 import { imageInfo } from "../lib/fetch/image.js";
 import { wallFromNavError } from "../lib/fetch/l3.js";
 import { _test as local, claimSlot, markLocalBlocked } from "../lib/fetch/local.js";
@@ -1493,4 +1494,102 @@ test("web_research's description says every room shares the daily cap web.json s
   const d = TOOLS.find((t) => t.name === "web_research").description;
   assert.match(d, /every room shares one daily cap, the one web\.json sets, else US\$2\./);
   assert.doesNotMatch(d, /one US\$2 daily cap/);
+});
+
+// ---- a crafted document costs what its bytes hold (the fix of 2026-11-11) ----------------------------------------------
+// documentKind runs on every binary read at F1, L1 and L2, and the readers run in the web plug-in's own event loop, so a
+// file that makes either ask for gigabytes or minutes takes the plug-in down for every room.
+
+// A compound file of 512-byte sectors: the header, FAT sector 0, then the directory from sector 1, its entries as given.
+function compoundOf(entries) {
+  const S = 512;
+  const dirSectors = Math.max(1, Math.ceil(entries.length * 128 / S));
+  const buf = Buffer.alloc(S * (2 + dirSectors));
+  buf.writeUInt32LE(0xe011cfd0, 0); buf.writeUInt32LE(0xe11ab1a1, 4);
+  buf.writeUInt16LE(9, 30); buf.writeUInt16LE(6, 32);
+  buf.writeUInt32LE(1, 44); buf.writeUInt32LE(1, 48); buf.writeUInt32LE(4096, 56);
+  buf.writeUInt32LE(0xfffffffe, 60); buf.writeUInt32LE(0xfffffffe, 68);
+  for (let i = 0; i < 109; i++) buf.writeUInt32LE(i ? 0xffffffff : 0, 76 + i * 4);
+  for (let i = 0; i < S / 4; i++) buf.writeUInt32LE(i === 0 ? 0xfffffffd : i <= dirSectors ? (i < dirSectors ? i + 1 : 0xfffffffe) : 0xffffffff, S + i * 4);
+  entries.forEach(([name, type, left, right, child], id) => {
+    const o = S * 2 + id * 128;
+    buf.write(name, o, "utf16le");
+    buf.writeUInt16LE((name.length + 1) * 2, o + 64);
+    buf[o + 66] = type;
+    buf.writeUInt32LE(left, o + 68); buf.writeUInt32LE(right, o + 72); buf.writeUInt32LE(child, o + 76);
+    buf.writeUInt32LE(0xfffffffe, o + 116);
+  });
+  return buf;
+}
+
+test("a crafted compound file is held to its own bytes: a looping DIFAT asks for no 16 GiB, a tree whose entries share their siblings is walked once, a real one still reads", () => {
+  const concat = Buffer.concat;
+  let biggest = 0;
+  Buffer.concat = (list, n) => {
+    biggest = Math.max(biggest, n ?? list.reduce((a, b) => a + b.length, 0));
+    if (biggest > 64 * 1024 * 1024) throw new Error(`Buffer.concat asked for ${biggest} bytes`);
+    return concat(list, n);
+  };
+  try {
+    // 64 KB: 4096-byte sectors, the FAT count 0xfffffff0, the DIFAT chain a loop on sector 0 (it asked for 15.98 GiB).
+    const loop = Buffer.alloc(64 * 1024);
+    loop.writeUInt32LE(0xe011cfd0, 0); loop.writeUInt32LE(0xe11ab1a1, 4);
+    loop.writeUInt16LE(12, 30); loop.writeUInt16LE(6, 32);
+    loop.writeUInt32LE(0xfffffff0, 44); loop.writeUInt32LE(0, 68);
+    const t0 = Date.now();
+    assert.equal(documentKind(loop), "");
+    assert.ok(biggest <= loop.length, `the 64 KB file asked Buffer.concat for ${biggest} bytes`);
+    // Each entry the next's left and right sibling, 63 deep in 9.7 KB (2^63 paths; 26 deep took 8 s).
+    const deep = 63;
+    const tree = compoundOf([["Root Entry", 5, 0xffffffff, 0xffffffff, 1], ...Array.from({ length: deep }, (_, k) => {
+      const next = k + 1 < deep ? k + 2 : 0xffffffff;
+      return ["S", 1, next, next, 0xffffffff];
+    })]);
+    assert.equal(documentKind(tree), "");
+    // A sector shift other than 9 or 12 is no Word file, whatever else it says.
+    const odd = compoundOf([["Root Entry", 5, 0xffffffff, 0xffffffff, 0xffffffff]]);
+    odd.writeUInt16LE(30, 30);
+    assert.equal(documentKind(odd), "");
+    assert.ok(Date.now() - t0 < 2000, `the crafted files took ${Date.now() - t0} ms`);
+    assert.equal(documentKind(fs.readFileSync(new URL("./fixtures/notice.doc", import.meta.url))), "doc");
+  } finally {
+    Buffer.concat = concat;
+  }
+});
+
+test("the XML readers are linear: a megabyte of unclosed tags, one long name or spaces before a letter reads in well under a second; words read as before", () => {
+  const MB = 1024 * 1024;
+  const timed = (label, fn) => {
+    const t0 = Date.now();
+    const out = fn();
+    assert.ok(Date.now() - t0 < 2000, `${label} took ${Date.now() - t0} ms`);
+    return out;
+  };
+  timed("unclosed tags", () => xmlWords(`<w:document><w:body><w:p>${"<a ".repeat(MB / 3)}`, "docx"));
+  timed("one long name", () => xmlWords(`<w:p><${"a".repeat(MB)}`, "docx"));
+  assert.equal(timed("spaces before a letter", () => xmlWords(`<w:p><w:t>${" ".repeat(MB)}x</w:t><w:t xml:space="preserve">  </w:t></w:p>`, "docx")), `${" ".repeat(MB)}x`.trim());
+  assert.equal(timed("a row of spaces", () => xmlWords(`<w:tbl><w:tr><w:tc><w:p><w:t>a${" ".repeat(MB)}b</w:t></w:p></w:tc><w:tc><w:p/></w:tc></w:tr></w:tbl>`, "docx")), `a${" ".repeat(MB)}b`);
+  assert.equal(xmlWords(`<w:p><w:r><w:t xml:space="preserve">Name: </w:t></w:r><w:r><w:t>Alex</w:t></w:r><w:r><w:tab/><w:t>a &lt;b&gt; "c"</w:t></w:r></w:p><w:p/><w:p><w:t>two</w:t></w:p>`, "docx"), 'Name: Alex\ta <b> "c"\n\ntwo');
+  // An XFA template that never closes its tags, deflated in a PDF of a few KB.
+  const pdf = (xml) => {
+    const z = zlib.deflateSync(Buffer.from(`<template xmlns="http://www.xfa.org/schema/xfa-template/3.3/">${xml}`));
+    return Buffer.concat([Buffer.from(`%PDF-1.7\n1 0 obj << /Length ${z.length} /Filter /FlateDecode >>\nstream\n`, "latin1"), z, Buffer.from("\nendstream endobj\n", "latin1")]);
+  };
+  for (const [label, xml] of [["unclosed <script>", "<script>".repeat(MB / 8)], ["unclosed <text>", "<text>".repeat(MB / 6)], ["<text with no >", "<text ".repeat(MB / 6)], ["<br with no > in a text", `<text>${"<br ".repeat(MB / 4)}</text>`]]) {
+    const file = pdf(xml);
+    assert.ok(file.length < 8 * 1024, `${label}: ${file.length} bytes`);
+    timed(label, () => xfaWords(file));
+  }
+  assert.equal(xfaWords(pdf(`<draw><value><text>Form 9.9</text></value></draw><event><script>app.alert(1)</script></event><script/><field><items><text>Paid</text><text/><text>Not<br/>paid</text></items></field>`)), "Form 9.9\nPaid\nNot\npaid");
+});
+
+test("web_fetch answers a 1 KB .docx whose text part is a megabyte of unclosed tags in seconds, not minutes", async () => {
+  const docx = zipOf({ "[Content_Types].xml": "<Types/>", "word/document.xml": `<w:document><w:body><w:p><w:t>Form 9.9</w:t></w:p><w:p>${"<a ".repeat(350000)}` });
+  assert.ok(docx.length < 4096, `the .docx is ${docx.length} bytes`);
+  const r = imageRig({ "docs.example": () => picture(docx, DOC_TYPE) });
+  const t0 = Date.now();
+  const t = textOf(await webFetch({ url: "https://docs.example/bomb.docx" }, { deps: r.deps, at: ROOM }));
+  assert.ok(Date.now() - t0 < 5000, `web_fetch took ${Date.now() - t0} ms`);
+  assert.match(t.split("\n")[0], /: HTTP 200, a Word file \(\.docx\), \d+ characters\.$/);
+  assert.match(t, /Form 9\.9/);
 });

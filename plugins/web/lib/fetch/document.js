@@ -47,13 +47,13 @@ function unzip(buf) {
     members.set(buf.toString("utf8", at + 46, at + 46 + nameLen), { method, size, local });
     at += 46 + nameLen + buf.readUInt16LE(at + 30) + buf.readUInt16LE(at + 32);
   }
-  const read = (name) => {
+  const read = (name, cap = INFLATE_CAP) => {
     const m = members.get(name);
     if (!m || m.local + 30 > buf.length || buf.readUInt32LE(m.local) !== 0x04034b50) return null;
     const from = m.local + 30 + buf.readUInt16LE(m.local + 26) + buf.readUInt16LE(m.local + 28);
     const raw = buf.subarray(from, from + m.size);
     if (m.method === 0) return raw;
-    if (m.method === 8) return zlib.inflateRawSync(raw, { maxOutputLength: INFLATE_CAP });
+    if (m.method === 8) return zlib.inflateRawSync(raw, { maxOutputLength: cap });
     throw new Error(`a zip member packed by method ${m.method}`);
   };
   return { has: (name) => members.has(name), read };
@@ -61,46 +61,60 @@ function unzip(buf) {
 
 // ---- the compound file a .doc is ---------------------------------------------------------------------
 // Its top-level streams by name: the header's FAT (through the DIFAT), the directory's tree under the root, and the mini
-// stream for the small ones.
+// stream for the small ones. documentKind runs this on every binary read at F1 and L1/L2, so a crafted file is held to
+// what its own bytes hold (the fix of 2026-11-11): 512- or 4096-byte sectors only, never more FAT sectors than the file's
+// sectors need, every chain (the DIFAT's, the FAT's, the mini FAT's) a sector at most once, and the directory's tree
+// walked an entry at most once. Before it, a 64 KB file whose DIFAT looped asked Buffer.concat for 16 GiB, and a 4.6 KB
+// one whose entries each named the next as both siblings walked 2^n paths (8 s at 26 deep, the walk allowed 64).
 function compound(buf) {
   if (buf.length < 512 || buf.readUInt32LE(0) !== 0xe011cfd0 || buf.readUInt32LE(4) !== 0xe11ab1a1) return null;
-  const size = 2 ** buf.readUInt16LE(30);
-  const mini = 2 ** buf.readUInt16LE(32);
-  const sector = (i) => buf.subarray((i + 1) * size, (i + 2) * size);
+  const shift = buf.readUInt16LE(30);
+  if ((shift !== 9 && shift !== 12) || buf.readUInt16LE(32) !== 6) return null; // [MS-CFB] 2.2: v3 512, v4 4096; mini 64
+  const size = 2 ** shift;
+  const mini = 64;
+  const per = size / 4; // the links one FAT sector holds
+  const count = Math.max(0, Math.ceil(buf.length / size) - 1); // the sectors after the header
+  const sector = (i) => (i < count ? buf.subarray((i + 1) * size, (i + 2) * size) : buf.subarray(0, 0));
   const fatSectors = [];
-  const nFat = buf.readUInt32LE(44);
+  const nFat = Math.min(buf.readUInt32LE(44), Math.ceil(count / per));
   for (let i = 0; i < 109 && fatSectors.length < nFat; i++) fatSectors.push(buf.readUInt32LE(76 + i * 4));
-  for (let d = buf.readUInt32LE(68), hops = 0; fatSectors.length < nFat && d < 0xfffffffa && hops < 4096; hops++) {
+  for (let d = buf.readUInt32LE(68), hops = new Set(); fatSectors.length < nFat && d < count && !hops.has(d); ) {
+    hops.add(d);
     const s = sector(d);
-    for (let i = 0; i < size / 4 - 1 && fatSectors.length < nFat; i++) fatSectors.push(s.readUInt32LE(i * 4));
-    d = s.readUInt32LE(size - 4);
+    for (let i = 0; i < per - 1 && (i + 1) * 4 <= s.length && fatSectors.length < nFat; i++) fatSectors.push(s.readUInt32LE(i * 4));
+    d = s.length === size ? s.readUInt32LE(size - 4) : 0xfffffffe;
   }
   const table = (bytes) => Array.from({ length: Math.floor(bytes.length / 4) }, (_, i) => bytes.readUInt32LE(i * 4));
   const fat = table(Buffer.concat(fatSectors.map(sector)));
-  const chain = (start, links) => {
+  // A chain's sectors from `start`, each once: a loop, a link off the table or `most` sectors ends it.
+  const chain = (start, links, most = Infinity) => {
     const out = [];
-    for (let s = start; s < links.length && out.length <= links.length; s = links[s]) out.push(s);
+    for (let s = start, seen = new Set(); s < links.length && !seen.has(s) && out.length < most; s = links[s]) {
+      seen.add(s);
+      out.push(s);
+    }
     return out;
   };
-  const big = (start, n) => Buffer.concat(chain(start, fat).map(sector)).subarray(0, n);
+  const big = (start, n) => Buffer.concat(chain(start, fat, Math.ceil(n / size)).map(sector)).subarray(0, n);
   const dir = big(buf.readUInt32LE(48), Infinity);
   const entry = (id) => {
     const o = id * 128;
     if (id >= 0xfffffffa || o + 128 > dir.length) return null;
-    const len = dir.readUInt16LE(o + 64);
+    const len = Math.min(64, dir.readUInt16LE(o + 64));
     return { name: dir.toString("utf16le", o, o + Math.max(0, len - 2)), type: dir[o + 66], left: dir.readUInt32LE(o + 68), right: dir.readUInt32LE(o + 72), child: dir.readUInt32LE(o + 76), start: dir.readUInt32LE(o + 116), size: dir.readUInt32LE(o + 120) };
   };
   const root = entry(0);
   if (!root) return null;
   const streams = new Map();
-  const walk = (id, depth = 0) => {
-    const e = depth < 64 ? entry(id) : null;
-    if (!e || streams.size > 4096) return;
+  // The root's children, in the tree's order (an entry, its left, its right), each entry once however its links loop.
+  for (const todo = [root.child], seen = new Set([0]); todo.length; ) {
+    const id = todo.pop();
+    const e = seen.has(id) ? null : entry(id);
+    if (!e) continue;
+    seen.add(id);
     if (e.type === 2) streams.set(e.name, e);
-    walk(e.left, depth + 1);
-    walk(e.right, depth + 1);
-  };
-  walk(root.child);
+    todo.push(e.right, e.left);
+  }
   const cutoff = buf.readUInt32LE(56);
   const ministream = big(root.start, root.size);
   const minifat = table(big(buf.readUInt32LE(60), buf.readUInt32LE(64) * size));
@@ -108,7 +122,7 @@ function compound(buf) {
     const e = streams.get(name);
     if (!e) return null;
     if (e.size >= cutoff) return big(e.start, e.size);
-    return Buffer.concat(chain(e.start, minifat).map((i) => ministream.subarray(i * mini, (i + 1) * mini))).subarray(0, e.size);
+    return Buffer.concat(chain(e.start, minifat, Math.ceil(e.size / mini)).map((i) => ministream.subarray(i * mini, (i + 1) * mini))).subarray(0, e.size);
   };
   return { has: (name) => streams.has(name), read };
 }
@@ -121,7 +135,7 @@ export function documentKind(buf) {
     if (b.length > 30 && b.readUInt32LE(0) === 0x04034b50) {
       const z = unzip(b);
       if (z?.has("word/document.xml")) return "docx";
-      if (z?.has("content.xml") && /^application\/vnd\.oasis\.opendocument\.text(-[a-z]+)?$/.test(String(z.read("mimetype") || "").trim())) return "odt";
+      if (z?.has("content.xml") && /^application\/vnd\.oasis\.opendocument\.text(-[a-z]+)?$/.test(String(z.read("mimetype", 1024) || "").trim())) return "odt";
     }
     if (compound(b)?.has("WordDocument")) return "doc";
   } catch {}
@@ -148,6 +162,13 @@ const VOCAB = {
   odt: { p: ["text:p", "text:h"], t: null, tbl: "table:table", tr: "table:table-row", tc: "table:table-cell", tab: ["text:tab"], br: ["text:line-break"], skip: ["office:annotation", "text:note", "text:tracked-changes", "draw:frame"] },
 };
 const isOne = (name, x) => (Array.isArray(x) ? x.includes(name) : name === x);
+// A line's end cut of `chars` by hand: /[ ]+$/ backtracks through every run of them that does not end the string, so a
+// .docx of 1 KB whose text is a megabyte of spaces and one letter took minutes in it (the fix of 2026-11-11).
+const cutEnd = (s, chars) => {
+  let e = s.length;
+  while (e > 0 && chars.includes(s[e - 1])) e--;
+  return s.slice(0, e);
+};
 
 export function xmlWords(xml, vocab) {
   const v = VOCAB[vocab];
@@ -161,11 +182,14 @@ export function xmlWords(xml, vocab) {
   let skipping = 0;
   let box = null;
   const end = (text) => {
-    const t = text.replace(/[  ]+$/g, "");
+    const t = cutEnd(text, "  ");
     if (tables && cell) cell.push(t.trim());
     else lines.push(t);
   };
-  const tag = /<(\/?)([\w:.-]+)((?:[^>"']|"[^"]*"|'[^']*')*?)(\/?)>|([^<]+)/g;
+  // A tag's name taken whole (the lookahead) and its attributes never past the next "<" (as XML's never are): a tag that
+  // never closes costs the bytes to the next "<", once. Before 2026-11-11 each "<" of "<a <a <a ..." read to the end of
+  // the part (a .docx of 1 KB, a megabyte of them, took about ten minutes), and one long name read it once per letter.
+  const tag = /<(\/?)([\w:.-]+)(?![\w:.-])((?:[^<>"']|"[^"<]*"|'[^'<]*')*?)(\/?)>|([^<]+)/g;
   for (let m; (m = tag.exec(xml)); ) {
     const [, close, name, attrs, self, text] = m;
     if (text !== undefined) {
@@ -199,7 +223,7 @@ export function xmlWords(xml, vocab) {
     if (tables === 1 && name === v.tr) {
       if (!close && !self) row = [];
       else if (close && row) {
-        lines.push(row.join(" | ").replace(/[ |]+$/, ""));
+        lines.push(cutEnd(row.join(" | "), " |"));
         row = null;
       }
       continue;
@@ -243,7 +267,7 @@ function docWords(buf) {
   if (flags & 0x0100) throw new Error("it is locked with a password");
   const tbl = cf.read(flags & 0x0200 ? "1Table" : "0Table");
   if (!tbl) throw new Error("its table stream is missing");
-  const chars = wd.readInt32LE(0x4c);
+  const chars = Math.min(wd.readInt32LE(0x4c), wd.length); // a character takes a byte at least: pieces that repeat stop here
   const fcClx = wd.readUInt32LE(0x1a2);
   const clx = tbl.subarray(fcClx, fcClx + wd.readUInt32LE(0x1a6));
   let i = 0;
@@ -252,9 +276,9 @@ function docWords(buf) {
   const plc = clx.subarray(i + 5, i + 5 + clx.readUInt32LE(i + 1));
   const n = Math.floor((plc.length - 4) / 12);
   let text = "";
-  for (let k = 0; k < n; k++) {
+  for (let k = 0; k < n && text.length < chars; k++) {
     const from = plc.readUInt32LE(k * 4);
-    const to = Math.min(plc.readUInt32LE(k * 4 + 4), chars);
+    const to = Math.min(plc.readUInt32LE(k * 4 + 4), chars, from + chars - text.length);
     if (from >= chars || to <= from) continue;
     const fc = plc.readUInt32LE((n + 1) * 4 + k * 8 + 2);
     const at = fc & 0x3fffffff;
@@ -279,7 +303,7 @@ function docWords(buf) {
     .replace(/\x1e/g, "-")
     .replace(/[\x00-\x08\x1f]/g, "")
     .split("\n")
-    .map((x) => x.replace(/[\t ]+$/, ""))
+    .map((x) => cutEnd(x, "\t "))
     .join("\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
@@ -300,11 +324,50 @@ function run(cmd, args, timeoutMs) {
   });
 }
 
+// The next place `needle` stands at or after `from` in `s`, for a scan whose `from` only grows: the last answer is kept
+// while it lies ahead, and a needle once missing stays missing. A thousand tags that never close cost one pass of the
+// template this way; the lazy regexes it replaced (2026-11-11) read to its end once for each, so an XFA form of 1 KB whose
+// template inflated to a megabyte of "<text>" or "<script>" locked the web plug-in for minutes.
+function finder(s) {
+  const last = new Map();
+  return (needle, from) => {
+    let at = last.get(needle);
+    if (at === undefined || (at >= 0 && at < from)) last.set(needle, (at = s.indexOf(needle, from)));
+    return at;
+  };
+}
+
+// Each element whose name `re` (/<(name|...)\b/g) opens, as `visit` sees it: (name, start, inner, end), `inner` null for a
+// self-closed one. As /<(name)\b(?:[^>]*\/>|>([\s\S]*?)<\/\1>)/ matched: a tag closed by "/>" at its first ">", else up
+// to the first "</name>"; one that never closes is passed over.
+function elements(s, re, visit) {
+  const find = finder(s);
+  re.lastIndex = 0;
+  for (let m; (m = re.exec(s)); ) {
+    const name = m[1];
+    const gt = find(">", re.lastIndex);
+    if (gt < 0) return;
+    if (s[gt - 1] === "/" && gt > re.lastIndex) {
+      visit(name, m.index, null, gt + 1);
+      re.lastIndex = gt + 1;
+      continue;
+    }
+    const close = find(`</${name}>`, re.lastIndex);
+    if (close < 0) continue;
+    visit(name, m.index, gt < close ? gt + 1 : close, close + name.length + 3);
+    re.lastIndex = close + name.length + 3;
+  }
+}
+
 // A dynamic XFA form's own words, from its template packet: each caption, label and fixed text in the form's order,
-// and the choices a list offers; a script, a tool tip and a field's binding are left out.
+// and the choices a list offers; a script, a tool tip and a field's binding are left out. Linear in the PDF: each stream
+// read once, and all its streams together inflated to XFA_INFLATE at most (a stream past what is left is passed over).
+const XFA_INFLATE = 4 * INFLATE_CAP;
 export function xfaWords(buf) {
   const s = buf.toString("latin1");
-  for (let at = s.indexOf("stream"); at >= 0; at = s.indexOf("stream", at + 6)) {
+  let budget = XFA_INFLATE;
+  for (let at = s.indexOf("stream"), next = 0; at >= 0; at = s.indexOf("stream", next)) {
+    next = at + 6;
     if (s.startsWith("endstream", at - 3)) continue;
     const dict = s.slice(Math.max(0, at - 400), at);
     const open = dict.slice(Math.max(0, dict.lastIndexOf(" obj"))); // this object's dictionary, nested ones and all
@@ -314,20 +377,34 @@ export function xfaWords(buf) {
     if (s[from] === "\n") from++;
     const stop = s.indexOf("endstream", from);
     if (stop < 0) break;
+    next = stop + 9;
     let body = buf.subarray(from, stop);
-    try {
-      if (/\/FlateDecode/.test(open)) body = zlib.inflateSync(body, { maxOutputLength: INFLATE_CAP, finishFlush: zlib.constants.Z_SYNC_FLUSH });
-    } catch {
-      continue;
+    if (/\/FlateDecode/.test(open)) {
+      const cap = Math.min(INFLATE_CAP, budget);
+      if (cap <= 0) break;
+      try {
+        body = zlib.inflateSync(body, { maxOutputLength: cap, finishFlush: zlib.constants.Z_SYNC_FLUSH });
+        budget -= body.length;
+      } catch {
+        budget -= cap;
+        continue;
+      }
     }
     const xml = body.toString("utf8");
     if (!/xfa-template\//.test(xml)) continue;
-    const clean = xml.replace(/<(script|assist|bind|validate|calculate|event|traversal)\b(?:[^>]*\/>|[\s\S]*?<\/\1>)/g, " ");
+    let clean = "";
+    let kept = 0;
+    elements(xml, /<(script|assist|bind|validate|calculate|event|traversal)\b/g, (name, start, inner, end) => {
+      clean += `${xml.slice(kept, start)} `;
+      kept = end;
+    });
+    clean += xml.slice(kept);
     const words = [];
-    for (const m of clean.matchAll(/<(text|exData)\b[^>]*?(?:\/>|>([\s\S]*?)<\/\1>)/g)) {
-      const t = decode((m[2] || "").replace(/<(br|p|li|div)\b[^>]*>/gi, "\n").replace(/<[^>]+>/g, "")).replace(/[ \t ]+/g, " ");
+    elements(clean, /<(text|exData)\b/g, (name, start, inner, end) => {
+      if (inner === null) return;
+      const t = decode(clean.slice(inner, end - name.length - 3).replace(/<(br|p|li|div)\b[^<>]*>/gi, "\n").replace(/<[^<>]+>/g, "")).replace(/[ \t ]+/g, " ");
       for (const line of t.split("\n").map((x) => x.trim()).filter(Boolean)) if (words.at(-1) !== line) words.push(line);
-    }
+    });
     return words.join("\n");
   }
   return "";

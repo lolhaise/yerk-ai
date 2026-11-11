@@ -31,6 +31,16 @@ version changes.
 - Why: on 2026-11-11 a room asked what a province's form is and what it asks for tried web_fetch on the form's own Word
   file and on two PDF copies of it, met the binary wall each time, and answered from the province's forms list page and
   the search previews of a copy, saying so. It filed the need (need 87 of 2026-11-11) rather than work around the wall.
+- A crafted file costs only what its own bytes hold (the review's fix): the file-type check runs on every binary read,
+  and the readers run in the web plug-in's one process, which serves every room. A 64 KB file at any link made the
+  check ask for 16 GiB of memory (a looping chain in a Word 97-2003 header), a 4.6 KB one walked its table of contents
+  2^n ways (8 seconds at 26 deep, with 64 allowed), and a .docx or an XFA PDF of about 1 KB, which unpacks to a
+  megabyte of tags that never close, of one long name or of spaces before a letter, held the plug-in for about ten
+  minutes. Now the check takes only 512- or 4,096-byte sectors, follows each chain through each sector once, and walks
+  each entry once. It also reads at most 1 KB of an OpenDocument file's type. The XML readers stop a tag at the next
+  "<" and find each closing tag in one pass, the trailing spaces are cut by hand, and an XFA form's streams together
+  unpack to 256 MB at most. Every one of those files reads in milliseconds now: three tests in
+  plugins/web/test/tools.test.mjs, which fail or hang on the code before the fix.
 
 **Upgrading**: budgets.toml moves two lines (above); nothing in rooms.toml or yerkd.toml changes. The web plug-in is in
 this repository, so the deploy carries it: a room reads documents from its next process start. Keep poppler-utils
