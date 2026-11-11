@@ -252,7 +252,7 @@ def account_lines(accounts: list[dict[str, Any]], now: float, live: bool = False
 
 
 def card(s: dict[str, Any], now: float | None = None) -> list[str]:
-    """`yerk status`: every line state first and at most words.PHONE columns (STYLE.md)."""
+    """`yerk status`: every line state first and at most words.PHONE columns (STYLE.md), its parts in the order of words.STATUS_PARTS."""
     now = float(s["at"]) if now is None else now
     W = words
 

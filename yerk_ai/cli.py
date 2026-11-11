@@ -742,6 +742,7 @@ def cmd_config(a: argparse.Namespace) -> int:
 
 def parser() -> argparse.ArgumentParser:
     """Every command and flag of `yerk`, with its help; docs/commands.md is written from it (`yerk docs own`)."""
+    from . import words
     p = argparse.ArgumentParser(prog="yerk", description="Yerk AI: chat rooms as long-lived Claude Code sessions.")
     p.add_argument("--version", action="version", version=f"yerk {__version__}")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -789,8 +790,7 @@ def parser() -> argparse.ArgumentParser:
     ac.add_argument("--model", default="haiku", help="health: the model for the one tiny turn")
     ac.add_argument("--names", nargs="*", default=[], help="health: only these accounts")
     ac.add_argument("--json", action="store_true")
-    st = sub.add_parser("status", help="the daemon, its rooms, each account's 5-hour and weekly meters, and the "
-                        "running workers (from the ledger, checked against the unit list)")
+    st = sub.add_parser("status", help="the card: " + "; ".join(words.STATUS_PARTS))      # its parts, from the list the card keeps
     st.add_argument("--full", action="store_true", help="the developer detail: pid, unit names, reading ages")
     st.add_argument("--json", action="store_true", help="one JSON document for a monitoring tool: rooms, accounts, last turn "
                     "per room, the last day's failures, the index, the backup's age")

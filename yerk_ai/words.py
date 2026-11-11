@@ -795,6 +795,12 @@ RESETS, BILL = "\N{CLOCKWISE OPEN CIRCLE ARROW} {parts}", "\N{CREDIT CARD} {day}
 BACK_AT, NEXT, THEN = "resting until {until}", "{label} next: {first}", " · then {tag} {when}"
 FIRST_TRY = "next turn tries {tag} first"         # accounts.pick for a room on no account of its own
 ROOMS_ON = "on account {account}: {rooms}"        # two rooms or more put on one account, one line
+# the status card's parts in its order (status.card), as `yerk status --help` names them (cli.py): a part the card gains goes here
+STATUS_PARTS = ("the daemon and its rooms", "each account's 5-hour and weekly meters and the one the next turn tries",
+                "each room's running turn and what waits", "the channel a room watches", "the rooms put on an account",
+                "the version and commit", "the add-ons", "the running workers (from the ledger, checked against the unit list)",
+                "the jobs due within the hour", "each unit's memory and CPU", "today's median first line and turn",
+                "the spend on an uncapped install", "the newest backup's age", "today's stalls")
 NUMBERS = ("one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen "
            "seventeen eighteen nineteen twenty").split()
 

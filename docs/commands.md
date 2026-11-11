@@ -73,7 +73,7 @@ tokens, rests and health per account; cool, clear, token, mint, health
 
 ### yerk status
 
-the daemon, its rooms, each account's 5-hour and weekly meters, and the running workers (from the ledger, checked against the unit list)
+the card: the daemon and its rooms; each account's 5-hour and weekly meters and the one the next turn tries; each room's running turn and what waits; the channel a room watches; the rooms put on an account; the version and commit; the add-ons; the running workers (from the ledger, checked against the unit list); the jobs due within the hour; each unit's memory and CPU; today's median first line and turn; the spend on an uncapped install; the newest backup's age; today's stalls
 
 - `--full`: the developer detail: pid, unit names, reading ages
 - `--json`: one JSON document for a monitoring tool: rooms, accounts, last turn per room, the last day's failures, the index, the backup's age
