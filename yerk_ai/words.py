@@ -118,7 +118,7 @@ WHY = {                                   # a failed turn, in plain words: the f
 BACKUP = ("answered by a backup model", "the next message starts fresh")
 MOVED, COMPACTING = "still on it, moved to account {name}", "shortening the conversation first"
 MOVED_ON = "still on it, trying another way"      # the hop note in a room that is not the owner's: no account name there
-OUT_OF = "on {model}, {pinned} back {until}"      # every account out of the model the room was put on: the room's own one runs it
+OUT_OF = "on {name}, {pinned} back {until}"       # every account out of the model the room was put on: the room's own one runs it
 EMPTY_AGAIN, NEW_SESSION, AFTER_FAILED = ("empty reply, asking the session again", "starting a new session, with a recap",
                                           "your message after the failed one")   # an empty reply; a fold run on its own
 
@@ -819,6 +819,12 @@ def short_when(epoch: float, now: float | None = None) -> str:
     if ahead < 86400:
         return short_clock(epoch)
     return f"{datetime.fromtimestamp(epoch):%a} {short_clock(epoch)}" if ahead < 7 * 86400 else short_day(epoch)
+
+
+def out_of(usual: str, pinned: str, back: float, now: float | None = None) -> str:
+    """OUT_OF as the card shows it whole after its running mark: a note too wide loses the end of the model the turn
+    runs on, never when the pinned one is back ('Fri 10:59p' is a column wider than 'Fri 22:59' was)."""
+    return named(OUT_OF, model_name(usual), PHONE - width(f"{WORKING} "), pinned=model_name(pinned), until=short_when(back, now))
 
 
 def short_day(epoch: float) -> str:

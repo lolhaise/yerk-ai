@@ -221,6 +221,11 @@ def test_a_reset_and_the_end_of_a_rest_read_the_cards_short_way_in_every_rendere
     hot = meter_short("three", live(93, 3.5 * H, 93, 50 * H), now=NOW)                                # too wide for one line
     assert hot == f"{words.WORKING} three: 5h 93% · wk 93%\n- ↻ 5h {five} · wk {week}"              # the card's two lines
     assert all(words.width(x) <= words.PHONE for x in hot.splitlines())                             # and nothing is cut
+    back = NOW + 56 * H + 59 * 60                               # Tue 10:59a: as wide as a reset inside a week is ever said
+    note = words.out_of("claude-opus-5-5", "claude-fable-5-2", back, NOW)      # the card's note when every account is out
+    assert re.fullmatch(r"[A-Z][a-z]{2} \d\d:\d\d[ap]", w(back, NOW)) and note == f"on Opus..., Fable 5.2 back {w(back, NOW)}"
+    assert words.line(f"{words.WORKING} {note}") == f"{words.WORKING} {note}"   # the card cuts nothing: the time is whole
+    assert words.out_of("claude-opus-5-5", "claude-fable-5-2", NOW + 3.5 * H, NOW) == f"on Opus 5.5, Fable 5.2 back {five}"
 
 
 def test_a_failed_live_read_shows_the_streams_reading_with_its_age_and_json_says_why(tmp_path):
