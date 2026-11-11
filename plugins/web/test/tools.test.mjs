@@ -11,6 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { after, beforeEach, test } from "node:test";
+import { isDeepStrictEqual } from "node:util";
 import zlib from "node:zlib";
 import { KEY_FILES, readKey, spend, takeWindow, where } from "../lib/common.mjs";
 import { imageInfo } from "../lib/fetch/image.js";
@@ -18,8 +19,10 @@ import { wallFromNavError } from "../lib/fetch/l3.js";
 import { _test as local, claimSlot, markLocalBlocked } from "../lib/fetch/local.js";
 import { flushPending, resolveSettings } from "../lib/fetch/util.js";
 import { REF, dayStamp, findRun, newRef, waitIn } from "../lib/research.mjs";
+import { buildExaBody, buildParallelPaidBody, buildYouCall, searchDuckDuckGo, searchFirecrawl, searchParallelFree } from "../lib/search/engines.js";
 import { resetCooldowns } from "../lib/search/provider.js";
-import { TOOLS, callTool, fetchRows, searchRows, webFetch, webImage, webResearch, webResearchResult, webSearch } from "../lib/tools.mjs";
+import { ENGINES } from "../lib/search/util.js";
+import { ENFORCED, TOOLS, callTool, fetchRows, searchRows, webFetch, webImage, webResearch, webResearchResult, webSearch } from "../lib/tools.mjs";
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "yerk-web-test-"));
 const FAKE = { browserbase: "bb_live_FAKEKEY_0123456789abcdef", browserbaseProject: "fake-project-4c1d", parallel: "par_FAKEKEY_9876543210zyxw" };
@@ -466,6 +469,138 @@ test("a filter given as null is no filter, as a null count is the default count:
     assert.equal(f.seen[1].body, f.seen[0].body);
     const same = (s) => s.replace(/ id="[0-9a-f]{16}"/g, ' id="ID"');
     assert.equal(same(textOf(nulls)), same(plain));
+  } finally {
+    f.restore();
+  }
+});
+
+// The first line says what the answering engine did with the filters asked (F7-13, the second pass).
+const PAID_ROW = { search_id: "s3", results: [{ url: "https://news.example/rain-6", title: "Rain warning tonight", publish_date: "2026-11-02", excerpts: ["Up to 25 mm of rain is expected overnight."] }] };
+const YOU_ROW = { jsonrpc: "2.0", id: 1, result: { structuredContent: { results: { web: [{ url: "https://news.example/rain-7", title: "Rain warning tonight", description: "Up to 25 mm of rain is expected overnight.", page_age: "2026-11-02T00:00:00" }] } } } };
+const FREE_ROW = { jsonrpc: "2.0", id: 1, result: { structuredContent: { results: [{ url: "https://news.example/rain-8", title: "Rain warning tonight", publish_date: "2026-11-02", excerpts: ["Up to 25 mm of rain is expected overnight."] }] } } };
+const REPLY = { "https://api.exa.ai/search": EXA_ROW, "https://api.parallel.ai/v1/search": PAID_ROW, "https://api.you.com/mcp?profile=free": YOU_ROW, "https://search.parallel.ai/mcp": FREE_ROW };
+const engines = () => stubFetch((url) => (REPLY[url] ? json(REPLY[url]) : json({ success: false, error: "unexpected" }, 500)));
+const headOf = async (args, where) => textOf(await webSearch(args, { at: where })).split("\n")[0];
+
+// A private folder with no keys whose web.json runs its own engines, for the ones WEB_JSON leaves out.
+function searchFolder(name, search) {
+  const dir = privateFolder(name, {});
+  fs.writeFileSync(path.join(dir, "web.json"), JSON.stringify({ ...WEB_JSON, search: { ...WEB_JSON.search, ...search } }));
+  return at(dir);
+}
+const YOU = searchFolder("you-only", { searchOrder: ["you"] });
+const FREE = searchFolder("parallel-only", { searchOrder: ["parallel"] });
+const CACHED = searchFolder("you-cached", { searchOrder: ["you"], cacheTtlMinutes: 15 });
+
+test("the table of filters each engine enforces is what its request carries: an enforced filter sets a field, one dropped or only worded sets none", async () => {
+  const NOW = new Date("2026-11-11T12:00:00Z");
+  const NAME = { freshness: "freshness", date_after: "dateAfter", date_before: "dateBefore", domain_filter: "domainFilter", country: "country" };
+  // An engine's options as lib/search/provider.js readArgs makes them from the tool's arguments.
+  const opts = (filters) => ({ query: "rain", count: 3, snippetChars: 300, timeoutMs: 5000, domainFilter: [],
+    ...Object.fromEntries(Object.entries(filters).map(([k, v]) => [NAME[k], k === "country" ? v.toUpperCase() : v])) });
+  const f = stubFetch(() => json({}, 500)); // a keyless engine's request is read off the stub; its answer is not needed
+  const sent = async (search, o) => {
+    await search(o).catch(() => {});
+    const s = f.seen.at(-1);
+    return s.body ? JSON.parse(s.body) : Object.fromEntries(new URL(s.url).searchParams);
+  };
+  // Each engine's request less its words: the objective a Parallel engine writes every filter into, and the call's id.
+  const REQUEST = {
+    exa: async (o) => buildExaBody(o, NOW),
+    "parallel-paid": async (o) => ({ ...buildParallelPaidBody(o, NOW), objective: "" }),
+    you: async (o) => buildYouCall(o, 1, NOW),
+    parallel: async (o) => {
+      const b = await sent(searchParallelFree, o);
+      return { ...b, id: 0, params: { ...b.params, arguments: { ...b.params.arguments, objective: "" } } };
+    },
+    firecrawl: async (o) => sent(searchFirecrawl, o),
+    duckduckgo: async (o) => sent(searchDuckDuckGo, o),
+  };
+  // Each filter alone, both kinds of domain list, a country You.com lists and one it does not, and each date beside a
+  // looser freshness: Firecrawl then sends freshness alone; Exa, paid Parallel and You.com send the later start date.
+  const CASES = [
+    [{}, "freshness", "week"], [{}, "date_after", "2026-11-01"], [{}, "date_before", "2026-11-08"],
+    [{}, "domain_filter", ["news.example"]], [{}, "domain_filter", ["-spam.example"]], [{}, "country", "CA"], [{}, "country", "ie"],
+    [{ freshness: "year" }, "date_after", "2026-11-01"], [{ freshness: "year" }, "date_before", "2026-11-08"],
+  ];
+  try {
+    assert.deepEqual(Object.keys(ENFORCED), ENGINES);
+    for (const engine of ENGINES) {
+      for (const [rest, k, v] of CASES) {
+        const filters = { ...rest, [k]: v };
+        const field = !isDeepStrictEqual(await REQUEST[engine](opts(rest)), await REQUEST[engine](opts(filters)));
+        assert.equal(ENFORCED[engine](k, filters), field, `${engine} ${JSON.stringify(filters)}`);
+      }
+    }
+    // You.com sends a country only when it is one of its own: every two-letter code, as a room may write it.
+    for (let i = 0; i < 26 * 26; i++) {
+      const code = String.fromCharCode(65 + Math.floor(i / 26), 65 + (i % 26));
+      const meta = buildYouCall(opts({ country: code }), 1, NOW).params._meta?.["com.you.com/search"] ?? {};
+      assert.equal(ENFORCED.you("country", { country: code.toLowerCase() }), "country" in meta, code);
+    }
+  } finally {
+    f.restore();
+  }
+});
+
+test("every filter asked enforced by the engine that answered: the first line says filtered by each, as a person says it", async () => {
+  const f = engines();
+  try {
+    assert.equal(await headOf({ query: "rain", count: 3, freshness: "week", country: "CA" }, WITH_EXA),
+      'web_search "rain": 1 results from Exa, paid, filtered by freshness week and country CA.');
+    assert.equal(await headOf({ query: "rain sites", date_after: "2026-11-01", date_before: "2026-11-08", domain_filter: ["a.example", "b.example", "c.example", "d.example", "e.example"], country: "ca" }, WITH_EXA),
+      'web_search "rain sites": 1 results from Exa, paid, filtered by after 2026-11-01, before 2026-11-08, sites a.example, b.example, c.example and 2 more and country CA.');
+    assert.equal(await headOf({ query: "rain not sites", freshness: "day", domain_filter: ["-spam.example", "-junk.example"] }, WITH_EXA),
+      'web_search "rain not sites": 1 results from Exa, paid, filtered by freshness day and not sites spam.example, junk.example.');
+    assert.equal(await headOf({ query: "rain warning plain", count: 3, domain_filter: [] }, WITH_EXA), 'web_search "rain warning plain": 1 results from Exa, paid.');
+    assert.equal(f.seen.length, 4);
+  } finally {
+    f.restore();
+  }
+});
+
+test("a filter the answering engine drops or only words is named as not enforced: You.com and a country it does not list, paid Parallel and the end date", async () => {
+  const f = engines();
+  try {
+    assert.equal(await headOf({ query: "rain", count: 3, freshness: "week", country: "IE" }, YOU),
+      "web_search \"rain\": 1 results from You.com's keyless search, free, filtered by freshness week; not enforced by this engine: country IE.");
+    assert.equal(await headOf({ query: "rain paid", date_after: "2026-11-01", date_before: "2026-11-08", domain_filter: ["news.example"], country: "CA" }, WITH),
+      "web_search \"rain paid\": 1 results from Parallel's paid Search API, filtered by after 2026-11-01, sites news.example and country CA; not enforced by this engine: before 2026-11-08.");
+  } finally {
+    f.restore();
+  }
+});
+
+test("an engine that enforces none of the filters asked says so: keyless Parallel only words them as a preference and drops the country", async () => {
+  const f = engines();
+  try {
+    assert.equal(await headOf({ query: "rain", count: 3, freshness: "week", country: "IE" }, FREE),
+      "web_search \"rain\": 1 results from Parallel's keyless search, free; not enforced by this engine: freshness week, country IE.");
+  } finally {
+    f.restore();
+  }
+});
+
+test("a cached answer keeps its engine, so its first line says of the filters what the first answer said", async () => {
+  const f = engines();
+  try {
+    const args = { query: "rain cached", freshness: "week", country: "IE" };
+    assert.equal(await headOf(args, CACHED), "web_search \"rain cached\": 1 results from You.com's keyless search, free, filtered by freshness week; not enforced by this engine: country IE.");
+    assert.equal(await headOf(args, CACHED), "web_search \"rain cached\": 1 results from this process's 15-minute cache, filtered by freshness week; not enforced by this engine: country IE.");
+    assert.equal(f.seen.length, 1);
+  } finally {
+    f.restore();
+  }
+});
+
+test("when no engine found anything the first line names the filters asked; with none, or an empty domain list, it is the line it was", async () => {
+  const f = stubFetch((url) => json(url === "https://api.exa.ai/search" ? { requestId: "r0", results: [] } : url === "https://api.parallel.ai/v1/search" ? { search_id: "s0", results: [] } : { success: true, data: [] }));
+  try {
+    assert.equal(await headOf({ query: "rain nothing", freshness: "week", domain_filter: ["news.example"], country: "CA" }, WITH_EXA),
+      'web_search "rain nothing": no results with freshness week, sites news.example and country CA (exa empty, parallel-paid empty, firecrawl empty).');
+    for (const args of [{ query: "rain nothing" }, { query: "rain nothing", domain_filter: [] }]) {
+      assert.equal(await headOf(args, WITH_EXA), 'web_search "rain nothing": no results (exa empty, parallel-paid empty, firecrawl empty).');
+    }
   } finally {
     f.restore();
   }

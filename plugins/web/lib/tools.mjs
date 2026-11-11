@@ -37,6 +37,19 @@ const ENGINE = {
   firecrawl: "Firecrawl keyless, free",
   duckduckgo: "DuckDuckGo, free",
 };
+// Whether an engine sends a web_search filter as a field of its request, read off lib/search/engines.js at the function
+// named on each row. One it drops, or only words as a preference in its request, is not enforced, and the answer's first
+// line says so: the room checks the pages itself. freshness and date_after share one start date on exa, parallel-paid
+// and you, which send the later of the two, so both hold. test/tools.test.mjs builds each request and keeps this true.
+const YOU_COUNTRIES = new Set("AR AU AT BE BR CA CL DK FI FR DE HK IN ID IT JP KR MY MX NL NZ NO CN PL PT PH RU SA ZA ES SE CH TW TR GB US".split(" ")); // engines.js's own, not exported
+export const ENFORCED = {
+  exa: () => true, // buildExaBody
+  "parallel-paid": (k) => k !== "date_before", // buildParallelPaidBody: the end date only as words in its objective
+  you: (k, f) => k !== "country" || YOU_COUNTRIES.has(f.country.toUpperCase()), // buildYouCall: only the 36 countries it lists
+  parallel: () => false, // searchParallelFree: each filter a sentence in its objective, the country never read
+  firecrawl: (k, f) => !k.startsWith("date_") || !f.freshness, // searchFirecrawl, firecrawlTbs: freshness wins over the dates
+  duckduckgo: (k) => k === "freshness", // searchDuckDuckGo
+};
 
 // List prices for the spend rows, US$ (October 2026: Browserbase's Developer plan, Exa's and Parallel's pricing pages).
 // A call whose answer carries its bill (Exa's costDollars) books the bill. Browserbase's plan includes 1,000 Fetch
@@ -230,6 +243,14 @@ function badFilter({ freshness, date_after: after, date_before: before, domain_f
   return "";
 }
 
+// A filter as a person says it, for web_search's first line; a list of domains names its first three.
+function said(k, v) {
+  if (k !== "domain_filter") return `${{ freshness: "freshness", date_after: "after", date_before: "before", country: "country" }[k]} ${k === "country" ? v.toUpperCase() : v}`;
+  const ds = v.map((d) => d.trim().replace(/^-/, ""));
+  return `${v[0].trim().startsWith("-") ? "not sites" : "sites"} ${ds.slice(0, 3).join(", ")}${ds.length > 3 ? ` and ${ds.length - 3} more` : ""}`;
+}
+const and = (xs) => (xs.length > 1 ? `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}` : xs[0]);
+
 export async function webSearch(args, { signal, at = AT } = {}) {
   const bad = badArgs("web_search", args, ["query", "count", ...FILTERS]);
   if (bad) return refuse(bad);
@@ -263,9 +284,13 @@ export async function webSearch(args, { signal, at = AT } = {}) {
   if (p.error) return refuse(scrub([`web_search could not run: ${p.message}`, ...lines].join("\n"), secrets));
   const tried = (p.attempts ?? []).map((a) => `${a.engine} ${a.error || `answered ${a.n}`}`).join(", ");
   const by = p.engine ? ENGINE[p.engine] ?? p.engine : "an engine the call log did not name";
+  // The filters asked (an empty domain list is none) and which the answering engine enforced; a cached answer keeps its engine.
+  const asked = FILTERS.filter((k) => k in filters && !(k === "domain_filter" && !filters[k].length));
+  const held = asked.filter((k) => ENFORCED[p.engine]?.(k, filters)).map((k) => said(k, filters[k]));
+  const loose = asked.filter((k) => !ENFORCED[p.engine]?.(k, filters)).map((k) => said(k, filters[k]));
   const head = p.results.length
-    ? `web_search "${query}": ${p.results.length} results from ${p.cached ? "this process's 15-minute cache" : by}.`
-    : `web_search "${query}": no results${tried ? ` (${tried})` : ""}.`;
+    ? `web_search "${query}": ${p.results.length} results from ${p.cached ? "this process's 15-minute cache" : by}${held.length ? `, filtered by ${and(held)}` : ""}${loose.length ? `; not enforced by this engine: ${loose.join(", ")}` : ""}.`
+    : `web_search "${query}": no results${asked.length ? ` with ${and(asked.map((k) => said(k, filters[k])))}` : ""}${tried ? ` (${tried})` : ""}.`;
   if ((p.attempts?.length ?? 0) > 1 && p.results.length) lines.unshift(`Engines tried: ${tried}.`);
   const rows = p.results
     .map((r, i) => [`${i + 1}. ${r.title || r.url}`, `   ${r.url}${r.published ? ` (${r.published})` : ""}`, ...(r.snippet ? [`   ${String(r.snippet).replace(/\n/g, "\n   ")}`] : [])].join("\n"))
