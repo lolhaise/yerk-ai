@@ -13,6 +13,7 @@ import { runFetchPlus } from "./fetch/ladder.js";
 import { closeLocalBrowser } from "./fetch/local.js";
 import { flushPending, resolveSettings } from "./fetch/util.js";
 import { DAILY_USD, formatRun, research, researchResult, waitIn } from "./research.mjs";
+import { paidDomainEntry } from "./search/engines.js";
 import { runSearchPlus } from "./search/provider.js";
 import { resolvePluginSettings } from "./search/util.js";
 import { truncateSanitized, wrapWebContent } from "./untrusted.mjs";
@@ -92,6 +93,11 @@ export const TOOLS = [
       properties: {
         query: { type: "string", description: "What to search for." },
         count: { type: "integer", minimum: 1, maximum: 10, description: "How many results (default 5)." },
+        freshness: { type: "string", description: "day, week, month or year." },
+        date_after: { type: "string", description: "Published after YYYY-MM-DD." },
+        date_before: { type: "string", description: "Published before YYYY-MM-DD." },
+        domain_filter: { type: "array", items: { type: "string" }, description: "Domains to include; prefix with - to exclude." },
+        country: { type: "string", description: "2-letter country code." },
       },
       required: ["query"],
       additionalProperties: false,
@@ -202,13 +208,38 @@ export async function webFetch(args, { signal, deps = {}, at = AT } = {}) {
   return { content: [{ type: "text", text: scrub([head, ...lines, "", wrapWebContent(inner, "web_fetch")].join("\n"), secrets) }] };
 }
 
+// web_search's filters, named as lib/search/provider.js readArgs reads them. readArgs drops a value it cannot use without
+// a word, so a room that asked for one week would get everything and never know: the tool refuses that value instead.
+// freshness is the four words only (each is its own entry in readArgs's aliases); a domain must be one the strictest
+// engine keeps (paidDomainEntry's turbo rule, which You.com uses); and every engine with a domain field drops the
+// excluded ones when some are included, so a list is one kind or the other.
+const FILTERS = ["freshness", "date_after", "date_before", "domain_filter", "country"];
+const isDay = (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && Number.isFinite(Date.parse(`${v}T00:00:00Z`))
+  && new Date(`${v}T00:00:00Z`).toISOString().slice(0, 10) === v;
+
+function badFilter({ freshness, date_after: after, date_before: before, domain_filter: domains, country }) {
+  if (freshness !== undefined && !["day", "week", "month", "year"].includes(freshness)) return "freshness must be day, week, month or year.";
+  for (const [name, v] of [["date_after", after], ["date_before", before]]) if (v !== undefined && !isDay(v)) return `${name} must be a date written YYYY-MM-DD.`;
+  if (after !== undefined && before !== undefined && after > before) return "date_after must not be later than date_before.";
+  if (domains !== undefined) {
+    const ds = Array.isArray(domains) && domains.length <= 20 ? domains.map((d) => (typeof d === "string" ? d.trim().toLowerCase() : "")) : [""];
+    if (ds.some((d) => !paidDomainEntry(d.replace(/^-/, ""), "turbo"))) return "domain_filter must be a list of up to 20 domains such as example.com; a leading - excludes one.";
+    if (ds.some((d) => d.startsWith("-")) && ds.some((d) => !d.startsWith("-"))) return "domain_filter must list domains to include or domains to exclude, not both.";
+  }
+  if (country !== undefined && !(typeof country === "string" && /^[a-z]{2}$/i.test(country))) return "country must be a 2-letter country code such as CA.";
+  return "";
+}
+
 export async function webSearch(args, { signal, at = AT } = {}) {
-  const bad = badArgs("web_search", args, ["query", "count"]);
+  const bad = badArgs("web_search", args, ["query", "count", ...FILTERS]);
   if (bad) return refuse(bad);
   const query = typeof args.query === "string" ? args.query.trim() : "";
   if (!query) return refuse("web_search refused: query must be a non-empty string.");
   const count = args.count ?? 5;
   if (!Number.isInteger(count) || count < 1 || count > 10) return refuse("web_search refused: count must be a whole number from 1 to 10.");
+  const filters = Object.fromEntries(FILTERS.filter((k) => args[k] != null).map((k) => [k, args[k]])); // null is no filter, as for count
+  const why = badFilter(filters);
+  if (why) return refuse(`web_search refused: ${why}`);
 
   const { conf, note } = readSettings(at);
   const { parallelApiKey, exaApiKey, ...rest } = section(conf, "search"); // a key comes from secrets/ only
@@ -224,7 +255,7 @@ export async function webSearch(args, { signal, at = AT } = {}) {
 
   let p;
   try {
-    p = await runSearchPlus({ query, count }, { config, searchConfig: { cacheTtlMinutes: rest.cacheTtlMinutes } }, { signal });
+    p = await runSearchPlus({ query, count, ...filters }, { config, searchConfig: { cacheTtlMinutes: rest.cacheTtlMinutes } }, { signal });
   } catch (err) {
     return refuse(scrub(`web_search could not run: ${firstLine(err)}`, secrets));
   }

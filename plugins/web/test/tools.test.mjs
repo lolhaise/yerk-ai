@@ -354,7 +354,121 @@ test("unknown arguments and bad values are refused before any work", async () =>
   assert.equal(textOf(a), "web_fetch refused: unknown argument extractMode; it takes url and max_chars.");
   assert.equal((await webFetch({ url: "https://x.example", max_chars: 5 }, { at: WITH })).isError, true);
   assert.equal((await webSearch({ query: "x", count: 50 }, { at: WITH })).isError, true);
-  assert.equal(textOf(await webSearch({ q: "x" }, { at: WITH })), "web_search refused: unknown argument q; it takes query and count.");
+  assert.equal(textOf(await webSearch({ q: "x" }, { at: WITH })), "web_search refused: unknown argument q; it takes query, count, freshness, date_after, date_before, domain_filter and country.");
+});
+
+// The five filters search-plus offers, named as lib/search/provider.js readArgs reads them (F7-13).
+const EXA_ROW = { requestId: "r1", results: [{ url: "https://news.example/rain-5", title: "Rain warning tonight", publishedDate: "2026-11-02T00:00:00.000Z", highlights: ["Up to 25 mm of rain is expected overnight."] }], costDollars: { total: 0.005 } };
+const exaOnly = () => stubFetch((url) => (url === "https://api.exa.ai/search" ? json(EXA_ROW) : json({ success: false, error: "unexpected" }, 500)));
+const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);
+
+test("web_search takes the five filters search-plus offers, under the names the engines read, each with a short description", () => {
+  const s = TOOLS.find((t) => t.name === "web_search").inputSchema;
+  assert.deepEqual(Object.keys(s.properties), ["query", "count", "freshness", "date_after", "date_before", "domain_filter", "country"]);
+  assert.deepEqual(s.properties.freshness, { type: "string", description: "day, week, month or year." });
+  assert.deepEqual(s.properties.date_after, { type: "string", description: "Published after YYYY-MM-DD." });
+  assert.deepEqual(s.properties.date_before, { type: "string", description: "Published before YYYY-MM-DD." });
+  assert.deepEqual(s.properties.domain_filter, { type: "array", items: { type: "string" }, description: "Domains to include; prefix with - to exclude." });
+  assert.deepEqual(s.properties.country, { type: "string", description: "2-letter country code." });
+  assert.deepEqual([s.required, s.additionalProperties], [["query"], false]);
+});
+
+test("each filter reaches Exa's request: the dates, the domains to include or exclude, the country, and freshness as the start date", async () => {
+  const f = exaOnly();
+  try {
+    const r = await webSearch({ query: "rain filtered", count: 3, date_after: "2026-11-01", date_before: "2026-11-08", domain_filter: ["news.example", "Weather.example"], country: "ca" }, { at: WITH_EXA });
+    assert.equal(r.isError, undefined, textOf(r));
+    const sent = JSON.parse(f.seen[0].body);
+    assert.deepEqual([sent.startPublishedDate, sent.endPublishedDate, sent.includeDomains, sent.excludeDomains, sent.userLocation],
+      ["2026-11-01T00:00:00.000Z", "2026-11-08T00:00:00.000Z", ["news.example", "weather.example"], undefined, "CA"]);
+    const early = daysAgo(7);
+    const w = await webSearch({ query: "rain this week", freshness: "week", domain_filter: ["-spam.example"] }, { at: WITH_EXA });
+    assert.equal(w.isError, undefined, textOf(w));
+    const week = JSON.parse(f.seen[1].body);
+    assert.ok([early, daysAgo(7)].includes(week.startPublishedDate.slice(0, 10)), week.startPublishedDate);
+    assert.deepEqual([week.excludeDomains, week.includeDomains, week.endPublishedDate], [["spam.example"], undefined, undefined]);
+    assert.equal(f.seen.length, 2);
+  } finally {
+    f.restore();
+  }
+});
+
+test("each filter reaches paid Parallel's request: start date and domains as its filters, the end date in its objective, the country as its location", async () => {
+  const f = stubFetch((url) => (url === "https://api.parallel.ai/v1/search"
+    ? json({ search_id: "s2", results: [{ url: "https://news.example/rain-6", title: "Rain warning tonight", publish_date: "2026-11-02", excerpts: ["Up to 25 mm of rain is expected overnight."] }] })
+    : json({ success: false, error: "unexpected" }, 500)));
+  try {
+    const r = await webSearch({ query: "rain paid filtered", date_after: "2026-11-01", date_before: "2026-11-08", domain_filter: ["news.example"], country: "CA" }, { at: WITH });
+    assert.equal(r.isError, undefined, textOf(r));
+    const sent = JSON.parse(f.seen[0].body);
+    assert.deepEqual(sent.advanced_settings, { max_results: 5, source_policy: { include_domains: ["news.example"], after_date: "2026-11-01" }, location: "ca" });
+    assert.match(sent.objective, /Only sources published before 2026-11-08\./);
+  } finally {
+    f.restore();
+  }
+});
+
+test("a filter web_search cannot use is refused in one line naming it and what it takes, before any engine is called", async () => {
+  const f = exaOnly();
+  const FRESH = "web_search refused: freshness must be day, week, month or year.";
+  const AFTER = "web_search refused: date_after must be a date written YYYY-MM-DD.";
+  const DOMAINS = "web_search refused: domain_filter must be a list of up to 20 domains such as example.com; a leading - excludes one.";
+  const COUNTRY = "web_search refused: country must be a 2-letter country code such as CA.";
+  try {
+    for (const [extra, line] of [
+      [{ freshness: "7d" }, FRESH], [{ freshness: "Week" }, FRESH], [{ freshness: 7 }, FRESH], [{ freshness: "" }, FRESH],
+      [{ date_after: "2026-02-30" }, AFTER], [{ date_after: "11/01/2026" }, AFTER], [{ date_after: 20261101 }, AFTER],
+      [{ date_before: "2026-11" }, "web_search refused: date_before must be a date written YYYY-MM-DD."],
+      [{ date_after: "2026-11-08", date_before: "2026-11-01" }, "web_search refused: date_after must not be later than date_before."],
+      [{ domain_filter: "example.com" }, DOMAINS], [{ domain_filter: [""] }, DOMAINS], [{ domain_filter: ["-"] }, DOMAINS], [{ domain_filter: [7] }, DOMAINS],
+      [{ domain_filter: ["example.com/news"] }, DOMAINS], [{ domain_filter: ["example.com:8080"] }, DOMAINS], [{ domain_filter: ["example"] }, DOMAINS],
+      [{ domain_filter: Array.from({ length: 21 }, (_, i) => `site${i}.example`) }, DOMAINS],
+      [{ domain_filter: ["news.example", "-spam.example"] }, "web_search refused: domain_filter must list domains to include or domains to exclude, not both."],
+      [{ country: "CAN" }, COUNTRY], [{ country: "C1" }, COUNTRY], [{ country: "" }, COUNTRY], [{ country: 1 }, COUNTRY],
+    ]) {
+      const r = await webSearch({ query: "rain", ...extra }, { at: WITH_EXA });
+      assert.deepEqual([r.isError, textOf(r)], [true, line], JSON.stringify(extra));
+    }
+    assert.equal(f.seen.length, 0);
+  } finally {
+    f.restore();
+  }
+});
+
+test("with only query and count web_search sends the request and gives the text it gave before the filters came back", async () => {
+  const f = exaOnly();
+  try {
+    const t = textOf(await webSearch({ query: "rain warning plain", count: 3 }, { at: WITH_EXA }));
+    assert.equal(f.seen[0].body, '{"query":"rain warning plain","type":"auto","numResults":3,"contents":{"highlights":true}}');
+    assert.equal(t.replace(/ id="[0-9a-f]{16}"/g, ' id="ID"'), [
+      'web_search "rain warning plain": 1 results from Exa, paid.',
+      "",
+      "",
+      '<<<EXTERNAL_UNTRUSTED_CONTENT id="ID">>>',
+      "Source: Web Search",
+      "---",
+      "1. Rain warning tonight",
+      "   https://news.example/rain-5 (2026-11-02T00:00:00.000Z)",
+      "   Up to 25 mm of rain is expected overnight.",
+      '<<<END_EXTERNAL_UNTRUSTED_CONTENT id="ID">>>',
+    ].join("\n"));
+  } finally {
+    f.restore();
+  }
+});
+
+test("a filter given as null is no filter, as a null count is the default count: the same request, the same text", async () => {
+  const f = exaOnly();
+  try {
+    const plain = textOf(await webSearch({ query: "rain warning plain", count: 3 }, { at: WITH_EXA }));
+    const nulls = await webSearch({ query: "rain warning plain", count: 3, freshness: null, date_after: null, date_before: null, domain_filter: null, country: null }, { at: WITH_EXA });
+    assert.equal(nulls.isError, undefined, textOf(nulls));
+    assert.equal(f.seen[1].body, f.seen[0].body);
+    const same = (s) => s.replace(/ id="[0-9a-f]{16}"/g, ' id="ID"');
+    assert.equal(same(textOf(nulls)), same(plain));
+  } finally {
+    f.restore();
+  }
 });
 
 // ---- spend --------------------------------------------------------------------------------------
@@ -749,7 +863,7 @@ test("the wall: a room whose limit on the server is short gets its run id, or it
 
 test("the server lists five tools under the names the rooms call, and bad research arguments are refused before any work", async () => {
   assert.deepEqual(TOOLS.map((t) => t.name), ["web_fetch", "web_search", "web_research", "web_research_result", "web_image"]);
-  assert.deepEqual(TOOLS.map((t) => Object.keys(t.inputSchema.properties)), [["url", "max_chars"], ["query", "count"], ["query", "effort", "schema", "system"], ["run_id"], ["url", "max_bytes"]]);
+  assert.deepEqual(TOOLS.map((t) => Object.keys(t.inputSchema.properties)), [["url", "max_chars"], ["query", "count", "freshness", "date_after", "date_before", "domain_filter", "country"], ["query", "effort", "schema", "system"], ["run_id"], ["url", "max_bytes"]]);
   const research = TOOLS.find((t) => t.name === "web_research");
   assert.match(research.description, /a list, a dig across many pages, or a named thing to verify and enrich, with sources; a single fact or page is web_search or web_fetch\. About 10 cents a run at medium, up to 15 minutes/);
   assert.deepEqual(research.inputSchema.properties.effort.enum, ["minimal", "low", "medium", "high"]);
