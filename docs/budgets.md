@@ -671,7 +671,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-11 (fast mode bills usage credits, so it reaches Claude Code only where the owner types it): the engine's gate, the launch key, `/fast on` before a new process's first line and the local-command probe 53 (engine.py); the command and its true answers 36 (daemon.py); a refusal said once 23 (room.py); its words 19 (words.py); the /status line 11 (status.py); the override's key 6 (config.py); the command's two choices 1 (channels/discord.py). Then 19 from the independent check: a /fast on with no result or an exception ends its process, the check's own folder removed 9 (engine.py); the compaction copy kept off fast mode, the process started again as on main, a cooldown never said as a refusal, a model not found takes fast mode with it 10 (room.py). 29,066: main b05d13c0's 28,898 plus 168.
 
-- `lines = 29066`
+2026-11-11: status-card raised it by 152, the owner's order of 2026-11-11 (the room's /status was the whole machine card, too long to read on their phone): /status typed in a room answers with that room's own card in the box card's shape, `yerk status` keeping its machine card byte for byte. The room card, the head collect reads for each room under its lock, and account_lines' numbers, its second line's fit, the workers' words and the backup's line split out for both cards to print 115 (status.py); the card's words, words.number and words.tokens 21 (words.py); a session's compactions, counted where the room records one and reset where a new session is minted 15 (room.py); the command's line 1 (channels/discord.py). 29,218: main f804ae1c's 29,066 plus 152.
+
+- `lines = 29218`
 
 ## Uncapped
 

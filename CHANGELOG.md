@@ -47,6 +47,31 @@ this repository, so the deploy carries it: a room reads documents from its next 
 installed for a PDF's words (`apt install poppler-utils`); without it a PDF is still saved for Read, and the answer says
 why its words are missing.
 
+### status-card (#54)
+
+- `/status` typed in a room answers with that room's own card, in the shape of the box's own `/status` card, instead of
+  the whole machine card (31 lines on the owner's install the day he asked, too long to read on a phone; his order of
+  2026-11-11). Three lines about the room: the model its next reply launches with and the account its session is on
+  (with no live process, the one its next turn would try: its own unless that one rests);
+  its session's tokens over its compaction window and how many times it was compacted since it began; its thinking
+  level, ending ` · Fast: on` while fast mode is on.
+- Then the tank, two lines an account in number order: the account the room is on wears `➤`, the soonest weekly reset
+  the green mark as before, a rest until other than the account's own weekly reset ends its first line with `💤` and
+  the time, then `wk next:` (and `5h next:` when a reading has a 5-hour window). Then what runs, at most four lines (this
+  room's turn first, then other rooms', then the workers, the fourth "and n more" past that), or "Quiet, nothing
+  running"; today's first-line and turn medians; on an uncapped install today's and the week's dollars; and a red line
+  only for trouble: stalls today, no backup or a stale one, a timer list that could not be read.
+- A part that cannot be read truthfully is left out: a room whose window is left to the model shows its tokens alone; a
+  session resumed at a daemon start (its earlier compactions never seen) shows no compaction count; a model or thinking
+  level nothing names (Claude Code's own default, whose id Yerk never learns) is not shown. A room with no session yet,
+  or a `/new` waiting, reads "new session". The card answers with the room's process closed too.
+- `yerk status` on the command line is unchanged, byte for byte: the operator's machine card. The daemon's /status
+  answer (and `yerk status --json` while yerkd runs) carries each room's `head`: model, effort, account, context, window
+  and compactions.
+- budgets.toml: `[code] lines` 29,066 to 29,218 with its dated note.
+- **Upgrading**: nothing to change. The card shows from yerkd's next start, and each session's compaction count starts
+  with the first new session after it.
+
 ### need-2026-11-11-86 (#?)
 
 - A room can click inside a web app whose own top bar offers a paid plan now, such as your mail app with its blue Upgrade

@@ -405,7 +405,8 @@ def test_the_status_endpoint_answers_and_yerk_status_renders_it(tmp_path, capsys
     s = r.json()
     assert r.status_code == 200 and s["running"] and s["rooms"] == [{"room": "example-room", "busy": False,
                                                                      "waiting": 0, "watch": None, "since": None, "account": "",
-                                                                     "fast": False}]
+                                                                     "fast": False, "head": {
+        "model": "claude-fable-5-1", "effort": "", "account": "one", "context": None, "window": 250000, "compactions": None}}]
     assert s["units"][0]["name"] == "yerkd" and s["units"][0]["rss_mb"] > 0 and s["stalls"] == [] and s["started"]
     assert [a["name"] for a in s["accounts"]] == ["one", "two"] and s["accounts"][0]["meter"]["error"]
 

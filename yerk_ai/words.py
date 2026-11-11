@@ -799,12 +799,33 @@ STATUS_PARTS = ("the daemon and its rooms", "each account's 5-hour and weekly me
                 "the spend on an uncapped install", "the newest backup's age", "today's stalls")
 NUMBERS = ("one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen "
            "seventeen eighteen nineteen twenty").split()
+# the room's /status (status.room_card): the box card's shape, every line opening with its own icon and the red mark only
+# on trouble; the account the room is on wears ON_THIS, one resting until other than its own weekly reset ASLEEP
+ROOM_HEAD, ROOM_HELD, ROOM_OF = "\N{BRAIN} {parts}", "\N{BOOKS} {held}", "/{window} ({pct}%)"
+ROOM_COMPACTED, ROOM_NEW = " · \N{BROOM} {n}", "\N{BOOKS} new session"     # since the session began; no session yet
+ROOM_THINK, ROOM_FAST = "\N{GEAR}\N{VARIATION SELECTOR-16} Think: {effort}", " · Fast: on"
+ROOM_FAST_ONLY = "\N{GEAR}\N{VARIATION SELECTOR-16} Fast: on"       # a room whose thinking level nothing names
+TANK, ON_THIS, ASLEEP = "\N{FUEL PUMP} Tank", "\N{BLACK RIGHTWARDS ARROWHEAD} ", " · \N{SLEEPING SYMBOL} {until}"
+BUSY, ALL_QUIET = "\N{HAMMER}", "\N{HAMMER} Quiet, nothing running"
+TURN_OF, HERE, AND_MORE = "{name}: turn {took}", "this room", "and {n} more"
+ROOM_SPEED = "\N{STOPWATCH} {day}: first line {first} · turn {turn}"           # SPEED's medians
+ROOM_SPEND = "\N{BANKNOTE WITH DOLLAR SIGN} {day} US${usd:.2f} · week US${week:.2f}"     # SPEND's dollars, no call count
+
+
+def number(name: str) -> int:
+    """An account's number: account one (or 1) is 1; any other name is 0."""
+    return NUMBERS.index(name.lower()) + 1 if name.lower() in NUMBERS else int(name) if name.isdigit() else 0
 
 
 def tag(name: str) -> str:
     """An account on the card: account one (or 1) is ①, up to ⑳; any other name is itself."""
-    n = NUMBERS.index(name.lower()) + 1 if name.lower() in NUMBERS else int(name) if name.isdigit() else 0
+    n = number(name)
     return chr(0x2460 + n - 1) if 1 <= n <= 20 else name
+
+
+def tokens(n: int) -> str:
+    """'212k', '1.0m': a session's tokens as the box card writes them."""
+    return f"{n / 1e6:.1f}m" if round(n / 1000) >= 1000 else f"{round(n / 1000)}k"
 
 
 def short_clock(epoch: float) -> str:

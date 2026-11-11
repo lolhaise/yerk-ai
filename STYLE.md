@@ -11,6 +11,8 @@ The outcome is in the first five words, the colour before the words: 🟢 done, 
 - Good: `🔴 worker died: it ended with an error`
 - Bad: `Worker 4f2a91 has finished its run, and unfortunately the result was a failure`
 
+The room's `/status` card (`status.room_card`) takes the box card's shape: each of its lines opens with its own icon (🧠, 📚, ⚙️, ⛽, 🔨, ⏱, 💵) instead of a state mark or a dash, and the red mark appears only on trouble.
+
 ## 2. One look, no second read
 
 One short line per item. A list for more than three facts, prose for one idea.

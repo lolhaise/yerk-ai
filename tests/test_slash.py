@@ -467,8 +467,21 @@ def test_status_is_the_phone_width_card(y, monkeypatch):
     said = slash(dc, "status")
     assert asked == [{"live": True}]                                       # the room's /status asks the meters now
     lines = said[-1][1].splitlines()
-    assert said[-1][2] and lines[0] == f"{words.PLAIN} {words.RUNNING_ROOMS.format(rooms=ROOM)}"
+    assert said[-1][2] and lines[0] == words.ROOM_HEAD.format(parts="claude-fable-5-1 · ①")   # the room's card (status.room_card)
     assert all(words.width(x) <= words.PHONE for x in lines)
+
+
+def test_status_in_a_room_is_that_rooms_card_and_another_room_gets_its_own_head(y, monkeypatch):
+    dc, room, _ = wire(y)
+    other = y.add_room("example-quiet", Chan())
+    dc.add_room(OTHER_CH, other, people=frozenset())
+    (y.state / "rooms" / "example-quiet").mkdir(parents=True, exist_ok=True)
+    (y.state / "rooms" / "example-quiet" / "override.json").write_text(json.dumps({"model": "claude-opus-5-5", "effort": "max"}))
+    here, there = (slash(dc, "status", channel=ch)[-1][1].splitlines() for ch in (ROOM_CH, OTHER_CH))
+    assert here[:3] == [words.ROOM_HEAD.format(parts="claude-fable-5-1 · ①"), words.ROOM_NEW, ""]       # no level named: no line
+    assert there[:3] == [words.ROOM_HEAD.format(parts="claude-opus-5-5 · ①"), words.ROOM_NEW, words.ROOM_THINK.format(effort="max")]
+    assert here[3:] == there[4:] and not any(x.startswith(f"{words.PLAIN} ") for x in here + there)   # one tank, one daemon
+    assert words.ALL_QUIET in here and "yerkd running" not in "\n".join(here)
 
 
 def test_registration_is_exactly_these_commands_on_exactly_the_rooms_guilds(y, tmp_path):
