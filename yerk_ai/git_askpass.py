@@ -4,11 +4,16 @@ of https://github.com, and this answers `x-access-token` and the token read from
 from __future__ import annotations
 
 import os
+import re
 import sys
 from pathlib import Path
 
+GITHUB = re.compile(r"'https://(?:[^@/']+@)?github\.com[/']")     # the host in git's prompt ("Username for 'https://github.com': "), a user before it or not
+
 
 def answer(prompt: str, token_file: str) -> str:
+    if not GITHUB.search(prompt):
+        return ""
     if prompt.lower().startswith("username"):
         return "x-access-token"
     if prompt.lower().startswith("password") and token_file:

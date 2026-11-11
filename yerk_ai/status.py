@@ -252,7 +252,7 @@ def account_lines(accounts: list[dict[str, Any]], now: float, live: bool = False
 
 
 def card(s: dict[str, Any], now: float | None = None) -> list[str]:
-    """`yerk status`: every line state first and at most words.PHONE columns (STYLE.md)."""
+    """`yerk status`: every line state first and at most words.PHONE columns (STYLE.md), its parts in the order of words.STATUS_PARTS."""
     now = float(s["at"]) if now is None else now
     W = words
 
@@ -268,7 +268,8 @@ def card(s: dict[str, Any], now: float | None = None) -> list[str]:
             took = now - r["since"]
             out.append(W.named(f"{W.NOT_DONE if took > BLOCKED else W.PLAIN} {W.TURN_FOR}"
                                + (W.QUEUED.format(n=r["waiting"]) if r["waiting"] else ""), r["room"], took=W.span(took)))
-    out += [W.named(f"{W.PLAIN} {W.WATCHES}", r["room"], channel=str(r["watch"]).partition(":")[2]) for r in s["rooms"] if r.get("watch")]
+    out += [W.named(f"{W.PLAIN} {W.WATCHES}", r["room"], channel=W.CHANNEL.format(name=r["watch_name"]) if r.get("watch_name")
+                    else str(r["watch"]).partition(":")[2]) for r in s["rooms"] if r.get("watch")]      # its id only with no name known
     pins: dict[str, list[str]] = {}
     for r in s["rooms"]:
         if r.get("account"):

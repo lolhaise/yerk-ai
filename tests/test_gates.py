@@ -73,6 +73,18 @@ def test_hardline_commands_never_run_and_their_quotes_are_prose(tmp_path):
         assert gates.check_shell(c, str(tmp_path), S) is None, c
 
 
+def test_a_hardline_command_is_refused_in_every_shape_a_shell_runs_it(tmp_path):
+    # cleanup F5-15: the hardline rules read what would really run too (runs), not only the segments the old splitter finds
+    for c in ("timeout 5 kill -9 -1", "bash -c 'kill -9 -1'", "/sbin/reboot", "echo $(shutdown -h now)", "xargs -a pids kill -9 -1",
+              "doas mkfs.ext4 /dev/sdb", "sh -c 'rm -rf /'", "timeout 9 rm -rf ~"):
+        v = gates.check_shell(c, str(tmp_path), S)
+        assert v and v.gate == "hardline" and v.decision == "deny", c
+    for c in ('bash -c "echo kill -9 -1"', "timeout 5 kill -9 12345", "sh -c 'git log --format=%s | grep reboot'",
+              "git commit -q -m \"$(cat <<'EOF'\nshutdown now waits for the turn\nkill -9 -1 is refused\nEOF\n)\""):
+        v = gates.check_shell(c, str(tmp_path), S)
+        assert not (v and v.gate == "hardline"), c
+
+
 class Rec(ConsoleChannel):
     def __init__(self) -> None:
         super().__init__()
@@ -146,6 +158,15 @@ def test_a_restart_causing_write_is_refused_during_a_human_turn_or_a_rebuild_and
                     "tool_input": {"command": "systemctl --user restart yerkd"}})["hookSpecificOutput"]
     for line in ch.notes:
         assert all(words.width(x) <= words.PHONE for x in line.splitlines()), line
+
+
+def test_a_shell_write_to_a_start_up_file_in_a_nested_shell_or_by_its_relative_name_is_refused_during_a_human_turn(tmp_path):
+    y, room, ch = setup(tmp_path)                 # cleanup F5-09: the restart rule reads the write as it would run, in its folder
+    human_turn(room)
+    for command, cwd in ((f'bash -c "echo x >> {EXAMPLE_PRIVATE}/rooms.toml"', tmp_path), ("sed -i s/a/b/ yerkd.toml", EXAMPLE_PRIVATE)):
+        out = call(y, {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": command}, "cwd": str(cwd)})
+        assert out.get("hookSpecificOutput", {}).get("permissionDecision") == "deny", command
+    assert len(ch.notes) == 2 and all(words.IN_PROGRESS in line for line in ch.notes)
 
 
 def test_the_approval_gate_holds_then_the_owners_word_releases_it_once_ledgered_either_way(tmp_path):
@@ -642,7 +663,7 @@ def test_a_status_board_in_a_room_with_people_bounces_once_and_never_in_an_owner
     assert call(y, {**stop, "last_assistant_message": BOARD_FINAL}) == {}                       # the owner's room, no list
     room.conf = {**room.conf, "people": [7]}                    # a person besides the owner
     room._new_card()
-    assert room.card.people == "example-room"                                 # and the card takes its shape
+    assert room.card.people == ""                                             # its card the owner rooms' shape (card-default)
     human_turn(room, "is the library one set?", sender="person")
     out = call(y, {**stop, "last_assistant_message": BOARD_FINAL})
     assert out["decision"] == "block" and "two or three plain sentences" in out["reason"]

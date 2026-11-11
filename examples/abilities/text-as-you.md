@@ -19,7 +19,7 @@ The texting agent knows Saturday is on the owner's calendar, so it drafts, and t
 `example-room`:
 
 ```
-⏳ text to Sam, waiting for you
+🟠 text to Sam, waiting for you
 "Yeah, still on. Noon works?"
 send · edit · no
 ```
@@ -31,7 +31,7 @@ The owner answers `send`, and only then does it go. Another text:
 Money is the owner's call, so nothing is drafted. The room asks instead:
 
 ```
-⏳ Sam asks to borrow money till Friday
+🟠 Sam asks to borrow money till Friday
 what do you want to say?
 ```
 

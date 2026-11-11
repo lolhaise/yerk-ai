@@ -28,7 +28,8 @@ def audit_line(sender, readers):
     """The line as it reaches the room, spelled out: who=Helper, channel=lounge."""
     return ("[sent to Helper in #lounge, not to this room: " + sender + " is talking to Helper there. Helper's answer follows the "
             "message. AUDIT it and post your verdict here: check it against the files and the thread, not recall; first line 🟢 "
-            "looks good, 🟠 right but missing something, or 🔴 wrong, then what is wrong or missing and the fix, written out in full "
+            "looks good (a nit rides under it in one line, or is dropped), 🟠 only when something is actually wrong and it changes "
+            "what " + sender + " would say or do, or 🔴 wrong, then what is wrong and the fix, written out in full "
             "in plain words, because " + readers + " read this room; one or two lines when it is right. If Helper had not answered "
             "within the wait, say that in one line. Never NO_REPLY on this turn; never redo work Helper got right.]")
 

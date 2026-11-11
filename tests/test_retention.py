@@ -10,7 +10,7 @@ import stat
 import time
 from pathlib import Path
 
-from yerk_ai import cli, context, morning, retention, words
+from yerk_ai import cli, context, curate, hooks, morning, retention, words
 from yerk_ai.accounts import Cooldowns, load_accounts
 from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai.engine import project_dir
@@ -87,6 +87,30 @@ def test_a_stream_log_and_an_assembled_log_are_cut_into_their_day_and_a_day_past
     assert gzip.decompress(cut.read_bytes()).endswith(b'{"t": 2, "type": "b"}\n{"t": 6}\n')
 
 
+def test_a_rolled_assembled_log_loses_nothing_and_curate_reads_the_weeks_parts_in_order(tmp_path, monkeypatch):
+    """F3-05: past RECORD_MAX the log rolled to .1, the next roll overwrote it and the sweep never cut a .1 (seen live: a busy
+    room's archive held only 46 minutes of 367 turns), and curate's weekly count of the rules that rode read the live file
+    alone. Three rolls in a day: every row stays, the sweep cuts each part into that day's archive in order, and curate
+    reads the week's archives, then the parts, then the live file."""
+    priv, state, projects, led = layer(tmp_path)
+    room = state / "rooms" / "room-a"
+    monkeypatch.setattr(hooks, "RECORD_MAX", 600)                                  # three rows to a part
+    with monkeypatch.context() as m:
+        for i in range(12):
+            m.setattr(hooks.time, "time", lambda i=i: NOW - DAY + 60 * i)
+            hooks.record(state, "room-a", "message", f"s{i}", {"p": 1}, "w" * 150, topic_rules=[f"job{i % 2}"])
+    assert {json.loads(x)["session_id"] for p in room.glob("assembled.jsonl*") for x in p.read_text().splitlines()} == {f"s{i}" for i in range(12)}
+    assert curate.rides(state, ["room-a"], NOW - 7 * DAY) == (12, {"job0": 6, "job1": 6})
+    for p in room.glob("assembled.jsonl*"):
+        ago(p, 1)
+    assert retention.main(priv, state, now=NOW) == 0 and not list(room.glob("assembled.jsonl*"))
+    cut = gzip.decompress((room / f"assembled.{retention.day(NOW - DAY)}.jsonl.gz").read_bytes()).decode().splitlines()
+    assert [json.loads(x)["session_id"] for x in cut] == [f"s{i}" for i in range(12)]
+    hooks.record(state, "room-a", "message", "s12", {"p": 1}, "w", topic_rules=["job0"])
+    assert curate.rides(state, ["room-a"], NOW - 7 * DAY) == (13, {"job0": 7, "job1": 6})
+    assert curate.rides(state, ["room-a"], NOW - DAY + 60 * 6) == (7, {"job0": 4, "job1": 3})     # a row before `since` is not counted
+
+
 def test_a_bound_session_survives_and_an_unbound_one_past_its_window_moves_with_its_folder(tmp_path):
     priv, state, projects, led = layer(tmp_path, "[retention]\ntranscripts = 1\n")
     a = project(projects, state, "room-a")
@@ -132,10 +156,27 @@ def test_the_trash_empties_after_7_days_a_rooms_scratch_after_1_and_nothing_else
     week = put(state / "trash" / retention.day(NOW - 2 * DAY) / "rooms" / "room-a" / "assembled.jsonl", "a")   # not scratch: a week
     sgone = put(state / "trash" / "scratch" / retention.day(NOW - 2 * DAY) / "rooms" / "room-a" / "work" / "r.pgm", "rr")
     sstays = put(state / "trash" / "scratch" / retention.day(NOW - DAY) / "rooms" / "room-a" / "work" / "s.pgm", "s")
+    disk = [p.stat().st_blocks * 512 for p in (gone, sgone)]                     # what each delete gives back (FB-01)
     r = retention.run(priv, state, now=NOW)
-    assert not gone.parent.parent.exists() and stays.exists() and r["kinds"]["trash"] == [1, 3]
-    assert not sgone.parent.parent.parent.parent.exists() and sstays.exists() and week.exists() and r["kinds"]["scratch_trash"] == [1, 2]
+    assert not gone.parent.parent.exists() and stays.exists() and r["kinds"]["trash"] == [1, disk[0]]
+    assert not sgone.parent.parent.parent.parent.exists() and sstays.exists() and week.exists() and r["kinds"]["scratch_trash"] == [1, disk[1]]
     assert oct((state / "trash").stat().st_mode & 0o777) == "0o700"
+
+
+def test_the_trash_says_the_disk_its_delete_gave_back_never_the_files_lengths(tmp_path, capsys):
+    """FB-01: a finished test run's sparse file 1 GB long holds no block, and a file linked from outside the trash keeps its
+    blocks, so neither is disk the delete gave back; the line and retention.json say the report's blocks alone."""
+    priv, state, projects, led = layer(tmp_path)
+    old = state / "trash" / retention.day(NOW - 8 * DAY) / "workers" / "aaaaaa"
+    os.truncate(put(old / "runs" / "sparse.img", ""), 1 << 30)
+    report = put(old / "REPORT.md", "r" * 5000)
+    os.link(put(tmp_path / "elsewhere" / "kept.txt", "k" * 9000), old / "linked.txt")
+    freed = report.stat().st_blocks * 512
+    assert retention.main(priv, state, dry=True, now=NOW) == 0 and old.exists()
+    assert f"trash: 1 would be deleted, {words.size(freed)}" in capsys.readouterr().out
+    assert retention.main(priv, state, now=NOW) == 0 and not old.exists() and (tmp_path / "elsewhere" / "kept.txt").exists()
+    assert f"trash: 1 deleted, {words.size(freed)}" in capsys.readouterr().out
+    assert json.loads((state / retention.LAST).read_text())["kinds"]["trash"] == [1, freed]
 
 
 def test_old_timing_rows_go_to_the_trash_then_leave_the_ledger_and_the_wal_is_checkpointed(tmp_path):
@@ -171,6 +212,48 @@ def test_a_finished_workers_folder_and_its_transcript_go_after_their_days_and_no
     assert (tmp_path / "elsewhere" / "dddddd").exists() and r["kinds"]["workers"][0] == 2 and "error" not in r
     assert (state / "workers").is_dir()
     assert (state / "trash" / retention.day(NOW) / "workers" / "aaaaaa" / "REPORT.md").exists()
+
+
+def test_a_finished_workers_pytest_trees_go_a_day_after_it_finished_and_the_rest_waits_its_days(tmp_path):
+    """F10-04: a finished worker's pytest temp trees (pytest-of-*, in its tmp/ or deeper, as runs/<name>/tmp/) held 9.9 GB on
+    disk for the folder's whole 30 days. A worker not finished, or finished less than a day ago, keeps them; a link is never
+    followed or moved."""
+    priv, state, projects, led = layer(tmp_path)
+    for wid, finished in (("aaaaaa", NOW - 2 * DAY), ("bbbbbb", NOW - DAY / 2), ("cccccc", None)):
+        w = state / "workers" / wid
+        put(w / "REPORT.md", days=3)
+        put(w / "tmp" / "pytest-of-owner" / "pytest-1" / "test_x0" / "state.db", "d" * 10, days=3)
+        put(w / "runs" / "suite-a" / "tmp" / "pytest-of-owner" / "pytest-0" / "f.txt", "f" * 5, days=3)
+        led.worker_add(id=wid, room="room-a", staging=str(w), started=NOW - 3 * DAY, finished=finished)
+    a = state / "workers" / "aaaaaa"
+    (a / "pytest-of-link").symlink_to(state / "workers" / "cccccc" / "tmp")
+    r = retention.run(priv, state, now=NOW)
+    assert not (a / "tmp" / "pytest-of-owner").exists() and not (a / "runs" / "suite-a" / "tmp" / "pytest-of-owner").exists()
+    assert (a / "REPORT.md").exists() and (a / "tmp").is_dir() and (a / "pytest-of-link").is_symlink()
+    assert all((state / "workers" / w / "tmp" / "pytest-of-owner").exists() for w in ("bbbbbb", "cccccc"))
+    trash = state / "trash" / retention.day(NOW) / "workers" / "aaaaaa"
+    assert (trash / "runs" / "suite-a" / "tmp" / "pytest-of-owner" / "pytest-0" / "f.txt").read_text() == "fffff"
+    assert r["kinds"]["pytest"] == [2, 15] and "error" not in r
+
+
+def test_a_job_runs_folder_goes_after_its_days_once_ended_and_delivered_and_never_while_undelivered(tmp_path):
+    """F10-14: every job run leaves <state>/jobs/<name>/<stamp>/ and nothing pruned them, about 145 a day. A run the ledger
+    still marks undelivered stays whatever its age (the daemon's restart sweep reads its stdout), so does one never ended."""
+    priv, state, projects, led = layer(tmp_path)
+    runs = {}
+    for stamp, ended, delivery in (("20261001-040000", NOW - 20 * DAY, "silent (no output)"), ("20261002-040000", NOW - 19 * DAY, "delivered"),
+                                   ("20261003-040000", NOW - 18 * DAY, "undelivered: the daemon was not running"),
+                                   ("20261004-040000", None, None), ("20261015-040000", NOW - 6 * DAY, "delivered")):
+        runs[stamp] = put(state / "jobs" / "example-job" / stamp / "stdout", "out", days=30).parent
+        led.job_run_add(job="example-job", kind="script", room="room-a", fired=NOW - 30 * DAY, ended=ended, delivery=delivery, folder=str(runs[stamp]))
+    stray = put(state / "jobs" / "example-job" / "20260901-040000" / "stdout", days=60).parent             # no row: never touched
+    out = put(tmp_path / "elsewhere" / "x" / "20261001-040000" / "stdout").parent                          # not under the jobs folder
+    led.job_run_add(job="x", kind="script", room="room-a", fired=NOW - 99 * DAY, ended=NOW - 99 * DAY, delivery="delivered", folder=str(out))
+    r = retention.run(priv, state, now=NOW)
+    assert not runs["20261001-040000"].exists() and not runs["20261002-040000"].exists() and stray.exists() and out.exists()
+    assert all(runs[s].exists() for s in ("20261003-040000", "20261004-040000", "20261015-040000"))
+    assert (state / "trash" / retention.day(NOW) / "jobs" / "example-job" / "20261001-040000" / "stdout").read_text() == "out"
+    assert r["kinds"]["jobs"] == [2, 6] and "error" not in r
 
 
 def test_a_dry_run_moves_nothing_and_counts_what_the_run_then_moves(tmp_path):
@@ -215,7 +298,7 @@ def test_a_failure_exits_1_and_the_morning_diff_opens_with_it(tmp_path, capsys):
 def test_the_days_come_from_yerkd_toml_and_explain_says_them(tmp_path, capsys):
     priv, state, projects, led = layer(tmp_path, '[retention]\nlogs = 3\nledger = "x"\nworkers = -1\ntrash = true\n')
     assert retention.keep({"retention": {"logs": 3, "ledger": "x", "workers": -1, "trash": True, "scratch_mb": 0}}) == {
-        "logs": 3, "assembled": 14, "transcripts": 30, "ledger": 90, "workers": 30, "scratch": 2, "trash": 7, "scratch_trash": 1, "scratch_mb": 500}
+        "logs": 3, "assembled": 14, "transcripts": 30, "ledger": 90, "jobs": 14, "workers": 30, "pytest": 1, "scratch": 2, "trash": 7, "scratch_trash": 1, "scratch_mb": 500}
     assert cli.main(["explain", "retention", "--private", str(priv), "--state", str(state)]) == 0
     out = capsys.readouterr().out
     assert out.startswith(f"{words.DONE} retention: ") and "Here: logs 3 days, assembled 14 days, transcripts 30 days" in out

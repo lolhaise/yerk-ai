@@ -43,12 +43,13 @@ import subprocess
 import sys
 import time
 import tomllib
+import urllib.error
 import urllib.request
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Iterator
+from typing import Any, Callable, Collection, Iterator
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from . import words
@@ -70,6 +71,8 @@ WAITING = "undelivered: waiting for the room's turn"       # a told note's run u
 OUTPUT_MAX = 4000                 # characters of a script's output posted; the rest stays in the run folder
 ALERT_MAX = 300
 DEFAULT_CAP = {"script": 10.0, "agent": 15.0, "note": 0.0}     # a note runs nothing: no cap
+RETRY_EVERY, RETRY_SPARE = 3.0, 30.0     # an agent job's hand-off that finds no daemon listening yet (at boot the timers start before yerkd) is
+                                         # tried every RETRY_EVERY s until its unit's limit less RETRY_SPARE s; a script or a note gives up at once
 ROOM_NOTES, ROOM_NOTE_MINUTES, NOTE_CHARS = 20, 5, 600     # the [jobs] defaults (CONF)
 ROOM_NOTE_BURST = 3      # notes per room_note_minutes window: a reminder, its follow-up check and a watch in one turn
                          # (2026-10-21: one per window refused a person's second note twice, put off to the next turn)
@@ -414,6 +417,11 @@ def env_for(private: Path, state: Path) -> Env:
     return Env(sys.executable, REPO, private.resolve(), state.resolve())
 
 
+def start_limit(job: Job) -> int:
+    """The unit's TimeoutStartSec in seconds: an agent job's runner only hands off, a script runs its cap in the unit."""
+    return 120 if job.kind == "agent" else int(job.cap * 60) + 120      # the runner's own cap comes first (L163)
+
+
 def unit_texts(job: Job, env: Env) -> tuple[str, str]:
     """(timer, service) for the job, byte for byte what sync writes."""
     head = f"{HEADER}{job.name}.\n"
@@ -424,8 +432,7 @@ def unit_texts(job: Job, env: Env) -> tuple[str, str]:
     timer = [head, "[Unit]", f"Description=Yerk AI job {job.name} (timer)", "", "[Timer]"]
     timer += [f"OnCalendar={c}" for c in job.calendar()] + ["Persistent=true"]
     timer += ["AccuracySec=1s", f"Unit={job.unit}.service", "", "[Install]", "WantedBy=timers.target", ""]
-    start = 120 if job.kind == "agent" else int(job.cap * 60) + 120      # the runner's own cap comes first (L163)
-    service = [head, "[Unit]", f"Description=Yerk AI job {job.name}", "", "[Service]", "Type=oneshot", *run, f"TimeoutStartSec={start}", ""]
+    service = [head, "[Unit]", f"Description=Yerk AI job {job.name}", "", "[Service]", "Type=oneshot", *run, f"TimeoutStartSec={start_limit(job)}", ""]
     return "\n".join(timer), "\n".join(service)
 
 
@@ -484,6 +491,9 @@ class Systemd:
     def disable_now(self, timer: str) -> str:
         return self._unit_cmd("disable", "--now", timer)
 
+    def running(self, unit: str) -> bool:                     # a one-shot service is activating while its run goes
+        return systemctl("is-active", unit).stdout.strip() in ("active", "activating")
+
     def check(self, spec: str) -> str:
         try:
             p = subprocess.run(["systemd-analyze", "calendar", spec], capture_output=True, text=True, timeout=30)
@@ -512,8 +522,15 @@ class Plan:
     failed: dict[str, str] = field(default_factory=dict)       # systemd refused: job -> why
 
 
+def running_one_shots(path: Path, units: Systemd, errors: dict[str, str]) -> dict[str, Job]:
+    """The one-shots `load` refused only for their time having passed whose own service runs: in the file and running.
+    Only that run takes one out of the file and then its units; one whose run was cut is refused as any past time is."""
+    return {n: j for n, j in load(path, 0)[0].items() if n in errors and j.when == "at" and units.running(f"{j.unit}.service")}
+
+
 def plan(path: Path, units: Systemd, env: Env, now: float | None = None) -> Plan:
     jobs, errors = load(path, now)
+    kept = running_one_shots(path, units, errors)               # kept as they are, never checked for a next fire
     p = Plan(jobs=jobs, errors=errors)
     for name, job in jobs.items():
         for spec in job.calendar():
@@ -529,6 +546,10 @@ def plan(path: Path, units: Systemd, env: Env, now: float | None = None) -> Plan
             p.added.append(name)
         else:
             p.changed.append(name)
+    for name, job in kept.items():
+        del p.errors[name]
+        p.jobs[name] = job
+        p.unchanged.append(name)
     wanted = set(jobs) - set(p.errors)
     p.removed = [n for n in units.ours() if n not in wanted]
     return p
@@ -590,19 +611,22 @@ def diff_lines(p: Plan) -> list[str]:
     return out or ["nothing to do: the jobs file is empty and no job timer is on disk"]
 
 
-def read_lines(back: dict[str, dict[str, Any]], jobs: dict[str, Job], now: float | None = None) -> list[str]:
-    """One line per job: next fire from systemd, in the job's zone, and the last fire."""
+def read_lines(back: dict[str, dict[str, Any]], jobs: dict[str, Job], now: float | None = None,
+               running: Collection[str] = ()) -> list[str]:
+    """One line per job: next fire from systemd, in the job's zone, and the last fire; a one-shot whose run is going
+    (`running`) says so in their place."""
     now = time.time() if now is None else now
     out = []
     for name, r in back.items():
         if r.get("stray"):
             out.append(f"timer {r['unit']}: NOT IN THE JOBS FILE (`yerk jobs sync` removes it)")
-        elif not r["scheduled"]:
+        elif not r["scheduled"] and name not in running:
             out.append(f"{name}: NOT SCHEDULED (no timer loaded; run `yerk jobs sync`)")
         else:
             nxt = when_text(r["next"], r["tz"]) + (f" ({in_text(r['next'], now)})" if r["next"] else "")
             last = f", last {when_text(r['last'], r['tz'])}" if r["last"] else ", never fired yet"
-            out.append(f"{name}: next {nxt}{last}; {jobs[name].describe()}, room {jobs[name].room}, {jobs[name].kind}"
+            head = words.JOB_RUNNING.format(name=name) if name in running else f"{name}: next {nxt}{last}"
+            out.append(f"{head}; {jobs[name].describe()}, room {jobs[name].room}, {jobs[name].kind}"
                        + "".join(f", {k} {v}" for k, v in jobs[name].runs_on().items()))
     return out or ["jobs: none"]
 
@@ -613,13 +637,15 @@ def phone(text: str) -> str:
 
 def status_lines(path: Path, units: Systemd, now: float | None = None) -> list[str]:
     """`yerk status`: one line per job, state first and phone width: a green dot and how long until
-    its next fire (from systemd, never from memory), a white dot for a job with no timer, a red dot
-    for one that cannot be scheduled or a timer with no job. The detail (times, zones, why) is
-    `yerk jobs list`. An unreadable timer list is said, never shown as empty."""
+    its next fire (from systemd, never from memory), an orange one for a one-shot whose run is going,
+    a white dot for a job with no timer, a red dot for one that cannot be scheduled or a timer with
+    no job. The detail (times, zones, why) is `yerk jobs list`. An unreadable timer list is said,
+    never shown as empty."""
     now = time.time() if now is None else now
     jobs, errors = load(path, now)
     try:
-        back = readback(jobs, units, now)
+        kept = running_one_shots(path, units, errors)          # in the file and running, as the sync reads them
+        back = readback({**jobs, **kept}, units, now)
     except (OSError, subprocess.SubprocessError, ValueError) as e:
         log.warning("jobs: the timer list could not be read: %s", e)
         return [f"{NOT_DONE} jobs: the timer list could not be read"]
@@ -627,13 +653,15 @@ def status_lines(path: Path, units: Systemd, now: float | None = None) -> list[s
     for name, r in back.items():
         if r.get("stray"):
             out.append(phone(f"{NOT_DONE} timer {name}: not in the jobs file"))
+        elif name in kept:
+            out.append(phone(f"{words.WORKING} " + words.JOB_RUNNING.format(name=name)))
         elif not r["scheduled"]:
             out.append(phone(f"{NOTHING} {name}: not scheduled"))
         elif r["next"]:
             out.append(phone(f"{DONE} {name}: {in_text(r['next'], now)}"))
         else:
             out.append(phone(f"{NOTHING} {name}: no next fire"))
-    out += [phone(f"{NOT_DONE} {n}: cannot be scheduled") for n in sorted(errors)]
+    out += [phone(f"{NOT_DONE} {n}: cannot be scheduled") for n in sorted(errors) if n not in kept]
     return out
 
 
@@ -675,6 +703,14 @@ def post_control(state: Path, payload: dict[str, Any], timeout: float = 120, wor
         return dict(json.loads(r.read()))
 
 
+def not_listening(e: Exception) -> bool:
+    """post_control reached no daemon, so nothing was sent: no yerkd.json, its pid gone or another user's (one left from
+    before the box went down), or nothing on its port yet. A daemon that answered, or took the request and was slow, is not."""
+    if isinstance(e, urllib.error.URLError) and not isinstance(e, urllib.error.HTTPError) and isinstance(e.reason, OSError):
+        e = e.reason
+    return isinstance(e, (FileNotFoundError, ProcessLookupError, PermissionError, ConnectionRefusedError))
+
+
 def run(name: str, private: Path, state: Path, units: Systemd | None = None,
         handoff: Callable[[dict[str, Any]], dict[str, Any]] | None = None, now: float | None = None) -> int:
     """The unit's one step. A script job: ledger the run, run the command, hand the result to the
@@ -710,10 +746,16 @@ def run(name: str, private: Path, state: Path, units: Systemd | None = None,
         if job.kind == "note":                  # and what a late tell reads (Jobs.reattach)
             (folder / "message").write_text(job.payload)
         payload = {"job": {"action": "fire", "name": name, "run": run_id}}
-    try:
-        out = handoff(payload)
-    except (OSError, ValueError) as e:
-        out = {"ok": False, "error": f"the daemon is not running ({type(e).__name__})"}
+    deadline = fired + start_limit(job) - RETRY_SPARE        # a one-shot stays in the file while this waits
+    while True:
+        try:
+            out = handoff(payload)
+        except (OSError, ValueError) as e:
+            if job.kind == "agent" and not_listening(e) and time.time() + RETRY_EVERY < deadline:
+                time.sleep(RETRY_EVERY)
+                continue
+            out = {"ok": False, "error": f"the daemon is not running ({type(e).__name__})"}
+        break
     if not out.get("ok"):
         why = str(out.get("error", "the daemon refused it"))
         if job.kind == "script":
@@ -793,6 +835,8 @@ def schedule_list(path: Path, units: Systemd, only: set[str] | None = None) -> d
     that is not the owner's sees its own notes and never another job's name, room or error."""
     jobs, errors = load(path)
     try:
+        kept = running_one_shots(path, units, errors)          # in the file and running, as the sync reads them
+        jobs, errors = {**jobs, **kept}, {n: w for n, w in errors.items() if n not in kept}
         back = readback(jobs, units)
     except (OSError, subprocess.SubprocessError, ValueError) as e:
         return {"ok": False, "error": f"the timer list could not be read: {e}"}
@@ -803,7 +847,7 @@ def schedule_list(path: Path, units: Systemd, only: set[str] | None = None) -> d
                                                                              if r["next"] else ""),
              **({"schedule": jobs[n].describe(), "room": jobs[n].room, "kind": jobs[n].kind,
                  "deliver": jobs[n].deliver, **jobs[n].runs_on()} if n in jobs else {})} for n, r in back.items()]
-    lines = read_lines(back, jobs, now) + [f"! {n}: cannot be scheduled: {w}" for n, w in sorted(errors.items())]
+    lines = read_lines(back, jobs, now, kept) + [f"! {n}: cannot be scheduled: {w}" for n, w in sorted(errors.items())]
     return {"ok": True, "jobs": rows, "errors": errors, "lines": lines}
 
 
@@ -1050,7 +1094,16 @@ class Jobs:
 
     async def reattach(self) -> None:
         """After a daemon start: a script run that ended while no daemon was up is delivered late; a note that fired
-        then, or whose turn the restart cut, is told now, unless its reply was in the room already."""
+        then, or whose turn the restart cut, is told now, unless its reply was in the room already. A script run with no
+        end past its unit's limit was cut mid-run (the limit, or any stop): it is closed and alerts as a failed run does."""
+        for r in self.ledger.job_runs(unended=True):        # a script whose job has left the file: the default cap, nobody to tell
+            job = self.jobs().get(str(r["job"])) if r["kind"] == "script" else None
+            limit = start_limit(job) if job else int(DEFAULT_CAP["script"] * 60) + 120
+            if r["kind"] != "script" or (end := float(r["fired"]) + limit) > time.time():
+                continue
+            self.ledger.job_run_set(int(r["id"]), ended=end, exit="cut", result="cut", delivery="alert" if job else "none")
+            if job is not None:
+                await self.alert(job, words.job_line(job.name, "failed", result="signal"), int(r["id"]), str(r["room"]))
         for r in self.ledger.job_runs(undelivered=True):
             if r["kind"] == "note" and (r["delivery"] != WAITING or float(r["fired"]) < self.started):   # one told here is in hand
                 if (posted := self.ledger.delivered_for(mid := f"note-{r['id']}")):

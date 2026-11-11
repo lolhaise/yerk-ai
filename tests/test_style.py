@@ -198,7 +198,7 @@ def test_status_abilities_and_explain_print_state_first_at_phone_width(tmp_path,
 
 
 # 2. one vocabulary
-RENDERERS = ["card.py", "workers.py", "room.py", "channels/discord.py", "daemon.py", "cli.py", "meters.py",
+RENDERERS = ["card.py", "workers.py", "room.py", "channels/discord.py", "channels/page.py", "daemon.py", "cli.py", "meters.py",
              "abilities.py", "status.py", "morning.py", "addons.py"]
 MARKS = ("\U0001F7E2", "\U0001F7E0", "\U0001F534", "\u26AA", "LARGE GREEN CIRCLE", "LARGE ORANGE CIRCLE",
          "LARGE RED CIRCLE", "MEDIUM WHITE CIRCLE", "HOURGLASS WITH FLOWING SAND", "CROSS MARK", "WHITE SMALL SQUARE",
@@ -212,7 +212,8 @@ def phrases() -> list[str]:
     out += [words.REPORT_SAVED, words.NO_REPORT, words.NOT_SENT, words.NOT_SENT_AGAIN, words.NOT_FETCHED,
             words.NOT_RUN_AGAIN, words.SENT_AGAIN, words.NOT_ANSWERED, words.GONE, words.STRAY, *words.BACKUP,
             words.MOVED, words.MOVED_ON, words.OUT_OF, words.COMPACTING, *words.FILE_WHY.values(), words.NEXT_REPLY, words.OWNER_ONLY,
-            words.NOT_LISTED, words.NOT_A_LEVEL, words.BACK_ON, words.ON, words.NOT_AN_ACCOUNT, words.CARRIED, words.RECAPPED]
+            words.NOT_LISTED, words.NOT_A_LEVEL, words.BACK_ON, words.ON, words.NOT_AN_ACCOUNT, words.CARRIED, words.RECAPPED,
+            words.NONE_RUNNING, words.NOT_RUNNING, words.NOT_ANSWERING, words.NO_JOB_DUE, words.NO_TIMERS, words.NO_BACKUP]
     out += [v for k, v in words.STEP.items() if k != "hold"]            # a worker's card says "waiting for an account" itself
     out += [*words.WORKER_STEP.values(), *words.JOB_STEP.values(), words.MESSAGE_TO, words.NOTES, *words.FILES.values(),
             words.ANOTHER_WAY, words.ROOM_NOW]
@@ -369,6 +370,34 @@ def test_times_are_said_the_way_a_person_says_them():
     assert re.fullmatch(r"\d\d:\d\d", words.clock(now, now)) and re.fullmatch(r"\w{3} \d\d:\d\d", words.clock(now - 3 * 86400, now))
     assert words.sizes(20_971_521, 20_971_520) == ("20,971,521 bytes", "20,971,520 bytes")
     assert words.sizes(26_214_400, 20_971_520) == ("25 MB", "20 MB")
+
+
+def test_a_long_line_is_cut_in_one_pass_and_reads_as_before(monkeypatch):
+    """words.line cut a character at a time and measured the rest again, so a card's long narration line cost the square of
+    its length on every stream event (11 s of CPU for one reply whose first line was 803 characters): one pass now, and the
+    same words as the old cut for plain, wide, combining and footer-marked lines at every width."""
+    def old(text, n=words.PHONE):
+        text = " ".join(str(text).split())
+        if words.width(text) <= n:
+            return text
+        while text and words.width(text) > n - 3:
+            text = text[:-1]
+        if (at := text.rfind(" ")) >= len(text) // 2:
+            text = text[:at]
+        return text.rstrip(" ,;:") + "..."
+    samples = ["a plain line that runs well past forty columns, with commas, and more words",
+               f"{words.WORKING} {words.DONE} wide marks 漢字かな and an emoji \N{ROCKET} in a long line of words",
+               "e\u0301 combining marks e\u0301 and `code marks` in a line that is longer than forty",
+               f"{words.SUB}a footer line that is held to the phone width and cut at a word",
+               "x" * 300, "-#", "-# ", words.SUB + "y" * 80, ""]
+    for text in samples:
+        for n in (0, 1, 2, 3, 4, 10, 40, 80):
+            assert words.line(text, n) == old(text, n), (text, n)
+    calls = []
+    real = words.width
+    monkeypatch.setattr(words, "width", lambda t: calls.append(len(t)) or real(t))
+    words.line("word " * 400)                                  # 1,999 characters once folded
+    assert sum(calls) <= 2 * 1999                              # the whole line once and each character once: never its square
 
 
 def test_the_console_channel_shows_the_rooms_own_words(capsys):

@@ -2,7 +2,7 @@
 against a local site (no network), a kept page headed by its source, fetch time and hash, a page whose hash moved said once in the morning
 diff, a failure that keeps the old page and leaves the refresh due, the docs folder as a memory root of class shared in every room (one
 with its own `also` too) cited as docs/claude/<slug>.md:line, kept out of what a room is handed per message and below the owner's notes in
-doctor's weekly refresh and its off switch, the command, and a room asking how its rules are written."""
+doctor's daily refresh and its off switch, the command, and a room asking how its rules are written."""
 import asyncio
 import hashlib
 import http.server
@@ -227,7 +227,7 @@ def test_yerk_explain_takes_the_docs_command_and_the_doctors_help_says_the_weekl
     with pytest.raises(SystemExit) as e:
         cli.main(["doctor", "--help"])
     said = " ".join(capsys.readouterr().out.split())
-    assert e.value.code == 0 and "once a week it also fetches the Claude docs" in said and "[docs] fetch = false" in said, said
+    assert e.value.code == 0 and "once a day it also fetches the Claude docs" in said and "[docs] fetch = false" in said, said
 
 
 def test_a_room_asking_how_its_rules_are_written_gets_the_shape_check_and_the_docs_first(tmp_path):

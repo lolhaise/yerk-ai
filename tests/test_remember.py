@@ -258,3 +258,23 @@ def test_a_correction_marks_the_line_the_room_meant_never_the_snippets_first_lin
     assert lines[4].endswith(f"[superseded by {r['cite']}]") and sum("[superseded" in x for x in lines) == 1
     assert lines[0] == "# Example car" and lines[6].startswith("- Example car: the spare key is now in the hall bowl. "
                                                                "(supersedes tree/facts/example-car.md:5) (")
+
+
+def test_a_cite_past_a_vertical_tab_opens_its_own_line_and_a_correction_marks_that_line(tmp_path):
+    """The index numbers a file's lines as str.splitlines does, which also breaks at a vertical tab or a form feed; read_memory
+    and a correction's edit count the same way, so a cite opens on its own line, the mark lands there and every tab stays."""
+    y = daemon(tmp_path)
+    (y.memory.root / "facts").mkdir(parents=True)
+    car = y.memory.root / "facts" / "example-car.md"
+    car.write_text("# Example car\n\n" + "".join(f"- Example car: note {n}\x0bits second half.\n" for n in range(14))
+                   + "\n# Keys\n\n- Example car: the spare key is in the kitchen drawer.\n")
+    memindex.Index(y.memory.index_db, y.memory.scope).sync()
+    hit = next(h for h in asyncio.run(y.tool_recall("example-room", "where is the spare key for the example car?", 6))["hits"]
+               if "example-car" in h["cite"] and "spare key" in h["text"])
+    got = memory.read(y.memory, hit["cite"], lines=1)
+    assert got["ok"] and got["text"].strip() == hit["text"].splitlines()[0].strip()
+    r = remember(y, "example-room", "The spare key is now in the hall bowl.", "",
+                 (f"{hit['cite']} | the spare key is in the kitchen drawer",))
+    assert r["superseded"] == ["tree/facts/example-car.md:34"] and r["refused"] == []
+    text = car.read_text()
+    assert text.splitlines()[33].endswith(f"[superseded by {r['cite']}]") and text.count("\x0b") == 14

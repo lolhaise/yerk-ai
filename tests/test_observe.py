@@ -264,6 +264,49 @@ def test_the_deploys_status_ask_and_json_never_start_claude_code_and_the_card_do
     assert sorted(started) == ["one", "two"]
 
 
+def test_the_card_names_a_watched_channel_by_its_name_and_by_its_id_only_when_no_name_is_known(tmp_path):
+    """F2-13: a room's watched channel on the card (`yerk status` and /status, both from status_now) is its name as the
+    adapter knows it; its id only with no adapter, or a channel the adapter has no name for."""
+    y, ref = Yerkd(EXAMPLE_PRIVATE, tmp_path), "discord:4242"        # a real id is 17 to 19 digits; the scrub test refuses one
+    y.rooms = {"example-room": busy_room()}
+    y.rooms["example-room"].conf["watch"] = ref
+    y.link = SimpleNamespace(channel_name=lambda r: "watched" if r == ref else "")
+    lines = status.card(json.loads(json.dumps(asyncio.run(y.status_now({})))), NOW)
+    assert [x for x in lines if ": watches " in x] == ["- example-room: watches #watched"], lines
+    for link in (None, SimpleNamespace(channel_name=lambda r: "")):
+        y.link = link
+        lines = status.card(json.loads(json.dumps(asyncio.run(y.status_now({})))), NOW)
+        assert [x for x in lines if ": watches " in x] == ["- example-room: watches 4242"], lines
+
+
+def test_the_status_help_names_every_part_the_card_prints(tmp_path):
+    """F2-02: `yerk status --help` (and so docs/commands.md) names every part of the card, from words.STATUS_PARTS in the
+    card's order; the fullest card (every part present) has no line that a named part does not make, so a part added to the
+    card and not to the list fails here."""
+    import argparse
+    W = words
+    s = json.loads(json.dumps(status.collect(EXAMPLE_PRIVATE, tmp_path, load_accounts(EXAMPLE_PRIVATE / "accounts.toml"),
+                                             Cooldowns(tmp_path / "c.json"), Ledger(tmp_path / "l.sqlite"), {}, now=NOW, units=set)))
+    s.update({"rooms": [{"room": "example-room", "busy": True, "waiting": 1, "watch": "discord:1", "since": NOW - 120, "account": "one"}],
+              "workers": [{"id": "abc123", "room": "example-room", "account": "one", "started": NOW - 180, "cap": 900, "waiting": False,
+                           "queued": None, "gone": False}], "jobs": [{"name": "backup", "next": NOW + 600}],
+              "units": [{"name": "yerkd", "rss_mb": 120.0, "cpu_pct": 1.5}], "speed": {"first": 2.0, "turn": 30.0},
+              "spend": {"n": 2, "usd": 0.375, "week": 1.875}, "backup": {"at": NOW - 3600, "bytes": 1000}, "addons": ["hello"]})
+    tags, pre, mid = {W.tag(a["name"]) for a in s["accounts"]}, (lambda t: t.split("{", 1)[0]), (lambda t: t.split("}", 1)[1].split("{", 1)[0])
+    made = [lambda x: x.startswith(pre(W.RUNNING_ROOMS)), lambda x: x.partition(":")[0] in tags or x.startswith(pre(W.FIRST_TRY)),
+            lambda x: mid(W.TURN_FOR) in x, lambda x: mid(W.WATCHES) in x, lambda x: mid(W.PINNED) in x or x.startswith(pre(W.ROOMS_ON)),
+            lambda x: x.startswith(pre(W.VERSION_AT)), lambda x: x.startswith(pre(W.ADDONS)),
+            lambda x: x.startswith(pre(W.WORKER)) or x == W.NONE_RUNNING, lambda x: x.startswith(pre(W.JOB_DUE)) or x in (W.NO_JOB_DUE, W.NO_TIMERS),
+            lambda x: x.endswith(W.UNIT_USE.rsplit("}", 1)[1]), lambda x: mid(W.SPEED) in x, lambda x: x.startswith(pre(W.SPEND)),
+            lambda x: x.startswith(pre(W.BACKUP_AT)), lambda x: x.startswith(pre(W.STALLS))]
+    lines = [x.split(" ", 1)[1] for x in status.card(s, NOW)]
+    part = [next((i for i, f in enumerate(made) if f(x)), None) for x in lines]
+    assert None not in part and part == sorted(part) and set(part) == set(range(len(made))), list(zip(part, lines))
+    sub = next(a for a in cli.parser()._actions if isinstance(a, argparse._SubParsersAction))
+    said, parts = {c.dest: str(c.help) for c in sub._choices_actions}["status"], getattr(W, "STATUS_PARTS", ())
+    assert len(parts) == len(made) and all(x in said for x in parts), (said, parts)
+
+
 def test_a_status_read_that_does_not_ask_never_waits_on_a_card_that_does(tmp_path):
     accounts, gate, began, got = five_accounts(tmp_path)[:1], threading.Event(), threading.Event(), []
 

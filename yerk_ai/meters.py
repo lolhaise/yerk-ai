@@ -79,9 +79,9 @@ def meter_line(name: str, m: dict[str, Any], now: float | None = None) -> str:
 
 
 def meter_short(name: str, m: dict[str, Any], rests_until: float | None = None, now: float | None = None) -> str:
-    """`yerk status`: one phone-width line, state first. Resting or a window at 100%: red, with when it
-    comes back; a window at 90% or more: orange; else a dash (no colour: nothing to see), as with no
-    reading yet. The reading's age is --full's, and the card's own line once it is an hour old."""
+    """The morning diff's account line (morning.py): one phone-width line, state first. Resting or a window at 100%:
+    red, with when it comes back; a window at 90% or more: orange; else a dash (no colour: nothing to see), as with no
+    reading yet."""
     if rests_until:
         return words.named(f"{words.NOT_DONE} {words.RESTS}", name, until=words.clock(rests_until, now))
     if "error" in m:

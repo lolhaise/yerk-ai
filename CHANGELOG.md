@@ -8,6 +8,135 @@ version changes.
 
 ## 2026-11-10
 
+### cleanup-2026-11-10 (#?)
+
+- The cleanup audit of 2026-11-10: Yerk AI read in eleven regions, every finding judged, and each fix here in a commit
+  of its own named `cleanup <finding id>: ...`, so a line below leads to its commit. Pull requests 20 (F6-04, Fish
+  only), 24 (the card default) and 31 (F9-03, `fable` is claude-fable-5-2) are folded in; their own entries follow this
+  one.
+- Fixed, in turns and rooms (F1-03, F1-05, F1-06, F1-07, F1-08, F3-01, F3-03, F3-05): a failed turn is classed by its
+  own process's stderr, never by a line an earlier process left there. A message that comes in while a room's idle close
+  waits for the old process starts once that process has exited, where it used to crash on the session lock. A copy's
+  compaction no longer clears the live session's record of the topic rules it was told. After a refusal fallback the
+  room starts fresh only when failures.toml's refusal action is `fresh_next_turn`, the shipped default, so the file now
+  decides. A machine-room line that fails to post is said on the worker's row, never recorded as sent. A cite past a
+  vertical tab in a memory file opens and marks its own line, since read_memory and a correction's edit now number lines
+  as the index does. An index rebuild reloads yerk-index's store with the install's own `embeddings_units`. The
+  assembled log rolls to its next part and never writes over one; the nightly sweep cuts every part into its day in
+  order, and curate reads the whole week's parts.
+- Fixed, in the needs pipeline (F5-02, F5-03, F5-07, F5-08, F5-10, and the pipeline builder's own find): a stuck need
+  with a pull request goes back to `pr` once its head's checks are all in and final, and only when no other need is in
+  flight. A need's worker cut off by a stop nobody asked for, a shutdown say, is no verdict: the need is queued again
+  with nothing counted and the next tick starts it; a stop a person asked for stays a stop. A deploy that gave up
+  waiting for quiet sets its need back to merged, so the next tick deploys again. A builder that cannot start holds its
+  need with the reason, said, and the next queued need starts. A need worker's clean worktrees are removed when it ends;
+  its branches are kept, and a worktree with changes is named on its row. A need left building with no worker after the
+  daemon died goes back to the queue at the next start, where it used to hold the queue for good.
+- Fixed, in jobs, retention, the doctor and curate (F4-01, F4-03, F5-05, F5-06, F9-21, F10-03, F10-04, F10-14, FB-01): a
+  jobs sync no longer deletes the unit file of a one-shot that is still running, and yerk status and the jobs list read
+  a running one-shot the same way. An agent job's run waits for a daemon that is not listening yet, up to its unit's
+  limit; a script or a note gives up at once as before. The start sweep closes a script run that was cut mid-run and
+  sends its failed-run alert. Retention moves a job run's folder to the trash 14 days after it ended and was delivered,
+  never one still undelivered, and a finished worker's pytest temp trees a day after it finished, the rest of its folder
+  waiting its 30 days. The doctor's growth check and retention's lines count disk blocks, once per file, so sparse files
+  and second hard links no longer read as growth. Curate's nightly run keeps the day's rule proposals it built, so
+  `--apply` takes the numbers the card showed. A blind recall bench run exits 5 and fails the weekly unit, where it
+  passed as a success.
+- Fixed, in the gates (F5-09, F5-13, F5-14, F5-15, F5-18, F5-19): the restart rule and the hardline rules read a shell
+  line as it would really run, so a write to a start-up file in a nested shell, by a relative name or after a heredoc is
+  seen, and a wrapper or a nested shell is no way round them. `((` and `$((` read as arithmetic only when their last two
+  parentheses close together, as bash reads them, and `coproc` is peeled so the command it runs is read. The git askpass
+  helper answers only a prompt for github.com. An add-on whose install is not a table is refused with its check line,
+  not a traceback.
+- Fixed, in the web plug-in (F7-02, F7-04, F7-10, F7-14, F7-15) and `yerk room add` (F7-05): `web_fetch` refuses a
+  browser rung that an ad or a script sent off-site, and ends its climb 10 s inside the room's own limit. A proxied
+  session retried without proxies is booked as a spend row of its own. The rendered-page check takes every og:title as a
+  title candidate. The plug-in's plan-limit alerts, which went to log files nothing read, reach the morning diff once,
+  the day after they are written. `yerk room add` names the new room in the MCP flags it copies, never the room it was
+  made like.
+- Fixed, in the install (F10-01, F10-12, FB-03): yerkd's unit is sized for what its rooms hold today, MemoryHigh 4G and
+  MemoryMax 8G (from 2G and 4G; a nine-room install sat at its 2G line), and yerk-index's MemoryHigh is 2G (from 1400M),
+  its rule and a fifth for what a start costs; each unit file carries its measurements. The MCP library's per-request
+  lines, two thirds of the daemon's journal, stay out of it.
+- What a person reads differently (F1-01, F2-02, F2-03, F2-09, F2-13, F4-02, F4-07, F4-09, F5-04, F6-05, F6-08, F7-12,
+  F7-16, F9-07, F9-12, F10-11, F11-08): a watched room's audit verdict keeps orange for something actually wrong that
+  changes what the person would say or do; green is looks good, with a nit in one line under it or none, and red is
+  wrong, then what is wrong and the fix (the owner's order of 2026-11-05; the `watch_audit` setting's words say the
+  same). A stuck need's line counts the final checks and names the pending ones. `yerk status` names a watched channel
+  by its name where it is known, its help names every part of the card, and `--full` says no workers in the shared
+  words. The live page's close button says answers come back as bubbles under the line. The doctor's backup lines carry
+  the red mark; curate `--rules` names all six kinds it proposes, and its dry run speaks from words.py. A command that
+  falls back to the example layer says so once on stderr, with the flag to pass. The hold tool says what is true: a
+  worker's result comes back by itself, and nothing watches another event. The login wall names a move a room can take,
+  `web_research` names the configured daily cap, and prompt-diff says built, with the eight abilities that ship in part
+  naming what is still missing. The accounts help names `mint`, `[gmail]` smtp_host and smtp_port are described, and the
+  hooks page lists all eleven Stop rules.
+- The guide and the other written pages say what the code does (F6-03, F8-03, F8-04, F9-05, F9-06, F9-08, F9-09, F9-10,
+  F9-11, F9-13, F9-14, F9-19, F9-20, F9-22): the docs fetch is daily; the ability counts match abilities.toml (118: 56
+  built, 62 described); the Ledgers section names all 22 tables and the Files section every kind of unit; every route of
+  the daemon's HTTP server is named; the location-day job example is one the loader accepts; the doctor prints one green
+  line when all is well; a script job keeps the unit's YERK_PRIVATE and YERK_STATE; the contract probes run by hand and
+  take short and think; the hello add-on points at the guide's Add-ons section; the example ability cards that wait on
+  the owner open on the orange mark; NOTICE no longer credits the watcher job that left. Docstrings and comments that
+  said otherwise now match the code (F1-04, F2-05, F2-12, F5-16, F9-01, F9-02).
+- Faster (F2-15, F3-04, F3-06, F4-04, F6-07, F8-07, F8-09): `words.line` cuts a long line in one pass, not a character
+  at a time (one card had cost 11 s of CPU). The Stop check's figure test is 32 times faster, with the same answers. A
+  message reads only today's day log; a past day's parsed lines are kept while the file's size and time hold. Each
+  ability phrase's pattern is compiled once, not 540 times a message (8.3 ms to 0.3 ms), and the abilities manifest is
+  parsed again only when abilities.toml or an add-on changes. A reply's parts are read by key range, never by a LIKE
+  over every sent delivery of every room. The doctor's growth check adds sizes as it walks and holds no list.
+- Gone (F1-02, F1-09, F2-01, F5-12, F7-03, F7-11, F8-01, F8-02): the `kind` arguments of the channel's open_card and of
+  Card, which every caller left at its default; workers.ADDON_ENV, which nothing read; the recall cap's dead fallback of
+  1500, as the prompt hook reads budgets.toml alone; eight web plug-in exports nothing calls, and its site-memory seed
+  merge, an OpenClaw deploy step nothing in Yerk writes; a skipped test nothing could run and a test constant nothing
+  read.
+- The tests: 46 new test functions (1,434 to 1,480) and 11 in the web plug-in's suite. The style test also holds the
+  status card's phrases and the live page's server to the one vocabulary (F2-04, F2-14); pytest keeps only a failed
+  test's temp folder, where a whole run left 340 MB of passed tests' folders (F8-05); the screen test waits 0.3 s, not
+  10, for a paint no tab gives (F8-08).
+- budgets.toml: `[code] lines` 28,654 to 29,052 with its dated note.
+- **Upgrading**: copy `units/yerkd.service` and `units/yerk-index.service` again (yerkd MemoryHigh 4G and MemoryMax 8G,
+  yerk-index MemoryHigh 2G) and `systemctl --user daemon-reload`; a box that set those with `systemctl --user
+  set-property` raises them there instead. The doctor's and the recall bench's units changed only in their comments.
+  Nothing else to change for the cleanup itself; pull requests 20 and 24 say their own steps below.
+
+### fish-only-2026-11-07 (#?)
+
+- MiniMax is out and Fish Audio is the only voice engine, since the owner cancelled the MiniMax plan on 2026-11-07. Left
+  as it was, every note would have spent a failing MiniMax call first, and the abilities text and the guide would have
+  named a voice that no longer speaks. `[mood]` tags go to Fish as they did, `(break)` is its pause, and a `<#0.4#>`
+  written in a script still becomes `(break)`.
+- A Fish failure on any section means no note, and the error names fish. The words for it change from "neither voice
+  made it" to "the voice failed".
+- A note costs its 20-second check, about 0.2 US cents, since Fish's s2.1-pro-free is US$0. The US$1 gate stays, and no
+  note reaches it at that price. Fish takes about a minute per 1,000 characters, section after section (measured on the
+  box, 2026-10-22), so a long note takes minutes.
+- `voice/pronounce.txt` in the private folder is no longer read: those rules were MiniMax's.
+- The `[code]` ceiling goes to 26,959.
+
+**Upgrading**: `secrets/minimax.key` is no longer read and the owner may remove it; no other step.
+
+### fable-5-2-2026-11-09 (#?)
+
+- `fable` in models.toml names claude-fable-5-2, released Nov 9 2026 and the default Fable model in Claude Code 2.1.321; a room put on `fable` from now on runs it. `fable51` names claude-fable-5-1, so a room pinned to 5.1 keeps running it: an id that leaves this list is ignored and the room runs its rooms.toml model.
+
+### card-default (#24)
+
+- Every room's progress card now shows the step rows, a room with people's too: the state and the model's newest line
+  ("thinking" while it thinks), then one row per step, done or not done, as the owner's rooms always have. The thinking
+  line under it stays where it was: owner-only rooms that turn `thinking_panel` on.
+- Why: a room with people showed "step 1", "step 2" where an owner's room showed the state, the model's
+  newest line and a row per step, and every room should show the same card.
+  
+  
+- The short card a room with people has shown since 2026-10-21 (its newest holding line and "step N", never a step's
+  words) is now the opt-in: `card = "count"` in the room's block. `card = "steps"` (2026-11-03) still loads and means
+  the default, as any other value does. The code ceiling moves up by 1.
+
+**Upgrading**: nothing to change for a room that should show the rows. A room with people that should keep the short
+card adds `card = "count"` to its block in rooms.toml; `card = "steps"` lines may stay or go. rooms.toml is read at
+yerkd's start, so the change shows from the next restart.
+
 ### need-2026-11-10-83 (#47)
 
 - A worker can drive the browser. The `worker` tool takes `addons`: the room's own add-on tools the worker gets too, by

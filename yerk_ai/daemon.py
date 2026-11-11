@@ -921,17 +921,27 @@ class Yerkd:
             then = words.PICTURES_STOP.format(left=sum(map(len, left)))
         how = workers.settled_state(row, workers.tasks_of(Path(row["tasks"])), end)[1]
         line = words.PICTURES_BATCH.format(room=room, n=n, of=of, how=how, filed=filed, count=len(mine), then=then)
-        if (to := str(row["room"])) in self.channels:
-            with contextlib.suppress(Exception):
-                await self.channels[to].notify(to, line)
-        self.ledger.worker_set(str(row["id"]), relay="skipped", relay_note="pictures backfill: its line went to the machine room")
+        self.ledger.worker_set(str(row["id"]), relay="skipped", relay_note=await self.posted(str(row["room"]), line, "pictures backfill"))
         log.info("%s", line)
         return True
+
+    async def posted(self, to: str, line: str, what: str) -> str:
+        """A worker's end in one line in its room, never a relay turn; an error posting it is swallowed. The worker row's note
+        from what happened: the line went, or it could not be posted and why."""
+        why = words.NO_CHANNEL_HERE.format(room=to)
+        if to in self.channels:
+            try:
+                await self.channels[to].notify(to, line)
+                return words.LINE_POSTED.format(what=what)
+            except Exception as e:
+                why = words.line(str(e) or type(e).__name__, 160)
+        return words.LINE_NOT_POSTED.format(what=what, why=why)
 
     async def need_build(self, req: dict[str, Any]) -> dict[str, Any]:
         """`yerk needs build DAY N`: the need's brief (needs.brief) to a builder worker on [needs] account, else [curate]
         account, else the workers' own pick, its card in the machine room. One builder a need: the need is claimed under the
-        lock, so only one filed, queued, held or stuck starts one (the pipeline's road from there, pipeline.py)."""
+        lock, so only one filed, queued, held or stuck starts one (the pipeline's road from there, pipeline.py). A builder that
+        cannot start holds the need with why under [needs] auto, as a fix's or a read's does; on the hand road it is filed."""
         day, n = str(req.get("day") or ""), int(req.get("n") or 0)
         if await asyncio.to_thread(needs.update, self.memory, self.state, day, n, {"state": "building", "worker": "", "fixes": 0},
                                    lambda r: r.get("state", "filed") in ("filed", "queued", "held", "stuck")) is None:
@@ -944,14 +954,20 @@ class Yerkd:
         out = await self.workers.start(self.pipeline.room(), needs.brief(row, REPO, str(conf.get("pr_check") or ""), found, there),
                                        account=self.pipeline.account(), cap_minutes=float(conf.get("cap_minutes") or needs.CAP),
                                        tasks=list(needs.TASKS), more={"need": {"day": day, "n": n}})
-        await asyncio.to_thread(needs.update, self.memory, self.state, day, n, {"worker": out["id"]} if out.get("ok") else {"state": "filed"})
+        if out.get("ok") or not self.pipeline.auto():
+            await asyncio.to_thread(needs.update, self.memory, self.state, day, n, {"worker": out["id"]} if out.get("ok") else {"state": "filed"})
+        else:                                            # said in the machine room, and the next queued need starts
+            await self.pipeline.stop({**row, "day": day, "n": n}, "held", words.NEED_NO_BUILDER.format(error=out.get("error")))
         log.info("needs: build %s %s: %s", day, n, out.get("id") or out.get("error"))
         return {**out, "day": day, "n": n}
 
     async def need_built(self, row: dict[str, Any], end: dict[str, Any]) -> bool:
         """A need's builder ended (workers.hooks): the need's state from its report's first line (needs.ended) and one line to
-        the machine room, never a relay turn; under [needs] auto a failed build starts once more, then the need is stuck. A
-        cold read or a fix worker goes to the pipeline (Pipeline.ended); False for any other worker."""
+        the machine room, never a relay turn; under [needs] auto a failed build starts once more, then the need is stuck (one
+        cut off by a stop nobody asked for, workers.cut_off, is queued with no worker and nothing counted, and the queue starts
+        it on the first tick after the restart, since on a box shutdown the daemon is stopping too). A cold read or a fix
+        worker goes to the pipeline (Pipeline.ended); False for any other worker. First, any need worker's clean worktrees go (needs.tidy), so
+        the next worker can take the branch, and its note names each that stays."""
         try:
             job = json.loads((Path(row["staging"]) / "worker.json").read_text()).get("need")
         except (OSError, ValueError):
@@ -959,22 +975,30 @@ class Yerkd:
         if not isinstance(job, dict):
             return False
         day, n = str(job.get("day")), int(job.get("n") or 0)
+        kept = await asyncio.to_thread(needs.tidy, Path(row["staging"]))
         if job.get("role") in ("read", "fix"):
-            return await self.pipeline.ended(row, end, str(job["role"]), day, n)
+            done = await self.pipeline.ended(row, end, str(job["role"]), day, n)
+            if kept:                                     # after the note ended wrote
+                said = str((self.ledger.worker_get(str(row["id"])) or {}).get("relay_note") or "")
+                self.ledger.worker_set(str(row["id"]), relay_note="; ".join([said, *kept]))
+            return done
         how = workers.settled_state(row, workers.tasks_of(Path(row["tasks"])), end)[1]
         plugs = await self.pipeline.heads({"day": day, "n": n})                   # a plug-in branch the builder left
         r = await asyncio.to_thread(needs.ended, self.memory, self.state, day, n, str(row["id"]), how,
                                     workers.first_line(Path(row["report"])), end["exit"] == "done", plugs)
+        if r is not None and r.get("state") == "filed" and self.pipeline.auto() and workers.cut_off(end):   # no verdict: the next tick's
+            r = await asyncio.to_thread(needs.update, self.memory, self.state, day, n, {"state": "queued", "worker": ""},
+                                        lambda x: x.get("state") == "filed")
+        note = words.LINE_NONE.format(what="need build")
         if r is not None:
             ab, st = words.line(str(r["ability"]), 80), r.get("state")
             line = (words.NEED_PR.format(n=n, pr=r.get("pr"), ability=ab) if st == "pr" else words.NEED_BRANCH.format(
-                n=n, branch=r.get("branch"), ability=ab) if st == "built" else words.NEED_FAILED.format(n=n, how=how, ability=ab))
+                n=n, branch=r.get("branch"), ability=ab) if st == "built" else words.NEED_CUT_BUILD.format(n=n, ability=ab)
+                if st == "queued" else words.NEED_FAILED.format(n=n, how=how, ability=ab))
             line += words.NEED_PLUGIN.format(names=", ".join(r.get("plugins") or ())) * bool(st in ("pr", "built") and r.get("plugins"))
-            if (to := str(row["room"])) in self.channels:
-                with contextlib.suppress(Exception):
-                    await self.channels[to].notify(to, line)
+            note = await self.posted(str(row["room"]), line, "need build")
             log.info("%s", line)
-        self.ledger.worker_set(str(row["id"]), relay="skipped", relay_note="need build: its line went to the machine room")
+        self.ledger.worker_set(str(row["id"]), relay="skipped", relay_note="; ".join([note, *kept]))
         if r is not None and r.get("state") == "filed" and self.pipeline.auto():     # failed: once more, then stuck
             if (fails := int(r.get("fails") or 0) + 1) >= 2:
                 await self.pipeline.stop({**r, "fails": fails}, "stuck", f"its builder failed twice, last: {how}")
@@ -1529,8 +1553,8 @@ class Yerkd:
             return {"decision": "block", "reason": reason} if reason else {}
         if event == "SessionStart":
             if payload.get("source") == "compact":
-                if name:                          # the topic rules ride again after it, each once (context.topics)
-                    (self.state / "rooms" / name / context.TOLD).unlink(missing_ok=True)
+                if name and self.sessions.by_session(sid) == name:    # the bound session's: its topic rules ride again after it,
+                    (self.state / "rooms" / name / context.TOLD).unlink(missing_ok=True)    # each once (context.topics); a copy's leaves the record
                 return await asyncio.to_thread(hooks.session_start, payload, self.state, lambda r: self.compact_pack(r, sid), name)
             prev = self.was_reset(name, sid) if name and payload.get("source") in ("startup", "clear") else ""
             if name and prev:                 # told only when the replaced session had answered something
@@ -1576,7 +1600,7 @@ class Yerkd:
                                   way=words.DELETE_WAY if self.owner(name) else "")
             if v and v.new_input is not None:
                 v.new_input = {**ti, **v.new_input}
-        if v is None and (what := gates.restart_hit(tool, ti, self.private)):
+        if v is None and (what := gates.restart_hit(tool, ti, self.private, str(payload.get("cwd") or self.state / "rooms" / name / "work"))):
             why = (words.REBUILDING if self.rebuild_running()
                    else words.IN_PROGRESS if any(r.human_turn() for r in self.rooms.values()) else "")
             if why:
@@ -1726,6 +1750,10 @@ class Yerkd:
         each account's meters now (the card's), else only a reading under a minute old is used."""
         out = await asyncio.to_thread(status.collect, self.private, self.state, self.accounts, self.cooldowns, self.ledger,
                                       self.rooms, live=bool((payload or {}).get("live")))
+        named = getattr(self.link, "channel_name", None)      # a watched channel by its name where the adapter knows it
+        for r in out["rooms"]:
+            if named and r.get("watch") and (name := named(r["watch"])):
+                r["watch_name"] = name
         return {**out, "started": self.started, "commit": self.commit,
                 "connected": bool(getattr(self.link, "connected", False)),
                 "rebuilding": await asyncio.to_thread(self.rebuild_running)}   # deploy waits it out, as the gate does
@@ -1841,6 +1869,7 @@ class Yerkd:
             raise SystemExit("no room has a discord:<channel id> in rooms.toml")
         self.workers.begin(asyncio.get_running_loop())
         self.page.begin(asyncio.get_running_loop())
+        self.pipeline.begin()                            # before any task: a need's claim whose builder never started, queued
         moved = self.move_held()                         # before any room starts; said after the connect
 
         async def say_moved() -> None:
@@ -1886,6 +1915,7 @@ def parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     a = parser().parse_args(argv)
     logging.basicConfig(level=logging.INFO, stream=sys.stderr, format="%(asctime)s %(name)s %(message)s")
+    logging.getLogger("mcp").setLevel(logging.WARNING)   # the MCP library logs every request at INFO: two thirds of the journal
     priv, state = private_dir(a.private), state_dir(a.state)
     claim(state)                                 # before the ledger opens: a second daemon writes nothing
     y = Yerkd(priv, state, port=a.port, idle_minutes=a.idle_minutes,

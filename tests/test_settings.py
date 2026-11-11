@@ -117,7 +117,7 @@ def test_owner_rooms_only_listed_models_and_levels_and_default_clears(y, tmp_pat
     assert ask(y, "opus", room="example-quiet") == {"ok": False, "line": words.OWNER_ONLY}
     assert ask(y, "opus", room="") == {"ok": False, "line": words.OWNER_ONLY}      # no binding, no room
     assert ask(y, "gpt-9") == {"ok": False, "line": "not on the list: gpt-9\nthe list: opus (Opus 5.5), "
-                                                    "sonnet (Sonnet 5.5), haiku (Haiku 5.5), fable (Fable 5.1)"}
+                                                    "sonnet (Sonnet 5.5), haiku (Haiku 5.5), fable (Fable 5.2), fable51 (Fable 5.1)"}
     assert ask(y, "", "turbo") == {"ok": False, "line": "not a thinking level: turbo\n"
                                                         "the levels: low, medium, high, xhigh, max, default"}
     assert not list(tmp_path.glob("rooms/*/override.json"))           # a refusal writes nothing
@@ -190,7 +190,7 @@ def test_a_planted_override_off_the_lists_never_reaches_the_command_line(y, tmp_
 
 def test_the_models_list_ships_in_the_package_and_a_yerkd_toml_list_replaces_it(tmp_path, monkeypatch):
     four = {"opus": "claude-opus-5-5", "sonnet": "claude-sonnet-5-5", "haiku": "claude-haiku-5-5",
-            "fable": "claude-fable-5-1"}
+            "fable": "claude-fable-5-2", "fable51": "claude-fable-5-1"}
     monkeypatch.setattr(config, "EXAMPLE_PRIVATE", tmp_path / "hidden")                    # no examples folder
     assert config.models({}) == four and config.models({"models": {"X": "claude-x-1"}}) == {"x": "claude-x-1"}
     site = (tmp_path / "site").resolve()          # an install: the package and pyproject's wheel tables, no repo

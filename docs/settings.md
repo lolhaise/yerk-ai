@@ -12,7 +12,7 @@ One `[rooms.NAME]` table a room; `yerk doctor` names any other key as a typo.
 - `allow`: permission rules beyond Read (the tool goes in `tools` too); the gates run first. An owner room carries [defaults] allow unless it sets its own
 - `allow_remove`: tools an owner room does without, out of the allow it inherits from [defaults]
 - `also`: which of yerkd.toml's [memory] also roots reach the room's recall, read_memory and names (unset: all of them)
-- `card`: steps: a room with people shows the owner rooms' progress card, the model's newest line and one row per step, done or not done (unset or any other value: its newest holding line and a step count)
+- `card`: count: a room with people shows its newest holding line and a step count, never a step's words (unset, steps or any other value: the owner rooms' card, the model's newest line and one row per step, done or not done)
 - `channel`: the chat the room is, discord:<channel id>
 - `class`: the class the room's day-log lines carry: private, room or shared (default: private in an owner room, room in any other)
 - `compact_window`: tokens the session keeps before Claude Code compacts (unset: budgets.toml [session]; 0: the model's own)
@@ -47,7 +47,7 @@ One `[rooms.NAME]` table a room; `yerk doctor` names any other key as a typo.
 - `voice`: the room's voice file, the session start's room_voice part
 - `watch`: discord:<channel id> of a channel the room watches: [watch] assistants' messages there go in its day log, never answered
 - `watch_assistant`: the assistant the owner talks to in the watched channel, by name: a message read from there comes in marked as sent to it, not to this room (default: the other assistant)
-- `watch_audit`: true: the room grades the watched assistant's answer to every watched message, a verdict line (🟢 looks good, 🟠 right but missing something, 🔴 wrong) then the fix, never silent (default false: read along, answer only when asked)
+- `watch_audit`: true: the room grades the watched assistant's answer to every watched message, a verdict line (🟢 looks good, 🟠 only when something is actually wrong and it changes what the person would say or do, 🔴 wrong) then the fix, never silent (default false: read along, answer only when asked)
 - `watch_wait`: seconds the room waits for the watched assistant's answer after a watched message, counted again from that assistant's progress card's last edit while the card is up, at most three times this (default 150)
 
 ### [defaults]
@@ -144,6 +144,8 @@ The daemon's settings, in the private folder beside rooms.toml, read when yerkd 
 - `user`: the Gmail address `yerk import gmail` reads and the `email` tool sends from (none: no room emails)
 - `password_file`: a file holding its app password, never printed
 - `name`: the name an email goes out under (default none)
+- `smtp_host`: the mail server the `email` tool sends through (default smtp.gmail.com)
+- `smtp_port`: that server's port (default 465)
 
 ### [imessage]
 
@@ -195,7 +197,9 @@ The daemon's settings, in the private folder beside rooms.toml, read when yerkd 
 - `assembled`: days the rooms' assembled.jsonl keep (default 14)
 - `transcripts`: days Claude Code's transcripts keep (default 30)
 - `ledger`: days of the ledger's timing rows (default 90)
+- `jobs`: days a job run's folder keeps after the run ended, and a run still undelivered keeps it (default 14)
 - `workers`: days a finished worker's folder keeps (default 30)
+- `pytest`: days a finished worker's pytest temp folders (pytest-of-*) keep; the rest of its folder keeps `workers` days (default 1)
 - `scratch`: days a room's scratch, its work folder but inbox/ and any top folder holding a file named KEEP, keeps (default 2)
 - `scratch_mb`: megabytes a room's scratch keeps, its oldest files out first (default 500)
 - `trash`: days the trash keeps what left (default 7)

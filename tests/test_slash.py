@@ -26,7 +26,7 @@ from yerk_ai.room import NEW_RECAP, Inbound, Room
 
 FAKE = Path(__file__).with_name("fake_claude.py")
 ROOM, ROOM_CH, OTHER_CH, OWNER, STRANGER, PERSON = "example-room", 11, 22, 7, 8, 31    # PERSON: listed in the room's `people`
-MODELS = "models: opus (Opus 5.5), sonnet (Sonnet 5.5), haiku (Haiku 5.5), fable (Fable 5.1)"   # bare /model's last line
+MODELS = "models: opus (Opus 5.5), sonnet (Sonnet 5.5), haiku (Haiku 5.5), fable (Fable 5.2), fable51 (Fable 5.1)"   # bare /model's last line
 
 
 class Chan:
@@ -146,7 +146,7 @@ def run_discord(tmp_path, monkeypatch, discord_table):
                      .replace('privacy = "owner"', 'privacy = "family"', 1))      # a room that lists people is not the owner's alone
     (priv / "discord.token").write_text("not-a-token\n")
     (priv / "yerkd.toml").write_text('[discord]\ntoken_file = "discord.token"\n' + discord_table)
-    (tmp_path / "state").mkdir()
+    (tmp_path / "state").mkdir(exist_ok=True)            # a test may put its state there first
     d = Yerkd(priv, tmp_path / "state", only_account=Account("one", tmp_path / "cfg1"))
     built = []
 
@@ -284,7 +284,8 @@ def test_the_model_picker_offers_every_account_and_model_to_the_owner_alone(y, t
     picks = suggest(dc, "")
     assert picks[:2] == [("one: order 0, free", "one"), (f"two: order 2, resting until {words.clock(until)}", "two")]
     assert [v for _, v in picks[2:]] == [*y.models, "default"] and picks[-1] == (words.PICK_DEFAULT, "default")
-    assert suggest(dc, "2 fa") == [(f"two fable: Fable 5.1 on account two, resting until {words.clock(until)}", "two fable")]
+    assert suggest(dc, "2 fa") == [("two fable: Fable 5.2 on account two, free", "two fable"),
+                                   (f"two fable51: Fable 5.1 on account two, resting until {words.clock(until)}", "two fable51")]
     assert ("two opus: Opus 5.5 on account two, free", "two opus") in suggest(dc, "two")       # a rest for fable is not one for opus
     assert suggest(dc, "", user=STRANGER) == suggest(dc, "", user=PERSON) == suggest(dc, "", channel=OTHER_CH) == []
     dc.add_room(ROOM_CH, room, watch=33, people=frozenset({PERSON}))                       # 33: a channel the room watches

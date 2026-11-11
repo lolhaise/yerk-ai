@@ -76,6 +76,7 @@ def assemble(tmp: Path, yerkd: str | None = None) -> dict:
     try:
         y = Yerkd(private, state)
         y.spec_for(ROOM)
+        y.sessions.bind(ROOM, "s1", "one")              # as RoomProcess.start binds it: the compaction below is the room's own
         rules = private / "memory" / memory.RULES
         rules.write_text(rules.read_text() + "".join(f"- new job {i}: how new job {i} is done from today, said in full.\n" for i in range(40)))
         msg = hooks.user_prompt_submit({"session_id": "s1", "prompt": PROMPT}, state, y.room_confs,
@@ -152,6 +153,7 @@ def test_a_topic_rule_filed_after_the_start_rides_once_and_a_compaction_re_adds_
     private, state = layer(tmp_path, ON)
     y = Yerkd(private, state)
     y.spec_for(ROOM)
+    y.sessions.bind(ROOM, "s1", "one")                  # as RoomProcess.start binds it: the compaction below is the room's own
     tier, late = private / "memory" / memory.TOPIC_RULES, ("- launch checklist: read the checklist aloud before the launch call "
                                                            "(example-room, 2026-10-26 18:00:00+00:00) [m:t4]")
     tier.write_text(tier.read_text() + late + "\n")
@@ -259,8 +261,8 @@ def test_an_uncapped_install_lifts_the_money_gates_and_transcribes_result_carrie
 
     def spoke(script, name, folder, private, key, book, owner_yes=False):
         asked.append(owner_yes)
-        book("minimax/speech-2.8-hd", 0.5, "section 1 of 1")
-        return {"ok": True, "engine": "minimax/speech-2.8-hd", "duration_s": 3.0, "usd": 0.5}
+        book("fish/s2.1-pro-free", 0.5, "section 1 of 1")
+        return {"ok": True, "engine": "fish/s2.1-pro-free", "duration_s": 3.0, "usd": 0.5}
     monkeypatch.setattr(transcribe, "run", heard)
     monkeypatch.setattr(voice_note, "run", spoke)
     for name, yerkd in (("capped", None), ("on", ON)):

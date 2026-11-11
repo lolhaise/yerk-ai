@@ -16,7 +16,7 @@ claim 19).
 Inbound states, after Hermes' delivery ledger (gateway/delivery_ledger.py, MIT): `received`
 (ledgered, nothing ran: run it plainly after a crash), `running` (sent to Claude Code: after a
 crash run it once more, marked as a redelivery), `answered`, `failed`, `abandoned` (redelivered
-once already), `ignored`.
+once already), `ignored`, `stopped` (the owner's /stop: never run again).
 
 The schema is versioned (PRAGMA user_version) and moves by the ordered MIGRATIONS list, each step a
 function that may add, rename or backfill and is run once, inside one transaction, with the version
@@ -544,13 +544,15 @@ class Ledger:
     def job_run_for_worker(self, worker_id: str) -> dict[str, Any] | None:
         return self._first("SELECT * FROM job_runs WHERE worker = ? ORDER BY id DESC LIMIT 1", (worker_id,))
 
-    def job_runs(self, job: str | None = None, limit: int = 50, undelivered: bool = False) -> list[dict[str, Any]]:
-        """The newest runs (of one job when named); `undelivered`: runs whose delivery waits on a daemon."""
+    def job_runs(self, job: str | None = None, limit: int = 50, undelivered: bool = False, unended: bool = False) -> list[dict[str, Any]]:
+        """The newest runs (of one job when named); `undelivered`: runs whose delivery waits on a daemon; `unended`: no end yet."""
         sql, args = "SELECT * FROM job_runs WHERE 1", tuple[Any, ...]()
         if job:
             sql, args = sql + " AND job = ?", (*args, job)
         if undelivered:
             sql = sql + " AND delivery LIKE 'undelivered:%'"
+        if unended:
+            sql = sql + " AND ended IS NULL"
         return self._select(sql + " ORDER BY id DESC LIMIT ?", (*args, limit))
 
     # outbound and holds
@@ -606,8 +608,8 @@ class Ledger:
                              "ORDER BY sent DESC LIMIT 1", (room,))) is None:
             return None
         base = str(r["key"]).rsplit(":", 1)[0]
-        parts = sorted((p for p in self._select("SELECT key, message_id, body, sent FROM deliveries WHERE key LIKE ? AND "
-                                                 "state = 'sent'", (f"{base}:%",)) if p["key"].rsplit(":", 1)[0] == base),
+        parts = sorted((p for p in self._select("SELECT key, message_id, body, sent FROM deliveries WHERE key >= ? AND key < ? "
+                                                 "AND +state = 'sent'", (f"{base}:", f"{base};")) if p["key"].rsplit(":", 1)[0] == base),
                        key=lambda p: int(p["key"].rsplit(":", 1)[1]))
         return {"id": str(parts[0]["message_id"]), "sent": float(parts[0]["sent"]), "text": "\n".join(str(p["body"]) for p in parts)}
 

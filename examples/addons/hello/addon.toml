@@ -1,4 +1,4 @@
-# The example add-on (README "Add-ons"): one MCP tool, one unit, one budget line, one words file and one test, the
+# The example add-on (docs/GUIDE.md "Add-ons"): one MCP tool, one unit, one budget line, one words file and one test, the
 # shape an add-on in a repo of its own has. `yerk add examples/addons/hello --private <your private folder>` installs it
 # from this folder; from its own repo it is `yerk add <its git URL>`, or `yerk add hello` once the core's
 # abilities.toml names that repo. `yerk remove hello` takes it out again.

@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import subprocess
+import sys
 import tomllib
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,7 @@ REPO = PACKAGE.parent
 EXAMPLE_PRIVATE = REPO / "examples" / "private"
 EFFORTS = ("low", "medium", "high", "xhigh", "max")      # Claude Code 2.1.301's --effort levels (its --help)
 _IGNORED: set[tuple[str, str, str]] = set()             # (room, key, value) of an override already logged
+_EXAMPLE_SAID = False                                    # private_dir has said the example layer on stderr
 # <state>/rooms/<room>/starts/, beside assembled.jsonl: each session's start file as it began (<id>.md) and the texts news tells
 # it was built from (<id>.json), so a resumed session keeps the system prompt it started with (engine.kept_start, context.news)
 STARTS = "starts"
@@ -90,10 +92,19 @@ def uncapped(b: dict[str, Any]) -> bool:
     return bool(b.get("limits", {}).get("uncapped"))
 
 
-def private_dir(arg: str | None = None) -> Path:
-    """--private, then $YERK_PRIVATE, then the fake example layer shipped with the repo."""
+def private_dir(arg: str | None = None, *, quiet: bool = False) -> Path:
+    """--private, then $YERK_PRIVATE, then the fake example layer shipped with the repo, said on stderr the first time a
+    process falls back to it, so a command never answers about the example rooms against the real state folder unsaid.
+    `quiet`: a caller that never answers on that layer (`yerk deploy` takes the daemon's own, `yerk add` refuses there)."""
+    global _EXAMPLE_SAID
     p = arg or os.environ.get("YERK_PRIVATE")
-    return Path(p).expanduser() if p else EXAMPLE_PRIVATE
+    if p:
+        return Path(p).expanduser()
+    if not (quiet or _EXAMPLE_SAID):
+        from . import words
+        _EXAMPLE_SAID = True
+        print(f"{words.WORKING} {words.EXAMPLE_LAYER}", file=sys.stderr)
+    return EXAMPLE_PRIVATE
 
 
 def state_dir(arg: str | None = None) -> Path:
@@ -114,8 +125,8 @@ ROOM_WORDS = {
     "allow": "permission rules beyond Read (the tool goes in `tools` too); the gates run first. An owner room carries [defaults] allow unless it sets its own",
     "allow_remove": "tools an owner room does without, out of the allow it inherits from [defaults]",
     "also": "which of yerkd.toml's [memory] also roots reach the room's recall, read_memory and names (unset: all of them)",
-    "card": "steps: a room with people shows the owner rooms' progress card, the model's newest line and one row per step, done or not done "
-    "(unset or any other value: its newest holding line and a step count)",
+    "card": "count: a room with people shows its newest holding line and a step count, never a step's words "
+    "(unset, steps or any other value: the owner rooms' card, the model's newest line and one row per step, done or not done)",
     "channel": "the chat the room is, discord:<channel id>",
     "class": "the class the room's day-log lines carry: private, room or shared (default: private in an owner room, room in any other)",
     "compact_window": "tokens the session keeps before Claude Code compacts (unset: budgets.toml [session]; 0: the model's own)",
@@ -156,8 +167,8 @@ ROOM_WORDS = {
     "topic_recall": "the room's own lines on the message's topic, and the search of a question about the past, in its recall part (default true)",
     "voice": "the room's voice file, the session start's room_voice part",
     "watch": "discord:<channel id> of a channel the room watches: [watch] assistants' messages there go in its day log, never answered",
-    "watch_audit": "true: the room grades the watched assistant's answer to every watched message, a verdict line (🟢 looks good, 🟠 right "
-    "but missing something, 🔴 wrong) then the fix, never silent (default false: read along, answer only when asked)",
+    "watch_audit": "true: the room grades the watched assistant's answer to every watched message, a verdict line (🟢 looks good, 🟠 only "
+    "when something is actually wrong and it changes what the person would say or do, 🔴 wrong) then the fix, never silent (default false: read along, answer only when asked)",
     "watch_assistant": "the assistant the owner talks to in the watched channel, by name: a message read from there comes in marked as sent to it, "
     "not to this room (default: the other assistant)",
     "watch_wait": "seconds the room waits for the watched assistant's answer after a watched message, counted again from that assistant's "
@@ -227,7 +238,8 @@ YERKD_WORDS = {
                "classes": "a chat id's class or room, \"shared\" or \"room:<a room's id>\" (default private)",
                "skip": "chat ids a server import leaves out"},
     "gmail": {"user": "the Gmail address `yerk import gmail` reads and the `email` tool sends from (none: no room emails)",
-              "password_file": "a file holding its app password, never printed", "name": "the name an email goes out under (default none)"},
+              "password_file": "a file holding its app password, never printed", "name": "the name an email goes out under (default none)",
+              "smtp_host": "the mail server the `email` tool sends through (default smtp.gmail.com)", "smtp_port": "that server's port (default 465)"},
     "imessage": {"host": "the ssh host of the owner's Mac, the `text` tool's way to it (none, with socket: `ssh` and "
                          "`imessage_socket` in a mac.json beside an owner room's add-on's server, the hands plug-in's, else no room texts)",
                  "socket": "the Mac's bridge socket there, serving imsg's JSON-RPC", "socat": "socat on the Mac (default /opt/homebrew/bin/socat)",
@@ -260,7 +272,9 @@ YERKD_WORDS = {
                "cap_minutes": "the longest a deploy waits for that quiet (default 60)", "proof_seconds": "how long the proof may take (default 60)"},
     "retention": {"logs": "days the daemon's logs keep", "assembled": "days the rooms' assembled.jsonl keep",
                   "transcripts": "days Claude Code's transcripts keep", "ledger": "days of the ledger's timing rows",
+                  "jobs": "days a job run's folder keeps after the run ended, and a run still undelivered keeps it",
                   "workers": "days a finished worker's folder keeps",
+                  "pytest": "days a finished worker's pytest temp folders (pytest-of-*) keep; the rest of its folder keeps `workers` days",
                   "scratch": "days a room's scratch, its work folder but inbox/ and any top folder holding a file named KEEP, keeps",
                   "scratch_mb": "megabytes a room's scratch keeps, its oldest files out first", "trash": "days the trash keeps what left",
                   "scratch_trash": "days the trash keeps a room's scratch"},

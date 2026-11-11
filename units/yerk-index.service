@@ -14,8 +14,10 @@
 # until reclaimed), the 9M, 25M of file pages and 25M for searches at once (embeddings.HIGH_BASE); `yerk doctor`
 # says when the vector count passes it. Since recall-warm (2026-10-22) the rule adds the keyword tables' pages this
 # process keeps mapped against page-cache drops (pin.bytes in index.json, 394M at 314,010 chunks); the doctor counts
-# them too. 1400M covers 65 blocks (1,064,960 vectors) and 600M of those pages; past MemoryHigh the kernel reclaims
-# and slows the unit, and kills nothing.
+# them too. The rule misses what a start costs: on 2026-11-10, at 1,085,032 vectors in 67 blocks and 510M of those
+# pages, it gave 1,323M, and a 1,536M line was still reached after each start (a peak at the line, 1,854 reclaim
+# events, up to 405M swapped on earlier runs). So the cap is the rule and a fifth: 2G covers 80 blocks (1,310,720
+# vectors) and 700M of those pages; past MemoryHigh the kernel reclaims and slows the unit, and kills nothing.
 [Unit]
 Description=Yerk AI memory index (FTS5 over the private memory tree)
 
@@ -35,7 +37,7 @@ Restart=on-failure
 RestartSec=10s
 Nice=10
 IOSchedulingClass=idle
-MemoryHigh=1400M
+MemoryHigh=2G
 # A stop ends the loop after the pass that runs (SIGTERM is handled); a pass that is a full rebuild can run past the
 # 90 s default, and the WAL keeps the index consistent under the SIGKILL that follows. The daemon's recall reads the
 # index file itself and treats a missing meaning search as keywords only for that query, so a restart here costs the

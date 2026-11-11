@@ -135,7 +135,7 @@ async def add(a: argparse.Namespace) -> int:
                if int(o["id"]) not in people(like, rs[like])]
         ows += [{"id": str(a.person), "type": 1, "allow": str(t["allow"]), "deny": "0"}] if a.person else []
         fill = {"name": a.room, "channel": cid or "NEW", "layer": str(priv.resolve() / a.room)}
-        block = have or block_of(t, rs[like], fill) | ({"people": [a.person]} if a.person else {})
+        block = have or renamed(block_of(t, rs[like], fill), like, room) | ({"people": [a.person]} if a.person else {})
         saved = context.attachments_dir(priv, room, block)       # the history's files: in its also, its recall and backfills reach them
         if listing := not have and not a.person and isinstance(block.get("also"), list) and str(saved) not in block["also"]:
             block["also"] = [*block["also"], str(saved)]         # a block with no also reads every root: never cut to this one
@@ -308,3 +308,20 @@ async def imports(a: argparse.Namespace) -> int:
         print(f"{len(chats)} chats: {read} read, {msgs:,} messages, {new:,} {'to file' if dry else 'filed'}; {failed} not read; "
               f"{cov} covered by a room; {skipped} in [import] skip")
     return 1 if failed else 0
+
+
+def renamed(block: dict[str, Any], was: str, now: str) -> dict[str, Any]:
+    """A block made like the room `was`, each mcp server's arg or env value that is exactly that room's name (a plug-in's
+    --room, its YERK_ROOM) naming `now`, the new room, so its plug-ins serve it and not the room it was copied from; a
+    path or any other value stays as copied."""
+    def put(v: Any) -> Any:
+        return now if v == was else v
+    if not isinstance(mcp := block.get("mcp"), dict):
+        return block
+    out: dict[str, Any] = {}
+    for name, s in mcp.items():
+        if isinstance(s, dict):
+            s = s | ({"args": [put(x) for x in s["args"]]} if isinstance(s.get("args"), list) else {})
+            s = s | ({"env": {k: put(v) for k, v in s["env"].items()}} if isinstance(s.get("env"), dict) else {})
+        out[name] = s
+    return block | {"mcp": out}

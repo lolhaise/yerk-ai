@@ -29,7 +29,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from . import memindex
+from . import memindex, words
 from .config import write_private
 from .memory import Settings, daily_lock, one_line
 
@@ -218,6 +218,19 @@ def git(repo: str | Path, *args: str) -> subprocess.CompletedProcess[str]:
         return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, timeout=30)
     except (OSError, subprocess.SubprocessError) as e:
         return subprocess.CompletedProcess([], 127, "", str(e))
+
+
+def tidy(folder: Path) -> list[str]:
+    """A need's worker ended: each git worktree it left under its folder (a linked one's .git is a file) removed when clean,
+    by `git worktree remove`, never forced, its branch kept (2026-11-10: 207 left, none ever removed); one line for each
+    that stays, for the worker's note."""
+    kept = []
+    for wt in sorted(p.parent for p in folder.glob("*/.git") if p.is_file()):
+        st = git(wt, "status", "--porcelain")
+        if st.returncode == 0 and not st.stdout.strip() and git(wt, "worktree", "remove", str(wt)).returncode == 0:
+            continue
+        kept.append(words.WORKTREE_KEPT.format(name=wt.name, why=words.WORKTREE_CHANGES if st.stdout.strip() else words.WORKTREE_REFUSED))
+    return kept
 
 
 def plugins(confs: dict[str, dict[str, Any]], own: Path) -> dict[str, dict[str, str]]:

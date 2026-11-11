@@ -13,7 +13,7 @@
 
 
 ```
-⏳ application waiting: Example Co, Project Coordinator
+
 
 
 ```

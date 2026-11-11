@@ -64,8 +64,13 @@ def line(text: str, n: int = PHONE) -> str:
     text = " ".join(str(text).split())
     if width(text) <= n:
         return text
-    while text and width(text) > n - 3:
-        text = text[:-1]
+    cols, sub = [0], len(SUB) if text.startswith(SUB) else 0     # cols[k]: text[:k]'s columns, summed in one pass, since
+    for c in text:                                                  # cutting a character at a time and measuring again was
+        cols.append(cols[-1] + width(c))                            # quadratic (11 s of CPU on a card's 803-character line)
+    k = len(text)
+    while k and cols[k] - (cols[sub] if k >= sub else 0) > n - 3:  # width's own rule: the footer mark counts nothing
+        k -= 1
+    text = text[:k]
     if (at := text.rfind(" ")) >= len(text) // 2:                  # a word boundary that keeps most of the line
         text = text[:at]
     return text.rstrip(" ,;:") + "..."
@@ -102,7 +107,7 @@ FILES = {"open-loops.md": "your open items", "MEMORY.md": "the pinned notes", "p
 ANOTHER_WAY = "that did not work, trying another way"       # two or more failed steps in a row, as one row
 EARLIER, EARLIER_ROWS, ROOM_NOW = "{n} earlier steps", "{n} earlier rows", "checking what this room runs"
 THINKING, NOT_ANSWERED, YOU_ASKED = "thinking: ", "not answered", 'you asked: "{asked}"'
-STEP_N = "step {n}"                       # a room with people: its card counts the steps and never names one
+STEP_N = "step {n}"                       # a room with people and card = "count": its card counts the steps, never names one
 WHY = {                                   # a failed turn, in plain words: the failure class, else the outcome
     "auth": "the account's login was refused", "quota": "out of usage on every account",
     "transient": "Claude was busy; ask again", "overflow": "the conversation is too long",
@@ -262,6 +267,7 @@ def died(result: str) -> str:
 # jobs in a room: the exit code and systemd's words stay in the unit's log and in
 # `yerk status --full`, never in the line
 JOB_FAILED, JOB_STOPPED = "job {name} failed: {why}", "job {name} {stopped}"
+JOB_RUNNING = "{name}: running"        # yerk status and the jobs list: a one-shot whose own run is going
 NOT_STARTED = {"did not start": "it could not start", "lost": "it ended with no record"}
 
 
@@ -537,11 +543,13 @@ ADDON_READS = "[read by an add-on] {name} is read through {tool}, an installed a
 SENT_THERE = ("[sent to {who} in #{channel}, not to this room: the owner is talking to {who} there. Read along and file what "
               "matters. Answer here only if the owner's words ask this room something, or you have something they would want from this "
               "room that {who} did not give; otherwise answer exactly {quiet}.]")
-# ... in a room with `watch_audit` true: a verdict on that assistant's answer, every time, never NO_REPLY (the owner, 2026-10-29)
+# ... in a room with `watch_audit` true: a verdict on that assistant's answer, every time, never NO_REPLY (the owner, 2026-10-29);
+# orange only for something actually wrong, never for a nit (the owner, 2026-11-05)
 SENT_THERE_AUDIT = ("[sent to {who} in #{channel}, not to this room: {sender} is talking to {who} there. {who}'s answer follows the "
                     "message. AUDIT it and post your verdict here: check it against the files and the thread, not recall; first line "
-                    + DONE + " looks good, " + WORKING + " right but missing something, or " + NOT_DONE + " wrong, then what is wrong or "
-                    "missing and the fix, written out in full in plain words, because {readers} read this room; one or two lines when "
+                    + DONE + " looks good (a nit rides under it in one line, or is dropped), " + WORKING + " only when something is "
+                    "actually wrong and it changes what {sender} would say or do, or " + NOT_DONE + " wrong, then what is wrong and the "
+                    "fix, written out in full in plain words, because {readers} read this room; one or two lines when "
                     "it is right. If {who} had not answered within the wait, say that in one line. Never {quiet} on this turn; never "
                     "redo work {who} got right.]")
 THERE = SENT_THERE.split("{", 1)[0]       # both lines' head: such a message says how it is answered, so it folds with no mark
@@ -668,10 +676,22 @@ NEED_FIXED = WORKING + " need {n}: PR {pr} fixed, its checks run again"
 NEED_READING = WORKING + " need {n}: PR {pr} checks passed, its cold read starts"
 NEED_HELD = NOT_DONE + " need {n} held, a person decides: {ability}\n{why}"
 NEED_STUCK = NOT_DONE + " need {n} stuck: {ability}\n{why}"
+NEED_LATE = WORKING + " need {n}: PR {pr} checks all came in late, so it goes on"
+NEED_NO_BUILDER = "its builder did not start: {error}"
+NEED_CUT = WORKING + " need {n}: {what} on PR {pr} was cut off by a stop nobody asked for, so it starts again"
+NEED_CUT_WHAT = {"read": "the cold read", "fix": "the fix"}
+NEED_CUT_BUILD = WORKING + " need {n}: its builder was cut off by a stop nobody asked for, so it starts again: {ability}"
+WORKTREE_KEPT = "its worktree {name} stays: {why}"                  # a need worker's note, after its line's
+WORKTREE_CHANGES, WORKTREE_REFUSED = "it has changes", "git would not remove it"
+LINE_POSTED, LINE_NOT_POSTED = "{what}: its line went to the machine room", "{what}: its line could not be posted: {why}"
+LINE_NONE = "{what}: no line was made"                              # its need merged meanwhile, or another worker's
+NO_CHANNEL_HERE = "this daemon has no channel for {room}"            # a worker's line, its room's channel not here
+NEED_CHECKS_NEVER, NEED_CHECKS_PENDING = "checks never came: {final} of {of} in {span} on {head}", ", still pending: {names}"
 NEED_MERGED = DONE + " need {n}: PR {pr} merged; the deploy is next"
 NEED_PLUGIN = "\nwith its branch in the {names} plug-in too"              # need 36: a fix in a plug-in's own repository
 NEED_LANDED = "\nthe {names} plug-in has it too, from each room's next session"
 NEED_DEPLOYING = WORKING + " need {n}: deploying PR {pr} onto the daemon"
+NEED_DEPLOY_AGAIN = WORKING + " need {n}: the deploy of PR {pr} gave up waiting for quiet, so it runs again\n{why}"
 NEED_LIVE = DONE + " need {n} is built and live: {ability}"
 NEED_LIVE_ROOM = DONE + " need {n} is built and live: {ability}\nthis room has it from its next message, when its session starts on the new code"
 CHECKED = "checked by a second pass: {n} of {of} segments uncertain"
@@ -691,10 +711,10 @@ VOICE_NEXT = ("Send it now with send, file set to this path and no text, so it g
               "message of their own. `probe` is its first 20 seconds read back, a check of the note: call it checking, never "
               "listening, since nothing plays the sound to you.")
 VOICE_EMPTY = "the script has no words to say, so nothing was made"
-VOICE_NO_KEY = "no voice key in the private folder (secrets/minimax.key or secrets/fish.key), so no voice note could be made"
+VOICE_NO_KEY = "no voice key in the private folder (secrets/fish.key), so no voice note could be made"
 VOICE_NO_CHECK = ("no OpenAI key in the private folder (secrets/openai.key), so the note could not be checked, and a note is "
                   "never handed back unchecked")
-VOICE_NO_ENGINE = "neither voice made it, so there is no note: {why}"
+VOICE_NO_ENGINE = "the voice failed, so there is no note: {why}"
 VOICE_PROBE_FAILED = ("the note failed its check, so it was deleted: its first 20 seconds read back as \"{heard}\" where the "
                       "script opens \"{said}\"; make it once more, or answer in text")
 VOICE_OVER_GATE = ("not made yet, since {chars:,} characters is about US${usd:.2f}, past the US$1 a call spends only with the "
@@ -766,6 +786,7 @@ NOT_RUNNING, NOT_ANSWERING = "yerkd: not running", "yerkd: running, not answerin
 NO_READING, RESTS = "{name}: no reading yet", "{name}: resting until {until}"
 OLD_READING, TURN_FOR = "{name}: last reading {ago}", "{name}: busy {took}"
 QUEUED, WATCHES = ", {n} waiting", "{name}: watches {channel}"
+CHANNEL = "#{name}"        # a watched channel by its name, as the notices above say one; with no name known, its id bare
 UNIT_USE, JOB_DUE = "{name}: {mb} MB, {cpu:.1f}% cpu", "job {name}: in {left}"
 BACKUP_AT, NO_BACKUP = "backup: {ago} ago, {size}", "backup: none yet"
 NO_JOB_DUE, NO_TIMERS = "jobs: none due within the hour", "jobs: the timer list is unreadable"
@@ -778,6 +799,12 @@ RESETS, BILL = "\N{CLOCKWISE OPEN CIRCLE ARROW} {parts}", "\N{CREDIT CARD} {day}
 BACK_AT, NEXT, THEN = "resting until {until}", "{label} next: {first}", " · then {tag} {when}"
 FIRST_TRY = "next turn tries {tag} first"         # accounts.pick for a room on no account of its own
 ROOMS_ON = "on account {account}: {rooms}"        # two rooms or more put on one account, one line
+# the status card's parts in its order (status.card), as `yerk status --help` names them (cli.py): a part the card gains goes here
+STATUS_PARTS = ("the daemon and its rooms", "each account's 5-hour and weekly meters and the one the next turn tries",
+                "each room's running turn and what waits", "the channel a room watches", "the rooms put on an account",
+                "the version and commit", "the add-ons", "the running workers (from the ledger, checked against the unit list)",
+                "the jobs due within the hour", "each unit's memory and CPU", "today's median first line and turn",
+                "the spend on an uncapped install", "the newest backup's age", "today's stalls")
 NUMBERS = ("one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen "
            "seventeen eighteen nineteen twenty").split()
 
@@ -817,6 +844,10 @@ SPEED_WAS, SPEED_OF = "{what} {now}, day before {was}", {"first": "first line", 
 SHADOW, NO_SHADOW = "shadow flag {rule}: {n}", "shadow flags: none"
 SPENT = "spent {day}: US${usd:.2f} on {n} calls"                     # the spend rows, one per paid call (ledger.spent)
 SPEND = "spend {day} US${usd:.2f} ({n} call{s}) · week US${week:.2f}"     # an uncapped install's, every day (status.spend_line)
+WEB_PAST, WEB_REACHED = "{what}: {now} in {month} > {limit}", "{what} reached {limit} in {month}"   # a web plan alert, once
+WEB_ALERT = "web plug-in alert in {month}"                           # an alerts.log line in no shape the diff knows
+WEB_WHAT = {"fetchCalls": "web fetches", "proxy": "web proxy", "browser": "web browser", "exa": "Exa searches",
+            "parallel-paid": "Parallel searches"}                   # whose meter: Browserbase's three, then the search engines
 UNKNOWN, NOT_ANSWERING_WHY = "{what}: unknown, {why}", "yerkd not answering"
 DEAD, NO_YERKD, NO_DEAD = "dead turns: {n}, {name}, last {at}", "no yerkd answers", "dead turns: none in 24h"
 SWEPT, SWEEP_FAILED = "swept: {kinds}", "retention failed: {why}"     # the night's sweep (retention.py)
@@ -934,6 +965,7 @@ PROOF_FILE = "unit runs from its file"
 NO_CUT, CUT, NOT_COUNTED = "no turn cut", "turns cut: {n}", "turns cut: not counted"
 NO_UNIT, UNIT_FOUND, NO_ROW = "no unit found: set [deploy] unit", "unit {name}, from its pid", "{kind} outcome not in the ledger"
 NO_LAYER, THE_DAEMONS = "no private folder: pass --private", "private folder: the daemon's"
+EXAMPLE_LAYER = "on the example layer: pass --private"   # stderr, once, when a command falls back to it (config.private_dir)
 FAULT, NOTHING_STOPPED, BROKE_OFF = "{what} in {at}", "nothing was stopped", "{commit} broke off, not proven"
 UNPROVEN, UNPROVEN_AT = "{kind} {commit}: {outcome}", ", {at}"   # the morning diff: a deploys row not proven,
 UNPROVEN_CUT = ", {n} cut"                                         # or one that cut a person's turn

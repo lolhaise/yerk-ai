@@ -1,15 +1,12 @@
 """The voice_note tool: a script a room writes becomes a spoken voice note, an ogg in the room's own work folder that `send`
 posts as a Discord voice message. Domain tools live outside the harness as MCP servers (NON-GOALS); this one is a tool on
 Yerk's own MCP server because the daemon has the network and a room's shell has none, as transcribe is. It is the box's
-tools/voice-note recipe, measured there on dozens of notes: MiniMax speech-2.8-hd first, and on any MiniMax failure the
-whole note on Fish Audio, so a note never changes voice mid-way; then loudness to -14 LUFS and opus at 48 kHz in ogg. A
-speech call's success is no receipt, so before a note is handed back its first PROBE seconds are read back by whisper-1
-(transcribe's pass-1 call) and must match the script's opening; a note that does not is deleted. English only: both voices
-and the check are English. The keys are files in the private folder, the first line of each, read per call and never
-logged or returned: secrets/minimax.key, secrets/fish.key, and the install's OpenAI key for the check. An optional
-voice/pronounce.txt there holds MiniMax pronunciation rules, one `word/say-it` a line, so the owner's own words stay in the
-private layer. Every paid call is one spend row at the provider's list price (MiniMax's by its own billed count when it
-gives one), and a note whose estimate passes GATE_USD waits for the owner's yes (decision 32).
+tools/voice-note recipe: every section on Fish Audio, and a failure on any section means no note; then loudness to -14 LUFS
+and opus at 48 kHz in ogg. A speech call's success is no receipt, so before a note is handed back its first PROBE seconds
+are read back by whisper-1 (transcribe's pass-1 call) and must match the script's opening; a note that does not is deleted.
+English only: the voice and the check are English. The keys are files in the private folder, the first line of each, read
+per call and never logged or returned: secrets/fish.key, and the install's OpenAI key for the check. Every paid call is one
+spend row at the provider's list price, and a note whose estimate passes GATE_USD waits for the owner's yes (decision 32).
 """
 from __future__ import annotations
 
@@ -31,17 +28,14 @@ from typing import Any
 from . import transcribe, words
 from .config import write_private
 
-# engine: (url, model, voice, list price in US$ a billed unit), read 2026-10-22: MiniMax bills characters (its
-# pay-as-you-go page: speech-2.8-hd US$100 a million), Fish bills UTF-8 bytes (its pricing page: s2.1-pro-free US$0)
+# engine: (url, model, voice, list price in US$ a billed unit), read 2026-10-22: Fish bills UTF-8 bytes (its pricing page:
+# s2.1-pro-free US$0)
 ENGINES = {
-    "minimax": ("https://api.minimax.io/v1/t2a_v2", "speech-2.8-hd", "English_FriendlyPerson", 100 / 1_000_000),
     "fish": ("https://api.fish.audio/v1/tts", "s2.1-pro-free", "ca4ec67b92ae4d90829eb40dcd672312", 0.0),
 }
-KEYS = {"minimax": "secrets/minimax.key", "fish": "secrets/fish.key"}
-UNIT = {"minimax": "characters", "fish": "bytes"}
-PRONOUNCE = "voice/pronounce.txt"   # optional, in the private folder
-SPEED, PITCH = 1.18, -1             # the MiniMax voice's setting, the box tool's
-MAX_CHUNK = 4000                    # characters a section, under MiniMax's 10,000 a request
+KEYS = {"fish": "secrets/fish.key"}
+UNIT = {"fish": "bytes"}
+MAX_CHUNK = 4000                    # characters a section, the box tool's
 SHORT = 50                          # a section shorter than this joins the next with a (break): a voice glues a syllable to it
 SILENCE = 0.5                       # seconds between sections
 LOUDNORM = "loudnorm=I=-14:TP=-1.0:LRA=11"
@@ -50,7 +44,7 @@ MATCH = 0.75                        # the least share of the probe's words that 
 FOLDER = "voice"                    # under the room's work folder
 WAVE = 256                          # Discord's most waveform points, one byte each, at most one a 0.1 s
 GATE_USD = transcribe.GATE_USD
-# MiniMax's interjection tags and the box's markup: never spoken as words, so never compared as words
+# interjection tags and the box's markup: never spoken as words, so never compared as words
 TAGS = frozenset("break pause long-break laughs chuckle coughs clear-throat groans breath pant inhale exhale gasps sniffs "
                  "sighs snorts burps lip-smacking humming hissing emm sneezes ha haha hah heh".split())
 
@@ -85,17 +79,8 @@ def sections(text: str) -> list[str]:
     return joined
 
 
-def for_minimax(text: str) -> str:
-    """MiniMax's text: [mood] tags dropped (it would read them out), (break) as its <#0.4#> pause, never two pauses in a row
-    nor one at either end (its API wants a pause between spoken words)."""
-    t = re.sub(r"\[[^\]]{1,40}\]", "", text)
-    t = re.sub(r"\((?:break|pause)\)", "<#0.4#>", t)
-    t = re.sub(r"(?:<#[\d.]+#>\s*){2,}", "<#0.4#> ", t)
-    return re.sub(r"^\s*<#[\d.]+#>\s*|\s*<#[\d.]+#>\s*$", "", t).strip()
-
-
 def for_fish(text: str) -> str:
-    """Fish's text: a MiniMax pause written into the script becomes its (break); [mood] tags pass through, Fish acts on them."""
+    """Fish's text: a <#0.4#> pause written into a script becomes its (break); [mood] tags pass through, Fish acts on them."""
     return re.sub(r"<#[\d.]+#>", "(break)", text).strip()
 
 
@@ -119,15 +104,6 @@ def match(heard: list[str], script: list[str]) -> tuple[float, list[str]]:
     return same / len(heard), stray
 
 
-def pronounce(path: Path) -> list[str]:
-    """MiniMax's pronunciation rules from the private folder's voice/pronounce.txt: `word/say-it` a line, # a comment."""
-    try:
-        lines = path.read_text().splitlines()
-    except (OSError, UnicodeDecodeError):
-        return []
-    return [x.strip() for x in lines if "/" in x and not x.lstrip().startswith("#")]
-
-
 def call(url: str, body: dict[str, Any], secret: str, headers: dict[str, str] | None = None, timeout: float = 300) -> bytes:
     """One POST and its answer's bytes; any failure is Failed, the key masked."""
     req = urllib.request.Request(url, data=json.dumps(body).encode(), headers={
@@ -142,25 +118,6 @@ def call(url: str, body: dict[str, Any], secret: str, headers: dict[str, str] | 
     raise Failed(" ".join(why.replace(secret, "<key>").split()))
 
 
-def minimax(secret: str, text: str, pron: list[str], out: Path) -> int:
-    """One section on MiniMax as mp3; the characters it bills (its own billed count when the answer gives one)."""
-    url, model, voice, _ = ENGINES["minimax"]
-    t = for_minimax(text)
-    body = {"model": model, "text": t, "voice_setting": {"voice_id": voice, "speed": SPEED, "pitch": PITCH, "vol": 1.0},
-            "language_boost": "English", "audio_setting": {"format": "mp3", "sample_rate": 32000, "bitrate": 128000},
-            **({"pronunciation_dict": {"tone": pron}} if pron else {})}
-    try:
-        r = json.loads(call(url, body, secret, timeout=120))
-        br, data = (r.get("base_resp") or {}, r.get("data") or {}) if isinstance(r, dict) else ({}, {})
-        audio = bytes.fromhex(str(data.get("audio") or ""))
-    except ValueError as e:
-        raise Failed(f"MiniMax answered with no audio: {e}") from None
-    if br.get("status_code") != 0 or not audio:
-        raise Failed(f"MiniMax {br.get('status_code')} {str(br.get('status_msg'))[:60]}")
-    out.write_bytes(audio)
-    return int((r.get("extra_info") or {}).get("usage_characters") or len(t))
-
-
 def fish(secret: str, text: str, out: Path) -> int:
     """One section on Fish as mp3; the UTF-8 bytes it bills."""
     url, model, voice, _ = ENGINES["fish"]
@@ -172,12 +129,12 @@ def fish(secret: str, text: str, out: Path) -> int:
     return len(t.encode())
 
 
-def synth(engine: str, secret: str, secs: list[str], pron: list[str], tmp: Path, book: transcribe.Book) -> list[Path]:
-    """Every section on one engine, all or nothing: a failed section raises, and the next engine starts the note over."""
+def synth(engine: str, secret: str, secs: list[str], tmp: Path, book: transcribe.Book) -> list[Path]:
+    """Every section on one engine, all or nothing: a failed section raises, and there is no note."""
     parts = []
     for i, s in enumerate(secs):
         p = tmp / f"{engine}-{i:02d}.mp3"
-        n = minimax(secret, s, pron, p) if engine == "minimax" else fish(secret, s, p)
+        n = fish(secret, s, p)
         book(f"{engine}/{ENGINES[engine][1]}", n * ENGINES[engine][3], f"section {i + 1} of {len(secs)}, {n:,} {UNIT[engine]}")
         parts.append(p)
     return parts
@@ -262,33 +219,27 @@ def run(script: str, name: str, folder: Path, private: Path, openai_key: Path, b
     secs, words_said = sections(script), said(script)
     if not secs or not words_said:
         return {"ok": False, "error": words.VOICE_EMPTY}
-    secrets = {e: transcribe.key(private / KEYS[e]) for e in ENGINES}
-    if not (order := [e for e in ENGINES if secrets[e]]):
+    used = "fish"
+    if not (secret := transcribe.key(private / KEYS[used])):
         return {"ok": False, "error": words.VOICE_NO_KEY}
     if not (checker := transcribe.key(openai_key)):
         return {"ok": False, "error": words.VOICE_NO_CHECK}
-    first = order[0]
-    size = sum(len(for_minimax(s)) if first == "minimax" else len(for_fish(s).encode()) for s in secs)
-    if (est := size * ENGINES[first][3] + PROBE * transcribe.PASSES["openai"][2]) > GATE_USD and not owner_yes:
+    size = sum(len(for_fish(s).encode()) for s in secs)
+    if (est := size * ENGINES[used][3] + PROBE * transcribe.PASSES["openai"][2]) > GATE_USD and not owner_yes:
         return {"ok": False, "error": words.VOICE_OVER_GATE.format(chars=size, usd=est)}
     paid: list[float] = []
 
     def pay(engine: str, usd: float, note: str) -> None:
         paid.append(usd)
         book(engine, usd, note)
-    failed, used = "", ""
     folder.mkdir(parents=True, exist_ok=True)
     try:
         with tempfile.TemporaryDirectory(prefix=".voice-", dir=folder) as d:
             tmp = Path(d)
-            for used in order:
-                try:
-                    parts = synth(used, secrets[used], secs, pronounce(private / PRONOUNCE), tmp, pay)
-                    break
-                except Failed as e:
-                    failed = f"{failed}; {used}: {e}" if failed else f"{used}: {e}"
-            else:
-                return {"ok": False, "error": words.VOICE_NO_ENGINE.format(why=failed)}
+            try:
+                parts = synth(used, secret, secs, tmp, pay)
+            except Failed as e:
+                return {"ok": False, "error": words.VOICE_NO_ENGINE.format(why=f"{used}: {e}")}
             assemble(parts, note := tmp / "note.ogg", tmp)
             seconds = duration(note)
             ffmpeg("-i", str(note), "-t", str(PROBE), "-vn", "-ac", "1", "-ar", "16000", "-b:a", "64k", str(clip := tmp / "probe.mp3"))
@@ -306,4 +257,4 @@ def run(script: str, name: str, folder: Path, private: Path, openai_key: Path, b
     except (Failed, transcribe.Failed, OSError, subprocess.SubprocessError) as e:
         return {"ok": False, "error": str(e), "usd": round(sum(paid), 4)}
     return {"ok": True, "file": str(out), "duration_s": round(seconds, 1), "engine": f"{used}/{ENGINES[used][1]}", "probe": heard,
-            "usd": round(sum(paid), 4), "sections": len(secs), **({"fallback": failed} if failed else {}), "next": words.VOICE_NEXT}
+            "usd": round(sum(paid), 4), "sections": len(secs), "next": words.VOICE_NEXT}

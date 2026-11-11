@@ -299,6 +299,27 @@ def test_backfill_runs_a_batch_at_a_time_on_the_rooms_account_its_card_and_line_
     asyncio.run(y.workers.complete(d2.name))
     assert ops.lines[1] == "pictures backfill example-room: batch 2 of 2 finished clean, 4 of 5 filed; done"
     assert [p.name for p in pictures.pending(tmp_path / "rooms" / "example-room" / "work" / "inbox")] == ["photo.png"]
+    assert y.ledger.worker_get(d2.name)["relay_note"] == "pictures backfill: its line went to the machine room"
+
+
+def test_a_backfill_line_that_cannot_be_posted_is_said_so_on_the_workers_row(tmp_path):
+    y = daemon(tmp_path, "example-room", "her-room")
+    y.room_confs["ops-room"] = {**y.room_confs["example-room"], "role": "machine", "id": "ops-room-id"}
+    y.daily.rooms["ops-room"] = ("ops-room-id", "private")
+    ops = Rec()
+    y.add_room("ops-room", ops)
+    y.workers.launcher = Units()
+    picture(tmp_path, "example-room", "m-00", at=1_760_000_000.0)
+    r = asyncio.run(y.control({"pictures": {"room": "example-room"}}))
+
+    async def down(room: str, text: str) -> list[str]:
+        raise OSError("the channel is down")
+    ops.notify = down
+    d = Path(r["staging"])
+    (d / "REPORT.md").write_text("0 filed\n")
+    (d / "exit.json").write_text(json.dumps({"result": "success", "code": "exited", "status": "0"}))
+    asyncio.run(y.workers.complete(r["id"]))
+    assert y.ledger.worker_get(r["id"])["relay_note"] == "pictures backfill: its line could not be posted: the channel is down"
 
 
 def root_pictures(root: Path) -> list[Path]:

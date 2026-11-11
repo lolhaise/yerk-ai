@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 from test_needs import ASK, FLYER, listed, need, ops
 from test_pictures import Rec
+from test_slash import OWNER, run_discord
 
 from yerk_ai import cli, git_askpass, github, needs, pipeline, words
 from yerk_ai.config import EXAMPLE_PRIVATE, REPO, head
@@ -190,6 +191,190 @@ def test_checks_that_never_come_are_stuck_and_a_new_head_restarts_the_clock(pipe
     assert row(y, day)["state"] == "stuck" and row(y, day)["why"].startswith("checks never came: 2 of 7 in ")
 
 
+def test_the_stuck_line_counts_the_final_checks_and_names_the_pending_ones(pipe):
+    y, rec, hub, units, rooms = pipe                     # 2026-11-09: "7 of 7" said of seven posted, one still pending
+    day = need(y, "example-room", *ASK)["day"]
+    to_pr(y, hub, day)
+    hub.routes[("GET", f"/repos/{SLUG}/commits/{'a' * 40}/status")] = (200, {"state": "pending", "statuses": [
+        *GREEN[:5], {"context": "ci/f", "state": "pending"}, {"context": "ci/g", "state": "pending"}]})
+    y.pipeline.now = lambda: time.time() + 41 * 60
+    asyncio.run(y.pipeline.tick())
+    why = row(y, day)["why"]
+    assert why.startswith("checks never came: 5 of 7 in ") and why.endswith(" on aaaaaaa, still pending: ci/f, ci/g")
+    assert rec.lines[-1] == words.NEED_STUCK.format(n=1, ability=ASK[2], why=why)
+
+
+def test_a_stuck_need_whose_checks_all_come_late_goes_back_to_pr_and_on_and_one_with_no_pr_stays(pipe):
+    y, rec, hub, units, rooms = pipe                     # 2026-11-09: need 81 sat stuck with all seven green
+    day = need(y, "example-room", *ASK)["day"]
+    to_pr(y, hub, day)
+    status = ("GET", f"/repos/{SLUG}/commits/{'a' * 40}/status")
+    hub.routes[status] = (200, {"state": "pending", "statuses": [*GREEN[:6], {"context": "ci/g", "state": "pending"}]})
+    y.pipeline.now = lambda: time.time() + 41 * 60
+    asyncio.run(y.pipeline.tick())
+    asyncio.run(y.pipeline.tick())                       # one still pending: it stays stuck
+    assert row(y, day)["state"] == "stuck"
+    hub.routes[status] = (200, {"state": "success", "statuses": GREEN})
+    asyncio.run(y.pipeline.tick())
+    assert row(y, day)["state"] == "pr" and rec.lines[-1] == words.NEED_LATE.format(n=1, pr=7)
+    asyncio.run(y.pipeline.tick())                       # the next tick as any other: green, the cold read
+    assert row(y, day)["state"] == "reading" and role(y, row(y, day)["worker"])["role"] == "read"
+    n2 = need(y, "her-room", "post a reel", "no upload tool", "upload a video")["n"]
+    asyncio.run(y.pipeline.set(row(y, day, n2), {"state": "stuck", "why": "no pull request seen"}))
+    calls = len(hub.calls)
+    asyncio.run(y.pipeline.tick())
+    assert row(y, day, n2)["state"] == "stuck" and not [c for c in hub.calls[calls:] if "/status" in c[1]]
+
+
+def test_a_stuck_need_whose_checks_came_late_waits_while_another_need_is_in_flight_and_comes_back_once_none_is(pipe, monkeypatch):
+    y, rec, hub, units, rooms = pipe                     # two in flight edit the same lines of the same bookkeeping files
+    day = need(y, "example-room", *ASK)["day"]
+    to_pr(y, hub, day)
+    status = ("GET", f"/repos/{SLUG}/commits/{'a' * 40}/status")
+    hub.routes[status] = (200, {"state": "pending", "statuses": GREEN[:6]})
+    y.pipeline.now = lambda: time.time() + 41 * 60
+    asyncio.run(y.pipeline.tick())
+    n2 = need(y, "her-room", "post a reel", "no upload tool", "upload a video")["n"]
+    assert row(y, day)["state"] == "stuck" and row(y, day, n2)["state"] == "building"     # stuck is not in flight: need 2 starts
+    hub.routes[status] = (200, {"state": "success", "statuses": GREEN})
+    said, calls = list(rec.lines), len(hub.calls)
+    asyncio.run(y.pipeline.tick())
+    asyncio.run(y.pipeline.tick())                       # all in and green, need 2 in flight: it stays stuck and says nothing
+    assert row(y, day)["state"] == "stuck" and rec.lines == said and not [c for c in hub.calls[calls:] if "/status" in c[1]]
+    asyncio.run(y.pipeline.stop(row(y, day, n2), "held", "a reason"))
+
+    def built_meanwhile(method, path, tok, body=None):    # need 2 built again by hand while its checks are read
+        if path.endswith("/status"):
+            needs.update(y.memory, y.state, day, n2, {"state": "building", "worker": "w2"})
+        return hub(method, path, tok, body)
+    monkeypatch.setattr(github, "api", built_meanwhile)
+    asyncio.run(y.pipeline.tick())
+    assert row(y, day)["state"] == "stuck" and row(y, day, n2)["state"] == "building"
+    monkeypatch.setattr(github, "api", hub)
+    asyncio.run(y.pipeline.stop(row(y, day, n2), "held", "a reason"))
+    asyncio.run(y.pipeline.tick())                       # the tick that finds the flight empty brings it back
+    assert row(y, day)["state"] == "pr" and rec.lines[-1] == words.NEED_LATE.format(n=1, pr=7)
+
+
+def test_a_builder_that_cannot_start_holds_its_need_with_why_and_the_next_queued_need_starts(pipe):
+    y, rec, hub, units, rooms = pipe                     # a unit systemd refuses, then an account accounts.toml no longer has
+    y.conf["needs"]["auto"] = False                      # three filed; the first in flight with no unit, two queued behind it
+    day = need(y, "example-room", *ASK)["day"]
+    need(y, "her-room", "post a reel", "no upload tool", "upload a video")
+    need(y, "her-room", "what does this voice memo say", "no audio tool", "hear a voice memo")
+    for k, st in ((1, {"state": "building", "worker": "w1"}), (2, {"state": "queued"}), (3, {"state": "queued"})):
+        asyncio.run(y.pipeline.set(row(y, day, k), st))
+    y.conf["needs"]["auto"] = True
+    launcher = y.workers.launcher
+    real = launcher.start
+
+    def refuse(*a):
+        launcher.start = real
+        raise OSError("the unit was refused")
+    launcher.start = refuse
+    asyncio.run(y.pipeline.stop(row(y, day), "held", "a reason"))           # need 2's builder is refused, need 3's starts
+    assert (row(y, day, 2)["state"], row(y, day, 2)["worker"]) == ("held", "")
+    why = row(y, day, 2)["why"]
+    assert why == words.NEED_NO_BUILDER.format(error="the unit did not start: the unit was refused")
+    assert rec.lines[-2:] == [words.NEED_HELD.format(n=2, ability="upload a video", why=why),
+                              words.NEED_STARTS.format(n=3, room="her-room", ability="hear a voice memo")]
+    assert row(y, day, 3)["state"] == "building" and row(y, day, 3)["worker"]
+    y.conf["needs"]["account"] = "gone"
+    n4 = need(y, "example-room", "read this scan", "no ocr tool", "read a scanned page")["n"]
+    asyncio.run(y.pipeline.stop(row(y, day, 3), "held", "a reason"))
+    assert row(y, day, n4)["state"] == "held" and row(y, day, n4)["why"].startswith("its builder did not start: no account 'gone'")
+
+
+def test_a_claim_whose_builder_never_answered_is_queued_when_the_daemon_starts_and_one_with_a_worker_is_left(tmp_path, monkeypatch):
+    state, ask = tmp_path / "state", {"room": "example-room", "at": "12:00", "asked": "a", "tried": "b", "needed": "c", "mid": "m-1"}
+    state.mkdir()                                        # the daemon died between need_build's claim and its start's answer
+    (state / needs.STORE).write_text(json.dumps([{"day": "2026-11-10", "n": n, "ability": f"ability {n}", "asks": [ask],
+                                                  "state": "building", "worker": w, "fixes": 0} for n, w in ((1, ""), (2, "w2"))]))
+    run_discord(tmp_path, monkeypatch, f"owner = {OWNER}\n")      # yerkd's start as it runs, its connection and tasks at once
+    assert [(r["state"], r["worker"]) for r in needs.load(state)] == [("queued", ""), ("building", "w2")]
+
+
+def test_a_builders_line_that_cannot_be_posted_is_said_so_on_the_workers_row(pipe):
+    y, rec, hub, units, rooms = pipe
+    day = need(y, "example-room", *ASK)["day"]
+    wid = row(y, day)["worker"]
+    to = y.ledger.worker_get(wid)["room"]
+
+    async def down(room: str, text: str) -> list[str]:
+        raise OSError("the channel is down")
+    y.channels[to].notify = down
+    end(y, wid, f"branch need-{day}-1 at 1234567: it reads pictures")
+    assert y.ledger.worker_get(wid)["relay_note"] == "need build: its line could not be posted: the channel is down"
+
+
+def test_a_workers_end_that_makes_no_line_says_so_on_its_row(pipe):
+    y, rec, hub, units, rooms = pipe                     # each one's need moved on by a person meanwhile: no line to make
+    day = need(y, "example-room", *ASK)["day"]
+    to_pr(y, hub, day)
+    hub.routes[("GET", f"/repos/{SLUG}/commits/{'a' * 40}/status")] = (200, {"state": "success", "statuses": GREEN})
+    asyncio.run(y.pipeline.tick())
+    reader = row(y, day)["worker"]
+    asyncio.run(y.pipeline.set(row(y, day), {"state": "live", "worker": ""}))     # merged and deployed by hand
+    n2 = need(y, "her-room", "post a reel", "no upload tool", "upload a video")["n"]
+    builder = row(y, day, n2)["worker"]
+    asyncio.run(y.pipeline.set(row(y, day, n2), {"state": "merged", "pr": 8}))    # yerk needs done
+    said = list(rec.lines)
+    end(y, reader, "merge")
+    end(y, builder, f"branch need-{day}-{n2} at 1234567: it posts reels")
+    assert rec.lines == said and row(y, day)["state"] == "live" and row(y, day, n2)["state"] == "merged"
+    assert [y.ledger.worker_get(w)["relay_note"] for w in (reader, builder)] == ["need read: no line was made", "need build: no line was made"]
+
+
+def kill(y, wid: str, signal: bool = False) -> None:
+    """A worker's unit stopped from outside, a box shutdown: exited 143 after the TERM, or killed by it."""
+    d = Path(y.ledger.worker_get(wid)["staging"])
+    (d / "exit.json").write_text(json.dumps({"result": "signal", "code": "killed", "status": "TERM"} if signal else
+                                            {"result": "exit-code", "code": "exited", "status": "143"}))
+    asyncio.run(y.workers.complete(wid))
+
+
+def test_a_fix_or_a_read_cut_off_by_a_stop_nobody_asked_for_is_no_verdict_and_the_next_tick_starts_it_again(pipe):
+    y, rec, hub, units, rooms = pipe                     # seen live: need 83's fix died with the box and was held
+    day = need(y, "example-room", *ASK)["day"]
+    to_pr(y, hub, day)
+    status = ("GET", f"/repos/{SLUG}/commits/{'a' * 40}/status")
+    hub.routes[status] = (200, {"state": "failure", "statuses": [*GREEN[:6], {"context": "ci/g", "state": "failure"}]})
+    asyncio.run(y.pipeline.tick())
+    assert (row(y, day)["state"], row(y, day)["fixes"]) == ("fixing", 1)
+    kill(y, row(y, day)["worker"])
+    r = row(y, day)
+    assert (r["state"], r["worker"], r["fixes"]) == ("pr", "", 0)
+    assert rec.lines[-1] == words.NEED_CUT.format(n=1, pr=7, what=words.NEED_CUT_WHAT["fix"])
+    asyncio.run(y.pipeline.tick())                       # the same fix again, fix 1 of 2 again
+    assert (row(y, day)["state"], row(y, day)["fixes"]) == ("fixing", 1)
+    hub.routes[status] = (200, {"state": "success", "statuses": GREEN})
+    end(y, row(y, day)["worker"], "fixed: abc1234")
+    asyncio.run(y.pipeline.tick())
+    kill(y, row(y, day)["worker"], signal=True)          # the cold read, killed by the TERM itself
+    assert (row(y, day)["state"], row(y, day)["worker"], row(y, day)["fixes"]) == ("pr", "", 1)
+    asyncio.run(y.pipeline.tick())
+    assert row(y, day)["state"] == "reading"
+    wid = row(y, day)["worker"]
+    y.ledger.worker_set(wid, stop_requested=time.time())  # a stop the owner asked for stays a stop
+    kill(y, wid)
+    assert (row(y, day)["state"], row(y, day)["why"]) == ("held", "the cold read gave no verdict: " + words.outcome("stopped")[1])
+
+
+def test_a_builder_cut_off_by_a_stop_nobody_asked_for_is_queued_uncounted_and_the_first_tick_after_starts_it(pipe):
+    y, rec, hub, units, rooms = pipe                     # a box shutdown stops the daemon too, so a start at once is refused or cut off
+    day = need(y, "example-room", *ASK)["day"]
+    for signal in (False, True):                         # exited 143 after the TERM, then killed by it
+        kill(y, row(y, day)["worker"], signal)
+        r = row(y, day)
+        assert (r["state"], r["worker"], int(r.get("fails") or 0), len(y.workers.launcher.calls)) == ("queued", "", 0, 1 + signal)
+        assert rec.lines[-1] == words.NEED_CUT_BUILD.format(n=1, ability=ASK[2])
+        asyncio.run(y.pipeline.tick())                   # the first tick after the restart: the queue starts it
+        assert row(y, day)["state"] == "building" and row(y, day)["worker"] and len(y.workers.launcher.calls) == 2 + signal
+        assert rec.lines[-1] == words.NEED_STARTS.format(n=1, room="example-room", ability=ASK[2])
+    end(y, row(y, day)["worker"], "no branch: the suite would not run", ok=False)        # a real failure still counts
+    assert int(row(y, day)["fails"]) == 1 and row(y, day)["state"] == "building"
+
+
 def test_the_cold_read_saying_fix_first_or_unsure(pipe):
     y, rec, hub, units, rooms = pipe
     day = need(y, "example-room", *ASK)["day"]
@@ -247,6 +432,21 @@ def test_a_proven_deploy_holding_the_merge_is_live_one_line_a_room_and_a_failed_
     y.ledger.deploy(kind="deploy", unit="yerkd", before=sha, after=sha, outcome="tests failed", note="the fast tests failed")
     asyncio.run(y.pipeline.tick())
     assert (row(y, day, n2)["state"], row(y, day, n2)["why"]) == ("held", "deploy failed: the fast tests failed")
+
+
+def test_a_deploy_that_gave_up_waiting_for_quiet_is_merged_again_and_the_next_tick_deploys_again(pipe):
+    y, rec, hub, units, rooms = pipe                     # 2026-11-09: three gave up, each need held with nothing failed
+    day = need(y, "example-room", *ASK)["day"]
+    asyncio.run(y.pipeline.set(row(y, day), {"state": "deploying", "pr": 7, "merged_at": time.time() - 60, "merge": "c" * 40,
+                                             "deploy_at": time.time() - 30, "unit": "yerk-deploy-0b0b0b"}))
+    y.ledger.deploy(kind="deploy", unit="", before="0" * 7, after="", outcome="gave up", note="never quiet in 1 h; a room has a turn")
+    asyncio.run(y.pipeline.tick())
+    r = row(y, day)
+    assert (r["state"], r["unit"]) == ("merged", "") and units.argv == []
+    assert rec.lines[-1] == words.NEED_DEPLOY_AGAIN.format(n=1, pr=7, why="never quiet in 1 h; a room has a turn")
+    asyncio.run(y.pipeline.tick())                       # no deploy running: it deploys again, and the old row is not its
+    asyncio.run(y.pipeline.tick())
+    assert row(y, day)["state"] == "deploying" and len(units.argv) == 1 and rec.lines[-1] == words.NEED_DEPLOYING.format(n=1, pr=7)
 
 
 def test_a_rooms_live_line_waits_out_its_turn_and_neither_the_machine_rooms_line_nor_the_next_need_waits(pipe, monkeypatch):
@@ -318,6 +518,35 @@ def commit_on(p: Path, wt: Path, branch: str, text: str) -> str:
 
 def staged(y, wid: str) -> str:
     return (Path(y.ledger.worker_get(wid)["staging"]) / "BRIEF.md").read_text()
+
+
+def test_a_need_workers_clean_worktrees_go_when_it_ends_their_branches_kept_and_one_with_changes_stays_said_on_its_row(pipe, tmp_path):
+    y, rec, hub, units, rooms = pipe                     # 2026-11-10: 207 worker worktrees of the live repository, none removed
+    repo = tmp_path / "scratch-repo"                     # made here, never the live one
+    repo.mkdir()
+    git(repo, "init", "-q", "-b", "main")
+    (repo / ".gitignore").write_text(".venv/\n")
+    git(repo, "add", ".")
+    git(repo, *ID, "commit", "-q", "-m", "baseline")
+    day = need(y, "example-room", *ASK)["day"]
+    builder = row(y, day)["worker"]
+    d = Path(y.ledger.worker_get(builder)["staging"])
+    git(repo, "worktree", "add", "-q", str(d / "wt"), "-b", f"need-{day}-1")
+    (d / "wt" / ".venv").mkdir()                         # ignored: it goes with its worktree
+    git(repo, "worktree", "add", "-q", str(d / "other-wt"), "-b", "other")
+    (d / "other-wt" / "new.txt").write_text("not committed\n")
+    to_pr(y, hub, day)
+    assert not (d / "wt").exists() and (d / "other-wt" / "new.txt").is_file()
+    assert git(repo, "branch", "--list", f"need-{day}-1") and str(d / "wt") not in git(repo, "worktree", "list")
+    assert y.ledger.worker_get(builder)["relay_note"] == "; ".join([
+        words.LINE_POSTED.format(what="need build"), words.WORKTREE_KEPT.format(name="other-wt", why=words.WORKTREE_CHANGES)])
+    hub.routes[("GET", f"/repos/{SLUG}/commits/{'a' * 40}/status")] = (200, {"state": "success", "statuses": GREEN})
+    asyncio.run(y.pipeline.tick())
+    reader = row(y, day)["worker"]
+    r = Path(y.ledger.worker_get(reader)["staging"])
+    git(repo, "worktree", "add", "-q", str(r / "wt"), f"need-{day}-1")
+    end(y, reader, "unsure: it changes the gates")       # a cold read's worktree goes the same way
+    assert not (r / "wt").exists() and y.ledger.worker_get(reader)["relay_note"] == "need read: its line went to the machine room"
 
 
 def test_a_plugin_kept_in_its_own_git_repository_is_named_in_the_builders_brief_from_the_rooms_mcp_tables(pipe, tmp_path):
@@ -534,6 +763,11 @@ def test_the_askpass_answers_the_username_and_the_password_and_nothing_else(tmp_
     assert git_askpass.answer("Password for 'https://github.com': ", str(f)) == TOK
     assert git_askpass.answer("Are you sure you want to continue connecting (yes/no)? ", str(f)) == ""
     assert git_askpass.answer("Password for 'https://github.com': ", str(tmp_path / "missing")) == ""
+    for host, said in (("github.com", TOK), ("example.org", "")):     # the user put together here: test_scrub reads x@y.z as an email
+        assert git_askpass.answer(f"Password for 'https://{'@'.join(['x-access-token', host])}': ", str(f)) == said
+    assert git_askpass.answer("Password for 'https://github.com/owner/repo.git': ", str(f)) == TOK
+    assert git_askpass.answer("Username for 'https://example.org': ", str(f)) == ""
+    assert git_askpass.answer("Password for 'https://github.com.example.org': ", str(f)) == ""
     monkeypatch.setenv("YERK_GITHUB_TOKEN_FILE", str(f))
     assert git_askpass.main(["Password for 'https://github.com': "]) == 0 and capsys.readouterr().out == TOK + "\n"
     assert git_askpass.main(["Host key? "]) == 1 and capsys.readouterr().out == ""

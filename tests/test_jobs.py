@@ -11,6 +11,7 @@ import json
 import subprocess
 import sys
 import time
+import urllib.error
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime
 from pathlib import Path
@@ -32,11 +33,15 @@ HOUR = 3600
 
 class FakeSystemd:
     """systemd as sync and the runner rely on it: unit files in a folder, every call recorded, a timer
-    known once enabled; its next and last fire times are whatever the test puts there."""
+    known once enabled; its next and last fire times are whatever the test puts there, and a service
+    runs while the test has it in `active`."""
 
     def __init__(self, folder):
-        self.folder, self.calls, self.enabled, self.next, self.last = folder, [], {}, {}, {}
+        self.folder, self.calls, self.enabled, self.next, self.last, self.active = folder, [], {}, {}, {}, set()
         folder.mkdir(parents=True, exist_ok=True)
+
+    def running(self, unit):
+        return unit in self.active
 
     def read(self, unit):
         p = self.folder / unit
@@ -253,8 +258,13 @@ def test_the_read_back_comes_from_systemd_in_the_jobs_zone(tmp_path):
     assert jobs.status_lines(path, sd, now) == [f"{jobs.NOT_DONE} jobs: the timer list could not be read"]
 
 
-def test_the_real_adapter_writes_reads_and_removes_unit_files_and_a_removed_timers_stamp(tmp_path):
+def test_the_real_adapter_writes_reads_and_removes_unit_files_and_a_removed_timers_stamp(tmp_path, monkeypatch):
     sd = jobs.Systemd(folder=tmp_path / "units", stamps=tmp_path / "stamps")
+    states = {f"yerk-job-{s}.service": s for s in ("active", "activating", "deactivating", "inactive", "failed")}
+    monkeypatch.setattr(jobs.subprocess, "run", lambda cmd, **k: subprocess.CompletedProcess(
+        cmd, 0 if cmd[2:] == ["is-active", "yerk-job-active.service"] else 3, states[cmd[3]] + "\n", ""))
+    assert [u for u in states if sd.running(u)] == ["yerk-job-active.service", "yerk-job-activating.service"]
+    monkeypatch.undo()
     sd.write("yerk-job-x.timer", jobs.HEADER + "x.\n[Timer]\n")
     sd.write("yerk-job-x.service", jobs.HEADER + "x.\n[Service]\n")
     (tmp_path / "units" / "yerk-job-hand.timer").write_text("[Timer]\n")          # not ours: never listed, never removed
@@ -371,6 +381,98 @@ def test_a_script_run_with_no_daemon_is_ledgered_undelivered_and_delivered_late_
     assert r["delivery"] == "delivered late" and r["message_ids"] == "s1"
     assert rec.sent[0][1].startswith("(late: the daemon was not running when job late ran at ") and \
         rec.sent[0][1].endswith("\nwhile you were out")
+
+
+def test_a_job_fired_before_the_daemon_listens_is_handed_off_once_it_does_until_the_units_own_limit(setup, tmp_path, monkeypatch):
+    """At boot the job timers start a few seconds before yerkd. An agent job's hand-off that finds no daemon listening
+    (nothing on the port, or the pid of a yerkd.json from before the box went down) is tried again every few seconds, the
+    one-shot still in the file, until the unit's own limit less a margin; then it gives up as before. A daemon that answered
+    is not asked again. A script and a note give up at once, as before: the start sweep delivers them late."""
+    s = setup
+    j, w, sd, priv, state = manager(setup, tmp_path, {"r": s.room()}, {"r": Rec()})
+    s.ledger.__init__(state / "ledger.sqlite")
+    j.ledger = w.ledger = s.ledger
+    shot = '[jobs.boot]\nkind = "agent"\nat = "2099-01-02 09:00"\ntz = "UTC"\nroom = "r"\nmessage = "the brief"\n'
+    path = write_jobs(priv / "jobs.toml", shot)
+    jobs.sync(path, sd, ENV)
+    monkeypatch.setattr(jobs, "RETRY_EVERY", 0.0, raising=False)          # raising=False: main has none
+    calls = []
+
+    def boot(payload):
+        calls.append(payload)
+        assert "[jobs.boot]" in path.read_text() and sd.ours() == ["boot"]          # not removed while it waits
+        if len(calls) == 1:
+            raise urllib.error.URLError(ConnectionRefusedError(111, "Connection refused"))
+        if len(calls) == 2:
+            raise ProcessLookupError(3, "No such process")
+        return {"ok": True}
+    assert (jobs.run("boot", priv, state, units=sd, handoff=boot), len(calls)) == (0, 3)
+    r, = s.ledger.job_runs(job="boot")
+    assert (r["exit"], r["delivery"]) == (None, None) and sd.ours() == [] and "[jobs.boot]" not in path.read_text()
+    limit = jobs.start_limit(jobs.make_job("boot", {"kind": "agent", "at": "2099-01-02 09:00", "tz": "UTC", "room": "r",
+                                                    "message": "m"}))
+    assert limit == 120                                    # the TimeoutStartSec the unit is written with
+
+    def refused(payload):
+        calls.append(payload)
+        raise urllib.error.URLError(ConnectionRefusedError(111, "Connection refused"))
+    for ago, waits in ((limit - jobs.RETRY_SPARE + 1, False), (limit - jobs.RETRY_SPARE - 2, True)):
+        write_jobs(path, shot)
+        jobs.sync(path, sd, ENV)
+        calls.clear()
+        monkeypatch.setattr(jobs, "RETRY_EVERY", 0.5)
+        t0 = time.time()
+        assert jobs.run("boot", priv, state, units=sd, handoff=refused, now=t0 - ago) == 1
+        assert (len(calls) > 1, time.time() - t0 < 5) == (waits, True) and sd.ours() == []
+        r = s.ledger.job_runs(job="boot")[0]
+        assert (r["exit"], r["result"], r["delivery"]) == ("not run", "did not start",
+                                                           "undelivered: the daemon is not running (URLError)")
+    for answered in (urllib.error.HTTPError("http://127.0.0.1:1/control", 500, "boom", {}, None), TimeoutError("slow")):
+        write_jobs(path, shot)                              # it answered, or took the request: never asked twice
+        calls.clear()
+
+        def took(payload, e=answered):
+            calls.append(payload)
+            raise e
+        assert jobs.run("boot", priv, state, units=sd, handoff=took) == 1 and len(calls) == 1
+    for kind, what in (("script", 'command = "echo while you were out"'), ("note", 'message = "the note"')):
+        write_jobs(path, f'[jobs.boot]\nkind = "{kind}"\nat = "2099-01-02 09:00"\ntz = "UTC"\nroom = "r"\n{what}\n')
+        jobs.sync(path, sd, ENV)
+        calls.clear()
+        ago = jobs.start_limit(jobs.load(path, 0)[0]["boot"]) - jobs.RETRY_SPARE - 2      # time left to wait, were it an agent
+        assert jobs.run("boot", priv, state, units=sd, handoff=refused, now=time.time() - ago) == 1 and len(calls) == 1
+        r = s.ledger.job_runs(job="boot")[0]
+        assert (r["kind"], r["delivery"], sd.ours()) == (kind, "undelivered: the daemon is not running (URLError)", [])
+
+
+def test_a_script_run_its_unit_cut_mid_run_is_closed_at_the_next_start_with_the_failed_run_alert(setup, tmp_path):
+    """A script run whose unit was stopped mid-run (its start limit, or any stop) never writes its end. The daemon's sweep
+    after a restart closes it once its fired time plus its cap plus the margin has passed: the row gets its end and says it
+    was cut, and the failed-run alert goes out, once. A run of a job no longer in the file is closed the same way on the
+    default script cap, and nothing is sent for it: nobody is left to tell. A run that may still be going and an agent run
+    are left as they are."""
+    s = setup
+    rec, ops = Rec(), Rec()
+    j, w, sd, priv, state = manager(setup, tmp_path, {"r": s.room(), "ops": s.room("ops")}, {"r": rec, "ops": ops},
+                                    conf={"ops_room": "ops"})
+    write_jobs(priv / "jobs.toml", '[jobs.slow]\nkind = "script"\nschedule = "*:00"\ntz = "UTC"\nroom = "r"\ncap = 1\ncommand = "sleep 600"\n'
+                                   '[jobs.think]\nkind = "agent"\nschedule = "*:00"\ntz = "UTC"\nroom = "r"\nmessage = "the brief"\n')
+    now = time.time()
+
+    def started(job, kind, ago):                          # the row a run writes as it starts (jobs.run), and nothing after
+        return s.ledger.job_run_add(job=job, kind=kind, room="r", unit=f"{jobs.UNIT}{job}", planned=now - ago, fired=now - ago)
+    cut, going, agent, gone, recent = started("slow", "script", 181), started("slow", "script", 120), \
+        started("think", "agent", 999), started("old", "script", 9999), started("old", "script", 700)
+    asyncio.run(j.reattach())
+    r = s.ledger.job_run_get(cut)
+    assert (r["ended"], r["exit"], r["result"], r["delivery"], r["message_ids"]) == (now - 181 + 180, "cut", "cut", "alert", "n1")
+    assert ops.notified == [("ops", W.job_line("slow", "failed", result="signal"))]
+    assert ops.notified[0][1] == f"{W.NOT_DONE} job slow failed: it was killed"
+    r = s.ledger.job_run_get(gone)                          # its job is gone: the default script cap, 10 min plus the margin
+    assert (r["ended"], r["exit"], r["result"], r["delivery"], r["message_ids"]) == (now - 9999 + 720, "cut", "cut", "none", None)
+    assert [s.ledger.job_run_get(i)["ended"] for i in (going, agent, recent)] == [None, None, None]
+    asyncio.run(j.reattach())                                                     # closed once, told once
+    assert len(ops.notified) == 1 and rec.notified == rec.sent == []
 
 
 def test_an_agent_job_becomes_a_worker_with_the_right_account_and_cap_and_relays(setup, tmp_path):
@@ -516,6 +618,53 @@ def test_a_one_shot_is_removed_from_the_file_and_its_units_go_after_it_fires(set
     # a job whose timer fires after it left the file: said, ledgered, exit 2
     assert jobs.run("gone", priv, state, units=sd, handoff=lambda p: {"ok": True}) == 2
     assert s.ledger.job_runs(job="gone")[0]["result"] == "no such job: not in the jobs file"
+
+
+def test_a_sync_while_a_one_shot_runs_keeps_it_and_its_units_until_its_own_run_takes_them_out(setup, tmp_path):
+    """Two one-shots at one minute: the first to finish syncs while the other still runs. That one keeps its place in the
+    file and both its units (counted unchanged, never checked for a next fire), so systemd does not stop it; its own run
+    takes it out. A past one-shot whose own unit is not running (its run was cut) is refused and its units go, as before
+    this fix; so is one with no units."""
+    s = setup
+    rec = Rec()
+    j, w, sd, priv, state = manager(setup, tmp_path, {"r": s.room()}, {"r": rec})
+    s.ledger.__init__(state / "ledger.sqlite")
+    j.ledger = w.ledger = s.ledger
+    at = datetime.fromtimestamp(time.time() - 120, UTC).strftime("%Y-%m-%d %H:%M")
+    shot = '[jobs.{n}]\nkind = "script"\nat = "' + at + '"\ntz = "UTC"\nroom = "r"\ncommand = "echo {n}"\n'
+    path = write_jobs(priv / "jobs.toml", shot.format(n="first") + "\n" + shot.format(n="second"))
+    jobs.sync(path, sd, ENV, now=time.time() - HOUR)              # written while both were still to come
+    second, n = (sd.read("yerk-job-second.timer"), sd.read("yerk-job-second.service")), len(sd.calls)
+    checked = []
+    sd.check = lambda spec: checked.append(spec) or f"{spec!r} never fires again (it is in the past)"
+    handoff = lambda payload: asyncio.run(j.handle("", payload["job"]))  # noqa: E731  (the daemon's /control)
+    sd.active = {"yerk-job-first.service", "yerk-job-second.service"}           # both units running
+    assert jobs.run("first", priv, state, units=sd, handoff=handoff) == 0
+    assert sd.ours() == ["second"] and (sd.read("yerk-job-second.timer"), sd.read("yerk-job-second.service")) == second
+    assert "[jobs.second]" in path.read_text() and "[jobs.first]" not in path.read_text()
+    assert not [c for c in sd.calls[n:] if "second" in str(c)] and checked == []      # not disabled, removed or rewritten
+    sd.next["yerk-job-second.timer"], sd.last["yerk-job-second.timer"] = None, time.time() - 120     # fired: no next
+    assert jobs.status_lines(path, sd) == [f"{W.WORKING} second: running"]             # yerk status reads it as the sync
+    listed, told = jobs.schedule_list(path, sd), asyncio.run(j.handle("", {"action": "list"}))     # the command, the tool
+    assert listed["lines"] == told["lines"] == [f"second: running; {jobs.load(path, 0)[0]['second'].describe()}, room r, script"]
+    assert listed["errors"] == told["errors"] == {} and [r["name"] for r in listed["jobs"] if not r.get("stray")] == ["second"]
+    p, _ = jobs.sync(path, sd, ENV)                                # any other sync keeps it too
+    assert (p.unchanged, p.removed, p.errors, checked) == (["second"], [], {}, [])
+    assert jobs.run("second", priv, state, units=sd, handoff=handoff) == 0
+    assert sd.ours() == [] and "[jobs.second]" not in path.read_text() and [t for _, t, _ in rec.sent] == ["first", "second"]
+    write_jobs(path, shot.format(n="cut"))                         # its run was cut (a box shutdown): its unit is not running
+    sd.check = lambda spec: ""                                     # written while it was still to come
+    jobs.sync(path, sd, ENV, now=time.time() - HOUR)
+    assert sd.ours() == ["cut"]
+    assert jobs.status_lines(path, sd) == [f"{W.NOT_DONE} timer cut: not in the jobs file", f"{W.NOT_DONE} cut: cannot be scheduled"]
+    n = len(sd.calls)
+    p, _ = jobs.sync(path, sd, ENV)                                # the next sync removes it as before
+    assert (p.removed, p.unchanged, sd.ours()) == (["cut"], [], []) and p.errors["cut"].endswith("is in the past")
+    assert sd.calls[n:] == [("disable", "yerk-job-cut.timer"), ("remove", "yerk-job-cut.timer"),
+                            ("remove", "yerk-job-cut.service"), ("reload",)]
+    write_jobs(path, shot.format(n="late"))                        # never scheduled: refused as before
+    p, _ = jobs.sync(path, sd, ENV)
+    assert p.errors["late"].endswith("is in the past") and (p.unchanged, sd.ours()) == ([], [])
 
 
 # notes: a reminder its room's own session tells

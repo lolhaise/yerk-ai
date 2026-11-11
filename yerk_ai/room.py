@@ -172,7 +172,7 @@ TAIL_CUT = "Earlier, named by their day-log lines to keep this short:"
 
 
 class Channel(Protocol):
-    def open_card(self, room: str, text: str, kind: str = "turn") -> None: ...   # post the turn's card
+    def open_card(self, room: str, text: str) -> None: ...   # post the turn's card
     def progress(self, room: str, text: str) -> None: ...            # edit the room's card
     def reply(self, room: str, text: str, inbound: list[str],          # card off (or kept with `card`), reply on
               card: str | None = None, key: str | None = None) -> list[str]: ...
@@ -242,6 +242,8 @@ class Room:
         self.overtook = 0                         # the turns that ran on the live session since the copy was made
         self.dropped = ""                         # why the copy in flight was ended (_drop_fork), for its thread's line
         self.shrunk = False                       # the live session compacted since the copy was made: the copy is moot
+        self.exited = threading.Event()           # clear while reap_idle or respec closes the process: _start waits for it,
+        self.exited.set()                         # since the closing process holds its session's lock until it is gone
         self.cite: Callable[[str, float], str] | None = None   # a message's day-log cite (the daemon's), for a long tail
 
     def _ledger_call(self, call: dict[str, Any]) -> None:
@@ -778,7 +780,7 @@ class Room:
     def _new_card(self, note: str = "", edit: bool = False) -> None:
         privacy = str(self.conf.get("privacy", "owner"))
         self.card = Card(thinking=flag(self.conf.get("thinking_panel")) and privacy == "owner",
-                         people=self.name if self.conf.get("people") and self.conf.get("card") != "steps" else "")   # "steps": the rows
+                         people=self.name if self.conf.get("people") and self.conf.get("card") == "count" else "")   # only "count": the short card
         self.card.narration = note                # a harness line from the first post, until the model's first words
         self.turn_key, self.bounced, self.silent_bounced, self.stub_bounced = uuid.uuid4().hex[:12], False, False, False
         self.note_bounced = self.board_bounced = self.retired_bounced = self.paste_bounced = self.sheet_bounced = self.said_bounced = False
@@ -803,7 +805,11 @@ class Room:
             if self.busy or not self.rp or (not force and now - self.last_active < self.idle_seconds):
                 return False
             rp, self.rp = self.rp, None
-        rp.close()
+            self.exited.clear()
+        try:
+            rp.close()
+        finally:
+            self.exited.set()
         log.info("room %s: idle process closed, session %s kept", self.name, rp.session_id)
         return True
 
@@ -814,8 +820,13 @@ class Room:
             self.stale = self.busy
             rp, self.rp = (None, self.rp) if self.busy else (self.rp, None)
             self._drop_fork("the room's model, effort or account changed")   # a copy runs on the old spec
+            if rp:
+                self.exited.clear()
         if rp:
-            rp.close()
+            try:
+                rp.close()
+            finally:
+                self.exited.set()
 
     def renew(self) -> None:
         """/new: the room's next run (the next message, or a running turn's messages still waiting) starts a
@@ -891,6 +902,7 @@ class Room:
         self.rp.send(text)
 
     def _start(self, account: Account, fresh: bool = False) -> None:
+        self.exited.wait(30)                      # a message that came in while the idle close still waited for the old process
         log_path = self.log_dir / f"{self.name}.jsonl" if self.log_dir else None
         spec = self.spec()
         if self.stale and self.ran:              # a hop or retry inside the turn that changed the settings
@@ -1142,9 +1154,11 @@ class Room:
                                  decision="dead", tool="", rule="no-hook-call", detail=why[:300])
                 self.channel.notice(self.name, f"{words.NOT_DONE} {words.HOOKS_DEAD}", [], key=f"{self.turn_key}:hooks")
             card = None
-            if turn.fallback_model:                # which model: the turn's ledger row
-                card = f"{words.WORKING} {words.BACKUP[0]}\n{words.SUB}{words.BACKUP[1]}"
-                self.fresh_next = REFUSAL_RECAP
+            if turn.fallback_model:                # which model: the turn's ledger row; the fresh start, failures.toml's action
+                fresh = turn.failure is not None and turn.failure.action == "fresh_next_turn"
+                card = f"{words.WORKING} {words.BACKUP[0]}" + (f"\n{words.SUB}{words.BACKUP[1]}" if fresh else "")
+                if fresh:
+                    self.fresh_next = REFUSAL_RECAP
             text = turn.text
             if covered and all(m.cap for m in covered):         # harness messages only: held to their cap
                 text = fit(text, min(m.cap for m in covered), [m.must for m in covered])

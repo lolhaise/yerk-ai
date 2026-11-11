@@ -52,17 +52,6 @@ function cooldownFile(settings) {
 function loadCooldowns(settings) {
   if (!cooldownCache || cooldownCache.file !== cooldownFile(settings)) {
     const hosts = readJson(cooldownFile(settings), {}) || {};
-    // A site-memory seed (scripts/seed-site-memory.mjs, written before the deploy) is merged once
-    // at first load, then renamed: the older plugin rewrites this file and would drop it.
-    const seedFile = path.join(settings.stateDir, "site-memory-seed.json");
-    const seed = readJson(seedFile, null);
-    if (seed && typeof seed === "object" && !Array.isArray(seed)) {
-      for (const [h, rec] of Object.entries(seed)) if (rec && !hosts[h]?.start && !hosts[h]?.bb) hosts[h] = { ...(hosts[h] || {}), ...rec };
-      try {
-        writeJsonAtomic(cooldownFile(settings), hosts);
-        fs.renameSync(seedFile, `${seedFile}.applied`);
-      } catch {}
-    }
     cooldownCache = { file: cooldownFile(settings), hosts };
   }
   return cooldownCache.hosts;
@@ -224,7 +213,7 @@ export async function judgeRendered({ p, url, settings, extractMode, rung }) {
     ex = { ...ex, content: extractMode === "text" ? inner : inner.split("\n").filter(Boolean).join("\n\n"), articleChars: inner.length, extractor: "innertext" };
   }
   const judged = judgePage({ status: p.status, html: p.html || "", finalUrl: p.finalUrl || url, ex, minVisibleChars: settings.minVisibleChars, hardFloor: settings.minVisibleCharsHard });
-  const titleCandidates = [p.title, ex.title, ...Array.from(String(p.html || "").matchAll(/<title[^>]*>([\s\S]*?)<\/title>/gi), (m) => m[1])];
+  const titleCandidates = [p.title, ex.title, ...Array.from(String(p.html || "").matchAll(/<title[^>]*>([\s\S]*?)<\/title>/gi), (m) => m[1]), ...Array.from(String(p.html || "").matchAll(/<meta[^>]+(?:property|name)=["']og:title["'][^>]+content=["']([^"']*)["']/gi), (m) => m[1])];
   if (titleCandidates.some((t) => /^\s*(undefined|null|\[object Object\])\b/i.test(String(t || "")) || /^\s*General PDP Template\b/i.test(String(t || "")))) {
     return { rung, ok: false, wall: "empty", outcome: "thin:render_empty", status: p.status, verdict: "thin", why: "render_empty", ex };
   }
@@ -368,7 +357,9 @@ export async function localFetchRung({ url, settings, extractMode, signal, timeo
   // login that lives in the Browserbase context, so it goes straight to L3.
   const next = judged.verdict === "not_found" ? "stop" : judged.verdict === "login" ? "L3" : "F2";
   const partial = ex?.content && String(ex.content).trim() && judged.verdict === "thin" ? { status, finalUrl, ctype, ex } : undefined;
-  return { rung: "F1", ok: false, wall: judged.verdict === "not_found" ? `http_${status}` : judged.verdict, verdict: judged.verdict, outcome, status, ms, next, partial };
+  // finalUrl on a failed read too (2026-11-08): where the HTTP redirect chain ended is the site's own answer, and
+  // the ladder's off-site landing guard admits that domain for the browser rungs that follow.
+  return { rung: "F1", ok: false, wall: judged.verdict === "not_found" ? `http_${status}` : judged.verdict, verdict: judged.verdict, outcome, status, ms, next, partial, finalUrl };
 }
 
 // ---- F2: one local browser, on demand --------------------------------------------

@@ -132,7 +132,7 @@ class Evidence:
 
 
 def has_figure(text: str, fig: str) -> bool:
-    return re.search(r"(?<![\w$,.\-])" + re.escape(fig) + r"(?![\w,]|\.\d)", text) is not None
+    return fig in text and re.search(r"(?<![\w$,.\-])" + re.escape(fig) + r"(?![\w,]|\.\d)", text) is not None   # substring first
 
 
 # Not quotes of a line, so not looked up on file (matching their digits found unrelated lines: three

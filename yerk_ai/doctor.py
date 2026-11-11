@@ -1,6 +1,6 @@
 """`yerk doctor`: checks the install once a day, and repairs the files a crash or a power cut left damaged. units/yerk-doctor.timer
 runs it after retention's (Layer 11, claim 6, decision 40): one green line when all is well, a red or orange line per finding with
-<state>/doctor.json for the morning diff; once a week it also fetches the Claude docs from the web (docs.py), unless
+its fix, kept in <state>/doctor.json for the morning diff; once a day it also fetches the Claude docs from the web (docs.py),
 [docs] fetch = false in yerkd.toml. A hard power-off zeroes the line a file was writing, so on yerkd's start and
 log, assembled log or bound transcript with a NUL byte is copied first (a day log to backups/doctor-<day>/ beside the private
 layer, the rest to <state>/trash/<day>/doctor/), then each such line keeps what still reads (the line glued on after its NULs, else
@@ -8,6 +8,7 @@ itself without them), else is blank in a day log (recall cites file:line) or dro
 from __future__ import annotations
 
 import json
+import os
 import re
 import stat
 import time
@@ -49,6 +50,27 @@ def dated(text: str, fmt: str) -> datetime | None:
         return datetime.strptime(text, fmt)
     except ValueError:
         return None
+
+
+def used(path: Path) -> int:
+    """The bytes every regular file at and under `path` holds on disk, links never followed, a file once however many links
+    it has, added as the walk goes: no list of the 1.4 million entries a state folder holds (2026-11-10, the list alone was
+    1.2 GB of the doctor's peak). A sparse file's holes and a second link are no growth (2026-11-10: a worker's sparse test
+    files, 31 GB long and 1.7 GB on disk, read as the state folder's growth)."""
+    if path.is_symlink() or not path.is_dir():
+        s = path.lstat()
+        return s.st_blocks * 512 if stat.S_ISREG(s.st_mode) else 0
+    total, linked = 0, set[tuple[int, int]]()
+    for d, _, fs in os.walk(path):
+        for f in fs:
+            with suppress(OSError):                         # a file gone mid-walk: a live state folder
+                s = os.lstat(os.path.join(d, f))
+                if not stat.S_ISREG(s.st_mode) or s.st_nlink > 1 and (s.st_dev, s.st_ino) in linked:
+                    continue
+                if s.st_nlink > 1:
+                    linked.add((s.st_dev, s.st_ino))
+                total += s.st_blocks * 512
+    return total
 
 
 def scan(f: Path, now: float | None = None) -> list[tuple[int, str]]:
@@ -314,7 +336,7 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
 
     def growth() -> None:
         sizes = {"state folder": state, "memory tree": m.root, **{f"room {r.name}": r / "work" for r in sorted((state / "rooms").glob("*"))}}
-        now_sizes.update({k: retention.size(retention.tree(p)) for k, p in sizes.items() if p.exists()})
+        now_sizes.update({k: used(p) for k, p in sizes.items() if p.exists()})
         mb = (conf.get("doctor") or {}).get("growth_mb", GROWTH_MB)
         mb = mb if isinstance(mb, (int, float)) and not isinstance(mb, bool) and mb > 0 else GROWTH_MB
         days = (now - float(last.get("sized", 0))) / DAY
@@ -408,9 +430,9 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
     def backed() -> None:                                       # one bad disk takes an install with no backup (2026-10-24)
         b = backup.newest(private, state)
         if b is None and "backup" in conf:                      # a [backup] table: the owner set it up, and nothing landed
-            found.append(f"backup: none in {backup.settings(private, state)[0].name}; `yerk backup` makes one, yerk-backup.timer each night")
+            found.append(f"{RED} backup: none in {backup.settings(private, state)[0].name}; `yerk backup` makes one, yerk-backup.timer each night")
         elif b is not None and now - b["at"] > backup.STALE:
-            found.append(f"backup: the newest, {b['name']}, is {(now - b['at']) / 3600:.0f} h old, past 36 h; is yerk-backup.timer on?")
+            found.append(f"{RED} backup: the newest, {b['name']}, is {(now - b['at']) / 3600:.0f} h old, past 36 h; is yerk-backup.timer on?")
 
     def lesson_shape() -> None:     # the whole store against the Claude docs' lesson shape and its pinned sentences, daily
         found.extend(f"{ORANGE} {x}" for x in lessons(private, state, m, now, dry))

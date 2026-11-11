@@ -38,7 +38,7 @@ daemon restarts.
   read_memory, nothing else) through its own stdio MCP server, which has no send, hold, worker or
   schedule tool to give. A start's `addons` gives it the room's own add-on tools it names (need 83 of 2026-11-10: a
   room could not hand a worker the browser), each one the room's allow list has, its server's table as the room runs it
-  plus ADDON_ENV; never one whose table hands it a credential, which the worker's shell could read. Its gate
+  plus YERK_WORKER and YERK_WORK_DIR; never one whose table hands it a credential, which the worker's shell could read. Its gate
   (gates.worker_check) refuses any other MCP tool, and every call that carries the owner's word (`confirmed`).
 - A daemon start re-attaches from the ledger and the unit list: a running unit gets its watch and its
   card back, one that ended while the daemon was away completes, one that vanished settles as lost.
@@ -80,7 +80,6 @@ ENV_KEEP = ("PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "LC_CT
 TICK = re.compile(r"^\s*[-*+]\s*\[([ xX])\]\s*(.+?)\s*$")
 WORKER_TOOLS = ("recall", "read_memory")       # the only Yerk AI tools a worker may get: read-only
 ADDON = re.compile(r"^mcp__([A-Za-z0-9_-]+?)(?:__([A-Za-z0-9_-]+))?$")   # a room's add-on tool, or all of its server's
-ADDON_ENV = ("YERK_WORKER", "YERK_WORK_DIR")   # what an add-on's server learns of the worker it serves: its id, its folder
 CREDENTIAL = re.compile(r"key|token|secret|pass|auth|cookie|credential", re.I)   # an env name or header that hands one over
 PUMP_EVERY = 5.0                               # seconds between looks for an idle room with a relay waiting
 YOUNG = 120.0                                  # seconds after its start a worker missing from the unit list is not lost yet
@@ -150,7 +149,7 @@ def mcp_config(state: Path, room: str, tools: list[str], path: Path, servers: di
 def room_addons(conf: dict[str, Any], want: Sequence[str], wid: str, folder: Path) -> tuple[dict[str, Any], list[str]] | str:
     """The room's own add-on tools a worker asks for, from its rooms.toml table (`conf`, [defaults] in it): each a tool's
     name as the room has it (mcp__hands__browser) or a server's name (hands) for every one of its tools the room's allow
-    names. (its servers, each as the room runs it, its env with ADDON_ENV and YERK_TOOL_TIMEOUT; the tools), or why not:
+    names. (its servers, each as the room runs it, its env with YERK_WORKER, YERK_WORK_DIR and YERK_TOOL_TIMEOUT; the tools), or why not:
     a tool the room has not, or a server whose table hands over a credential (an env name or header saying key, token,
     secret, pass, auth, cookie or credential), since an add-on's process and its table are the worker's shell's to read."""
     servers = {str(k): v for k, v in dict(conf.get("mcp") or {}).items() if isinstance(v, dict)}
@@ -382,6 +381,13 @@ def settled_state(row: dict[str, Any], items: list[tuple[bool, str]], end: dict[
         state = "partly"
     why = words.died(str(end.get("result_code") or "")) if state == "died" else ""
     return words.outcome(state, cap=words.span(float(row["cap"])), why=why, ticked=ticked, rows=len(items))
+
+
+def cut_off(end: dict[str, Any]) -> bool:
+    """A worker that died from a stop nobody asked for, a box shutdown (seen live on need 83's fix): settled "died",
+    which a row with a stop request never is ("stopped"), and its exit the termination signal, exited 143 or killed by
+    TERM (exit.json's status is systemd's EXIT_STATUS, the signal's name once killed)."""
+    return end.get("exit") == "died" and str(end.get("status") or "") in ("143", "TERM")
 
 
 def card_text(row: dict[str, Any], items: list[tuple[bool, str]], end: dict[str, Any] | None = None,
@@ -738,7 +744,7 @@ class Workers:
         report = Path(row["report"])
         end: dict[str, Any] = {"exit": state, "detail": detail, "finished": float(x.get("ended") or time.time()),
                "result": first_line(report) or ("no report file" if state == "done" else ""),
-               "has_report": report.is_file(), "result_code": x.get("result") or ""}
+               "has_report": report.is_file(), "result_code": x.get("result") or "", "status": str(x.get("status") or "")}
         # its last message read as jobs.py's worker_done reads it: exactly NO_REPLY settles the card quiet (card_text), no relay
         end["quiet"] = state == "done" and (last_message(Path(row["staging"])) or end["result"]).strip() == words.NO_REPLY
         self.ledger.worker_set(wid, finished=round(end["finished"], 3), exit=state, exit_detail=detail, result=end["result"])

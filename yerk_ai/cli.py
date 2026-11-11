@@ -429,7 +429,7 @@ def cmd_status(a: argparse.Namespace) -> int:
     except (OSError, subprocess.SubprocessError):
         units = None                          # no systemd here: the ledger alone, unchecked
     lines = workers.status_lines(Ledger(state / "ledger.sqlite"), units, full=True)
-    for line in lines or ["workers: none running"]:
+    for line in lines or [words.NONE_RUNNING]:
         print(line)
     from . import jobs
     for line in jobs.status_lines(priv / jobs.FILE, jobs.Systemd()) or [f"{jobs.NOTHING} jobs: none scheduled"]:
@@ -558,7 +558,7 @@ def cmd_deploy(a: argparse.Namespace) -> int:
     if a.timers:
         print("\n".join(out := deploy.timers(REPO, deploy.USER_UNITS)) or f"{words.DONE} every timer in units/ is installed")
         return int(any(x.startswith(words.NOT_DONE) for x in out))
-    return deploy.run(private_dir(a.private), state_dir(a.state), a.ref or "", tests=not a.no_tests, unit_file=a.unit)
+    return deploy.run(private_dir(a.private, quiet=True), state_dir(a.state), a.ref or "", tests=not a.no_tests, unit_file=a.unit)
 
 
 def cmd_recall_bench(a: argparse.Namespace) -> int:
@@ -606,7 +606,7 @@ def cmd_recall_bench(a: argparse.Namespace) -> int:
             print(f"BLIND: control question(s) missed: {', '.join(r['blind'])}", file=sys.stderr)
     for d in drops:
         print(f"RATCHET: {d}", file=sys.stderr)
-    return 2 if r["blind"] else 4 if drops else 0
+    return 5 if r["blind"] else 4 if drops else 0      # 5: blind, its own code, so the weekly unit fails it (2 is no question set)
 
 
 def cmd_bench(a: argparse.Namespace) -> int:
@@ -658,7 +658,7 @@ def cmd_abilities(a: argparse.Namespace) -> int:
 def cmd_add(a: argparse.Namespace) -> int:
     """`yerk add SOURCE` and `yerk remove NAME` (addons.py), each step a line; never on the fake example layer."""
     from . import addons, words
-    if (priv := private_dir(a.private)).resolve() == EXAMPLE_PRIVATE.resolve():
+    if (priv := private_dir(a.private, quiet=True)).resolve() == EXAMPLE_PRIVATE.resolve():
         print(f"{words.NOT_DONE} {words.NO_LAYER}", file=sys.stderr)
         return 2
     return (addons.add if a.cmd == "add" else addons.remove)(a.source, priv, state_dir(a.state), a.dry_run)
@@ -742,6 +742,7 @@ def cmd_config(a: argparse.Namespace) -> int:
 
 def parser() -> argparse.ArgumentParser:
     """Every command and flag of `yerk`, with its help; docs/commands.md is written from it (`yerk docs own`)."""
+    from . import words
     p = argparse.ArgumentParser(prog="yerk", description="Yerk AI: chat rooms as long-lived Claude Code sessions.")
     p.add_argument("--version", action="version", version=f"yerk {__version__}")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -782,15 +783,14 @@ def parser() -> argparse.ArgumentParser:
     im.add_argument("--state", help="state folder (default: $YERK_STATE, else ~/.local/state/yerk)")
     ac = sub.add_parser("accounts", help="tokens, rests and health per account; cool, clear, token, mint, health")
     ac.add_argument("action", nargs="?", default="list", choices=["list", "cool", "clear", "token", "mint", "health"])
-    ac.add_argument("name", nargs="?", help="cool, clear, token: the account")
+    ac.add_argument("name", nargs="?", help="cool, clear, token, mint: the account")
     ac.add_argument("minutes", nargs="?", type=float, default=30.0, help="cool: minutes to rest")
     ac.add_argument("--kind", default="manual", help="cool: the rest's kind (default manual)")
     ac.add_argument("--issued", help="token: the issue date, YYYY-MM-DD (default today)")
     ac.add_argument("--model", default="haiku", help="health: the model for the one tiny turn")
     ac.add_argument("--names", nargs="*", default=[], help="health: only these accounts")
     ac.add_argument("--json", action="store_true")
-    st = sub.add_parser("status", help="the daemon, its rooms, each account's 5-hour and weekly meters, and the "
-                        "running workers (from the ledger, checked against the unit list)")
+    st = sub.add_parser("status", help="the card: " + "; ".join(words.STATUS_PARTS))      # its parts, from the list the card keeps
     st.add_argument("--full", action="store_true", help="the developer detail: pid, unit names, reading ages")
     st.add_argument("--json", action="store_true", help="one JSON document for a monitoring tool: rooms, accounts, last turn "
                     "per room, the last day's failures, the index, the backup's age")
@@ -856,7 +856,7 @@ def parser() -> argparse.ArgumentParser:
     sc.add_argument("--effort", help="add: agent jobs, the worker's thinking level, one of low, medium, high, xhigh, max (default [workers], else the room's)")
     sc.add_argument("--json", action="store_true")
     rb = sub.add_parser("recall-bench", help="the fixed question set against the memory index: top six and top one "
-                        "hit rates (exit 2 when a control misses, 1 failure, 3 timeout, 4 a drop budgets.toml [recall] does not name)")
+                        "hit rates (exit 5 when a control misses, 2 no question set, 1 failure, 3 timeout, 4 a drop budgets.toml [recall] does not name)")
     rb.add_argument("--questions", help="the recall kind's question file (default: [memory] bench, else <private>/evals/recall-questions"
                     ".json); the episodic and self kinds are episodic-questions.json and self-questions.json beside it")
     rb.add_argument("-k", type=int, default=6, help="results per question (default 6, the recall tool's default)")
@@ -911,7 +911,7 @@ def parser() -> argparse.ArgumentParser:
     rs.add_argument("--dry-run", action="store_true", help="verify and say each step, write nothing")
     rs.add_argument("--force", action="store_true", help="over the layer after a backup of it, and under a running yerkd")
     said = ("the daily check (the private folder's layout, rooms.toml keys, memory classes, tokens, the index, hooks, disk growth, "
-            "the rule files' shape) and the crash repair of NUL lines, each file backed up first; once a week it also fetches "
+            "the rule files' shape) and the crash repair of NUL lines, each file backed up first; once a day it also fetches "
             "the Claude docs from the web ([docs] fetch = false in yerkd.toml turns that off)")
     dc = sub.add_parser("doctor", help=said, description=said)
     dc.add_argument("--dry-run", action="store_true", help="say what would be mended or scrubbed, change nothing")
@@ -928,8 +928,8 @@ def parser() -> argparse.ArgumentParser:
                         "drift), then the day's facts proposed, knocked down, checked and landed only if the bench holds")
     cu.add_argument("--since", default="", help="each day from this date (YYYY-MM-DD) to yesterday, for a backfill")
     cu.add_argument("--dry-run", action="store_true", help="say what it would change and propose, change nothing")
-    cu.add_argument("--rules", action="store_true", help="the rule files alone: merges, cuts, condensations and promotions "
-                    "proposed into <memory>/rules-proposals/<day>.md, never applied")
+    cu.add_argument("--rules", action="store_true", help="the rule files alone: merges, cuts, condensations, moves to the topic rules, promotions "
+                    "and the (test reads it back, as plain) text with <one>/more-line/<for>.the, check while")
     cu.add_argument("--apply", nargs=2, metavar=("DAY", "N"), help="the owner's word: proposals N[,N...] of DAY written, backed "
                     "back as plain text with one more, line `for`: the check while a second")
     cf = sub.add_parser("config", help="the settings Yerk AI describes, with their values here and plain words")

@@ -4,6 +4,7 @@ by its command line, and the shipped mechanics send a picture on the web to its 
 tests: `npm test` in its folder."""
 import json
 import tomllib
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -28,6 +29,34 @@ def test_the_morning_diff_carries_yesterdays_spend_in_one_plain_line(tmp_path):
     lines, stamp = morning.build(priv, state, accounts, cool, led, {"started": y0 - 10, "units": []}, NOW)
     assert f"{words.PLAIN} spent yesterday: US$0.11 on 2 calls" in lines
     assert not [k for k in stamp["findings"] if "spent" in k]             # spend is said, never an alert
+
+
+def test_the_morning_diff_says_each_web_plan_alert_once_the_day_after_it_was_written(tmp_path):
+    """The plug-in's plan alerts (plugins/web: fetch/alerts.log a text line each, search/alerts.log a JSON line each) reach
+    the owner: a line written yesterday opens the diff, a line written today waits for tomorrow's, and the delivered stamp
+    keeps how far they were said, so none is said twice."""
+    priv, state, accounts, cool = layer(tmp_path, machine=None)
+    led, y0, today = Ledger(state / "ledger.sqlite"), status.midnight(NOW, 1), status.midnight(NOW)
+    local = lambda t: datetime.fromtimestamp(t).astimezone().isoformat(timespec="seconds")    # noqa: E731 (util.js isoLocal)
+    heads_up = ". Nothing was refused; this is a budget heads-up only.\n"
+    (state / "web" / "fetch").mkdir(parents=True)
+    (state / "web" / "search").mkdir(parents=True)
+    (state / "web" / "fetch" / "alerts.log").write_text(           # as util.js recordUsage writes them
+        f"{local(y0 - 3600)} fetch-plus month=2026-10 fetchCalls passed 5000 (now 5001, of which proxied 3){heads_up}"
+        f"{local(y0 + 3600)} fetch-plus month=2026-10 proxy traffic passed 1.00 GB (now 3.446 GB, Browserbase's own meter){heads_up}"
+        f"{local(today + 60)} fetch-plus month=2026-10 browser time passed 150 h (now 150.20 h over 900 sessions){heads_up}")
+    (state / "web" / "search" / "alerts.log").write_text(json.dumps(  # as search/util.js countMonthly writes it
+        {"ts": datetime.fromtimestamp(y0 + 7200, timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+         "engine": "exa", "count": 5000, "month": "2026-10"}) + "\n")
+    live = {"started": y0 - 10, "units": []}
+    lines, stamp = morning.build(priv, state, accounts, cool, led, live, NOW)
+    said = [f"{words.WORKING} web proxy: 3.4 GB in Oct > 1 GB", f"{words.WORKING} Exa searches reached 5,000 in Oct"]
+    assert [x for x in lines if " in Oct" in x] == said                  # not the day before's (its diff said it), not today's
+    assert lines[0].startswith(f"{words.NOT_DONE} morning: ") and lines.index(said[0]) < lines.index(f"{words.PLAIN} {words.NO_SHADOW}")
+    (state / "morning").mkdir(exist_ok=True)
+    (state / "morning" / "last.json").write_text(json.dumps(stamp))      # delivered
+    lines, _ = morning.build(priv, state, accounts, cool, led, live, NOW + 86400)
+    assert [x for x in lines if " in Oct" in x] == [f"{words.WORKING} web browser: 150.2 h in Oct > 150 h"]    # once each
 
 
 def test_yerk_explain_web_answers_from_the_abilities_file(tmp_path, capsys):

@@ -79,8 +79,8 @@ def delete_targets(argv: list[str], cwd: str) -> list[str] | None:
     rsync with --delete (its destination) and zip -m (its files). An empty list
     when none of these is the command: that is not a proof it deletes nothing
     (an interpreter, a wrapper this module does not peel, or a program not
-    listed here can still delete), so the gate reads an empty list as unknown,
-    never as safe. None when a target holds a variable, a glob or a `~`, is
+    listed here can still delete), and the gate lets such a command run unless
+    it is one of the runners it refuses (gates._RUNNERS). None when a target holds a variable, a glob or a `~`, is
     empty, or when a delete names no path at all, as behind xargs; and for tar
     --remove-files, whose members depend on its mode.
     """
@@ -162,8 +162,8 @@ def _scan(text: str, i: int, depth: int, out: list[list[str]], nested: bool) -> 
         if text.startswith("#", i):  # a comment runs to the end of its line
             i = text.find("\n", i) if "\n" in text[i:] else len(text)
             continue
-        if text.startswith("((", i):  # an arithmetic command: nothing runs
-            i = _arithmetic(text, i + 2)
+        if text.startswith("((", i) and (end := _arithmetic(text, i + 2)) is not None:  # an arithmetic command: nothing runs
+            i = end
             continue
         if text.startswith(("<(", ">("), i):
             start, i = i, _substitution(text, i + 2, depth, out)
@@ -229,8 +229,8 @@ def _word(text: str, i: int, depth: int, out: list[list[str]]) -> tuple[_Word, i
             if escaped != "\n":  # a backslash before a newline joins the lines
                 chars.append(c + escaped if quoted and escaped not in '$`"\\' else escaped)
             i += 2
-        elif text.startswith("$((", i):  # arithmetic: a number once expanded, never a command
-            start, i = i, _arithmetic(text, i + 3)
+        elif text.startswith("$((", i) and (close := _arithmetic(text, i + 3)) is not None:  # arithmetic: a number once expanded, never a command
+            start, i = i, close
             chars.append(text[start:i])
             expands = True
         elif text.startswith("$(", i):
@@ -255,12 +255,15 @@ def _word(text: str, i: int, depth: int, out: list[list[str]]) -> tuple[_Word, i
     return ("".join(chars), expands), i
 
 
-def _arithmetic(text: str, i: int) -> int:
-    """The index after the )) that closes an arithmetic (( whose body starts at i."""
+def _arithmetic(text: str, i: int) -> int | None:
+    """The index after the )) that closes an arithmetic (( whose body starts at i; None when the ) that closes the second (
+    has no ) at once after it, which bash reads as two subshells (or $( and a subshell), not arithmetic."""
     open_ = 2
     while i < len(text) and open_:
         open_ += {"(": 1, ")": -1}.get(text[i], 0)
         i += 1
+        if open_ == 1 and i < len(text) and text[i] != ")":
+            return None
     if open_:
         raise _Unreadable
     return i
@@ -281,6 +284,8 @@ def _peel(argv: list[_Word], depth: int) -> list[list[str]]:
             argv = argv[1:]
         elif word == "function":
             argv = argv[2:]
+        elif word == "coproc":  # bash runs what follows in the background, its NAME before a compound command a name
+            argv = argv[2:] if len(argv) > 2 and argv[2][0] in {*_KEYWORDS, "for", "case", "select"} else argv[1:]
         elif word in ("for", "case", "select"):
             return []  # a loop or case header, not a command
         elif name in _SHELLS or name in ("eval", "su"):

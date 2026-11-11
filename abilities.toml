@@ -643,20 +643,20 @@ state = "built"
 what = "The voice_note tool on Yerk's own MCP server: a script the room writes, when the owner asks for a voice note or to say it out loud, becomes a spoken note in the room's own work folder, checked before it is handed back, which `send` posts as a Discord voice message. The daemon runs it, since a room's shell has no network."
 how = [
   "Script: `[[pause]]` alone on a line is a section break, each section its own call joined by half a second of silence, a section over 4,000 characters split again at its paragraphs; `(break)` is a short pause; a section under 50 characters joins the next with a `(break)`, since a voice glues a stray syllable to a short one.",
-  "Voice: MiniMax speech-2.8-hd (English_FriendlyPerson, speed 1.18) first, with the private folder's pronunciation rules; on any MiniMax failure the whole note goes to Fish Audio s2.1-pro-free, so a note never changes voice mid-way. Mood tags in brackets are dropped for MiniMax and passed to Fish.",
+  "Voice: every section on Fish Audio s2.1-pro-free; a failure on any section means no note, and the error names fish. Mood tags in brackets are passed to Fish, which acts on them.",
   "Sound: loudness to -14 LUFS, then opus at 48 kHz in an ogg file, what Discord plays as a voice message.",
   "Check: the first 20 seconds are read back by whisper-1 and must match the script's opening; a note that does not is deleted and the room told, so a note is never handed back unheard.",
   "Send: `send` posts it with no text as a voice message (flag 8192, its duration and waveform); one Discord refuses goes as the plain audio file, and the room says so.",
   "Spend: every paid call is a spend row in the ledger, the morning diff says the day's total, and a note past US$1 waits for the owner's yes.",
-  "English only: both voices and the check are English; another language needs other voices and another check.",
+  "English only: the voice and the check are English; another language needs another voice and another check.",
 ]
 tier = "paid"
-keys = ["openai", "minimax|fish"]
-provider = "MiniMax, and Fish Audio when MiniMax fails"
-model = "speech-2.8-hd, then s2.1-pro-free; whisper-1 for the check"
-needs = "ffmpeg on the machine; a MiniMax key at secrets/minimax.key and a Fish Audio key at secrets/fish.key in the private folder (either one makes notes, MiniMax first); the install's OpenAI key (secrets/openai.key) for the check; pronunciation rules in voice/pronounce.txt there, one word/say-it a line, optional"
-price = "US$100 a million characters on MiniMax speech-2.8-hd (its pay-as-you-go pricing page) and US$0 on Fish Audio s2.1-pro-free (its pricing page), both read 2026-10-22, plus US$0.002 for the 20-second check on whisper-1: a 1,000-character note is about 10 US cents"
-key = "put each key on the first line of its own file in the private folder's secrets/, 0600: minimax.key and fish.key; the next call reads it, no restart"
+keys = ["openai", "fish"]
+provider = "Fish Audio"
+model = "s2.1-pro-free; whisper-1 for the check"
+needs = "ffmpeg on the machine; a Fish Audio key at secrets/fish.key in the private folder; the install's OpenAI key (secrets/openai.key) for the check"
+price = "US$0 on Fish Audio s2.1-pro-free (its pricing page), read 2026-10-22, plus US$0.002 for the 20-second check on whisper-1: a 1,000-character note is about 0.2 US cents"
+key = "put the key on the first line of its own file in the private folder's secrets/, 0600: fish.key; the next call reads it, no restart"
 free_path = "a text reply"
 asked_as = ["voice note", "voice message", "send me audio", "say it out loud"]
 
@@ -904,7 +904,7 @@ tier = "free"
 needs = "Python document libraries on the box"
 price = "none"
 free_path = "a PDF or an image is read in the room as it is; other files through a worker"
-why_not = "After the rooms move."
+why_not = "a workbook and a PDF already become text as they land, a scanned page marked, and the render tool turns a Word file or a slide deck into a PDF a room reads; still missing: a Word file or a slide deck read as text the way a workbook is."
 asked_as = ["read spreadsheets", "read excel", "this excel file", "this word document", "read office files"]
 
 [abilities.make-documents]
@@ -1131,7 +1131,7 @@ tier = "free"
 needs = "the hook endpoint (built)"
 price = "none"
 free_path = "this is the free path"
-why_not = "Layer 6: hooks and gates."
+why_not = "the quote-aware parse, the trash rewrite for deletes, the restart and config gate and the tamper rows of a changed setting already ship with gates; still missing: an append-only change ledger, and a check that each file write reached the disk."
 asked_as = ["shell guards", "safe deletes", "trash instead of delete"]
 layer = 6
 
@@ -1147,7 +1147,7 @@ tier = "free"
 needs = "nothing beyond the rooms"
 price = "none"
 free_path = "this is the free path"
-why_not = "After the rooms move: decision 27 lifts this install's ledger."
+why_not = "a message of the owner's that rates a reply already goes to the layer's taste ledger, and the rated replies ride in the owner's rooms; still missing: a reaction as a rating, and the score per reply in shadow that blocks only when the owner arms it."
 asked_as = ["learn my taste", "taste ledger"]
 
 [abilities.watchdog]
@@ -1163,7 +1163,7 @@ tier = "free"
 needs = "the box's user service manager"
 price = "none"
 free_path = "this is the free path"
-why_not = "Layer 7: observability and operations."
+why_not = "a frozen daemon already misses its watchdog beat and is restarted, a stall past its limit is a row with a dump of what ran, and a turn that dies says why in the room; still missing: a page to the owner from outside the daemon when it is down, and a reaper for processes a finished run left behind."
 asked_as = ["is yerk down", "watchdog", "stuck process"]
 layer = 7
 
@@ -1179,7 +1179,7 @@ tier = "free"
 needs = "the run ledger and the delivery ledger"
 price = "none"
 free_path = "this is the free path"
-why_not = "Layer 7: observability and operations."
+why_not = "the morning diff already matches each person's message to a reply, so a turn that posted nothing or never ended shows there, a message missed while the connection was down included, and a check that cannot run says unknown; still missing: a check for a job run that says success but did nothing."
 asked_as = ["messages you never answered", "messages with no reply", "dead turns"]
 layer = 7
 
@@ -1195,7 +1195,7 @@ tier = "free"
 needs = "the box's user service manager and the run ledger"
 price = "none"
 free_path = "this is the free path"
-why_not = "Layer 7: `yerk deploy` with a proof card and rollback."
+why_not = "`yerk deploy` already waits for a quiet room and a finished index rebuild, posts the proof card and rolls back, and a turn a restart cut off runs again; still missing: a restart on its own in a night window."
 asked_as = ["restart yourself", "safe restart", "restart proof"]
 layer = 7
 
@@ -1210,7 +1210,7 @@ tier = "free"
 needs = "a running yerkd"
 price = "none"
 free_path = "this is the free path"
-why_not = "Layer 7: the phone-width card; `yerk status` already prints the rooms, workers and jobs."
+why_not = "`yerk status` and /status already print the phone-width card with the rooms, each account's meters and the jobs due; still missing: an account login about to run out, on the card and named in the owner's rooms (`yerk accounts` and the doctor say it)."
 asked_as = ["status card", "account meters", "login expiry"]
 layer = 7
 
@@ -1230,8 +1230,10 @@ why_not = "Layer 7; `yerk config get` already answers one setting from the code 
 asked_as = ["every setting", "settings map", "all your settings"]
 layer = 7
 
+# Built with the morning diff (cleanup F9-07), its measurement (decision 26): tests/test_observe.py's planted payload change
+# shows the next morning in the machine room only, and tests/test_sheet_hard.py's part over its line is said there once a day.
 [abilities.prompt-diff]
-state = "described"
+state = "built"
 what = "Measures what loads into each room's prompt and posts a morning diff, so a change in what the model is given is seen the next day."
 how = [
   "Each room's prompt measured from its newest recorded session start.",
@@ -1241,7 +1243,6 @@ tier = "free"
 needs = "the jobs ability"
 price = "none"
 free_path = "this is the free path"
-why_not = "Layer 7: the morning diff; `yerk map` already shows each part against its budget."
 asked_as = ["morning diff", "prompt size", "what loads into the prompt"]
 layer = 7
 
@@ -1329,7 +1330,7 @@ tier = "free"
 needs = "read access to the old install"
 price = "none"
 free_path = "this is the free path"
-why_not = "Layer 9: rooms move over."
+why_not = "`yerk room add` already moves a Discord chat in as a room with its voice and history, and `yerk import` files a chat's history or a box's notes; still missing: the old install's jobs, the shadow run compared on queue wait, first visible line and dropped turns, and the rollback."
 asked_as = ["import my rooms", "move my rooms", "import from openclaw"]
 layer = 9
 
@@ -1539,9 +1540,9 @@ layer = 11
 
 [abilities.claude-docs]
 state = "built"
-what = "Knows its own harness from the source: `yerk docs` keeps the Claude docs Yerk runs on (the prompting guide, each model's prompting page, the Claude Code pages on settings, hooks, memory, sandboxing, MCP, the command line and the system prompt flags) in the state folder as a memory root of class shared, so every room's own recall finds them, below the owner's notes, and cites docs/claude/<slug>.md:line; what a room is handed per message never holds them. `yerk doctor` fetches them from the web once a week ([docs] refresh_days in yerkd.toml, 7; [docs] fetch = false turns that off, and `yerk docs refresh` still fetches when run; [docs] pages replaces the list), and a page whose content changed is a line in the morning diff, since a changed guide means the rules may be stale against it."
+what = "Knows its own harness from the source: `yerk docs` keeps the Claude docs Yerk runs on (the prompting guide, each model's prompting page, the Claude Code pages on settings, hooks, memory, sandboxing, MCP, the command line and the system prompt flags) in the state folder as a memory root of class shared, so every room's own recall finds them, below the owner's notes, and cites docs/claude/<slug>.md:line; what a room is handed per message never holds them. `yerk doctor` fetches them from the web once a day ([docs] refresh_days in yerkd.toml, 1; [docs] fetch = false turns that off, and `yerk docs refresh` still fetches when run; [docs] pages replaces the list), and a page whose content changed is a line in the morning diff, since a changed guide means the rules may be stale against it."
 tier = "free"
-needs = "web access for the weekly refresh; the pages are indexed like any memory file"
+needs = "web access for the daily refresh; the pages are indexed like any memory file"
 free_path = "this is the free path"
 asked_as = ["claude docs", "what the docs say", "the prompting guide"]
 command = "docs"

@@ -32,7 +32,7 @@
 - Replies: the final text only, split under 2,000 characters, never inside a code block.
 - Files: one path (`send_file`): a snapshot under a new name in the room's outbox, size and type
   checked against what the bot can send (measured, BOT_UPLOAD), the message id recorded, a
-  visible notice on any miss that names the limit in bytes.
+  visible notice on any miss that names the limit (in exact bytes only where MB would read the same).
 - Slash commands (/model, /effort, /new, /stop, /status): on connect exactly this install's, on the
   guilds its rooms live in, never global; the owner's only, in a room only, each the daemon method
   the room's tool or `yerk` command calls; every answer ephemeral, inside Discord's three seconds.
@@ -345,6 +345,13 @@ class DiscordChannel:
                 self.known[i] = shown(await asyncio.wait_for(ch.guild.fetch_member(i), 5))
             except Exception as e:                # a name, never a reason to hold the turn: said in words until fetched
                 log.debug("room %s: no name for %s yet: %s", room.name, i, e)
+
+    def channel_name(self, ref: str) -> str:
+        """A `watch` ref's channel ("discord:<id>") by the name the client's cache holds, for the status card; "" when it holds
+        none or the ref is another service's, so the card says the id. Never fetched: the card is read on the loop."""
+        kind, _, cid = str(ref).partition(":")
+        ch = self.client.get_channel(int(cid)) if kind == "discord" and cid.isdigit() else None
+        return str(getattr(ch, "name", "") or "")
 
     def _there(self, room: Room, ch: Any) -> tuple[str, Any]:
         """Who the owner talks to in the channel `room` watches (`watch_assistant`), and that channel's name, else its id."""
@@ -1002,8 +1009,8 @@ class DiscordChannel:
         fut = asyncio.run_coroutine_threadsafe(coro, self.loop)
         return fut.result(180) if wait else None
 
-    def open_card(self, room: str, text: str, kind: str = "turn") -> None:
-        self._call(self._open(room, text, kind), wait=False)
+    def open_card(self, room: str, text: str) -> None:
+        self._call(self._open(room, text, "turn"), wait=False)
 
     def progress(self, room: str, text: str) -> None:
         self.want[room] = text

@@ -4,15 +4,18 @@ itself this way: one need at a time (two open PRs that both move the code ceilin
 
 - Start ([needs] auto, default true; false is the hand road of needs.py exactly): a new need starts its builder when no need
   is in flight (needs.FLIGHT), else it is queued; a need that reaches live, held or stuck starts the oldest queued one. A
-  builder that fails starts once more; failed twice, the need is stuck. A need still filed that no build ever claimed (filed
+  builder that fails starts once more; failed twice, the need is stuck; one cut off by a stop nobody asked for (a box
+  shutdown) is queued, uncounted, and the next tick starts it. A need still filed that no build ever claimed (filed
   before the pipeline, or with auto off) is queued on a tick (`pickup`); one a build came back from stays, a person's call.
+  At the daemon's start a need left building with no worker (the daemon died between the claim and its start) is queued (`begin`).
 - The watch (`tick`: its own task every EVERY seconds, and once each time the channel connects): built, then its PR
   (github.pr_for), then PR; a PR's head's checks all in ([needs] contexts) and green: the cold read; one red: a fix worker
-  while fixes < [needs] fix_cap, else held; not all in within [needs] checks_minutes of the head: stuck; no PR NO_PR after
-  the build: stuck (the box's sync is down).
+  while fixes < [needs] fix_cap, else held; not all in within [needs] checks_minutes of the head: stuck, and PR again once
+  they are all in and final and no other need is in flight (`late`); no PR NO_PR after the build: stuck (the box's sync is down).
 - The cold read, a fresh worker and never the builder: `merge` merges with the head's sha (github.merge, the sha guard);
   `fix first: why` is a fix worker (it counts toward the cap) and the checks again; `unsure: why` is held. A fix worker:
-  `fixed: sha` is PR again with its new head; `cannot: why` is held.
+  `fixed: sha` is PR again with its new head; `cannot: why` is held. A read or a fix cut off by a stop nobody asked for
+  (workers.cut_off, a box shutdown) is no verdict: PR again, a fix's count as it was.
 - A plug-in branch (need 36 of 2026-11-02, needs.plugins): the cold read and a fix worker are handed the need's branch in
   a plug-in's own repository at its head then (`heads`); the merge checks each lands as a fast-forward before GitHub's and
   lands it after (needs.land), in the checkout the rooms run; one that cannot land holds the need, said with why.
@@ -140,6 +143,16 @@ class Pipeline:
             if r.get("state") == "filed" and not r.get("last") and "worker" not in r and await self.set(r, {"state": "queued"}, "filed"):
                 await self.say(words.NEED_PICKED_UP.format(n=r["n"], day=r["day"], room=r["asks"][0]["room"], ability=words.line(str(r["ability"]), 80)))
 
+    def begin(self) -> None:
+        """The daemon's start, before any of its tasks: a need left building with no worker (need_build's claim, the daemon
+        gone before the start answered) is queued again, so the queue starts it; building is in flight, so it held the queue
+        for good. One building with a worker is left alone: its end comes through workers.reattach."""
+        for r in needs.load(self.y.state):
+            if r.get("state") == "building" and not r.get("worker") and needs.update(
+                    self.y.memory, self.y.state, str(r["day"]), int(r["n"]), {"state": "queued"},
+                    lambda x: x.get("state") == "building" and not x.get("worker")):
+                log.info("needs: need %s of %s was claimed and its builder never started, so it is queued again", r["n"], r["day"])
+
     async def stop(self, r: dict[str, Any], state: str, why: str) -> None:
         """Held (a person decides) or stuck, with why; the next queued need starts."""
         await self.set(r, {"state": state, "why": why, "worker": ""})
@@ -166,6 +179,8 @@ class Pipeline:
         for r in needs.load(self.y.state):
             if r.get("state") in ("built", "pr"):
                 await self.checked(r, tok, repo)
+            elif r.get("state") == "stuck" and r.get("pr") and r.get("head") and tok and repo:
+                await self.late(r, tok, repo)
             elif r.get("state") in ("merged", "deploying") and r.get("merged_at"):
                 await self.ship(r, tok)
         await self.pickup()
@@ -209,9 +224,25 @@ class Pipeline:
                            f"checks red after {k} fix{'es' * (k != 1)}: {', '.join(sorted(red))}")
         elif len(ctx) >= int(self.conf().get("contexts") or 7) and all(v[0] == "success" for v in ctx.values()):
             await self.read(r)
-        elif now - since > float(self.conf().get("checks_minutes") or 40) * 60:
-            await self.stop(r, "stuck", f"checks never came: {len(ctx)} of {int(self.conf().get('contexts') or 7)} in "
-                                        f"{words.span(now - since)} on {str(r['head'])[:7]}")
+        elif now - since > float(self.conf().get("checks_minutes") or 40) * 60:     # the final ones counted, the pending named
+            wait = ", ".join(sorted(k for k, v in ctx.items() if v[0] not in ("success", *RED)))
+            await self.stop(r, "stuck", words.NEED_CHECKS_NEVER.format(
+                final=sum(v[0] in ("success", *RED) for v in ctx.values()), of=int(self.conf().get("contexts") or 7),
+                span=words.span(now - since), head=str(r["head"])[:7]) + words.NEED_CHECKS_PENDING.format(names=wait) * bool(wait))
+
+    async def late(self, r: dict[str, Any], tok: str, repo: str) -> None:
+        """A stuck need with a PR whose head's checks have all come in since, each final: PR again, and the next tick reads it
+        as any other, green the cold read and red a fix (2026-11-09: need 81 sat stuck with all seven green). Only when no
+        other need is in flight, the queue's own test (two in flight edit the same lines of the same bookkeeping files), read
+        before the checks and again after them, since a need can start while they are read; until then it stays stuck and
+        says nothing more."""
+        if self.flight():
+            return
+        c = await asyncio.to_thread(github.checks, repo, str(r["head"]), tok)
+        ctx: dict[str, list[str]] = c.get("contexts") or {}
+        if c["ok"] and len(ctx) >= int(self.conf().get("contexts") or 7) and all(v[0] in ("success", *RED) for v in ctx.values()) and not self.flight():
+            await self.set(r, {"state": "pr", "checks": ctx}, "stuck")
+            await self.say(words.NEED_LATE.format(n=r["n"], pr=r["pr"]))
 
     async def heads(self, r: dict[str, Any]) -> dict[str, dict[str, str]]:
         """The need's plug-in branches as they stand: need-DAY-N, the name its briefs give, in each plug-in repository the
@@ -250,10 +281,18 @@ class Pipeline:
         await self.say(words.NEED_READING.format(n=r["n"], pr=r["pr"]))
 
     async def ended(self, row: dict[str, Any], end: dict[str, Any], role: str, day: str, n: int) -> bool:
-        """A cold read's or a fix worker's end (Yerkd.need_built hands it here): the need's next step from its first line."""
-        self.y.ledger.worker_set(str(row["id"]), relay="skipped", relay_note=f"need {role}: its line went to the machine room")
+        """A cold read's or a fix worker's end (Yerkd.need_built hands it here): the need's next step from its first line. Its
+        note first: no line is made when the need is gone or another worker's, and every road past that says one."""
         r = needs.find(needs.load(self.y.state), day, n)
-        if r is None or r.get("worker") != row["id"]:
+        mine = r is not None and r.get("worker") == row["id"]
+        self.y.ledger.worker_set(str(row["id"]), relay="skipped",
+                                 relay_note=(words.LINE_POSTED if mine else words.LINE_NONE).format(what=f"need {role}"))
+        if r is None or not mine:
+            return True
+        if workers.cut_off(end):                         # no verdict: PR again, a fix's count as it was, the next tick again
+            back = {"fixes": max(0, int(r.get("fixes") or 0) - 1)} if role == "fix" else {}
+            await self.set(r, {"state": "pr", "worker": "", **back}, "reading", "fixing")
+            await self.say(words.NEED_CUT.format(n=n, pr=r["pr"], what=words.NEED_CUT_WHAT[role]))
             return True
         first, how = workers.first_line(Path(row["report"])), workers.settled_state(row, workers.tasks_of(Path(row["tasks"])), end)[1]
         verdict, _, why = first.partition(":")
@@ -313,7 +352,10 @@ class Pipeline:
         running = await asyncio.to_thread(self.units.running)
         if r["state"] == "deploying":
             mine = [d for d in rows if float(d["at"]) >= float(r.get("deploy_at") or 0)]
-            if (bad := [d for d in mine if d.get("outcome") not in ("begun", "proven")]):
+            if (bad := [d for d in mine if d.get("outcome") not in ("begun", "proven")]) and bad[-1].get("outcome") == "gave up":
+                await self.set(r, {"state": "merged", "unit": ""}, "deploying")      # nothing failed, nothing deployed: again
+                await self.say(words.NEED_DEPLOY_AGAIN.format(n=r["n"], pr=r["pr"], why=words.line(str(bad[-1].get("note") or ""), 160)))
+            elif bad:
                 await self.stop(r, "held", f"deploy failed: {words.line(str(bad[-1].get('note') or bad[-1]['outcome']), 160)}")
             elif not mine and running is not None and r.get("unit") not in running and self.now() - float(r.get("deploy_at") or 0) > 60:
                 await self.stop(r, "held", "deploy failed: its unit ended with no deploy row (the fetch, or the unit itself)")
