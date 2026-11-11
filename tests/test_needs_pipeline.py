@@ -190,6 +190,28 @@ def test_checks_that_never_come_are_stuck_and_a_new_head_restarts_the_clock(pipe
     assert row(y, day)["state"] == "stuck" and row(y, day)["why"].startswith("checks never came: 2 of 7 in ")
 
 
+def test_a_stuck_need_whose_checks_all_come_late_goes_back_to_pr_and_on_and_one_with_no_pr_stays(pipe):
+    y, rec, hub, units, rooms = pipe                     # 2026-11-09: need 81 sat stuck with all seven green
+    day = need(y, "example-room", *ASK)["day"]
+    to_pr(y, hub, day)
+    status = ("GET", f"/repos/{SLUG}/commits/{'a' * 40}/status")
+    hub.routes[status] = (200, {"state": "pending", "statuses": [*GREEN[:6], {"context": "ci/g", "state": "pending"}]})
+    y.pipeline.now = lambda: time.time() + 41 * 60
+    asyncio.run(y.pipeline.tick())
+    asyncio.run(y.pipeline.tick())                       # one still pending: it stays stuck
+    assert row(y, day)["state"] == "stuck"
+    hub.routes[status] = (200, {"state": "success", "statuses": GREEN})
+    asyncio.run(y.pipeline.tick())
+    assert row(y, day)["state"] == "pr" and rec.lines[-1] == words.NEED_LATE.format(n=1, pr=7)
+    asyncio.run(y.pipeline.tick())                       # the next tick as any other: green, the cold read
+    assert row(y, day)["state"] == "reading" and role(y, row(y, day)["worker"])["role"] == "read"
+    n2 = need(y, "her-room", "post a reel", "no upload tool", "upload a video")["n"]
+    asyncio.run(y.pipeline.set(row(y, day, n2), {"state": "stuck", "why": "no pull request seen"}))
+    calls = len(hub.calls)
+    asyncio.run(y.pipeline.tick())
+    assert row(y, day, n2)["state"] == "stuck" and not [c for c in hub.calls[calls:] if "/status" in c[1]]
+
+
 def test_the_cold_read_saying_fix_first_or_unsure(pipe):
     y, rec, hub, units, rooms = pipe
     day = need(y, "example-room", *ASK)["day"]

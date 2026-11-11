@@ -8,8 +8,8 @@ itself this way: one need at a time (two open PRs that both move the code ceilin
   before the pipeline, or with auto off) is queued on a tick (`pickup`); one a build came back from stays, a person's call.
 - The watch (`tick`: its own task every EVERY seconds, and once each time the channel connects): built, then its PR
   (github.pr_for), then PR; a PR's head's checks all in ([needs] contexts) and green: the cold read; one red: a fix worker
-  while fixes < [needs] fix_cap, else held; not all in within [needs] checks_minutes of the head: stuck; no PR NO_PR after
-  the build: stuck (the box's sync is down).
+  while fixes < [needs] fix_cap, else held; not all in within [needs] checks_minutes of the head: stuck, and PR again once
+  they are all in and final (`late`); no PR NO_PR after the build: stuck (the box's sync is down).
 - The cold read, a fresh worker and never the builder: `merge` merges with the head's sha (github.merge, the sha guard);
   `fix first: why` is a fix worker (it counts toward the cap) and the checks again; `unsure: why` is held. A fix worker:
   `fixed: sha` is PR again with its new head; `cannot: why` is held.
@@ -166,6 +166,8 @@ class Pipeline:
         for r in needs.load(self.y.state):
             if r.get("state") in ("built", "pr"):
                 await self.checked(r, tok, repo)
+            elif r.get("state") == "stuck" and r.get("pr") and r.get("head") and tok and repo:
+                await self.late(r, tok, repo)
             elif r.get("state") in ("merged", "deploying") and r.get("merged_at"):
                 await self.ship(r, tok)
         await self.pickup()
@@ -212,6 +214,15 @@ class Pipeline:
         elif now - since > float(self.conf().get("checks_minutes") or 40) * 60:
             await self.stop(r, "stuck", f"checks never came: {len(ctx)} of {int(self.conf().get('contexts') or 7)} in "
                                         f"{words.span(now - since)} on {str(r['head'])[:7]}")
+
+    async def late(self, r: dict[str, Any], tok: str, repo: str) -> None:
+        """A stuck need with a PR whose head's checks have all come in since, each final: PR again, and the next tick reads it
+        as any other, green the cold read and red a fix (2026-11-09: need 81 sat stuck with all seven green)."""
+        c = await asyncio.to_thread(github.checks, repo, str(r["head"]), tok)
+        ctx: dict[str, list[str]] = c.get("contexts") or {}
+        if c["ok"] and len(ctx) >= int(self.conf().get("contexts") or 7) and all(v[0] in ("success", *RED) for v in ctx.values()):
+            await self.set(r, {"state": "pr", "checks": ctx}, "stuck")
+            await self.say(words.NEED_LATE.format(n=r["n"], pr=r["pr"]))
 
     async def heads(self, r: dict[str, Any]) -> dict[str, dict[str, str]]:
         """The need's plug-in branches as they stand: need-DAY-N, the name its briefs give, in each plug-in repository the

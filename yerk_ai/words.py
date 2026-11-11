@@ -673,6 +673,7 @@ NEED_FIXED = WORKING + " need {n}: PR {pr} fixed, its checks run again"
 NEED_READING = WORKING + " need {n}: PR {pr} checks passed, its cold read starts"
 NEED_HELD = NOT_DONE + " need {n} held, a person decides: {ability}\n{why}"
 NEED_STUCK = NOT_DONE + " need {n} stuck: {ability}\n{why}"
+NEED_LATE = WORKING + " need {n}: PR {pr} checks all came in late, so it goes on"
 NEED_MERGED = DONE + " need {n}: PR {pr} merged; the deploy is next"
 NEED_PLUGIN = "\nwith its branch in the {names} plug-in too"              # need 36: a fix in a plug-in's own repository
 NEED_LANDED = "\nthe {names} plug-in has it too, from each room's next session"
