@@ -1541,7 +1541,7 @@ layer = 11
 state = "built"
 what = "Knows its own harness from the source: `yerk docs` keeps the Claude docs Yerk runs on (the prompting guide, each model's prompting page, the Claude Code pages on settings, hooks, memory, sandboxing, MCP, the command line and the system prompt flags) in the state folder as a memory root of class shared, so every room's own recall finds them, below the owner's notes, and cites docs/claude/<slug>.md:line; what a room is handed per message never holds them. `yerk doctor` fetches them from the web once a week ([docs] refresh_days in yerkd.toml, 7; [docs] fetch = false turns that off, and `yerk docs refresh` still fetches when run; [docs] pages replaces the list), and a page whose content changed is a line in the morning diff, since a changed guide means the rules may be stale against it."
 tier = "free"
-needs = "web access for the weekly refresh; the pages are indexed like any memory file"
+needs = "web access for the daily refresh; the pages are indexed like any memory file"
 free_path = "this is the free path"
 asked_as = ["claude docs", "what the docs say", "the prompting guide"]
 command = "docs"

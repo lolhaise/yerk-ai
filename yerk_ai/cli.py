@@ -911,7 +911,7 @@ def parser() -> argparse.ArgumentParser:
     rs.add_argument("--dry-run", action="store_true", help="verify and say each step, write nothing")
     rs.add_argument("--force", action="store_true", help="over the layer after a backup of it, and under a running yerkd")
     said = ("the daily check (the private folder's layout, rooms.toml keys, memory classes, tokens, the index, hooks, disk growth, "
-            "the rule files' shape) and the crash repair of NUL lines, each file backed up first; once a week it also fetches "
+            "the rule files' shape) and the crash repair of NUL lines, each file backed up first; once a day it also fetches "
             "the Claude docs from the web ([docs] fetch = false in yerkd.toml turns that off)")
     dc = sub.add_parser("doctor", help=said, description=said)
     dc.add_argument("--dry-run", action="store_true", help="say what would be mended or scrubbed, change nothing")
