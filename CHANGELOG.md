@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-11-11
 
-### fast-mode (#?)
+### fast-mode (#51)
 
 - `/fast` in a room's own channel turns Claude Code's fast mode on or off for that room, from the next reply (the
   owner's order of 2026-11-11). Fast mode bills usage credits, never the plan, so it reaches Claude Code only in a room
@@ -29,6 +29,8 @@ version changes.
   with it off launches as before.
 - The copy a compaction runs on never gets fast mode, whatever the room's setting: fast replies were asked for, not a
   fast compaction billed to credits. Once a copy is taken, the room runs at standard speed until its next new process.
+- While a room has it on, every turn in that room's process runs fast, a job's message into the room included: fast
+  mode is the session's, and switching it around one message would read the conversation again at the fast rate.
 - The check leaves nothing behind: the empty folder Claude Code makes under the account's `projects/` is removed. A
   Fable 5.2 model that is not found drops fast mode with it, as `/model` does.
 - budgets.toml: `[code] lines` 28,898 to 29,066 with its dated note.
