@@ -1886,6 +1886,7 @@ def parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     a = parser().parse_args(argv)
     logging.basicConfig(level=logging.INFO, stream=sys.stderr, format="%(asctime)s %(name)s %(message)s")
+    logging.getLogger("mcp").setLevel(logging.WARNING)   # the MCP library logs every request at INFO: two thirds of the journal
     priv, state = private_dir(a.private), state_dir(a.state)
     claim(state)                                 # before the ledger opens: a second daemon writes nothing
     y = Yerkd(priv, state, port=a.port, idle_minutes=a.idle_minutes,
