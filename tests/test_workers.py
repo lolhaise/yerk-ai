@@ -830,6 +830,32 @@ def test_a_worker_unit_has_a_4g_memory_ceiling_no_swap_and_outlives_a_kill_for_m
         assert "RuntimeMaxSec=60" in props and "KillMode=control-group" in props    # the time cap and the stop as they were
 
 
+def test_the_exit_record_carries_the_units_kills_for_memory_and_a_count_it_cannot_read_leaves_it_as_before(tmp_path, monkeypatch):
+    # ExecStopPost runs in the unit's own cgroup and reads its memory.events there (systemd 259, two units on the box, 2026-11-11)
+    unit = "user.slice/user-1000.slice/user@1000.service/app.slice/yerk-worker-abc123.service"
+    events, d = tmp_path / "fs" / unit / "memory.events", tmp_path / "w"
+    events.parent.mkdir(parents=True)
+    d.mkdir()
+    (tmp_path / "cgroup").write_text(f"0::/{unit}\n")
+    monkeypatch.setattr(workers, "OWN_CGROUP", tmp_path / "cgroup")
+    monkeypatch.setattr(workers, "CGROUP", tmp_path / "fs")
+    for k, v in {"SERVICE_RESULT": "success", "EXIT_CODE": "exited", "EXIT_STATUS": "0", "INVOCATION_ID": "e3f0"}.items():
+        monkeypatch.setenv(k, v)
+
+    def record():
+        assert workers.post(d) == 0
+        return json.loads((d / "exit.json").read_text())
+    events.write_text("low 0\nhigh 0\nmax 63\noom 2\noom_kill 2\noom_group_kill 0\n")
+    assert {k: v for k, v in record().items() if k != "ended"} == {"result": "success", "code": "exited", "status": "0", "oom_kill": 2}
+    events.write_text("low 0\nhigh 0\n")                       # no count in it
+    assert sorted(record()) == ["code", "ended", "result", "status"]
+    events.unlink()                                             # the cgroup already gone
+    assert sorted(record()) == ["code", "ended", "result", "status"]
+    events.write_text("oom_kill 1\n")
+    monkeypatch.delenv("INVOCATION_ID")                         # not in a unit: the count would be another cgroup's
+    assert sorted(record()) == ["code", "ended", "result", "status"]
+
+
 def launched_with(s, monkeypatch, conf):
     """The -p properties of a worker's unit on an install whose [workers] is `conf`: its settings, and the launcher Workers builds."""
     w = workers.Workers(s.ledger, workers.settings(s.tmp, conf), s.accounts, Cooldowns(None), {}, {}, {})

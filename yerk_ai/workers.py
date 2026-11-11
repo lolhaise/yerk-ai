@@ -88,6 +88,7 @@ CREDENTIAL = re.compile(r"key|token|secret|pass|auth|cookie|credential", re.I)  
 PUMP_EVERY = 5.0                               # seconds between looks for an idle room with a relay waiting
 YOUNG = 120.0                                  # seconds after its start a worker missing from the unit list is not lost yet
 MEMORY_MAX = "4G"                              # a worker unit's memory ceiling (MemoryMax), no swap past it
+CGROUP, OWN_CGROUP = Path("/sys/fs/cgroup"), Path("/proc/self/cgroup")   # cgroup v2: where a unit's memory.events is
 SIZE, SUFFIXES = re.compile(r"([1-9][0-9]*)([KMGT]?)"), ("", "K", "M", "G", "T")   # a size as systemd reads it, base 1024
 
 
@@ -303,13 +304,30 @@ def run(spec_path: Path) -> int:
 
 
 def post(folder: Path) -> int:
-    """ExecStopPost: how the unit ended, as systemd tells it, in exit.json (written whole, then renamed)."""
-    rec = {"result": os.environ.get("SERVICE_RESULT", ""), "code": os.environ.get("EXIT_CODE", ""),
-           "status": os.environ.get("EXIT_STATUS", ""), "ended": round(time.time(), 3)}
+    """ExecStopPost: how the unit ended, as systemd tells it, and how many of its processes the kernel killed for memory
+    (oom_kills; left out when it cannot be read), in exit.json (written whole, then renamed)."""
+    rec: dict[str, Any] = {"result": os.environ.get("SERVICE_RESULT", ""), "code": os.environ.get("EXIT_CODE", ""),
+                           "status": os.environ.get("EXIT_STATUS", ""), "ended": round(time.time(), 3)}
+    if (n := oom_kills()) is not None:
+        rec["oom_kill"] = n
     tmp = folder / f"{EXIT}.tmp"
     tmp.write_text(json.dumps(rec))
     os.replace(tmp, folder / EXIT)
     return 0
+
+
+def oom_kills() -> int | None:
+    """memory.events' oom_kill of the cgroup this process runs in: the processes any OOM killer killed there, its children's
+    included; None when it cannot be read. Only inside a unit (systemd's INVOCATION_ID): ExecStopPost runs in the unit's own
+    cgroup, which still exists then (seen on systemd 259, 2026-11-11), and anywhere else the count is another cgroup's."""
+    if not os.environ.get("INVOCATION_ID"):
+        return None
+    try:
+        own = next(x[3:] for x in OWN_CGROUP.read_text().splitlines() if x.startswith("0::"))
+        events = (CGROUP / own.lstrip("/") / "memory.events").read_text().split()       # "low 0 high 0 ... oom_kill 1 ..."
+        return int(events[events.index("oom_kill") + 1])
+    except (OSError, ValueError, IndexError, StopIteration):
+        return None
 
 
 # the watch
