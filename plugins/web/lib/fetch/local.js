@@ -357,7 +357,9 @@ export async function localFetchRung({ url, settings, extractMode, signal, timeo
   // login that lives in the Browserbase context, so it goes straight to L3.
   const next = judged.verdict === "not_found" ? "stop" : judged.verdict === "login" ? "L3" : "F2";
   const partial = ex?.content && String(ex.content).trim() && judged.verdict === "thin" ? { status, finalUrl, ctype, ex } : undefined;
-  return { rung: "F1", ok: false, wall: judged.verdict === "not_found" ? `http_${status}` : judged.verdict, verdict: judged.verdict, outcome, status, ms, next, partial };
+  // finalUrl on a failed read too (2026-11-08): where the HTTP redirect chain ended is the site's own answer, and
+  // the ladder's off-site landing guard admits that domain for the browser rungs that follow.
+  return { rung: "F1", ok: false, wall: judged.verdict === "not_found" ? `http_${status}` : judged.verdict, verdict: judged.verdict, outcome, status, ms, next, partial, finalUrl };
 }
 
 // ---- F2: one local browser, on demand --------------------------------------------

@@ -14,6 +14,7 @@
 // rung tried. Both carry `paid`, the Browserbase calls the read paid for (tools.mjs books them).
 import { BrowserbaseError, bbFetch } from "./browserbase.js";
 import { writtenQuestion } from "./commons.js";
+import { registrableDomain, siteGroupFor } from "./contexts.js";
 import { judgePage } from "./detect.js";
 import { collapse, extractHtml, extractMarkdown, markdownToText } from "./extract.js";
 import { runSessionRung, wallFromNavError } from "./l3.js";
@@ -41,6 +42,7 @@ const WALL_TEXT = {
   invalid_url: ["The URL is not a public http(s) address.", "no", "Use a public http or https URL."],
   guest_choice: ["This Bookings page stayed on Microsoft's \"Sign in or continue as guest\" screen: its meeting types and open times show only after a click on Continue as guest, which only the machine's own browser (F2) makes, and no rung got past it.", "maybe", "Retry in a minute (the machine's browser may have been busy); if it stays, ask the page's owner for the open times in words."],
   empty: ["Every rung loaded the page but found no readable text.", "maybe", "The content may be inside an image, a canvas or an app that needs interaction."],
+  offsite_redirect: ["A browser rung was sent off to another site by the page's scripts or its ads, and what loaded there is not this page.", "maybe", "Retry (an ad redirect is random); if the site it landed on is the page you actually want, fetch that URL directly; else open the page in the owner's own browser."],
 };
 
 // A Microsoft Bookings page is read as a guest (need 21, 2026-10-24): every share link Microsoft makes for a Bookings
@@ -274,13 +276,15 @@ function successPayload({ url, win, attempts, extractMode, startedAt }) {
 function failurePayload({ url, wall, attempts, extractMode, startedAt, host, partial, hopeless }) {
   const [what, retry, next] = /^login(_required)?$/.test(wall) && isBookingsPage(url) ? BOOKINGS_SIGNIN : describeWall(wall); // a free rung names it login
   const lastStatus = [...attempts].reverse().find((a) => typeof a.status === "number")?.status;
+  const off = attempts.filter((a) => a.offsite);
   const lines = [
-    `fetch-plus could not read this page. wall=${wall} host=${host} rungs=${trail(attempts) || "none"} retry=${retry}`,
+    `fetch-plus could not read this page. wall=${wall} host=${host} rungs=${trail(attempts) || "none"} retry=${retry}${off.length ? ` offsite=${[...new Set(off.map((a) => a.offsite))].join(",")}` : ""}`,
     "",
     `What stopped it: ${what}`,
     `Rungs tried: ${attempts.length ? attempts.map((a) => `${rungLabel(a)} -> ${a.outcome}${typeof a.status === "number" ? ` (HTTP ${a.status})` : ""}, ${a.ms} ms`).join("; ") : "none"}.`,
     `Next move: ${next}`,
   ];
+  if (off.length) lines.push(`Off-site landing: ${off.map((a) => `${a.rung} was sent to ${a.landed}`).join("; ")}. Refused: an ad or script redirect, not this page; none of its text is in this answer.`);
   if (hopeless) lines.push(`Ceiling: two free rungs met the same ${hopeless.kind} wall, so the fetch rungs L1 and L2 were skipped and the call was capped at ${hopeless.seconds} s (hopelessMaxSeconds).`);
   if (partial?.ex?.content) {
     lines.push("", "Partial text from the best rung (short, may be a stub):", "", String(partial.ex.content).slice(0, 4000));
@@ -315,7 +319,7 @@ function pickWall(attempts) {
   // quota, auth): that is what stopped the ladder. Naming the earlier rung's captcha here
   // would say a solver ran when none did, and would hide a quota or billing problem.
   if (l3 && /^bb_/.test(l3.wall)) return l3.wall;
-  const order = ["guest_choice", "login_required", "captcha_unsolved", "geo_blocked", "proxy_restricted", "tls_error", "dns_error", "too_large", "binary_content"];
+  const order = ["guest_choice", "login_required", "captcha_unsolved", "geo_blocked", "offsite_redirect", "proxy_restricted", "tls_error", "dns_error", "too_large", "binary_content"];
   for (const w of order) if (attempts.some((a) => a.wall === w)) return w;
   const http = [...attempts].reverse().find((a) => /^http_\d{3}$/.test(a.wall));
   if (http) return http.wall;
@@ -327,6 +331,40 @@ function pickWall(attempts) {
 // A local rung was refused (not merely given a JS shell): this host should rest the home line.
 function isLocalBlock(a) {
   return a?.verdict === "challenge" || a?.verdict === "blocked" || a?.status === 429 || a?.status === 403;
+}
+
+// Off-site landing (OpenClaw's fetch-plus, 2026-11-08): the HTTP redirect chain is the only redirect authority. F1
+// follows a site's HTTP redirects by hand (local.js fetchPublicOnly), so where it lands is the site's own answer, as is
+// the URL asked for; a browser rung (F2, F3, L3n, L3) that ends on any other registrable domain was moved by the page's
+// scripts or its ads, and what it read there is not this page. The case: a near-empty classifieds search page read thin
+// at F1, F2 rendered it, an ad sent the tab to another domain, and a scareware page came back as the page asked for
+// (status 200, extractor F2, nothing flagged the domain), then site memory remembered F2 for that site. Hosts of one site
+// group (contexts.js: x.com, twitter.com, t.co) are one site. The refused rung keeps none of the landing's text, and
+// keeps its spend fields: Browserbase bills a session wherever it landed, and paidRungs books it.
+function siteOf(hostname, settings) {
+  const h = String(hostname || "").toLowerCase();
+  const domain = registrableDomain(h);
+  const group = siteGroupFor(h, settings);
+  return { domain, group: group && group !== h && group !== domain ? group : null };
+}
+
+function offsiteLanding({ url, finalUrl, allowed, settings }) {
+  const to = hostOf(finalUrl || "");
+  if (!to) return null;
+  const land = siteOf(to, settings);
+  if (allowed.has(land.domain)) return null;
+  const from = siteOf(hostOf(url), settings);
+  if (land.group && land.group === from.group) return null;
+  return land.domain;
+}
+
+function refuseOffsite(r, to) {
+  let landed = String(r.finalUrl || "");
+  try {
+    const u = new URL(landed);
+    landed = `${u.origin}${u.pathname}`; // no query string: an ad landing's tracking is not worth repeating
+  } catch {}
+  return { rung: r.rung, ok: false, wall: "offsite_redirect", verdict: "offsite", outcome: `offsite:${to}`, offsite: to, landed: landed.slice(0, 120), status: r.status, ms: r.ms, phases: r.phases, ctxNote: r.ctxNote, proxies: r.proxies, proxyRetry: r.proxyRetry, pictures: r.pictures, driver: r.driver, ...(r.billed ? { billed: true, seconds: r.seconds, bytes: r.bytes } : {}) };
 }
 
 // ---- entry -----------------------------------------------------------------------
@@ -377,6 +415,8 @@ export async function runFetchPlus(args, ctx, executionContext = {}, deps = {}) 
       ...(memPlan ? { mem: `${memPlan.start}/${memPlan.bb}${memPlan.probe ? "/retry" : ""}` } : {}),
       ...(hopeless ? { hopeless, cap: settings.hopelessMaxSeconds } : {}),
       ...(result.answers ? { answers: result.answers.outcome } : {}), // a written question's answer (commons.js)
+      // Off-site landings refused this call (2026-11-08): rung and the registrable domain it was sent to.
+      ...(attempts.some((a) => a.offsite) ? { offsite: attempts.filter((a) => a.offsite).map((a) => `${a.rung}:${a.offsite}`).join(",") } : {}),
       // The F2 split in ms (local.js phases, 2026-10-21): numbers only, so the next measurement reads off this log.
       ...(attempts.find((a) => a.rung === "F2" && a.phases) ? { f2: attempts.find((a) => a.rung === "F2").phases } : {}),
     });
@@ -408,6 +448,18 @@ export async function runFetchPlus(args, ctx, executionContext = {}, deps = {}) 
   // text check (a retailer's product pages: a 70 KB "General PDP Template" whose only text is the
   // footer and the mega-menu) start at the real browser; L1 and L2 cannot render them.
   const hostLc = parsed.hostname.toLowerCase();
+  // Off-site landing guard (2026-11-08, offsiteLanding above): the registrable domains a rung may land
+  // on are the URL's own and wherever F1's HTTP redirect chain ended (admit); a browser rung that ends
+  // anywhere else comes back refused (guard), its text dropped, and the ladder goes on without it.
+  const allowed = new Set([registrableDomain(hostLc)]);
+  const admit = (u) => {
+    const d = registrableDomain(hostOf(u || ""));
+    if (d) allowed.add(d);
+  };
+  const guard = (r) => {
+    const to = r?.ok ? offsiteLanding({ url, finalUrl: r.finalUrl, allowed, settings }) : null;
+    return to ? refuseOffsite(r, to) : r;
+  };
   const l3First = settings.l3FirstHosts.some((h) => hostLc === h || hostLc.endsWith("." + h));
   let next = "L3";
 
@@ -442,6 +494,7 @@ export async function runFetchPlus(args, ctx, executionContext = {}, deps = {}) 
     let f1;
     if (cool?.skip !== "F1" && cool?.skip !== "F12" && !memSkipF1) {
       f1 = guestGate(await localFetchRung({ url, settings, extractMode, signal, timeoutMs: Math.max(2000, Math.min(settings.localFetchTimeoutMs, left() - 20000)), fetchImpl: deps.localFetchImpl || fetch }));
+      admit(f1.finalUrl || f1.partial?.finalUrl); // F1 followed the site's HTTP redirects by hand: its landing is the site's own
       attempts.push(f1);
       if (f1.ok) {
         finish(f1);
@@ -454,7 +507,7 @@ export async function runFetchPlus(args, ctx, executionContext = {}, deps = {}) 
     if (f1?.next === "L3") {
       bbFrom = "L3"; // a login wall: the saved login lives in the site's Browserbase context
     } else if (settings.localBrowserEnabled && (deps.localBrowserRung || localBrowserPresent(settings)) && cool?.skip !== "F12" && !memSkipF2 && left() > 20000) {
-      f2 = guestGate(await (deps.localBrowserRung || localBrowserRung)({ url, settings, extractMode, signal, budgetMs: Math.min(settings.localBrowserMaxSeconds * 1000, left() - 15000), guest: bookings }));
+      f2 = guard(guestGate(await (deps.localBrowserRung || localBrowserRung)({ url, settings, extractMode, signal, budgetMs: Math.min(settings.localBrowserMaxSeconds * 1000, left() - 15000), guest: bookings })));
       attempts.push(f2);
       if (f2.ok) {
         if (f1 && isLocalBlock(f1)) markLocalBlocked(settings, hostLc, f1.outcome, "F1");
@@ -471,7 +524,7 @@ export async function runFetchPlus(args, ctx, executionContext = {}, deps = {}) 
     const walled = (f2 && (f2.verdict === "challenge" || f2.verdict === "blocked")) || cool?.skip === "F12" || memSkipF2;
     if (settings.localTrawlEnabled && walled && left() > 25000) {
       if (localBrowserState().active === 0) await closeLocalBrowser();
-      const f3 = guestGate(await localTrawlRung({ url, settings, extractMode, signal, budgetMs: Math.min(settings.localTrawlMaxSeconds * 1000, left() - 20000), fetchImpl: deps.trawlFetchImpl || fetch }));
+      const f3 = guard(guestGate(await localTrawlRung({ url, settings, extractMode, signal, budgetMs: Math.min(settings.localTrawlMaxSeconds * 1000, left() - 20000), fetchImpl: deps.trawlFetchImpl || fetch })));
       if (!f3.skipped) attempts.push(f3);
       if (f3.next === "stop") return fail(pickWall(attempts));
       if (f3.ok) {
@@ -523,7 +576,7 @@ export async function runFetchPlus(args, ctx, executionContext = {}, deps = {}) 
     // host's memory says proxies were needed (until its daily retry) or the proxied pass would lose its time.
     if (settings.l3NoProxyFirst && !proxiesNeeded && left() > settings.l3NoProxyReserveMs + 15000) {
       const budgetMs = Math.min(settings.l3NoProxyMaxSeconds * 1000, left() - settings.l3NoProxyReserveMs);
-      const r3n = guestGate(await sessionRung({ url, hostname: parsed.hostname, settings, apiKey: creds.apiKey, projectId: creds.projectId, extractMode, budgetMs, signal, fetchImpl, blockPictures: false, proxies: false }));
+      const r3n = guard(guestGate(await sessionRung({ url, hostname: parsed.hostname, settings, apiKey: creds.apiKey, projectId: creds.projectId, extractMode, budgetMs, signal, fetchImpl, blockPictures: false, proxies: false })));
       r3n.rung = "L3n";
       attempts.push(r3n);
       syncProjectUsage(settings, creds, fetchImpl);
@@ -537,7 +590,7 @@ export async function runFetchPlus(args, ctx, executionContext = {}, deps = {}) 
     let blockPictures = settings.l3BlockPictures;
     for (let pass = 0; pass < 2; pass++) {
       const budgetMs = Math.min(settings.l3MaxSeconds * 1000, left() - 1000);
-      const r3 = guestGate(await sessionRung({ url, hostname: parsed.hostname, settings, apiKey: creds.apiKey, projectId: creds.projectId, extractMode, budgetMs, signal, fetchImpl, blockPictures }));
+      const r3 = guard(guestGate(await sessionRung({ url, hostname: parsed.hostname, settings, apiKey: creds.apiKey, projectId: creds.projectId, extractMode, budgetMs, signal, fetchImpl, blockPictures })));
       attempts.push(r3);
       r3.settled?.then(() => syncProjectUsage(settings, creds, fetchImpl)).catch(() => {});
       if (r3.ok) {

@@ -370,7 +370,7 @@ function bookingsRig({ f2 = "app" } = {}) {
   r.deps.localBrowserRung = async (a) => {
     r.seen.f2++;
     f2Args.push(a);
-    if (f2 === "app") return localBrowserRung({ ...a, url: `${base}${APP}`, settings: f2Settings });
+    if (f2 === "app") return { ...(await localBrowserRung({ ...a, url: `${base}${APP}`, settings: f2Settings })), finalUrl: a.url }; // served from 127.0.0.1 in the page's place, so it lands where it was asked (the off-site guard reads it)
     if (f2 === "signin") return { rung: "F2", ok: false, wall: "login", verdict: "login", outcome: "login:url", status: 200, ms: 0, next: "BB", guest: "clicked" };
     const choice = { status: 200, finalUrl: a.url, ctype: "text/html", ex: { content: CHOICE } };
     if (f2 === "short") return { rung: "F2", ok: true, ...choice, outcome: "ok:short", short: true, ms: 0 };
@@ -467,4 +467,179 @@ test("a Bookings page whose guest view went on to Microsoft's sign-in is named s
   assert.equal(other.extractor, "fetch-plus:failed:login");
   assert.doesNotMatch(other.text, /Bookings page/);
   assert.deepEqual(r.f2Args.map((a) => a.guest), [true], "no guest step for another page");
+});
+
+// ---- the off-site landing guard (OpenClaw's fetch-plus, 2026-11-08) -----------------------------------------------
+// A browser rung (F2, F3, L3n, L3) that lands on another registrable domain than the one asked for, and than the one F1's
+// HTTP redirect chain reached, is refused with the wall offsite_redirect and its text never becomes the page's text. Why: a
+// classifieds search page read thin at F1, F2 rendered it, an ad sent the tab to another domain, and a scareware page came
+// back as the page with status 200, then site memory remembered F2 as the step that reads that site.
+const THIN_RESULTS = page("used lamp in the city | Classifieds", "<main><h1>used lamp</h1><p>0 results. Try another search.</p></main>");
+const APP_SHELL = page("App", `<div id="root"></div><script src="/app.js"></script><script src="/vendor.js"></script><script src="/chunk.js"></script><script src="/d.js"></script><script src="/e.js"></script>`);
+const SCAM_TEXT = `Windows has detected wiretapping on your device! Your personal data is at risk. Call support now. ${"Download TotalAV to remove the threats found on this PC. ".repeat(20)}`;
+const LISTING_TEXT = `Brass floor lamp, $35, pickup only. ${"Great condition, shade included, cash on pickup. ".repeat(20)}`;
+const redirect = (to) => new Response("", { status: 301, headers: { location: to } });
+
+let offsiteN = 0;
+// A rig per case: its own state dir (site memory and the call log are keyed on it), F1 pages by URL, an F2 that "reads"
+// wherever the case says it landed, Browserbase Fetch answering the thin page, L3 off.
+function offsiteRig({ pages, landing, landingText = LISTING_TEXT, memory, siteMemory = true } = {}) {
+  const state = path.join(TMP, `offsite-${++offsiteN}`);
+  fs.mkdirSync(state, { recursive: true });
+  if (memory) fs.writeFileSync(path.join(state, "local-cooldown.json"), JSON.stringify(memory));
+  const seen = { f2: 0, f1: [] };
+  const deps = {
+    credentials: { apiKey: "bb_live_FAKE_0123456789", projectId: "fake-project" },
+    localFetchImpl: async (url) => {
+      seen.f1.push(String(url));
+      const hit = pages[String(url)];
+      if (!hit) return html("nope", 404);
+      return typeof hit === "string" && /^https?:\/\//.test(hit) ? redirect(hit) : html(hit);
+    },
+    localBrowserRung: async () => {
+      seen.f2++;
+      return { rung: "F2", ok: true, status: 200, finalUrl: landing, ctype: "text/html", ex: { title: "Landed", content: landingText, visibleText: landingText, articleChars: landingText.length }, outcome: "ok", verdict: "ok", ms: 7 };
+    },
+    trawlFetchImpl: async () => {
+      throw Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNREFUSED" } });
+    },
+    fetchImpl: async (url) => {
+      if (String(url).endsWith("/v1/fetch")) return json({ statusCode: 200, headers: { "content-type": "text/html" }, content: THIN_RESULTS, contentType: "text/html" });
+      return json({}, 404);
+    },
+    settingsOverrides: { stateDir: state, l3Enabled: false, siteMemory, localTrawlUrl: "http://127.0.0.1:9" },
+  };
+  const lastCall = () => JSON.parse(fs.readFileSync(path.join(state, "calls.jsonl"), "utf8").trim().split("\n").at(-1));
+  const memoryFile = () => (fs.existsSync(path.join(state, "local-cooldown.json")) ? JSON.parse(fs.readFileSync(path.join(state, "local-cooldown.json"), "utf8")) : {});
+  return { deps, seen, lastCall, memoryFile };
+}
+
+const offsiteRun = (url, deps) => runFetchPlus({ url, extractMode: "markdown" }, { config: {} }, {}, deps);
+
+test("the off-site case: F1 thin on a classifieds site, F2 lands on another domain: refused, named, the scam text never returned, nothing remembered", async () => {
+  const url = "https://www.classifieds.test/b-city/used-lamp/k0l1700272";
+  const { deps, seen, lastCall, memoryFile } = offsiteRig({ pages: { [url]: THIN_RESULTS }, landing: "https://chancespark.biz/landing?clk=9f3a&sub=totalav", landingText: SCAM_TEXT });
+  const r = await offsiteRun(url, deps);
+  assert.equal(seen.f2, 1);
+  assert.equal(r.extractor, "fetch-plus:failed:offsite_redirect");
+  assert.doesNotMatch(r.text, /wiretapping|TotalAV/i, "the off-site page's text must not come back as this page");
+  assert.match(r.text, /offsite=chancespark\.biz/);
+  assert.match(r.text, /Off-site landing: F2 .*chancespark\.biz\/landing/);
+  assert.doesNotMatch(r.text, /clk=9f3a/, "the landing's query string (tracking) is not printed");
+  assert.match(r.text, /0 results\. Try another search\./, "the partial text is F1's real, thin page");
+  assert.equal(new URL(r.finalUrl).hostname, "www.classifieds.test", "finalUrl never points at the off-site page");
+  assert.match(r.warning, /wall=offsite_redirect rungs=F1:thin:visible_chars_\d+,F2:offsite:chancespark\.biz,L1:/);
+  const row = lastCall();
+  assert.equal(row.outcome, "fail");
+  assert.equal(row.wall, "offsite_redirect");
+  assert.equal(row.offsite, "F2:chancespark.biz");
+  const mem = memoryFile();
+  assert.equal(Object.keys(mem).filter((k) => k.startsWith("www.classifieds.test")).length, 0, "a refused read is not a win: site memory stays empty");
+});
+
+test("an HTTP redirect to another domain is the site's own answer: F1 follows it and reads there, no refusal", async () => {
+  const { deps } = offsiteRig({ pages: { "https://short.test/x": "https://news.test/story", "https://news.test/story": page("Rain moves into the city tonight", ARTICLE) }, landing: "https://never.test/" });
+  const r = await offsiteRun("https://short.test/x", deps);
+  assert.equal(r.extractor, "fetch-plus:F1");
+  assert.equal(r.finalUrl, "https://news.test/story");
+  assert.match(r.text, /Paragraph 30: the weather office says a band of rain/); // Readability lifts the h1 into the title
+});
+
+test("a browser landing on the domain F1's HTTP redirect chain reached is allowed (F1 is the redirect authority)", async () => {
+  const { deps, seen } = offsiteRig({ pages: { "https://short.test/y": "https://app.test/page", "https://app.test/page": APP_SHELL }, landing: "https://app.test/page" });
+  const r = await offsiteRun("https://short.test/y", deps);
+  assert.equal(seen.f2, 1);
+  assert.equal(r.extractor, "fetch-plus:F2");
+  assert.equal(r.finalUrl, "https://app.test/page");
+  assert.match(r.text, /Brass floor lamp/);
+  assert.match(r.warning, /read this at F2 after F1:thin/);
+});
+
+test("another host of the same registrable domain is the same site: www to m is allowed", async () => {
+  const url = "https://www.classifieds.test/b-region/floor-lamp/k0l9004";
+  const { deps } = offsiteRig({ pages: { [url]: THIN_RESULTS }, landing: "https://m.classifieds.test/b-region/floor-lamp/k0l9004" });
+  const r = await offsiteRun(url, deps);
+  assert.equal(r.extractor, "fetch-plus:F2");
+  assert.equal(r.finalUrl, "https://m.classifieds.test/b-region/floor-lamp/k0l9004");
+});
+
+test("site memory starts the climb at F2, so F1 never ran: an off-site landing has no HTTP truth behind it and is refused; the memory entry is left as it was", async () => {
+  const url = "https://www.classifieds.test/b-city/lamp/k0l1700272";
+  const iso = new Date().toISOString();
+  const { deps, seen, lastCall, memoryFile } = offsiteRig({ pages: { [url]: THIN_RESULTS }, landing: "https://chancespark.biz/other", landingText: SCAM_TEXT, memory: { "www.classifieds.test": { start: "F2", readAt: iso, probeAt: iso } } });
+  const r = await offsiteRun(url, deps);
+  assert.equal(seen.f1.length, 0, "F1 was skipped by memory");
+  assert.equal(seen.f2, 1);
+  assert.equal(r.extractor, "fetch-plus:failed:offsite_redirect");
+  assert.doesNotMatch(r.text, /wiretapping/i);
+  assert.match(r.warning, /rungs=F2:offsite:chancespark\.biz,L1:/);
+  const row = lastCall();
+  assert.equal(row.mem, "F2/L1");
+  assert.equal(row.offsite, "F2:chancespark.biz");
+  assert.deepEqual(memoryFile()["www.classifieds.test"], { start: "F2", readAt: iso, probeAt: iso });
+});
+
+// A Browserbase browser session with no network: the API answers through deps.fetchImpl, and the page is driven by a
+// stand-in for playwright-core (settings.playwrightCorePath), which asks globalThis.mockSessionPage what each session loads.
+const MOCK_PLAYWRIGHT = path.join(TMP, "mock-playwright-core.mjs");
+fs.writeFileSync(MOCK_PLAYWRIGHT, `export const chromium = {
+  async connectOverCDP(connectUrl) {
+    let land = { url: "about:blank", title: "", html: "", text: "" };
+    const page = {
+      route: async () => {},
+      on: () => {},
+      mainFrame: () => null,
+      url: () => land.url,
+      waitForLoadState: async () => {},
+      goto: async (url) => {
+        land = await globalThis.mockSessionPage(connectUrl, url);
+        if (land.navError) throw new Error(land.navError);
+        return { status: () => land.status ?? 200 };
+      },
+      evaluate: async (js) => (String(js).includes("textLen") ? { title: land.title, head: land.html, textLen: land.text.length, text: land.text } : { html: land.html, title: land.title, url: land.url, text: land.text }),
+    };
+    const context = { pages: () => [page], newPage: async () => page };
+    return { contexts: () => [context], newContext: async () => context, close: async () => {} };
+  },
+};
+`);
+
+// sessions: (body, n) => what the n-th session loads ({ url, title, html, text } or { navError }); body is the create call's.
+function sessionRig({ sessions, overrides = {} }) {
+  const state = path.join(TMP, `session-${++offsiteN}`);
+  fs.mkdirSync(state, { recursive: true });
+  const made = new Map();
+  globalThis.mockSessionPage = async (connectUrl) => made.get(connectUrl)();
+  const deps = {
+    credentials: { apiKey: "bb_live_FAKE_0123456789", projectId: "fake-project" },
+    fetchImpl: async (url, init = {}) => {
+      const u = String(url);
+      if (u.endsWith("/v1/fetch")) return json({ statusCode: 200, headers: { "content-type": "text/html" }, content: THIN_RESULTS, contentType: "text/html" });
+      if (u.endsWith("/v1/sessions") && init.method === "POST") {
+        const body = JSON.parse(init.body);
+        const id = `session-${made.size + 1}`;
+        const connectUrl = `wss://connect.example/${id}`;
+        const n = made.size;
+        made.set(connectUrl, () => sessions(body, n));
+        return json({ id, connectUrl }, 201);
+      }
+      if (/\/v1\/sessions\/[^/]+$/.test(u)) return json({ id: u.split("/").at(-1), status: "COMPLETED", proxyBytes: 0 });
+      return json({}, 404);
+    },
+    settingsOverrides: { stateDir: state, localEnabled: false, siteMemory: false, contextStrategy: "none", usageSyncMinutes: 0, _settleDelaysMs: [0], playwrightCorePath: MOCK_PLAYWRIGHT, ...overrides },
+  };
+  return { deps, made };
+}
+
+const LANDED = { url: "https://chancespark.biz/landing?clk=9f3a", title: "You won", html: page("You won", `<main><p>${SCAM_TEXT}</p><p>${SCAM_TEXT}</p></main>`), text: `${SCAM_TEXT} ${SCAM_TEXT}` };
+
+test("a browser session sent off-site is refused at L3n and L3, and both sessions are still booked: Browserbase bills a session wherever it landed", async () => {
+  const { deps, made } = sessionRig({ sessions: () => LANDED });
+  const r = await offsiteRun("https://www.classifieds.test/b-city/used-lamp/k0l1700272", deps);
+  assert.equal(made.size, 2, "L3n, then L3 with proxies");
+  assert.equal(r.extractor, "fetch-plus:failed:offsite_redirect");
+  assert.doesNotMatch(r.text, /wiretapping|TotalAV/i);
+  assert.match(r.warning, /rungs=L1:thin:visible_chars_\d+,L2:thin:visible_chars_\d+,L3n:offsite:chancespark\.biz,L3:offsite:chancespark\.biz$/);
+  assert.deepEqual(r.paid.map((p) => [p.rung, p.proxies]), [["L1", false], ["L2", true], ["L3n", false], ["L3", true]]);
+  assert.ok(r.paid.find((p) => p.rung === "L3").bytes >= 1048576, "the proxied session's bytes estimate is booked");
 });
