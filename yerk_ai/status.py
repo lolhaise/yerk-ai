@@ -356,6 +356,68 @@ def card(s: dict[str, Any], now: float | None = None) -> list[str]:
     return out + [stall_line(s["stalls"], W.TODAY)]
 
 
+def room_card(s: dict[str, Any], room: str, now: float | None = None) -> list[str]:
+    """/status typed in `room`: the box card's shape, every line at most words.PHONE columns opening with its own icon,
+    never a dash (STYLE.md). The room in three lines (the model its next reply launches with and its account; its session's
+    tokens over its window and its compactions; its thinking level, and fast mode while on), the tank (tank's numbers, two
+    lines an account in number order, the room's own marked, a rest other than the account's weekly reset said), what runs
+    (this room's turn first, at most four lines), today's speed and spend, then a red line only for trouble: a stall today,
+    no backup or a stale one, a timer list not read."""
+    now = float(s["at"]) if now is None else now
+    W = words
+    mine: dict[str, Any] = next((r for r in s["rooms"] if r["room"] == room), {})
+    h = mine.get("head") or {}
+    out = [W.line(W.ROOM_HEAD.format(parts=" · ".join(x for x in (h.get("model"), W.tag(h.get("account") or "")) if x)))]
+    if held := h.get("context"):
+        out.append(W.line(W.ROOM_HELD.format(held=W.tokens(held)) + (
+            W.ROOM_OF.format(window=W.tokens(h["window"]), pct=round(100 * held / h["window"])) if h.get("window") else "") + (
+            W.ROOM_COMPACTED.format(n=h["compactions"]) if h.get("compactions") is not None else "")))
+    else:
+        out.append(W.ROOM_NEW)
+    fast = W.ROOM_FAST if mine.get("fast") else ""
+    if h.get("effort"):
+        out.append(W.line(W.ROOM_THINK.format(effort=h["effort"]) + fast))
+    elif fast:
+        out.append(W.ROOM_FAST_ONLY)
+    out += ["", W.TANK]
+    rows, nexts = tank(s["accounts"], now, bool(s.get("live")))
+    for r in sorted(rows, key=lambda r: (W.number(r["name"]) or 10**6, r["name"])):     # by number, not the order tried
+        lead = (W.ON_THIS if r["name"] == h.get("account") else "") + (W.DONE if r["green"] else "")
+        asleep = W.ASLEEP.format(until=W.short_when(r["rest"], now)) if r["rest"] and abs(r["rest"] - (r["week"] or 0)) > 60 else ""
+        first = f"{lead}{{name}} {{meters}}" if r["meters"] is not None else f"{lead}{W.NO_READING}"
+        if W.width(" ".join(first.format(name=r["tag"], meters=r["meters"]).split()) + asleep) > W.PHONE:
+            asleep = asleep.removeprefix(" · ")             # too wide with its rest: the rest on a line of its own
+            out.append(W.named(first, r["tag"], meters=r["meters"]))
+        else:
+            out.append(W.named(first + asleep, r["tag"], meters=r["meters"]))
+            asleep = ""
+        if r["when"] or r["bill"]:
+            out.append(W.line(resets(r["when"], r["bill"])))
+        out += [W.line(asleep)] if asleep else []
+        if r["old"] is not None:
+            out.append(W.named(W.OLD_READING, r["tag"], ago=r["old"]))
+    out += [W.line(n) for n in nexts] + [""]
+    busy = []
+    for r in sorted(s["rooms"], key=lambda r: r["room"] != room):          # this room's own turn first
+        if r["since"] is not None:
+            took = now - r["since"]
+            busy.append(W.named(f"{W.NOT_DONE if took > BLOCKED else W.BUSY} {W.TURN_OF}" + (W.QUEUED.format(n=r["waiting"]) if r["waiting"] else ""),
+                                W.HERE if r["room"] == room else r["room"], took=W.span(took)))
+    busy += [W.line(f"{W.NOT_DONE if gone else W.BUSY} {text}") for gone, text in said(s["workers"], now)]
+    out += (busy if len(busy) <= 4 else [*busy[:3], W.line(f"{W.BUSY} {W.AND_MORE.format(n=len(busy) - 3)}")]) or [W.QUIET]
+    if (sp := s.get("speed")) and any(v is not None for v in sp.values()):     # none before the day's first message
+        out.append(W.line(W.ROOM_SPEED.format(day=W.TODAY, **{k: "-" if v is None else W.secs(v) for k, v in sp.items()})))
+    if "spend" in s:                                    # an uncapped install's (collect)
+        out.append(W.line(W.ROOM_SPEND.format(day=W.TODAY, **s["spend"])))
+    if s["stalls"]:
+        out.append(stall_line(s["stalls"], W.TODAY))
+    if "backup" in s and (b := backup_line(s["backup"], now)).startswith(W.NOT_DONE):
+        out.append(b)
+    if s.get("jobs", []) is None:
+        out.append(W.line(f"{W.NOT_DONE} {W.NO_TIMERS}"))
+    return out
+
+
 def said(workers: list[dict[str, Any]], now: float) -> list[tuple[bool, str]]:
     """Each worker as both cards say it, the running first and the waiting in their place in line: (gone, its words)."""
     nth: dict[str, int] = {}

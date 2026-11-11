@@ -10,7 +10,7 @@ import pytest
 from test_idle_compact import FAKE, ROOM, Chan, say, wait_idle
 from test_observe import Timers
 
-from yerk_ai import status
+from yerk_ai import status, words
 from yerk_ai.accounts import Account
 from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai.daemon import Yerkd
@@ -175,3 +175,187 @@ def test_collect_gives_each_room_its_head_read_under_its_lock_and_answers_with_i
     (tmp_path / "rooms" / ROOM).mkdir(parents=True, exist_ok=True)
     (tmp_path / "rooms" / ROOM / "override.json").write_text('{"model": "claude-opus-5-5", "effort": "max"}')
     assert (head()["model"], head()["effort"]) == ("claude-opus-5-5", "max")      # its /model and /effort over rooms.toml
+
+
+# the room card: the brief's sample, line for line, from room_input()
+CARD = """\
+🧠 claude-fable-5-2 · ②
+📚 212k/400k (53%) · 🧹 0
+⚙️ Think: max
+
+⛽ Tank
+① wk 62% · Fable ⚠️100%
+↻ wk Fri 11p · 💳 Dec 8
+➤ ② wk 19% · Fable 35%
+↻ wk Wed 1a · 💳 Nov 22
+③ wk 13% · Fable 11%
+↻ wk Mon 2p · 💳 Nov 14
+🟢④ wk 67% · Fable ⚠️100%
+↻ wk 12a · 💳 Nov 21
+⑤ wk 52% · Fable ⚠️100%
+↻ wk Sun 2a · 💳 Nov 23
+wk next: 🟢④ 12a · then ① Fri 11p
+
+🔨 Quiet, nothing running
+⏱ today: first line 12 s · turn 28 s
+💵 today US$0.27 · week US$4.21"""
+SHOWN: list[list[str]] = []                                  # every card a case renders, for the width test at the end
+
+
+def room_input(**change) -> dict:
+    """The brief's sample: the room on ②, live meters, nothing running, a fresh backup, an uncapped install."""
+    head = {"model": "claude-fable-5-2", "effort": "max", "account": "two", "context": 212000, "window": 400000, "compactions": 0}
+    s = {"at": NOW, "running": True, "live": True, "accounts": sample_accounts(), "workers": [], "jobs": [], "stalls": [],
+         "rooms": [{"room": "example-room", "busy": False, "waiting": 0, "watch": None, "since": None, "account": "",
+                    "fast": False, "head": head}],
+         "speed": {"first": 12.0, "turn": 28.0}, "spend": {"n": 3, "usd": 0.27, "week": 4.21},
+         "backup": {"at": NOW - H, "bytes": 1000}, "units": []}
+    head.update(change.pop("head", {}))
+    return {**s, **change}
+
+
+def card(s: dict, room: str = "example-room") -> list[str]:
+    SHOWN.append(lines := status.room_card(s, room))
+    return lines
+
+
+def test_the_room_card_reads_line_for_line_as_the_box_card_does():
+    assert "\n".join(card(room_input())) == CARD
+
+
+def test_the_room_is_on_the_account_its_head_names_and_the_tank_marks_it():
+    lines = card(room_input(head={"account": "three"}))
+    assert lines[0] == "🧠 claude-fable-5-2 · ③" and "➤ ③ wk 13% · Fable 11%" in lines and "② wk 19% · Fable 35%" in lines
+    assert sum(x.startswith(words.ON_THIS) for x in lines) == 1
+
+
+def test_the_room_on_the_soonest_reset_wears_both_marks():
+    assert "➤ 🟢④ wk 67% · Fable ⚠️100%" in card(room_input(head={"account": "four"}))
+
+
+def test_a_rest_until_other_than_the_weekly_reset_is_said_and_one_until_it_is_not():
+    s = room_input()
+    s["accounts"][2]["rests_until"] = NOW + 3 * H            # two rests until 4:45p, its week resets Wed 1a
+    lines = card(s)
+    assert "➤ ② wk 19% · Fable 35% · 💤 4:45p" in lines
+    assert "① wk 62% · Fable ⚠️100%" in lines and "🟢④ wk 67% · Fable ⚠️100%" in lines      # rest until their own week
+    assert not any("resting" in x for x in lines)
+
+
+def test_a_rest_too_wide_for_the_first_line_gets_a_line_of_its_own():
+    s = room_input(head={"account": "four"})
+    s["accounts"][4] = acct("four", 7, at(12, 0), 2, 21, rest=NOW + 3 * H + 600, five=(1, NOW + 4 * H))
+    lines = card(s)
+    i = lines.index("➤ 🟢④ 5h 1% · wk 7% · Fable 2%")
+    assert lines[i + 1:i + 3] == ["↻ 5h 5:45p · wk 12a · 💳 Nov 21", "💤 4:55p"]
+
+
+def test_a_reading_that_is_not_live_says_its_age_under_its_account():
+    s = room_input()
+    s["accounts"][1] = acct("one", 62, at(13, 23), 100, 8, source="stream", read_at=NOW - 2 * H)
+    lines = card(s)
+    i = lines.index("① wk 62% · Fable ⚠️100%")
+    assert lines[i + 1:i + 3] == ["↻ wk Fri 11p · 💳 Dec 8", "①: last reading 2 h 0 min ago"]
+
+
+def test_a_five_hour_window_comes_first_and_has_its_next_line():
+    s = room_input()
+    s["accounts"][0] = acct("three", 13, at(16, 14), 11, 14, five=(91, NOW + 2 * H))
+    lines = card(s)
+    i = lines.index("③ 5h ⚠️91% · wk 13% · Fable 11%")
+    assert lines[i + 1] == "↻ 5h 3:45p · wk Mon 2p · 💳 Nov 14"
+    assert lines[lines.index("wk next: 🟢④ 12a · then ① Fri 11p") + 1] == "5h next: ③ 3:45p"
+
+
+def test_fast_mode_on_ends_the_think_line():
+    s = room_input()
+    s["rooms"][0]["fast"] = True
+    assert card(s)[2] == "⚙️ Think: max · Fast: on"
+    assert card(room_input(head={"effort": ""}))[2] == ""        # no level named and fast off: no line at all
+    s["rooms"][0]["head"]["effort"] = ""
+    assert card(s)[2] == "⚙️ Fast: on"
+
+
+def test_a_room_with_no_session_yet_says_so():
+    assert card(room_input(head={"context": None}))[1] == "📚 new session"
+
+
+def test_a_part_that_cannot_be_read_is_left_out():
+    assert card(room_input(head={"window": 0}))[1] == "📚 212k · 🧹 0"
+    assert card(room_input(head={"compactions": None}))[1] == "📚 212k/400k (53%)"
+    assert card(room_input(head={"context": 1049000, "window": 1000000, "compactions": 3}))[1] == "📚 1.0m/1.0m (105%) · 🧹 3"
+    assert card(room_input(head={"model": ""}))[0] == "🧠 ②"
+
+
+def test_this_rooms_turn_comes_first_with_what_waits_then_other_rooms_then_workers():
+    s = room_input()
+    s["rooms"] = [{**s["rooms"][0], "room": "example-other", "since": NOW - 120, "head": {}},
+                  {**s["rooms"][0], "since": NOW - 23, "waiting": 2}]
+    s["workers"] = [{"id": "abc123", "room": "example-room", "account": "one", "started": NOW - 180, "cap": 900,
+                     "waiting": False, "queued": None, "gone": False}]
+    lines = card(s)
+    i = lines.index("🔨 this room: turn 23 s, 2 waiting")
+    assert lines[i:i + 3] == ["🔨 this room: turn 23 s, 2 waiting", "🔨 example-other: turn 2 min", "🔨 worker abc123: 3 min of 15"]
+    assert "🔨 Quiet, nothing running" not in lines and lines[0] == "🧠 claude-fable-5-2 · ②"
+
+
+def test_six_running_things_show_three_and_how_many_more():
+    s = room_input()
+    s["rooms"] = [{**s["rooms"][0], "room": f"example-{n}", "since": NOW - 60 * n} for n in range(1, 5)]
+    s["workers"] = [{"id": f"w{n}", "room": "example-1", "account": "one", "started": NOW - 60, "cap": 900, "waiting": False,
+                     "queued": None, "gone": False} for n in range(2)]
+    lines = card(s)
+    i = lines.index("🔨 example-1: turn 1 min")
+    assert lines[i:i + 4] == ["🔨 example-1: turn 1 min", "🔨 example-2: turn 2 min", "🔨 example-3: turn 3 min", "🔨 and 3 more"]
+    assert lines[i + 4].startswith("⏱")
+
+
+def test_a_gone_worker_and_a_blocked_turn_wear_the_red_mark():
+    s = room_input()
+    s["rooms"] += [{**s["rooms"][0], "room": "example-quiet-room-with-a-long-name", "since": NOW - 900}]
+    s["workers"] = [{"id": "def456", "room": "example-room", "account": "one", "started": NOW - 60, "cap": 900,
+                     "waiting": False, "queued": None, "gone": True},
+                    {"id": "aaa111", "room": "example-room", "account": "one", "started": None, "cap": 900, "waiting": True,
+                     "queued": NOW - 30, "gone": False}]
+    lines = card(s)
+    assert f"{words.NOT_DONE} example-quiet-room-wi...: turn 15 min" in lines      # cut as words.named cuts a name
+    assert f"{words.NOT_DONE} worker def456: gone, no result" in lines and "🔨 worker aaa111: waiting, 1st in line" in lines
+
+
+def test_trouble_gets_a_red_line_and_all_well_gets_none():
+    assert not any(x.startswith(words.NOT_DONE) for x in card(room_input()))
+    lines = card(room_input(stalls=[{"seconds": 3.2}], backup=None, jobs=None))
+    assert lines[-3:] == [f"{words.NOT_DONE} stalls today: 1, longest 3.2 s", f"{words.NOT_DONE} backup: none yet",
+                          f"{words.NOT_DONE} jobs: the timer list is unreadable"]
+    assert card(room_input(backup={"at": NOW - 3 * D, "bytes": 123456789}))[-1] == f"{words.NOT_DONE} backup: 72 h 0 min ago, 117.7 MB"
+
+
+def test_a_capped_install_has_no_spend_line_and_a_day_with_no_message_yet_no_speed_line():
+    s = room_input()
+    del s["spend"]
+    assert not any(x.startswith("💵") for x in card(s))
+    assert not any(x.startswith("⏱") for x in card(room_input(speed={"first": None, "turn": None})))
+    assert card(room_input(spend={"n": 9, "usd": 12345.67, "week": 98765.43}))[-1] == "💵 today US$12345.67 · week US$98765.43"
+
+
+def test_one_account_has_no_green_mark_and_no_next_line():
+    s = room_input(head={"account": "one"})
+    s["accounts"] = [a for a in s["accounts"] if a["name"] == "one"]
+    lines = card(s)
+    assert lines[4:8] == ["⛽ Tank", "➤ ① wk 62% · Fable ⚠️100%", "↻ wk Fri 11p · 💳 Dec 8", ""]
+    assert not any(words.DONE in x or "next" in x for x in lines)
+
+
+def test_every_line_of_every_case_fits_a_phone_and_none_is_a_dash_or_carries_an_em_dash():
+    SHOWN.clear()
+    for name, case in list(globals().items()):              # every case above, run again here so this test stands alone
+        if name.startswith("test_") and case is not test_every_line_of_every_case_fits_a_phone_and_none_is_a_dash_or_carries_an_em_dash \
+                and not case.__code__.co_argcount:
+            case()
+    long = room_input(head={"model": "claude-sonnet-5-5", "account": "four", "context": 999999, "compactions": 12345})
+    long["rooms"][0].update(since=NOW - 4000, waiting=12, fast=True)
+    card(long)
+    shown = [x for lines in SHOWN for x in lines]
+    assert len(SHOWN) > 20 and shown
+    assert all(words.width(x) <= words.PHONE and not x.startswith("- ") and "\N{EM DASH}" not in x for x in shown), [
+        x for x in shown if words.width(x) > words.PHONE]
