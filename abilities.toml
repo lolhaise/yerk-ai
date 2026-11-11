@@ -1617,6 +1617,25 @@ needs = "the web ability's plug-in attached to the room; no key, no browser and 
 free_path = "this is the free path"
 asked_as = ["written question", "written questions", "order paper question", "sessional paper", "ourcommons", "government response tabled"]
 
+# need-2026-11-11-87: a room asked what a province's form asks for met web_fetch's binary wall on the form's own Word file
+# and on two PDF copies of it ("these tools read no other binary file"), and answered off the forms list page and the
+# search previews of a copy; filed 2026-11-11.
+[abilities.web-documents]
+state = "built"
+what = "Reads a PDF or a Word file at a web link: web_fetch keeps the file where it named a binary wall, saves it in the room's work folder and answers with its words, a PDF page by page, so a room asked about a form, a notice or a report someone links answers off the document itself; Read opens the saved PDF's pages (a form's boxes and ticks, a scan), and render makes a PDF of a saved Word file."
+how = [
+  "The bytes: the plain fetch from this machine (F1) keeps a document up to 25 MB, known by its own first bytes, never by its name or its type alone; a host that refuses that read is read from Browserbase Fetch's answer (L1, L2, paid, 5 MB at most); never a browser rung, which shows a viewer, never the file.",
+  "Saved: web/<the link's sha1, first 12 hex>.<pdf, docx, doc or odt> in the room's work folder, 0600, as web_image saves a picture; the answer names its path.",
+  "A PDF: pdftotext, a page a `## page N` section, as a PDF sent to a room is read; one with no text on any page is said as a scan, to Read; a dynamic XFA form, whose pages hold only Adobe's \"Please wait...\" placeholder, from its own template: each caption, label and fixed text and a list's choices, never its scripts.",
+  "A Word file: a .docx's document.xml or an .odt's content.xml out of its zip, a paragraph a line, a table's row a line with its cells between \" | \", a check box as ☐ or ☒; a .doc (Word 97-2003) through its piece table, read out of the compound file by hand; no dependency and no LibreOffice.",
+  "As a page's words: cut at web_fetch's max_chars and wrapped as untrusted web content; a file that will not read (a password, no pdftotext) is still saved and named, with why.",
+]
+tier = "free"
+needs = "the web ability's plug-in attached to the room, and poppler-utils (pdftotext) on the machine for a PDF's words; no key, no browser and no sign-in"
+price = "none; a host that refuses the free read is read by Browserbase Fetch at its price, as any page is"
+free_path = "this is the free path"
+asked_as = ["pdf at a link", "pdf link", "link to a pdf", "link to the pdf", "word file at a link", "link to a word file", "docx link", "pdf on the website", "pdf on a website", "the form's pdf"]
+
 # need-2026-11-04-49: a room's web_research at medium came back after 60 s as a timeout with no run id (Claude Code cut the
 # call at the room's own one-minute limit on the server while the plug-in waited up to 170 s), so web_research_result had
 # nothing to collect and the room did the research by hand.

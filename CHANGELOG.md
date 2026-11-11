@@ -8,6 +8,35 @@ version changes.
 
 ## 2026-11-11
 
+### need-2026-11-11-87 (#?)
+
+- A room reads a PDF or a Word file at a web link now: a form, a notice or a report someone links. web_fetch named any
+  such link a binary wall ("these tools read no other binary file"), so a room had the page that links to a document and
+  never the document.
+- web_fetch keeps the file's bytes where it named that wall: the plain read from this machine takes one up to 25 MB,
+  known by its own first bytes (a .docx, whose type says "xml", was read as text before); a site that refuses that read
+  is read from Browserbase Fetch's answer, at its price, as any page is. It saves the file in the room's work folder,
+  next to the pictures web_image saves, and answers with its words as it answers with a page's: a PDF's page by page,
+  a Word file's (.docx, .doc and .odt) a paragraph a line with each table row's cells side by side and a check box as
+  ☐ or ☒. The answer names the saved file: Read opens a PDF's pages (a form's boxes and ticks), and `render` makes a PDF
+  of a Word file.
+- A PDF with no text on any page is said as a scan, to Read; a dynamic XFA form, whose pages show only Adobe's "Please
+  wait..." placeholder, is read from its own template (each caption, label and fixed text, a list's choices). A file
+  that will not read (a password, no pdftotext) is still saved and named, with why. Nothing new to install for Word
+  files; a PDF's words need poppler-utils (pdftotext), already on most Linux boxes.
+- web_fetch's description gains one sentence (152 characters), so budgets.toml's `deferred_tool_names` line goes from
+  3,429 to 3,581 and the session total from 130,071 to 130,223, the dated reason beside them. `yerk explain
+  web-documents` has the ability, found by asks such as "pdf at a link" and "the form's pdf"; the README's Add-ons line
+  names it, the Install line's note on systemd units left to docs/units.md so it stays under 12,000 bytes.
+- Why: on 2026-11-11 a room asked what a province's form is and what it asks for tried web_fetch on the form's own Word
+  file and on two PDF copies of it, met the binary wall each time, and answered from the province's forms list page and
+  the search previews of a copy, saying so. It filed the need (need 87 of 2026-11-11) rather than work around the wall.
+
+**Upgrading**: budgets.toml moves two lines (above); nothing in rooms.toml or yerkd.toml changes. The web plug-in is in
+this repository, so the deploy carries it: a room reads documents from its next process start. Keep poppler-utils
+installed for a PDF's words (`apt install poppler-utils`); without it a PDF is still saved for Read, and the answer says
+why its words are missing.
+
 ### need-2026-11-11-86 (#?)
 
 - A room can click inside a web app whose own top bar offers a paid plan now, such as your mail app with its blue Upgrade

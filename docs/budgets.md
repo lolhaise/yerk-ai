@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 130071`
+- `total = 130223`
 
 ## [session_start.claude_code]
 
@@ -116,10 +116,12 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-11, need-2026-11-11-85: the hands plug-in's mail gains `attachment` (a file a mail carries, one by its number in the read or every one, saved by the plug-in's reader in the room's own work folder to open with Read, and the read numbers each file with its type and size, since a room asked to read a quote sent as a PDF in a mail had the file's name and no way to the file, its shell having no network; filed 2026-11-11): its entry 1,194 to 1,494 as the plug-in's branch need-2026-11-11-85 (1c6df9d) builds it, 300 more, so 1,525 as sent (31 over, as each of the five goes; all five 9,974 built, 10,129 sent, need 75's 2 over kept); so 10,131, no other line lowered for it, the total rose by the 300 (to 130,071 on main's 129,771).
 
+2026-11-11, need-2026-11-11-87: web_fetch reads a PDF or a Word file at a link (its words, a PDF page by page, the file saved in the room's work folder for Read), since a room asked what a province's form asks for met the binary wall on the form's Word file and on two PDF copies of it, and answered off a forms list page and search previews; its description one sentence longer, 152 more as sent (a plug-in's description goes out as written), so the other entries (web-ladder's four and the placeholder) 3,581 on the 3,429 line; no other line lowered for it, the total rose by the 152 (to 130,223 on main's 130,071).
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
 - `yerk_tools = 26700`
-- `deferred_tool_names = 3429`
+- `deferred_tool_names = 3581`
 - `mcp__hands__ = 10131`
 - `mcp__web-ladder__web_image = 913`
 - `skills = 0`

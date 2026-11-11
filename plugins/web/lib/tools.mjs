@@ -8,6 +8,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { readKey, readSettings, scrub, section, spend, where } from "./common.mjs";
+import { KINDS, readDocument } from "./fetch/document.js";
 import { IMAGE_CAP, IMAGE_TYPES, imageInfo, imageWall, runImage } from "./fetch/image.js";
 import { runFetchPlus } from "./fetch/ladder.js";
 import { closeLocalBrowser } from "./fetch/local.js";
@@ -89,7 +90,7 @@ export const TOOLS = [
   {
     name: "web_fetch",
     description:
-      "Read a web page through the fetch ladder: a plain fetch from this machine, then its stealth browser and trawl when installed (all free), then Browserbase (paid) only when a site blocks those. Returns the page as markdown with the rung that read it (F1 to F3 free, L1 to L3 Browserbase), or names the wall when every rung failed (login_required, captcha_unsolved, geo_blocked, http_404 and so on) with each rung tried. A hard site can take up to about two minutes.",
+      "Read a web page through the fetch ladder: a plain fetch from this machine, then its stealth browser and trawl when installed (all free), then Browserbase (paid) only when a site blocks those. Returns the page as markdown with the rung that read it (F1 to F3 free, L1 to L3 Browserbase), or names the wall when every rung failed (login_required, captcha_unsolved, geo_blocked, http_404 and so on) with each rung tried. A PDF or a Word file (.docx, .doc, .odt) comes back as its words, a PDF page by page, saved in this room's work folder, where Read opens a PDF's pages. A hard site can take up to about two minutes.",
     inputSchema: {
       type: "object",
       properties: {
@@ -209,6 +210,7 @@ export async function webFetch(args, { signal, deps = {}, at = AT } = {}) {
     return refuse(scrub(`web_fetch could not run: ${firstLine(err)}`, secrets));
   }
   await spend(at, "web_fetch", fetchRows(p.paid));
+  if (p.document) return documentRead(url, p, { maxChars, at, lines, secrets, opts: deps.document });
   const ex = String(p.extractor || "");
   const wall = ex.startsWith("fetch-plus:failed:") ? ex.slice("fetch-plus:failed:".length) : "";
   const rung = wall ? "" : ex.replace(/^fetch-plus:/, "");
@@ -223,6 +225,51 @@ export async function webFetch(args, { signal, deps = {}, at = AT } = {}) {
   if (!wall && p.warning) lines.unshift(p.warning); // the climb, e.g. "fetch-plus read this at F2 after F1:challenge:cloudflare"
   const inner = [!wall && p.title ? `Title: ${p.title}` : "", cut.text].filter(Boolean).join("\n\n");
   return { content: [{ type: "text", text: scrub([head, ...lines, "", wrapWebContent(inner, "web_fetch")].join("\n"), secrets) }] };
+}
+
+// ---- a document at the link ---------------------------------------------------------------------------------
+// A PDF or a Word file (need 87, fetch/document.js): its bytes come up the ladder from a fetch rung, are saved in the room's
+// work folder as web/<the URL's sha1, first 12 hex>.<ext>, as web_image saves a picture, and its words come back as a page's
+// do, cut at max_chars and wrapped as untrusted. The saved file is the way to what words leave out: Read shows a PDF's
+// pages (a form's boxes, a scan with no text), and render makes a PDF of a Word file. A file that will not read is still
+// saved and named, with why.
+async function documentRead(url, p, { maxChars, at, lines, secrets, opts }) {
+  const { kind, buf } = p.document;
+  const k = KINDS[kind];
+  const rung = String(p.extractor || "").replace(/^fetch-plus:/, "");
+  const by = `${p.finalUrl || url} at ${rung} (${RUNG[rung] ?? rung}): HTTP ${p.status}, ${k.said}`;
+  const dir = path.join(workOf(at), "web");
+  const file = path.join(dir, `${createHash("sha1").update(url).digest("hex").slice(0, 12)}.${k.ext}`);
+  try {
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const tmp = `${file}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, buf, { mode: 0o600 });
+    fs.renameSync(tmp, file);
+  } catch (err) {
+    return refuse(`web_fetch read ${by}, but could not save it in ${dir}: ${err?.code || firstLine(err)}.`);
+  }
+  let r;
+  let why = "";
+  try {
+    r = await readDocument(kind, file, buf, opts);
+  } catch (err) {
+    why = firstLine(err);
+  }
+  const pages = r?.pages ? ` of ${r.pages} page${r.pages === 1 ? "" : "s"}` : "";
+  const text = String(r?.text ?? "");
+  const cut = truncateSanitized(text, maxChars);
+  const look = kind === "pdf" ? "Read it to see its pages as drawn (a form's boxes and ticks, a table, a scan)" : "render(path) makes a PDF of it, then Read that PDF to see its pages as laid out";
+  const head = why
+    ? `web_fetch read ${by}, but not its words: ${why}.`
+    : r.xfa
+      ? `web_fetch read ${by}${pages}, an XFA form whose pages only Adobe Reader draws: ${text.length} characters of its own words, from its template${cut.truncated ? `, the first ${maxChars} below` : ""}.`
+      : !text.trim()
+        ? `web_fetch read ${by}${pages} with no text ${kind === "pdf" ? "on any page (a scan, or pictures of text)" : "in it"}, so nothing below.`
+        : `web_fetch read ${by}${pages}, ${text.length} characters${cut.truncated ? `, the first ${maxChars} below` : ""}.`;
+  const saved = `Saved at ${file}: ${r?.xfa ? "Read shows only its placeholder page; the words below are the form's" : look}.`;
+  if (p.warning) lines.unshift(p.warning);
+  const body = text.trim() ? ["", wrapWebContent(cut.text, "web_fetch")] : [];
+  return { content: [{ type: "text", text: scrub([head, saved, ...lines, ...body].join("\n"), secrets) }] };
 }
 
 // web_search's filters, named as lib/search/provider.js readArgs reads them. readArgs drops a value it cannot use without

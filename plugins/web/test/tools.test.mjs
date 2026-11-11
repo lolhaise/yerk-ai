@@ -1228,13 +1228,199 @@ test("the ladder's site memory: a host resting from this machine's free rungs st
 });
 
 test("web_fetch's binary wall names the way out for an image, so a room never tries its shell; another binary keeps the plain wall", async () => {
-  const r = imageRig({ "pics.example": () => picture(jpeg(4, 4), "image/jpeg"), "docs.example": () => picture("%PDF-1.7", "application/pdf") });
+  const r = imageRig({ "pics.example": () => picture(jpeg(4, 4), "image/jpeg"), "docs.example": () => picture(zipOf({ "a.txt": "not a document" }), "application/zip") });
   const t = textOf(await webFetch({ url: "https://pics.example/media/a.jpg" }, { deps: r.deps, at: WITH }));
   assert.equal(t.split("\n")[0], "web_fetch could not read https://pics.example/media/a.jpg: wall binary_content, rungs F1:binary:image/jpeg. It is an image: use web_image(url), then Read the file it saves.");
-  assert.match(t, /Next move: An image: use web_image\(url\), then Read the file it saves; these tools read no other binary file\./);
-  const pdf = textOf(await webFetch({ url: "https://docs.example/a.pdf" }, { deps: r.deps, at: WITH }));
-  assert.equal(pdf.split("\n")[0], "web_fetch could not read https://docs.example/a.pdf: wall binary_content, rungs F1:binary:application/pdf.");
+  assert.match(t, /Next move: An image: use web_image\(url\), then Read the file it saves; web_fetch reads a PDF or a Word file itself, and these tools read no other binary file\./);
+  const zip = textOf(await webFetch({ url: "https://docs.example/a.zip" }, { deps: r.deps, at: WITH }));
+  assert.equal(zip.split("\n")[0], "web_fetch could not read https://docs.example/a.zip: wall binary_content, rungs F1:binary:application/zip.");
   assert.equal(r.seen.bb.length, 0);
+  // A page or a text that names a PDF's first bytes is still that page or text, never read as a PDF.
+  for (const [body, type] of [["%PDF-1.7 is how a PDF file begins.", "text/plain"], ['{"magic": "%PDF-1.7"}', "application/json"], ["<x>%PDF-1.7</x>", "application/xml"]]) {
+    const q = imageRig({ "notes.example": () => picture(body, type) });
+    const first = textOf(await webFetch({ url: "https://notes.example/pdf-magic" }, { deps: q.deps, at: WITH })).split("\n")[0];
+    assert.match(first, /^web_fetch (read|could not read) https:\/\/notes\.example\/pdf-magic[ :]/);
+    assert.doesNotMatch(first, /a PDF|binary_content/, type);
+  }
+});
+
+// ---- web_fetch on a document (need 87) ----------------------------------------------------------------
+// A room asked what a province's form asks for met the binary wall on the form's Word file and two PDF copies, and answered
+// off a forms list page and search previews. A PDF or a Word file at a link is now read as its words and saved for Read.
+const HAS_PDFTOTEXT = (process.env.PATH || "").split(path.delimiter).some((d) => d && fs.existsSync(path.join(d, "pdftotext")));
+const DOC_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const savedAt = (t) => /^Saved at (\S+): /m.exec(t)?.[1];
+
+// A zip as a .docx or an .odt is one: each member deflated, its central directory and end record.
+function zipOf(files) {
+  const locals = [];
+  const centrals = [];
+  let off = 0;
+  for (const [name, data] of Object.entries(files)) {
+    const raw = Buffer.from(data);
+    const packed = zlib.deflateRawSync(raw);
+    const n = Buffer.from(name);
+    const lh = Buffer.alloc(30);
+    lh.writeUInt32LE(0x04034b50, 0);
+    lh.writeUInt16LE(20, 4);
+    lh.writeUInt16LE(8, 8);
+    lh.writeUInt32LE(zlib.crc32(raw), 14);
+    lh.writeUInt32LE(packed.length, 18);
+    lh.writeUInt32LE(raw.length, 22);
+    lh.writeUInt16LE(n.length, 26);
+    const ch = Buffer.alloc(46);
+    ch.writeUInt32LE(0x02014b50, 0);
+    ch.writeUInt16LE(20, 4);
+    ch.writeUInt16LE(20, 6);
+    ch.writeUInt16LE(8, 10);
+    ch.writeUInt32LE(zlib.crc32(raw), 16);
+    ch.writeUInt32LE(packed.length, 20);
+    ch.writeUInt32LE(raw.length, 24);
+    ch.writeUInt16LE(n.length, 28);
+    ch.writeUInt32LE(off, 42);
+    locals.push(lh, n, packed);
+    centrals.push(ch, n);
+    off += 30 + n.length + packed.length;
+  }
+  const cd = Buffer.concat(centrals);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(centrals.length / 2, 8);
+  end.writeUInt16LE(centrals.length / 2, 10);
+  end.writeUInt32LE(cd.length, 12);
+  end.writeUInt32LE(off, 16);
+  return Buffer.concat([...locals, cd, end]);
+}
+
+// A PDF of pages of lines in Helvetica, and any more objects (a stream's whole body), its xref counted to the byte.
+function pdfOf(pages, extras = []) {
+  const objs = [null, null, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"];
+  const add = (body) => objs.push(body);
+  const kids = pages.map((lines) => {
+    const ops = lines.map((l, i) => `BT /F1 11 Tf 72 ${720 - i * 16} Td (${l.replace(/[()\\]/g, "\\$&")}) Tj ET`).join("\n");
+    const content = add(`<< /Length ${Buffer.byteLength(ops, "latin1")} >>\nstream\n${ops}\nendstream`);
+    return add(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents ${content} 0 R >>`);
+  });
+  extras.forEach(add);
+  objs[0] = "<< /Type /Catalog /Pages 2 0 R >>";
+  objs[1] = `<< /Type /Pages /Kids [${kids.map((k) => `${k} 0 R`).join(" ")}] /Count ${kids.length} >>`;
+  const parts = [Buffer.from("%PDF-1.4\n", "latin1")];
+  const offsets = [];
+  let size = parts[0].length;
+  objs.forEach((body, i) => {
+    const b = Buffer.concat([Buffer.from(`${i + 1} 0 obj\n`, "latin1"), Buffer.isBuffer(body) ? body : Buffer.from(body, "latin1"), Buffer.from("\nendobj\n", "latin1")]);
+    offsets.push(size);
+    size += b.length;
+    parts.push(b);
+  });
+  const xref = `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n${offsets.map((o) => `${String(o).padStart(10, "0")} 00000 n \n`).join("")}`;
+  parts.push(Buffer.from(`${xref}trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${size}\n%%EOF\n`, "latin1"));
+  return Buffer.concat(parts);
+}
+
+const FORM_PDF = () => pdfOf([["Form 9.9 Notice of Example", "Name of owner: ________"], ["Page two: the amount not paid is $1,234.00"]]);
+const W = (body) => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"><w:body>${body}</w:body></w:document>`;
+const FORM_DOCX = () => zipOf({
+  "[Content_Types].xml": "<Types/>",
+  "word/document.xml": W([
+    `<w:p><w:pPr><w:tabs><w:tab w:val="left" w:pos="720"/></w:tabs></w:pPr><w:r><w:t>Form 9.9 Notice of Example</w:t></w:r></w:p>`,
+    `<w:p><w:r><w:t xml:space="preserve">Given under section 12 &amp; </w:t></w:r><w:del><w:r><w:delText>struck words</w:delText></w:r></w:del><w:r><w:t>the Example Act.</w:t></w:r></w:p>`,
+    `<w:tbl><w:tr><w:tc><w:p><w:r><w:t>Name of owner</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Address for service</w:t></w:r></w:p></w:tc></w:tr>`,
+    `<w:tr><w:tc><w:p><w:r><w:t>Alex Placeholder</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>1 Sample Street</w:t></w:r></w:p><w:p><w:r><w:t>Exampletown</w:t></w:r></w:p></w:tc></w:tr></w:tbl>`,
+    `<w:p><w:r><w:fldChar w:fldCharType="begin"><w:ffData><w:checkBox><w:sizeAuto/><w:default w:val="1"/></w:checkBox></w:ffData></w:fldChar></w:r><w:r><w:instrText> FORMCHECKBOX </w:instrText></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r><w:r><w:tab/><w:t>The owner has not paid</w:t></w:r></w:p>`,
+    `<w:p><w:r><mc:AlternateContent><mc:Choice><w:txbxContent><w:p><w:r><w:t>Office use only</w:t></w:r></w:p></w:txbxContent></mc:Choice><mc:Fallback><w:txbxContent><w:p><w:r><w:t>Office use only</w:t></w:r></w:p></w:txbxContent></mc:Fallback></mc:AlternateContent><w:t>Signature: ________</w:t></w:r></w:p>`,
+  ].join("")),
+});
+
+test("web_fetch reads a PDF at a link as its words, a page a section, and saves it in the room's work folder for Read; nothing paid", { skip: !HAS_PDFTOTEXT && "pdftotext is not on this machine" }, async () => {
+  const pdf = FORM_PDF();
+  const r = imageRig({ "forms.example": () => picture(pdf, "application/pdf") });
+  const url = "https://forms.example/en/form-9-9.pdf";
+  const out = await webFetch({ url }, { deps: r.deps, at: ROOM });
+  const t = textOf(out);
+  assert.equal(out.isError, undefined);
+  assert.match(t.split("\n")[0], /^web_fetch read https:\/\/forms\.example\/en\/form-9-9\.pdf at F1 \(a plain fetch from this machine, free\): HTTP 200, a PDF of 2 pages, \d+ characters\.$/);
+  assert.doesNotMatch(t, /binary_content|could not read/);   // the wall the room met on 2026-11-11
+  const file = path.join(WORK, "web", `${createHash("sha1").update(url).digest("hex").slice(0, 12)}.pdf`);
+  assert.equal(savedAt(t), `${file}:`.slice(0, -1));
+  assert.match(t.split("\n")[1], /: Read it to see its pages as drawn \(a form's boxes and ticks, a table, a scan\)\.$/);
+  assert.ok(fs.readFileSync(file).equals(pdf));
+  assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+  assert.match(t, /EXTERNAL_UNTRUSTED_CONTENT/);
+  assert.match(t, /## page 1\nForm 9\.9 Notice of Example\nName of owner: ________/);
+  assert.match(t, /## page 2\nPage two: the amount not paid is \$1,234\.00/);
+  assert.equal(r.seen.bb.length, 0);
+  assert.deepEqual(spendRows(), []);
+  const log = jsonl(path.join(FETCH, "calls.jsonl")).at(-1);
+  assert.deepEqual([log.host, log.rung, log.outcome, log.rungs], ["forms.example", "F1", "ok", "F1:ok"]);
+  const cut = textOf(await webFetch({ url, max_chars: 100 }, { deps: r.deps, at: ROOM }));
+  assert.match(cut.split("\n")[0], /, \d+ characters, the first 100 below\.$/);
+});
+
+test("web_fetch reads a Word file (.docx) at a link: a paragraph a line, a table row with its cells, a check box by its state; no field code, tab stop, struck text or second copy", async () => {
+  const docx = FORM_DOCX();
+  const r = imageRig({ "forms.example": () => picture(docx, DOC_TYPE) });   // its type says "xml": once read as text
+  const t = textOf(await webFetch({ url: "https://forms.example/form-9-9.docx" }, { deps: r.deps, at: ROOM }));
+  assert.match(t.split("\n")[0], /^web_fetch read https:\/\/forms\.example\/form-9-9\.docx at F1 \(a plain fetch from this machine, free\): HTTP 200, a Word file \(\.docx\), \d+ characters\.$/);
+  assert.match(t.split("\n")[1], /^Saved at \S+\.docx: render\(path\) makes a PDF of it, then Read that PDF to see its pages as laid out\.$/);
+  const words = t.slice(t.indexOf("Form 9.9"), t.indexOf("<<<END_EXTERNAL_UNTRUSTED_CONTENT")).trim();
+  assert.deepEqual(words.split("\n"), [
+    "Form 9.9 Notice of Example",
+    "Given under section 12 & the Example Act.",
+    "Name of owner | Address for service",
+    "Alex Placeholder | 1 Sample Street / Exampletown",
+    "☒\tThe owner has not paid",
+    "Office use only",
+    "Signature: ________",
+  ]);
+  assert.ok(fs.readFileSync(savedAt(t)).equals(docx));
+});
+
+test("web_fetch reads a Word 97-2003 file (.doc) through its piece table, and an OpenDocument text file (.odt)", async () => {
+  const doc = fs.readFileSync(new URL("./fixtures/notice.doc", import.meta.url)); // LibreOffice's MS Word 97 export of a placeholder notice
+  const odt = zipOf({
+    mimetype: "application/vnd.oasis.opendocument.text",
+    "content.xml": `<office:document-content xmlns:office="o" xmlns:text="t" xmlns:table="b"><office:body><office:text><text:h>Form 9.9 Notice of Example</text:h><text:p>Owner:<text:tab/>Alex<text:s text:c="2"/>Placeholder<office:annotation><text:p>a reviewer's note</text:p></office:annotation></text:p><table:table><table:table-row><table:table-cell><text:p>Amount</text:p></table:table-cell><table:table-cell><text:p>$1,234.00</text:p></table:table-cell></table:table-row></table:table></office:text></office:body></office:document-content>`,
+  });
+  const r = imageRig({ "doc.example": () => picture(doc, "application/msword"), "odt.example": () => picture(odt, "application/octet-stream") });
+  const d = textOf(await webFetch({ url: "https://doc.example/notice.doc" }, { deps: r.deps, at: ROOM }));
+  assert.match(d.split("\n")[0], /: HTTP 200, a Word 97-2003 file \(\.doc\), \d+ characters\.$/);
+  for (const line of ["Form 9.9 Notice of Example", "Name of owner\tAddress for service", "Alex Placeholder\t1 Sample Street, Exampletown", "The amount not paid is $1,234.00 — “quoted” café.", "Signature: ________________"]) assert.ok(d.includes(`\n${line}\n`), line);
+  assert.match(savedAt(d), /\.doc$/);
+  const o = textOf(await webFetch({ url: "https://odt.example/notice" }, { deps: r.deps, at: ROOM }));
+  assert.match(o.split("\n")[0], /: HTTP 200, an OpenDocument text file \(\.odt\), \d+ characters\.$/);
+  assert.match(o, /\nForm 9\.9 Notice of Example\nOwner:\tAlex  Placeholder\nAmount \| \$1,234\.00\n/);
+  assert.doesNotMatch(o, /reviewer's note/);
+});
+
+test("a scan's PDF says it has no text and names the file to Read; an XFA form's words come from its template; a file that will not read is saved and named with why", { skip: !HAS_PDFTOTEXT && "pdftotext is not on this machine" }, async () => {
+  const template = `<?xml version="1.0"?><xdp:xdp xmlns:xdp="http://ns.adobe.com/xdp/"><template xmlns="http://www.xfa.org/schema/xfa-template/3.3/"><subform name="form1"><draw><value><text>Form 9.9 Notice of Example</text></value></draw><field name="owner"><caption><value><text>Name of owner</text></value></caption><assist><toolTip>Type the owner's name</toolTip></assist></field><field name="paid"><ui><choiceList/></ui><items><text>Paid</text><text>Not paid</text></items></field><draw><value><exData contentType="text/html"><body><p>Signed at <span>Exampletown</span></p></body></exData></value></draw><event activity="click"><script>app.alert("hi")</script></event></subform></template></xdp:xdp>`;
+  const z = zlib.deflateSync(Buffer.from(template));
+  const xfa = pdfOf([["Please wait...", "If this message is not eventually replaced by the proper contents of the document, your PDF", "viewer may not be able to display this type of document."]],
+    [Buffer.concat([Buffer.from(`<< /Length ${z.length} /Filter /FlateDecode >>\nstream\n`, "latin1"), z, Buffer.from("\nendstream", "latin1")])]);
+  const scan = pdfOf([[], []]);
+  const r = imageRig({ "xfa.example": () => picture(xfa, "application/pdf"), "scan.example": () => picture(scan, "application/pdf"), "bad.example": () => picture(FORM_PDF(), "application/pdf") });
+  const x = textOf(await webFetch({ url: "https://xfa.example/form.pdf" }, { deps: r.deps, at: ROOM }));
+  assert.match(x.split("\n")[0], /: HTTP 200, a PDF of 1 page, an XFA form whose pages only Adobe Reader draws: \d+ characters of its own words, from its template\.$/);
+  assert.match(x.split("\n")[1], /: Read shows only its placeholder page; the words below are the form's\.$/);
+  assert.match(x, /\nForm 9\.9 Notice of Example\nName of owner\nPaid\nNot paid\nSigned at Exampletown\n/);
+  assert.doesNotMatch(x, /Please wait|toolTip|Type the owner's name|app\.alert/);
+  const s = textOf(await webFetch({ url: "https://scan.example/scan.pdf" }, { deps: r.deps, at: ROOM }));
+  assert.match(s.split("\n")[0], /: HTTP 200, a PDF of 2 pages with no text on any page \(a scan, or pictures of text\), so nothing below\.$/);
+  assert.match(s.split("\n")[1], /^Saved at \S+\.pdf: Read it to see its pages as drawn/);
+  assert.doesNotMatch(s, /EXTERNAL_UNTRUSTED_CONTENT/);
+  const b = textOf(await webFetch({ url: "https://bad.example/form.pdf" }, { deps: { ...r.deps, document: { pdftotext: path.join(TMP, "no-such-pdftotext") } }, at: ROOM }));
+  assert.match(b.split("\n")[0], /: HTTP 200, a PDF, but not its words: pdftotext \(poppler-utils\) is not on this machine\.$/);
+  assert.ok(fs.existsSync(savedAt(b)));
+});
+
+test("a document this machine was refused is read from Browserbase Fetch's base64 answer at L1, with its spend row; a page's binary wall is unchanged", async () => {
+  const docx = FORM_DOCX();
+  const r = imageRig({}, () => ({ statusCode: 200, headers: {}, content: docx.toString("base64"), contentType: DOC_TYPE, encoding: "base64" }));
+  const t = textOf(await webFetch({ url: "https://walled.example/form-9-9.docx" }, { deps: { ...r.deps, localBrowserRung: undefined, settingsOverrides: { l3Enabled: false, localBrowserEnabled: false } }, at: ROOM }));
+  assert.match(t.split("\n")[0], /^web_fetch read https:\/\/walled\.example\/form-9-9\.docx at L1 \(Browserbase Fetch, paid\): HTTP 200, a Word file \(\.docx\), \d+ characters\.$/);
+  assert.match(t, /Alex Placeholder \| 1 Sample Street \/ Exampletown/);
+  assert.deepEqual(spendRows().map((x) => [x.tool, x.engine]), [["web_fetch", "browserbase-L1"]]);
 });
 
 test("a picture's type and size come from its own bytes: jpeg, png, gif and the three webp forms; an avif or a cut file is none", () => {
