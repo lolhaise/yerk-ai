@@ -134,14 +134,14 @@ def head(state: Path, name: str, room: Any, rp: Any, held: tuple[int, int, int |
     (`held`: its tokens, its compaction window, its compactions, and no new session waiting): the model its next reply
     launches with (its /model choice over rooms.toml, as config.room_settings reads them for spec_for, an alias through
     the install's list; "" when neither names one, since Claude Code's own default has no id Yerk knows), its thinking
-    level ("" alike), the account its session is on (the live process's, else the one it is put on, else accounts.pick's),
-    its tokens (None: no session yet, or a /new waiting), its window (0: left to the model) and compactions (None: not known)."""
+    level ("" alike), the account its session is on (the live process's, else the one its next turn would try, as Room._account
+    picks: the one it is put on unless that one rests), its tokens (None: no session yet, or a /new waiting), its window (0: left
+    to the model) and compactions (None: not known)."""
     tokens, window, compactions, same = held
     settings = config.room_settings(dict(room.conf), state, name, listed)
     model = settings["model"][0]
     own = rp.account.name if rp is not None and hasattr(rp, "account") else ""
-    account = own or config.pinned(state, name, [a.name for a in accounts]) or (
-        pick(accounts, cooldowns, now, model=model).name if accounts else "")
+    account = own or (pick(accounts, cooldowns, now, config.pinned(state, name, [a.name for a in accounts]), model).name if accounts else "")
     return {"model": listed.get(model.lower(), model), "effort": settings["effort"][0], "account": account,
             "context": tokens if tokens and same else None, "window": int(window or 0), "compactions": compactions}
 

@@ -5,13 +5,14 @@ from __future__ import annotations
 
 import calendar
 import time
+from types import SimpleNamespace
 
 import pytest
 from test_idle_compact import FAKE, ROOM, Chan, say, wait_idle
 from test_observe import Timers
 
-from yerk_ai import status, words
-from yerk_ai.accounts import Account
+from yerk_ai import config, status, words
+from yerk_ai.accounts import Account, Cooldowns
 from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai.daemon import Yerkd
 
@@ -175,6 +176,21 @@ def test_collect_gives_each_room_its_head_read_under_its_lock_and_answers_with_i
     (tmp_path / "rooms" / ROOM).mkdir(parents=True, exist_ok=True)
     (tmp_path / "rooms" / ROOM / "override.json").write_text('{"model": "claude-opus-5-5", "effort": "max"}')
     assert (head()["model"], head()["effort"]) == ("claude-opus-5-5", "max")      # its /model and /effort over rooms.toml
+
+
+def test_a_room_put_on_a_resting_account_names_the_account_its_next_turn_would_try(tmp_path):
+    accounts = [Account("one", tmp_path / "cfg1"), Account("two", tmp_path / "cfg2")]
+    cool, room = Cooldowns(tmp_path / "cooldowns.json"), SimpleNamespace(conf={"model": "claude-fable-5-2"})
+    (tmp_path / "rooms" / "example-room").mkdir(parents=True)
+    (tmp_path / "rooms" / "example-room" / "override.json").write_text('{"account": "two"}')
+
+    def account() -> str:                                    # no live process: rp is None
+        return status.head(tmp_path, "example-room", room, None, (0, 0, None, True), accounts, cool, config.models({}), NOW)["account"]
+    assert account() == "two"                                # put on two, which is free: its own account
+    cool.set("two", "limit", NOW + H)                        # two rests: the room's next turn skips it (Room._account)
+    assert account() == "one"
+    cool.set("one", "limit", NOW + H)                        # every account rests: pick's last one, as the turn would get
+    assert account() == "one"
 
 
 # the room card: the brief's sample, line for line, from room_input()
