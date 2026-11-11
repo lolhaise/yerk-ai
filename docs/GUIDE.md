@@ -220,9 +220,9 @@ One SQLite file, `ledger.sqlite`: `turns` (account, models, time to first visibl
 
 - `budgets.toml`: every size limit, in characters as Claude Code counts them
 - `failures.toml`: failure classes and what each one does next
-- `units/`: the daily health call's systemd user timer, the memory index service and the weekly recall bench timer (copy and enable them yourself)
+- `units/`: yerkd's service, the memory index service, the timers of the daily jobs (backup, retention, doctor, curate, morning, health) and the weekly recall bench timer, each in docs/units.md (copy and enable them yourself)
 - `abilities.toml`: every ability, what it needs and its cost tier (free, key or paid), with the free path
-- `rooms.toml.example`, `accounts.toml.example`: templates for your private folder
+- `rooms.toml.example`, `yerkd.toml.example`, `accounts.toml.example`: templates for your private folder
 - `yerk_ai/lifted/`: code taken from other MIT projects and from the author's own tools, each file with its origin; see `NOTICE`
 - `yerk_ai/channels/`: channel adapters (Discord)
 - `plugins/web/`: the web plug-in ("Web reach" above), outside the [code] count
