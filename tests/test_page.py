@@ -1882,6 +1882,7 @@ def test_a_tab_that_never_paints_is_said_unpainted_so_the_room_never_reads_an_ol
 
 
 def test_a_screen_that_is_not_there_or_not_placed_is_said_in_words_and_the_page_opens_once_at_most(tmp_path, monkeypatch):
+    monkeypatch.setattr(pagemod, "PAINT_SECONDS", 0.3)                          # no tab paints here: the wait is not what is proven
     y, _, _ = plain_daemon(tmp_path)
     y.conf["page"] = {"open": [str(opener_script(tmp_path))]}
     assert asyncio.run(y.tool_page("example-room", {"open": True, "screen": "top"})) == {
