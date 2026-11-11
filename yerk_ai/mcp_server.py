@@ -2,9 +2,9 @@
 # official Python SDK) and the send tool's shape are adapted from Hermes Agent v0.22.2,
 # mcp_serve.py (create_mcp_server, messages_send), https://github.com/NousResearch/hermes-agent
 # Copyright (c) 2025 Nous Research. MIT License. See NOTICE.
-"""Yerk AI's own MCP server: twenty-three tools (send, hold, recall, read_memory, remember, worker, schedule, settings, transcribe,
-voice_note, seen, render, watch, need, text, email, delete, reverse_image_search, github_state, page, texts, attachments, zoom), local-only HTTP, preloaded in
-every room; transcribe, voice_note, watch, text, email, reverse_image_search, github_state and attachments are here and not plug-ins because the daemon has the network
+"""Yerk AI's own MCP server: twenty-two tools (send, hold, recall, read_memory, remember, worker, schedule, settings, transcribe,
+voice_note, seen, render, watch, need, text, email, delete, github_state, page, texts, attachments, zoom), local-only HTTP, preloaded in
+page, texts, texting, attachments, zoom, show, people). Transcribe, voice_note, watch, text, email, github_state and attachments are here and not
 plug-ins because the daemon has the network (and github_state the token) and a room's shell has none, seen because no owner room has a Write tool, render
 because LibreOffice needs a writable /tmp a room's sandbox does not give (and LaTeX a sandbox of its own, a shell or none), delete because that sandbox
 folders read-only, and zoom because ffmpeg in a room's shell waits on an approval no one gives mid-turn. A worker gets none of it: by default no MCP server at all, and with
@@ -77,7 +77,6 @@ class Daemon(Protocol):
     async def tool_text(self, room: str, to: str, text: str) -> dict[str, Any]: ...
     async def tool_delete(self, room: str, paths: list[str]) -> dict[str, Any]: ...
     async def tool_email(self, room: str, ti: dict[str, Any]) -> dict[str, Any]: ...
-    async def tool_reverse_image_search(self, room: str, path: str) -> dict[str, Any]: ...
     async def tool_github_state(self, room: str, branch_or_pr: str) -> dict[str, Any]: ...
     async def tool_page(self, room: str, req: dict[str, Any]) -> dict[str, Any]: ...
     async def tool_texts(self, room: str, limit: int) -> dict[str, Any]: ...
@@ -342,16 +341,6 @@ def build(daemon: Daemon, port: int, hook: Handler, control: Handler | None = No
         owner to read first: once they say the word, call it again the same and it runs once. Returns what went, what failed
         and why, and the space freed."""
         return json.dumps(await daemon.tool_delete(caller_room(ctx), paths))
-
-    @mcp.tool()
-    async def reverse_image_search(path: str, *, ctx: Context) -> str:
-        """Searches the web by picture, as Google Lens or TinEye do, since a word search cannot look for a picture: `path` is a
-        picture in this room's folders (its [attachment] path, a web_image file, a watch frame). The daemon sends it to Google
-        Cloud Vision's web detection and returns Google's best guess at what it is, the names it ties to it (a work and its
-        maker, a place, a product), the pages that show it, and the copies and look-alikes it found. Use it when asked where a
-        picture comes from, what it is or who made it; open a page that shows it before you say so, and give the best guess
-        as a guess."""
-        return json.dumps(await daemon.tool_reverse_image_search(caller_room(ctx), path))
 
     @mcp.tool()
     async def zoom(path: str, x0: float, y0: float, x1: float, y1: float, *, ctx: Context) -> str:

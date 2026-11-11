@@ -2,7 +2,7 @@
 
 Written by `yerk docs own` from yerk_ai/mcp_server.py (build) and workers.WORKER_TOOLS; change those and run it again, never this page.
 
-The 23 tools Yerk AI's own MCP server hands every room's Claude Code, preloaded, as mcp__yerk__NAME. Each one's description is the text the model reads, indentation dropped. A worker gets none of them unless [workers] yerk_tools in yerkd.toml names some, and then only recall, read_memory, on its own server.
+The 22 tools Yerk AI's own MCP server hands every room's Claude Code, preloaded, as mcp__yerk__NAME. Each one's description is the text the model reads, indentation dropped. A worker gets none of them unless [workers] yerk_tools in yerkd.toml names some, and then only recall, read_memory, on its own server.
 
 ## send
 
@@ -283,19 +283,6 @@ and why, and the space freed.
 ```
 
 - `paths`: list of string, required
-
-## reverse_image_search
-
-```text
-Searches the web by picture, as Google Lens or TinEye do, since a word search cannot look for a picture: `path` is a
-picture in this room's folders (its [attachment] path, a web_image file, a watch frame). The daemon sends it to Google
-Cloud Vision's web detection and returns Google's best guess at what it is, the names it ties to it (a work and its
-maker, a place, a product), the pages that show it, and the copies and look-alikes it found. Use it when asked where a
-picture comes from, what it is or who made it; open a page that shows it before you say so, and give the best guess
-as a guess.
-```
-
-- `path`: string, required
 
 ## zoom
 

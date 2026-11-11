@@ -30,7 +30,7 @@ from typing import Any, Awaitable, Callable
 from zoneinfo import ZoneInfo
 
 from . import (beat, context, curate, deletes, deploy, doctor, emails, evidence, gates, github, hooks, inbox, jobs, location, mcp_server, memory,
-               mentions, needs, pictures, pipeline, render, reverse_image, shape, status, taste, texts, transcribe, voice_note, watch, workers)
+               mentions, needs, pictures, pipeline, render, shape, status, taste, texts, transcribe, voice_note, watch, workers)
 from .accounts import Account, Cooldowns, from_dir, load_accounts, pick
 from .channels import page
 from .channels.page import Page
@@ -50,7 +50,7 @@ log = logging.getLogger("yerk.daemon")
 YERK_TOOLS = ["mcp__yerk__send", "mcp__yerk__hold", "mcp__yerk__recall", "mcp__yerk__read_memory",
               "mcp__yerk__remember", "mcp__yerk__worker", "mcp__yerk__schedule", "mcp__yerk__settings", "mcp__yerk__transcribe",
               "mcp__yerk__voice_note", "mcp__yerk__seen", "mcp__yerk__render", "mcp__yerk__watch", "mcp__yerk__need", texts.TOOL, deletes.TOOL, emails.TOOL,
-              "mcp__yerk__reverse_image_search", "mcp__yerk__github_state", "mcp__yerk__page", "mcp__yerk__texts",
+              "mcp__yerk__github_state", "mcp__yerk__page", "mcp__yerk__texts",
               "mcp__yerk__attachments", "mcp__yerk__zoom"]
 # A shell room's sandbox when rooms.toml gives it no [rooms.NAME.sandbox] table: unsandboxed, a Read deny stops `cat` and
 # the Read tool, but a script, grep or redirect read every secret (Claude Code 2.1.304, PR 66's cold read, 2026-10-21)
@@ -664,19 +664,6 @@ class Yerkd:
         if not saved:
             return {"ok": False, "error": note}
         return {"ok": True, "message": mid, "files": saved, "note": note, "next": words.ATTACH_NEXT}
-
-    async def tool_reverse_image_search(self, room: str, path: str) -> dict[str, Any]:
-        """The `reverse_image_search` tool: a picture from the calling room's own folders (may_send's rule, as render's) looked
-        up on the web by Google Cloud Vision's web detection off the loop (reverse_image.run), on the key in the private
-        folder, each call Google answers a spend row."""
-        p = Path(path).expanduser().resolve()
-        if room not in self.rooms or not self.may_send(room, p):
-            return {"ok": False, "error": words.REVERSE_NOT_HERE.format(name=p.name)}
-        if not p.is_file():
-            return {"ok": False, "error": words.REVERSE_NO_FILE.format(name=p.name)}
-        r = await asyncio.to_thread(reverse_image.run, p, self.private / reverse_image.KEY, self.booker(room, "reverse_image_search"))
-        log.info("reverse_image_search: %s, %s", room, f"{p.name}, {len(r['pages'])} page(s)" if r["ok"] else r["error"][:160])
-        return r
 
     async def tool_github_state(self, room: str, branch_or_pr: str) -> dict[str, Any]:
         """The `github_state` tool: a branch or a pull request of Yerk's own repository ([needs] repo, else the checkout's
