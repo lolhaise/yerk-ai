@@ -103,6 +103,9 @@ def fast_probe(account: Account, model: str, timeout: float = 20.0) -> tuple[str
         except (OSError, subprocess.SubprocessError) as e:
             log.warning("fast probe on account %s: %s", account.name, e)
             return "", ""
+        finally:       # the folder Claude Code made for this working folder under projects/: empty, nothing is persisted
+            with contextlib.suppress(OSError):
+                (account.config_dir / "projects" / "".join(c if c.isalnum() else "-" for c in os.path.realpath(cwd))).rmdir()
     for raw in reversed(p.stdout.splitlines()):
         with contextlib.suppress(ValueError):
             if (ev := json.loads(raw)).get("type") == "result":

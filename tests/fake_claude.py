@@ -55,6 +55,9 @@ message and a success result echoing the text. Variations:
   "fastMode" in its --settings, "not available in the Agent SDK"; for a FAKE_CLAUDE_NO_CREDITS_DIRS folder, "requires usage
   credits". Every result carries the session's fast_mode_state. FAKE_CLAUDE_STDIN: each line's text is appended there.
 - a line containing OUT_OF_CREDITS: the notice 2.1.321 streams once a turn while fast mode is out of usage credits
+- /fast: FAKE_CLAUDE_FAST_SLOW=S waits S seconds before answering; `-p "/fast on"` makes the folder 2.1.321 made
+  for its working folder under the config folder's projects/ (empty under --no-session-persistence), and with
+  FAKE_CLAUDE_FAST_EXIT=N prints nothing and exits N
 Turn and, the last part closes the case before (the next) run Starts_The_Example.
 """
 import json
@@ -142,6 +145,7 @@ def result(text, error=False, model="fake-model"):
 
 def fast_command(text):
     """/fast as 2.1.321 answers it under -p: the state it reaches, said by a synthetic message, no model call."""
+    time.sleep(float(os.environ.get("FAKE_CLAUDE_FAST_SLOW") or 0))
     arg = text.strip()[len("/fast"):].strip()
     if not fast["launch"]:
         said = "Fast mode unavailable: Fast mode is not available in the Agent SDK"
@@ -252,6 +256,11 @@ def notice_turn(status, text, tasks=("bg1",)):
          "origin": {"kind": "task-notification"}, "modelUsage": {"fake-model": {}}})
 
 
+if one_shot and argv[argv.index("-p") + 1].startswith("/fast"):
+    if cfg:                                  # the real one names it after the working folder, every other character a dash
+        (Path(cfg) / "projects" / "".join(c if c.isalnum() else "-" for c in os.getcwd())).mkdir(parents=True, exist_ok=True)
+    if os.environ.get("FAKE_CLAUDE_FAST_EXIT"):
+        sys.exit(int(os.environ["FAKE_CLAUDE_FAST_EXIT"]))
 out({"type": "system", "subtype": "init", "session_id": sid, "model": "fake", "tools": []})
 if one_shot:
     asked = argv[argv.index("-p") + 1]

@@ -995,7 +995,7 @@ CHOICE = {"model": "an account, a model or both, the account first; default clea
 # /fast (Yerkd.fast_command): never "on" unless Claude Code itself said so; a later process's refusal is said once (Room._start)
 FAST_ON_NEXT, FAST_OFF = "fast mode on from the next reply\nbilled to usage credits, not the plan", "fast mode off"
 FAST_NOT_ON, FAST_ONLY = "fast mode did not turn on\n{why}", "fast mode is for Fable 5.2 rooms\nthis room is on {model}"
-FAST_NO_CREDITS, FAST_CLAUDE, FAST_NO_ANSWER = "usage credits are off on account {account}", "Claude Code said:\n{why}", "no answer"
+FAST_NO_CREDITS, FAST_CLAUDE, FAST_NO_ANSWER = "usage credits are off on account {account}", "Claude Code said:\n{why}", "Claude Code gave no answer"
 FAST_NOW, FAST_SAID = "this room: fast mode {setting}", "Claude Code reports it {state}"
 FAST_LOST, FAST_OUT = "fast mode is not running\n{why}\nreplies run at standard speed", "account {account} is out of usage credits"
 FAST_ROOMS, FAST_CHOICES = "fast mode on: {rooms}", "not a choice: {choice}\nthe choices: on, off"
@@ -1016,7 +1016,7 @@ def fast_why(said: str, account: str) -> str:
         return FAST_OUT.format(account=account)
     if "usage credits" in why.lower():
         return FAST_NO_CREDITS.format(account=account)
-    return FAST_CLAUDE.format(why=line(why or FAST_NO_ANSWER))
+    return FAST_CLAUDE.format(why=line(why)) if why else FAST_NO_ANSWER    # nothing came back: never words put in its mouth
 
 
 def model_name(mid: str) -> str:

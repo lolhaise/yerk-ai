@@ -315,3 +315,15 @@ def test_the_compaction_copy_never_runs_in_fast_mode(tmp_path, monkeypatch):
     assert [fork for fork, _ in launches] == [False, True]         # the room's process, then the copy
     assert "fastMode" in launches[0][1] and "fastMode" not in launches[1][1]
     assert lines(tmp_path) == ["/fast on", "CONTEXT:195000 hello", "/compact"]   # no /fast on ahead of the copy's /compact
+
+
+@pytest.mark.parametrize("how", ["hangs", "exits non-zero and prints nothing"])
+def test_a_check_that_gives_no_answer_keeps_nothing_says_so_and_leaves_nothing(y, tmp_path, monkeypatch, how):
+    import yerk_ai.daemon as dm
+    from yerk_ai import engine
+    monkeypatch.setenv("FAKE_CLAUDE_FAST_SLOW" if how == "hangs" else "FAKE_CLAUDE_FAST_EXIT", "5" if how == "hangs" else "3")
+    monkeypatch.setattr(dm, "fast_probe", lambda acct, model: engine.fast_probe(acct, model, timeout=1.0))
+    on_fable(y)
+    assert fast(y, "on") == {"ok": False, "line": words.FAST_NOT_ON.format(why=words.FAST_NO_ANSWER)}
+    assert "fast" not in override(tmp_path, ROOM) and y.spec_for(ROOM).fast is False
+    assert not list((tmp_path / "cfg1" / "projects").glob("*yerk-fast*"))      # nothing left under the account's projects/
