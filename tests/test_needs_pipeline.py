@@ -332,14 +332,18 @@ def test_a_fix_or_a_read_cut_off_by_a_stop_nobody_asked_for_is_no_verdict_and_th
     assert (row(y, day)["state"], row(y, day)["why"]) == ("held", "the cold read gave no verdict: " + words.outcome("stopped")[1])
 
 
-def test_a_builder_cut_off_by_a_stop_nobody_asked_for_is_built_again_and_not_counted_toward_stuck(pipe):
-    y, rec, hub, units, rooms = pipe
+def test_a_builder_cut_off_by_a_stop_nobody_asked_for_is_queued_uncounted_and_the_first_tick_after_starts_it(pipe):
+    y, rec, hub, units, rooms = pipe                     # a box shutdown stops the daemon too, so a start at once is refused or cut off
     day = need(y, "example-room", *ASK)["day"]
-    kill(y, row(y, day)["worker"])
-    kill(y, row(y, day)["worker"], signal=True)
-    r = row(y, day)
-    assert (r["state"], int(r.get("fails") or 0)) == ("building", 0) and len(y.workers.launcher.calls) == 3
-    end(y, r["worker"], "no branch: the suite would not run", ok=False)        # a real failure still counts
+    for signal in (False, True):                         # exited 143 after the TERM, then killed by it
+        kill(y, row(y, day)["worker"], signal)
+        r = row(y, day)
+        assert (r["state"], r["worker"], int(r.get("fails") or 0), len(y.workers.launcher.calls)) == ("queued", "", 0, 1 + signal)
+        assert rec.lines[-1] == words.NEED_CUT_BUILD.format(n=1, ability=ASK[2])
+        asyncio.run(y.pipeline.tick())                   # the first tick after the restart: the queue starts it
+        assert row(y, day)["state"] == "building" and row(y, day)["worker"] and len(y.workers.launcher.calls) == 2 + signal
+        assert rec.lines[-1] == words.NEED_STARTS.format(n=1, room="example-room", ability=ASK[2])
+    end(y, row(y, day)["worker"], "no branch: the suite would not run", ok=False)        # a real failure still counts
     assert int(row(y, day)["fails"]) == 1 and row(y, day)["state"] == "building"
 
 

@@ -964,8 +964,9 @@ class Yerkd:
     async def need_built(self, row: dict[str, Any], end: dict[str, Any]) -> bool:
         """A need's builder ended (workers.hooks): the need's state from its report's first line (needs.ended) and one line to
         the machine room, never a relay turn; under [needs] auto a failed build starts once more, then the need is stuck (one
-        cut off by a stop nobody asked for, workers.cut_off, starts again uncounted). A cold read or a fix worker goes to the
-        pipeline (Pipeline.ended); False for any other worker. First, any need worker's clean worktrees go (needs.tidy), so
+        cut off by a stop nobody asked for, workers.cut_off, is queued with no worker and nothing counted, and the queue starts
+        it on the first tick after the restart, since on a box shutdown the daemon is stopping too). A cold read or a fix
+        worker goes to the pipeline (Pipeline.ended); False for any other worker. First, any need worker's clean worktrees go (needs.tidy), so
         the next worker can take the branch, and its note names each that stays."""
         try:
             job = json.loads((Path(row["staging"]) / "worker.json").read_text()).get("need")
@@ -985,17 +986,21 @@ class Yerkd:
         plugs = await self.pipeline.heads({"day": day, "n": n})                   # a plug-in branch the builder left
         r = await asyncio.to_thread(needs.ended, self.memory, self.state, day, n, str(row["id"]), how,
                                     workers.first_line(Path(row["report"])), end["exit"] == "done", plugs)
+        if r is not None and r.get("state") == "filed" and self.pipeline.auto() and workers.cut_off(end):   # no verdict: the next tick's
+            r = await asyncio.to_thread(needs.update, self.memory, self.state, day, n, {"state": "queued", "worker": ""},
+                                        lambda x: x.get("state") == "filed")
         note = words.LINE_POSTED.format(what="need build")
         if r is not None:
             ab, st = words.line(str(r["ability"]), 80), r.get("state")
             line = (words.NEED_PR.format(n=n, pr=r.get("pr"), ability=ab) if st == "pr" else words.NEED_BRANCH.format(
-                n=n, branch=r.get("branch"), ability=ab) if st == "built" else words.NEED_FAILED.format(n=n, how=how, ability=ab))
+                n=n, branch=r.get("branch"), ability=ab) if st == "built" else words.NEED_CUT_BUILD.format(n=n, ability=ab)
+                if st == "queued" else words.NEED_FAILED.format(n=n, how=how, ability=ab))
             line += words.NEED_PLUGIN.format(names=", ".join(r.get("plugins") or ())) * bool(st in ("pr", "built") and r.get("plugins"))
             note = await self.posted(str(row["room"]), line, "need build")
             log.info("%s", line)
         self.ledger.worker_set(str(row["id"]), relay="skipped", relay_note="; ".join([note, *kept]))
         if r is not None and r.get("state") == "filed" and self.pipeline.auto():     # failed: once more, then stuck
-            if (fails := int(r.get("fails") or 0) + (not workers.cut_off(end))) >= 2:
+            if (fails := int(r.get("fails") or 0) + 1) >= 2:
                 await self.pipeline.stop({**r, "fails": fails}, "stuck", f"its builder failed twice, last: {how}")
             elif await asyncio.to_thread(needs.update, self.memory, self.state, day, n, {"fails": fails}):
                 await self.need_build({"day": day, "n": n})

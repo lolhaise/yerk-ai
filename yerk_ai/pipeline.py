@@ -4,7 +4,8 @@ itself this way: one need at a time (two open PRs that both move the code ceilin
 
 - Start ([needs] auto, default true; false is the hand road of needs.py exactly): a new need starts its builder when no need
   is in flight (needs.FLIGHT), else it is queued; a need that reaches live, held or stuck starts the oldest queued one. A
-  builder that fails starts once more; failed twice, the need is stuck. A need still filed that no build ever claimed (filed
+  builder that fails starts once more; failed twice, the need is stuck; one cut off by a stop nobody asked for (a box
+  shutdown) is queued, uncounted, and the next tick starts it. A need still filed that no build ever claimed (filed
   before the pipeline, or with auto off) is queued on a tick (`pickup`); one a build came back from stays, a person's call.
 - The watch (`tick`: its own task every EVERY seconds, and once each time the channel connects): built, then its PR
   (github.pr_for), then PR; a PR's head's checks all in ([needs] contexts) and green: the cold read; one red: a fix worker

@@ -678,6 +678,7 @@ NEED_LATE = WORKING + " need {n}: PR {pr} checks all came in late, so it goes on
 NEED_NO_BUILDER = "its builder did not start: {error}"
 NEED_CUT = WORKING + " need {n}: {what} on PR {pr} was cut off by a stop nobody asked for, so it starts again"
 NEED_CUT_WHAT = {"read": "the cold read", "fix": "the fix"}
+NEED_CUT_BUILD = WORKING + " need {n}: its builder was cut off by a stop nobody asked for, so it starts again: {ability}"
 WORKTREE_KEPT = "its worktree {name} stays: {why}"                  # a need worker's note, after its line's
 WORKTREE_CHANGES, WORKTREE_REFUSED = "it has changes", "git would not remove it"
 LINE_POSTED, LINE_NOT_POSTED = "{what}: its line went to the machine room", "{what}: its line could not be posted: {why}"
