@@ -211,7 +211,7 @@ def test_the_rules_file_is_a_part_of_its_own_so_a_full_rulebook_never_pushes_a_r
 # more, description words only), 4,745 (9,831 together); then the mail tool's `attachment` (need-2026-11-11-85) as the
 # plug-in's branch builds it, the same 31 over, 1,525 (10,131 together).
 LIVE_PROMPT = 10889
-LIVE_TOOLS = {"Bash": 4248, "Edit": 1037, "Glob": 785, "Grep": 3362, "Read": 2006, "Write": 694, "mcp__web-ladder__web_fetch": 878,
+LIVE_TOOLS = {"Bash": 4248, "Edit": 1037, "Glob": 785, "Grep": 3362, "Read": 2006, "Write": 694, "mcp__web-ladder__web_fetch": 1030,
               "mcp__web-ladder__web_search": 621, "mcp__web-ladder__web_research": 1284, "mcp__web-ladder__web_research_result": 432,
               "mcp__web-ladder__web_image": 913, "mcp__hands__browser": 4745, "mcp__hands__desktop": 1381, "mcp__hands__discord": 1168,
               "mcp__hands__mac": 1312, "mcp__hands__mail": 1525, "mcp__yerk__hold": 481, "mcp__yerk__read_memory": 551, "mcp__yerk__recall": 656,
@@ -274,7 +274,8 @@ def test_claude_codes_parts_as_the_rooms_send_them_fit_their_lines_and_what_is_l
     the 300 to 129,471; then (need-2026-11-10-83) the `worker` tool's `addons`, the room's own add-on tools a worker gets
     too (271 more as built; all 23 about 26,644 as sent) to 26,700 and the total by the 300 to 129,771; then
     (need-2026-11-11-85) the hands line to 10,131 for the mail tool's `attachment` (about 1,525 as sent), the total by the
-    300 to 130,071."""
+    300 to 130,071; then (need-2026-11-11-87) the other entries to 3,581 for web_fetch's sentence on a PDF or a Word file
+    at a link (878 to 1,030 as sent), the total by the 152 to 130,223."""
     shape = {"system": [{"type": "text", "text": "p" * LIVE_PROMPT}, {"type": "text", "text": "# Yerk AI mechanics"}],
              "tools": [entry(n, size) for n, size in LIVE_TOOLS.items()]}
     (t := tmp_path / "sid.jsonl").write_text(json.dumps({"type": "api-request-shape", "shape": shape}) + "\n")
@@ -285,14 +286,14 @@ def test_claude_codes_parts_as_the_rooms_send_them_fit_their_lines_and_what_is_l
         r"(?: \(.*?\))?\s+([\d,]+)\s+([\d,]+)", out, re.M)}
     cc = b["session_start"]["claude_code"]
     assert rows == {"system prompt: Claude Code's own": (LIVE_PROMPT, cc["claude_code_prompt"]), "built-in tools": (12132, cc["builtin_tools"]),
-                    "Yerk AI's tools": (11734, cc["yerk_tools"]), "other tool entries": (3429, cc["deferred_tool_names"]),
+                    "Yerk AI's tools": (11734, cc["yerk_tools"]), "other tool entries": (3581, cc["deferred_tool_names"]),
                     "mcp__hands__": (10131, cc["mcp__hands__"]), "mcp__web-ladder__web_image": (913, cc["mcp__web-ladder__web_image"])}
     builtin, other = (next(x for x in out.splitlines() if x.startswith(f"  {k} (")) for k in ("built-in tools", "other tool entries"))
     assert "DeferredToolPlaceholder" in other and "DeferredToolPlaceholder" not in builtin and "hands" not in other and "web_image" not in other
     assert all(sent <= line for sent, line in rows.values()), out
     assert all(line <= sent * 1.02 for name, (sent, line) in rows.items() if name != "Yerk AI's tools"), rows
     s = b["session_start"]
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 130071
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 130223
 
 
 def room_sent(tmp_path, tools, file="# Yerk AI mechanics\n- an example line"):
@@ -438,10 +439,11 @@ def test_the_rulebook_line_keeps_about_1000_over_the_largest_room_text_and_what_
     maximized there and said painted only once it is (300), no part could pay, to 129,471 (need-2026-11-10-82); then the
     `worker` tool's `addons`, the room's own add-on tools a worker gets too (300), no part could pay, to 129,771
     (need-2026-11-10-83); then the hands line (300, the mail tool's `attachment`, a file a mail carries saved for the room
-    to read), no other line lowered, to 130,071 (need-2026-11-11-85)."""
+    to read), no other line lowered, to 130,071 (need-2026-11-11-85); then the other entries' line (152, web_fetch's
+    sentence on a PDF or a Word file at a link), no other line lowered, to 130,223 (need-2026-11-11-87)."""
     s = budgets()["session_start"]
     assert 900 <= s["appended"]["rulebook"] - LIVE_RULEBOOK <= 1400 and s["appended"]["rules"] == 16000
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 130071
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 130223
     private = tmp_path / "private"
     shutil.copytree(EXAMPLE_PRIVATE, private)
     (private / "rulebook.md").write_text("r" * (LIVE_RULEBOOK - 1) + "\n")
