@@ -172,7 +172,7 @@ TAIL_CUT = "Earlier, named by their day-log lines to keep this short:"
 
 
 class Channel(Protocol):
-    def open_card(self, room: str, text: str, kind: str = "turn") -> None: ...   # post the turn's card
+    def open_card(self, room: str, text: str) -> None: ...   # post the turn's card
     def progress(self, room: str, text: str) -> None: ...            # edit the room's card
     def reply(self, room: str, text: str, inbound: list[str],          # card off (or kept with `card`), reply on
               card: str | None = None, key: str | None = None) -> list[str]: ...

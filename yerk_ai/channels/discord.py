@@ -1002,8 +1002,8 @@ class DiscordChannel:
         fut = asyncio.run_coroutine_threadsafe(coro, self.loop)
         return fut.result(180) if wait else None
 
-    def open_card(self, room: str, text: str, kind: str = "turn") -> None:
-        self._call(self._open(room, text, kind), wait=False)
+    def open_card(self, room: str, text: str) -> None:
+        self._call(self._open(room, text, "turn"), wait=False)
 
     def progress(self, room: str, text: str) -> None:
         self.want[room] = text
