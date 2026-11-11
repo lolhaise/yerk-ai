@@ -928,8 +928,7 @@ class Room:
             return None
         self.out_of, back = model, min(filter(None, (self.cooldowns.until(a.name, model=model) for a in self.accounts)))
         log.info("room %s: every account is out of %s until %s, the turn runs on %s", self.name, model, words.clock(back), usual)
-        self._note(words.OUT_OF.format(model=words.model_name(usual), pinned=words.model_name(model), until=words.clock(back))
-                   if str(self.conf.get("privacy", "owner")) == "owner" else words.MOVED_ON)
+        self._note(words.out_of(usual, model, back) if str(self.conf.get("privacy", "owner")) == "owner" else words.MOVED_ON)
         return usual, self._account(usual)
 
     def _run(self) -> None:

@@ -194,6 +194,40 @@ def test_live_meters_put_five_accounts_on_the_card_in_the_box_cards_shape_with_t
     assert two(live(79, H, 80, 50 * H)) == f"- ② 5h 79% · wk {words.WARN}80%"                        # the warning sign from 80
 
 
+def test_a_reset_and_the_end_of_a_rest_read_the_cards_short_way_in_every_renderer(monkeypatch):
+    """The owner's yes of 2026-11-10 (one way to write a reset time, the status card's): at one moment the card, `yerk
+    status --full`'s meter line, the morning diff's account line and /model's resting state write a reset and the end of
+    a rest the same way, words.short_when's: '5:30a' within a day, 'Tue 4a' within a week, 'Oct 27' past that. They said
+    '05:30', 'Tue' and 'Tue 04:00' before; a reset not read yet still says '?'. The morning diff's account line
+    (meter_short) is held to the phone width: where the resets do not fit beside the meters they take a second line,
+    the card's own, so no reset is ever cut off."""
+    from yerk_ai.meters import meter_line, meter_short
+    monkeypatch.setattr(time, "time", lambda: NOW)                                  # words.rest reads the clock itself
+    m, rest, far, w = live(7, 3.5 * H, 3, 50 * H), NOW + 10 * H, NOW + 9 * 24 * H, words.short_when
+    five, week = w(m["five_hour"]["resets"], NOW), w(m["seven_day"]["resets"], NOW)
+    assert re.fullmatch(r"\d+:\d\d[ap]", five) and re.fullmatch(r"[A-Z][a-z]{2} \d+[ap]", week)   # within a day, a week
+    card = status.account_lines([{"name": "one", "meter": m, "rests_until": None, "bill": None}], NOW)
+    resting = status.account_lines([{"name": "one", "meter": m, "rests_until": rest, "bill": None}], NOW)
+    assert card[1] == f"- ↻ 5h {five} · wk {week}" and resting[1] == f"- ↻ resting until {w(rest, NOW)}"   # as it was
+    assert meter_line("one", {**m, "at": NOW}, NOW) == f"one: 5h 7% ({five}) · wk 3% ({week}), seen 0 min ago"
+    assert words.rest(rest) == f"resting until {w(rest, NOW)}"
+    later = {"five_hour": {"pct": 7}, "seven_day": {"pct": 3, "resets": far}, "at": NOW}   # no reset read; one 9 days off
+    assert re.fullmatch(r"[A-Z][a-z]{2} \d+", w(far, NOW))
+    assert meter_line("one", later, NOW) == f"one: 5h 7% (?) · wk 3% ({w(far, NOW)}), seen 0 min ago"
+    assert meter_short("one", {"seven_day": m["seven_day"]}, now=NOW) == f"- one: wk 3% ({week})"   # a weekly window alone
+    assert meter_short("one", m, now=NOW) == f"- one: 5h 7% ({five}) · wk 3% ({week})"              # both, where they fit
+    assert meter_short("one", m, rest, NOW) == f"{words.NOT_DONE} one: resting until {w(rest, NOW)}"
+    assert meter_short("one", later, now=NOW) == f"- one: 5h 7% · wk 3% ({w(far, NOW)})"           # 9 days off: its date
+    hot = meter_short("three", live(93, 3.5 * H, 93, 50 * H), now=NOW)                                # too wide for one line
+    assert hot == f"{words.WORKING} three: 5h 93% · wk 93%\n- ↻ 5h {five} · wk {week}"              # the card's two lines
+    assert all(words.width(x) <= words.PHONE for x in hot.splitlines())                             # and nothing is cut
+    back = NOW + 56 * H + 59 * 60                               # Tue 10:59a: as wide as a reset inside a week is ever said
+    note = words.out_of("claude-opus-5-5", "claude-fable-5-2", back, NOW)      # the card's note when every account is out
+    assert re.fullmatch(r"[A-Z][a-z]{2} \d\d:\d\d[ap]", w(back, NOW)) and note == f"on Opus..., Fable 5.2 back {w(back, NOW)}"
+    assert words.line(f"{words.WORKING} {note}") == f"{words.WORKING} {note}"   # the card cuts nothing: the time is whole
+    assert words.out_of("claude-opus-5-5", "claude-fable-5-2", NOW + 3.5 * H, NOW) == f"on Opus 5.5, Fable 5.2 back {five}"
+
+
 def test_a_failed_live_read_shows_the_streams_reading_with_its_age_and_json_says_why(tmp_path):
     accounts = five_accounts(tmp_path)[:2]                                     # five and one
     (tmp_path / "meters.json").write_text(json.dumps({"one": {"at": NOW - 1.5 * H, "source": "stream",

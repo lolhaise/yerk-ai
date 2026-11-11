@@ -13,6 +13,7 @@ import { runFetchPlus } from "./fetch/ladder.js";
 import { closeLocalBrowser } from "./fetch/local.js";
 import { flushPending, resolveSettings } from "./fetch/util.js";
 import { DAILY_USD, formatRun, research, researchResult, waitIn } from "./research.mjs";
+import { paidDomainEntry } from "./search/engines.js";
 import { runSearchPlus } from "./search/provider.js";
 import { resolvePluginSettings } from "./search/util.js";
 import { truncateSanitized, wrapWebContent } from "./untrusted.mjs";
@@ -35,6 +36,23 @@ const ENGINE = {
   parallel: "Parallel's keyless search, free",
   firecrawl: "Firecrawl keyless, free",
   duckduckgo: "DuckDuckGo, free",
+};
+// Whether an engine sends a web_search filter as a field of its request, read off lib/search/engines.js at the function
+// named on each row. One it drops, or only words as a preference in its request, is not enforced, and the answer's first
+// line says so: the room checks the pages itself. freshness and date_after share one start date on exa, parallel-paid
+// and you, which send the later of the two, so both hold. test/tools.test.mjs builds each request and keeps this true.
+// A country is the one filter that keeps no page out: by Exa's and Parallel's own pages it localizes the results
+// (geo-targeting), so where an engine takes it the first line says "localized to CA", never "filtered by". Paid
+// Parallel sends any two letters and, by its own page, ignores a code outside its 37: the one row no request shows.
+const YOU_COUNTRIES = new Set("AR AU AT BE BR CA CL DK FI FR DE HK IN ID IT JP KR MY MX NL NZ NO CN PL PT PH RU SA ZA ES SE CH TW TR GB US".split(" ")); // engines.js's own, not exported
+const PARALLEL_COUNTRIES = new Set([...YOU_COUNTRIES, "GR"]); // docs.parallel.ai, Advanced Search Settings, Supported locations (read 2026-11-11)
+export const ENFORCED = {
+  exa: () => true, // buildExaBody
+  "parallel-paid": (k, f) => k !== "date_before" && (k !== "country" || PARALLEL_COUNTRIES.has(f.country.toUpperCase())), // buildParallelPaidBody: the end date only as words in its objective
+  you: (k, f) => k !== "country" || YOU_COUNTRIES.has(f.country.toUpperCase()), // buildYouCall: only the 36 countries it lists
+  parallel: () => false, // searchParallelFree: each filter a sentence in its objective, the country never read
+  firecrawl: (k, f) => !k.startsWith("date_") || !f.freshness, // searchFirecrawl, firecrawlTbs: freshness wins over the dates
+  duckduckgo: (k) => k === "freshness", // searchDuckDuckGo
 };
 
 // List prices for the spend rows, US$ (October 2026: Browserbase's Developer plan, Exa's and Parallel's pricing pages).
@@ -92,6 +110,11 @@ export const TOOLS = [
       properties: {
         query: { type: "string", description: "What to search for." },
         count: { type: "integer", minimum: 1, maximum: 10, description: "How many results (default 5)." },
+        freshness: { type: "string", description: "day, week, month or year." },
+        date_after: { type: "string", description: "Published after YYYY-MM-DD." },
+        date_before: { type: "string", description: "Published before YYYY-MM-DD." },
+        domain_filter: { type: "array", items: { type: "string" }, description: "Domains to include; prefix with - to exclude." },
+        country: { type: "string", description: "2-letter country code." },
       },
       required: ["query"],
       additionalProperties: false,
@@ -202,13 +225,46 @@ export async function webFetch(args, { signal, deps = {}, at = AT } = {}) {
   return { content: [{ type: "text", text: scrub([head, ...lines, "", wrapWebContent(inner, "web_fetch")].join("\n"), secrets) }] };
 }
 
+// web_search's filters, named as lib/search/provider.js readArgs reads them. readArgs drops a value it cannot use without
+// a word, so a room that asked for one week would get everything and never know: the tool refuses that value instead.
+// freshness is the four words only (each is its own entry in readArgs's aliases); a domain must be one the strictest
+// engine keeps (paidDomainEntry's turbo rule, which You.com uses); and every engine with a domain field drops the
+// excluded ones when some are included, so a list is one kind or the other.
+const FILTERS = ["freshness", "date_after", "date_before", "domain_filter", "country"];
+const isDay = (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && Number.isFinite(Date.parse(`${v}T00:00:00Z`))
+  && new Date(`${v}T00:00:00Z`).toISOString().slice(0, 10) === v;
+
+function badFilter({ freshness, date_after: after, date_before: before, domain_filter: domains, country }) {
+  if (freshness !== undefined && !["day", "week", "month", "year"].includes(freshness)) return "freshness must be day, week, month or year.";
+  for (const [name, v] of [["date_after", after], ["date_before", before]]) if (v !== undefined && !isDay(v)) return `${name} must be a date written YYYY-MM-DD.`;
+  if (after !== undefined && before !== undefined && after > before) return "date_after must not be later than date_before.";
+  if (domains !== undefined) {
+    const ds = Array.isArray(domains) && domains.length <= 20 ? domains.map((d) => (typeof d === "string" ? d.trim().toLowerCase() : "")) : [""];
+    if (ds.some((d) => !paidDomainEntry(d.replace(/^-/, ""), "turbo"))) return "domain_filter must be a list of up to 20 domains such as example.com; a leading - excludes one.";
+    if (ds.some((d) => d.startsWith("-")) && ds.some((d) => !d.startsWith("-"))) return "domain_filter must list domains to include or domains to exclude, not both.";
+  }
+  if (country !== undefined && !(typeof country === "string" && /^[a-z]{2}$/i.test(country))) return "country must be a 2-letter country code such as CA.";
+  return "";
+}
+
+// A filter as a person says it, for web_search's first line; a list of domains names its first three.
+function said(k, v) {
+  if (k !== "domain_filter") return `${{ freshness: "freshness", date_after: "after", date_before: "before", country: "country" }[k]} ${k === "country" ? v.toUpperCase() : v}`;
+  const ds = v.map((d) => d.trim().replace(/^-/, ""));
+  return `${v[0].trim().startsWith("-") ? "not sites" : "sites"} ${ds.slice(0, 3).join(", ")}${ds.length > 3 ? ` and ${ds.length - 3} more` : ""}`;
+}
+const and = (xs) => (xs.length > 1 ? `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}` : xs[0]);
+
 export async function webSearch(args, { signal, at = AT } = {}) {
-  const bad = badArgs("web_search", args, ["query", "count"]);
+  const bad = badArgs("web_search", args, ["query", "count", ...FILTERS]);
   if (bad) return refuse(bad);
   const query = typeof args.query === "string" ? args.query.trim() : "";
   if (!query) return refuse("web_search refused: query must be a non-empty string.");
   const count = args.count ?? 5;
   if (!Number.isInteger(count) || count < 1 || count > 10) return refuse("web_search refused: count must be a whole number from 1 to 10.");
+  const filters = Object.fromEntries(FILTERS.filter((k) => args[k] != null).map((k) => [k, args[k]])); // null is no filter, as for count
+  const why = badFilter(filters);
+  if (why) return refuse(`web_search refused: ${why}`);
 
   const { conf, note } = readSettings(at);
   const { parallelApiKey, exaApiKey, ...rest } = section(conf, "search"); // a key comes from secrets/ only
@@ -224,7 +280,7 @@ export async function webSearch(args, { signal, at = AT } = {}) {
 
   let p;
   try {
-    p = await runSearchPlus({ query, count }, { config, searchConfig: { cacheTtlMinutes: rest.cacheTtlMinutes } }, { signal });
+    p = await runSearchPlus({ query, count, ...filters }, { config, searchConfig: { cacheTtlMinutes: rest.cacheTtlMinutes } }, { signal });
   } catch (err) {
     return refuse(scrub(`web_search could not run: ${firstLine(err)}`, secrets));
   }
@@ -232,9 +288,15 @@ export async function webSearch(args, { signal, at = AT } = {}) {
   if (p.error) return refuse(scrub([`web_search could not run: ${p.message}`, ...lines].join("\n"), secrets));
   const tried = (p.attempts ?? []).map((a) => `${a.engine} ${a.error || `answered ${a.n}`}`).join(", ");
   const by = p.engine ? ENGINE[p.engine] ?? p.engine : "an engine the call log did not name";
+  // The filters asked (an empty domain list is none) and which the answering engine enforced; a cached answer keeps its engine.
+  const asked = FILTERS.filter((k) => k in filters && !(k === "domain_filter" && !filters[k].length));
+  const took = asked.filter((k) => ENFORCED[p.engine]?.(k, filters));
+  const held = took.filter((k) => k !== "country").map((k) => said(k, filters[k]));
+  const local = took.includes("country") ? `, localized to ${filters.country.toUpperCase()}` : "";
+  const loose = asked.filter((k) => !took.includes(k)).map((k) => said(k, filters[k]));
   const head = p.results.length
-    ? `web_search "${query}": ${p.results.length} results from ${p.cached ? "this process's 15-minute cache" : by}.`
-    : `web_search "${query}": no results${tried ? ` (${tried})` : ""}.`;
+    ? `web_search "${query}": ${p.results.length} results from ${p.cached ? "this process's 15-minute cache" : by}${held.length ? `, filtered by ${and(held)}` : ""}${local}${loose.length ? `; not enforced by this engine: ${loose.join(", ")}` : ""}.`
+    : `web_search "${query}": no results${asked.length ? ` with ${and(asked.map((k) => said(k, filters[k])))}` : ""}${tried ? ` (${tried})` : ""}.`;
   if ((p.attempts?.length ?? 0) > 1 && p.results.length) lines.unshift(`Engines tried: ${tried}.`);
   const rows = p.results
     .map((r, i) => [`${i + 1}. ${r.title || r.url}`, `   ${r.url}${r.published ? ` (${r.published})` : ""}`, ...(r.snippet ? [`   ${String(r.snippet).replace(/\n/g, "\n   ")}`] : [])].join("\n"))

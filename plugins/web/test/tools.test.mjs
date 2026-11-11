@@ -11,6 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { after, beforeEach, test } from "node:test";
+import { isDeepStrictEqual } from "node:util";
 import zlib from "node:zlib";
 import { KEY_FILES, readKey, spend, takeWindow, where } from "../lib/common.mjs";
 import { imageInfo } from "../lib/fetch/image.js";
@@ -18,8 +19,10 @@ import { wallFromNavError } from "../lib/fetch/l3.js";
 import { _test as local, claimSlot, markLocalBlocked } from "../lib/fetch/local.js";
 import { flushPending, resolveSettings } from "../lib/fetch/util.js";
 import { REF, dayStamp, findRun, newRef, waitIn } from "../lib/research.mjs";
+import { buildExaBody, buildParallelPaidBody, buildYouCall, searchDuckDuckGo, searchFirecrawl, searchParallelFree } from "../lib/search/engines.js";
 import { resetCooldowns } from "../lib/search/provider.js";
-import { TOOLS, callTool, fetchRows, searchRows, webFetch, webImage, webResearch, webResearchResult, webSearch } from "../lib/tools.mjs";
+import { ENGINES } from "../lib/search/util.js";
+import { ENFORCED, TOOLS, callTool, fetchRows, searchRows, webFetch, webImage, webResearch, webResearchResult, webSearch } from "../lib/tools.mjs";
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "yerk-web-test-"));
 const FAKE = { browserbase: "bb_live_FAKEKEY_0123456789abcdef", browserbaseProject: "fake-project-4c1d", parallel: "par_FAKEKEY_9876543210zyxw" };
@@ -354,7 +357,261 @@ test("unknown arguments and bad values are refused before any work", async () =>
   assert.equal(textOf(a), "web_fetch refused: unknown argument extractMode; it takes url and max_chars.");
   assert.equal((await webFetch({ url: "https://x.example", max_chars: 5 }, { at: WITH })).isError, true);
   assert.equal((await webSearch({ query: "x", count: 50 }, { at: WITH })).isError, true);
-  assert.equal(textOf(await webSearch({ q: "x" }, { at: WITH })), "web_search refused: unknown argument q; it takes query and count.");
+  assert.equal(textOf(await webSearch({ q: "x" }, { at: WITH })), "web_search refused: unknown argument q; it takes query, count, freshness, date_after, date_before, domain_filter and country.");
+});
+
+// The five filters search-plus offers, named as lib/search/provider.js readArgs reads them (F7-13).
+const EXA_ROW = { requestId: "r1", results: [{ url: "https://news.example/rain-5", title: "Rain warning tonight", publishedDate: "2026-11-02T00:00:00.000Z", highlights: ["Up to 25 mm of rain is expected overnight."] }], costDollars: { total: 0.005 } };
+const exaOnly = () => stubFetch((url) => (url === "https://api.exa.ai/search" ? json(EXA_ROW) : json({ success: false, error: "unexpected" }, 500)));
+const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);
+
+test("web_search takes the five filters search-plus offers, under the names the engines read, each with a short description", () => {
+  const s = TOOLS.find((t) => t.name === "web_search").inputSchema;
+  assert.deepEqual(Object.keys(s.properties), ["query", "count", "freshness", "date_after", "date_before", "domain_filter", "country"]);
+  assert.deepEqual(s.properties.freshness, { type: "string", description: "day, week, month or year." });
+  assert.deepEqual(s.properties.date_after, { type: "string", description: "Published after YYYY-MM-DD." });
+  assert.deepEqual(s.properties.date_before, { type: "string", description: "Published before YYYY-MM-DD." });
+  assert.deepEqual(s.properties.domain_filter, { type: "array", items: { type: "string" }, description: "Domains to include; prefix with - to exclude." });
+  assert.deepEqual(s.properties.country, { type: "string", description: "2-letter country code." });
+  assert.deepEqual([s.required, s.additionalProperties], [["query"], false]);
+});
+
+test("each filter reaches Exa's request: the dates, the domains to include or exclude, the country, and freshness as the start date", async () => {
+  const f = exaOnly();
+  try {
+    const r = await webSearch({ query: "rain filtered", count: 3, date_after: "2026-11-01", date_before: "2026-11-08", domain_filter: ["news.example", "Weather.example"], country: "ca" }, { at: WITH_EXA });
+    assert.equal(r.isError, undefined, textOf(r));
+    const sent = JSON.parse(f.seen[0].body);
+    assert.deepEqual([sent.startPublishedDate, sent.endPublishedDate, sent.includeDomains, sent.excludeDomains, sent.userLocation],
+      ["2026-11-01T00:00:00.000Z", "2026-11-08T00:00:00.000Z", ["news.example", "weather.example"], undefined, "CA"]);
+    const early = daysAgo(7);
+    const w = await webSearch({ query: "rain this week", freshness: "week", domain_filter: ["-spam.example"] }, { at: WITH_EXA });
+    assert.equal(w.isError, undefined, textOf(w));
+    const week = JSON.parse(f.seen[1].body);
+    assert.ok([early, daysAgo(7)].includes(week.startPublishedDate.slice(0, 10)), week.startPublishedDate);
+    assert.deepEqual([week.excludeDomains, week.includeDomains, week.endPublishedDate], [["spam.example"], undefined, undefined]);
+    assert.equal(f.seen.length, 2);
+  } finally {
+    f.restore();
+  }
+});
+
+test("each filter reaches paid Parallel's request: start date and domains as its filters, the end date in its objective, the country as its location", async () => {
+  const f = stubFetch((url) => (url === "https://api.parallel.ai/v1/search"
+    ? json({ search_id: "s2", results: [{ url: "https://news.example/rain-6", title: "Rain warning tonight", publish_date: "2026-11-02", excerpts: ["Up to 25 mm of rain is expected overnight."] }] })
+    : json({ success: false, error: "unexpected" }, 500)));
+  try {
+    const r = await webSearch({ query: "rain paid filtered", date_after: "2026-11-01", date_before: "2026-11-08", domain_filter: ["news.example"], country: "CA" }, { at: WITH });
+    assert.equal(r.isError, undefined, textOf(r));
+    const sent = JSON.parse(f.seen[0].body);
+    assert.deepEqual(sent.advanced_settings, { max_results: 5, source_policy: { include_domains: ["news.example"], after_date: "2026-11-01" }, location: "ca" });
+    assert.match(sent.objective, /Only sources published before 2026-11-08\./);
+  } finally {
+    f.restore();
+  }
+});
+
+test("a filter web_search cannot use is refused in one line naming it and what it takes, before any engine is called", async () => {
+  const f = exaOnly();
+  const FRESH = "web_search refused: freshness must be day, week, month or year.";
+  const AFTER = "web_search refused: date_after must be a date written YYYY-MM-DD.";
+  const DOMAINS = "web_search refused: domain_filter must be a list of up to 20 domains such as example.com; a leading - excludes one.";
+  const COUNTRY = "web_search refused: country must be a 2-letter country code such as CA.";
+  try {
+    for (const [extra, line] of [
+      [{ freshness: "7d" }, FRESH], [{ freshness: "Week" }, FRESH], [{ freshness: 7 }, FRESH], [{ freshness: "" }, FRESH],
+      [{ date_after: "2026-02-30" }, AFTER], [{ date_after: "11/01/2026" }, AFTER], [{ date_after: 20261101 }, AFTER],
+      [{ date_before: "2026-11" }, "web_search refused: date_before must be a date written YYYY-MM-DD."],
+      [{ date_after: "2026-11-08", date_before: "2026-11-01" }, "web_search refused: date_after must not be later than date_before."],
+      [{ domain_filter: "example.com" }, DOMAINS], [{ domain_filter: [""] }, DOMAINS], [{ domain_filter: ["-"] }, DOMAINS], [{ domain_filter: [7] }, DOMAINS],
+      [{ domain_filter: ["example.com/news"] }, DOMAINS], [{ domain_filter: ["example.com:8080"] }, DOMAINS], [{ domain_filter: ["example"] }, DOMAINS],
+      [{ domain_filter: Array.from({ length: 21 }, (_, i) => `site${i}.example`) }, DOMAINS],
+      [{ domain_filter: ["news.example", "-spam.example"] }, "web_search refused: domain_filter must list domains to include or domains to exclude, not both."],
+      [{ country: "CAN" }, COUNTRY], [{ country: "C1" }, COUNTRY], [{ country: "" }, COUNTRY], [{ country: 1 }, COUNTRY],
+    ]) {
+      const r = await webSearch({ query: "rain", ...extra }, { at: WITH_EXA });
+      assert.deepEqual([r.isError, textOf(r)], [true, line], JSON.stringify(extra));
+    }
+    assert.equal(f.seen.length, 0);
+  } finally {
+    f.restore();
+  }
+});
+
+test("with only query and count web_search sends the request and gives the text it gave before the filters came back", async () => {
+  const f = exaOnly();
+  try {
+    const t = textOf(await webSearch({ query: "rain warning plain", count: 3 }, { at: WITH_EXA }));
+    assert.equal(f.seen[0].body, '{"query":"rain warning plain","type":"auto","numResults":3,"contents":{"highlights":true}}');
+    assert.equal(t.replace(/ id="[0-9a-f]{16}"/g, ' id="ID"'), [
+      'web_search "rain warning plain": 1 results from Exa, paid.',
+      "",
+      "",
+      '<<<EXTERNAL_UNTRUSTED_CONTENT id="ID">>>',
+      "Source: Web Search",
+      "---",
+      "1. Rain warning tonight",
+      "   https://news.example/rain-5 (2026-11-02T00:00:00.000Z)",
+      "   Up to 25 mm of rain is expected overnight.",
+      '<<<END_EXTERNAL_UNTRUSTED_CONTENT id="ID">>>',
+    ].join("\n"));
+  } finally {
+    f.restore();
+  }
+});
+
+test("a filter given as null is no filter, as a null count is the default count: the same request, the same text", async () => {
+  const f = exaOnly();
+  try {
+    const plain = textOf(await webSearch({ query: "rain warning plain", count: 3 }, { at: WITH_EXA }));
+    const nulls = await webSearch({ query: "rain warning plain", count: 3, freshness: null, date_after: null, date_before: null, domain_filter: null, country: null }, { at: WITH_EXA });
+    assert.equal(nulls.isError, undefined, textOf(nulls));
+    assert.equal(f.seen[1].body, f.seen[0].body);
+    const same = (s) => s.replace(/ id="[0-9a-f]{16}"/g, ' id="ID"');
+    assert.equal(same(textOf(nulls)), same(plain));
+  } finally {
+    f.restore();
+  }
+});
+
+// The first line says what the answering engine did with the filters asked (F7-13, the second pass).
+const PAID_ROW = { search_id: "s3", results: [{ url: "https://news.example/rain-6", title: "Rain warning tonight", publish_date: "2026-11-02", excerpts: ["Up to 25 mm of rain is expected overnight."] }] };
+const YOU_ROW = { jsonrpc: "2.0", id: 1, result: { structuredContent: { results: { web: [{ url: "https://news.example/rain-7", title: "Rain warning tonight", description: "Up to 25 mm of rain is expected overnight.", page_age: "2026-11-02T00:00:00" }] } } } };
+const FREE_ROW = { jsonrpc: "2.0", id: 1, result: { structuredContent: { results: [{ url: "https://news.example/rain-8", title: "Rain warning tonight", publish_date: "2026-11-02", excerpts: ["Up to 25 mm of rain is expected overnight."] }] } } };
+const REPLY = { "https://api.exa.ai/search": EXA_ROW, "https://api.parallel.ai/v1/search": PAID_ROW, "https://api.you.com/mcp?profile=free": YOU_ROW, "https://search.parallel.ai/mcp": FREE_ROW };
+const engines = () => stubFetch((url) => (REPLY[url] ? json(REPLY[url]) : json({ success: false, error: "unexpected" }, 500)));
+const headOf = async (args, where) => textOf(await webSearch(args, { at: where })).split("\n")[0];
+
+// A private folder with no keys whose web.json runs its own engines, for the ones WEB_JSON leaves out.
+function searchFolder(name, search) {
+  const dir = privateFolder(name, {});
+  fs.writeFileSync(path.join(dir, "web.json"), JSON.stringify({ ...WEB_JSON, search: { ...WEB_JSON.search, ...search } }));
+  return at(dir);
+}
+const YOU = searchFolder("you-only", { searchOrder: ["you"] });
+const FREE = searchFolder("parallel-only", { searchOrder: ["parallel"] });
+const CACHED = searchFolder("you-cached", { searchOrder: ["you"], cacheTtlMinutes: 15 });
+
+test("the table of filters each engine enforces is what its request carries: an enforced filter sets a field, one dropped or only worded sets none", async () => {
+  const NOW = new Date("2026-11-11T12:00:00Z");
+  const NAME = { freshness: "freshness", date_after: "dateAfter", date_before: "dateBefore", domain_filter: "domainFilter", country: "country" };
+  // An engine's options as lib/search/provider.js readArgs makes them from the tool's arguments.
+  const opts = (filters) => ({ query: "rain", count: 3, snippetChars: 300, timeoutMs: 5000, domainFilter: [],
+    ...Object.fromEntries(Object.entries(filters).map(([k, v]) => [NAME[k], k === "country" ? v.toUpperCase() : v])) });
+  const f = stubFetch(() => json({}, 500)); // a keyless engine's request is read off the stub; its answer is not needed
+  const sent = async (search, o) => {
+    await search(o).catch(() => {});
+    const s = f.seen.at(-1);
+    return s.body ? JSON.parse(s.body) : Object.fromEntries(new URL(s.url).searchParams);
+  };
+  // Each engine's request less its words: the objective a Parallel engine writes every filter into, and the call's id.
+  const REQUEST = {
+    exa: async (o) => buildExaBody(o, NOW),
+    "parallel-paid": async (o) => ({ ...buildParallelPaidBody(o, NOW), objective: "" }),
+    you: async (o) => buildYouCall(o, 1, NOW),
+    parallel: async (o) => {
+      const b = await sent(searchParallelFree, o);
+      return { ...b, id: 0, params: { ...b.params, arguments: { ...b.params.arguments, objective: "" } } };
+    },
+    firecrawl: async (o) => sent(searchFirecrawl, o),
+    duckduckgo: async (o) => sent(searchDuckDuckGo, o),
+  };
+  // Each filter alone, both kinds of domain list, a country You.com lists and one it does not, and each date beside a
+  // looser freshness: Firecrawl then sends freshness alone; Exa, paid Parallel and You.com send the later start date.
+  const CASES = [
+    [{}, "freshness", "week"], [{}, "date_after", "2026-11-01"], [{}, "date_before", "2026-11-08"],
+    [{}, "domain_filter", ["news.example"]], [{}, "domain_filter", ["-spam.example"]], [{}, "country", "CA"], [{}, "country", "ie"],
+    [{ freshness: "year" }, "date_after", "2026-11-01"], [{ freshness: "year" }, "date_before", "2026-11-08"],
+  ];
+  try {
+    assert.deepEqual(Object.keys(ENFORCED), ENGINES);
+    for (const engine of ENGINES) {
+      for (const [rest, k, v] of CASES) {
+        const filters = { ...rest, [k]: v };
+        const field = !isDeepStrictEqual(await REQUEST[engine](opts(rest)), await REQUEST[engine](opts(filters)));
+        // The one row a request cannot show: paid Parallel sends any two letters and, by its own page, ignores a code
+        // outside its 37 (IE is not one), so the table says it does not take that country though the field is set.
+        const ignored = engine === "parallel-paid" && k === "country" && v === "ie";
+        assert.equal(ENFORCED[engine](k, filters), field && !ignored, `${engine} ${JSON.stringify(filters)}`);
+      }
+    }
+    // You.com sends a country only when it is one of its own: every two-letter code, as a room may write it.
+    for (let i = 0; i < 26 * 26; i++) {
+      const code = String.fromCharCode(65 + Math.floor(i / 26), 65 + (i % 26));
+      const meta = buildYouCall(opts({ country: code }), 1, NOW).params._meta?.["com.you.com/search"] ?? {};
+      assert.equal(ENFORCED.you("country", { country: code.toLowerCase() }), "country" in meta, code);
+      // Paid Parallel's 37 (docs.parallel.ai, Advanced Search Settings, Supported locations) are You.com's 36 and Greece.
+      assert.equal(ENFORCED["parallel-paid"]("country", { country: code.toLowerCase() }), "country" in meta || code === "GR", code);
+    }
+  } finally {
+    f.restore();
+  }
+});
+
+test("every filter asked enforced by the engine that answered: the first line says filtered by each, as a person says it, and localized to a country, which keeps no page out", async () => {
+  const f = engines();
+  try {
+    assert.equal(await headOf({ query: "rain", count: 3, freshness: "week", country: "CA" }, WITH_EXA),
+      'web_search "rain": 1 results from Exa, paid, filtered by freshness week, localized to CA.');
+    assert.equal(await headOf({ query: "rain sites", date_after: "2026-11-01", date_before: "2026-11-08", domain_filter: ["a.example", "b.example", "c.example", "d.example", "e.example"], country: "ca" }, WITH_EXA),
+      'web_search "rain sites": 1 results from Exa, paid, filtered by after 2026-11-01, before 2026-11-08 and sites a.example, b.example, c.example and 2 more, localized to CA.');
+    assert.equal(await headOf({ query: "rain not sites", freshness: "day", domain_filter: ["-spam.example", "-junk.example"] }, WITH_EXA),
+      'web_search "rain not sites": 1 results from Exa, paid, filtered by freshness day and not sites spam.example, junk.example.');
+    assert.equal(await headOf({ query: "rain warning plain", count: 3, domain_filter: [] }, WITH_EXA), 'web_search "rain warning plain": 1 results from Exa, paid.');
+    assert.equal(await headOf({ query: "rain here", country: "ca" }, WITH_EXA), 'web_search "rain here": 1 results from Exa, paid, localized to CA.');
+    assert.equal(f.seen.length, 5);
+  } finally {
+    f.restore();
+  }
+});
+
+test("a filter the answering engine drops or only words is named as not enforced: You.com and a country it does not list, paid Parallel and the end date", async () => {
+  const f = engines();
+  try {
+    assert.equal(await headOf({ query: "rain", count: 3, freshness: "week", country: "IE" }, YOU),
+      "web_search \"rain\": 1 results from You.com's keyless search, free, filtered by freshness week; not enforced by this engine: country IE.");
+    assert.equal(await headOf({ query: "rain paid", date_after: "2026-11-01", date_before: "2026-11-08", domain_filter: ["news.example"], country: "CA" }, WITH),
+      "web_search \"rain paid\": 1 results from Parallel's paid Search API, filtered by after 2026-11-01 and sites news.example, localized to CA; not enforced by this engine: before 2026-11-08.");
+    assert.equal(await headOf({ query: "rain paid elsewhere", freshness: "week", country: "ie" }, WITH),   // sent, and ignored: not one of its 37
+      "web_search \"rain paid elsewhere\": 1 results from Parallel's paid Search API, filtered by freshness week; not enforced by this engine: country IE.");
+  } finally {
+    f.restore();
+  }
+});
+
+test("an engine that enforces none of the filters asked says so: keyless Parallel only words them as a preference and drops the country", async () => {
+  const f = engines();
+  try {
+    assert.equal(await headOf({ query: "rain", count: 3, freshness: "week", country: "IE" }, FREE),
+      "web_search \"rain\": 1 results from Parallel's keyless search, free; not enforced by this engine: freshness week, country IE.");
+  } finally {
+    f.restore();
+  }
+});
+
+test("a cached answer keeps its engine, so its first line says of the filters what the first answer said", async () => {
+  const f = engines();
+  try {
+    const args = { query: "rain cached", freshness: "week", country: "IE" };
+    assert.equal(await headOf(args, CACHED), "web_search \"rain cached\": 1 results from You.com's keyless search, free, filtered by freshness week; not enforced by this engine: country IE.");
+    assert.equal(await headOf(args, CACHED), "web_search \"rain cached\": 1 results from this process's 15-minute cache, filtered by freshness week; not enforced by this engine: country IE.");
+    assert.equal(f.seen.length, 1);
+  } finally {
+    f.restore();
+  }
+});
+
+test("when no engine found anything the first line names the filters asked; with none, or an empty domain list, it is the line it was", async () => {
+  const f = stubFetch((url) => json(url === "https://api.exa.ai/search" ? { requestId: "r0", results: [] } : url === "https://api.parallel.ai/v1/search" ? { search_id: "s0", results: [] } : { success: true, data: [] }));
+  try {
+    assert.equal(await headOf({ query: "rain nothing", freshness: "week", domain_filter: ["news.example"], country: "CA" }, WITH_EXA),
+      'web_search "rain nothing": no results with freshness week, sites news.example and country CA (exa empty, parallel-paid empty, firecrawl empty).');
+    for (const args of [{ query: "rain nothing" }, { query: "rain nothing", domain_filter: [] }]) {
+      assert.equal(await headOf(args, WITH_EXA), 'web_search "rain nothing": no results (exa empty, parallel-paid empty, firecrawl empty).');
+    }
+  } finally {
+    f.restore();
+  }
 });
 
 // ---- spend --------------------------------------------------------------------------------------
@@ -749,7 +1006,7 @@ test("the wall: a room whose limit on the server is short gets its run id, or it
 
 test("the server lists five tools under the names the rooms call, and bad research arguments are refused before any work", async () => {
   assert.deepEqual(TOOLS.map((t) => t.name), ["web_fetch", "web_search", "web_research", "web_research_result", "web_image"]);
-  assert.deepEqual(TOOLS.map((t) => Object.keys(t.inputSchema.properties)), [["url", "max_chars"], ["query", "count"], ["query", "effort", "schema", "system"], ["run_id"], ["url", "max_bytes"]]);
+  assert.deepEqual(TOOLS.map((t) => Object.keys(t.inputSchema.properties)), [["url", "max_chars"], ["query", "count", "freshness", "date_after", "date_before", "domain_filter", "country"], ["query", "effort", "schema", "system"], ["run_id"], ["url", "max_bytes"]]);
   const research = TOOLS.find((t) => t.name === "web_research");
   assert.match(research.description, /a list, a dig across many pages, or a named thing to verify and enrich, with sources; a single fact or page is web_search or web_fetch\. About 10 cents a run at medium, up to 15 minutes/);
   assert.deepEqual(research.inputSchema.properties.effort.enum, ["minimal", "low", "medium", "high"]);

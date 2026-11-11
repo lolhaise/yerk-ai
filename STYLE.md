@@ -34,7 +34,7 @@ A report path becomes "report saved" with the command that opens it. A worker's 
 
 ## 5. Relative times
 
-"3 min of 15", "started 2 min ago", "done in 3 min". A clock time only where a person would say one ("at 9:00 tomorrow", a meter that resets at 23:40). Never a raw timestamp or an ISO string.
+"3 min of 15", "started 2 min ago", "done in 3 min". A clock time only where a person would say one ("at 9:00 tomorrow", a meter that resets at 11:40p). Never a raw timestamp or an ISO string.
 
 - Good: `-# worker 4f2a91, 3 min of 15`
 - Bad: `started 2026-10-18T16:54:26Z`, or a chat service's timestamp code that only one client renders

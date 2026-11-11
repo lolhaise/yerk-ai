@@ -120,8 +120,9 @@ class Pipeline:
         ab = words.line(str(r["ability"]), 80)
         if (busy := [x for x in self.flight() if (x["day"], x["n"]) != (r["day"], r["n"])]):
             await self.set(r, {"state": "queued"}, "filed")
-            return await self.say(words.NEED_QUEUED.format(n=r["n"], room=room, ability=ab, behind=busy[0]["n"]))
-        await self.say(words.NEED_STARTS.format(n=r["n"], room=room, ability=ab))
+            return await self.say(words.NEED_QUEUED.format(n=needs.called(self.y.state, r), room=room, ability=ab,
+                                                          behind=needs.called(self.y.state, busy[0])))
+        await self.say(words.NEED_STARTS.format(n=needs.called(self.y.state, r), room=room, ability=ab))
         await self.y.need_build({"day": r["day"], "n": r["n"]})
 
     async def next(self) -> None:
@@ -132,7 +133,8 @@ class Pipeline:
             return
         q = sorted((r for r in needs.load(self.y.state) if r.get("state") == "queued"), key=lambda r: (str(r["day"]), int(r["n"])))
         if q and (await self.y.need_build({"day": q[0]["day"], "n": q[0]["n"]})).get("ok"):
-            await self.say(words.NEED_STARTS.format(n=q[0]["n"], room=q[0]["asks"][0]["room"], ability=words.line(str(q[0]["ability"]), 80)))
+            await self.say(words.NEED_STARTS.format(n=needs.called(self.y.state, q[0]), room=q[0]["asks"][0]["room"],
+                                                    ability=words.line(str(q[0]["ability"]), 80)))
 
     async def pickup(self) -> None:
         """A need still filed with no `last` (no build came back) and no `worker` (need_build writes one on its claim, so no
@@ -157,7 +159,7 @@ class Pipeline:
         """Held (a person decides) or stuck, with why; the next queued need starts."""
         await self.set(r, {"state": state, "why": why, "worker": ""})
         await self.say((words.NEED_HELD if state == "held" else words.NEED_STUCK).format(
-            n=r["n"], ability=words.line(str(r["ability"]), 80), why=why))
+            n=needs.called(self.y.state, r), ability=words.line(str(r["ability"]), 80), why=why))
         await self.next()
 
     # the watch
@@ -190,14 +192,14 @@ class Pipeline:
         if not (tok and repo):
             if not r.get("told"):                        # said once a need: the merge is a person's, as before
                 await self.set(r, {"told": 1})
-                await self.say(words.NEED_NO_TOKEN.format(n=r["n"]))
+                await self.say(words.NEED_NO_TOKEN.format(n=needs.called(self.y.state, r)))
             return
         now, since = self.now(), float(r.get("since") or self.now())
         if r["state"] == "built":
             p = await asyncio.to_thread(github.pr_for, repo, str(r.get("branch")), tok)
             if p["ok"] and p["number"]:
                 await self.set(r, {"state": "pr", "pr": p["number"], "head": p["head"], "since": now, "checks": {}}, "built")
-                await self.say(words.NEED_SEEN.format(n=r["n"], pr=p["number"]))
+                await self.say(words.NEED_SEEN.format(n=needs.called(self.y.state, r), pr=p["number"]))
             elif now - since > NO_PR:
                 await self.stop(r, "stuck", f"no pull request seen from {r.get('branch')} in {words.span(NO_PR)}")
             return
@@ -242,7 +244,7 @@ class Pipeline:
         ctx: dict[str, list[str]] = c.get("contexts") or {}
         if c["ok"] and len(ctx) >= int(self.conf().get("contexts") or 7) and all(v[0] in ("success", *RED) for v in ctx.values()) and not self.flight():
             await self.set(r, {"state": "pr", "checks": ctx}, "stuck")
-            await self.say(words.NEED_LATE.format(n=r["n"], pr=r["pr"]))
+            await self.say(words.NEED_LATE.format(n=needs.called(self.y.state, r), pr=r["pr"]))
 
     async def heads(self, r: dict[str, Any]) -> dict[str, dict[str, str]]:
         """The need's plug-in branches as they stand: need-DAY-N, the name its briefs give, in each plug-in repository the
@@ -269,7 +271,7 @@ class Pipeline:
         if not out.get("ok"):
             return await self.stop(r, "held", f"the fix worker did not start: {out.get('error')}")
         await self.set(r, {"state": "fixing", "fixes": k + 1, "fix_cap": cap, "worker": out["id"]})
-        await self.say(words.NEED_FIXING.format(n=r["n"], pr=r["pr"], k=k + 1, cap=cap, why=words.line(what.splitlines()[0], 120)))
+        await self.say(words.NEED_FIXING.format(n=needs.called(self.y.state, r), pr=r["pr"], k=k + 1, cap=cap, why=words.line(what.splitlines()[0], 120)))
 
     async def read(self, r: dict[str, Any]) -> None:
         r = await self.set(r, {"plugins": await self.heads(r)}) or r          # what the read reads is what the merge lands
@@ -278,7 +280,7 @@ class Pipeline:
         if not out.get("ok"):
             return await self.stop(r, "held", f"the cold read did not start: {out.get('error')}")
         await self.set(r, {"state": "reading", "worker": out["id"]})
-        await self.say(words.NEED_READING.format(n=r["n"], pr=r["pr"]))
+        await self.say(words.NEED_READING.format(n=needs.called(self.y.state, r), pr=r["pr"]))
 
     async def ended(self, row: dict[str, Any], end: dict[str, Any], role: str, day: str, n: int) -> bool:
         """A cold read's or a fix worker's end (Yerkd.need_built hands it here): the need's next step from its first line. Its
@@ -292,7 +294,7 @@ class Pipeline:
         if workers.cut_off(end):                         # no verdict: PR again, a fix's count as it was, the next tick again
             back = {"fixes": max(0, int(r.get("fixes") or 0) - 1)} if role == "fix" else {}
             await self.set(r, {"state": "pr", "worker": "", **back}, "reading", "fixing")
-            await self.say(words.NEED_CUT.format(n=n, pr=r["pr"], what=words.NEED_CUT_WHAT[role]))
+            await self.say(words.NEED_CUT.format(n=needs.called(self.y.state, r), pr=r["pr"], what=words.NEED_CUT_WHAT[role]))
             return True
         first, how = workers.first_line(Path(row["report"])), workers.settled_state(row, workers.tasks_of(Path(row["tasks"])), end)[1]
         verdict, _, why = first.partition(":")
@@ -306,7 +308,7 @@ class Pipeline:
             await self.stop(r, "held", f"the cold read was unsure: {why}" if verdict == "unsure" else f"the cold read gave no verdict: {how}")
         elif verdict == "fixed":
             await self.set(r, {"state": "pr", "worker": ""}, "fixing")
-            await self.say(words.NEED_FIXED.format(n=n, pr=r["pr"]))
+            await self.say(words.NEED_FIXED.format(n=needs.called(self.y.state, r), pr=r["pr"]))
         else:
             await self.stop(r, "held", f"the fix worker could not: {why}" if verdict == "cannot" else f"the fix worker {how}")
         return True
@@ -326,12 +328,12 @@ class Pipeline:
             return await self.say(self.merged(r))
         if m.get("code") == 409:                         # the head moved under the read: its checks and a read again
             await self.set(r, {"state": "pr", "worker": ""})
-            return await self.say(words.NEED_FIXED.format(n=r["n"], pr=r["pr"]))
+            return await self.say(words.NEED_FIXED.format(n=needs.called(self.y.state, r), pr=r["pr"]))
         await self.stop(r, "held", f"the merge was refused: {m['error']}")
 
     def merged(self, r: dict[str, Any]) -> str:
         plugs = ", ".join(dict(r.get("plugins") or {}))
-        return words.NEED_MERGED.format(n=r["n"], pr=r["pr"]) + (words.NEED_LANDED.format(names=plugs) if plugs else "")
+        return words.NEED_MERGED.format(n=needs.called(self.y.state, r), pr=r["pr"]) + (words.NEED_LANDED.format(names=plugs) if plugs else "")
 
     # the deploy, and live
     def holds(self, after: str, r: dict[str, Any]) -> bool:
@@ -354,7 +356,8 @@ class Pipeline:
             mine = [d for d in rows if float(d["at"]) >= float(r.get("deploy_at") or 0)]
             if (bad := [d for d in mine if d.get("outcome") not in ("begun", "proven")]) and bad[-1].get("outcome") == "gave up":
                 await self.set(r, {"state": "merged", "unit": ""}, "deploying")      # nothing failed, nothing deployed: again
-                await self.say(words.NEED_DEPLOY_AGAIN.format(n=r["n"], pr=r["pr"], why=words.line(str(bad[-1].get("note") or ""), 160)))
+                await self.say(words.NEED_DEPLOY_AGAIN.format(n=needs.called(self.y.state, r), pr=r["pr"],
+                                                                why=words.line(str(bad[-1].get("note") or ""), 160)))
             elif bad:
                 await self.stop(r, "held", f"deploy failed: {words.line(str(bad[-1].get('note') or bad[-1]['outcome']), 160)}")
             elif not mine and running is not None and r.get("unit") not in running and self.now() - float(r.get("deploy_at") or 0) > 60:
@@ -366,7 +369,7 @@ class Pipeline:
         if (why := await asyncio.to_thread(self.units.start, self.argv(uid, r))):
             return await self.stop(r, "held", f"deploy failed: the unit did not start: {why}")
         await self.set(r, {"state": "deploying", "unit": f"{UNIT}{uid}", "deploy_at": self.now()}, "merged")
-        await self.say(words.NEED_DEPLOYING.format(n=r["n"], pr=r["pr"]))
+        await self.say(words.NEED_DEPLOYING.format(n=needs.called(self.y.state, r), pr=r["pr"]))
 
     def argv(self, uid: str, r: dict[str, Any]) -> list[str]:
         """The deploy unit: in the daemon's tree, on its PATH, `git fetch origin` through the askpass (the token file's path in
@@ -387,10 +390,10 @@ class Pipeline:
         await self.set(r, {"state": "live", "live_at": self.now(), "worker": ""})
         await self.drop(r)
         ab = words.line(str(r["ability"]), 80)
-        await self.say(words.NEED_LIVE.format(n=r["n"], ability=ab))
+        await self.say(words.NEED_LIVE.format(n=needs.called(self.y.state, r), ability=ab))
         for room in dict.fromkeys(str(a["room"]) for a in r["asks"]):
             if (ch := self.y.channels.get(room)) is not None and room != self.room():
-                said = self.tell(ch, room, words.NEED_LIVE_ROOM.format(n=r["n"], ability=ab))
+                said = self.tell(ch, room, words.NEED_LIVE_ROOM.format(n=needs.called(self.y.state, r), ability=ab))
                 if not self.busy(room):
                     await said
                     continue
