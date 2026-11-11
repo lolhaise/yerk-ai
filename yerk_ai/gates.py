@@ -13,7 +13,7 @@ quotes, in a heredoc body or as a word in a string is not a delete; lifted/shell
 - restart: a write to a file yerkd reads at start (yerkd.toml, rooms.toml, accounts.toml) or a
   restart of yerkd is refused while the memory index rebuilds or a human turn is running, with one
   plain line to the room;
-- one reading: the approval and restart rules read a shell command as the delete rules do, as what would really run
+- one reading: the hardline, approval and restart rules read a shell command as the delete rules do, as what would really run
   (runs, unwrap), so a held command is held behind a wrapper, in a nested shell or by its full path too;
 - approval: an action named external (a send to another room, an owner room's line to the machine
   room excepted, a public post, a login, money, a
@@ -179,12 +179,13 @@ _PASS_INSIDE = {"git", "rmdir", "rsync", "zip"}
 
 
 def check_shell(command: str, cwd: str, s: Settings, root: str = "", way: str = "") -> Verdict | None:
-    """hardline, then the delete rules on what would really run (unwrap), for one Bash command: `cwd`
-    is where it runs, `root` the room's work folder (default `cwd`) that a delete must stay under, `way`
-    what the refusal of a delete outside it adds (an owner room's: the delete tool)."""
+    """hardline, on the text and on what would really run (runs), then the delete rules on what would really run (unwrap),
+    for one Bash command: `cwd` is where it runs, `root` the room's work folder (default `cwd`) that a delete must stay under,
+    `way` what the refusal of a delete outside it adds (an owner room's: the delete tool)."""
     parts = shell(command)
     whole = mask(shellguard.strip_heredocs(command))           # a redirect or a fork bomb spans separators
-    for seg, argv, norm in [("", [], ""), *parts]:
+    real: list[tuple[str, list[str], str]] = [(command, [], line) for line in runs(command)]   # behind a wrapper, in a nested shell
+    for seg, argv, norm in [("", [], ""), *parts, *real]:
         what = hardline(norm) if seg else hardline(whole, anchored=False)
         if what:
             return Verdict("hardline", "deny", f"Refused: this is {what}, which never runs here, with or without "

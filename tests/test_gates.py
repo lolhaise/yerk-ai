@@ -73,6 +73,18 @@ def test_hardline_commands_never_run_and_their_quotes_are_prose(tmp_path):
         assert gates.check_shell(c, str(tmp_path), S) is None, c
 
 
+def test_a_hardline_command_is_refused_in_every_shape_a_shell_runs_it(tmp_path):
+    # cleanup F5-15: the hardline rules read what would really run too (runs), not only the segments the old splitter finds
+    for c in ("timeout 5 kill -9 -1", "bash -c 'kill -9 -1'", "/sbin/reboot", "echo $(shutdown -h now)", "xargs -a pids kill -9 -1",
+              "doas mkfs.ext4 /dev/sdb", "sh -c 'rm -rf /'", "timeout 9 rm -rf ~"):
+        v = gates.check_shell(c, str(tmp_path), S)
+        assert v and v.gate == "hardline" and v.decision == "deny", c
+    for c in ('bash -c "echo kill -9 -1"', "timeout 5 kill -9 12345", "sh -c 'git log --format=%s | grep reboot'",
+              "git commit -q -m \"$(cat <<'EOF'\nshutdown now waits for the turn\nkill -9 -1 is refused\nEOF\n)\""):
+        v = gates.check_shell(c, str(tmp_path), S)
+        assert not (v and v.gate == "hardline"), c
+
+
 class Rec(ConsoleChannel):
     def __init__(self) -> None:
         super().__init__()
