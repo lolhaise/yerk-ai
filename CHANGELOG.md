@@ -8,11 +8,12 @@ version changes.
 
 ## 2026-11-11
 
-### status-card (#?)
+### status-card (#54)
 
 - `/status` typed in a room answers with that room's own card, in the shape of the box's own `/status` card, instead of
   the whole machine card (31 lines on the owner's install the day he asked, too long to read on a phone; his order of
-  2026-11-11). Three lines about the room: the model its next reply launches with and the account its session is on;
+  2026-11-11). Three lines about the room: the model its next reply launches with and the account its session is on
+  (with no live process, the one its next turn would try: its own unless that one rests);
   its session's tokens over its compaction window and how many times it was compacted since it began; its thinking
   level, ending ` · Fast: on` while fast mode is on.
 - Then the tank, two lines an account in number order: the account the room is on wears `➤`, the soonest weekly reset
