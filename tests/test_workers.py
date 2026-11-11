@@ -499,6 +499,14 @@ def test_a_worker_that_lost_a_process_to_memory_and_ended_any_other_way_says_so_
             assert card[1:3] == [line, "merge"] and said == f"{detail}; {line}" and relay.endswith(f"; {line}"), wid
 
 
+def test_a_death_for_memory_is_never_a_stop_nobody_asked_for_and_a_real_one_still_is():
+    died = lambda **x: {"exit": "died", **x}  # noqa: E731
+    assert not workers.cut_off(died(result_code="oom-kill", status="143"))      # seen live: the fix started again
+    assert not workers.cut_off(died(result_code="signal", status="KILL", oom_kill=1))
+    assert all(workers.cut_off(died(result_code=r, status=st, **more)) for r, st in (("exit-code", "143"), ("signal", "TERM"))
+               for more in ({}, {"oom_kill": 1}))       # a process lost to memory earlier, then the TERM: still cut off
+
+
 def test_a_worker_a_script_starts_that_answers_exactly_no_reply_ends_with_no_relay_turn_live_or_at_a_re_attach(setup, monkeypatch):
     """need-2026-11-09-77: a timer script started each run with `yerk worker start --brief FILE --room ROOM`, the brief
     saying to answer exactly NO_REPLY when there is nothing, and each quiet run still asked the room for a relay turn that

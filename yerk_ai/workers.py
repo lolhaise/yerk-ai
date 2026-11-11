@@ -440,8 +440,9 @@ def oom_note(end: dict[str, Any]) -> str:
 def cut_off(end: dict[str, Any]) -> bool:
     """A worker that died from a stop nobody asked for, a box shutdown (seen live on need 83's fix): settled "died",
     which a row with a stop request never is ("stopped"), and its exit the termination signal, exited 143 or killed by
-    TERM (exit.json's status is systemd's EXIT_STATUS, the signal's name once killed)."""
-    return end.get("exit") == "died" and str(end.get("status") or "") in ("143", "TERM")
+    TERM (exit.json's status is systemd's EXIT_STATUS, the signal's name once killed); never a death for memory, which
+    would only run out again (seen live: oom-kill, exited 143, started again)."""
+    return end.get("exit") == "died" and str(end.get("status") or "") in ("143", "TERM") and not for_memory(end)
 
 
 def card_text(row: dict[str, Any], items: list[tuple[bool, str]], end: dict[str, Any] | None = None,
