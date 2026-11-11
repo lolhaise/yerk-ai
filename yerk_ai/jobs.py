@@ -514,6 +514,10 @@ class Plan:
 
 def plan(path: Path, units: Systemd, env: Env, now: float | None = None) -> Plan:
     jobs, errors = load(path, now)
+    ours = units.ours()
+    # a one-shot whose time has passed, still in the file with its units on disk, is running or due on return: kept as
+    # it is and never checked for a next fire, since only its own run takes it out of the file and then its units
+    kept = {n: j for n, j in load(path, 0)[0].items() if n in errors and j.when == "at" and n in ours}
     p = Plan(jobs=jobs, errors=errors)
     for name, job in jobs.items():
         for spec in job.calendar():
@@ -529,8 +533,12 @@ def plan(path: Path, units: Systemd, env: Env, now: float | None = None) -> Plan
             p.added.append(name)
         else:
             p.changed.append(name)
+    for name, job in kept.items():
+        del p.errors[name]
+        p.jobs[name] = job
+        p.unchanged.append(name)
     wanted = set(jobs) - set(p.errors)
-    p.removed = [n for n in units.ours() if n not in wanted]
+    p.removed = [n for n in ours if n not in wanted]
     return p
 
 

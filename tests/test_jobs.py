@@ -517,6 +517,36 @@ def test_a_one_shot_is_removed_from_the_file_and_its_units_go_after_it_fires(set
     assert s.ledger.job_runs(job="gone")[0]["result"] == "no such job: not in the jobs file"
 
 
+def test_a_sync_while_a_one_shot_runs_keeps_it_and_its_units_until_its_own_run_takes_them_out(setup, tmp_path):
+    """Two one-shots at one minute: the first to finish syncs while the other still runs. That one keeps its place in the
+    file and both its units (counted unchanged, never checked for a next fire), so systemd does not stop it; its own run
+    takes it out. A past one-shot with no units is still refused."""
+    s = setup
+    rec = Rec()
+    j, w, sd, priv, state = manager(setup, tmp_path, {"r": s.room()}, {"r": rec})
+    s.ledger.__init__(state / "ledger.sqlite")
+    j.ledger = w.ledger = s.ledger
+    at = datetime.fromtimestamp(time.time() - 120, UTC).strftime("%Y-%m-%d %H:%M")
+    shot = '[jobs.{n}]\nkind = "script"\nat = "' + at + '"\ntz = "UTC"\nroom = "r"\ncommand = "echo {n}"\n'
+    path = write_jobs(priv / "jobs.toml", shot.format(n="first") + "\n" + shot.format(n="second"))
+    jobs.sync(path, sd, ENV, now=time.time() - HOUR)              # written while both were still to come
+    second, n = (sd.read("yerk-job-second.timer"), sd.read("yerk-job-second.service")), len(sd.calls)
+    checked = []
+    sd.check = lambda spec: checked.append(spec) or f"{spec!r} never fires again (it is in the past)"
+    handoff = lambda payload: asyncio.run(j.handle("", payload["job"]))  # noqa: E731  (the daemon's /control)
+    assert jobs.run("first", priv, state, units=sd, handoff=handoff) == 0
+    assert sd.ours() == ["second"] and (sd.read("yerk-job-second.timer"), sd.read("yerk-job-second.service")) == second
+    assert "[jobs.second]" in path.read_text() and "[jobs.first]" not in path.read_text()
+    assert not [c for c in sd.calls[n:] if "second" in str(c)] and checked == []      # not disabled, removed or rewritten
+    p, _ = jobs.sync(path, sd, ENV)                                # any other sync keeps it too
+    assert (p.unchanged, p.removed, p.errors, checked) == (["second"], [], {}, [])
+    assert jobs.run("second", priv, state, units=sd, handoff=handoff) == 0
+    assert sd.ours() == [] and "[jobs.second]" not in path.read_text() and [t for _, t, _ in rec.sent] == ["first", "second"]
+    write_jobs(path, shot.format(n="late"))                        # never scheduled: refused as before
+    p, _ = jobs.sync(path, sd, ENV)
+    assert p.errors["late"].endswith("is in the past") and (p.unchanged, sd.ours()) == ([], [])
+
+
 # notes: a reminder its room's own session tells
 NOTE = 'kind = "note"\nat = "2099-01-03 10:00"\ntz = "UTC"\nroom = "r"\nmessage = "Remind them to call the clinic."\n'
 
