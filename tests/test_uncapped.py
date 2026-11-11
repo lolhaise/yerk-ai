@@ -76,6 +76,7 @@ def assemble(tmp: Path, yerkd: str | None = None) -> dict:
     try:
         y = Yerkd(private, state)
         y.spec_for(ROOM)
+        y.sessions.bind(ROOM, "s1", "one")              # as RoomProcess.start binds it: the compaction below is the room's own
         rules = private / "memory" / memory.RULES
         rules.write_text(rules.read_text() + "".join(f"- new job {i}: how new job {i} is done from today, said in full.\n" for i in range(40)))
         msg = hooks.user_prompt_submit({"session_id": "s1", "prompt": PROMPT}, state, y.room_confs,
@@ -152,6 +153,7 @@ def test_a_topic_rule_filed_after_the_start_rides_once_and_a_compaction_re_adds_
     private, state = layer(tmp_path, ON)
     y = Yerkd(private, state)
     y.spec_for(ROOM)
+    y.sessions.bind(ROOM, "s1", "one")                  # as RoomProcess.start binds it: the compaction below is the room's own
     tier, late = private / "memory" / memory.TOPIC_RULES, ("- launch checklist: read the checklist aloud before the launch call "
                                                            "(example-room, 2026-10-26 18:00:00+00:00) [m:t4]")
     tier.write_text(tier.read_text() + late + "\n")

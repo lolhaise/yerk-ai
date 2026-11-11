@@ -1548,8 +1548,8 @@ class Yerkd:
             return {"decision": "block", "reason": reason} if reason else {}
         if event == "SessionStart":
             if payload.get("source") == "compact":
-                if name:                          # the topic rules ride again after it, each once (context.topics)
-                    (self.state / "rooms" / name / context.TOLD).unlink(missing_ok=True)
+                if name and self.sessions.by_session(sid) == name:    # the bound session's: its topic rules ride again after it,
+                    (self.state / "rooms" / name / context.TOLD).unlink(missing_ok=True)    # each once (context.topics); a copy's leaves the record
                 return await asyncio.to_thread(hooks.session_start, payload, self.state, lambda r: self.compact_pack(r, sid), name)
             prev = self.was_reset(name, sid) if name and payload.get("source") in ("startup", "clear") else ""
             if name and prev:                 # told only when the replaced session had answered something
