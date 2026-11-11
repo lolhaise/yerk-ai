@@ -24,8 +24,9 @@ daemon restarts.
   there is written; the adapter edits at most once a second, the latest text winning, as it does
   for turn cards. Its words come from words.py (STYLE.md): no path and no exit code in a room.
 - Completion: the unit's ExecStopPost writes exit.json (systemd's SERVICE_RESULT, EXIT_CODE and
-  EXIT_STATUS) and the same watch sees it. The card settles with the outcome in plain words
-  (finished clean, stopped: timed out, stopped by the owner, died: why, lost), the report's first
+  EXIT_STATUS, and how many of its processes the kernel killed for memory) and the same watch sees it. The card settles
+  with the outcome in plain words (finished clean, stopped: timed out, stopped by the owner, died: why, lost; a death
+  for memory says memory, and one that lost a process to memory and went on says so in one line), the report's first
   line and "report saved" with `yerk worker report <id>`, where the path and the unit's exit live;
   then ONE relay turn in the room's own session tells the outcome under 1,500 characters ending with
   that line. The relay waits until the room is idle (no human message for 60 s and no turn running;
@@ -88,6 +89,7 @@ CREDENTIAL = re.compile(r"key|token|secret|pass|auth|cookie|credential", re.I)  
 PUMP_EVERY = 5.0                               # seconds between looks for an idle room with a relay waiting
 YOUNG = 120.0                                  # seconds after its start a worker missing from the unit list is not lost yet
 MEMORY_MAX = "4G"                              # a worker unit's memory ceiling (MemoryMax), no swap past it
+CGROUP, OWN_CGROUP = Path("/sys/fs/cgroup"), Path("/proc/self/cgroup")   # cgroup v2: where a unit's memory.events is
 SIZE, SUFFIXES = re.compile(r"([1-9][0-9]*)([KMGT]?)"), ("", "K", "M", "G", "T")   # a size as systemd reads it, base 1024
 
 
@@ -303,13 +305,30 @@ def run(spec_path: Path) -> int:
 
 
 def post(folder: Path) -> int:
-    """ExecStopPost: how the unit ended, as systemd tells it, in exit.json (written whole, then renamed)."""
-    rec = {"result": os.environ.get("SERVICE_RESULT", ""), "code": os.environ.get("EXIT_CODE", ""),
-           "status": os.environ.get("EXIT_STATUS", ""), "ended": round(time.time(), 3)}
+    """ExecStopPost: how the unit ended, as systemd tells it, and how many of its processes the kernel killed for memory
+    (oom_kills; left out when it cannot be read), in exit.json (written whole, then renamed)."""
+    rec: dict[str, Any] = {"result": os.environ.get("SERVICE_RESULT", ""), "code": os.environ.get("EXIT_CODE", ""),
+                           "status": os.environ.get("EXIT_STATUS", ""), "ended": round(time.time(), 3)}
+    if (n := oom_kills()) is not None:
+        rec["oom_kill"] = n
     tmp = folder / f"{EXIT}.tmp"
     tmp.write_text(json.dumps(rec))
     os.replace(tmp, folder / EXIT)
     return 0
+
+
+def oom_kills() -> int | None:
+    """memory.events' oom_kill of the cgroup this process runs in: the processes any OOM killer killed there, its children's
+    included; None when it cannot be read. Only inside a unit (systemd's INVOCATION_ID): ExecStopPost runs in the unit's own
+    cgroup, which still exists then (seen on systemd 259, 2026-11-11), and anywhere else the count is another cgroup's."""
+    if not os.environ.get("INVOCATION_ID"):
+        return None
+    try:
+        own = next(x[3:] for x in OWN_CGROUP.read_text().splitlines() if x.startswith("0::"))
+        events = (CGROUP / own.lstrip("/") / "memory.events").read_text().split()       # "low 0 high 0 ... oom_kill 1 ..."
+        return int(events[events.index("oom_kill") + 1])
+    except (OSError, ValueError, IndexError, StopIteration):
+        return None
 
 
 # the watch
@@ -401,15 +420,29 @@ def settled_state(row: dict[str, Any], items: list[tuple[bool, str]], end: dict[
         state = "no report"
     elif state == "done" and items and ticked < len(items):
         state = "partly"
-    why = words.died(str(end.get("result_code") or "")) if state == "died" else ""
+    why = words.died("oom-kill" if for_memory(end) else str(end.get("result_code") or "")) if state == "died" else ""
     return words.outcome(state, cap=words.span(float(row["cap"])), why=why, ticked=ticked, rows=len(items))
+
+
+def for_memory(end: dict[str, Any]) -> bool:
+    """A death for memory: systemd says oom-kill (a unit under OOMPolicy=stop exits 143), or the main
+    process was killed with KILL in a unit whose cgroup counted a kill for memory (OOMPolicy=continue says signal)."""
+    return end.get("exit") == "died" and (end.get("result_code") == "oom-kill"
+                                          or (str(end.get("status") or "") == "KILL" and int(end.get("oom_kill") or 0) > 0))
+
+
+def oom_note(end: dict[str, Any]) -> str:
+    """The line of a worker that lost a process to memory and ended any other way; "" when none was or it died for memory."""
+    n = int(end.get("oom_kill") or 0)
+    return words.OOM_LOST[n > 1].format(n=n) if n > 0 and not for_memory(end) else ""
 
 
 def cut_off(end: dict[str, Any]) -> bool:
     """A worker that died from a stop nobody asked for, a box shutdown (seen live on need 83's fix): settled "died",
     which a row with a stop request never is ("stopped"), and its exit the termination signal, exited 143 or killed by
-    TERM (exit.json's status is systemd's EXIT_STATUS, the signal's name once killed)."""
-    return end.get("exit") == "died" and str(end.get("status") or "") in ("143", "TERM")
+    TERM (exit.json's status is systemd's EXIT_STATUS, the signal's name once killed); never a death for memory, which
+    would only run out again (seen live: oom-kill, exited 143, started again)."""
+    return end.get("exit") == "died" and str(end.get("status") or "") in ("143", "TERM") and not for_memory(end)
 
 
 def card_text(row: dict[str, Any], items: list[tuple[bool, str]], end: dict[str, Any] | None = None,
@@ -444,6 +477,8 @@ def card_text(row: dict[str, Any], items: list[tuple[bool, str]], end: dict[str,
                 if look.times == "relative" else f"ended {words.clock(float(end['finished']), now)}, "
                                                   f"after {words.span(ran)}")
     lines = [words.line(f"{mark} {words.WORKER_HEAD.format(state=state)}")]
+    if end is not None and (note := oom_note(end)):
+        lines.append(words.line(note))
     if end is not None and end.get("result") and end.get("has_report") and not end.get("quiet"):
         lines.append(words.line(str(end["result"])))
     current = next((i for i, (t, _) in enumerate(items) if not t), None)
@@ -478,8 +513,8 @@ def relay_text(row: dict[str, Any], end: dict[str, Any], cap: int) -> str:
     room says it in its own voice. Never the path, never the exit (STYLE.md). At most `cap` characters; 0: the whole report."""
     _, state = settled_state(row, tasks_of(Path(row["tasks"])), end)
     ran = float(end["finished"]) - float(row["started"])
-    head = (f"[worker {row['id']} finished] {state}, {words.of_cap(ran, float(row['cap']))}\n"
-            + (f"first line: \"{end['result']}\"\n" if end.get("result") else ""))
+    head = (f"[worker {row['id']} finished] {state}, {words.of_cap(ran, float(row['cap']))}"
+            + (f"; {note}" if (note := oom_note(end)) else "") + "\n" + (f"first line: \"{end['result']}\"\n" if end.get("result") else ""))
     try:
         body = Path(row["report"]).read_text(errors="replace").strip()
     except OSError:
@@ -767,7 +802,10 @@ class Workers:
         report = Path(row["report"])
         end: dict[str, Any] = {"exit": state, "detail": detail, "finished": float(x.get("ended") or time.time()),
                "result": first_line(report) or ("no report file" if state == "done" else ""),
-               "has_report": report.is_file(), "result_code": x.get("result") or "", "status": str(x.get("status") or "")}
+               "has_report": report.is_file(), "result_code": x.get("result") or "", "status": str(x.get("status") or ""),
+               "oom_kill": x["oom_kill"] if isinstance(x.get("oom_kill"), int) else 0}
+        if said := words.died("oom-kill") if for_memory(end) else oom_note(end):      # memory, in plain words, in the ledger too
+            detail = end["detail"] = f"{detail}; {said}"
         # its last message read as jobs.py's worker_done reads it: exactly NO_REPLY settles the card quiet (card_text), no relay
         end["quiet"] = state == "done" and (last_message(Path(row["staging"])) or end["result"]).strip() == words.NO_REPLY
         self.ledger.worker_set(wid, finished=round(end["finished"], 3), exit=state, exit_detail=detail, result=end["result"])

@@ -5,7 +5,8 @@ itself this way: one need at a time (two open PRs that both move the code ceilin
 - Start ([needs] auto, default true; false is the hand road of needs.py exactly): a new need starts its builder when no need
   is in flight (needs.FLIGHT), else it is queued; a need that reaches live, held or stuck starts the oldest queued one. A
   builder that fails starts once more; failed twice, the need is stuck; one cut off by a stop nobody asked for (a box
-  shutdown) is queued, uncounted, and the next tick starts it. A need still filed that no build ever claimed (filed
+  shutdown) is queued, uncounted, and the next tick starts it; one that died for memory is held with that, never started
+  again by itself (workers.for_memory: it would only run out again). A need still filed that no build ever claimed (filed
   before the pipeline, or with auto off) is queued on a tick (`pickup`); one a build came back from stays, a person's call.
   At the daemon's start a need left building with no worker (the daemon died between the claim and its start) is queued (`begin`).
 - The watch (`tick`: its own task every EVERY seconds, and once each time the channel connects): built, then its PR
@@ -15,7 +16,7 @@ itself this way: one need at a time (two open PRs that both move the code ceilin
 - The cold read, a fresh worker and never the builder: `merge` merges with the head's sha (github.merge, the sha guard);
   `fix first: why` is a fix worker (it counts toward the cap) and the checks again; `unsure: why` is held. A fix worker:
   `fixed: sha` is PR again with its new head; `cannot: why` is held. A read or a fix cut off by a stop nobody asked for
-  (workers.cut_off, a box shutdown) is no verdict: PR again, a fix's count as it was.
+  (workers.cut_off, a box shutdown) is no verdict: PR again, a fix's count as it was; one that died for memory is not, so with no verdict it is held with that.
 - A plug-in branch (need 36 of 2026-11-02, needs.plugins): the cold read and a fix worker are handed the need's branch in
   a plug-in's own repository at its head then (`heads`); the merge checks each lands as a fast-forward before GitHub's and
   lands it after (needs.land), in the checkout the rooms run; one that cannot land holds the need, said with why.

@@ -387,6 +387,50 @@ def test_a_builder_cut_off_by_a_stop_nobody_asked_for_is_queued_uncounted_and_th
     assert int(row(y, day)["fails"]) == 1 and row(y, day)["state"] == "building"
 
 
+def starve(y, wid: str, policy: str) -> None:
+    """A worker that died for memory as the box showed it: under OOMPolicy=stop oom-kill, exited 143;
+    under continue its main process killed with KILL, the unit's count of kills for memory in the record."""
+    d = Path(y.ledger.worker_get(wid)["staging"])
+    (d / "exit.json").write_text(json.dumps({"result": "oom-kill", "code": "exited", "status": "143"} if policy == "stop" else
+                                            {"result": "signal", "code": "killed", "status": "KILL", "oom_kill": 1}))
+    asyncio.run(y.workers.complete(wid))
+
+
+@pytest.mark.parametrize("policy", ["stop", "continue"])
+@pytest.mark.parametrize("role", ["fix", "read"])
+def test_a_fix_or_a_read_that_died_for_memory_is_held_with_that_and_never_started_again(pipe, role, policy):
+    y, rec, hub, units, rooms = pipe                     # seen live: need 87's fix ran out of memory and started again
+    day = need(y, "example-room", *ASK)["day"]
+    to_pr(y, hub, day)
+    red = [*GREEN[:6], {"context": "ci/g", "state": "failure"}]
+    hub.routes[("GET", f"/repos/{SLUG}/commits/{'a' * 40}/status")] = (200, {"state": "failure", "statuses": red} if role == "fix"
+                                                                       else {"state": "success", "statuses": GREEN})
+    asyncio.run(y.pipeline.tick())
+    assert row(y, day)["state"] == {"fix": "fixing", "read": "reading"}[role]
+    starve(y, row(y, day)["worker"], policy)
+    how, starts = words.outcome("died", why=words.DIED["oom-kill"])[1], len(y.workers.launcher.calls)
+    r = row(y, day)
+    assert (r["state"], r["worker"], r["why"]) == ("held", "", f"the fix worker {how}" if role == "fix" else f"the cold read gave no verdict: {how}")
+    assert rec.lines[-1] == words.NEED_HELD.format(n=1, ability=ASK[2], why=r["why"])
+    asyncio.run(y.pipeline.tick())
+    assert row(y, day)["state"] == "held" and len(y.workers.launcher.calls) == starts
+
+
+def test_a_builder_that_died_for_memory_is_reported_failed_with_it_held_and_never_built_again(pipe):
+    y, rec, hub, units, rooms = pipe
+    day = need(y, "example-room", *ASK)["day"]
+    how = words.outcome("died", why=words.DIED["oom-kill"])[1]
+    for policy in ("stop", "continue"):
+        starve(y, row(y, day)["worker"], policy)
+        r, starts = row(y, day), len(y.workers.launcher.calls)
+        assert (r["state"], r["worker"], r["why"], int(r.get("fails") or 0)) == ("held", "", f"its builder {how}", 0)
+        assert rec.lines[-2:] == [words.NEED_FAILED.format(n=1, how=how, ability=ASK[2]),
+                                  words.NEED_HELD.format(n=1, ability=ASK[2], why=r["why"])]
+        asyncio.run(y.pipeline.tick())
+        assert row(y, day)["state"] == "held" and len(y.workers.launcher.calls) == starts
+        asyncio.run(y.need_build({"day": day, "n": 1}))  # a person builds it again (yerk needs build)
+
+
 def test_the_cold_read_saying_fix_first_or_unsure(pipe):
     y, rec, hub, units, rooms = pipe
     day = need(y, "example-room", *ASK)["day"]

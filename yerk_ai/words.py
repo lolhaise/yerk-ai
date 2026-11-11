@@ -137,6 +137,9 @@ OUTCOME = {"done": (DONE, "finished clean"), "partly": (WORKING, "finished, {tic
 DIED = {"exit-code": "it ended with an error", "signal": "it was killed", "core-dump": "it crashed",
         "oom-kill": "it ran out of memory", "watchdog": "it stopped answering", "resources": "it could not start",
         "start-limit-hit": "it was started too often", "protocol": "it could not start"}
+# a worker that ended any other way after the kernel killed a process of its for memory: one line (workers.oom_note), how many
+# only past one
+OOM_LOST = ("one of its processes ran out of memory", "{n} of its processes ran out of memory")
 REPORT_SAVED, NO_REPORT = "report saved: `yerk worker report {id}`", "no report: `yerk worker report {id}`"
 RELAY_ASK = ("[tell the room the outcome in your own voice{under}, ending with the line "
              "\"{saved}\"; no file path and no exit code; {where}; do not paste it]")

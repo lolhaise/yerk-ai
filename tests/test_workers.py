@@ -446,6 +446,67 @@ def test_a_settled_card_reads_as_before_for_any_other_end_and_the_quiet_one_keep
                                   "-# /w/abc123/REPORT.md"]
 
 
+def settle(s, wid, exit):
+    """A worker whose unit wrote `exit`, settled through Workers.complete: its card's lines, its ledger exit_detail and the
+    first line of its relay."""
+    seen = {}
+
+    async def go():
+        unlisted(s, wid, 30, exit={**exit, "ended": time.time()})
+        w = s.make({"r": Busy()})
+
+        async def hook(row, end):
+            seen["end"] = end
+            return True
+        w.hooks.append(hook)
+        await w.complete(wid)
+    asyncio.run(go())
+    row = s.ledger.worker_get(wid)
+    card = next(t for k, t, _, _ in s.chan.settled if k == f"worker:{wid}").splitlines()
+    assert all(W.width(x) <= W.PHONE for x in card)
+    return card, row["exit_detail"], workers.relay_text(row, seen["end"], 1500).splitlines()[0]
+
+
+def test_a_death_for_memory_says_memory_on_the_card_the_relay_and_the_ledger_and_a_kill_with_no_count_reads_as_before(setup):
+    # 2026-11-11, units on the box: OOMPolicy=continue ends a main process the kernel killed for memory as signal, KILL;
+    # OOMPolicy=stop said oom-kill, exited 143, as seen live
+    for wid, exit, detail in (("oomkil", {"result": "signal", "code": "killed", "status": "KILL", "oom_kill": 1}, "signal, killed KILL"),
+                              ("oomstp", {"result": "oom-kill", "code": "exited", "status": "143"}, "oom-kill, exited 143")):
+        card, said, relay = settle(setup, wid, exit)
+        assert card[:2] == [f"{W.NOT_DONE} worker died: it ran out of memory", "merge"] and said == f"{detail}; it ran out of memory"
+        assert relay.startswith(f"[worker {wid} finished] died: it ran out of memory, ") and relay.count("memory") == 1
+    for wid, exit in (("kill00", {"result": "signal", "code": "killed", "status": "KILL"}),
+                      ("kill01", {"result": "signal", "code": "killed", "status": "KILL", "oom_kill": 0})):
+        card, said, relay = settle(setup, wid, exit)
+        assert (card[:2], said) == ([f"{W.NOT_DONE} worker died: it was killed", "merge"], "signal, killed KILL")
+        assert relay.startswith(f"[worker {wid} finished] died: it was killed, ") and "memory" not in relay
+
+
+def test_a_worker_that_lost_a_process_to_memory_and_ended_any_other_way_says_so_in_one_line_and_none_without(setup):
+    one, two = W.OOM_LOST[0], W.OOM_LOST[1].format(n=2)
+    for wid, exit, head, line in (
+            ("lost01", {"result": "success", "code": "exited", "status": "0", "oom_kill": 1}, "finished clean", one),
+            ("lost02", {"result": "timeout", "code": "killed", "status": "TERM", "oom_kill": 2}, "stopped: timed out at 30 min", two),
+            ("lost03", {"result": "exit-code", "code": "exited", "status": "3", "oom_kill": 1}, "died: it ended with an error", one),
+            ("lost04", {"result": "exit-code", "code": "exited", "status": "143", "oom_kill": 1}, "died: it ended with an error", one),
+            ("none00", {"result": "success", "code": "exited", "status": "0", "oom_kill": 0}, "finished clean", None)):
+        card, said, relay = settle(setup, wid, exit)
+        detail = f"{exit['result']}, {exit['code']} {exit['status']}"
+        assert card[0].endswith(f"worker {head}") and relay.startswith(f"[worker {wid} finished] {head}, "), wid
+        if line is None:
+            assert card[1] == "merge" and said == detail and "memory" not in relay
+        else:
+            assert card[1:3] == [line, "merge"] and said == f"{detail}; {line}" and relay.endswith(f"; {line}"), wid
+
+
+def test_a_death_for_memory_is_never_a_stop_nobody_asked_for_and_a_real_one_still_is():
+    died = lambda **x: {"exit": "died", **x}  # noqa: E731
+    assert not workers.cut_off(died(result_code="oom-kill", status="143"))      # seen live: the fix started again
+    assert not workers.cut_off(died(result_code="signal", status="KILL", oom_kill=1))
+    assert all(workers.cut_off(died(result_code=r, status=st, **more)) for r, st in (("exit-code", "143"), ("signal", "TERM"))
+               for more in ({}, {"oom_kill": 1}))       # a process lost to memory earlier, then the TERM: still cut off
+
+
 def test_a_worker_a_script_starts_that_answers_exactly_no_reply_ends_with_no_relay_turn_live_or_at_a_re_attach(setup, monkeypatch):
     """need-2026-11-09-77: a timer script started each run with `yerk worker start --brief FILE --room ROOM`, the brief
     saying to answer exactly NO_REPLY when there is nothing, and each quiet run still asked the room for a relay turn that
@@ -828,6 +889,32 @@ def test_a_worker_unit_has_a_4g_memory_ceiling_no_swap_and_outlives_a_kill_for_m
         props = unit_props(monkeypatch, launcher, tmp_path / "state" / "workers" / "abc123")
         assert [p for p in props if p.startswith(("Memory", "OOM"))] == ["MemoryMax=4G", "MemorySwapMax=0", "OOMPolicy=continue"]
         assert "RuntimeMaxSec=60" in props and "KillMode=control-group" in props    # the time cap and the stop as they were
+
+
+def test_the_exit_record_carries_the_units_kills_for_memory_and_a_count_it_cannot_read_leaves_it_as_before(tmp_path, monkeypatch):
+    # ExecStopPost runs in the unit's own cgroup and reads its memory.events there (systemd 259, two units on the box, 2026-11-11)
+    unit = "user.slice/app.slice/yerk-worker-abc123.service"
+    events, d = tmp_path / "fs" / unit / "memory.events", tmp_path / "w"
+    events.parent.mkdir(parents=True)
+    d.mkdir()
+    (tmp_path / "cgroup").write_text(f"0::/{unit}\n")
+    monkeypatch.setattr(workers, "OWN_CGROUP", tmp_path / "cgroup")
+    monkeypatch.setattr(workers, "CGROUP", tmp_path / "fs")
+    for k, v in {"SERVICE_RESULT": "success", "EXIT_CODE": "exited", "EXIT_STATUS": "0", "INVOCATION_ID": "e3f0"}.items():
+        monkeypatch.setenv(k, v)
+
+    def record():
+        assert workers.post(d) == 0
+        return json.loads((d / "exit.json").read_text())
+    events.write_text("low 0\nhigh 0\nmax 63\noom 2\noom_kill 2\noom_group_kill 0\n")
+    assert {k: v for k, v in record().items() if k != "ended"} == {"result": "success", "code": "exited", "status": "0", "oom_kill": 2}
+    events.write_text("low 0\nhigh 0\n")                       # no count in it
+    assert sorted(record()) == ["code", "ended", "result", "status"]
+    events.unlink()                                             # the cgroup already gone
+    assert sorted(record()) == ["code", "ended", "result", "status"]
+    events.write_text("oom_kill 1\n")
+    monkeypatch.delenv("INVOCATION_ID")                         # not in a unit: the count would be another cgroup's
+    assert sorted(record()) == ["code", "ended", "result", "status"]
 
 
 def launched_with(s, monkeypatch, conf):

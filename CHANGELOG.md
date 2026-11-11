@@ -8,6 +8,21 @@ version changes.
 
 ## 2026-11-11
 
+### oom-wording (#57)
+
+- A worker the kernel killed for memory says so: its card reads "died: it ran out of memory", and so do its relay, the
+  ledger's exit detail and a scheduled job's alert, where they read "died: it was killed". Under the memory ceiling
+  (OOMPolicy=continue) systemd reports that death as a kill by signal, so a worker's exit record now also holds how many
+  of its processes the kernel killed for memory (exit.json's `oom_kill`, read as the unit ends), and the words go by it.
+- A worker that lost a process to memory and went on (a test run past the ceiling, then a clean finish) says so in one
+  line, "one of its processes ran out of memory" (the number when more than one), on its card, in its relay, in the
+  ledger and in a scheduled job's alert or relay. A worker that lost none reads as before.
+- A death for memory is never taken for a stop nobody asked for: on 2026-11-11 a fix that ran out of memory (oom-kill,
+  exited 143) was started again as if the box had shut down. A fix or a cold read that died for memory now holds its
+  need with that reason, and a builder that did is reported failed with it and held, not built again by itself.
+- budgets.toml: `[code] lines` 29,239 to 29,286 with its dated note.
+- **Upgrading**: nothing to change.
+
 ### status-broom (#56)
 
 - The room card's broom (the second line of `/status` typed in a room) is the room's compactions today, counted from

@@ -530,6 +530,26 @@ def test_an_agent_job_becomes_a_worker_with_the_right_account_and_cap_and_relays
     assert len(s.chan.replies) == 1                      # the one relay; the other three posted nothing
 
 
+def test_a_job_workers_end_for_memory_reads_as_its_card_reads_it(setup, tmp_path):
+    rec, told = Rec(), []
+    j, w, sd, priv, state = manager(setup, tmp_path, {"r": setup.room()}, {"r": rec})
+
+    async def relay(row, end, text=None, after=None):
+        told.append(text)
+        return ""
+    w.relay = relay
+    ends = [{"exit": "died", "result_code": "signal", "status": "KILL", "oom_kill": 1},       # the main process, for memory
+            {"exit": "timed out", "result_code": "timeout", "status": "TERM", "oom_kill": 2},
+            {"exit": "done", "result_code": "success", "status": "0", "oom_kill": 1}]
+    for i, end in enumerate(ends):
+        (tmp_path / f"w{i}").mkdir()
+        asyncio.run(j.worker_done({"id": f"w{i}", "job": "nightly", "room": "r", "staging": str(tmp_path / f"w{i}"), "started": 1000.0,
+                                   "cap": 600.0}, {**end, "finished": 1060.0, "result": "", "detail": ""}))
+    assert rec.notified == [("r", f"{W.NOT_DONE} job nightly failed: it ran out of memory"),
+                            ("r", W.job_line("nightly", "timed out", 600.0) + "\n" + W.OOM_LOST[1].format(n=2))]
+    assert f"ended done after 1m 00s; {W.OOM_LOST[0]}. Its message for the room" in told[0]
+
+
 def test_an_agent_jobs_worker_runs_at_the_jobs_own_model_and_thinking_level_not_the_rooms(setup, tmp_path, capsys):
     """need-2026-11-09-79: a room on max thinking started a bot's research runs as standing agent jobs (deliver silent), and
     every job's worker took the room's level, since neither the schedule tool nor `yerk schedule add` had a model or a

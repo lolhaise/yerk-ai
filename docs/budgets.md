@@ -677,7 +677,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-11: status-broom lowered it by 5, the owner's order of 2026-11-11 (the room card's broom was its session's compactions kept in memory, so every daemon restart blanked it until the room's next new session): the number is the room's compactions today as the ledger counts them. Ledger.compactions and COMPACTED_IN_TURN, the note on the row of a turn inside which Claude Code compacted, 8 (ledger.py); Room.compactions, Room._counted and the reset in _start removed, the note written with the turn's row, less 14 (room.py); collect's one read a card 1 (status.py); the broom's words 0 (words.py). 29,239: worker-memory's 29,244 less 5.
 
-- `lines = 29239`
+2026-11-11: oom-wording raised it by 47, the follow-up to worker-memory told to the owner on 2026-11-11 (a worker the ceiling killed read "it was killed" or finished clean, and a fix killed for memory, oom-kill and exited 143, was taken for a stop nobody asked for and started again): the unit's count of kills for memory in exit.json, read in ExecStopPost, the rule for a death for memory, the survivor's line on the card, the relay and the ledger, and cut_off never true for memory 38 (workers.py); the survivor's words 3 (words.py); a job's alert and relay 2 (jobs.py); a builder held, not built again 3 (daemon.py); the pipeline's note 1 (pipeline.py). 29,286: status-broom's 29,239 plus 47.
+
+- `lines = 29286`
 
 ## Uncapped
 
