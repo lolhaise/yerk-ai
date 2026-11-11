@@ -904,7 +904,7 @@ tier = "free"
 needs = "Python document libraries on the box"
 price = "none"
 free_path = "a PDF or an image is read in the room as it is; other files through a worker"
-why_not = "After the rooms move."
+why_not = "a workbook and a PDF already become text as they land, a scanned page marked, and the render tool turns a Word file or a slide deck into a PDF a room reads; still missing: a Word file or a slide deck read as text the way a workbook is."
 asked_as = ["read spreadsheets", "read excel", "this excel file", "this word document", "read office files"]
 
 [abilities.make-documents]
@@ -1131,7 +1131,7 @@ tier = "free"
 needs = "the hook endpoint (built)"
 price = "none"
 free_path = "this is the free path"
-why_not = "Layer 6: hooks and gates."
+why_not = "the quote-aware parse, the trash rewrite for deletes, the restart and config gate and the tamper rows of a changed setting already ship with gates; still missing: an append-only change ledger, and a check that each file write reached the disk."
 asked_as = ["shell guards", "safe deletes", "trash instead of delete"]
 layer = 6
 
@@ -1147,7 +1147,7 @@ tier = "free"
 needs = "nothing beyond the rooms"
 price = "none"
 free_path = "this is the free path"
-why_not = "After the rooms move: decision 27 lifts this install's ledger."
+why_not = "a message of the owner's that rates a reply already goes to the layer's taste ledger, and the rated replies ride in the owner's rooms; still missing: a reaction as a rating, and the score per reply in shadow that blocks only when the owner arms it."
 asked_as = ["learn my taste", "taste ledger"]
 
 [abilities.watchdog]
@@ -1163,7 +1163,7 @@ tier = "free"
 needs = "the box's user service manager"
 price = "none"
 free_path = "this is the free path"
-why_not = "Layer 7: observability and operations."
+why_not = "a frozen daemon already misses its watchdog beat and is restarted, a stall past its limit is a row with a dump of what ran, and a turn that dies says why in the room; still missing: a page to the owner from outside the daemon when it is down, and a reaper for processes a finished run left behind."
 asked_as = ["is yerk down", "watchdog", "stuck process"]
 layer = 7
 
@@ -1179,7 +1179,7 @@ tier = "free"
 needs = "the run ledger and the delivery ledger"
 price = "none"
 free_path = "this is the free path"
-why_not = "Layer 7: observability and operations."
+why_not = "the morning diff already matches each person's message to a reply, so a turn that posted nothing or never ended shows there, a message missed while the connection was down included, and a check that cannot run says unknown; still missing: a check for a job run that says success but did nothing."
 asked_as = ["messages you never answered", "messages with no reply", "dead turns"]
 layer = 7
 
@@ -1195,7 +1195,7 @@ tier = "free"
 needs = "the box's user service manager and the run ledger"
 price = "none"
 free_path = "this is the free path"
-why_not = "Layer 7: `yerk deploy` with a proof card and rollback."
+why_not = "`yerk deploy` already waits for a quiet room and a finished index rebuild, posts the proof card and rolls back, and a turn a restart cut off runs again; still missing: a restart on its own in a night window."
 asked_as = ["restart yourself", "safe restart", "restart proof"]
 layer = 7
 
@@ -1210,7 +1210,7 @@ tier = "free"
 needs = "a running yerkd"
 price = "none"
 free_path = "this is the free path"
-why_not = "Layer 7: the phone-width card; `yerk status` already prints the rooms, workers and jobs."
+why_not = "`yerk status` and /status already print the phone-width card with the rooms, each account's meters and the jobs due; still missing: an account login about to run out, on the card and named in the owner's rooms (`yerk accounts` and the doctor say it)."
 asked_as = ["status card", "account meters", "login expiry"]
 layer = 7
 
@@ -1230,8 +1230,10 @@ why_not = "Layer 7; `yerk config get` already answers one setting from the code 
 asked_as = ["every setting", "settings map", "all your settings"]
 layer = 7
 
+# Built with the morning diff (cleanup F9-07), its measurement (decision 26): tests/test_observe.py's planted payload change
+# shows the next morning in the machine room only, and tests/test_sheet_hard.py's part over its line is said there once a day.
 [abilities.prompt-diff]
-state = "described"
+state = "built"
 what = "Measures what loads into each room's prompt and posts a morning diff, so a change in what the model is given is seen the next day."
 how = [
   "Each room's prompt measured from its newest recorded session start.",
@@ -1241,7 +1243,6 @@ tier = "free"
 needs = "the jobs ability"
 price = "none"
 free_path = "this is the free path"
-why_not = "Layer 7: the morning diff; `yerk map` already shows each part against its budget."
 asked_as = ["morning diff", "prompt size", "what loads into the prompt"]
 layer = 7
 
@@ -1329,7 +1330,7 @@ tier = "free"
 needs = "read access to the old install"
 price = "none"
 free_path = "this is the free path"
-why_not = "Layer 9: rooms move over."
+why_not = "`yerk room add` already moves a Discord chat in as a room with its voice and history, and `yerk import` files a chat's history or a box's notes; still missing: the old install's jobs, the shadow run compared on queue wait, first visible line and dropped turns, and the rollback."
 asked_as = ["import my rooms", "move my rooms", "import from openclaw"]
 layer = 9
 

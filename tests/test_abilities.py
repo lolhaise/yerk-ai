@@ -489,3 +489,20 @@ def test_a_room_asked_to_talk_in_the_code_with_bubbles_hears_the_page_talk_way(t
     assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
     assert [e["key"] for e in abilities.asked("please upgrade the page", y.memory, TAB)] == ["page-talk"]
     assert not abilities.asked("the bubbles in the bath", y.memory, TAB)
+
+
+SHIPPED_IN_PART = ("taste", "status-card", "safe-restarts", "dead-turns", "watchdog", "shell-guards", "import", "read-documents")
+
+
+def test_an_ability_that_ships_says_built_and_one_that_ships_in_part_names_what_is_missing(tmp_path, capsys):
+    """F9-07: a room asked whether it can do what the install ships never hears that it cannot. prompt-diff ships with the
+    morning diff, measured (decision 26) by tests/test_observe.py's planted payload change that shows the next morning in the
+    machine room only and tests/test_sheet_hard.py's part over its line said there once a day, so it says built; the eight
+    that ship in part each say what is still missing, never only a layer that has shipped."""
+    assert TAB["prompt-diff"]["state"] == "built" and "why_not" not in TAB["prompt-diff"], TAB["prompt-diff"].get("why_not")
+    stale = {n: TAB[n]["why_not"] for n in SHIPPED_IN_PART if TAB[n]["state"] != "described" or "still missing: " not in TAB[n]["why_not"]}
+    assert not stale, stale
+    assert cli.main(["explain", "prompt-diff", "--private", str(EXAMPLE_PRIVATE), "--state", str(tmp_path)]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[0] == f"{words.DONE} prompt-diff: {words.ability('on')[1]}" and abilities.HOW["built"] in lines
+    assert not [x for x in lines if x.startswith("Why it is not built")], lines
