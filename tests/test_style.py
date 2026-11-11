@@ -212,7 +212,8 @@ def phrases() -> list[str]:
     out += [words.REPORT_SAVED, words.NO_REPORT, words.NOT_SENT, words.NOT_SENT_AGAIN, words.NOT_FETCHED,
             words.NOT_RUN_AGAIN, words.SENT_AGAIN, words.NOT_ANSWERED, words.GONE, words.STRAY, *words.BACKUP,
             words.MOVED, words.MOVED_ON, words.OUT_OF, words.COMPACTING, *words.FILE_WHY.values(), words.NEXT_REPLY, words.OWNER_ONLY,
-            words.NOT_LISTED, words.NOT_A_LEVEL, words.BACK_ON, words.ON, words.NOT_AN_ACCOUNT, words.CARRIED, words.RECAPPED]
+            words.NOT_LISTED, words.NOT_A_LEVEL, words.BACK_ON, words.ON, words.NOT_AN_ACCOUNT, words.CARRIED, words.RECAPPED,
+            words.NONE_RUNNING, words.NOT_RUNNING, words.NOT_ANSWERING, words.NO_JOB_DUE, words.NO_TIMERS, words.NO_BACKUP]
     out += [v for k, v in words.STEP.items() if k != "hold"]            # a worker's card says "waiting for an account" itself
     out += [*words.WORKER_STEP.values(), *words.JOB_STEP.values(), words.MESSAGE_TO, words.NOTES, *words.FILES.values(),
             words.ANOTHER_WAY, words.ROOM_NOW]
