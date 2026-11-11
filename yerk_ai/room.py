@@ -1154,9 +1154,11 @@ class Room:
                                  decision="dead", tool="", rule="no-hook-call", detail=why[:300])
                 self.channel.notice(self.name, f"{words.NOT_DONE} {words.HOOKS_DEAD}", [], key=f"{self.turn_key}:hooks")
             card = None
-            if turn.fallback_model:                # which model: the turn's ledger row
-                card = f"{words.WORKING} {words.BACKUP[0]}\n{words.SUB}{words.BACKUP[1]}"
-                self.fresh_next = REFUSAL_RECAP
+            if turn.fallback_model:                # which model: the turn's ledger row; the fresh start, failures.toml's action
+                fresh = turn.failure is not None and turn.failure.action == "fresh_next_turn"
+                card = f"{words.WORKING} {words.BACKUP[0]}" + (f"\n{words.SUB}{words.BACKUP[1]}" if fresh else "")
+                if fresh:
+                    self.fresh_next = REFUSAL_RECAP
             text = turn.text
             if covered and all(m.cap for m in covered):         # harness messages only: held to their cap
                 text = fit(text, min(m.cap for m in covered), [m.must for m in covered])

@@ -499,6 +499,27 @@ def test_a_refusal_fallback_answer_stands_marked_and_the_next_turn_starts_fresh(
     room.rp.close()
 
 
+def test_a_refusal_fallback_starts_the_next_turn_fresh_only_when_failures_toml_says_fresh_next_turn(env):
+    """failures.toml decides what the room does after a refusal, as it does for every other class (cleanup F1-03): with
+    another action the answer stands and is marked, and the next turn goes on in the same session, no recap."""
+    make, ledger, tmp_path = env
+    chan = Chan()
+    room = make(chan)
+    room.failures.actions["refusal"] = "stop"
+    send(room, ledger, "1", "FIXTURE:refusal_fallback hi")
+    wait_idle(room)
+    mark, first = chan.cards[-1], rows_of(ledger)[-1]
+    assert chan.replies[0] == ("answered on the fallback model", ["1"])
+    assert (first["outcome"], first["failure"], first["action"]) == ("ok", "refusal", "stop")
+    send(room, ledger, "2", "again")
+    wait_idle(room)
+    second = rows_of(ledger)[-1]
+    assert second["session_id"] == first["session_id"] and second["recap"] is None and len(argvs(tmp_path)) == 1
+    assert chan.replies[1] == ("echo: again", ["2"])
+    assert mark == f"{words.WORKING} answered by a backup model"                   # the class's mark, no fresh start named
+    room.rp.close()
+
+
 def test_a_session_that_cannot_be_resumed_starts_fresh_with_a_one_line_recap(env, monkeypatch):
     make, ledger, tmp_path = env
     chan = Chan()
