@@ -64,8 +64,13 @@ def line(text: str, n: int = PHONE) -> str:
     text = " ".join(str(text).split())
     if width(text) <= n:
         return text
-    while text and width(text) > n - 3:
-        text = text[:-1]
+    cols, sub = [0], len(SUB) if text.startswith(SUB) else 0     # cols[k]: text[:k]'s columns, summed in one pass, since
+    for c in text:                                                  # cutting a character at a time and measuring again was
+        cols.append(cols[-1] + width(c))                            # quadratic (11 s of CPU on a card's 803-character line)
+    k = len(text)
+    while k and cols[k] - (cols[sub] if k >= sub else 0) > n - 3:  # width's own rule: the footer mark counts nothing
+        k -= 1
+    text = text[:k]
     if (at := text.rfind(" ")) >= len(text) // 2:                  # a word boundary that keeps most of the line
         text = text[:at]
     return text.rstrip(" ,;:") + "..."
