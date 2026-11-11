@@ -671,7 +671,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-11: status-card raised it by 152, the owner's order of 2026-11-11 (the room's /status was the whole machine card, too long to read on their phone): /status typed in a room answers with that room's own card in the box card's shape, `yerk status` keeping its machine card byte for byte. The room card, the head collect reads for each room under its lock, and account_lines' numbers, its second line's fit, the workers' words and the backup's line split out for both cards to print 115 (status.py); the card's words, words.number and words.tokens 21 (words.py); a session's compactions, counted where the room records one and reset where a new session is minted 15 (room.py); the command's line 1 (channels/discord.py). 29,218: main f804ae1c's 29,066 plus 152.
 
-- `lines = 29218`
+2026-11-11: status-broom lowered it by 5, the owner's order of 2026-11-11 (the room card's broom was its session's compactions kept in memory, so every daemon restart blanked it until the room's next new session): the number is the room's compactions today as the ledger counts them. Ledger.compactions and COMPACTED_IN_TURN, the note on the row of a turn inside which Claude Code compacted, 8 (ledger.py); Room.compactions, Room._counted and the reset in _start removed, the note written with the turn's row, less 14 (room.py); collect's one read a card 1 (status.py); the broom's words 0 (words.py). 29,213: main dce6e6f7's 29,218 less 5.
+
+- `lines = 29213`
 
 ## Uncapped
 

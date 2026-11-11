@@ -8,6 +8,21 @@ version changes.
 
 ## 2026-11-11
 
+### status-broom (#?)
+
+- The room card's broom (the second line of `/status` typed in a room) is the room's compactions today, counted from
+  the ledger when the card is collected: `📚 606k/900k (67%) · 🧹 2 today`. In status-card it was the live session's
+  compactions since it began, kept in memory, so after every daemon restart (each deploy) it was not known and the card
+  left it out until the room's next new session. Now a restart keeps it, a room with none today reads `🧹 0 today`,
+  and the daemon's /status answer gives every room's `head` a number for `compactions`.
+- All three kinds count, each once: a held or idle /compact and a compacted copy taken (rows the ledger already marks
+  `compacted`), and Claude Code's own compaction inside a turn, now marked on that turn's row with the note
+  `compacted in the turn` (the ledger's note column, so no migration). A dropped copy, another room's and yesterday's
+  do not count.
+- budgets.toml: `[code] lines` 29,218 to 29,213 with its dated note.
+- **Upgrading**: nothing to change. The card counts the day from yerkd's next start; a compaction inside a turn before
+  that start was never marked, so that day's count leaves it out.
+
 ### status-card (#54)
 
 - `/status` typed in a room answers with that room's own card, in the shape of the box's own `/status` card, instead of
