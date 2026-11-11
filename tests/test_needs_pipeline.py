@@ -190,6 +190,19 @@ def test_checks_that_never_come_are_stuck_and_a_new_head_restarts_the_clock(pipe
     assert row(y, day)["state"] == "stuck" and row(y, day)["why"].startswith("checks never came: 2 of 7 in ")
 
 
+def test_the_stuck_line_counts_the_final_checks_and_names_the_pending_ones(pipe):
+    y, rec, hub, units, rooms = pipe                     # 2026-11-09: "7 of 7" said of seven posted, one still pending
+    day = need(y, "example-room", *ASK)["day"]
+    to_pr(y, hub, day)
+    hub.routes[("GET", f"/repos/{SLUG}/commits/{'a' * 40}/status")] = (200, {"state": "pending", "statuses": [
+        *GREEN[:5], {"context": "ci/f", "state": "pending"}, {"context": "ci/g", "state": "pending"}]})
+    y.pipeline.now = lambda: time.time() + 41 * 60
+    asyncio.run(y.pipeline.tick())
+    why = row(y, day)["why"]
+    assert why.startswith("checks never came: 5 of 7 in ") and why.endswith(" on aaaaaaa, still pending: ci/f, ci/g")
+    assert rec.lines[-1] == words.NEED_STUCK.format(n=1, ability=ASK[2], why=why)
+
+
 def test_a_stuck_need_whose_checks_all_come_late_goes_back_to_pr_and_on_and_one_with_no_pr_stays(pipe):
     y, rec, hub, units, rooms = pipe                     # 2026-11-09: need 81 sat stuck with all seven green
     day = need(y, "example-room", *ASK)["day"]

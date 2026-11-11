@@ -211,9 +211,11 @@ class Pipeline:
                            f"checks red after {k} fix{'es' * (k != 1)}: {', '.join(sorted(red))}")
         elif len(ctx) >= int(self.conf().get("contexts") or 7) and all(v[0] == "success" for v in ctx.values()):
             await self.read(r)
-        elif now - since > float(self.conf().get("checks_minutes") or 40) * 60:
-            await self.stop(r, "stuck", f"checks never came: {len(ctx)} of {int(self.conf().get('contexts') or 7)} in "
-                                        f"{words.span(now - since)} on {str(r['head'])[:7]}")
+        elif now - since > float(self.conf().get("checks_minutes") or 40) * 60:     # the final ones counted, the pending named
+            wait = ", ".join(sorted(k for k, v in ctx.items() if v[0] not in ("success", *RED)))
+            await self.stop(r, "stuck", words.NEED_CHECKS_NEVER.format(
+                final=sum(v[0] in ("success", *RED) for v in ctx.values()), of=int(self.conf().get("contexts") or 7),
+                span=words.span(now - since), head=str(r["head"])[:7]) + words.NEED_CHECKS_PENDING.format(names=wait) * bool(wait))
 
     async def late(self, r: dict[str, Any], tok: str, repo: str) -> None:
         """A stuck need with a PR whose head's checks have all come in since, each final: PR again, and the next tick reads it
