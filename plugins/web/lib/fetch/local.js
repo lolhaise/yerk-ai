@@ -52,17 +52,6 @@ function cooldownFile(settings) {
 function loadCooldowns(settings) {
   if (!cooldownCache || cooldownCache.file !== cooldownFile(settings)) {
     const hosts = readJson(cooldownFile(settings), {}) || {};
-    // A site-memory seed (scripts/seed-site-memory.mjs, written before the deploy) is merged once
-    // at first load, then renamed: the older plugin rewrites this file and would drop it.
-    const seedFile = path.join(settings.stateDir, "site-memory-seed.json");
-    const seed = readJson(seedFile, null);
-    if (seed && typeof seed === "object" && !Array.isArray(seed)) {
-      for (const [h, rec] of Object.entries(seed)) if (rec && !hosts[h]?.start && !hosts[h]?.bb) hosts[h] = { ...(hosts[h] || {}), ...rec };
-      try {
-        writeJsonAtomic(cooldownFile(settings), hosts);
-        fs.renameSync(seedFile, `${seedFile}.applied`);
-      } catch {}
-    }
     cooldownCache = { file: cooldownFile(settings), hosts };
   }
   return cooldownCache.hosts;
