@@ -39,8 +39,6 @@ Copyright (c) 2026 Eric McLaren. MIT License.
 The author's private tools (not published), contributed here under the MIT License
 Copyright (c) 2026 Eric McLaren.
 - yerk_ai/lifted/classify.py and the patterns in failures.toml: from tools/reason_codes.py
-- yerk_ai/jobs.py Watcher: the shape of tools/mail-watch (stdout lines are wake-ups, diagnostics go
-  to the log, the first start primes and absorbs what is already there, the doubling restart backoff)
 - yerk_ai/lifted/expiry.py: from tools/token-expiry-watch
 - plugins/web/lib/fetch/ and plugins/web/lib/search/: the author's fetch-plus and search-plus plug-ins for OpenClaw (the
   fetch ladder, the search engines and the video leg), their OpenClaw parts removed; plugins/web/server.mjs,
