@@ -7,6 +7,7 @@ repair before any room opens; and every key the
 loaders read from a room in config.ROOM_KEYS."""
 import gc
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -16,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from yerk_ai import config, context, doctor, files, hooks, memindex, memory, morning, pictures, shape, status, words
+from yerk_ai import config, context, doctor, files, hooks, memindex, memory, morning, pictures, retention, shape, status, words
 from yerk_ai.accounts import Cooldowns, load_accounts
 from yerk_ai.config import EXAMPLE_PRIVATE, ROOM_KEYS, budgets
 from yerk_ai.daemon import Yerkd
@@ -603,3 +604,18 @@ def test_the_scrub_swaps_each_planted_value_keeps_every_line_backs_up_first_and_
     assert capsys.readouterr().out == f"{words.DONE} scrub: no secret-shaped line\n"
     assert {rel: (priv / rel).read_bytes() for rel in planted} == after and len(list(kept[0].iterdir())) == 4
     assert not [x for x in doctor.run(priv, state, dry=True) if "secret-shaped" in x]
+
+
+def test_disk_growth_is_what_the_disk_holds_never_a_sparse_file_or_a_second_link(tree):
+    """2026-11-10: a finished worker's sparse test files, 31 GB long and 1.7 GB on disk, read as the state folder's growth."""
+    priv, state, *_ = tree
+    (big := state / "workers" / "w1" / "edge.bin").parent.mkdir(parents=True)
+    with big.open("wb") as f:
+        f.truncate(2 * 10**9)                               # 2 GB long, no block written
+    (one := big.with_name("one.bin")).write_bytes(b"x" * 8192)
+    for n in range(3):
+        os.link(one, one.with_name(f"link{n}.bin"))
+    assert doctor.used(big.parent) == big.stat().st_blocks * 512 + one.stat().st_blocks * 512
+    assert retention.size(retention.tree(state)) > 2 * 10**9 > doctor.used(state)
+    (state / "doctor.json").write_text(json.dumps({"at": time.time() - DAY, "sizes": {"state folder": 0}, "sized": time.time() - DAY}))
+    assert not [x for x in doctor.run(priv, state, dry=True) if "state folder: grew" in x]

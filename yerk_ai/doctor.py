@@ -53,17 +53,23 @@ def dated(text: str, fmt: str) -> datetime | None:
 
 
 def used(path: Path) -> int:
-    """The bytes of every regular file at and under `path`, links never followed, added as the walk goes: no list of the
-    1.4 million entries a state folder holds (2026-11-10, the list alone was 1.2 GB of the doctor's peak)."""
+    """The bytes every regular file at and under `path` holds on disk, links never followed, a file once however many links
+    it has, added as the walk goes: no list of the 1.4 million entries a state folder holds (2026-11-10, the list alone was
+    1.2 GB of the doctor's peak). A sparse file's holes and a second link are no growth (2026-11-10: a worker's sparse test
+    files, 31 GB long and 1.7 GB on disk, read as the state folder's growth)."""
     if path.is_symlink() or not path.is_dir():
         s = path.lstat()
-        return s.st_size if stat.S_ISREG(s.st_mode) else 0
-    total = 0
+        return s.st_blocks * 512 if stat.S_ISREG(s.st_mode) else 0
+    total, linked = 0, set[tuple[int, int]]()
     for d, _, fs in os.walk(path):
         for f in fs:
             with suppress(OSError):                         # a file gone mid-walk: a live state folder
-                if stat.S_ISREG((s := os.lstat(os.path.join(d, f))).st_mode):
-                    total += s.st_size
+                s = os.lstat(os.path.join(d, f))
+                if not stat.S_ISREG(s.st_mode) or s.st_nlink > 1 and (s.st_dev, s.st_ino) in linked:
+                    continue
+                if s.st_nlink > 1:
+                    linked.add((s.st_dev, s.st_ino))
+                total += s.st_blocks * 512
     return total
 
 
