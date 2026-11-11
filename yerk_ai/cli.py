@@ -429,7 +429,7 @@ def cmd_status(a: argparse.Namespace) -> int:
     except (OSError, subprocess.SubprocessError):
         units = None                          # no systemd here: the ledger alone, unchecked
     lines = workers.status_lines(Ledger(state / "ledger.sqlite"), units, full=True)
-    for line in lines or ["workers: none running"]:
+    for line in lines or [words.NONE_RUNNING]:
         print(line)
     from . import jobs
     for line in jobs.status_lines(priv / jobs.FILE, jobs.Systemd()) or [f"{jobs.NOTHING} jobs: none scheduled"]:
