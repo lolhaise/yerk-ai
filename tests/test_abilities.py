@@ -5,11 +5,15 @@ every described one from its entry, and a room that names one, or asks "what can
 recall cap, the size limit on the notes a message arrives with. The described entries are decision 26, the patterns rule decision 22."""
 import json
 import re
+import shutil
+import tomllib
+from pathlib import Path
+from types import SimpleNamespace
 
 from starlette.testclient import TestClient
 
-from yerk_ai import abilities, cli, hooks, mcp_server, words
-from yerk_ai.config import EXAMPLE_PRIVATE
+from yerk_ai import abilities, addons, cli, hooks, mcp_server, words
+from yerk_ai.config import EXAMPLE_PRIVATE, table
 from yerk_ai.daemon import Yerkd
 from fake_channel import ConsoleChannel
 from yerk_ai.engine import SessionTable
@@ -43,6 +47,39 @@ def life(text: str) -> list[str]:
 
 def text_of(ab: dict) -> str:
     return json.dumps(ab, ensure_ascii=False)
+
+
+def test_the_manifest_is_parsed_once_and_read_again_when_a_file_changes_or_an_add_on_comes_or_goes(tmp_path, monkeypatch):
+    """Every message looks its abilities up (asked, through the daemon's recall_for); the parsed manifest is kept while
+    abilities.toml and each add-on's entry keep their size and modification time and the add-ons installed stay the same,
+    and it is always what a fresh read gives: after a file changes, an add-on comes and one goes (cleanup F8-09)."""
+    core, state = tmp_path / "abilities.toml", tmp_path / "state"
+    shutil.copy(table("abilities.toml"), core)
+    monkeypatch.setattr(abilities, "table", lambda name: core)
+    reads: list[str] = []
+    for mod in (abilities, addons):
+        monkeypatch.setattr(mod, "load_toml", lambda p, real=mod.load_toml: reads.append(Path(p).name) or real(p))
+
+    def addon(name: str, what: str) -> None:
+        (folder := state / addons.DIR / name).mkdir(parents=True, exist_ok=True)
+        (folder / addons.MANIFEST).write_text(f'[abilities.{name}]\nstate = "described"\nwhat = "{what}"\n')
+
+    def fresh() -> dict:                                       # read from disk, nothing kept
+        return dict(tomllib.loads(core.read_text())["abilities"]) | {
+            f.parent.name: next(iter(tomllib.loads(f.read_text())["abilities"].values()))
+            for f in sorted((state / addons.DIR).glob(f"*/{addons.MANIFEST}"))}
+    addon("hello", "says hello")
+    first = abilities.manifest(state)
+    assert first == fresh() and first["hello"]["what"] == "says hello" and reads == ["abilities.toml", "addon.toml"]
+    reads.clear()
+    assert abilities.manifest(state) == first and abilities.asked("zzqx", SimpleNamespace(state=state)) == [] and reads == []
+    core.write_text(core.read_text() + '\n[abilities.extra]\nstate = "described"\nwhat = "one more"\n')
+    addon("hello", "says hello twice")
+    assert abilities.manifest(state) == fresh() and abilities.manifest(state)["extra"]["what"] == "one more"
+    addon("bye", "says bye")
+    assert abilities.manifest(state) == fresh() and abilities.manifest(state)["bye"]["what"] == "says bye"
+    shutil.rmtree(state / addons.DIR / "hello")
+    assert abilities.manifest(state) == fresh() and "hello" not in abilities.manifest(state)
 
 
 def test_every_entry_says_built_or_described():

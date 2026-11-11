@@ -20,9 +20,30 @@ SELF = "abilities"                  # "what can you do": its answer is every abi
 HOW = {"built": "How it works:", "described": "How it would be built:"}     # its `how` lines
 
 
+_KEPT: dict[tuple[tuple[str, int, int] | None, ...], dict[str, dict[str, Any]]] = {}     # the last read, by its files' stamps
+
+
+def _stamp(f: Path) -> tuple[str, int, int] | None:
+    """A file's path, size and modification time; None when it cannot be looked at (the read then says why)."""
+    try:
+        st = f.stat()
+    except OSError:
+        return None
+    return str(f), st.st_size, st.st_mtime_ns
+
+
 def manifest(state: Path | None = None) -> dict[str, dict[str, Any]]:
-    """The core's abilities.toml, with each add-on installed under `state` by its own entry (addons.py)."""
-    return dict(load_toml(table("abilities.toml"))["abilities"]) | (addons.installed(state) if state else {})
+    """The core's abilities.toml, with each add-on installed under `state` by its own entry (addons.py). The last one read
+    is kept by each of those files' path, size and modification time, the add-ons installed among them, so a change, or
+    an add-on that comes or goes, is seen at the next message and an unchanged manifest is parsed once (cleanup F8-09:
+    every message parsed the 161 KB file). The entries are shared: read them, never write them."""
+    core = table("abilities.toml")
+    stamp = tuple(map(_stamp, [core, *(sorted((state / addons.DIR).glob(f"*/{addons.MANIFEST}")) if state else [])]))
+    if (kept := _KEPT.get(stamp)) is None:        # the stamps first: a write during the read changes them for the next call
+        kept = dict(load_toml(core)["abilities"]) | (addons.installed(state) if state else {})
+        _KEPT.clear()
+        _KEPT[stamp] = kept
+    return dict(kept)
 
 
 def has(key: Path | None) -> bool:
