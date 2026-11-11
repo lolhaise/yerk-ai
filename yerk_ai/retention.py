@@ -26,6 +26,7 @@ import shutil
 import stat
 import sys
 import time
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -80,6 +81,14 @@ def size(found: list[os.stat_result]) -> int:
     return sum(s.st_size for s in found if stat.S_ISREG(s.st_mode))
 
 
+def freed(found: list[os.stat_result]) -> int:
+    """The disk a delete of `found` gives back: each regular file's blocks once, and only when every link to it is in `found`
+    (a sparse file's holes and a file linked from elsewhere give back nothing); size() is the bytes a move carries."""
+    links = Counter((s.st_dev, s.st_ino) for s in found if stat.S_ISREG(s.st_mode))
+    return sum(s.st_blocks * 512 for s in {(s.st_dev, s.st_ino): s for s in found if stat.S_ISREG(s.st_mode)}.values()
+               if links[s.st_dev, s.st_ino] >= s.st_nlink)
+
+
 def kept(room: Path) -> list[Path]:
     """The top entries of work/ the sweep never takes and says the size of: inbox/ (the person's files) and each real
     folder holding a regular file named KEEP (the room's own work; the file's words are for a person, never read)."""
@@ -108,7 +117,7 @@ def in_flight(state: Path, ledger: Ledger, rooms: list[str]) -> set[str]:
 def run(private: Path, state: Path, dry: bool = False, now: float | None = None, proc: Path = PROC) -> dict[str, Any]:
     """One sweep: {"at", "dry", "kinds": {kind: [items, bytes]}, "scratch": {room: {top: [files, bytes]}}, "kept": bytes,
     "error", "why"}; with `dry` nothing moves. A kind's bytes are what moved to the trash; trash's and scratch_trash's,
-    what was deleted from it. A top is a top entry of work/ the room's scratch left, or ../outbox (the sent copies)."""
+    the disk their delete gave back (freed). A top is a top entry of work/ the room's scratch left, or ../outbox (the sent copies)."""
     now = time.time() if now is None else now
     out: dict[str, Any] = {"at": now, "dry": dry, "kinds": {}, "scratch": {}, "kept": 0}
     trash, busy = state / "trash" / day(now), set[tuple[int, int]]()
@@ -207,7 +216,7 @@ def run(private: Path, state: Path, dry: bool = False, now: float | None = None,
         out["kept"] = sum(size(tree(p)) for r in rooms for p in kept(r))
         for d in sorted([*(state / "trash").glob("????-??-??"), *(state / "trash" / "scratch").glob("????-??-??")]):
             if d.name < day(now - days[(k := "scratch_trash" if d.parent.name == "scratch" else "trash")] * DAY) and free(found := tree(d)):
-                tally(k, 1, size(found))
+                tally(k, 1, freed(found))
                 if not dry:
                     shutil.rmtree(d)
     except Exception as e:      # any failure is said, kept for the morning diff, exits 1; what moved before it stays counted

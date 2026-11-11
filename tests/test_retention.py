@@ -132,10 +132,27 @@ def test_the_trash_empties_after_7_days_a_rooms_scratch_after_1_and_nothing_else
     week = put(state / "trash" / retention.day(NOW - 2 * DAY) / "rooms" / "room-a" / "assembled.jsonl", "a")   # not scratch: a week
     sgone = put(state / "trash" / "scratch" / retention.day(NOW - 2 * DAY) / "rooms" / "room-a" / "work" / "r.pgm", "rr")
     sstays = put(state / "trash" / "scratch" / retention.day(NOW - DAY) / "rooms" / "room-a" / "work" / "s.pgm", "s")
+    disk = [p.stat().st_blocks * 512 for p in (gone, sgone)]                     # what each delete gives back (FB-01)
     r = retention.run(priv, state, now=NOW)
-    assert not gone.parent.parent.exists() and stays.exists() and r["kinds"]["trash"] == [1, 3]
-    assert not sgone.parent.parent.parent.parent.exists() and sstays.exists() and week.exists() and r["kinds"]["scratch_trash"] == [1, 2]
+    assert not gone.parent.parent.exists() and stays.exists() and r["kinds"]["trash"] == [1, disk[0]]
+    assert not sgone.parent.parent.parent.parent.exists() and sstays.exists() and week.exists() and r["kinds"]["scratch_trash"] == [1, disk[1]]
     assert oct((state / "trash").stat().st_mode & 0o777) == "0o700"
+
+
+def test_the_trash_says_the_disk_its_delete_gave_back_never_the_files_lengths(tmp_path, capsys):
+    """FB-01: a finished test run's sparse file 1 GB long holds no block, and a file linked from outside the trash keeps its
+    blocks, so neither is disk the delete gave back; the line and retention.json say the report's blocks alone."""
+    priv, state, projects, led = layer(tmp_path)
+    old = state / "trash" / retention.day(NOW - 8 * DAY) / "workers" / "aaaaaa"
+    os.truncate(put(old / "runs" / "sparse.img", ""), 1 << 30)
+    report = put(old / "REPORT.md", "r" * 5000)
+    os.link(put(tmp_path / "elsewhere" / "kept.txt", "k" * 9000), old / "linked.txt")
+    freed = report.stat().st_blocks * 512
+    assert retention.main(priv, state, dry=True, now=NOW) == 0 and old.exists()
+    assert f"trash: 1 would be deleted, {words.size(freed)}" in capsys.readouterr().out
+    assert retention.main(priv, state, now=NOW) == 0 and not old.exists() and (tmp_path / "elsewhere" / "kept.txt").exists()
+    assert f"trash: 1 deleted, {words.size(freed)}" in capsys.readouterr().out
+    assert json.loads((state / retention.LAST).read_text())["kinds"]["trash"] == [1, freed]
 
 
 def test_old_timing_rows_go_to_the_trash_then_leave_the_ledger_and_the_wal_is_checkpointed(tmp_path):
