@@ -190,6 +190,26 @@ def test_a_finished_workers_folder_and_its_transcript_go_after_their_days_and_no
     assert (state / "trash" / retention.day(NOW) / "workers" / "aaaaaa" / "REPORT.md").exists()
 
 
+def test_a_job_runs_folder_goes_after_its_days_once_ended_and_delivered_and_never_while_undelivered(tmp_path):
+    """F10-14: every job run leaves <state>/jobs/<name>/<stamp>/ and nothing pruned them, about 145 a day. A run the ledger
+    still marks undelivered stays whatever its age (the daemon's restart sweep reads its stdout), so does one never ended."""
+    priv, state, projects, led = layer(tmp_path)
+    runs = {}
+    for stamp, ended, delivery in (("20261001-040000", NOW - 20 * DAY, "silent (no output)"), ("20261002-040000", NOW - 19 * DAY, "delivered"),
+                                   ("20261003-040000", NOW - 18 * DAY, "undelivered: the daemon was not running"),
+                                   ("20261004-040000", None, None), ("20261015-040000", NOW - 6 * DAY, "delivered")):
+        runs[stamp] = put(state / "jobs" / "example-job" / stamp / "stdout", "out", days=30).parent
+        led.job_run_add(job="example-job", kind="script", room="room-a", fired=NOW - 30 * DAY, ended=ended, delivery=delivery, folder=str(runs[stamp]))
+    stray = put(state / "jobs" / "example-job" / "20260901-040000" / "stdout", days=60).parent             # no row: never touched
+    out = put(tmp_path / "elsewhere" / "x" / "20261001-040000" / "stdout").parent                          # not under the jobs folder
+    led.job_run_add(job="x", kind="script", room="room-a", fired=NOW - 99 * DAY, ended=NOW - 99 * DAY, delivery="delivered", folder=str(out))
+    r = retention.run(priv, state, now=NOW)
+    assert not runs["20261001-040000"].exists() and not runs["20261002-040000"].exists() and stray.exists() and out.exists()
+    assert all(runs[s].exists() for s in ("20261003-040000", "20261004-040000", "20261015-040000"))
+    assert (state / "trash" / retention.day(NOW) / "jobs" / "example-job" / "20261001-040000" / "stdout").read_text() == "out"
+    assert r["kinds"]["jobs"] == [2, 6] and "error" not in r
+
+
 def test_a_dry_run_moves_nothing_and_counts_what_the_run_then_moves(tmp_path):
     priv, state, projects, led = layer(tmp_path, "[retention]\ntranscripts = 1\n")
     put(state / "logs" / "room-a.jsonl", '{"t": 1}\n', days=1)
@@ -232,7 +252,7 @@ def test_a_failure_exits_1_and_the_morning_diff_opens_with_it(tmp_path, capsys):
 def test_the_days_come_from_yerkd_toml_and_explain_says_them(tmp_path, capsys):
     priv, state, projects, led = layer(tmp_path, '[retention]\nlogs = 3\nledger = "x"\nworkers = -1\ntrash = true\n')
     assert retention.keep({"retention": {"logs": 3, "ledger": "x", "workers": -1, "trash": True, "scratch_mb": 0}}) == {
-        "logs": 3, "assembled": 14, "transcripts": 30, "ledger": 90, "workers": 30, "scratch": 2, "trash": 7, "scratch_trash": 1, "scratch_mb": 500}
+        "logs": 3, "assembled": 14, "transcripts": 30, "ledger": 90, "jobs": 14, "workers": 30, "scratch": 2, "trash": 7, "scratch_trash": 1, "scratch_mb": 500}
     assert cli.main(["explain", "retention", "--private", str(priv), "--state", str(state)]) == 0
     out = capsys.readouterr().out
     assert out.startswith(f"{words.DONE} retention: ") and "Here: logs 3 days, assembled 14 days, transcripts 30 days" in out

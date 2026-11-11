@@ -5,7 +5,9 @@ day into <name>.<day of their last write>.jsonl.gz beside them, a day's file kep
 Yerk room's Claude Code transcripts are kept `transcripts` days after the session's last write, and never one
 whose session sessions.json binds, one written in the last 24 hours, or any of a room with a turn in flight or
 waiting; rows of the timing tables (TIMED: no reader looks back past a day) are kept `ledger` days and the WAL
-is checkpointed; a finished worker's folder and its project folder are kept `workers` days; a room's scratch
+is checkpointed; a job run's folder (jobs/<name>/<stamp>/) is kept `jobs` days after it ended, and while the ledger
+marks it undelivered whatever its age (the daemon's restart sweep reads it); a finished worker's folder and its project
+folder are kept `workers` days; a room's scratch
 (scratch(): its work folder but the person's files and a top folder holding a file named KEEP, and the copies of
 the files it sent) is kept `scratch` days, and past `scratch_mb` a room loses its oldest files first, never one
 written in the last hour and never while it has a turn in flight; the room finds what went where in its
@@ -38,7 +40,7 @@ from .ledger import Ledger
 from .workers import settings as worker_settings
 
 DAY = 86400.0
-DAYS = {"logs": 14, "assembled": 14, "transcripts": 30, "ledger": 90, "workers": 30, "scratch": 2, "trash": 7, "scratch_trash": 1}
+DAYS = {"logs": 14, "assembled": 14, "transcripts": 30, "ledger": 90, "jobs": 14, "workers": 30, "scratch": 2, "trash": 7, "scratch_trash": 1}
 CAP = {"scratch_mb": 500}             # past this a room's scratch loses its oldest files first
 TIMED = {"outbound": "sent", "hook_calls": "t", "tool_times": "t", "evidence": "t", "shadow": "t"}
 SESSION = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
@@ -184,6 +186,12 @@ def run(private: Path, state: Path, dry: bool = False, now: float | None = None,
                 if move("workers", folder, f"workers/{folder.name}"):
                     for d in filter(Path.is_dir, gone):
                         move("workers", d, f"projects/{d.name}")
+        runs = (state / "jobs").resolve()
+        for j in ledger.job_runs(limit=10**6):           # ended and delivered past its days; one marked undelivered stays
+            folder = Path(str(j["folder"] or ""))
+            if (j["ended"] and j["ended"] < now - days["jobs"] * DAY and j["delivery"] and not str(j["delivery"]).startswith("undelivered")
+                    and folder.is_absolute() and folder.is_dir() and folder.resolve().parent.parent == runs):
+                move("jobs", folder, f"jobs/{folder.parent.name}/{folder.name}")
         for r in (r for r in rooms if r.name not in flight):              # scratch: past its days, then the oldest past the cap
             listed, emptied, work, took = scratch(r), set[Path](), r / "work", list[str]()
             total = size([s for _, s in listed])
