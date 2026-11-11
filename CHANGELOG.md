@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-11-11
 
-### oom-wording (#?)
+### oom-wording (#57)
 
 - A worker the kernel killed for memory says so: its card reads "died: it ran out of memory", and so do its relay, the
   ledger's exit detail and a scheduled job's alert, where they read "died: it was killed". Under the memory ceiling
