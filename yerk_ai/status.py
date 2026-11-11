@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import __version__, backup, config, jobs, latency, usage, words, workers
-from .accounts import Account, Cooldowns
+from .accounts import Account, Cooldowns, pick
 from .engine import FAST_MODELS
 from .ledger import Ledger
 from .meters import Meters
@@ -87,15 +87,19 @@ def collect(private: Path, state: Path, accounts: list[Account], cooldowns: Cool
     an account with neither shows the stream's reading."""
     now = time.time() if now is None else now
     out: dict[str, Any] = {"at": now, "running": rooms is not None, "rooms": [], "units": []}
+    conf = config.load_toml(private / "yerkd.toml") if (private / "yerkd.toml").is_file() else {}
+    listed = config.models(conf) if rooms else {}
     if rooms is not None:
         out["units"].append(use("yerkd", [r for r in [stat(os.getpid(), proc)] if r]))   # its own, not its children
     for name, room in (rooms or {}).items():
         with room.lock:
             msgs, waiting, busy, rp = [*room.inflight, *room.pending, *room.queue], len(room.queue), room.busy, room.rp
+            held = (getattr(room, "context", 0), getattr(room, "window", 0), getattr(room, "compactions", None),
+                    getattr(room, "fresh_next", None) is None)
         out["rooms"].append({"room": name, "busy": busy, "waiting": waiting, "watch": room.conf.get("watch"),
                              "since": min((m.received for m in msgs), default=None) if busy else None,
                              "account": config.pinned(state, name, [a.name for a in accounts]),   # the one it is put on
-                             "fast": fast_shown(state, name, room)})
+                             "fast": fast_shown(state, name, room), "head": head(state, name, room, rp, held, accounts, cooldowns, listed, now)})
         if rp is not None and rp.proc is not None and rp.alive():
             out["units"].append(use(name, tree(rp.proc.pid, proc)))
     try:
@@ -119,10 +123,27 @@ def collect(private: Path, state: Path, accounts: list[Account], cooldowns: Cool
     out["stalls"] = ledger.stalls(midnight(now))
     out["speed"] = latency.medians(ledger, midnight(now), now)    # today's median first line and turn
     out["backup"] = backup.newest(private, state)
-    conf = config.load_toml(private / "yerkd.toml") if (private / "yerkd.toml").is_file() else {}
     if config.uncapped(config.budgets(conf)):           # the money gates lifted: the receipt, today and the week to it
         out["spend"] = spend(ledger, midnight(now), now, midnight(now, 6))
     return out
+
+
+def head(state: Path, name: str, room: Any, rp: Any, held: tuple[int, int, int | None, bool], accounts: list[Account],
+         cooldowns: Cooldowns, listed: dict[str, str], now: float) -> dict[str, Any]:
+    """The room card's head (room_card) for room `name`, its session's numbers as collect read them under the room's lock
+    (`held`: its tokens, its compaction window, its compactions, and no new session waiting): the model its next reply
+    launches with (its /model choice over rooms.toml, as config.room_settings reads them for spec_for, an alias through
+    the install's list; "" when neither names one, since Claude Code's own default has no id Yerk knows), its thinking
+    level ("" alike), the account its session is on (the live process's, else the one its next turn would try, as Room._account
+    picks: the one it is put on unless that one rests), its tokens (None: no session yet, or a /new waiting), its window (0: left
+    to the model) and compactions (None: not known)."""
+    tokens, window, compactions, same = held
+    settings = config.room_settings(dict(room.conf), state, name, listed)
+    model = settings["model"][0]
+    own = rp.account.name if rp is not None and hasattr(rp, "account") else ""
+    account = own or (pick(accounts, cooldowns, now, config.pinned(state, name, [a.name for a in accounts]), model).name if accounts else "")
+    return {"model": listed.get(model.lower(), model), "effort": settings["effort"][0], "account": account,
+            "context": tokens if tokens and same else None, "window": int(window or 0), "compactions": compactions}
 
 
 def spend(ledger: Ledger, since: float, until: float, week: float) -> dict[str, Any]:
@@ -212,6 +233,48 @@ def stall_line(stalls: list[dict[str, Any]], day: str, since: str = "") -> str:
     return words.line(f"{words.NOT_DONE} {words.STALLS.format(day=day, n=len(stalls), took=took)}")
 
 
+def tank(accounts: list[dict[str, Any]], now: float, live: bool = False) -> tuple[list[dict[str, Any]], list[str]]:
+    """The numbers both cards print (account_lines, room_card): per account its tag, `green` when its week resets soonest
+    (two accounts or more), its state mark, its meters in words (None: no reading yet), the resets its second line says
+    (the model's own only when it is not the week's, within a minute), its bill, until when it rests, its weekly reset,
+    and the age of a reading not live where that is said (None: not said); then each window's `next` line, in words."""
+    W = words
+
+    def ahead(w: str) -> dict[str, float]:
+        return {a["name"]: float(r) for a in accounts if (r := (a["meter"].get(w) or {}).get("resets")) and float(r) > now}
+    week, five, rows, nexts = ahead("seven_day"), ahead("five_hour"), [], []
+    soonest = min(week, key=lambda n: (week[n], n)) if len(accounts) > 1 and week else None
+    for a in accounts:
+        m, rest = a["meter"], a.get("rests_until")
+        wins = [(label, m[w]) for w, label in (("five_hour", "5h"), ("seven_day", "wk"), ("model", "")) if w in m]
+        pct = [round(float(x["pct"])) for _, x in wins]
+        full = max((p for (label, _), p in zip(wins, pct) if label), default=0) >= 100
+        rows.append({"name": a["name"], "tag": W.tag(a["name"]), "green": a["name"] == soonest, "rest": rest, "week": week.get(a["name"]),
+                     "mark": W.NOT_DONE if rest or full else W.WORKING if max(pct, default=0) >= 90 else W.PLAIN,
+                     "meters": " · ".join(f"{label or x['name']} {W.WARN if p >= W.HOT else ''}{p}%"
+                                          for (label, x), p in zip(wins, pct)) if wins else None,
+                     "when": [f"{label or x['name']} {W.short_when(float(x['resets']), now)}" for label, x in wins if x.get("resets")
+                              and float(x["resets"]) > now and (label or abs(float(x["resets"]) - week.get(a["name"], 0)) > 60)],
+                     "bill": [W.BILL.format(day=W.short_day(a["bill"]))] if a.get("bill") else [],
+                     "old": W.ago(now - m["at"]) if m.get("source") != "live" and "at" in m and (live or now - m["at"] >= OLD) else None})
+    for label, due in (("wk", week), ("5h", five)):
+        seq = sorted((r, n) for n, r in due.items())[:2] if len(accounts) > 1 else []
+        if seq:
+            first = (W.DONE if label == "wk" else "") + f"{W.tag(seq[0][1])} {W.short_when(seq[0][0], now)}"
+            then = W.THEN.format(tag=W.tag(seq[1][1]), when=W.short_when(seq[1][0], now)) if seq[1:] else ""
+            nexts.append(f"{W.NEXT.format(label=label, first=first)}{then}")
+    return rows, nexts
+
+
+def resets(parts: list[str], bill: list[str], lead: int = 0) -> str:
+    """An account's second line (words.RESETS): its resets, then its bill; the model's own reset only where the line fits
+    words.PHONE with `lead` columns before it."""
+    text = words.RESETS.format(parts=" · ".join(parts + bill))
+    if parts[2:] and words.width(text) + lead > words.PHONE:
+        text = words.RESETS.format(parts=" · ".join(parts[:2] + bill))
+    return text
+
+
 def account_lines(accounts: list[dict[str, Any]], now: float, live: bool = False) -> list[str]:
     """Each account in two lines, the box card's shape: `- ① 5h 7% · wk 1% · Fable 2%`, then `- ↻ 5h 6:10p ·
     wk Sun 3a · 💳 Oct 25`. Red first when it rests (its second line says until when) or a 5-hour or weekly window
@@ -219,41 +282,20 @@ def account_lines(accounts: list[dict[str, Any]], now: float, live: bool = False
     words.HOT or more. A reading that is not live says how old it is when the live one was asked for, or once it is
     an hour old. With two accounts or more, the soonest weekly reset wears the green mark on its tag, and two lines
     say the next two resets of each window, and one the account the next turn tries first."""
-    W = words
-
-    def ahead(w: str) -> dict[str, float]:
-        return {a["name"]: float(r) for a in accounts if (r := (a["meter"].get(w) or {}).get("resets")) and float(r) > now}
-    week, five, out = ahead("seven_day"), ahead("five_hour"), []
-    soonest = min(week, key=lambda n: (week[n], n)) if len(accounts) > 1 and week else None
-    for a in accounts:
-        m, rest, tag = a["meter"], a.get("rests_until"), W.tag(a["name"])
-        head = (W.DONE if a["name"] == soonest else "") + tag
-        wins = [(label, m[w]) for w, label in (("five_hour", "5h"), ("seven_day", "wk"), ("model", "")) if w in m]
-        pct = [round(float(x["pct"])) for _, x in wins]
-        full = max((p for (label, _), p in zip(wins, pct) if label), default=0) >= 100
-        mark = W.NOT_DONE if rest or full else W.WORKING if max(pct, default=0) >= 90 else W.PLAIN
-        if wins:                                                  # a long name is cut, never a meter
-            out.append(W.named(f"{mark} {head[:len(head) - len(tag)]}{{name}} {{meters}}", tag, meters=" · ".join(
-                f"{label or x['name']} {W.WARN if p >= W.HOT else ''}{p}%" for (label, x), p in zip(wins, pct))))
+    W, out = words, []
+    rows, nexts = tank(accounts, now, live)
+    for r in rows:
+        head = (W.DONE if r["green"] else "") + r["tag"]
+        if r["meters"] is not None:                               # a long name is cut, never a meter
+            out.append(W.named(f"{r['mark']} {head[:len(head) - len(r['tag'])]}{{name}} {{meters}}", r["tag"], meters=r["meters"]))
         else:
-            out.append(W.named(f"{mark} {W.NO_READING}", head))
-        when = [f"{label or x['name']} {W.short_when(float(x['resets']), now)}" for label, x in wins
-                if x.get("resets") and float(x["resets"]) > now and (label or abs(float(x["resets"]) - week.get(a["name"], 0)) > 60)]
-        bill = [W.BILL.format(day=W.short_day(a["bill"]))] if a.get("bill") else []
-        parts = [W.BACK_AT.format(until=W.short_when(rest, now))] if rest else when
-        text = W.RESETS.format(parts=" · ".join(parts + bill))
-        if parts[2:] and W.width(f"{W.PLAIN} {text}") > W.PHONE:      # the model's own reset only where it fits
-            text = W.RESETS.format(parts=" · ".join(parts[:2] + bill))
-        if parts or bill:
-            out.append(W.line(f"{W.PLAIN} {text}"))
-        if m.get("source") != "live" and "at" in m and (live or now - m["at"] >= OLD):
-            out.append(W.named(f"{W.PLAIN} {W.OLD_READING}", tag, ago=W.ago(now - m["at"])))
-    for label, due in (("wk", week), ("5h", five)):
-        seq = sorted((r, n) for n, r in due.items())[:2] if len(accounts) > 1 else []
-        if seq:
-            first = (W.DONE if label == "wk" else "") + f"{W.tag(seq[0][1])} {W.short_when(seq[0][0], now)}"
-            then = W.THEN.format(tag=W.tag(seq[1][1]), when=W.short_when(seq[1][0], now)) if seq[1:] else ""
-            out.append(W.line(f"{W.PLAIN} {W.NEXT.format(label=label, first=first)}{then}"))
+            out.append(W.named(f"{r['mark']} {W.NO_READING}", head))
+        parts = [W.BACK_AT.format(until=W.short_when(r["rest"], now))] if r["rest"] else r["when"]
+        if parts or r["bill"]:
+            out.append(W.line(f"{W.PLAIN} {resets(parts, r['bill'], W.width(W.PLAIN + ' '))}"))
+        if r["old"] is not None:
+            out.append(W.named(f"{W.PLAIN} {W.OLD_READING}", r["tag"], ago=r["old"]))
+    out += [W.line(f"{W.PLAIN} {n}") for n in nexts]
     free = next((a["name"] for a in accounts if not a.get("rests_until")), None)     # accounts.pick, no room's own
     if len(accounts) > 1 and free:
         out.append(W.line(f"{W.PLAIN} {W.FIRST_TRY.format(tag=W.tag(free))}"))
@@ -296,14 +338,7 @@ def card(s: dict[str, Any], now: float | None = None) -> list[str]:
                                                  commit=str(s.get("commit") or "")[:7] or "?")))
     if s.get("addons") is not None:                     # `yerk status` names the installed add-ons (addons.py)
         out.append(row(W.PLAIN, W.ADDONS.format(names=", ".join(s["addons"]) or W.NO_ADDONS)))
-    nth: dict[str, int] = {}
-    for w in sorted(s["workers"], key=lambda w: (bool(w["waiting"]), float(w["queued"] or 0))):
-        if w["waiting"]:
-            nth[w["account"]] = nth.get(w["account"], 0) + 1
-            say = W.IN_LINE_SHORT.format(nth=W.nth(nth[w["account"]]))
-        else:
-            say = W.GONE if w["gone"] else W.of_cap(now - w["started"], w["cap"])
-        out.append(row(W.NOT_DONE if w["gone"] else W.PLAIN, f"{W.WORKER.format(id=w['id'])}: {say}"))
+    out += [row(W.NOT_DONE if gone else W.PLAIN, text) for gone, text in said(s["workers"], now)]
     if not s["workers"]:
         out.append(row(W.PLAIN, W.NONE_RUNNING))
     if s["jobs"] is None:
@@ -316,8 +351,88 @@ def card(s: dict[str, Any], now: float | None = None) -> list[str]:
         out.append(row(W.PLAIN, W.SPEED.format(day=W.TODAY, **{k: "-" if v is None else W.secs(v) for k, v in sp.items()})))
     if "spend" in s:                                    # an uncapped install's receipt line (collect)
         out.append(row(W.PLAIN, spend_line(s["spend"], W.TODAY)))
-    if "backup" in s:                                   # the newest archive (backup.py): red when there is none, or past STALE
-        b = s["backup"]
-        text = W.BACKUP_AT.format(ago=W.span(now - b["at"]), size=W.size(int(b["bytes"]))) if b else W.NO_BACKUP
-        out.append(row(W.NOT_DONE if not b or now - b["at"] > backup.STALE else W.PLAIN, text))
+    if "backup" in s:
+        out.append(backup_line(s["backup"], now))
     return out + [stall_line(s["stalls"], W.TODAY)]
+
+
+def room_card(s: dict[str, Any], room: str, now: float | None = None) -> list[str]:
+    """/status typed in `room`: the box card's shape, every line at most words.PHONE columns opening with its own icon,
+    never a dash (STYLE.md). The room in three lines (the model its next reply launches with and its account; its session's
+    tokens over its window and its compactions; its thinking level, and fast mode while on), the tank (tank's numbers, two
+    lines an account in number order, the room's own marked, a rest other than the account's weekly reset said), what runs
+    (this room's turn first, at most four lines), today's speed and spend, then a red line only for trouble: a stall today,
+    no backup or a stale one, a timer list not read."""
+    now = float(s["at"]) if now is None else now
+    W = words
+    mine: dict[str, Any] = next((r for r in s["rooms"] if r["room"] == room), {})
+    h = mine.get("head") or {}
+    out = [W.line(W.ROOM_HEAD.format(parts=" · ".join(x for x in (h.get("model"), W.tag(h.get("account") or "")) if x)))]
+    if held := h.get("context"):
+        out.append(W.line(W.ROOM_HELD.format(held=W.tokens(held)) + (
+            W.ROOM_OF.format(window=W.tokens(h["window"]), pct=round(100 * held / h["window"])) if h.get("window") else "") + (
+            W.ROOM_COMPACTED.format(n=h["compactions"]) if h.get("compactions") is not None else "")))
+    else:
+        out.append(W.ROOM_NEW)
+    fast = W.ROOM_FAST if mine.get("fast") else ""
+    if h.get("effort"):
+        out.append(W.line(W.ROOM_THINK.format(effort=h["effort"]) + fast))
+    elif fast:
+        out.append(W.ROOM_FAST_ONLY)
+    out += ["", W.TANK]
+    rows, nexts = tank(s["accounts"], now, bool(s.get("live")))
+    for r in sorted(rows, key=lambda r: (W.number(r["name"]) or 10**6, r["name"])):     # by number, not the order tried
+        lead = (W.ON_THIS if r["name"] == h.get("account") else "") + (W.DONE if r["green"] else "")
+        asleep = W.ASLEEP.format(until=W.short_when(r["rest"], now)) if r["rest"] and abs(r["rest"] - (r["week"] or 0)) > 60 else ""
+        first = f"{lead}{{name}} {{meters}}" if r["meters"] is not None else f"{lead}{W.NO_READING}"
+        if W.width(" ".join(first.format(name=r["tag"], meters=r["meters"]).split()) + asleep) > W.PHONE:
+            asleep = asleep.removeprefix(" · ")             # too wide with its rest: the rest on a line of its own
+            out.append(W.named(first, r["tag"], meters=r["meters"]))
+        else:
+            out.append(W.named(first + asleep, r["tag"], meters=r["meters"]))
+            asleep = ""
+        if r["when"] or r["bill"]:
+            out.append(W.line(resets(r["when"], r["bill"])))
+        out += [W.line(asleep)] if asleep else []
+        if r["old"] is not None:
+            out.append(W.named(W.OLD_READING, r["tag"], ago=r["old"]))
+    out += [W.line(n) for n in nexts] + [""]
+    busy = []
+    for r in sorted(s["rooms"], key=lambda r: r["room"] != room):          # this room's own turn first
+        if r["since"] is not None:
+            took = now - r["since"]
+            busy.append(W.named(f"{W.NOT_DONE if took > BLOCKED else W.BUSY} {W.TURN_OF}" + (W.QUEUED.format(n=r["waiting"]) if r["waiting"] else ""),
+                                W.HERE if r["room"] == room else r["room"], took=W.span(took)))
+    busy += [W.line(f"{W.NOT_DONE if gone else W.BUSY} {text}") for gone, text in said(s["workers"], now)]
+    out += (busy if len(busy) <= 4 else [*busy[:3], W.line(f"{W.BUSY} {W.AND_MORE.format(n=len(busy) - 3)}")]) or [W.ALL_QUIET]
+    if (sp := s.get("speed")) and any(v is not None for v in sp.values()):     # none before the day's first message
+        out.append(W.line(W.ROOM_SPEED.format(day=W.TODAY, **{k: "-" if v is None else W.secs(v) for k, v in sp.items()})))
+    if "spend" in s:                                    # an uncapped install's (collect)
+        out.append(W.line(W.ROOM_SPEND.format(day=W.TODAY, **s["spend"])))
+    if s["stalls"]:
+        out.append(stall_line(s["stalls"], W.TODAY))
+    if "backup" in s and (b := backup_line(s["backup"], now)).startswith(W.NOT_DONE):
+        out.append(b)
+    if s.get("jobs", []) is None:
+        out.append(W.line(f"{W.NOT_DONE} {W.NO_TIMERS}"))
+    return out
+
+
+def said(workers: list[dict[str, Any]], now: float) -> list[tuple[bool, str]]:
+    """Each worker as both cards say it, the running first and the waiting in their place in line: (gone, its words)."""
+    nth: dict[str, int] = {}
+    out = []
+    for w in sorted(workers, key=lambda w: (bool(w["waiting"]), float(w["queued"] or 0))):
+        if w["waiting"]:
+            nth[w["account"]] = nth.get(w["account"], 0) + 1
+            say = words.IN_LINE_SHORT.format(nth=words.nth(nth[w["account"]]))
+        else:
+            say = words.GONE if w["gone"] else words.of_cap(now - w["started"], w["cap"])
+        out.append((bool(w["gone"]), f"{words.WORKER.format(id=w['id'])}: {say}"))
+    return out
+
+
+def backup_line(b: dict[str, Any] | None, now: float) -> str:
+    """The newest archive (backup.py), state first: red when there is none, or past backup.STALE."""
+    text = words.BACKUP_AT.format(ago=words.span(now - b["at"]), size=words.size(int(b["bytes"]))) if b else words.NO_BACKUP
+    return words.line(f"{words.NOT_DONE if not b or now - b['at'] > backup.STALE else words.PLAIN} {text}")
