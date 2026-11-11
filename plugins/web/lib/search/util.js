@@ -131,10 +131,6 @@ export function cacheSet(key, value, ttlMs) {
   CACHE.set(key, { at: Date.now(), value });
 }
 
-export function cacheClear() {
-  CACHE.clear();
-}
-
 // ---- private state files: dir 0700, files 0600 ----
 export function ensureStateDir(dir) {
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -163,16 +159,6 @@ export function appendCallLog(settings, entry) {
 
 function monthStamp(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
-
-export function readPaidCount(settings) {
-  try {
-    const file = path.join(settings.stateDir, `paid-${monthStamp()}`);
-    const n = parseInt(fs.readFileSync(file, "utf8").trim(), 10);
-    return Number.isFinite(n) && n >= 0 ? n : 0;
-  } catch {
-    return 0;
-  }
 }
 
 // Alert lines go to <stateDir>/alerts.log, 0600.

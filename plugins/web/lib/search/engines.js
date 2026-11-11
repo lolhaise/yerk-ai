@@ -3,12 +3,6 @@
 import { randomUUID } from "node:crypto";
 import { clip, normalizePublished, siteNameOf, toHttpUrl, withTimeout } from "./util.js";
 
-// Test hook for the offline harness only (never set by config): engine id -> mock URL.
-let testEndpoints = {};
-export function setTestEndpoints(o) {
-  testEndpoints = { ...(o ?? {}) };
-}
-
 export class EngineError extends Error {
   constructor(engine, kind, message, status, retryAfterMs) {
     super(message);
@@ -137,7 +131,7 @@ export async function searchFirecrawl(opts) {
   if (opts.country) body.country = opts.country;
   const response = await httpCall(
     "firecrawl",
-    testEndpoints.firecrawl ?? "https://api.firecrawl.dev/v2/search",
+    "https://api.firecrawl.dev/v2/search",
     { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
     opts.timeoutMs,
     opts.signal,
@@ -248,7 +242,7 @@ export async function searchParallelFree(opts) {
   };
   const response = await httpCall(
     "parallel",
-    testEndpoints.parallel ?? "https://search.parallel.ai/mcp",
+    "https://search.parallel.ai/mcp",
     {
       method: "POST",
       headers: {
@@ -329,7 +323,7 @@ export function parseDuckDuckGoHtml(html, count) {
 }
 
 export async function searchDuckDuckGo(opts) {
-  const url = new URL(testEndpoints.duckduckgo ?? "https://html.duckduckgo.com/html");
+  const url = new URL("https://html.duckduckgo.com/html");
   url.searchParams.set("q", opts.query);
   url.searchParams.set("kp", "-1");
   if (opts.freshness && { day: "d", week: "w", month: "m", year: "y" }[opts.freshness]) {
@@ -411,7 +405,7 @@ export async function searchParallelPaid(opts) {
   const body = buildParallelPaidBody(opts);
   const response = await httpCall(
     "parallel-paid",
-    testEndpoints["parallel-paid"] ?? PAID_URL,
+    PAID_URL,
     {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-api-key": opts.apiKey },
@@ -491,7 +485,7 @@ export function mapExaResults(list, count, snippetChars) {
 export async function searchExa(opts) {
   const response = await httpCall(
     "exa",
-    testEndpoints.exa ?? EXA_URL,
+    EXA_URL,
     {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-api-key": opts.apiKey },
@@ -585,7 +579,7 @@ export async function searchYouFree(opts) {
   const id = ++rpcId;
   const response = await httpCall(
     "you",
-    testEndpoints.you ?? YOU_URL,
+    YOU_URL,
     {
       method: "POST",
       headers: {

@@ -11,7 +11,6 @@ import { detectChallenge } from "./detect.js";
 import { recordUsage, sleep, trackPending } from "./util.js";
 
 let pwModule;
-let pwLoadError;
 
 export async function loadPlaywright(settings) {
   if (pwModule) return pwModule;
@@ -23,9 +22,7 @@ export async function loadPlaywright(settings) {
         pwModule = m;
         return m;
       }
-    } catch (err) {
-      pwLoadError = err;
-    }
+    } catch {}
   }
   return null;
 }
@@ -358,8 +355,4 @@ export async function runSessionRung({ base, apiKey, projectId, url, hostname, s
   } finally {
     ctx?.done?.({ used: true });
   }
-}
-
-export function playwrightStatus() {
-  return pwModule ? "loaded" : pwLoadError ? `unavailable: ${String(pwLoadError?.message || pwLoadError).slice(0, 120)}` : "not tried";
 }

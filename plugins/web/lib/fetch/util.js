@@ -347,10 +347,6 @@ export function syncProjectUsage(settings, creds, fetchImpl = fetch, { force = f
   );
 }
 
-export function _resetProjectSync() {
-  lastProjectSync = 0;
-}
-
 // Test seam: wait for queued usage writes and fire-and-forget session reads.
 export async function flushPending() {
   while (pending.size) await Promise.allSettled([...pending]);
