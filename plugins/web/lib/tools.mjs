@@ -41,10 +41,14 @@ const ENGINE = {
 // named on each row. One it drops, or only words as a preference in its request, is not enforced, and the answer's first
 // line says so: the room checks the pages itself. freshness and date_after share one start date on exa, parallel-paid
 // and you, which send the later of the two, so both hold. test/tools.test.mjs builds each request and keeps this true.
+// A country is the one filter that keeps no page out: by Exa's and Parallel's own pages it localizes the results
+// (geo-targeting), so where an engine takes it the first line says "localized to CA", never "filtered by". Paid
+// Parallel sends any two letters and, by its own page, ignores a code outside its 37: the one row no request shows.
 const YOU_COUNTRIES = new Set("AR AU AT BE BR CA CL DK FI FR DE HK IN ID IT JP KR MY MX NL NZ NO CN PL PT PH RU SA ZA ES SE CH TW TR GB US".split(" ")); // engines.js's own, not exported
+const PARALLEL_COUNTRIES = new Set([...YOU_COUNTRIES, "GR"]); // docs.parallel.ai, Advanced Search Settings, Supported locations (read 2026-11-11)
 export const ENFORCED = {
   exa: () => true, // buildExaBody
-  "parallel-paid": (k) => k !== "date_before", // buildParallelPaidBody: the end date only as words in its objective
+  "parallel-paid": (k, f) => k !== "date_before" && (k !== "country" || PARALLEL_COUNTRIES.has(f.country.toUpperCase())), // buildParallelPaidBody: the end date only as words in its objective
   you: (k, f) => k !== "country" || YOU_COUNTRIES.has(f.country.toUpperCase()), // buildYouCall: only the 36 countries it lists
   parallel: () => false, // searchParallelFree: each filter a sentence in its objective, the country never read
   firecrawl: (k, f) => !k.startsWith("date_") || !f.freshness, // searchFirecrawl, firecrawlTbs: freshness wins over the dates
@@ -286,10 +290,12 @@ export async function webSearch(args, { signal, at = AT } = {}) {
   const by = p.engine ? ENGINE[p.engine] ?? p.engine : "an engine the call log did not name";
   // The filters asked (an empty domain list is none) and which the answering engine enforced; a cached answer keeps its engine.
   const asked = FILTERS.filter((k) => k in filters && !(k === "domain_filter" && !filters[k].length));
-  const held = asked.filter((k) => ENFORCED[p.engine]?.(k, filters)).map((k) => said(k, filters[k]));
-  const loose = asked.filter((k) => !ENFORCED[p.engine]?.(k, filters)).map((k) => said(k, filters[k]));
+  const took = asked.filter((k) => ENFORCED[p.engine]?.(k, filters));
+  const held = took.filter((k) => k !== "country").map((k) => said(k, filters[k]));
+  const local = took.includes("country") ? `, localized to ${filters.country.toUpperCase()}` : "";
+  const loose = asked.filter((k) => !took.includes(k)).map((k) => said(k, filters[k]));
   const head = p.results.length
-    ? `web_search "${query}": ${p.results.length} results from ${p.cached ? "this process's 15-minute cache" : by}${held.length ? `, filtered by ${and(held)}` : ""}${loose.length ? `; not enforced by this engine: ${loose.join(", ")}` : ""}.`
+    ? `web_search "${query}": ${p.results.length} results from ${p.cached ? "this process's 15-minute cache" : by}${held.length ? `, filtered by ${and(held)}` : ""}${local}${loose.length ? `; not enforced by this engine: ${loose.join(", ")}` : ""}.`
     : `web_search "${query}": no results${asked.length ? ` with ${and(asked.map((k) => said(k, filters[k])))}` : ""}${tried ? ` (${tried})` : ""}.`;
   if ((p.attempts?.length ?? 0) > 1 && p.results.length) lines.unshift(`Engines tried: ${tried}.`);
   const rows = p.results

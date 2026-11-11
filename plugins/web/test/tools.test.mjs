@@ -529,7 +529,10 @@ test("the table of filters each engine enforces is what its request carries: an 
       for (const [rest, k, v] of CASES) {
         const filters = { ...rest, [k]: v };
         const field = !isDeepStrictEqual(await REQUEST[engine](opts(rest)), await REQUEST[engine](opts(filters)));
-        assert.equal(ENFORCED[engine](k, filters), field, `${engine} ${JSON.stringify(filters)}`);
+        // The one row a request cannot show: paid Parallel sends any two letters and, by its own page, ignores a code
+        // outside its 37 (IE is not one), so the table says it does not take that country though the field is set.
+        const ignored = engine === "parallel-paid" && k === "country" && v === "ie";
+        assert.equal(ENFORCED[engine](k, filters), field && !ignored, `${engine} ${JSON.stringify(filters)}`);
       }
     }
     // You.com sends a country only when it is one of its own: every two-letter code, as a room may write it.
@@ -537,23 +540,26 @@ test("the table of filters each engine enforces is what its request carries: an 
       const code = String.fromCharCode(65 + Math.floor(i / 26), 65 + (i % 26));
       const meta = buildYouCall(opts({ country: code }), 1, NOW).params._meta?.["com.you.com/search"] ?? {};
       assert.equal(ENFORCED.you("country", { country: code.toLowerCase() }), "country" in meta, code);
+      // Paid Parallel's 37 (docs.parallel.ai, Advanced Search Settings, Supported locations) are You.com's 36 and Greece.
+      assert.equal(ENFORCED["parallel-paid"]("country", { country: code.toLowerCase() }), "country" in meta || code === "GR", code);
     }
   } finally {
     f.restore();
   }
 });
 
-test("every filter asked enforced by the engine that answered: the first line says filtered by each, as a person says it", async () => {
+test("every filter asked enforced by the engine that answered: the first line says filtered by each, as a person says it, and localized to a country, which keeps no page out", async () => {
   const f = engines();
   try {
     assert.equal(await headOf({ query: "rain", count: 3, freshness: "week", country: "CA" }, WITH_EXA),
-      'web_search "rain": 1 results from Exa, paid, filtered by freshness week and country CA.');
+      'web_search "rain": 1 results from Exa, paid, filtered by freshness week, localized to CA.');
     assert.equal(await headOf({ query: "rain sites", date_after: "2026-11-01", date_before: "2026-11-08", domain_filter: ["a.example", "b.example", "c.example", "d.example", "e.example"], country: "ca" }, WITH_EXA),
-      'web_search "rain sites": 1 results from Exa, paid, filtered by after 2026-11-01, before 2026-11-08, sites a.example, b.example, c.example and 2 more and country CA.');
+      'web_search "rain sites": 1 results from Exa, paid, filtered by after 2026-11-01, before 2026-11-08 and sites a.example, b.example, c.example and 2 more, localized to CA.');
     assert.equal(await headOf({ query: "rain not sites", freshness: "day", domain_filter: ["-spam.example", "-junk.example"] }, WITH_EXA),
       'web_search "rain not sites": 1 results from Exa, paid, filtered by freshness day and not sites spam.example, junk.example.');
     assert.equal(await headOf({ query: "rain warning plain", count: 3, domain_filter: [] }, WITH_EXA), 'web_search "rain warning plain": 1 results from Exa, paid.');
-    assert.equal(f.seen.length, 4);
+    assert.equal(await headOf({ query: "rain here", country: "ca" }, WITH_EXA), 'web_search "rain here": 1 results from Exa, paid, localized to CA.');
+    assert.equal(f.seen.length, 5);
   } finally {
     f.restore();
   }
@@ -565,7 +571,9 @@ test("a filter the answering engine drops or only words is named as not enforced
     assert.equal(await headOf({ query: "rain", count: 3, freshness: "week", country: "IE" }, YOU),
       "web_search \"rain\": 1 results from You.com's keyless search, free, filtered by freshness week; not enforced by this engine: country IE.");
     assert.equal(await headOf({ query: "rain paid", date_after: "2026-11-01", date_before: "2026-11-08", domain_filter: ["news.example"], country: "CA" }, WITH),
-      "web_search \"rain paid\": 1 results from Parallel's paid Search API, filtered by after 2026-11-01, sites news.example and country CA; not enforced by this engine: before 2026-11-08.");
+      "web_search \"rain paid\": 1 results from Parallel's paid Search API, filtered by after 2026-11-01 and sites news.example, localized to CA; not enforced by this engine: before 2026-11-08.");
+    assert.equal(await headOf({ query: "rain paid elsewhere", freshness: "week", country: "ie" }, WITH),   // sent, and ignored: not one of its 37
+      "web_search \"rain paid elsewhere\": 1 results from Parallel's paid Search API, filtered by freshness week; not enforced by this engine: country IE.");
   } finally {
     f.restore();
   }
