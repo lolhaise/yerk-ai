@@ -20,8 +20,8 @@ from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai.daemon import YERK_TOOLS, Yerkd
 from yerk_ai.engine import SessionTable
 
-# a placeholder other party and the owner's own line, as chat.db joins message to handle; no real contact is here
-THEM, MINE = "+1 555 0100200", ""
+# a placeholder other party, as chat.db joins message to handle; no real contact is here
+THEM = "+1 555 0100200"
 HOST = "macbook-test"                        # a placeholder ssh host; no real machine is reached
 ROWS = [(1_762_300_200.0, 0, THEM, "running late, there by 5"),
         (1_762_300_100.0, 1, THEM, "on my way\nfive minutes out"),
