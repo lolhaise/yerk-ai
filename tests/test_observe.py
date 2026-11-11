@@ -264,6 +264,21 @@ def test_the_deploys_status_ask_and_json_never_start_claude_code_and_the_card_do
     assert sorted(started) == ["one", "two"]
 
 
+def test_the_card_names_a_watched_channel_by_its_name_and_by_its_id_only_when_no_name_is_known(tmp_path):
+    """F2-13: a room's watched channel on the card (`yerk status` and /status, both from status_now) is its name as the
+    adapter knows it; its id only with no adapter, or a channel the adapter has no name for."""
+    y, ref = Yerkd(EXAMPLE_PRIVATE, tmp_path), "discord:123456789012345678"
+    y.rooms = {"example-room": busy_room()}
+    y.rooms["example-room"].conf["watch"] = ref
+    y.link = SimpleNamespace(channel_name=lambda r: "watched" if r == ref else "")
+    lines = status.card(json.loads(json.dumps(asyncio.run(y.status_now({})))), NOW)
+    assert "- example-room: watches #watched" in lines and not [x for x in lines if "123456789012345678" in x], lines
+    for link in (None, SimpleNamespace(channel_name=lambda r: "")):
+        y.link = link
+        lines = status.card(json.loads(json.dumps(asyncio.run(y.status_now({})))), NOW)
+        assert [x for x in lines if x.endswith(": watches 123456789012345678")], lines
+
+
 def test_a_status_read_that_does_not_ask_never_waits_on_a_card_that_does(tmp_path):
     accounts, gate, began, got = five_accounts(tmp_path)[:1], threading.Event(), threading.Event(), []
 

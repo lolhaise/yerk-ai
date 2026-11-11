@@ -862,3 +862,12 @@ def test_every_message_in_the_room_is_filed_in_the_days_log_once(tmp_path, monke
     assert text.count("[m:31]") == 1 and "[m:35]" not in text and [m.id for m in room.got] == ["31", "32", "33", "36"]
     assert "(attachment only) [c:private] [m:32]\n  - attachment: photo.png, image/png, 1,234 bytes" in text
     assert " owner: k [c:private] [m:33]" in text and " yerk: a reply from Yerk [c:private] [m:" in text
+
+
+def test_a_watched_channel_is_named_from_the_clients_cache(dc):
+    """F2-13: the status card's watched channel by name: the cached channel's name for a `watch` ref, "" for a channel
+    the client has no name for and for another service's ref, so the card says the id; nothing is fetched."""
+    d, client, room = dc
+    client.chans[OTHER_CH].name = "watched"
+    assert d.channel_name(f"discord:{OTHER_CH}") == "watched"
+    assert [d.channel_name(x) for x in (f"discord:{ROOM_CH}", "discord:999", "discord:", "imessage:1")] == ["", "", "", ""]

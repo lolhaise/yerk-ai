@@ -1745,6 +1745,10 @@ class Yerkd:
         each account's meters now (the card's), else only a reading under a minute old is used."""
         out = await asyncio.to_thread(status.collect, self.private, self.state, self.accounts, self.cooldowns, self.ledger,
                                       self.rooms, live=bool((payload or {}).get("live")))
+        named = getattr(self.link, "channel_name", None)      # a watched channel by its name where the adapter knows it
+        for r in out["rooms"]:
+            if named and r.get("watch") and (name := named(r["watch"])):
+                r["watch_name"] = name
         return {**out, "started": self.started, "commit": self.commit,
                 "connected": bool(getattr(self.link, "connected", False)),
                 "rebuilding": await asyncio.to_thread(self.rebuild_running)}   # deploy waits it out, as the gate does

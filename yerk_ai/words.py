@@ -782,6 +782,7 @@ NOT_RUNNING, NOT_ANSWERING = "yerkd: not running", "yerkd: running, not answerin
 NO_READING, RESTS = "{name}: no reading yet", "{name}: resting until {until}"
 OLD_READING, TURN_FOR = "{name}: last reading {ago}", "{name}: busy {took}"
 QUEUED, WATCHES = ", {n} waiting", "{name}: watches {channel}"
+CHANNEL = "#{name}"        # a watched channel by its name, as the notices above say one; with no name known, its id bare
 UNIT_USE, JOB_DUE = "{name}: {mb} MB, {cpu:.1f}% cpu", "job {name}: in {left}"
 BACKUP_AT, NO_BACKUP = "backup: {ago} ago, {size}", "backup: none yet"
 NO_JOB_DUE, NO_TIMERS = "jobs: none due within the hour", "jobs: the timer list is unreadable"

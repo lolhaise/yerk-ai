@@ -346,6 +346,13 @@ class DiscordChannel:
             except Exception as e:                # a name, never a reason to hold the turn: said in words until fetched
                 log.debug("room %s: no name for %s yet: %s", room.name, i, e)
 
+    def channel_name(self, ref: str) -> str:
+        """A `watch` ref's channel ("discord:<id>") by the name the client's cache holds, for the status card; "" when it holds
+        none or the ref is another service's, so the card says the id. Never fetched: the card is read on the loop."""
+        kind, _, cid = str(ref).partition(":")
+        ch = self.client.get_channel(int(cid)) if kind == "discord" and cid.isdigit() else None
+        return str(getattr(ch, "name", "") or "")
+
     def _there(self, room: Room, ch: Any) -> tuple[str, Any]:
         """Who the owner talks to in the channel `room` watches (`watch_assistant`), and that channel's name, else its id."""
         return (str(getattr(room, "conf", {}).get("watch_assistant") or words.OTHER_ASSISTANT),
