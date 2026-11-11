@@ -543,11 +543,13 @@ ADDON_READS = "[read by an add-on] {name} is read through {tool}, an installed a
 SENT_THERE = ("[sent to {who} in #{channel}, not to this room: the owner is talking to {who} there. Read along and file what "
               "matters. Answer here only if the owner's words ask this room something, or you have something they would want from this "
               "room that {who} did not give; otherwise answer exactly {quiet}.]")
-# ... in a room with `watch_audit` true: a verdict on that assistant's answer, every time, never NO_REPLY (the owner, 2026-10-29)
+# ... in a room with `watch_audit` true: a verdict on that assistant's answer, every time, never NO_REPLY (the owner, 2026-10-29);
+# orange only for something actually wrong, never for a nit (the owner, 2026-11-05)
 SENT_THERE_AUDIT = ("[sent to {who} in #{channel}, not to this room: {sender} is talking to {who} there. {who}'s answer follows the "
                     "message. AUDIT it and post your verdict here: check it against the files and the thread, not recall; first line "
-                    + DONE + " looks good, " + WORKING + " right but missing something, or " + NOT_DONE + " wrong, then what is wrong or "
-                    "missing and the fix, written out in full in plain words, because {readers} read this room; one or two lines when "
+                    + DONE + " looks good (a nit rides under it in one line, or is dropped), " + WORKING + " only when something is "
+                    "actually wrong and it changes what {sender} would say or do, or " + NOT_DONE + " wrong, then what is wrong and the "
+                    "fix, written out in full in plain words, because {readers} read this room; one or two lines when "
                     "it is right. If {who} had not answered within the wait, say that in one line. Never {quiet} on this turn; never "
                     "redo work {who} got right.]")
 THERE = SENT_THERE.split("{", 1)[0]       # both lines' head: such a message says how it is answered, so it folds with no mark
