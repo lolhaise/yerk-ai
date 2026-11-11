@@ -922,14 +922,15 @@ class Room:
             rp.start(fresh=fresh)
         self.rp = rp
         self.hooked = self.hooks_warned = False   # per process start: its first hook call proves the hooks alive; the notice went out
-        self._fast_said(rp, words.FAST_NO_ANSWER if lost else "")
+        self._fast_said(rp, words.FAST_NO_ANSWER if lost else "", at_start=True)
 
-    def _fast_said(self, rp: RoomProcess, note: str = "") -> None:
+    def _fast_said(self, rp: RoomProcess, note: str = "", at_start: bool = False) -> None:
         """What Claude Code answered this process's own /fast on (engine.RoomProcess._fast_on), or the notice it streams once
         a turn while the account is out of usage credits (`note`): a refusal is said in the room once, in one line, until fast
-        mode is on again; the reply still comes, at standard speed."""
+        mode is on again; the reply still comes, at standard speed. Its answer is read `at_start` only: a later result's
+        state (cooldown, its rate limit's pause) is no refusal."""
         self.fast_state = rp.fast_state or self.fast_state
-        refused = note or (rp.fast_said if rp.fast_said and rp.fast_state != "on" else "")
+        refused = note or (rp.fast_said if at_start and rp.fast_said and rp.fast_state != "on" else "")
         if rp.fast_said and rp.fast_state == "on" and not note:
             self.fast_told = False
         elif refused and not self.fast_told:

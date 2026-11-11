@@ -348,3 +348,12 @@ def test_status_never_shows_fast_mode_for_a_room_off_fable_5_2(room, tmp_path):
     (tmp_path / "rooms" / "r").mkdir(parents=True, exist_ok=True)
     (tmp_path / "rooms" / "r" / "override.json").write_text(json.dumps({"fast": True, "model": "claude-opus-5-5"}))
     assert not status.fast_shown(tmp_path, "r", r)
+
+
+def test_a_cooldown_after_fast_mode_turned_on_is_never_said_as_a_refusal(room, tmp_path):
+    """fast_mode_state cooldown (fast mode's own rate limit, standard speed for a while) in a later result is no refusal: the
+    room is never told "not running" with the words that turned it on."""
+    r, chan, ledger, say = room
+    say("1", "hi")
+    say("2", "COOLDOWN then")
+    assert chan.replies == ["echo: hi", "echo: COOLDOWN then"] and chan.notices == [] and r.fast_state == "cooldown"

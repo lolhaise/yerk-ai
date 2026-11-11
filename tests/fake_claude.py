@@ -55,6 +55,7 @@ message and a success result echoing the text. Variations:
   "fastMode" in its --settings, "not available in the Agent SDK"; for a FAKE_CLAUDE_NO_CREDITS_DIRS folder, "requires usage
   credits". Every result carries the session's fast_mode_state. FAKE_CLAUDE_STDIN: each line's text is appended there.
 - a line containing OUT_OF_CREDITS: the notice 2.1.321 streams once a turn while fast mode is out of usage credits
+- a line containing COOLDOWN, fast mode on: the session's fast_mode_state is cooldown from that result on
 - /fast: FAKE_CLAUDE_FAST_SLOW=S waits S seconds before answering; `-p "/fast on"` makes the folder 2.1.321 made
   for its working folder under the config folder's projects/ (empty under --no-session-persistence), and with
   FAKE_CLAUDE_FAST_EXIT=N prints nothing and exits N
@@ -222,6 +223,8 @@ def answer(text):
             "status": "allowed", "rateLimitType": "five_hour", "unifiedWindows": {
                 "five_hour": {"utilization": five, "resetsAt": 2000000000 + shift},
                 "seven_day": {"utilization": week, "resetsAt": 2000300000}}}})
+    if "COOLDOWN" in text and fast["state"] == "on":   # fast mode on and rate limited: standard speed for a while
+        fast["state"] = "cooldown"
     if "OUT_OF_CREDITS" in text:               # fast mode on, the account out of usage credits: once a turn (fast mode page)
         out({"type": "system", "subtype": "notification", "session_id": sid, "uuid": str(uuid.uuid4()),
              "text": "Fast mode disabled \u00b7 Out of usage credits"})
