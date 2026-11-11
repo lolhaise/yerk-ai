@@ -332,7 +332,8 @@ class Room:
         if self.fork is not None or self.ready is not None or not (self.rp and self.rp.alive()):
             return
         live, self.tail, self.overtook, self.dropped, self.shrunk = self.rp, [], 0, "", False
-        self.fork = rp = RoomProcess(live.spec, live.account, self.state, ledger=self.ledger, failures=self.failures,
+        self.fork = rp = RoomProcess(replace(live.spec, fast=False), live.account, self.state, ledger=self.ledger,   # never fast:
+                                     failures=self.failures,                                                       # credits
                                      log=self.log_dir / f"{self.name}.jsonl" if self.log_dir else None,
                                      meters=self.meters.seen if self.meters else None)
         log.info("room %s: a turn ended at %d of its %d tokens, %d under Claude Code's line, compacting a copy", self.name,

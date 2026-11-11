@@ -281,3 +281,37 @@ def test_status_shows_fast_mode_only_while_it_is_on(room, tmp_path):
     assert status.fast_shown(tmp_path, "r", r)
     r.fast_state = "off"                         # Claude Code refused it: never "on"
     assert not status.fast_shown(tmp_path, "r", r)
+
+
+
+
+
+def test_the_compaction_copy_never_runs_in_fast_mode(tmp_path, monkeypatch):
+    """The lead's decision of 2026-11-11: the copy a fast room compacts off to the side launches with no fast setting and
+    is never sent /fast on, whatever the room's setting: fast replies were asked for, not a fast compaction billed to credits."""
+    import logging
+    import time
+
+    from yerk_ai.config import EXAMPLE_PRIVATE
+    from yerk_ai.daemon import Yerkd
+    from yerk_ai.room import Inbound
+    for k, v in (("YERK_CLAUDE", FAKE), ("FAKE_CLAUDE_RECORD", tmp_path / "argv.jsonl"), ("FAKE_CLAUDE_MARK", tmp_path / "mark"),
+                 ("FAKE_CLAUDE_STDIN", tmp_path / "stdin.jsonl")):
+        monkeypatch.setenv(k, str(v))
+    launches, real = [], RoomProcess.start
+    monkeypatch.setattr(RoomProcess, "start", lambda self, *a, **k: launches.append((bool(k.get("fork")), self.launch_settings())) or real(self, *a, **k))
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path, only_account=Account("one", tmp_path / "cfg1"))
+    y.budgets["session"]["precompact_within"] = 0.1         # the copy's band (test_idle_compact.band)
+    on_fable(y)
+    assert fast(y, "on")["ok"]
+    room = y.add_room(ROOM, Chan())
+    y.ledger.inbound_add("1", ROOM, "console", "owner", 20)
+    taken = []
+    logging.getLogger("yerk.room").addFilter(lambda r: taken.append(r.getMessage()) or True)
+    room.submit(Inbound("1", "owner", "CONTEXT:195000 hello"))   # ends in the copy's band: a copy compacts
+    end = time.time() + 20
+    while not any("compacted on a copy" in m for m in taken) and time.time() < end:
+        time.sleep(0.05)
+    assert [fork for fork, _ in launches] == [False, True]         # the room's process, then the copy
+    assert "fastMode" in launches[0][1] and "fastMode" not in launches[1][1]
+    assert lines(tmp_path) == ["/fast on", "CONTEXT:195000 hello", "/compact"]   # no /fast on ahead of the copy's /compact
