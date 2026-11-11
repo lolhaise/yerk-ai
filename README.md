@@ -12,7 +12,7 @@ Yerk AI turns chat rooms into long-lived Claude Code sessions. It is a small Pyt
 
 ## Install
 
-You need Linux with systemd (jobs and workers are user units), Python 3.12 or newer, [uv](https://docs.astral.sh/uv/), Claude Code logged in on each account you name, and a Discord bot (below); `yerk abilities` names what some add (ffmpeg, yt-dlp, LibreOffice, TeX Live, node).
+You need Linux with systemd, Python 3.12 or newer, [uv](https://docs.astral.sh/uv/), Claude Code logged in on each account you name, and a Discord bot (below); `yerk abilities` names what some add (ffmpeg, yt-dlp, LibreOffice, TeX Live, node).
 
 ```sh
 git clone <this repository's URL> yerk-ai && cd yerk-ai
@@ -58,7 +58,7 @@ Each active room is one `claude -p` process, stream-json in and out, on a sessio
 
 ## Add-ons
 
-What a room does beyond Claude Code's tools comes as add-ons: MCP servers in rooms.toml, a `[rooms.NAME.mcp.SERVER]` table each or once for all owner rooms under `[defaults]`, their tools in `allow`; a need's fix in one's own repository is built and landed there (`plugin-builds`). One ships here, the web plug-in in `plugins/web`: pages (Bookings as a guest, a Commons answer), search and research (`research-ids`), outside `[code]` ([docs/GUIDE.md](docs/GUIDE.md), Web reach). A browser kept outside is one (`browser`): shoots a tab (`tab-shots`), opens a mail's links (`mail-links`) and files (`mail-files`), on your word books free on checkout pages (`free-bookings`), clicks in apps with an Upgrade (`upsell-pages`), fills forms (`form-typing`), puts files on them (`form-files`), keeps a key unread (`page-keys`).
+What a room does beyond Claude Code's tools comes as add-ons: MCP servers in rooms.toml, a `[rooms.NAME.mcp.SERVER]` table each or once for all owner rooms under `[defaults]`, their tools in `allow`; a need's fix in one's own repository is built and landed there (`plugin-builds`). One ships here, the web plug-in in `plugins/web`: pages (Bookings as a guest, a Commons answer), PDF or Word files (`web-documents`), search and research (`research-ids`), outside `[code]` ([docs/GUIDE.md](docs/GUIDE.md), Web reach). A browser kept outside is one (`browser`): shoots a tab (`tab-shots`), opens a mail's links (`mail-links`) and files (`mail-files`), on your word books free on checkout pages (`free-bookings`), clicks in apps with an Upgrade (`upsell-pages`), fills forms (`form-typing`), puts files on them (`form-files`), keeps a key unread (`page-keys`).
 
 ## The docs
 
