@@ -114,6 +114,7 @@ The daemon's settings, in the private folder beside rooms.toml, read when yerkd 
 
 - `root`: where workers' folders go (default <state>/workers)
 - `cap_minutes`: minutes before a worker is stopped (default 65)
+- `memory_max`: a worker's memory ceiling, bytes or a whole number with K, M, G or T after it, with no swap past it: the kernel kills the process inside the worker using the most memory and the worker goes on; anything else is not a size and the default is used (default 4G)
 - `model`: a worker's model (default: the room's)
 - `account`: the account workers run on (default: the first not resting)
 - `effort`: a worker's thinking level, one of low, medium, high, xhigh, max (default: the room's live level)

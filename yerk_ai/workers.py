@@ -6,7 +6,11 @@ daemon restarts.
   gives the items), a `workers` ledger row, the card in the room, then the unit: `claude -p` under one
   named account with the prompt on stdin, stdout and stderr to files in the folder, a cap
   (RuntimeMaxSec, 65 minutes unless the call or [workers] says otherwise) and its own cgroup, so a
-  stop takes every process with it. The unit's environment names its account's token file and no
+  stop takes every process with it. A memory ceiling too (MemoryMax, 4G unless [workers] memory_max
+  says otherwise, and no swap): past it the kernel kills the process using the most memory inside
+  the unit, never one of the box's, and systemd does not stop the unit for it (OOMPolicy=continue),
+  so a command of the worker's that runs away dies alone and the worker goes on.
+  The unit's environment names its account's token file and no
   other; its first step (`python -m yerk_ai.workers run`) reads it the way a room does
   (accounts.account_env) and starts claude with an allowlisted environment. A worker gets no room
   session, no MCP server (so no `worker` tool: no workers spawning workers) and no subagent tool.
@@ -84,6 +88,7 @@ CREDENTIAL = re.compile(r"key|token|secret|pass|auth|cookie|credential", re.I)  
 PUMP_EVERY = 5.0                               # seconds between looks for an idle room with a relay waiting
 YOUNG = 120.0                                  # seconds after its start a worker missing from the unit list is not lost yet
 MEMORY_MAX = "4G"                              # a worker unit's memory ceiling (MemoryMax), no swap past it
+SIZE, SUFFIXES = re.compile(r"([1-9][0-9]*)([KMGT]?)"), ("", "K", "M", "G", "T")   # a size as systemd reads it, base 1024
 
 
 @dataclass
@@ -91,6 +96,7 @@ class Settings:
     """[workers] in the private yerkd.toml; every key optional."""
     root: Path
     cap_minutes: float = 65.0
+    memory_max: str = MEMORY_MAX        # the unit's memory ceiling, no swap past it (Systemd.start); a size, see memory_max()
     model: str = ""                     # "" = the room's own model
     account: str = ""                   # "" = the first account in order that is not resting
     effort: str = ""                    # "" = the room's own effort; one of EFFORTS (config.py)
@@ -111,7 +117,19 @@ def settings(state: Path, conf: dict[str, Any], budgets: dict[str, Any] | None =
                     permission_mode=str(conf.get("permission_mode", "bypassPermissions")),
                     idle_seconds=float(conf.get("idle_seconds", 60.0)),
                     relay_message=0 if whole else int(relay.get("message", 1500)), relay_reply=0 if whole else int(relay.get("reply", 1500)),
-                    per_account=max(1, int(conf.get("per_account", 1))), yerk_tools=yerk_tools(conf))
+                    per_account=max(1, int(conf.get("per_account", 1))), yerk_tools=yerk_tools(conf), memory_max=memory_max(conf))
+
+
+def memory_max(conf: dict[str, Any]) -> str:
+    """[workers] memory_max, a worker unit's memory ceiling: a whole number of bytes, or one with K, M, G or T after it (any
+    case, base 1024, as systemd reads MemoryMax). Anything else (a word, a fraction, a percentage, infinity, zero, past 64
+    bits) never reaches systemd: dropped with a warning, as a wrong yerk_tools name is, and the default used."""
+    value = conf.get("memory_max", MEMORY_MAX)
+    text = str(value).strip().upper() if isinstance(value, (int, str)) and not isinstance(value, bool) else ""
+    if (m := SIZE.fullmatch(text)) and int(m[1]) * 1024 ** SUFFIXES.index(m[2]) < 2 ** 64:
+        return text
+    log.warning("workers: memory_max %r is not a size; a worker gets %s", value, MEMORY_MAX)
+    return MEMORY_MAX
 
 
 def yerk_tools(conf: dict[str, Any]) -> list[str]:
@@ -498,8 +516,9 @@ class Workers:
         self.state = state or conf.root.parent             # the daemon's state folder (a worker's tools reach it)
         self.rooms, self.channels, self.room_confs, self.models = rooms, channels, room_confs, models or {}
         # a unit sees the state folder read-only, its own folder writable and `hidden` not at all
-        # (the daemon's: the install's secret, every room's folder, the private layer's secrets/); Systemd.sandbox
-        self.launcher: Systemd = launcher or Systemd(self.state, hidden)
+        # (the daemon's: the install's secret, every room's folder, the private layer's secrets/); Systemd.sandbox;
+        # and every unit gets [workers] memory_max as its memory ceiling
+        self.launcher: Systemd = launcher or Systemd(self.state, hidden, conf.memory_max)
         self.gate: dict[str, Any] = {}       # the daemon's [gates] for a worker's hook: trash, private, external
         self.watch: Watch | None = None
         self.live: dict[str, dict[str, Any]] = {}      # id -> its ledger row, while its unit runs
