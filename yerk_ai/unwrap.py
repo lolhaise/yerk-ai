@@ -229,8 +229,8 @@ def _word(text: str, i: int, depth: int, out: list[list[str]]) -> tuple[_Word, i
             if escaped != "\n":  # a backslash before a newline joins the lines
                 chars.append(c + escaped if quoted and escaped not in '$`"\\' else escaped)
             i += 2
-        elif text.startswith("$((", i) and (end := _arithmetic(text, i + 3)) is not None:  # arithmetic: a number once expanded, never a command
-            start, i = i, end
+        elif text.startswith("$((", i) and (close := _arithmetic(text, i + 3)) is not None:  # arithmetic: a number once expanded, never a command
+            start, i = i, close
             chars.append(text[start:i])
             expands = True
         elif text.startswith("$(", i):
