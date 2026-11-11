@@ -6,6 +6,35 @@ A line that changes a file the install keeps (rooms.toml, yerkd.toml, budgets.to
 newer than the code is refused with one line, never changed); the index chunks every file again when its chunker's
 version changes.
 
+## 2026-11-11
+
+### his-four-2026-11-11 (#49)
+
+- Four changes the owner said yes to on 2026-11-10, after the cleanup audit put them to him as questions. Each is in
+  commits named `cleanup <finding id>: ...`.
+- A need's number never repeats (F5-01). A new need is numbered past every number any need has held and past its day's
+  page; the count used to restart each day, so two different needs could both be "need 81". The needs filed before
+  this that share a number are named with their day in every line ("need 81 of 2026-11-10 held"); a number one need
+  holds reads as it did. Nothing is renumbered, and `yerk needs build DAY N` and `yerk needs done DAY N PR` take what
+  they took.
+- The `reverse_image_search` tool is gone (F6-06). No room ever called it and its key was never on the box, so a call
+  could only answer that the key was missing, while every room carried its description in every request. Yerk AI's
+  own server hands a room 22 tools. The `delete` tool stays (F6-02).
+- `web_search` takes its filters again (F7-13): `freshness` (day, week, month or year), `date_after`, `date_before`,
+  `domain_filter` (up to 20 domains to include or, each with a leading -, to exclude) and `country`. A value the tool
+  cannot use is refused in one line before any engine runs. The engines differ in what they enforce, so the answer's
+  first line says it: ", filtered by freshness week" for what the answering engine enforced, "; not enforced by this
+  engine: before 2026-11-08" for what it dropped or only worded, and ", localized to CA" for a country, which
+  localizes the results and keeps no page out. With no filter the answer is what it was.
+- One way to write a reset time (F2-11), the status card's: '5:10p' within a day, 'Fri 10a' within a week, 'Nov 20'
+  past that. `yerk status --full`, `yerk accounts`, `yerk accounts cool`, /model's resting state, the card's note when
+  every account is out of a room's model and the morning diff's account line wrote '17:10', 'Fri 10:00' or the weekday
+  alone. The morning diff's account line stays one line where its resets fit and takes the card's two where they do
+  not; the card's note, too wide, loses the end of the name of the model the turn runs on, never its time.
+- budgets.toml: `[code] lines` 29,052 to 28,898 with its dated note.
+- **Upgrading**: nothing to change. A room has the new `web_search` and is without `reverse_image_search` from its
+  next session.
+
 ## 2026-11-10
 
 ### cleanup-2026-11-10 (#?)

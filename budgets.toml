@@ -1466,4 +1466,10 @@ secs = 60
 # 2026-11-10: cleanup-2026-11-10 raised it by 398, not folded to fit: the audit's fixes 446 (stuck and cut needs, the jobs
 # sync, retention, the gates' reading of a shell line, the morning diff's web alerts), with the arguments and names nothing
 # read gone; pull request 20's Fish-only voice notes 49 out, pull request 24's card 1 in. 29,052: main 13a07d0's 28,654 plus 398.
-lines = 29052
+# 2026-11-11: his-four-2026-11-11 lowered it by 154, four changes the owner said yes to after the cleanup: the
+# `reverse_image_search` tool out 166 (never called, its key never on the box: reverse_image.py 133, daemon.py 13,
+# mcp_server.py 11, words.py 9); a need's number that never repeats 13 in (needs.py 8, pipeline.py 3, words.py 1,
+# daemon.py 1); one way to write a reset time 1 out (meters.py 7 out, meters.when gone and the morning diff's account
+# line rebuilt; words.py 6 in, words.out_of for the card's note; room.py 1 out, cli.py 1 in). web_search's filters are
+# in the web plug-in, no line here. 28,898: main fd2c74a's 29,052 minus 154.
+lines = 28898
