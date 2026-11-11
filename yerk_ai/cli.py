@@ -318,6 +318,7 @@ def cmd_accounts(a: argparse.Namespace) -> int:
     """Each account's order, token age and days to expiry (warning inside 30 days), rests and last
     health call; and the hand controls: cool, clear, token, health."""
     import time
+    from . import words
     from .accounts import WARN_DAYS, store_token, token_info
     from .ledger import Ledger
     priv, state, accounts, cool = _engine(a)
@@ -327,7 +328,7 @@ def cmd_accounts(a: argparse.Namespace) -> int:
         return 2
     if a.action == "cool":
         cool.set(a.name, a.kind, time.time() + a.minutes * 60)
-        print(f"{a.name} rests ({a.kind}) until {_clock(time.time() + a.minutes * 60)}")
+        print(f"{a.name} rests ({a.kind}) until {words.short_when(time.time() + a.minutes * 60)}")
         return 0
     if a.action == "clear":
         cool.clear(a.name)
@@ -374,7 +375,7 @@ def cmd_accounts(a: argparse.Namespace) -> int:
                 tok += f" (RENEW: {t['token']}, inside {WARN_DAYS} days)"
                 warn += 1
         rests = cool.show(x.name)
-        rest = ", ".join(f"rests ({r['kind']}, x{r['repeats']}) until {_clock(r['until'])}" for r in rests) or "ready"
+        rest = ", ".join(f"rests ({r['kind']}, x{r['repeats']}) until {words.short_when(r['until'])}" for r in rests) or "ready"
         h = ledger.health_last(x.name)
         hl = "no health call yet" if not h else (
             f"health {'pass' if h['ok'] else 'FAIL'} {_clock(h['at'])}"
@@ -422,7 +423,7 @@ def cmd_status(a: argparse.Namespace) -> int:
     meters = Meters(state / "meters.json")
     for x in accounts:
         rest = cool.show(x.name)
-        print(meter_line(x.name, meters.reading(x)) + (f"; rests until {_clock(rest[0]['until'])}" if rest else ""))
+        print(meter_line(x.name, meters.reading(x)) + (f"; rests until {words.short_when(rest[0]['until'])}" if rest else ""))
     from . import workers
     try:
         units: set[str] | None = workers.Systemd().running()

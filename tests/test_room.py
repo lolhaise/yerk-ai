@@ -292,7 +292,7 @@ def test_every_account_out_of_the_pinned_model_runs_on_the_rooms_own_on_the_pinn
     wait_idle(room)
     assert [(r["account"], r["outcome"], r["model"], r["out_of"]) for r in rows_of(ledger)] == [
         ("two", "error", "m", None), ("one", "error", "m", None), ("two", "ok", "usual", "m")]
-    assert chan.replies == [("echo: hello", ["1"])] and f"{words.WORKING} on usual, m back {words.clock(reset)}" in chan.cards
+    assert chan.replies == [("echo: hello", ["1"])] and f"{words.WORKING} on usual, m back {words.short_when(reset)}" in chan.cards
     assert json.loads(f.read_text()) == {"model": "m", "account": "two"}                    # no fallback drops a pin
     room.rp.close()
 
@@ -727,7 +727,7 @@ def test_every_account_out_of_the_pinned_model_runs_the_turn_on_the_rooms_own_mo
     assert [(r["account"], r["outcome"], r["model"], r["out_of"], r["hop"]) for r in rows] == [
         ("one", "error", "m", None, None), ("two", "error", "m", None, "quota:one"), ("one", "ok", "usual", "m", "quota:one,quota:two")]
     assert chan.replies == [("echo: hello", ["1"])] and not chan.notices
-    assert f"{words.WORKING} the sample, item moved {words.clock(reset)}" in chan.cards
+    assert f"{words.WORKING} on usual, m back {words.short_when(reset)}" in chan.cards     # a back-at time: the card's way
     cool = Cooldowns(tmp_path / "cooldowns.json")
     assert cool.until("one", model="m") == reset and cool.until("one", model="usual") is None   # the reply on usual left m's rest
     send(room, ledger, "2", "still out")                                                    # inside the rest: usual at once, no walk

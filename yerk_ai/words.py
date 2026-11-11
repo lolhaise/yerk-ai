@@ -335,8 +335,8 @@ def clock(epoch: float, now: float | None = None) -> str:
 
 
 def rest(until: float | None) -> str:
-    """An account's rest as /model says it: free, or resting until its end."""
-    return RESTING.format(until=clock(until)) if until else FREE
+    """An account's rest as /model says it: free, or resting until its end, written as the card writes a reset (short_when)."""
+    return RESTING.format(until=short_when(until)) if until else FREE
 
 
 # notices

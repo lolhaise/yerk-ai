@@ -10,7 +10,6 @@ import json
 import os
 import threading
 import time
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -59,20 +58,12 @@ def rest_until(resets: float | None, meters: Meters | None, account: str, kind: 
     return resets or (max(float(week), (time.time() if now is None else now) + 3600) if week else None)
 
 
-def when(epoch: float | None, now: float | None = None) -> str:
-    """A reset as a clock time inside a day, else a weekday: phone-short."""
-    if not epoch:
-        return "?"
-    t = datetime.fromtimestamp(epoch)
-    return t.strftime("%H:%M") if epoch - (now or time.time()) < 86400 else t.strftime("%a %H:%M")
-
-
 def meter_line(name: str, m: dict[str, Any], now: float | None = None) -> str:
-    """'two: 5h 7% (23:40) · wk 3% (Fri 10:00)', plus the reading's age when it came from a stream."""
+    """'two: 5h 7% (11:40p) · wk 3% (Fri 10a)' (words.short_when; '?' for a reset not read), plus the reading's age when it came from a stream."""
     if "error" in m:
         return f"{name}: no meter ({m['error']})"
     now = time.time() if now is None else now
-    parts = [f"{label} {round(m[w]['pct'])}% ({when(m[w].get('resets'), now)})"
+    parts = [f"{label} {round(m[w]['pct'])}% ({words.short_when(m[w]['resets'], now) if m[w].get('resets') else '?'})"
              for w, label in (("five_hour", "5h"), ("seven_day", "wk")) if w in m]
     age = f", seen {int((now - m['at']) // 60)} min ago"
     return f"{name}: " + (" · ".join(parts) or "no windows") + age
@@ -83,7 +74,7 @@ def meter_short(name: str, m: dict[str, Any], rests_until: float | None = None, 
     red, with when it comes back; a window at 90% or more: orange; else a dash (no colour: nothing to see), as with no
     reading yet."""
     if rests_until:
-        return words.named(f"{words.NOT_DONE} {words.RESTS}", name, until=words.clock(rests_until, now))
+        return words.named(f"{words.NOT_DONE} {words.RESTS}", name, until=words.short_when(rests_until, now))
     if "error" in m:
         return words.named(f"{words.PLAIN} {words.NO_READING}", name)
     now = time.time() if now is None else now
@@ -91,7 +82,7 @@ def meter_short(name: str, m: dict[str, Any], rests_until: float | None = None, 
     for w, label in (("five_hour", "5h"), ("seven_day", "wk")):
         if w in m:
             r = m[w].get("resets")
-            at = "" if not r else f" ({datetime.fromtimestamp(r).strftime('%H:%M' if r - now < 86400 else '%a')})"
+            at = "" if not r else f" ({words.short_when(r, now)})"
             parts.append(f"{label} {round(m[w]['pct'])}%{at}")
     top = max((m[w]["pct"] for w in WINDOWS if w in m), default=0)
     mark = words.NOT_DONE if top >= 100 else words.WORKING if top >= 90 else words.PLAIN

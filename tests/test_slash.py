@@ -253,7 +253,7 @@ def test_model_takes_an_account_a_model_or_both_by_name_or_digit_and_default_cle
     y.cooldowns.set("two", "rate_limit:claude-haiku-5-5", until)                          # two is out of haiku
     assert slash(dc, "model") == [("message", "\n".join([
         f"{words.PLAIN} this room: Haiku 5.5, default thinking, on account three", "accounts, in the order tried for Haiku 5.5:",
-        "it: back 0, as, plain", "a: second 0, entry", f"part: closes 0, the case {words.clock(until)}", MODELS]), True)]
+        "three: order 3, free, pinned", "one: order 0, free", f"two: order 2, resting until {words.short_when(until)}", MODELS]), True)]
     assert slash(dc, "model", model="default")[0][1] == f"{words.DONE} next reply: Fable 5.1, default thinking"
     assert json.loads(f.read_text()) == {}                                                 # both pins gone
     assert "two: order 2, free" in slash(dc, "model")[0][1].split("\n")                    # on Fable 5.1 now: a rest for haiku is not one for it
@@ -282,10 +282,10 @@ def test_the_model_picker_offers_every_account_and_model_to_the_owner_alone(y, t
     until = time.time() + 3600
     y.cooldowns.set("two", "rate_limit:claude-fable-5-1", until)                          # two is out of the room's model
     picks = suggest(dc, "")
-    assert picks[:2] == [("one: order 0, free", "one"), (f"two: order 2, resting until {words.clock(until)}", "two")]
+    assert picks[:2] == [("one: order 0, free", "one"), (f"two: order 2, resting until {words.short_when(until)}", "two")]
     assert [v for _, v in picks[2:]] == [*y.models, "default"] and picks[-1] == (words.PICK_DEFAULT, "default")
     assert suggest(dc, "2 fa") == [("two fable: Fable 5.2 on account two, free", "two fable"),
-                                   (f"two fable51: Fable 5.1 on account two, resting until {words.clock(until)}", "two fable51")]
+                                   (f"two fable51: Fable 5.1 on account two, resting until {words.short_when(until)}", "two fable51")]
     assert ("two opus: Opus 5.5 on account two, free", "two opus") in suggest(dc, "two")       # a rest for fable is not one for opus
     assert suggest(dc, "", user=STRANGER) == suggest(dc, "", user=PERSON) == suggest(dc, "", channel=OTHER_CH) == []
     dc.add_room(ROOM_CH, room, watch=33, people=frozenset({PERSON}))                       # 33: a channel the room watches
