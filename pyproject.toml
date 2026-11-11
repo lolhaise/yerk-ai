@@ -39,6 +39,7 @@ packages = ["yerk_ai"]
 testpaths = ["tests"]
 pythonpath = ["."]
 markers = ["live: needs a real Claude Code login; skipped unless YERK_LIVE=1"]
+tmp_path_retention_policy = "failed"   # a passed test's tmp_path goes at its teardown; a green whole run left 340 MB a run, 3 runs kept
 
 [tool.mypy]
 python_version = "3.12"
