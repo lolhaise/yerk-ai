@@ -122,7 +122,7 @@ def user_prompt_submit(payload: dict[str, Any], state: Path, rooms: dict[str, di
     if recall:
         t0 = time.monotonic()
         names, topics, past, absent = recall(room, prompt)
-        cap = int(budgets["per_message"].get("on_hit", {}).get("recall", 1500))
+        cap = int(budgets["per_message"]["on_hit"]["recall"])
         rtext = render_recall(names, topics, context.NONE if whole else cap, past, absent)
         parts.append(context.Part("recall", rtext, cap, context.chars(rtext)))
         took = round((time.monotonic() - t0) * 1000)
