@@ -682,6 +682,7 @@ NEED_CUT_BUILD = WORKING + " need {n}: its builder was cut off by a stop nobody 
 WORKTREE_KEPT = "its worktree {name} stays: {why}"                  # a need worker's note, after its line's
 WORKTREE_CHANGES, WORKTREE_REFUSED = "it has changes", "git would not remove it"
 LINE_POSTED, LINE_NOT_POSTED = "{what}: its line went to the machine room", "{what}: its line could not be posted: {why}"
+LINE_NONE = "{what}: no line was made"                              # its need merged meanwhile, or another worker's
 NO_CHANNEL_HERE = "this daemon has no channel for {room}"            # a worker's line, its room's channel not here
 NEED_CHECKS_NEVER, NEED_CHECKS_PENDING = "checks never came: {final} of {of} in {span} on {head}", ", still pending: {names}"
 NEED_MERGED = DONE + " need {n}: PR {pr} merged; the deploy is next"

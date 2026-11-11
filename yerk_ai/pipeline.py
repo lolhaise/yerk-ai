@@ -270,10 +270,13 @@ class Pipeline:
         await self.say(words.NEED_READING.format(n=r["n"], pr=r["pr"]))
 
     async def ended(self, row: dict[str, Any], end: dict[str, Any], role: str, day: str, n: int) -> bool:
-        """A cold read's or a fix worker's end (Yerkd.need_built hands it here): the need's next step from its first line."""
-        self.y.ledger.worker_set(str(row["id"]), relay="skipped", relay_note=f"need {role}: its line went to the machine room")
+        """A cold read's or a fix worker's end (Yerkd.need_built hands it here): the need's next step from its first line. Its
+        note first: no line is made when the need is gone or another worker's, and every road past that says one."""
         r = needs.find(needs.load(self.y.state), day, n)
-        if r is None or r.get("worker") != row["id"]:
+        mine = r is not None and r.get("worker") == row["id"]
+        self.y.ledger.worker_set(str(row["id"]), relay="skipped",
+                                 relay_note=(words.LINE_POSTED if mine else words.LINE_NONE).format(what=f"need {role}"))
+        if r is None or not mine:
             return True
         if workers.cut_off(end):                         # no verdict: PR again, a fix's count as it was, the next tick again
             back = {"fixes": max(0, int(r.get("fixes") or 0) - 1)} if role == "fix" else {}

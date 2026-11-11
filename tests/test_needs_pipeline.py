@@ -297,6 +297,24 @@ def test_a_builders_line_that_cannot_be_posted_is_said_so_on_the_workers_row(pip
     assert y.ledger.worker_get(wid)["relay_note"] == "need build: its line could not be posted: the channel is down"
 
 
+def test_a_workers_end_that_makes_no_line_says_so_on_its_row(pipe):
+    y, rec, hub, units, rooms = pipe                     # each one's need moved on by a person meanwhile: no line to make
+    day = need(y, "example-room", *ASK)["day"]
+    to_pr(y, hub, day)
+    hub.routes[("GET", f"/repos/{SLUG}/commits/{'a' * 40}/status")] = (200, {"state": "success", "statuses": GREEN})
+    asyncio.run(y.pipeline.tick())
+    reader = row(y, day)["worker"]
+    asyncio.run(y.pipeline.set(row(y, day), {"state": "live", "worker": ""}))     # merged and deployed by hand
+    n2 = need(y, "her-room", "post a reel", "no upload tool", "upload a video")["n"]
+    builder = row(y, day, n2)["worker"]
+    asyncio.run(y.pipeline.set(row(y, day, n2), {"state": "merged", "pr": 8}))    # yerk needs done
+    said = list(rec.lines)
+    end(y, reader, "merge")
+    end(y, builder, f"branch need-{day}-{n2} at 1234567: it posts reels")
+    assert rec.lines == said and row(y, day)["state"] == "live" and row(y, day, n2)["state"] == "merged"
+    assert [y.ledger.worker_get(w)["relay_note"] for w in (reader, builder)] == ["need read: no line was made", "need build: no line was made"]
+
+
 def kill(y, wid: str, signal: bool = False) -> None:
     """A worker's unit stopped from outside, a box shutdown: exited 143 after the TERM, or killed by it."""
     d = Path(y.ledger.worker_get(wid)["staging"])

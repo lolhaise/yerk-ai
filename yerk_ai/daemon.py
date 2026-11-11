@@ -989,7 +989,7 @@ class Yerkd:
         if r is not None and r.get("state") == "filed" and self.pipeline.auto() and workers.cut_off(end):   # no verdict: the next tick's
             r = await asyncio.to_thread(needs.update, self.memory, self.state, day, n, {"state": "queued", "worker": ""},
                                         lambda x: x.get("state") == "filed")
-        note = words.LINE_POSTED.format(what="need build")
+        note = words.LINE_NONE.format(what="need build")
         if r is not None:
             ab, st = words.line(str(r["ability"]), 80), r.get("state")
             line = (words.NEED_PR.format(n=n, pr=r.get("pr"), ability=ab) if st == "pr" else words.NEED_BRANCH.format(
