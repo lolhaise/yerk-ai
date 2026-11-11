@@ -8,13 +8,14 @@ import time
 from types import SimpleNamespace
 
 import pytest
-from test_idle_compact import FAKE, ROOM, Chan, say, wait_idle
+from test_idle_compact import FAKE, ROOM, Chan, say, until, wait_idle
 from test_observe import Timers
 
 from yerk_ai import config, status, words
 from yerk_ai.accounts import Account, Cooldowns
 from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai.daemon import Yerkd
+from yerk_ai.ledger import COMPACTED_IN_TURN
 
 NOW = float(calendar.timegm((2026, 11, 11, 13, 45, 0)))      # a Wednesday, 1:45p in the zone the tests pin
 H, D = 3600.0, 86400.0
@@ -129,32 +130,36 @@ def daemon(tmp_path, monkeypatch):
     return d
 
 
-def test_a_session_counts_its_compactions_from_its_start_and_a_new_session_starts_again_at_0(tmp_path, monkeypatch):
+def test_the_broom_is_the_rooms_compactions_today_as_the_ledger_counts_them_so_a_restart_keeps_it(tmp_path, monkeypatch):
+    """The number was kept in memory, so a daemon start blanked it until the room's next new session. Now the ledger counts
+    the day's: a copy taken, a held /compact, and Claude Code's own inside a turn (marked on that turn's row), once each."""
+    start = time.time()                                      # one day for every reading: a midnight during the test moves nothing
     y = daemon(tmp_path, monkeypatch)
+    y.budgets["session"]["precompact_within"] = 0.1          # the copy's band, test_idle_compact's: 192,000 to 204,500
+
+    def today(d):
+        s = status.collect(EXAMPLE_PRIVATE, tmp_path, d.accounts, d.cooldowns, d.ledger, d.rooms, now=start, units=set, timers=Timers({}))
+        return s["rooms"][0]["head"]["compactions"]
     room = y.add_room(ROOM, Chan())
-    assert room.compactions is None                          # no session started yet: nothing known
-    say(y, room, "1", "CONTEXT:200000 hello")
+    assert today(y) == 0                                     # no session yet: none today, an int all the same
+    say(y, room, "1", "CONTEXT:195000 hello")                # ends in the copy's band: a copy compacted, then taken
     wait_idle(room)
-    assert room.compactions == 0                             # a newly minted session
+    until(lambda: today(y) == 1 and room.fork is None)
     room.compact_now()                                       # a held /compact (the reaper's, yerk room compact)
     wait_idle(room)
-    assert room.compactions == 1
+    assert today(y) == 2
     say(y, room, "2", "AUTO_COMPACT and on")                 # Claude Code's own, inside a turn
     wait_idle(room)
-    assert room.compactions == 2
-    say(y, room, "3a", "plain")                              # a turn that compacts nothing (and a recap that quotes no trigger)
+    assert today(y) == 3 and y.ledger.rows(1)[0]["note"] == COMPACTED_IN_TURN
+    say(y, room, "3", "plain")                               # a turn that compacts nothing
     wait_idle(room)
-    assert room.compactions == 2
-    room.renew()                                             # /new: the next run starts a fresh session
-    say(y, room, "3", "fresh")
-    wait_idle(room)
-    assert room.compactions == 0
+    y.ledger.record(room=ROOM, started=status.midnight(start) - 90, ended=status.midnight(start) - 60, outcome="compacted")
+    y.ledger.record(room="another-room", started=start, ended=start, outcome="compacted")
+    assert today(y) == 3                                     # yesterday's and another room's never count
     room.rp.close()
-    again = daemon(tmp_path, monkeypatch).add_room(ROOM, Chan())      # a daemon start: the session goes on, resumed
-    say(y, again, "4", "back")
-    wait_idle(again)
-    assert again.compactions is None                         # its earlier compactions were never seen: not known
-    again.rp.close()
+    again = daemon(tmp_path, monkeypatch)                    # a daemon start: the day's count is the ledger's, kept
+    again.add_room(ROOM, Chan())
+    assert today(again) == 3
 
 
 def test_collect_gives_each_room_its_head_read_under_its_lock_and_answers_with_its_process_closed(tmp_path, monkeypatch):

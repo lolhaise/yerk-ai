@@ -39,12 +39,13 @@ COLUMNS = ("room", "account", "config_dir", "session_id", "started", "first_visi
 ADDED = {"turns": {"inbound": "TEXT", "source": "TEXT", "hop": "TEXT", "recap": "INTEGER",   # newer than run 1
                    "turn_key": "TEXT", "model": "TEXT", "out_of": "TEXT",   # the model asked for; the pinned one every account was out of
                    "context": "INTEGER",                    # the session's tokens at the turn's last call (the idle compaction's)
-                   "note": "TEXT"},                         # a copy's take or drop, said (Room._precompact)
+                   "note": "TEXT"},                         # a copy's take or drop, said (Room._precompact); COMPACTED_IN_TURN
          "outbound": {"body": "TEXT"},                      # a card's text, each post and edit
          "workers": {"job": "TEXT"},                        # the scheduled job a worker runs for (jobs.py)
          "evidence": {"tool_use_id": "TEXT"},               # joins a call to its time (tool_times)
          "approvals": {"call": "TEXT", "cwd": "TEXT"},      # the held call an approval releases, exactly
          "inbound": {"created": "REAL"}}                   # the message's own time on its channel (ordering)
+COMPACTED_IN_TURN = "compacted in the turn"   # the note on an ordinary turn's row inside which Claude Code compacted the session
 
 SCHEMA = """CREATE TABLE IF NOT EXISTS turns (
   id INTEGER PRIMARY KEY,
@@ -429,6 +430,13 @@ class Ledger:
         """The session's tokens at its newest turn that said them (0: none), so the idle compaction knows them after a restart."""
         r = self._first("SELECT context FROM turns WHERE session_id = ? AND context IS NOT NULL ORDER BY id DESC LIMIT 1", (session_id,))
         return int(r["context"]) if r else 0
+
+    def compactions(self, since: float) -> dict[str, int]:
+        """Each room's compactions of its session ended since `since` (the room card's broom): a held or idle /compact and a
+        copy taken (outcome 'compacted'), and Claude Code's own inside a turn (that turn's note, COMPACTED_IN_TURN)."""
+        rows = self._select("SELECT room, count(*) AS n FROM turns WHERE ended >= ? AND (outcome = 'compacted' OR note = ?) "
+                            "GROUP BY room", (since, COMPACTED_IN_TURN))
+        return {str(r["room"]): int(r["n"]) for r in rows}
 
     def turn_summary(self, since: float) -> tuple[dict[str, float], list[dict[str, Any]]]:
         """(each room's last answered turn's end, the failed turns since `since` by room, outcome and class with a count)."""
