@@ -267,6 +267,52 @@ def test_a_builders_line_that_cannot_be_posted_is_said_so_on_the_workers_row(pip
     assert y.ledger.worker_get(wid)["relay_note"] == "need build: its line could not be posted: the channel is down"
 
 
+def kill(y, wid: str, signal: bool = False) -> None:
+    """A worker's unit stopped from outside, a box shutdown: exited 143 after the TERM, or killed by it."""
+    d = Path(y.ledger.worker_get(wid)["staging"])
+    (d / "exit.json").write_text(json.dumps({"result": "signal", "code": "killed", "status": "TERM"} if signal else
+                                            {"result": "exit-code", "code": "exited", "status": "143"}))
+    asyncio.run(y.workers.complete(wid))
+
+
+def test_a_fix_or_a_read_cut_off_by_a_stop_nobody_asked_for_is_no_verdict_and_the_next_tick_starts_it_again(pipe):
+    y, rec, hub, units, rooms = pipe                     # seen live: need 83's fix died with the box and was held
+    day = need(y, "example-room", *ASK)["day"]
+    to_pr(y, hub, day)
+    status = ("GET", f"/repos/{SLUG}/commits/{'a' * 40}/status")
+    hub.routes[status] = (200, {"state": "failure", "statuses": [*GREEN[:6], {"context": "ci/g", "state": "failure"}]})
+    asyncio.run(y.pipeline.tick())
+    assert (row(y, day)["state"], row(y, day)["fixes"]) == ("fixing", 1)
+    kill(y, row(y, day)["worker"])
+    r = row(y, day)
+    assert (r["state"], r["worker"], r["fixes"]) == ("pr", "", 0)
+    assert rec.lines[-1] == words.NEED_CUT.format(n=1, pr=7, what=words.NEED_CUT_WHAT["fix"])
+    asyncio.run(y.pipeline.tick())                       # the same fix again, fix 1 of 2 again
+    assert (row(y, day)["state"], row(y, day)["fixes"]) == ("fixing", 1)
+    hub.routes[status] = (200, {"state": "success", "statuses": GREEN})
+    end(y, row(y, day)["worker"], "fixed: abc1234")
+    asyncio.run(y.pipeline.tick())
+    kill(y, row(y, day)["worker"], signal=True)          # the cold read, killed by the TERM itself
+    assert (row(y, day)["state"], row(y, day)["worker"], row(y, day)["fixes"]) == ("pr", "", 1)
+    asyncio.run(y.pipeline.tick())
+    assert row(y, day)["state"] == "reading"
+    wid = row(y, day)["worker"]
+    y.ledger.worker_set(wid, stop_requested=time.time())  # a stop the owner asked for stays a stop
+    kill(y, wid)
+    assert (row(y, day)["state"], row(y, day)["why"]) == ("held", "the cold read gave no verdict: " + words.outcome("stopped")[1])
+
+
+def test_a_builder_cut_off_by_a_stop_nobody_asked_for_is_built_again_and_not_counted_toward_stuck(pipe):
+    y, rec, hub, units, rooms = pipe
+    day = need(y, "example-room", *ASK)["day"]
+    kill(y, row(y, day)["worker"])
+    kill(y, row(y, day)["worker"], signal=True)
+    r = row(y, day)
+    assert (r["state"], int(r.get("fails") or 0)) == ("building", 0) and len(y.workers.launcher.calls) == 3
+    end(y, r["worker"], "no branch: the suite would not run", ok=False)        # a real failure still counts
+    assert int(row(y, day)["fails"]) == 1 and row(y, day)["state"] == "building"
+
+
 def test_the_cold_read_saying_fix_first_or_unsure(pipe):
     y, rec, hub, units, rooms = pipe
     day = need(y, "example-room", *ASK)["day"]

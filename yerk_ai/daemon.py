@@ -963,8 +963,9 @@ class Yerkd:
 
     async def need_built(self, row: dict[str, Any], end: dict[str, Any]) -> bool:
         """A need's builder ended (workers.hooks): the need's state from its report's first line (needs.ended) and one line to
-        the machine room, never a relay turn; under [needs] auto a failed build starts once more, then the need is stuck. A
-        cold read or a fix worker goes to the pipeline (Pipeline.ended); False for any other worker."""
+        the machine room, never a relay turn; under [needs] auto a failed build starts once more, then the need is stuck (one
+        cut off by a stop nobody asked for, workers.cut_off, starts again uncounted). A cold read or a fix worker goes to the
+        pipeline (Pipeline.ended); False for any other worker."""
         try:
             job = json.loads((Path(row["staging"]) / "worker.json").read_text()).get("need")
         except (OSError, ValueError):
@@ -988,7 +989,7 @@ class Yerkd:
             log.info("%s", line)
         self.ledger.worker_set(str(row["id"]), relay="skipped", relay_note=note)
         if r is not None and r.get("state") == "filed" and self.pipeline.auto():     # failed: once more, then stuck
-            if (fails := int(r.get("fails") or 0) + 1) >= 2:
+            if (fails := int(r.get("fails") or 0) + (not workers.cut_off(end))) >= 2:
                 await self.pipeline.stop({**r, "fails": fails}, "stuck", f"its builder failed twice, last: {how}")
             elif await asyncio.to_thread(needs.update, self.memory, self.state, day, n, {"fails": fails}):
                 await self.need_build({"day": day, "n": n})

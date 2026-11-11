@@ -383,6 +383,13 @@ def settled_state(row: dict[str, Any], items: list[tuple[bool, str]], end: dict[
     return words.outcome(state, cap=words.span(float(row["cap"])), why=why, ticked=ticked, rows=len(items))
 
 
+def cut_off(end: dict[str, Any]) -> bool:
+    """A worker that died from a stop nobody asked for, a box shutdown (seen live on need 83's fix): settled "died",
+    which a row with a stop request never is ("stopped"), and its exit the termination signal, exited 143 or killed by
+    TERM (exit.json's status is systemd's EXIT_STATUS, the signal's name once killed)."""
+    return end.get("exit") == "died" and str(end.get("status") or "") in ("143", "TERM")
+
+
 def card_text(row: dict[str, Any], items: list[tuple[bool, str]], end: dict[str, Any] | None = None,
               accounts: int = 1, privacy: str = "owner", look: words.Look | None = None,
               now: float | None = None) -> str:
@@ -737,7 +744,7 @@ class Workers:
         report = Path(row["report"])
         end: dict[str, Any] = {"exit": state, "detail": detail, "finished": float(x.get("ended") or time.time()),
                "result": first_line(report) or ("no report file" if state == "done" else ""),
-               "has_report": report.is_file(), "result_code": x.get("result") or ""}
+               "has_report": report.is_file(), "result_code": x.get("result") or "", "status": str(x.get("status") or "")}
         # its last message read as jobs.py's worker_done reads it: exactly NO_REPLY settles the card quiet (card_text), no relay
         end["quiet"] = state == "done" and (last_message(Path(row["staging"])) or end["result"]).strip() == words.NO_REPLY
         self.ledger.worker_set(wid, finished=round(end["finished"], 3), exit=state, exit_detail=detail, result=end["result"])
