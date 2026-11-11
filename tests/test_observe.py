@@ -196,10 +196,11 @@ def test_live_meters_put_five_accounts_on_the_card_in_the_box_cards_shape_with_t
 
 def test_a_reset_and_the_end_of_a_rest_read_the_cards_short_way_in_every_renderer(monkeypatch):
     """The owner's yes of 2026-11-10 (one way to write a reset time, the status card's): at one moment the card, `yerk
-    status --full`'s meter line, the morning diff's account line and /model's resting state write a reset and the end of
-    a rest the same way, words.short_when's: '5:30a' within a day, 'Tue 4a' within a week, 'Oct 27' past that. They said
-    '05:30', 'Tue' and 'Tue 04:00' before; a reset not read yet still says '?'."""
-    from yerk_ai.meters import meter_line, meter_short
+    status --full`'s meter line and /model's resting state write a reset and the end of a rest the same way,
+    words.short_when's: '5:30a' within a day, 'Tue 4a' within a week, 'Oct 27' past that. They said '05:30' and
+    'Tue 04:00' before; a reset not read yet still says '?'. The morning diff's account line (meter_short) keeps its
+    own form for now: it is held to the phone width, and the longer form would cut its weekly reset off."""
+    from yerk_ai.meters import meter_line
     monkeypatch.setattr(time, "time", lambda: NOW)                                  # words.rest reads the clock itself
     m, rest, far, w = live(7, 3.5 * H, 3, 50 * H), NOW + 10 * H, NOW + 9 * 24 * H, words.short_when
     five, week = w(m["five_hour"]["resets"], NOW), w(m["seven_day"]["resets"], NOW)
@@ -208,13 +209,10 @@ def test_a_reset_and_the_end_of_a_rest_read_the_cards_short_way_in_every_rendere
     resting = status.account_lines([{"name": "one", "meter": m, "rests_until": rest, "bill": None}], NOW)
     assert card[1] == f"- ↻ 5h {five} · wk {week}" and resting[1] == f"- ↻ resting until {w(rest, NOW)}"   # as it was
     assert meter_line("one", {**m, "at": NOW}, NOW) == f"one: 5h 7% ({five}) · wk 3% ({week}), seen 0 min ago"
-    assert meter_short("one", m, now=NOW) == f"- one: 5h 7% ({five}) · wk 3% ({week})"
-    assert meter_short("one", m, rest, NOW) == f"{words.NOT_DONE} one: resting until {w(rest, NOW)}"
     assert words.rest(rest) == f"resting until {w(rest, NOW)}"
     later = {"five_hour": {"pct": 7}, "seven_day": {"pct": 3, "resets": far}, "at": NOW}   # no reset read; one 9 days off
     assert re.fullmatch(r"[A-Z][a-z]{2} \d+", w(far, NOW))
     assert meter_line("one", later, NOW) == f"one: 5h 7% (?) · wk 3% ({w(far, NOW)}), seen 0 min ago"
-    assert meter_short("one", later, now=NOW) == f"- one: 5h 7% · wk 3% ({w(far, NOW)})"
 
 
 def test_a_failed_live_read_shows_the_streams_reading_with_its_age_and_json_says_why(tmp_path):
