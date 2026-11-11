@@ -212,6 +212,48 @@ def stall_line(stalls: list[dict[str, Any]], day: str, since: str = "") -> str:
     return words.line(f"{words.NOT_DONE} {words.STALLS.format(day=day, n=len(stalls), took=took)}")
 
 
+def tank(accounts: list[dict[str, Any]], now: float, live: bool = False) -> tuple[list[dict[str, Any]], list[str]]:
+    """The numbers both cards print (account_lines, room_card): per account its tag, `green` when its week resets soonest
+    (two accounts or more), its state mark, its meters in words (None: no reading yet), the resets its second line says
+    (the model's own only when it is not the week's, within a minute), its bill, until when it rests, its weekly reset,
+    and the age of a reading not live where that is said (None: not said); then each window's `next` line, in words."""
+    W = words
+
+    def ahead(w: str) -> dict[str, float]:
+        return {a["name"]: float(r) for a in accounts if (r := (a["meter"].get(w) or {}).get("resets")) and float(r) > now}
+    week, five, rows, nexts = ahead("seven_day"), ahead("five_hour"), [], []
+    soonest = min(week, key=lambda n: (week[n], n)) if len(accounts) > 1 and week else None
+    for a in accounts:
+        m, rest = a["meter"], a.get("rests_until")
+        wins = [(label, m[w]) for w, label in (("five_hour", "5h"), ("seven_day", "wk"), ("model", "")) if w in m]
+        pct = [round(float(x["pct"])) for _, x in wins]
+        full = max((p for (label, _), p in zip(wins, pct) if label), default=0) >= 100
+        rows.append({"name": a["name"], "tag": W.tag(a["name"]), "green": a["name"] == soonest, "rest": rest, "week": week.get(a["name"]),
+                     "mark": W.NOT_DONE if rest or full else W.WORKING if max(pct, default=0) >= 90 else W.PLAIN,
+                     "meters": " · ".join(f"{label or x['name']} {W.WARN if p >= W.HOT else ''}{p}%"
+                                          for (label, x), p in zip(wins, pct)) if wins else None,
+                     "when": [f"{label or x['name']} {W.short_when(float(x['resets']), now)}" for label, x in wins if x.get("resets")
+                              and float(x["resets"]) > now and (label or abs(float(x["resets"]) - week.get(a["name"], 0)) > 60)],
+                     "bill": [W.BILL.format(day=W.short_day(a["bill"]))] if a.get("bill") else [],
+                     "old": W.ago(now - m["at"]) if m.get("source") != "live" and "at" in m and (live or now - m["at"] >= OLD) else None})
+    for label, due in (("wk", week), ("5h", five)):
+        seq = sorted((r, n) for n, r in due.items())[:2] if len(accounts) > 1 else []
+        if seq:
+            first = (W.DONE if label == "wk" else "") + f"{W.tag(seq[0][1])} {W.short_when(seq[0][0], now)}"
+            then = W.THEN.format(tag=W.tag(seq[1][1]), when=W.short_when(seq[1][0], now)) if seq[1:] else ""
+            nexts.append(f"{W.NEXT.format(label=label, first=first)}{then}")
+    return rows, nexts
+
+
+def resets(parts: list[str], bill: list[str], lead: int = 0) -> str:
+    """An account's second line (words.RESETS): its resets, then its bill; the model's own reset only where the line fits
+    words.PHONE with `lead` columns before it."""
+    text = words.RESETS.format(parts=" · ".join(parts + bill))
+    if parts[2:] and words.width(text) + lead > words.PHONE:
+        text = words.RESETS.format(parts=" · ".join(parts[:2] + bill))
+    return text
+
+
 def account_lines(accounts: list[dict[str, Any]], now: float, live: bool = False) -> list[str]:
     """Each account in two lines, the box card's shape: `- ① 5h 7% · wk 1% · Fable 2%`, then `- ↻ 5h 6:10p ·
     wk Sun 3a · 💳 Oct 25`. Red first when it rests (its second line says until when) or a 5-hour or weekly window
@@ -219,41 +261,20 @@ def account_lines(accounts: list[dict[str, Any]], now: float, live: bool = False
     words.HOT or more. A reading that is not live says how old it is when the live one was asked for, or once it is
     an hour old. With two accounts or more, the soonest weekly reset wears the green mark on its tag, and two lines
     say the next two resets of each window, and one the account the next turn tries first."""
-    W = words
-
-    def ahead(w: str) -> dict[str, float]:
-        return {a["name"]: float(r) for a in accounts if (r := (a["meter"].get(w) or {}).get("resets")) and float(r) > now}
-    week, five, out = ahead("seven_day"), ahead("five_hour"), []
-    soonest = min(week, key=lambda n: (week[n], n)) if len(accounts) > 1 and week else None
-    for a in accounts:
-        m, rest, tag = a["meter"], a.get("rests_until"), W.tag(a["name"])
-        head = (W.DONE if a["name"] == soonest else "") + tag
-        wins = [(label, m[w]) for w, label in (("five_hour", "5h"), ("seven_day", "wk"), ("model", "")) if w in m]
-        pct = [round(float(x["pct"])) for _, x in wins]
-        full = max((p for (label, _), p in zip(wins, pct) if label), default=0) >= 100
-        mark = W.NOT_DONE if rest or full else W.WORKING if max(pct, default=0) >= 90 else W.PLAIN
-        if wins:                                                  # a long name is cut, never a meter
-            out.append(W.named(f"{mark} {head[:len(head) - len(tag)]}{{name}} {{meters}}", tag, meters=" · ".join(
-                f"{label or x['name']} {W.WARN if p >= W.HOT else ''}{p}%" for (label, x), p in zip(wins, pct))))
+    W, out = words, []
+    rows, nexts = tank(accounts, now, live)
+    for r in rows:
+        head = (W.DONE if r["green"] else "") + r["tag"]
+        if r["meters"] is not None:                               # a long name is cut, never a meter
+            out.append(W.named(f"{r['mark']} {head[:len(head) - len(r['tag'])]}{{name}} {{meters}}", r["tag"], meters=r["meters"]))
         else:
-            out.append(W.named(f"{mark} {W.NO_READING}", head))
-        when = [f"{label or x['name']} {W.short_when(float(x['resets']), now)}" for label, x in wins
-                if x.get("resets") and float(x["resets"]) > now and (label or abs(float(x["resets"]) - week.get(a["name"], 0)) > 60)]
-        bill = [W.BILL.format(day=W.short_day(a["bill"]))] if a.get("bill") else []
-        parts = [W.BACK_AT.format(until=W.short_when(rest, now))] if rest else when
-        text = W.RESETS.format(parts=" · ".join(parts + bill))
-        if parts[2:] and W.width(f"{W.PLAIN} {text}") > W.PHONE:      # the model's own reset only where it fits
-            text = W.RESETS.format(parts=" · ".join(parts[:2] + bill))
-        if parts or bill:
-            out.append(W.line(f"{W.PLAIN} {text}"))
-        if m.get("source") != "live" and "at" in m and (live or now - m["at"] >= OLD):
-            out.append(W.named(f"{W.PLAIN} {W.OLD_READING}", tag, ago=W.ago(now - m["at"])))
-    for label, due in (("wk", week), ("5h", five)):
-        seq = sorted((r, n) for n, r in due.items())[:2] if len(accounts) > 1 else []
-        if seq:
-            first = (W.DONE if label == "wk" else "") + f"{W.tag(seq[0][1])} {W.short_when(seq[0][0], now)}"
-            then = W.THEN.format(tag=W.tag(seq[1][1]), when=W.short_when(seq[1][0], now)) if seq[1:] else ""
-            out.append(W.line(f"{W.PLAIN} {W.NEXT.format(label=label, first=first)}{then}"))
+            out.append(W.named(f"{r['mark']} {W.NO_READING}", head))
+        parts = [W.BACK_AT.format(until=W.short_when(r["rest"], now))] if r["rest"] else r["when"]
+        if parts or r["bill"]:
+            out.append(W.line(f"{W.PLAIN} {resets(parts, r['bill'], W.width(W.PLAIN + ' '))}"))
+        if r["old"] is not None:
+            out.append(W.named(f"{W.PLAIN} {W.OLD_READING}", r["tag"], ago=r["old"]))
+    out += [W.line(f"{W.PLAIN} {n}") for n in nexts]
     free = next((a["name"] for a in accounts if not a.get("rests_until")), None)     # accounts.pick, no room's own
     if len(accounts) > 1 and free:
         out.append(W.line(f"{W.PLAIN} {W.FIRST_TRY.format(tag=W.tag(free))}"))
@@ -296,14 +317,7 @@ def card(s: dict[str, Any], now: float | None = None) -> list[str]:
                                                  commit=str(s.get("commit") or "")[:7] or "?")))
     if s.get("addons") is not None:                     # `yerk status` names the installed add-ons (addons.py)
         out.append(row(W.PLAIN, W.ADDONS.format(names=", ".join(s["addons"]) or W.NO_ADDONS)))
-    nth: dict[str, int] = {}
-    for w in sorted(s["workers"], key=lambda w: (bool(w["waiting"]), float(w["queued"] or 0))):
-        if w["waiting"]:
-            nth[w["account"]] = nth.get(w["account"], 0) + 1
-            say = W.IN_LINE_SHORT.format(nth=W.nth(nth[w["account"]]))
-        else:
-            say = W.GONE if w["gone"] else W.of_cap(now - w["started"], w["cap"])
-        out.append(row(W.NOT_DONE if w["gone"] else W.PLAIN, f"{W.WORKER.format(id=w['id'])}: {say}"))
+    out += [row(W.NOT_DONE if gone else W.PLAIN, text) for gone, text in said(s["workers"], now)]
     if not s["workers"]:
         out.append(row(W.PLAIN, W.NONE_RUNNING))
     if s["jobs"] is None:
@@ -316,8 +330,26 @@ def card(s: dict[str, Any], now: float | None = None) -> list[str]:
         out.append(row(W.PLAIN, W.SPEED.format(day=W.TODAY, **{k: "-" if v is None else W.secs(v) for k, v in sp.items()})))
     if "spend" in s:                                    # an uncapped install's receipt line (collect)
         out.append(row(W.PLAIN, spend_line(s["spend"], W.TODAY)))
-    if "backup" in s:                                   # the newest archive (backup.py): red when there is none, or past STALE
-        b = s["backup"]
-        text = W.BACKUP_AT.format(ago=W.span(now - b["at"]), size=W.size(int(b["bytes"]))) if b else W.NO_BACKUP
-        out.append(row(W.NOT_DONE if not b or now - b["at"] > backup.STALE else W.PLAIN, text))
+    if "backup" in s:
+        out.append(backup_line(s["backup"], now))
     return out + [stall_line(s["stalls"], W.TODAY)]
+
+
+def said(workers: list[dict[str, Any]], now: float) -> list[tuple[bool, str]]:
+    """Each worker as both cards say it, the running first and the waiting in their place in line: (gone, its words)."""
+    nth: dict[str, int] = {}
+    out = []
+    for w in sorted(workers, key=lambda w: (bool(w["waiting"]), float(w["queued"] or 0))):
+        if w["waiting"]:
+            nth[w["account"]] = nth.get(w["account"], 0) + 1
+            say = words.IN_LINE_SHORT.format(nth=words.nth(nth[w["account"]]))
+        else:
+            say = words.GONE if w["gone"] else words.of_cap(now - w["started"], w["cap"])
+        out.append((bool(w["gone"]), f"{words.WORKER.format(id=w['id'])}: {say}"))
+    return out
+
+
+def backup_line(b: dict[str, Any] | None, now: float) -> str:
+    """The newest archive (backup.py), state first: red when there is none, or past backup.STALE."""
+    text = words.BACKUP_AT.format(ago=words.span(now - b["at"]), size=words.size(int(b["bytes"]))) if b else words.NO_BACKUP
+    return words.line(f"{words.NOT_DONE if not b or now - b['at'] > backup.STALE else words.PLAIN} {text}")
