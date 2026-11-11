@@ -327,3 +327,16 @@ def test_a_check_that_gives_no_answer_keeps_nothing_says_so_and_leaves_nothing(y
     assert fast(y, "on") == {"ok": False, "line": words.FAST_NOT_ON.format(why=words.FAST_NO_ANSWER)}
     assert "fast" not in override(tmp_path, ROOM) and y.spec_for(ROOM).fast is False
     assert not list((tmp_path / "cfg1" / "projects").glob("*yerk-fast*"))      # nothing left under the account's projects/
+
+
+def test_a_late_answer_to_fast_on_never_becomes_the_reply(room, tmp_path, monkeypatch):
+    """/fast on answered after the engine stopped waiting for it: the room's reply is still its message's own."""
+    from yerk_ai import engine
+    monkeypatch.setattr(engine, "FAST_WAIT", 0.3)
+    monkeypatch.setenv("FAKE_CLAUDE_FAST_SLOW", "1.0")
+    r, chan, ledger, say = room
+    say("1", "hi")
+    say("2", "again")
+    assert chan.replies == ["echo: hi", "echo: again"] and lines(tmp_path) == ["/fast on", "hi", "again"]   # that process ended
+    assert chan.notices == [f"{words.WORKING} {words.FAST_LOST.format(why=words.FAST_NO_ANSWER)}"] and len(ledger.rows(10)) == 2
+

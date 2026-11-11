@@ -914,9 +914,15 @@ class Room:
         rp = RoomProcess(spec, account, self.state, ledger=self.ledger, failures=self.failures, log=log_path,
                          meters=self.meters.seen if self.meters else None, evidence=self.evidence)
         rp.start(fresh=fresh)
+        if lost := rp.fast_lost:                 # its /fast on got no result: a late one would be read as the next line's reply,
+            rp.close()                           # so the room runs on a process launched as on main, without fast mode
+            spec.fast = False
+            rp = RoomProcess(spec, account, self.state, ledger=self.ledger, failures=self.failures, log=log_path,
+                             meters=self.meters.seen if self.meters else None, evidence=self.evidence)
+            rp.start(fresh=fresh)
         self.rp = rp
         self.hooked = self.hooks_warned = False   # per process start: its first hook call proves the hooks alive; the notice went out
-        self._fast_said(rp)
+        self._fast_said(rp, words.FAST_NO_ANSWER if lost else "")
 
     def _fast_said(self, rp: RoomProcess, note: str = "") -> None:
         """What Claude Code answered this process's own /fast on (engine.RoomProcess._fast_on), or the notice it streams once

@@ -371,6 +371,7 @@ class RoomProcess:
         self._stdin_lock = threading.Lock()
         self.read_paths: set[str] = set()      # every file the process asked to Read (the Stop check reads it)
         self.fast_state = self.fast_said = ""  # fast_mode_state from its newest result; what its own /fast on was answered
+        self.fast_lost = False                 # its own /fast on ended with no result: a late one would answer the next line
 
     def alive(self) -> bool:
         return self.proc is not None and self.proc.poll() is None
@@ -452,7 +453,8 @@ class RoomProcess:
         until /fast runs; in -p it holds for that session only): read to the end of its result, its replay ahead of it, and
         never recorded, so no reply, ledger row, card or pairing of a result with its message sees it. A refusal leaves
         the session at standard speed; `fast_said` keeps Claude Code's words for the room's line."""
-        self.fast_said = self.read_turn(self.send(FAST_ON), FAST_WAIT, record=False).text
+        t = self.read_turn(self.send(FAST_ON), FAST_WAIT, record=False)
+        self.fast_said, self.fast_lost = t.text, t.result is None
 
     def _note(self, obj: dict[str, Any]) -> None:
         """One line in the stream log. A write that fails (the disk full, the file past a size limit) ends the log

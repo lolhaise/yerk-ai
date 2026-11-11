@@ -1016,7 +1016,7 @@ def fast_why(said: str, account: str) -> str:
         return FAST_OUT.format(account=account)
     if "usage credits" in why.lower():
         return FAST_NO_CREDITS.format(account=account)
-    return FAST_CLAUDE.format(why=line(why)) if why else FAST_NO_ANSWER    # nothing came back: never words put in its mouth
+    return FAST_CLAUDE.format(why=line(why)) if why and said != FAST_NO_ANSWER else FAST_NO_ANSWER   # nothing came back
 
 
 def model_name(mid: str) -> str:
