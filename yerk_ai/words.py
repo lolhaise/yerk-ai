@@ -991,12 +991,12 @@ COMMANDS = {"model": "this room's model or account, from the next reply", "effor
             "new": "a new session in this room; memory stays", "stop": "end the running turn now",
             "status": "what runs now", "fast": "fast mode for this room, on or off, from the next reply"}
 CHOICE = {"model": "an account, a model or both, the account first; default clears both", "effort": "a thinking level, or default", "account": "an account by name, or default",
-          "fast": "on or off; nothing says this room's state"}
+          "fast": "on or off; leave it out for this room's state"}
 # /fast (Yerkd.fast_command): never "on" unless Claude Code itself said so; a later process's refusal is said once (Room._start)
 FAST_ON_NEXT, FAST_OFF = "fast mode on from the next reply\nbilled to usage credits, not the plan", "fast mode off"
 FAST_NOT_ON, FAST_ONLY = "fast mode did not turn on\n{why}", "fast mode is for Fable 5.2 rooms\nthis room is on {model}"
 FAST_NO_CREDITS, FAST_CLAUDE, FAST_NO_ANSWER = "usage credits are off on account {account}", "Claude Code said:\n{why}", "Claude Code gave no answer"
-FAST_NOW, FAST_SAID = "this room: fast mode {setting}", "Claude Code reports it {state}"
+FAST_NOW, FAST_SAID = "this room: fast mode {setting}", "Claude Code reports: {state}"   # on, off or cooldown, its own word
 FAST_LOST, FAST_OUT = "fast mode is not running\n{why}\nreplies run at standard speed", "account {account} is out of usage credits"
 FAST_ROOMS, FAST_CHOICES = "fast mode on: {rooms}", "not a choice: {choice}\nthe choices: on, off"
 NOT_OWNER, NOT_A_ROOM = "only the owner can use this", "this channel is not a Yerk room"
