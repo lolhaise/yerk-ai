@@ -83,6 +83,7 @@ ADDON = re.compile(r"^mcp__([A-Za-z0-9_-]+?)(?:__([A-Za-z0-9_-]+))?$")   # a roo
 CREDENTIAL = re.compile(r"key|token|secret|pass|auth|cookie|credential", re.I)   # an env name or header that hands one over
 PUMP_EVERY = 5.0                               # seconds between looks for an idle room with a relay waiting
 YOUNG = 120.0                                  # seconds after its start a worker missing from the unit list is not lost yet
+MEMORY_MAX = "4G"                              # a worker unit's memory ceiling (MemoryMax), no swap past it
 
 
 @dataclass
@@ -191,10 +192,11 @@ def unit_line(*argv: str) -> str:
 class Systemd:
     """systemd-run --user: the unit outlives the daemon; --collect unloads it once it has ended
     (exit.json is the record). With the daemon's state folder, the unit sees it through systemd's own
-    namespacing (`sandbox`), so no tool or shell shape gets around it."""
+    namespacing (`sandbox`), so no tool or shell shape gets around it. Every unit gets `memory_max`
+    as its memory ceiling with no swap past it, and outlives a kill for memory (OOMPolicy=continue)."""
 
-    def __init__(self, state: Path | None = None, hidden: Sequence[Path] = ()):
-        self.state, self.hidden = state, tuple(hidden)
+    def __init__(self, state: Path | None = None, hidden: Sequence[Path] = (), memory_max: str = MEMORY_MAX):
+        self.state, self.hidden, self.memory_max = state, tuple(hidden), memory_max
 
     def sandbox(self, folder: Path, env: dict[str, str]) -> list[str]:
         """The state folder read-only; the worker's own folder writable, and its account's config
@@ -246,7 +248,9 @@ class Systemd:
                "--description", f"Yerk AI worker {unit.removeprefix(UNIT)}",
                "-p", f"RuntimeMaxSec={max(1, int(cap))}", "-p", f"StandardOutput=append:{out}",
                "-p", f"StandardError=append:{err}", "-p", f"ExecStopPost={unit_line(*post)}",
-               "-p", "KillMode=control-group", "-p", "TimeoutStopSec=20", *self.sandbox(cwd, env),
+               "-p", "KillMode=control-group", "-p", "TimeoutStopSec=20",
+               # past the ceiling the kernel kills the unit's biggest process, never the box's; the unit goes on without it
+               "-p", f"MemoryMax={self.memory_max}", "-p", "MemorySwapMax=0", "-p", "OOMPolicy=continue", *self.sandbox(cwd, env),
                *[f"--setenv={k}={v}" for k, v in env.items()], "--", *argv]
         p = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
         if p.returncode:
