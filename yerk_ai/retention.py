@@ -192,10 +192,10 @@ def run(private: Path, state: Path, dry: bool = False, now: float | None = None,
                         move("workers", d, f"projects/{d.name}")
             if (w["finished"] and now - days["workers"] * DAY <= w["finished"] < now - days["pytest"] * DAY and folder.is_absolute()
                     and folder.is_dir() and folder.parent.resolve() == root):     # the rest of the folder waits its days
-                for d, ds, _ in os.walk(folder):
+                for at, ds, _ in os.walk(folder):
                     for name in [x for x in ds if x.startswith("pytest-of-")]:
                         ds.remove(name)                                   # moved whole, never walked into; a link stays
-                        if not os.path.islink(tmp := os.path.join(d, name)):
+                        if not os.path.islink(tmp := os.path.join(at, name)):
                             move("pytest", Path(tmp), f"workers/{folder.name}/{os.path.relpath(tmp, folder)}")
         runs = (state / "jobs").resolve()
         for j in ledger.job_runs(limit=10**6):           # ended and delivered past its days; one marked undelivered stays
