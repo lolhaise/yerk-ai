@@ -43,6 +43,7 @@ import subprocess
 import sys
 import time
 import tomllib
+import urllib.error
 import urllib.request
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
@@ -70,6 +71,8 @@ WAITING = "undelivered: waiting for the room's turn"       # a told note's run u
 OUTPUT_MAX = 4000                 # characters of a script's output posted; the rest stays in the run folder
 ALERT_MAX = 300
 DEFAULT_CAP = {"script": 10.0, "agent": 15.0, "note": 0.0}     # a note runs nothing: no cap
+RETRY_EVERY, RETRY_SPARE = 3.0, 30.0     # a hand-off that finds no daemon listening yet (at boot the timers start before yerkd) is
+                                         # tried again every RETRY_EVERY s until the unit's own limit less RETRY_SPARE s to give up in
 ROOM_NOTES, ROOM_NOTE_MINUTES, NOTE_CHARS = 20, 5, 600     # the [jobs] defaults (CONF)
 ROOM_NOTE_BURST = 3      # notes per room_note_minutes window: a reminder, its follow-up check and a watch in one turn
                          # (2026-10-21: one per window refused a person's second note twice, put off to the next turn)
@@ -414,6 +417,11 @@ def env_for(private: Path, state: Path) -> Env:
     return Env(sys.executable, REPO, private.resolve(), state.resolve())
 
 
+def start_limit(job: Job) -> int:
+    """The unit's TimeoutStartSec in seconds: an agent job's runner only hands off, a script runs its cap in the unit."""
+    return 120 if job.kind == "agent" else int(job.cap * 60) + 120      # the runner's own cap comes first (L163)
+
+
 def unit_texts(job: Job, env: Env) -> tuple[str, str]:
     """(timer, service) for the job, byte for byte what sync writes."""
     head = f"{HEADER}{job.name}.\n"
@@ -424,8 +432,7 @@ def unit_texts(job: Job, env: Env) -> tuple[str, str]:
     timer = [head, "[Unit]", f"Description=Yerk AI job {job.name} (timer)", "", "[Timer]"]
     timer += [f"OnCalendar={c}" for c in job.calendar()] + ["Persistent=true"]
     timer += ["AccuracySec=1s", f"Unit={job.unit}.service", "", "[Install]", "WantedBy=timers.target", ""]
-    start = 120 if job.kind == "agent" else int(job.cap * 60) + 120      # the runner's own cap comes first (L163)
-    service = [head, "[Unit]", f"Description=Yerk AI job {job.name}", "", "[Service]", "Type=oneshot", *run, f"TimeoutStartSec={start}", ""]
+    service = [head, "[Unit]", f"Description=Yerk AI job {job.name}", "", "[Service]", "Type=oneshot", *run, f"TimeoutStartSec={start_limit(job)}", ""]
     return "\n".join(timer), "\n".join(service)
 
 
@@ -683,6 +690,14 @@ def post_control(state: Path, payload: dict[str, Any], timeout: float = 120, wor
         return dict(json.loads(r.read()))
 
 
+def not_listening(e: Exception) -> bool:
+    """post_control reached no daemon, so nothing was sent: no yerkd.json, its pid gone or another user's (one left from
+    before the box went down), or nothing on its port yet. A daemon that answered, or took the request and was slow, is not."""
+    if isinstance(e, urllib.error.URLError) and not isinstance(e, urllib.error.HTTPError) and isinstance(e.reason, OSError):
+        e = e.reason
+    return isinstance(e, (FileNotFoundError, ProcessLookupError, PermissionError, ConnectionRefusedError))
+
+
 def run(name: str, private: Path, state: Path, units: Systemd | None = None,
         handoff: Callable[[dict[str, Any]], dict[str, Any]] | None = None, now: float | None = None) -> int:
     """The unit's one step. A script job: ledger the run, run the command, hand the result to the
@@ -718,10 +733,16 @@ def run(name: str, private: Path, state: Path, units: Systemd | None = None,
         if job.kind == "note":                  # and what a late tell reads (Jobs.reattach)
             (folder / "message").write_text(job.payload)
         payload = {"job": {"action": "fire", "name": name, "run": run_id}}
-    try:
-        out = handoff(payload)
-    except (OSError, ValueError) as e:
-        out = {"ok": False, "error": f"the daemon is not running ({type(e).__name__})"}
+    deadline = fired + start_limit(job) - RETRY_SPARE        # a one-shot stays in the file while this waits
+    while True:
+        try:
+            out = handoff(payload)
+        except (OSError, ValueError) as e:
+            if not_listening(e) and time.time() + RETRY_EVERY < deadline:
+                time.sleep(RETRY_EVERY)
+                continue
+            out = {"ok": False, "error": f"the daemon is not running ({type(e).__name__})"}
+        break
     if not out.get("ok"):
         why = str(out.get("error", "the daemon refused it"))
         if job.kind == "script":

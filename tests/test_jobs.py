@@ -11,6 +11,7 @@ import json
 import subprocess
 import sys
 import time
+import urllib.error
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime
 from pathlib import Path
@@ -370,6 +371,59 @@ def test_a_script_run_with_no_daemon_is_ledgered_undelivered_and_delivered_late_
     assert r["delivery"] == "delivered late" and r["message_ids"] == "s1"
     assert rec.sent[0][1].startswith("(late: the daemon was not running when job late ran at ") and \
         rec.sent[0][1].endswith("\nwhile you were out")
+
+
+def test_a_job_fired_before_the_daemon_listens_is_handed_off_once_it_does_until_the_units_own_limit(setup, tmp_path, monkeypatch):
+    """At boot the job timers start a few seconds before yerkd. A hand-off that finds no daemon listening (nothing on the
+    port, or the pid of a yerkd.json from before the box went down) is tried again every few seconds, the one-shot still in
+    the file, until the unit's own limit less a margin; then it gives up as before. A daemon that answered is not asked again."""
+    s = setup
+    j, w, sd, priv, state = manager(setup, tmp_path, {"r": s.room()}, {"r": Rec()})
+    s.ledger.__init__(state / "ledger.sqlite")
+    j.ledger = w.ledger = s.ledger
+    shot = '[jobs.boot]\nkind = "agent"\nat = "2099-01-02 09:00"\ntz = "UTC"\nroom = "r"\nmessage = "the brief"\n'
+    path = write_jobs(priv / "jobs.toml", shot)
+    jobs.sync(path, sd, ENV)
+    monkeypatch.setattr(jobs, "RETRY_EVERY", 0.0, raising=False)          # raising=False: main has none
+    calls = []
+
+    def boot(payload):
+        calls.append(payload)
+        assert "[jobs.boot]" in path.read_text() and sd.ours() == ["boot"]          # not removed while it waits
+        if len(calls) == 1:
+            raise urllib.error.URLError(ConnectionRefusedError(111, "Connection refused"))
+        if len(calls) == 2:
+            raise ProcessLookupError(3, "No such process")
+        return {"ok": True}
+    assert (jobs.run("boot", priv, state, units=sd, handoff=boot), len(calls)) == (0, 3)
+    r, = s.ledger.job_runs(job="boot")
+    assert (r["exit"], r["delivery"]) == (None, None) and sd.ours() == [] and "[jobs.boot]" not in path.read_text()
+    limit = jobs.start_limit(jobs.make_job("boot", {"kind": "agent", "at": "2099-01-02 09:00", "tz": "UTC", "room": "r",
+                                                    "message": "m"}))
+    assert limit == 120                                    # the TimeoutStartSec the unit is written with
+
+    def refused(payload):
+        calls.append(payload)
+        raise urllib.error.URLError(ConnectionRefusedError(111, "Connection refused"))
+    for ago, waits in ((limit - jobs.RETRY_SPARE + 1, False), (limit - jobs.RETRY_SPARE - 2, True)):
+        write_jobs(path, shot)
+        jobs.sync(path, sd, ENV)
+        calls.clear()
+        monkeypatch.setattr(jobs, "RETRY_EVERY", 0.5)
+        t0 = time.time()
+        assert jobs.run("boot", priv, state, units=sd, handoff=refused, now=t0 - ago) == 1
+        assert (len(calls) > 1, time.time() - t0 < 5) == (waits, True) and sd.ours() == []
+        r = s.ledger.job_runs(job="boot")[0]
+        assert (r["exit"], r["result"], r["delivery"]) == ("not run", "did not start",
+                                                           "undelivered: the daemon is not running (URLError)")
+    for answered in (urllib.error.HTTPError("http://127.0.0.1:1/control", 500, "boom", {}, None), TimeoutError("slow")):
+        write_jobs(path, shot)                              # it answered, or took the request: never asked twice
+        calls.clear()
+
+        def took(payload, e=answered):
+            calls.append(payload)
+            raise e
+        assert jobs.run("boot", priv, state, units=sd, handoff=took) == 1 and len(calls) == 1
 
 
 def test_an_agent_job_becomes_a_worker_with_the_right_account_and_cap_and_relays(setup, tmp_path):
