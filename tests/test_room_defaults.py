@@ -7,7 +7,6 @@ copy of one. The move of the box's rooms.toml is proven on a copy of its shape (
 loaded table, in key order, the same before and after but for the two changes decided: yerk-ops gains the
 allow and both servers, and yerk-test's allow and servers take the defaults' order."""
 import json
-import os
 import tomllib
 from pathlib import Path
 
@@ -20,7 +19,6 @@ from yerk_ai.config import room_defaults, rooms
 
 HERE = Path(__file__).resolve().parent / "fixtures" / "room-defaults"
 BEFORE, AFTER = (HERE / "before.toml").read_text(), (HERE / "after.toml").read_text()
-BOX = (os.environ.get("YERK_ROOMS_BEFORE", ""), os.environ.get("YERK_ROOMS_AFTER", ""))
 BASE = """[defaults]
 allow = ["mcp__web__fetch", "mcp__hands__browser"]
 
@@ -74,11 +72,6 @@ def proof(before: str, after: str) -> None:
 def test_the_box_rooms_moved_under_defaults_load_the_same_but_for_the_two_changes_decided():
     assert list(rooms(Path(), BEFORE)) == ["yerk-test", "yerk-ops", "work-on-yerk", "chat-on-yerk", "family-on-yerk", "fitness-on-yerk"]
     proof(BEFORE, AFTER)
-
-
-@pytest.mark.skipif(not all(BOX), reason="the box's own rooms.toml and its proposed move exist only on the box")
-def test_the_box_rooms_toml_and_its_proposed_move_load_the_same_but_for_the_two_changes_decided():
-    proof(Path(BOX[0]).read_text(), Path(BOX[1]).read_text())
 
 
 def test_every_owner_room_carries_the_defaults_with_its_own_name_in_args_and_env():
