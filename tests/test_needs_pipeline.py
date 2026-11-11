@@ -284,6 +284,21 @@ def test_a_proven_deploy_holding_the_merge_is_live_one_line_a_room_and_a_failed_
     assert (row(y, day, n2)["state"], row(y, day, n2)["why"]) == ("held", "deploy failed: the fast tests failed")
 
 
+def test_a_deploy_that_gave_up_waiting_for_quiet_is_merged_again_and_the_next_tick_deploys_again(pipe):
+    y, rec, hub, units, rooms = pipe                     # 2026-11-09: three gave up, each need held with nothing failed
+    day = need(y, "example-room", *ASK)["day"]
+    asyncio.run(y.pipeline.set(row(y, day), {"state": "deploying", "pr": 7, "merged_at": time.time() - 60, "merge": "c" * 40,
+                                             "deploy_at": time.time() - 30, "unit": "yerk-deploy-0b0b0b"}))
+    y.ledger.deploy(kind="deploy", unit="", before="0" * 7, after="", outcome="gave up", note="never quiet in 1 h; a room has a turn")
+    asyncio.run(y.pipeline.tick())
+    r = row(y, day)
+    assert (r["state"], r["unit"]) == ("merged", "") and units.argv == []
+    assert rec.lines[-1] == words.NEED_DEPLOY_AGAIN.format(n=1, pr=7, why="never quiet in 1 h; a room has a turn")
+    asyncio.run(y.pipeline.tick())                       # no deploy running: it deploys again, and the old row is not its
+    asyncio.run(y.pipeline.tick())
+    assert row(y, day)["state"] == "deploying" and len(units.argv) == 1 and rec.lines[-1] == words.NEED_DEPLOYING.format(n=1, pr=7)
+
+
 def test_a_rooms_live_line_waits_out_its_turn_and_neither_the_machine_rooms_line_nor_the_next_need_waits(pipe, monkeypatch):
     """Seen live: need 74's line came into a busy room five seconds into a turn and read as its answer."""
     y, rec, hub, units, rooms = pipe

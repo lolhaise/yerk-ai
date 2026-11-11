@@ -326,7 +326,10 @@ class Pipeline:
         running = await asyncio.to_thread(self.units.running)
         if r["state"] == "deploying":
             mine = [d for d in rows if float(d["at"]) >= float(r.get("deploy_at") or 0)]
-            if (bad := [d for d in mine if d.get("outcome") not in ("begun", "proven")]):
+            if (bad := [d for d in mine if d.get("outcome") not in ("begun", "proven")]) and bad[-1].get("outcome") == "gave up":
+                await self.set(r, {"state": "merged", "unit": ""}, "deploying")      # nothing failed, nothing deployed: again
+                await self.say(words.NEED_DEPLOY_AGAIN.format(n=r["n"], pr=r["pr"], why=words.line(str(bad[-1].get("note") or ""), 160)))
+            elif bad:
                 await self.stop(r, "held", f"deploy failed: {words.line(str(bad[-1].get('note') or bad[-1]['outcome']), 160)}")
             elif not mine and running is not None and r.get("unit") not in running and self.now() - float(r.get("deploy_at") or 0) > 60:
                 await self.stop(r, "held", "deploy failed: its unit ended with no deploy row (the fetch, or the unit itself)")

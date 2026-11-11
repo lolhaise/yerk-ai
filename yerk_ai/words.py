@@ -679,6 +679,7 @@ NEED_MERGED = DONE + " need {n}: PR {pr} merged; the deploy is next"
 NEED_PLUGIN = "\nwith its branch in the {names} plug-in too"              # need 36: a fix in a plug-in's own repository
 NEED_LANDED = "\nthe {names} plug-in has it too, from each room's next session"
 NEED_DEPLOYING = WORKING + " need {n}: deploying PR {pr} onto the daemon"
+NEED_DEPLOY_AGAIN = WORKING + " need {n}: the deploy of PR {pr} gave up waiting for quiet, so it runs again\n{why}"
 NEED_LIVE = DONE + " need {n} is built and live: {ability}"
 NEED_LIVE_ROOM = DONE + " need {n} is built and live: {ability}\nthis room has it from its next message, when its session starts on the new code"
 CHECKED = "checked by a second pass: {n} of {of} segments uncertain"
