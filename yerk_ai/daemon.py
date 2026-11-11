@@ -921,12 +921,21 @@ class Yerkd:
             then = words.PICTURES_STOP.format(left=sum(map(len, left)))
         how = workers.settled_state(row, workers.tasks_of(Path(row["tasks"])), end)[1]
         line = words.PICTURES_BATCH.format(room=room, n=n, of=of, how=how, filed=filed, count=len(mine), then=then)
-        if (to := str(row["room"])) in self.channels:
-            with contextlib.suppress(Exception):
-                await self.channels[to].notify(to, line)
-        self.ledger.worker_set(str(row["id"]), relay="skipped", relay_note="pictures backfill: its line went to the machine room")
+        self.ledger.worker_set(str(row["id"]), relay="skipped", relay_note=await self.posted(str(row["room"]), line, "pictures backfill"))
         log.info("%s", line)
         return True
+
+    async def posted(self, to: str, line: str, what: str) -> str:
+        """A worker's end in one line in its room, never a relay turn; an error posting it is swallowed. The worker row's note
+        from what happened: the line went, or it could not be posted and why."""
+        why = words.NO_CHANNEL_HERE.format(room=to)
+        if to in self.channels:
+            try:
+                await self.channels[to].notify(to, line)
+                return words.LINE_POSTED.format(what=what)
+            except Exception as e:
+                why = words.line(str(e) or type(e).__name__, 160)
+        return words.LINE_NOT_POSTED.format(what=what, why=why)
 
     async def need_build(self, req: dict[str, Any]) -> dict[str, Any]:
         """`yerk needs build DAY N`: the need's brief (needs.brief) to a builder worker on [needs] account, else [curate]
@@ -969,16 +978,15 @@ class Yerkd:
         plugs = await self.pipeline.heads({"day": day, "n": n})                   # a plug-in branch the builder left
         r = await asyncio.to_thread(needs.ended, self.memory, self.state, day, n, str(row["id"]), how,
                                     workers.first_line(Path(row["report"])), end["exit"] == "done", plugs)
+        note = words.LINE_POSTED.format(what="need build")
         if r is not None:
             ab, st = words.line(str(r["ability"]), 80), r.get("state")
             line = (words.NEED_PR.format(n=n, pr=r.get("pr"), ability=ab) if st == "pr" else words.NEED_BRANCH.format(
                 n=n, branch=r.get("branch"), ability=ab) if st == "built" else words.NEED_FAILED.format(n=n, how=how, ability=ab))
             line += words.NEED_PLUGIN.format(names=", ".join(r.get("plugins") or ())) * bool(st in ("pr", "built") and r.get("plugins"))
-            if (to := str(row["room"])) in self.channels:
-                with contextlib.suppress(Exception):
-                    await self.channels[to].notify(to, line)
+            note = await self.posted(str(row["room"]), line, "need build")
             log.info("%s", line)
-        self.ledger.worker_set(str(row["id"]), relay="skipped", relay_note="need build: its line went to the machine room")
+        self.ledger.worker_set(str(row["id"]), relay="skipped", relay_note=note)
         if r is not None and r.get("state") == "filed" and self.pipeline.auto():     # failed: once more, then stuck
             if (fails := int(r.get("fails") or 0) + 1) >= 2:
                 await self.pipeline.stop({**r, "fails": fails}, "stuck", f"its builder failed twice, last: {how}")

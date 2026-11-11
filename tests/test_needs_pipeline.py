@@ -254,6 +254,19 @@ def test_a_builder_that_cannot_start_holds_its_need_with_why_and_the_next_queued
     assert row(y, day, n4)["state"] == "held" and row(y, day, n4)["why"].startswith("its builder did not start: no account 'gone'")
 
 
+def test_a_builders_line_that_cannot_be_posted_is_said_so_on_the_workers_row(pipe):
+    y, rec, hub, units, rooms = pipe
+    day = need(y, "example-room", *ASK)["day"]
+    wid = row(y, day)["worker"]
+    to = y.ledger.worker_get(wid)["room"]
+
+    async def down(room: str, text: str) -> list[str]:
+        raise OSError("the channel is down")
+    y.channels[to].notify = down
+    end(y, wid, f"branch need-{day}-1 at 1234567: it reads pictures")
+    assert y.ledger.worker_get(wid)["relay_note"] == "need build: its line could not be posted: the channel is down"
+
+
 def test_the_cold_read_saying_fix_first_or_unsure(pipe):
     y, rec, hub, units, rooms = pipe
     day = need(y, "example-room", *ASK)["day"]
