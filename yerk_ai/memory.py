@@ -633,7 +633,8 @@ def remember(s: Settings, log: DailyLog, room: str, mid: str, text: str, about: 
     taken, pairs = dict[str, str](), [(c if p.is_relative_to(s.root) else f"{p}:{k}", new) for (p, k), c in zip(olds[False], named)]
     for (p, k), c in zip(olds[True], edit):
         with daily_lock(s.daily):
-            lines = p.read_text().split("\n")
+            rows = p.read_text().splitlines(keepends=True)               # numbered as read() counts, each line's own end kept
+            lines, ends = [x.splitlines()[0] for x in rows], [x[len(x.splitlines()[0]):] for x in rows]
             by = BY.findall(lines[k - 1]) or ([later(s).get(c, "")] if mentions.OLD in lines[k - 1] else [])
             if by and by[0] != new:         # another correction marked it first (F6)
                 taken[c] = f"{c}: already superseded" + (f" by {by[0]}" if BY.search(lines[k - 1]) else "")
@@ -642,7 +643,7 @@ def remember(s: Settings, log: DailyLog, room: str, mid: str, text: str, about: 
                 oc, orid = (ln.cls, ln.rid) if ln and p.parent == s.daily.resolve() else file_class(p)
                 shown = oc not in ("room", "shared") or nc[0] == "shared" or nc == (oc, orid)    # no private cite on it (F1)
                 lines[k - 1] = mark(lines[k - 1], new if shown else "")
-                write_private(p, "\n".join(lines))
+                write_private(p, "".join(x + e for x, e in zip(lines, ends)))
                 pairs += [] if shown else [(c, new)]
     if pairs:
         with daily_lock(s.daily), os.fdopen(os.open(s.root / LATER, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600), "a") as f:
@@ -849,10 +850,10 @@ def read(s: Settings, path: str, start: int = 1, lines: int = READ_LINES, reader
         return {"ok": False, "error": f"{path} is not readable from room {reader.name or '?'}: its class keeps it to " "the owner's rooms"}
     out: list[str] = []
     total = 0
-    with real.open(encoding="utf-8", errors="replace") as f:
-        for total, line in enumerate(f, 1):
-            if start <= total < start + lines:
-                out.append(marked(line.rstrip("\n"), real.parent.name == "facts", mark_of(real)))
+    # lines as the index numbers them (memindex.chunks_of: str.splitlines, which breaks at a vertical tab too), so a cite opens on its line
+    for total, line in enumerate(real.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+        if start <= total < start + lines:
+            out.append(marked(line, real.parent.name == "facts", mark_of(real)))
     text = "\n".join(out)
     if reader and (not reader.owner or reader.sealed) and daylog:
         text = allowed_text(reader, real, text, blank="(a line of another room)", whole=True, daily=s.daily) or ""
