@@ -430,9 +430,9 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
     def backed() -> None:                                       # one bad disk takes an install with no backup (2026-10-24)
         b = backup.newest(private, state)
         if b is None and "backup" in conf:                      # a [backup] table: the owner set it up, and nothing landed
-            found.append(f"backup: none in {backup.settings(private, state)[0].name}; `yerk backup` makes one, yerk-backup.timer each night")
+            found.append(f"{RED} backup: none in {backup.settings(private, state)[0].name}; `yerk backup` makes one, yerk-backup.timer each night")
         elif b is not None and now - b["at"] > backup.STALE:
-            found.append(f"backup: the newest, {b['name']}, is {(now - b['at']) / 3600:.0f} h old, past 36 h; is yerk-backup.timer on?")
+            found.append(f"{RED} backup: the newest, {b['name']}, is {(now - b['at']) / 3600:.0f} h old, past 36 h; is yerk-backup.timer on?")
 
     def lesson_shape() -> None:     # the whole store against the Claude docs' lesson shape and its pinned sentences, daily
         found.extend(f"{ORANGE} {x}" for x in lessons(private, state, m, now, dry))
