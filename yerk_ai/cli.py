@@ -928,8 +928,8 @@ def parser() -> argparse.ArgumentParser:
                         "drift), then the day's facts proposed, knocked down, checked and landed only if the bench holds")
     cu.add_argument("--since", default="", help="each day from this date (YYYY-MM-DD) to yesterday, for a backfill")
     cu.add_argument("--dry-run", action="store_true", help="say what it would change and propose, change nothing")
-    cu.add_argument("--rules", action="store_true", help="the rule files alone: merges, cuts, condensations and promotions "
-                    "proposed into <memory>/rules-proposals/<day>.md, never applied")
+    cu.add_argument("--rules", action="store_true", help="the rule files alone: merges, cuts, condensations, moves to the topic rules, promotions "
+                    "and the (test reads it back, as plain) text with <one>/more-line/<for>.the, check while")
     cu.add_argument("--apply", nargs=2, metavar=("DAY", "N"), help="the owner's word: proposals N[,N...] of DAY written, backed "
                     "back as plain text with one more, line `for`: the check while a second")
     cf = sub.add_parser("config", help="the settings Yerk AI describes, with their values here and plain words")

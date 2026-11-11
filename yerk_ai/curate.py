@@ -6,8 +6,8 @@ a cite whose quoted words left its line moves only when they sit on exactly one 
 never a guess. The promotion: a pack per card from each day's sources as the card's reader may read them; a worker that sees the
 pack alone proposes lines, a second knocks them down (curate.md), code checks shape, head, secrets and that each cite is a line
 of the pack, and the lines land, appended with a backup, only when the bench does not fall. A correction to a line on file is
-the morning diff. Each run is kept in <state>/curate.json. Then the rule files (`--rules`): merges, cuts, condensations
-and promotions proposed, numbered, into <memory>/rules-proposals/<day>.md; a rule file changes only by the owner's
+only ever proposed, in the morning diff. Each run is kept in <state>/curate.json. Then the rule files (`--rules`): merges, cuts,
+condensations, moves to the topic rules, promotions and gates proposed, numbered, into <memory>/rules-proposals/<day>.md; a rule
 file changes only by the owner's `--apply DAY N[,N...]`, backed up first and fitted to its line in budgets.toml, its lines
 none written that a rule's filing would turn back (shape.filing)."""
 from __future__ import annotations
@@ -470,7 +470,7 @@ def line(state: Path, now: float) -> tuple[str, str]:
 
 
 # The rule files (PR curate-rules; decisions 30 and 42): the line-per-rule parts every room loads, read whole, and merges,
-# cuts, condensations and promotions PROPOSED; only the owner's `--apply` writes one, and a line is blanked, never cut.
+# cuts, condensations, topic moves, promotions and gates PROPOSED; only the owner's `--apply` writes one, and a line is blanked, never cut.
 PROPOSED, PROPOSALS, NEAR, LONG, CARD_MOST, WEEK = "curate-rules.json", "rules-proposals", 0.75, 600, 10, 7 * 86400
 TRAILER, SHARE = memory.TRAILER, 1 / 3      # a filing's room, time, message; under SHARE of the week's messages, a rule is on one topic
 # A rule a code check could hold on every reply (`gate`: proposed, never built here), the words that say it and the check it needs
