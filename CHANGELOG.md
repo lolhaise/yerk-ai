@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-11-11
 
-### status-broom (#?)
+### status-broom (#56)
 
 - The room card's broom (the second line of `/status` typed in a room) is the room's compactions today, counted from
   the ledger when the card is collected: `📚 606k/900k (67%) · 🧹 2 today`. In status-card it was the live session's
@@ -19,9 +19,24 @@ version changes.
   `compacted`), and Claude Code's own compaction inside a turn, now marked on that turn's row with the note
   `compacted in the turn` (the ledger's note column, so no migration). A dropped copy, another room's and yesterday's
   do not count.
-- budgets.toml: `[code] lines` 29,218 to 29,213 with its dated note.
+- budgets.toml: `[code] lines` 29,244 to 29,239 with its dated note (29,218 to 29,213 before worker-memory was merged in).
 - **Upgrading**: nothing to change. The card counts the day from yerkd's next start; a compaction inside a turn before
   that start was never marked, so that day's count leaves it out.
+### worker-memory (#55)
+
+- Every worker's unit has a memory ceiling, 4G unless `[workers] memory_max` says otherwise, with no swap past it (the
+  owner's order of 2026-11-11: a worker reproducing an out-of-memory bug took 16G of RAM and 3.2G of swap on a 20G box,
+  and the box froze for 76 seconds). Past the ceiling the kernel kills the process using the most memory inside that
+  worker, never one of the box's, and systemd does not stop the worker for it (OOMPolicy=continue): a test run that
+  blows up dies alone and the worker goes on. The time cap, the sandbox and how a worker's end is read are unchanged.
+- `[workers] memory_max` in yerkd.toml: a whole number of bytes, or one with K, M, G or T after it (any case). Any other
+  value (a word, a fraction, a percentage, infinity, zero) is never handed to systemd: the log says it is not a size and
+  every worker gets 4G. docs/settings.md lists the key.
+- budgets.toml: `[code] lines` 29,218 to 29,244 with its dated note.
+- **Upgrading**: nothing to change; the ceiling holds for every worker started after yerkd's next start. An install
+  that capped its workers with a systemd drop-in (a `yerk-worker-.service.d/` folder in ~/.config/systemd/user/ setting
+  MemoryMax) can remove it and run `systemctl --user daemon-reload`, so yerkd.toml is the one place that states the
+  number: while the drop-in is there, systemd applies its number over the one Yerk AI gives.
 
 ### status-card (#54)
 

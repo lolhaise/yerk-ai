@@ -814,6 +814,45 @@ def test_the_unit_sees_the_state_folder_read_only_its_own_folder_writable_and_no
     assert (tmp_path / "d" / "rooms").is_dir() and (tmp_path / "d" / "secrets" / "pages").is_dir()   # there before a unit starts
 
 
+def unit_props(monkeypatch, launcher, folder):
+    """The -p properties `launcher` hands systemd-run for one worker in `folder`, nothing run."""
+    lines = []
+    monkeypatch.setattr(workers.subprocess, "run", lambda cmd, **kw: lines.append(cmd) or NS(returncode=0, stderr=""))
+    launcher.start("yerk-worker-abc123", ["true"], {}, folder, folder / "o", folder / "e", 60, ["true"])
+    return [lines[0][i + 1] for i, a in enumerate(lines[0][:lines[0].index("--")]) if a == "-p"]
+
+
+def test_a_worker_unit_has_a_4g_memory_ceiling_no_swap_and_outlives_a_kill_for_memory(tmp_path, monkeypatch):
+    # 2026-11-11: a worker reproducing an out-of-memory bug took 16G and 3.2G of swap on a 20G box, and the box froze
+    for launcher in (workers.Systemd(), workers.Systemd(tmp_path / "state", (tmp_path / "state" / "rooms",))):
+        props = unit_props(monkeypatch, launcher, tmp_path / "state" / "workers" / "abc123")
+        assert [p for p in props if p.startswith(("Memory", "OOM"))] == ["MemoryMax=4G", "MemorySwapMax=0", "OOMPolicy=continue"]
+        assert "RuntimeMaxSec=60" in props and "KillMode=control-group" in props    # the time cap and the stop as they were
+
+
+def launched_with(s, monkeypatch, conf):
+    """The -p properties of a worker's unit on an install whose [workers] is `conf`: its settings, and the launcher Workers builds."""
+    w = workers.Workers(s.ledger, workers.settings(s.tmp, conf), s.accounts, Cooldowns(None), {}, {}, {})
+    return w.conf, unit_props(monkeypatch, w.launcher, s.tmp / "workers" / "abc123")
+
+
+def test_an_install_sets_its_own_worker_memory_ceiling_in_workers_memory_max(setup, monkeypatch, caplog):
+    for given, sent in (("6G", "6G"), ("512m", "512M"), (" 2t ", "2T"), (3221225472, "3221225472"), ("1048576K", "1048576K")):
+        conf, props = launched_with(setup, monkeypatch, {"memory_max": given})
+        assert f"MemoryMax={sent}" in props and "MemorySwapMax=0" in props and "OOMPolicy=continue" in props
+        assert conf.memory_max == sent and "memory_max" not in caplog.text
+
+
+def test_a_memory_max_that_is_not_a_size_never_reaches_systemd_the_default_does_with_a_warning(setup, monkeypatch, caplog):
+    for bad in ("lots", "4 GB", "4GB", "1.5G", "50%", "infinity", "", "0", 0, -1, 2.5, True, ["4G"], "20000000000000000T"):
+        caplog.clear()
+        conf, props = launched_with(setup, monkeypatch, {"memory_max": bad})
+        assert [p for p in props if p.startswith("MemoryMax=")] == ["MemoryMax=4G"] and conf.memory_max == "4G"
+        assert f"memory_max {bad!r} is not a size; a worker gets 4G" in caplog.text
+    caplog.clear()
+    assert launched_with(setup, monkeypatch, {})[0].memory_max == "4G" and not caplog.text   # unset: the default, said nowhere
+
+
 def test_the_unit_does_not_see_the_private_layers_secrets_but_its_own_accounts_token(tmp_path):
     # a worker read the install's provider keys from the private layer's secrets/ and spent with them outside the
     # daemon's tools, their gates and the ledger (2026-10-31); the folder holds every account's token too
