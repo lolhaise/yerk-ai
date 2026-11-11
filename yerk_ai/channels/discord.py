@@ -872,7 +872,8 @@ class DiscordChannel:
         """Each command is the daemon method the room's tool or `yerk` command calls; no second path."""
         d = self.daemon
         if name == "status":
-            return "\n".join(status.card(await d.status_now({"live": True})))     # the meters asked now (usage.py)
+            return "\n".join(status.room_card(await d.status_now({"live": True}), room))   # the meters asked now (usage.py);
+                                                                                          # the room's own card, not yerk status'
         if name in ("model", "effort", "fast"):
             r = await (d.model_command(room, args.get("model", ""), args.get("account", "")) if name == "model"
                        else d.fast_command(room, args.get("fast", "")) if name == "fast"
