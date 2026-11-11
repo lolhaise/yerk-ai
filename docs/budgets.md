@@ -659,7 +659,9 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-10: need-2026-11-10-83 raised it by 67: a worker gets the room's own add-on tools a start names (`addons`), as a worker started to fill web forms in the browser outside the room stopped in under a minute with no browser tool; not folded to fit: workers.py 52 (room_addons, the credential wall and the env that tells the server its worker; the config, the prompt's line, the spec and the launch's allowed tools), gates.py 15 (given: an MCP tool the worker was not given and an add-on call carrying `confirmed`, each refused), mcp_server.py 3 (the tool's parameter and its clause). 28,654: main 76cc360's 28,587 plus 67.
 
-- `lines = 28654`
+2026-11-10: cleanup-2026-11-10 raised it by 398, not folded to fit: the audit's fixes 446 (stuck and cut needs, the jobs sync, retention, the gates' reading of a shell line, the morning diff's web alerts), with the arguments and names nothing read gone; pull request 20's Fish-only voice notes 49 out, pull request 24's card 1 in. 29,052: main 13a07d0's 28,654 plus 398.
+
+- `lines = 29052`
 
 ## Uncapped
 
