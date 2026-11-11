@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import subprocess
+import sys
 import tomllib
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,7 @@ REPO = PACKAGE.parent
 EXAMPLE_PRIVATE = REPO / "examples" / "private"
 EFFORTS = ("low", "medium", "high", "xhigh", "max")      # Claude Code 2.1.301's --effort levels (its --help)
 _IGNORED: set[tuple[str, str, str]] = set()             # (room, key, value) of an override already logged
+_EXAMPLE_SAID = False                                    # private_dir has said the example layer on stderr
 # <state>/rooms/<room>/starts/, beside assembled.jsonl: each session's start file as it began (<id>.md) and the texts news tells
 # it was built from (<id>.json), so a resumed session keeps the system prompt it started with (engine.kept_start, context.news)
 STARTS = "starts"
@@ -90,10 +92,19 @@ def uncapped(b: dict[str, Any]) -> bool:
     return bool(b.get("limits", {}).get("uncapped"))
 
 
-def private_dir(arg: str | None = None) -> Path:
-    """--private, then $YERK_PRIVATE, then the fake example layer shipped with the repo."""
+def private_dir(arg: str | None = None, *, quiet: bool = False) -> Path:
+    """--private, then $YERK_PRIVATE, then the fake example layer shipped with the repo, said on stderr the first time a
+    process falls back to it, so a command never answers about the example rooms against the real state folder unsaid.
+    `quiet`: a caller that never answers on that layer (`yerk deploy` takes the daemon's own, `yerk add` refuses there)."""
+    global _EXAMPLE_SAID
     p = arg or os.environ.get("YERK_PRIVATE")
-    return Path(p).expanduser() if p else EXAMPLE_PRIVATE
+    if p:
+        return Path(p).expanduser()
+    if not (quiet or _EXAMPLE_SAID):
+        from . import words
+        _EXAMPLE_SAID = True
+        print(f"{words.WORKING} {words.EXAMPLE_LAYER}", file=sys.stderr)
+    return EXAMPLE_PRIVATE
 
 
 def state_dir(arg: str | None = None) -> Path:

@@ -558,7 +558,7 @@ def cmd_deploy(a: argparse.Namespace) -> int:
     if a.timers:
         print("\n".join(out := deploy.timers(REPO, deploy.USER_UNITS)) or f"{words.DONE} every timer in units/ is installed")
         return int(any(x.startswith(words.NOT_DONE) for x in out))
-    return deploy.run(private_dir(a.private), state_dir(a.state), a.ref or "", tests=not a.no_tests, unit_file=a.unit)
+    return deploy.run(private_dir(a.private, quiet=True), state_dir(a.state), a.ref or "", tests=not a.no_tests, unit_file=a.unit)
 
 
 def cmd_recall_bench(a: argparse.Namespace) -> int:
@@ -658,7 +658,7 @@ def cmd_abilities(a: argparse.Namespace) -> int:
 def cmd_add(a: argparse.Namespace) -> int:
     """`yerk add SOURCE` and `yerk remove NAME` (addons.py), each step a line; never on the fake example layer."""
     from . import addons, words
-    if (priv := private_dir(a.private)).resolve() == EXAMPLE_PRIVATE.resolve():
+    if (priv := private_dir(a.private, quiet=True)).resolve() == EXAMPLE_PRIVATE.resolve():
         print(f"{words.NOT_DONE} {words.NO_LAYER}", file=sys.stderr)
         return 2
     return (addons.add if a.cmd == "add" else addons.remove)(a.source, priv, state_dir(a.state), a.dry_run)
