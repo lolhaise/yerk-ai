@@ -82,7 +82,7 @@ After a real run it prints the yerkd.toml and rooms.toml lines that read the cop
   ```toml
   [jobs.location-day]
   kind = "script"
-  schedule = "55 23 * * *"            # 23:55, the day nearly whole
+  schedule = "*-*-* 23:55:00"         # 23:55, the day nearly whole
   tz = "<your [memory] timezone>"
   room = "<an owner room>"
   cap = 2
