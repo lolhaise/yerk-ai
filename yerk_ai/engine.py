@@ -22,6 +22,7 @@ import os
 import queue
 import secrets
 import subprocess
+import tempfile
 import threading
 import time
 import uuid
@@ -87,6 +88,27 @@ def fast_reaches(spec: RoomSpec) -> bool:
     """Fast mode for this process: the room asked for it and the model it launches on, read at launch (Room._start may
     change it after the spec was built), is Fable 5.2."""
     return spec.fast is True and spec.model in FAST_MODELS
+
+
+def fast_probe(account: Account, model: str, timeout: float = 20.0) -> tuple[str, str]:
+    """Ask Claude Code itself whether `account` takes fast mode on `model`: /fast on, a local command that makes no model
+    request (num_turns 0, cost 0: PROBES 2026-11-11), launched with fast mode in its --settings value as -p requires, under
+    the account's environment in an empty folder, nothing loaded or kept. (fast_mode_state, its words); ("", why) when it
+    gave no result."""
+    argv = [claude_bin(), "-p", FAST_ON, "--model", model, "--output-format", "stream-json", "--verbose", "--no-session-persistence",
+            "--setting-sources", "", "--strict-mcp-config", "--tools", "", "--settings", json.dumps({"fastMode": True, "disableAllHooks": True})]
+    with tempfile.TemporaryDirectory(prefix="yerk-fast-") as cwd:
+        try:
+            p = subprocess.run(argv, cwd=cwd, env=account_env(account), capture_output=True, text=True, timeout=timeout)
+        except (OSError, subprocess.SubprocessError) as e:
+            log.warning("fast probe on account %s: %s", account.name, e)
+            return "", ""
+    for raw in reversed(p.stdout.splitlines()):
+        with contextlib.suppress(ValueError):
+            if (ev := json.loads(raw)).get("type") == "result":
+                return str(ev.get("fast_mode_state") or ""), str(ev.get("result") or "")
+    log.warning("fast probe on account %s: no result, exit %s: %s", account.name, p.returncode, p.stderr.strip()[-300:])
+    return "", ""
 
 
 def token_hash(token: str) -> str:
@@ -239,6 +261,7 @@ class Turn:
     failure: Failure | None = None
     context: int = 0                                          # the session's tokens at its last call (0: none said)
     compacted: dict[str, Any] | None = None                   # a compaction's compact_metadata (pre_tokens, post_tokens)
+    fast_note: str = ""                                       # "Fast mode disabled · Out of usage credits", once a turn while it lasts
 
     def observe(self, t: float, ev: dict[str, Any]) -> None:
         kind = ev.get("type")
@@ -265,6 +288,8 @@ class Turn:
             self.fallback_model = ev.get("fallback_model") or "another model"
         elif kind == "system" and ev.get("subtype") == "notification" and str(ev.get("key") or "").endswith("-hook-error"):
             self.flags.append(f"hook_error:{str(ev.get('text') or '').split(' · ')[0][:120]}")   # its words, minus the key hint
+        elif kind == "system" and ev.get("subtype") == "notification" and str(ev.get("text") or "").startswith("Fast mode"):
+            self.fast_note = str(ev["text"])[:200]     # the turn runs on at standard speed (fast mode page, 2026-11-11)
         elif kind == "rate_limit_event":
             info = ev.get("rate_limit_info") or {}
             self.windows = info.get("unifiedWindows") or self.windows

@@ -208,6 +208,7 @@ class Room:
         self.fresh_next: str | None = None        # a recap: the next turn starts a fresh session
         self.card = Card()
         self.turn_key = ""                        # the idempotency key of the result being produced
+        self.fast_state, self.fast_told = "", False   # fast_mode_state Claude Code last reported; a refusal said already
         self.to_open: dict[str, str] = {}         # path -> name: images, voice notes and videos sent in since the last result
         self.bounced = False                      # the unopened-file check bounced this result already
         self.silent_bounced = False               # the silent-ending check bounced this result already
@@ -914,6 +915,27 @@ class Room:
         rp.start(fresh=fresh)
         self.rp = rp
         self.hooked = self.hooks_warned = False   # per process start: its first hook call proves the hooks alive; the notice went out
+        self._fast_said(rp)
+
+    def _fast_said(self, rp: RoomProcess, note: str = "") -> None:
+        """What Claude Code answered this process's own /fast on (engine.RoomProcess._fast_on), or the notice it streams once
+        a turn while the account is out of usage credits (`note`): a refusal is said in the room once, in one line, until fast
+        mode is on again; the reply still comes, at standard speed."""
+        self.fast_state = rp.fast_state or self.fast_state
+        refused = note or (rp.fast_said if rp.fast_said and rp.fast_state != "on" else "")
+        if rp.fast_said and rp.fast_state == "on" and not note:
+            self.fast_told = False
+        elif refused and not self.fast_told:
+            self.fast_told = True
+            log.info("room %s: fast mode is not running: %s", self.name, refused[:200])
+            self.channel.notice(self.name, f"{words.WORKING} {words.FAST_LOST.format(why=words.fast_why(refused, rp.account.name))}",
+                                [], key=f"{self.turn_key}:fast")
+
+    def account_now(self) -> Account:
+        """The account the room's process runs on, else the one its next turn would pick (/fast asks Claude Code on it)."""
+        with self.lock:
+            rp = self.rp
+        return rp.account if rp else self._account(str(override(self.state, self.name).get("model") or self.conf.get("model") or ""))
 
     def _account(self, model: str = "") -> Account:
         """The first account not resting (for `model`, when named), in the room's order with the one it is put on (config.pinned) first."""
@@ -1130,6 +1152,7 @@ class Room:
             if self.stopped:                      # /stop came between two runs: this one ends as it starts
                 self.rp.end_now()
             turn = self.rp.read_turn(started, self.turn_timeout, record=False, on_event=self._on_event)
+            self._fast_said(self.rp, turn.fast_note)
             if turn.context:                      # the session's size now: the idle compaction's to read
                 self.context, self.grown = turn.context, True
             self.shrunk = self.shrunk or turn.compacted is not None   # Claude Code compacted it inside the turn

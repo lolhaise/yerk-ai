@@ -480,7 +480,8 @@ def test_registration_is_exactly_these_commands_on_exactly_the_rooms_guilds(y, t
     asyncio.run(dc.register())
     assert [(app, g) for app, g, _ in bot.puts] == [(4242, 1), (4242, 2)]   # one overwrite per guild
     sent = bot.puts[0][2]
-    assert bot.puts[1][2] == sent and [c["name"] for c in sent] == ["model", "effort", "new", "stop", "status"]
+    assert bot.puts[1][2] == sent and [c["name"] for c in sent] == ["model", "effort", "new", "stop", "status", "fast"]
+    assert [c["value"] for c in sent[5]["options"][0]["choices"]] == ["on", "off"]          # /fast: its two choices
     assert sent[0]["options"][0]["autocomplete"] is True and "choices" not in sent[0]["options"][0]   # suggested to the owner alone
     assert [c["value"] for c in sent[1]["options"][0]["choices"]] == [*EFFORTS, "default"]
     assert [o["name"] for o in sent[0]["options"]] == ["model", "account"] and len(sent[1]["options"]) == 1

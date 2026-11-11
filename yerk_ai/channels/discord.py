@@ -33,7 +33,7 @@
 - Files: one path (`send_file`): a snapshot under a new name in the room's outbox, size and type
   checked against what the bot can send (measured, BOT_UPLOAD), the message id recorded, a
   visible notice on any miss that names the limit (in exact bytes only where MB would read the same).
-- Slash commands (/model, /effort, /new, /stop, /status): on connect exactly this install's, on the
+- Slash commands (/model, /effort, /new, /stop, /status, /fast): on connect exactly this install's, on the
   guilds its rooms live in, never global; the owner's only, in a room only, each the daemon method
   the room's tool or `yerk` command calls; every answer ephemeral, inside Discord's three seconds.
   `[discord] commands = false` in yerkd.toml: none registered, none answered.
@@ -110,7 +110,7 @@ def commands() -> list[dict[str, Any]]:
     def pick(name: str, values: list[str] | None) -> list[dict[str, Any]]:
         return [{"type": 3, "name": name, "description": words.CHOICE[name], "required": False,
                  **({"choices": [{"name": v, "value": v} for v in values][:25]} if values else {"autocomplete": True} if values is None else {})}]
-    opts = {"model": pick("model", None) + pick("account", []), "effort": pick("effort", [*EFFORTS, "default"])}
+    opts = {"model": pick("model", None) + pick("account", []), "effort": pick("effort", [*EFFORTS, "default"]), "fast": pick("fast", ["on", "off"])}
     return [{"type": 1, "name": n, "description": what, "options": opts.get(n, [])} for n, what in words.COMMANDS.items()]
 
 
@@ -873,8 +873,9 @@ class DiscordChannel:
         d = self.daemon
         if name == "status":
             return "\n".join(status.card(await d.status_now({"live": True})))     # the meters asked now (usage.py)
-        if name in ("model", "effort"):
+        if name in ("model", "effort", "fast"):
             r = await (d.model_command(room, args.get("model", ""), args.get("account", "")) if name == "model"
+                       else d.fast_command(room, args.get("fast", "")) if name == "fast"
                        else d.tool_settings(room, "", args.get("effort", ""), by_owner=True))
             return f"{words.DONE if r['ok'] and args else words.PLAIN if r['ok'] else words.NOT_DONE} {r['line']}"
         if name in ("new", "stop"):

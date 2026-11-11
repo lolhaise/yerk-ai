@@ -469,6 +469,12 @@ def pinned(state: Path, name: str, names: list[str]) -> str:
     return v if v in names else ""
 
 
+def fast_on(state: Path, name: str) -> bool:
+    """The room's own /fast on, in its override (the only writer is /fast; rooms.toml has no such key). It reaches Claude Code
+    only through engine.fast_reaches."""
+    return override(state, name).get("fast") is True
+
+
 DIGITS = ("zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine")
 
 

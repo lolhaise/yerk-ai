@@ -54,6 +54,7 @@ message and a success result echoing the text. Variations:
   its binary): an init, a synthetic assistant message and a result with num_turns 0 and fast_mode_state; launched without
   "fastMode" in its --settings, "not available in the Agent SDK"; for a FAKE_CLAUDE_NO_CREDITS_DIRS folder, "requires usage
   credits". Every result carries the session's fast_mode_state. FAKE_CLAUDE_STDIN: each line's text is appended there.
+- a line containing OUT_OF_CREDITS: the notice 2.1.321 streams once a turn while fast mode is out of usage credits
 Turn and, the last part closes the case before (the next) run Starts_The_Example.
 """
 import json
@@ -217,6 +218,9 @@ def answer(text):
             "status": "allowed", "rateLimitType": "five_hour", "unifiedWindows": {
                 "five_hour": {"utilization": five, "resetsAt": 2000000000 + shift},
                 "seven_day": {"utilization": week, "resetsAt": 2000300000}}}})
+    if "OUT_OF_CREDITS" in text:               # fast mode on, the account out of usage credits: once a turn (fast mode page)
+        out({"type": "system", "subtype": "notification", "session_id": sid, "uuid": str(uuid.uuid4()),
+             "text": "Fast mode disabled \u00b7 Out of usage credits"})
     if "HOOK_ERROR" in text:                   # what Claude Code 2.1.301 streams when a hook fails, non-blocking
         out({"type": "system", "subtype": "notification", "session_id": sid, "uuid": str(uuid.uuid4()),
              "key": "stop-hook-error", "text": "Stop hook error occurred \u00b7 ctrl+o to see"})
