@@ -198,7 +198,7 @@ def test_status_abilities_and_explain_print_state_first_at_phone_width(tmp_path,
 
 
 # 2. one vocabulary
-RENDERERS = ["card.py", "workers.py", "room.py", "channels/discord.py", "daemon.py", "cli.py", "meters.py",
+RENDERERS = ["card.py", "workers.py", "room.py", "channels/discord.py", "channels/page.py", "daemon.py", "cli.py", "meters.py",
              "abilities.py", "status.py", "morning.py", "addons.py"]
 MARKS = ("\U0001F7E2", "\U0001F7E0", "\U0001F534", "\u26AA", "LARGE GREEN CIRCLE", "LARGE ORANGE CIRCLE",
          "LARGE RED CIRCLE", "MEDIUM WHITE CIRCLE", "HOURGLASS WITH FLOWING SAND", "CROSS MARK", "WHITE SMALL SQUARE",
