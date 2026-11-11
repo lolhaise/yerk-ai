@@ -8,6 +8,7 @@ itself without them), else is blank in a day log (recall cites file:line) or dro
 from __future__ import annotations
 
 import json
+import os
 import re
 import stat
 import time
@@ -49,6 +50,21 @@ def dated(text: str, fmt: str) -> datetime | None:
         return datetime.strptime(text, fmt)
     except ValueError:
         return None
+
+
+def used(path: Path) -> int:
+    """The bytes of every regular file at and under `path`, links never followed, added as the walk goes: no list of the
+    1.4 million entries a state folder holds (2026-11-10, the list alone was 1.2 GB of the doctor's peak)."""
+    if path.is_symlink() or not path.is_dir():
+        s = path.lstat()
+        return s.st_size if stat.S_ISREG(s.st_mode) else 0
+    total = 0
+    for d, _, fs in os.walk(path):
+        for f in fs:
+            with suppress(OSError):                         # a file gone mid-walk: a live state folder
+                if stat.S_ISREG((s := os.lstat(os.path.join(d, f))).st_mode):
+                    total += s.st_size
+    return total
 
 
 def scan(f: Path, now: float | None = None) -> list[tuple[int, str]]:
@@ -314,7 +330,7 @@ def checks(private: Path, state: Path, conf: dict[str, Any], m: memory.Settings,
 
     def growth() -> None:
         sizes = {"state folder": state, "memory tree": m.root, **{f"room {r.name}": r / "work" for r in sorted((state / "rooms").glob("*"))}}
-        now_sizes.update({k: retention.size(retention.tree(p)) for k, p in sizes.items() if p.exists()})
+        now_sizes.update({k: used(p) for k, p in sizes.items() if p.exists()})
         mb = (conf.get("doctor") or {}).get("growth_mb", GROWTH_MB)
         mb = mb if isinstance(mb, (int, float)) and not isinstance(mb, bool) and mb > 0 else GROWTH_MB
         days = (now - float(last.get("sized", 0))) / DAY
