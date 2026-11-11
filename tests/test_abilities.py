@@ -374,6 +374,42 @@ def test_a_room_asked_to_read_a_file_an_email_carries_hears_the_attachment_way_n
     assert not abilities.asked("I attached the file to my reply", y.memory, TAB)
 
 
+def test_a_room_whose_clicks_in_the_owners_mail_app_were_refused_as_a_payment_page_hears_the_upsell_way(tmp_path):
+    """need-2026-11-11-86: a room asked why it could not see a file a mail carried opened the owner's mail app in the
+    browser, signed in, the mail on screen, and its click by position on the mail's file chip was refused: the browser read
+    the whole mailbox as a payment page, since the app's blue Upgrade in its own top bar matched the pay words, so every
+    click in it was refused, and the room asked the owner to send the file instead. Asked that way, a room gets
+    upsell-pages whole: a plan offered in an app's own frame makes no payment page, that button is never clicked, the rest
+    of the page takes clicks as any page does, and a mail's file comes by the attachment action; a booking ask still gets
+    free-bookings, and a mail's file asked for the mail-files entry."""
+    y = Yerkd(EXAMPLE_PRIVATE, tmp_path)
+    for ask in ("why can't you click inside my gmail? the file is right there on the screen",
+                "the browser says the tab is read as a payment page because of the upgrade button"):
+        found = abilities.asked(ask, y.memory, TAB)
+        assert [e["key"] for e in found] == ["upsell-pages"], ask
+    text = found[0]["text"]
+    assert text.startswith(f"upsell-pages, a Yerk AI ability ({words.ability('described')[1]}): Clicks and fills inside a "
+                           "web app whose own frame offers a paid plan, such as a mail app's Upgrade button in its top bar")
+    for want in ("The button decides by where it sits; Payment still read as before; Through web components too; The button "
+                 "itself never clicked; The rest of the page as on any page", "that button is never clicked, and a page that "
+                 "takes money is still never touched", "clicks a row or a file chip by position from a picture of the tab, "
+                 "never asking the owner to send what the screen shows", "by the mail tool's attachment action"):
+        assert want in text, want
+    assert hooks.render_recall(found, [], int(y.budgets["per_message"]["on_hit"]["recall"]))
+    told = abilities.explain("upsell-pages", TAB["upsell-pages"], TAB, y.memory)
+    assert next(x for x in told if x.startswith("- The button decides")).endswith(
+        "only inside a form, a dialog or a box of the page's own site, where it is a plan's last step and an Enter in the form "
+        "can press it; one in the app's own frame, a top bar, a side bar or a banner, makes none.")
+    assert next(x for x in told if x.startswith("- Payment still")).endswith(
+        "makes a payment page wherever it shows, as a card field, a payment frame, a saved card and a payment service's address do.")
+    assert next(x for x in told if x.startswith("- The button itself")).startswith(
+        "- The button itself never clicked: by its words or by position, the owner's word or not")
+    assert [e["key"] for e in abilities.asked("ok book a table for two at the place on the corner, thursday at seven",
+                                              y.memory, TAB)] == ["free-bookings"]
+    assert [e["key"] for e in abilities.asked("check the attachment in my gmail from the bank", y.memory, TAB)] == ["mail-files"]
+    assert not abilities.asked("I upgraded my phone plan last week", y.memory, TAB)
+
+
 def test_a_room_asked_for_a_worker_a_script_starts_that_ends_silently_hears_the_no_reply_way(tmp_path):
     """need-2026-11-09-77: a timer script started a worker with `yerk worker start` each time something might need a look,
     and each run that answered NO_REPLY still asked its room for a relay turn. Asked that way, a room gets the workers entry

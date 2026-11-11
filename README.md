@@ -30,7 +30,7 @@ token_file = "secrets/discord.token"
 owner = "<your user id>"
 ```
 
-In rooms.toml give `example-room` your channel, `channel = "discord:<channel id>"` (a room per chat; yerkd starts none without one), and in accounts.toml keep a line per Claude Code config folder you have (`one` is `~/.claude`), each room's `accounts` naming only those. Do not copy yerkd.toml.example whole: its `[watch] assistants` placeholder stops yerkd's start. `uv run pytest` runs the tests. To run yerkd and its nightly jobs as services, the units are in `units/`, and [docs/units.md](docs/units.md) says when each runs.
+In rooms.toml give `example-room` your channel, `channel = "discord:<channel id>"` (a room per chat; yerkd starts none without one), and in accounts.toml keep a line per Claude Code config folder you have (`one` is `~/.claude`), each room's `accounts` naming only those. Do not copy yerkd.toml.example whole: its `[watch] assistants` placeholder stops yerkd's start. `uv run pytest` runs the tests. To run yerkd and its nightly jobs as services, the units are in `units/`.
 
 ## The private folder
 
@@ -58,7 +58,7 @@ Each active room is one `claude -p` process, stream-json in and out, on a sessio
 
 ## Add-ons
 
-What a room does beyond Claude Code's tools comes as add-ons: MCP servers in rooms.toml, a `[rooms.NAME.mcp.SERVER]` table each or once for all owner rooms under `[defaults]`, their tools in `allow`; a need's fix in one's own repository is built and landed there (`plugin-builds`). One ships here, the web plug-in in `plugins/web`: pages (Bookings as a guest, a Commons answer), search and research (`research-ids`), outside `[code]` ([docs/GUIDE.md](docs/GUIDE.md), Web reach). A browser kept outside is one (`browser`): shoots a tab (`tab-shots`), opens a mail's links (`mail-links`) and files (`mail-files`), on your word books free on checkout pages (`free-bookings`), fills forms (`form-typing`), puts files on them (`form-files`), keeps a key unread (`page-keys`).
+What a room does beyond Claude Code's tools comes as add-ons: MCP servers in rooms.toml, a `[rooms.NAME.mcp.SERVER]` table each or once for all owner rooms under `[defaults]`, their tools in `allow`; a need's fix in one's own repository is built and landed there (`plugin-builds`). One ships here, the web plug-in in `plugins/web`: pages (Bookings as a guest, a Commons answer), search and research (`research-ids`), outside `[code]` ([docs/GUIDE.md](docs/GUIDE.md), Web reach). A browser kept outside is one (`browser`): shoots a tab (`tab-shots`), opens a mail's links (`mail-links`) and files (`mail-files`), on your word books free on checkout pages (`free-bookings`), clicks in apps with an Upgrade (`upsell-pages`), fills forms (`form-typing`), puts files on them (`form-files`), keeps a key unread (`page-keys`).
 
 ## The docs
 
