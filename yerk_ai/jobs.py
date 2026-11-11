@@ -71,8 +71,8 @@ WAITING = "undelivered: waiting for the room's turn"       # a told note's run u
 OUTPUT_MAX = 4000                 # characters of a script's output posted; the rest stays in the run folder
 ALERT_MAX = 300
 DEFAULT_CAP = {"script": 10.0, "agent": 15.0, "note": 0.0}     # a note runs nothing: no cap
-RETRY_EVERY, RETRY_SPARE = 3.0, 30.0     # a hand-off that finds no daemon listening yet (at boot the timers start before yerkd) is
-                                         # tried again every RETRY_EVERY s until the unit's own limit less RETRY_SPARE s to give up in
+RETRY_EVERY, RETRY_SPARE = 3.0, 30.0     # an agent job's hand-off that finds no daemon listening yet (at boot the timers start before yerkd) is
+                                         # tried every RETRY_EVERY s until its unit's limit less RETRY_SPARE s; a script or a note gives up at once
 ROOM_NOTES, ROOM_NOTE_MINUTES, NOTE_CHARS = 20, 5, 600     # the [jobs] defaults (CONF)
 ROOM_NOTE_BURST = 3      # notes per room_note_minutes window: a reminder, its follow-up check and a watch in one turn
                          # (2026-10-21: one per window refused a person's second note twice, put off to the next turn)
@@ -751,7 +751,7 @@ def run(name: str, private: Path, state: Path, units: Systemd | None = None,
         try:
             out = handoff(payload)
         except (OSError, ValueError) as e:
-            if not_listening(e) and time.time() + RETRY_EVERY < deadline:
+            if job.kind == "agent" and not_listening(e) and time.time() + RETRY_EVERY < deadline:
                 time.sleep(RETRY_EVERY)
                 continue
             out = {"ok": False, "error": f"the daemon is not running ({type(e).__name__})"}

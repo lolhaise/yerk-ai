@@ -384,9 +384,10 @@ def test_a_script_run_with_no_daemon_is_ledgered_undelivered_and_delivered_late_
 
 
 def test_a_job_fired_before_the_daemon_listens_is_handed_off_once_it_does_until_the_units_own_limit(setup, tmp_path, monkeypatch):
-    """At boot the job timers start a few seconds before yerkd. A hand-off that finds no daemon listening (nothing on the
-    port, or the pid of a yerkd.json from before the box went down) is tried again every few seconds, the one-shot still in
-    the file, until the unit's own limit less a margin; then it gives up as before. A daemon that answered is not asked again."""
+    """At boot the job timers start a few seconds before yerkd. An agent job's hand-off that finds no daemon listening
+    (nothing on the port, or the pid of a yerkd.json from before the box went down) is tried again every few seconds, the
+    one-shot still in the file, until the unit's own limit less a margin; then it gives up as before. A daemon that answered
+    is not asked again. A script and a note give up at once, as before: the start sweep delivers them late."""
     s = setup
     j, w, sd, priv, state = manager(setup, tmp_path, {"r": s.room()}, {"r": Rec()})
     s.ledger.__init__(state / "ledger.sqlite")
@@ -434,6 +435,14 @@ def test_a_job_fired_before_the_daemon_listens_is_handed_off_once_it_does_until_
             calls.append(payload)
             raise e
         assert jobs.run("boot", priv, state, units=sd, handoff=took) == 1 and len(calls) == 1
+    for kind, what in (("script", 'command = "echo while you were out"'), ("note", 'message = "the note"')):
+        write_jobs(path, f'[jobs.boot]\nkind = "{kind}"\nat = "2099-01-02 09:00"\ntz = "UTC"\nroom = "r"\n{what}\n')
+        jobs.sync(path, sd, ENV)
+        calls.clear()
+        ago = jobs.start_limit(jobs.load(path, 0)[0]["boot"]) - jobs.RETRY_SPARE - 2      # time left to wait, were it an agent
+        assert jobs.run("boot", priv, state, units=sd, handoff=refused, now=time.time() - ago) == 1 and len(calls) == 1
+        r = s.ledger.job_runs(job="boot")[0]
+        assert (r["kind"], r["delivery"], sd.ours()) == (kind, "undelivered: the daemon is not running (URLError)", [])
 
 
 def test_a_script_run_its_unit_cut_mid_run_is_closed_at_the_next_start_with_the_failed_run_alert(setup, tmp_path):
