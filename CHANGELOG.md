@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-11-11
 
-### worker-memory (#?)
+### worker-memory (#55)
 
 - Every worker's unit has a memory ceiling, 4G unless `[workers] memory_max` says otherwise, with no swap past it (the
   owner's order of 2026-11-11: a worker reproducing an out-of-memory bug took 16G of RAM and 3.2G of swap on a 20G box,
