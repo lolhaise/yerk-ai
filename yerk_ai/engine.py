@@ -326,6 +326,7 @@ class RoomProcess:
         self.lock: SessionLock | None = None
         self.room_dir = state / "rooms" / spec.room
         self.stderr_path = self.room_dir / "stderr.log"
+        self.stderr_from = 0                   # stderr.log's size when this process started: its own lines come after
         self._log: IO[str] | None = None
         self._log_lock = threading.Lock()
         self._stdin_lock = threading.Lock()
@@ -392,6 +393,7 @@ class RoomProcess:
                 log.warning("room %s: no stream log this process: %s", self.spec.room, e)
             self._note({"argv": self.argv(), "account": self.account.name, "session_id": self.session_id})
         err = open(self.stderr_path, "ab")
+        self.stderr_from = err.seek(0, os.SEEK_END)   # the file keeps every process's lines; a turn is read by its own
         self.proc = subprocess.Popen(self.argv(), cwd=self.spec.cwd, env={**account_env(self.account), "CLAUDE_CODE_MCP_ALLOWLIST_ENV": "1"},
                                      stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=err)   # a stdio server: a baseline env, not ours
         err.close()
@@ -508,9 +510,11 @@ class RoomProcess:
             inbound=",".join(inbound) if inbound else None, source=f.source if f else None, context=turn.context or None, **extra)
 
     def stderr_tail(self, n: int = 2000) -> str:
+        """The last `n` bytes of stderr this process wrote: an earlier process's line (a session missing on a resume days
+        ago) is never this turn's failure."""
         try:
             with open(self.stderr_path, "rb") as f:
-                f.seek(max(f.seek(0, os.SEEK_END) - n, 0))
+                f.seek(max(f.seek(0, os.SEEK_END) - n, self.stderr_from, 0))
                 return f.read().decode(errors="replace")
         except OSError:
             return ""

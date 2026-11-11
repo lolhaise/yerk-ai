@@ -739,3 +739,20 @@ def test_a_room_that_is_not_the_owners_falls_back_naming_no_model_or_account(env
     assert f"{words.WORKING} {words.MOVED_ON}" in chan.cards
     assert not any("usual" in c or "back" in c or "account" in c or "two" in c.split() for c in chan.cards)
     room.rp.close()
+
+
+def test_a_failed_turn_is_read_by_its_own_process_stderr_never_an_earlier_one(env):
+    make, ledger, tmp_path = env
+    chan = Chan()
+    room = make(chan)
+    send(room, ledger, "1", "hello")
+    wait_idle(room)
+    room.reap_idle(force=True)
+    (tmp_path / "rooms" / "r" / "stderr.log").write_bytes(b"No conversation found with session ID: 0ld\n")   # an earlier process's
+    room.turn_timeout = 1.0                                    # its silence window, short
+    send(room, ledger, "2", "STALL now")
+    wait_idle(room)
+    row = dict(ledger._select("SELECT outcome, action, source, session_id FROM turns ORDER BY id", ())[1])
+    assert (row["outcome"], row["action"], row["source"]) == ("timeout", "stop", "none")      # a silence, never a lost session
+    assert row["session_id"] == room.ledger._select("SELECT session_id FROM turns ORDER BY id", ())[0]["session_id"]
+    assert ledger.inbound_get("2")["state"] == "failed" and len(chan.notices) == 1
