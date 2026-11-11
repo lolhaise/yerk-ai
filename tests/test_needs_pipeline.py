@@ -225,7 +225,7 @@ def test_a_stuck_need_whose_checks_all_come_late_goes_back_to_pr_and_on_and_one_
     assert row(y, day, n2)["state"] == "stuck" and not [c for c in hub.calls[calls:] if "/status" in c[1]]
 
 
-def test_a_stuck_need_whose_checks_came_late_waits_while_another_need_is_in_flight_and_comes_back_once_none_is(pipe):
+def test_a_stuck_need_whose_checks_came_late_waits_while_another_need_is_in_flight_and_comes_back_once_none_is(pipe, monkeypatch):
     y, rec, hub, units, rooms = pipe                     # two in flight edit the same lines of the same bookkeeping files
     day = need(y, "example-room", *ASK)["day"]
     to_pr(y, hub, day)
@@ -240,6 +240,16 @@ def test_a_stuck_need_whose_checks_came_late_waits_while_another_need_is_in_flig
     asyncio.run(y.pipeline.tick())
     asyncio.run(y.pipeline.tick())                       # all in and green, need 2 in flight: it stays stuck and says nothing
     assert row(y, day)["state"] == "stuck" and rec.lines == said and not [c for c in hub.calls[calls:] if "/status" in c[1]]
+    asyncio.run(y.pipeline.stop(row(y, day, n2), "held", "a reason"))
+
+    def built_meanwhile(method, path, tok, body=None):    # need 2 built again by hand while its checks are read
+        if path.endswith("/status"):
+            needs.update(y.memory, y.state, day, n2, {"state": "building", "worker": "w2"})
+        return hub(method, path, tok, body)
+    monkeypatch.setattr(github, "api", built_meanwhile)
+    asyncio.run(y.pipeline.tick())
+    assert row(y, day)["state"] == "stuck" and row(y, day, n2)["state"] == "building"
+    monkeypatch.setattr(github, "api", hub)
     asyncio.run(y.pipeline.stop(row(y, day, n2), "held", "a reason"))
     asyncio.run(y.pipeline.tick())                       # the tick that finds the flight empty brings it back
     assert row(y, day)["state"] == "pr" and rec.lines[-1] == words.NEED_LATE.format(n=1, pr=7)

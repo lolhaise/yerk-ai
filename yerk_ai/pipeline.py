@@ -221,13 +221,14 @@ class Pipeline:
     async def late(self, r: dict[str, Any], tok: str, repo: str) -> None:
         """A stuck need with a PR whose head's checks have all come in since, each final: PR again, and the next tick reads it
         as any other, green the cold read and red a fix (2026-11-09: need 81 sat stuck with all seven green). Only when no
-        other need is in flight, the queue's own test (two in flight edit the same lines of the same bookkeeping files);
-        until then it stays stuck and says nothing more."""
+        other need is in flight, the queue's own test (two in flight edit the same lines of the same bookkeeping files), read
+        before the checks and again after them, since a need can start while they are read; until then it stays stuck and
+        says nothing more."""
         if self.flight():
             return
         c = await asyncio.to_thread(github.checks, repo, str(r["head"]), tok)
         ctx: dict[str, list[str]] = c.get("contexts") or {}
-        if c["ok"] and len(ctx) >= int(self.conf().get("contexts") or 7) and all(v[0] in ("success", *RED) for v in ctx.values()):
+        if c["ok"] and len(ctx) >= int(self.conf().get("contexts") or 7) and all(v[0] in ("success", *RED) for v in ctx.values()) and not self.flight():
             await self.set(r, {"state": "pr", "checks": ctx}, "stuck")
             await self.say(words.NEED_LATE.format(n=r["n"], pr=r["pr"]))
 
