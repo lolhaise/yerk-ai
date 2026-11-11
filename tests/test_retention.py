@@ -10,7 +10,7 @@ import stat
 import time
 from pathlib import Path
 
-from yerk_ai import cli, context, morning, retention, words
+from yerk_ai import cli, context, curate, hooks, morning, retention, words
 from yerk_ai.accounts import Cooldowns, load_accounts
 from yerk_ai.config import EXAMPLE_PRIVATE
 from yerk_ai.engine import project_dir
@@ -85,6 +85,30 @@ def test_a_stream_log_and_an_assembled_log_are_cut_into_their_day_and_a_day_past
     put(state / "logs" / "room-a.jsonl", '{"t": 6}\n', days=1)                     # a second cut the same day adds to it
     retention.run(priv, state, now=NOW + 60)
     assert gzip.decompress(cut.read_bytes()).endswith(b'{"t": 2, "type": "b"}\n{"t": 6}\n')
+
+
+def test_a_rolled_assembled_log_loses_nothing_and_curate_reads_the_weeks_parts_in_order(tmp_path, monkeypatch):
+    """F3-05: past RECORD_MAX the log rolled to .1, the next roll overwrote it and the sweep never cut a .1 (seen live: a busy
+    room's archive held only 46 minutes of 367 turns), and curate's weekly count of the rules that rode read the live file
+    alone. Three rolls in a day: every row stays, the sweep cuts each part into that day's archive in order, and curate
+    reads the week's archives, then the parts, then the live file."""
+    priv, state, projects, led = layer(tmp_path)
+    room = state / "rooms" / "room-a"
+    monkeypatch.setattr(hooks, "RECORD_MAX", 600)                                  # three rows to a part
+    with monkeypatch.context() as m:
+        for i in range(12):
+            m.setattr(hooks.time, "time", lambda i=i: NOW - DAY + 60 * i)
+            hooks.record(state, "room-a", "message", f"s{i}", {"p": 1}, "w" * 150, topic_rules=[f"job{i % 2}"])
+    assert {json.loads(x)["session_id"] for p in room.glob("assembled.jsonl*") for x in p.read_text().splitlines()} == {f"s{i}" for i in range(12)}
+    assert curate.rides(state, ["room-a"], NOW - 7 * DAY) == (12, {"job0": 6, "job1": 6})
+    for p in room.glob("assembled.jsonl*"):
+        ago(p, 1)
+    assert retention.main(priv, state, now=NOW) == 0 and not list(room.glob("assembled.jsonl*"))
+    cut = gzip.decompress((room / f"assembled.{retention.day(NOW - DAY)}.jsonl.gz").read_bytes()).decode().splitlines()
+    assert [json.loads(x)["session_id"] for x in cut] == [f"s{i}" for i in range(12)]
+    hooks.record(state, "room-a", "message", "s12", {"p": 1}, "w", topic_rules=["job0"])
+    assert curate.rides(state, ["room-a"], NOW - 7 * DAY) == (13, {"job0": 7, "job1": 6})
+    assert curate.rides(state, ["room-a"], NOW - DAY + 60 * 6) == (7, {"job0": 4, "job1": 3})     # a row before `since` is not counted
 
 
 def test_a_bound_session_survives_and_an_unbound_one_past_its_window_moves_with_its_folder(tmp_path):

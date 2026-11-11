@@ -19,7 +19,7 @@ from .engine import SessionTable
 
 Meta = Callable[[str, str], tuple[str, float | None]]     # (room, prompt) -> (sender, previous human time)
 Recall = Callable[[str, str], tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], list[str]]]   # -> (names, topics, past, absent)
-RECORD_MAX = 5_000_000                                    # assembled.jsonl rolls to .1 past this
+RECORD_MAX = 5_000_000            # assembled.jsonl rolls past this to its next part, .1, .2, ...: never over one (rolled())
 WHOLE = "message-whole.md"         # in a room's work folder: an uncapped message's pack whole, when it passed the hook ceiling
 log = logging.getLogger("yerk.hooks")
 UNBOUND = {"yerk": "unbound"}          # the answer to a hook call no room binding explains (R3)
@@ -84,12 +84,18 @@ def render_recall(names: list[dict[str, Any]], topics: list[dict[str, Any]], bud
     return "\n".join(out)
 
 
+def rolled(path: Path) -> list[Path]:
+    """The parts record() rolled `path` to, oldest first (<name>.1, .2, ...), until the nightly sweep cuts each into its day's
+    archive in that order (retention.py)."""
+    return sorted((p for p in path.parent.glob(f"{path.name}.*") if p.suffix[1:].isdigit()), key=lambda p: int(p.suffix[1:]))
+
+
 def record(state: Path, room: str, event: str, session_id: str, parts: dict[str, int], text: str, **extra: Any) -> None:
     """One line in the room's assembled.jsonl: what was put in front of the model, part by part."""
     path = state / "rooms" / room / "assembled.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.is_file() and path.stat().st_size > RECORD_MAX:
-        os.replace(path, path.with_suffix(".jsonl.1"))
+        os.replace(path, path.with_name(f"{path.name}.{int(done[-1].suffix[1:]) + 1 if (done := rolled(path)) else 1}"))
     with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600), "a") as f:
         f.write(json.dumps({"t": round(time.time(), 3), "event": event, "session_id": session_id, "parts": parts,
                             "chars": context.chars(text), **extra, "text": text}) + "\n")

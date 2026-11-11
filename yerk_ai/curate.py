@@ -27,7 +27,7 @@ from itertools import combinations, groupby
 from pathlib import Path
 from typing import Any, Callable
 
-from . import context, doctor, memindex, memory, mentions, needs, shape, taste, words
+from . import context, doctor, memindex, memory, mentions, needs, retention, shape, taste, words
 from .accounts import account_env, load_accounts
 from .config import budgets, flag, load_toml, rooms, write_private
 from .engine import claude_bin
@@ -519,11 +519,11 @@ def asked(s: memory.Settings, days: list[str], ids_: set[str] | None = None) -> 
 
 
 def rides(state: Path, names: list[str], since: float) -> tuple[int, dict[str, int]]:
-    """The sessions since `since` in the rooms `names` (their assembled.jsonl's message rows), and per topic rule's job how many it rode in."""
+    """The sessions since `since` in the rooms `names` (their assembled log's message rows: the day archives, the parts it rolled
+    to and the live file, in order, retention.read), and per topic rule's job how many it rode in."""
     sessions, rode = set[str](), dict[str, set[str]]()
     for n in names:
-        p = state / "rooms" / n / "assembled.jsonl"
-        for x in p.read_text(errors="replace").splitlines() if p.is_file() else []:
+        for x in retention.read(state / "rooms" / n / "assembled.jsonl", since):
             with suppress(ValueError, AttributeError, TypeError):
                 if (r := json.loads(x)).get("event") == "message" and float(r.get("t", 0)) >= since:
                     sessions.add(sid := str(r.get("session_id")))

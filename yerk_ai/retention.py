@@ -1,7 +1,8 @@
 """`yerk retention`: the daily sweep that keeps the state folder from growing forever, run by units/yerk-retention.timer.
 Each kind keeps a number of days, [retention] in the private yerkd.toml over DAYS: a room's stream log (logs/<room>.jsonl)
-a room's stream log (logs/<room>.jsonl) and assembled log (rooms/<room>/assembled.jsonl) are gzipped whole each
-day into <name>.<day of their last write>.jsonl.gz beside them, a day's file kept `logs` or `assembled` days; a
+and assembled log (rooms/<room>/assembled.jsonl, after the parts it rolled to, in order) are gzipped whole each day into
+<name>.<day of their last write>.jsonl.gz beside them, a day's file kept `logs` or `assembled` days (read() reads them back
+in order); a
 Yerk room's Claude Code transcripts are kept `transcripts` days after the session's last write, and never one
 whose session sessions.json binds, one written in the last 24 hours, or any of a room with a turn in flight or
 waiting; rows of the timing tables (TIMED: no reader looks back past a day) are kept `ledger` days and the WAL
@@ -28,7 +29,9 @@ import shutil
 import stat
 import sys
 import time
+import zlib
 from collections import Counter
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -36,6 +39,7 @@ from . import status, words
 from .accounts import load_accounts
 from .config import load_toml, write_private
 from .engine import project_dir
+from .hooks import rolled
 from .ledger import Ledger
 from .workers import settings as worker_settings
 
@@ -149,12 +153,12 @@ def run(private: Path, state: Path, dry: bool = False, now: float | None = None,
             (state / "trash").mkdir(mode=0o700, exist_ok=True)
             (state / "trash").chmod(0o700)
         logs = [("logs", p, p.name.removesuffix(".jsonl")) for p in sorted((state / "logs").glob("*.jsonl"))]
-        for kind, path, room in logs + [("assembled", r / "assembled.jsonl", r.name) for r in rooms]:
+        for kind, path, room in logs + [("assembled", p, r.name) for r in rooms for p in [*rolled(r / "assembled.jsonl"), r / "assembled.jsonl"]]:
             if room in flight or not path.is_file() or not (st := path.stat()).st_size:
                 continue
             if not (moved := move(kind, path, str(path.relative_to(state)))):
                 continue
-            dest = path.with_name(f"{path.name.removesuffix('.jsonl')}.{day(st.st_mtime)}.jsonl.gz")
+            dest = path.with_name(f"{path.name.partition('.jsonl')[0]}.{day(st.st_mtime)}.jsonl.gz")   # a part's too: assembled.<day>
             if not dry:                                                       # the original went first: the copy is cut from it
                 os.close(os.open(dest, os.O_WRONLY | os.O_CREAT, st.st_mode & 0o777))   # its source's mode, never wider
                 with open(moved, "rb") as f, gzip.open(dest, "ab") as g:      # a second cut the same day adds a member
@@ -237,6 +241,17 @@ def run(private: Path, state: Path, dry: bool = False, now: float | None = None,
     except Exception as e:      # any failure is said, kept for the morning diff, exits 1; what moved before it stays counted
         out["error"], out["why"] = f"{type(e).__name__}: {e}", words.no_paths(getattr(e, "strerror", None) or type(e).__name__)
     return out
+
+
+def read(path: Path, since: float) -> Iterator[str]:
+    """A room's assembled log from `since` on, oldest first, as the sweep and the rolls left it: its day archives from since's
+    day on (each holds what was cut on that day, in order), the parts it rolled to, then the live file. A row from before
+    `since` is the caller's to skip; a file that cannot be read is skipped."""
+    days = sorted(p for p in path.parent.glob(f"{path.stem}.*.jsonl.gz") if (m := DATED.search(p.name)) and m[1] >= day(since))
+    for p in [*days, *rolled(path), path]:
+        with contextlib.suppress(OSError, EOFError, zlib.error), gzip.open(p, "rt", errors="replace") if p.suffix == ".gz" \
+                else open(p, errors="replace") as f:
+            yield from f
 
 
 def note(work: Path, took: list[str], now: float, days: float) -> None:
