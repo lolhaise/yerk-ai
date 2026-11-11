@@ -663,7 +663,11 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-11: his-four-2026-11-11 lowered it by 154, four changes the owner said yes to after the cleanup: the `reverse_image_search` tool out 166 (never called, its key never on the box: reverse_image.py 133, daemon.py 13, mcp_server.py 11, words.py 9); a need's number that never repeats 13 in (needs.py 8, pipeline.py 3, words.py 1, daemon.py 1); one way to write a reset time 1 out (meters.py 7 out, meters.when gone and the morning diff's account line rebuilt; words.py 6 in, words.out_of for the card's note; room.py 1 out, cli.py 1 in). web_search's filters are in the web plug-in, no line here. 28,898: main fd2c74a's 29,052 minus 154.
 
-- `lines = 28898`
+2026-11-11: fast-mode raised it by 149, not folded to fit: /fast for a room on Fable 5.2, the owner's order of
+
+2026-11-11 (fast mode bills usage credits, so it reaches Claude Code only where he types it): the engine's gate, the launch key, `/fast on` before a new process's first line and the local-command probe 53 (engine.py); the command and its true answers 36 (daemon.py); a refusal said once 23 (room.py); its words 19 (words.py); the /status line 11 (status.py); the override's key 6 (config.py); the command's two choices 1 (channels/discord.py). 29,047: main b05d13c0's 28,898 plus 149.
+
+- `lines = 29047`
 
 ## Uncapped
 

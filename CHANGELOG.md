@@ -8,6 +8,27 @@ version changes.
 
 ## 2026-11-11
 
+### fast-mode (#?)
+
+- `/fast` in a room's own channel turns Claude Code's fast mode on or off for that room, from the next reply (the
+  owner's order of 2026-11-11). Fast mode bills usage credits, never the plan, so it reaches Claude Code only in a room
+  where the owner typed `/fast on`, and only while that room runs on Fable 5.2 by its full id, `claude-fable-5-2`
+  (`/model fable` stores it). On an Opus model the launch setting alone turns fast mode on, so no Opus process ever gets
+  it; no worker, job, curate run, beat, health check, evidence judge or need gets it either.
+- `/fast on` first asks Claude Code itself, on the account the room is on now, with the local command `/fast on` (no
+  model request, no cost), and keeps the setting only when it answers on: "fast mode on from the next reply", "billed to
+  usage credits, not the plan". Refused, nothing is kept and the line says why: "usage credits are off on account
+  five", or Claude Code's own reason. In a room on another model: "fast mode is for Fable 5.2 rooms" and the room's
+  model. `/fast off` says "fast mode off"; `/fast` alone says the room's setting and what Claude Code last reported. A
+  switch off Fable 5.2 drops it, and the settings line ends "fast mode off".
+- A room with it on launches with `fastMode` in its settings file and sends `/fast on` before the first message of every
+  new process (fresh, resumed, after a hop or a compaction), never shown, ledgered or counted. A refusal there (a hop to
+  an account with usage credits off, credits run out mid-session) is said once in the room, and the reply still comes at
+  standard speed. `/status` says "fast mode on:" and the room while it is on. A room with it off launches as before.
+- budgets.toml: `[code] lines` 28,898 to 29,047 with its dated note.
+- **Upgrading**: nothing to change. The rooms' slash commands are registered again at the next start, `/fast` with
+  them. No account has usage credits on today, so `/fast on` says so until the owner turns them on for an account.
+
 ### his-four-2026-11-11 (#49)
 
 - Four changes the owner said yes to on 2026-11-10, after the cleanup audit put them to him as questions. Each is in
