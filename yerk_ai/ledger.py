@@ -16,7 +16,7 @@ claim 19).
 Inbound states, after Hermes' delivery ledger (gateway/delivery_ledger.py, MIT): `received`
 (ledgered, nothing ran: run it plainly after a crash), `running` (sent to Claude Code: after a
 crash run it once more, marked as a redelivery), `answered`, `failed`, `abandoned` (redelivered
-once already), `ignored`.
+once already), `ignored`, `stopped` (the owner's /stop: never run again).
 
 The schema is versioned (PRAGMA user_version) and moves by the ordered MIGRATIONS list, each step a
 function that may add, rename or backfill and is run once, inside one transaction, with the version
