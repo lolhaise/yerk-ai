@@ -931,7 +931,8 @@ class Yerkd:
     async def need_build(self, req: dict[str, Any]) -> dict[str, Any]:
         """`yerk needs build DAY N`: the need's brief (needs.brief) to a builder worker on [needs] account, else [curate]
         account, else the workers' own pick, its card in the machine room. One builder a need: the need is claimed under the
-        lock, so only one filed, queued, held or stuck starts one (the pipeline's road from there, pipeline.py)."""
+        lock, so only one filed, queued, held or stuck starts one (the pipeline's road from there, pipeline.py). A builder that
+        cannot start holds the need with why under [needs] auto, as a fix's or a read's does; on the hand road it is filed."""
         day, n = str(req.get("day") or ""), int(req.get("n") or 0)
         if await asyncio.to_thread(needs.update, self.memory, self.state, day, n, {"state": "building", "worker": "", "fixes": 0},
                                    lambda r: r.get("state", "filed") in ("filed", "queued", "held", "stuck")) is None:
@@ -944,7 +945,10 @@ class Yerkd:
         out = await self.workers.start(self.pipeline.room(), needs.brief(row, REPO, str(conf.get("pr_check") or ""), found, there),
                                        account=self.pipeline.account(), cap_minutes=float(conf.get("cap_minutes") or needs.CAP),
                                        tasks=list(needs.TASKS), more={"need": {"day": day, "n": n}})
-        await asyncio.to_thread(needs.update, self.memory, self.state, day, n, {"worker": out["id"]} if out.get("ok") else {"state": "filed"})
+        if out.get("ok") or not self.pipeline.auto():
+            await asyncio.to_thread(needs.update, self.memory, self.state, day, n, {"worker": out["id"]} if out.get("ok") else {"state": "filed"})
+        else:                                            # said in the machine room, and the next queued need starts
+            await self.pipeline.stop({**row, "day": day, "n": n}, "held", words.NEED_NO_BUILDER.format(error=out.get("error")))
         log.info("needs: build %s %s: %s", day, n, out.get("id") or out.get("error"))
         return {**out, "day": day, "n": n}
 

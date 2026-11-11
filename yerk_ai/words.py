@@ -674,6 +674,7 @@ NEED_READING = WORKING + " need {n}: PR {pr} checks passed, its cold read starts
 NEED_HELD = NOT_DONE + " need {n} held, a person decides: {ability}\n{why}"
 NEED_STUCK = NOT_DONE + " need {n} stuck: {ability}\n{why}"
 NEED_LATE = WORKING + " need {n}: PR {pr} checks all came in late, so it goes on"
+NEED_NO_BUILDER = "its builder did not start: {error}"
 NEED_CHECKS_NEVER, NEED_CHECKS_PENDING = "checks never came: {final} of {of} in {span} on {head}", ", still pending: {names}"
 NEED_MERGED = DONE + " need {n}: PR {pr} merged; the deploy is next"
 NEED_PLUGIN = "\nwith its branch in the {names} plug-in too"              # need 36: a fix in a plug-in's own repository

@@ -225,6 +225,35 @@ def test_a_stuck_need_whose_checks_all_come_late_goes_back_to_pr_and_on_and_one_
     assert row(y, day, n2)["state"] == "stuck" and not [c for c in hub.calls[calls:] if "/status" in c[1]]
 
 
+def test_a_builder_that_cannot_start_holds_its_need_with_why_and_the_next_queued_need_starts(pipe):
+    y, rec, hub, units, rooms = pipe                     # a unit systemd refuses, then an account accounts.toml no longer has
+    y.conf["needs"]["auto"] = False                      # three filed; the first in flight with no unit, two queued behind it
+    day = need(y, "example-room", *ASK)["day"]
+    need(y, "her-room", "post a reel", "no upload tool", "upload a video")
+    need(y, "her-room", "what does this voice memo say", "no audio tool", "hear a voice memo")
+    for k, st in ((1, {"state": "building", "worker": "w1"}), (2, {"state": "queued"}), (3, {"state": "queued"})):
+        asyncio.run(y.pipeline.set(row(y, day, k), st))
+    y.conf["needs"]["auto"] = True
+    launcher = y.workers.launcher
+    real = launcher.start
+
+    def refuse(*a):
+        launcher.start = real
+        raise OSError("the unit was refused")
+    launcher.start = refuse
+    asyncio.run(y.pipeline.stop(row(y, day), "held", "a reason"))           # need 2's builder is refused, need 3's starts
+    assert (row(y, day, 2)["state"], row(y, day, 2)["worker"]) == ("held", "")
+    why = row(y, day, 2)["why"]
+    assert why == words.NEED_NO_BUILDER.format(error="the unit did not start: the unit was refused")
+    assert rec.lines[-2:] == [words.NEED_HELD.format(n=2, ability="upload a video", why=why),
+                              words.NEED_STARTS.format(n=3, room="her-room", ability="hear a voice memo")]
+    assert row(y, day, 3)["state"] == "building" and row(y, day, 3)["worker"]
+    y.conf["needs"]["account"] = "gone"
+    n4 = need(y, "example-room", "read this scan", "no ocr tool", "read a scanned page")["n"]
+    asyncio.run(y.pipeline.stop(row(y, day, 3), "held", "a reason"))
+    assert row(y, day, n4)["state"] == "held" and row(y, day, n4)["why"].startswith("its builder did not start: no account 'gone'")
+
+
 def test_the_cold_read_saying_fix_first_or_unsure(pipe):
     y, rec, hub, units, rooms = pipe
     day = need(y, "example-room", *ASK)["day"]
