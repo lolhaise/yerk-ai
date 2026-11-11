@@ -242,6 +242,8 @@ class Room:
         self.overtook = 0                         # the turns that ran on the live session since the copy was made
         self.dropped = ""                         # why the copy in flight was ended (_drop_fork), for its thread's line
         self.shrunk = False                       # the live session compacted since the copy was made: the copy is moot
+        self.exited = threading.Event()           # clear while reap_idle or respec closes the process: _start waits for it,
+        self.exited.set()                         # since the closing process holds its session's lock until it is gone
         self.cite: Callable[[str, float], str] | None = None   # a message's day-log cite (the daemon's), for a long tail
 
     def _ledger_call(self, call: dict[str, Any]) -> None:
@@ -803,7 +805,11 @@ class Room:
             if self.busy or not self.rp or (not force and now - self.last_active < self.idle_seconds):
                 return False
             rp, self.rp = self.rp, None
-        rp.close()
+            self.exited.clear()
+        try:
+            rp.close()
+        finally:
+            self.exited.set()
         log.info("room %s: idle process closed, session %s kept", self.name, rp.session_id)
         return True
 
@@ -814,8 +820,13 @@ class Room:
             self.stale = self.busy
             rp, self.rp = (None, self.rp) if self.busy else (self.rp, None)
             self._drop_fork("the room's model, effort or account changed")   # a copy runs on the old spec
+            if rp:
+                self.exited.clear()
         if rp:
-            rp.close()
+            try:
+                rp.close()
+            finally:
+                self.exited.set()
 
     def renew(self) -> None:
         """/new: the room's next run (the next message, or a running turn's messages still waiting) starts a
@@ -891,6 +902,7 @@ class Room:
         self.rp.send(text)
 
     def _start(self, account: Account, fresh: bool = False) -> None:
+        self.exited.wait(30)                      # a message that came in while the idle close still waited for the old process
         log_path = self.log_dir / f"{self.name}.jsonl" if self.log_dir else None
         spec = self.spec()
         if self.stale and self.ran:              # a hop or retry inside the turn that changed the settings

@@ -756,3 +756,25 @@ def test_a_failed_turn_is_read_by_its_own_process_stderr_never_an_earlier_one(en
     assert (row["outcome"], row["action"], row["source"]) == ("timeout", "stop", "none")      # a silence, never a lost session
     assert row["session_id"] == room.ledger._select("SELECT session_id FROM turns ORDER BY id", ())[0]["session_id"]
     assert ledger.inbound_get("2")["state"] == "failed" and len(chan.notices) == 1
+
+
+def test_a_message_that_comes_in_while_the_idle_close_waits_for_the_old_process_is_answered(env, monkeypatch):
+    make, ledger, tmp_path = env
+    slow = tmp_path / "slow-exit.sh"                 # an old process that takes 2 s to exit after its stdin closes
+    slow.write_text(f'#!/bin/sh\n"{FAKE}" "$@"\nsleep 2\n')
+    slow.chmod(0o700)
+    monkeypatch.setenv("YERK_CLAUDE", str(slow))
+    chan = Chan()
+    room = make(chan)
+    send(room, ledger, "1", "hello")
+    wait_idle(room)
+    closer = threading.Thread(target=room.reap_idle, kwargs={"force": True})
+    closer.start()
+    time.sleep(0.5)                                  # the close has the process and waits for it, its session still locked
+    assert room.rp is None and closer.is_alive()
+    send(room, ledger, "2", "hello again")
+    closer.join(10)
+    wait_idle(room)
+    assert chan.notices == [] and chan.replies[-1] == ("echo: hello again", ["2"])
+    assert ledger.inbound_get("2")["state"] == "answered"
+    room.rp.close()
