@@ -28,6 +28,7 @@ from test_workers import Chan, ended, setup  # noqa: F401  (the worker fixture: 
 
 UTC, TOR, TOK = ZoneInfo("UTC"), ZoneInfo("America/Toronto"), ZoneInfo("Asia/Tokyo")
 ENV = Env(python="/opt/yerk/bin/python", repo=Path("/opt/yerk"), private=Path("/opt/private"), state=Path("/opt/state"))
+HOUR = 3600
 
 
 class FakeSystemd:
