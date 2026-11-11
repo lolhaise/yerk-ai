@@ -7,7 +7,7 @@ whose session sessions.json binds, one written in the last 24 hours, or any of a
 waiting; rows of the timing tables (TIMED: no reader looks back past a day) are kept `ledger` days and the WAL
 is checkpointed; a job run's folder (jobs/<name>/<stamp>/) is kept `jobs` days after it ended, and while the ledger
 marks it undelivered whatever its age (the daemon's restart sweep reads it); a finished worker's folder and its project
-folder are kept `workers` days; a room's scratch
+folder are kept `workers` days, its pytest temp trees (a folder named pytest-of-*, anywhere in it) `pytest` days; a room's scratch
 (scratch(): its work folder but the person's files and a top folder holding a file named KEEP, and the copies of
 the files it sent) is kept `scratch` days, and past `scratch_mb` a room loses its oldest files first, never one
 written in the last hour and never while it has a turn in flight; the room finds what went where in its
@@ -40,7 +40,7 @@ from .ledger import Ledger
 from .workers import settings as worker_settings
 
 DAY = 86400.0
-DAYS = {"logs": 14, "assembled": 14, "transcripts": 30, "ledger": 90, "jobs": 14, "workers": 30, "scratch": 2, "trash": 7, "scratch_trash": 1}
+DAYS = {"logs": 14, "assembled": 14, "transcripts": 30, "ledger": 90, "jobs": 14, "workers": 30, "pytest": 1, "scratch": 2, "trash": 7, "scratch_trash": 1}
 CAP = {"scratch_mb": 500}             # past this a room's scratch loses its oldest files first
 TIMED = {"outbound": "sent", "hook_calls": "t", "tool_times": "t", "evidence": "t", "shadow": "t"}
 SESSION = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
@@ -186,6 +186,13 @@ def run(private: Path, state: Path, dry: bool = False, now: float | None = None,
                 if move("workers", folder, f"workers/{folder.name}"):
                     for d in filter(Path.is_dir, gone):
                         move("workers", d, f"projects/{d.name}")
+            if (w["finished"] and now - days["workers"] * DAY <= w["finished"] < now - days["pytest"] * DAY and folder.is_absolute()
+                    and folder.is_dir() and folder.parent.resolve() == root):     # the rest of the folder waits its days
+                for d, ds, _ in os.walk(folder):
+                    for name in [x for x in ds if x.startswith("pytest-of-")]:
+                        ds.remove(name)                                   # moved whole, never walked into; a link stays
+                        if not os.path.islink(tmp := os.path.join(d, name)):
+                            move("pytest", Path(tmp), f"workers/{folder.name}/{os.path.relpath(tmp, folder)}")
         runs = (state / "jobs").resolve()
         for j in ledger.job_runs(limit=10**6):           # ended and delivered past its days; one marked undelivered stays
             folder = Path(str(j["folder"] or ""))

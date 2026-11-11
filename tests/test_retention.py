@@ -190,6 +190,28 @@ def test_a_finished_workers_folder_and_its_transcript_go_after_their_days_and_no
     assert (state / "trash" / retention.day(NOW) / "workers" / "aaaaaa" / "REPORT.md").exists()
 
 
+def test_a_finished_workers_pytest_trees_go_a_day_after_it_finished_and_the_rest_waits_its_days(tmp_path):
+    """F10-04: a finished worker's pytest temp trees (pytest-of-*, in its tmp/ or deeper, as runs/<name>/tmp/) held 9.9 GB on
+    disk for the folder's whole 30 days. A worker not finished, or finished less than a day ago, keeps them; a link is never
+    followed or moved."""
+    priv, state, projects, led = layer(tmp_path)
+    for wid, finished in (("aaaaaa", NOW - 2 * DAY), ("bbbbbb", NOW - DAY / 2), ("cccccc", None)):
+        w = state / "workers" / wid
+        put(w / "REPORT.md", days=3)
+        put(w / "tmp" / "pytest-of-owner" / "pytest-1" / "test_x0" / "state.db", "d" * 10, days=3)
+        put(w / "runs" / "suite-a" / "tmp" / "pytest-of-owner" / "pytest-0" / "f.txt", "f" * 5, days=3)
+        led.worker_add(id=wid, room="room-a", staging=str(w), started=NOW - 3 * DAY, finished=finished)
+    a = state / "workers" / "aaaaaa"
+    (a / "pytest-of-link").symlink_to(state / "workers" / "cccccc" / "tmp")
+    r = retention.run(priv, state, now=NOW)
+    assert not (a / "tmp" / "pytest-of-owner").exists() and not (a / "runs" / "suite-a" / "tmp" / "pytest-of-owner").exists()
+    assert (a / "REPORT.md").exists() and (a / "tmp").is_dir() and (a / "pytest-of-link").is_symlink()
+    assert all((state / "workers" / w / "tmp" / "pytest-of-owner").exists() for w in ("bbbbbb", "cccccc"))
+    trash = state / "trash" / retention.day(NOW) / "workers" / "aaaaaa"
+    assert (trash / "runs" / "suite-a" / "tmp" / "pytest-of-owner" / "pytest-0" / "f.txt").read_text() == "fffff"
+    assert r["kinds"]["pytest"] == [2, 15] and "error" not in r
+
+
 def test_a_job_runs_folder_goes_after_its_days_once_ended_and_delivered_and_never_while_undelivered(tmp_path):
     """F10-14: every job run leaves <state>/jobs/<name>/<stamp>/ and nothing pruned them, about 145 a day. A run the ledger
     still marks undelivered stays whatever its age (the daemon's restart sweep reads its stdout), so does one never ended."""
@@ -252,7 +274,7 @@ def test_a_failure_exits_1_and_the_morning_diff_opens_with_it(tmp_path, capsys):
 def test_the_days_come_from_yerkd_toml_and_explain_says_them(tmp_path, capsys):
     priv, state, projects, led = layer(tmp_path, '[retention]\nlogs = 3\nledger = "x"\nworkers = -1\ntrash = true\n')
     assert retention.keep({"retention": {"logs": 3, "ledger": "x", "workers": -1, "trash": True, "scratch_mb": 0}}) == {
-        "logs": 3, "assembled": 14, "transcripts": 30, "ledger": 90, "jobs": 14, "workers": 30, "scratch": 2, "trash": 7, "scratch_trash": 1, "scratch_mb": 500}
+        "logs": 3, "assembled": 14, "transcripts": 30, "ledger": 90, "jobs": 14, "workers": 30, "pytest": 1, "scratch": 2, "trash": 7, "scratch_trash": 1, "scratch_mb": 500}
     assert cli.main(["explain", "retention", "--private", str(priv), "--state", str(state)]) == 0
     out = capsys.readouterr().out
     assert out.startswith(f"{words.DONE} retention: ") and "Here: logs 3 days, assembled 14 days, transcripts 30 days" in out

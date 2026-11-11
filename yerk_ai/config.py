@@ -263,6 +263,7 @@ YERKD_WORDS = {
                   "transcripts": "days Claude Code's transcripts keep", "ledger": "days of the ledger's timing rows",
                   "jobs": "days a job run's folder keeps after the run ended, and a run still undelivered keeps it",
                   "workers": "days a finished worker's folder keeps",
+                  "pytest": "days a finished worker's pytest temp folders (pytest-of-*) keep; the rest of its folder keeps `workers` days",
                   "scratch": "days a room's scratch, its work folder but inbox/ and any top folder holding a file named KEEP, keeps",
                   "scratch_mb": "megabytes a room's scratch keeps, its oldest files out first", "trash": "days the trash keeps what left",
                   "scratch_trash": "days the trash keeps a room's scratch"},
