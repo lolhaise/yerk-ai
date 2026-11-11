@@ -328,3 +328,17 @@ def test_the_import_files_with_the_rooms_id_and_class(tmp_path):
                                                     ["r#discord:9", "other@Ben:"]]
     assert all(x.endswith(f"[c:room] [m:{1000 + i}]") for i, x in enumerate(lines, 1))
     assert os.path.exists(tmp_path / "files") is False      # nothing to save, no folder
+
+
+def test_a_room_made_like_another_names_itself_in_the_copied_plugin_flags(layer):
+    """A person room's own mcp table names its room (`--room`, YERK_ROOM); one made like it names the new room, never the
+    one it was copied from, whose work folder its pictures would land in."""
+    priv, state, fake = layer
+    (priv / "rooms.toml").write_text(ROOMS + '\n[rooms.aunt-room.mcp.web]\ntype = "stdio"\n'
+                                     'args = ["server.mjs", "--room", "aunt-room", "--state", "/s/rooms/aunt-room"]\n'
+                                     'env = { YERK_ROOM = "aunt-room" }\n')
+    assert run(priv, state, "cousin", "--from", f"discord:{OLD}", "--person", str(COUSIN)) == 0
+    web = rooms(priv)["cousin-on-yerk"]["mcp"]["web"]
+    assert web["args"] == ["server.mjs", "--room", "cousin-on-yerk", "--state", "/s/rooms/aunt-room"]   # a path is not a name
+    assert web["env"] == {"YERK_ROOM": "cousin-on-yerk"}
+    assert rooms(priv)["aunt-room"]["mcp"]["web"]["args"][2] == "aunt-room"                          # the other room as it was
