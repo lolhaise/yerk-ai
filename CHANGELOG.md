@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-11-12
 
-### compact-size (#?)
+### compact-size (#59)
 
 - Right after a compaction, `/status` in a room shows the session's real size, not the few thousand tokens the
   compaction left of the conversation: the 📚 line, the compaction's ledger row and the number a daemon start reads
@@ -19,6 +19,7 @@ version changes.
 - budgets.toml: `[code] lines` 29,299 to 29,338 with its dated note.
 - **Upgrading**: nothing to change. It needs a Claude Code that answers `get_context_usage` (2.1.321 does); an older
   one shows the old number.
+  A room whose newest row is a compaction written before this version shows the old number until its next reply.
 
 ### fast-stays (#58)
 
