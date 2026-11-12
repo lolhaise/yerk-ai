@@ -3,11 +3,12 @@ Code only when the room asked for it AND runs on Fable 5.2 by its full id. Such 
 line, read to the end of its result and never recorded; every other process launches exactly as before."""
 import asyncio
 import json
+import logging
 import threading
 from pathlib import Path
 
 import pytest
-from test_idle_compact import band, echoed, say, until, wait_idle
+from test_idle_compact import IDLE, band, compactions, echoed, reap, say, until, wait_idle
 
 from yerk_ai import words
 from yerk_ai.accounts import Account
@@ -523,3 +524,123 @@ def test_a_fable_model_not_found_takes_the_rooms_fast_mode_with_it(y, tmp_path):
     room.rp = None
     assert line.endswith(f"\n{words.FAST_OFF}") and "fast" not in override(tmp_path, ROOM)
     assert asyncio.run(y.tool_settings(ROOM, "fable", ""))["ok"] and y.spec_for(ROOM).fast is False
+
+
+@pytest.fixture
+def idle(y, tmp_path, monkeypatch, caplog):
+    """A room that answered at 200,000 of its 250,000 window (test_idle_compact's, the copy's band off), on `setting` as
+    `take`'s. Each launch is recorded as (a copy, its key) and each line written as (its process's key, the line)."""
+    for k, v in (("FAKE_CLAUDE_STDIN", "stdin.jsonl"), ("FAKE_CLAUDE_MARK", "mark")):
+        monkeypatch.setenv(k, str(tmp_path / v))
+    caplog.set_level(logging.INFO, logger="yerk.room")
+    y.budgets["session"]["precompact_within"] = 0
+    launches, sent, rooms, start, send = [], [], [], RoomProcess.start, RoomProcess.send
+    monkeypatch.setattr(RoomProcess, "start", lambda self, *a, **k: launches.append((bool(k.get("fork")), "fastMode" in self.launch_settings()))
+                        or start(self, *a, **k))
+    monkeypatch.setattr(RoomProcess, "send", lambda self, text: sent.append(("fastMode" in self.launch_settings(), text)) or send(self, text))
+
+    def idled(setting="on"):
+        if setting == "opus":
+            (tmp_path / "rooms" / ROOM).mkdir(parents=True, exist_ok=True)
+            (tmp_path / "rooms" / ROOM / "override.json").write_text(json.dumps({"model": "claude-opus-5-5", "fast": True}))
+        else:
+            on_fable(y)
+        assert setting != "on" or fast(y, "on")["ok"]
+        rooms.append(room := y.add_room(ROOM, chan := Chan()))
+        say(y, room, "1", "CONTEXT:200000 hello")
+        wait_idle(room)
+        return room, chan, launches, sent
+    yield idled
+    for r in rooms:
+        r.shutdown()
+
+
+def copied(y):
+    until(lambda: any("copy taken" in str(r["note"]) for r in y.ledger.rows(5)))
+    return next(r["session_id"] for r in y.ledger.rows(5) if "copy taken" in str(r["note"]))
+
+
+def test_a_fast_room_idle_near_its_window_compacts_on_a_copy_without_fast_mode_and_answers_next_on_a_fast_process(idle, y, tmp_path):
+    room, chan, launches, sent = idle()
+    reap(y, room, IDLE)
+    until(lambda: compactions(tmp_path) == 1)
+    assert (True, "/compact") not in sent                       # never written to a process launched with the key
+    copy = copied(y)
+    wait_idle(room)
+    say(y, room, "2", "CONTEXT:21000 and now?")
+    wait_idle(room)
+    assert launches == [(False, True), (True, False), (False, True)] and room.rp.session_id == copy
+    assert sent[-2:] == [(True, "/fast on"), (True, "CONTEXT:21000 and now?")] and chan.replies[-1] == "echo: CONTEXT:21000 and now?"
+    assert [r["outcome"] for r in y.ledger.rows(9) if r["session_id"] == copy] == ["ok", "compacted"] and chan.notices == []
+
+
+@pytest.mark.parametrize("how", ["closed", "restarted"])
+def test_a_fast_room_with_no_process_alive_launches_nothing_to_compact_while_idle(idle, y, tmp_path, caplog, how):
+    """No process to copy (the reaper closed it, or a restart): one started for the compaction would run with fast mode,
+    so it waits for a turn, said once; the next message is answered on a fast process."""
+    from yerk_ai.config import EXAMPLE_PRIVATE
+    from yerk_ai.daemon import Yerkd
+    room, chan, launches, sent = idle()
+    if how == "restarted":
+        room.shutdown()
+        y = Yerkd(EXAMPLE_PRIVATE, tmp_path, only_account=Account("one", tmp_path / "cfg1"))
+        room = y.add_room(ROOM, Chan())
+    else:
+        assert room.reap_idle(force=True)
+    for _ in range(2):
+        reap(y, room, IDLE)
+        wait_idle(room)
+    assert launches == [(False, True)] and compactions(tmp_path) == 0
+    assert sum("waits for a turn" in m for m in caplog.messages) == 1
+    say(y, room, "2", "CONTEXT:21000 and now?")
+    wait_idle(room)
+    assert launches == [(False, True)] * 2 and sent[-2:] == [(True, "/fast on"), (True, "CONTEXT:21000 and now?")]
+    room.shutdown()
+
+
+@pytest.mark.parametrize("setting", ["off", "opus"])
+def test_a_room_fast_mode_does_not_reach_compacts_while_idle_on_its_own_process_as_on_main(idle, y, tmp_path, setting):
+    room, chan, launches, sent = idle(setting)
+    reap(y, room, IDLE)
+    wait_idle(room)
+    assert launches == [(False, False)] and sent == [(False, "CONTEXT:200000 hello"), (False, "/compact")] and compactions(tmp_path) == 1
+
+
+def test_a_failed_idle_copy_in_a_fast_room_is_not_tried_again_at_the_next_minute(idle, y, tmp_path, monkeypatch, caplog):
+    room, chan, launches, sent = idle()
+    monkeypatch.setenv("FAKE_CLAUDE_COMPACT_FAIL", "1")         # the copy's /compact fails (the room's process predates it)
+    reap(y, room, IDLE)
+    until(lambda: compactions(tmp_path) == 1)
+    wait_idle(room)
+    assert (True, "/compact") not in sent
+    until(lambda: any("is dropped" in m for m in caplog.messages))
+    reap(y, room, IDLE)
+    wait_idle(room)
+    assert launches == [(False, True), (True, False)] and compactions(tmp_path) == 1 and (True, "/compact") not in sent
+
+
+def test_a_message_during_a_fast_rooms_idle_copy_is_answered_at_once_on_its_fast_session_and_rides_to_the_copy(idle, y, tmp_path, monkeypatch):
+    opened, read = threading.Event(), RoomProcess.read_turn
+
+    def held(self, *a, **k):
+        t = read(self, *a, **k)
+        if self.fork_of:                          # the copy's /compact, held until the message is answered
+            opened.wait(20)
+        return t
+    monkeypatch.setattr(RoomProcess, "read_turn", held)
+    room, chan, launches, sent = idle()
+    live = room.rp
+    reap(y, room, IDLE)
+    until(lambda: compactions(tmp_path) == 1)
+    assert (True, "/compact") not in sent
+    say(y, room, "2", "CONTEXT:21000 meanwhile")
+    until(lambda: len(chan.replies) == 2)                       # the copy still held
+    assert room.rp is live and chan.replies[1] == "echo: CONTEXT:21000 meanwhile" and sent[-1] == (True, "CONTEXT:21000 meanwhile")
+    opened.set()
+    copy = copied(y)
+    wait_idle(room)
+    say(y, room, "3", "CONTEXT:22000 and now?")
+    wait_idle(room)
+    assert launches == [(False, True), (True, False), (False, True)] and room.rp.session_id == copy and chan.notices == []
+    assert echoed(chan, 2).startswith(TAIL_HEAD) and "CONTEXT:21000 meanwhile" in echoed(chan, 2)   # the tail: nothing lost
+    assert y.ledger.inbound_get("2")["state"] == y.ledger.inbound_get("3")["state"] == "answered"
