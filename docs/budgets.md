@@ -10,7 +10,7 @@ Every size limit Yerk AI enforces, in one place. Unit: characters as Claude Code
 
 The session start: what a room's Claude Code process is handed before its first message, Claude Code's own parts and Yerk AI's appended files (the two tables below); `total` caps them together. `yerk map ROOM` prints each against its number.
 
-- `total = 130223`
+- `total = 130923`
 
 ## [session_start.claude_code]
 
@@ -118,9 +118,11 @@ Load order, most stable first, so the cached start of the prompt survives. The f
 
 2026-11-11, need-2026-11-11-87: web_fetch reads a PDF or a Word file at a link (its words, a PDF page by page, the file saved in the room's work folder for Read), since a room asked what a province's form asks for met the binary wall on the form's Word file and on two PDF copies of it, and answered off a forms list page and search previews; its description one sentence longer, 152 more as sent (a plug-in's description goes out as written), so the other entries (web-ladder's four and the placeholder) 3,581 on the 3,429 line; no other line lowered for it, the total rose by the 152 (to 130,223 on main's 130,071).
 
+2026-11-12, texting-2: the `texting` tool (the report room reads a person's texting sheet and changes it on the owner's own words; the owner's ask, 2026-11-12), sent to every room and refused at call time outside the report room, is 719 as this tree builds it, about 750 as sent (31 over, as each of Yerk AI's entries goes), on the about 26,644 the rooms send, so about 27,394, 694 over the line; so 27,400, no part could pay, the total rose by the 700 (to 130,923 on 130,223).
+
 - `claude_code_prompt = 10966`
 - `builtin_tools = 12132`
-- `yerk_tools = 26700`
+- `yerk_tools = 27400`
 - `deferred_tool_names = 3581`
 - `mcp__hands__ = 10131`
 - `mcp__web-ladder__web_image = 913`
@@ -686,6 +688,8 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 2026-11-12: fast-idle, the follow-up to fast-stays (#58), raised it by 21 (a fast room's idle compaction ran its /compact in the room's fast session, billed to usage credits): idle_compact sends it the copy's way, or waits with no process alive to copy, and _fast_next reads which process it would reach (room.py). 29,359: compact-size's 29,338 plus 21.
 
 2026-11-12: texting-1 raised it by 560, the read-only link and intake of text-as-you (the owner's ask, 2026-11-12), not folded to fit.
+
+2026-11-12: texting-2 raised it by 259, the person sheets and the owner's tool of text-as-you (the owner's ask, 2026-11-12), not folded to fit.
 
 - `lines = 30178`
 

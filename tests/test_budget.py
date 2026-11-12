@@ -275,7 +275,8 @@ def test_claude_codes_parts_as_the_rooms_send_them_fit_their_lines_and_what_is_l
     too (271 more as built; all 23 about 26,644 as sent) to 26,700 and the total by the 300 to 129,771; then
     (need-2026-11-11-85) the hands line to 10,131 for the mail tool's `attachment` (about 1,525 as sent), the total by the
     300 to 130,071; then (need-2026-11-11-87) the other entries to 3,581 for web_fetch's sentence on a PDF or a Word file
-    at a link (878 to 1,030 as sent), the total by the 152 to 130,223."""
+    at a link (878 to 1,030 as sent), the total by the 152 to 130,223; then (texting-2) `yerk_tools` to 27,400 for the
+    `texting` tool (about 750 as sent, every room; refused outside the report room), the total by the 700 to 130,923."""
     shape = {"system": [{"type": "text", "text": "p" * LIVE_PROMPT}, {"type": "text", "text": "# Yerk AI mechanics"}],
              "tools": [entry(n, size) for n, size in LIVE_TOOLS.items()]}
     (t := tmp_path / "sid.jsonl").write_text(json.dumps({"type": "api-request-shape", "shape": shape}) + "\n")
@@ -293,7 +294,7 @@ def test_claude_codes_parts_as_the_rooms_send_them_fit_their_lines_and_what_is_l
     assert all(sent <= line for sent, line in rows.values()), out
     assert all(line <= sent * 1.02 for name, (sent, line) in rows.items() if name != "Yerk AI's tools"), rows
     s = b["session_start"]
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 130223
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 130923
 
 
 def room_sent(tmp_path, tools, file="# Yerk AI mechanics\n- an example line"):
@@ -440,10 +441,11 @@ def test_the_rulebook_line_keeps_about_1000_over_the_largest_room_text_and_what_
     `worker` tool's `addons`, the room's own add-on tools a worker gets too (300), no part could pay, to 129,771
     (need-2026-11-10-83); then the hands line (300, the mail tool's `attachment`, a file a mail carries saved for the room
     to read), no other line lowered, to 130,071 (need-2026-11-11-85); then the other entries' line (152, web_fetch's
-    sentence on a PDF or a Word file at a link), no other line lowered, to 130,223 (need-2026-11-11-87)."""
+    sentence on a PDF or a Word file at a link), no other line lowered, to 130,223 (need-2026-11-11-87); then Yerk AI's
+    tools' line (700, the report room's `texting` tool), no part could pay, to 130,923 (texting-2)."""
     s = budgets()["session_start"]
     assert 900 <= s["appended"]["rulebook"] - LIVE_RULEBOOK <= 1400 and s["appended"]["rules"] == 16000
-    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 130223
+    assert sum(s["claude_code"].values()) + sum(s["appended"].values()) == s["total"] == 130923
     private = tmp_path / "private"
     shutil.copytree(EXAMPLE_PRIVATE, private)
     (private / "rulebook.md").write_text("r" * (LIVE_RULEBOOK - 1) + "\n")
