@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-11-12
 
-### texting-4 (#?)
+### texting-4 (#64)
 
 - Nothing changes on an install until it has a `[texting]` table in yerkd.toml.
 - Then, in dry mode, each reply or tapback the writer decides gets a verdict from a pass that reads only the thread,
