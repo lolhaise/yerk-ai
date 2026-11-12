@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-11-12
 
-### fast-idle (#?)
+### fast-idle (#60)
 
 - In a room with fast mode on, the compaction that runs while the room is quiet (`idle_compact_after` minutes with the
   session at `idle_compact_at` of its window) never runs in fast mode: a copy launched without it compacts off to the
