@@ -410,8 +410,7 @@ class Room:
             path.unlink(missing_ok=True)
         return rp, t, started, old, before, turns, len(tail), end
 
-    def _took(self, rp: RoomProcess, t: Turn, started: float, old: RoomProcess | None, before: int, turns: int, tail: int,
-              end: bool) -> None:
+    def _took(self, rp: RoomProcess, t: Turn, started: float, old: RoomProcess | None, before: int, turns: int, tail: int, end: bool) -> None:
         """A take's row and line: how long the compaction took, how long it waited for a turn, how many turns overtook the
         copy and the tail's size; the old process closed off the room's path, so a message waiting never waits on it."""
         took, waited = (t.ended or time.time()) - started, time.time() - (t.ended or time.time())
