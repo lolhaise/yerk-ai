@@ -16,9 +16,19 @@ version changes.
   the tools), asked of it with no model call. A copy compacted off to the side and taken gives the room its own count
   the same way. Before, the line read about 12k all night after a late compaction while the next call carried about
   328k, until the room's next reply.
-- budgets.toml: `[code] lines` 29,286 to 29,325 with its dated note.
+- budgets.toml: `[code] lines` 29,299 to 29,338 with its dated note.
 - **Upgrading**: nothing to change. It needs a Claude Code that answers `get_context_usage` (2.1.321 does); an older
   one shows the old number.
+
+### fast-stays (#58)
+
+- A room with fast mode on is fast again from the first reply after a compaction, with nothing typed and nothing said:
+  the copy the room takes was launched without fast mode, so it is closed as it is taken, and the next message resumes
+  the compacted session on a process launched with it. The copy's compaction still never runs in fast mode. This
+  replaces "Once a copy is taken, the room runs at standard speed until its next new process." in fast-mode (#51).
+- A room with fast mode off, or on a model other than Fable 5.2, goes on on the copy it took, as before.
+- budgets.toml: `[code] lines` 29,286 to 29,299 with its dated note.
+- **Upgrading**: nothing to change.
 
 ## 2026-11-11
 

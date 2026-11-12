@@ -679,9 +679,11 @@ The code itself. Unit: lines as `wc -l` counts them, in every .py file under yer
 
 2026-11-11: oom-wording raised it by 47, the follow-up to worker-memory told to the owner on 2026-11-11 (a worker the ceiling killed read "it was killed" or finished clean, and a fix killed for memory, oom-kill and exited 143, was taken for a stop nobody asked for and started again): the unit's count of kills for memory in exit.json, read in ExecStopPost, the rule for a death for memory, the survivor's line on the card, the relay and the ledger, and cut_off never true for memory 38 (workers.py); the survivor's words 3 (words.py); a job's alert and relay 2 (jobs.py); a builder held, not built again 3 (daemon.py); the pipeline's note 1 (pipeline.py). 29,286: status-broom's 29,239 plus 47.
 
-2026-11-12: compact-size raised it by 39 (after a compaction the room's size, its row and the card's were the messages Claude Code kept, not the whole prompt the next call sends): RoomProcess.size and its answers kept off the turn's events 35 (engine.py); the ask after a /compact and after a copy's 4 (room.py). 29,325: oom-wording's 29,286 plus 39.
+2026-11-12: fast-stays raised it by 13, the follow-up to fast-mode (#51) (a room with fast mode on ran at standard speed from each taken copy until its next new process): in a room fast mode reaches, the taken copy closed between turns, also when the take's row fails, and the next message's process launched with fast mode (room.py). 29,299: oom-wording's 29,286 plus 13.
 
-- `lines = 29325`
+2026-11-12: compact-size raised it by 39 (after a compaction the room's size, its row and the card's were the messages Claude Code kept, not the whole prompt the next call sends): RoomProcess.size and its answers kept off the turn's events 35 (engine.py); the ask after a /compact and after a copy's 4 (room.py). 29,338: fast-stays' 29,299 plus 39.
+
+- `lines = 29338`
 
 ## Uncapped
 

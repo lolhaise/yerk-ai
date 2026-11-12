@@ -67,7 +67,7 @@ from . import memory, pictures, transcribe, watch, words
 from .accounts import Account, Cooldowns, pick
 from .card import Card
 from .config import flag, override, pinned, write_private
-from .engine import RoomProcess, RoomSpec, SessionTable, Turn
+from .engine import RoomProcess, RoomSpec, SessionTable, Turn, fast_reaches
 from .evidence import DOCUMENT, QUOTED, Evidence, pasted, people, quotes, read_any, sheet_written, shipped
 from .ledger import COMPACTED_IN_TURN, Ledger
 from .lifted.classify import Failure, FailureTable
@@ -392,7 +392,9 @@ class Room:
     def _take(self, rp: RoomProcess, t: Turn, started: float) -> tuple[Any, ...]:
         """Under the lock, a compacted copy becomes the room's session in one step, no model call made (adopt: bound, the
         room's process from here); what the live session said since it was made waits for the copy's first message, once,
-        in the room's folder (`copy-tail`: a restart before that message keeps it). The rest is _took's, unlocked."""
+        in the room's folder (`copy-tail`: a restart before that message keeps it). Where fast mode reaches the spec the room
+        last ran (`ran`; spec() mints a new token) the copy, launched without it, ends between turns as an idle process does,
+        and the next message resumes its session on a process launched with it (_start). The rest is _took's, unlocked."""
         rp.evidence = self.evidence
         rp.adopt()
         old, self.rp, self.ready = self.rp, rp, None
@@ -405,20 +407,31 @@ class Room:
             write_private(path, json.dumps({"session_id": rp.session_id, "text": tail}))
         else:
             path.unlink(missing_ok=True)
-        return rp, t, started, old, before, turns, len(tail)
+        if end := self.ran is not None and fast_reaches(self.ran):   # last, as the idle close: nothing that can fail
+            self.rp = None                        # stands between this and the close (_took), and _start waits for it:
+            self.exited.clear()                   # the copy holds its session's lock
+        return rp, t, started, old, before, turns, len(tail), end
 
-    def _took(self, rp: RoomProcess, t: Turn, started: float, old: RoomProcess | None, before: int, turns: int, tail: int) -> None:
+    def _took(self, rp: RoomProcess, t: Turn, started: float, old: RoomProcess | None, before: int, turns: int, tail: int, end: bool) -> None:
         """A take's row and line: how long the compaction took, how long it waited for a turn, how many turns overtook the
         copy and the tail's size; the old process closed off the room's path, so a message waiting never waits on it."""
         took, waited = (t.ended or time.time()) - started, time.time() - (t.ended or time.time())
         t.outcome = "compacted"
-        rp.record(t, note=f"copy taken: compacted in {took:.0f} s, taken {waited:.0f} s later, {turns} turn(s) overtook it, "
-                          f"tail {tail} chars")     # the copy's row, its size after: the room's session from here
-        log.info("room %s: compacted on a copy in %.0f s, %d to %d tokens, session %s now the room's (was %s), taken %.0f s "
-                 "later; %d turn(s) overtook it, the tail %d chars", self.name, took, before, self.context, rp.session_id,
-                 old.session_id if old else "closed", waited, turns, tail)
-        if old and old is not rp:
-            threading.Thread(target=old.close, name=f"precompact-old-{self.name}", daemon=True).start()
+        try:
+            rp.record(t, note=f"copy taken: compacted in {took:.0f} s, taken {waited:.0f} s later, {turns} turn(s) overtook it, "
+                              f"tail {tail} chars")     # the copy's row, its size after: the room's session from here
+            log.info("room %s: compacted on a copy in %.0f s, %d to %d tokens, session %s now the room's (was %s), taken %.0f s "
+                     "later; %d turn(s) overtook it, the tail %d chars", self.name, took, before, self.context, rp.session_id,
+                     old.session_id if old else "closed", waited, turns, tail)
+            if old and old is not rp:
+                threading.Thread(target=old.close, name=f"precompact-old-{self.name}", daemon=True).start()
+        finally:                                  # a row or a thread that failed costs its turn, never the room: the copy
+            if end:                               # still ends and its session's lock is freed
+                try:
+                    rp.close()
+                finally:
+                    self.exited.set()
+                log.info("room %s: the copy runs without fast mode, so it is closed; the next message resumes it with fast mode", self.name)
 
     def _dropped(self, rp: RoomProcess, t: Turn | None, started: float, why: str) -> None:
         """A copy the room did not take: ended, its transcript copy removed, the line and (when its /compact ran, the daemon
