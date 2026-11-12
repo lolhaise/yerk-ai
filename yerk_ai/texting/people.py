@@ -6,16 +6,20 @@ writes to them; none on file is no voice card and every class held. A sheet or t
 owner's words, each change one line of sheets.log."""
 from __future__ import annotations
 
+import hashlib
+import json
+import os
 import re
 import stat
 import threading
 import tomllib
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from .. import texts, words
-from ..config import load_toml, toml_value
+from ..config import load_toml, toml_value, write_private
 
 PEOPLE = "texting/people.toml"
 KEYS, PACING = ("open", "knows", "night", "reacts", "unanswered_share", "pacing", "voice"), (
@@ -160,3 +164,54 @@ def check(file: Path) -> list[str]:
         except ValueError as e:
             bad.append(str(e))
     return bad + [f"{x}: no one on the list names it" for x in sorted((file.parent / "people").glob("*")) if x not in named]
+
+
+def release_text(text: str, key: str, on: bool) -> str:
+    """The list's words with `key`'s standing release set, every other line as it was."""
+    lines, v = text.splitlines(keepends=True), "true" if on else "false"
+    head = next(i for i, x in enumerate(lines) if x.strip() == f"[people.{key}]")
+    end = next((i for i in range(head + 1, len(lines)) if lines[i].lstrip().startswith("[")), len(lines))
+    if (at := next((i for i in range(head + 1, end) if re.match(r"\s*release\s*=", lines[i])), None)) is None:
+        return "".join([*lines[:head + 1], f"release = {v}\n", *lines[head + 1:]])
+    return "".join([*lines[:at], re.sub(r"^(\s*release\s*=\s*)\w+", rf"\g<1>{v}", lines[at]), *lines[at + 1:]])
+
+
+def change(file: Path, key: str, op: str, value: str, source: str) -> tuple[bool, str]:
+    """One change the owner ordered (`source`: where they said it): `open` or `close` a class on `key`'s sheet, `knows` or
+    `forget` a fact, `release` on or off on the list. Written whole through write_private in the file's own mode, read
+    back, and one line of sheets.log; (False, the one line why) changes nothing."""
+    with LOCK:
+        who = load(file)
+        if (p := who.people.get(key)) is None:
+            return False, words.TEXTING_NO_ONE.format(key=key, keys=", ".join(who.people))
+        to, s, v = file if op == "release" else sheet_file(file, p), who.sheets[key], " ".join(value.split())
+        before = to.read_bytes() if to.is_file() else b""
+        if op == "release":
+            if v not in ("on", "off"):
+                return False, words.TEXTING_ON_OFF
+            new, same = release_text(before.decode(), key, v == "on"), (v == "on") == p.release
+        elif op in ("open", "close"):
+            if v not in words.TEXTING_CLASSES:
+                return False, words.TEXTING_NOT_CLASS.format(value=v, classes=", ".join(words.TEXTING_CLASSES))
+            opened = tuple(c for c in s.open if c != v) + ((v,) if op == "open" else ())
+            new, same = sheet_text(replace(s, open=opened)), set(opened) == set(s.open)
+        elif op == "knows":
+            new, same = sheet_text(replace(s, knows=(*s.knows, (v, source)))), not v or v.casefold() in (f.casefold() for f, _ in s.knows)
+        else:
+            kept = tuple(k for k in s.knows if k[0].casefold() != v.casefold())
+            new, same = sheet_text(replace(s, knows=kept)), kept == s.knows
+        if same:
+            return False, words.TEXTING_SAME.format(first=p.first, op=op, value=v)
+        to.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        write_private(to, new, stat.S_IMODE(to.stat().st_mode) if before else 0o600)
+        try:
+            load(file)                            # read back: what does not load is put back, no change at all
+        except ValueError:
+            write_private(to, before, stat.S_IMODE(to.stat().st_mode)) if before else to.unlink()
+            raise
+        row = {"at": datetime.now().astimezone().isoformat(timespec="seconds"), "person": key, "op": op, "value": v, "source": source,
+               "file": str(to.relative_to(file.parent)), "before": hashlib.sha256(before).hexdigest() if before else "",
+               "after": hashlib.sha256(to.read_bytes()).hexdigest()}
+        with os.fdopen(os.open(file.parent / LOG, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600), "a") as f:
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+        return True, words.TEXTING_CHANGED.format(first=p.first, op=op, value=v)

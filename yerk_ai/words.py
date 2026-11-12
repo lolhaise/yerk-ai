@@ -495,8 +495,8 @@ TEXTING_NO_ONE = "no one on the reply list is {key}; on it: {keys}"
 TEXTING_NOT_CLASS, TEXTING_ON_OFF = "not changed: {value} is not a class; the classes: {classes}", "not changed: release is on or off"
 TEXTING_SAME, TEXTING_CHANGED = "not changed: {first}'s sheet already says {op} {value}", "changed: {first}, {op} {value}; in sheets.log"
 TEXTING_OPS = "op is log, why or sheet, or open, close, knows, forget or release with the owner's words in `said`"
-TEXTING_NO_WHY, TEXTING_WHY = "nothing decided for {first} yet", "{at}: {state}{dry}, {reason}"
-TEXTING_LOG_IN, TEXTING_LOG = "{at} in from {who}, {chars} characters, {state}", "{at} {state}{dry}, {reason}"
+TEXTING_NO_WHY = "nothing decided for {first} yet"
+TEXTING_LOG_IN, TEXTING_LOG = "{at} {who}: {chars} characters, {state}", "{at} {state}{dry}: {reason}"
 TEXT_WHY = {-32602: "Messages would not take that number or address", -32603: "Messages on the Mac failed or lacks a permission",
             -32000: "the Mac's bridge was busy, so try again in a minute", -32004: "the Mac's bridge was busy, so try again in a minute"}
 # an email in the owner's name (emails.py): why one cannot go, said before the owner is asked where it can be, and how one went

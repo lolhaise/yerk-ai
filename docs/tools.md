@@ -2,7 +2,7 @@
 
 Written by `yerk docs own` from yerk_ai/mcp_server.py (build) and workers.WORKER_TOOLS; change those and run it again, never this page.
 
-The 22 tools Yerk AI's own MCP server hands every room's Claude Code, preloaded, as mcp__yerk__NAME. Each one's description is the text the model reads, indentation dropped. A worker gets none of them unless [workers] yerk_tools in yerkd.toml names some, and then only recall, read_memory, on its own server.
+The 23 tools Yerk AI's own MCP server hands every room's Claude Code, preloaded, as mcp__yerk__NAME. Each one's description is the text the model reads, indentation dropped. A worker gets none of them unless [workers] yerk_tools in yerkd.toml names some, and then only recall, read_memory, on its own server.
 
 ## send
 
@@ -272,6 +272,19 @@ it was just read from the Mac; with it false the Mac is asleep or away and the a
 ```
 
 - `limit`: integer, default 0
+
+## texting
+
+```text
+Texting as the owner, in the texting report room only. Read a person's sheet (`sheet`), a day of their texts and
+decisions (`log`, `value` YYYY-MM-DD, default today) or the newest reason (`why`); or change their sheet: `open` or
+`close` a class, `knows` or `forget` a fact, `release` on or off, each with `said`, his own words in this turn.
+```
+
+- `op`: string, required
+- `person`: string, default ""
+- `value`: string, default ""
+- `said`: string, default ""
 
 ## delete
 

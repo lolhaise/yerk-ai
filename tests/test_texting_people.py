@@ -159,3 +159,129 @@ def test_check_names_a_bad_sheet_with_its_file_and_line_a_missing_one_and_a_file
     f.write_text(REPLY.replace(f'handles = ["{B1}"]', f'handles = ["{A1}"]'))
     assert cli.main(["texting", "sheets", "--check", "--private", str(priv)]) == 1
     assert capsys.readouterr().out == f"{f}: people.beta: a handle is not a number or an address, or is someone else's too\n"
+
+
+def daemon(tmp_path: Path, table: str = '[texting]\nmode = "dry"\nreport = "owner-room"\n'):
+    """A daemon on the example layer with the texting folder above, and two made-up rooms: owner-room, the report room,
+    and person-room, a room that answers a person."""
+    import asyncio
+
+    from test_gates import Rec
+    from yerk_ai.daemon import Yerkd
+    f = folder(priv := tmp_path / "private")
+    shutil.copytree(EXAMPLE_PRIVATE, priv, dirs_exist_ok=True)
+    (priv / "yerkd.toml").write_text(table)
+    (tmp_path / "state").mkdir()
+    y = Yerkd(priv, tmp_path / "state")
+    y.room_confs["owner-room"] = dict(y.room_confs["example-room"])
+    y.room_confs["person-room"] = {**y.room_confs["example-room"], "privacy": "family", "people": [31]}
+    rooms = {n: y.add_room(n, Rec()) for n in ("owner-room", "person-room", "example-room")}
+
+    def tool(room: str, op: str, person: str = "alex", value: str = "", said: str = "") -> dict:
+        return asyncio.run(y.tool_texting(room, op, person, value, said))
+    return y, rooms, f, tool
+
+
+def files(f: Path) -> dict[str, tuple[bytes, int]]:
+    return {str(x.relative_to(f.parent)): (x.read_bytes(), x.stat().st_mtime_ns) for x in sorted(f.parent.rglob("*")) if x.is_file()}
+
+
+ORDER = "Alex can always know where I am"
+
+
+def test_an_edit_without_the_owners_own_words_of_this_turn_is_refused_and_changes_nothing(tmp_path):
+    from yerk_ai.room import Inbound
+    y, rooms, f, tool = daemon(tmp_path)
+    before = files(f)
+    for turn, said in (([], ORDER), ([Inbound("m1", "person", ORDER)], ORDER), ([Inbound("m2", "owner", "ok")], ORDER),
+                       ([Inbound("m3", "owner", ORDER)], ""), ([Inbound("m4", "owner", ORDER)], "Alex can always know")):
+        rooms["owner-room"].inflight = turn                    # the running turn's messages, as said_in_turn reads them
+        for op, value in (("release", "on"), ("open", "location"), ("knows", "the trip"), ("forget", "the new car")):
+            got = tool("owner-room", op, value=value, said=said)
+            if turn and turn[0].id == "m4":
+                break                                        # the owner's own words, in part: this one goes
+            assert got == {"ok": False, "line": words.TEXTING_NOT_SAID}, (turn, said, op)
+    assert files(f) == {**before, **{k: v for k, v in files(f).items() if k in ("people.toml", "sheets.log")}}
+    assert [x["source"] for x in map(__import__("json").loads, (f.parent / "sheets.log").read_text().splitlines())] == [
+        f"owner-room m:m4 {__import__('datetime').datetime.now(y.memory.tz):%Y-%m-%d}"]
+
+
+def test_an_edit_or_a_read_from_a_persons_room_is_refused_and_shows_nothing_of_texting(tmp_path):
+    from yerk_ai.room import Inbound
+    y, rooms, f, tool = daemon(tmp_path)
+    y.ledger.texting_add(person="alex", handle=A1, inbound="g1", state="missed", mode="dry", reason="older than 6 h")
+    before = files(f)
+    for room in ("person-room", "example-room", "no-such-room"):
+        if room in rooms:
+            rooms[room].inflight = [Inbound("m9", "owner", f"open location for Alex, {ORDER}")]
+        for op, value in (("sheet", ""), ("log", ""), ("why", ""), ("open", "location"), ("close", "location"),
+                          ("knows", "the trip"), ("forget", "the new car"), ("release", "on"), ("nonsense", "")):
+            got = tool(room, op, value=value, said=ORDER)
+            assert got == {"ok": False, "line": words.TEXTING_ONLY.format(room="owner-room")}, (room, op)
+            shown = repr(got)
+            assert not any(x in shown for x in ("short, lowercase", "the new car", "location", "6 h", "missed", A1, "sheets.log"))
+    assert files(f) == before and not (f.parent / "sheets.log").exists()
+
+
+def test_each_change_is_one_line_of_sheets_log_and_the_files_keep_their_mode(tmp_path):
+    import hashlib
+    import json
+
+    from yerk_ai.room import Inbound
+    y, rooms, f, tool = daemon(tmp_path)
+    rooms["owner-room"].inflight = [Inbound("m7", "owner", f"{ORDER}. And money is fine with Beta; she knows the trip moved; "
+                                             "drop the car thing; Beta and Alex can get texts without asking")]
+    os.chmod(sheet := f.parent / "people" / "alex.toml", 0o400)
+    said = {"said": "drop the car thing"}
+    for op, person, value in (("close", "alex", "location"), ("open", "beta", "money"), ("knows", "alex", "the trip moved"),
+                              ("forget", "alex", "the new car"), ("release", "beta", "on"), ("release", "alex", "on")):
+        assert tool("owner-room", op, person, value, **said) == {
+            "ok": True, "line": words.TEXTING_CHANGED.format(first=person.title(), op=op, value=value)}, (op, person)
+    assert tool("owner-room", "close", "alex", "location", **said)["line"] == words.TEXTING_SAME.format(first="Alex", op="close", value="location")
+    assert tool("owner-room", "open", "alex", "gossip", **said)["line"].startswith("not changed: gossip is not a class")
+    assert tool("owner-room", "release", "alex", "maybe", **said)["line"] == words.TEXTING_ON_OFF
+    assert tool("owner-room", "open", "gamma", "money", **said)["line"] == words.TEXTING_NO_ONE.format(key="gamma", keys="alex, beta")
+    rows = [json.loads(x) for x in (f.parent / "sheets.log").read_text().splitlines()]
+    assert [(r["person"], r["op"], r["value"], r["file"]) for r in rows] == [
+        ("alex", "close", "location", "people/alex.toml"), ("beta", "open", "money", "people/beta.toml"),
+        ("alex", "knows", "the trip moved", "people/alex.toml"), ("alex", "forget", "the new car", "people/alex.toml"),
+        ("beta", "release", "on", "people.toml"), ("alex", "release", "on", "people.toml")]
+    assert rows[1]["before"] == "" and rows[2]["before"] == rows[0]["after"] and rows[3]["before"] == rows[2]["after"]
+    assert rows[5]["before"] == rows[4]["after"] == hashlib.sha256(REPLY.replace("release = false", "release = true").encode()).hexdigest()
+    assert rows[3]["after"] == hashlib.sha256(sheet.read_bytes()).hexdigest() and {r["source"].rsplit(" ", 1)[0] for r in rows} == {"owner-room m:m7"}
+    assert f.read_text() == REPLY.replace("release = false", "release = true").replace(
+        '[people.alex]\n', '[people.alex]\nrelease = true\n')                              # the release line only; the comment kept
+    assert os.stat(sheet).st_mode & 0o777 == 0o400 and os.stat(f.parent / "people" / "beta.toml").st_mode & 0o777 == 0o600
+    who = people.load(f)
+    assert who.sheets["alex"].open == () and who.sheets["alex"].knows == (("the trip moved", rows[2]["source"]),)
+    assert who.sheets["alex"].card == "short, lowercase, no full stops" and who.sheets["beta"].open == ("money",)
+    assert who.people["alex"].release and who.people["beta"].release
+
+
+def test_the_read_ops_only_read_and_with_texting_off_answer_texting_is_off(tmp_path, monkeypatch):
+    import time
+
+    from yerk_ai.daemon import YERK_TOOLS
+    assert "mcp__yerk__texting" in YERK_TOOLS
+    y, rooms, f, tool = daemon(tmp_path)
+    now = time.time()
+    y.ledger.inbound_add("g1", "texting", "imessage:alex", "alex", 12, created=now - 60)
+    y.ledger.inbound_add("g2", "texting", "imessage:alex", "owner", 5, created=now - 30)
+    y.ledger.texting_add(person="alex", handle=A1, inbound="g1", state="missed", mode="dry", reason="older than 6 h")
+    before = files(f)
+    got = tool("owner-room", "sheet")
+    assert got["ok"] and got["open"] == ["location"] and got["card"] == "short, lowercase, no full stops" and got["on_file"]
+    assert got["release"] is False and tool("owner-room", "sheet", "beta")["on_file"] is False
+    lines = tool("owner-room", "log")["lines"]
+    assert [x.split(" ", 1)[1] for x in lines] == ["Alex: 12 characters, received", "the owner: 5 characters, received",
+                                                   "missed (dry): older than 6 h"]
+    assert tool("owner-room", "log", value="2001-01-01") == {"ok": True, "day": "2001-01-01", "lines": []}
+    assert tool("owner-room", "why")["line"].endswith(" missed (dry): older than 6 h")
+    assert tool("owner-room", "why", "beta") == {"ok": True, "line": words.TEXTING_NO_WHY.format(first="Beta")}
+    assert tool("owner-room", "sheet", "gamma")["line"] == words.TEXTING_NO_ONE.format(key="gamma", keys="alex, beta")
+    assert tool("owner-room", "say")["line"] == words.TEXTING_OPS
+    assert files(f) == before and not (f.parent / "sheets.log").exists()
+    for n, table in enumerate(("", '[texting]\nmode = "off"\nreport = "owner-room"\n')):
+        y, rooms, f, tool = daemon(tmp_path / str(n), table)
+        for op in ("sheet", "log", "why", "open", "release"):
+            assert tool("owner-room", op, value="location", said=ORDER) == {"ok": False, "line": words.TEXTING_OFF}

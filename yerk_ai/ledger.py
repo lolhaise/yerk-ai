@@ -564,6 +564,15 @@ class Ledger:
     def texting_rows(self, person: str, state: str) -> list[dict[str, Any]]:
         return self._select("SELECT * FROM texting WHERE person = ? AND state = ? ORDER BY id", (person, state))
 
+    def texting_day(self, person: str, start: float, end: float) -> list[dict[str, Any]]:
+        """A person's texts (inbound rows of room texting, at their own time) and texting rows from `start` to `end`, by time."""
+        return sorted([*self._select("SELECT *, COALESCE(created, received) AS t FROM inbound WHERE room = 'texting' AND channel = ? "
+                                     "AND COALESCE(created, received) >= ? AND COALESCE(created, received) < ?", (f"imessage:{person}", start, end)),
+                       *self._select("SELECT * FROM texting WHERE person = ? AND t >= ? AND t < ?", (person, start, end))], key=lambda r: r["t"])
+
+    def texting_last(self, person: str) -> dict[str, Any] | None:
+        return self._first("SELECT * FROM texting WHERE person = ? ORDER BY id DESC LIMIT 1", (person,))
+
     def job_run_get(self, run_id: int) -> dict[str, Any] | None:
         return self._first("SELECT * FROM job_runs WHERE id = ?", (run_id,))
 
