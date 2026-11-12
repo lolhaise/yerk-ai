@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-11-12
 
-### texting-5 (#?)
+### texting-5 (#65)
 
 - Nothing changes on an install until it has a `[texting]` table in yerkd.toml.
 - Then a text that may not go on its own (one the writer or the check held, or one that passed for a person whose
