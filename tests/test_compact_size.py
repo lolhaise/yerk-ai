@@ -143,3 +143,15 @@ def test_an_ask_never_takes_a_turns_events(tmp_path, monkeypatch):
         assert [e["type"] for e in waiting if e][-1] == "result" and "control_response" not in [e["type"] for e in waiting if e]
         turn = rp.ask("is it done?", timeout=20)
     assert (turn.outcome, turn.text, len(turn.accepted)) == ("ok", "echo: is it done?", 1)
+
+
+def test_a_late_answer_to_an_earlier_ask_is_never_read_as_this_asks_size(tmp_path, monkeypatch):
+    """An ask that gave up leaves its answer still to come: the next ask skips it by its request id, so a room never
+    shows the size its session had at an earlier compaction."""
+    monkeypatch.setenv("YERK_CLAUDE", str(FAKE))
+    monkeypatch.setenv("FAKE_CLAUDE_CONTEXT", "5000")
+    with RoomProcess(RoomSpec(room="r1", model="m", cwd=tmp_path, tools=["Read"]), Account("one", tmp_path / "cfg"), tmp_path) as rp:
+        rp.start()
+        rp.answers.put({"type": "control_response", "response": {"subtype": "success", "request_id": "size-000000000000",
+                                                                 "response": {"totalTokens": 999999}}})
+        assert rp.size() == 5000
