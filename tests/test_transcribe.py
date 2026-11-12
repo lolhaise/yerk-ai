@@ -15,6 +15,7 @@ import subprocess
 import threading
 import time
 import urllib.error
+import wave
 from pathlib import Path
 from types import SimpleNamespace as NS
 
@@ -377,6 +378,30 @@ def test_a_break_is_a_window_past_the_first_voices_with_a_letter_matched_by_none
         ([("A", [(250, 255), (300, 305)]), ("B", [(65, 73)])], [("D", [(370, 375), (380, 383)])])]   # A nearest 300, D nearest 360
     first = [turn(130, 140, "A"), turn(140, 150, "B")]
     assert transcribe.reconcile([[], first], [0, 60]) == (first, 0, [[], first])   # a first window that heard no one: none counted
+
+
+def pcm(path: Path, seconds: float, value: int) -> Path:
+    """A WAV as the windows are, every sample `value`: made up, so no test of a splice cuts real audio."""
+    with wave.open(str(path), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(16000)
+        w.writeframes(value.to_bytes(2, "little") * round(seconds * 16000))
+    return path
+
+
+def test_a_splice_is_one_wav_of_each_voices_pieces_with_silence_after_each_and_its_answer_gives_each_voice_a_letter(tmp_path):
+    wavs = [pcm(tmp_path / "w000.wav", 10, 1), pcm(tmp_path / "w001.wav", 5, 2)]          # windows from 0 s and from 5 s
+    spans, seconds = transcribe.splice([("X", [(1, 2), (6, 6.5)]), ("Y", [(9.5, 10.5)])], wavs, [0, 5], tmp_path / "b000.wav")
+    assert [(who, round(a, 2), round(b, 2)) for who, a, b in spans] == [("X", 0, 1.9), ("Y", 2.4, 3.6)] and round(seconds, 2) == 4.1
+    with wave.open(str(tmp_path / "b000.wav")) as w:
+        assert (w.getnchannels(), w.getsampwidth(), w.getframerate()) == (1, 2, 16000)
+        got = w.readframes(w.getnframes())
+    one, two, quiet = b"\1\0", b"\2\0", b"\0\0"
+    assert got == (one * 16000 + quiet * 3200 + two * 8000 + quiet * 3200 + quiet * 8000       # X: 1 s of window 1, 0.5 s of window 2
+                   + two * 8000 + quiet * 8000 + quiet * 3200 + quiet * 8000)                 # Y: past window 2's end, silence
+    heard = answer((0, 1.5, "A"), (1.5, 1.9, "B"), (2.4, 3.0, "A"), (4.5, 5, "C"))
+    assert transcribe.letters(spans + [("Z", 4.1, 4.4)], heard) == {"X": "A", "Y": "A", "Z": None}   # C is near Z but not on it
 
 
 def two_chunks() -> dict[tuple[str, int], object]:

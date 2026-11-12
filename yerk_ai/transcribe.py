@@ -31,6 +31,7 @@ import time
 import urllib.error
 import urllib.request
 import uuid
+import wave
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -311,6 +312,38 @@ def breaks(heard: list[dict[str, Any]], each: list[list[dict[str, Any]]], at: li
                 out.append((before, after))
         seen |= mine
     return out
+
+
+def splice(voices: Voices, wavs: list[Path], at: list[float], into: Path) -> tuple[list[tuple[str, float, float]], float]:
+    """The voices' clips as one WAV as the windows are (mono, 16 kHz, 16-bit), each piece read from the window it starts
+    in, which holds it (a piece is under a minute long), SPACE[0] seconds of silence after each piece and SPACE[1] more
+    after each voice; a piece past the end of the audio is filled with silence. Returns each voice's (letter, start, end)
+    in it, and its seconds."""
+    def size(seconds: float) -> int:               # bytes of that audio
+        return 2 * round(seconds * 16000)
+    pcm, spans = bytearray(), []
+    for who, pieces in voices:
+        begin = len(pcm) / size(1)
+        for s, e in pieces:
+            i = max(k for k, x in enumerate(at) if x <= s)
+            with wave.open(str(wavs[i]), "rb") as w:
+                w.setpos(min(w.getnframes(), size(s - at[i]) // 2))
+                pcm += w.readframes(size(e - s) // 2).ljust(size(e - s), b"\0") + bytes(size(SPACE[0]))
+        spans.append((who, begin, len(pcm) / size(1)))
+        pcm += bytes(size(SPACE[1]))
+    with wave.open(str(into), "wb") as out:
+        out.setnchannels(1)
+        out.setsampwidth(2)
+        out.setframerate(16000)
+        out.writeframes(bytes(pcm))
+    return spans, len(pcm) / size(1)
+
+
+def letters(spans: list[tuple[str, float, float]], data: dict[str, Any]) -> dict[str, str | None]:
+    """Each voice's letter in a splice's Muse answer: the one covering most of its span, None for one no turn touches
+    (speaker() given only the turns that touch it, so never a nearest one)."""
+    said = turns(data, 0.0)
+    return {who: speaker({"start": a, "end": b}, [t for t in said if t["end"] > a and t["start"] < b]) for who, a, b in spans}
 
 
 def hhmmss(t: float) -> str:
