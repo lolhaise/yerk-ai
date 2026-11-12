@@ -751,6 +751,7 @@ SPEAKERS = "speakers: {who} (letters, not names: say who is who as a guess from 
 UNMATCHED, ONE_VOICE = ", {n} letters could not be matched across windows", "one voice"
 NO_SPEAKERS, NO_META_KEY, NO_TURNS = "speakers: none (Muse: {why})", "no Meta key at secrets/meta.key", "no speech turns in its answer"
 MUSE_FAILED = "window {windows} of {of} failed: {error}"
+MUSE_UNSENT = ", so {n} more were not sent"
 MORE_IN_FILE = "(the rest is in the file: Read it from this line on)"
 NO_SPEECH_KEY = "no OpenAI key in the private folder (secrets/openai.key), so the recording could not be transcribed"
 OVER_GATE = ("not transcribed yet, since {minutes} min of audio is about US${usd:.2f}, past the US$1 a call spends only with the "

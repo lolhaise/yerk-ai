@@ -26,6 +26,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -276,7 +277,8 @@ def line(s: dict[str, Any]) -> str:
 def run(audio: Path, openai_key: Path, groq_key: Path, book: Book, owner_yes: bool = False, meta_key: Path | None = None) -> dict[str, Any]:
     """The tool's whole call, blocking (the daemon runs it off the loop): {"ok": False, "error"} on any stop, else the
     transcript's file, text and counts. Pass 2 runs when the Groq key is there; a chunk it failed on stays unchecked.
-    The speakers run when the Meta key is there; a window that failed leaves every line unlabelled, and the file says why."""
+    The speakers run when the Meta key is there; a window that failed leaves every line unlabelled, so no window starts
+    after it, and the file says why."""
     secrets = {e: key(p) for e, p in (("openai", openai_key), ("groq", groq_key), ("meta", meta_key)) if p}
     if not secrets["openai"]:
         return {"ok": False, "error": words.NO_SPEECH_KEY}
@@ -296,12 +298,17 @@ def run(audio: Path, openai_key: Path, groq_key: Path, book: Book, owner_yes: bo
                 wins = windows(audio, Path(tmp), at) if at else []
             except (Failed, OSError, subprocess.SubprocessError) as e:
                 why = str(e)
+            stop = threading.Event()                   # a Muse window failed: the letters are lost, so no window starts after it
 
-            def one(job: tuple[str, int]) -> tuple[tuple[str, int], dict[str, Any] | Failed]:
+            def one(job: tuple[str, int]) -> tuple[tuple[str, int], dict[str, Any] | Failed | None]:
                 e, i = job
+                if e == "meta" and stop.is_set():
+                    return job, None
                 try:
                     data = muse(secrets[e], wins[i]) if e == "meta" else post(e, secrets[e], parts[i])
                 except Failed as err:
+                    if e == "meta":
+                        stop.set()
                     return job, err
                 model, what, of, s = (MUSE[1], "window", len(wins), wsecs[i]) if e == "meta" else (PASSES[e][1], "chunk", len(parts), secs[i])
                 book(f"{e}/{model}", usd[e][i], f"{what} {i + 1} of {of}, {s:.0f} s")
@@ -324,7 +331,9 @@ def run(audio: Path, openai_key: Path, groq_key: Path, book: Book, owner_yes: bo
             unchecked.append(str(i + 1))
         segs += first
     if lost := [i for i in range(len(wins)) if isinstance(got[("meta", i)], Failed)]:
-        why = words.MUSE_FAILED.format(windows=", ".join(str(i + 1) for i in lost), of=len(wins), error=got[("meta", lost[0])])
+        unsent = sum(got[("meta", i)] is None for i in range(len(wins)))
+        why = (words.MUSE_FAILED.format(windows=", ".join(str(i + 1) for i in lost), of=len(wins), error=got[("meta", lost[0])])
+               + (words.MUSE_UNSENT.format(n=unsent) if unsent else ""))
     try:                                           # with no window lost, every answer is there to read
         heard, new = ([], 0) if why else reconcile([turns(r, at[i]) for i in range(len(wins)) if isinstance(r := got[("meta", i)], dict)], at)
     except Failed as e:

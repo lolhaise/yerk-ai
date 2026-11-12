@@ -402,6 +402,25 @@ def test_a_failed_muse_call_or_a_missing_key_still_returns_the_words_and_says_wh
     assert r["ok"] and r["speakers_how"] == "speakers: none (Muse: no Meta key at secrets/meta.key)"
 
 
+def test_a_muse_window_that_times_out_is_sent_once_and_no_window_starts_after_one_failed(tmp_path, monkeypatch):
+    muse = transcribe.muse
+    audio, keys, rows, calls = setup(tmp_path, monkeypatch, [8000 * 840, 8000 * 5], two_chunks(), meta="meta-test-key-123456")
+    sent: list[str] = []
+
+    def silent(req, timeout):                                              # Muse never answers: each request times out
+        sent.append(req.data.split(b'filename="')[1][:8].decode())
+        raise TimeoutError("timed out")
+    monkeypatch.setattr(transcribe, "muse", muse)
+    monkeypatch.setattr(transcribe, "time", NS(monotonic=time.monotonic, sleep=lambda s: None))
+    monkeypatch.setattr(transcribe.urllib.request, "urlopen", silent)
+    r = transcribe.run(audio, *keys, lambda e, usd, note: rows.append((e, usd, note)), meta_key=META(tmp_path))
+    assert r["ok"] and r["segments"] == 3 and len(sent) == len(set(sent))                  # each window sent once at most
+    assert sent and set(sent) <= {f"w{i:03d}.wav" for i in range(transcribe.MUSE_PARALLEL)}   # none started after one failed
+    assert r["speakers_how"] == ("speakers: none (Muse: window " + ", ".join(str(int(w[1:4]) + 1) for w in sorted(sent)) + " of 14 failed: "
+                                 f"muse-voice-transcribe-1.0 did not answer: TimeoutError after 0 s: timed out, so {14 - len(sent)} more were not sent)")
+    assert len(rows) == 4                                                   # the passes' rows; no window was billed
+
+
 def test_the_gate_counts_the_muse_share(tmp_path, monkeypatch):
     answers = {(e, i): {"segments": []} for e in ("openai", "groq") for i in range(10)}
     audio, keys, rows, calls = setup(tmp_path, monkeypatch, [8000 * 840] * 10, answers, meta="meta-test-key-123456")
