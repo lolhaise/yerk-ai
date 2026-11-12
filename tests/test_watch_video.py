@@ -666,7 +666,7 @@ def test_a_video_sent_in_and_never_watched_bounces_once_at_stop_and_only_a_watch
              ("mcp__yerk__watch", {"path": f"/in/{INBOX}/third.mov"}), ("mcp__yerk__watch", {"path": f"/in/{INBOX}/memo.m4a"}),
              ("Read", {"file_path": f"/in/{INBOX}/photo.png"})]
     ev = {"type": "assistant", "message": {"content": [{"type": "tool_use", "name": n, "input": i} for n, i in calls]}}
-    rp.proc, rp.read_paths, rp.evidence, rp.events = NS(stdout=[json.dumps(ev).encode()]), set(), None, queue.Queue()
+    rp.proc, rp.read_paths, rp.evidence, rp.events, rp.answers = NS(stdout=[json.dumps(ev).encode()]), set(), None, queue.Queue(), queue.Queue()
     monkeypatch.setattr(rp, "_note", lambda obj: None)
     rp._read()               # a Read of a video opens nothing and transcribe hears only its sound, so both still bounce
     assert rp.read_paths == {f"/in/{INBOX}/third.mov", f"/in/{INBOX}/memo.m4a", f"/in/{INBOX}/photo.png"}

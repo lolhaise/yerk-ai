@@ -46,6 +46,7 @@ CONTEXT = ("input_tokens", "cache_read_input_tokens", "cache_creation_input_toke
 # id: on an Opus model "fastMode" in --settings turns fast mode on at launch with no command (Claude Code's fast mode page,
 # 2026-11-11), and an alias is resolved by Claude Code, not here.
 FAST_MODELS, FAST_ON, FAST_WAIT = frozenset({"claude-fable-5-2"}), "/fast on", 60.0
+SIZE_WAIT = 15.0     # seconds RoomProcess.size waits for its answer (2.1.321 answered in 0.1 s, a session's first in 1.2 s)
 
 
 def claude_bin() -> str:
@@ -358,6 +359,7 @@ class RoomProcess:
         self.ledger, self.failures, self.log_path, self.meters = ledger, failures, log, meters
         self.sessions = SessionTable(state / "sessions.json")
         self.events: queue.Queue[tuple[float, dict[str, Any] | None]] = queue.Queue()
+        self.answers: queue.Queue[dict[str, Any] | None] = queue.Queue()   # control responses (size), never a turn's
         self.proc: subprocess.Popen[bytes] | None = None
         self.session_id = ""
         self.resume_arg: str | None = None
@@ -486,6 +488,9 @@ class RoomProcess:
             except ValueError:
                 ev = {"type": "_raw", "text": raw.decode(errors="replace")[:2000]}
             self._note({"e": ev})
+            if ev.get("type") == "control_response":
+                self.answers.put(ev)
+                continue
             if ev.get("type") == "assistant":
                 for c in (ev.get("message") or {}).get("content") or []:
                     if c.get("type") == "tool_use" and c.get("name") in ("Read", "mcp__yerk__transcribe", "mcp__yerk__watch"):
@@ -496,6 +501,7 @@ class RoomProcess:
                 with contextlib.suppress(Exception):   # the ledger never stops the stream
                     self.evidence.observe(ev)
             self.events.put((t, ev))
+        self.answers.put(None)
         self.events.put((time.time(), None))
 
     def send(self, text: str) -> float:
@@ -557,6 +563,35 @@ class RoomProcess:
 
     def ask(self, text: str, timeout: float = 600.0) -> Turn:
         return self.read_turn(self.send(text), timeout)
+
+    def size(self) -> int | None:
+        """The session's tokens as its next call would send them, by Claude Code's get_context_usage control request (no
+        model call; a compact_boundary's post_tokens counts only the messages kept), else None and one line in the log: an
+        error answer, none in SIZE_WAIT, the process gone. _read keeps answers off the turn's events, so an ask never takes
+        or moves a turn's event, and a process that ends leaves its end marker there for the next turn."""
+        rid, why = f"size-{uuid.uuid4().hex[:12]}", f"no answer in {SIZE_WAIT:.0f} s"
+        try:
+            assert self.proc and self.proc.stdin
+            with self._stdin_lock:
+                self.proc.stdin.write((json.dumps({"type": "control_request", "request_id": rid,
+                                                   "request": {"subtype": "get_context_usage"}}) + "\n").encode())
+                self.proc.stdin.flush()
+            end = time.monotonic() + SIZE_WAIT
+            while (ev := self.answers.get(timeout=max(end - time.monotonic(), 0.0))) is not None:
+                if (r := ev.get("response") or {}).get("request_id") != rid:
+                    continue                      # a late answer to an earlier ask
+                if r.get("subtype") == "success" and type(n := (r.get("response") or {}).get("totalTokens")) is int and n > 0:
+                    return n
+                why = f"answered {str(r.get('error') or r.get('subtype'))[:200]}"
+                break
+            else:
+                why = "the process ended"
+        except queue.Empty:
+            pass
+        except Exception as e:                    # a closed stdin, a process gone: never the caller's
+            why = f"not asked: {e}"
+        log.info("room %s: Claude Code did not say the session's size (%s)", self.spec.room, why)
+        return None
 
     def record(self, turn: Turn, inbound: list[str] | None = None, **extra: Any) -> int:
         """One ledger row for the turn; `extra` carries the room's hop, recap and out_of columns."""

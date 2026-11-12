@@ -394,7 +394,7 @@ def test_only_a_transcribe_call_counts_as_hearing_a_recording(monkeypatch):
     calls = [("Read", {"file_path": "/in/9/voice-message.ogg"}), ("Read", {"file_path": "/in/9/photo.png"}),
              ("mcp__yerk__transcribe", {"path": "/in/9/memo.m4a"})]
     ev = {"type": "assistant", "message": {"content": [{"type": "tool_use", "name": n, "input": i} for n, i in calls]}}
-    rp.proc, rp.read_paths, rp.evidence, rp.events = NS(stdout=[json.dumps(ev).encode()]), set(), None, queue.Queue()
+    rp.proc, rp.read_paths, rp.evidence, rp.events, rp.answers = NS(stdout=[json.dumps(ev).encode()]), set(), None, queue.Queue(), queue.Queue()
     monkeypatch.setattr(rp, "_note", lambda obj: None)
     rp._read()
     assert rp.read_paths == {"/in/9/photo.png", "/in/9/memo.m4a"}     # a Read of a recording opens nothing, so it still bounces

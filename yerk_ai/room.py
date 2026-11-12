@@ -352,6 +352,8 @@ class Room:
         try:
             rp.start(fork=True)
             t = rp.read_turn(rp.send("/compact"), self.turn_timeout, record=False)
+            if t.compacted is not None:           # asked here, the copy idle and the room free; _take holds the lock
+                t.context = rp.size() or t.context
         except Exception as e:
             why = f"its compaction failed: {e}"
         took = None
@@ -1256,6 +1258,8 @@ class Room:
         assert self.rp
         t = self.rp.read_turn(self.rp.send("/compact"), self.turn_timeout, record=False)
         t.outcome = "compacted" if t.compacted is not None and t.outcome in ("ok", "empty") else t.outcome
+        if t.outcome == "compacted":              # the whole prompt from here, the row's and _compact_held's
+            t.context = self.rp.size() or t.context
         self.shrunk = self.shrunk or t.outcome == "compacted"   # a copy made before it is moot
         self.rp.record(t)                         # read by yerk status --json's failed turns
         return t
