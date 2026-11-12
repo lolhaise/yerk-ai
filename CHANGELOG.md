@@ -8,7 +8,7 @@ version changes.
 
 ## 2026-11-12
 
-### transcribe-voice-joins (#?)
+### transcribe-voice-joins (#67)
 
 - On a long recording a person keeps one letter through a silence. Where a voice said nothing through the minute two
   windows share and came back under a new letter, a short splice of each voice's speech from both sides of that break
