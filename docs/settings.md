@@ -172,6 +172,8 @@ The daemon's settings, in the private folder beside rooms.toml, read when yerkd 
 - `effort`: its thinking effort (default high)
 - `parallel`: decisions that run at once, one person each (default 2)
 - `decide_seconds`: seconds one decision may take; past it the text is held with no clean answer (default 240). Every decision is dry, written down and never sent, until texting can send
+- `check_model`: the model of the check, which reads only the thread, the person's sheet, their texts and the draft before a reply or tapback may go (default: the writer's model)
+- `check_seconds`: seconds one check may take; past it the draft is held with no clean answer (default 120)
 
 ### [needs]
 

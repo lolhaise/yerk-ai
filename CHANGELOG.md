@@ -8,6 +8,22 @@ version changes.
 
 ## 2026-11-12
 
+### texting-4 (#?)
+
+- Nothing changes on an install until it has a `[texting]` table in yerkd.toml.
+- Then, in dry mode, each reply or tapback the writer decides gets a verdict from a pass that reads only the thread,
+  the person's sheet, their texts and the draft: one `claude -p` with no tool, no MCP server, no settings and an empty
+  folder, on the writer's model and accounts. The code holds first, with no call, a draft that says a word naming an
+  assistant, has markdown, more than 3 texts or one over 400 characters, or a word of an always-held class the sheet
+  does not open. It releases only when the pass fails nothing, leaves nothing unlisted and gives every statement about
+  the owner a basis the code confirms: a row of his side in the thread, a key of the sheet, or a topic row of his. An
+  error, a timeout or a missing field is a hold.
+- The verdict goes on the decision's `texting` row (state `release-ready`, or decision `held` with the reason) and one
+  more line of the dry file. Nothing is sent or shown.
+- New `[texting]` keys: `check_model` (default the writer's model), `check_seconds` (default 120).
+- budgets.toml: `[code] lines` 30,462 to 30,668, with its dated note.
+- **Upgrading**: nothing to change.
+
 ### texting-3 (#63)
 
 - Nothing changes on an install until it has a `[texting]` table in yerkd.toml.
