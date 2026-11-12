@@ -8,14 +8,22 @@ the owner's. Anything else, an error, a timeout or a missing field included, is 
 `release-ready`, or decision `held` with the reason, and one line of the dry file; nothing is sent, shown or posted."""
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import re
+import secrets
+import time
+from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from .. import words
-from .people import Sheet, sheet_text
-from .writer import USAGE, fence, line
+from .people import Sheet, load, sheet_text
+from .writer import Writer, answer, dry, fence, line
 
+log = logging.getLogger("yerk.texting")
+PROMPT = Path(__file__).with_name("check.md")
 PARTS, CHARS = 3, 400              # (e): more texts than this, or a longer one, is held by the code
 SCHEMA: dict[str, Any] = {"type": "object", "required": ["release", "failed", "statements", "unlisted", "why"], "properties": {
     "release": {"type": "boolean"},
@@ -94,29 +102,18 @@ def inputs(row: dict[str, Any], rows: list[dict[str, Any]], s: Sheet, tag: str) 
 
 
 def read(out: str, said: dict[int, str], his: set[str], known: set[str]) -> dict[str, Any]:
-    """A call's stdout as a verdict, read as taste_judge reads its judge; `error` when the call failed (its reason, for the
-    account hop). The model's release stands only when it also fails nothing, leaves nothing unlisted and gives every
-    statement of the draft (`said`, by number) an ok with a basis the code confirms; else a hold, with every reason named."""
-    try:
-        d = json.loads(out)
-        assert isinstance(d, dict)
-    except (ValueError, AssertionError):
-        return hold(words.TEXTING_NO_CLEAN)
-    rec = {"seconds": round(float(d.get("duration_ms") or 0) / 1000, 2), "tokens": sum(int((d.get("usage") or {}).get(k) or 0) for k in USAGE)}
-    if d.get("is_error"):
-        return {**hold(words.TEXTING_NO_CLEAN), **rec, "error": str(d.get("result") or "no answer")[:300]}
-    ans = d.get("structured_output")
-    if not isinstance(ans, dict):
-        try:
-            ans = json.loads(d.get("result") or "")
-        except ValueError:
-            ans = None
+    """A call's stdout as a verdict (`writer.answer`). The model's release stands only when it also fails nothing, leaves
+    nothing unlisted and gives every statement of the draft (`said`, by number) an ok with a basis the code confirms; else a
+    hold, with every reason named."""
+    ans, rec = answer(out, hold)
+    if "reason" in rec:
+        return rec
     try:                                    # a field missing or of the wrong kind: no clean answer
         assert isinstance(ans, dict) and isinstance(ans["release"], bool) and isinstance(ans["why"], str)
         assert all(isinstance(ans[k], list) for k in ("failed", "unlisted", "statements"))
         failed = sorted({str(x) for x in ans["failed"]})
         unlisted = [" ".join(str(x).split()) for x in ans["unlisted"] if str(x).strip()]
-        got = [{"n": int(s["n"]), "ok": s["ok"] is True, "basis": str(s["basis"]).strip()} for s in ans["statements"]]
+        got: list[dict[str, Any]] = [{"n": int(s["n"]), "ok": s["ok"] is True, "basis": str(s["basis"]).strip()} for s in ans["statements"]]
     except (AssertionError, KeyError, TypeError, ValueError):
         return {**hold(words.TEXTING_NO_CLEAN), **rec}
     bad = sorted({s["n"] for s in got if not (s["ok"] and real(s["basis"], his, known))} | (set(said) - {s["n"] for s in got}))
@@ -128,3 +125,39 @@ def read(out: str, said: dict[int, str], his: set[str], known: set[str]) -> dict
         words.TEXTING_CHECK_NO_BASIS.format(what="; ".join(said.get(n) or str(n) for n in bad)) if bad else "", why) if x)
     return {"release": release, "failed": failed, "statements": got, "unlisted": unlisted, "why": why,
             "reason": reason or ("" if release else words.TEXTING_CHECK_HELD), **rec}
+
+
+class Check:
+    """The check's task beside the writer's: its loop, slots, account hop and dry file are the writer's own."""
+
+    def __init__(self, conf: dict[str, Any], writer: Writer):
+        self.w, self.model, self.cap = writer, str(conf.get("check_model") or writer.model), float(conf.get("check_seconds", 120))
+        self.cwd = writer.state / "texting" / "check-cwd"            # empty, and nothing is ever written into it
+        self.cwd.mkdir(mode=0o700, parents=True, exist_ok=True)
+        self.argv = [writer.argv[0], "-p", "--output-format", "json", "--json-schema", json.dumps(SCHEMA), "--system-prompt-file",
+                     str(PROMPT), "--tools", "", "--setting-sources", "", "--strict-mcp-config", "--no-session-persistence",
+                     *(["--model", self.model] if self.model else []), "--effort", str(conf.get("effort") or "high")]
+
+    async def run(self) -> None:
+        """Each decided reply or tapback with no verdict yet, once: a none sends nothing and a held one is held already."""
+        await self.w.run("decided", self.check, lambda r: r["decision"] in ("reply", "react") and not r["verdict"])
+
+    async def check(self, row: dict[str, Any]) -> None:
+        rid, key, now = int(row["id"]), str(row["person"]), self.w.clock()
+        who = await asyncio.to_thread(load, self.w.file)          # the sheet as it is on disk now, never a start's copy
+        if key not in who.people:
+            v = hold(words.TEXTING_UNLISTED)
+        elif why := precheck(json.loads(row["parts"] or "[]"), (s := who.sheets[key]).open):
+            v = hold(why)
+        else:
+            rows = await self.w.last(key)
+            his, said = {str(r.get("guid")) for r in rows if r.get("is_from_me") is True}, {
+                int(x["n"]): str(x.get("text") or "") for x in json.loads(row["statements"] or "[]")}
+            t0 = time.monotonic()
+            v = await asyncio.to_thread(self.w.hop, self.argv, inputs(row, rows, s, secrets.token_hex(4)), self.cwd, self.cap,
+                                        self.model, lambda out: read(out, said, his, keys(s)), hold)
+            v.setdefault("seconds", round(time.monotonic() - t0, 2))
+        fields = {"state": "release-ready"} if v["release"] else {"decision": "held", "reason": v["reason"]}
+        self.w.ledger.texting_set(rid, verdict=json.dumps(v), **fields)
+        dry(self.w.state, datetime.fromtimestamp(now).astimezone(), {"t": now, "id": rid, "person": key, "verdict": v, **fields})
+        log.info("texting: %s checked: %s (dry)", key, fields.get("state") or "held")
