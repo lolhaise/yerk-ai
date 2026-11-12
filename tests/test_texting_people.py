@@ -132,3 +132,30 @@ def test_the_classes_are_one_list_and_a_sheet_opening_another_fails_the_load_wit
     (f := folder(tmp_path / "out", None)).write_text(REPLY.replace('first = "Beta"', 'first = "Beta"\nsheet = "../b.toml"'))
     with pytest.raises(ValueError, match=r"people\.beta: sheet must be a path inside texting/"):
         people.load(f)
+
+
+def test_check_names_a_bad_sheet_with_its_file_and_line_a_missing_one_and_a_file_no_one_names(tmp_path, capsys):
+    from yerk_ai import cli
+    f = folder(priv := tmp_path / "private")
+    (priv / "yerkd.toml").write_text('[texting]\nmode = "dry"\n')
+    (beta := f.parent / "people" / "beta.toml").write_text(SHEET)
+    os.chmod(beta, 0o600)
+    log = f.parent / "sheets.log"
+    log.write_text("not read\n")                                   # the log is never read: a line in it is no finding
+    assert cli.main(["texting", "sheets", "--check", "--private", str(priv)]) == 0
+    assert capsys.readouterr().out == "every sheet loads\n"
+    beta.write_text(SHEET.replace('reacts = ["love"]', 'reacts = ["love"]\nopen = 3'))
+    (f.parent / "people" / "gamma.toml").write_text("")
+    (f.parent / "people" / "alex.toml").unlink()
+    assert cli.main(["texting", "sheets", "--check", "--private", str(priv)]) == 1
+    out = capsys.readouterr().out.splitlines()
+    assert out[0] == f"{f.parent / 'people' / 'alex.toml'}: missing, so alex has no voice card and every class held"
+    assert out[1].startswith(f"{beta}: ") and "line 5" in out[1]                  # tomllib's own words: a key set twice
+    assert out[2:] == [f"{f.parent / 'people' / 'gamma.toml'}: no one on the list names it"]
+    (f.parent / "people" / "gamma.toml").unlink()
+    beta.write_text(SHEET.replace('open = ["location"]', 'open = ["money", "gossip"]'))
+    assert cli.main(["texting", "sheets", "--check", "--private", str(priv)]) == 1
+    assert capsys.readouterr().out.splitlines()[1] == f"{beta}:1: open: 'gossip' is not a class; the classes: " + ", ".join(words.TEXTING_CLASSES)
+    f.write_text(REPLY.replace(f'handles = ["{B1}"]', f'handles = ["{A1}"]'))
+    assert cli.main(["texting", "sheets", "--check", "--private", str(priv)]) == 1
+    assert capsys.readouterr().out == f"{f}: people.beta: a handle is not a number or an address, or is someone else's too\n"

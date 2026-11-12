@@ -142,3 +142,21 @@ def sheet_text(s: Sheet) -> str:
                       f"reacts = {toml_value(list(s.reacts))}", f"unanswered_share = {s.unanswered_share!r}", "", "[pacing]",
                       *(f"{k} = [{a!r}, {b!r}]" for k, (a, b) in s.pacing.items()), "", "[voice]",
                       f"card = '''\n{s.card}'''" if block else f"card = {toml_value(s.card)}"]) + "\n"
+
+
+def check(file: Path) -> list[str]:
+    """`yerk texting sheets --check`: the list and every sheet it names, read and never sheets.log: one line naming the file
+    (and the line) for the list or a sheet that does not load, a sheet missing, and a file in people/ no one names."""
+    try:
+        who = load(file, sheets=False)
+    except (OSError, ValueError) as e:
+        return [f"{file}: {getattr(e, 'strerror', None) or e}"]
+    bad, named = [], {sheet_file(file, p) for p in who.people.values()}
+    for p in who.people.values():
+        try:
+            if not sheet_file(file, p).is_file():
+                bad.append(f"{sheet_file(file, p)}: missing, so {p.key} has no voice card and every class held")
+            sheet(sheet_file(file, p))
+        except ValueError as e:
+            bad.append(str(e))
+    return bad + [f"{x}: no one on the list names it" for x in sorted((file.parent / "people").glob("*")) if x not in named]
